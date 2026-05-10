@@ -96,6 +96,36 @@
 
         <div class="settings-card">
             <h3>📊 Automated Reports & Alerts</h3>
+
+            <div style="background-color: #2c2c2c; padding: 15px; border-radius: 5px; margin-bottom: 10px;">
+                <h4 style="margin-top: 0; color: #4da6ff;">📅 Portfolio Earnings Alerts</h4>
+                
+                <div class="checkbox-group">
+                    <input type="checkbox" id="EARNINGS_ENABLED" {% if config.NOTIFICATIONS.EARNINGS_ALERTS.ENABLED %}checked{% endif %}>
+                    <label for="EARNINGS_ENABLED">Enable automated Nextcloud delivery</label>
+                </div>
+                
+                <div style="display: flex; gap: 15px; margin-bottom: 10px;">
+                    <div class="form-group" style="flex: 1;">
+                        <label>Delivery Time (24H Format)</label>
+                        <input type="time" id="EARNINGS_TIME" value="{{ config.NOTIFICATIONS.EARNINGS_ALERTS.TIME }}">
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label>Days Ahead to Warn</label>
+                        <input type="number" id="EARNINGS_DAYS_AHEAD" value="{{ config.NOTIFICATIONS.EARNINGS_ALERTS.DAYS_AHEAD }}" min="1" max="30">
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label>Alert Frequency</label>
+                        <select id="EARNINGS_ALERT_TYPE">
+                            <option value="daily" {% if config.NOTIFICATIONS.EARNINGS_ALERTS.ALERT_TYPE == 'daily' %}selected{% endif %}>Daily leading up to date</option>
+                            <option value="once" {% if config.NOTIFICATIONS.EARNINGS_ALERTS.ALERT_TYPE == 'once' %}selected{% endif %}>Once exactly X days before</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <button type="button" class="btn-test" onclick="testEarningsAlert()">🧪 Run Test Earnings Alert</button>
+                <div id="test-earnings-msg" style="margin-top: 15px; font-weight: bold; font-family: monospace; white-space: pre-wrap;"></div>
+            </div>
             
             <div style="background-color: #2c2c2c; padding: 15px; border-radius: 5px; margin-bottom: 10px;">
                 <h4 style="margin-top: 0; color: #4da6ff;">🧠 Market Sentiment (Fear & Greed)</h4>
@@ -141,6 +171,34 @@
     </div>
 
     <script>
+        async function testEarningsAlert() {
+            const btn = document.querySelector('button[onclick="testEarningsAlert()"]');
+            const statusMsg = document.getElementById('test-earnings-msg');
+            
+            btn.disabled = true;
+            btn.innerText = "Checking Database...";
+            statusMsg.innerText = "";
+
+            try {
+                const response = await fetch('/api/test-earnings-alert', { method: 'POST' });
+                const result = await response.json();
+                
+                if (response.ok) {
+                    statusMsg.style.color = "#00ff00";
+                    statusMsg.innerText = "✅ " + result.message;
+                } else {
+                    statusMsg.style.color = "#ff4d4d";
+                    statusMsg.innerText = "❌ " + result.message;
+                }
+            } catch (error) {
+                statusMsg.style.color = "#ff4d4d";
+                statusMsg.innerText = "❌ Internal Server/Network Error.";
+            }
+            
+            btn.disabled = false;
+            btn.innerText = "🧪 Run Test Earnings Alert";
+        }
+
         async function restartSystem() {
             const btn = document.querySelector('button[onclick="restartSystem()"]');
             const statusMsg = document.getElementById('git-status-msg');
@@ -180,7 +238,7 @@
                 btn.disabled = false;
             }
         }
-        
+
         async function testSentimentAlert() {
             const btn = document.querySelector('.btn-test');
             const statusMsg = document.getElementById('test-status-msg');
@@ -261,6 +319,12 @@
                         "ENABLED": document.getElementById('FNG_ENABLED').checked,
                         "TIME": document.getElementById('FNG_TIME').value,
                         "FREQUENCY": document.getElementById('FNG_FREQUENCY').value
+                    },
+                    "EARNINGS_ALERTS": {
+                        "ENABLED": document.getElementById('EARNINGS_ENABLED').checked,
+                        "TIME": document.getElementById('EARNINGS_TIME').value,
+                        "DAYS_AHEAD": parseInt(document.getElementById('EARNINGS_DAYS_AHEAD').value),
+                        "ALERT_TYPE": document.getElementById('EARNINGS_ALERT_TYPE').value
                     }
                 }
             };

@@ -1,12 +1,12 @@
 # main.py
-import os
-import signal
-import time
 import uvicorn
-import subprocess
 import json
 import pandas as pd
 import yfinance as yf
+import os
+import signal
+import time
+import subprocess
 from datetime import datetime, timedelta
 from fastapi import FastAPI, Request, BackgroundTasks
 from fastapi.templating import Jinja2Templates
@@ -14,7 +14,9 @@ from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from contextlib import asynccontextmanager
+
 from sentiment_engine import get_sentiment_html, run_nextcloud_alert
+from earnings_engine import run_earnings_alert # NEW IMPORT
 
 from config import (
     PORTFOLIO_PATH, WATCHLIST_PATH, HISTORICAL_DIR, INTRADAY_DIR, 
@@ -30,7 +32,6 @@ from ghostfolio_sync import GhostfolioSyncEngine
 scheduler = BackgroundScheduler()
 
 def trigger_sentiment_report():
-    """Triggered automatically by APScheduler based on config.json settings."""
     run_nextcloud_alert()
 
 def reload_scheduler():
@@ -46,7 +47,6 @@ def reload_scheduler():
     if sentiment_cfg.get("ENABLED"):
         time_str = sentiment_cfg.get("TIME", "09:30")
         freq = sentiment_cfg.get("FREQUENCY", "mon-fri")
-        
         try:
             hour, minute = map(int, time_str.split(':'))
             scheduler.add_job(
@@ -58,9 +58,23 @@ def reload_scheduler():
         except Exception as e:
             print(f"[ERROR] Failed to schedule Market Sentiment: {e}")
 
+    # 2. Earnings Alerts Job (NEW)
+    earnings_cfg = notifications.get("EARNINGS_ALERTS", {})
+    if earnings_cfg.get("ENABLED"):
+        time_str = earnings_cfg.get("TIME", "08:00")
+        try:
+            hour, minute = map(int, time_str.split(':'))
+            scheduler.add_job(
+                run_earnings_alert,
+                CronTrigger(day_of_week='mon-fri', hour=hour, minute=minute),
+                id='earnings_alert_job'
+            )
+            print(f"[SCHEDULER] Earnings Alerts Job scheduled for mon-fri at {time_str}")
+        except Exception as e:
+            print(f"[ERROR] Failed to schedule Earnings Alerts: {e}")
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Lifecycle events to handle startup and shutdown gracefully."""
     init_db()
     reload_scheduler()
     scheduler.start()
@@ -115,14 +129,19 @@ async def market_sentiment_page(request: Request):
         request=request, name="market_sentiment.html", 
         context={"sentiment_html": sentiment_html}
     )
+
 @app.post("/api/test-sentiment-alert")
 def test_sentiment_alert():
-    """Triggered by the GUI to manually test the Nextcloud pipeline."""
     success, msg = run_nextcloud_alert()
-    if success:
-        return JSONResponse(content={"status": "success", "message": msg})
-    else:
-        return JSONResponse(status_code=500, content={"status": "error", "message": msg})
+    if success: return JSONResponse(content={"status": "success", "message": msg})
+    else: return JSONResponse(status_code=500, content={"status": "error", "message": msg})
+
+@app.post("/api/test-earnings-alert")
+def test_earnings_alert():
+    """Triggered by the GUI to manually test the Earnings Pipeline."""
+    success, msg = run_earnings_alert()
+    if success: return JSONResponse(content={"status": "success", "message": msg})
+    else: return JSONResponse(status_code=500, content={"status": "error", "message": msg})
 
 @app.post("/api/system/git-pull")
 async def git_pull_update():

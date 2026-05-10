@@ -54,6 +54,12 @@ DEFAULT_CONFIG = {
             "ENABLED": False,
             "TIME": "09:30",
             "FREQUENCY": "mon-fri"
+        },
+        "EARNINGS_ALERTS": {
+            "ENABLED": False,
+            "TIME": "08:00",
+            "DAYS_AHEAD": 7,
+            "ALERT_TYPE": "daily"
         }
     }
 }
@@ -70,11 +76,9 @@ def load_config():
         with open(SECRETS_PATH, 'r') as f:
             data = json.load(f)
             
-            # Merge defaults for any missing keys to prevent KeyError crashes
             merged_config = DEFAULT_CONFIG.copy()
             merged_config.update(data)
             
-            # Ensure nested dictionaries (like NOTIFICATIONS) are properly merged
             if "NOTIFICATIONS" in data:
                 for key, val in data["NOTIFICATIONS"].items():
                     if key in merged_config["NOTIFICATIONS"]:
