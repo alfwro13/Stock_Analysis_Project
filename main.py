@@ -1,5 +1,6 @@
 # main.py
 import uvicorn
+import subprocess
 import json
 import pandas as pd
 import yfinance as yf
@@ -111,6 +112,28 @@ async def market_sentiment_page(request: Request):
         request=request, name="market_sentiment.html", 
         context={"sentiment_html": sentiment_html}
     )
+@app.post("/api/test-sentiment-alert")
+async def test_sentiment_alert():
+    """Triggered by the GUI to manually test the Nextcloud pipeline."""
+    success, msg = run_nextcloud_alert()
+    if success:
+        return JSONResponse(content={"status": "success", "message": msg})
+    else:
+        return JSONResponse(status_code=500, content={"status": "error", "message": msg})
+
+@app.post("/api/system/git-pull")
+async def git_pull_update():
+    """Executes a git pull to fetch the latest code from GitHub."""
+    try:
+        # Execute git pull command
+        result = subprocess.run(["git", "pull"], capture_output=True, text=True, timeout=15)
+        
+        if result.returncode == 0:
+            return JSONResponse(content={"status": "success", "message": f"Update successful. Please restart the service if required.\n\n{result.stdout}"})
+        else:
+            return JSONResponse(status_code=500, content={"status": "error", "message": f"Git Pull Failed:\n{result.stderr}"})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 @app.post("/api/settings")
 async def save_settings(request: Request):

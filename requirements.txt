@@ -9,3 +9,6 @@ Jinja2==3.1.6
 ghostfolio==0.8.1
 python-slugify==8.0.4
 requests==2.33.1
+apscheduler==3.10.4
+kaleido==0.2.1
+fake-useragent==1.5.1

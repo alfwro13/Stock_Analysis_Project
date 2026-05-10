@@ -25,7 +25,13 @@
         .btn-save { background-color: #00ffcc; color: #121212; font-weight: bold; border: none; padding: 12px 25px; border-radius: 5px; cursor: pointer; font-size: 16px; transition: background-color 0.3s; width: 100%; margin-top: 10px;}
         .btn-save:hover { background-color: #00ccaa; }
         
-        #status-msg { margin-top: 15px; text-align: center; font-weight: bold; }
+        .btn-test { background-color: #4da6ff; color: #121212; font-weight: bold; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-size: 14px; margin-top: 15px;}
+        .btn-test:hover { background-color: #3388dd; }
+
+        .btn-danger { background-color: #ff4d4d; color: #121212; font-weight: bold; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-size: 15px;}
+        .btn-danger:hover { background-color: #cc0000; }
+        
+        #status-msg, #test-status-msg, #git-status-msg { margin-top: 15px; font-weight: bold; font-family: monospace; white-space: pre-wrap;}
     </style>
 </head>
 <body>
@@ -36,6 +42,7 @@
             <div class="nav-links" style="margin-top: 15px;">
                 <a href="/portfolio">💼 Portfolio</a>
                 <a href="/watchlist">👀 Watchlist</a>
+                <a href="/market-sentiment">🧠 Market Sentiment</a>
                 <a href="/settings" class="active">⚙️ Settings</a>
                 <a href="/glossary">📚 Glossary</a>
             </div>
@@ -58,7 +65,7 @@
         <div class="settings-card">
             <h3>👻 Ghostfolio Integration</h3>
             <div class="form-group">
-                <label>Ghostfolio Server URL (e.g. http://192.168.1.10:3333)</label>
+                <label>Ghostfolio Server URL</label>
                 <input type="text" id="GHOSTFOLIO_URL" value="{{ config.GHOSTFOLIO_URL }}">
             </div>
             <div class="form-group">
@@ -111,14 +118,83 @@
                         </select>
                     </div>
                 </div>
+                
+                <button type="button" class="btn-test" onclick="testSentimentAlert()">🧪 Run Test Alert Now</button>
+                <div id="test-status-msg"></div>
             </div>
         </div>
 
         <button type="button" class="btn-save" onclick="saveSettings()">💾 Save & Apply Settings</button>
-        <div id="status-msg"></div>
+        <div id="status-msg" style="text-align: center;"></div>
     </form>
 
+    <div class="settings-card" style="margin-top: 40px; border-left: 4px solid #ffaa00;">
+        <h3 style="color: #ffaa00;">🔄 System Updates</h3>
+        <p style="color: #aaa; font-size: 14px;">Pull the latest code from the main GitHub repository. Note: If files are updated, you may need to restart the Linux service to apply the changes.</p>
+        <button type="button" class="btn-danger" onclick="gitPull()">⬇️ Pull Latest from GitHub</button>
+        <div id="git-status-msg"></div>
+    </div>
+
     <script>
+        async function testSentimentAlert() {
+            const btn = document.querySelector('.btn-test');
+            const statusMsg = document.getElementById('test-status-msg');
+            
+            btn.disabled = true;
+            btn.innerText = "Running Pipeline... (Takes ~10s)";
+            statusMsg.innerText = "Fetching data, generating image, and pushing to Nextcloud...";
+            statusMsg.style.color = "#aaa";
+
+            try {
+                const response = await fetch('/api/test-sentiment-alert', { method: 'POST' });
+                const result = await response.json();
+                
+                if (response.ok) {
+                    statusMsg.style.color = "#00ff00";
+                    statusMsg.innerText = "✅ " + result.message;
+                } else {
+                    statusMsg.style.color = "#ff4d4d";
+                    statusMsg.innerText = "❌ " + result.message;
+                }
+            } catch (error) {
+                statusMsg.style.color = "#ff4d4d";
+                statusMsg.innerText = "❌ Internal Server/Network Error.";
+            }
+            
+            btn.disabled = false;
+            btn.innerText = "🧪 Run Test Alert Now";
+        }
+
+        async function gitPull() {
+            const btn = document.querySelector('.btn-danger');
+            const statusMsg = document.getElementById('git-status-msg');
+            
+            if(!confirm("Are you sure you want to pull the latest updates from GitHub? This will overwrite local unmodified files.")) return;
+
+            btn.disabled = true;
+            btn.innerText = "Pulling repository...";
+            statusMsg.innerText = "";
+
+            try {
+                const response = await fetch('/api/system/git-pull', { method: 'POST' });
+                const result = await response.json();
+                
+                if (response.ok) {
+                    statusMsg.style.color = "#00ffcc";
+                    statusMsg.innerText = result.message;
+                } else {
+                    statusMsg.style.color = "#ff4d4d";
+                    statusMsg.innerText = result.message;
+                }
+            } catch (error) {
+                statusMsg.style.color = "#ff4d4d";
+                statusMsg.innerText = "❌ System Error running git pull.";
+            }
+            
+            btn.disabled = false;
+            btn.innerText = "⬇️ Pull Latest from GitHub";
+        }
+
         async function saveSettings() {
             const btn = document.querySelector('.btn-save');
             const statusMsg = document.getElementById('status-msg');
@@ -126,7 +202,6 @@
             btn.disabled = true;
             btn.innerText = "Saving...";
             
-            // Reconstruct the exact JSON layout required by the backend
             const payload = {
                 "PORT": parseInt(document.getElementById('PORT').value),
                 "BASE_CURRENCY": document.getElementById('BASE_CURRENCY').value,
@@ -170,7 +245,7 @@
                 btn.disabled = false; 
                 btn.innerText = "💾 Save & Apply Settings"; 
                 statusMsg.innerText = "";
-            }, 3000);
+            }, 5000);
         }
     </script>
 </body>

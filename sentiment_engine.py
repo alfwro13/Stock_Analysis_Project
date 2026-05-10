@@ -80,11 +80,15 @@ def generate_sentiment_figure():
         secondary_y=True,
     )
 
-    # Add Sentiment Floor Levels (Similar to your Matplotlib logic)
+    # Add Sentiment Floor Levels
     levels = {25: 'Fear (25)', 50: 'Neutral (50)', 75: 'Greed (75)'}
     for level, text in levels.items():
         fig.add_hline(y=level, line_dash="dash", line_color="#555", secondary_y=True, 
                       annotation_text=text, annotation_position="top right", annotation_font_color="#aaa")
+
+    # Calculate dynamic Y-Axis for S&P 500 to prevent flatlining
+    min_spy = merged_df['SPY_Close'].min() * 0.95
+    max_spy = merged_df['SPY_Close'].max() * 1.05
 
     fig.update_layout(
         title="Fear & Greed vs S&P 500 (1 Year)",
@@ -95,7 +99,7 @@ def generate_sentiment_figure():
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
 
-    fig.update_yaxes(title_text="S&P 500 Price ($)", secondary_y=False)
+    fig.update_yaxes(title_text="S&P 500 Price ($)", range=[min_spy, max_spy], secondary_y=False)
     fig.update_yaxes(title_text="Fear & Greed Index (0-100)", range=[0, 100], secondary_y=True)
     
     return fig
@@ -109,44 +113,52 @@ def get_sentiment_html():
 
 def run_nextcloud_alert():
     """Background task: Generates the plot, saves to PNG, uploads, and sends to Nextcloud Talk."""
-    print("[SCHEDULER] Executing Market Sentiment Notification...")
-    
-    fig = generate_sentiment_figure()
-    if not fig:
-        print("[ERROR] Failed to generate figure for alert.")
-        return
-
-    # Generate Temp File
-    file_name = f"Fear_vs_Greed_{datetime.now().strftime('%Y-%m-%d')}.png"
-    local_path = file_name
-    remote_path = f"StockAlerts/{file_name}"
-
     try:
-        # kaleido writes the high-res PNG locally
-        fig.write_image(local_path, width=1200, height=600, scale=2)
-        
-        # Upload via Nextcloud
+        fig = generate_sentiment_figure()
+        if not fig:
+            return False, "Failed to generate figure (Data fetch error)."
+
+        file_name = f"Fear_vs_Greed_{datetime.now().strftime('%Y-%m-%d')}.png"
+        local_path = file_name
+        remote_path = f"StockAlerts/{file_name}"
+
+        # 1. Render Image
+        try:
+            fig.write_image(local_path, width=1200, height=600, scale=2)
+        except Exception as e:
+            return False, f"Kaleido Image Render Error: {str(e)}"
+            
+        # 2. Upload via Nextcloud
         upload_success = upload_file_webdav(local_path, remote_path, NEXTCLOUD_URL, BOT_USERNAME, APP_PASSWORD, print)
-        
+        if not upload_success:
+            return False, "WebDAV Upload Failed. Check credentials or folder path."
+            
         report_message = "📊 *Fear & Greed Index overlayed with S&P 500 for comparison*"
         
-        if upload_success:
-            share_success = share_file_to_talk(remote_path, CONVERSATION_TOKEN, NEXTCLOUD_URL, BOT_USERNAME, APP_PASSWORD, print)
-            report_message += "\n\n🟢 File successfully shared." if share_success else "\n\n❌ WARNING: File sharing failed."
+        # 3. Share to Talk
+        share_success = share_file_to_talk(remote_path, CONVERSATION_TOKEN, NEXTCLOUD_URL, BOT_USERNAME, APP_PASSWORD, print)
+        if share_success:
+            report_message += "\n\n🟢 File successfully shared."
         else:
-            report_message += "\n\n❌ FATAL ERROR: File upload failed."
+            report_message += "\n\n❌ WARNING: File sharing failed. Talk Token may be invalid."
 
-        # Send textual follow-up notification via Talk API
+        # 4. Send textual follow-up notification
         api_endpoint = f"{NEXTCLOUD_URL}/ocs/v2.php/apps/spreed/api/v1/chat/{CONVERSATION_TOKEN}"
-        requests.post(
+        resp = requests.post(
             api_endpoint, 
             headers={"OCS-APIRequest": "true", "Content-Type": "application/json"}, 
             data=json.dumps({"message": report_message}), 
             auth=(BOT_USERNAME, APP_PASSWORD)
         )
-        print("[SUCCESS] Market Sentiment notification complete.")
+        
+        if resp.status_code in [200, 201]:
+            return True, "Alert successfully generated, uploaded, and shared to Talk."
+        else:
+            return False, f"Failed to send final text message. HTTP {resp.status_code}"
 
+    except Exception as e:
+        return False, f"Unexpected System Error: {str(e)}"
     finally:
-        # Clean up the local PNG file to prevent disk clutter
+        # Clean up the local PNG file
         if os.path.exists(local_path):
             os.remove(local_path)
