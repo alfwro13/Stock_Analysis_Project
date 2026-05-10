@@ -132,6 +132,8 @@ async def stock_detail(request: Request, ticker: str):
     if user_asset and stock_data and stock_data['current_price']:
         buy_price = user_asset.get('buy_price', 0)
         shares = user_asset.get('shares', 0)
+        
+        # Ghostfolio currency conversion logic
         if user_asset.get('price_in_pence', False):
             buy_price = buy_price * 100
             
@@ -149,11 +151,32 @@ async def stock_detail(request: Request, ticker: str):
                 "pnl_pct": round(pnl_pct, 2)
             }
 
-    # Load Parquet Data for Visuals
+    # Load Parquet Data for Visuals and Calculate Pivot Points
+    price_action = None
     try:
         df_macro = pd.read_parquet(HISTORICAL_DIR / f"{ticker}.parquet")
         df_sp500 = pd.read_parquet(HISTORICAL_DIR / "SP500_BASELINE.parquet")
         macro_html = create_macro_chart(df_macro, df_sp500, ticker)
+        
+        # Calculate Pivot Points & Ranges dynamically from the parquet data
+        if not df_macro.empty:
+            last_day = df_macro.iloc[-1]
+            prev_day = df_macro.iloc[-2] if len(df_macro) > 1 else last_day
+            last_21 = df_macro.tail(21)
+
+            # Classic Pivot Point Formula
+            P = (prev_day['High'] + prev_day['Low'] + prev_day['Close']) / 3
+            s1 = (P * 2) - prev_day['High']
+            s2 = P - (prev_day['High'] - prev_day['Low'])
+
+            price_action = {
+                "day_low": last_day['Low'], 
+                "day_high": last_day['High'],
+                "month_low": last_21['Low'].min(), 
+                "month_high": last_21['High'].max(),
+                "s1": s1, 
+                "s2": s2
+            }
     except Exception as e:
         macro_html = f"<p>Chart Data Unavailable: {e}</p>"
 
@@ -171,7 +194,8 @@ async def stock_detail(request: Request, ticker: str):
             "intraday_html": intraday_html,
             "portfolio_math": portfolio_math,
             "days_to_earnings": days_to_earnings,   
-            "volatility_date": volatility_date      
+            "volatility_date": volatility_date,
+            "price_action": price_action     
         }
     )
 

@@ -9,6 +9,9 @@ def create_intraday_chart(df, ticker):
     Generates a high-resolution, short-term chart using 5-minute data 
     for the current trading day.
     """
+    # Extract the exact date dynamically from the dataframe index
+    last_date = df.index[-1].date().strftime('%d-%b-%Y') if not df.empty else 'Today'
+    
     fig = go.Figure(data=[go.Candlestick(
         x=df.index,
         open=df['Open'],
@@ -23,7 +26,7 @@ def create_intraday_chart(df, ticker):
         height=400,
         margin=dict(l=20, r=20, t=40, b=20),
         xaxis_rangeslider_visible=False,
-        title=f"Today's Pulse (5-Minute Intervals) - {ticker}"
+        title=f"{last_date} Pulse (5-Minute Intervals) - {ticker}"
     )
     return fig.to_html(full_html=False, include_plotlyjs='cdn')
 
@@ -72,8 +75,9 @@ def create_macro_chart(df, df_sp500, ticker):
     )
 
     # ROW 1: Price, MAs, and RS Line
+    # The 21D MA is now Teal (#00ffcc) to avoid clashing visually with the MACD Signal line.
     fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name="Price"), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=df['MA_21'], line=dict(color='orange', width=1.5), name="21D MA"), row=1, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=df['MA_21'], line=dict(color='#00ffcc', width=1.5), name="21D MA"), row=1, col=1)
     fig.add_trace(go.Scatter(x=df.index, y=df['MA_50'], line=dict(color='yellow', width=1.5), name="50D MA"), row=1, col=1)
     fig.add_trace(go.Scatter(x=df.index, y=df['MA_200'], line=dict(color='white', width=2), name="200D MA"), row=1, col=1)
     fig.add_trace(go.Scatter(x=df.index, y=df['BB_High'], line=dict(color='gray', dash='dash'), name="BB Upper"), row=1, col=1)
@@ -86,10 +90,12 @@ def create_macro_chart(df, df_sp500, ticker):
     colors = ['green' if row['Close'] >= row['Open'] else 'red' for index, row in df.iterrows()]
     fig.add_trace(go.Bar(x=df.index, y=df['Volume'], marker_color=colors, name="Volume"), row=2, col=1)
 
-    # ROW 3: RSI
+    # ROW 3: RSI (With Text Annotations)
     fig.add_trace(go.Scatter(x=df.index, y=df['RSI'], line=dict(color='purple', width=2), name="RSI"), row=3, col=1)
     fig.add_hline(y=70, line_dash="dot", line_color="red", row=3, col=1)
     fig.add_hline(y=30, line_dash="dot", line_color="green", row=3, col=1)
+    fig.add_annotation(row=3, col=1, x=df.index[0], y=70, text="Overbought (70)", showarrow=False, font=dict(color="red", size=10), xanchor="left", yshift=8)
+    fig.add_annotation(row=3, col=1, x=df.index[0], y=30, text="Oversold (30)", showarrow=False, font=dict(color="green", size=10), xanchor="left", yshift=-8)
 
     # ROW 4: MACD
     fig.add_trace(go.Scatter(x=df.index, y=df['MACD_Line'], line=dict(color='blue', width=1.5), name="MACD"), row=4, col=1)

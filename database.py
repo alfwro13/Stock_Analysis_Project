@@ -27,6 +27,7 @@ def init_db():
             company_name TEXT,
             sector TEXT,
             currency TEXT,
+            quote_type TEXT,
             
             -- Core Technicals
             current_price REAL,
@@ -38,20 +39,30 @@ def init_db():
             rsi_14 REAL,
             atr_stop_loss REAL,
             
-            -- Fundamental Valuation
+            -- Price Action
+            fifty_two_week_low REAL,
+            fifty_two_week_high REAL,
+            
+            -- Fundamental Valuation (Equities)
             trailing_pe REAL,
             forward_pe REAL,
             peg_ratio REAL,
             peter_lynch_peg REAL,
             price_to_book REAL,
             
-            -- Profitability & Health
+            -- Profitability & Health (Equities)
             profit_margin REAL,
             roe REAL,
             revenue_growth REAL,
             debt_to_equity REAL,
             current_ratio REAL,
             operating_cash_flow REAL,
+            
+            -- Fundamental Valuation (Funds & ETFs)
+            ytd_return REAL,
+            total_assets REAL,
+            nav_price REAL,
+            expense_ratio REAL,
             
             -- Sentiment & Dividends
             dividend_yield REAL,
@@ -89,12 +100,14 @@ def migrate_db(conn, cursor):
 
     # Master list of all required columns and their SQLite data types
     required_columns = {
-        'company_name': 'TEXT', 'sector': 'TEXT', 'currency': 'TEXT',
+        'company_name': 'TEXT', 'sector': 'TEXT', 'currency': 'TEXT', 'quote_type': 'TEXT',
         'trend_50d': 'TEXT', 'trend_200d': 'TEXT',
+        'fifty_two_week_low': 'REAL', 'fifty_two_week_high': 'REAL',
         'trailing_pe': 'REAL', 'forward_pe': 'REAL', 'peg_ratio': 'REAL',
         'peter_lynch_peg': 'REAL', 'price_to_book': 'REAL',
         'profit_margin': 'REAL', 'roe': 'REAL', 'revenue_growth': 'REAL',
         'debt_to_equity': 'REAL', 'current_ratio': 'REAL', 'operating_cash_flow': 'REAL',
+        'ytd_return': 'REAL', 'total_assets': 'REAL', 'nav_price': 'REAL', 'expense_ratio': 'REAL',
         'dividend_yield': 'REAL', 'ex_dividend_date': 'TEXT', 'target_price': 'REAL',
         'analyst_rating': 'TEXT', 'next_earnings_date': 'TEXT',
         'short_interest': 'REAL', 'institutional_ownership': 'REAL', 'beta': 'REAL'

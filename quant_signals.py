@@ -85,10 +85,22 @@ class QuantEngine:
         # ==========================================
         # PART 2: FUNDAMENTAL EXTRACTION
         # ==========================================
+        quote_type = info.get('quoteType', 'EQUITY')
+        is_fund = quote_type in ['ETF', 'MUTUALFUND']
+        
         company_name = info.get('shortName', ticker)
         sector = info.get('sector', 'Unknown')
         currency = info.get('currency', 'USD')
         
+        # Price Action & ETF Metrics
+        fifty_two_week_low = info.get('fiftyTwoWeekLow', None)
+        fifty_two_week_high = info.get('fiftyTwoWeekHigh', None)
+        ytd_return = info.get('ytdReturn', None)
+        total_assets = info.get('totalAssets', None)
+        nav_price = info.get('navPrice', None)
+        expense_ratio = info.get('expenseRatio', info.get('annualReportExpenseRatio', None))
+        
+        # Standard Equity Metrics
         trailing_pe = info.get('trailingPE', None)
         forward_pe = info.get('forwardPE', None)
         peg_ratio = info.get('pegRatio', None)
@@ -149,12 +161,16 @@ class QuantEngine:
         else:
             breakdown.append("+0: <abbr title='The 200-Day Moving Average is falling. Institutions are actively selling this stock over the long term.'>200D Trend is DOWN</abbr>")
 
-        # 4. RSI Momentum Check
+        # 4. RSI Momentum Check (Softened for Mutual Funds)
         if 40 <= rsi_val <= 65: 
             score += 15
             breakdown.append("+15: <abbr title='RSI is between 40 and 65, meaning the stock has room to grow without being dangerously overextended.'>RSI in healthy momentum zone</abbr>")
         else:
-            breakdown.append(f"+0: <abbr title='RSI is either above 70 (overbought risk) or below 30 (oversold/crashing).'>RSI is {rsi_val:.1f} (Overbought/Oversold risk)</abbr>")
+            if is_fund and rsi_val > 65:
+                score += 15
+                breakdown.append(f"+15: <abbr title='RSI is {rsi_val:.1f}, but this is normal for a fund.'>Funds naturally drift upwards.</abbr>")
+            else:
+                breakdown.append(f"+0: <abbr title='RSI is either above 70 (overbought risk) or below 30 (oversold/crashing).'>RSI is {rsi_val:.1f} (Overbought/Oversold risk)</abbr>")
 
         # 5. Volatility Contraction Check
         if is_tight: 
@@ -163,8 +179,11 @@ class QuantEngine:
         else:
             breakdown.append("+0: <abbr title='Normal volatility. No tight weekly compression pattern detected.'>No tight weekly compression</abbr>")
 
-        # 6. Volume Profile Check
-        if obv_bullish: 
+        # 6. Volume Profile Check (Bypassed for Mutual Funds)
+        if is_fund:
+            score += 20
+            breakdown.append("+20: <abbr title='Funds are priced daily at NAV, making intraday volume metrics irrelevant.'>OBV bypassed (Not applicable for Funds)</abbr>")
+        elif obv_bullish: 
             score += 20
             breakdown.append("+20: <abbr title='On-Balance Volume is rising faster than its moving average, confirming that up-days have higher volume than down-days.'>OBV indicates Institutional Accumulation</abbr>")
         else:
@@ -174,10 +193,14 @@ class QuantEngine:
         score = min(score, 100)
 
         # Determine Signal
-        if score >= 80: signal = "STRONG BUY"
-        elif score >= 60: signal = "BULLISH / HOLD"
-        elif score >= 40: signal = "NEUTRAL"
-        else: signal = "BEARISH / CAUTION"
+        if score >= 80: 
+            signal = "STRONG BUY"
+        elif score >= 60: 
+            signal = "BULLISH / HOLD"
+        elif score >= 40: 
+            signal = "NEUTRAL"
+        else: 
+            signal = "BEARISH / CAUTION"
 
         # ==========================================
         # PART 4: CONSTRUCT HTML EDUCATIONAL NOTES
@@ -188,30 +211,37 @@ class QuantEngine:
             notes_html += f"<li style='margin-bottom: 5px;'>{item}</li>"
         notes_html += "</ul>"
         
-        # Add the ATR Stop-Loss explanation
-        notes_html += f"<strong>Risk Management:</strong> Mathematical <abbr title='Based on Average True Range. If the stock drops below this price, its normal mathematical volatility is broken and you should consider exiting.'>ATR Stop-Loss</abbr> is {currency} {stop_loss:.2f}.<br><br>"
+        # Add the ATR Stop-Loss explanation (Adjusted for long-term funds)
+        if is_fund:
+            notes_html += f"<strong>Risk Management:</strong> Mutual Funds & ETFs are typically held long-term. Mathematical <abbr title='Based on Average True Range.'>ATR Stop-Loss</abbr> of {currency} {stop_loss:.2f} is provided for reference only.<br><br>"
+        else:
+            notes_html += f"<strong>Risk Management:</strong> Mathematical <abbr title='Based on Average True Range. If the stock drops below this price, its normal mathematical volatility is broken and you should consider exiting.'>ATR Stop-Loss</abbr> is {currency} {stop_loss:.2f}.<br><br>"
         
-        # Add warnings for extreme risk factors
-        if rsi_val > 70:
+        # Add warnings for extreme risk factors (Ignore RSI overbought for Funds)
+        if not is_fund and rsi_val > 70:
             notes_html += "<strong><span style='color: #ff4d4d;'>Warning:</span></strong> <abbr title='When RSI passes 70, the asset has gone up too quickly and is highly susceptible to a sudden pullback.'>Stock is technically overbought.</abbr> Initiating new positions is high risk. Look to take profits.<br>"
         if short_interest and short_interest > 0.10:
             notes_html += f"<strong><span style='color: #ffaa00;'>Warning:</span></strong> High <abbr title='Percentage of shares being shorted by pessimistic investors. High short interest can trigger violent upwards squeezes.'>Short Interest</abbr> ({short_interest*100:.1f}%). Expect extreme volatility.<br>"
 
         # Save to SQLite
         self.save_to_db(
-            ticker, company_name, sector, currency,
+            ticker, company_name, sector, currency, quote_type,
             current_price, ma5, ma10, ma21, trend_50d, trend_200d, rsi_val, stop_loss,
+            fifty_two_week_low, fifty_two_week_high,
             trailing_pe, forward_pe, peg_ratio, peter_lynch_peg, price_to_book,
             profit_margin, roe, revenue_growth, debt_to_equity, current_ratio, operating_cash_flow,
+            ytd_return, total_assets, nav_price, expense_ratio,
             dividend_yield, ex_dividend_date, target_price, analyst_rating, next_earnings_date,
             short_interest, institutional_ownership, beta,
             score, signal, notes_html
         )
 
-    def save_to_db(self, ticker, company_name, sector, currency,
+    def save_to_db(self, ticker, company_name, sector, currency, quote_type,
                    price, ma5, ma10, ma21, trend_50d, trend_200d, rsi, stop_loss,
+                   fifty_two_week_low, fifty_two_week_high,
                    trailing_pe, forward_pe, peg_ratio, peter_lynch_peg, price_to_book,
                    profit_margin, roe, revenue_growth, debt_to_equity, current_ratio, operating_cash_flow,
+                   ytd_return, total_assets, nav_price, expense_ratio,
                    dividend_yield, ex_dividend_date, target_price, analyst_rating, next_earnings_date,
                    short_interest, institutional_ownership, beta,
                    score, signal, notes):
@@ -220,18 +250,22 @@ class QuantEngine:
         
         query = '''
             INSERT OR REPLACE INTO stock_signals (
-                ticker, last_updated, company_name, sector, currency,
+                ticker, last_updated, company_name, sector, currency, quote_type,
                 current_price, ma_5_day, ma_10_day, ma_21_day, trend_50d, trend_200d, rsi_14, atr_stop_loss,
+                fifty_two_week_low, fifty_two_week_high,
                 trailing_pe, forward_pe, peg_ratio, peter_lynch_peg, price_to_book,
                 profit_margin, roe, revenue_growth, debt_to_equity, current_ratio, operating_cash_flow,
+                ytd_return, total_assets, nav_price, expense_ratio,
                 dividend_yield, ex_dividend_date, target_price, analyst_rating, next_earnings_date,
                 short_interest, institutional_ownership, beta,
                 composite_score, overall_signal, educational_notes
             ) VALUES (
-                ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?,
                 ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?,
                 ?, ?, ?, ?, ?,
                 ?, ?, ?,
                 ?, ?, ?
@@ -241,10 +275,12 @@ class QuantEngine:
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
         values = (
-            ticker, timestamp, company_name, sector, currency,
+            ticker, timestamp, company_name, sector, currency, quote_type,
             price, ma5, ma10, ma21, trend_50d, trend_200d, rsi, stop_loss,
+            fifty_two_week_low, fifty_two_week_high,
             trailing_pe, forward_pe, peg_ratio, peter_lynch_peg, price_to_book,
             profit_margin, roe, revenue_growth, debt_to_equity, current_ratio, operating_cash_flow,
+            ytd_return, total_assets, nav_price, expense_ratio,
             dividend_yield, ex_dividend_date, target_price, analyst_rating, next_earnings_date,
             short_interest, institutional_ownership, beta,
             score, signal, notes
