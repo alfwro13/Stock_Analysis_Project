@@ -180,9 +180,12 @@ async def stock_detail(request: Request, ticker: str):
     except Exception as e:
         macro_html = f"<p>Chart Data Unavailable: {e}</p>"
 
+    # Load Intraday and Pass S1/S2 to the Plotter
     try:
         df_intraday = pd.read_parquet(INTRADAY_DIR / f"{ticker}_intraday.parquet")
-        intraday_html = create_intraday_chart(df_intraday, ticker)
+        s1_val = price_action['s1'] if price_action else None
+        s2_val = price_action['s2'] if price_action else None
+        intraday_html = create_intraday_chart(df_intraday, ticker, s1=s1_val, s2=s2_val)
     except Exception:
         intraday_html = "<p>Intraday data unavailable.</p>"
         

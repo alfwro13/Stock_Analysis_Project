@@ -4,10 +4,10 @@ from plotly.subplots import make_subplots
 import pandas as pd
 import ta
 
-def create_intraday_chart(df, ticker):
+def create_intraday_chart(df, ticker, s1=None, s2=None):
     """
     Generates a high-resolution, short-term chart using 5-minute data 
-    for the current trading day.
+    for the current trading day. Conditionally plots algorithmic floors (S1/S2).
     """
     # Extract the exact date dynamically from the dataframe index
     last_date = df.index[-1].date().strftime('%d-%b-%Y') if not df.empty else 'Today'
@@ -20,6 +20,16 @@ def create_intraday_chart(df, ticker):
         close=df['Close'],
         name="Intraday"
     )])
+    
+    # Plot Pivot Point Floors if they were successfully calculated
+    if s1 is not None:
+        fig.add_hline(y=s1, line_dash="dash", line_color="#00ffcc", 
+                      annotation_text="S1 Support", annotation_position="top left", 
+                      annotation_font_color="#00ffcc")
+    if s2 is not None:
+        fig.add_hline(y=s2, line_dash="dash", line_color="#00ffcc", 
+                      annotation_text="S2 Support", annotation_position="top left", 
+                      annotation_font_color="#00ffcc")
     
     fig.update_layout(
         template="plotly_dark",

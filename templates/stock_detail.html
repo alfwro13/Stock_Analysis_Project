@@ -46,7 +46,9 @@
         
         /* Plotly Fullscreen Mechanics */
         .chart-wrapper { position: relative; background-color: #1e1e1e; padding: 10px; border-radius: 8px; margin-bottom: 20px; }
-        .fullscreen-btn { position: absolute; top: 15px; right: 20px; z-index: 50; background: #333; color: white; border: 1px solid #555; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-weight: bold;}
+        
+        /* Shifted to left: 20px so it no longer overlaps the native Plotly toolbar */
+        .fullscreen-btn { position: absolute; top: 15px; left: 20px; z-index: 50; background: #333; color: white; border: 1px solid #555; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-weight: bold;}
         .fullscreen-btn:hover { background: #4da6ff; color: #121212; }
         
         /* When toggled via Javascript, this expands the chart to cover the monitor */
@@ -162,8 +164,16 @@
                 <div class="data-card">
                     <h3>Pivot Points (Daily Floors)</h3>
                     <p style="font-size: 13px; color: #888; margin-top: 0; margin-bottom: 15px;">Calculated from the previous day's close. These lines act as algorithmic intraday support levels.</p>
-                    <div class="data-row"><span class="data-label">Support 1 (S1):</span> <span style="color: #00ffcc; font-weight: bold; font-size: 18px;">{{ stock.currency }} {{ price_action.s1|round(2) }}</span></div>
-                    <div class="data-row"><span class="data-label">Support 2 (S2):</span> <span style="color: #00ffcc; font-weight: bold; font-size: 18px;">{{ stock.currency }} {{ price_action.s2|round(2) }}</span></div>
+                    
+                    <div class="data-row">
+                        <span class="data-label"><abbr title="First mathematical support level. A common area where intraday price pullbacks bounce.">Support 1 (S1):</abbr></span> 
+                        <span style="color: #00ffcc; font-weight: bold; font-size: 18px;">{{ stock.currency }} {{ price_action.s1|round(2) }}</span>
+                    </div>
+                    
+                    <div class="data-row">
+                        <span class="data-label"><abbr title="Second mathematical support level. A drop to this line indicates extreme intraday weakness but strong bounce potential.">Support 2 (S2):</abbr></span> 
+                        <span style="color: #00ffcc; font-weight: bold; font-size: 18px;">{{ stock.currency }} {{ price_action.s2|round(2) }}</span>
+                    </div>
                 </div>
             </div>
             {% else %}
