@@ -129,13 +129,58 @@
     </form>
 
     <div class="settings-card" style="margin-top: 40px; border-left: 4px solid #ffaa00;">
-        <h3 style="color: #ffaa00;">🔄 System Updates</h3>
-        <p style="color: #aaa; font-size: 14px;">Pull the latest code from the main GitHub repository. Note: If files are updated, you may need to restart the Linux service to apply the changes.</p>
-        <button type="button" class="btn-danger" onclick="gitPull()">⬇️ Pull Latest from GitHub</button>
+        <h3 style="color: #ffaa00;">🔄 System Updates & Power</h3>
+        <p style="color: #aaa; font-size: 14px;">Pull the latest code from the main GitHub repository, or manually restart the background service.</p>
+        
+        <div style="display: flex; gap: 15px; margin-top: 15px;">
+            <button type="button" class="btn-danger" style="flex: 1;" onclick="gitPull()">⬇️ Pull Latest from GitHub</button>
+            <button type="button" class="btn-test" style="flex: 1; margin-top: 0; background-color: #ffaa00; color: #121212;" onclick="restartSystem()">⚡ Restart Service</button>
+        </div>
+        
         <div id="git-status-msg"></div>
     </div>
 
     <script>
+        async function restartSystem() {
+            const btn = document.querySelector('button[onclick="restartSystem()"]');
+            const statusMsg = document.getElementById('git-status-msg');
+            
+            if(!confirm("Are you sure you want to restart the dashboard? Active background tasks may be interrupted.")) return;
+
+            btn.disabled = true;
+            statusMsg.style.color = "#ffaa00";
+            statusMsg.innerText = "Sending restart signal...";
+
+            try {
+                const response = await fetch('/api/system/restart', { method: 'POST' });
+                const result = await response.json();
+                
+                if (response.ok) {
+                    let countdown = 10;
+                    statusMsg.style.color = "#00ffcc";
+                    
+                    // Start a visual countdown timer
+                    const interval = setInterval(() => {
+                        statusMsg.innerText = `✅ Signal sent. Linux is restarting the service... Auto-refreshing in ${countdown}s`;
+                        countdown--;
+                        if (countdown < 0) {
+                            clearInterval(interval);
+                            window.location.reload(); // Force the browser to refresh
+                        }
+                    }, 1000);
+
+                } else {
+                    statusMsg.style.color = "#ff4d4d";
+                    statusMsg.innerText = result.message;
+                    btn.disabled = false;
+                }
+            } catch (error) {
+                statusMsg.style.color = "#ff4d4d";
+                statusMsg.innerText = "❌ Network Error.";
+                btn.disabled = false;
+            }
+        }
+        
         async function testSentimentAlert() {
             const btn = document.querySelector('.btn-test');
             const statusMsg = document.getElementById('test-status-msg');

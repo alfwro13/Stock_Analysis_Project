@@ -1,4 +1,7 @@
 # main.py
+import os
+import signal
+import time
 import uvicorn
 import subprocess
 import json
@@ -134,6 +137,23 @@ async def git_pull_update():
             return JSONResponse(status_code=500, content={"status": "error", "message": f"Git Pull Failed:\n{result.stderr}"})
     except Exception as e:
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+def execute_restart():
+    """Background task to wait 2 seconds, then kill the Python process."""
+    time.sleep(2)
+    # Sending SIGTERM allows FastAPI/Uvicorn to shut down gracefully
+    os.kill(os.getpid(), signal.SIGTERM)
+
+@app.post("/api/system/restart")
+async def restart_system(background_tasks: BackgroundTasks):
+    """Tells the app to exit. Systemd will automatically restart it."""
+    # We use a background task so the server has time to send the "Success" HTTP response 
+    # to the browser BEFORE it actually kills the process.
+    background_tasks.add_task(execute_restart)
+    return JSONResponse(content={
+        "status": "success", 
+        "message": "Restart signal sent. The dashboard will be back online in ~5-10 seconds."
+    })
 
 @app.post("/api/settings")
 async def save_settings(request: Request):
