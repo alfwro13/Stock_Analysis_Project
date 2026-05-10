@@ -20,6 +20,7 @@ from contextlib import asynccontextmanager
 from sentiment_engine import get_sentiment_html, run_nextcloud_alert
 from earnings_engine import run_earnings_alert
 from insider_engine import run_insider_alert
+from crash_engine import CrashEngine
 
 from config import (
     PORTFOLIO_PATH, WATCHLIST_PATH, HISTORICAL_DIR, INTRADAY_DIR, 
@@ -134,6 +135,28 @@ def reload_scheduler():
             except Exception as e:
                 print(f"[ERROR] Failed to schedule Quant Analysis: {e}")
 
+    # 5. Intraday Crash Engine
+    crash_cfg = scheduling.get("CRASH_ALERTS", {})
+    if crash_cfg.get("ENABLED"):
+        freq = crash_cfg.get("FREQUENCY", "mon-fri")
+        start_time = crash_cfg.get("START_TIME", "09:30")
+        end_time = crash_cfg.get("END_TIME", "16:00")
+        interval_mins = int(crash_cfg.get("INTERVAL_MINUTES", 10))
+        
+        try:
+            start_h, _ = map(int, start_time.split(':'))
+            end_h, _ = map(int, end_time.split(':'))
+            
+            # Using CronTrigger with bounded hours creates a tight window for execution
+            scheduler.add_job(
+                run_crash_engine,
+                CronTrigger(day_of_week=freq, hour=f"{start_h}-{end_h}", minute=f"*/{interval_mins}"),
+                id='crash_alerts_job'
+            )
+            print(f"[SCHEDULER] Intraday Crash Scan scheduled for {freq} between {start_time}-{end_time} every {interval_mins} mins.")
+        except Exception as e:
+            print(f"[ERROR] Failed to schedule Crash Alerts: {e}")
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
@@ -168,6 +191,9 @@ def get_unread_count():
         return count
     except Exception:
         return 0
+
+def run_crash_engine():
+    CrashEngine().run()
 
 def run_update_pipeline():
     print("\n--- BACKGROUND UPDATE INITIATED ---")

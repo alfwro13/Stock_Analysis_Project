@@ -31,7 +31,6 @@ PORT = 8090
 BASE_CURRENCY = "GBP"
 
 # Base Schema for Application Configuration
-# Updated to include SCHEDULING parameters for the background engine
 DEFAULT_CONFIG = {
     "GHOSTFOLIO_URL": "",
     "API_TOKEN": "",
@@ -53,6 +52,13 @@ DEFAULT_CONFIG = {
             "FREQUENCY": "mon-fri",
             "INTERVAL_HOURS": 0,
             "TIME": "18:00"
+        },
+        "CRASH_ALERTS": {
+            "ENABLED": False,
+            "FREQUENCY": "mon-fri",
+            "START_TIME": "09:30",
+            "END_TIME": "16:00",
+            "INTERVAL_MINUTES": 10
         }
     },
     "NOTIFICATIONS": {
@@ -74,6 +80,12 @@ DEFAULT_CONFIG = {
             "FREQUENCY": "mon-fri",
             "MIN_VALUE": 50000,
             "DAYS_BACK": 7
+        },
+        "CRASH_ALERTS": {
+            "DROP_PERCENT": 5.0,
+            "DROP_DAYS": 3,
+            "SMA_LENGTH": 10,
+            "SMA_GAP_PERCENT": 2.0
         }
     }
 }
