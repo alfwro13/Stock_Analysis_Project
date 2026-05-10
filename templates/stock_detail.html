@@ -81,13 +81,14 @@
             <a href="#verdict">Verdict</a> <span class="divider">|</span>
             <a href="#charts">Interactive Charts</a> <span class="divider">|</span>
             <a href="#price-action">Price Action</a> <span class="divider">|</span>
-            <a href="#fundamentals">Fundamentals</a>
+            <a href="#fundamentals">Fundamentals</a> <span class="divider">|</span>
+            <a href="/glossary">📚 Glossary</a>
         </div>
     </div>
 
     <div class="container">
         <h1>{{ stock.company_name }} ({{ stock.ticker }}) <a href="https://finance.yahoo.com/quote/{{ stock.ticker }}" target="_blank" class="yahoo-link">↗ View on Yahoo Finance</a></h1>
-        <p class="subtitle">Type: {{ stock.quote_type }} | Sector: {{ stock.sector }} | Currency: {{ stock.currency }}</p>
+        <p class="subtitle">Type: {{ stock.quote_type }} | Sector/Category: {{ stock.sector }} | Currency: {{ stock.currency }}</p>
         
         <div id="verdict">
             {% if portfolio_math %}
@@ -210,6 +211,46 @@
                         <span class="data-value">{% if stock.dividend_yield %}{{ (stock.dividend_yield * 100)|round(2) }}%{% else %}N/A{% endif %}</span>
                     </div>
                 </div>
+                
+                {% if top_holdings %}
+                <div class="data-card">
+                    <h3>Top 10 Holdings</h3>
+                    <table style="width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px;">
+                        <tr style="border-bottom: 1px solid #333; color: #aaa;">
+                            <th style="text-align: left; padding-bottom: 5px;">Symbol</th>
+                            <th style="text-align: left; padding-bottom: 5px;">Name</th>
+                            <th style="text-align: right; padding-bottom: 5px;">Weight</th>
+                        </tr>
+                        {% for holding in top_holdings[:10] %}
+                        <tr style="border-bottom: 1px solid #333;">
+                            <td style="padding: 5px 0;"><a href="/stock/{{ holding.symbol }}" style="color: #4da6ff;">{{ holding.symbol }}</a></td>
+                            <td style="padding: 5px 0; color: #e0e0e0;">{{ holding.holdingName[:15] }}...</td>
+                            <td style="text-align: right; padding: 5px 0;">{{ (holding.holdingPercent * 100)|round(2) }}%</td>
+                        </tr>
+                        {% endfor %}
+                    </table>
+                </div>
+                {% endif %}
+
+                {% if sector_weightings %}
+                <div class="data-card">
+                    <h3>Sector Weightings</h3>
+                    <table style="width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px;">
+                        <tr style="border-bottom: 1px solid #333; color: #aaa;">
+                            <th style="text-align: left; padding-bottom: 5px;">Sector</th>
+                            <th style="text-align: right; padding-bottom: 5px;">Weight</th>
+                        </tr>
+                        {% for sector_dict in sector_weightings %}
+                            {% for key, val in sector_dict.items() %}
+                            <tr style="border-bottom: 1px solid #333;">
+                                <td style="padding: 5px 0; color: #e0e0e0; text-transform: capitalize;">{{ key | replace('_', ' ') }}</td>
+                                <td style="text-align: right; padding: 5px 0;">{{ (val * 100)|round(2) }}%</td>
+                            </tr>
+                            {% endfor %}
+                        {% endfor %}
+                    </table>
+                </div>
+                {% endif %}
             </div>
             
             {% else %}

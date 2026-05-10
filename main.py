@@ -16,7 +16,6 @@ from ghostfolio_sync import GhostfolioSyncEngine
 app = FastAPI(title="Quantamental Dashboard")
 templates = Jinja2Templates(directory="templates")
 
-# Run database setup on server boot
 init_db()
 
 def get_json_data(filepath):
@@ -28,42 +27,35 @@ def get_json_data(filepath):
         return {}
 
 def run_update_pipeline():
-    """Background worker for Yahoo Finance data fetching and math crunching."""
     print("\n--- BACKGROUND UPDATE INITIATED ---")
     DataEngine().update_all_data()
     QuantEngine().run_all()
     print("--- BACKGROUND UPDATE COMPLETE ---\n")
 
 def run_ghostfolio_sync():
-    """Background worker to download the latest assets from Ghostfolio."""
     sync_engine = GhostfolioSyncEngine()
     sync_engine.run_full_sync()
 
 @app.post("/api/update")
 async def trigger_update(background_tasks: BackgroundTasks):
-    """Triggers the heavy Yahoo Finance pipeline."""
     background_tasks.add_task(run_update_pipeline)
     return {"status": "success"}
 
 @app.post("/api/sync-ghostfolio")
 async def trigger_ghostfolio_sync(background_tasks: BackgroundTasks):
-    """Triggers the Ghostfolio JSON overwrite."""
     background_tasks.add_task(run_ghostfolio_sync)
     return {"status": "success"}
 
 @app.get("/glossary", response_class=HTMLResponse)
 async def glossary(request: Request):
-    """Dedicated educational page."""
     return templates.TemplateResponse(request=request, name="glossary.html", context={})
 
 @app.get("/", response_class=RedirectResponse)
 async def home():
-    """Redirects the base URL to the new dedicated Portfolio page."""
     return RedirectResponse(url="/portfolio")
 
 @app.get("/portfolio", response_class=HTMLResponse)
 async def portfolio_page(request: Request, embed: bool = False):
-    """Loads the dedicated Portfolio table. Supports ?embed=true for Home Assistant."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM stock_signals")
@@ -84,7 +76,6 @@ async def portfolio_page(request: Request, embed: bool = False):
 
 @app.get("/watchlist", response_class=HTMLResponse)
 async def watchlist_page(request: Request, embed: bool = False):
-    """Loads the dedicated Watchlist table. Supports ?embed=true for Home Assistant."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM stock_signals")
@@ -105,24 +96,39 @@ async def watchlist_page(request: Request, embed: bool = False):
 
 @app.get("/stock/{ticker}", response_class=HTMLResponse)
 async def stock_detail(request: Request, ticker: str):
-    """Loads the Detailed Analysis View."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM stock_signals WHERE ticker = ?", (ticker,))
     stock_data = cursor.fetchone()
     
+    # Convert sqlite3.Row to a standard dictionary so we can inject parsed JSON into it safely
+    if stock_data:
+        stock_data = dict(stock_data)
+    
+    # Parse ETF JSON Arrays if they exist
+    top_holdings = []
+    sector_weightings = []
+    if stock_data and stock_data.get('top_holdings'):
+        try:
+            top_holdings = json.loads(stock_data['top_holdings'])
+        except: pass
+        
+    if stock_data and stock_data.get('sector_weightings'):
+        try:
+            sector_weightings = json.loads(stock_data['sector_weightings'])
+        except: pass
+
     # --- Dynamic Earnings Date Math ---
     days_to_earnings = None
     volatility_date = None
-    
     if stock_data and stock_data['next_earnings_date'] and stock_data['next_earnings_date'] != 'Unknown':
         try:
             e_date = datetime.strptime(stock_data['next_earnings_date'], '%Y-%m-%d').date()
             today = datetime.now().date()
             days_to_earnings = (e_date - today).days
             volatility_date = (e_date - timedelta(days=7)).strftime('%Y-%m-%d')
-        except Exception as e:
-            print(f"[WARNING] Could not parse earnings date for {ticker}: {e}")
+        except Exception:
+            pass
 
     # Calculate Portfolio Mathematics if owned
     portfolio_json = get_json_data(PORTFOLIO_PATH)
@@ -132,8 +138,6 @@ async def stock_detail(request: Request, ticker: str):
     if user_asset and stock_data and stock_data['current_price']:
         buy_price = user_asset.get('buy_price', 0)
         shares = user_asset.get('shares', 0)
-        
-        # Ghostfolio currency conversion logic
         if user_asset.get('price_in_pence', False):
             buy_price = buy_price * 100
             
@@ -158,13 +162,11 @@ async def stock_detail(request: Request, ticker: str):
         df_sp500 = pd.read_parquet(HISTORICAL_DIR / "SP500_BASELINE.parquet")
         macro_html = create_macro_chart(df_macro, df_sp500, ticker)
         
-        # Calculate Pivot Points & Ranges dynamically from the parquet data
         if not df_macro.empty:
             last_day = df_macro.iloc[-1]
             prev_day = df_macro.iloc[-2] if len(df_macro) > 1 else last_day
             last_21 = df_macro.tail(21)
 
-            # Classic Pivot Point Formula
             P = (prev_day['High'] + prev_day['Low'] + prev_day['Close']) / 3
             s1 = (P * 2) - prev_day['High']
             s2 = P - (prev_day['High'] - prev_day['Low'])
@@ -193,6 +195,8 @@ async def stock_detail(request: Request, ticker: str):
         request=request, name="stock_detail.html", 
         context={
             "stock": stock_data, 
+            "top_holdings": top_holdings,
+            "sector_weightings": sector_weightings,
             "macro_html": macro_html, 
             "intraday_html": intraday_html,
             "portfolio_math": portfolio_math,

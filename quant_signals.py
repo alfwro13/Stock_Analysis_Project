@@ -89,16 +89,28 @@ class QuantEngine:
         is_fund = quote_type in ['ETF', 'MUTUALFUND']
         
         company_name = info.get('shortName', ticker)
-        sector = info.get('sector', 'Unknown')
+        
+        # Intelligent Sector Extraction (Funds often use 'category' instead of 'sector')
+        if is_fund:
+            sector = info.get('category', info.get('sector', 'Fund'))
+        else:
+            sector = info.get('sector', 'Unknown')
+            
         currency = info.get('currency', 'USD')
         
-        # Price Action & ETF Metrics
+        # Price Action & General
         fifty_two_week_low = info.get('fiftyTwoWeekLow', None)
         fifty_two_week_high = info.get('fiftyTwoWeekHigh', None)
+        
+        # ETF/Fund Specific Metrics
         ytd_return = info.get('ytdReturn', None)
         total_assets = info.get('totalAssets', None)
         nav_price = info.get('navPrice', None)
         expense_ratio = info.get('expenseRatio', info.get('annualReportExpenseRatio', None))
+        
+        # ETF Deep Data Extraction (Dumped to JSON strings for SQLite storage)
+        top_holdings = json.dumps(info.get('holdings', []))
+        sector_weightings = json.dumps(info.get('sectorWeightings', []))
         
         # Standard Equity Metrics
         trailing_pe = info.get('trailingPE', None)
@@ -140,84 +152,72 @@ class QuantEngine:
         score = 0
         breakdown = []
 
-        # 1. 5D MA Check
         if current_price > ma5: 
             score += 15
             breakdown.append("+15: <abbr title='The current price is trading above the 5-Day Moving Average, signaling very short-term momentum.'>Price > 5D MA</abbr>")
         else:
             breakdown.append("+0: <abbr title='The current price is trading below the 5-Day Moving Average, signaling short-term weakness.'>Price < 5D MA</abbr>")
 
-        # 2. Moving Average Alignment Check
         if ma5 > ma10 and ma10 > ma21: 
             score += 15
             breakdown.append("+15: <abbr title='The 5, 10, and 21-day averages are perfectly stacked. This indicates strong, unified short-term trend alignment.'>Short-term MAs aligned</abbr>")
         else:
             breakdown.append("+0: <abbr title='The moving averages are crisscrossing, indicating choppy or weak price action.'>Short-term MAs unaligned</abbr>")
 
-        # 3. Long Term Institutional Trend Check
         if trend_200d == "UP":
             score += 15
             breakdown.append("+15: <abbr title='The 200-Day Moving Average is rising. This proves the long-term institutional trend is bullish.'>200D Institutional Trend is UP</abbr>")
         else:
             breakdown.append("+0: <abbr title='The 200-Day Moving Average is falling. Institutions are actively selling this stock over the long term.'>200D Trend is DOWN</abbr>")
 
-        # 4. RSI Momentum Check (Softened for Mutual Funds)
+        # RSI Momentum Check (Softened for Mutual Funds)
         if 40 <= rsi_val <= 65: 
             score += 15
             breakdown.append("+15: <abbr title='RSI is between 40 and 65, meaning the stock has room to grow without being dangerously overextended.'>RSI in healthy momentum zone</abbr>")
         else:
             if is_fund and rsi_val > 65:
                 score += 15
-                breakdown.append(f"+15: <abbr title='RSI is {rsi_val:.1f}, but this is normal for a fund.'>Funds naturally drift upwards.</abbr>")
+                breakdown.append(f"+15: <abbr title='RSI is {rsi_val:.1f}, but this is normal for an index fund.'>Funds naturally drift upwards.</abbr>")
             else:
                 breakdown.append(f"+0: <abbr title='RSI is either above 70 (overbought risk) or below 30 (oversold/crashing).'>RSI is {rsi_val:.1f} (Overbought/Oversold risk)</abbr>")
 
-        # 5. Volatility Contraction Check
         if is_tight: 
             score += 20
             breakdown.append("+20: <abbr title='Weekly closes have barely moved for 3 weeks. This indicates institutions are quietly accumulating shares without pushing the price up.'>'3-Weeks-Tight' volatility contraction detected</abbr>")
         else:
             breakdown.append("+0: <abbr title='Normal volatility. No tight weekly compression pattern detected.'>No tight weekly compression</abbr>")
 
-        # 6. Volume Profile Check (Bypassed for Mutual Funds)
+        # Volume Profile Check (Bypassed for Mutual Funds/ETFs)
         if is_fund:
             score += 20
-            breakdown.append("+20: <abbr title='Funds are priced daily at NAV, making intraday volume metrics irrelevant.'>OBV bypassed (Not applicable for Funds)</abbr>")
+            breakdown.append("+20: <abbr title='Funds are priced at NAV or follow indices, making strict volume oscillator metrics irrelevant.'>OBV bypassed (Not applicable for Funds)</abbr>")
         elif obv_bullish: 
             score += 20
             breakdown.append("+20: <abbr title='On-Balance Volume is rising faster than its moving average, confirming that up-days have higher volume than down-days.'>OBV indicates Institutional Accumulation</abbr>")
         else:
             breakdown.append("+0: <abbr title='On-Balance Volume is falling, indicating that selling volume is outpacing buying volume.'>OBV indicates Distribution/Selling</abbr>")
 
-        # Cap score
         score = min(score, 100)
 
-        # Determine Signal
-        if score >= 80: 
-            signal = "STRONG BUY"
-        elif score >= 60: 
-            signal = "BULLISH / HOLD"
-        elif score >= 40: 
-            signal = "NEUTRAL"
-        else: 
-            signal = "BEARISH / CAUTION"
+        if score >= 80: signal = "STRONG BUY"
+        elif score >= 60: signal = "BULLISH / HOLD"
+        elif score >= 40: signal = "NEUTRAL"
+        else: signal = "BEARISH / CAUTION"
 
         # ==========================================
         # PART 4: CONSTRUCT HTML EDUCATIONAL NOTES
         # ==========================================
-        # We wrap the breakdown array in HTML <ul> and <li> tags for clean frontend rendering
         notes_html = "<strong>Analytical Breakdown:</strong><br><ul style='margin-top: 5px; margin-bottom: 15px; font-size: 15px; color: #ccc; padding-left: 20px;'>"
         for item in breakdown:
             notes_html += f"<li style='margin-bottom: 5px;'>{item}</li>"
         notes_html += "</ul>"
         
-        # Add the ATR Stop-Loss explanation (Adjusted for long-term funds)
+        # ATR Adjusted for Funds
         if is_fund:
             notes_html += f"<strong>Risk Management:</strong> Mutual Funds & ETFs are typically held long-term. Mathematical <abbr title='Based on Average True Range.'>ATR Stop-Loss</abbr> of {currency} {stop_loss:.2f} is provided for reference only.<br><br>"
         else:
             notes_html += f"<strong>Risk Management:</strong> Mathematical <abbr title='Based on Average True Range. If the stock drops below this price, its normal mathematical volatility is broken and you should consider exiting.'>ATR Stop-Loss</abbr> is {currency} {stop_loss:.2f}.<br><br>"
         
-        # Add warnings for extreme risk factors (Ignore RSI overbought for Funds)
         if not is_fund and rsi_val > 70:
             notes_html += "<strong><span style='color: #ff4d4d;'>Warning:</span></strong> <abbr title='When RSI passes 70, the asset has gone up too quickly and is highly susceptible to a sudden pullback.'>Stock is technically overbought.</abbr> Initiating new positions is high risk. Look to take profits.<br>"
         if short_interest and short_interest > 0.10:
@@ -230,7 +230,7 @@ class QuantEngine:
             fifty_two_week_low, fifty_two_week_high,
             trailing_pe, forward_pe, peg_ratio, peter_lynch_peg, price_to_book,
             profit_margin, roe, revenue_growth, debt_to_equity, current_ratio, operating_cash_flow,
-            ytd_return, total_assets, nav_price, expense_ratio,
+            ytd_return, total_assets, nav_price, expense_ratio, top_holdings, sector_weightings,
             dividend_yield, ex_dividend_date, target_price, analyst_rating, next_earnings_date,
             short_interest, institutional_ownership, beta,
             score, signal, notes_html
@@ -241,7 +241,7 @@ class QuantEngine:
                    fifty_two_week_low, fifty_two_week_high,
                    trailing_pe, forward_pe, peg_ratio, peter_lynch_peg, price_to_book,
                    profit_margin, roe, revenue_growth, debt_to_equity, current_ratio, operating_cash_flow,
-                   ytd_return, total_assets, nav_price, expense_ratio,
+                   ytd_return, total_assets, nav_price, expense_ratio, top_holdings, sector_weightings,
                    dividend_yield, ex_dividend_date, target_price, analyst_rating, next_earnings_date,
                    short_interest, institutional_ownership, beta,
                    score, signal, notes):
@@ -255,7 +255,7 @@ class QuantEngine:
                 fifty_two_week_low, fifty_two_week_high,
                 trailing_pe, forward_pe, peg_ratio, peter_lynch_peg, price_to_book,
                 profit_margin, roe, revenue_growth, debt_to_equity, current_ratio, operating_cash_flow,
-                ytd_return, total_assets, nav_price, expense_ratio,
+                ytd_return, total_assets, nav_price, expense_ratio, top_holdings, sector_weightings,
                 dividend_yield, ex_dividend_date, target_price, analyst_rating, next_earnings_date,
                 short_interest, institutional_ownership, beta,
                 composite_score, overall_signal, educational_notes
@@ -265,7 +265,7 @@ class QuantEngine:
                 ?, ?,
                 ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?,
                 ?, ?, ?,
                 ?, ?, ?
@@ -280,7 +280,7 @@ class QuantEngine:
             fifty_two_week_low, fifty_two_week_high,
             trailing_pe, forward_pe, peg_ratio, peter_lynch_peg, price_to_book,
             profit_margin, roe, revenue_growth, debt_to_equity, current_ratio, operating_cash_flow,
-            ytd_return, total_assets, nav_price, expense_ratio,
+            ytd_return, total_assets, nav_price, expense_ratio, top_holdings, sector_weightings,
             dividend_yield, ex_dividend_date, target_price, analyst_rating, next_earnings_date,
             short_interest, institutional_ownership, beta,
             score, signal, notes

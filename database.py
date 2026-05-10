@@ -14,12 +14,11 @@ def get_connection():
 def init_db():
     """
     Initializes the master database schema for the Quantamental dashboard.
-    Defines the complete structure required for Technicals, Fundamentals, and Sentiment.
     """
     conn = get_connection()
     cursor = conn.cursor()
     
-    # Base table creation (Executes only if the table does not exist)
+    # Base table creation
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS stock_signals (
             ticker TEXT PRIMARY KEY,
@@ -63,6 +62,8 @@ def init_db():
             total_assets REAL,
             nav_price REAL,
             expense_ratio REAL,
+            top_holdings TEXT,
+            sector_weightings TEXT,
             
             -- Sentiment & Dividends
             dividend_yield REAL,
@@ -91,14 +92,10 @@ def init_db():
 def migrate_db(conn, cursor):
     """
     Dynamically checks the existing table against a master list of required columns.
-    If you add new metrics in the future, simply add them to the master list here,
-    and this function will gracefully upgrade your Debian database without data loss.
     """
-    # Ask SQLite for the current columns in the database
     cursor.execute("PRAGMA table_info(stock_signals)")
     existing_columns = [info['name'] for info in cursor.fetchall()]
 
-    # Master list of all required columns and their SQLite data types
     required_columns = {
         'company_name': 'TEXT', 'sector': 'TEXT', 'currency': 'TEXT', 'quote_type': 'TEXT',
         'trend_50d': 'TEXT', 'trend_200d': 'TEXT',
@@ -108,12 +105,12 @@ def migrate_db(conn, cursor):
         'profit_margin': 'REAL', 'roe': 'REAL', 'revenue_growth': 'REAL',
         'debt_to_equity': 'REAL', 'current_ratio': 'REAL', 'operating_cash_flow': 'REAL',
         'ytd_return': 'REAL', 'total_assets': 'REAL', 'nav_price': 'REAL', 'expense_ratio': 'REAL',
+        'top_holdings': 'TEXT', 'sector_weightings': 'TEXT',
         'dividend_yield': 'REAL', 'ex_dividend_date': 'TEXT', 'target_price': 'REAL',
         'analyst_rating': 'TEXT', 'next_earnings_date': 'TEXT',
         'short_interest': 'REAL', 'institutional_ownership': 'REAL', 'beta': 'REAL'
     }
 
-    # Iterate and inject any missing columns
     for col_name, data_type in required_columns.items():
         if col_name not in existing_columns:
             print(f"[MIGRATION] Adding missing column: '{col_name}'...")
@@ -122,5 +119,4 @@ def migrate_db(conn, cursor):
     conn.commit()
 
 if __name__ == "__main__":
-    print("Initializing Database Engine...")
     init_db()

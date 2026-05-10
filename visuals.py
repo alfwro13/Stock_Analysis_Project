@@ -36,7 +36,8 @@ def create_intraday_chart(df, ticker, s1=None, s2=None):
         height=400,
         margin=dict(l=20, r=20, t=40, b=20),
         xaxis_rangeslider_visible=False,
-        title=f"{last_date} Pulse (5-Minute Intervals) - {ticker}"
+        # Centering the title to avoid the fullscreen button
+        title=dict(text=f"{last_date} Pulse (5-Minute Intervals) - {ticker}", x=0.5)
     )
     return fig.to_html(full_html=False, include_plotlyjs='cdn')
 
@@ -56,11 +57,9 @@ def create_macro_chart(df, df_sp500, ticker):
     df['BB_Low'] = indicator_bb.bollinger_lband()
     
     # 2. Relative Strength Line (vs S&P 500)
-    # Reindex SP500 to match our stock's dates, forward-filling any missing days (like holidays)
     if df_sp500 is not None:
         sp500_aligned = df_sp500['Close'].reindex(df.index, method='ffill')
         df['RS_Line'] = df['Close'] / sp500_aligned
-        # Normalize the RS line to start at the same visual height as the stock price for easy reading
         normalization_factor = df['Close'].iloc[0] / df['RS_Line'].iloc[0]
         df['RS_Normalized'] = df['RS_Line'] * normalization_factor
 
@@ -68,7 +67,7 @@ def create_macro_chart(df, df_sp500, ticker):
     df['RSI'] = ta.momentum.RSIIndicator(close=df['Close'], window=14).rsi()
     df['OBV'] = ta.volume.OnBalanceVolumeIndicator(close=df['Close'], volume=df['Volume']).on_balance_volume()
     
-    # 4. MACD (Moving Average Convergence Divergence)
+    # 4. MACD
     macd = ta.trend.MACD(close=df['Close'])
     df['MACD_Line'] = macd.macd()
     df['MACD_Signal'] = macd.macd_signal()
@@ -85,7 +84,6 @@ def create_macro_chart(df, df_sp500, ticker):
     )
 
     # ROW 1: Price, MAs, and RS Line
-    # The 21D MA is now Teal (#00ffcc) to avoid clashing visually with the MACD Signal line.
     fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name="Price"), row=1, col=1)
     fig.add_trace(go.Scatter(x=df.index, y=df['MA_21'], line=dict(color='#00ffcc', width=1.5), name="21D MA"), row=1, col=1)
     fig.add_trace(go.Scatter(x=df.index, y=df['MA_50'], line=dict(color='yellow', width=1.5), name="50D MA"), row=1, col=1)
