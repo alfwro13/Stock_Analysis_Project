@@ -97,15 +97,16 @@ def run_insider_alert():
                 if insider_df is None or insider_df.empty:
                     continue
                     
-                # Standardize Yahoo's Dataframe
-                if 'Start Date' in insider_df.columns:
-                    insider_df['Start Date'] = pd.to_datetime(insider_df['Start Date'], utc=True, errors='coerce')
+                # Enhanced Fallback: Standardize Yahoo's Dataframe Date Column
+                date_col = next((col for col in ['Start Date', 'Date', 'Transaction Date'] if col in insider_df.columns), None)
+                if date_col:
+                    insider_df['Parsed_Date'] = pd.to_datetime(insider_df[date_col], utc=True, errors='coerce')
                 else:
                     continue # Cannot evaluate without a date
                     
-                # Check for Transaction Type (Sometimes called 'Text' or 'Transaction')
-                col_action = 'Transaction' if 'Transaction' in insider_df.columns else 'Text'
-                if col_action not in insider_df.columns:
+                # Enhanced Fallback: Check for Transaction Type
+                col_action = next((col for col in ['Transaction', 'Text', 'Action'] if col in insider_df.columns), None)
+                if not col_action:
                     continue
                     
                 # Clean Value column (Remove $ and , to convert to float)
@@ -125,14 +126,13 @@ def run_insider_alert():
                     insider_df['Clean_Shares'] = 0
 
                 # 5. Apply Core Logic Filters
-                # Filter 1: Date within bounds
-                recent_buys = insider_df[insider_df['Start Date'] >= cutoff_date].copy()
+                recent_buys = insider_df[insider_df['Parsed_Date'] >= cutoff_date].copy()
                 if recent_buys.empty: continue
                 
-                # Filter 2: Transaction is a Purchase
+                # Transaction is a Purchase
                 recent_buys = recent_buys[recent_buys[col_action].astype(str).str.contains('Buy|Purchase', case=False, na=False)]
                 
-                # Filter 3: Value exceeds limit
+                # Value exceeds limit
                 major_buys = recent_buys[recent_buys['Clean_Value'] >= min_value]
                 
                 # 6. Dispatch Alerts
@@ -142,7 +142,7 @@ def run_insider_alert():
                     position = row.get('Position', 'Insider')
                     val_str = f"${row['Clean_Value']:,.2f}"
                     share_str = f"{row['Clean_Shares']:,.0f}" if row['Clean_Shares'] > 0 else "Unknown"
-                    date_str = row['Start Date'].strftime('%Y-%m-%d')
+                    date_str = row['Parsed_Date'].strftime('%Y-%m-%d')
                     
                     msg = (
                         f"🚨 **INSIDER BUYING DETECTED** 🚨\n"
