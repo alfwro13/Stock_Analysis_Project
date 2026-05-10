@@ -119,7 +119,13 @@
                 {% if stock.next_earnings_date and stock.next_earnings_date != 'Unknown' %}
                     {% if days_to_earnings is not none %}
                         {% if days_to_earnings >= 0 %}
-                            <p class="warning-text" style="margin-top: 15px;">⚠️ Caution: Next Earnings Report is scheduled for {{ stock.next_earnings_date }} (in {{ days_to_earnings }} days). Expect high volatility from approx: {{ volatility_date }}.</p>
+                            {% if days_to_earnings <= 14 %}
+                                <p class="warning-text" style="margin-top: 15px;">⚠️ Caution: Next Earnings Report is scheduled for {{ stock.next_earnings_date }} (in {{ days_to_earnings }} days). Expect high volatility from approx: {{ volatility_date }}.</p>
+                            {% elif days_to_earnings <= 30 %}
+                                <p class="info-text" style="margin-top: 15px;">⚠️ Notice: Next Earnings Report is scheduled for {{ stock.next_earnings_date }} (in {{ days_to_earnings }} days).</p>
+                            {% else %}
+                                <p style="margin-top: 15px; color: #4da6ff; font-weight: bold;">📅 Future Event: Next Earnings Report is scheduled for {{ stock.next_earnings_date }} (in {{ days_to_earnings }} days).</p>
+                            {% endif %}
                         {% elif days_to_earnings >= -7 %}
                             <p class="info-text" style="margin-top: 15px;">ℹ️ Post-Earnings: The report was recently released on {{ stock.next_earnings_date }}. Volatility may still be settling.</p>
                         {% endif %}
@@ -131,10 +137,14 @@
         <div id="charts">
             <h2>Interactive Momentum Charts</h2>
             
+            {% if stock.quote_type != 'MUTUALFUND' %}
             <div class="chart-wrapper" id="intraday-wrapper">
                 <button class="fullscreen-btn" onclick="toggleFullscreen('intraday-wrapper')">⛶ Fullscreen</button>
                 {{ intraday_html | safe }}
             </div>
+            {% else %}
+            <p style="color: #aaa; font-style: italic; background-color: #1e1e1e; padding: 15px; border-radius: 5px; border-left: 3px solid #555;">Intraday charts are mathematically hidden for Mutual Funds, as they only report price updates once daily at the market close (NAV).</p>
+            {% endif %}
 
             <div class="chart-wrapper" id="macro-wrapper">
                 <button class="fullscreen-btn" onclick="toggleFullscreen('macro-wrapper')">⛶ Fullscreen</button>

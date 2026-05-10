@@ -28,6 +28,9 @@ FUNDAMENTALS_DIR.mkdir(parents=True, exist_ok=True)
 # Application Default Variables
 PORT = 8090
 
+# Default to GBP for your local environment, but allows overrides via config.json
+BASE_CURRENCY = "GBP"
+
 # Load secure credentials from config.json
 GHOSTFOLIO_URL = ""
 GHOSTFOLIO_TOKEN = ""
@@ -38,8 +41,8 @@ if SECRETS_PATH.exists():
             secrets = json.load(f)
             GHOSTFOLIO_URL = secrets.get("GHOSTFOLIO_URL", "")
             GHOSTFOLIO_TOKEN = secrets.get("API_TOKEN", "")
-            # If you ever want to change the port via your config.json, it will override the default here
             PORT = secrets.get("PORT", 8090)
+            BASE_CURRENCY = secrets.get("BASE_CURRENCY", "GBP")
         except json.JSONDecodeError:
             print("[WARNING] config.json is not formatted correctly.")
 else:

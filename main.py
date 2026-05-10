@@ -2,11 +2,12 @@
 import uvicorn
 import json
 import pandas as pd
+import yfinance as yf
 from datetime import datetime, timedelta
 from fastapi import FastAPI, Request, BackgroundTasks
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, RedirectResponse
-from config import PORTFOLIO_PATH, WATCHLIST_PATH, HISTORICAL_DIR, INTRADAY_DIR, PORT
+from config import PORTFOLIO_PATH, WATCHLIST_PATH, HISTORICAL_DIR, INTRADAY_DIR, PORT, BASE_CURRENCY
 from database import get_connection, init_db
 from quant_signals import QuantEngine
 from data_engine import DataEngine
@@ -101,24 +102,19 @@ async def stock_detail(request: Request, ticker: str):
     cursor.execute("SELECT * FROM stock_signals WHERE ticker = ?", (ticker,))
     stock_data = cursor.fetchone()
     
-    # Convert sqlite3.Row to a standard dictionary so we can inject parsed JSON into it safely
     if stock_data:
         stock_data = dict(stock_data)
     
-    # Parse ETF JSON Arrays if they exist
     top_holdings = []
     sector_weightings = []
     if stock_data and stock_data.get('top_holdings'):
-        try:
-            top_holdings = json.loads(stock_data['top_holdings'])
+        try: top_holdings = json.loads(stock_data['top_holdings'])
         except: pass
         
     if stock_data and stock_data.get('sector_weightings'):
-        try:
-            sector_weightings = json.loads(stock_data['sector_weightings'])
+        try: sector_weightings = json.loads(stock_data['sector_weightings'])
         except: pass
 
-    # --- Dynamic Earnings Date Math ---
     days_to_earnings = None
     volatility_date = None
     if stock_data and stock_data['next_earnings_date'] and stock_data['next_earnings_date'] != 'Unknown':
@@ -130,7 +126,6 @@ async def stock_detail(request: Request, ticker: str):
         except Exception:
             pass
 
-    # Calculate Portfolio Mathematics if owned
     portfolio_json = get_json_data(PORTFOLIO_PATH)
     user_asset = next((data for key, data in portfolio_json.items() if data.get("ticker") == ticker), None)
     
@@ -138,10 +133,29 @@ async def stock_detail(request: Request, ticker: str):
     if user_asset and stock_data and stock_data['current_price']:
         buy_price = user_asset.get('buy_price', 0)
         shares = user_asset.get('shares', 0)
-        if user_asset.get('price_in_pence', False):
-            buy_price = buy_price * 100
-            
+        
+        # --- NEW CURRENCY EXCHANGE LOGIC ---
+        stock_currency = stock_data['currency']
+        exchange_rate = 1.0
+        
+        # If the asset is USD, but base Ghostfolio currency is GBP, fetch GBPUSD=X
+        if stock_currency and stock_currency not in [BASE_CURRENCY, 'GBp', 'GBP']:
+            try:
+                fx_ticker = f"{BASE_CURRENCY}{stock_currency}=X"
+                fx_data = yf.Ticker(fx_ticker).history(period="1d")
+                if not fx_data.empty:
+                    exchange_rate = fx_data['Close'].iloc[-1]
+            except Exception as e:
+                print(f"[WARNING] Could not fetch exchange rate for {fx_ticker}: {e}")
+        
         if buy_price > 0 and shares > 0:
+            # Convert Ghostfolio's local currency cost to the asset's currency
+            buy_price = buy_price * exchange_rate
+            
+            # UK specific Pence conversion
+            if user_asset.get('price_in_pence', False):
+                buy_price = buy_price * 100
+                
             current_value = shares * stock_data['current_price']
             cost_basis = shares * buy_price
             pnl = current_value - cost_basis
@@ -155,7 +169,6 @@ async def stock_detail(request: Request, ticker: str):
                 "pnl_pct": round(pnl_pct, 2)
             }
 
-    # Load Parquet Data for Visuals and Calculate Pivot Points
     price_action = None
     try:
         df_macro = pd.read_parquet(HISTORICAL_DIR / f"{ticker}.parquet")
@@ -182,7 +195,6 @@ async def stock_detail(request: Request, ticker: str):
     except Exception as e:
         macro_html = f"<p>Chart Data Unavailable: {e}</p>"
 
-    # Load Intraday and Pass S1/S2 to the Plotter
     try:
         df_intraday = pd.read_parquet(INTRADAY_DIR / f"{ticker}_intraday.parquet")
         s1_val = price_action['s1'] if price_action else None

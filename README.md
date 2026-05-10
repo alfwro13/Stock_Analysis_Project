@@ -44,16 +44,18 @@ pip install -r requirements.txt
 
 ### 3. Configure Secrets (config.json)
 
-You must create a config.json file in the root directory to store your Ghostfolio credentials and specify the web server port. Note: This file is ignored by git for security.
+You must create a `config.json` file in the root directory to store your Ghostfolio credentials, specify the web server port, and set your local portfolio currency. Note: This file is ignored by git for security.
 
-Create config.json:
-```bash
+Create `config.json`:
+```json
 {
     "GHOSTFOLIO_URL": "http://YOUR_GHOSTFOLIO_IP:PORT",
     "API_TOKEN": "your_long_lived_ghostfolio_security_token",
-    "PORT": 8090
+    "PORT": 8090,
+    "BASE_CURRENCY": "GBP"
 }
 ```
+**Note:** BASE_CURRENCY ensures that foreign assets (like USD stocks) are mathematically converted to your local currency for accurate P&L calculation.
 
 ### 💻 Usage
 
