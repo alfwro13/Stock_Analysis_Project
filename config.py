@@ -1,6 +1,7 @@
 # config.py
 import os
 import json
+import copy
 from pathlib import Path
 
 # Dynamically resolve the absolute path to the directory containing this file
@@ -29,16 +30,6 @@ FUNDAMENTALS_DIR.mkdir(parents=True, exist_ok=True)
 PORT = 8090
 BASE_CURRENCY = "GBP"
 
-# Ghostfolio Core
-GHOSTFOLIO_URL = ""
-GHOSTFOLIO_TOKEN = ""
-
-# Nextcloud Configuration
-NEXTCLOUD_URL = ""
-BOT_USERNAME = ""
-APP_PASSWORD = ""
-CONVERSATION_TOKEN = ""
-
 # Base Schema for Application Configuration
 DEFAULT_CONFIG = {
     "GHOSTFOLIO_URL": "",
@@ -65,31 +56,35 @@ DEFAULT_CONFIG = {
 }
 
 def load_config():
-    """Loads config.json into memory. Creates it with defaults if it doesn't exist."""
+    """Loads config.json into memory safely using Deep Copy merging."""
     if not SECRETS_PATH.exists():
         print("[INFO] config.json not found. Generating default template...")
         with open(SECRETS_PATH, 'w') as f:
             json.dump(DEFAULT_CONFIG, f, indent=4)
-        return DEFAULT_CONFIG
+        return copy.deepcopy(DEFAULT_CONFIG)
 
     try:
         with open(SECRETS_PATH, 'r') as f:
             data = json.load(f)
             
-            merged_config = DEFAULT_CONFIG.copy()
-            merged_config.update(data)
+            # Use Deep Copy so we don't mutate the global defaults dictionary
+            merged_config = copy.deepcopy(DEFAULT_CONFIG)
             
-            if "NOTIFICATIONS" in data:
-                for key, val in data["NOTIFICATIONS"].items():
-                    if key in merged_config["NOTIFICATIONS"]:
-                        merged_config["NOTIFICATIONS"][key].update(val)
-                    else:
-                        merged_config["NOTIFICATIONS"][key] = val
-                        
+            # Safely merge nested dictionaries without deleting missing keys
+            for key, val in data.items():
+                if key == "NOTIFICATIONS" and isinstance(val, dict):
+                    for notif_key, notif_val in val.items():
+                        if notif_key in merged_config["NOTIFICATIONS"]:
+                            merged_config["NOTIFICATIONS"][notif_key].update(notif_val)
+                        else:
+                            merged_config["NOTIFICATIONS"][notif_key] = notif_val
+                else:
+                    merged_config[key] = val
+                    
             return merged_config
     except Exception as e:
         print(f"[ERROR] Failed to read config.json: {e}. Using defaults.")
-        return DEFAULT_CONFIG
+        return copy.deepcopy(DEFAULT_CONFIG)
 
 # Load variables immediately on import
 current_config = load_config()
