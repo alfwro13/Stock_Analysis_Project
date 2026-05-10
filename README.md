@@ -62,13 +62,10 @@ To start the server, simply run the main application file. The system will autom
 python main.py
 
 
-Open your web browser and navigate to http://localhost:8090 (or your server's IP address).
-
-Click "⬇️ Sync Ghostfolio" to pull your latest portfolio and watchlist.
-
-Click "↻ Update Analysis" to trigger the background data engine. Check your terminal to see the fetching progress.
-
-Refresh the page to view your fully rendered dashboard. Click on any ticker to view the detailed Quantamental analysis and interactive Plotly charts.
+- Open your web browser and navigate to **http://localhost:8090** (or your server's IP address).
+- Click **"⬇️ Sync Ghostfolio"** to pull your latest portfolio and watchlist.
+- Click **"↻ Update Analysis"** to trigger the background data engine. Check your terminal to see the fetching progress.
+- **Refresh** the page to view your fully rendered dashboard. Click on any ticker to view the detailed Quantamental analysis and interactive Plotly charts.
 
 ### 📚 Built-in Glossary
 
