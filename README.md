@@ -35,10 +35,10 @@ You must have **Python 3.10 or higher** installed on your system.
 Clone the repository and install the required dependencies using a virtual environment:
 
 ```bash
-git clone [https://github.com/yourusername/stock_analysis_project.git](https://github.com/yourusername/stock_analysis_project.git)
-cd stock_analysis_project
-python3 -m venv venv
-source venv/bin/activate
+git clone [https://github.com/alfwro13/Stock_Analysis_Project.git](https://github.com/alfwro13/Stock_Analysis_Project.git)
+cd Stock_Analysis_Project
+python3 -m venv stock_analysis_project
+source stock_analysis_project/bin/activate
 pip install -r requirements.txt
 ```
 
