@@ -2,6 +2,7 @@
 import uvicorn
 import json
 import pandas as pd
+from datetime import datetime, timedelta
 from fastapi import FastAPI, Request, BackgroundTasks
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
@@ -90,6 +91,24 @@ async def stock_detail(request: Request, ticker: str):
     cursor.execute("SELECT * FROM stock_signals WHERE ticker = ?", (ticker,))
     stock_data = cursor.fetchone()
     
+    # --- Dynamic Earnings Date Math ---
+    days_to_earnings = None
+    volatility_date = None
+    
+    if stock_data and stock_data['next_earnings_date'] and stock_data['next_earnings_date'] != 'Unknown':
+        try:
+            # Parse the stored string into a Python datetime object
+            e_date = datetime.strptime(stock_data['next_earnings_date'], '%Y-%m-%d').date()
+            today = datetime.now().date()
+            
+            # Calculate exactly how many days are left
+            days_to_earnings = (e_date - today).days
+            
+            # Options market volatility generally spikes ~7 days before an earnings report
+            volatility_date = (e_date - timedelta(days=7)).strftime('%Y-%m-%d')
+        except Exception as e:
+            print(f"[WARNING] Could not parse earnings date for {ticker}: {e}")
+
     # Calculate Portfolio Mathematics if owned
     portfolio_json = get_json_data(PORTFOLIO_PATH)
     user_asset = next((data for key, data in portfolio_json.items() if data.get("ticker") == ticker), None)
@@ -137,7 +156,9 @@ async def stock_detail(request: Request, ticker: str):
             "stock": stock_data, 
             "macro_html": macro_html, 
             "intraday_html": intraday_html,
-            "portfolio_math": portfolio_math
+            "portfolio_math": portfolio_math,
+            "days_to_earnings": days_to_earnings,   # NEW: Passed to HTML
+            "volatility_date": volatility_date      # NEW: Passed to HTML
         }
     )
 

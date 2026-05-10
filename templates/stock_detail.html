@@ -45,6 +45,7 @@
         abbr { text-decoration: underline dotted; cursor: help; }
         .warning-text { color: #ff4d4d; font-weight: bold; }
         .success-text { color: #00ff00; font-weight: bold; }
+        .info-text { color: #ffaa00; font-weight: bold; } /* Added for Post-Earnings */
     </style>
 </head>
 <body>
@@ -81,7 +82,13 @@
             </div>
             
             {% if stock.next_earnings_date and stock.next_earnings_date != 'Unknown' %}
-            <p class="warning-text" style="margin-top: 15px;">⚠️ Caution: Next Earnings Report is scheduled for {{ stock.next_earnings_date }}. Expect high volatility.</p>
+                {% if days_to_earnings is not none %}
+                    {% if days_to_earnings >= 0 %}
+                        <p class="warning-text" style="margin-top: 15px;">⚠️ Caution: Next Earnings Report is scheduled for {{ stock.next_earnings_date }} (in {{ days_to_earnings }} days). Expect high volatility from approx: {{ volatility_date }}.</p>
+                    {% elif days_to_earnings >= -7 %}
+                        <p class="info-text" style="margin-top: 15px;">ℹ️ Post-Earnings: The report was recently released on {{ stock.next_earnings_date }}. Volatility may still be settling.</p>
+                    {% endif %}
+                    {% endif %}
             {% endif %}
         </div>
 
