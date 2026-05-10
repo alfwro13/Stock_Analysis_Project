@@ -27,23 +27,75 @@ FUNDAMENTALS_DIR.mkdir(parents=True, exist_ok=True)
 
 # Application Default Variables
 PORT = 8090
-
-# Default to GBP for your local environment, but allows overrides via config.json
 BASE_CURRENCY = "GBP"
 
-# Load secure credentials from config.json
+# Ghostfolio Core
 GHOSTFOLIO_URL = ""
 GHOSTFOLIO_TOKEN = ""
 
-if SECRETS_PATH.exists():
-    with open(SECRETS_PATH, 'r') as f:
-        try:
-            secrets = json.load(f)
-            GHOSTFOLIO_URL = secrets.get("GHOSTFOLIO_URL", "")
-            GHOSTFOLIO_TOKEN = secrets.get("API_TOKEN", "")
-            PORT = secrets.get("PORT", 8090)
-            BASE_CURRENCY = secrets.get("BASE_CURRENCY", "GBP")
-        except json.JSONDecodeError:
-            print("[WARNING] config.json is not formatted correctly.")
-else:
-    print("[WARNING] config.json not found. Ghostfolio sync will be disabled.")
+# Nextcloud Configuration
+NEXTCLOUD_URL = ""
+BOT_USERNAME = ""
+APP_PASSWORD = ""
+CONVERSATION_TOKEN = ""
+
+# Base Schema for Application Configuration
+DEFAULT_CONFIG = {
+    "GHOSTFOLIO_URL": "",
+    "API_TOKEN": "",
+    "PORT": 8090,
+    "BASE_CURRENCY": "GBP",
+    "NEXTCLOUD_URL": "",
+    "BOT_USERNAME": "",
+    "APP_PASSWORD": "",
+    "CONVERSATION_TOKEN": "",
+    "NOTIFICATIONS": {
+        "MARKET_SENTIMENT": {
+            "ENABLED": False,
+            "TIME": "09:30",
+            "FREQUENCY": "mon-fri"
+        }
+    }
+}
+
+def load_config():
+    """Loads config.json into memory. Creates it with defaults if it doesn't exist."""
+    if not SECRETS_PATH.exists():
+        print("[INFO] config.json not found. Generating default template...")
+        with open(SECRETS_PATH, 'w') as f:
+            json.dump(DEFAULT_CONFIG, f, indent=4)
+        return DEFAULT_CONFIG
+
+    try:
+        with open(SECRETS_PATH, 'r') as f:
+            data = json.load(f)
+            
+            # Merge defaults for any missing keys to prevent KeyError crashes
+            merged_config = DEFAULT_CONFIG.copy()
+            merged_config.update(data)
+            
+            # Ensure nested dictionaries (like NOTIFICATIONS) are properly merged
+            if "NOTIFICATIONS" in data:
+                for key, val in data["NOTIFICATIONS"].items():
+                    if key in merged_config["NOTIFICATIONS"]:
+                        merged_config["NOTIFICATIONS"][key].update(val)
+                    else:
+                        merged_config["NOTIFICATIONS"][key] = val
+                        
+            return merged_config
+    except Exception as e:
+        print(f"[ERROR] Failed to read config.json: {e}. Using defaults.")
+        return DEFAULT_CONFIG
+
+# Load variables immediately on import
+current_config = load_config()
+
+GHOSTFOLIO_URL = current_config.get("GHOSTFOLIO_URL", "")
+GHOSTFOLIO_TOKEN = current_config.get("API_TOKEN", "")
+PORT = current_config.get("PORT", 8090)
+BASE_CURRENCY = current_config.get("BASE_CURRENCY", "GBP")
+NEXTCLOUD_URL = current_config.get("NEXTCLOUD_URL", "")
+BOT_USERNAME = current_config.get("BOT_USERNAME", "")
+APP_PASSWORD = current_config.get("APP_PASSWORD", "")
+CONVERSATION_TOKEN = current_config.get("CONVERSATION_TOKEN", "")
+NOTIFICATIONS = current_config.get("NOTIFICATIONS", {})

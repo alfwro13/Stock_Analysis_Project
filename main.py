@@ -6,18 +6,65 @@ import yfinance as yf
 from datetime import datetime, timedelta
 from fastapi import FastAPI, Request, BackgroundTasks
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse, RedirectResponse
-from config import PORTFOLIO_PATH, WATCHLIST_PATH, HISTORICAL_DIR, INTRADAY_DIR, PORT, BASE_CURRENCY
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
+from contextlib import asynccontextmanager
+from sentiment_engine import get_sentiment_html, run_nextcloud_alert
+
+from config import (
+    PORTFOLIO_PATH, WATCHLIST_PATH, HISTORICAL_DIR, INTRADAY_DIR, 
+    PORT, BASE_CURRENCY, SECRETS_PATH, load_config
+)
 from database import get_connection, init_db
 from quant_signals import QuantEngine
 from data_engine import DataEngine
 from visuals import create_macro_chart, create_intraday_chart
 from ghostfolio_sync import GhostfolioSyncEngine
 
-app = FastAPI(title="Quantamental Dashboard")
-templates = Jinja2Templates(directory="templates")
+# --- Background Task Scheduler Setup ---
+scheduler = BackgroundScheduler()
 
-init_db()
+def trigger_sentiment_report():
+    """Triggered automatically by APScheduler based on config.json settings."""
+    run_nextcloud_alert()
+
+def reload_scheduler():
+    """Reads the latest config.json and updates APScheduler dynamically."""
+    print("[SCHEDULER] Reloading scheduled jobs from configuration...")
+    scheduler.remove_all_jobs()
+    
+    config = load_config()
+    notifications = config.get("NOTIFICATIONS", {})
+    
+    # 1. Market Sentiment Job
+    sentiment_cfg = notifications.get("MARKET_SENTIMENT", {})
+    if sentiment_cfg.get("ENABLED"):
+        time_str = sentiment_cfg.get("TIME", "09:30")
+        freq = sentiment_cfg.get("FREQUENCY", "mon-fri")
+        
+        try:
+            hour, minute = map(int, time_str.split(':'))
+            scheduler.add_job(
+                trigger_sentiment_report,
+                CronTrigger(day_of_week=freq, hour=hour, minute=minute),
+                id='market_sentiment_job'
+            )
+            print(f"[SCHEDULER] Market Sentiment Job scheduled for {freq} at {time_str}")
+        except Exception as e:
+            print(f"[ERROR] Failed to schedule Market Sentiment: {e}")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifecycle events to handle startup and shutdown gracefully."""
+    init_db()
+    reload_scheduler()
+    scheduler.start()
+    yield
+    scheduler.shutdown()
+
+app = FastAPI(title="Quantamental Dashboard", lifespan=lifespan)
+templates = Jinja2Templates(directory="templates")
 
 def get_json_data(filepath):
     """Safely reads local JSON files."""
@@ -46,6 +93,39 @@ async def trigger_update(background_tasks: BackgroundTasks):
 async def trigger_ghostfolio_sync(background_tasks: BackgroundTasks):
     background_tasks.add_task(run_ghostfolio_sync)
     return {"status": "success"}
+
+# --- NEW SETTINGS ROUTES ---
+@app.get("/settings", response_class=HTMLResponse)
+async def settings_page(request: Request):
+    """Renders the global settings GUI."""
+    config_data = load_config()
+    return templates.TemplateResponse(
+        request=request, name="settings.html", 
+        context={"config": config_data}
+    )
+
+@app.get("/market-sentiment", response_class=HTMLResponse)
+async def market_sentiment_page(request: Request):
+    sentiment_html = get_sentiment_html()
+    return templates.TemplateResponse(
+        request=request, name="market_sentiment.html", 
+        context={"sentiment_html": sentiment_html}
+    )
+
+@app.post("/api/settings")
+async def save_settings(request: Request):
+    """Receives JSON from the frontend, updates config.json, and reloads the scheduler."""
+    try:
+        new_config = await request.json()
+        with open(SECRETS_PATH, 'w') as f:
+            json.dump(new_config, f, indent=4)
+            
+        # Immediately push new scheduling rules to APScheduler
+        reload_scheduler()
+        
+        return JSONResponse(content={"status": "success", "message": "Settings saved successfully."})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 @app.get("/glossary", response_class=HTMLResponse)
 async def glossary(request: Request):
@@ -134,11 +214,9 @@ async def stock_detail(request: Request, ticker: str):
         buy_price = user_asset.get('buy_price', 0)
         shares = user_asset.get('shares', 0)
         
-        # --- NEW CURRENCY EXCHANGE LOGIC ---
         stock_currency = stock_data['currency']
         exchange_rate = 1.0
         
-        # If the asset is USD, but base Ghostfolio currency is GBP, fetch GBPUSD=X
         if stock_currency and stock_currency not in [BASE_CURRENCY, 'GBp', 'GBP']:
             try:
                 fx_ticker = f"{BASE_CURRENCY}{stock_currency}=X"
@@ -149,10 +227,7 @@ async def stock_detail(request: Request, ticker: str):
                 print(f"[WARNING] Could not fetch exchange rate for {fx_ticker}: {e}")
         
         if buy_price > 0 and shares > 0:
-            # Convert Ghostfolio's local currency cost to the asset's currency
             buy_price = buy_price * exchange_rate
-            
-            # UK specific Pence conversion
             if user_asset.get('price_in_pence', False):
                 buy_price = buy_price * 100
                 
