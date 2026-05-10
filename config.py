@@ -31,6 +31,7 @@ PORT = 8090
 BASE_CURRENCY = "GBP"
 
 # Base Schema for Application Configuration
+# Updated to include SCHEDULING parameters for the background engine
 DEFAULT_CONFIG = {
     "GHOSTFOLIO_URL": "",
     "API_TOKEN": "",
@@ -40,6 +41,20 @@ DEFAULT_CONFIG = {
     "BOT_USERNAME": "",
     "APP_PASSWORD": "",
     "CONVERSATION_TOKEN": "",
+    "SCHEDULING": {
+        "GHOSTFOLIO_SYNC": {
+            "ENABLED": False,
+            "FREQUENCY": "mon-fri",
+            "INTERVAL_HOURS": 0,
+            "TIME": "06:00"
+        },
+        "QUANT_ANALYSIS": {
+            "ENABLED": False,
+            "FREQUENCY": "mon-fri",
+            "INTERVAL_HOURS": 0,
+            "TIME": "18:00"
+        }
+    },
     "NOTIFICATIONS": {
         "MARKET_SENTIMENT": {
             "ENABLED": False,
@@ -80,12 +95,12 @@ def load_config():
             
             # Safely merge nested dictionaries without deleting missing keys
             for key, val in data.items():
-                if key == "NOTIFICATIONS" and isinstance(val, dict):
-                    for notif_key, notif_val in val.items():
-                        if notif_key in merged_config["NOTIFICATIONS"]:
-                            merged_config["NOTIFICATIONS"][notif_key].update(notif_val)
+                if key in ["NOTIFICATIONS", "SCHEDULING"] and isinstance(val, dict):
+                    for sub_key, sub_val in val.items():
+                        if sub_key in merged_config[key]:
+                            merged_config[key][sub_key].update(sub_val)
                         else:
-                            merged_config["NOTIFICATIONS"][notif_key] = notif_val
+                            merged_config[key][sub_key] = sub_val
                 else:
                     merged_config[key] = val
                     
@@ -106,3 +121,4 @@ BOT_USERNAME = current_config.get("BOT_USERNAME", "")
 APP_PASSWORD = current_config.get("APP_PASSWORD", "")
 CONVERSATION_TOKEN = current_config.get("CONVERSATION_TOKEN", "")
 NOTIFICATIONS = current_config.get("NOTIFICATIONS", {})
+SCHEDULING = current_config.get("SCHEDULING", {})

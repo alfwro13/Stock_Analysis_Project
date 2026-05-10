@@ -5,12 +5,22 @@
     <title>Quantamental - Settings</title>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #121212; color: #e0e0e0; padding: 20px; max-width: 900px; margin: auto; }
-        h1, h2, h3 { color: #ffffff; }
+        h1, h2, h3 { color: #ffffff; margin: 0; }
         
         .header-container { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; padding-bottom: 20px; margin-bottom: 30px;}
+        
+        /* New Logo and Header Layout CSS */
+        .title-wrapper { display: flex; align-items: center; }
+        .logo-link { display: inline-block; margin-right: 15px; }
+        .logo-img { height: 45px; vertical-align: middle; transition: transform 0.2s; }
+        .logo-img:hover { transform: scale(1.05); }
+
         .nav-links a { margin-right: 20px; font-size: 16px; color: #4da6ff; text-decoration: none; font-weight: bold; }
         .nav-links a.active { color: #00ffcc; text-decoration: underline; }
         .nav-links a:hover { text-decoration: underline; }
+        
+        /* Unread Notifications Badge */
+        .badge { background-color: #ff4d4d; color: white; padding: 2px 6px; border-radius: 10px; font-size: 12px; vertical-align: super; font-weight: bold;}
 
         .settings-card { background-color: #1e1e1e; padding: 25px; border-radius: 8px; margin-bottom: 25px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); border-left: 4px solid #4da6ff; }
         .form-group { margin-bottom: 15px; display: flex; flex-direction: column; }
@@ -38,13 +48,19 @@
 
     <div class="header-container">
         <div>
-            <h1>⚙️ System Configuration</h1>
+            <div class="title-wrapper">
+                <a href="https://github.com/alfwro13/Stock_Analysis_Project" target="_blank" class="logo-link">
+                    <img src="/assets/logo_small.png" alt="Quantamental Logo" class="logo-img">
+                </a>
+                <h1>⚙️ System Configuration</h1>
+            </div>
             <div class="nav-links" style="margin-top: 15px;">
                 <a href="/portfolio">💼 Portfolio</a>
                 <a href="/watchlist">👀 Watchlist</a>
                 <a href="/market-sentiment">🧠 Market Sentiment</a>
                 <a href="/settings" class="active">⚙️ Settings</a>
                 <a href="/glossary">📚 Glossary</a>
+                <a href="/notifications">🔔 Notifications {% if unread_count > 0 %}<span class="badge" id="nav-badge">{{ unread_count }}</span>{% endif %}</a>
             </div>
         </div>
     </div>
@@ -91,6 +107,62 @@
             <div class="form-group">
                 <label>Talk Conversation Token</label>
                 <input type="text" id="CONVERSATION_TOKEN" value="{{ config.CONVERSATION_TOKEN }}">
+            </div>
+        </div>
+
+        <div class="settings-card">
+            <h3>🤖 Background Automation (Engine Schedulers)</h3>
+
+            <div style="background-color: #2c2c2c; padding: 15px; border-radius: 5px; margin-bottom: 10px;">
+                <h4 style="margin-top: 0; color: #4da6ff;">🔄 Ghostfolio Sync</h4>
+                <div class="checkbox-group">
+                    <input type="checkbox" id="GHOSTFOLIO_SYNC_ENABLED" {% if config.SCHEDULING.GHOSTFOLIO_SYNC.ENABLED %}checked{% endif %}>
+                    <label for="GHOSTFOLIO_SYNC_ENABLED">Auto-sync portfolio/watchlist in the background</label>
+                </div>
+                <div style="display: flex; gap: 15px; margin-bottom: 10px;">
+                    <div class="form-group" style="flex: 1;">
+                        <label>Frequency</label>
+                        <select id="GHOSTFOLIO_SYNC_FREQ">
+                            <option value="mon-fri" {% if config.SCHEDULING.GHOSTFOLIO_SYNC.FREQUENCY == 'mon-fri' %}selected{% endif %}>Mon-Fri</option>
+                            <option value="*" {% if config.SCHEDULING.GHOSTFOLIO_SYNC.FREQUENCY == '*' %}selected{% endif %}>Every Day</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label>Interval (Hours)</label>
+                        <input type="number" id="GHOSTFOLIO_SYNC_INTERVAL" value="{{ config.SCHEDULING.GHOSTFOLIO_SYNC.INTERVAL_HOURS }}" min="0" placeholder="0 to run once per day">
+                        <small style="color: #888;">Set to 0 to trigger at a specific time.</small>
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label>Specific Time</label>
+                        <input type="time" id="GHOSTFOLIO_SYNC_TIME" value="{{ config.SCHEDULING.GHOSTFOLIO_SYNC.TIME }}">
+                    </div>
+                </div>
+            </div>
+
+            <div style="background-color: #2c2c2c; padding: 15px; border-radius: 5px; margin-bottom: 10px;">
+                <h4 style="margin-top: 0; color: #4da6ff;">📈 Quantamental Analysis Engine</h4>
+                <div class="checkbox-group">
+                    <input type="checkbox" id="QUANT_ANALYSIS_ENABLED" {% if config.SCHEDULING.QUANT_ANALYSIS.ENABLED %}checked{% endif %}>
+                    <label for="QUANT_ANALYSIS_ENABLED">Auto-run heavy quantitative models in the background</label>
+                </div>
+                <div style="display: flex; gap: 15px; margin-bottom: 10px;">
+                    <div class="form-group" style="flex: 1;">
+                        <label>Frequency</label>
+                        <select id="QUANT_ANALYSIS_FREQ">
+                            <option value="mon-fri" {% if config.SCHEDULING.QUANT_ANALYSIS.FREQUENCY == 'mon-fri' %}selected{% endif %}>Mon-Fri</option>
+                            <option value="*" {% if config.SCHEDULING.QUANT_ANALYSIS.FREQUENCY == '*' %}selected{% endif %}>Every Day</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label>Interval (Hours)</label>
+                        <input type="number" id="QUANT_ANALYSIS_INTERVAL" value="{{ config.SCHEDULING.QUANT_ANALYSIS.INTERVAL_HOURS }}" min="0" placeholder="0 to run once per day">
+                        <small style="color: #888;">Set to 0 to trigger at a specific time.</small>
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label>Specific Time</label>
+                        <input type="time" id="QUANT_ANALYSIS_TIME" value="{{ config.SCHEDULING.QUANT_ANALYSIS.TIME }}">
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -385,6 +457,20 @@
                 "BOT_USERNAME": document.getElementById('BOT_USERNAME').value,
                 "APP_PASSWORD": document.getElementById('APP_PASSWORD').value,
                 "CONVERSATION_TOKEN": document.getElementById('CONVERSATION_TOKEN').value,
+                "SCHEDULING": {
+                    "GHOSTFOLIO_SYNC": {
+                        "ENABLED": document.getElementById('GHOSTFOLIO_SYNC_ENABLED').checked,
+                        "FREQUENCY": document.getElementById('GHOSTFOLIO_SYNC_FREQ').value,
+                        "INTERVAL_HOURS": parseInt(document.getElementById('GHOSTFOLIO_SYNC_INTERVAL').value) || 0,
+                        "TIME": document.getElementById('GHOSTFOLIO_SYNC_TIME').value
+                    },
+                    "QUANT_ANALYSIS": {
+                        "ENABLED": document.getElementById('QUANT_ANALYSIS_ENABLED').checked,
+                        "FREQUENCY": document.getElementById('QUANT_ANALYSIS_FREQ').value,
+                        "INTERVAL_HOURS": parseInt(document.getElementById('QUANT_ANALYSIS_INTERVAL').value) || 0,
+                        "TIME": document.getElementById('QUANT_ANALYSIS_TIME').value
+                    }
+                },
                 "NOTIFICATIONS": {
                     "MARKET_SENTIMENT": {
                         "ENABLED": document.getElementById('FNG_ENABLED').checked,

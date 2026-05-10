@@ -4,114 +4,148 @@
     <meta charset="UTF-8">
     <title>Financial Glossary & System Logic</title>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #121212; color: #e0e0e0; padding: 20px; max-width: 1000px; margin: auto;}
-        h1 { color: #ffffff; border-bottom: 2px solid #4da6ff; padding-bottom: 10px;}
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #121212; color: #e0e0e0; padding: 20px; max-width: 1400px; margin: auto;}
+        
+        .header-container { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; padding-bottom: 20px; margin-bottom: 30px;}
+        
+        /* New Logo and Header Layout CSS */
+        .title-wrapper { display: flex; align-items: center; }
+        .logo-link { display: inline-block; margin-right: 15px; }
+        .logo-img { height: 45px; vertical-align: middle; transition: transform 0.2s; }
+        .logo-img:hover { transform: scale(1.05); }
+
+        .nav-links a { margin-right: 20px; font-size: 16px; color: #4da6ff; text-decoration: none; font-weight: bold; }
+        .nav-links a.active { color: #00ffcc; text-decoration: underline; }
+        .nav-links a:hover { text-decoration: underline; }
+        
+        /* Unread Notifications Badge */
+        .badge { background-color: #ff4d4d; color: white; padding: 2px 6px; border-radius: 10px; font-size: 12px; vertical-align: super; font-weight: bold;}
+
+        h1 { color: #ffffff; margin: 0; }
         h2 { color: #4da6ff; margin-top: 40px;}
+        
+        .glossary-content { max-width: 1000px; margin: 0 auto; }
         .term-box { background-color: #1e1e1e; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.2);}
         .term-title { font-size: 20px; font-weight: bold; color: #ffffff; margin-bottom: 10px; display: block;}
         .rule { background-color: #2c2c2c; padding: 10px; border-left: 4px solid #00ff00; margin-top: 10px; font-family: monospace; font-size: 14px;}
-        a.button { display: inline-block; padding: 10px 20px; background-color: #333; color: white; text-decoration: none; border-radius: 5px; margin-bottom: 20px; font-weight: bold;}
-        a.button:hover { background-color: #444; }
     </style>
 </head>
 <body>
     
-    <a href="javascript:history.back()" class="button">← Go Back</a>
+    <div class="header-container">
+        <div>
+            <div class="title-wrapper">
+                <a href="https://github.com/alfwro13/Stock_Analysis_Project" target="_blank" class="logo-link">
+                    <img src="/assets/logo_small.png" alt="Quantamental Logo" class="logo-img">
+                </a>
+                <h1>Quantamental System Glossary</h1>
+            </div>
+            <div class="nav-links" style="margin-top: 15px;">
+                <a href="/portfolio">💼 Portfolio</a>
+                <a href="/watchlist">👀 Watchlist</a>
+                <a href="/market-sentiment">🧠 Market Sentiment</a>
+                <a href="/settings">⚙️ Settings</a>
+                <a href="/glossary" class="active">📚 Glossary</a>
+                <a href="/notifications">🔔 Notifications {% if unread_count > 0 %}<span class="badge" id="nav-badge">{{ unread_count }}</span>{% endif %}</a>
+            </div>
+        </div>
+    </div>
     
-    <h1>Quantamental System Glossary</h1>
-    <p>This page explains the mathematical and fundamental logic used to score and evaluate your portfolio.</p>
+    <div class="glossary-content">
+        <p style="font-size: 16px; margin-bottom: 30px;">This page explains the mathematical and fundamental logic used to score and evaluate your portfolio.</p>
 
-    <h2>1. Technical Analysis (Chart Momentum)</h2>
+        <h2>1. Technical Analysis (Chart Momentum)</h2>
 
-    <div class="term-box">
-        <span class="term-title">Moving Averages (5D, 10D, 21D, 50D, 200D)</span>
-        <p>A moving average smooths out daily price fluctuations to reveal the underlying trend. Shorter averages react quickly to recent price changes, while longer averages represent heavy institutional sentiment.</p>
-        <ul style="color: #aaa; font-size: 15px; line-height: 1.6;">
-            <li><strong>5D & 10D (The Momentum Lines):</strong> Hyper-short-term momentum. Used primarily by aggressive day traders. If the price is above these, the stock is running hot.</li>
-            <li><strong>21D (The Swing Line):</strong> The primary short-term trend line. Swing traders often exit their positions if the price drops below this line.</li>
-            <li><strong>50D (The Health Line):</strong> The medium-term health line. A stock is generally considered "healthy" as long as it stays above its 50D MA.</li>
-            <li><strong>200D (The Institutional Line):</strong> The ultimate dividing line. Large institutional mutual funds and pensions rarely buy stocks below this line. It separates bull markets from bear markets.</li>
-        </ul>
-        <div class="rule">IF Price > 200D MA THEN: The stock is in a long-term bull market.</div>
-        <div class="rule">IF 5D > 10D > 21D THEN: Short-term trends are perfectly aligned (Bullish).</div>
-    </div>
+        <div class="term-box">
+            <span class="term-title">Moving Averages (5D, 10D, 21D, 50D, 200D)</span>
+            <p>A moving average smooths out daily price fluctuations to reveal the underlying trend. Shorter averages react quickly to recent price changes, while longer averages represent heavy institutional sentiment.</p>
+            <ul style="color: #aaa; font-size: 15px; line-height: 1.6;">
+                <li><strong>5D & 10D (The Momentum Lines):</strong> Hyper-short-term momentum. Used primarily by aggressive day traders. If the price is above these, the stock is running hot.</li>
+                <li><strong>21D (The Swing Line):</strong> The primary short-term trend line. Swing traders often exit their positions if the price drops below this line.</li>
+                <li><strong>50D (The Health Line):</strong> The medium-term health line. A stock is generally considered "healthy" as long as it stays above its 50D MA.</li>
+                <li><strong>200D (The Institutional Line):</strong> The ultimate dividing line. Large institutional mutual funds and pensions rarely buy stocks below this line. It separates bull markets from bear markets.</li>
+            </ul>
+            <div class="rule">IF Price > 200D MA THEN: The stock is in a long-term bull market.</div>
+            <div class="rule">IF 5D > 10D > 21D THEN: Short-term trends are perfectly aligned (Bullish).</div>
+        </div>
 
-    <div class="term-box">
-        <span class="term-title">Relative Strength (RS) vs S&P 500</span>
-        <p>Not to be confused with RSI. The RS Line is plotted on your main chart (the Cyan line). It mathematically divides the stock's price by the S&P 500 index. It visually shows if your stock is beating the broader market or dragging it down.</p>
-        <div class="rule">IF RS Line is rising THEN: The stock is outperforming the S&P 500. Market leaders live here.</div>
-        <div class="rule" style="border-left-color: #ff4d4d;">IF RS Line is falling THEN: The stock is underperforming the market. It is dead money compared to simply holding an index fund.</div>
-    </div>
+        <div class="term-box">
+            <span class="term-title">Relative Strength (RS) vs S&P 500</span>
+            <p>Not to be confused with RSI. The RS Line is plotted on your main chart (the Cyan line). It mathematically divides the stock's price by the S&P 500 index. It visually shows if your stock is beating the broader market or dragging it down.</p>
+            <div class="rule">IF RS Line is rising THEN: The stock is outperforming the S&P 500. Market leaders live here.</div>
+            <div class="rule" style="border-left-color: #ff4d4d;">IF RS Line is falling THEN: The stock is underperforming the market. It is dead money compared to simply holding an index fund.</div>
+        </div>
 
-    <div class="term-box">
-        <span class="term-title">RSI (Relative Strength Index)</span>
-        <p>A momentum oscillator that measures the speed and magnitude of recent price changes. It evaluates overvalued or undervalued conditions.</p>
-        <div class="rule">IF RSI > 70 THEN: The stock is Overbought. It has risen too fast and is highly likely to pull back.</div>
-        <div class="rule" style="border-left-color: #ff4d4d;">IF RSI < 30 THEN: The stock is Oversold. It has dropped too fast and may be forming a floor/bounce.</div>
-    </div>
+        <div class="term-box">
+            <span class="term-title">RSI (Relative Strength Index)</span>
+            <p>A momentum oscillator that measures the speed and magnitude of recent price changes. It evaluates overvalued or undervalued conditions.</p>
+            <div class="rule">IF RSI > 70 THEN: The stock is Overbought. It has risen too fast and is highly likely to pull back.</div>
+            <div class="rule" style="border-left-color: #ff4d4d;">IF RSI < 30 THEN: The stock is Oversold. It has dropped too fast and may be forming a floor/bounce.</div>
+        </div>
 
-    <div class="term-box">
-        <span class="term-title">MACD & The Signal Line (Orange)</span>
-        <p>MACD compares two moving averages to spot momentum changes. The blue line is the fast MACD line. <strong>The Orange Signal Line is a smoothed 9-day average of the MACD itself.</strong> It acts as a trigger line. When the fast line crosses the slow orange line, a trend reversal is confirmed.</p>
-        <div class="rule">IF Blue MACD crosses ABOVE Orange Signal THEN: Bullish Reversal (Buy Signal). Down-trend is over.</div>
-        <div class="rule" style="border-left-color: #ff4d4d;">IF Blue MACD crosses BELOW Orange Signal THEN: Bearish Reversal (Sell Signal). Up-trend is over.</div>
-    </div>
+        <div class="term-box">
+            <span class="term-title">MACD & The Signal Line (Orange)</span>
+            <p>MACD compares two moving averages to spot momentum changes. The blue line is the fast MACD line. <strong>The Orange Signal Line is a smoothed 9-day average of the MACD itself.</strong> It acts as a trigger line. When the fast line crosses the slow orange line, a trend reversal is confirmed.</p>
+            <div class="rule">IF Blue MACD crosses ABOVE Orange Signal THEN: Bullish Reversal (Buy Signal). Down-trend is over.</div>
+            <div class="rule" style="border-left-color: #ff4d4d;">IF Blue MACD crosses BELOW Orange Signal THEN: Bearish Reversal (Sell Signal). Up-trend is over.</div>
+        </div>
 
-    <div class="term-box">
-        <span class="term-title">Bollinger Bands & 3-Weeks-Tight</span>
-        <p>Bollinger Bands draw a mathematical "ceiling" and "floor" around the price. The 3-Weeks-Tight is a pattern where the stock closes nearly unchanged for 3 consecutive weeks.</p>
-        <div class="rule">IF Price hits Bollinger Lower Band THEN: It has hit a statistical support floor.</div>
-        <div class="rule">IF 3-Weeks-Tight is True THEN: Institutional investors are quietly accumulating the stock without causing price spikes. Highly Bullish.</div>
-    </div>
+        <div class="term-box">
+            <span class="term-title">Bollinger Bands & 3-Weeks-Tight</span>
+            <p>Bollinger Bands draw a mathematical "ceiling" and "floor" around the price. The 3-Weeks-Tight is a pattern where the stock closes nearly unchanged for 3 consecutive weeks.</p>
+            <div class="rule">IF Price hits Bollinger Lower Band THEN: It has hit a statistical support floor.</div>
+            <div class="rule">IF 3-Weeks-Tight is True THEN: Institutional investors are quietly accumulating the stock without causing price spikes. Highly Bullish.</div>
+        </div>
 
-    <div class="term-box">
-        <span class="term-title">ATR Stop-Loss (Average True Range)</span>
-        <p>Instead of guessing where to put your Stop-Loss, the system calculates the average daily price swing (ATR). The Stop Loss is set 2x ATRs below the current price.</p>
-        <div class="rule">IF Price drops below ATR Stop-Loss THEN: The stock has broken normal volatility patterns and the trend is broken. Sell the asset to manage risk.</div>
-    </div>
+        <div class="term-box">
+            <span class="term-title">ATR Stop-Loss (Average True Range)</span>
+            <p>Instead of guessing where to put your Stop-Loss, the system calculates the average daily price swing (ATR). The Stop Loss is set 2x ATRs below the current price.</p>
+            <div class="rule">IF Price drops below ATR Stop-Loss THEN: The stock has broken normal volatility patterns and the trend is broken. Sell the asset to manage risk.</div>
+        </div>
 
-    <h2>2. Volume Profiling</h2>
+        <h2>2. Volume Profiling</h2>
 
-    <div class="term-box">
-        <span class="term-title">OBV (On-Balance Volume)</span>
-        <p>Price moves are easily manipulated; volume is not. OBV adds volume on up-days and subtracts it on down-days to measure true buying/selling pressure.</p>
-        <div class="rule">IF Price is rising BUT OBV is falling THEN: The rally is fake (low institutional participation). Bearish Divergence.</div>
-        <div class="rule">IF OBV > 21-Day OBV Moving Average THEN: Institutions are actively accumulating. Bullish.</div>
-    </div>
+        <div class="term-box">
+            <span class="term-title">OBV (On-Balance Volume)</span>
+            <p>Price moves are easily manipulated; volume is not. OBV adds volume on up-days and subtracts it on down-days to measure true buying/selling pressure.</p>
+            <div class="rule">IF Price is rising BUT OBV is falling THEN: The rally is fake (low institutional participation). Bearish Divergence.</div>
+            <div class="rule">IF OBV > 21-Day OBV Moving Average THEN: Institutions are actively accumulating. Bullish.</div>
+        </div>
 
-    <h2>3. Fundamental Valuation (Company Health)</h2>
+        <h2>3. Fundamental Valuation (Company Health)</h2>
 
-    <div class="term-box">
-        <span class="term-title">Peter Lynch Fair Value PEG</span>
-        <p>Invented by legendary fund manager Peter Lynch. It compares the P/E ratio to the company's actual earnings growth rate.</p>
-        <div class="rule">IF Peter Lynch PEG < 1.0 THEN: The stock is severely undervalued relative to its growth.</div>
-        <div class="rule" style="border-left-color: #ff4d4d;">IF Peter Lynch PEG > 2.0 THEN: The stock is highly overvalued and growth does not justify the price.</div>
-    </div>
+        <div class="term-box">
+            <span class="term-title">Peter Lynch Fair Value PEG</span>
+            <p>Invented by legendary fund manager Peter Lynch. It compares the P/E ratio to the company's actual earnings growth rate.</p>
+            <div class="rule">IF Peter Lynch PEG < 1.0 THEN: The stock is severely undervalued relative to its growth.</div>
+            <div class="rule" style="border-left-color: #ff4d4d;">IF Peter Lynch PEG > 2.0 THEN: The stock is highly overvalued and growth does not justify the price.</div>
+        </div>
 
-    <div class="term-box">
-        <span class="term-title">Beta (Systematic Risk)</span>
-        <p>A measure of a stock's volatility in relation to the overall market (S&P 500).</p>
-        <div class="rule">IF Beta = 1.0 THEN: The stock moves exactly with the market.</div>
-        <div class="rule" style="border-left-color: #ff4d4d;">IF Beta > 1.2 THEN: The stock is highly volatile compared to the market (High Risk / Tech Stocks).</div>
-        <div class="rule">IF Beta < 0.8 THEN: The stock is safer and less volatile than the market (Low Risk / Utilities).</div>
-    </div>
+        <div class="term-box">
+            <span class="term-title">Beta (Systematic Risk)</span>
+            <p>A measure of a stock's volatility in relation to the overall market (S&P 500).</p>
+            <div class="rule">IF Beta = 1.0 THEN: The stock moves exactly with the market.</div>
+            <div class="rule" style="border-left-color: #ff4d4d;">IF Beta > 1.2 THEN: The stock is highly volatile compared to the market (High Risk / Tech Stocks).</div>
+            <div class="rule">IF Beta < 0.8 THEN: The stock is safer and less volatile than the market (Low Risk / Utilities).</div>
+        </div>
 
-    <h2>4. Portfolio Mathematics & Grading</h2>
+        <h2>4. Portfolio Mathematics & Grading</h2>
 
-    <div class="term-box">
-        <span class="term-title">Unrealized P&L (Profit and Loss)</span>
-        <p>This is often called your <strong>"paper profit"</strong> or "paper loss." It is the exact amount of money you <em>would</em> make or lose if you clicked "Sell" on your brokerage account right at this moment. It is called "unrealized" because you haven't actually sold the stock yet, meaning the cash isn't locked into your bank account. It fluctuates every second the market is open.</p>
-        <div class="rule">IF Unrealized P&L is Positive (Green) THEN: Your current stock value is higher than what you paid for it.</div>
-        <div class="rule" style="border-left-color: #ff4d4d;">IF Unrealized P&L is Negative (Red) THEN: Your current stock value is lower than what you paid for it.</div>
-    </div>
+        <div class="term-box">
+            <span class="term-title">Unrealized P&L (Profit and Loss)</span>
+            <p>This is often called your <strong>"paper profit"</strong> or "paper loss." It is the exact amount of money you <em>would</em> make or lose if you clicked "Sell" on your brokerage account right at this moment. It is called "unrealized" because you haven't actually sold the stock yet, meaning the cash isn't locked into your bank account. It fluctuates every second the market is open.</p>
+            <div class="rule">IF Unrealized P&L is Positive (Green) THEN: Your current stock value is higher than what you paid for it.</div>
+            <div class="rule" style="border-left-color: #ff4d4d;">IF Unrealized P&L is Negative (Red) THEN: Your current stock value is lower than what you paid for it.</div>
+        </div>
 
-    <div class="term-box">
-        <span class="term-title">System Composite Score (0 - 100)</span>
-        <p>A proprietary system rating that combines technical trends, volume pressure, and volatility contraction into a single grade to tell you if the stock is mathematically safe to buy.</p>
-        <div class="rule">IF Score is 80 to 100 THEN: STRONG BUY. All momentum and trend indicators are perfectly aligned. High probability setup.</div>
-        <div class="rule">IF Score is 60 to 79 THEN: BULLISH / HOLD. The stock is generally healthy, but might be missing one or two key elements (like strong volume).</div>
-        <div class="rule" style="border-left-color: #ffaa00;">IF Score is 40 to 59 THEN: NEUTRAL. The stock is likely chopping sideways. There is no clear trend to trade.</div>
-        <div class="rule" style="border-left-color: #ff4d4d;">IF Score is 0 to 39 THEN: BEARISH / CAUTION. The stock is breaking down technically. High risk of losing money if bought here.</div>
+        <div class="term-box">
+            <span class="term-title">System Composite Score (0 - 100)</span>
+            <p>A proprietary system rating that combines technical trends, volume pressure, and volatility contraction into a single grade to tell you if the stock is mathematically safe to buy.</p>
+            <div class="rule">IF Score is 80 to 100 THEN: STRONG BUY. All momentum and trend indicators are perfectly aligned. High probability setup.</div>
+            <div class="rule">IF Score is 60 to 79 THEN: BULLISH / HOLD. The stock is generally healthy, but might be missing one or two key elements (like strong volume).</div>
+            <div class="rule" style="border-left-color: #ffaa00;">IF Score is 40 to 59 THEN: NEUTRAL. The stock is likely chopping sideways. There is no clear trend to trade.</div>
+            <div class="rule" style="border-left-color: #ff4d4d;">IF Score is 0 to 39 THEN: BEARISH / CAUTION. The stock is breaking down technically. High risk of losing money if bought here.</div>
+        </div>
     </div>
 
 </body>

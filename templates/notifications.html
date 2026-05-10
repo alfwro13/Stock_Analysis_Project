@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Quantamental - Notifications</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #121212; color: #e0e0e0; padding: 20px; max-width: 1400px; margin: auto; }
+        h1, h2, h3 { color: #ffffff; margin: 0; }
+        
+        .header-container { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; padding-bottom: 20px; margin-bottom: 30px;}
+        .title-wrapper { display: flex; align-items: center; }
+        .logo-link { display: inline-block; margin-right: 15px; }
+        .logo-img { height: 45px; vertical-align: middle; transition: transform 0.2s; }
+        .logo-img:hover { transform: scale(1.05); }
+
+        .nav-links a { margin-right: 20px; font-size: 16px; color: #4da6ff; text-decoration: none; font-weight: bold; }
+        .nav-links a.active { color: #00ffcc; text-decoration: underline; }
+        .nav-links a:hover { text-decoration: underline; }
+        
+        .notification-list { display: flex; flex-direction: column; gap: 15px; }
+        .notification-card { background-color: #1e1e1e; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); border-left: 4px solid #555; position: relative;}
+        .notification-card.unread { border-left-color: #ffaa00; background-color: #262626; }
+        
+        .notification-header { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 14px; color: #aaa; border-bottom: 1px solid #333; padding-bottom: 5px;}
+        .notification-type { font-weight: bold; color: #4da6ff; text-transform: uppercase; }
+        .notification-body { font-size: 15px; line-height: 1.5; white-space: pre-wrap; color: #ccc;}
+        
+        .btn-read { background-color: #00ffcc; color: #121212; font-weight: bold; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; transition: background-color 0.3s; }
+        .btn-read:hover { background-color: #00ccaa; }
+        
+        .badge { background-color: #ff4d4d; color: white; padding: 2px 6px; border-radius: 10px; font-size: 12px; vertical-align: super; font-weight: bold;}
+    </style>
+</head>
+<body>
+
+    <div class="header-container">
+        <div>
+            <div class="title-wrapper">
+                <a href="https://github.com/alfwro13/Stock_Analysis_Project" target="_blank" class="logo-link">
+                    <img src="/assets/logo_small.png" alt="Quantamental Logo" class="logo-img">
+                </a>
+                <h1>System Notifications</h1>
+            </div>
+            <div class="nav-links" style="margin-top: 15px;">
+                <a href="/portfolio">💼 Portfolio</a>
+                <a href="/watchlist">👀 Watchlist</a>
+                <a href="/market-sentiment">🧠 Market Sentiment</a>
+                <a href="/settings">⚙️ Settings</a>
+                <a href="/glossary">📚 Glossary</a>
+                <a href="/notifications" class="active">
+                    🔔 Notifications 
+                    {% if unread_count > 0 %}<span class="badge" id="nav-badge">{{ unread_count }}</span>{% endif %}
+                </a>
+            </div>
+        </div>
+        <div>
+            <button class="btn-read" onclick="markAllAsRead()">✓ Mark All as Read</button>
+        </div>
+    </div>
+
+    <div class="notification-list">
+        {% if notifications %}
+            {% for note in notifications %}
+            <div class="notification-card {% if not note.is_read %}unread{% endif %}">
+                <div class="notification-header">
+                    <span class="notification-type">{{ note.message_type }} Alert</span>
+                    <span>{{ note.timestamp }}</span>
+                </div>
+                <div class="notification-body">{{ note.message_text }}</div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="notification-card">
+                <div class="notification-body" style="text-align: center; color: #888;">
+                    No notifications generated yet.
+                </div>
+            </div>
+        {% endif %}
+    </div>
+
+    <script>
+        async function markAllAsRead() {
+            const btn = document.querySelector('.btn-read');
+            btn.disabled = true;
+            btn.innerText = "Processing...";
+
+            try {
+                const response = await fetch('/api/notifications/mark-read', { method: 'POST' });
+                
+                if (response.ok) {
+                    // Update the UI dynamically to remove unread styling
+                    const unreadCards = document.querySelectorAll('.notification-card.unread');
+                    unreadCards.forEach(card => card.classList.remove('unread'));
+                    
+                    // Remove the badge
+                    const badge = document.getElementById('nav-badge');
+                    if (badge) badge.style.display = 'none';
+                    
+                    btn.innerText = "✓ All Caught Up";
+                } else {
+                    alert("Failed to mark notifications as read.");
+                    btn.innerText = "✓ Mark All as Read";
+                    btn.disabled = false;
+                }
+            } catch (error) {
+                alert("Network error occurred.");
+                btn.innerText = "✓ Mark All as Read";
+                btn.disabled = false;
+            }
+        }
+    </script>
+</body>
+</html>

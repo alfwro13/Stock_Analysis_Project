@@ -214,12 +214,21 @@ def run_insider_alert():
                         f"{alignment_banner}"
                     )
                     
+                    # Save to Local Notification Center Database
+                    cursor.execute(
+                        "INSERT INTO system_notifications (message_type, message_text) VALUES (?, ?)",
+                        ("Insider", msg)
+                    )
+                    conn.commit()
+                    
+                    # Send to Nextcloud
                     if send_nextcloud_message(msg, config):
                         alerts_sent += 1
                         
             except Exception as e:
                 print(f"[ERROR] Evaluating Insider trades for {ticker}: {e}")
                 
+        conn.close()
         return True, f"Insider check complete. Triggered {alerts_sent} alerts based on ${min_value:,.0f} limit."
 
     except Exception as e:

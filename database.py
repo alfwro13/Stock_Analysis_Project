@@ -18,7 +18,7 @@ def init_db():
     conn = get_connection()
     cursor = conn.cursor()
     
-    # Base table creation
+    # Base table creation for quantitative analysis data
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS stock_signals (
             ticker TEXT PRIMARY KEY,
@@ -81,6 +81,18 @@ def init_db():
             educational_notes TEXT
         )
     ''')
+    
+    # New table for the Notification Center
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS system_notifications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            message_type TEXT,
+            message_text TEXT,
+            is_read BOOLEAN DEFAULT 0
+        )
+    ''')
+    
     conn.commit()
     
     # Run the dynamic migration script to inject any missing columns safely

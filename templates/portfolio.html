@@ -9,10 +9,20 @@
         
         /* Embed logic: If embed is true, this entire block is hidden */
         .header-container { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid #333; padding-bottom: 20px; }
+        
+        /* New Logo and Header Layout CSS */
+        .title-wrapper { display: flex; align-items: center; }
+        .logo-link { display: inline-block; margin-right: 15px; }
+        .logo-img { height: 45px; vertical-align: middle; transition: transform 0.2s; }
+        .logo-img:hover { transform: scale(1.05); }
+
         .action-buttons { display: flex; gap: 15px; }
         .nav-links a { margin-right: 20px; font-size: 16px; color: #4da6ff; text-decoration: none; font-weight: bold; }
         .nav-links a.active { color: #00ffcc; text-decoration: underline; }
         .nav-links a:hover { text-decoration: underline; }
+        
+        /* Unread Notifications Badge */
+        .badge { background-color: #ff4d4d; color: white; padding: 2px 6px; border-radius: 10px; font-size: 12px; vertical-align: super; font-weight: bold;}
         
         /* Search & Filter UI */
         .controls-container { display: flex; gap: 15px; margin-bottom: 15px; }
@@ -49,7 +59,12 @@
     {% if not embed %}
     <div class="header-container">
         <div>
-            <h1><abbr title="A modern institutional strategy that combines Quantitative analysis with Fundamental analysis.">Quantamental</abbr> Dashboard</h1>
+            <div class="title-wrapper">
+                <a href="https://github.com/alfwro13/Stock_Analysis_Project" target="_blank" class="logo-link">
+                    <img src="/assets/logo_small.png" alt="Quantamental Logo" class="logo-img">
+                </a>
+                <h1><abbr title="A modern institutional strategy that combines Quantitative analysis with Fundamental analysis.">Quantamental</abbr> Dashboard</h1>
+            </div>
             <p style="color: #aaaaaa; margin-top: 5px; font-size: 14px;">Data Last Updated: <strong>{{ global_updated }}</strong></p>
             <div class="nav-links" style="margin-top: 15px;">
                 <a href="/portfolio" class="active">💼 Portfolio</a>
@@ -57,6 +72,7 @@
                 <a href="/market-sentiment">🧠 Market Sentiment</a>
                 <a href="/settings">⚙️ Settings</a>
                 <a href="/glossary">📚 Glossary</a>
+                <a href="/notifications">🔔 Notifications {% if unread_count > 0 %}<span class="badge" id="nav-badge">{{ unread_count }}</span>{% endif %}</a>
             </div>
         </div>
         <div class="action-buttons">

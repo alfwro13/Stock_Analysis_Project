@@ -7,18 +7,19 @@ import os
 import signal
 import time
 import subprocess
-from earnings_engine import run_earnings_alert
-from insider_engine import run_insider_alert
 from datetime import datetime, timedelta
 from fastapi import FastAPI, Request, BackgroundTasks
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 from contextlib import asynccontextmanager
 
 from sentiment_engine import get_sentiment_html, run_nextcloud_alert
-from earnings_engine import run_earnings_alert # NEW IMPORT
+from earnings_engine import run_earnings_alert
+from insider_engine import run_insider_alert
 
 from config import (
     PORTFOLIO_PATH, WATCHLIST_PATH, HISTORICAL_DIR, INTRADAY_DIR, 
@@ -43,6 +44,7 @@ def reload_scheduler():
     
     config = load_config()
     notifications = config.get("NOTIFICATIONS", {})
+    scheduling = config.get("SCHEDULING", {})
     
     # 1. Market Sentiment Job
     sentiment_cfg = notifications.get("MARKET_SENTIMENT", {})
@@ -91,6 +93,47 @@ def reload_scheduler():
         except Exception as e:
             print(f"[ERROR] Failed to schedule Insider Alerts: {e}")
 
+    # 4. Core System Schedulers (Ghostfolio & Quant Analysis)
+    ghost_cfg = scheduling.get("GHOSTFOLIO_SYNC", {})
+    if ghost_cfg.get("ENABLED"):
+        interval = int(ghost_cfg.get("INTERVAL_HOURS", 0))
+        freq = ghost_cfg.get("FREQUENCY", "mon-fri")
+        if interval > 0:
+            scheduler.add_job(run_ghostfolio_sync, IntervalTrigger(hours=interval), id='ghostfolio_sync_job')
+            print(f"[SCHEDULER] Ghostfolio Sync scheduled every {interval} hours.")
+        else:
+            time_str = ghost_cfg.get("TIME", "06:00")
+            try:
+                hour, minute = map(int, time_str.split(':'))
+                scheduler.add_job(
+                    run_ghostfolio_sync, 
+                    CronTrigger(day_of_week=freq, hour=hour, minute=minute), 
+                    id='ghostfolio_sync_job'
+                )
+                print(f"[SCHEDULER] Ghostfolio Sync scheduled for {freq} at {time_str}")
+            except Exception as e:
+                print(f"[ERROR] Failed to schedule Ghostfolio Sync: {e}")
+
+    quant_cfg = scheduling.get("QUANT_ANALYSIS", {})
+    if quant_cfg.get("ENABLED"):
+        interval = int(quant_cfg.get("INTERVAL_HOURS", 0))
+        freq = quant_cfg.get("FREQUENCY", "mon-fri")
+        if interval > 0:
+            scheduler.add_job(run_update_pipeline, IntervalTrigger(hours=interval), id='quant_analysis_job')
+            print(f"[SCHEDULER] Quant Analysis scheduled every {interval} hours.")
+        else:
+            time_str = quant_cfg.get("TIME", "18:00")
+            try:
+                hour, minute = map(int, time_str.split(':'))
+                scheduler.add_job(
+                    run_update_pipeline, 
+                    CronTrigger(day_of_week=freq, hour=hour, minute=minute), 
+                    id='quant_analysis_job'
+                )
+                print(f"[SCHEDULER] Quant Analysis scheduled for {freq} at {time_str}")
+            except Exception as e:
+                print(f"[ERROR] Failed to schedule Quant Analysis: {e}")
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
@@ -100,6 +143,10 @@ async def lifespan(app: FastAPI):
     scheduler.shutdown()
 
 app = FastAPI(title="Quantamental Dashboard", lifespan=lifespan)
+
+# Mount the assets directory to serve the logos statically
+app.mount("/assets", StaticFiles(directory="assets"), name="assets")
+
 templates = Jinja2Templates(directory="templates")
 
 def get_json_data(filepath):
@@ -109,6 +156,18 @@ def get_json_data(filepath):
             return json.load(f)
     except Exception:
         return {}
+
+def get_unread_count():
+    """Helper function to fetch the unread notifications count for the navigation bar."""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) as cnt FROM system_notifications WHERE is_read = 0")
+        count = cursor.fetchone()['cnt']
+        conn.close()
+        return count
+    except Exception:
+        return 0
 
 def run_update_pipeline():
     print("\n--- BACKGROUND UPDATE INITIATED ---")
@@ -134,17 +193,19 @@ async def trigger_ghostfolio_sync(background_tasks: BackgroundTasks):
 async def settings_page(request: Request):
     """Renders the global settings GUI."""
     config_data = load_config()
+    unread_count = get_unread_count()
     return templates.TemplateResponse(
         request=request, name="settings.html", 
-        context={"config": config_data}
+        context={"config": config_data, "unread_count": unread_count}
     )
 
 @app.get("/market-sentiment", response_class=HTMLResponse)
 async def market_sentiment_page(request: Request):
     sentiment_html = get_sentiment_html()
+    unread_count = get_unread_count()
     return templates.TemplateResponse(
         request=request, name="market_sentiment.html", 
-        context={"sentiment_html": sentiment_html}
+        context={"sentiment_html": sentiment_html, "unread_count": unread_count}
     )
 
 @app.post("/api/test-sentiment-alert")
@@ -190,8 +251,6 @@ def execute_restart():
 @app.post("/api/system/restart")
 async def restart_system(background_tasks: BackgroundTasks):
     """Tells the app to exit. Systemd will automatically restart it."""
-    # We use a background task so the server has time to send the "Success" HTTP response 
-    # to the browser BEFORE it actually kills the process.
     background_tasks.add_task(execute_restart)
     return JSONResponse(content={
         "status": "success", 
@@ -213,9 +272,39 @@ async def save_settings(request: Request):
     except Exception as e:
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
+@app.get("/notifications", response_class=HTMLResponse)
+async def notifications_page(request: Request):
+    """Renders the persistent notification center."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    # Fetch latest 100 notifications
+    cursor.execute("SELECT * FROM system_notifications ORDER BY timestamp DESC LIMIT 100")
+    notifications = cursor.fetchall()
+    unread_count = get_unread_count()
+    conn.close()
+    
+    return templates.TemplateResponse(
+        request=request, name="notifications.html", 
+        context={"notifications": notifications, "unread_count": unread_count}
+    )
+
+@app.post("/api/notifications/mark-read")
+async def mark_notifications_read():
+    """Marks all unread notifications as read."""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE system_notifications SET is_read = 1 WHERE is_read = 0")
+        conn.commit()
+        conn.close()
+        return JSONResponse(content={"status": "success", "message": "Notifications marked as read."})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
 @app.get("/glossary", response_class=HTMLResponse)
 async def glossary(request: Request):
-    return templates.TemplateResponse(request=request, name="glossary.html", context={})
+    unread_count = get_unread_count()
+    return templates.TemplateResponse(request=request, name="glossary.html", context={"unread_count": unread_count})
 
 @app.get("/", response_class=RedirectResponse)
 async def home():
@@ -236,9 +325,11 @@ async def portfolio_page(request: Request, embed: bool = False):
     portfolio_tickers = [data.get("ticker") for key, data in portfolio_json.items() if "ticker" in data]
     portfolio_data = [row for row in db_rows if row['ticker'] in portfolio_tickers]
     
+    unread_count = get_unread_count()
+    
     return templates.TemplateResponse(
         request=request, name="portfolio.html", 
-        context={"portfolio": portfolio_data, "global_updated": global_updated, "embed": embed}
+        context={"portfolio": portfolio_data, "global_updated": global_updated, "embed": embed, "unread_count": unread_count}
     )
 
 @app.get("/watchlist", response_class=HTMLResponse)
@@ -256,9 +347,11 @@ async def watchlist_page(request: Request, embed: bool = False):
     watchlist_tickers = watchlist_json.get("watchlist", [])
     watchlist_data = [row for row in db_rows if row['ticker'] in watchlist_tickers]
     
+    unread_count = get_unread_count()
+    
     return templates.TemplateResponse(
         request=request, name="watchlist.html", 
-        context={"watchlist": watchlist_data, "global_updated": global_updated, "embed": embed}
+        context={"watchlist": watchlist_data, "global_updated": global_updated, "embed": embed, "unread_count": unread_count}
     )
 
 @app.get("/stock/{ticker}", response_class=HTMLResponse)
@@ -364,6 +457,8 @@ async def stock_detail(request: Request, ticker: str):
     except Exception:
         intraday_html = "<p>Intraday data unavailable.</p>"
         
+    unread_count = get_unread_count()
+        
     return templates.TemplateResponse(
         request=request, name="stock_detail.html", 
         context={
@@ -375,7 +470,8 @@ async def stock_detail(request: Request, ticker: str):
             "portfolio_math": portfolio_math,
             "days_to_earnings": days_to_earnings,   
             "volatility_date": volatility_date,
-            "price_action": price_action     
+            "price_action": price_action,
+            "unread_count": unread_count
         }
     )
 

@@ -106,12 +106,22 @@ def run_earnings_alert():
                         time_str = f"in {days_to_earnings} days"
                         
                     msg = f"📅 *Upcoming Earnings Report*\n\nStock: {name} ({ticker})\nDate: {earnings_date_str} ({time_str})"
+                    
+                    # Log the alert to the local SQLite Notification Center
+                    cursor.execute(
+                        "INSERT INTO system_notifications (message_type, message_text) VALUES (?, ?)",
+                        ("Earnings", msg)
+                    )
+                    conn.commit()
+                    
+                    # Dispatch to Nextcloud
                     if send_nextcloud_message(msg, config):
                         alerts_sent += 1
                         
             except Exception as e:
                 print(f"[ERROR] Evaluating earnings date for {ticker}: {e}")
                 
+        conn.close()
         return True, f"Earnings check complete. Triggered {alerts_sent} alerts based on current settings."
     
     except Exception as e:
