@@ -1,6 +1,6 @@
 # 📈 Quantamental Portfolio Dashboard
 
-An institutional-grade, self-hosted web application that merges **Quantitative Analysis** (algorithmic momentum and trend-following) with **Fundamental Analysis** (valuation, balance sheet health, and market sentiment). 
+Self-hosted web application that merges **Quantitative Analysis** (algorithmic momentum and trend-following) with **Fundamental Analysis** (valuation, balance sheet health, and market sentiment). 
 
 Designed for Linux environments, this system pulls live holdings from your [Ghostfolio](https://ghostfol.io/) instance, scrapes multi-dimensional market data via Yahoo Finance, and generates an interactive, Bloomberg-style dashboard using FastAPI and Plotly.
 
