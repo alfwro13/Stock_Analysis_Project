@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from database import get_connection
 from config import PORTFOLIO_PATH, WATCHLIST_PATH, load_config
 
-def send_nextcloud_message(message_text, config_data):
+def send_nextcloud_message(message_text: str, config_data: dict) -> bool:
     """Sends a direct text payload to Nextcloud Talk using dynamic configurations."""
     url = config_data.get("NEXTCLOUD_URL", "")
     token = config_data.get("CONVERSATION_TOKEN", "")
@@ -36,7 +36,7 @@ def send_nextcloud_message(message_text, config_data):
         print(f"[ERROR] Failed to send Nextcloud insider message: {e}")
         return False
 
-def get_tickers_from_json(filepath, is_watchlist=False):
+def get_tickers_from_json(filepath: str, is_watchlist: bool = False) -> list:
     """Safely extracts tickers from either portfolio.json or watchlist.json."""
     if not os.path.exists(filepath):
         return []
@@ -92,45 +92,73 @@ def run_insider_alert():
         for ticker in target_tickers:
             try:
                 stock = yf.Ticker(ticker)
-                insider_df = stock.insider_transactions
                 
-                if insider_df is None or insider_df.empty:
+                # Robust extraction logic bypassing yfinance property/method changes
+                insider_df = stock.insider_transactions
+                if callable(insider_df):
+                    insider_df = insider_df()
+                elif insider_df is None or (isinstance(insider_df, pd.DataFrame) and insider_df.empty):
+                    try:
+                        insider_df = stock.get_insider_transactions()
+                    except Exception:
+                        pass
+                
+                if insider_df is None or not isinstance(insider_df, pd.DataFrame) or insider_df.empty:
                     continue
-                    
-                # Enhanced Fallback: Standardize Yahoo's Dataframe Date Column
+                
+                # Standardize index - Dates are often stuck in the index in newer yfinance builds
+                insider_df = insider_df.reset_index()
+
+                # Heuristic 1: Find the Date
                 date_col = next((col for col in ['Start Date', 'Date', 'Transaction Date'] if col in insider_df.columns), None)
+                if not date_col:
+                    date_col = next((c for c in insider_df.columns if 'date' in c.lower()), None)
+                    
                 if date_col:
                     insider_df['Parsed_Date'] = pd.to_datetime(insider_df[date_col], utc=True, errors='coerce')
                 else:
-                    continue # Cannot evaluate without a date
+                    continue 
                     
-                # Enhanced Fallback: Check for Transaction Type
-                col_action = next((col for col in ['Transaction', 'Text', 'Action'] if col in insider_df.columns), None)
+                # Heuristic 2: Find the Action/Text 
+                # CRITICAL FIX: Prioritize 'Text' over 'Transaction' to capture "Purchase at price..."
+                col_action = next((col for col in ['Text', 'Transaction', 'Action'] if col in insider_df.columns), None)
+                if not col_action:
+                    col_action = next((c for c in insider_df.columns if 'text' in c.lower() or 'trans' in c.lower() or 'action' in c.lower()), None)
+                
                 if not col_action:
                     continue
                     
-                # Clean Value column (Remove $ and , to convert to float)
-                if 'Value' in insider_df.columns:
+                # Heuristic 3: Clean Value column
+                val_col = next((col for col in ['Value'] if col in insider_df.columns), None)
+                if not val_col:
+                    val_col = next((c for c in insider_df.columns if 'value' in c.lower()), None)
+
+                if val_col:
                     insider_df['Clean_Value'] = pd.to_numeric(
-                        insider_df['Value'].astype(str).replace(r'[\$,]', '', regex=True), errors='coerce'
+                        insider_df[val_col].astype(str).replace(r'[\$,]', '', regex=True), errors='coerce'
                     )
                 else:
                     continue
 
-                # Clean Shares column
-                if 'Shares' in insider_df.columns:
+                # Heuristic 4: Clean Shares column
+                shares_col = next((col for col in ['Shares'] if col in insider_df.columns), None)
+                if not shares_col:
+                    shares_col = next((c for c in insider_df.columns if 'share' in c.lower()), None)
+
+                if shares_col:
                     insider_df['Clean_Shares'] = pd.to_numeric(
-                        insider_df['Shares'].astype(str).replace(r'[,]', '', regex=True), errors='coerce'
+                        insider_df[shares_col].astype(str).replace(r'[,]', '', regex=True), errors='coerce'
                     )
                 else:
                     insider_df['Clean_Shares'] = 0
 
                 # 5. Apply Core Logic Filters
                 recent_buys = insider_df[insider_df['Parsed_Date'] >= cutoff_date].copy()
-                if recent_buys.empty: continue
+                if recent_buys.empty: 
+                    continue
                 
-                # Transaction is a Purchase
-                recent_buys = recent_buys[recent_buys[col_action].astype(str).str.contains('Buy|Purchase', case=False, na=False)]
+                # Transaction is a Purchase - using broader regex matching
+                recent_buys = recent_buys[recent_buys[col_action].astype(str).str.contains('Buy|Purchase|Acquisition|P -|P-', case=False, na=False)]
                 
                 # Value exceeds limit
                 major_buys = recent_buys[recent_buys['Clean_Value'] >= min_value]
@@ -159,7 +187,7 @@ def run_insider_alert():
             except Exception as e:
                 print(f"[ERROR] Evaluating Insider trades for {ticker}: {e}")
                 
-        return True, f"Insider check complete. Triggered {alerts_sent} alerts based on ${min_value:,} limit."
+        return True, f"Insider check complete. Triggered {alerts_sent} alerts based on ${min_value:,.0f} limit."
 
     except Exception as e:
         print(f"[ERROR] Fatal crash in run_insider_alert: {e}")
