@@ -51,6 +51,14 @@ DEFAULT_CONFIG = {
             "TIME": "08:00",
             "DAYS_AHEAD": 7,
             "ALERT_TYPE": "daily"
+        },
+        "INSIDER_TRADING": {
+            "ENABLED_PORTFOLIO": False,
+            "ENABLED_WATCHLIST": False,
+            "TIME": "18:00",
+            "FREQUENCY": "mon-fri",
+            "MIN_VALUE": 50000,
+            "DAYS_BACK": 7
         }
     }
 }

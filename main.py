@@ -7,6 +7,8 @@ import os
 import signal
 import time
 import subprocess
+from earnings_engine import run_earnings_alert
+from insider_engine import run_insider_alert
 from datetime import datetime, timedelta
 from fastapi import FastAPI, Request, BackgroundTasks
 from fastapi.templating import Jinja2Templates
@@ -58,7 +60,7 @@ def reload_scheduler():
         except Exception as e:
             print(f"[ERROR] Failed to schedule Market Sentiment: {e}")
 
-    # 2. Earnings Alerts Job (NEW)
+    # 2. Earnings Alerts Job
     earnings_cfg = notifications.get("EARNINGS_ALERTS", {})
     if earnings_cfg.get("ENABLED"):
         time_str = earnings_cfg.get("TIME", "08:00")
@@ -72,6 +74,22 @@ def reload_scheduler():
             print(f"[SCHEDULER] Earnings Alerts Job scheduled for mon-fri at {time_str}")
         except Exception as e:
             print(f"[ERROR] Failed to schedule Earnings Alerts: {e}")
+    
+    # 3. Insider Trading Alerts Job
+    insider_cfg = notifications.get("INSIDER_TRADING", {})
+    if insider_cfg.get("ENABLED_PORTFOLIO") or insider_cfg.get("ENABLED_WATCHLIST"):
+        time_str = insider_cfg.get("TIME", "18:00")
+        freq = insider_cfg.get("FREQUENCY", "mon-fri")
+        try:
+            hour, minute = map(int, time_str.split(':'))
+            scheduler.add_job(
+                run_insider_alert,
+                CronTrigger(day_of_week=freq, hour=hour, minute=minute),
+                id='insider_alert_job'
+            )
+            print(f"[SCHEDULER] Insider Trading Alert Job scheduled for {freq} at {time_str}")
+        except Exception as e:
+            print(f"[ERROR] Failed to schedule Insider Alerts: {e}")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -112,7 +130,6 @@ async def trigger_ghostfolio_sync(background_tasks: BackgroundTasks):
     background_tasks.add_task(run_ghostfolio_sync)
     return {"status": "success"}
 
-# --- NEW SETTINGS ROUTES ---
 @app.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request):
     """Renders the global settings GUI."""
@@ -140,6 +157,13 @@ def test_sentiment_alert():
 def test_earnings_alert():
     """Triggered by the GUI to manually test the Earnings Pipeline."""
     success, msg = run_earnings_alert()
+    if success: return JSONResponse(content={"status": "success", "message": msg})
+    else: return JSONResponse(status_code=500, content={"status": "error", "message": msg})
+
+@app.post("/api/test-insider-alert")
+def test_insider_alert():
+    """Triggered by the GUI to manually test the Insider Trading Pipeline."""
+    success, msg = run_insider_alert()
     if success: return JSONResponse(content={"status": "success", "message": msg})
     else: return JSONResponse(status_code=500, content={"status": "error", "message": msg})
 
