@@ -5,7 +5,8 @@ import pandas as pd
 from fastapi import FastAPI, Request, BackgroundTasks
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
-from config import PORTFOLIO_PATH, WATCHLIST_PATH, HISTORICAL_DIR, INTRADAY_DIR
+# Import PORT from config
+from config import PORTFOLIO_PATH, WATCHLIST_PATH, HISTORICAL_DIR, INTRADAY_DIR, PORT
 from database import get_connection, init_db
 from quant_signals import QuantEngine
 from data_engine import DataEngine
@@ -141,5 +142,6 @@ async def stock_detail(request: Request, ticker: str):
     )
 
 if __name__ == "__main__":
-    print("Starting Quantamental Web Server on Port 8090...")
-    uvicorn.run(app, host="0.0.0.0", port=8090)
+    # Now dynamically uses the port defined in config.py or config.json
+    print(f"Starting Quantamental Web Server on Port {PORT}...")
+    uvicorn.run(app, host="0.0.0.0", port=PORT)
