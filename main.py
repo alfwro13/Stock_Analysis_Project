@@ -10,14 +10,16 @@ from database import get_connection, init_db
 from quant_signals import QuantEngine
 from data_engine import DataEngine
 from visuals import create_macro_chart, create_intraday_chart
+from ghostfolio_sync import GhostfolioSyncEngine
 
 app = FastAPI(title="Quantamental Dashboard")
 templates = Jinja2Templates(directory="templates")
 
-# Run database setup on server boot (No more manual python database.py!)
+# Run database setup on server boot
 init_db()
 
 def get_json_data(filepath):
+    """Safely reads local JSON files."""
     try:
         with open(filepath, 'r') as f:
             return json.load(f)
@@ -25,23 +27,37 @@ def get_json_data(filepath):
         return {}
 
 def run_update_pipeline():
+    """Background worker for Yahoo Finance data fetching and math crunching."""
     print("\n--- BACKGROUND UPDATE INITIATED ---")
     DataEngine().update_all_data()
     QuantEngine().run_all()
     print("--- BACKGROUND UPDATE COMPLETE ---\n")
 
+def run_ghostfolio_sync():
+    """Background worker to download the latest assets from Ghostfolio."""
+    sync_engine = GhostfolioSyncEngine()
+    sync_engine.run_full_sync()
+
 @app.post("/api/update")
 async def trigger_update(background_tasks: BackgroundTasks):
+    """Triggers the heavy Yahoo Finance pipeline."""
     background_tasks.add_task(run_update_pipeline)
+    return {"status": "success"}
+
+@app.post("/api/sync-ghostfolio")
+async def trigger_ghostfolio_sync(background_tasks: BackgroundTasks):
+    """Triggers the Ghostfolio JSON overwrite."""
+    background_tasks.add_task(run_ghostfolio_sync)
     return {"status": "success"}
 
 @app.get("/glossary", response_class=HTMLResponse)
 async def glossary(request: Request):
-    """Dedicated educational page for all terminology used in the app."""
+    """Dedicated educational page."""
     return templates.TemplateResponse(request=request, name="glossary.html", context={})
 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
+    """Loads the main dashboard."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM stock_signals")
@@ -67,6 +83,7 @@ async def home(request: Request):
 
 @app.get("/stock/{ticker}", response_class=HTMLResponse)
 async def stock_detail(request: Request, ticker: str):
+    """Loads the Detailed Analysis View."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM stock_signals WHERE ticker = ?", (ticker,))
@@ -81,9 +98,7 @@ async def stock_detail(request: Request, ticker: str):
         buy_price = user_asset.get('buy_price', 0)
         shares = user_asset.get('shares', 0)
         
-        # --- NEW CURRENCY ALIGNMENT LOGIC ---
-        # Ghostfolio stores UK buys in GBP, but Yahoo uses GBp (Pence).
-        # If the JSON flag is true, convert the buy price to Pence to match Yahoo.
+        # Ghostfolio currency conversion logic
         if user_asset.get('price_in_pence', False):
             buy_price = buy_price * 100
             
@@ -95,7 +110,7 @@ async def stock_detail(request: Request, ticker: str):
             
             portfolio_math = {
                 "shares": shares,
-                "buy_price": round(buy_price, 4), # Will now properly output 78.4 for LLOY.L
+                "buy_price": round(buy_price, 4),
                 "current_value": round(current_value, 2),
                 "pnl": round(pnl, 2),
                 "pnl_pct": round(pnl_pct, 2)

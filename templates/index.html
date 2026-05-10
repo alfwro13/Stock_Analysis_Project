@@ -21,6 +21,10 @@
             margin-bottom: 30px; border-bottom: 1px solid #333; padding-bottom: 20px;
         }
         
+        .action-buttons {
+            display: flex; gap: 15px;
+        }
+        
         /* Top Navigation */
         .nav-links a {
             margin-right: 20px;
@@ -41,7 +45,7 @@
         /* Sorting Headers */
         th { 
             background-color: #2c2c2c; 
-            cursor: pointer; /* Indicates it can be clicked */
+            cursor: pointer;
             user-select: none;
         }
         th:hover { background-color: #3d3d3d; }
@@ -63,13 +67,17 @@
         /* Tooltips */
         abbr { text-decoration: underline dotted; cursor: help; }
         
-        /* Update Button */
-        #updateBtn { 
-            padding: 12px 24px; background-color: #4da6ff; color: #121212; 
+        /* Update Buttons */
+        .btn { 
+            padding: 12px 24px; color: #121212; 
             font-weight: bold; border: none; border-radius: 5px; cursor: pointer; 
+            transition: background-color 0.3s ease;
         }
-        #updateBtn:hover { background-color: #3388dd; }
-        #updateBtn:disabled { background-color: #555; color: #aaa; cursor: not-allowed; }
+        .btn-sync { background-color: #00ffcc; }
+        .btn-sync:hover { background-color: #00ccaa; }
+        .btn-update { background-color: #4da6ff; }
+        .btn-update:hover { background-color: #3388dd; }
+        .btn:disabled { background-color: #555; color: #aaa; cursor: not-allowed; }
     </style>
 </head>
 <body>
@@ -81,7 +89,10 @@
                 <a href="/glossary">📚 Open Financial Glossary</a>
             </div>
         </div>
-        <button id="updateBtn" onclick="triggerUpdate()">↻ Update Analysis</button>
+        <div class="action-buttons">
+            <button id="syncBtn" class="btn btn-sync" onclick="triggerGhostfolioSync()">⬇️ Sync Ghostfolio</button>
+            <button id="updateBtn" class="btn btn-update" onclick="triggerUpdate()">↻ Update Analysis</button>
+        </div>
     </div>
     
     <h2>My Portfolio</h2>
@@ -181,11 +192,9 @@
                     x = rows[i].getElementsByTagName("TD")[n];
                     y = rows[i + 1].getElementsByTagName("TD")[n];
                     
-                    // Extract text and remove currency symbols or spaces for clean numerical sorting
                     var valX = x.innerHTML.replace(/(<([^>]+)>)/gi, "").replace(/[^0-9.-]+/g,"");
                     var valY = y.innerHTML.replace(/(<([^>]+)>)/gi, "").replace(/[^0-9.-]+/g,"");
                     
-                    // If it's a valid number, compare mathematically. If not, compare alphabetically.
                     var numX = parseFloat(valX);
                     var numY = parseFloat(valY);
                     
@@ -208,6 +217,17 @@
                     }
                 }
             }
+        }
+
+        async function triggerGhostfolioSync() {
+            const btn = document.getElementById('syncBtn');
+            btn.innerText = "Syncing JSON...";
+            btn.disabled = true;
+            try {
+                const response = await fetch('/api/sync-ghostfolio', { method: 'POST', headers: { 'Content-Type': 'application/json' }});
+                if (response.ok) { alert("Ghostfolio sync initiated! Wait 3 seconds, then hit 'Update Analysis' to fetch market data for any new assets."); }
+            } catch (error) { console.error("Error:", error); }
+            setTimeout(() => { btn.innerText = "⬇️ Sync Ghostfolio"; btn.disabled = false; }, 5000);
         }
 
         async function triggerUpdate() {
