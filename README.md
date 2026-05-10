@@ -37,8 +37,8 @@ Clone the repository and install the required dependencies using a virtual envir
 ```bash
 git clone [https://github.com/alfwro13/Stock_Analysis_Project.git](https://github.com/alfwro13/Stock_Analysis_Project.git)
 cd Stock_Analysis_Project
-python3 -m venv stock_analysis_project
-source stock_analysis_project/bin/activate
+python3 -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
 ```
 
