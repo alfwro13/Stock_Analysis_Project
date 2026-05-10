@@ -5,8 +5,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 from fastapi import FastAPI, Request, BackgroundTasks
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse
-# Import PORT from config
+from fastapi.responses import HTMLResponse, RedirectResponse
 from config import PORTFOLIO_PATH, WATCHLIST_PATH, HISTORICAL_DIR, INTRADAY_DIR, PORT
 from database import get_connection, init_db
 from quant_signals import QuantEngine
@@ -57,9 +56,14 @@ async def glossary(request: Request):
     """Dedicated educational page."""
     return templates.TemplateResponse(request=request, name="glossary.html", context={})
 
-@app.get("/", response_class=HTMLResponse)
-async def home(request: Request):
-    """Loads the main dashboard."""
+@app.get("/", response_class=RedirectResponse)
+async def home():
+    """Redirects the base URL to the new dedicated Portfolio page."""
+    return RedirectResponse(url="/portfolio")
+
+@app.get("/portfolio", response_class=HTMLResponse)
+async def portfolio_page(request: Request, embed: bool = False):
+    """Loads the dedicated Portfolio table. Supports ?embed=true for Home Assistant."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM stock_signals")
@@ -70,17 +74,33 @@ async def home(request: Request):
     global_updated = global_update_val if global_update_val else "Awaiting initial update..."
     
     portfolio_json = get_json_data(PORTFOLIO_PATH)
-    watchlist_json = get_json_data(WATCHLIST_PATH)
-    
     portfolio_tickers = [data.get("ticker") for key, data in portfolio_json.items() if "ticker" in data]
-    watchlist_tickers = watchlist_json.get("watchlist", [])
-    
     portfolio_data = [row for row in db_rows if row['ticker'] in portfolio_tickers]
+    
+    return templates.TemplateResponse(
+        request=request, name="portfolio.html", 
+        context={"portfolio": portfolio_data, "global_updated": global_updated, "embed": embed}
+    )
+
+@app.get("/watchlist", response_class=HTMLResponse)
+async def watchlist_page(request: Request, embed: bool = False):
+    """Loads the dedicated Watchlist table. Supports ?embed=true for Home Assistant."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM stock_signals")
+    db_rows = cursor.fetchall()
+    
+    cursor.execute("SELECT MAX(last_updated) as global_updated FROM stock_signals")
+    global_update_val = cursor.fetchone()['global_updated']
+    global_updated = global_update_val if global_update_val else "Awaiting initial update..."
+    
+    watchlist_json = get_json_data(WATCHLIST_PATH)
+    watchlist_tickers = watchlist_json.get("watchlist", [])
     watchlist_data = [row for row in db_rows if row['ticker'] in watchlist_tickers]
     
     return templates.TemplateResponse(
-        request=request, name="index.html", 
-        context={"portfolio": portfolio_data, "watchlist": watchlist_data, "global_updated": global_updated}
+        request=request, name="watchlist.html", 
+        context={"watchlist": watchlist_data, "global_updated": global_updated, "embed": embed}
     )
 
 @app.get("/stock/{ticker}", response_class=HTMLResponse)
@@ -97,14 +117,9 @@ async def stock_detail(request: Request, ticker: str):
     
     if stock_data and stock_data['next_earnings_date'] and stock_data['next_earnings_date'] != 'Unknown':
         try:
-            # Parse the stored string into a Python datetime object
             e_date = datetime.strptime(stock_data['next_earnings_date'], '%Y-%m-%d').date()
             today = datetime.now().date()
-            
-            # Calculate exactly how many days are left
             days_to_earnings = (e_date - today).days
-            
-            # Options market volatility generally spikes ~7 days before an earnings report
             volatility_date = (e_date - timedelta(days=7)).strftime('%Y-%m-%d')
         except Exception as e:
             print(f"[WARNING] Could not parse earnings date for {ticker}: {e}")
@@ -117,8 +132,6 @@ async def stock_detail(request: Request, ticker: str):
     if user_asset and stock_data and stock_data['current_price']:
         buy_price = user_asset.get('buy_price', 0)
         shares = user_asset.get('shares', 0)
-        
-        # Ghostfolio currency conversion logic
         if user_asset.get('price_in_pence', False):
             buy_price = buy_price * 100
             
@@ -157,12 +170,11 @@ async def stock_detail(request: Request, ticker: str):
             "macro_html": macro_html, 
             "intraday_html": intraday_html,
             "portfolio_math": portfolio_math,
-            "days_to_earnings": days_to_earnings,   # NEW: Passed to HTML
-            "volatility_date": volatility_date      # NEW: Passed to HTML
+            "days_to_earnings": days_to_earnings,   
+            "volatility_date": volatility_date      
         }
     )
 
 if __name__ == "__main__":
-    # Now dynamically uses the port defined in config.py or config.json
     print(f"Starting Quantamental Web Server on Port {PORT}...")
     uvicorn.run(app, host="0.0.0.0", port=PORT)

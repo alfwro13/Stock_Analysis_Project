@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Quantamental - Watchlist</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #121212; color: #e0e0e0; padding: 20px; margin: 0; }
+        h1, h2 { color: #ffffff; margin: 0; }
+        
+        .header-container { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid #333; padding-bottom: 20px; }
+        .action-buttons { display: flex; gap: 15px; }
+        .nav-links a { margin-right: 20px; font-size: 16px; color: #4da6ff; text-decoration: none; font-weight: bold; }
+        .nav-links a.active { color: #00ffcc; text-decoration: underline; }
+        .nav-links a:hover { text-decoration: underline; }
+        
+        .controls-container { display: flex; gap: 15px; margin-bottom: 15px; }
+        .filter-input { padding: 8px; border-radius: 5px; border: 1px solid #444; background-color: #1e1e1e; color: #fff; width: 250px; font-size: 14px;}
+        .filter-select { padding: 8px; border-radius: 5px; border: 1px solid #444; background-color: #1e1e1e; color: #fff; font-size: 14px; cursor: pointer;}
+        
+        table { width: 100%; border-collapse: collapse; margin-bottom: 40px; background-color: #1e1e1e; font-size: 14px; box-shadow: 0 2px 4px rgba(0,0,0,0.3); }
+        th, td { padding: 6px 10px; text-align: left; border-bottom: 1px solid #333; }
+        th { background-color: #2c2c2c; cursor: pointer; user-select: none; }
+        th:hover { background-color: #3d3d3d; }
+        a { color: #4da6ff; text-decoration: none; font-weight: bold; }
+        a:hover { text-decoration: underline; }
+        
+        .STRONG-BUY { color: #00ff00; font-weight: bold; }
+        .BULLISH---HOLD { color: #85e085; }
+        .NEUTRAL { color: #cccccc; }
+        .BEARISH---CAUTION { color: #ff4d4d; font-weight: bold; }
+        .trend-up { color: #00ff00; font-weight: bold; }
+        .trend-down { color: #ff4d4d; font-weight: bold; }
+        abbr { text-decoration: underline dotted; cursor: help; }
+        
+        .btn { padding: 10px 20px; color: #121212; font-weight: bold; border: none; border-radius: 5px; cursor: pointer; transition: background-color 0.3s ease; }
+        .btn-sync { background-color: #00ffcc; }
+        .btn-sync:hover { background-color: #00ccaa; }
+        .btn-update { background-color: #4da6ff; }
+        .btn-update:hover { background-color: #3388dd; }
+        .btn:disabled { background-color: #555; color: #aaa; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+    
+    {% if not embed %}
+    <div class="header-container">
+        <div>
+            <h1><abbr title="A modern institutional strategy that combines Quantitative analysis with Fundamental analysis.">Quantamental</abbr> Dashboard</h1>
+            <p style="color: #aaaaaa; margin-top: 5px; font-size: 14px;">Data Last Updated: <strong>{{ global_updated }}</strong></p>
+            <div class="nav-links" style="margin-top: 15px;">
+                <a href="/portfolio">💼 Portfolio</a>
+                <a href="/watchlist" class="active">👀 Watchlist</a>
+                <a href="/glossary">📚 Glossary</a>
+            </div>
+        </div>
+        <div class="action-buttons">
+            <button id="syncBtn" class="btn btn-sync" onclick="triggerGhostfolioSync()">⬇️ Sync Ghostfolio</button>
+            <button id="updateBtn" class="btn btn-update" onclick="triggerUpdate()">↻ Update Analysis</button>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="controls-container">
+        <input type="text" id="searchInput" class="filter-input" onkeyup="filterTable()" placeholder="🔍 Search ticker or name...">
+        <select id="signalFilter" class="filter-select" onchange="filterTable()">
+            <option value="ALL">All Signals</option>
+            <option value="STRONG BUY">Strong Buy</option>
+            <option value="BULLISH / HOLD">Bullish / Hold</option>
+            <option value="NEUTRAL">Neutral</option>
+            <option value="BEARISH / CAUTION">Bearish / Caution</option>
+        </select>
+    </div>
+
+    <table id="dataTable">
+        <thead>
+            <tr>
+                <th onclick="sortTable('dataTable', 0)">Ticker / Name ↕</th>
+                <th onclick="sortTable('dataTable', 1)">Price ↕</th>
+                <th onclick="sortTable('dataTable', 2)">Target ↕</th>
+                <th onclick="sortTable('dataTable', 3)">50D ↕</th>
+                <th onclick="sortTable('dataTable', 4)">200D ↕</th>
+                <th onclick="sortTable('dataTable', 5)"><abbr title="Standard PEG Ratio">PEG</abbr> ↕</th>
+                <th onclick="sortTable('dataTable', 6)"><abbr title="Peter Lynch Fair Value">PL PEG</abbr> ↕</th>
+                <th onclick="sortTable('dataTable', 7)">Stop-Loss ↕</th>
+                <th onclick="sortTable('dataTable', 8)">RSI ↕</th>
+                <th onclick="sortTable('dataTable', 9)">Earnings ↕</th>
+                <th onclick="sortTable('dataTable', 10)">Score ↕</th>
+                <th onclick="sortTable('dataTable', 11)">Signal ↕</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in watchlist %}
+            <tr data-signal="{{ item.overall_signal | upper }}">
+                <td>
+                    <a href="/stock/{{ item.ticker }}">{{ item.ticker }}</a><br>
+                    <span style="font-size: 11px; color: #888;">{{ item.company_name[:20] }}{% if item.company_name|length > 20 %}...{% endif %}</span>
+                </td>
+                <td>{{ item.current_price|round(2) }}</td>
+                <td>{% if item.target_price %}{{ item.target_price|round(2) }}{% else %}N/A{% endif %}</td>
+                <td><span class="{% if item.trend_50d == 'UP' %}trend-up{% else %}trend-down{% endif %}">{{ item.trend_50d }}</span></td>
+                <td><span class="{% if item.trend_200d == 'UP' %}trend-up{% else %}trend-down{% endif %}">{{ item.trend_200d }}</span></td>
+                <td>{% if item.peg_ratio %}{{ item.peg_ratio|round(2) }}{% else %}N/A{% endif %}</td>
+                <td>{% if item.peter_lynch_peg %}{{ item.peter_lynch_peg|round(2) }}{% else %}N/A{% endif %}</td>
+                <td style="color: #ffaa00;">{{ item.atr_stop_loss|round(2) }}</td>
+                <td>{{ item.rsi_14|round(1) }}</td>
+                <td style="font-size: 12px; color: #bbb;">{% if item.next_earnings_date %}{{ item.next_earnings_date }}{% else %}N/A{% endif %}</td>
+                <td>{{ item.composite_score }}</td>
+                <td class="{{ item.overall_signal | replace(' ', '-') | replace('/', '-') }}">{{ item.overall_signal }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <script>
+        function filterTable() {
+            var input = document.getElementById("searchInput").value.toUpperCase();
+            var filter = document.getElementById("signalFilter").value.toUpperCase();
+            var table = document.getElementById("dataTable");
+            var tr = table.getElementsByTagName("tr");
+
+            for (var i = 1; i < tr.length; i++) {
+                var tickerTd = tr[i].getElementsByTagName("td")[0];
+                if (tickerTd) {
+                    var tickerText = tickerTd.textContent || tickerTd.innerText;
+                    var signalAttr = tr[i].getAttribute("data-signal");
+                    
+                    var matchesSearch = tickerText.toUpperCase().indexOf(input) > -1;
+                    var matchesFilter = (filter === "ALL") || (signalAttr === filter);
+                    
+                    if (matchesSearch && matchesFilter) { tr[i].style.display = ""; } 
+                    else { tr[i].style.display = "none"; }
+                }
+            }
+        }
+
+        function sortTable(tableId, n) {
+            var table, rows, switching, i, x, y, shouldSwitch, dir, switchcount = 0;
+            table = document.getElementById(tableId);
+            switching = true; dir = "asc"; 
+            while (switching) {
+                switching = false; rows = table.rows;
+                for (i = 1; i < (rows.length - 1); i++) {
+                    shouldSwitch = false;
+                    x = rows[i].getElementsByTagName("TD")[n];
+                    y = rows[i + 1].getElementsByTagName("TD")[n];
+                    var valX = x.innerHTML.replace(/(<([^>]+)>)/gi, "").replace(/[^0-9.-]+/g,"");
+                    var valY = y.innerHTML.replace(/(<([^>]+)>)/gi, "").replace(/[^0-9.-]+/g,"");
+                    var numX = parseFloat(valX); var numY = parseFloat(valY);
+                    
+                    if (!isNaN(numX) && !isNaN(numY) && x.innerHTML.indexOf("trend") === -1 && x.innerHTML.indexOf("-") === -1) {
+                        if (dir == "asc") { if (numX > numY) { shouldSwitch = true; break; } } 
+                        else if (dir == "desc") { if (numX < numY) { shouldSwitch = true; break; } }
+                    } else {
+                        if (dir == "asc") { if (x.innerHTML.toLowerCase() > y.innerHTML.toLowerCase()) { shouldSwitch = true; break; } } 
+                        else if (dir == "desc") { if (x.innerHTML.toLowerCase() < y.innerHTML.toLowerCase()) { shouldSwitch = true; break; } }
+                    }
+                }
+                if (shouldSwitch) {
+                    rows[i].parentNode.insertBefore(rows[i + 1], rows[i]);
+                    switching = true; switchcount ++;
+                } else {
+                    if (switchcount == 0 && dir == "asc") { dir = "desc"; switching = true; }
+                }
+            }
+        }
+
+        async function triggerGhostfolioSync() {
+            const btn = document.getElementById('syncBtn');
+            btn.innerText = "Syncing JSON..."; btn.disabled = true;
+            try { await fetch('/api/sync-ghostfolio', { method: 'POST' }); alert("Sync initiated! Wait 3 seconds, then hit 'Update Analysis'."); } catch (e) { }
+            setTimeout(() => { btn.innerText = "⬇️ Sync Ghostfolio"; btn.disabled = false; }, 5000);
+        }
+
+        async function triggerUpdate() {
+            const btn = document.getElementById('updateBtn');
+            btn.innerText = "Updating... (Check Terminal)"; btn.disabled = true;
+            try { await fetch('/api/update', { method: 'POST' }); alert("Analysis initiated! Refresh this page in ~15 seconds."); } catch (e) { }
+            setTimeout(() => { btn.innerText = "↻ Update Analysis"; btn.disabled = false; }, 15000);
+        }
+    </script>
+</body>
+</html>

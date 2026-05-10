@@ -67,6 +67,57 @@ To start the server, simply run the main application file. The system will autom
 - Click **"↻ Update Analysis"** to trigger the background data engine. Check your terminal to see the fetching progress.
 - **Refresh** the page to view your fully rendered dashboard. Click on any ticker to view the detailed Quantamental analysis and interactive Plotly charts.
 
+## 🏠 Home Assistant & iFrame Integration (Embed Mode)
+
+If you want to display your Portfolio or Watchlist on an external dashboard (such as Home Assistant, MagicMirror, or Grafana), you can use the built-in **Embed Mode**. 
+
+By appending a simple URL parameter, the system will automatically hide the top navigation bar, title, timestamp, and action buttons, leaving only the ultra-compact data table and the search/filter controls. This makes it perfect for clean, edge-to-edge iframe integration.
+
+**Embed URLs:**
+* **Portfolio:** `http://localhost:8090/portfolio?embed=true`
+* **Watchlist:** `http://localhost:8090/watchlist?embed=true`
+*(Note: Replace `localhost` with your actual server IP if hosting on a network device like a Raspberry Pi or NAS).*
+
+**Example Home Assistant Webpage Card Configuration:**
+```yaml
+type: iframe
+url: [http://192.168.1.71:8090/portfolio?embed=true](http://192.168.1.71:8090/portfolio?embed=true)
+aspect_ratio: 100%
+```
+
+### 🤖 Automating Background Updates in Embed Mode
+
+Because the manual "Update" and "Sync" buttons are hidden in Embed Mode, you must set up an automated system to trigger data refreshes in the background. The dashboard exposes two API endpoints that listen for HTTP `POST` requests:
+
+- **Trigger Market Data Update:** `POST http://localhost:8090/api/update`
+- **Trigger Ghostfolio Sync:** `POST http://localhost:8090/api/sync-ghostfolio`
+    
+
+#### Option 1: Linux Cron Job (Recommended)
+
+You can use the built-in task scheduler on your Linux host to fetch data automatically. Run `crontab -e` and add this line to update market data every weeknight at 9:30 PM:
+
+Bash
+
+```
+30 21 * * 1-5 curl -X POST http://localhost:8090/api/update
+```
+
+#### Option 2: Home Assistant Automation
+
+If you prefer Home Assistant to manage the schedule, add a REST command to your `configuration.yaml`:
+
+YAML
+
+```
+rest_command:
+  update_quant_dashboard:
+    url: "[http://192.168.1.71:8090/api/update](http://192.168.1.71:8090/api/update)"
+    method: "POST"
+```
+
+Once Home Assistant is restarted, you can call the `rest_command.update_quant_dashboard` service via any time-based automation.
+
 ### 📚 Built-in Glossary
 
 Not a quantitative expert? The dashboard includes a built-in educational /glossary page and interactive HTML tooltips that explain exactly what metrics like MACD, Relative Strength vs S&P 500, and On-Balance Volume mean in plain English.
