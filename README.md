@@ -59,7 +59,7 @@ Create config.json:
 
 To start the server, simply run the main application file. The system will automatically build the SQLite database on its first boot.
 
-python main.py
+`python main.py`
 
 
 - Open your web browser and navigate to **http://localhost:8090** (or your server's IP address).
