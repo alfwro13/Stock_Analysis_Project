@@ -113,7 +113,7 @@ async def market_sentiment_page(request: Request):
         context={"sentiment_html": sentiment_html}
     )
 @app.post("/api/test-sentiment-alert")
-async def test_sentiment_alert():
+def test_sentiment_alert():
     """Triggered by the GUI to manually test the Nextcloud pipeline."""
     success, msg = run_nextcloud_alert()
     if success:

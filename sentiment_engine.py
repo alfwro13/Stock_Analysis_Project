@@ -19,7 +19,8 @@ def fetch_fear_greed_data(start_date_str):
     headers = {'User-Agent': ua.random}
     
     try:
-        r = requests.get(BASE_URL + start_date_str, headers=headers)
+        # Added strict 15-second timeout to prevent infinite hanging
+        r = requests.get(BASE_URL + start_date_str, headers=headers, timeout=15)
         r.raise_for_status()
         data = r.json()
         
@@ -113,52 +114,61 @@ def get_sentiment_html():
 
 def run_nextcloud_alert():
     """Background task: Generates the plot, saves to PNG, uploads, and sends to Nextcloud Talk."""
+    print("\n[DEBUG] 1/5 - Starting Market Sentiment Pipeline...")
     try:
         fig = generate_sentiment_figure()
         if not fig:
+            print("[DEBUG] FAILED at Step 1: Data fetch error.")
             return False, "Failed to generate figure (Data fetch error)."
 
         file_name = f"Fear_vs_Greed_{datetime.now().strftime('%Y-%m-%d')}.png"
         local_path = file_name
         remote_path = f"StockAlerts/{file_name}"
 
-        # 1. Render Image
+        print(f"[DEBUG] 2/5 - Data fetched successfully. Rendering PNG to {local_path} via Kaleido...")
         try:
             fig.write_image(local_path, width=1200, height=600, scale=2)
         except Exception as e:
+            print(f"[DEBUG] FAILED at Step 2: Kaleido Render Error - {e}")
             return False, f"Kaleido Image Render Error: {str(e)}"
             
-        # 2. Upload via Nextcloud
+        print(f"[DEBUG] 3/5 - PNG Rendered. Uploading via WebDAV to {remote_path}...")
         upload_success = upload_file_webdav(local_path, remote_path, NEXTCLOUD_URL, BOT_USERNAME, APP_PASSWORD, print)
         if not upload_success:
+            print("[DEBUG] FAILED at Step 3: WebDAV Upload.")
             return False, "WebDAV Upload Failed. Check credentials or folder path."
             
         report_message = "📊 *Fear & Greed Index overlayed with S&P 500 for comparison*"
         
-        # 3. Share to Talk
+        print("[DEBUG] 4/5 - WebDAV Success. Sharing to Nextcloud Talk...")
         share_success = share_file_to_talk(remote_path, CONVERSATION_TOKEN, NEXTCLOUD_URL, BOT_USERNAME, APP_PASSWORD, print)
         if share_success:
             report_message += "\n\n🟢 File successfully shared."
         else:
             report_message += "\n\n❌ WARNING: File sharing failed. Talk Token may be invalid."
 
-        # 4. Send textual follow-up notification
+        print("[DEBUG] 5/5 - Sending final text message summary...")
         api_endpoint = f"{NEXTCLOUD_URL}/ocs/v2.php/apps/spreed/api/v1/chat/{CONVERSATION_TOKEN}"
         resp = requests.post(
             api_endpoint, 
             headers={"OCS-APIRequest": "true", "Content-Type": "application/json"}, 
             data=json.dumps({"message": report_message}), 
-            auth=(BOT_USERNAME, APP_PASSWORD)
+            auth=(BOT_USERNAME, APP_PASSWORD),
+            timeout=15 # Added strict timeout
         )
         
         if resp.status_code in [200, 201]:
+            print("[DEBUG] PIPELINE COMPLETE. Success!")
             return True, "Alert successfully generated, uploaded, and shared to Talk."
         else:
+            print(f"[DEBUG] FAILED at Step 5: Text Message HTTP {resp.status_code}")
             return False, f"Failed to send final text message. HTTP {resp.status_code}"
 
     except Exception as e:
+        print(f"[DEBUG] UNEXPECTED SYSTEM ERROR: {e}")
         return False, f"Unexpected System Error: {str(e)}"
     finally:
         # Clean up the local PNG file
         if os.path.exists(local_path):
             os.remove(local_path)
+            print("[DEBUG] Cleaned up temporary PNG file.")
