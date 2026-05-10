@@ -80,14 +80,22 @@ async def stock_detail(request: Request, ticker: str):
     if user_asset and stock_data and stock_data['current_price']:
         buy_price = user_asset.get('buy_price', 0)
         shares = user_asset.get('shares', 0)
+        
+        # --- NEW CURRENCY ALIGNMENT LOGIC ---
+        # Ghostfolio stores UK buys in GBP, but Yahoo uses GBp (Pence).
+        # If the JSON flag is true, convert the buy price to Pence to match Yahoo.
+        if user_asset.get('price_in_pence', False):
+            buy_price = buy_price * 100
+            
         if buy_price > 0 and shares > 0:
             current_value = shares * stock_data['current_price']
             cost_basis = shares * buy_price
             pnl = current_value - cost_basis
             pnl_pct = (pnl / cost_basis) * 100
+            
             portfolio_math = {
                 "shares": shares,
-                "buy_price": buy_price,
+                "buy_price": round(buy_price, 4), # Will now properly output 78.4 for LLOY.L
                 "current_value": round(current_value, 2),
                 "pnl": round(pnl, 2),
                 "pnl_pct": round(pnl_pct, 2)
