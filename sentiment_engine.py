@@ -94,9 +94,9 @@ def generate_sentiment_figure():
         fig.add_hline(y=level, line_dash="dash", line_color="#555", secondary_y=True, 
                       annotation_text=text, annotation_position="top right", annotation_font_color="#aaa")
 
-    # Keep web chart nicely scaled
-    min_spy = merged_df['SPY_Close'].min() * 0.95
-    max_spy = merged_df['SPY_Close'].max() * 1.05
+    # Keep web chart nicely scaled (tight fit)
+    min_spy = merged_df['SPY_Close'].min() * 0.98
+    max_spy = merged_df['SPY_Close'].max() * 1.02
 
     fig.update_layout(
         title="Fear & Greed vs S&P 500 (1 Year)",
@@ -124,13 +124,14 @@ def run_nextcloud_alert():
             print("[DEBUG] FAILED at Step 1: Data fetch error.")
             return False, "Failed to fetch data."
 
-        file_name = f"Fear_vs_Greed_{datetime.now().strftime('%Y-%m-%d')}.png"
+        # FIXED: Append precise Hour-Minute-Second to guarantee Nextcloud database uniqueness
+        time_stamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+        file_name = f"Fear_vs_Greed_{time_stamp}.png"
         local_path = file_name
         remote_path = f"StockAlerts/{file_name}"
 
         print(f"[DEBUG] 2/5 - Data fetched. Rendering PNG to {local_path} via Matplotlib...")
         try:
-            # Reusing your exact Matplotlib logic
             fig, ax1 = plt.subplots(figsize=(12, 6))
             
             color = 'tab:blue'
@@ -139,6 +140,11 @@ def run_nextcloud_alert():
             ax1.plot(merged_df.index, merged_df['SPY_Close'], color=color, label='S&P 500 Price')
             ax1.tick_params(axis='y', labelcolor=color)
             ax1.grid(True)
+            
+            # FIXED: Dynamically calculate strict Y-Axis limits for S&P 500 to match old graph
+            min_spy = merged_df['SPY_Close'].min() * 0.98
+            max_spy = merged_df['SPY_Close'].max() * 1.02
+            ax1.set_ylim(min_spy, max_spy)
             
             ax2 = ax1.twinx()  
             color = 'tab:red'
@@ -195,8 +201,13 @@ def run_nextcloud_alert():
         )
         
         if resp.status_code in [200, 201]:
-            print("[DEBUG] PIPELINE COMPLETE. Success!")
-            return True, "Alert successfully generated, uploaded, and shared to Talk."
+            # STRICT RETURN: Ensure the file share actually succeeded
+            if share_success:
+                print("[DEBUG] PIPELINE COMPLETE. Success!")
+                return True, "Alert successfully generated, uploaded, and shared to Talk."
+            else:
+                print("[DEBUG] PIPELINE PARTIAL FAILURE. File share failed.")
+                return False, "File upload succeeded, but Talk Share failed. Check Conversation Token."
         else:
             print(f"[DEBUG] FAILED at Step 5: Text Message HTTP {resp.status_code}")
             return False, f"Failed to send final text message. HTTP {resp.status_code}"
