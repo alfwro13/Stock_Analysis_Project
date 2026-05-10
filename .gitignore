@@ -1,0 +1,9 @@
+# Ignore Python cache folders
+__pycache__/
+
+# Ignore data folder and all its contents
+data/
+
+# Ignore specific files
+to_do.txt
+config.json

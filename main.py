@@ -1,0 +1,122 @@
+# main.py
+import uvicorn
+import json
+import pandas as pd
+from fastapi import FastAPI, Request, BackgroundTasks
+from fastapi.templating import Jinja2Templates
+from fastapi.responses import HTMLResponse
+from config import PORTFOLIO_PATH, WATCHLIST_PATH, HISTORICAL_DIR, INTRADAY_DIR
+from database import get_connection, init_db
+from quant_signals import QuantEngine
+from data_engine import DataEngine
+from visuals import create_macro_chart, create_intraday_chart
+
+app = FastAPI(title="Quantamental Dashboard")
+templates = Jinja2Templates(directory="templates")
+
+# Run database setup on server boot (No more manual python database.py!)
+init_db()
+
+def get_json_data(filepath):
+    try:
+        with open(filepath, 'r') as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+def run_update_pipeline():
+    print("\n--- BACKGROUND UPDATE INITIATED ---")
+    DataEngine().update_all_data()
+    QuantEngine().run_all()
+    print("--- BACKGROUND UPDATE COMPLETE ---\n")
+
+@app.post("/api/update")
+async def trigger_update(background_tasks: BackgroundTasks):
+    background_tasks.add_task(run_update_pipeline)
+    return {"status": "success"}
+
+@app.get("/glossary", response_class=HTMLResponse)
+async def glossary(request: Request):
+    """Dedicated educational page for all terminology used in the app."""
+    return templates.TemplateResponse(request=request, name="glossary.html", context={})
+
+@app.get("/", response_class=HTMLResponse)
+async def home(request: Request):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM stock_signals")
+    db_rows = cursor.fetchall()
+    
+    cursor.execute("SELECT MAX(last_updated) as global_updated FROM stock_signals")
+    global_update_val = cursor.fetchone()['global_updated']
+    global_updated = global_update_val if global_update_val else "Awaiting initial update..."
+    
+    portfolio_json = get_json_data(PORTFOLIO_PATH)
+    watchlist_json = get_json_data(WATCHLIST_PATH)
+    
+    portfolio_tickers = [data.get("ticker") for key, data in portfolio_json.items() if "ticker" in data]
+    watchlist_tickers = watchlist_json.get("watchlist", [])
+    
+    portfolio_data = [row for row in db_rows if row['ticker'] in portfolio_tickers]
+    watchlist_data = [row for row in db_rows if row['ticker'] in watchlist_tickers]
+    
+    return templates.TemplateResponse(
+        request=request, name="index.html", 
+        context={"portfolio": portfolio_data, "watchlist": watchlist_data, "global_updated": global_updated}
+    )
+
+@app.get("/stock/{ticker}", response_class=HTMLResponse)
+async def stock_detail(request: Request, ticker: str):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM stock_signals WHERE ticker = ?", (ticker,))
+    stock_data = cursor.fetchone()
+    
+    # Calculate Portfolio Mathematics if owned
+    portfolio_json = get_json_data(PORTFOLIO_PATH)
+    user_asset = next((data for key, data in portfolio_json.items() if data.get("ticker") == ticker), None)
+    
+    portfolio_math = None
+    if user_asset and stock_data and stock_data['current_price']:
+        buy_price = user_asset.get('buy_price', 0)
+        shares = user_asset.get('shares', 0)
+        if buy_price > 0 and shares > 0:
+            current_value = shares * stock_data['current_price']
+            cost_basis = shares * buy_price
+            pnl = current_value - cost_basis
+            pnl_pct = (pnl / cost_basis) * 100
+            portfolio_math = {
+                "shares": shares,
+                "buy_price": buy_price,
+                "current_value": round(current_value, 2),
+                "pnl": round(pnl, 2),
+                "pnl_pct": round(pnl_pct, 2)
+            }
+
+    # Load Parquet Data for Visuals
+    try:
+        df_macro = pd.read_parquet(HISTORICAL_DIR / f"{ticker}.parquet")
+        df_sp500 = pd.read_parquet(HISTORICAL_DIR / "SP500_BASELINE.parquet")
+        macro_html = create_macro_chart(df_macro, df_sp500, ticker)
+    except Exception as e:
+        macro_html = f"<p>Chart Data Unavailable: {e}</p>"
+
+    try:
+        df_intraday = pd.read_parquet(INTRADAY_DIR / f"{ticker}_intraday.parquet")
+        intraday_html = create_intraday_chart(df_intraday, ticker)
+    except Exception:
+        intraday_html = "<p>Intraday data unavailable.</p>"
+        
+    return templates.TemplateResponse(
+        request=request, name="stock_detail.html", 
+        context={
+            "stock": stock_data, 
+            "macro_html": macro_html, 
+            "intraday_html": intraday_html,
+            "portfolio_math": portfolio_math
+        }
+    )
+
+if __name__ == "__main__":
+    print("Starting Quantamental Web Server on Port 8090...")
+    uvicorn.run(app, host="0.0.0.0", port=8090)

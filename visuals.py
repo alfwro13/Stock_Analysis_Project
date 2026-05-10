@@ -1,0 +1,104 @@
+# visuals.py
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import pandas as pd
+import ta
+
+def create_intraday_chart(df, ticker):
+    """
+    Generates a high-resolution, short-term chart using 5-minute data 
+    for the current trading day.
+    """
+    fig = go.Figure(data=[go.Candlestick(
+        x=df.index,
+        open=df['Open'],
+        high=df['High'],
+        low=df['Low'],
+        close=df['Close'],
+        name="Intraday"
+    )])
+    
+    fig.update_layout(
+        template="plotly_dark",
+        height=400,
+        margin=dict(l=20, r=20, t=40, b=20),
+        xaxis_rangeslider_visible=False,
+        title=f"Today's Pulse (5-Minute Intervals) - {ticker}"
+    )
+    return fig.to_html(full_html=False, include_plotlyjs='cdn')
+
+def create_macro_chart(df, df_sp500, ticker):
+    """
+    Generates the 5-Row Institutional Macro Chart.
+    """
+    df = df.tail(126).copy() # Last 6 months
+    
+    # 1. Moving Averages & Bollinger Bands
+    df['MA_21'] = df['Close'].rolling(window=21).mean()
+    df['MA_50'] = df['Close'].rolling(window=50).mean()
+    df['MA_200'] = df['Close'].rolling(window=200).mean()
+    
+    indicator_bb = ta.volatility.BollingerBands(close=df["Close"], window=20, window_dev=2)
+    df['BB_High'] = indicator_bb.bollinger_hband()
+    df['BB_Low'] = indicator_bb.bollinger_lband()
+    
+    # 2. Relative Strength Line (vs S&P 500)
+    # Reindex SP500 to match our stock's dates, forward-filling any missing days (like holidays)
+    if df_sp500 is not None:
+        sp500_aligned = df_sp500['Close'].reindex(df.index, method='ffill')
+        df['RS_Line'] = df['Close'] / sp500_aligned
+        # Normalize the RS line to start at the same visual height as the stock price for easy reading
+        normalization_factor = df['Close'].iloc[0] / df['RS_Line'].iloc[0]
+        df['RS_Normalized'] = df['RS_Line'] * normalization_factor
+
+    # 3. Oscillators & Volume
+    df['RSI'] = ta.momentum.RSIIndicator(close=df['Close'], window=14).rsi()
+    df['OBV'] = ta.volume.OnBalanceVolumeIndicator(close=df['Close'], volume=df['Volume']).on_balance_volume()
+    
+    # 4. MACD (Moving Average Convergence Divergence)
+    macd = ta.trend.MACD(close=df['Close'])
+    df['MACD_Line'] = macd.macd()
+    df['MACD_Signal'] = macd.macd_signal()
+    df['MACD_Hist'] = macd.macd_diff()
+
+    # Create 5 Subplots
+    fig = make_subplots(
+        rows=5, cols=1, shared_xaxes=True, 
+        row_heights=[0.4, 0.15, 0.15, 0.15, 0.15],
+        vertical_spacing=0.03,
+        subplot_titles=(
+            f"{ticker} Macro Trend", "Volume", "RSI (14)", "MACD (Trend Reversals)", "On-Balance Volume"
+        )
+    )
+
+    # ROW 1: Price, MAs, and RS Line
+    fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name="Price"), row=1, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=df['MA_21'], line=dict(color='orange', width=1.5), name="21D MA"), row=1, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=df['MA_50'], line=dict(color='yellow', width=1.5), name="50D MA"), row=1, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=df['MA_200'], line=dict(color='white', width=2), name="200D MA"), row=1, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=df['BB_High'], line=dict(color='gray', dash='dash'), name="BB Upper"), row=1, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=df['BB_Low'], line=dict(color='gray', dash='dash'), name="BB Lower"), row=1, col=1)
+    
+    if df_sp500 is not None:
+        fig.add_trace(go.Scatter(x=df.index, y=df['RS_Normalized'], line=dict(color='cyan', width=2), name="RS vs S&P500"), row=1, col=1)
+
+    # ROW 2: Volume
+    colors = ['green' if row['Close'] >= row['Open'] else 'red' for index, row in df.iterrows()]
+    fig.add_trace(go.Bar(x=df.index, y=df['Volume'], marker_color=colors, name="Volume"), row=2, col=1)
+
+    # ROW 3: RSI
+    fig.add_trace(go.Scatter(x=df.index, y=df['RSI'], line=dict(color='purple', width=2), name="RSI"), row=3, col=1)
+    fig.add_hline(y=70, line_dash="dot", line_color="red", row=3, col=1)
+    fig.add_hline(y=30, line_dash="dot", line_color="green", row=3, col=1)
+
+    # ROW 4: MACD
+    fig.add_trace(go.Scatter(x=df.index, y=df['MACD_Line'], line=dict(color='blue', width=1.5), name="MACD"), row=4, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=df['MACD_Signal'], line=dict(color='orange', width=1.5), name="Signal"), row=4, col=1)
+    macd_colors = ['green' if val >= 0 else 'red' for val in df['MACD_Hist']]
+    fig.add_trace(go.Bar(x=df.index, y=df['MACD_Hist'], marker_color=macd_colors, name="Histogram"), row=4, col=1)
+
+    # ROW 5: OBV
+    fig.add_trace(go.Scatter(x=df.index, y=df['OBV'], line=dict(color='lightblue', width=2), name="OBV"), row=5, col=1)
+
+    fig.update_layout(template="plotly_dark", height=1200, margin=dict(l=20, r=20, t=40, b=20), xaxis_rangeslider_visible=False)
+    return fig.to_html(full_html=False, include_plotlyjs='cdn')
