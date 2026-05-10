@@ -120,6 +120,70 @@ rest_command:
 
 Once Home Assistant is restarted, you can call the `rest_command.update_quant_dashboard` service via any time-based automation.
 
+
+## ⚙️ Running as a Background Service (Linux)
+
+For a true production environment (like a 24/7 Home Assistant server or NAS), you should configure the dashboard to run as a background service. This ensures the app boots automatically when your server restarts and automatically recovers if it crashes.
+
+### 1. Create the Service File
+Open your terminal and create a new systemd service file:
+```bash
+sudo nano /etc/systemd/system/stock_analysis_project.service
+```
+
+### 2\. Add the Configuration
+
+Paste the following block into the file. **Important:** Replace `yourusername` with your actual Linux username, and verify the paths match where you cloned the repository.
+
+Ini, TOML
+
+```
+[Unit]
+Description=Quantamental Stock Analysis Dashboard
+After=network.target
+
+[Service]
+User=yourusername
+Group=www-data
+WorkingDirectory=/home/yourusername/stock_analysis_project
+
+# Point explicitly to the Python executable inside your virtual environment
+ExecStart=/home/yourusername/stock_analysis_project/venv/bin/python main.py
+
+Restart=always
+RestartSec=5
+Environment="PYTHONUNBUFFERED=1"
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Save and exit (`CTRL + O`, `Enter`, `CTRL + X`).
+
+### 3\. Enable and Start the Service
+
+Run these commands to tell Linux to reload its service list, enable the app to start on boot, and spin it up immediately:
+
+Bash
+
+```
+sudo systemctl daemon-reload
+sudo systemctl enable stock_analysis_project
+sudo systemctl start stock_analysis_project
+```
+
+### 🛠️ Useful Service Commands
+
+Once deployed as a service, you can manage the dashboard using standard Linux commands:
+
+- **Check if it's running:** `sudo systemctl status stock_analysis_project`
+    
+- **Restart after code updates:** `sudo systemctl restart stock_analysis_project`
+    
+- **View live server logs:** `sudo journalctl -u stock_analysis_project -f`
+    
+
+
 ### 📚 Built-in Glossary
 
 Not a quantitative expert? The dashboard includes a built-in educational /glossary page and interactive HTML tooltips that explain exactly what metrics like MACD, Relative Strength vs S&P 500, and On-Balance Volume mean in plain English.
