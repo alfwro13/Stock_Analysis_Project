@@ -51,7 +51,7 @@ def get_tickers_from_json(filepath: str, is_watchlist: bool = False) -> list:
         return []
 
 def run_insider_alert():
-    """Scrapes recent SEC Form 4 filings for massive insider buying."""
+    """Scrapes recent SEC Form 4 filings for massive insider buying and aligns with quant scores."""
     try:
         print("\n[DEBUG] Starting Insider Trading Alert Check...")
         
@@ -78,12 +78,28 @@ def run_insider_alert():
         if not target_tickers:
             return True, "No valid equity tickers found to check."
 
-        # 3. Cache company names from SQLite to format the message nicely
+        # 3. Cache company data and quant scores from SQLite
         conn = get_connection()
         cursor = conn.cursor()
         placeholders = ','.join('?' for _ in target_tickers)
-        cursor.execute(f"SELECT ticker, company_name FROM stock_signals WHERE ticker IN ({placeholders})", list(target_tickers))
-        name_map = {row['ticker']: row['company_name'] for row in cursor.fetchall()}
+        
+        # Fetching enhanced quantitative data for alignment checks
+        query = f"""
+            SELECT ticker, company_name, composite_score, atr_stop_loss, current_price 
+            FROM stock_signals 
+            WHERE ticker IN ({placeholders})
+        """
+        cursor.execute(query, list(target_tickers))
+        
+        # Store as a dict of dicts for easy access
+        db_data = {}
+        for row in cursor.fetchall():
+            db_data[row['ticker']] = {
+                'company_name': row['company_name'],
+                'composite_score': row['composite_score'],
+                'atr_stop_loss': row['atr_stop_loss'],
+                'current_price': row['current_price']
+            }
         
         cutoff_date = pd.to_datetime(datetime.now() - timedelta(days=days_back), utc=True)
         alerts_sent = 0
@@ -106,7 +122,6 @@ def run_insider_alert():
                 if insider_df is None or not isinstance(insider_df, pd.DataFrame) or insider_df.empty:
                     continue
                 
-                # Standardize index - Dates are often stuck in the index in newer yfinance builds
                 insider_df = insider_df.reset_index()
 
                 # Heuristic 1: Find the Date
@@ -120,7 +135,6 @@ def run_insider_alert():
                     continue 
                     
                 # Heuristic 2: Find the Action/Text 
-                # CRITICAL FIX: Prioritize 'Text' over 'Transaction' to capture "Purchase at price..."
                 col_action = next((col for col in ['Text', 'Transaction', 'Action'] if col in insider_df.columns), None)
                 if not col_action:
                     col_action = next((c for c in insider_df.columns if 'text' in c.lower() or 'trans' in c.lower() or 'action' in c.lower()), None)
@@ -157,20 +171,38 @@ def run_insider_alert():
                 if recent_buys.empty: 
                     continue
                 
-                # Transaction is a Purchase - using broader regex matching
                 recent_buys = recent_buys[recent_buys[col_action].astype(str).str.contains('Buy|Purchase|Acquisition|P -|P-', case=False, na=False)]
-                
-                # Value exceeds limit
                 major_buys = recent_buys[recent_buys['Clean_Value'] >= min_value]
                 
+                # Retrieve Quant Data for this Ticker
+                t_data = db_data.get(ticker, {})
+                comp_name = t_data.get('company_name', ticker)
+                score = t_data.get('composite_score')
+                atr_stop = t_data.get('atr_stop_loss')
+                curr_price = t_data.get('current_price')
+
+                # Evaluate Quantamental Alignment Conditions
+                # Condition 1: High System Score (Strong Momentum & Volume)
+                is_bullish_trend = score is not None and score >= 60
+                # Condition 2: Deep Value / Oversold (Price < Stop Loss floor)
+                is_buying_dip = curr_price is not None and atr_stop is not None and (0 < curr_price < atr_stop)
+
                 # 6. Dispatch Alerts
                 for idx, row in major_buys.iterrows():
-                    comp_name = name_map.get(ticker, ticker)
                     exec_name = row.get('Insider', 'Unknown Executive')
                     position = row.get('Position', 'Insider')
                     val_str = f"${row['Clean_Value']:,.2f}"
                     share_str = f"{row['Clean_Shares']:,.0f}" if row['Clean_Shares'] > 0 else "Unknown"
                     date_str = row['Parsed_Date'].strftime('%Y-%m-%d')
+                    
+                    # Construct Alignment Banner if conditions are met
+                    alignment_banner = ""
+                    if is_bullish_trend or is_buying_dip:
+                        alignment_banner = "\n\n🔥 **QUANTAMENTAL ALIGNMENT TRIGGERED** 🔥"
+                        if is_bullish_trend:
+                            alignment_banner += f"\n✅ **System Score:** {score}/100 (Strong Bullish Trend)"
+                        if is_buying_dip:
+                            alignment_banner += f"\n📉 **Deep Value:** Price (${curr_price:.2f}) is below ATR Stop-Loss floor (${atr_stop:.2f}). Insider is buying the mathematical dip!"
                     
                     msg = (
                         f"🚨 **INSIDER BUYING DETECTED** 🚨\n"
@@ -179,6 +211,7 @@ def run_insider_alert():
                         f"Action: Bought {share_str} shares\n"
                         f"Value: {val_str}\n"
                         f"Date: {date_str}"
+                        f"{alignment_banner}"
                     )
                     
                     if send_nextcloud_message(msg, config):
