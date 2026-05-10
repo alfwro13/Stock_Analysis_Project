@@ -24,12 +24,12 @@
 
     <div class="term-box">
         <span class="term-title">Moving Averages (5D, 10D, 21D, 50D, 200D)</span>
-        <p>A moving average smooths out daily price fluctuations to reveal the underlying trend. Shorter averages react quickly, while longer averages represent heavy institutional sentiment.</p>
-        <ul style="color: #aaa; font-size: 15px;">
-            <li><strong>5D & 10D:</strong> Hyper-short-term momentum. Used by day traders.</li>
-            <li><strong>21D:</strong> The primary short-term trend line. "Swing traders" usually exit if price drops below this.</li>
-            <li><strong>50D:</strong> The medium-term health line.</li>
-            <li><strong>200D:</strong> The ultimate institutional dividing line. Mutual funds rarely buy stocks below this line.</li>
+        <p>A moving average smooths out daily price fluctuations to reveal the underlying trend. Shorter averages react quickly to recent price changes, while longer averages represent heavy institutional sentiment.</p>
+        <ul style="color: #aaa; font-size: 15px; line-height: 1.6;">
+            <li><strong>5D & 10D (The Momentum Lines):</strong> Hyper-short-term momentum. Used primarily by aggressive day traders. If the price is above these, the stock is running hot.</li>
+            <li><strong>21D (The Swing Line):</strong> The primary short-term trend line. Swing traders often exit their positions if the price drops below this line.</li>
+            <li><strong>50D (The Health Line):</strong> The medium-term health line. A stock is generally considered "healthy" as long as it stays above its 50D MA.</li>
+            <li><strong>200D (The Institutional Line):</strong> The ultimate dividing line. Large institutional mutual funds and pensions rarely buy stocks below this line. It separates bull markets from bear markets.</li>
         </ul>
         <div class="rule">IF Price > 200D MA THEN: The stock is in a long-term bull market.</div>
         <div class="rule">IF 5D > 10D > 21D THEN: Short-term trends are perfectly aligned (Bullish).</div>
@@ -37,9 +37,9 @@
 
     <div class="term-box">
         <span class="term-title">Relative Strength (RS) vs S&P 500</span>
-        <p>Not to be confused with RSI. The RS Line divides the stock's price by the S&P 500 index. It visually shows if your stock is beating the broader market or dragging it down.</p>
-        <div class="rule">IF RS Line is rising THEN: The stock is outperforming the S&P 500. Institutional leaders live here.</div>
-        <div class="rule" style="border-left-color: #ff4d4d;">IF RS Line is falling THEN: The stock is underperforming the market. It is dead money.</div>
+        <p>Not to be confused with RSI. The RS Line is plotted on your main chart (the Cyan line). It mathematically divides the stock's price by the S&P 500 index. It visually shows if your stock is beating the broader market or dragging it down.</p>
+        <div class="rule">IF RS Line is rising THEN: The stock is outperforming the S&P 500. Market leaders live here.</div>
+        <div class="rule" style="border-left-color: #ff4d4d;">IF RS Line is falling THEN: The stock is underperforming the market. It is dead money compared to simply holding an index fund.</div>
     </div>
 
     <div class="term-box">
@@ -51,7 +51,7 @@
 
     <div class="term-box">
         <span class="term-title">MACD & The Signal Line (Orange)</span>
-        <p>MACD compares two moving averages. The blue MACD line is the fast trend, and the orange Signal line is the slow trend. When the fast line crosses the slow line, a trend reversal is confirmed.</p>
+        <p>MACD compares two moving averages to spot momentum changes. The blue line is the fast MACD line. <strong>The Orange Signal Line is a smoothed 9-day average of the MACD itself.</strong> It acts as a trigger line. When the fast line crosses the slow orange line, a trend reversal is confirmed.</p>
         <div class="rule">IF Blue MACD crosses ABOVE Orange Signal THEN: Bullish Reversal (Buy Signal). Down-trend is over.</div>
         <div class="rule" style="border-left-color: #ff4d4d;">IF Blue MACD crosses BELOW Orange Signal THEN: Bearish Reversal (Sell Signal). Up-trend is over.</div>
     </div>

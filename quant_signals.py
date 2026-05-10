@@ -9,10 +9,11 @@ from database import get_connection
 
 class QuantEngine:
     def __init__(self):
+        # Establish connection to the SQLite database
         self.conn = get_connection()
 
     def load_parquet(self, ticker):
-        """Loads the historical daily data."""
+        """Loads the historical daily data from the local Parquet file."""
         filepath = HISTORICAL_DIR / f"{ticker}.parquet"
         if not filepath.exists():
             return None
@@ -122,67 +123,81 @@ class QuantEngine:
             peter_lynch_peg = trailing_pe / (earnings_growth * 100)
 
         # ==========================================
-        # PART 3: SCORING & TRANSPARENCY (HTML FORMATTED)
+        # PART 3: SCORING & HTML TOOLTIP FORMATTING
         # ==========================================
         score = 0
         breakdown = []
 
+        # 1. 5D MA Check
         if current_price > ma5: 
             score += 15
             breakdown.append("+15: <abbr title='The current price is trading above the 5-Day Moving Average, signaling very short-term momentum.'>Price > 5D MA</abbr>")
         else:
             breakdown.append("+0: <abbr title='The current price is trading below the 5-Day Moving Average, signaling short-term weakness.'>Price < 5D MA</abbr>")
 
+        # 2. Moving Average Alignment Check
         if ma5 > ma10 and ma10 > ma21: 
             score += 15
             breakdown.append("+15: <abbr title='The 5, 10, and 21-day averages are perfectly stacked. This indicates strong, unified short-term trend alignment.'>Short-term MAs aligned</abbr>")
         else:
             breakdown.append("+0: <abbr title='The moving averages are crisscrossing, indicating choppy or weak price action.'>Short-term MAs unaligned</abbr>")
 
+        # 3. Long Term Institutional Trend Check
         if trend_200d == "UP":
             score += 15
             breakdown.append("+15: <abbr title='The 200-Day Moving Average is rising. This proves the long-term institutional trend is bullish.'>200D Institutional Trend is UP</abbr>")
         else:
             breakdown.append("+0: <abbr title='The 200-Day Moving Average is falling. Institutions are actively selling this stock over the long term.'>200D Trend is DOWN</abbr>")
 
+        # 4. RSI Momentum Check
         if 40 <= rsi_val <= 65: 
             score += 15
             breakdown.append("+15: <abbr title='RSI is between 40 and 65, meaning the stock has room to grow without being dangerously overextended.'>RSI in healthy momentum zone</abbr>")
         else:
             breakdown.append(f"+0: <abbr title='RSI is either above 70 (overbought risk) or below 30 (oversold/crashing).'>RSI is {rsi_val:.1f} (Overbought/Oversold risk)</abbr>")
 
+        # 5. Volatility Contraction Check
         if is_tight: 
             score += 20
             breakdown.append("+20: <abbr title='Weekly closes have barely moved for 3 weeks. This indicates institutions are quietly accumulating shares without pushing the price up.'>'3-Weeks-Tight' volatility contraction detected</abbr>")
         else:
             breakdown.append("+0: <abbr title='Normal volatility. No tight weekly compression pattern detected.'>No tight weekly compression</abbr>")
 
+        # 6. Volume Profile Check
         if obv_bullish: 
             score += 20
             breakdown.append("+20: <abbr title='On-Balance Volume is rising faster than its moving average, confirming that up-days have higher volume than down-days.'>OBV indicates Institutional Accumulation</abbr>")
         else:
             breakdown.append("+0: <abbr title='On-Balance Volume is falling, indicating that selling volume is outpacing buying volume.'>OBV indicates Distribution/Selling</abbr>")
 
+        # Cap score
         score = min(score, 100)
 
+        # Determine Signal
         if score >= 80: signal = "STRONG BUY"
         elif score >= 60: signal = "BULLISH / HOLD"
         elif score >= 40: signal = "NEUTRAL"
         else: signal = "BEARISH / CAUTION"
 
-        # Construct highly formatted HTML for the Frontend
-        notes_html = "<strong>Score Breakdown:</strong><br><ul style='margin-top: 5px; margin-bottom: 15px; font-size: 15px; color: #ccc;'>"
+        # ==========================================
+        # PART 4: CONSTRUCT HTML EDUCATIONAL NOTES
+        # ==========================================
+        # We wrap the breakdown array in HTML <ul> and <li> tags for clean frontend rendering
+        notes_html = "<strong>Analytical Breakdown:</strong><br><ul style='margin-top: 5px; margin-bottom: 15px; font-size: 15px; color: #ccc; padding-left: 20px;'>"
         for item in breakdown:
             notes_html += f"<li style='margin-bottom: 5px;'>{item}</li>"
         notes_html += "</ul>"
         
-        notes_html += f"<strong>Risk Management:</strong> Mathematical <abbr title='Based on Average True Range. If the stock drops below this line, its normal mathematical volatility is broken.'>ATR Stop-Loss</abbr> is {currency} {stop_loss:.2f}.<br><br>"
+        # Add the ATR Stop-Loss explanation
+        notes_html += f"<strong>Risk Management:</strong> Mathematical <abbr title='Based on Average True Range. If the stock drops below this price, its normal mathematical volatility is broken and you should consider exiting.'>ATR Stop-Loss</abbr> is {currency} {stop_loss:.2f}.<br><br>"
         
+        # Add warnings for extreme risk factors
         if rsi_val > 70:
             notes_html += "<strong><span style='color: #ff4d4d;'>Warning:</span></strong> <abbr title='When RSI passes 70, the asset has gone up too quickly and is highly susceptible to a sudden pullback.'>Stock is technically overbought.</abbr> Initiating new positions is high risk. Look to take profits.<br>"
         if short_interest and short_interest > 0.10:
             notes_html += f"<strong><span style='color: #ffaa00;'>Warning:</span></strong> High <abbr title='Percentage of shares being shorted by pessimistic investors. High short interest can trigger violent upwards squeezes.'>Short Interest</abbr> ({short_interest*100:.1f}%). Expect extreme volatility.<br>"
 
+        # Save to SQLite
         self.save_to_db(
             ticker, company_name, sector, currency,
             current_price, ma5, ma10, ma21, trend_50d, trend_200d, rsi_val, stop_loss,
