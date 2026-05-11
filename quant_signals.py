@@ -8,6 +8,12 @@ from datetime import datetime
 from config import HISTORICAL_DIR, FUNDAMENTALS_DIR
 from database import get_connection
 
+# ==============================================================================
+# IMPORTANT: Any further methodology, technical indicators, or algorithmic logic 
+# added to this engine MUST be formally documented in the templates/glossary.html 
+# "Methodology" and "Glossary" sections to maintain institutional transparency.
+# ==============================================================================
+
 def get_candlestick_patterns(prev2, prev1, curr):
     """
     Algorithmic Candlestick Pattern Recognition (Hierarchical Engine).
@@ -161,7 +167,10 @@ class QuantEngine:
         return False
 
     def analyze_ticker(self, ticker):
-        """Runs the combined Technical and Fundamental analysis."""
+        """
+        Runs the combined Technical and Fundamental analysis.
+        NOTE: Any new mathematical scoring rules added below MUST be documented in the glossary.
+        """
         df = self.load_parquet(ticker)
         info = self.load_fundamentals(ticker)
         df_sp500 = self.load_parquet("SP500_BASELINE")

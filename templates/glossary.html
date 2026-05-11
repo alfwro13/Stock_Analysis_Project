@@ -105,7 +105,7 @@
             </div>
         </details>
 
-        <details class="settings-card" open>
+        <details class="settings-card">
             <summary>🕯️ Candlestick Anatomy Masterclass</summary>
             
             <p style="color: #aaa; margin-top: 0; margin-bottom: 20px;">Unlike line charts, candlesticks reveal the psychological war between buyers and sellers within a single timeframe. The <strong>Body</strong> represents the Open and Close. The <strong>Wicks</strong> represent the extreme Highs and Lows reached intraday before the price retreated.</p>
@@ -218,17 +218,43 @@
                 </ul>
                 <div class="rule">IF 5D > 10D > 21D THEN: Short-term trends are perfectly aligned.</div>
             </div>
+            
+            <div class="term-box">
+                <span class="term-title">MACD (Moving Average Convergence Divergence)</span>
+                <p>A momentum oscillator plotted on the 4th row of the macro chart. It shows the relationship between two moving averages of a stock's price.</p>
+                <ul style="color: #ccc; font-size: 14px; line-height: 1.6;">
+                    <li><strong>MACD Line (Blue):</strong> The fast momentum line.</li>
+                    <li><strong>Signal Line (Orange):</strong> The slow trailing line.</li>
+                    <li><strong>Histogram (Bars):</strong> The difference between the MACD and the Signal. Green bars mean momentum is accelerating upward.</li>
+                </ul>
+            </div>
 
             <div class="term-box">
                 <span class="term-title">RSI (Relative Strength Index)</span>
-                <p>A momentum oscillator that measures the speed of recent price changes.</p>
+                <p>A momentum oscillator plotted on the 3rd row of the chart that measures the speed of recent price changes.</p>
                 <div class="rule" style="border-left-color: #ff4d4d;">IF RSI > 70 THEN: Overbought. It has risen too fast and is likely to pull back.</div>
                 <div class="rule">IF RSI < 30 THEN: Oversold. It has dropped too fast and may bounce.</div>
+            </div>
+            
+            <div class="term-box">
+                <span class="term-title">Bollinger Bands</span>
+                <p>The dashed gray lines encasing the price on the main macro chart. They measure standard deviations of volatility away from a simple moving average.</p>
+                <ul style="color: #ccc; font-size: 14px; line-height: 1.6;">
+                    <li>When price hits the <strong>Upper Band</strong>, the asset is statistically over-extended and may face resistance.</li>
+                    <li>When price hits the <strong>Lower Band</strong>, the asset is statistically crushed and may find support.</li>
+                    <li>When the bands squeeze tightly together, a massive explosive move is imminent.</li>
+                </ul>
+            </div>
+            
+            <div class="term-box">
+                <span class="term-title">On-Balance Volume (OBV)</span>
+                <p>Plotted on the bottom row of the macro chart. OBV adds the day's volume if the stock closed up, and subtracts it if the stock closed down. It tells us if "smart money" is quietly accumulating or distributing shares.</p>
+                <div class="rule">IF OBV is trending UP while Price is flat THEN: Institutions are accumulating heavily.</div>
             </div>
 
             <div class="term-box">
                 <span class="term-title">ATR Stop-Loss (Average True Range)</span>
-                <p>Calculates the average daily price swing. Stop Loss is 2x ATRs below current price.</p>
+                <p>Calculates the average daily price swing. The system's trailing Stop Loss is pinned 2x ATRs below the current price.</p>
                 <div class="rule">IF Price drops below ATR Stop-Loss THEN: Normal volatility patterns are broken. Sell to manage risk.</div>
             </div>
         </details>
@@ -237,17 +263,62 @@
             <summary>🏢 Fundamental Valuation (Company Health)</summary>
 
             <div class="term-box">
+                <span class="term-title">Valuation Metrics (P/E & P/B)</span>
+                <p>Standard measures of a company's price tag relative to its real-world performance.</p>
+                <ul style="color: #ccc; font-size: 14px; line-height: 1.6;">
+                    <li><strong>Trailing P/E:</strong> Current price divided by actual earnings over the last 12 months.</li>
+                    <li><strong>Forward P/E:</strong> Current price divided by estimated earnings for the next 12 months.</li>
+                    <li><strong>Price-to-Book (P/B):</strong> Price divided by the literal net asset value of the company (if it were liquidated today).</li>
+                </ul>
+            </div>
+
+            <div class="term-box">
                 <span class="term-title">Peter Lynch Fair Value PEG</span>
-                <p>Compares the <abbr title="Price to Earnings Ratio">P/E</abbr> ratio to the company's actual earnings growth rate.</p>
+                <p>A custom adaptation of the PEG ratio that compares the standard P/E ratio to the company's <em>actual</em> earnings growth rate. Standard PEG often uses unreliable forward estimates.</p>
                 <div class="rule">IF Peter Lynch PEG < 1.0 THEN: Severely undervalued relative to its growth.</div>
                 <div class="rule" style="border-left-color: #ff4d4d;">IF Peter Lynch PEG > 2.0 THEN: Highly overvalued. Growth does not justify the price.</div>
             </div>
 
             <div class="term-box">
-                <span class="term-title">Beta (Systematic Risk)</span>
-                <p>A measure of volatility in relation to the S&P 500.</p>
-                <div class="rule" style="border-left-color: #ff4d4d;">IF Beta > 1.2 THEN: Highly volatile (High Risk / Tech).</div>
-                <div class="rule">IF Beta < 0.8 THEN: Safer and less volatile (Low Risk / Utilities).</div>
+                <span class="term-title">Financial Safety (Debt & Liquidity)</span>
+                <ul style="color: #ccc; font-size: 14px; line-height: 1.6;">
+                    <li><strong>Debt-to-Equity:</strong> > 2.0 can be a massive bankruptcy risk in high-interest-rate environments.</li>
+                    <li><strong>Current Ratio:</strong> Measures if they can pay their short-term bills. < 1.0 means they have more immediate debts than cash on hand.</li>
+                </ul>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Institutional Sentiment</span>
+                <ul style="color: #ccc; font-size: 14px; line-height: 1.6;">
+                    <li><strong>Short Interest:</strong> The percentage of available shares that hedge funds are actively betting against. >10% implies extreme pessimism and volatility.</li>
+                    <li><strong>Beta (Risk):</strong> Volatility relative to the S&P 500. Beta > 1 is more volatile (High Risk), Beta < 1 is safer.</li>
+                </ul>
+            </div>
+        </details>
+        
+        <details class="settings-card">
+            <summary>🧠 System Methodology (The "Why")</summary>
+            
+            <p style="color: #aaa; margin-top: 0; margin-bottom: 20px;">This section documents the underlying philosophy and architectural decisions behind the system's quantitative engine.</p>
+            
+            <div class="term-box">
+                <span class="term-title">The "Dual-Lens" Architecture (Quantamental)</span>
+                <p style="font-size: 15px; color: #ccc;">Pure fundamental investors often fall into "Value Traps"—buying cheap companies that continue to bleed money for years. Pure technical traders often get wiped out buying junk companies simply because a chart looked pretty right before an earnings crash. <strong>Quantamental</strong> investing bridges this gap. The system uses <em>Fundamentals</em> to decide <strong>WHAT</strong> is safe to buy, and <em>Quantitative Technicals</em> to mathematically dictate exactly <strong>WHEN</strong> to buy it.</p>
+            </div>
+            
+            <div class="term-box">
+                <span class="term-title">Hierarchical Candlestick Evaluation</span>
+                <p style="font-size: 15px; color: #ccc;">In older versions of our engine, a candle could simultaneously trigger multiple overlapping patterns (e.g., flagging as both a neutral Doji and a bearish Shooting Star), causing visual contradictions. The current engine uses a strict <strong>Hierarchical Priority System</strong>. Because larger timeframes carry more psychological weight, the system evaluates 3-candle patterns first (Tier 1), then 2-candle patterns (Tier 2), and finally 1-candle patterns (Tier 3). If a Tier 1 pattern fires, evaluation immediately halts, ensuring absolute signal purity.</p>
+            </div>
+            
+            <div class="term-box">
+                <span class="term-title">Pseudo-Daily Intraday Math</span>
+                <p style="font-size: 15px; color: #ccc;">Candlestick patterns are designed for Daily charts; applying their rigid rules directly to 5-minute charts generates extreme noise. To provide live, intraday pattern alerts without the noise, the system intercepts the raw 5-minute ticks, mathematically compresses them into a single "pseudo-daily" candle, and evaluates that live formation against the previous closed days. This tells you what the Daily momentum is shaping up to be <em>before</em> the market officially closes.</p>
+            </div>
+            
+            <div class="term-box">
+                <span class="term-title">Ghostfolio Integration & VWAP Logic</span>
+                <p style="font-size: 15px; color: #ccc;">The system serves as a powerful overlay for Ghostfolio. Instead of merely copying Ghostfolio's data, the engine extracts the raw transactional history across all isolated accounts (Micro Ledgers) and aggregates them into a global Volume Weighted Average Price (VWAP). This prevents portfolio fragmentation and ensures foreign assets (e.g., USD stocks held by a UK investor) are dynamically converted to a unified base currency using live Exchange Rates, providing an institutional-grade assessment of true Unrealized P&L.</p>
             </div>
         </details>
     </div>
