@@ -63,12 +63,12 @@
                 <a href="https://github.com/alfwro13/Stock_Analysis_Project" target="_blank" class="logo-link">
                     <img src="/assets/logo_small.png" alt="Quantamental Logo" class="logo-img">
                 </a>
-                <h1>⚙️ System Configuration</h1>
+                <h1>System Configuration</h1>
             </div>
             <div class="nav-links" style="margin-top: 15px;">
                 <a href="/portfolio">💼 Portfolio</a>
                 <a href="/watchlist">👀 Watchlist</a>
-                <a href="/market-sentiment">🧠 Market Sentiment</a>
+                <a href="/market-sentiment">Market Sentiment</a>
                 <a href="/settings" class="active">⚙️ Settings</a>
                 <a href="/glossary">📚 Glossary</a>
                 <a href="/notifications">🔔 Notifications {% if unread_count > 0 %}<span class="badge" id="nav-badge">{{ unread_count }}</span>{% endif %}</a>
@@ -256,7 +256,7 @@
             </div>
 
             <div style="background-color: #2c2c2c; padding: 15px; border-radius: 5px; margin-bottom: 10px;">
-                <h4 style="margin-top: 0; color: #4da6ff;">🧠 Market Sentiment (Fear & Greed)</h4>
+                <h4 style="margin-top: 0; color: #4da6ff;">Market Sentiment (Fear & Greed)</h4>
                 <div class="checkbox-group">
                     <input type="checkbox" id="FNG_ENABLED" {% if config.NOTIFICATIONS.MARKET_SENTIMENT.ENABLED %}checked{% endif %}>
                     <label for="FNG_ENABLED">Enable automated Nextcloud delivery</label>

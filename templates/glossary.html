@@ -6,10 +6,9 @@
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #121212; color: #e0e0e0; padding: 20px; max-width: 1400px; margin: auto;}
         
-        .header-container { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; padding-bottom: 20px; margin-bottom: 30px;}
-        
+        .header-container { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid #333; padding-bottom: 20px; }
         .title-wrapper { display: flex; align-items: center; }
-        .logo-link { display: inline-block; margin-right: 15px; }
+        .logo-link { display: inline-block; margin-right: 0; } 
         .logo-img { height: 45px; vertical-align: middle; transition: transform 0.2s; }
         .logo-img:hover { transform: scale(1.05); }
 
@@ -46,12 +45,12 @@
                 <a href="https://github.com/alfwro13/Stock_Analysis_Project" target="_blank" class="logo-link">
                     <img src="/assets/logo_small.png" alt="Quantamental Logo" class="logo-img">
                 </a>
-                <h1><abbr title="A modern institutional strategy that combines Quantitative analysis with Fundamental analysis.">Quantamental</abbr> System Glossary</h1>
+                <h1><abbr title="Quantamental - a modern institutional strategy that combines Quantitative analysis with Fundamental analysis.">uantamental</abbr> System Glossary</h1>
             </div>
             <div class="nav-links" style="margin-top: 15px;">
                 <a href="/portfolio">💼 Portfolio</a>
                 <a href="/watchlist">👀 Watchlist</a>
-                <a href="/market-sentiment">🧠 Market Sentiment</a>
+                <a href="/market-sentiment">Market Sentiment</a>
                 <a href="/settings">⚙️ Settings</a>
                 <a href="/glossary" class="active">📚 Glossary</a>
                 <a href="/notifications">🔔 Notifications {% if unread_count > 0 %}<span class="badge" id="nav-badge">{{ unread_count }}</span>{% endif %}</a>

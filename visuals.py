@@ -114,5 +114,17 @@ def create_macro_chart(df, df_sp500, ticker):
     # ROW 5: OBV
     fig.add_trace(go.Scatter(x=df.index, y=df['OBV'], line=dict(color='lightblue', width=2), name="OBV"), row=5, col=1)
 
-    fig.update_layout(template="plotly_dark", height=1200, margin=dict(l=20, r=20, t=40, b=20), xaxis_rangeslider_visible=False)
+    fig.update_layout(
+        template="plotly_dark", 
+        height=1200, 
+        margin=dict(l=20, r=20, t=80, b=20), 
+        xaxis_rangeslider_visible=False,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="center",
+            x=0.5
+        )
+    )
     return fig.to_html(full_html=False, include_plotlyjs='cdn')
