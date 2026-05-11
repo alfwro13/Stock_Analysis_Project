@@ -20,8 +20,7 @@ from contextlib import asynccontextmanager
 from sentiment_engine import get_sentiment_html, run_nextcloud_alert
 from earnings_engine import run_earnings_alert
 from insider_engine import run_insider_alert
-from crash_engine import CrashEngine
-from moonshot_engine import MoonshotEngine
+from intraday_orchestrator import IntradayOrchestrator
 from maintenance_engine import MaintenanceEngine
 
 from config import (
@@ -45,13 +44,9 @@ def trigger_sentiment_report():
     """Triggered by the scheduler to run the Nextcloud Market Sentiment alert."""
     run_nextcloud_alert()
 
-def run_crash_engine():
-    """Executes the high-frequency intraday crash scan."""
-    CrashEngine().run()
-
-def run_moonshot_engine():
-    """Executes the high-frequency intraday moonshot scan."""
-    MoonshotEngine().run()
+def run_intraday_orchestrator():
+    """Executes the unified high-frequency intraday scan (Crash + Moonshot)."""
+    IntradayOrchestrator().run()
 
 def run_maintenance_engine():
     """Executes the background database and file system maintenance."""
@@ -154,50 +149,36 @@ def reload_scheduler():
             except Exception as e:
                 print(f"[ERROR] Failed to schedule Quant Analysis: {e}")
 
-    # 5. Intraday Crash Engine
+    # 5. Unified Intraday Orchestrator (Replaces independent Crash & Moonshot jobs)
     crash_cfg = scheduling.get("CRASH_ALERTS", {})
-    if crash_cfg.get("ENABLED"):
-        freq = crash_cfg.get("FREQUENCY", "mon-fri")
-        start_time = crash_cfg.get("START_TIME", "09:30")
-        end_time = crash_cfg.get("END_TIME", "16:00")
-        interval_mins = int(crash_cfg.get("INTERVAL_MINUTES", 10))
-        
-        try:
-            start_h, _ = map(int, start_time.split(':'))
-            end_h, _ = map(int, end_time.split(':'))
-            
-            # Using CronTrigger with bounded hours creates a tight window for execution
-            scheduler.add_job(
-                run_crash_engine,
-                CronTrigger(day_of_week=freq, hour=f"{start_h}-{end_h}", minute=f"*/{interval_mins}"),
-                id='crash_alerts_job'
-            )
-            print(f"[SCHEDULER] Intraday Crash Scan scheduled for {freq} between {start_time}-{end_time} every {interval_mins} mins.")
-        except Exception as e:
-            print(f"[ERROR] Failed to schedule Crash Alerts: {e}")
-
-    # 6. Intraday Moonshot Engine
     moon_cfg = scheduling.get("MOONSHOT_ALERTS", {})
-    if moon_cfg.get("ENABLED"):
-        freq = moon_cfg.get("FREQUENCY", "mon-fri")
-        start_time = moon_cfg.get("START_TIME", "09:30")
-        end_time = moon_cfg.get("END_TIME", "16:00")
-        interval_mins = int(moon_cfg.get("INTERVAL_MINUTES", 10))
+    
+    crash_enabled = crash_cfg.get("ENABLED", False)
+    moon_enabled = moon_cfg.get("ENABLED", False)
+    
+    if crash_enabled or moon_enabled:
+        # Use Crash config as the master bound, fallback to Moonshot if Crash is disabled
+        active_cfg = crash_cfg if crash_enabled else moon_cfg
+        
+        freq = active_cfg.get("FREQUENCY", "mon-fri")
+        start_time = active_cfg.get("START_TIME", "09:30")
+        end_time = active_cfg.get("END_TIME", "16:00")
+        interval_mins = int(active_cfg.get("INTERVAL_MINUTES", 10))
         
         try:
             start_h, _ = map(int, start_time.split(':'))
             end_h, _ = map(int, end_time.split(':'))
             
             scheduler.add_job(
-                run_moonshot_engine,
+                run_intraday_orchestrator,
                 CronTrigger(day_of_week=freq, hour=f"{start_h}-{end_h}", minute=f"*/{interval_mins}"),
-                id='moonshot_alerts_job'
+                id='intraday_orchestrator_job'
             )
-            print(f"[SCHEDULER] Moonshot Scan scheduled for {freq} between {start_time}-{end_time} every {interval_mins} mins.")
+            print(f"[SCHEDULER] Unified Intraday Orchestrator scheduled for {freq} between {start_time}-{end_time} every {interval_mins} mins.")
         except Exception as e:
-            print(f"[ERROR] Failed to schedule Moonshot Alerts: {e}")
+            print(f"[ERROR] Failed to schedule Intraday Orchestrator: {e}")
 
-    # 7. System Maintenance Engine
+    # 6. System Maintenance Engine
     maint_cfg = scheduling.get("MAINTENANCE", {})
     if maint_cfg.get("ENABLED", True):
         time_str = maint_cfg.get("TIME", "02:00")

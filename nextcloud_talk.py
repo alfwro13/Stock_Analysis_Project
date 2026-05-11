@@ -76,3 +76,35 @@ def share_file_to_talk(remote_path, conversation_token, nextcloud_url, bot_usern
     except requests.exceptions.RequestException as e:
         log_message(f"❌ FATAL File Share Error: {e}")
         return False
+
+def send_text_message(message_text: str, config_data: dict) -> bool:
+    """Sends a direct text payload to Nextcloud Talk using dynamic configurations."""
+    url = config_data.get("NEXTCLOUD_URL", "")
+    token = config_data.get("CONVERSATION_TOKEN", "")
+    user = config_data.get("BOT_USERNAME", "")
+    pwd = config_data.get("APP_PASSWORD", "")
+    
+    if not all([url, token, user, pwd]):
+        return False
+
+    api_endpoint = f"{url}/ocs/v2.php/apps/spreed/api/v1/chat/{token}"
+    payload = {"message": message_text}
+    headers = {
+        "OCS-APIRequest": "true", 
+        "Content-Type": "application/json", 
+        "Accept": "application/json"
+    }
+    
+    try:
+        response = requests.post(
+            api_endpoint, 
+            headers=headers, 
+            json=payload, 
+            auth=(user, pwd), 
+            timeout=10
+        )
+        response.raise_for_status()
+        return True
+    except Exception as e:
+        print(f"[ERROR] Failed to send Nextcloud text message: {e}")
+        return False
