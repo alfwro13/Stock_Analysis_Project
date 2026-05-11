@@ -9,9 +9,10 @@
         
         .header-container { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid #333; padding-bottom: 20px; }
         .title-wrapper { display: flex; align-items: center; }
-        .logo-link { display: inline-block; margin-right: 15px; }
+        .logo-link { display: inline-block; margin-right: 0; } 
         .logo-img { height: 45px; vertical-align: middle; transition: transform 0.2s; }
         .logo-img:hover { transform: scale(1.05); }
+        .title-wrapper h1 { margin-left: 0; }
 
         .action-buttons { display: flex; gap: 15px; }
         .nav-links a { margin-right: 20px; font-size: 16px; color: #4da6ff; text-decoration: none; font-weight: bold; }
@@ -65,7 +66,7 @@
                 <a href="https://github.com/alfwro13/Stock_Analysis_Project" target="_blank" class="logo-link">
                     <img src="/assets/logo_small.png" alt="Quantamental Logo" class="logo-img">
                 </a>
-                <h1><abbr title="A modern institutional strategy that combines Quantitative analysis with Fundamental analysis.">Quantamental</abbr> Dashboard</h1>
+                <h1><abbr title="A modern institutional strategy that combines Quantitative analysis with Fundamental analysis.">uantamental</abbr> Dashboard</h1>
             </div>
             <p style="color: #aaaaaa; margin-top: 5px; font-size: 14px;">Data Last Updated: <strong>{{ global_updated }}</strong></p>
             <div class="nav-links" style="margin-top: 15px; display: flex; align-items: center;">
