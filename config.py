@@ -63,6 +63,18 @@ DEFAULT_CONFIG = {
             "START_TIME": "09:30",
             "END_TIME": "16:00",
             "INTERVAL_MINUTES": 10
+        },
+        "MOONSHOT_ALERTS": {
+            "ENABLED": False,
+            "FREQUENCY": "mon-fri",
+            "START_TIME": "09:30",
+            "END_TIME": "16:00",
+            "INTERVAL_MINUTES": 10
+        },
+        "MAINTENANCE": {
+            "ENABLED": True,
+            "DAY_OF_WEEK": "sun",
+            "TIME": "02:00"
         }
     },
     "NOTIFICATIONS": {
@@ -90,6 +102,12 @@ DEFAULT_CONFIG = {
             "DROP_DAYS": 3,
             "SMA_LENGTH": 10,
             "SMA_GAP_PERCENT": 2.0
+        },
+        "MOONSHOT_ALERTS": {
+            "SPIKE_PERCENT": 5.0,
+            "SPIKE_DAYS": 3,
+            "SMA_LENGTH": 10,
+            "SMA_GAP_PERCENT": 3.0
         }
     }
 }

@@ -21,6 +21,8 @@ from sentiment_engine import get_sentiment_html, run_nextcloud_alert
 from earnings_engine import run_earnings_alert
 from insider_engine import run_insider_alert
 from crash_engine import CrashEngine
+from moonshot_engine import MoonshotEngine
+from maintenance_engine import MaintenanceEngine
 
 from config import (
     PORTFOLIO_PATH, WATCHLIST_PATH, HISTORICAL_DIR, INTRADAY_DIR, 
@@ -42,6 +44,18 @@ scheduler = BackgroundScheduler()
 def trigger_sentiment_report():
     """Triggered by the scheduler to run the Nextcloud Market Sentiment alert."""
     run_nextcloud_alert()
+
+def run_crash_engine():
+    """Executes the high-frequency intraday crash scan."""
+    CrashEngine().run()
+
+def run_moonshot_engine():
+    """Executes the high-frequency intraday moonshot scan."""
+    MoonshotEngine().run()
+
+def run_maintenance_engine():
+    """Executes the background database and file system maintenance."""
+    MaintenanceEngine().run()
 
 def reload_scheduler():
     """Reads the latest config.json and updates APScheduler dynamically."""
@@ -162,6 +176,43 @@ def reload_scheduler():
         except Exception as e:
             print(f"[ERROR] Failed to schedule Crash Alerts: {e}")
 
+    # 6. Intraday Moonshot Engine
+    moon_cfg = scheduling.get("MOONSHOT_ALERTS", {})
+    if moon_cfg.get("ENABLED"):
+        freq = moon_cfg.get("FREQUENCY", "mon-fri")
+        start_time = moon_cfg.get("START_TIME", "09:30")
+        end_time = moon_cfg.get("END_TIME", "16:00")
+        interval_mins = int(moon_cfg.get("INTERVAL_MINUTES", 10))
+        
+        try:
+            start_h, _ = map(int, start_time.split(':'))
+            end_h, _ = map(int, end_time.split(':'))
+            
+            scheduler.add_job(
+                run_moonshot_engine,
+                CronTrigger(day_of_week=freq, hour=f"{start_h}-{end_h}", minute=f"*/{interval_mins}"),
+                id='moonshot_alerts_job'
+            )
+            print(f"[SCHEDULER] Moonshot Scan scheduled for {freq} between {start_time}-{end_time} every {interval_mins} mins.")
+        except Exception as e:
+            print(f"[ERROR] Failed to schedule Moonshot Alerts: {e}")
+
+    # 7. System Maintenance Engine
+    maint_cfg = scheduling.get("MAINTENANCE", {})
+    if maint_cfg.get("ENABLED", True):
+        time_str = maint_cfg.get("TIME", "02:00")
+        day_of_week = maint_cfg.get("DAY_OF_WEEK", "sun")
+        try:
+            hour, minute = map(int, time_str.split(':'))
+            scheduler.add_job(
+                run_maintenance_engine,
+                CronTrigger(day_of_week=day_of_week, hour=hour, minute=minute),
+                id='maintenance_job'
+            )
+            print(f"[SCHEDULER] DB/File Maintenance scheduled for {day_of_week} at {time_str}")
+        except Exception as e:
+            print(f"[ERROR] Failed to schedule Maintenance Job: {e}")
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifecycle manager for the FastAPI application."""
@@ -197,10 +248,6 @@ def get_unread_count():
         return count
     except Exception:
         return 0
-
-def run_crash_engine():
-    """Executes the high-frequency intraday crash scan."""
-    CrashEngine().run()
 
 def run_update_pipeline():
     """Executes the heavy data ingestion and mathematical quant modeling."""
