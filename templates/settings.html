@@ -78,44 +78,6 @@
 
     <form id="settingsForm">
 
-        <details class="settings-card" open>
-            <summary>👻 Ghostfolio Integration API</summary>
-            
-            <div class="form-group">
-                <label>Ghostfolio Server URL</label>
-                <input type="text" id="GHOSTFOLIO_URL" value="{{ config.GHOSTFOLIO_URL }}">
-            </div>
-            <div class="form-group">
-                <label>Security API Token</label>
-                <input type="password" id="API_TOKEN" value="{{ config.API_TOKEN }}">
-            </div>
-
-            <div style="background-color: #2c2c2c; padding: 15px; border-radius: 5px; margin-top: 20px;">
-                <h4 style="margin-top: 0; color: #4da6ff;">Opt-In Account Syncing</h4>
-                <p style="font-size: 13px; color: #aaa; margin-top: 0; margin-bottom: 15px;">Select which accounts the Data Engine is permitted to synchronize. This dramatically reduces API loads and allows you to exclude specific portfolios from the system math.</p>
-                
-                <div class="account-list" id="accountListContainer">
-                    {% if config.GHOSTFOLIO_ACCOUNTS.discovered %}
-                        {% for acc in config.GHOSTFOLIO_ACCOUNTS.discovered %}
-                        <div class="account-item">
-                            <input type="checkbox" id="acc_{{ acc.id }}" value="{{ acc.id }}" class="ghostfolio-account-checkbox"
-                                   {% if acc.id in config.GHOSTFOLIO_ACCOUNTS.active %}checked{% endif %}>
-                            <label for="acc_{{ acc.id }}">
-                                <span>{{ acc.name }}</span>
-                                <span class="account-badge">{{ acc.currency }}</span>
-                            </label>
-                        </div>
-                        {% endfor %}
-                    {% else %}
-                        <div style="color: #888; text-align: center; padding: 20px;">No accounts discovered. Please click the discovery button below.</div>
-                    {% endif %}
-                </div>
-                
-                <button type="button" class="btn-test" style="margin-top: 0;" onclick="discoverGhostfolioAccounts()">🔍 Discover Accounts on Server</button>
-                <div id="discovery-status-msg"></div>
-            </div>
-        </details>
-
         <details class="settings-card">
             <summary>🤖 Background Automation Schedulers</summary>
             
@@ -346,6 +308,44 @@
             <div class="form-group">
                 <label>Talk Conversation Token</label>
                 <input type="text" id="CONVERSATION_TOKEN" value="{{ config.CONVERSATION_TOKEN }}">
+            </div>
+        </details>
+
+        <details class="settings-card">
+            <summary>👻 Ghostfolio Integration API</summary>
+            
+            <div class="form-group">
+                <label>Ghostfolio Server URL</label>
+                <input type="text" id="GHOSTFOLIO_URL" value="{{ config.GHOSTFOLIO_URL }}">
+            </div>
+            <div class="form-group">
+                <label>Security API Token</label>
+                <input type="password" id="API_TOKEN" value="{{ config.API_TOKEN }}">
+            </div>
+
+            <div style="background-color: #2c2c2c; padding: 15px; border-radius: 5px; margin-top: 20px;">
+                <h4 style="margin-top: 0; color: #4da6ff;">Opt-In Account Syncing</h4>
+                <p style="font-size: 13px; color: #aaa; margin-top: 0; margin-bottom: 15px;">Select which accounts the Data Engine is permitted to synchronize. This dramatically reduces API loads and allows you to exclude specific portfolios from the system math.</p>
+                
+                <div class="account-list" id="accountListContainer">
+                    {% if config.GHOSTFOLIO_ACCOUNTS.discovered %}
+                        {% for acc in config.GHOSTFOLIO_ACCOUNTS.discovered %}
+                        <div class="account-item">
+                            <input type="checkbox" id="acc_{{ acc.id }}" value="{{ acc.id }}" class="ghostfolio-account-checkbox"
+                                   {% if acc.id in config.GHOSTFOLIO_ACCOUNTS.active %}checked{% endif %}>
+                            <label for="acc_{{ acc.id }}">
+                                <span>{{ acc.name }}</span>
+                                <span class="account-badge">{{ acc.currency }}</span>
+                            </label>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div style="color: #888; text-align: center; padding: 20px;">No accounts discovered. Please click the discovery button below.</div>
+                    {% endif %}
+                </div>
+                
+                <button type="button" class="btn-test" style="margin-top: 0;" onclick="discoverGhostfolioAccounts()">🔍 Discover Accounts on Server</button>
+                <div id="discovery-status-msg"></div>
             </div>
         </details>
 
