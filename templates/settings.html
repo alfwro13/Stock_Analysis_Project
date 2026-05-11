@@ -359,6 +359,10 @@
         <details class="settings-card">
             <summary>🌐 Core System & Currencies</summary>
             <div class="form-group">
+                <label>Server URL (Base URL for alerts, e.g. http://localhost)</label>
+                <input type="text" id="SERVER_URL" value="{{ config.SERVER_URL }}">
+            </div>
+            <div class="form-group">
                 <label>System Port (Requires Restart)</label>
                 <input type="number" id="PORT" value="{{ config.PORT }}">
             </div>
@@ -661,6 +665,7 @@
             });
             
             const payload = {
+                "SERVER_URL": document.getElementById('SERVER_URL').value,
                 "PORT": parseInt(document.getElementById('PORT').value),
                 "BASE_CURRENCY": document.getElementById('BASE_CURRENCY').value,
                 "GHOSTFOLIO_URL": document.getElementById('GHOSTFOLIO_URL').value,

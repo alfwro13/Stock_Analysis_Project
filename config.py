@@ -32,6 +32,7 @@ BASE_CURRENCY = "GBP"
 
 # Base Schema for Application Configuration
 DEFAULT_CONFIG = {
+    "SERVER_URL": "http://localhost",
     "GHOSTFOLIO_URL": "",
     "API_TOKEN": "",
     "PORT": 8090,
@@ -149,6 +150,7 @@ def load_config() -> dict:
 # Load variables immediately on import
 current_config = load_config()
 
+SERVER_URL = current_config.get("SERVER_URL", "http://localhost")
 GHOSTFOLIO_URL = current_config.get("GHOSTFOLIO_URL", "")
 GHOSTFOLIO_TOKEN = current_config.get("API_TOKEN", "")
 GHOSTFOLIO_ACCOUNTS = current_config.get("GHOSTFOLIO_ACCOUNTS", {"discovered": [], "active": []})

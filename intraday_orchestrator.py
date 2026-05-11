@@ -4,7 +4,7 @@ import json
 import yfinance as yf
 import pandas as pd
 from datetime import datetime
-from config import load_config, PORTFOLIO_PATH, INTRADAY_DIR, HISTORICAL_DIR, PORT
+from config import load_config, PORTFOLIO_PATH, INTRADAY_DIR, HISTORICAL_DIR, PORT, SERVER_URL
 from database import get_connection
 from crash_engine import CrashEngine
 from moonshot_engine import MoonshotEngine
@@ -215,7 +215,7 @@ class IntradayOrchestrator:
             combined_message += f"🚨 **INTRADAY CRASH ALERT** ({datetime.now().strftime('%H:%M')}) 🚨\n\n"
             for ticker, alert, currency in crash_alerts_to_send:
                 formatted_price = format_currency(alert['price'], currency)
-                url = f"http://localhost:{PORT}/stock/{ticker}"
+                url = f"{SERVER_URL}:{PORT}/stock/{ticker}"
                 combined_message += f"📉 **{ticker}**: {formatted_price}\n⚠️ {alert['reason']}\n📊 [View Breakdown]({url})\n\n"
                 self.log_notification("Crash", f"Intraday Alert triggered for {ticker}. Reason: {alert['reason']}")
         
@@ -223,7 +223,7 @@ class IntradayOrchestrator:
             combined_message += f"🚀 **MOONSHOT ALERT** ({datetime.now().strftime('%H:%M')}) 🚀\n\n"
             for ticker, alert, currency in moonshot_alerts_to_send:
                 formatted_price = format_currency(alert['price'], currency)
-                url = f"http://localhost:{PORT}/stock/{ticker}"
+                url = f"{SERVER_URL}:{PORT}/stock/{ticker}"
                 combined_message += f"📈 **{ticker}**: {formatted_price}\n🔥 {alert['reason']}\n"
                 for caution in alert.get('cautions', []):
                     combined_message += f"⚠️ *CAUTION:* {caution}\n"

@@ -25,7 +25,7 @@ from maintenance_engine import MaintenanceEngine
 
 from config import (
     PORTFOLIO_PATH, WATCHLIST_PATH, HISTORICAL_DIR, INTRADAY_DIR, 
-    PORT, BASE_CURRENCY, SECRETS_PATH, load_config
+    PORT, BASE_CURRENCY, SECRETS_PATH, SERVER_URL, load_config
 )
 from database import get_connection, init_db
 from quant_signals import QuantEngine, get_candlestick_patterns
@@ -750,5 +750,5 @@ async def stock_detail(request: Request, ticker: str):
     )
 
 if __name__ == "__main__":
-    print(f"Starting Quantamental Web Server on Port {PORT}...")
+    print(f"Starting Quantamental Web Server at {SERVER_URL}:{PORT}...")
     uvicorn.run(app, host="0.0.0.0", port=PORT)
