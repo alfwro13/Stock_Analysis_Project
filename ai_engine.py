@@ -3,7 +3,8 @@ import json
 import re
 import pandas as pd
 import ta
-from config import PORTFOLIO_PATH, HISTORICAL_DIR
+import yfinance as yf
+from config import PORTFOLIO_PATH, HISTORICAL_DIR, BASE_CURRENCY
 from database import get_connection
 
 class AIPromptEngine:
@@ -54,17 +55,14 @@ class AIPromptEngine:
             try:
                 df = pd.read_parquet(df_path)
                 if not df.empty and len(df) > 30:
-                    # Calculate MACD
                     macd_indicator = ta.trend.MACD(close=df['Close'])
                     metrics["macd_line"] = round(macd_indicator.macd().iloc[-1], 3)
                     metrics["macd_signal"] = round(macd_indicator.macd_signal().iloc[-1], 3)
                     
-                    # Calculate OBV Trend
                     obv = ta.volume.OnBalanceVolumeIndicator(close=df['Close'], volume=df['Volume']).on_balance_volume()
                     obv_ma = obv.rolling(window=21).mean()
                     metrics["obv_trend"] = "Accumulation (Bullish)" if obv.iloc[-1] > obv_ma.iloc[-1] else "Distribution (Bearish)"
                     
-                    # Calculate Volume
                     metrics["recent_volume"] = f"{df['Volume'].iloc[-1]:,.0f}"
                     metrics["average_volume"] = f"{df['Volume'].rolling(21).mean().iloc[-1]:,.0f}"
             except Exception as e:
@@ -107,27 +105,47 @@ class AIPromptEngine:
         rsi_str = f"{stock_data.get('rsi_14'):.1f}" if stock_data.get('rsi_14') is not None else "N/A"
         beta_str = fmt_float(stock_data.get('beta'))
         
-        # Format 52-Week Range to show the magnitude of the run
         low_52 = fmt_float(stock_data.get('fifty_two_week_low'))
         high_52 = fmt_float(stock_data.get('fifty_two_week_high'))
 
-        # 4. Format Portfolio String (WITH STRICT MATH PRE-CALCULATED)
+        # --- LIVE EXCHANGE RATE LOGIC (Matches main.py) ---
+        stock_currency = stock_data['currency']
+        exchange_rate = 1.0
+
+        if stock_currency and stock_currency not in [BASE_CURRENCY, 'GBp', 'GBP']:
+            try:
+                # E.g., GBPUSD=X (Converts Base to Native)
+                fx_ticker = f"{BASE_CURRENCY}{stock_currency}=X"
+                fx_data = yf.Ticker(fx_ticker).history(period="1d")
+                if not fx_data.empty:
+                    exchange_rate = fx_data['Close'].iloc[-1]
+            except Exception as e:
+                print(f"[AI ENGINE] Warning: Could not fetch FX for {fx_ticker}: {e}")
+
+        # 4. Format Portfolio String 
         portfolio_str = "No active holdings in the current portfolio."
         if portfolio_data and portfolio_data.get('global_shares', 0) > 0:
             global_shares = portfolio_data.get('global_shares', 0)
-            global_vwap = portfolio_data.get('global_buy_price', 0)
             
-            # Prevent AI Math Hallucinations by calculating P&L strictly in Python
+            # Apply FX Conversion to VWAP (Ghostfolio Base -> Stock Native)
+            global_vwap_base = portfolio_data.get('global_buy_price', 0)
+            vwap_native = global_vwap_base * exchange_rate
+            
+            # Re-scale if native is LSE pence (GBp)
+            if portfolio_data.get('price_in_pence', False):
+                vwap_native *= 100
+                
             curr_price = stock_data['current_price']
-            # Note: We assume 1:1 currency here for prompt simplicity to prevent AI confusion
-            cost_basis = global_shares * global_vwap
+            
+            # Math
+            cost_basis = global_shares * vwap_native
             current_value = global_shares * curr_price
             pnl = current_value - cost_basis
             pnl_pct = (pnl / cost_basis) * 100 if cost_basis > 0 else 0
             
             portfolio_str = (
                 f"User currently holds {global_shares} shares.\n"
-                f"Global VWAP (Cost Basis): {global_vwap:,.2f} {stock_data['currency']}.\n"
+                f"Global VWAP (Cost Basis): {vwap_native:,.2f} {stock_data['currency']}.\n"
                 f"Current Value: {current_value:,.2f} {stock_data['currency']}.\n"
                 f"Unrealized P&L: {pnl:,.2f} {stock_data['currency']} ({pnl_pct:.2f}%).\n"
                 f"CRITICAL INSTRUCTION: Do NOT recalculate these P&L numbers. Use them exactly as stated.\n"
@@ -137,7 +155,11 @@ class AIPromptEngine:
             if len(accounts) > 1:
                 portfolio_str += "\nThis holding is split across the following micro-ledgers:\n"
                 for acc in accounts:
-                    portfolio_str += f"  - {acc.get('name', 'Unknown')}: {acc.get('shares', 0)} shares at {acc.get('buy_price', 0):,.2f} {stock_data['currency']}\n"
+                    acc_buy_base = acc.get('buy_price', 0)
+                    acc_buy_native = acc_buy_base * exchange_rate
+                    if portfolio_data.get('price_in_pence', False):
+                        acc_buy_native *= 100
+                    portfolio_str += f"  - {acc.get('name', 'Unknown')}: {acc.get('shares', 0)} shares at {acc_buy_native:,.2f} {stock_data['currency']}\n"
 
         # 5. Build The Master Context Payload
         context_payload = f"""
