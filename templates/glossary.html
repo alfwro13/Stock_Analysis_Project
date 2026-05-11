@@ -22,7 +22,7 @@
         
         .glossary-content { max-width: 1000px; margin: 0 auto; }
         
-        /* Collapsible Accordion Styles imported from Settings */
+        /* Collapsible Accordion Styles */
         details.settings-card { background-color: #1e1e1e; padding: 20px 25px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); border-left: 4px solid #4da6ff; transition: background-color 0.3s ease; }
         details.settings-card > summary { font-size: 22px; font-weight: bold; color: #fff; cursor: pointer; list-style: none; outline: none; margin: -20px -25px; padding: 20px 25px; display: flex; justify-content: space-between; align-items: center; border-radius: 8px; }
         details.settings-card > summary::-webkit-details-marker { display: none; }
@@ -35,6 +35,16 @@
         .rule { background-color: #121212; padding: 10px; border-left: 4px solid #00ff00; margin-top: 10px; font-family: monospace; font-size: 14px;}
         
         abbr { text-decoration: underline dotted; cursor: help; color: #fff;}
+
+        /* CSS Candlestick Graphics */
+        .candle-display { display: flex; gap: 20px; align-items: center; margin-bottom: 15px; padding: 15px; background-color: #1a1a1a; border-radius: 5px; border: 1px solid #333;}
+        .candle-group { display: flex; gap: 10px; align-items: flex-end; height: 80px; padding: 0 10px;}
+        .candle { position: relative; width: 16px; display: flex; justify-content: center; height: 100%;}
+        .wick { position: absolute; width: 2px; background-color: #888; z-index: 1; }
+        .body-green { position: absolute; width: 14px; background-color: #00ff00; z-index: 2; border: 1px solid #00cc00;}
+        .body-red { position: absolute; width: 14px; background-color: #ff4d4d; z-index: 2; border: 1px solid #cc0000;}
+        .body-doji { position: absolute; width: 14px; height: 2px; background-color: #aaa; z-index: 2;}
+        .candle-explanation { flex: 1; font-size: 15px; color: #ccc; line-height: 1.5; }
     </style>
 </head>
 <body>
@@ -61,7 +71,7 @@
     <div class="glossary-content">
         <p style="font-size: 16px; margin-bottom: 30px; color: #ccc;">This living document explains the mathematical algorithms, fundamental logic, and trading strategies used to score and evaluate your portfolio.</p>
 
-        <details class="settings-card" open>
+        <details class="settings-card">
             <summary>🎯 The Multi-Regime Strategy (Scoring & Tags)</summary>
             
             <p style="color: #aaa; margin-top: 0;">Our system operates on a "Dual-Lens" architecture. The <strong>0-100 Score</strong> tells you if an asset is healthy to <em>hold</em>. The <strong>Setup Tags</strong> tell you exactly when it is mathematically optimal to <em>buy or sell</em>.</p>
@@ -95,28 +105,103 @@
             </div>
         </details>
 
-        <details class="settings-card">
+        <details class="settings-card" open>
             <summary>🕯️ Candlestick Anatomy Masterclass</summary>
             
-            <p style="color: #aaa; margin-top: 0;">The interactive charts use Candlesticks. Unlike line charts, candlesticks reveal the psychological war between buyers and sellers within a single timeframe.</p>
+            <p style="color: #aaa; margin-top: 0; margin-bottom: 20px;">Unlike line charts, candlesticks reveal the psychological war between buyers and sellers within a single timeframe. The <strong>Body</strong> represents the Open and Close. The <strong>Wicks</strong> represent the extreme Highs and Lows reached intraday before the price retreated.</p>
             
             <div class="term-box">
-                <span class="term-title">The Real Body (The Block)</span>
-                <p>The thick colored block. It represents the <abbr title="The first price traded when the market opened.">Open</abbr> and the <abbr title="The final price traded when the market closed.">Close</abbr> of the period.</p>
-                <ul style="color: #ccc; font-size: 14px;">
-                    <li><strong>Green Body:</strong> The stock Closed higher than it Opened. Bulls won.</li>
-                    <li><strong>Red Body:</strong> The stock Closed lower than it Opened. Bears won.</li>
-                </ul>
+                <span class="term-title">🔨 The Hammer (Bullish Rejection)</span>
+                <div class="candle-display">
+                    <div class="candle-group">
+                        <div class="candle">
+                            <div class="wick" style="height: 100%; top: 0;"></div>
+                            <div class="body-green" style="height: 30%; top: 10%;"></div>
+                        </div>
+                    </div>
+                    <div class="candle-explanation">
+                        <strong>The Psychology:</strong> Sellers aggressively took control early in the day, driving the price down and creating a massive lower wick. However, institutional buyers stepped in, absorbed all the selling pressure, and violently pushed the price back up to close near the highs. <br><br>
+                        <strong>System Rule:</strong> Lower wick is at least 2x the size of the body. Upper wick is practically non-existent.
+                    </div>
+                </div>
             </div>
 
             <div class="term-box">
-                <span class="term-title">The Wicks (The Shadows)</span>
-                <p>The thin lines extending above and below the body. They represent the extreme <abbr title="Highest traded price.">Highs</abbr> and <abbr title="Lowest traded price.">Lows</abbr> reached during the battle before the price retreated.</p>
-                <ul style="color: #ccc; font-size: 14px;">
-                    <li><strong>Long Lower Wick:</strong> Price dropped hard, but buyers violently stepped in and drove it back up. <em>(Highly Bullish Support)</em></li>
-                    <li><strong>Long Upper Wick:</strong> Price spiked hard, but institutional sellers aggressively dumped shares, driving it down. <em>(Highly Bearish Resistance)</em></li>
-                </ul>
+                <span class="term-title">🌠 The Shooting Star (Bearish Rejection)</span>
+                <div class="candle-display">
+                    <div class="candle-group">
+                        <div class="candle">
+                            <div class="wick" style="height: 100%; top: 0;"></div>
+                            <div class="body-red" style="height: 30%; bottom: 10%;"></div>
+                        </div>
+                    </div>
+                    <div class="candle-explanation">
+                        <strong>The Psychology:</strong> The exact opposite of a hammer. Euphoric retail buyers pushed the price to new highs intraday. However, institutions used this liquidity to secretly dump their shares, crushing the price back down to the lows before the close. <br><br>
+                        <strong>System Rule:</strong> Upper wick is at least 2x the size of the body. Indicates an imminent trend reversal to the downside.
+                    </div>
+                </div>
             </div>
+
+            <div class="term-box">
+                <span class="term-title">🐂 Bullish Engulfing</span>
+                <div class="candle-display">
+                    <div class="candle-group">
+                        <div class="candle">
+                            <div class="wick" style="height: 60%; top: 20%;"></div>
+                            <div class="body-red" style="height: 40%; top: 30%;"></div>
+                        </div>
+                        <div class="candle">
+                            <div class="wick" style="height: 100%; top: 0;"></div>
+                            <div class="body-green" style="height: 80%; top: 10%;"></div>
+                        </div>
+                    </div>
+                    <div class="candle-explanation">
+                        <strong>The Psychology:</strong> A two-day pattern. Day 1 is a standard red day. On Day 2, the stock opens lower but buyers step in with overwhelming force, driving the price so high that the green body completely "engulfs" the previous day's red body. It signifies a massive shift in momentum from bears to bulls.
+                    </div>
+                </div>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">⚖️ The Doji (Total Indecision)</span>
+                <div class="candle-display">
+                    <div class="candle-group">
+                        <div class="candle">
+                            <div class="wick" style="height: 100%; top: 0;"></div>
+                            <div class="body-doji" style="top: 48%;"></div>
+                        </div>
+                    </div>
+                    <div class="candle-explanation">
+                        <strong>The Psychology:</strong> A brutal tug-of-war occurred all day, but neither side won. The opening price and closing price are mathematically almost identical. A Doji acts as a "pause" in the market. It often precedes a violent breakout, as the market is winding up to pick a decisive direction.
+                    </div>
+                </div>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">🌅 The Morning Star (3-Candle Reversal)</span>
+                <div class="candle-display">
+                    <div class="candle-group">
+                        <div class="candle">
+                            <div class="wick" style="height: 90%; top: 5%;"></div>
+                            <div class="body-red" style="height: 70%; top: 10%;"></div>
+                        </div>
+                        <div class="candle">
+                            <div class="wick" style="height: 30%; bottom: 5%;"></div>
+                            <div class="body-doji" style="bottom: 18%;"></div>
+                        </div>
+                        <div class="candle">
+                            <div class="wick" style="height: 80%; top: 15%;"></div>
+                            <div class="body-green" style="height: 60%; top: 20%;"></div>
+                        </div>
+                    </div>
+                    <div class="candle-explanation">
+                        <strong>The Psychology:</strong> The crown jewel of bottom-fishing setups. <br>
+                        <strong>Day 1:</strong> Panic. A massive red candle as weak hands sell. <br>
+                        <strong>Day 2:</strong> Exhaustion. The stock gaps down, but selling dries up, forming a Doji (Indecision).<br>
+                        <strong>Day 3:</strong> The Reversal. Institutional buyers step in heavily, printing a massive green candle that pushes more than 50% into Day 1's red body, trapping short-sellers.
+                    </div>
+                </div>
+            </div>
+
         </details>
 
         <details class="settings-card">
