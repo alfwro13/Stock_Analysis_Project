@@ -1,193 +1,147 @@
-# 📈 Quantamental Portfolio Dashboard
+# **📈 Quantamental Portfolio Dashboard**
 
-Self-hosted web application that merges **Quantitative Analysis** (algorithmic momentum and trend-following) with **Fundamental Analysis** (valuation, balance sheet health, and market sentiment). 
+Self-hosted web application that merges **Quantitative Analysis** (algorithmic momentum, trend-following, candlestick patterns) with **Fundamental Analysis** (valuation, balance sheet health, and market sentiment).
 
 Designed for Linux environments, this system pulls live holdings from your [Ghostfolio](https://ghostfol.io/) instance, scrapes multi-dimensional market data via Yahoo Finance, and generates an interactive, Bloomberg-style dashboard using FastAPI and Plotly.
 
----
+## **✨ Core Features**
 
-## ✨ Core Features
+* **Auto-Syncing Portfolio (Multi-Account):** Integrates directly with Ghostfolio via API to automatically pull your live holdings. Now supports opt-in account discovery, allowing you to selectively sync specific accounts and calculate accurate global VWAP Cost Basis and Unrealized P\&L across different currencies.  
+* **Multi-Dimensional Data Engine:** Downloads 2-year macro daily data, 1-day 5-minute intraday data, and deep fundamental .info payloads.  
+* **Nextcloud Talk Integration:** A comprehensive alert ecosystem that pushes rich notifications directly to your Nextcloud Talk app.  
+* **Hierarchical Candlestick Recognition:** Algorithmically detects and scores Tier-1 (Morning Star), Tier-2 (Engulfing), and Tier-3 (Hammer/Shooting Star) reversal patterns on live intraday data.  
+* **Intraday Orchestrator:** High-frequency 5-minute scanning that detects mathematical "Crash" conditions (heavy drops below SMA) and "Moonshot" conditions (parabolic spikes, All-Time Highs) during active market hours.  
+* **Market Sentiment & Insider Tracking:** Maps the CNN Fear & Greed Index against the S\&P 500 (with visual chart generation) and scrapes SEC Form 4 filings for major insider buying aligning with algorithmic dips.  
+* **Proprietary Scoring (0-100):** A custom algorithm that grades stocks based on Moving Average alignment, RSI, Volatility Contraction (3-Weeks-Tight), MACD Reversals, and On-Balance Volume.  
+* **Built-in Task Scheduler:** Fully autonomous background scheduling via APScheduler. No external cron jobs required. Manage execution times directly from the web UI.  
+* **In-App Management:** Update configurations, test webhooks, perform git pull repository updates, and restart the background service directly from the Settings GUI.  
+* **Crash-Proof Local Storage & Maintenance:** Persists heavy time-series data locally using highly compressed .parquet files and SQLite3. An automated Maintenance Engine prunes orphaned files and defragments the database weekly.
 
-* **Auto-Syncing Portfolio:** Integrates directly with Ghostfolio via API to automatically pull your live holdings and calculate accurate Cost Basis and Unrealized P&L across different currencies (e.g., handling LSE GBp vs GBP conversions).
-* **Multi-Dimensional Data Engine:** Downloads 2-year macro daily data, 1-day 5-minute intraday data, and deep fundamental `.info` payloads.
-* **Crash-Proof Local Storage:** Persists heavy time-series data locally using highly compressed `.parquet` files and `SQLite3`, ensuring lightning-fast load times and zero API rate-limiting.
-* **Proprietary Scoring (0-100):** A custom algorithm that grades stocks based on Moving Average alignment, RSI, Volatility Contraction (3-Weeks-Tight), and On-Balance Volume.
-* **Mathematical Risk Management:** Automatically calculates a dynamic Stop-Loss for every asset based on its 14-day Average True Range (ATR).
-* **Peter Lynch Fair Value:** Calculates custom PEG ratios based on actual earnings growth to identify undervalued assets.
+## **🛠️ Architecture**
 
----
+* **Backend:** Python 3.10+, FastAPI, Uvicorn, APScheduler  
+* **Data Engineering:** pandas, pyarrow, yfinance, sqlite3  
+* **Quantitative Math:** ta (Technical Analysis Library), numpy  
+* **Frontend:** Jinja2 Templates, HTML/CSS/JS (Vanilla), Plotly & Matplotlib (Interactive Charting)  
+* **Integrations:** Ghostfolio API, Nextcloud Talk (WebDAV & OCS API)
 
-## 🛠️ Architecture
+## **🚀 Installation & Setup**
 
-* **Backend:** Python 3.10+, FastAPI, Uvicorn
-* **Data Engineering:** `pandas`, `pyarrow`, `yfinance`
-* **Quantitative Math:** `ta` (Technical Analysis Library)
-* **Frontend:** Jinja2 Templates, HTML/CSS/JS (Vanilla), Plotly (Interactive Charting)
+### **1\. Prerequisites**
 
----
+You must have **Python 3.10 or higher** installed on your system.
 
-## 🚀 Installation & Setup
+### **2\. Clone and Install**
 
-### 1. Prerequisites
-You must have **Python 3.10 or higher** installed on your system. 
-
-### 2. Clone and Install
 Clone the repository and install the required dependencies using a virtual environment:
 
-```bash
-git clone [https://github.com/alfwro13/Stock_Analysis_Project.git](https://github.com/alfwro13/Stock_Analysis_Project.git)
-cd Stock_Analysis_Project
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-```
+git clone \[https://github.com/alfwro13/Stock\_Analysis\_Project.git\](https://github.com/alfwro13/Stock\_Analysis\_Project.git)  
+cd Stock\_Analysis\_Project  
+python3 \-m venv venv  
+source venv/bin/activate  
+pip install \-r requirements.txt
 
-### 3. Configure Secrets (config.json)
+### **3\. Initial Configuration**
 
-You must create a `config.json` file in the root directory to store your Ghostfolio credentials, specify the web server port, and set your local portfolio currency. Note: This file is ignored by git for security.
+You must create a config.json file in the root directory to store your credentials. You can start with the bare minimum and configure the rest later via the Web UI.
 
-Create `config.json`:
-```json
-{
-    "GHOSTFOLIO_URL": "http://YOUR_GHOSTFOLIO_IP:PORT",
-    "API_TOKEN": "your_long_lived_ghostfolio_security_token",
-    "PORT": 8090,
-    "BASE_CURRENCY": "GBP"
+Create config.json:
+
+{  
+    "GHOSTFOLIO\_URL": "http://YOUR\_GHOSTFOLIO\_IP:PORT",  
+    "API\_TOKEN": "your\_long\_lived\_ghostfolio\_security\_token",  
+    "PORT": 8090,  
+    "BASE\_CURRENCY": "GBP"  
 }
-```
-**Note:** BASE_CURRENCY ensures that foreign assets (like USD stocks) are mathematically converted to your local currency for accurate P&L calculation.
 
-### 💻 Usage
+**Note:** BASE\_CURRENCY ensures that foreign assets (like USD stocks) are mathematically converted to your local currency using live FX rates for accurate P\&L calculation.
+
+## **💻 Usage & The Web UI**
 
 To start the server, simply run the main application file. The system will automatically build the SQLite database on its first boot.
 
-`python main.py`
+python main.py
 
+* Open your web browser and navigate to **http://localhost:8090** (or your server's IP address).  
+* **Settings Tab:** Navigate to ⚙️ Settings to discover your Ghostfolio accounts, set up Nextcloud Talk webhooks, and tweak your algorithmic thresholds.  
+* **Notifications Tab:** View a persistent ledger of all system-generated events (Earnings alerts, Insider trades, System maintenance).  
+* **Update Data:** Click **"↻ Update Analysis"** to trigger the background data engine manually, or rely on your configured APScheduler rules.  
+* **Deep Dive:** Click on any ticker to view the detailed Quantamental analysis, interactive Plotly charts, and live algorithmic candlestick pattern overlays.
 
-- Open your web browser and navigate to **http://localhost:8090** (or your server's IP address).
-- Click **"⬇️ Sync Ghostfolio"** to pull your latest portfolio and watchlist.
-- Click **"↻ Update Analysis"** to trigger the background data engine. Check your terminal to see the fetching progress.
-- **Refresh** the page to view your fully rendered dashboard. Click on any ticker to view the detailed Quantamental analysis and interactive Plotly charts.
+## **🏠 Home Assistant & iFrame Integration (Embed Mode)**
 
-## 🏠 Home Assistant & iFrame Integration (Embed Mode)
-
-If you want to display your Portfolio or Watchlist on an external dashboard (such as Home Assistant, MagicMirror, or Grafana), you can use the built-in **Embed Mode**. 
+If you want to display your Portfolio or Watchlist on an external dashboard (such as Home Assistant, MagicMirror, or Grafana), you can use the built-in **Embed Mode**.
 
 By appending a simple URL parameter, the system will automatically hide the top navigation bar, title, timestamp, and action buttons, leaving only the ultra-compact data table and the search/filter controls. This makes it perfect for clean, edge-to-edge iframe integration.
 
 **Embed URLs:**
-* **Portfolio:** `http://localhost:8090/portfolio?embed=true`
-* **Watchlist:** `http://localhost:8090/watchlist?embed=true`
-*(Note: Replace `localhost` with your actual server IP if hosting on a network device like a Raspberry Pi or NAS).*
+
+* **Portfolio:** http://localhost:8090/portfolio?embed=true  
+* **Watchlist:** http://localhost:8090/watchlist?embed=true
+
+*(Note: Replace localhost with your actual server IP if hosting on a network device like a Raspberry Pi or NAS).*
 
 **Example Home Assistant Webpage Card Configuration:**
-```yaml
-type: iframe
-url: [http://192.168.1.71:8090/portfolio?embed=true](http://192.168.1.71:8090/portfolio?embed=true)
-aspect_ratio: 100%
-```
 
-### 🤖 Automating Background Updates in Embed Mode
+type: iframe  
+url: \[http://192.168.1.71:8090/portfolio?embed=true\](http://192.168.1.71:8090/portfolio?embed=true)  
+aspect\_ratio: 100%
 
-Because the manual "Update" and "Sync" buttons are hidden in Embed Mode, you must set up an automated system to trigger data refreshes in the background. The dashboard exposes two API endpoints that listen for HTTP `POST` requests:
+## **⚙️ Running as a Background Service (Linux)**
 
-- **Trigger Market Data Update:** `POST http://localhost:8090/api/update`
-- **Trigger Ghostfolio Sync:** `POST http://localhost:8090/api/sync-ghostfolio`
-    
+For a true production environment, you should configure the dashboard to run as a systemd background service. This ensures the app boots automatically, runs its internal APScheduler tasks flawlessly, and automatically recovers if it crashes.
 
-#### Option 1: Linux Cron Job (Recommended)
+### **1\. Create the Service File**
 
-You can use the built-in task scheduler on your Linux host to fetch data automatically. Run `crontab -e` and add this line to update market data every weeknight at 9:30 PM:
-
-Bash
-
-```
-30 21 * * 1-5 curl -X POST http://localhost:8090/api/update
-```
-
-#### Option 2: Home Assistant Automation
-
-If you prefer Home Assistant to manage the schedule, add a REST command to your `configuration.yaml`:
-
-YAML
-
-```
-rest_command:
-  update_quant_dashboard:
-    url: "[http://192.168.1.71:8090/api/update](http://192.168.1.71:8090/api/update)"
-    method: "POST"
-```
-
-Once Home Assistant is restarted, you can call the `rest_command.update_quant_dashboard` service via any time-based automation.
-
-
-## ⚙️ Running as a Background Service (Linux)
-
-For a true production environment (like a 24/7 Home Assistant server or NAS), you should configure the dashboard to run as a background service. This ensures the app boots automatically when your server restarts and automatically recovers if it crashes.
-
-### 1. Create the Service File
 Open your terminal and create a new systemd service file:
-```bash
-sudo nano /etc/systemd/system/stock_analysis_project.service
-```
 
-### 2\. Add the Configuration
+sudo nano /etc/systemd/system/stock\_analysis\_project.service
 
-Paste the following block into the file. **Important:** Replace `yourusername` with your actual Linux username, and verify the paths match where you cloned the repository.
+### **2\. Add the Configuration**
 
-Ini, TOML
+Paste the following block into the file. **Important:** Replace yourusername with your actual Linux username, and verify the paths match where you cloned the repository.
 
-```
-[Unit]
-Description=Quantamental Stock Analysis Dashboard
+\[Unit\]  
+Description=Quantamental Stock Analysis Dashboard  
 After=network.target
 
-[Service]
-User=yourusername
-Group=www-data
-WorkingDirectory=/home/yourusername/stock_analysis_project
+\[Service\]  
+User=yourusername  
+Group=www-data  
+WorkingDirectory=/home/yourusername/Stock\_Analysis\_Project
 
-# Point explicitly to the Python executable inside your virtual environment
-ExecStart=/home/yourusername/stock_analysis_project/venv/bin/python main.py
+\# Point explicitly to the Python executable inside your virtual environment  
+ExecStart=/home/yourusername/Stock\_Analysis\_Project/venv/bin/python main.py
 
-Restart=always
-RestartSec=5
+Restart=always  
+RestartSec=5  
 Environment="PYTHONUNBUFFERED=1"
 
-[Install]
+\[Install\]  
 WantedBy=multi-user.target
-```
 
-Save and exit (`CTRL + O`, `Enter`, `CTRL + X`).
+Save and exit (CTRL \+ O, Enter, CTRL \+ X).
 
-### 3\. Enable and Start the Service
+### **3\. Enable and Start the Service**
 
 Run these commands to tell Linux to reload its service list, enable the app to start on boot, and spin it up immediately:
 
-Bash
+sudo systemctl daemon-reload  
+sudo systemctl enable stock\_analysis\_project  
+sudo systemctl start stock\_analysis\_project
 
-```
-sudo systemctl daemon-reload
-sudo systemctl enable stock_analysis_project
-sudo systemctl start stock_analysis_project
-```
+### **🛠️ Useful Service Commands**
 
-### 🛠️ Useful Service Commands
+Once deployed as a service, you can manage the dashboard via the Web UI Settings tab, or using standard Linux commands:
 
-Once deployed as a service, you can manage the dashboard using standard Linux commands:
+* **Check if it's running:** sudo systemctl status stock\_analysis\_project  
+* **Restart after manual code updates:** sudo systemctl restart stock\_analysis\_project  
+* **View live server logs:** sudo journalctl \-u stock\_analysis\_project \-f
 
-- **Check if it's running:** `sudo systemctl status stock_analysis_project`
-    
-- **Restart after code updates:** `sudo systemctl restart stock_analysis_project`
-    
-- **View live server logs:** `sudo journalctl -u stock_analysis_project -f`
-    
+## **📚 Built-in Glossary**
 
+Not a quantitative expert? The dashboard includes a built-in educational /glossary page and interactive HTML tooltips that explain exactly what metrics like MACD Reversals, Relative Strength vs S\&P 500, Bullish Engulfing patterns, and Peter Lynch PEG mean in plain English.
 
-### 📚 Built-in Glossary
+## **⚠️ Disclaimer**
 
-Not a quantitative expert? The dashboard includes a built-in educational /glossary page and interactive HTML tooltips that explain exactly what metrics like MACD, Relative Strength vs S&P 500, and On-Balance Volume mean in plain English.
-
-### ⚠️ Disclaimer
-
-This software is for informational and educational purposes only. It is not financial advice. The proprietary scoring system and ATR Stop-Loss calculations are mathematical models, not guarantees of market performance. Always do your own due diligence before trading.
+This software is for informational and educational purposes only. It is not financial advice. The proprietary scoring system, candlestick recognition, and ATR Stop-Loss calculations are mathematical models, not guarantees of market performance. Always do your own due diligence before trading.
