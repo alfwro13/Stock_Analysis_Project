@@ -22,6 +22,7 @@ from earnings_engine import run_earnings_alert
 from insider_engine import run_insider_alert
 from intraday_orchestrator import IntradayOrchestrator
 from maintenance_engine import MaintenanceEngine
+from ai_engine import AIPromptEngine # <--- IMPORT ADDED
 
 from config import (
     PORTFOLIO_PATH, WATCHLIST_PATH, HISTORICAL_DIR, INTRADAY_DIR, 
@@ -748,6 +749,26 @@ async def stock_detail(request: Request, ticker: str):
             "unread_count": unread_count
         }
     )
+
+# --- NEW API ROUTE FOR THE AI ENGINE ---
+@app.get("/api/ai-prompt/{ticker}")
+async def get_ai_prompt(ticker: str, mode: str = "Quantamental Deep-Dive"):
+    """
+    API endpoint that interfaces with the dedicated AI Prompt Engine.
+    Compiles database, technical, and portfolio data into an LLM-ready prompt.
+    """
+    try:
+        engine = AIPromptEngine()
+        prompt = engine.generate_prompt(ticker, mode)
+        
+        if not prompt:
+            return JSONResponse(status_code=404, content={"status": "error", "message": "Stock data not found in local database."})
+            
+        return JSONResponse(content={"status": "success", "prompt": prompt})
+    except Exception as e:
+        print(f"[ERROR] AI Prompt generation failed for {ticker}: {e}")
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
 
 if __name__ == "__main__":
     print(f"Starting Quantamental Web Server at {SERVER_URL}:{PORT}...")

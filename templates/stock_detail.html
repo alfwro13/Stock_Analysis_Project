@@ -48,6 +48,15 @@
         .warning-text { color: #ff4d4d; font-weight: bold; }
         .success-text { color: #00ff00; font-weight: bold; }
         .info-text { color: #ffaa00; font-weight: bold; }
+
+        /* --- AI Dropdown Button CSS --- */
+        .ai-btn { background-color: #1e1e1e; color: #00ffcc; border: 1px solid #00ffcc; padding: 8px 18px; border-radius: 20px; font-weight: bold; cursor: pointer; transition: all 0.2s ease; font-size: 15px; display: flex; align-items: center; gap: 8px;}
+        .ai-btn:hover { background-color: #00ffcc; color: #121212; box-shadow: 0 0 10px rgba(0, 255, 204, 0.4); }
+        .ai-dropdown-content { display: none; position: absolute; right: 0; top: 100%; background-color: #1e1e1e; min-width: 260px; box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.6); z-index: 1000; border-radius: 8px; border: 1px solid #333; overflow: hidden; margin-top: 8px;}
+        .ai-dropdown-content a { color: #e0e0e0; padding: 12px 16px; text-decoration: none; display: block; font-size: 14px; font-weight: normal; border-bottom: 1px solid #2a2a2a;}
+        .ai-dropdown-content a:last-child { border-bottom: none; }
+        .ai-dropdown-content a:hover { background-color: #2c2c2c; color: #00ffcc; padding-left: 20px; transition: all 0.2s ease;}
+        .show { display: block; }
     </style>
 </head>
 <body>
@@ -110,7 +119,20 @@
             {% endif %}
 
             <div class="summary-box">
-                <h2 style="border:none; margin: 0; padding:0;">System Verdict: {{ stock.overall_signal }} ({{ stock.composite_score }}/100)</h2>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <h2 style="border:none; margin: 0; padding:0;">System Verdict: {{ stock.overall_signal }} ({{ stock.composite_score }}/100)</h2>
+                    
+                    <div style="position: relative; display: inline-block;">
+                        <button onclick="toggleAIDropdown()" class="ai-btn">✨ AI</button>
+                        <div id="aiDropdown" class="ai-dropdown-content">
+                            <a href="javascript:void(0)" onclick="fetchAndCopyAIPrompt('{{ stock.ticker }}', 'The Devil\'s Advocate analysis')">The Devil's Advocate analysis</a>
+                            <a href="javascript:void(0)" onclick="fetchAndCopyAIPrompt('{{ stock.ticker }}', 'Risk/Reward Audit')">Risk/Reward Audit</a>
+                            <a href="javascript:void(0)" onclick="fetchAndCopyAIPrompt('{{ stock.ticker }}', 'Quantamental Deep-Dive')">Quantamental Deep-Dive</a>
+                            <a href="javascript:void(0)" onclick="fetchAndCopyAIPrompt('{{ stock.ticker }}', 'Earnings Strategy')">Earnings Strategy</a>
+                        </div>
+                    </div>
+                </div>
+
                 <p><strong>Current Price:</strong> {{ "{:,.2f}".format(stock.current_price) }} {{ stock.currency }}</p>
                 
                 <div style="line-height: 1.6; background-color: #2c2c2c; padding: 15px; border-radius: 5px; margin-top: 15px;">
@@ -365,6 +387,64 @@
             }
             
             window.dispatchEvent(new Event('resize'));
+        }
+
+        /* --- AI Dropdown & API Fetch Logic --- */
+        function toggleAIDropdown() {
+            document.getElementById("aiDropdown").classList.toggle("show");
+        }
+
+        // Close the dropdown if the user clicks anywhere else
+        window.onclick = function(event) {
+            if (!event.target.matches('.ai-btn')) {
+                var dropdowns = document.getElementsByClassName("ai-dropdown-content");
+                for (var i = 0; i < dropdowns.length; i++) {
+                    var openDropdown = dropdowns[i];
+                    if (openDropdown.classList.contains('show')) {
+                        openDropdown.classList.remove('show');
+                    }
+                }
+            }
+        }
+
+        async function fetchAndCopyAIPrompt(ticker, mode) {
+            const btn = document.querySelector('.ai-btn');
+            const originalText = btn.innerHTML;
+            
+            // Visual feedback
+            btn.innerText = "⏳ Generating...";
+            btn.style.backgroundColor = "#ffaa00";
+            btn.style.color = "#121212";
+            btn.style.borderColor = "#ffaa00";
+            
+            try {
+                // Call the new backend engine
+                const response = await fetch(`/api/ai-prompt/${ticker}?mode=${encodeURIComponent(mode)}`);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    // Copy to clipboard
+                    await navigator.clipboard.writeText(data.prompt);
+                    btn.innerText = "✅ Copied!";
+                    btn.style.backgroundColor = "#00ff00";
+                } else {
+                    alert("Failed to generate AI prompt: " + data.message);
+                    btn.innerText = "❌ Error";
+                    btn.style.backgroundColor = "#ff4d4d";
+                }
+            } catch (err) {
+                alert("Network error occurred while contacting the AI Engine.");
+                btn.innerText = "❌ Error";
+                btn.style.backgroundColor = "#ff4d4d";
+            }
+            
+            // Revert button after 3 seconds
+            setTimeout(() => { 
+                btn.innerHTML = originalText; 
+                btn.style.backgroundColor = ""; 
+                btn.style.color = "";
+                btn.style.borderColor = "";
+            }, 3000);
         }
     </script>
 </body>
