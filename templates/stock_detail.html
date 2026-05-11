@@ -78,12 +78,12 @@
                 <h2 style="border:none; margin: 0; padding:0;">Your Position (Global Aggregation)</h2>
                 <div style="display: flex; gap: 40px; font-size: 16px; margin-top: 15px; margin-bottom: 20px;">
                     <div><span style="color: #aaa;">Shares Owned:</span> <strong>{{ portfolio_math.global.shares }}</strong></div>
-                    <div><span style="color: #aaa;">Avg VWAP Cost:</span> <strong>{{ stock.currency }} {{ portfolio_math.global.buy_price }}</strong></div>
-                    <div><span style="color: #aaa;">Current Value:</span> <strong>{{ stock.currency }} {{ portfolio_math.global.current_value }}</strong></div>
+                    <div><span style="color: #aaa;">Avg VWAP Cost:</span> <strong>{{ "{:,.2f}".format(portfolio_math.global.buy_price) }} {{ stock.currency }}</strong></div>
+                    <div><span style="color: #aaa;">Current Value:</span> <strong>{{ "{:,.2f}".format(portfolio_math.global.current_value) }} {{ stock.currency }}</strong></div>
                     <div>
                         <span style="color: #aaa;"><abbr title="Theoretical P&L if you sold right now.">Unrealized P&L:</abbr></span> 
                         <strong class="{% if portfolio_math.global.pnl > 0 %}success-text{% else %}warning-text{% endif %}">
-                            {{ stock.currency }} {{ portfolio_math.global.pnl }} ({{ portfolio_math.global.pnl_pct }}%)
+                            {{ "{:,.2f}".format(portfolio_math.global.pnl) }} {{ stock.currency }} ({{ portfolio_math.global.pnl_pct|round(2) }}%)
                         </strong>
                     </div>
                 </div>
@@ -94,12 +94,12 @@
                     <div class="sub-account-row">
                         <div class="sub-account-name">{{ acc.name }}</div>
                         <div><span style="color: #aaa;">Shares:</span> {{ acc.shares }}</div>
-                        <div><span style="color: #aaa;">Cost Basis:</span> {{ stock.currency }} {{ acc.buy_price }}</div>
-                        <div><span style="color: #aaa;">Value:</span> {{ stock.currency }} {{ acc.current_value }}</div>
+                        <div><span style="color: #aaa;">Cost Basis:</span> {{ "{:,.2f}".format(acc.buy_price) }} {{ stock.currency }}</div>
+                        <div><span style="color: #aaa;">Value:</span> {{ "{:,.2f}".format(acc.current_value) }} {{ stock.currency }}</div>
                         <div>
                             <span style="color: #aaa;">P&L:</span> 
                             <span class="{% if acc.pnl > 0 %}success-text{% else %}warning-text{% endif %}">
-                                {{ stock.currency }} {{ acc.pnl }} ({{ acc.pnl_pct }}%)
+                                {{ "{:,.2f}".format(acc.pnl) }} {{ stock.currency }} ({{ acc.pnl_pct|round(2) }}%)
                             </span>
                         </div>
                     </div>
@@ -110,7 +110,7 @@
 
             <div class="summary-box">
                 <h2 style="border:none; margin: 0; padding:0;">System Verdict: {{ stock.overall_signal }} ({{ stock.composite_score }}/100)</h2>
-                <p><strong>Current Price:</strong> {{ stock.currency }} {{ stock.current_price|round(2) }}</p>
+                <p><strong>Current Price:</strong> {{ "{:,.2f}".format(stock.current_price) }} {{ stock.currency }}</p>
                 
                 <div style="line-height: 1.6; background-color: #2c2c2c; padding: 15px; border-radius: 5px; margin-top: 15px;">
                     {{ stock.educational_notes | safe }}
@@ -158,18 +158,18 @@
             <div class="fundamentals-grid">
                 <div class="data-card">
                     <h3>Trading Ranges</h3>
-                    <div class="data-row"><span class="data-label">Daily Low:</span> <span class="data-value">{{ stock.currency }} {{ price_action.day_low|round(2) }}</span></div>
-                    <div class="data-row"><span class="data-label">Daily High:</span> <span class="data-value">{{ stock.currency }} {{ price_action.day_high|round(2) }}</span></div>
+                    <div class="data-row"><span class="data-label">Daily Low:</span> <span class="data-value">{{ "{:,.2f}".format(price_action.day_low) }} {{ stock.currency }}</span></div>
+                    <div class="data-row"><span class="data-label">Daily High:</span> <span class="data-value">{{ "{:,.2f}".format(price_action.day_high) }} {{ stock.currency }}</span></div>
                     
                     <div style="border-bottom: 1px solid #333; margin: 10px 0;"></div>
                     
-                    <div class="data-row"><span class="data-label">1-Month Low:</span> <span class="data-value">{{ stock.currency }} {{ price_action.month_low|round(2) }}</span></div>
-                    <div class="data-row"><span class="data-label">1-Month High:</span> <span class="data-value">{{ stock.currency }} {{ price_action.month_high|round(2) }}</span></div>
+                    <div class="data-row"><span class="data-label">1-Month Low:</span> <span class="data-value">{{ "{:,.2f}".format(price_action.month_low) }} {{ stock.currency }}</span></div>
+                    <div class="data-row"><span class="data-label">1-Month High:</span> <span class="data-value">{{ "{:,.2f}".format(price_action.month_high) }} {{ stock.currency }}</span></div>
                     
                     <div style="border-bottom: 1px solid #333; margin: 10px 0;"></div>
                     
-                    <div class="data-row"><span class="data-label">52-Week Low:</span> <span class="data-value">{% if stock.fifty_two_week_low %}{{ stock.currency }} {{ stock.fifty_two_week_low|round(2) }}{% else %}N/A{% endif %}</span></div>
-                    <div class="data-row"><span class="data-label">52-Week High:</span> <span class="data-value">{% if stock.fifty_two_week_high %}{{ stock.currency }} {{ stock.fifty_two_week_high|round(2) }}{% else %}N/A{% endif %}</span></div>
+                    <div class="data-row"><span class="data-label">52-Week Low:</span> <span class="data-value">{% if stock.fifty_two_week_low %}{{ "{:,.2f}".format(stock.fifty_two_week_low) }} {{ stock.currency }}{% else %}N/A{% endif %}</span></div>
+                    <div class="data-row"><span class="data-label">52-Week High:</span> <span class="data-value">{% if stock.fifty_two_week_high %}{{ "{:,.2f}".format(stock.fifty_two_week_high) }} {{ stock.currency }}{% else %}N/A{% endif %}</span></div>
                 </div>
                 
                 <div class="data-card">
@@ -178,12 +178,12 @@
                     
                     <div class="data-row">
                         <span class="data-label"><abbr title="First mathematical support level. A common area where intraday price pullbacks bounce.">Support 1 (S1):</abbr></span> 
-                        <span style="color: #00ffcc; font-weight: bold; font-size: 18px;">{{ stock.currency }} {{ price_action.s1|round(2) }}</span>
+                        <span style="color: #00ffcc; font-weight: bold; font-size: 18px;">{{ "{:,.2f}".format(price_action.s1) }} {{ stock.currency }}</span>
                     </div>
                     
                     <div class="data-row">
                         <span class="data-label"><abbr title="Second mathematical support level. A drop to this line indicates extreme intraday weakness but strong bounce potential.">Support 2 (S2):</abbr></span> 
-                        <span style="color: #00ffcc; font-weight: bold; font-size: 18px;">{{ stock.currency }} {{ price_action.s2|round(2) }}</span>
+                        <span style="color: #00ffcc; font-weight: bold; font-size: 18px;">{{ "{:,.2f}".format(price_action.s2) }} {{ stock.currency }}</span>
                     </div>
                 </div>
             </div>
@@ -210,11 +210,11 @@
                     </div>
                     <div class="data-row">
                         <span class="data-label">Total Assets:</span> 
-                        <span class="data-value">{% if stock.total_assets %}${{ "{:,.0f}".format(stock.total_assets) }}{% else %}N/A{% endif %}</span>
+                        <span class="data-value">{% if stock.total_assets %}{{ "{:,.0f}".format(stock.total_assets) }} {{ stock.currency }}{% else %}N/A{% endif %}</span>
                     </div>
                     <div class="data-row">
                         <span class="data-label">NAV Price:</span> 
-                        <span class="data-value">{% if stock.nav_price %}{{ stock.currency }} {{ stock.nav_price|round(2) }}{% else %}N/A{% endif %}</span>
+                        <span class="data-value">{% if stock.nav_price %}{{ "{:,.2f}".format(stock.nav_price) }} {{ stock.currency }}{% else %}N/A{% endif %}</span>
                     </div>
                     <div class="data-row">
                         <span class="data-label">Dividend Yield:</span> 
@@ -318,7 +318,7 @@
                     </div>
                     <div class="data-row">
                         <span class="data-label">Operating Cash Flow:</span>
-                        <span class="data-value">{% if stock.operating_cash_flow %}${{ "{:,.0f}".format(stock.operating_cash_flow) }}{% else %}N/A{% endif %}</span>
+                        <span class="data-value">{% if stock.operating_cash_flow %}{{ "{:,.0f}".format(stock.operating_cash_flow) }} {{ stock.currency }}{% else %}N/A{% endif %}</span>
                     </div>
                 </div>
 
@@ -326,7 +326,7 @@
                     <h3>Market Sentiment</h3>
                     <div class="data-row">
                         <span class="data-label">Wall Street Target:</span>
-                        <span class="data-value">{% if stock.target_price %}{{ stock.currency }} {{ stock.target_price|round(2) }}{% else %}N/A{% endif %}</span>
+                        <span class="data-value">{% if stock.target_price %}{{ "{:,.2f}".format(stock.target_price) }} {{ stock.currency }}{% else %}N/A{% endif %}</span>
                     </div>
                     <div class="data-row">
                         <span class="data-label">Analyst Rating:</span>
