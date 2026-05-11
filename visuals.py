@@ -32,15 +32,14 @@ def create_intraday_chart(df, ticker, s1=None, s2=None, live_pattern_name=None, 
                       annotation_text="S2 Support", annotation_position="top left", 
                       annotation_font_color="#00ffcc")
     
-    # Construct the title, appending the live pattern detection if available
     title_text = f"{last_date} Pulse (5-Minute Intervals) - {ticker}"
-    if live_pattern_name and live_pattern_tooltip:
-        title_text += f"<br><sup style='color:#ffaa00;'><abbr title='{live_pattern_tooltip}' style='text-decoration:none;'>Live Formation: {live_pattern_name}</abbr></sup>"
+    if live_pattern_name:
+        title_text += f"<br><span style='color:#ffaa00; font-size: 13px;'><i>Live Formation: {live_pattern_name}</i></span>"
     
     fig.update_layout(
         template="plotly_dark",
         height=400,
-        margin=dict(l=20, r=20, t=60, b=20), # Increased top margin slightly for the subtitle
+        margin=dict(l=20, r=20, t=60, b=20),
         xaxis_rangeslider_visible=False,
         # Centering the title to avoid the fullscreen button
         title=dict(text=title_text, x=0.5)
