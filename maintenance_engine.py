@@ -7,7 +7,7 @@ from config import (
     PORTFOLIO_PATH, WATCHLIST_PATH, HISTORICAL_DIR, 
     INTRADAY_DIR, FUNDAMENTALS_DIR, DB_PATH
 )
-
+from database import get_connection
 
 class MaintenanceEngine:
     """
@@ -18,6 +18,12 @@ class MaintenanceEngine:
     def __init__(self):
         self.days_to_keep_logs = 30
         self.protected_files = ["SP500_BASELINE.parquet"]
+        # Track metrics for the final notification log
+        self.metrics = {
+            "logs_deleted": 0,
+            "files_deleted": 0,
+            "vacuum_success": False
+        }
 
     def _get_active_tickers(self) -> set:
         """Collects a set of all valid tickers currently tracked."""
@@ -56,11 +62,11 @@ class MaintenanceEngine:
             cutoff_date = (datetime.now() - timedelta(days=self.days_to_keep_logs)).strftime("%Y-%m-%d %H:%M:%S")
             
             cursor.execute("DELETE FROM system_notifications WHERE timestamp <= ?", (cutoff_date,))
-            deleted_rows = cursor.rowcount
+            self.metrics["logs_deleted"] = cursor.rowcount
             
             conn.commit()
             conn.close()
-            print(f"[MAINTENANCE] Removed {deleted_rows} stale notifications.")
+            print(f"[MAINTENANCE] Removed {self.metrics['logs_deleted']} stale notifications.")
         except Exception as e:
             print(f"[MAINTENANCE] Error pruning database: {e}")
 
@@ -74,7 +80,6 @@ class MaintenanceEngine:
             return
 
         directories = [HISTORICAL_DIR, INTRADAY_DIR, FUNDAMENTALS_DIR]
-        deleted_count = 0
         
         for directory in directories:
             if not os.path.exists(directory):
@@ -92,12 +97,12 @@ class MaintenanceEngine:
                     filepath = os.path.join(directory, filename)
                     try:
                         os.remove(filepath)
-                        deleted_count += 1
+                        self.metrics["files_deleted"] += 1
                         print(f"  -> Deleted orphaned file: {filename}")
                     except Exception as e:
                         print(f"  -> Failed to delete {filename}: {e}")
                         
-        print(f"[MAINTENANCE] File GC complete. Reclaimed {deleted_count} files.")
+        print(f"[MAINTENANCE] File GC complete. Reclaimed {self.metrics['files_deleted']} files.")
 
     def vacuum_database(self):
         """Runs the SQLite VACUUM command to defragment and optimize disk space."""
@@ -106,15 +111,43 @@ class MaintenanceEngine:
             conn = sqlite3.connect(DB_PATH)
             conn.execute("VACUUM")
             conn.close()
+            self.metrics["vacuum_success"] = True
             print("[MAINTENANCE] Database Vacuum Complete.")
         except Exception as e:
             print(f"[MAINTENANCE] Error vacuuming database: {e}")
+
+    def log_notification(self):
+        """Logs the maintenance summary to the internal SQLite notification center."""
+        try:
+            conn = get_connection()
+            cursor = conn.cursor()
+            
+            vac_status = "Successful" if self.metrics["vacuum_success"] else "Failed"
+            msg = (
+                f"Automated System Maintenance completed.\n"
+                f"• Stale Logs Trimmed: {self.metrics['logs_deleted']}\n"
+                f"• Orphaned Files Reclaimed: {self.metrics['files_deleted']}\n"
+                f"• DB Defragmentation: {vac_status}"
+            )
+            
+            cursor.execute(
+                "INSERT INTO system_notifications (message_type, message_text) VALUES (?, ?)", 
+                ("Maintenance", msg)
+            )
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            print(f"[MAINTENANCE] Failed to write notification to DB: {e}")
 
     def run(self):
         print(f"\n--- [MAINTENANCE ENGINE] Initiated @ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ---")
         self.prune_database_logs()
         self.garbage_collect_files()
         self.vacuum_database()
+        
+        # Write the final summary to the Dashboard Notification UI
+        self.log_notification()
+        
         print("--- [MAINTENANCE ENGINE] Optimization Complete ---\n")
 
 
