@@ -423,8 +423,24 @@
                 const data = await response.json();
                 
                 if (response.ok) {
-                    // Copy to clipboard
-                    await navigator.clipboard.writeText(data.prompt);
+                    
+                    // --- HTTP vs HTTPS CLIPBOARD FALLBACK LOGIC ---
+                    if (navigator.clipboard && window.isSecureContext) {
+                        // Standard secure HTTPS / localhost copy
+                        await navigator.clipboard.writeText(data.prompt);
+                    } else {
+                        // Legacy fallback for local network HTTP (e.g. http://192.168.x.x)
+                        const textArea = document.createElement("textarea");
+                        textArea.value = data.prompt;
+                        textArea.style.position = "fixed";  // Avoid scrolling to bottom
+                        document.body.appendChild(textArea);
+                        textArea.focus();
+                        textArea.select();
+                        document.execCommand('copy');
+                        document.body.removeChild(textArea);
+                    }
+                    // ----------------------------------------------
+                    
                     btn.innerText = "✅ Copied!";
                     btn.style.backgroundColor = "#00ff00";
                 } else {
@@ -433,7 +449,7 @@
                     btn.style.backgroundColor = "#ff4d4d";
                 }
             } catch (err) {
-                alert("Network error occurred while contacting the AI Engine.");
+                alert("Network/Clipboard error occurred: " + err.message);
                 btn.innerText = "❌ Error";
                 btn.style.backgroundColor = "#ff4d4d";
             }
