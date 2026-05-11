@@ -4,29 +4,16 @@
     <meta charset="UTF-8">
     <title>{{ stock.ticker }} - Institutional Analysis</title>
     <style>
-        /* Smooth scrolling for the anchor links */
         html { scroll-behavior: smooth; }
         
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #121212; color: #e0e0e0; margin: 0; padding-bottom: 50px;}
         .container { max-width: 1400px; margin: auto; padding: 0 20px;}
         
-        /* The New Sticky Navigation Menu */
-        .sticky-nav { 
-            position: sticky; 
-            top: 0; 
-            background-color: rgba(18, 18, 18, 0.95); 
-            z-index: 1000; 
-            padding: 15px 0; 
-            border-bottom: 1px solid #333; 
-            backdrop-filter: blur(5px); 
-            margin-bottom: 20px; 
-            font-size: 15px;
-        }
+        .sticky-nav { position: sticky; top: 0; background-color: rgba(18, 18, 18, 0.95); z-index: 1000; padding: 15px 0; border-bottom: 1px solid #333; backdrop-filter: blur(5px); margin-bottom: 20px; font-size: 15px; }
         .sticky-nav a { margin-right: 15px; color: #4da6ff; text-decoration: none; font-weight: bold; }
         .sticky-nav a:hover { text-decoration: underline; color: #00ffcc;}
         .sticky-nav span.divider { color: #555; margin-right: 15px; }
 
-        /* Unread Notifications Badge */
         .badge { background-color: #ff4d4d; color: white; padding: 2px 6px; border-radius: 10px; font-size: 12px; vertical-align: super; font-weight: bold;}
 
         h1 { color: #ffffff; margin-top: 0; margin-bottom: 5px;}
@@ -35,11 +22,13 @@
         .yahoo-link { color: #4da6ff; text-decoration: none; font-size: 14px; margin-left: 15px;}
         .yahoo-link:hover { text-decoration: underline; }
         
-        /* Summary Boxes */
         .summary-box { background-color: #1e1e1e; padding: 20px; border-radius: 8px; margin-bottom: 20px; border-left: 5px solid #4da6ff; }
         .portfolio-box { background-color: #1a2636; padding: 20px; border-radius: 8px; margin-bottom: 20px; border-left: 5px solid #00ff00; }
         
-        /* Fundamentals Grid Layout */
+        /* New Micro Ledgers (Sub-Accounts) */
+        .sub-account-row { display: flex; gap: 40px; font-size: 14px; margin-top: 10px; padding-top: 10px; border-top: 1px dashed #333; }
+        .sub-account-name { font-weight: bold; color: #00ffcc; min-width: 150px; }
+        
         .fundamentals-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-top: 20px; }
         .data-card { background-color: #1e1e1e; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
         .data-card h3 { margin-top: 0; color: #4da6ff; border-bottom: 1px solid #333; padding-bottom: 10px; }
@@ -47,29 +36,13 @@
         .data-label { color: #aaa; }
         .data-value { font-weight: bold; color: #fff; }
         
-        /* Plotly Fullscreen Mechanics */
         .chart-wrapper { position: relative; background-color: #1e1e1e; padding: 10px; border-radius: 8px; margin-bottom: 20px; }
         
-        /* Shifted to left: 20px so it no longer overlaps the native Plotly toolbar */
         .fullscreen-btn { position: absolute; top: 15px; left: 20px; z-index: 50; background: #333; color: white; border: 1px solid #555; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-weight: bold;}
         .fullscreen-btn:hover { background: #4da6ff; color: #121212; }
         
-        /* When toggled via Javascript, this expands the chart to cover the monitor */
-        .is-fullscreen { 
-            position: fixed !important; 
-            top: 0 !important; 
-            left: 0 !important; 
-            width: 100vw !important; 
-            height: 100vh !important; 
-            z-index: 9999 !important; 
-            background-color: #121212 !important; 
-            border-radius: 0 !important; 
-            margin: 0 !important; 
-            padding: 20px !important; 
-            box-sizing: border-box;
-        }
+        .is-fullscreen { position: fixed !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 100vh !important; z-index: 9999 !important; background-color: #121212 !important; border-radius: 0 !important; margin: 0 !important; padding: 20px !important; box-sizing: border-box; }
         
-        /* Utility */
         abbr { text-decoration: underline dotted; cursor: help; }
         .warning-text { color: #ff4d4d; font-weight: bold; }
         .success-text { color: #00ff00; font-weight: bold; }
@@ -102,18 +75,36 @@
         <div id="verdict">
             {% if portfolio_math %}
             <div class="portfolio-box">
-                <h2 style="border:none; margin: 0; padding:0;">Your Position</h2>
-                <div style="display: flex; gap: 40px; font-size: 16px; margin-top: 15px;">
-                    <div><span style="color: #aaa;">Shares Owned:</span> <strong>{{ portfolio_math.shares }}</strong></div>
-                    <div><span style="color: #aaa;">Average Cost:</span> <strong>{{ stock.currency }} {{ portfolio_math.buy_price }}</strong></div>
-                    <div><span style="color: #aaa;">Current Value:</span> <strong>{{ stock.currency }} {{ portfolio_math.current_value }}</strong></div>
+                <h2 style="border:none; margin: 0; padding:0;">Your Position (Global Aggregation)</h2>
+                <div style="display: flex; gap: 40px; font-size: 16px; margin-top: 15px; margin-bottom: 20px;">
+                    <div><span style="color: #aaa;">Shares Owned:</span> <strong>{{ portfolio_math.global.shares }}</strong></div>
+                    <div><span style="color: #aaa;">Avg VWAP Cost:</span> <strong>{{ stock.currency }} {{ portfolio_math.global.buy_price }}</strong></div>
+                    <div><span style="color: #aaa;">Current Value:</span> <strong>{{ stock.currency }} {{ portfolio_math.global.current_value }}</strong></div>
                     <div>
                         <span style="color: #aaa;"><abbr title="Theoretical P&L if you sold right now.">Unrealized P&L:</abbr></span> 
-                        <strong class="{% if portfolio_math.pnl > 0 %}success-text{% else %}warning-text{% endif %}">
-                            {{ stock.currency }} {{ portfolio_math.pnl }} ({{ portfolio_math.pnl_pct }}%)
+                        <strong class="{% if portfolio_math.global.pnl > 0 %}success-text{% else %}warning-text{% endif %}">
+                            {{ stock.currency }} {{ portfolio_math.global.pnl }} ({{ portfolio_math.global.pnl_pct }}%)
                         </strong>
                     </div>
                 </div>
+
+                {% if portfolio_math.accounts|length > 1 %}
+                    <h3 style="color: #888; font-size: 14px; text-transform: uppercase; margin-bottom: 5px;">Account Breakdown</h3>
+                    {% for acc in portfolio_math.accounts %}
+                    <div class="sub-account-row">
+                        <div class="sub-account-name">{{ acc.name }}</div>
+                        <div><span style="color: #aaa;">Shares:</span> {{ acc.shares }}</div>
+                        <div><span style="color: #aaa;">Cost Basis:</span> {{ stock.currency }} {{ acc.buy_price }}</div>
+                        <div><span style="color: #aaa;">Value:</span> {{ stock.currency }} {{ acc.current_value }}</div>
+                        <div>
+                            <span style="color: #aaa;">P&L:</span> 
+                            <span class="{% if acc.pnl > 0 %}success-text{% else %}warning-text{% endif %}">
+                                {{ stock.currency }} {{ acc.pnl }} ({{ acc.pnl_pct }}%)
+                            </span>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% endif %}
             </div>
             {% endif %}
 
@@ -372,7 +363,6 @@
                 wrapper.querySelector('.fullscreen-btn').innerText = "✖ Exit Fullscreen";
             }
             
-            // Critical: Force Plotly to redraw its canvas to fill the new screen dimensions
             window.dispatchEvent(new Event('resize'));
         }
     </script>

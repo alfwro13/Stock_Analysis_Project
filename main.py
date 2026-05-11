@@ -147,7 +147,6 @@ def reload_scheduler():
             start_h, _ = map(int, start_time.split(':'))
             end_h, _ = map(int, end_time.split(':'))
             
-            # Using CronTrigger with bounded hours creates a tight window for execution
             scheduler.add_job(
                 run_crash_engine,
                 CronTrigger(day_of_week=freq, hour=f"{start_h}-{end_h}", minute=f"*/{interval_mins}"),
@@ -215,6 +214,21 @@ async def trigger_ghostfolio_sync(background_tasks: BackgroundTasks):
     background_tasks.add_task(run_ghostfolio_sync)
     return {"status": "success"}
 
+@app.post("/api/ghostfolio/discover")
+async def trigger_discovery():
+    """Triggers the Ghostfolio API to discover all active accounts and update config.json."""
+    engine = GhostfolioSyncEngine()
+    if not engine.authenticate():
+        return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to authenticate with Ghostfolio."})
+    
+    accounts = engine.discover_accounts()
+    if accounts:
+        # Reload scheduler/config so the UI sees the new accounts immediately
+        reload_scheduler()
+        return JSONResponse(content={"status": "success", "message": f"Successfully discovered {len(accounts)} active accounts."})
+    else:
+        return JSONResponse(status_code=500, content={"status": "error", "message": "No accounts discovered or network error occurred."})
+
 @app.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request):
     """Renders the global settings GUI."""
@@ -258,9 +272,7 @@ def test_insider_alert():
 async def git_pull_update():
     """Executes a git pull to fetch the latest code from GitHub."""
     try:
-        # Execute git pull command
         result = subprocess.run(["git", "pull"], capture_output=True, text=True, timeout=15)
-        
         if result.returncode == 0:
             return JSONResponse(content={"status": "success", "message": f"Update successful. Please restart the service if required.\n\n{result.stdout}"})
         else:
@@ -271,7 +283,6 @@ async def git_pull_update():
 def execute_restart():
     """Background task to wait 2 seconds, then kill the Python process."""
     time.sleep(2)
-    # Sending SIGTERM allows FastAPI/Uvicorn to shut down gracefully
     os.kill(os.getpid(), signal.SIGTERM)
 
 @app.post("/api/system/restart")
@@ -291,9 +302,7 @@ async def save_settings(request: Request):
         with open(SECRETS_PATH, 'w') as f:
             json.dump(new_config, f, indent=4)
             
-        # Immediately push new scheduling rules to APScheduler
         reload_scheduler()
-        
         return JSONResponse(content={"status": "success", "message": "Settings saved successfully."})
     except Exception as e:
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
@@ -303,7 +312,6 @@ async def notifications_page(request: Request):
     """Renders the persistent notification center."""
     conn = get_connection()
     cursor = conn.cursor()
-    # Fetch latest 100 notifications
     cursor.execute("SELECT * FROM system_notifications ORDER BY timestamp DESC LIMIT 100")
     notifications = cursor.fetchall()
     unread_count = get_unread_count()
@@ -337,7 +345,11 @@ async def home():
     return RedirectResponse(url="/portfolio")
 
 @app.get("/portfolio", response_class=HTMLResponse)
-async def portfolio_page(request: Request, embed: bool = False):
+async def portfolio_page(request: Request, account_id: str = "all", embed: bool = False):
+    """
+    Renders the portfolio table. Now respects the hierarchical Macro/Micro structure 
+    and filters the displayed tickers based on the user's selected account context.
+    """
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM stock_signals")
@@ -346,16 +358,45 @@ async def portfolio_page(request: Request, embed: bool = False):
     cursor.execute("SELECT MAX(last_updated) as global_updated FROM stock_signals")
     global_update_val = cursor.fetchone()['global_updated']
     global_updated = global_update_val if global_update_val else "Awaiting initial update..."
+    conn.close()
+
+    # Load Account Configurations for the UI Dropdown
+    config_data = load_config()
+    active_accounts = config_data.get("GHOSTFOLIO_ACCOUNTS", {}).get("active", [])
+    discovered_accounts = config_data.get("GHOSTFOLIO_ACCOUNTS", {}).get("discovered", [])
+    
+    account_options = [{"id": "all", "name": "Global (All Accounts)"}]
+    for acc in discovered_accounts:
+        if acc["id"] in active_accounts:
+            account_options.append({"id": acc["id"], "name": acc["name"]})
     
     portfolio_json = get_json_data(PORTFOLIO_PATH)
-    portfolio_tickers = [data.get("ticker") for key, data in portfolio_json.items() if "ticker" in data]
-    portfolio_data = [row for row in db_rows if row['ticker'] in portfolio_tickers]
     
+    # Filter tickers based on the chosen account context
+    portfolio_tickers = []
+    for key, data in portfolio_json.items():
+        if "ticker" in data:
+            if account_id == "all":
+                portfolio_tickers.append(data["ticker"])
+            else:
+                for acc in data.get("accounts", []):
+                    if acc["id"] == account_id:
+                        portfolio_tickers.append(data["ticker"])
+                        break
+                        
+    portfolio_data = [row for row in db_rows if row['ticker'] in portfolio_tickers]
     unread_count = get_unread_count()
     
     return templates.TemplateResponse(
         request=request, name="portfolio.html", 
-        context={"portfolio": portfolio_data, "global_updated": global_updated, "embed": embed, "unread_count": unread_count}
+        context={
+            "portfolio": portfolio_data, 
+            "global_updated": global_updated, 
+            "embed": embed, 
+            "unread_count": unread_count,
+            "account_options": account_options,
+            "selected_account": account_id
+        }
     )
 
 @app.get("/watchlist", response_class=HTMLResponse)
@@ -368,6 +409,7 @@ async def watchlist_page(request: Request, embed: bool = False):
     cursor.execute("SELECT MAX(last_updated) as global_updated FROM stock_signals")
     global_update_val = cursor.fetchone()['global_updated']
     global_updated = global_update_val if global_update_val else "Awaiting initial update..."
+    conn.close()
     
     watchlist_json = get_json_data(WATCHLIST_PATH)
     watchlist_tickers = watchlist_json.get("watchlist", [])
@@ -386,9 +428,9 @@ async def stock_detail(request: Request, ticker: str):
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM stock_signals WHERE ticker = ?", (ticker,))
     stock_data = cursor.fetchone()
-    
     if stock_data:
         stock_data = dict(stock_data)
+    conn.close()
     
     top_holdings = []
     sector_weightings = []
@@ -416,9 +458,6 @@ async def stock_detail(request: Request, ticker: str):
     
     portfolio_math = None
     if user_asset and stock_data and stock_data['current_price']:
-        buy_price = user_asset.get('buy_price', 0)
-        shares = user_asset.get('shares', 0)
-        
         stock_currency = stock_data['currency']
         exchange_rate = 1.0
         
@@ -431,22 +470,38 @@ async def stock_detail(request: Request, ticker: str):
             except Exception as e:
                 print(f"[WARNING] Could not fetch exchange rate for {fx_ticker}: {e}")
         
-        if buy_price > 0 and shares > 0:
-            buy_price = buy_price * exchange_rate
+        def calculate_pnl(shares, buy_price):
+            if shares <= 0: return None
+            bp_adj = buy_price * exchange_rate
             if user_asset.get('price_in_pence', False):
-                buy_price = buy_price * 100
+                bp_adj *= 100
                 
             current_value = shares * stock_data['current_price']
-            cost_basis = shares * buy_price
+            cost_basis = shares * bp_adj
             pnl = current_value - cost_basis
-            pnl_pct = (pnl / cost_basis) * 100
+            pnl_pct = (pnl / cost_basis) * 100 if cost_basis > 0 else 0
             
-            portfolio_math = {
-                "shares": shares,
-                "buy_price": round(buy_price, 4),
+            return {
+                "shares": round(shares, 4),
+                "buy_price": round(bp_adj, 4),
                 "current_value": round(current_value, 2),
                 "pnl": round(pnl, 2),
                 "pnl_pct": round(pnl_pct, 2)
+            }
+            
+        global_math = calculate_pnl(user_asset.get('global_shares', 0), user_asset.get('global_buy_price', 0))
+        
+        account_maths = []
+        for acc in user_asset.get('accounts', []):
+            acc_m = calculate_pnl(acc.get('shares', 0), acc.get('buy_price', 0))
+            if acc_m:
+                acc_m["name"] = acc.get("name", "Unknown Account")
+                account_maths.append(acc_m)
+                
+        if global_math:
+            portfolio_math = {
+                "global": global_math,
+                "accounts": account_maths
             }
 
     price_action = None

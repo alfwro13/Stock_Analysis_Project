@@ -36,6 +36,10 @@ DEFAULT_CONFIG = {
     "API_TOKEN": "",
     "PORT": 8090,
     "BASE_CURRENCY": "GBP",
+    "GHOSTFOLIO_ACCOUNTS": {
+        "discovered": [],
+        "active": []
+    },
     "NEXTCLOUD_URL": "",
     "BOT_USERNAME": "",
     "APP_PASSWORD": "",
@@ -90,7 +94,7 @@ DEFAULT_CONFIG = {
     }
 }
 
-def load_config():
+def load_config() -> dict:
     """Loads config.json into memory safely using Deep Copy merging."""
     if not SECRETS_PATH.exists():
         print("[INFO] config.json not found. Generating default template...")
@@ -107,10 +111,13 @@ def load_config():
             
             # Safely merge nested dictionaries without deleting missing keys
             for key, val in data.items():
-                if key in ["NOTIFICATIONS", "SCHEDULING"] and isinstance(val, dict):
+                if key in ["NOTIFICATIONS", "SCHEDULING", "GHOSTFOLIO_ACCOUNTS"] and isinstance(val, dict):
                     for sub_key, sub_val in val.items():
                         if sub_key in merged_config[key]:
-                            merged_config[key][sub_key].update(sub_val)
+                            if isinstance(sub_val, dict) and isinstance(merged_config[key][sub_key], dict):
+                                merged_config[key][sub_key].update(sub_val)
+                            else:
+                                merged_config[key][sub_key] = sub_val
                         else:
                             merged_config[key][sub_key] = sub_val
                 else:
@@ -126,6 +133,7 @@ current_config = load_config()
 
 GHOSTFOLIO_URL = current_config.get("GHOSTFOLIO_URL", "")
 GHOSTFOLIO_TOKEN = current_config.get("API_TOKEN", "")
+GHOSTFOLIO_ACCOUNTS = current_config.get("GHOSTFOLIO_ACCOUNTS", {"discovered": [], "active": []})
 PORT = current_config.get("PORT", 8090)
 BASE_CURRENCY = current_config.get("BASE_CURRENCY", "GBP")
 NEXTCLOUD_URL = current_config.get("NEXTCLOUD_URL", "")
