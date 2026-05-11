@@ -27,7 +27,7 @@ from config import (
     PORT, BASE_CURRENCY, SECRETS_PATH, load_config
 )
 from database import get_connection, init_db
-from quant_signals import QuantEngine
+from quant_signals import QuantEngine, get_candlestick_patterns
 from data_engine import DataEngine
 from visuals import create_macro_chart, create_intraday_chart
 from ghostfolio_sync import GhostfolioSyncEngine
@@ -660,13 +660,42 @@ async def stock_detail(request: Request, ticker: str):
                 "s2": s2
             }
     except Exception as e:
+        df_macro = pd.DataFrame()
         macro_html = f"<p>Chart Data Unavailable: {e}</p>"
+
+    # Process Intraday Data and Live Pattern Detection
+    live_pattern_name = None
+    live_pattern_tooltip = None
 
     try:
         df_intraday = pd.read_parquet(INTRADAY_DIR / f"{ticker}_intraday.parquet")
+        
+        # Build a pseudo-daily candle to evaluate live formations
+        if not df_intraday.empty and not df_macro.empty and len(df_macro) >= 1:
+            prev_day = df_macro.iloc[-1]
+            
+            # Construct current live candle metrics
+            curr_pseudo = pd.Series({
+                'Open': df_intraday['Open'].iloc[0],
+                'High': df_intraday['High'].max(),
+                'Low': df_intraday['Low'].min(),
+                'Close': df_intraday['Close'].iloc[-1]
+            })
+            
+            # Run algorithmic scan against live data
+            live_patterns = get_candlestick_patterns(prev_day, curr_pseudo)
+            if live_patterns:
+                live_pattern_name = live_patterns[0]["name"]
+                live_pattern_tooltip = live_patterns[0]["tooltip"]
+
         s1_val = price_action['s1'] if price_action else None
         s2_val = price_action['s2'] if price_action else None
-        intraday_html = create_intraday_chart(df_intraday, ticker, s1=s1_val, s2=s2_val)
+        
+        intraday_html = create_intraday_chart(
+            df_intraday, ticker, s1=s1_val, s2=s2_val,
+            live_pattern_name=live_pattern_name,
+            live_pattern_tooltip=live_pattern_tooltip
+        )
     except Exception:
         intraday_html = "<p>Intraday data unavailable.</p>"
         

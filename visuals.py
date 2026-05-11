@@ -3,8 +3,9 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import pandas as pd
 import ta
+from quant_signals import get_candlestick_patterns
 
-def create_intraday_chart(df, ticker, s1=None, s2=None):
+def create_intraday_chart(df, ticker, s1=None, s2=None, live_pattern_name=None, live_pattern_tooltip=None):
     """
     Generates a high-resolution, short-term chart using 5-minute data 
     for the current trading day. Conditionally plots algorithmic floors (S1/S2).
@@ -31,13 +32,18 @@ def create_intraday_chart(df, ticker, s1=None, s2=None):
                       annotation_text="S2 Support", annotation_position="top left", 
                       annotation_font_color="#00ffcc")
     
+    # Construct the title, appending the live pattern detection if available
+    title_text = f"{last_date} Pulse (5-Minute Intervals) - {ticker}"
+    if live_pattern_name and live_pattern_tooltip:
+        title_text += f"<br><sup style='color:#ffaa00;'><abbr title='{live_pattern_tooltip}' style='text-decoration:none;'>Live Formation: {live_pattern_name}</abbr></sup>"
+    
     fig.update_layout(
         template="plotly_dark",
         height=400,
-        margin=dict(l=20, r=20, t=40, b=20),
+        margin=dict(l=20, r=20, t=60, b=20), # Increased top margin slightly for the subtitle
         xaxis_rangeslider_visible=False,
         # Centering the title to avoid the fullscreen button
-        title=dict(text=f"{last_date} Pulse (5-Minute Intervals) - {ticker}", x=0.5)
+        title=dict(text=title_text, x=0.5)
     )
     return fig.to_html(full_html=False, include_plotlyjs='cdn')
 
@@ -93,6 +99,31 @@ def create_macro_chart(df, df_sp500, ticker):
     
     if df_sp500 is not None:
         fig.add_trace(go.Scatter(x=df.index, y=df['RS_Normalized'], line=dict(color='cyan', width=2), name="RS vs S&P500"), row=1, col=1)
+
+    # ALGORITHMIC CHART ANNOTATIONS (Last 14 Days Only)
+    # Detects patterns and overlays visual triangles on the primary candlestick chart
+    if len(df) >= 15:
+        last_14_days = df.tail(15)
+        for i in range(1, len(last_14_days)):
+            prev_row = last_14_days.iloc[i-1]
+            curr_row = last_14_days.iloc[i]
+            
+            patterns = get_candlestick_patterns(prev_row, curr_row)
+            for p in patterns:
+                # Bullish / Neutral patterns get green upward arrows below the candle
+                if p["score"] >= 0:
+                    fig.add_annotation(
+                        row=1, col=1, x=curr_row.name, y=curr_row['Low'],
+                        yshift=-15, text="▲", hovertext=f"<b>{p['name']}</b><br>{p['tooltip']}",
+                        showarrow=False, font=dict(color="#00ff00", size=14)
+                    )
+                # Bearish patterns get red downward arrows above the candle
+                else:
+                    fig.add_annotation(
+                        row=1, col=1, x=curr_row.name, y=curr_row['High'],
+                        yshift=15, text="▼", hovertext=f"<b>{p['name']}</b><br>{p['tooltip']}",
+                        showarrow=False, font=dict(color="#ff4d4d", size=14)
+                    )
 
     # ROW 2: Volume
     colors = ['green' if row['Close'] >= row['Open'] else 'red' for index, row in df.iterrows()]

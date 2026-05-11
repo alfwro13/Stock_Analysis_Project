@@ -8,6 +8,80 @@ from datetime import datetime
 from config import HISTORICAL_DIR, FUNDAMENTALS_DIR
 from database import get_connection
 
+def get_candlestick_patterns(prev, curr):
+    """
+    Algorithmic Candlestick Pattern Recognition.
+    Evaluates the current daily candle against the previous daily candle.
+    Returns a list of dictionaries containing the pattern name, tooltip, and score.
+    """
+    patterns = []
+    
+    # Mathematically define candlestick anatomy
+    curr_body = abs(curr['Open'] - curr['Close'])
+    curr_range = curr['High'] - curr['Low']
+    if curr_range == 0: curr_range = 0.001 # Prevent division by zero
+    
+    curr_upper_wick = curr['High'] - max(curr['Open'], curr['Close'])
+    curr_lower_wick = min(curr['Open'], curr['Close']) - curr['Low']
+    
+    # 1. Bullish Engulfing
+    # Previous day was red, Current day is green, Current body fully eclipses previous body.
+    if (prev['Close'] < prev['Open']) and \
+       (curr['Close'] > curr['Open']) and \
+       (curr['Open'] <= prev['Close']) and \
+       (curr['Close'] >= prev['Open']):
+        patterns.append({
+            "name": "🐂 Bullish Engulfing",
+            "tooltip": "Buyers completely overwhelmed sellers. The current green body fully engulfed the previous red body. Signals a potential reversal to the upside.",
+            "breakdown": "+10: <abbr title='Buyers completely overwhelmed sellers. The current green body fully engulfed the previous red body.'>Bullish Engulfing Pattern</abbr>",
+            "score": 10
+        })
+        
+    # 2. Bearish Engulfing
+    # Previous day was green, Current day is red, Current body fully eclipses previous body.
+    elif (prev['Close'] > prev['Open']) and \
+         (curr['Close'] < curr['Open']) and \
+         (curr['Open'] >= prev['Close']) and \
+         (curr['Close'] <= prev['Open']):
+        patterns.append({
+            "name": "🐻 Bearish Engulfing",
+            "tooltip": "Sellers took total control. The current red body fully engulfed the previous green body. A stark warning signal of impending downside.",
+            "breakdown": "-15: <abbr title='Sellers took total control. The current red body fully engulfed the previous green body. Warning signal.'>Bearish Engulfing Pattern</abbr>",
+            "score": -15
+        })
+        
+    # 3. Hammer (Bullish Rejection)
+    # Long lower wick (at least 2x the body), tiny upper wick (less than 20% of range)
+    if curr_lower_wick >= (2 * curr_body) and curr_upper_wick <= (0.2 * curr_range) and curr_body > 0:
+        patterns.append({
+            "name": "🔨 Hammer Rejection",
+            "tooltip": "Sellers tried to crash the price intraday, but institutional buyers violently rejected it and bought the dip. Indicates strong underlying support.",
+            "breakdown": "+5: <abbr title='Sellers tried to crash the price intraday, but institutional buyers violently rejected it. Indicates strong support.'>Bullish Hammer Candlestick</abbr>",
+            "score": 5
+        })
+        
+    # 4. Shooting Star (Bearish Rejection)
+    # Long upper wick (at least 2x the body), tiny lower wick
+    if curr_upper_wick >= (2 * curr_body) and curr_lower_wick <= (0.2 * curr_range) and curr_body > 0:
+        patterns.append({
+            "name": "🌠 Shooting Star",
+            "tooltip": "Retail buyers tried to push the price up, but institutional sellers aggressively dumped shares into the rally. Momentum is fading.",
+            "breakdown": "-10: <abbr title='Retail buyers tried to push the price up, but institutional sellers aggressively dumped shares.'>Bearish Shooting Star</abbr>",
+            "score": -10
+        })
+        
+    # 5. Doji (Indecision)
+    # The body is virtually nonexistent (less than 10% of the total daily range)
+    if curr_body <= (curr_range * 0.1):
+        patterns.append({
+            "name": "⚖️ Doji",
+            "tooltip": "The opening and closing prices are mathematically almost identical. This represents total equilibrium and indecision between buyers and sellers.",
+            "breakdown": "+0: <abbr title='Opening and closing prices are mathematically almost identical. Total equilibrium/indecision between buyers and sellers.'>Doji Candlestick</abbr>",
+            "score": 0
+        })
+        
+    return patterns
+
 class QuantEngine:
     def __init__(self):
         # Establish connection to the SQLite database
@@ -176,16 +250,30 @@ class QuantEngine:
         breakdown = []
         tags = []
 
+        # Tag: Algorithmic Candlestick Pattern Injection
+        if not is_fund and len(df) >= 2:
+            candlestick_patterns = get_candlestick_patterns(df.iloc[-2], df.iloc[-1])
+            for pattern in candlestick_patterns:
+                tags.append({"name": pattern["name"], "tooltip": pattern["tooltip"]})
+                breakdown.append(pattern["breakdown"])
+                score += pattern["score"]
+
         # Tag: MACD Reversal
         if df['MACD_Line'].iloc[-1] > df['MACD_Signal'].iloc[-1] and df['MACD_Line'].iloc[-2] <= df['MACD_Signal'].iloc[-2]:
             if df['MACD_Line'].iloc[-1] < 0 and rsi_val > 30:
-                tags.append("⚡ MACD Reversal")
+                tags.append({
+                    "name": "⚡ MACD Reversal", 
+                    "tooltip": "The MACD momentum line just crossed positive from below the zero line. This is an early indicator that a downtrend is mathematically exhausting itself."
+                })
                 score += 10
                 breakdown.append("+10: <abbr title='MACD just crossed positive from below the zero line. An early indicator that a downtrend is ending.'>MACD Golden Reversal</abbr>")
 
         # Tag: VCP Breakout
         if is_tight and is_dry_volume and not is_fund:
-            tags.append("🔥 VCP Breakout")
+            tags.append({
+                "name": "🔥 VCP Breakout", 
+                "tooltip": "Volatility Contraction Pattern. Price has tightened over 3 weeks and volume has dried up. Institutions have stopped selling; asset is ready for a breakout."
+            })
             score += 20
             breakdown.append("+20: <abbr title='Price tightened over 3 weeks AND volume dried up. Institutions have stopped selling; ready for breakout.'>Minervini VCP (Price + Vol Contraction)</abbr>")
         elif is_tight:
@@ -194,7 +282,10 @@ class QuantEngine:
 
         # Tag: Market Leader
         if is_market_leader and rs_slope > 0:
-            tags.append("👑 Market Leader")
+            tags.append({
+                "name": "👑 Market Leader", 
+                "tooltip": "The Relative Strength line compared to the S&P 500 is sloped sharply up. This asset is aggressively absorbing market liquidity."
+            })
             score += 15
             breakdown.append("+15: <abbr title='Relative Strength line is sloped sharply up. This asset is absorbing market liquidity.'>Market Leader vs S&P 500</abbr>")
         elif rs_slope < -0.001:
@@ -223,7 +314,10 @@ class QuantEngine:
 
         # Tag: Divergence Circuit Breaker
         if is_bearish_divergence and not is_fund:
-            tags.append("🚨 Divergence Warning")
+            tags.append({
+                "name": "🚨 Divergence Warning", 
+                "tooltip": "Price made a higher high, but the RSI oscillator made a lower high. Momentum is secretly dying. High risk of an imminent dump."
+            })
             score -= 30
             breakdown.append("-30: <abbr title='Price made a higher high, but RSI made a lower high. Momentum is secretly dying. High risk of dump.'>Algorithmic Bearish Divergence</abbr>")
 
@@ -245,7 +339,7 @@ class QuantEngine:
         if not is_fund and rsi_val > 70:
             notes_html += "<strong><span style='color: #ff4d4d;'>Warning:</span></strong> Stock is technically overbought (RSI > 70).<br>"
 
-        # Save to DB
+        # Save to DB (JSON dumping the array of dictionaries)
         tags_json = json.dumps(tags)
         self.save_to_db(
             ticker, company_name, sector, currency, quote_type,
