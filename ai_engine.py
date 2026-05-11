@@ -4,6 +4,7 @@ import re
 import pandas as pd
 import ta
 import yfinance as yf
+from datetime import datetime
 from config import PORTFOLIO_PATH, HISTORICAL_DIR, BASE_CURRENCY
 from database import get_connection
 
@@ -161,11 +162,15 @@ class AIPromptEngine:
                         acc_buy_native *= 100
                     portfolio_str += f"  - {acc.get('name', 'Unknown')}: {acc.get('shares', 0)} shares at {acc_buy_native:,.2f} {stock_data['currency']}\n"
 
+        # --- GET CURRENT SYSTEM DATE ---
+        current_date_str = datetime.now().strftime("%Y-%m-%d")
+
         # 5. Build The Master Context Payload
         context_payload = f"""
 =========================================================
 SYSTEM METADATA & SCORING LOGIC
 =========================================================
+Current System Date: {current_date_str}
 The Quantamental System scores assets from 0 to 100.
 - Scores >= 80 dictate a STRONG BUY.
 - Scores < 40 dictate BEARISH / CAUTION.
