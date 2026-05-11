@@ -666,6 +666,7 @@ async def stock_detail(request: Request, ticker: str):
     # Process Intraday Data and Live Pattern Detection
     live_pattern_name = None
     live_pattern_tooltip = None
+    live_pattern_score = None
 
     try:
         df_intraday = pd.read_parquet(INTRADAY_DIR / f"{ticker}_intraday.parquet")
@@ -687,6 +688,7 @@ async def stock_detail(request: Request, ticker: str):
             if live_patterns:
                 live_pattern_name = live_patterns[0]["name"]
                 live_pattern_tooltip = live_patterns[0]["tooltip"]
+                live_pattern_score = live_patterns[0]["score"]
 
         s1_val = price_action['s1'] if price_action else None
         s2_val = price_action['s2'] if price_action else None
@@ -694,7 +696,8 @@ async def stock_detail(request: Request, ticker: str):
         intraday_html = create_intraday_chart(
             df_intraday, ticker, s1=s1_val, s2=s2_val,
             live_pattern_name=live_pattern_name,
-            live_pattern_tooltip=live_pattern_tooltip
+            live_pattern_tooltip=live_pattern_tooltip,
+            live_pattern_score=live_pattern_score
         )
     except Exception:
         intraday_html = "<p>Intraday data unavailable.</p>"

@@ -5,7 +5,7 @@ import pandas as pd
 import ta
 from quant_signals import get_candlestick_patterns
 
-def create_intraday_chart(df, ticker, s1=None, s2=None, live_pattern_name=None, live_pattern_tooltip=None):
+def create_intraday_chart(df, ticker, s1=None, s2=None, live_pattern_name=None, live_pattern_tooltip=None, live_pattern_score=None):
     """
     Generates a high-resolution, short-term chart using 5-minute data 
     for the current trading day. Conditionally plots algorithmic floors (S1/S2).
@@ -32,9 +32,30 @@ def create_intraday_chart(df, ticker, s1=None, s2=None, live_pattern_name=None, 
                       annotation_text="S2 Support", annotation_position="top left", 
                       annotation_font_color="#00ffcc")
     
+    # Construct the title cleanly (Removed <abbr> as Plotly SVG renderer does not support interactive tooltips)
     title_text = f"{last_date} Pulse (5-Minute Intervals) - {ticker}"
     if live_pattern_name:
-        title_text += f"<br><span style='color:#ffaa00; font-size: 13px;'><i>Live Formation: {live_pattern_name}</i></span>"
+        title_text += f"<br><span style='color:#ffaa00; font-size: 13px;'><i>Live Formation: {live_pattern_name} (Hover over chart marker for details)</i></span>"
+
+    # Add the Hover Marker to the very last 5-minute candle
+    if live_pattern_name and live_pattern_tooltip and not df.empty:
+        last_row = df.iloc[-1]
+        score = live_pattern_score if live_pattern_score is not None else 0
+        
+        # Bullish / Neutral patterns get a green upward arrow below the candle
+        if score >= 0:
+            fig.add_annotation(
+                x=last_row.name, y=last_row['Low'],
+                yshift=-15, text="▲", hovertext=f"<b>{live_pattern_name}</b><br>{live_pattern_tooltip}",
+                showarrow=False, font=dict(color="#00ff00", size=18)
+            )
+        # Bearish patterns get a red downward arrow above the candle
+        else:
+            fig.add_annotation(
+                x=last_row.name, y=last_row['High'],
+                yshift=15, text="▼", hovertext=f"<b>{live_pattern_name}</b><br>{live_pattern_tooltip}",
+                showarrow=False, font=dict(color="#ff4d4d", size=18)
+            )
     
     fig.update_layout(
         template="plotly_dark",
