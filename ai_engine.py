@@ -93,7 +93,7 @@ class AIPromptEngine:
         technicals = self._get_technical_indicators(ticker)
         clean_notes = self._clean_html(stock_data.get('educational_notes', ''))
 
-        # --- NEW: Safe Formatting Block to match the Website UI ---
+        # 3. Safe Formatting Block
         def fmt_pct(val):
             return f"{(val * 100):.1f}%" if val is not None else "N/A"
 
@@ -105,23 +105,41 @@ class AIPromptEngine:
         pl_peg_str = fmt_float(stock_data.get('peter_lynch_peg'))
         debt_str = fmt_float(stock_data.get('debt_to_equity'))
         rsi_str = f"{stock_data.get('rsi_14'):.1f}" if stock_data.get('rsi_14') is not None else "N/A"
-        # -----------------------------------------------------------
+        beta_str = fmt_float(stock_data.get('beta'))
+        
+        # Format 52-Week Range to show the magnitude of the run
+        low_52 = fmt_float(stock_data.get('fifty_two_week_low'))
+        high_52 = fmt_float(stock_data.get('fifty_two_week_high'))
 
-        # 3. Format Portfolio String
+        # 4. Format Portfolio String (WITH STRICT MATH PRE-CALCULATED)
         portfolio_str = "No active holdings in the current portfolio."
         if portfolio_data and portfolio_data.get('global_shares', 0) > 0:
             global_shares = portfolio_data.get('global_shares', 0)
             global_vwap = portfolio_data.get('global_buy_price', 0)
             
-            portfolio_str = f"User currently holds {global_shares} shares at a Global VWAP (Cost Basis) of {global_vwap:,.2f} {stock_data['currency']}.\n"
+            # Prevent AI Math Hallucinations by calculating P&L strictly in Python
+            curr_price = stock_data['current_price']
+            # Note: We assume 1:1 currency here for prompt simplicity to prevent AI confusion
+            cost_basis = global_shares * global_vwap
+            current_value = global_shares * curr_price
+            pnl = current_value - cost_basis
+            pnl_pct = (pnl / cost_basis) * 100 if cost_basis > 0 else 0
+            
+            portfolio_str = (
+                f"User currently holds {global_shares} shares.\n"
+                f"Global VWAP (Cost Basis): {global_vwap:,.2f} {stock_data['currency']}.\n"
+                f"Current Value: {current_value:,.2f} {stock_data['currency']}.\n"
+                f"Unrealized P&L: {pnl:,.2f} {stock_data['currency']} ({pnl_pct:.2f}%).\n"
+                f"CRITICAL INSTRUCTION: Do NOT recalculate these P&L numbers. Use them exactly as stated.\n"
+            )
             
             accounts = portfolio_data.get('accounts', [])
             if len(accounts) > 1:
-                portfolio_str += "This holding is split across the following micro-ledgers:\n"
+                portfolio_str += "\nThis holding is split across the following micro-ledgers:\n"
                 for acc in accounts:
                     portfolio_str += f"  - {acc.get('name', 'Unknown')}: {acc.get('shares', 0)} shares at {acc.get('buy_price', 0):,.2f} {stock_data['currency']}\n"
 
-        # 4. Build The Master Context Payload (Updated with formatted strings)
+        # 5. Build The Master Context Payload
         context_payload = f"""
 =========================================================
 SYSTEM METADATA & SCORING LOGIC
@@ -139,11 +157,15 @@ USER PORTFOLIO CONTEXT
 =========================================================
 ASSET DATA: {stock_data['company_name']} ({stock_data['ticker']})
 =========================================================
+Sector: {stock_data.get('sector', 'Unknown')}
 Current Price: {stock_data['current_price']:,.2f} {stock_data['currency']}
+52-Week Range: {low_52} - {high_52}
 System Verdict: {stock_data['overall_signal']} (Score: {stock_data['composite_score']}/100)
 ATR Stop-Loss: {stock_data['atr_stop_loss']:,.2f} {stock_data['currency']}
 
---- FUNDAMENTALS ---
+--- FUNDAMENTALS & RISK ---
+Wall Street Analyst Rating: {stock_data.get('analyst_rating', 'Unknown')}
+Beta (Volatility vs Market): {beta_str}
 Trailing P/E: {trailing_pe_str}
 Peter Lynch Fair Value PEG: {pl_peg_str}
 Debt-to-Equity: {debt_str}
@@ -163,29 +185,31 @@ Recent Volume: {technicals['recent_volume']} (21D Avg: {technicals['average_volu
 =========================================================
 """
 
-        # 5. Wrap in the Specific Prompt Mode
+        # 6. Wrap in the Specific Prompt Mode
         prompt_wrapper = ""
 
         if mode == "The Devil's Advocate analysis":
             prompt_wrapper = f"""
-You are an elite-level, highly skeptical Wall Street Analyst.
-Review the Quantamental context provided below. Your job is to aggressively challenge the system's "{stock_data['overall_signal']}" verdict.
-Actively hunt for bearish divergences, macro weaknesses, valuation traps, or mean-reversion risks that the algorithmic scoring may have overlooked. Be highly critical, concise, and professional.
+You are an elite-level, highly analytical Wall Street Risk Manager.
+Review the Quantamental context provided below. Your job is to act as the "Devil's Advocate" against the system's "{stock_data['overall_signal']}" verdict.
+
+IMPORTANT: You must acknowledge the stock's Sector, its Beta (stability/risk), and any obvious macroeconomic tailwinds (e.g., AI/Semiconductor supercycles, Blue-Chip stability) that explain its current valuation or momentum. Do not blindly dismiss a strong trend.
+However, once you have acknowledged the narrative, carefully point out the mathematical exhaustion risks, valuation traps, or mean-reversion dangers. Be critical, balanced, and professional.
 
 {context_payload}
 """
         elif mode == "Risk/Reward Audit":
             prompt_wrapper = f"""
 You are an elite-level Financial Risk Manager.
-Review the Quantamental context provided below. Focus heavily on the ATR Stop-Loss, the user's specific cost basis (VWAP), and the account splits.
-Calculate the mathematical risk buffer between the current price, the user's entry, and the ATR floor. Suggest position sizing, profit-taking, or tightening stops based on the current volatility and RSI.
+Review the Quantamental context provided below. Focus heavily on the ATR Stop-Loss, the user's specific Unrealized P&L, and the 52-Week Range.
+Calculate the mathematical risk buffer between the current price, the user's entry, and the ATR floor. Suggest position sizing, profit-taking, or tightening stops based on the current volatility (Beta) and RSI.
 
 {context_payload}
 """
         elif mode == "Quantamental Deep-Dive":
             prompt_wrapper = f"""
 You are an elite-level Hedge Fund Strategist.
-Review the Quantamental context provided below. Synthesize the fundamental metrics (e.g., Peter Lynch PEG, Debt, Growth) with the technical setup (e.g., VCP Breakouts, MACD, MAs).
+Review the Quantamental context provided below. Synthesize the fundamental metrics (e.g., Peter Lynch PEG, Sector, Growth) with the technical setup (e.g., 52-Week Range, VCP Breakouts, MAs).
 Determine if the fundamental "story" of the business validates the current mathematical price action on the chart. Provide a comprehensive 12-month conviction rating.
 
 {context_payload}
@@ -193,13 +217,12 @@ Determine if the fundamental "story" of the business validates the current mathe
         elif mode == "Earnings Strategy":
             prompt_wrapper = f"""
 You are a Senior Options & Volatility Analyst.
-Review the Quantamental context provided below, paying special attention to the approaching earnings date.
-Based on the current technical extensions (RSI, MAs) and fundamental valuation, outline a strategic playbook. Should the user hold through earnings, trim the position to reduce exposure, or hedge? Explain your logic clearly.
+Review the Quantamental context provided below, paying special attention to the approaching earnings date, the stock's Beta, and its Unrealized P&L.
+Based on the current technical extensions (RSI, MAs) and fundamental valuation, outline a strategic playbook. Should the user hold through earnings, trim the position to lock in gains, or hedge? Explain your logic clearly.
 
 {context_payload}
 """
         else:
-            # Fallback generic prompt
             prompt_wrapper = f"""
 You are an elite-level Stock Market Analyst. Review the following data and provide an institutional-grade assessment.
 
