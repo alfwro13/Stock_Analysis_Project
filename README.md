@@ -6,12 +6,12 @@ Designed for Linux environments, this system pulls live holdings from your [Ghos
 
 ## **✨ Core Features**
 
-* **Auto-Syncing Portfolio (Multi-Account):** Integrates directly with Ghostfolio via API to automatically pull your live holdings. Now supports opt-in account discovery, allowing you to selectively sync specific accounts and calculate accurate global VWAP Cost Basis and Unrealized P\&L across different currencies.  
+* **Auto-Syncing Portfolio (Multi-Account):** Integrates directly with Ghostfolio via API to automatically pull your live holdings. Now supports opt-in account discovery, allowing you to selectively sync specific accounts and calculate accurate global VWAP Cost Basis and Unrealized P&L across different currencies.  
 * **Multi-Dimensional Data Engine:** Downloads 2-year macro daily data, 1-day 5-minute intraday data, and deep fundamental .info payloads.  
 * **Nextcloud Talk Integration:** A comprehensive alert ecosystem that pushes rich notifications directly to your Nextcloud Talk app.  
 * **Hierarchical Candlestick Recognition:** Algorithmically detects and scores Tier-1 (Morning Star), Tier-2 (Engulfing), and Tier-3 (Hammer/Shooting Star) reversal patterns on live intraday data.  
 * **Intraday Orchestrator:** High-frequency 5-minute scanning that detects mathematical "Crash" conditions (heavy drops below SMA) and "Moonshot" conditions (parabolic spikes, All-Time Highs) during active market hours.  
-* **Market Sentiment & Insider Tracking:** Maps the CNN Fear & Greed Index against the S\&P 500 (with visual chart generation) and scrapes SEC Form 4 filings for major insider buying aligning with algorithmic dips.  
+* **Market Sentiment & Insider Tracking:** Maps the CNN Fear & Greed Index against the S&P 500 (with visual chart generation) and scrapes SEC Form 4 filings for major insider buying aligning with algorithmic dips.  
 * **Proprietary Scoring (0-100):** A custom algorithm that grades stocks based on Moving Average alignment, RSI, Volatility Contraction (3-Weeks-Tight), MACD Reversals, and On-Balance Volume.  
 * **Built-in Task Scheduler:** Fully autonomous background scheduling via APScheduler. No external cron jobs required. Manage execution times directly from the web UI.  
 * **In-App Management:** Update configurations, test webhooks, perform git pull repository updates, and restart the background service directly from the Settings GUI.  
@@ -27,40 +27,41 @@ Designed for Linux environments, this system pulls live holdings from your [Ghos
 
 ## **🚀 Installation & Setup**
 
-### **1\. Prerequisites**
+### **1. Prerequisites**
 
 You must have **Python 3.10 or higher** installed on your system.
 
-### **2\. Clone and Install**
+### **2. Clone and Install**
 
 Clone the repository and install the required dependencies using a virtual environment:
-
-git clone \[https://github.com/alfwro13/Stock\_Analysis\_Project.git\](https://github.com/alfwro13/Stock\_Analysis\_Project.git)  
-cd Stock\_Analysis\_Project  
-python3 \-m venv venv  
+```
+git clone [https://github.com/alfwro13/Stock_Analysis_Project.git](https://github.com/alfwro13/Stock_Analysis_Project.git)  
+cd Stock_Analysis_Project  
+python3 -m venv venv  
 source venv/bin/activate  
-pip install \-r requirements.txt
+pip install -r requirements.txt
+```
 
-### **3\. Initial Configuration**
+### **3. Initial Configuration**
 
 You must create a config.json file in the root directory to store your credentials. You can start with the bare minimum and configure the rest later via the Web UI.
 
 Create config.json:
-
+```
 {  
-    "GHOSTFOLIO\_URL": "http://YOUR\_GHOSTFOLIO\_IP:PORT",  
-    "API\_TOKEN": "your\_long\_lived\_ghostfolio\_security\_token",  
+    "GHOSTFOLIO_URL": "http://YOUR_GHOSTFOLIO_IP:PORT",  
+    "API_TOKEN": "your_long_lived_ghostfolio_security_token",  
     "PORT": 8090,  
-    "BASE\_CURRENCY": "GBP"  
+    "BASE_CURRENCY": "GBP"  
 }
-
-**Note:** BASE\_CURRENCY ensures that foreign assets (like USD stocks) are mathematically converted to your local currency using live FX rates for accurate P\&L calculation.
+```
+**Note:** BASE_CURRENCY ensures that foreign assets (like USD stocks) are mathematically converted to your local currency using live FX rates for accurate P&L calculation.
 
 ## **💻 Usage & The Web UI**
 
 To start the server, simply run the main application file. The system will automatically build the SQLite database on its first boot.
 
-python main.py
+`python main.py`
 
 * Open your web browser and navigate to **http://localhost:8090** (or your server's IP address).  
 * **Settings Tab:** Navigate to ⚙️ Settings to discover your Ghostfolio accounts, set up Nextcloud Talk webhooks, and tweak your algorithmic thresholds.  
@@ -82,65 +83,68 @@ By appending a simple URL parameter, the system will automatically hide the top 
 *(Note: Replace localhost with your actual server IP if hosting on a network device like a Raspberry Pi or NAS).*
 
 **Example Home Assistant Webpage Card Configuration:**
-
+```
 type: iframe  
-url: \[http://192.168.1.71:8090/portfolio?embed=true\](http://192.168.1.71:8090/portfolio?embed=true)  
-aspect\_ratio: 100%
-
+url: [http://192.168.1.71:8090/portfolio?embed=true](http://192.168.1.71:8090/portfolio?embed=true)  
+aspect_ratio: 100%
+```
 ## **⚙️ Running as a Background Service (Linux)**
 
 For a true production environment, you should configure the dashboard to run as a systemd background service. This ensures the app boots automatically, runs its internal APScheduler tasks flawlessly, and automatically recovers if it crashes.
 
-### **1\. Create the Service File**
+### **1. Create the Service File**
 
 Open your terminal and create a new systemd service file:
 
-sudo nano /etc/systemd/system/stock\_analysis\_project.service
+`sudo nano /etc/systemd/system/stock_analysis_project.service`
 
-### **2\. Add the Configuration**
+### **2. Add the Configuration**
 
-Paste the following block into the file. **Important:** Replace yourusername with your actual Linux username, and verify the paths match where you cloned the repository.
+Paste the following block into the file. 
 
-\[Unit\]  
+**Important:** Replace yourusername with your actual Linux username, and verify the paths match where you cloned the repository.
+```
+[Unit]  
 Description=Quantamental Stock Analysis Dashboard  
 After=network.target
 
-\[Service\]  
+[Service]  
 User=yourusername  
 Group=www-data  
-WorkingDirectory=/home/yourusername/Stock\_Analysis\_Project
+WorkingDirectory=/home/yourusername/Stock_Analysis_Project
 
-\# Point explicitly to the Python executable inside your virtual environment  
-ExecStart=/home/yourusername/Stock\_Analysis\_Project/venv/bin/python main.py
+# Point explicitly to the Python executable inside your virtual environment  
+ExecStart=/home/yourusername/Stock_Analysis_Project/venv/bin/python main.py
 
 Restart=always  
 RestartSec=5  
 Environment="PYTHONUNBUFFERED=1"
 
-\[Install\]  
+[Install]  
 WantedBy=multi-user.target
+```
 
-Save and exit (CTRL \+ O, Enter, CTRL \+ X).
 
-### **3\. Enable and Start the Service**
+### **3. Enable and Start the Service**
 
 Run these commands to tell Linux to reload its service list, enable the app to start on boot, and spin it up immediately:
-
+```
 sudo systemctl daemon-reload  
-sudo systemctl enable stock\_analysis\_project  
-sudo systemctl start stock\_analysis\_project
+sudo systemctl enable stock_analysis_project  
+sudo systemctl start stock_analysis_project
+```
 
 ### **🛠️ Useful Service Commands**
 
 Once deployed as a service, you can manage the dashboard via the Web UI Settings tab, or using standard Linux commands:
 
-* **Check if it's running:** sudo systemctl status stock\_analysis\_project  
-* **Restart after manual code updates:** sudo systemctl restart stock\_analysis\_project  
-* **View live server logs:** sudo journalctl \-u stock\_analysis\_project \-f
+* **Check if it's running:** `sudo systemctl status stock_analysis_project  `
+* **Restart after manual code updates:** `sudo systemctl restart stock_analysis_project  `
+* **View live server logs:** `sudo journalctl -u stock_analysis_project -f`
 
 ## **📚 Built-in Glossary**
 
-Not a quantitative expert? The dashboard includes a built-in educational /glossary page and interactive HTML tooltips that explain exactly what metrics like MACD Reversals, Relative Strength vs S\&P 500, Bullish Engulfing patterns, and Peter Lynch PEG mean in plain English.
+Not a quantitative expert? The dashboard includes a built-in educational glossary page and interactive HTML tooltips that explain exactly what metrics like MACD Reversals, Relative Strength vs S&P 500, Bullish Engulfing patterns, and Peter Lynch PEG mean in plain English.
 
 ## **⚠️ Disclaimer**
 
