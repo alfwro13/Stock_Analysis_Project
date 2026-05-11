@@ -671,9 +671,10 @@ async def stock_detail(request: Request, ticker: str):
     try:
         df_intraday = pd.read_parquet(INTRADAY_DIR / f"{ticker}_intraday.parquet")
         
-        # Build a pseudo-daily candle to evaluate live formations
-        if not df_intraday.empty and not df_macro.empty and len(df_macro) >= 1:
-            prev_day = df_macro.iloc[-1]
+        # Build a pseudo-daily candle to evaluate live formations against the last 2 closed days
+        if not df_intraday.empty and not df_macro.empty and len(df_macro) >= 2:
+            prev2_day = df_macro.iloc[-2]
+            prev1_day = df_macro.iloc[-1]
             
             # Construct current live candle metrics
             curr_pseudo = pd.Series({
@@ -683,8 +684,8 @@ async def stock_detail(request: Request, ticker: str):
                 'Close': df_intraday['Close'].iloc[-1]
             })
             
-            # Run algorithmic scan against live data
-            live_patterns = get_candlestick_patterns(prev_day, curr_pseudo)
+            # Run algorithmic scan against live data using the 3-day hierarchy
+            live_patterns = get_candlestick_patterns(prev2_day, prev1_day, curr_pseudo)
             if live_patterns:
                 live_pattern_name = live_patterns[0]["name"]
                 live_pattern_tooltip = live_patterns[0]["tooltip"]

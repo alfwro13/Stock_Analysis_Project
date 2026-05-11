@@ -8,51 +8,79 @@ from datetime import datetime
 from config import HISTORICAL_DIR, FUNDAMENTALS_DIR
 from database import get_connection
 
-def get_candlestick_patterns(prev, curr):
+def get_candlestick_patterns(prev2, prev1, curr):
     """
-    Algorithmic Candlestick Pattern Recognition.
-    Evaluates the current daily candle against the previous daily candle.
-    Returns a list of dictionaries containing the pattern name, tooltip, and score.
+    Algorithmic Candlestick Pattern Recognition (Hierarchical Engine).
+    Evaluates in order of mathematical priority to prevent overlapping bugs.
     """
     patterns = []
     
-    # Mathematically define candlestick anatomy
+    # --- Anatomy of the Current Candle ---
     curr_body = abs(curr['Open'] - curr['Close'])
-    curr_range = curr['High'] - curr['Low']
-    if curr_range == 0: curr_range = 0.001 # Prevent division by zero
-    
+    curr_body_safe = max(curr_body, 0.001) 
+    curr_range = max(curr['High'] - curr['Low'], 0.001) 
     curr_upper_wick = curr['High'] - max(curr['Open'], curr['Close'])
     curr_lower_wick = min(curr['Open'], curr['Close']) - curr['Low']
+    curr_is_bullish = curr['Close'] > curr['Open']
+    curr_is_bearish = curr['Close'] < curr['Open']
+
+    # --- Anatomy of the Previous Candles ---
+    prev1_body = abs(prev1['Open'] - prev1['Close'])
+    prev1_range = max(prev1['High'] - prev1['Low'], 0.001)
+    prev1_is_bearish = prev1['Close'] < prev1['Open']
+    prev1_is_bullish = prev1['Close'] > prev1['Open']
     
-    # 1. Bullish Engulfing
-    # Previous day was red, Current day is green, Current body fully eclipses previous body.
-    if (prev['Close'] < prev['Open']) and \
-       (curr['Close'] > curr['Open']) and \
-       (curr['Open'] <= prev['Close']) and \
-       (curr['Close'] >= prev['Open']):
+    prev2_body = abs(prev2['Open'] - prev2['Close'])
+    prev2_is_bearish = prev2['Close'] < prev2['Open']
+    
+    # ==========================================
+    # TIER 1: 3-CANDLE PATTERNS (Highest Priority)
+    # ==========================================
+    
+    # 1. Morning Star (Bullish Reversal)
+    # Day 1: Strong Bearish. Day 2: Indecision/Gap down. Day 3: Strong Bullish pushing > 50% into Day 1.
+    prev2_midpoint = (prev2['Open'] + prev2['Close']) / 2
+    if prev2_is_bearish and prev2_body > (prev2['High'] - prev2['Low']) * 0.5:  # Day 1 is solid red
+        if prev1_body <= (prev1_range * 0.3):                                   # Day 2 is a doji/spinning top
+            if curr_is_bullish and curr['Close'] > prev2_midpoint:              # Day 3 is green and breaches Day 1 midpoint
+                patterns.append({
+                    "name": "🌅 Morning Star",
+                    "tooltip": "A highly reliable 3-day bottoming pattern. Panic selling (Day 1) was met with indecision (Day 2), followed by strong institutional buying (Day 3) that recovered the majority of the original dump.",
+                    "breakdown": "+20: <abbr title='3-Day Pattern: Heavy dump, followed by indecision, followed by violent recovery buying.'>Morning Star Reversal</abbr>",
+                    "score": 20
+                })
+                return patterns # Return immediately to prevent lower-tier overlaps
+
+    # ==========================================
+    # TIER 2: 2-CANDLE PATTERNS
+    # ==========================================
+
+    # 2. Bullish Engulfing
+    if prev1_is_bearish and curr_is_bullish and (curr['Open'] <= prev1['Close']) and (curr['Close'] >= prev1['Open']):
         patterns.append({
             "name": "🐂 Bullish Engulfing",
             "tooltip": "Buyers completely overwhelmed sellers. The current green body fully engulfed the previous red body. Signals a potential reversal to the upside.",
             "breakdown": "+10: <abbr title='Buyers completely overwhelmed sellers. The current green body fully engulfed the previous red body.'>Bullish Engulfing Pattern</abbr>",
             "score": 10
         })
+        return patterns
         
-    # 2. Bearish Engulfing
-    # Previous day was green, Current day is red, Current body fully eclipses previous body.
-    elif (prev['Close'] > prev['Open']) and \
-         (curr['Close'] < curr['Open']) and \
-         (curr['Open'] >= prev['Close']) and \
-         (curr['Close'] <= prev['Open']):
+    # 3. Bearish Engulfing
+    if prev1_is_bullish and curr_is_bearish and (curr['Open'] >= prev1['Close']) and (curr['Close'] <= prev1['Open']):
         patterns.append({
             "name": "🐻 Bearish Engulfing",
             "tooltip": "Sellers took total control. The current red body fully engulfed the previous green body. A stark warning signal of impending downside.",
             "breakdown": "-15: <abbr title='Sellers took total control. The current red body fully engulfed the previous green body. Warning signal.'>Bearish Engulfing Pattern</abbr>",
             "score": -15
         })
-        
-    # 3. Hammer (Bullish Rejection)
-    # Long lower wick (at least 2x the body), tiny upper wick (less than 20% of range)
-    if curr_lower_wick >= (2 * curr_body) and curr_upper_wick <= (0.2 * curr_range) and curr_body > 0:
+        return patterns
+
+    # ==========================================
+    # TIER 3: 1-CANDLE PATTERNS (Lowest Priority)
+    # ==========================================
+
+    # 4. Hammer / Dragonfly Doji (Bullish Rejection)
+    if curr_lower_wick >= (2 * curr_body_safe) and curr_upper_wick <= (0.2 * curr_range):
         patterns.append({
             "name": "🔨 Hammer Rejection",
             "tooltip": "Sellers tried to crash the price intraday, but institutional buyers violently rejected it and bought the dip. Indicates strong underlying support.",
@@ -60,9 +88,8 @@ def get_candlestick_patterns(prev, curr):
             "score": 5
         })
         
-    # 4. Shooting Star (Bearish Rejection)
-    # Long upper wick (at least 2x the body), tiny lower wick
-    if curr_upper_wick >= (2 * curr_body) and curr_lower_wick <= (0.2 * curr_range) and curr_body > 0:
+    # 5. Shooting Star / Gravestone Doji (Bearish Rejection)
+    elif curr_upper_wick >= (2 * curr_body_safe) and curr_lower_wick <= (0.2 * curr_range):
         patterns.append({
             "name": "🌠 Shooting Star",
             "tooltip": "Retail buyers tried to push the price up, but institutional sellers aggressively dumped shares into the rally. Momentum is fading.",
@@ -70,9 +97,8 @@ def get_candlestick_patterns(prev, curr):
             "score": -10
         })
         
-    # 5. Doji (Indecision)
-    # The body is virtually nonexistent (less than 10% of the total daily range)
-    if curr_body <= (curr_range * 0.1):
+    # 6. Standard Doji (Indecision)
+    elif curr_body <= (curr_range * 0.1):
         patterns.append({
             "name": "⚖️ Doji",
             "tooltip": "The opening and closing prices are mathematically almost identical. This represents total equilibrium and indecision between buyers and sellers.",
@@ -251,8 +277,8 @@ class QuantEngine:
         tags = []
 
         # Tag: Algorithmic Candlestick Pattern Injection
-        if not is_fund and len(df) >= 2:
-            candlestick_patterns = get_candlestick_patterns(df.iloc[-2], df.iloc[-1])
+        if not is_fund and len(df) >= 3:
+            candlestick_patterns = get_candlestick_patterns(df.iloc[-3], df.iloc[-2], df.iloc[-1])
             for pattern in candlestick_patterns:
                 tags.append({"name": pattern["name"], "tooltip": pattern["tooltip"]})
                 breakdown.append(pattern["breakdown"])

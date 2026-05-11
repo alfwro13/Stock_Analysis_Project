@@ -42,19 +42,26 @@ def create_intraday_chart(df, ticker, s1=None, s2=None, live_pattern_name=None, 
         last_row = df.iloc[-1]
         score = live_pattern_score if live_pattern_score is not None else 0
         
-        # Bullish / Neutral patterns get a green upward arrow below the candle
-        if score >= 0:
+        # Bullish patterns get a green upward arrow below the candle
+        if score > 0:
             fig.add_annotation(
                 x=last_row.name, y=last_row['Low'],
                 yshift=-15, text="▲", hovertext=f"<b>{live_pattern_name}</b><br>{live_pattern_tooltip}",
                 showarrow=False, font=dict(color="#00ff00", size=18)
             )
         # Bearish patterns get a red downward arrow above the candle
-        else:
+        elif score < 0:
             fig.add_annotation(
                 x=last_row.name, y=last_row['High'],
                 yshift=15, text="▼", hovertext=f"<b>{live_pattern_name}</b><br>{live_pattern_tooltip}",
                 showarrow=False, font=dict(color="#ff4d4d", size=18)
+            )
+        # Neutral patterns get a yellow diamond
+        else:
+            fig.add_annotation(
+                x=last_row.name, y=last_row['Low'],
+                yshift=-15, text="◆", hovertext=f"<b>{live_pattern_name}</b><br>{live_pattern_tooltip}",
+                showarrow=False, font=dict(color="#ffaa00", size=16)
             )
     
     fig.update_layout(
@@ -122,27 +129,36 @@ def create_macro_chart(df, df_sp500, ticker):
 
     # ALGORITHMIC CHART ANNOTATIONS (Last 14 Days Only)
     # Detects patterns and overlays visual triangles on the primary candlestick chart
-    if len(df) >= 15:
-        last_14_days = df.tail(15)
-        for i in range(1, len(last_14_days)):
-            prev_row = last_14_days.iloc[i-1]
+    if len(df) >= 16:
+        # We need a buffer of 16 so we can always look back 2 days from the start of the 14-day window
+        last_14_days = df.tail(16)
+        for i in range(2, len(last_14_days)):
+            prev2_row = last_14_days.iloc[i-2]
+            prev1_row = last_14_days.iloc[i-1]
             curr_row = last_14_days.iloc[i]
             
-            patterns = get_candlestick_patterns(prev_row, curr_row)
+            patterns = get_candlestick_patterns(prev2_row, prev1_row, curr_row)
             for p in patterns:
-                # Bullish / Neutral patterns get green upward arrows below the candle
-                if p["score"] >= 0:
+                # Bullish patterns get green upward arrows below the candle
+                if p["score"] > 0:
                     fig.add_annotation(
                         row=1, col=1, x=curr_row.name, y=curr_row['Low'],
                         yshift=-15, text="▲", hovertext=f"<b>{p['name']}</b><br>{p['tooltip']}",
                         showarrow=False, font=dict(color="#00ff00", size=14)
                     )
                 # Bearish patterns get red downward arrows above the candle
-                else:
+                elif p["score"] < 0:
                     fig.add_annotation(
                         row=1, col=1, x=curr_row.name, y=curr_row['High'],
                         yshift=15, text="▼", hovertext=f"<b>{p['name']}</b><br>{p['tooltip']}",
                         showarrow=False, font=dict(color="#ff4d4d", size=14)
+                    )
+                # Neutral patterns get a yellow diamond
+                else:
+                    fig.add_annotation(
+                        row=1, col=1, x=curr_row.name, y=curr_row['Low'],
+                        yshift=-15, text="◆", hovertext=f"<b>{p['name']}</b><br>{p['tooltip']}",
+                        showarrow=False, font=dict(color="#ffaa00", size=12)
                     )
 
     # ROW 2: Volume
