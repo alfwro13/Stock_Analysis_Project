@@ -32,6 +32,10 @@ from data_engine import DataEngine
 from visuals import create_macro_chart, create_intraday_chart
 from ghostfolio_sync import GhostfolioSyncEngine
 
+# --- Global Foreign Exchange (FX) Cache ---
+# Stores FX pairs (e.g., "USDGBP=X": 0.79) to prevent slow API calls on every page refresh
+fx_cache = {}
+
 # --- Background Task Scheduler Setup ---
 scheduler = BackgroundScheduler()
 
@@ -403,6 +407,8 @@ async def portfolio_page(request: Request, account_id: str = "all", embed: bool 
                         break
                         
     portfolio_data = []
+    
+    # Secure Baseline Math dictionary
     summary_math = {"value": 0.0, "cost": 0.0, "pnl": 0.0, "pnl_pct": 0.0}
     
     for row in db_rows:
@@ -417,34 +423,69 @@ async def portfolio_page(request: Request, account_id: str = "all", embed: bool 
             
             portfolio_data.append(row_dict)
             
-            # --- Live Math for Summary Row ---
+            # --- Live Math for Summary Row (FX Corrected) ---
             asset = next((d for d in portfolio_json.values() if d.get("ticker") == row_dict['ticker']), None)
             if asset and row_dict['current_price']:
                 shares = 0
-                buy_price = 0
+                
+                # Note: buy_price is ALREADY in BASE_CURRENCY natively from Ghostfolio's 'investment' key
+                buy_price_base = 0 
                 
                 if account_id == "all":
                     shares = asset.get('global_shares', 0)
-                    buy_price = asset.get('global_buy_price', 0)
+                    buy_price_base = asset.get('global_buy_price', 0)
                 else:
                     for acc in asset.get('accounts', []):
                         if acc['id'] == account_id:
                             shares = acc.get('shares', 0)
-                            buy_price = acc.get('buy_price', 0)
+                            buy_price_base = acc.get('buy_price', 0)
                             break
                             
-                # Note: This is an unhedged estimate using DB price. Ghostfolio handles exact FX natively.
-                if asset.get('price_in_pence'): buy_price *= 100
-                cost = shares * buy_price
-                val = shares * row_dict['current_price']
+                # Cost is purely the quantity multiplied by the base currency buy price
+                cost_in_base = shares * buy_price_base
                 
-                summary_math["value"] += val
-                summary_math["cost"] += cost
+                # Market Value Extraction
+                native_price = row_dict['current_price']
+                stock_currency = row_dict['currency']
+                
+                exchange_rate = 1.0
+                if stock_currency == 'GBp' and BASE_CURRENCY == 'GBP':
+                    exchange_rate = 0.01  # Special LSE Math
+                elif stock_currency and stock_currency not in [BASE_CURRENCY, 'GBp']:
+                    # We are converting FROM native TO base currency (e.g. USD to GBP)
+                    pair = f"{stock_currency}{BASE_CURRENCY}=X"
+                    if pair not in fx_cache:
+                        try:
+                            fx_data = yf.Ticker(pair).history(period="1d")
+                            if not fx_data.empty:
+                                fx_cache[pair] = fx_data['Close'].iloc[-1]
+                            else:
+                                fx_cache[pair] = 1.0
+                        except Exception:
+                            fx_cache[pair] = 1.0
+                    exchange_rate = fx_cache[pair]
+                
+                # Final Base Currency Value
+                val_in_base = (shares * native_price) * exchange_rate
+                
+                summary_math["value"] += val_in_base
+                summary_math["cost"] += cost_in_base
 
     # Calculate final P&L logic for the Summary Row
     if summary_math["cost"] > 0:
         summary_math["pnl"] = summary_math["value"] - summary_math["cost"]
         summary_math["pnl_pct"] = (summary_math["pnl"] / summary_math["cost"]) * 100
+        
+        # Format the numbers (e.g., 10,562.97) and append the Base Currency
+        formatted_summary = {
+            "value": f"{summary_math['value']:,.2f} {BASE_CURRENCY}",
+            "cost": f"{summary_math['cost']:,.2f} {BASE_CURRENCY}",
+            "pnl": f"{'+' if summary_math['pnl'] > 0 else ''}{summary_math['pnl']:,.2f} {BASE_CURRENCY}",
+            "pnl_pct": f"{summary_math['pnl_pct']:.2f}",
+            "is_positive": summary_math["pnl"] > 0
+        }
+    else:
+        formatted_summary = None
     
     unread_count = get_unread_count()
     
@@ -457,7 +498,7 @@ async def portfolio_page(request: Request, account_id: str = "all", embed: bool 
             "unread_count": unread_count,
             "account_options": account_options,
             "selected_account": account_id,
-            "summary_math": summary_math
+            "summary_math": formatted_summary
         }
     )
 
@@ -539,12 +580,13 @@ async def stock_detail(request: Request, ticker: str):
     portfolio_math = None
     if user_asset and stock_data and stock_data['current_price']:
         
-        # Determine cross-currency exchange rate if necessary
+        # Determine cross-currency exchange rate to show individual asset in its NATIVE currency
         stock_currency = stock_data['currency']
         exchange_rate = 1.0
         
         if stock_currency and stock_currency not in [BASE_CURRENCY, 'GBp', 'GBP']:
             try:
+                # E.g., GBPUSD=X (Converts Base to Native)
                 fx_ticker = f"{BASE_CURRENCY}{stock_currency}=X"
                 fx_data = yf.Ticker(fx_ticker).history(period="1d")
                 if not fx_data.empty:
@@ -553,10 +595,13 @@ async def stock_detail(request: Request, ticker: str):
                 print(f"[WARNING] Could not fetch exchange rate for {fx_ticker}: {e}")
         
         # Helper function to process P&L cleanly
-        def calculate_pnl(shares, buy_price):
+        def calculate_pnl(shares, buy_price_base):
             if shares <= 0: return None
             
-            bp_adj = buy_price * exchange_rate
+            # Ghostfolio gives us Base (e.g. GBP). We multiply by Exchange Rate to get Native (e.g. USD).
+            bp_adj = buy_price_base * exchange_rate
+            
+            # Undo pence division if Native is GBp
             if user_asset.get('price_in_pence', False):
                 bp_adj *= 100
                 

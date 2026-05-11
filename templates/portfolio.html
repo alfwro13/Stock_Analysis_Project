@@ -93,16 +93,16 @@
     <div class="summary-row">
         <div style="font-size: 14px; color: #aaa;">
             Total Investment:<br>
-            <strong style="font-size: 18px; color: #fff;">{{ summary_math.cost|round(2) }}</strong>
+            <strong style="font-size: 18px; color: #fff;">{{ summary_math.cost }}</strong>
         </div>
         <div style="font-size: 14px; color: #aaa;">
             Market Value:<br>
-            <strong style="font-size: 18px; color: #fff;">{{ summary_math.value|round(2) }}</strong>
+            <strong style="font-size: 18px; color: #fff;">{{ summary_math.value }}</strong>
         </div>
         <div style="font-size: 14px; color: #aaa;">
             Unrealized P&L:<br>
-            <strong style="font-size: 18px;" class="{% if summary_math.pnl > 0 %}pnl-positive{% else %}pnl-negative{% endif %}">
-                {{ summary_math.pnl|round(2) }} ({{ summary_math.pnl_pct|round(2) }}%)
+            <strong style="font-size: 18px;" class="{% if summary_math.is_positive %}pnl-positive{% else %}pnl-negative{% endif %}">
+                {{ summary_math.pnl }} ({{ summary_math.pnl_pct }}%)
             </strong>
         </div>
     </div>
