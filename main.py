@@ -476,7 +476,7 @@ async def portfolio_page(request: Request, account_id: str = "all", embed: bool 
         summary_math["pnl"] = summary_math["value"] - summary_math["cost"]
         summary_math["pnl_pct"] = (summary_math["pnl"] / summary_math["cost"]) * 100
         
-        # Format the numbers (e.g., 10,562.97) and append the Base Currency
+        # Format the numbers (e.g., 10,567.67) and append the Base Currency
         formatted_summary = {
             "value": f"{summary_math['value']:,.2f} {BASE_CURRENCY}",
             "cost": f"{summary_math['cost']:,.2f} {BASE_CURRENCY}",
