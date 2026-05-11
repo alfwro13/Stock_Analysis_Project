@@ -93,6 +93,20 @@ class AIPromptEngine:
         technicals = self._get_technical_indicators(ticker)
         clean_notes = self._clean_html(stock_data.get('educational_notes', ''))
 
+        # --- NEW: Safe Formatting Block to match the Website UI ---
+        def fmt_pct(val):
+            return f"{(val * 100):.1f}%" if val is not None else "N/A"
+
+        def fmt_float(val):
+            return f"{val:.2f}" if val is not None else "N/A"
+
+        rev_growth_str = fmt_pct(stock_data.get('revenue_growth'))
+        trailing_pe_str = fmt_float(stock_data.get('trailing_pe'))
+        pl_peg_str = fmt_float(stock_data.get('peter_lynch_peg'))
+        debt_str = fmt_float(stock_data.get('debt_to_equity'))
+        rsi_str = f"{stock_data.get('rsi_14'):.1f}" if stock_data.get('rsi_14') is not None else "N/A"
+        # -----------------------------------------------------------
+
         # 3. Format Portfolio String
         portfolio_str = "No active holdings in the current portfolio."
         if portfolio_data and portfolio_data.get('global_shares', 0) > 0:
@@ -107,7 +121,7 @@ class AIPromptEngine:
                 for acc in accounts:
                     portfolio_str += f"  - {acc.get('name', 'Unknown')}: {acc.get('shares', 0)} shares at {acc.get('buy_price', 0):,.2f} {stock_data['currency']}\n"
 
-        # 4. Build The Master Context Payload
+        # 4. Build The Master Context Payload (Updated with formatted strings)
         context_payload = f"""
 =========================================================
 SYSTEM METADATA & SCORING LOGIC
@@ -130,16 +144,16 @@ System Verdict: {stock_data['overall_signal']} (Score: {stock_data['composite_sc
 ATR Stop-Loss: {stock_data['atr_stop_loss']:,.2f} {stock_data['currency']}
 
 --- FUNDAMENTALS ---
-Trailing P/E: {stock_data['trailing_pe']}
-Peter Lynch Fair Value PEG: {stock_data['peter_lynch_peg']}
-Debt-to-Equity: {stock_data['debt_to_equity']}
-Revenue Growth (YoY): {stock_data['revenue_growth']}
+Trailing P/E: {trailing_pe_str}
+Peter Lynch Fair Value PEG: {pl_peg_str}
+Debt-to-Equity: {debt_str}
+Revenue Growth (YoY): {rev_growth_str}
 Next Earnings Date: {stock_data['next_earnings_date']}
 
 --- MACRO TECHNICALS ---
 50-Day Trend: {stock_data['trend_50d']}
 200-Day Trend: {stock_data['trend_200d']}
-RSI (14-Day): {stock_data['rsi_14']}
+RSI (14-Day): {rsi_str}
 MACD Line: {technicals['macd_line']} | Signal Line: {technicals['macd_signal']}
 OBV Trend: {technicals['obv_trend']}
 Recent Volume: {technicals['recent_volume']} (21D Avg: {technicals['average_volume']})
