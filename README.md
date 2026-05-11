@@ -17,6 +17,16 @@ Designed for Linux environments, this system pulls live holdings from your [Ghos
 * **In-App Management:** Update configurations, test webhooks, perform git pull repository updates, and restart the background service directly from the Settings GUI.  
 * **Crash-Proof Local Storage & Maintenance:** Persists heavy time-series data locally using highly compressed .parquet files and SQLite3. An automated Maintenance Engine prunes orphaned files and defragments the database weekly.
 
+Watch list Dashboard:
+<img width="2247" height="1633" alt="watchlist_dash" src="https://github.com/user-attachments/assets/22fcd68d-b6a9-4f5d-aacc-69bd88db0bfc" />
+Market Sentiment Page:
+<img width="2265" height="1630" alt="market_sentiment" src="https://github.com/user-attachments/assets/1c70fd70-6cdf-4ee3-855b-f70d9ca3c5a4" />
+Holding detailed view:
+<img width="867" height="1805" alt="detailed_view" src="https://github.com/user-attachments/assets/35beacd7-df5e-435c-aa55-dd4f087e5b7b" />
+
+
+
+
 ## **🛠️ Architecture**
 
 * **Backend:** Python 3.10+, FastAPI, Uvicorn, APScheduler  
