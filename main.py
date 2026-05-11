@@ -36,6 +36,7 @@ from ghostfolio_sync import GhostfolioSyncEngine
 scheduler = BackgroundScheduler()
 
 def trigger_sentiment_report():
+    """Triggered by the scheduler to run the Nextcloud Market Sentiment alert."""
     run_nextcloud_alert()
 
 def reload_scheduler():
@@ -147,6 +148,7 @@ def reload_scheduler():
             start_h, _ = map(int, start_time.split(':'))
             end_h, _ = map(int, end_time.split(':'))
             
+            # Using CronTrigger with bounded hours creates a tight window for execution
             scheduler.add_job(
                 run_crash_engine,
                 CronTrigger(day_of_week=freq, hour=f"{start_h}-{end_h}", minute=f"*/{interval_mins}"),
@@ -158,6 +160,7 @@ def reload_scheduler():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """Lifecycle manager for the FastAPI application."""
     init_db()
     reload_scheduler()
     scheduler.start()
@@ -172,7 +175,7 @@ app.mount("/assets", StaticFiles(directory="assets"), name="assets")
 templates = Jinja2Templates(directory="templates")
 
 def get_json_data(filepath):
-    """Safely reads local JSON files."""
+    """Safely reads local JSON files and handles Missing File errors gracefully."""
     try:
         with open(filepath, 'r') as f:
             return json.load(f)
@@ -192,25 +195,30 @@ def get_unread_count():
         return 0
 
 def run_crash_engine():
+    """Executes the high-frequency intraday crash scan."""
     CrashEngine().run()
 
 def run_update_pipeline():
+    """Executes the heavy data ingestion and mathematical quant modeling."""
     print("\n--- BACKGROUND UPDATE INITIATED ---")
     DataEngine().update_all_data()
     QuantEngine().run_all()
     print("--- BACKGROUND UPDATE COMPLETE ---\n")
 
 def run_ghostfolio_sync():
+    """Executes the Ghostfolio API Sync to extract account holdings."""
     sync_engine = GhostfolioSyncEngine()
     sync_engine.run_full_sync()
 
 @app.post("/api/update")
 async def trigger_update(background_tasks: BackgroundTasks):
+    """API endpoint to manually trigger the full market data update."""
     background_tasks.add_task(run_update_pipeline)
     return {"status": "success"}
 
 @app.post("/api/sync-ghostfolio")
 async def trigger_ghostfolio_sync(background_tasks: BackgroundTasks):
+    """API endpoint to manually trigger the Ghostfolio synchronization."""
     background_tasks.add_task(run_ghostfolio_sync)
     return {"status": "success"}
 
@@ -241,6 +249,7 @@ async def settings_page(request: Request):
 
 @app.get("/market-sentiment", response_class=HTMLResponse)
 async def market_sentiment_page(request: Request):
+    """Renders the Fear & Greed Index vs S&P 500 correlation chart."""
     sentiment_html = get_sentiment_html()
     unread_count = get_unread_count()
     return templates.TemplateResponse(
@@ -250,6 +259,7 @@ async def market_sentiment_page(request: Request):
 
 @app.post("/api/test-sentiment-alert")
 def test_sentiment_alert():
+    """Triggered by the GUI to manually test the Nextcloud Market Sentiment Pipeline."""
     success, msg = run_nextcloud_alert()
     if success: return JSONResponse(content={"status": "success", "message": msg})
     else: return JSONResponse(status_code=500, content={"status": "error", "message": msg})
@@ -272,7 +282,9 @@ def test_insider_alert():
 async def git_pull_update():
     """Executes a git pull to fetch the latest code from GitHub."""
     try:
+        # Execute git pull command
         result = subprocess.run(["git", "pull"], capture_output=True, text=True, timeout=15)
+        
         if result.returncode == 0:
             return JSONResponse(content={"status": "success", "message": f"Update successful. Please restart the service if required.\n\n{result.stdout}"})
         else:
@@ -283,6 +295,7 @@ async def git_pull_update():
 def execute_restart():
     """Background task to wait 2 seconds, then kill the Python process."""
     time.sleep(2)
+    # Sending SIGTERM allows FastAPI/Uvicorn to shut down gracefully
     os.kill(os.getpid(), signal.SIGTERM)
 
 @app.post("/api/system/restart")
@@ -302,7 +315,9 @@ async def save_settings(request: Request):
         with open(SECRETS_PATH, 'w') as f:
             json.dump(new_config, f, indent=4)
             
+        # Immediately push new scheduling rules to APScheduler
         reload_scheduler()
+        
         return JSONResponse(content={"status": "success", "message": "Settings saved successfully."})
     except Exception as e:
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
@@ -312,6 +327,7 @@ async def notifications_page(request: Request):
     """Renders the persistent notification center."""
     conn = get_connection()
     cursor = conn.cursor()
+    # Fetch latest 100 notifications
     cursor.execute("SELECT * FROM system_notifications ORDER BY timestamp DESC LIMIT 100")
     notifications = cursor.fetchall()
     unread_count = get_unread_count()
@@ -337,11 +353,13 @@ async def mark_notifications_read():
 
 @app.get("/glossary", response_class=HTMLResponse)
 async def glossary(request: Request):
+    """Renders the educational glossary."""
     unread_count = get_unread_count()
     return templates.TemplateResponse(request=request, name="glossary.html", context={"unread_count": unread_count})
 
 @app.get("/", response_class=RedirectResponse)
 async def home():
+    """Redirects the root URL to the portfolio dashboard."""
     return RedirectResponse(url="/portfolio")
 
 @app.get("/portfolio", response_class=HTMLResponse)
@@ -384,7 +402,50 @@ async def portfolio_page(request: Request, account_id: str = "all", embed: bool 
                         portfolio_tickers.append(data["ticker"])
                         break
                         
-    portfolio_data = [row for row in db_rows if row['ticker'] in portfolio_tickers]
+    portfolio_data = []
+    summary_math = {"value": 0.0, "cost": 0.0, "pnl": 0.0, "pnl_pct": 0.0}
+    
+    for row in db_rows:
+        row_dict = dict(row)
+        if row_dict['ticker'] in portfolio_tickers:
+            # Safely unpack JSON setup tags for the UI renderer
+            if row_dict.get('setup_tags'):
+                try: row_dict['setup_tags_list'] = json.loads(row_dict['setup_tags'])
+                except: row_dict['setup_tags_list'] = []
+            else:
+                row_dict['setup_tags_list'] = []
+            
+            portfolio_data.append(row_dict)
+            
+            # --- Live Math for Summary Row ---
+            asset = next((d for d in portfolio_json.values() if d.get("ticker") == row_dict['ticker']), None)
+            if asset and row_dict['current_price']:
+                shares = 0
+                buy_price = 0
+                
+                if account_id == "all":
+                    shares = asset.get('global_shares', 0)
+                    buy_price = asset.get('global_buy_price', 0)
+                else:
+                    for acc in asset.get('accounts', []):
+                        if acc['id'] == account_id:
+                            shares = acc.get('shares', 0)
+                            buy_price = acc.get('buy_price', 0)
+                            break
+                            
+                # Note: This is an unhedged estimate using DB price. Ghostfolio handles exact FX natively.
+                if asset.get('price_in_pence'): buy_price *= 100
+                cost = shares * buy_price
+                val = shares * row_dict['current_price']
+                
+                summary_math["value"] += val
+                summary_math["cost"] += cost
+
+    # Calculate final P&L logic for the Summary Row
+    if summary_math["cost"] > 0:
+        summary_math["pnl"] = summary_math["value"] - summary_math["cost"]
+        summary_math["pnl_pct"] = (summary_math["pnl"] / summary_math["cost"]) * 100
+    
     unread_count = get_unread_count()
     
     return templates.TemplateResponse(
@@ -395,12 +456,14 @@ async def portfolio_page(request: Request, account_id: str = "all", embed: bool 
             "embed": embed, 
             "unread_count": unread_count,
             "account_options": account_options,
-            "selected_account": account_id
+            "selected_account": account_id,
+            "summary_math": summary_math
         }
     )
 
 @app.get("/watchlist", response_class=HTMLResponse)
 async def watchlist_page(request: Request, embed: bool = False):
+    """Renders the watchlist table."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM stock_signals")
@@ -413,8 +476,20 @@ async def watchlist_page(request: Request, embed: bool = False):
     
     watchlist_json = get_json_data(WATCHLIST_PATH)
     watchlist_tickers = watchlist_json.get("watchlist", [])
-    watchlist_data = [row for row in db_rows if row['ticker'] in watchlist_tickers]
     
+    watchlist_data = []
+    for row in db_rows:
+        row_dict = dict(row)
+        if row_dict['ticker'] in watchlist_tickers:
+            # Safely unpack JSON setup tags
+            if row_dict.get('setup_tags'):
+                try: row_dict['setup_tags_list'] = json.loads(row_dict['setup_tags'])
+                except: row_dict['setup_tags_list'] = []
+            else:
+                row_dict['setup_tags_list'] = []
+                
+            watchlist_data.append(row_dict)
+            
     unread_count = get_unread_count()
     
     return templates.TemplateResponse(
@@ -424,14 +499,17 @@ async def watchlist_page(request: Request, embed: bool = False):
 
 @app.get("/stock/{ticker}", response_class=HTMLResponse)
 async def stock_detail(request: Request, ticker: str):
+    """Renders the deep-dive fundamental and technical analysis view for a specific stock."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM stock_signals WHERE ticker = ?", (ticker,))
     stock_data = cursor.fetchone()
+    
     if stock_data:
         stock_data = dict(stock_data)
     conn.close()
     
+    # Process ETF/Mutual Fund specific payloads
     top_holdings = []
     sector_weightings = []
     if stock_data and stock_data.get('top_holdings'):
@@ -442,6 +520,7 @@ async def stock_detail(request: Request, ticker: str):
         try: sector_weightings = json.loads(stock_data['sector_weightings'])
         except: pass
 
+    # Earnings Volatility Checker
     days_to_earnings = None
     volatility_date = None
     if stock_data and stock_data['next_earnings_date'] and stock_data['next_earnings_date'] != 'Unknown':
@@ -453,11 +532,14 @@ async def stock_detail(request: Request, ticker: str):
         except Exception:
             pass
 
+    # Portfolio Math Extraction & Processing
     portfolio_json = get_json_data(PORTFOLIO_PATH)
     user_asset = next((data for key, data in portfolio_json.items() if data.get("ticker") == ticker), None)
     
     portfolio_math = None
     if user_asset and stock_data and stock_data['current_price']:
+        
+        # Determine cross-currency exchange rate if necessary
         stock_currency = stock_data['currency']
         exchange_rate = 1.0
         
@@ -470,8 +552,10 @@ async def stock_detail(request: Request, ticker: str):
             except Exception as e:
                 print(f"[WARNING] Could not fetch exchange rate for {fx_ticker}: {e}")
         
+        # Helper function to process P&L cleanly
         def calculate_pnl(shares, buy_price):
             if shares <= 0: return None
+            
             bp_adj = buy_price * exchange_rate
             if user_asset.get('price_in_pence', False):
                 bp_adj *= 100
@@ -489,8 +573,10 @@ async def stock_detail(request: Request, ticker: str):
                 "pnl_pct": round(pnl_pct, 2)
             }
             
+        # 1. Process Global Macro Math
         global_math = calculate_pnl(user_asset.get('global_shares', 0), user_asset.get('global_buy_price', 0))
         
+        # 2. Process Individual Micro Ledgers
         account_maths = []
         for acc in user_asset.get('accounts', []):
             acc_m = calculate_pnl(acc.get('shares', 0), acc.get('buy_price', 0))
@@ -504,6 +590,7 @@ async def stock_detail(request: Request, ticker: str):
                 "accounts": account_maths
             }
 
+    # Technical Analysis Chart Generation
     price_action = None
     try:
         df_macro = pd.read_parquet(HISTORICAL_DIR / f"{ticker}.parquet")

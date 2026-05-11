@@ -8,8 +8,6 @@
         h1, h2 { color: #ffffff; margin: 0; }
         
         .header-container { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid #333; padding-bottom: 20px; }
-        
-        /* New Logo and Header Layout CSS */
         .title-wrapper { display: flex; align-items: center; }
         .logo-link { display: inline-block; margin-right: 15px; }
         .logo-img { height: 45px; vertical-align: middle; transition: transform 0.2s; }
@@ -20,8 +18,8 @@
         .nav-links a.active { color: #00ffcc; text-decoration: underline; }
         .nav-links a:hover { text-decoration: underline; }
         
-        /* Unread Notifications Badge */
         .badge { background-color: #ff4d4d; color: white; padding: 2px 6px; border-radius: 10px; font-size: 12px; vertical-align: super; font-weight: bold;}
+        .setup-tag { display: inline-block; background-color: #333; color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 11px; margin-right: 4px; margin-top: 4px; border: 1px solid #555;}
         
         .controls-container { display: flex; gap: 15px; margin-bottom: 15px; }
         .filter-input { padding: 8px; border-radius: 5px; border: 1px solid #444; background-color: #1e1e1e; color: #fff; width: 250px; font-size: 14px;}
@@ -47,7 +45,6 @@
         .btn-sync:hover { background-color: #00ccaa; }
         .btn-update { background-color: #4da6ff; }
         .btn-update:hover { background-color: #3388dd; }
-        .btn:disabled { background-color: #555; color: #aaa; cursor: not-allowed; }
     </style>
 </head>
 <body>
@@ -87,6 +84,13 @@
             <option value="NEUTRAL">Neutral</option>
             <option value="BEARISH / CAUTION">Bearish / Caution</option>
         </select>
+        <select id="tagFilter" class="filter-select" onchange="filterTable()">
+            <option value="ALL">All Setup Tags</option>
+            <option value="⚡ MACD Reversal">⚡ MACD Reversals</option>
+            <option value="🔥 VCP Breakout">🔥 VCP Breakouts</option>
+            <option value="👑 Market Leader">👑 Market Leaders</option>
+            <option value="🚨 Divergence Warning">🚨 Divergence Warnings</option>
+        </select>
     </div>
 
     <table id="dataTable">
@@ -108,10 +112,14 @@
         </thead>
         <tbody>
             {% for item in watchlist %}
-            <tr data-signal="{{ item.overall_signal | upper }}">
+            <tr data-signal="{{ item.overall_signal | upper }}" data-tags='{{ item.setup_tags | safe }}'>
                 <td>
                     <a href="/stock/{{ item.ticker }}">{{ item.ticker }}</a><br>
                     <span style="font-size: 11px; color: #888;">{{ item.company_name[:20] }}{% if item.company_name|length > 20 %}...{% endif %}</span>
+                    <br>
+                    {% for tag in item.setup_tags_list %}
+                        <span class="setup-tag">{{ tag }}</span>
+                    {% endfor %}
                 </td>
                 <td>{{ item.current_price|round(2) }}</td>
                 <td>{% if item.target_price %}{{ item.target_price|round(2) }}{% else %}N/A{% endif %}</td>
@@ -132,7 +140,9 @@
     <script>
         function filterTable() {
             var input = document.getElementById("searchInput").value.toUpperCase();
-            var filter = document.getElementById("signalFilter").value.toUpperCase();
+            var sigFilter = document.getElementById("signalFilter").value.toUpperCase();
+            var tagFilter = document.getElementById("tagFilter").value;
+            
             var table = document.getElementById("dataTable");
             var tr = table.getElementsByTagName("tr");
 
@@ -141,11 +151,13 @@
                 if (tickerTd) {
                     var tickerText = tickerTd.textContent || tickerTd.innerText;
                     var signalAttr = tr[i].getAttribute("data-signal");
+                    var tagsAttr = tr[i].getAttribute("data-tags") || "[]";
                     
                     var matchesSearch = tickerText.toUpperCase().indexOf(input) > -1;
-                    var matchesFilter = (filter === "ALL") || (signalAttr === filter);
+                    var matchesSig = (sigFilter === "ALL") || (signalAttr === sigFilter);
+                    var matchesTag = (tagFilter === "ALL") || tagsAttr.indexOf(tagFilter) > -1;
                     
-                    if (matchesSearch && matchesFilter) { tr[i].style.display = ""; } 
+                    if (matchesSearch && matchesSig && matchesTag) { tr[i].style.display = ""; } 
                     else { tr[i].style.display = "none"; }
                 }
             }

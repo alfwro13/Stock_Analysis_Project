@@ -78,7 +78,8 @@ def init_db():
             -- System Outputs
             composite_score INTEGER,
             overall_signal TEXT,
-            educational_notes TEXT
+            educational_notes TEXT,
+            setup_tags TEXT
         )
     ''')
     
@@ -120,7 +121,8 @@ def migrate_db(conn, cursor):
         'top_holdings': 'TEXT', 'sector_weightings': 'TEXT',
         'dividend_yield': 'REAL', 'ex_dividend_date': 'TEXT', 'target_price': 'REAL',
         'analyst_rating': 'TEXT', 'next_earnings_date': 'TEXT',
-        'short_interest': 'REAL', 'institutional_ownership': 'REAL', 'beta': 'REAL'
+        'short_interest': 'REAL', 'institutional_ownership': 'REAL', 'beta': 'REAL',
+        'setup_tags': 'TEXT'
     }
 
     for col_name, data_type in required_columns.items():

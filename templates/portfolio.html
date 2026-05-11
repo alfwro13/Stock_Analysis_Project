@@ -8,7 +8,6 @@
         h1, h2 { color: #ffffff; margin: 0; }
         
         .header-container { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid #333; padding-bottom: 20px; }
-        
         .title-wrapper { display: flex; align-items: center; }
         .logo-link { display: inline-block; margin-right: 15px; }
         .logo-img { height: 45px; vertical-align: middle; transition: transform 0.2s; }
@@ -19,11 +18,17 @@
         .nav-links a.active { color: #00ffcc; text-decoration: underline; }
         .nav-links a:hover { text-decoration: underline; }
         
-        /* Account Context Selector */
+        /* Account Context Selector & Summary */
         .context-selector { padding: 8px 12px; border-radius: 5px; border: 1px solid #4da6ff; background-color: #1a2636; color: #fff; font-weight: bold; font-size: 14px; cursor: pointer; outline: none; margin-right: 20px; transition: border-color 0.3s; }
         .context-selector:hover { border-color: #00ffcc; }
+        .summary-row { background-color: #1a2636; padding: 15px 20px; border-radius: 8px; margin-bottom: 20px; display: flex; gap: 30px; border-left: 4px solid #00ffcc; box-shadow: 0 2px 4px rgba(0,0,0,0.3); }
         
+        /* CSS Linter Fix: Use classes instead of inline Jinja style blocks */
+        .pnl-positive { color: #00ff00; }
+        .pnl-negative { color: #ff4d4d; }
+
         .badge { background-color: #ff4d4d; color: white; padding: 2px 6px; border-radius: 10px; font-size: 12px; vertical-align: super; font-weight: bold;}
+        .setup-tag { display: inline-block; background-color: #333; color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 11px; margin-right: 4px; margin-top: 4px; border: 1px solid #555;}
         
         .controls-container { display: flex; gap: 15px; margin-bottom: 15px; }
         .filter-input { padding: 8px; border-radius: 5px; border: 1px solid #444; background-color: #1e1e1e; color: #fff; width: 250px; font-size: 14px;}
@@ -49,7 +54,6 @@
         .btn-sync:hover { background-color: #00ccaa; }
         .btn-update { background-color: #4da6ff; }
         .btn-update:hover { background-color: #3388dd; }
-        .btn:disabled { background-color: #555; color: #aaa; cursor: not-allowed; }
     </style>
 </head>
 <body>
@@ -85,6 +89,25 @@
     </div>
     {% endif %}
 
+    {% if not embed and summary_math %}
+    <div class="summary-row">
+        <div style="font-size: 14px; color: #aaa;">
+            Total Investment:<br>
+            <strong style="font-size: 18px; color: #fff;">{{ summary_math.cost|round(2) }}</strong>
+        </div>
+        <div style="font-size: 14px; color: #aaa;">
+            Market Value:<br>
+            <strong style="font-size: 18px; color: #fff;">{{ summary_math.value|round(2) }}</strong>
+        </div>
+        <div style="font-size: 14px; color: #aaa;">
+            Unrealized P&L:<br>
+            <strong style="font-size: 18px;" class="{% if summary_math.pnl > 0 %}pnl-positive{% else %}pnl-negative{% endif %}">
+                {{ summary_math.pnl|round(2) }} ({{ summary_math.pnl_pct|round(2) }}%)
+            </strong>
+        </div>
+    </div>
+    {% endif %}
+
     <div class="controls-container">
         <input type="text" id="searchInput" class="filter-input" onkeyup="filterTable()" placeholder="🔍 Search ticker or name...">
         <select id="signalFilter" class="filter-select" onchange="filterTable()">
@@ -93,6 +116,13 @@
             <option value="BULLISH / HOLD">Bullish / Hold</option>
             <option value="NEUTRAL">Neutral</option>
             <option value="BEARISH / CAUTION">Bearish / Caution</option>
+        </select>
+        <select id="tagFilter" class="filter-select" onchange="filterTable()">
+            <option value="ALL">All Setup Tags</option>
+            <option value="⚡ MACD Reversal">⚡ MACD Reversals</option>
+            <option value="🔥 VCP Breakout">🔥 VCP Breakouts</option>
+            <option value="👑 Market Leader">👑 Market Leaders</option>
+            <option value="🚨 Divergence Warning">🚨 Divergence Warnings</option>
         </select>
     </div>
 
@@ -115,10 +145,14 @@
         </thead>
         <tbody>
             {% for item in portfolio %}
-            <tr data-signal="{{ item.overall_signal | upper }}">
+            <tr data-signal="{{ item.overall_signal | upper }}" data-tags='{{ item.setup_tags | safe }}'>
                 <td>
                     <a href="/stock/{{ item.ticker }}">{{ item.ticker }}</a><br>
                     <span style="font-size: 11px; color: #888;">{{ item.company_name[:20] }}{% if item.company_name|length > 20 %}...{% endif %}</span>
+                    <br>
+                    {% for tag in item.setup_tags_list %}
+                        <span class="setup-tag">{{ tag }}</span>
+                    {% endfor %}
                 </td>
                 <td>{{ item.current_price|round(2) }}</td>
                 <td>{% if item.target_price %}{{ item.target_price|round(2) }}{% else %}N/A{% endif %}</td>
@@ -144,7 +178,9 @@
 
         function filterTable() {
             var input = document.getElementById("searchInput").value.toUpperCase();
-            var filter = document.getElementById("signalFilter").value.toUpperCase();
+            var sigFilter = document.getElementById("signalFilter").value.toUpperCase();
+            var tagFilter = document.getElementById("tagFilter").value;
+            
             var table = document.getElementById("dataTable");
             var tr = table.getElementsByTagName("tr");
 
@@ -153,11 +189,13 @@
                 if (tickerTd) {
                     var tickerText = tickerTd.textContent || tickerTd.innerText;
                     var signalAttr = tr[i].getAttribute("data-signal");
+                    var tagsAttr = tr[i].getAttribute("data-tags") || "[]";
                     
                     var matchesSearch = tickerText.toUpperCase().indexOf(input) > -1;
-                    var matchesFilter = (filter === "ALL") || (signalAttr === filter);
+                    var matchesSig = (sigFilter === "ALL") || (signalAttr === sigFilter);
+                    var matchesTag = (tagFilter === "ALL") || tagsAttr.indexOf(tagFilter) > -1;
                     
-                    if (matchesSearch && matchesFilter) {
+                    if (matchesSearch && matchesSig && matchesTag) {
                         tr[i].style.display = "";
                     } else {
                         tr[i].style.display = "none";

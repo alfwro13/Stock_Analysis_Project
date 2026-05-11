@@ -1,5 +1,6 @@
 # quant_signals.py
 import pandas as pd
+import numpy as np
 import ta
 import os
 import json
@@ -27,19 +28,43 @@ class QuantEngine:
         with open(filepath, 'r') as f:
             return json.load(f)
 
-    def calculate_3_weeks_tight(self, df):
-        """Classic CAN SLIM volatility contraction pattern."""
-        weekly_data = df['Close'].resample('W-FRI').last()
+    def calculate_vcp_breakout(self, df):
+        """Advanced Minervini VCP: Price contraction AND Volume dry-up."""
+        weekly_data = df.resample('W-FRI').agg({'Close': 'last', 'Volume': 'sum'})
         if len(weekly_data) < 4:
-            return False
+            return False, False
+        
         last_3_weeks = weekly_data.iloc[-4:-1]
-        variance_pct = (last_3_weeks.max() - last_3_weeks.min()) / last_3_weeks.min()
-        return variance_pct <= 0.025
+        variance_pct = (last_3_weeks['Close'].max() - last_3_weeks['Close'].min()) / last_3_weeks['Close'].min()
+        is_tight = variance_pct <= 0.025
+        
+        # Volume Dry-up Check
+        avg_vol_50d = df['Volume'].rolling(50).mean().iloc[-1]
+        avg_vol_3w = last_3_weeks['Volume'].mean() / 5 # Approx daily average over the 3 weeks
+        is_dry_volume = avg_vol_3w < (avg_vol_50d * 0.8) # Volume must be 20% below average
+        
+        return is_tight, is_dry_volume
+
+    def detect_bearish_divergence(self, df):
+        """Checks if price is making higher highs while RSI makes lower highs."""
+        # Simple local peak detection over last 30 days
+        last_30 = df.tail(30)
+        if len(last_30) < 30: return False
+        
+        price_max_idx = last_30['Close'].idxmax()
+        rsi_at_max_price = last_30.loc[price_max_idx, 'RSI']
+        
+        # If the absolute highest RSI in the period occurred BEFORE the highest price, momentum is fading
+        rsi_max_idx = last_30['RSI'].idxmax()
+        if price_max_idx > rsi_max_idx and rsi_at_max_price < 60 and last_30['RSI'].max() > 70:
+            return True
+        return False
 
     def analyze_ticker(self, ticker):
         """Runs the combined Technical and Fundamental analysis."""
         df = self.load_parquet(ticker)
         info = self.load_fundamentals(ticker)
+        df_sp500 = self.load_parquet("SP500_BASELINE")
         
         if df is None or len(df) < 200:
             print(f"[SKIP] Not enough historical data to analyze {ticker} (requires 200 days).")
@@ -50,7 +75,6 @@ class QuantEngine:
         # ==========================================
         current_price = df['Close'].iloc[-1]
         
-        # Moving Averages
         df['MA_5'] = df['Close'].rolling(window=5).mean()
         df['MA_10'] = df['Close'].rolling(window=10).mean()
         df['MA_21'] = df['Close'].rolling(window=21).mean()
@@ -63,11 +87,9 @@ class QuantEngine:
         ma50 = df['MA_50'].iloc[-1]
         ma200 = df['MA_200'].iloc[-1]
         
-        # Determine Long/Medium Trends
         trend_50d = "UP" if ma50 > df['MA_50'].iloc[-10] else "DOWN"
         trend_200d = "UP" if ma200 > df['MA_200'].iloc[-20] else "DOWN"
 
-        # RSI & Volatility Stop Loss (ATR)
         df['RSI'] = ta.momentum.RSIIndicator(close=df['Close'], window=14).rsi()
         rsi_val = df['RSI'].iloc[-1]
         
@@ -75,68 +97,69 @@ class QuantEngine:
         atr_val = df['ATR'].iloc[-1]
         stop_loss = current_price - (2 * atr_val)
 
-        # Volume Profile (OBV)
         df['OBV'] = ta.volume.OnBalanceVolumeIndicator(close=df['Close'], volume=df['Volume']).on_balance_volume()
         df['OBV_MA'] = df['OBV'].rolling(window=21).mean()
         obv_bullish = df['OBV'].iloc[-1] > df['OBV_MA'].iloc[-1]
 
-        is_tight = self.calculate_3_weeks_tight(df)
+        macd = ta.trend.MACD(close=df['Close'])
+        df['MACD_Line'] = macd.macd()
+        df['MACD_Signal'] = macd.macd_signal()
+        df['MACD_Hist'] = macd.macd_diff()
+
+        is_tight, is_dry_volume = self.calculate_vcp_breakout(df)
+        is_bearish_divergence = self.detect_bearish_divergence(df)
+
+        # Relative Strength Math
+        rs_slope = 0
+        is_market_leader = False
+        if df_sp500 is not None and not df_sp500.empty:
+            sp500_aligned = df_sp500['Close'].reindex(df.index, method='ffill')
+            df['RS_Line'] = df['Close'] / sp500_aligned
+            if len(df['RS_Line'].dropna()) >= 60:
+                y = df['RS_Line'].dropna().tail(60).values
+                x = np.arange(len(y))
+                slope, _ = np.polyfit(x, y, 1)
+                rs_slope = slope
+                # If slope is sharply up and we are near the 60-day RS High
+                if rs_slope > 0 and df['RS_Line'].iloc[-1] >= (df['RS_Line'].tail(60).max() * 0.95):
+                    is_market_leader = True
 
         # ==========================================
         # PART 2: FUNDAMENTAL EXTRACTION
         # ==========================================
         quote_type = info.get('quoteType', 'EQUITY')
         is_fund = quote_type in ['ETF', 'MUTUALFUND']
-        
         company_name = info.get('shortName', ticker)
-        
-        # Intelligent Sector Extraction (Funds often use 'category' instead of 'sector')
-        if is_fund:
-            sector = info.get('category', info.get('sector', 'Fund'))
-        else:
-            sector = info.get('sector', 'Unknown')
-            
+        sector = info.get('category', info.get('sector', 'Fund')) if is_fund else info.get('sector', 'Unknown')
         currency = info.get('currency', 'USD')
-        
-        # Price Action & General
         fifty_two_week_low = info.get('fiftyTwoWeekLow', None)
         fifty_two_week_high = info.get('fiftyTwoWeekHigh', None)
         
-        # ETF/Fund Specific Metrics
         ytd_return = info.get('ytdReturn', None)
         total_assets = info.get('totalAssets', None)
         nav_price = info.get('navPrice', None)
         expense_ratio = info.get('expenseRatio', info.get('annualReportExpenseRatio', None))
-        
-        # ETF Deep Data Extraction (Dumped to JSON strings for SQLite storage)
         top_holdings = json.dumps(info.get('holdings', []))
         sector_weightings = json.dumps(info.get('sectorWeightings', []))
         
-        # Standard Equity Metrics
         trailing_pe = info.get('trailingPE', None)
         forward_pe = info.get('forwardPE', None)
         peg_ratio = info.get('pegRatio', None)
         price_to_book = info.get('priceToBook', None)
-        
         profit_margin = info.get('profitMargins', None)
         roe = info.get('returnOnEquity', None)
         revenue_growth = info.get('revenueGrowth', None)
         earnings_growth = info.get('earningsGrowth', None)
-        
         debt_to_equity = info.get('debtToEquity', None)
         current_ratio = info.get('currentRatio', None)
         operating_cash_flow = info.get('operatingCashflow', None)
-        
         dividend_yield = info.get('dividendYield', None)
         ex_dividend_date = info.get('exDividendDate', None)
         target_price = info.get('targetMeanPrice', None)
         analyst_rating = info.get('recommendationKey', 'None').upper()
         
         earnings_ts = info.get('earningsTimestamp', None)
-        if earnings_ts:
-            next_earnings_date = datetime.fromtimestamp(earnings_ts).strftime('%Y-%m-%d')
-        else:
-            next_earnings_date = "Unknown"
+        next_earnings_date = datetime.fromtimestamp(earnings_ts).strftime('%Y-%m-%d') if earnings_ts else "Unknown"
 
         short_interest = info.get('shortPercentOfFloat', None)
         institutional_ownership = info.get('heldPercentInstitutions', None)
@@ -147,83 +170,83 @@ class QuantEngine:
             peter_lynch_peg = trailing_pe / (earnings_growth * 100)
 
         # ==========================================
-        # PART 3: SCORING & HTML TOOLTIP FORMATTING
+        # PART 3: SCORING & SETUP TAGS
         # ==========================================
         score = 0
         breakdown = []
+        tags = []
 
+        # Tag: MACD Reversal
+        if df['MACD_Line'].iloc[-1] > df['MACD_Signal'].iloc[-1] and df['MACD_Line'].iloc[-2] <= df['MACD_Signal'].iloc[-2]:
+            if df['MACD_Line'].iloc[-1] < 0 and rsi_val > 30:
+                tags.append("⚡ MACD Reversal")
+                score += 10
+                breakdown.append("+10: <abbr title='MACD just crossed positive from below the zero line. An early indicator that a downtrend is ending.'>MACD Golden Reversal</abbr>")
+
+        # Tag: VCP Breakout
+        if is_tight and is_dry_volume and not is_fund:
+            tags.append("🔥 VCP Breakout")
+            score += 20
+            breakdown.append("+20: <abbr title='Price tightened over 3 weeks AND volume dried up. Institutions have stopped selling; ready for breakout.'>Minervini VCP (Price + Vol Contraction)</abbr>")
+        elif is_tight:
+            score += 10
+            breakdown.append("+10: <abbr title='Price is tight, but volume has not dried up yet. Potential base forming.'>3-Weeks-Tight (No Vol Contraction)</abbr>")
+
+        # Tag: Market Leader
+        if is_market_leader and rs_slope > 0:
+            tags.append("👑 Market Leader")
+            score += 15
+            breakdown.append("+15: <abbr title='Relative Strength line is sloped sharply up. This asset is absorbing market liquidity.'>Market Leader vs S&P 500</abbr>")
+        elif rs_slope < -0.001:
+            breakdown.append("+0: <abbr title='Relative Strength slope is negative. This asset is underperforming the broader market.'>Laggard vs S&P 500</abbr>")
+
+        # Standard Core Score
         if current_price > ma5: 
             score += 15
-            breakdown.append("+15: <abbr title='The current price is trading above the 5-Day Moving Average, signaling very short-term momentum.'>Price > 5D MA</abbr>")
-        else:
-            breakdown.append("+0: <abbr title='The current price is trading below the 5-Day Moving Average, signaling short-term weakness.'>Price < 5D MA</abbr>")
-
+            breakdown.append("+15: Price > 5D MA (Short-term Momentum)")
+        
         if ma5 > ma10 and ma10 > ma21: 
             score += 15
-            breakdown.append("+15: <abbr title='The 5, 10, and 21-day averages are perfectly stacked. This indicates strong, unified short-term trend alignment.'>Short-term MAs aligned</abbr>")
-        else:
-            breakdown.append("+0: <abbr title='The moving averages are crisscrossing, indicating choppy or weak price action.'>Short-term MAs unaligned</abbr>")
+            breakdown.append("+15: MAs Aligned (5 > 10 > 21)")
 
         if trend_200d == "UP":
             score += 15
-            breakdown.append("+15: <abbr title='The 200-Day Moving Average is rising. This proves the long-term institutional trend is bullish.'>200D Institutional Trend is UP</abbr>")
-        else:
-            breakdown.append("+0: <abbr title='The 200-Day Moving Average is falling. Institutions are actively selling this stock over the long term.'>200D Trend is DOWN</abbr>")
+            breakdown.append("+15: 200D Trend UP (Institutional Backing)")
 
-        # RSI Momentum Check (Softened for Mutual Funds)
         if 40 <= rsi_val <= 65: 
-            score += 15
-            breakdown.append("+15: <abbr title='RSI is between 40 and 65, meaning the stock has room to grow without being dangerously overextended.'>RSI in healthy momentum zone</abbr>")
-        else:
-            if is_fund and rsi_val > 65:
-                score += 15
-                breakdown.append(f"+15: <abbr title='RSI is {rsi_val:.1f}, but this is normal for an index fund.'>Funds naturally drift upwards.</abbr>")
-            else:
-                breakdown.append(f"+0: <abbr title='RSI is either above 70 (overbought risk) or below 30 (oversold/crashing).'>RSI is {rsi_val:.1f} (Overbought/Oversold risk)</abbr>")
+            score += 10
+            breakdown.append("+10: RSI Healthy (Room to run)")
 
-        if is_tight: 
+        if is_fund or obv_bullish: 
             score += 20
-            breakdown.append("+20: <abbr title='Weekly closes have barely moved for 3 weeks. This indicates institutions are quietly accumulating shares without pushing the price up.'>'3-Weeks-Tight' volatility contraction detected</abbr>")
-        else:
-            breakdown.append("+0: <abbr title='Normal volatility. No tight weekly compression pattern detected.'>No tight weekly compression</abbr>")
+            breakdown.append("+20: OBV Bullish / Fund Exemption")
 
-        # Volume Profile Check (Bypassed for Mutual Funds/ETFs)
-        if is_fund:
-            score += 20
-            breakdown.append("+20: <abbr title='Funds are priced at NAV or follow indices, making strict volume oscillator metrics irrelevant.'>OBV bypassed (Not applicable for Funds)</abbr>")
-        elif obv_bullish: 
-            score += 20
-            breakdown.append("+20: <abbr title='On-Balance Volume is rising faster than its moving average, confirming that up-days have higher volume than down-days.'>OBV indicates Institutional Accumulation</abbr>")
-        else:
-            breakdown.append("+0: <abbr title='On-Balance Volume is falling, indicating that selling volume is outpacing buying volume.'>OBV indicates Distribution/Selling</abbr>")
+        # Tag: Divergence Circuit Breaker
+        if is_bearish_divergence and not is_fund:
+            tags.append("🚨 Divergence Warning")
+            score -= 30
+            breakdown.append("-30: <abbr title='Price made a higher high, but RSI made a lower high. Momentum is secretly dying. High risk of dump.'>Algorithmic Bearish Divergence</abbr>")
 
-        score = min(score, 100)
+        score = max(0, min(score, 100))
 
         if score >= 80: signal = "STRONG BUY"
         elif score >= 60: signal = "BULLISH / HOLD"
         elif score >= 40: signal = "NEUTRAL"
         else: signal = "BEARISH / CAUTION"
 
-        # ==========================================
-        # PART 4: CONSTRUCT HTML EDUCATIONAL NOTES
-        # ==========================================
-        notes_html = "<strong>Analytical Breakdown:</strong><br><ul style='margin-top: 5px; margin-bottom: 15px; font-size: 15px; color: #ccc; padding-left: 20px;'>"
+        # Construct Educational Notes
+        notes_html = "<strong>Algorithmic Breakdown:</strong><br><ul style='margin-top: 5px; margin-bottom: 15px; font-size: 15px; color: #ccc; padding-left: 20px;'>"
         for item in breakdown:
             notes_html += f"<li style='margin-bottom: 5px;'>{item}</li>"
         notes_html += "</ul>"
         
-        # ATR Adjusted for Funds
-        if is_fund:
-            notes_html += f"<strong>Risk Management:</strong> Mutual Funds & ETFs are typically held long-term. Mathematical <abbr title='Based on Average True Range.'>ATR Stop-Loss</abbr> of {currency} {stop_loss:.2f} is provided for reference only.<br><br>"
-        else:
-            notes_html += f"<strong>Risk Management:</strong> Mathematical <abbr title='Based on Average True Range. If the stock drops below this price, its normal mathematical volatility is broken and you should consider exiting.'>ATR Stop-Loss</abbr> is {currency} {stop_loss:.2f}.<br><br>"
+        notes_html += f"<strong>Risk Management:</strong> Mathematical <abbr title='Based on Average True Range.'>ATR Stop-Loss</abbr> is {currency} {stop_loss:.2f}.<br><br>"
         
         if not is_fund and rsi_val > 70:
-            notes_html += "<strong><span style='color: #ff4d4d;'>Warning:</span></strong> <abbr title='When RSI passes 70, the asset has gone up too quickly and is highly susceptible to a sudden pullback.'>Stock is technically overbought.</abbr> Initiating new positions is high risk. Look to take profits.<br>"
-        if short_interest and short_interest > 0.10:
-            notes_html += f"<strong><span style='color: #ffaa00;'>Warning:</span></strong> High <abbr title='Percentage of shares being shorted by pessimistic investors. High short interest can trigger violent upwards squeezes.'>Short Interest</abbr> ({short_interest*100:.1f}%). Expect extreme volatility.<br>"
+            notes_html += "<strong><span style='color: #ff4d4d;'>Warning:</span></strong> Stock is technically overbought (RSI > 70).<br>"
 
-        # Save to SQLite
+        # Save to DB
+        tags_json = json.dumps(tags)
         self.save_to_db(
             ticker, company_name, sector, currency, quote_type,
             current_price, ma5, ma10, ma21, trend_50d, trend_200d, rsi_val, stop_loss,
@@ -233,7 +256,7 @@ class QuantEngine:
             ytd_return, total_assets, nav_price, expense_ratio, top_holdings, sector_weightings,
             dividend_yield, ex_dividend_date, target_price, analyst_rating, next_earnings_date,
             short_interest, institutional_ownership, beta,
-            score, signal, notes_html
+            score, signal, notes_html, tags_json
         )
 
     def save_to_db(self, ticker, company_name, sector, currency, quote_type,
@@ -244,10 +267,9 @@ class QuantEngine:
                    ytd_return, total_assets, nav_price, expense_ratio, top_holdings, sector_weightings,
                    dividend_yield, ex_dividend_date, target_price, analyst_rating, next_earnings_date,
                    short_interest, institutional_ownership, beta,
-                   score, signal, notes):
+                   score, signal, notes, tags_json):
         
         cursor = self.conn.cursor()
-        
         query = '''
             INSERT OR REPLACE INTO stock_signals (
                 ticker, last_updated, company_name, sector, currency, quote_type,
@@ -258,7 +280,7 @@ class QuantEngine:
                 ytd_return, total_assets, nav_price, expense_ratio, top_holdings, sector_weightings,
                 dividend_yield, ex_dividend_date, target_price, analyst_rating, next_earnings_date,
                 short_interest, institutional_ownership, beta,
-                composite_score, overall_signal, educational_notes
+                composite_score, overall_signal, educational_notes, setup_tags
             ) VALUES (
                 ?, ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?, ?, ?, ?,
@@ -268,12 +290,11 @@ class QuantEngine:
                 ?, ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?,
                 ?, ?, ?,
-                ?, ?, ?
+                ?, ?, ?, ?
             )
         '''
         
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
         values = (
             ticker, timestamp, company_name, sector, currency, quote_type,
             price, ma5, ma10, ma21, trend_50d, trend_200d, rsi, stop_loss,
@@ -283,7 +304,7 @@ class QuantEngine:
             ytd_return, total_assets, nav_price, expense_ratio, top_holdings, sector_weightings,
             dividend_yield, ex_dividend_date, target_price, analyst_rating, next_earnings_date,
             short_interest, institutional_ownership, beta,
-            score, signal, notes
+            score, signal, notes, tags_json
         )
         
         cursor.execute(query, values)
