@@ -240,7 +240,7 @@ class QuantEngine:
             notes_html += f"<li style='margin-bottom: 5px;'>{item}</li>"
         notes_html += "</ul>"
         
-        notes_html += f"<strong>Risk Management:</strong> Mathematical <abbr title='Based on Average True Range.'>ATR Stop-Loss</abbr> is {currency} {stop_loss:.2f}.<br><br>"
+        notes_html += f"<strong>Risk Management:</strong> Mathematical <abbr title='Based on Average True Range.'>ATR Stop-Loss</abbr> is {stop_loss:,.2f} {currency}.<br><br>"
         
         if not is_fund and rsi_val > 70:
             notes_html += "<strong><span style='color: #ff4d4d;'>Warning:</span></strong> Stock is technically overbought (RSI > 70).<br>"
