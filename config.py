@@ -37,6 +37,7 @@ DEFAULT_CONFIG = {
     "API_TOKEN": "",
     "PORT": 8090,
     "BASE_CURRENCY": "GBP",
+    "IGNORED_TICKERS": ["GBP", "USD", "EUR"],
     "GHOSTFOLIO_ACCOUNTS": {
         "discovered": [],
         "active": []
@@ -162,6 +163,7 @@ GHOSTFOLIO_TOKEN = current_config.get("API_TOKEN", "")
 GHOSTFOLIO_ACCOUNTS = current_config.get("GHOSTFOLIO_ACCOUNTS", {"discovered": [], "active": []})
 PORT = current_config.get("PORT", 8090)
 BASE_CURRENCY = current_config.get("BASE_CURRENCY", "GBP")
+IGNORED_TICKERS = current_config.get("IGNORED_TICKERS", [])
 NEXTCLOUD_URL = current_config.get("NEXTCLOUD_URL", "")
 BOT_USERNAME = current_config.get("BOT_USERNAME", "")
 APP_PASSWORD = current_config.get("APP_PASSWORD", "")
