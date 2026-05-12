@@ -81,7 +81,7 @@
 
         <details class="settings-card" open>
             <summary>🖥️ Live UI Updates</summary>
-            <p style="font-size: 13px; color: #aaa; margin-top: 0; margin-bottom: 15px;">Enable or disable real-time price fetching for individual stocks on specific pages. Market Indexes will always remain live. Polling occurs every 60 seconds.</p>
+            <p style="font-size: 13px; color: #aaa; margin-top: 0; margin-bottom: 15px;">Enable or disable real-time price fetching for individual stocks on specific pages. Market Indexes will always remain live.</p>
             
             <div class="checkbox-group">
                 <input type="checkbox" id="LIVE_PORTFOLIO" {% if config.UI_PREFERENCES.LIVE_PORTFOLIO %}checked{% endif %}>
@@ -94,6 +94,10 @@
             <div class="checkbox-group">
                 <input type="checkbox" id="LIVE_DETAILS" {% if config.UI_PREFERENCES.LIVE_DETAILS %}checked{% endif %}>
                 <label for="LIVE_DETAILS">Live prices on Stock Detail View</label>
+            </div>
+            <div class="form-group" style="margin-top: 10px;">
+                <label>Polling Refresh Rate (Seconds)</label>
+                <input type="number" id="REFRESH_RATE" value="{{ config.UI_PREFERENCES.REFRESH_RATE | default(60) }}" min="15">
             </div>
         </details>
 
@@ -700,7 +704,8 @@
                 "UI_PREFERENCES": {
                     "LIVE_PORTFOLIO": document.getElementById('LIVE_PORTFOLIO').checked,
                     "LIVE_WATCHLIST": document.getElementById('LIVE_WATCHLIST').checked,
-                    "LIVE_DETAILS": document.getElementById('LIVE_DETAILS').checked
+                    "LIVE_DETAILS": document.getElementById('LIVE_DETAILS').checked,
+                    "REFRESH_RATE": parseInt(document.getElementById('REFRESH_RATE').value) || 60
                 },
                 "SCHEDULING": {
                     "GHOSTFOLIO_SYNC": {
