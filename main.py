@@ -22,7 +22,8 @@ from earnings_engine import run_earnings_alert
 from insider_engine import run_insider_alert
 from intraday_orchestrator import IntradayOrchestrator
 from maintenance_engine import MaintenanceEngine
-from ai_engine import AIPromptEngine # <--- IMPORT ADDED
+from ai_engine import AIPromptEngine
+from market_pulse import get_market_pulse # <--- IMPORT ADDED
 
 from config import (
     PORTFOLIO_PATH, WATCHLIST_PATH, HISTORICAL_DIR, INTRADAY_DIR, 
@@ -269,6 +270,13 @@ async def trigger_discovery():
         return JSONResponse(content={"status": "success", "message": f"Successfully discovered {len(accounts)} active accounts."})
     else:
         return JSONResponse(status_code=500, content={"status": "error", "message": "No accounts discovered or network error occurred."})
+
+# --- NEW ROUTE FOR MARKET PULSE ---
+@app.get("/api/market-pulse")
+async def api_market_pulse():
+    """API endpoint to fetch live market index data for the frontend macro cards."""
+    pulse_data = get_market_pulse()
+    return JSONResponse(content={"status": "success", "data": pulse_data})
 
 @app.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request):
@@ -750,7 +758,6 @@ async def stock_detail(request: Request, ticker: str):
         }
     )
 
-# --- NEW API ROUTE FOR THE AI ENGINE ---
 @app.get("/api/ai-prompt/{ticker}")
 async def get_ai_prompt(ticker: str, mode: str = "Quantamental Deep-Dive"):
     """
