@@ -84,19 +84,20 @@
     }
 </style>
 
+{% if show_indexes %}
 <div id="macro-status" class="macro-pulse-indicator">
     <span id="pulse-dot" class="pulse-dot"></span> <span id="pulse-text">Live Market Pulse Active</span>
 </div>
 <div id="macro-cards-container" class="macro-container">
     </div>
+{% endif %}
 
 <script>
     let marketPulseInterval;
-    const REFRESH_RATE_MS = 60000; // 60 Seconds
+    const REFRESH_RATE_MS = (window.REFRESH_RATE_MS || 60000); 
 
     async function fetchMarketPulse() {
         try {
-            // Determine if we need to fetch live asset prices alongside indices
             let requestedTickers = [];
             if (window.ENABLE_LIVE_ASSETS) {
                 const rows = document.querySelectorAll('.live-asset-row');
@@ -106,7 +107,6 @@
                 });
             }
 
-            // Post request to backend engine
             const response = await fetch('/api/market-pulse', {
                 method: 'POST',
                 headers: {
@@ -121,11 +121,17 @@
                 const indexes = result.data.indexes || [];
                 const assets = result.data.assets || [];
                 
+                {% if show_indexes %}
                 renderMacroCards(indexes);
+                const pulseDot = document.getElementById('pulse-dot');
+                if (pulseDot) {
+                    pulseDot.classList.remove('offline');
+                    document.getElementById('pulse-text').innerText = "Live Market Pulse Active";
+                }
+                {% endif %}
+                
                 updateAssetPrices(assets);
                 
-                document.getElementById('pulse-dot').classList.remove('offline');
-                document.getElementById('pulse-text').innerText = "Live Market Pulse Active";
             } else {
                 handlePulseError();
             }
@@ -136,6 +142,8 @@
 
     function renderMacroCards(data) {
         const container = document.getElementById('macro-cards-container');
+        if (!container) return;
+        
         container.innerHTML = ''; 
         
         data.forEach(index => {
@@ -158,7 +166,6 @@
     }
 
     function updateAssetPrices(assets) {
-        // Find DOM table cells and dynamically overwrite static SQLite data with Live Ticks
         assets.forEach(asset => {
             const priceEl = document.getElementById('price-' + asset.ticker);
             const changeEl = document.getElementById('change-' + asset.ticker);
@@ -174,8 +181,13 @@
     }
 
     function handlePulseError() {
-        document.getElementById('pulse-dot').classList.add('offline');
-        document.getElementById('pulse-text').innerText = "Market Pulse Offline (Retrying...)";
+        {% if show_indexes %}
+        const pulseDot = document.getElementById('pulse-dot');
+        if (pulseDot) {
+            pulseDot.classList.add('offline');
+            document.getElementById('pulse-text').innerText = "Market Pulse Offline (Retrying...)";
+        }
+        {% endif %}
     }
 
     function startPulseEngine() {
@@ -185,11 +197,15 @@
 
     function stopPulseEngine() {
         clearInterval(marketPulseInterval);
-        document.getElementById('pulse-dot').classList.add('offline');
-        document.getElementById('pulse-text').innerText = "Market Pulse Paused (Tab Inactive)";
+        {% if show_indexes %}
+        const pulseDot = document.getElementById('pulse-dot');
+        if (pulseDot) {
+            pulseDot.classList.add('offline');
+            document.getElementById('pulse-text').innerText = "Market Pulse Paused (Tab Inactive)";
+        }
+        {% endif %}
     }
 
-    // --- Page Visibility API Integration ---
     document.addEventListener("visibilitychange", () => {
         if (document.hidden) {
             stopPulseEngine();
