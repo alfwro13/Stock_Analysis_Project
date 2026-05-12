@@ -69,7 +69,8 @@ def get_market_pulse() -> list:
                     "price": f"{current_price:,.2f}",
                     "change_pts": f"{change_pts:,.2f}",
                     "change_pct": f"{change_pct:,.2f}",
-                    "is_positive": change_pts >= 0
+                    # EXPLICITLY CAST TO NATIVE PYTHON BOOL TO FIX JSON SERIALIZATION ERROR
+                    "is_positive": bool(change_pts >= 0) 
                 })
             except Exception as e:
                 print(f"[MARKET PULSE] Error processing {ticker}: {e}")
