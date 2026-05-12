@@ -45,6 +45,11 @@ DEFAULT_CONFIG = {
     "BOT_USERNAME": "",
     "APP_PASSWORD": "",
     "CONVERSATION_TOKEN": "",
+    "UI_PREFERENCES": {
+        "LIVE_PORTFOLIO": False,
+        "LIVE_WATCHLIST": False,
+        "LIVE_DETAILS": False
+    },
     "SCHEDULING": {
         "GHOSTFOLIO_SYNC": {
             "ENABLED": False,
@@ -130,7 +135,7 @@ def load_config() -> dict:
             
             # Safely merge nested dictionaries without deleting missing keys
             for key, val in data.items():
-                if key in ["NOTIFICATIONS", "SCHEDULING", "GHOSTFOLIO_ACCOUNTS"] and isinstance(val, dict):
+                if key in ["NOTIFICATIONS", "SCHEDULING", "GHOSTFOLIO_ACCOUNTS", "UI_PREFERENCES"] and isinstance(val, dict):
                     for sub_key, sub_val in val.items():
                         if sub_key in merged_config[key]:
                             if isinstance(sub_val, dict) and isinstance(merged_config[key][sub_key], dict):
@@ -160,5 +165,6 @@ NEXTCLOUD_URL = current_config.get("NEXTCLOUD_URL", "")
 BOT_USERNAME = current_config.get("BOT_USERNAME", "")
 APP_PASSWORD = current_config.get("APP_PASSWORD", "")
 CONVERSATION_TOKEN = current_config.get("CONVERSATION_TOKEN", "")
+UI_PREFERENCES = current_config.get("UI_PREFERENCES", {})
 NOTIFICATIONS = current_config.get("NOTIFICATIONS", {})
 SCHEDULING = current_config.get("SCHEDULING", {})
