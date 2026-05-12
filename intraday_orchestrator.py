@@ -130,8 +130,13 @@ class IntradayOrchestrator:
             pass
 
         tickers = self.get_portfolio_tickers()
+        ignored = self.config.get("IGNORED_TICKERS", [])
+        
+        # Filter out ignored list AND Mutual Funds (which never have 5m intraday data)
+        tickers = [t for t in tickers if t not in ignored and not t.startswith('0P')]
+        
         if not tickers:
-            print("[ORCHESTRATOR] No portfolio items found.")
+            print("[ORCHESTRATOR] No valid portfolio items found for intraday scan.")
             return
 
         metadata = self.get_asset_metadata(tickers)
