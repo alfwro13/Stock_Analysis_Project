@@ -26,7 +26,7 @@ from insider_engine import run_insider_alert
 from intraday_orchestrator import IntradayOrchestrator
 from maintenance_engine import MaintenanceEngine
 from ai_engine import AIPromptEngine
-from market_pulse import get_market_pulse
+from market_pulse import get_market_pulse, get_cached_pulse
 
 from config import (
     PORTFOLIO_PATH, WATCHLIST_PATH, HISTORICAL_DIR, INTRADAY_DIR, 
@@ -292,14 +292,15 @@ async def trigger_discovery():
         return JSONResponse(status_code=500, content={"status": "error", "message": "No accounts discovered or network error occurred."})
 
 
-# --- DYNAMIC POST ROUTE FOR MARKET PULSE ---
+# --- DYNAMIC ROUTES FOR MARKET PULSE ---
 @app.post("/api/market-pulse")
 async def api_market_pulse(request: PulseRequest):
     """API endpoint to fetch live index data AND requested asset prices."""
-    pulse_data = get_market_pulse(request.tickers)
+    config_data = load_config()
+    refresh_rate = config_data.get("UI_PREFERENCES", {}).get("REFRESH_RATE", 60)
+    pulse_data = get_market_pulse(request.tickers, refresh_rate=refresh_rate)
     return JSONResponse(content={"status": "success", "data": pulse_data})
 
-# Fallback GET route to preserve functionality
 @app.get("/api/market-pulse")
 async def api_market_pulse_get():
     pulse_data = get_market_pulse()
@@ -406,19 +407,6 @@ async def notifications_page(request: Request):
         request=request, name="notifications.html", 
         context={"notifications": notifications, "unread_count": unread_count}
     )
-
-@app.post("/api/notifications/mark-read")
-async def mark_notifications_read():
-    """Marks all unread notifications as read."""
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("UPDATE system_notifications SET is_read = 1 WHERE is_read = 0")
-        conn.commit()
-        conn.close()
-        return JSONResponse(content={"status": "success", "message": "Notifications marked as read."})
-    except Exception as e:
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 @app.get("/glossary", response_class=HTMLResponse)
 async def glossary(request: Request):
@@ -553,6 +541,7 @@ async def portfolio_page(request: Request, account_id: str = "all", embed: bool 
         formatted_summary = None
     
     unread_count = get_unread_count()
+    cached_pulse = get_cached_pulse()
     
     return templates.TemplateResponse(
         request=request, name="portfolio.html", 
@@ -564,7 +553,8 @@ async def portfolio_page(request: Request, account_id: str = "all", embed: bool 
             "account_options": account_options,
             "selected_account": account_id,
             "summary_math": formatted_summary,
-            "config": config_data
+            "config": config_data,
+            "cached_pulse": cached_pulse
         }
     )
 
@@ -599,6 +589,7 @@ async def watchlist_page(request: Request, embed: bool = False):
             watchlist_data.append(row_dict)
             
     unread_count = get_unread_count()
+    cached_pulse = get_cached_pulse()
     
     return templates.TemplateResponse(
         request=request, name="watchlist.html", 
@@ -607,7 +598,8 @@ async def watchlist_page(request: Request, embed: bool = False):
             "global_updated": global_updated, 
             "embed": embed, 
             "unread_count": unread_count,
-            "config": config_data
+            "config": config_data,
+            "cached_pulse": cached_pulse
         }
     )
 
@@ -779,6 +771,7 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
         intraday_html = "<p>Intraday data unavailable.</p>"
         
     unread_count = get_unread_count()
+    cached_pulse = get_cached_pulse()
         
     return templates.TemplateResponse(
         request=request, name="stock_detail.html", 
@@ -794,7 +787,8 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
             "price_action": price_action,
             "unread_count": unread_count,
             "embed": embed,
-            "config": config_data
+            "config": config_data,
+            "cached_pulse": cached_pulse
         }
     )
 
