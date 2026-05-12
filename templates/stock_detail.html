@@ -66,7 +66,9 @@
             <a href="https://github.com/alfwro13/Stock_Analysis_Project" target="_blank" style="margin-right: 15px; border: none;">
                 <img src="/assets/logo_small.png" alt="Logo" style="height: 30px; vertical-align: middle; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">
             </a>
-            <a href="/">← Dashboard</a> <span class="divider">|</span>
+            <a href="{% if embed %}/portfolio?embed=true{% else %}/{% endif %}">← Dashboard</a> 
+            {% if not embed %}
+            <span class="divider">|</span>
             <a href="/market-sentiment">🧠 Market Sentiment</a> <span class="divider">|</span>
             <a href="#verdict">Verdict</a> <span class="divider">|</span>
             <a href="#charts">Interactive Charts</a> <span class="divider">|</span>
@@ -75,6 +77,7 @@
             <a href="/settings">⚙️ Settings</a> <span class="divider">|</span>
             <a href="/glossary">📚 Glossary</a> <span class="divider">|</span>
             <a href="/notifications">🔔 Notifications {% if unread_count > 0 %}<span class="badge" id="nav-badge">{{ unread_count }}</span>{% endif %}</a>
+            {% endif %}
         </div>
     </div>
 
@@ -133,7 +136,7 @@
                     </div>
                 </div>
 
-                <p><strong>Current Price:</strong> {{ "{:,.2f}".format(stock.current_price) }} {{ stock.currency }}</p>
+                <p><strong>Current Price:</strong> {% if stock.current_price is not none %}{{ "{:,.2f}".format(stock.current_price) }} {{ stock.currency }}{% else %}N/A{% endif %}</p>
                 
                 <div style="line-height: 1.6; background-color: #2c2c2c; padding: 15px; border-radius: 5px; margin-top: 15px;">
                     {{ stock.educational_notes | safe }}
