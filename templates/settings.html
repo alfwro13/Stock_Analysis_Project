@@ -79,6 +79,24 @@
 
     <form id="settingsForm">
 
+        <details class="settings-card" open>
+            <summary>🖥️ Live UI Updates (Bloomberg Mode)</summary>
+            <p style="font-size: 13px; color: #aaa; margin-top: 0; margin-bottom: 15px;">Enable or disable real-time price fetching for individual stocks on specific pages. Market Indexes will always remain live. Polling occurs every 60 seconds.</p>
+            
+            <div class="checkbox-group">
+                <input type="checkbox" id="LIVE_PORTFOLIO" {% if config.UI_PREFERENCES.LIVE_PORTFOLIO %}checked{% endif %}>
+                <label for="LIVE_PORTFOLIO">Live prices on Portfolio</label>
+            </div>
+            <div class="checkbox-group">
+                <input type="checkbox" id="LIVE_WATCHLIST" {% if config.UI_PREFERENCES.LIVE_WATCHLIST %}checked{% endif %}>
+                <label for="LIVE_WATCHLIST">Live prices on Watchlist</label>
+            </div>
+            <div class="checkbox-group">
+                <input type="checkbox" id="LIVE_DETAILS" {% if config.UI_PREFERENCES.LIVE_DETAILS %}checked{% endif %}>
+                <label for="LIVE_DETAILS">Live prices on Stock Detail View</label>
+            </div>
+        </details>
+
         <details class="settings-card">
             <summary>🤖 Background Automation Schedulers</summary>
             
@@ -679,6 +697,11 @@
                 "BOT_USERNAME": document.getElementById('BOT_USERNAME').value,
                 "APP_PASSWORD": document.getElementById('APP_PASSWORD').value,
                 "CONVERSATION_TOKEN": document.getElementById('CONVERSATION_TOKEN').value,
+                "UI_PREFERENCES": {
+                    "LIVE_PORTFOLIO": document.getElementById('LIVE_PORTFOLIO').checked,
+                    "LIVE_WATCHLIST": document.getElementById('LIVE_WATCHLIST').checked,
+                    "LIVE_DETAILS": document.getElementById('LIVE_DETAILS').checked
+                },
                 "SCHEDULING": {
                     "GHOSTFOLIO_SYNC": {
                         "ENABLED": document.getElementById('GHOSTFOLIO_SYNC_ENABLED').checked,
