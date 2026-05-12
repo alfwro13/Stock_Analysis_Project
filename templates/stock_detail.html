@@ -91,7 +91,9 @@
         
         <script>
             window.ENABLE_LIVE_ASSETS = {% if config and config.UI_PREFERENCES and config.UI_PREFERENCES.LIVE_DETAILS %}true{% else %}false{% endif %};
+            window.REFRESH_RATE_MS = {{ config.UI_PREFERENCES.REFRESH_RATE | default(60) }} * 1000;
         </script>
+        {% set show_indexes = False %}
         {% if not embed %}
         {% include 'macro_cards.html' %}
         {% endif %}
@@ -147,10 +149,29 @@
                     </div>
                 </div>
 
+                {% set cp = cached_pulse.get(stock.ticker) %}
                 <div class="live-asset-row" data-ticker="{{ stock.ticker }}" style="font-size: 18px; margin-top: 15px; margin-bottom: 15px;">
                     <strong>Current Price:</strong> 
-                    <span id="price-{{ stock.ticker }}">{% if stock.current_price is not none %}{{ "{:,.2f}".format(stock.current_price) }}{% else %}N/A{% endif %}</span> {{ stock.currency }}
-                    <span id="change-{{ stock.ticker }}" style="margin-left: 15px; font-weight: bold; font-size: 16px;">-</span>
+                    <span id="price-{{ stock.ticker }}">
+                        {% if cp %}
+                            {{ cp.price }}
+                        {% elif stock.current_price is not none %}
+                            {{ "{:,.2f}".format(stock.current_price) }}
+                        {% else %}
+                            N/A
+                        {% endif %}
+                    </span> {{ stock.currency }}
+                    
+                    <span id="change-{{ stock.ticker }}" style="margin-left: 15px; font-weight: bold; font-size: 16px;">
+                        {% if cp %}
+                            {% set sign = '+' if cp.is_positive else '' %}
+                            <span class="{% if cp.is_positive %}trend-up{% else %}trend-down{% endif %}">
+                                {{ sign }}{{ cp.change_pts }} ({{ sign }}{{ cp.change_pct }}%)
+                            </span>
+                        {% else %}
+                            -
+                        {% endif %}
+                    </span>
                 </div>
                 
                 <div style="line-height: 1.6; background-color: #2c2c2c; padding: 15px; border-radius: 5px; margin-top: 15px;">
