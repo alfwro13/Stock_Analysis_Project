@@ -9,6 +9,8 @@ import time
 import subprocess
 import threading
 from datetime import datetime, timedelta
+from typing import List, Optional
+from pydantic import BaseModel
 from fastapi import FastAPI, Request, BackgroundTasks
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
@@ -43,6 +45,10 @@ fx_cache = {}
 # --- Background Task Scheduler Setup ---
 scheduler = BackgroundScheduler()
 task_lock = threading.Lock()
+
+# --- Pulse Request Schema ---
+class PulseRequest(BaseModel):
+    tickers: Optional[List[str]] = []
 
 def trigger_sentiment_report():
     """Triggered by the scheduler to run the Nextcloud Market Sentiment alert."""
@@ -285,11 +291,20 @@ async def trigger_discovery():
     else:
         return JSONResponse(status_code=500, content={"status": "error", "message": "No accounts discovered or network error occurred."})
 
-@app.get("/api/market-pulse")
-async def api_market_pulse():
-    """API endpoint to fetch live market index data for the frontend macro cards."""
-    pulse_data = get_market_pulse()
+
+# --- NEW DYNAMIC POST ROUTE FOR MARKET PULSE ---
+@app.post("/api/market-pulse")
+async def api_market_pulse(request: PulseRequest):
+    """API endpoint to fetch live index data AND requested asset prices."""
+    pulse_data = get_market_pulse(request.tickers)
     return JSONResponse(content={"status": "success", "data": pulse_data})
+
+# Fallback GET route to preserve functionality during the transition
+@app.get("/api/market-pulse")
+async def api_market_pulse_get():
+    pulse_data = get_market_pulse()
+    return JSONResponse(content={"status": "success", "data": pulse_data.get("indexes", [])})
+
 
 @app.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request):
