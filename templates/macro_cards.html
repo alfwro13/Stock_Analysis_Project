@@ -157,7 +157,7 @@
                     <div class="macro-title">${index.name}</div>
                     <div class="macro-price">${index.price}</div>
                     <div class="macro-change ${changeClass}">
-                        ${sign}${index.change_pts} (${sign}${index.change_pct}%)
+                        ${sign}${index.change_pct}%
                     </div>
                 </div>
             `;
@@ -174,7 +174,7 @@
                 priceEl.innerText = asset.price;
                 
                 const sign = asset.is_positive ? '+' : '';
-                changeEl.innerText = `${sign}${asset.change_pts} (${sign}${asset.change_pct}%)`;
+                changeEl.innerText = `${sign}${asset.change_pct}%`;
                 changeEl.className = asset.is_positive ? 'trend-up' : 'trend-down';
             }
         });
