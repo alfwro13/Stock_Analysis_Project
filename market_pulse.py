@@ -2,6 +2,7 @@
 import yfinance as yf
 import pandas as pd
 import time
+from config import load_config
 
 # Dictionary mapping Yahoo Finance tickers to our clean UI display names
 INDEX_TICKERS = {
@@ -31,7 +32,10 @@ def get_market_pulse(asset_tickers=None, refresh_rate=60) -> dict:
     if asset_tickers is None:
         asset_tickers = []
         
-    requested_assets = [t for t in asset_tickers if t not in INDEX_TICKERS]
+    config_data = load_config()
+    ignored_tickers = config_data.get("IGNORED_TICKERS", [])
+        
+    requested_assets = [t for t in asset_tickers if t not in INDEX_TICKERS and t not in ignored_tickers]
     all_tickers = list(INDEX_TICKERS.keys()) + requested_assets
     
     current_time = time.time()
