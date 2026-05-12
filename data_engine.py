@@ -2,7 +2,7 @@
 import json
 import yfinance as yf
 import pandas as pd
-from config import PORTFOLIO_PATH, WATCHLIST_PATH, HISTORICAL_DIR, INTRADAY_DIR, FUNDAMENTALS_DIR
+from config import PORTFOLIO_PATH, WATCHLIST_PATH, HISTORICAL_DIR, INTRADAY_DIR, FUNDAMENTALS_DIR, load_config
 
 class DataEngine:
     def __init__(self):
@@ -19,7 +19,7 @@ class DataEngine:
             return {}
             
     def get_all_tickers(self):
-        """Extracts a unique set of tickers from both Portfolio and Watchlist."""
+        """Extracts a unique set of tickers from both Portfolio and Watchlist, excluding ignored items."""
         tickers = set()
         
         # Parse Portfolio
@@ -32,7 +32,12 @@ class DataEngine:
             for ticker in self.watchlist["watchlist"]:
                 tickers.add(ticker)
                 
-        return list(tickers)
+        # Strip out ignored tickers
+        config_data = load_config()
+        ignored_tickers = config_data.get("IGNORED_TICKERS", [])
+        
+        valid_tickers = [t for t in tickers if t not in ignored_tickers]
+        return valid_tickers
 
     def fetch_market_baseline(self):
         """
