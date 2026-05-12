@@ -292,14 +292,14 @@ async def trigger_discovery():
         return JSONResponse(status_code=500, content={"status": "error", "message": "No accounts discovered or network error occurred."})
 
 
-# --- NEW DYNAMIC POST ROUTE FOR MARKET PULSE ---
+# --- DYNAMIC POST ROUTE FOR MARKET PULSE ---
 @app.post("/api/market-pulse")
 async def api_market_pulse(request: PulseRequest):
     """API endpoint to fetch live index data AND requested asset prices."""
     pulse_data = get_market_pulse(request.tickers)
     return JSONResponse(content={"status": "success", "data": pulse_data})
 
-# Fallback GET route to preserve functionality during the transition
+# Fallback GET route to preserve functionality
 @app.get("/api/market-pulse")
 async def api_market_pulse_get():
     pulse_data = get_market_pulse()
@@ -563,7 +563,8 @@ async def portfolio_page(request: Request, account_id: str = "all", embed: bool 
             "unread_count": unread_count,
             "account_options": account_options,
             "selected_account": account_id,
-            "summary_math": formatted_summary
+            "summary_math": formatted_summary,
+            "config": config_data
         }
     )
 
@@ -580,6 +581,7 @@ async def watchlist_page(request: Request, embed: bool = False):
     global_updated = global_update_val if global_update_val else "Awaiting initial update..."
     conn.close()
     
+    config_data = load_config()
     watchlist_json = get_json_data(WATCHLIST_PATH)
     watchlist_tickers = watchlist_json.get("watchlist", [])
     
@@ -600,7 +602,13 @@ async def watchlist_page(request: Request, embed: bool = False):
     
     return templates.TemplateResponse(
         request=request, name="watchlist.html", 
-        context={"watchlist": watchlist_data, "global_updated": global_updated, "embed": embed, "unread_count": unread_count}
+        context={
+            "watchlist": watchlist_data, 
+            "global_updated": global_updated, 
+            "embed": embed, 
+            "unread_count": unread_count,
+            "config": config_data
+        }
     )
 
 @app.get("/stock/{ticker}", response_class=HTMLResponse)
@@ -614,6 +622,8 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
     if stock_data:
         stock_data = dict(stock_data)
     conn.close()
+    
+    config_data = load_config()
     
     # Process ETF/Mutual Fund specific payloads
     top_holdings = []
@@ -783,7 +793,8 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
             "volatility_date": volatility_date,
             "price_action": price_action,
             "unread_count": unread_count,
-            "embed": embed
+            "embed": embed,
+            "config": config_data
         }
     )
 
