@@ -96,11 +96,34 @@
 
     async function fetchMarketPulse() {
         try {
-            const response = await fetch('/api/market-pulse');
+            // Determine if we need to fetch live asset prices alongside indices
+            let requestedTickers = [];
+            if (window.ENABLE_LIVE_ASSETS) {
+                const rows = document.querySelectorAll('.live-asset-row');
+                rows.forEach(row => {
+                    const ticker = row.getAttribute('data-ticker');
+                    if (ticker) requestedTickers.push(ticker);
+                });
+            }
+
+            // Post request to backend engine
+            const response = await fetch('/api/market-pulse', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ tickers: requestedTickers })
+            });
+            
             const result = await response.json();
             
             if (response.ok && result.status === 'success') {
-                renderMacroCards(result.data);
+                const indexes = result.data.indexes || [];
+                const assets = result.data.assets || [];
+                
+                renderMacroCards(indexes);
+                updateAssetPrices(assets);
+                
                 document.getElementById('pulse-dot').classList.remove('offline');
                 document.getElementById('pulse-text').innerText = "Live Market Pulse Active";
             } else {
@@ -113,7 +136,7 @@
 
     function renderMacroCards(data) {
         const container = document.getElementById('macro-cards-container');
-        container.innerHTML = ''; // Clear existing
+        container.innerHTML = ''; 
         
         data.forEach(index => {
             const isPos = index.is_positive;
@@ -134,13 +157,28 @@
         });
     }
 
+    function updateAssetPrices(assets) {
+        // Find DOM table cells and dynamically overwrite static SQLite data with Live Ticks
+        assets.forEach(asset => {
+            const priceEl = document.getElementById('price-' + asset.ticker);
+            const changeEl = document.getElementById('change-' + asset.ticker);
+            
+            if (priceEl && changeEl) {
+                priceEl.innerText = asset.price;
+                
+                const sign = asset.is_positive ? '+' : '';
+                changeEl.innerText = `${sign}${asset.change_pts} (${sign}${asset.change_pct}%)`;
+                changeEl.className = asset.is_positive ? 'trend-up' : 'trend-down';
+            }
+        });
+    }
+
     function handlePulseError() {
         document.getElementById('pulse-dot').classList.add('offline');
         document.getElementById('pulse-text').innerText = "Market Pulse Offline (Retrying...)";
     }
 
     function startPulseEngine() {
-        // Fetch immediately on load, then set interval
         fetchMarketPulse();
         marketPulseInterval = setInterval(fetchMarketPulse, REFRESH_RATE_MS);
     }
@@ -152,7 +190,6 @@
     }
 
     // --- Page Visibility API Integration ---
-    // Only poll the backend when the user is actually looking at the dashboard.
     document.addEventListener("visibilitychange", () => {
         if (document.hidden) {
             stopPulseEngine();
@@ -161,7 +198,6 @@
         }
     });
 
-    // Initialize the engine when the DOM is fully loaded
     document.addEventListener('DOMContentLoaded', () => {
         if (!document.hidden) {
             startPulseEngine();
