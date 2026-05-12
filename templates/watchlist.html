@@ -119,17 +119,17 @@
             {% for item in watchlist %}
             <tr data-signal="{{ item.overall_signal | upper }}" data-tags="{% for tag in item.setup_tags_list %}{{ tag.name }} {% endfor %}">
                 <td>
-                    <a href="/stock/{{ item.ticker }}">{{ item.ticker }}</a><br>
+                    <a href="/stock/{{ item.ticker }}{% if embed %}?embed=true{% endif %}">{{ item.ticker }}</a><br>
                     <span style="font-size: 11px; color: #888;">{{ item.company_name[:20] }}{% if item.company_name|length > 20 %}...{% endif %}</span>
                 </td>
-                <td>{{ item.current_price|round(2) }}</td>
-                <td>{% if item.target_price %}{{ item.target_price|round(2) }}{% else %}N/A{% endif %}</td>
+                <td>{% if item.current_price is not none %}{{ item.current_price|round(2) }}{% else %}N/A{% endif %}</td>
+                <td>{% if item.target_price is not none %}{{ item.target_price|round(2) }}{% else %}N/A{% endif %}</td>
                 <td><span class="{% if item.trend_50d == 'UP' %}trend-up{% else %}trend-down{% endif %}">{{ item.trend_50d }}</span></td>
                 <td><span class="{% if item.trend_200d == 'UP' %}trend-up{% else %}trend-down{% endif %}">{{ item.trend_200d }}</span></td>
-                <td>{% if item.peg_ratio %}{{ item.peg_ratio|round(2) }}{% else %}N/A{% endif %}</td>
-                <td>{% if item.peter_lynch_peg %}{{ item.peter_lynch_peg|round(2) }}{% else %}N/A{% endif %}</td>
-                <td style="color: #ffaa00;">{{ item.atr_stop_loss|round(2) }}</td>
-                <td>{{ item.rsi_14|round(1) }}</td>
+                <td>{% if item.peg_ratio is not none %}{{ item.peg_ratio|round(2) }}{% else %}N/A{% endif %}</td>
+                <td>{% if item.peter_lynch_peg is not none %}{{ item.peter_lynch_peg|round(2) }}{% else %}N/A{% endif %}</td>
+                <td style="color: #ffaa00;">{% if item.atr_stop_loss is not none %}{{ item.atr_stop_loss|round(2) }}{% else %}N/A{% endif %}</td>
+                <td>{% if item.rsi_14 is not none %}{{ item.rsi_14|round(1) }}{% else %}N/A{% endif %}</td>
                 <td style="font-size: 12px; color: #bbb;">{% if item.next_earnings_date %}{{ item.next_earnings_date }}{% else %}N/A{% endif %}</td>
                 <td>{{ item.composite_score }}</td>
                 <td style="max-width: 150px;">
