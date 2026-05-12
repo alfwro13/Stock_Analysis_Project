@@ -4,6 +4,8 @@ Self-hosted web application that merges **Quantitative Analysis** (algorithmic m
 
 Designed for Linux environments, this system pulls live holdings from your [Ghostfolio](https://ghostfol.io/) instance, scrapes multi-dimensional market data via Yahoo Finance, and generates an interactive, Bloomberg-style dashboard using FastAPI and Plotly.
 
+Please note that this is a hobby project not an investment platform.
+
 ## **✨ Core Features**
 
 * **Auto-Syncing Portfolio (Multi-Account):** Integrates directly with Ghostfolio via API to automatically pull your live holdings. Now supports opt-in account discovery, allowing you to selectively sync specific accounts and calculate accurate global VWAP Cost Basis and Unrealized P&L across different currencies.  
@@ -45,7 +47,7 @@ You must have **Python 3.10 or higher** installed on your system.
 
 Clone the repository and install the required dependencies using a virtual environment:
 ```
-git clone [https://github.com/alfwro13/Stock_Analysis_Project.git](https://github.com/alfwro13/Stock_Analysis_Project.git)  
+git clone https://github.com/alfwro13/Stock_Analysis_Project.git  
 cd Stock_Analysis_Project  
 python3 -m venv venv  
 source venv/bin/activate  
@@ -95,7 +97,7 @@ By appending a simple URL parameter, the system will automatically hide the top 
 **Example Home Assistant Webpage Card Configuration:**
 ```
 type: iframe  
-url: [http://192.168.1.71:8090/portfolio?embed=true](http://192.168.1.71:8090/portfolio?embed=true)  
+url: http://192.168.1.71:8090/portfolio?embed=true
 aspect_ratio: 100%
 ```
 ## **⚙️ Running as a Background Service (Linux)**
@@ -156,6 +158,16 @@ Once deployed as a service, you can manage the dashboard via the Web UI Settings
 
 Not a quantitative expert? The dashboard includes a built-in educational glossary page and interactive HTML tooltips that explain exactly what metrics like MACD Reversals, Relative Strength vs S&P 500, Bullish Engulfing patterns, and Peter Lynch PEG mean in plain English.
 
-## **⚠️ Disclaimer**
 
-This software is for informational and educational purposes only. It is not financial advice. The proprietary scoring system, candlestick recognition, and ATR Stop-Loss calculations are mathematical models, not guarantees of market performance. Always do your own due diligence before trading.
+## Support & Disclaimer
+
+**⚠️ Disclaimer: Use at Your Own Risk**
+
+This custom integration is a personal project and is provided strictly "as is" and without warranty of any kind. By choosing to install and use this integration, you acknowledge and agree to the following:
+
+* **Personal Project Disclosure:** I am not a professional developer, nor do I specialize in finance or stock markets. The sole purpose of this repository is to assist me with managing my personal portfolio and to visualize data in ways that exceed Ghostfolio's native capabilities.
+* **Coding Bias & Market Focus:** I mainly trade on the UK and US stock markets. As a result, the code contains specific logic to address issues unique to London-traded stocks (such as the "Pence vs. Pounds" glitch). While the integration is designed to work with other markets, it has not been tested for them. There may be unhandled errors related to local currency conversions or data formatting in other regions.
+* **No Support Provided:** The author does not provide technical support, setup assistance, or troubleshooting guidance. 
+* **No Liability:** The author takes absolutely no responsibility for any damage, data loss, misuse, system instability, or any other issues caused by the installation or operation of this software. This software is for informational and educational purposes only. It is not financial advice. The proprietary scoring system, candlestick recognition, and ATR Stop-Loss calculations are mathematical models, not guarantees of market performance. Always do your own due diligence before trading.
+* **Community Driven:** You are free to fork, modify, and use this integration however you see fit. If you encounter bugs, you are welcome to submit a Pull Request, but do not expect immediate fixes or dedicated maintenance.
+
