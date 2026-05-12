@@ -15,65 +15,79 @@ INDEX_TICKERS = {
 }
 
 
-def get_market_pulse() -> list:
+def get_market_pulse(asset_tickers=None) -> dict:
     """
     Fetches the latest live prices and daily percentage changes
-    for the configured global market indexes using batch requests.
+    for both global market indexes and dynamically requested portfolio assets.
+    Returns structured dict segregating 'indexes' and 'assets'.
     """
-    tickers_list = list(INDEX_TICKERS.keys())
-    results = []
+    if asset_tickers is None:
+        asset_tickers = []
+        
+    # Deduplicate and merge indices with dynamically requested user assets
+    requested_assets = [t for t in asset_tickers if t not in INDEX_TICKERS]
+    all_tickers = list(INDEX_TICKERS.keys()) + requested_assets
+    
+    results = {"indexes": [], "assets": []}
+    
+    if not all_tickers:
+        return results
 
     try:
-        # Fetching 5 days of 1-minute data ensures we can robustly extract
-        # the previous day's closing price across different global timezones,
-        # while securing the absolute latest live intraday tick.
-        df = yf.download(
-            tickers_list, 
-            period="5d", 
-            interval="1m", 
-            group_by='ticker', 
-            progress=False
-        )
+        # 1. Fetch official daily closes (ignores pre/post market noise) to secure the true anchor point
+        df_daily = yf.download(all_tickers, period="5d", interval="1d", group_by='ticker', progress=False)
         
-        for ticker, name in INDEX_TICKERS.items():
+        # 2. Fetch the absolute latest live tick (includes US pre-market trading)
+        df_live = yf.download(all_tickers, period="1d", interval="1m", prepost=True, group_by='ticker', progress=False)
+        
+        for ticker in all_tickers:
             try:
-                # Handle MultiIndex extraction safely
-                if len(tickers_list) > 1:
-                    if ticker not in df.columns.get_level_values(0):
+                # Handle MultiIndex extraction safely based on batch size
+                if len(all_tickers) > 1:
+                    if ticker not in df_daily.columns.get_level_values(0) or ticker not in df_live.columns.get_level_values(0):
                         continue
-                    ticker_df = df[ticker].copy()
+                    t_daily = df_daily[ticker].copy()
+                    t_live = df_live[ticker].copy()
                 else:
-                    ticker_df = df.copy()
+                    t_daily = df_daily.copy()
+                    t_live = df_live.copy()
                     
-                ticker_df.dropna(subset=['Close'], inplace=True)
+                t_daily.dropna(subset=['Close'], inplace=True)
+                t_live.dropna(subset=['Close'], inplace=True)
                 
-                if ticker_df.empty:
+                if t_daily.empty or t_live.empty:
                     continue
 
-                # Resample 1-minute data to a Daily frequency to isolate true daily closing prices
-                daily_closes = ticker_df['Close'].resample('D').last().dropna()
+                # The absolute latest tick (capturing pre-market, regular, or post-market)
+                current_price = t_live['Close'].iloc[-1]
                 
-                if len(daily_closes) < 2:
-                    continue
-
-                # The absolute latest 1-minute tick
-                current_price = ticker_df['Close'].iloc[-1]
+                # Determining the correct previous close
+                # If the daily data's latest row belongs to today, the previous close is the row before it.
+                last_daily_date = t_daily.index[-1].date()
+                live_date = t_live.index[-1].date()
                 
-                # The final 1-minute tick from the previous trading day
-                prev_close = daily_closes.iloc[-2]
-
+                if last_daily_date >= live_date and len(t_daily) >= 2:
+                    prev_close = t_daily['Close'].iloc[-2]
+                else:
+                    prev_close = t_daily['Close'].iloc[-1]
+                    
                 change_pts = current_price - prev_close
-                change_pct = (change_pts / prev_close) * 100.0
+                change_pct = (change_pts / prev_close) * 100.0 if prev_close else 0.0
 
-                results.append({
-                    "name": name,
+                data_obj = {
                     "ticker": ticker,
                     "price": f"{current_price:,.2f}",
                     "change_pts": f"{change_pts:,.2f}",
                     "change_pct": f"{change_pct:,.2f}",
-                    # EXPLICITLY CAST TO NATIVE PYTHON BOOL TO FIX JSON SERIALIZATION ERROR
-                    "is_positive": bool(change_pts >= 0) 
-                })
+                    "is_positive": bool(change_pts >= 0)
+                }
+
+                if ticker in INDEX_TICKERS:
+                    data_obj["name"] = INDEX_TICKERS[ticker]
+                    results["indexes"].append(data_obj)
+                else:
+                    results["assets"].append(data_obj)
+
             except Exception as e:
                 print(f"[MARKET PULSE] Error processing {ticker}: {e}")
                 
