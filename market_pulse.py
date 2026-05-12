@@ -6,7 +6,9 @@ import pandas as pd
 # Dictionary mapping Yahoo Finance tickers to our clean UI display names
 INDEX_TICKERS = {
     "^GSPC": "S&P 500",
+    "ES=F": "S&P 500 Futures",
     "^NDX": "Nasdaq 100",
+    "NQ=F": "Nasdaq 100 Futures",
     "^FTSE": "FTSE 100",
     "^FTMC": "FTSE 250",
     "^KS11": "KOSPI"
