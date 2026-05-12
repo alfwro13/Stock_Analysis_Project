@@ -7,6 +7,7 @@ import os
 import signal
 import time
 import subprocess
+import threading
 from datetime import datetime, timedelta
 from fastapi import FastAPI, Request, BackgroundTasks
 from fastapi.templating import Jinja2Templates
@@ -23,7 +24,7 @@ from insider_engine import run_insider_alert
 from intraday_orchestrator import IntradayOrchestrator
 from maintenance_engine import MaintenanceEngine
 from ai_engine import AIPromptEngine
-from market_pulse import get_market_pulse # <--- IMPORT ADDED
+from market_pulse import get_market_pulse
 
 from config import (
     PORTFOLIO_PATH, WATCHLIST_PATH, HISTORICAL_DIR, INTRADAY_DIR, 
@@ -41,6 +42,7 @@ fx_cache = {}
 
 # --- Background Task Scheduler Setup ---
 scheduler = BackgroundScheduler()
+task_lock = threading.Lock()
 
 def trigger_sentiment_report():
     """Triggered by the scheduler to run the Nextcloud Market Sentiment alert."""
@@ -234,15 +236,27 @@ def get_unread_count():
 
 def run_update_pipeline():
     """Executes the heavy data ingestion and mathematical quant modeling."""
-    print("\n--- BACKGROUND UPDATE INITIATED ---")
-    DataEngine().update_all_data()
-    QuantEngine().run_all()
-    print("--- BACKGROUND UPDATE COMPLETE ---\n")
+    if not task_lock.acquire(blocking=False):
+        print("[WARNING] System is currently busy. Skipping Update Analysis to prevent clash.")
+        return
+    try:
+        print("\n--- BACKGROUND UPDATE INITIATED ---")
+        DataEngine().update_all_data()
+        QuantEngine().run_all()
+        print("--- BACKGROUND UPDATE COMPLETE ---\n")
+    finally:
+        task_lock.release()
 
 def run_ghostfolio_sync():
     """Executes the Ghostfolio API Sync to extract account holdings."""
-    sync_engine = GhostfolioSyncEngine()
-    sync_engine.run_full_sync()
+    if not task_lock.acquire(blocking=False):
+        print("[WARNING] System is currently busy. Skipping Ghostfolio Sync to prevent clash.")
+        return
+    try:
+        sync_engine = GhostfolioSyncEngine()
+        sync_engine.run_full_sync()
+    finally:
+        task_lock.release()
 
 @app.post("/api/update")
 async def trigger_update(background_tasks: BackgroundTasks):
@@ -271,7 +285,6 @@ async def trigger_discovery():
     else:
         return JSONResponse(status_code=500, content={"status": "error", "message": "No accounts discovered or network error occurred."})
 
-# --- NEW ROUTE FOR MARKET PULSE ---
 @app.get("/api/market-pulse")
 async def api_market_pulse():
     """API endpoint to fetch live market index data for the frontend macro cards."""
@@ -576,7 +589,7 @@ async def watchlist_page(request: Request, embed: bool = False):
     )
 
 @app.get("/stock/{ticker}", response_class=HTMLResponse)
-async def stock_detail(request: Request, ticker: str):
+async def stock_detail(request: Request, ticker: str, embed: bool = False):
     """Renders the deep-dive fundamental and technical analysis view for a specific stock."""
     conn = get_connection()
     cursor = conn.cursor()
@@ -754,7 +767,8 @@ async def stock_detail(request: Request, ticker: str):
             "days_to_earnings": days_to_earnings,   
             "volatility_date": volatility_date,
             "price_action": price_action,
-            "unread_count": unread_count
+            "unread_count": unread_count,
+            "embed": embed
         }
     )
 
