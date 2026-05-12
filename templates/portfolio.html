@@ -167,7 +167,7 @@
                     {% if cp %}
                         {{ cp.price }}
                     {% elif item.current_price is not none %}
-                        {{ item.current_price|round(2) }}
+                        {{ "{:,.2f}".format(item.current_price) }}
                     {% else %}
                         N/A
                     {% endif %}
@@ -177,20 +177,20 @@
                     {% if cp %}
                         {% set sign = '+' if cp.is_positive else '' %}
                         <span class="{% if cp.is_positive %}trend-up{% else %}trend-down{% endif %}">
-                            {{ sign }}{{ cp.change_pts }} ({{ sign }}{{ cp.change_pct }}%)
+                            {{ sign }}{{ cp.change_pct }}%
                         </span>
                     {% else %}
                         -
                     {% endif %}
                 </td>
                 
-                <td>{% if item.target_price is not none %}{{ item.target_price|round(2) }}{% else %}N/A{% endif %}</td>
+                <td>{% if item.target_price is not none %}{{ "{:,.2f}".format(item.target_price) }}{% else %}N/A{% endif %}</td>
                 <td><span class="{% if item.trend_50d == 'UP' %}trend-up{% else %}trend-down{% endif %}">{{ item.trend_50d }}</span></td>
                 <td><span class="{% if item.trend_200d == 'UP' %}trend-up{% else %}trend-down{% endif %}">{{ item.trend_200d }}</span></td>
-                <td>{% if item.peg_ratio is not none %}{{ item.peg_ratio|round(2) }}{% else %}N/A{% endif %}</td>
-                <td>{% if item.peter_lynch_peg is not none %}{{ item.peter_lynch_peg|round(2) }}{% else %}N/A{% endif %}</td>
-                <td style="color: #ffaa00;">{% if item.atr_stop_loss is not none %}{{ item.atr_stop_loss|round(2) }}{% else %}N/A{% endif %}</td>
-                <td>{% if item.rsi_14 is not none %}{{ item.rsi_14|round(1) }}{% else %}N/A{% endif %}</td>
+                <td>{% if item.peg_ratio is not none %}{{ "{:,.2f}".format(item.peg_ratio) }}{% else %}N/A{% endif %}</td>
+                <td>{% if item.peter_lynch_peg is not none %}{{ "{:,.2f}".format(item.peter_lynch_peg) }}{% else %}N/A{% endif %}</td>
+                <td style="color: #ffaa00;">{% if item.atr_stop_loss is not none %}{{ "{:,.2f}".format(item.atr_stop_loss) }}{% else %}N/A{% endif %}</td>
+                <td>{% if item.rsi_14 is not none %}{{ "{:,.1f}".format(item.rsi_14) }}{% else %}N/A{% endif %}</td>
                 <td style="font-size: 12px; color: #bbb;">{% if item.next_earnings_date %}{{ item.next_earnings_date }}{% else %}N/A{% endif %}</td>
                 <td>{{ item.composite_score }}</td>
                 <td style="max-width: 150px;">
@@ -243,32 +243,73 @@
         }
 
         function sortTable(tableId, n) {
-            var table, rows, switching, i, x, y, shouldSwitch, dir, switchcount = 0;
-            table = document.getElementById(tableId);
-            switching = true; dir = "asc"; 
+            var table = document.getElementById(tableId);
+            var rows = table.rows;
+            var isNumericColumn = false;
+            var isDateColumn = false;
+
+            // Probe the column to determine its true data type
+            for (var i = 1; i < (rows.length - 1); i++) {
+                var cellText = (rows[i].getElementsByTagName("TD")[n].textContent || "").trim();
+                if (/^\d{4}-\d{2}-\d{2}/.test(cellText)) {
+                    isDateColumn = true;
+                    break;
+                }
+                // Check if it starts with a valid number (handles "1.50" and "+1.50%")
+                var parsed = parseFloat(cellText.replace(/,/g, '').replace(/%/g, ''));
+                if (!isNaN(parsed)) {
+                    isNumericColumn = true;
+                    break;
+                }
+            }
+
+            var switching = true;
+            var dir = "asc";
+            var switchcount = 0;
+
             while (switching) {
-                switching = false; rows = table.rows;
-                for (i = 1; i < (rows.length - 1); i++) {
-                    shouldSwitch = false;
-                    x = rows[i].getElementsByTagName("TD")[n];
-                    y = rows[i + 1].getElementsByTagName("TD")[n];
-                    var valX = x.innerHTML.replace(/(<([^>]+)>)/gi, "").replace(/[^0-9.-]+/g,"");
-                    var valY = y.innerHTML.replace(/(<([^>]+)>)/gi, "").replace(/[^0-9.-]+/g,"");
-                    var numX = parseFloat(valX); var numY = parseFloat(valY);
-                    
-                    if (!isNaN(numX) && !isNaN(numY) && x.innerHTML.indexOf("trend") === -1 && x.innerHTML.indexOf("-") === -1) {
-                        if (dir == "asc") { if (numX > numY) { shouldSwitch = true; break; } } 
-                        else if (dir == "desc") { if (numX < numY) { shouldSwitch = true; break; } }
+                switching = false;
+                rows = table.rows;
+                for (var i = 1; i < (rows.length - 1); i++) {
+                    var shouldSwitch = false;
+                    var x = rows[i].getElementsByTagName("TD")[n];
+                    var y = rows[i + 1].getElementsByTagName("TD")[n];
+
+                    var textX = (x.textContent || x.innerText).trim();
+                    var textY = (y.textContent || y.innerText).trim();
+
+                    if (isDateColumn || !isNumericColumn) {
+                        // Strict String Sort
+                        if (dir == "asc") {
+                            if (textX.toLowerCase() > textY.toLowerCase()) { shouldSwitch = true; break; }
+                        } else if (dir == "desc") {
+                            if (textX.toLowerCase() < textY.toLowerCase()) { shouldSwitch = true; break; }
+                        }
                     } else {
-                        if (dir == "asc") { if (x.innerHTML.toLowerCase() > y.innerHTML.toLowerCase()) { shouldSwitch = true; break; } } 
-                        else if (dir == "desc") { if (x.innerHTML.toLowerCase() < y.innerHTML.toLowerCase()) { shouldSwitch = true; break; } }
+                        // Strict Numeric Sort
+                        var numX = parseFloat(textX.replace(/,/g, '').replace(/%/g, ''));
+                        var numY = parseFloat(textY.replace(/,/g, '').replace(/%/g, ''));
+
+                        // Treat NaN (e.g. "N/A", "-") as the absolute lowest possible value
+                        if (isNaN(numX)) numX = -Infinity;
+                        if (isNaN(numY)) numY = -Infinity;
+
+                        if (dir == "asc") {
+                            if (numX > numY) { shouldSwitch = true; break; }
+                        } else if (dir == "desc") {
+                            if (numX < numY) { shouldSwitch = true; break; }
+                        }
                     }
                 }
                 if (shouldSwitch) {
                     rows[i].parentNode.insertBefore(rows[i + 1], rows[i]);
-                    switching = true; switchcount ++;
+                    switching = true;
+                    switchcount++;
                 } else {
-                    if (switchcount == 0 && dir == "asc") { dir = "desc"; switching = true; }
+                    if (switchcount == 0 && dir == "asc") {
+                        dir = "desc";
+                        switching = true;
+                    }
                 }
             }
         }
