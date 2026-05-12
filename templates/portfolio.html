@@ -25,7 +25,6 @@
         .context-selector:hover { border-color: #00ffcc; }
         .summary-row { background-color: #1a2636; padding: 15px 20px; border-radius: 8px; margin-bottom: 20px; display: flex; gap: 30px; border-left: 4px solid #00ffcc; box-shadow: 0 2px 4px rgba(0,0,0,0.3); }
         
-        /* CSS Linter Fix: Use classes instead of inline Jinja style blocks */
         .pnl-positive { color: #00ff00; }
         .pnl-negative { color: #ff4d4d; }
 
@@ -90,6 +89,9 @@
         </div>
     </div>
     
+    <script>
+        window.ENABLE_LIVE_ASSETS = {% if config and config.UI_PREFERENCES and config.UI_PREFERENCES.LIVE_PORTFOLIO %}true{% else %}false{% endif %};
+    </script>
     {% include 'macro_cards.html' %}
     
     {% endif %}
@@ -136,27 +138,29 @@
             <tr>
                 <th onclick="sortTable('dataTable', 0)">Ticker / Name ↕</th>
                 <th onclick="sortTable('dataTable', 1)">Price ↕</th>
-                <th onclick="sortTable('dataTable', 2)">Target ↕</th>
-                <th onclick="sortTable('dataTable', 3)">50D ↕</th>
-                <th onclick="sortTable('dataTable', 4)">200D ↕</th>
-                <th onclick="sortTable('dataTable', 5)"><abbr title="Standard PEG Ratio">PEG</abbr> ↕</th>
-                <th onclick="sortTable('dataTable', 6)"><abbr title="Peter Lynch Fair Value">PL PEG</abbr> ↕</th>
-                <th onclick="sortTable('dataTable', 7)">Stop-Loss ↕</th>
-                <th onclick="sortTable('dataTable', 8)">RSI ↕</th>
-                <th onclick="sortTable('dataTable', 9)">Earnings ↕</th>
-                <th onclick="sortTable('dataTable', 10)">Score ↕</th>
-                <th onclick="sortTable('dataTable', 11)">Setups & Tags ↕</th>
-                <th onclick="sortTable('dataTable', 12)">Signal ↕</th>
+                <th onclick="sortTable('dataTable', 2)">Daily Change ↕</th>
+                <th onclick="sortTable('dataTable', 3)">Target ↕</th>
+                <th onclick="sortTable('dataTable', 4)">50D ↕</th>
+                <th onclick="sortTable('dataTable', 5)">200D ↕</th>
+                <th onclick="sortTable('dataTable', 6)"><abbr title="Standard PEG Ratio">PEG</abbr> ↕</th>
+                <th onclick="sortTable('dataTable', 7)"><abbr title="Peter Lynch Fair Value">PL PEG</abbr> ↕</th>
+                <th onclick="sortTable('dataTable', 8)">Stop-Loss ↕</th>
+                <th onclick="sortTable('dataTable', 9)">RSI ↕</th>
+                <th onclick="sortTable('dataTable', 10)">Earnings ↕</th>
+                <th onclick="sortTable('dataTable', 11)">Score ↕</th>
+                <th onclick="sortTable('dataTable', 12)">Setups & Tags ↕</th>
+                <th onclick="sortTable('dataTable', 13)">Signal ↕</th>
             </tr>
         </thead>
         <tbody>
             {% for item in portfolio %}
-            <tr data-signal="{{ item.overall_signal | upper }}" data-tags="{% for tag in item.setup_tags_list %}{{ tag.name }} {% endfor %}">
+            <tr class="live-asset-row" data-ticker="{{ item.ticker }}" data-signal="{{ item.overall_signal | upper }}" data-tags="{% for tag in item.setup_tags_list %}{{ tag.name }} {% endfor %}">
                 <td>
                     <a href="/stock/{{ item.ticker }}{% if embed %}?embed=true{% endif %}">{{ item.ticker }}</a><br>
                     <span style="font-size: 11px; color: #888;">{{ item.company_name[:20] }}{% if item.company_name|length > 20 %}...{% endif %}</span>
                 </td>
-                <td>{% if item.current_price is not none %}{{ item.current_price|round(2) }}{% else %}N/A{% endif %}</td>
+                <td id="price-{{ item.ticker }}">{% if item.current_price is not none %}{{ item.current_price|round(2) }}{% else %}N/A{% endif %}</td>
+                <td id="change-{{ item.ticker }}">-</td>
                 <td>{% if item.target_price is not none %}{{ item.target_price|round(2) }}{% else %}N/A{% endif %}</td>
                 <td><span class="{% if item.trend_50d == 'UP' %}trend-up{% else %}trend-down{% endif %}">{{ item.trend_50d }}</span></td>
                 <td><span class="{% if item.trend_200d == 'UP' %}trend-up{% else %}trend-down{% endif %}">{{ item.trend_200d }}</span></td>
