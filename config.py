@@ -48,7 +48,8 @@ DEFAULT_CONFIG = {
     "UI_PREFERENCES": {
         "LIVE_PORTFOLIO": False,
         "LIVE_WATCHLIST": False,
-        "LIVE_DETAILS": False
+        "LIVE_DETAILS": False,
+        "REFRESH_RATE": 60
     },
     "SCHEDULING": {
         "GHOSTFOLIO_SYNC": {
