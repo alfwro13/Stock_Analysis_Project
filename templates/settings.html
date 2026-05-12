@@ -393,6 +393,10 @@
                 <label>Base Currency (e.g. GBP, USD, EUR)</label>
                 <input type="text" id="BASE_CURRENCY" value="{{ config.BASE_CURRENCY }}">
             </div>
+            <div class="form-group">
+                <label>Ignored Tickers (Comma separated, e.g. GBP, USD, 0P00018XAR.L)</label>
+                <input type="text" id="IGNORED_TICKERS" value="{{ config.IGNORED_TICKERS | join(', ') if config.IGNORED_TICKERS else '' }}">
+            </div>
         </details>
 
         <details class="settings-card">
@@ -575,8 +579,6 @@
         async function restartSystem() {
             const btn = document.querySelector('button[onclick="restartSystem()"]');
             const statusMsg = document.getElementById('git-status-msg');
-            
-            if(!confirm("Are you sure you want to restart the dashboard? Active background tasks may be interrupted.")) return;
 
             btn.disabled = true;
             statusMsg.style.color = "#ffaa00";
@@ -643,8 +645,6 @@
         async function gitPull() {
             const btn = document.querySelector('.btn-danger');
             const statusMsg = document.getElementById('git-status-msg');
-            
-            if(!confirm("Are you sure you want to pull the latest updates from GitHub? This will overwrite local unmodified files.")) return;
 
             btn.disabled = true;
             btn.innerText = "Pulling repository...";
@@ -691,6 +691,7 @@
                 "SERVER_URL": document.getElementById('SERVER_URL').value,
                 "PORT": parseInt(document.getElementById('PORT').value),
                 "BASE_CURRENCY": document.getElementById('BASE_CURRENCY').value,
+                "IGNORED_TICKERS": document.getElementById('IGNORED_TICKERS').value.split(',').map(s => s.trim()).filter(Boolean),
                 "GHOSTFOLIO_URL": document.getElementById('GHOSTFOLIO_URL').value,
                 "API_TOKEN": document.getElementById('API_TOKEN').value,
                 "GHOSTFOLIO_ACCOUNTS": {
