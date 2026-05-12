@@ -91,7 +91,9 @@
     
     <script>
         window.ENABLE_LIVE_ASSETS = {% if config and config.UI_PREFERENCES and config.UI_PREFERENCES.LIVE_PORTFOLIO %}true{% else %}false{% endif %};
+        window.REFRESH_RATE_MS = {{ config.UI_PREFERENCES.REFRESH_RATE | default(60) }} * 1000;
     </script>
+    {% set show_indexes = True %}
     {% include 'macro_cards.html' %}
     
     {% endif %}
@@ -159,8 +161,29 @@
                     <a href="/stock/{{ item.ticker }}{% if embed %}?embed=true{% endif %}">{{ item.ticker }}</a><br>
                     <span style="font-size: 11px; color: #888;">{{ item.company_name[:20] }}{% if item.company_name|length > 20 %}...{% endif %}</span>
                 </td>
-                <td id="price-{{ item.ticker }}">{% if item.current_price is not none %}{{ item.current_price|round(2) }}{% else %}N/A{% endif %}</td>
-                <td id="change-{{ item.ticker }}">-</td>
+                
+                {% set cp = cached_pulse.get(item.ticker) %}
+                <td id="price-{{ item.ticker }}">
+                    {% if cp %}
+                        {{ cp.price }}
+                    {% elif item.current_price is not none %}
+                        {{ item.current_price|round(2) }}
+                    {% else %}
+                        N/A
+                    {% endif %}
+                </td>
+                
+                <td id="change-{{ item.ticker }}">
+                    {% if cp %}
+                        {% set sign = '+' if cp.is_positive else '' %}
+                        <span class="{% if cp.is_positive %}trend-up{% else %}trend-down{% endif %}">
+                            {{ sign }}{{ cp.change_pts }} ({{ sign }}{{ cp.change_pct }}%)
+                        </span>
+                    {% else %}
+                        -
+                    {% endif %}
+                </td>
+                
                 <td>{% if item.target_price is not none %}{{ item.target_price|round(2) }}{% else %}N/A{% endif %}</td>
                 <td><span class="{% if item.trend_50d == 'UP' %}trend-up{% else %}trend-down{% endif %}">{{ item.trend_50d }}</span></td>
                 <td><span class="{% if item.trend_200d == 'UP' %}trend-up{% else %}trend-down{% endif %}">{{ item.trend_200d }}</span></td>
