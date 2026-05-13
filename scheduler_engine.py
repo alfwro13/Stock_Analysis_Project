@@ -231,21 +231,40 @@ def reload_scheduler():
         except Exception as e:
             print(f"[ERROR] Failed to schedule Maintenance Job: {e}")
 
-    # 7. Daily Overnight Quant Job (Native SQLite)
-    scheduler.add_job(
-        run_overnight_quant_scan,
-        CronTrigger(day_of_week='*', hour=1, minute=0), # Runs every day at 01:00 AM
-        id='overnight_quant_scan_job'
-    )
-    print("[SCHEDULER] Overnight Quant Scan scheduled for every day at 01:00 AM")
+    # 7. Daily Quant Screener Engine
+    quant_cfg = scheduling.get("QUANT_ENGINE", {})
+    quant_days_list = quant_cfg.get("DAYS", ["mon", "tue", "wed", "thu", "fri"])
+    # APScheduler accepts days separated by commas. Fallback to mon-fri if array is completely empty.
+    quant_days = ",".join(quant_days_list) if quant_days_list else "mon-fri"
+    quant_time = quant_cfg.get("TIME", "01:00")
     
-    # 8. NEW: Weekly Earnings Volatility Options Scan
-    scheduler.add_job(
-        run_weekend_earnings_scan,
-        CronTrigger(day_of_week='sat', hour=10, minute=0), # Runs every Saturday at 10:00 AM
-        id='weekend_earnings_vol_scan_job'
-    )
-    print("[SCHEDULER] Earnings Volatility Scan scheduled for Saturday at 10:00 AM")
+    try:
+        hour, minute = map(int, quant_time.split(':'))
+        scheduler.add_job(
+            run_overnight_quant_scan,
+            CronTrigger(day_of_week=quant_days, hour=hour, minute=minute),
+            id='overnight_quant_scan_job'
+        )
+        print(f"[SCHEDULER] Overnight Quant Scan scheduled for {quant_days} at {quant_time}")
+    except Exception as e:
+        print(f"[ERROR] Failed to schedule Overnight Quant Scan: {e}")
+
+    # 8. Earnings Volatility Engine
+    earn_cfg = scheduling.get("EARNINGS_ENGINE", {})
+    earn_days_list = earn_cfg.get("DAYS", ["sat"])
+    earn_days = ",".join(earn_days_list) if earn_days_list else "sat"
+    earn_time = earn_cfg.get("TIME", "10:00")
+    
+    try:
+        hour, minute = map(int, earn_time.split(':'))
+        scheduler.add_job(
+            run_weekend_earnings_scan,
+            CronTrigger(day_of_week=earn_days, hour=hour, minute=minute),
+            id='weekend_earnings_vol_scan_job'
+        )
+        print(f"[SCHEDULER] Earnings Volatility Scan scheduled for {earn_days} at {earn_time}")
+    except Exception as e:
+        print(f"[ERROR] Failed to schedule Earnings Volatility Scan: {e}")
 
 def start_scheduler():
     scheduler.start()
