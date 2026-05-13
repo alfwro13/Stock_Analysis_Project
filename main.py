@@ -46,6 +46,9 @@ fx_cache = {}
 scheduler = BackgroundScheduler()
 task_lock = threading.Lock()
 
+# Ensure the static directories exist
+os.makedirs("static/css", exist_ok=True)
+
 # --- Pulse Request Schema ---
 class PulseRequest(BaseModel):
     tickers: Optional[List[str]] = []
@@ -217,6 +220,8 @@ app = FastAPI(title="Quantamental Dashboard", lifespan=lifespan)
 
 # Mount the assets directory to serve the logos statically
 app.mount("/assets", StaticFiles(directory="assets"), name="assets")
+# Mount the static directory to serve CSS and other static files
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 templates = Jinja2Templates(directory="templates")
 
@@ -389,6 +394,19 @@ async def save_settings(request: Request):
         reload_scheduler()
         
         return JSONResponse(content={"status": "success", "message": "Settings saved successfully."})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+@app.post("/api/notifications/mark-read")
+async def mark_notifications_read():
+    """Marks all notifications as read in the database."""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE system_notifications SET is_read = 1 WHERE is_read = 0")
+        conn.commit()
+        conn.close()
+        return JSONResponse(content={"status": "success"})
     except Exception as e:
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 

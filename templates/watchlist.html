@@ -4,51 +4,9 @@
     <meta charset="UTF-8">
     <meta name="color-scheme" content="dark">
     <title>Quantamental - Watchlist</title>
-    <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #121212; color: #e0e0e0; padding: 20px; margin: 0; }
-        h1, h2 { color: #ffffff; margin: 0; }
-        
-        .header-container { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid #333; padding-bottom: 20px; }
-        .title-wrapper { display: flex; align-items: center; }
-        .logo-link { display: inline-block; margin-right: 0; } 
-        .logo-img { height: 45px; vertical-align: middle; transition: transform 0.2s; }
-        .logo-img:hover { transform: scale(1.05); }
-
-        .action-buttons { display: flex; gap: 15px; }
-        .nav-links a { margin-right: 20px; font-size: 16px; color: #4da6ff; text-decoration: none; font-weight: bold; }
-        .nav-links a.active { color: #00ffcc; text-decoration: underline; }
-        .nav-links a:hover { text-decoration: underline; }
-        
-        .badge { background-color: #ff4d4d; color: white; padding: 2px 6px; border-radius: 10px; font-size: 12px; vertical-align: super; font-weight: bold;}
-        .setup-tag { display: inline-block; background-color: #333; color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 11px; margin-right: 4px; margin-bottom: 4px; border: 1px solid #555; cursor: help;}
-        
-        .controls-container { display: flex; gap: 15px; margin-bottom: 15px; }
-        .filter-input { padding: 8px; border-radius: 5px; border: 1px solid #444; background-color: #1e1e1e; color: #fff; width: 250px; font-size: 14px;}
-        .filter-select { padding: 8px; border-radius: 5px; border: 1px solid #444; background-color: #1e1e1e; color: #fff; font-size: 14px; cursor: pointer;}
-        
-        table { width: 100%; border-collapse: collapse; margin-bottom: 40px; background-color: #1e1e1e; font-size: 14px; box-shadow: 0 2px 4px rgba(0,0,0,0.3); }
-        th, td { padding: 6px 10px; text-align: left; border-bottom: 1px solid #333; vertical-align: middle; }
-        th { background-color: #2c2c2c; cursor: pointer; user-select: none; }
-        th:hover { background-color: #3d3d3d; }
-        a { color: #4da6ff; text-decoration: none; font-weight: bold; }
-        a:hover { text-decoration: underline; }
-        
-        .STRONG-BUY { color: #00ff00; font-weight: bold; }
-        .BULLISH---HOLD { color: #85e085; }
-        .NEUTRAL { color: #cccccc; }
-        .BEARISH---CAUTION { color: #ff4d4d; font-weight: bold; }
-        .trend-up { color: #00ff00; font-weight: bold; }
-        .trend-down { color: #ff4d4d; font-weight: bold; }
-        abbr { text-decoration: underline dotted; cursor: help; }
-        
-        .btn { padding: 10px 20px; color: #121212; font-weight: bold; border: none; border-radius: 5px; cursor: pointer; transition: background-color 0.3s ease; }
-        .btn-sync { background-color: #00ffcc; }
-        .btn-sync:hover { background-color: #00ccaa; }
-        .btn-update { background-color: #4da6ff; }
-        .btn-update:hover { background-color: #3388dd; }
-    </style>
+    <link rel="stylesheet" href="/static/css/styles.css">
 </head>
-<body>
+<body class="body-watchlist">
     
     {% if not embed %}
     <div class="header-container">
@@ -60,7 +18,7 @@
                 <h1><abbr title="Quantamental - a modern institutional strategy that combines Quantitative analysis with Fundamental analysis.">uantamental</abbr> Dashboard</h1>
             </div>
             <p style="color: #aaaaaa; margin-top: 5px; font-size: 14px;">Data Last Updated: <strong>{{ global_updated }}</strong></p>
-            <div class="nav-links" style="margin-top: 15px;">
+            <div class="nav-links">
                 <a href="/portfolio">💼 Portfolio</a>
                 <a href="/watchlist" class="active">👀 Watchlist</a>
                 <a href="/market-sentiment">Market Sentiment</a>
@@ -207,14 +165,12 @@
             var isNumericColumn = false;
             var isDateColumn = false;
 
-            // Probe the column to determine its true data type
             for (var i = 1; i < (rows.length - 1); i++) {
                 var cellText = (rows[i].getElementsByTagName("TD")[n].textContent || "").trim();
                 if (/^\d{4}-\d{2}-\d{2}/.test(cellText)) {
                     isDateColumn = true;
                     break;
                 }
-                // Check if it starts with a valid number (handles "1.50" and "+1.50%")
                 var parsed = parseFloat(cellText.replace(/,/g, '').replace(/%/g, ''));
                 if (!isNaN(parsed)) {
                     isNumericColumn = true;
@@ -238,18 +194,15 @@
                     var textY = (y.textContent || y.innerText).trim();
 
                     if (isDateColumn || !isNumericColumn) {
-                        // Strict String Sort
                         if (dir == "asc") {
                             if (textX.toLowerCase() > textY.toLowerCase()) { shouldSwitch = true; break; }
                         } else if (dir == "desc") {
                             if (textX.toLowerCase() < textY.toLowerCase()) { shouldSwitch = true; break; }
                         }
                     } else {
-                        // Strict Numeric Sort
                         var numX = parseFloat(textX.replace(/,/g, '').replace(/%/g, ''));
                         var numY = parseFloat(textY.replace(/,/g, '').replace(/%/g, ''));
 
-                        // Treat NaN (e.g. "N/A", "-") as the absolute lowest possible value
                         if (isNaN(numX)) numX = -Infinity;
                         if (isNaN(numY)) numY = -Infinity;
 

@@ -4,66 +4,9 @@
     <meta charset="UTF-8">
     <meta name="color-scheme" content="dark">
     <title>{{ stock.ticker }} - Institutional Analysis</title>
-    <style>
-        html { scroll-behavior: smooth; }
-        
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #121212; color: #e0e0e0; margin: 0; padding-bottom: 50px;}
-        .container { max-width: 1400px; margin: auto; padding: 0 20px;}
-        
-        .sticky-nav { position: sticky; top: 0; background-color: rgba(18, 18, 18, 0.95); z-index: 1000; padding: 15px 0; border-bottom: 1px solid #333; backdrop-filter: blur(5px); margin-bottom: 20px; font-size: 15px; }
-        .sticky-nav a { margin-right: 15px; color: #4da6ff; text-decoration: none; font-weight: bold; }
-        .sticky-nav a:hover { text-decoration: underline; color: #00ffcc;}
-        .sticky-nav span.divider { color: #555; margin-right: 15px; }
-
-        .badge { background-color: #ff4d4d; color: white; padding: 2px 6px; border-radius: 10px; font-size: 12px; vertical-align: super; font-weight: bold;}
-
-        h1 { color: #ffffff; margin-top: 0; margin-bottom: 5px;}
-        h2 { border-bottom: 1px solid #333; padding-bottom: 10px; margin-top: 40px;}
-        .subtitle { color: #888; font-size: 16px; margin-top: 0; margin-bottom: 20px;}
-        .yahoo-link { color: #4da6ff; text-decoration: none; font-size: 14px; margin-left: 15px;}
-        .yahoo-link:hover { text-decoration: underline; }
-        
-        .summary-box { background-color: #1e1e1e; padding: 20px; border-radius: 8px; margin-bottom: 20px; border-left: 5px solid #4da6ff; }
-        .portfolio-box { background-color: #1a2636; padding: 20px; border-radius: 8px; margin-bottom: 20px; border-left: 5px solid #00ff00; }
-        
-        /* New Micro Ledgers (Sub-Accounts) */
-        .sub-account-row { display: flex; gap: 40px; font-size: 14px; margin-top: 10px; padding-top: 10px; border-top: 1px dashed #333; }
-        .sub-account-name { font-weight: bold; color: #00ffcc; min-width: 150px; }
-        
-        .fundamentals-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-top: 20px; }
-        .data-card { background-color: #1e1e1e; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
-        .data-card h3 { margin-top: 0; color: #4da6ff; border-bottom: 1px solid #333; padding-bottom: 10px; }
-        .data-row { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 15px;}
-        .data-label { color: #aaa; }
-        .data-value { font-weight: bold; color: #fff; }
-        
-        .chart-wrapper { position: relative; background-color: #1e1e1e; padding: 10px; border-radius: 8px; margin-bottom: 20px; }
-        
-        .fullscreen-btn { position: absolute; top: 15px; left: 20px; z-index: 50; background: #333; color: white; border: 1px solid #555; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-weight: bold;}
-        .fullscreen-btn:hover { background: #4da6ff; color: #121212; }
-        
-        .is-fullscreen { position: fixed !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 100vh !important; z-index: 9999 !important; background-color: #121212 !important; border-radius: 0 !important; margin: 0 !important; padding: 20px !important; box-sizing: border-box; }
-        
-        abbr { text-decoration: underline dotted; cursor: help; }
-        .warning-text { color: #ff4d4d; font-weight: bold; }
-        .success-text { color: #00ff00; font-weight: bold; }
-        .info-text { color: #ffaa00; font-weight: bold; }
-
-        /* Real-time DOM manipulation styling */
-        .trend-up { color: #00ff00; font-weight: bold; }
-        .trend-down { color: #ff4d4d; font-weight: bold; }
-
-        /* --- AI Dropdown Button CSS --- */
-        .ai-btn { background-color: #1e1e1e; color: #00ffcc; border: 1px solid #00ffcc; padding: 8px 18px; border-radius: 20px; font-weight: bold; cursor: pointer; transition: all 0.2s ease; font-size: 15px; display: flex; align-items: center; gap: 8px;}
-        .ai-btn:hover { background-color: #00ffcc; color: #121212; box-shadow: 0 0 10px rgba(0, 255, 204, 0.4); }
-        .ai-dropdown-content { display: none; position: absolute; right: 0; top: 100%; background-color: #1e1e1e; min-width: 260px; box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.6); z-index: 1000; border-radius: 8px; border: 1px solid #333; overflow: hidden; margin-top: 8px;}
-        .ai-dropdown-content a { color: #e0e0e0; padding: 12px 16px; text-decoration: none; display: block; font-size: 14px; font-weight: normal; border-bottom: 1px solid #2a2a2a;}
-        .ai-dropdown-content a:last-child { border-bottom: none; }
-        .ai-dropdown-content a:hover { background-color: #2c2c2c; color: #00ffcc; padding-left: 20px; transition: all 0.2s ease;}
-        .show { display: block; }
-    </style>
+    <link rel="stylesheet" href="/static/css/styles.css">
 </head>
-<body>
+<body class="body-detail">
 
     <div class="sticky-nav">
         <div class="container" style="display: flex; align-items: center; flex-wrap: wrap;">

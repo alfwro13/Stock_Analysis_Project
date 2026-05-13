@@ -4,30 +4,9 @@
     <meta charset="UTF-8">
     <meta name="color-scheme" content="dark">
     <title>Quantamental - Market Sentiment</title>
-    <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #121212; color: #e0e0e0; padding: 20px; max-width: 1400px; margin: auto; }
-        h1, h2, h3 { color: #ffffff; margin: 0;}
-        
-        .header-container { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; padding-bottom: 20px; margin-bottom: 30px;}
-        
-        /* New Logo and Header Layout CSS */
-        .title-wrapper { display: flex; align-items: center; }
-        .logo-link { display: inline-block; margin-right: 15px; }
-        .logo-img { height: 45px; vertical-align: middle; transition: transform 0.2s; }
-        .logo-img:hover { transform: scale(1.05); }
-
-        .nav-links a { margin-right: 20px; font-size: 16px; color: #4da6ff; text-decoration: none; font-weight: bold; }
-        .nav-links a.active { color: #00ffcc; text-decoration: underline; }
-        .nav-links a:hover { text-decoration: underline; }
-        
-        /* Unread Notifications Badge */
-        .badge { background-color: #ff4d4d; color: white; padding: 2px 6px; border-radius: 10px; font-size: 12px; vertical-align: super; font-weight: bold;}
-
-        .chart-wrapper { background-color: #1e1e1e; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); border-left: 4px solid #ff4d4d; }
-        .explanation-box { background-color: #2c2c2c; padding: 15px; border-radius: 5px; margin-bottom: 20px; line-height: 1.6; font-size: 15px; color: #ccc;}
-    </style>
+    <link rel="stylesheet" href="/static/css/styles.css">
 </head>
-<body>
+<body class="body-sentiment">
 
     <div class="header-container">
         <div>
@@ -37,7 +16,7 @@
                 </a>
                 <h1>Market Sentiment</h1>
             </div>
-            <div class="nav-links" style="margin-top: 15px;">
+            <div class="nav-links">
                 <a href="/portfolio">💼 Portfolio</a>
                 <a href="/watchlist">👀 Watchlist</a>
                 <a href="/market-sentiment" class="active">Market Sentiment</a>
@@ -52,7 +31,7 @@
         <strong style="color: #fff;">How to read this chart:</strong> The <strong>S&P 500</strong> (Blue) represents the baseline health of the broader market. The <strong>Fear & Greed Index</strong> (Red) measures market emotion. Historically, market bottoms coincide with Extreme Fear (Below 25), presenting buying opportunities. Market tops often align with Extreme Greed (Above 75), signaling caution.
     </div>
 
-    <div class="chart-wrapper">
+    <div class="chart-wrapper" style="border-left: 4px solid #ff4d4d;">
         {{ sentiment_html | safe }}
     </div>
 
