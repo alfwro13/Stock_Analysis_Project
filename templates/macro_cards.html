@@ -10,7 +10,9 @@
 
 <script>
     let marketPulseInterval;
+    let isFastPolling = false;
     const REFRESH_RATE_MS = (window.REFRESH_RATE_MS || 60000); 
+    const FAST_POLL_MS = 3000; // Check every 3 seconds while waiting for background refresh
 
     async function fetchMarketPulse() {
         try {
@@ -43,11 +45,13 @@
                 renderMacroCards(indexes);
                 const pulseDot = document.getElementById('pulse-dot');
                 const pulseText = document.getElementById('pulse-text');
+                {% endif %}
                 
                 // Track if any element is stale to update UI status correctly
                 indexes.forEach(idx => { if(idx.is_stale) anyStale = true; });
                 assets.forEach(asset => { if(asset.is_stale) anyStale = true; });
 
+                {% if show_indexes %}
                 if (pulseDot && pulseText) {
                     pulseDot.classList.remove('offline');
                     if (anyStale) {
@@ -63,6 +67,19 @@
                 {% endif %}
                 
                 updateAssetPrices(assets);
+
+                // --- DYNAMIC POLLING LOGIC ---
+                if (anyStale && !isFastPolling) {
+                    // Enter fast-polling mode while backend is fetching
+                    clearInterval(marketPulseInterval);
+                    marketPulseInterval = setInterval(fetchMarketPulse, FAST_POLL_MS);
+                    isFastPolling = true;
+                } else if (!anyStale && isFastPolling) {
+                    // Background fetch completed! Return to the user's standard slow refresh rate
+                    clearInterval(marketPulseInterval);
+                    marketPulseInterval = setInterval(fetchMarketPulse, REFRESH_RATE_MS);
+                    isFastPolling = false;
+                }
                 
             } else {
                 handlePulseError();
@@ -134,7 +151,8 @@
 
     function startPulseEngine() {
         fetchMarketPulse();
-        marketPulseInterval = setInterval(fetchMarketPulse, REFRESH_RATE_MS);
+        // Start with whichever interval state we are currently in
+        marketPulseInterval = setInterval(fetchMarketPulse, isFastPolling ? FAST_POLL_MS : REFRESH_RATE_MS);
     }
 
     function stopPulseEngine() {
