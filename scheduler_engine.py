@@ -15,6 +15,7 @@ from quant_signals import QuantEngine
 from ghostfolio_sync import GhostfolioSyncEngine
 from quant_engine import run_daily_quant_scan
 from earnings_vol_engine import run_earnings_vol_scan
+from report_dispatcher import push_morning_quant_briefing
 
 # --- Background Task Scheduler Setup ---
 scheduler = BackgroundScheduler()
@@ -88,6 +89,20 @@ def run_weekend_earnings_scan():
         print("--- EARNINGS VOLATILITY SCAN COMPLETE ---\n")
     except Exception as e:
         print(f"[ERROR] Earnings Volatility Scan Failed: {e}")
+    finally:
+        task_lock.release()
+
+def run_morning_briefing_dispatch():
+    """Executes the morning quant briefing dispatch."""
+    if not task_lock.acquire(blocking=False):
+        print("[WARNING] System is busy. Skipping Morning Briefing Dispatch.")
+        return
+    try:
+        print("\n--- MORNING BRIEFING DISPATCH INITIATED ---")
+        push_morning_quant_briefing()
+        print("--- MORNING BRIEFING DISPATCH COMPLETE ---\n")
+    except Exception as e:
+        print(f"[ERROR] Morning Briefing Dispatch Failed: {e}")
     finally:
         task_lock.release()
 
@@ -266,8 +281,29 @@ def reload_scheduler():
     except Exception as e:
         print(f"[ERROR] Failed to schedule Earnings Volatility Scan: {e}")
 
+    # 9. Morning Briefing Dispatch Engine
+    disp_cfg = scheduling.get("DISPATCHER", {})
+    if disp_cfg.get("ENABLED", False):
+        disp_days_list = disp_cfg.get("DAYS", ["mon", "tue", "wed", "thu", "fri"])
+        # APScheduler accepts days separated by commas. Fallback to mon-fri if array is empty.
+        disp_days = ",".join(disp_days_list) if disp_days_list else "mon-fri"
+        disp_time = disp_cfg.get("TIME", "08:00")
+        
+        try:
+            hour, minute = map(int, disp_time.split(':'))
+            scheduler.add_job(
+                run_morning_briefing_dispatch,
+                CronTrigger(day_of_week=disp_days, hour=hour, minute=minute),
+                id='morning_briefing_dispatch_job'
+            )
+            print(f"[SCHEDULER] Morning Briefing Dispatch scheduled for {disp_days} at {disp_time}")
+        except Exception as e:
+            print(f"[ERROR] Failed to schedule Morning Briefing Dispatch: {e}")
+
+
 def start_scheduler():
     scheduler.start()
+
 
 def shutdown_scheduler():
     scheduler.shutdown()
