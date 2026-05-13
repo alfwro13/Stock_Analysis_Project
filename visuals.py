@@ -3,9 +3,14 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import pandas as pd
 import ta
+import textwrap
 from quant_signals import get_candlestick_patterns
 
 def create_intraday_chart(df, ticker, s1=None, s2=None, live_pattern_name=None, live_pattern_tooltip=None, live_pattern_score=None):
+    """
+    Generates a high-resolution, short-term chart using 5-minute data 
+    for the current trading day. Conditionally plots algorithmic floors (S1/S2).
+    """
     last_date = df.index[-1].date().strftime('%d-%b-%Y') if not df.empty else 'Today'
     
     fig = go.Figure(data=[go.Candlestick(
@@ -24,12 +29,16 @@ def create_intraday_chart(df, ticker, s1=None, s2=None, live_pattern_name=None, 
     if live_pattern_name and live_pattern_tooltip and not df.empty:
         last_row = df.iloc[-1]
         score = live_pattern_score if live_pattern_score is not None else 0
+        
+        # Wrap the tooltip text nicely for mobile screens
+        wrapped_tooltip = "<br>".join(textwrap.wrap(live_pattern_tooltip, width=45))
+        
         if score > 0:
-            fig.add_annotation(x=last_row.name, y=last_row['Low'], yshift=-15, text="▲", hovertext=f"<b>{live_pattern_name}</b><br>{live_pattern_tooltip}", showarrow=False, font=dict(color="#00ff00", size=18))
+            fig.add_annotation(x=last_row.name, y=last_row['Low'], yshift=-15, text="▲", hovertext=f"<b>{live_pattern_name}</b><br>{wrapped_tooltip}", showarrow=False, font=dict(color="#00ff00", size=18))
         elif score < 0:
-            fig.add_annotation(x=last_row.name, y=last_row['High'], yshift=15, text="▼", hovertext=f"<b>{live_pattern_name}</b><br>{live_pattern_tooltip}", showarrow=False, font=dict(color="#ff4d4d", size=18))
+            fig.add_annotation(x=last_row.name, y=last_row['High'], yshift=15, text="▼", hovertext=f"<b>{live_pattern_name}</b><br>{wrapped_tooltip}", showarrow=False, font=dict(color="#ff4d4d", size=18))
         else:
-            fig.add_annotation(x=last_row.name, y=last_row['Low'], yshift=-15, text="◆", hovertext=f"<b>{live_pattern_name}</b><br>{live_pattern_tooltip}", showarrow=False, font=dict(color="#ffaa00", size=16))
+            fig.add_annotation(x=last_row.name, y=last_row['Low'], yshift=-15, text="◆", hovertext=f"<b>{live_pattern_name}</b><br>{wrapped_tooltip}", showarrow=False, font=dict(color="#ffaa00", size=16))
     
     fig.update_layout(
         template="plotly_dark",
@@ -37,10 +46,10 @@ def create_intraday_chart(df, ticker, s1=None, s2=None, live_pattern_name=None, 
         margin=dict(l=20, r=20, t=60, b=20),
         xaxis_rangeslider_visible=False,
         title=dict(text=title_text, x=0.5),
-        hovermode="x unified"
+        hovermode="x unified",
+        hoverlabel=dict(align="left") # Ensures multiline text aligns nicely to the left
     )
 
-    # Restored desktop features, keeping logo hidden
     clean_config = {
         'responsive': True,
         'displaylogo': False
@@ -50,6 +59,9 @@ def create_intraday_chart(df, ticker, s1=None, s2=None, live_pattern_name=None, 
 
 
 def create_macro_chart(df, df_sp500, ticker):
+    """
+    Generates the 5-Row Institutional Macro Chart.
+    """
     df = df.tail(126).copy()
     
     df['MA_21'] = df['Close'].rolling(window=21).mean()
@@ -100,12 +112,15 @@ def create_macro_chart(df, df_sp500, ticker):
             
             patterns = get_candlestick_patterns(prev2_row, prev1_row, curr_row)
             for p in patterns:
+                # Wrap the tooltip text nicely for mobile screens
+                wrapped_tooltip = "<br>".join(textwrap.wrap(p['tooltip'], width=45))
+                
                 if p["score"] > 0:
-                    fig.add_annotation(row=1, col=1, x=curr_row.name, y=curr_row['Low'], yshift=-15, text="▲", hovertext=f"<b>{p['name']}</b><br>{p['tooltip']}", showarrow=False, font=dict(color="#00ff00", size=14))
+                    fig.add_annotation(row=1, col=1, x=curr_row.name, y=curr_row['Low'], yshift=-15, text="▲", hovertext=f"<b>{p['name']}</b><br>{wrapped_tooltip}", showarrow=False, font=dict(color="#00ff00", size=14))
                 elif p["score"] < 0:
-                    fig.add_annotation(row=1, col=1, x=curr_row.name, y=curr_row['High'], yshift=15, text="▼", hovertext=f"<b>{p['name']}</b><br>{p['tooltip']}", showarrow=False, font=dict(color="#ff4d4d", size=14))
+                    fig.add_annotation(row=1, col=1, x=curr_row.name, y=curr_row['High'], yshift=15, text="▼", hovertext=f"<b>{p['name']}</b><br>{wrapped_tooltip}", showarrow=False, font=dict(color="#ff4d4d", size=14))
                 else:
-                    fig.add_annotation(row=1, col=1, x=curr_row.name, y=curr_row['Low'], yshift=-15, text="◆", hovertext=f"<b>{p['name']}</b><br>{p['tooltip']}", showarrow=False, font=dict(color="#ffaa00", size=12))
+                    fig.add_annotation(row=1, col=1, x=curr_row.name, y=curr_row['Low'], yshift=-15, text="◆", hovertext=f"<b>{p['name']}</b><br>{wrapped_tooltip}", showarrow=False, font=dict(color="#ffaa00", size=12))
 
     colors = ['green' if row['Close'] >= row['Open'] else 'red' for index, row in df.iterrows()]
     fig.add_trace(go.Bar(x=df.index, y=df['Volume'], marker_color=colors, name="Volume"), row=2, col=1)
@@ -129,7 +144,8 @@ def create_macro_chart(df, df_sp500, ticker):
         margin=dict(l=20, r=20, t=80, b=20), 
         xaxis_rangeslider_visible=False,
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
-        hovermode="x unified"
+        hovermode="x unified",
+        hoverlabel=dict(align="left") # Ensures multiline text aligns nicely to the left
     )
 
     clean_config = {
