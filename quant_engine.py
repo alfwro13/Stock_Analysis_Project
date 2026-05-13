@@ -1,0 +1,154 @@
+# quant_engine.py
+import time
+import random
+import logging
+from datetime import datetime
+from typing import List
+
+import pandas as pd
+import yfinance as yf
+import ta
+
+from database import get_connection
+
+# Configure robust module-level logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - QUANT_ENGINE - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+def run_daily_quant_scan(ticker_list: List[str]) -> None:
+    """
+    Downloads historical OHLCV data, calculates technical indicators using vectorization,
+    and inserts the data into the local SQLite database. Includes resumability and throttling.
+    """
+    if not ticker_list:
+        logger.warning("Ticker list is empty. Aborting scan.")
+        return
+
+    today_str = datetime.now().strftime('%Y-%m-%d')
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    # ---------------------------------------------------------
+    # 1. State Management & Resumability Check
+    # ---------------------------------------------------------
+    cursor.execute(
+        "SELECT last_processed_ticker, status FROM quant_scan_states WHERE scan_date = ?",
+        (today_str,)
+    )
+    state = cursor.fetchone()
+
+    start_idx = 0
+    if state:
+        status = state['status']
+        last_ticker = state['last_processed_ticker']
+        
+        if status == 'COMPLETED':
+            logger.info(f"Scan for {today_str} already completed. Skipping execution.")
+            conn.close()
+            return
+            
+        elif status == 'IN_PROGRESS' and last_ticker in ticker_list:
+            # Find index of last processed and resume from the NEXT ticker
+            start_idx = ticker_list.index(last_ticker) + 1
+            resume_ticker = ticker_list[start_idx] if start_idx < len(ticker_list) else 'END'
+            logger.info(f"Resuming incomplete scan for {today_str}. Starting from {resume_ticker}.")
+    else:
+        # Initialize new daily state
+        cursor.execute(
+            "INSERT INTO quant_scan_states (scan_date, last_processed_ticker, status) VALUES (?, ?, ?)",
+            (today_str, "", "IN_PROGRESS")
+        )
+        conn.commit()
+
+    # ---------------------------------------------------------
+    # 2. Sequential Throttled Download & Processing
+    # ---------------------------------------------------------
+    for i in range(start_idx, len(ticker_list)):
+        ticker = ticker_list[i]
+        logger.info(f"Processing {ticker} ({i + 1}/{len(ticker_list)})...")
+        
+        try:
+            # Fetch 1-year of data to guarantee accurate 200-day SMAs
+            df = yf.download(ticker, period="1y", interval="1d", progress=False, auto_adjust=True)
+            
+            if df.empty:
+                logger.warning(f"No OHLCV data returned for {ticker}. Skipping.")
+                continue
+
+            # Handle multi-index columns returned by newer yfinance versions
+            if isinstance(df.columns, pd.MultiIndex):
+                df.columns = df.columns.get_level_values(0)
+
+            df.dropna(subset=['Close', 'Volume'], inplace=True)
+            
+            if len(df) < 50:
+                logger.warning(f"Insufficient historical data for {ticker} (requires >= 50 days). Skipping.")
+                continue
+
+            # --- Technical Indicator Math (Vectorized via pandas & ta) ---
+            close_s = df['Close'].squeeze()
+            volume_s = df['Volume'].squeeze()
+
+            rsi_series = ta.momentum.RSIIndicator(close=close_s, window=14).rsi()
+            macd_indicator = ta.trend.MACD(close=close_s)
+            sma_50 = ta.trend.SMAIndicator(close=close_s, window=50).sma_indicator()
+            sma_200 = ta.trend.SMAIndicator(close=close_s, window=200).sma_indicator()
+            vol_sma_20 = ta.trend.SMAIndicator(close=volume_s, window=20).sma_indicator()
+
+            # Extract latest localized date and metrics
+            last_date = df.index[-1].strftime('%Y-%m-%d')
+            c_price = float(close_s.iloc[-1])
+            c_vol = int(volume_s.iloc[-1])
+            
+            c_rsi = float(rsi_series.iloc[-1]) if not pd.isna(rsi_series.iloc[-1]) else None
+            c_macd = float(macd_indicator.macd().iloc[-1]) if not pd.isna(macd_indicator.macd().iloc[-1]) else None
+            c_signal = float(macd_indicator.macd_signal().iloc[-1]) if not pd.isna(macd_indicator.macd_signal().iloc[-1]) else None
+            c_hist = float(macd_indicator.macd_diff().iloc[-1]) if not pd.isna(macd_indicator.macd_diff().iloc[-1]) else None
+            c_sma50 = float(sma_50.iloc[-1]) if not pd.isna(sma_50.iloc[-1]) else None
+            c_sma200 = float(sma_200.iloc[-1]) if not pd.isna(sma_200.iloc[-1]) else None
+
+            # Logic Triggers
+            vol_surge = False
+            if not pd.isna(vol_sma_20.iloc[-1]):
+                vol_surge = bool(c_vol > (vol_sma_20.iloc[-1] * 1.5))
+
+            bullish_cross = False
+            if len(macd_indicator.macd()) >= 2 and not pd.isna(macd_indicator.macd().iloc[-2]):
+                # Golden MACD Cross: MACD crosses ABOVE signal line
+                prev_macd = macd_indicator.macd().iloc[-2]
+                prev_sig = macd_indicator.macd_signal().iloc[-2]
+                bullish_cross = bool((c_macd > c_signal) and (prev_macd <= prev_sig))
+
+            # --- Database Write ---
+            cursor.execute('''
+                INSERT OR REPLACE INTO quant_signals 
+                (ticker, date, close_price, volume, rsi_14, macd, macd_signal, macd_hist, sma_50, sma_200, volume_surge, bullish_cross)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (ticker, last_date, c_price, c_vol, c_rsi, c_macd, c_signal, c_hist, c_sma50, c_sma200, vol_surge, bullish_cross))
+
+            # Update State Engine
+            cursor.execute("UPDATE quant_scan_states SET last_processed_ticker = ? WHERE scan_date = ?", (ticker, today_str))
+            conn.commit()
+
+        except Exception as e:
+            logger.error(f"Fatal error analyzing {ticker}: {str(e)}")
+            conn.rollback() # Prevent partial/corrupted inserts
+        finally:
+            # Mandatory Throttling to prevent Yahoo Finance IP bans
+            time.sleep(random.uniform(0.5, 1.5))
+
+    # ---------------------------------------------------------
+    # 3. Finalize State
+    # ---------------------------------------------------------
+    cursor.execute("UPDATE quant_scan_states SET status = 'COMPLETED' WHERE scan_date = ?", (today_str,))
+    conn.commit()
+    conn.close()
+    
+    logger.info(f"Quant scan for {today_str} successfully finished executing.")
+
+if __name__ == "__main__":
+    # Test script standalone
+    run_daily_quant_scan(["AAPL", "MSFT"])

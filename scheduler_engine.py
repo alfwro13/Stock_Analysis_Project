@@ -14,6 +14,9 @@ from data_engine import DataEngine
 from quant_signals import QuantEngine
 from ghostfolio_sync import GhostfolioSyncEngine
 
+# --- NEW IMPORT ---
+from quant_engine import run_daily_quant_scan
+
 # --- Background Task Scheduler Setup ---
 scheduler = BackgroundScheduler()
 task_lock = threading.Lock()
@@ -51,6 +54,25 @@ def run_ghostfolio_sync():
     try:
         sync_engine = GhostfolioSyncEngine()
         sync_engine.run_full_sync()
+    finally:
+        task_lock.release()
+
+def run_overnight_quant_scan():
+    """
+    Fetches the combined list of portfolio and watchlist tickers, 
+    and executes the resumable daily quant scan natively.
+    """
+    if not task_lock.acquire(blocking=False):
+        print("[WARNING] System is currently busy. Skipping Overnight Quant Scan.")
+        return
+    try:
+        print("\n--- OVERNIGHT QUANT SCAN INITIATED ---")
+        engine = DataEngine()
+        all_tickers = engine.get_all_tickers() 
+        run_daily_quant_scan(all_tickers)
+        print("--- OVERNIGHT QUANT SCAN COMPLETE ---\n")
+    except Exception as e:
+        print(f"[ERROR] Overnight Quant Scan Failed: {e}")
     finally:
         task_lock.release()
 
@@ -193,6 +215,14 @@ def reload_scheduler():
             print(f"[SCHEDULER] DB/File Maintenance scheduled for {day_of_week} at {time_str}")
         except Exception as e:
             print(f"[ERROR] Failed to schedule Maintenance Job: {e}")
+
+    # 7. NEW: Daily Overnight Quant Job (Native SQLite)
+    scheduler.add_job(
+        run_overnight_quant_scan,
+        CronTrigger(day_of_week='*', hour=1, minute=0), # Runs every day at 01:00 AM
+        id='overnight_quant_scan_job'
+    )
+    print("[SCHEDULER] Overnight Quant Scan scheduled for every day at 01:00 AM")
 
 def start_scheduler():
     scheduler.start()

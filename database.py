@@ -106,6 +106,34 @@ def init_db():
             last_updated REAL
         )
     ''')
+
+    # New table for Quantitative Signals Tracking (Enricher Engine)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS quant_signals (
+            ticker TEXT,
+            date TEXT,
+            close_price REAL,
+            volume INTEGER,
+            rsi_14 REAL,
+            macd REAL,
+            macd_signal REAL,
+            macd_hist REAL,
+            sma_50 REAL,
+            sma_200 REAL,
+            volume_surge BOOLEAN,
+            bullish_cross BOOLEAN,
+            PRIMARY KEY (ticker, date)
+        )
+    ''')
+
+    # New table for Quant Scan State / Resumability Tracking
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS quant_scan_states (
+            scan_date TEXT PRIMARY KEY,
+            last_processed_ticker TEXT,
+            status TEXT
+        )
+    ''')
     
     conn.commit()
     
