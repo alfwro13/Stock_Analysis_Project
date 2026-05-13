@@ -185,3 +185,22 @@ details.settings-card[open] > summary { border-bottom: 1px solid #333; margin-bo
 .sticky-nav a { margin-right: 15px; color: #4da6ff; text-decoration: none; font-weight: bold; }
 .sticky-nav a:hover { text-decoration: underline; color: #00ffcc; }
 .sticky-nav span.divider { color: #555; margin-right: 15px; }
+
+/* Yahoo Finance link in stock detail header */
+.yahoo-link {
+    font-size: 14px;
+    font-weight: normal;
+    color: #4da6ff;
+    text-decoration: none;
+    vertical-align: middle;
+    margin-left: 15px;
+    border: 1px solid #4da6ff;
+    padding: 3px 8px;
+    border-radius: 4px;
+    transition: all 0.3s ease;
+}
+
+.yahoo-link:hover {
+    background-color: rgba(77, 166, 255, 0.1);
+    text-decoration: none;
+}
