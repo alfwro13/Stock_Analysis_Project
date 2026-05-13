@@ -1,5 +1,6 @@
 # Ignore Python cache folders
 __pycache__/
+reports/
 
 # Ignore data folder and all its contents
 data/
