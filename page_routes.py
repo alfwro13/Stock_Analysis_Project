@@ -14,6 +14,7 @@ from market_pulse import get_all_cached_pulse
 from visuals import create_macro_chart, create_intraday_chart
 from portfolio_service import get_rate_to_base, get_rate_from_base
 from quant_signals import get_candlestick_patterns
+from quant_screener import fetch_latest_signals, generate_markdown_briefing
 
 page_router = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -195,6 +196,45 @@ async def watchlist_page(request: Request, embed: bool = False):
             "unread_count": get_unread_count(),
             "config": load_config(),
             "cached_pulse": get_all_cached_pulse()
+        }
+    )
+
+@page_router.get("/quant-screener", response_class=HTMLResponse)
+async def quant_screener_page(request: Request):
+    """
+    Renders the standalone Quantitative Screener Dashboard.
+    Fetches overnight signals and falls back to the previous day if the current day's scan hasn't run yet.
+    """
+    today = datetime.now()
+    target_date = today.strftime('%Y-%m-%d')
+    
+    # Attempt to fetch today's quantitative signals
+    signals = fetch_latest_signals(target_date)
+    
+    # Fallback Logic: If the overnight engine hasn't run yet, fetch yesterday's signals
+    if not signals:
+        yesterday = today - timedelta(days=1)
+        target_date = yesterday.strftime('%Y-%m-%d')
+        signals = fetch_latest_signals(target_date)
+        
+    # Generate the Markdown string. If STILL empty, return a graceful error message.
+    if signals:
+        markdown_content = generate_markdown_briefing(target_date, signals)
+    else:
+        markdown_content = (
+            f"# 📊 Morning Quant Briefing\n"
+            f"**Date:** {target_date}\n\n"
+            f"*No signals available for today or yesterday. Ensure the `quant_engine` scheduled overnight scan is running successfully.*"
+        )
+        
+    return templates.TemplateResponse(
+        request=request, 
+        name="quant_screener.html", 
+        context={
+            "markdown_content": markdown_content,
+            "target_date": target_date,
+            "unread_count": get_unread_count(),
+            "config": load_config()
         }
     )
 
