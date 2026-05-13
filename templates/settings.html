@@ -11,7 +11,7 @@
     <div class="header-container">
         <div>
             <div class="title-wrapper">
-                <a href="https://github.com/alfwro13/Stock_Analysis_Project" target="_blank" class="logo-link">
+                <a href="[https://github.com/alfwro13/Stock_Analysis_Project](https://github.com/alfwro13/Stock_Analysis_Project)" target="_blank" class="logo-link">
                     <img src="/assets/logo_small.png" alt="Quantamental Logo" class="logo-img">
                 </a>
                 <h1>System Configuration</h1>
@@ -28,6 +28,15 @@
     </div>
 
     <form id="settingsForm">
+
+        <details class="settings-card" open>
+            <summary>🛠️ Manual Actions</summary>
+            <p style="font-size: 13px; color: #aaa; margin-top: 0; margin-bottom: 15px;">Manually trigger system processes. These operations run in the background. Please wait a few moments before refreshing your views.</p>
+            <div style="display: flex; gap: 15px; margin-top: 15px;">
+                <button type="button" id="syncBtn" class="btn btn-sync" style="flex: 1;" onclick="triggerGhostfolioSync()">⬇️ Sync Ghostfolio Data</button>
+                <button type="button" id="updateBtn" class="btn btn-update" style="flex: 1;" onclick="triggerUpdate()">↻ Force Update Analysis Models</button>
+            </div>
+        </details>
 
         <details class="settings-card">
             <summary>🖥️ Live UI Updates</summary>
@@ -430,6 +439,20 @@
     <script>
         const accountsDataNode = document.getElementById('discoveredAccountsData').textContent;
         let currentDiscoveredAccounts = JSON.parse(accountsDataNode);
+
+        async function triggerGhostfolioSync() {
+            const btn = document.getElementById('syncBtn');
+            btn.innerText = "Syncing JSON..."; btn.disabled = true;
+            try { await fetch('/api/sync-ghostfolio', { method: 'POST' }); alert("Sync initiated in the background! Wait a few moments, then hit 'Force Update Analysis'."); } catch (e) { }
+            setTimeout(() => { btn.innerText = "⬇️ Sync Ghostfolio Data"; btn.disabled = false; }, 5000);
+        }
+
+        async function triggerUpdate() {
+            const btn = document.getElementById('updateBtn');
+            btn.innerText = "Updating..."; btn.disabled = true;
+            try { await fetch('/api/update', { method: 'POST' }); alert("Analysis initiated in the background! The system is building fresh mathematical models."); } catch (e) { }
+            setTimeout(() => { btn.innerText = "↻ Force Update Analysis Models"; btn.disabled = false; }, 15000);
+        }
 
         async function discoverGhostfolioAccounts() {
             const btn = document.querySelector('button[onclick="discoverGhostfolioAccounts()"]');

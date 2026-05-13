@@ -12,12 +12,12 @@
     <div class="header-container">
         <div>
             <div class="title-wrapper">
-                <a href="https://github.com/alfwro13/Stock_Analysis_Project" target="_blank" class="logo-link">
+                <a href="[https://github.com/alfwro13/Stock_Analysis_Project](https://github.com/alfwro13/Stock_Analysis_Project)" target="_blank" class="logo-link">
                     <img src="/assets/logo_small.png" alt="Quantamental Logo" class="logo-img">
                 </a>
                 <h1><abbr title="Quantamental - a modern institutional strategy that combines Quantitative analysis with Fundamental analysis.">uantamental</abbr> Dashboard</h1>
             </div>
-            <p style="color: #aaaaaa; margin-top: 5px; font-size: 14px;">Data Last Updated: <strong>{{ global_updated }}</strong></p>
+            <p style="color: #aaaaaa; margin-top: 5px; font-size: 14px;">Portfolio & Fundamentals Last Synced: <strong>{{ global_updated }}</strong></p>
             <div class="nav-links">
                 <select class="context-selector" id="accountContextSelector" onchange="switchAccountContext()">
                     {% for opt in account_options %}
@@ -31,10 +31,6 @@
                 <a href="/glossary">📚 Glossary</a>
                 <a href="/notifications">🔔 Notifications {% if unread_count > 0 %}<span class="badge" id="nav-badge">{{ unread_count }}</span>{% endif %}</a>
             </div>
-        </div>
-        <div class="action-buttons">
-            <button id="syncBtn" class="btn btn-sync" onclick="triggerGhostfolioSync()">⬇️ Sync Ghostfolio</button>
-            <button id="updateBtn" class="btn btn-update" onclick="triggerUpdate()">↻ Update Analysis</button>
         </div>
     </div>
     
@@ -112,7 +108,7 @@
                 </td>
                 
                 {% set cp = cached_pulse.get(item.ticker) %}
-                <td id="price-{{ item.ticker }}">
+                <td id="price-{{ item.ticker }}" class="{% if cp and cp.is_stale %}stale-text{% endif %}">
                     {% if cp %}
                         {{ cp.price }}
                     {% elif item.current_price is not none %}
@@ -122,12 +118,10 @@
                     {% endif %}
                 </td>
                 
-                <td id="change-{{ item.ticker }}">
+                <td id="change-{{ item.ticker }}" class="{% if cp and cp.is_stale %}stale-text{% elif cp %}{% if cp.is_positive %}trend-up{% else %}trend-down{% endif %}{% endif %}">
                     {% if cp %}
                         {% set sign = '+' if cp.is_positive else '' %}
-                        <span class="{% if cp.is_positive %}trend-up{% else %}trend-down{% endif %}">
-                            {{ sign }}{{ cp.change_pct }}%
-                        </span>
+                        {{ sign }}{{ cp.change_pct }}%
                     {% else %}
                         -
                     {% endif %}
@@ -256,20 +250,6 @@
                     }
                 }
             }
-        }
-
-        async function triggerGhostfolioSync() {
-            const btn = document.getElementById('syncBtn');
-            btn.innerText = "Syncing JSON..."; btn.disabled = true;
-            try { await fetch('/api/sync-ghostfolio', { method: 'POST' }); alert("Sync initiated! Wait 3 seconds, then hit 'Update Analysis'."); } catch (e) { }
-            setTimeout(() => { btn.innerText = "⬇️ Sync Ghostfolio"; btn.disabled = false; }, 5000);
-        }
-
-        async function triggerUpdate() {
-            const btn = document.getElementById('updateBtn');
-            btn.innerText = "Updating... (Check Terminal)"; btn.disabled = true;
-            try { await fetch('/api/update', { method: 'POST' }); alert("Analysis initiated! Refresh this page in ~15 seconds."); } catch (e) { }
-            setTimeout(() => { btn.innerText = "↻ Update Analysis"; btn.disabled = false; }, 15000);
         }
     </script>
 </body>

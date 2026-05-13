@@ -37,12 +37,28 @@
                 const indexes = result.data.indexes || [];
                 const assets = result.data.assets || [];
                 
+                let anyStale = false;
+
                 {% if show_indexes %}
                 renderMacroCards(indexes);
                 const pulseDot = document.getElementById('pulse-dot');
-                if (pulseDot) {
+                const pulseText = document.getElementById('pulse-text');
+                
+                // Track if any element is stale to update UI status correctly
+                indexes.forEach(idx => { if(idx.is_stale) anyStale = true; });
+                assets.forEach(asset => { if(asset.is_stale) anyStale = true; });
+
+                if (pulseDot && pulseText) {
                     pulseDot.classList.remove('offline');
-                    document.getElementById('pulse-text').innerText = "Live Market Pulse Active";
+                    if (anyStale) {
+                        pulseText.innerText = "Loaded cached data. Fetching fresh data in background...";
+                        pulseDot.style.backgroundColor = "#aaa";
+                        pulseDot.style.boxShadow = "0 0 5px #aaa";
+                    } else {
+                        pulseText.innerText = "Live Market Pulse Active";
+                        pulseDot.style.backgroundColor = "#00ffcc";
+                        pulseDot.style.boxShadow = "0 0 5px #00ffcc";
+                    }
                 }
                 {% endif %}
                 
@@ -68,11 +84,15 @@
             const changeClass = isPos ? 'positive' : 'negative';
             const sign = isPos ? '+' : '';
             
+            // Assign transparent gray classes if the DB data is older than refresh rate
+            const staleClass = index.is_stale ? 'stale-card' : '';
+            const staleText = index.is_stale ? 'stale-text' : '';
+            
             const cardHTML = `
-                <div class="macro-card ${cardClass}">
-                    <div class="macro-title">${index.name}</div>
-                    <div class="macro-price">${index.price}</div>
-                    <div class="macro-change ${changeClass}">
+                <div class="macro-card ${cardClass} ${staleClass}">
+                    <div class="macro-title ${staleText}">${index.name}</div>
+                    <div class="macro-price ${staleText}">${index.price}</div>
+                    <div class="macro-change ${changeClass} ${staleText}">
                         ${sign}${index.change_pct}%
                     </div>
                 </div>
@@ -88,10 +108,16 @@
             
             if (priceEl && changeEl) {
                 priceEl.innerText = asset.price;
-                
                 const sign = asset.is_positive ? '+' : '';
                 changeEl.innerText = `${sign}${asset.change_pct}%`;
-                changeEl.className = asset.is_positive ? 'trend-up' : 'trend-down';
+                
+                if (asset.is_stale) {
+                    changeEl.className = 'stale-text';
+                    priceEl.className = 'stale-text';
+                } else {
+                    changeEl.className = asset.is_positive ? 'trend-up' : 'trend-down';
+                    priceEl.className = '';
+                }
             }
         });
     }

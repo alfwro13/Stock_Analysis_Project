@@ -1,5 +1,6 @@
 # maintenance_engine.py
 import os
+import time
 import json
 import sqlite3
 from datetime import datetime, timedelta
@@ -22,6 +23,7 @@ class MaintenanceEngine:
         self.metrics = {
             "logs_deleted": 0,
             "files_deleted": 0,
+            "pulse_cache_deleted": 0,
             "vacuum_success": False
         }
 
@@ -69,6 +71,21 @@ class MaintenanceEngine:
             print(f"[MAINTENANCE] Removed {self.metrics['logs_deleted']} stale notifications.")
         except Exception as e:
             print(f"[MAINTENANCE] Error pruning database: {e}")
+
+    def prune_pulse_cache(self):
+        """Cleans up extremely old records from the live market pulse cache table."""
+        print("[MAINTENANCE] Pruning Market Pulse Cache...")
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            # Delete records older than 24 hours (86400 seconds)
+            cursor.execute("DELETE FROM market_pulse_cache WHERE last_updated <= ?", (time.time() - 86400,))
+            self.metrics["pulse_cache_deleted"] = cursor.rowcount
+            conn.commit()
+            conn.close()
+            print(f"[MAINTENANCE] Removed {self.metrics['pulse_cache_deleted']} stale pulse records.")
+        except Exception as e:
+            print(f"[MAINTENANCE] Error pruning pulse cache: {e}")
 
     def garbage_collect_files(self):
         """Scans directories and deletes files belonging to untracked tickers."""
@@ -126,6 +143,7 @@ class MaintenanceEngine:
             msg = (
                 f"Automated System Maintenance completed.\n"
                 f"• Stale Logs Trimmed: {self.metrics['logs_deleted']}\n"
+                f"• Stale Pulse Cache Records Removed: {self.metrics['pulse_cache_deleted']}\n"
                 f"• Orphaned Files Reclaimed: {self.metrics['files_deleted']}\n"
                 f"• DB Defragmentation: {vac_status}"
             )
@@ -142,6 +160,7 @@ class MaintenanceEngine:
     def run(self):
         print(f"\n--- [MAINTENANCE ENGINE] Initiated @ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ---")
         self.prune_database_logs()
+        self.prune_pulse_cache()
         self.garbage_collect_files()
         self.vacuum_database()
         

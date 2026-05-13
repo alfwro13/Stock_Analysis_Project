@@ -55,6 +55,10 @@ th:hover { background-color: #3d3d3d; }
 .pnl-positive { color: #00ff00; }
 .pnl-negative { color: #ff4d4d; }
 
+/* Stale Data Indicator Colors */
+.macro-card.stale-card { border-top-color: #555 !important; background: rgba(128, 128, 128, 0.1) !important; }
+.stale-text { color: #888 !important; }
+
 /* Form Controls & Action Buttons */
 .controls-container { display: flex; gap: 15px; margin-bottom: 15px; }
 .filter-input { padding: 8px; border-radius: 5px; border: 1px solid #444; background-color: #1e1e1e; color: #fff; width: 250px; font-size: 14px; }

@@ -10,10 +10,10 @@ from fastapi.templating import Jinja2Templates
 from config import load_config, PORTFOLIO_PATH, WATCHLIST_PATH, HISTORICAL_DIR, INTRADAY_DIR, BASE_CURRENCY
 from database import get_connection
 from sentiment_engine import get_sentiment_html
-from market_pulse import get_cached_pulse
+from market_pulse import get_all_cached_pulse
 from visuals import create_macro_chart, create_intraday_chart
-from quant_signals import get_candlestick_patterns
 from portfolio_service import get_rate_to_base, get_rate_from_base
+from quant_signals import get_candlestick_patterns
 
 page_router = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -156,7 +156,7 @@ async def portfolio_page(request: Request, account_id: str = "all", embed: bool 
             "selected_account": account_id,
             "summary_math": formatted_summary,
             "config": config_data,
-            "cached_pulse": get_cached_pulse()
+            "cached_pulse": get_all_cached_pulse()
         }
     )
 
@@ -194,7 +194,7 @@ async def watchlist_page(request: Request, embed: bool = False):
             "embed": embed, 
             "unread_count": get_unread_count(),
             "config": load_config(),
-            "cached_pulse": get_cached_pulse()
+            "cached_pulse": get_all_cached_pulse()
         }
     )
 
@@ -325,6 +325,6 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
             "unread_count": get_unread_count(),
             "embed": embed,
             "config": load_config(),
-            "cached_pulse": get_cached_pulse()
+            "cached_pulse": get_all_cached_pulse()
         }
     )

@@ -14,7 +14,7 @@ from config import load_config, SECRETS_PATH
 from database import get_connection
 from scheduler_engine import run_update_pipeline, run_ghostfolio_sync, reload_scheduler
 from ghostfolio_sync import GhostfolioSyncEngine
-from market_pulse import get_market_pulse
+from market_pulse import get_cached_pulse_from_db, fetch_and_save_pulse
 from sentiment_engine import run_nextcloud_alert
 from earnings_engine import run_earnings_alert
 from insider_engine import run_insider_alert
@@ -57,16 +57,32 @@ async def trigger_discovery():
         return JSONResponse(status_code=500, content={"status": "error", "message": "No accounts discovered or network error occurred."})
 
 @api_router.post("/market-pulse")
-async def api_market_pulse(request: PulseRequest):
-    """API endpoint to fetch live index data AND requested asset prices."""
+async def api_market_pulse(request: PulseRequest, background_tasks: BackgroundTasks):
+    """API endpoint to fetch live index data AND requested asset prices instantaneously from DB."""
     config_data = load_config()
     refresh_rate = config_data.get("UI_PREFERENCES", {}).get("REFRESH_RATE", 60)
-    pulse_data = get_market_pulse(request.tickers, refresh_rate=refresh_rate)
+    
+    pulse_data = get_cached_pulse_from_db(request.tickers, refresh_rate)
+    
+    # Check if any data returned was stale or entirely missing from the DB
+    needs_fetch = [item['ticker'] for item in pulse_data['indexes'] + pulse_data['assets'] if item['is_stale']]
+    if needs_fetch:
+        # Offload the slow Yahoo Finance extraction to a background thread
+        background_tasks.add_task(fetch_and_save_pulse, needs_fetch)
+        
     return JSONResponse(content={"status": "success", "data": pulse_data})
 
 @api_router.get("/market-pulse")
-async def api_market_pulse_get():
-    pulse_data = get_market_pulse()
+async def api_market_pulse_get(background_tasks: BackgroundTasks):
+    config_data = load_config()
+    refresh_rate = config_data.get("UI_PREFERENCES", {}).get("REFRESH_RATE", 60)
+    
+    pulse_data = get_cached_pulse_from_db([], refresh_rate)
+    
+    needs_fetch = [item['ticker'] for item in pulse_data['indexes'] if item['is_stale']]
+    if needs_fetch:
+        background_tasks.add_task(fetch_and_save_pulse, needs_fetch)
+        
     return JSONResponse(content={"status": "success", "data": pulse_data.get("indexes", [])})
 
 @api_router.post("/test-sentiment-alert")

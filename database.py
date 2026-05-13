@@ -94,6 +94,19 @@ def init_db():
         )
     ''')
     
+    # New table for the Live Market Pulse Database Cache
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS market_pulse_cache (
+            ticker TEXT PRIMARY KEY,
+            name TEXT,
+            price TEXT,
+            change_pts TEXT,
+            change_pct TEXT,
+            is_positive BOOLEAN,
+            last_updated REAL
+        )
+    ''')
+    
     conn.commit()
     
     # Run the dynamic migration script to inject any missing columns safely
