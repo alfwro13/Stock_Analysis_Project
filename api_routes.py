@@ -131,6 +131,32 @@ async def save_settings(request: Request):
     except Exception as e:
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
+@api_router.get("/notifications/latest")
+async def get_latest_notifications(last_id: int = 0):
+    """API endpoint to poll for new system notifications for browser alerts."""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id, message_type, message_text, timestamp FROM system_notifications WHERE id > ? ORDER BY id ASC", 
+            (last_id,)
+        )
+        rows = cursor.fetchall()
+        conn.close()
+        
+        notifications = [
+            {
+                "id": row["id"], 
+                "type": row["message_type"], 
+                "text": row["message_text"], 
+                "timestamp": row["timestamp"]
+            } 
+            for row in rows
+        ]
+        return JSONResponse(content={"status": "success", "notifications": notifications})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
 @api_router.post("/notifications/mark-read")
 async def mark_notifications_read():
     try:
