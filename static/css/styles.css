@@ -213,6 +213,11 @@ details.settings-card[open] > summary { border-bottom: 1px solid #333; margin-bo
         padding: 5px;
     }
 
+    /* Hides the un-usable top right toolbar on mobile devices only */
+    .modebar {
+        display: none !important;
+    }
+
     /* Override the hardcoded 1200px height for the Macro Chart on mobile */
     .js-plotly-plot, .plotly, .plotly div {
         min-height: 400px;

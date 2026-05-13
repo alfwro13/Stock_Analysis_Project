@@ -19,22 +19,17 @@ from nextcloud_talk import upload_file_webdav, share_file_to_talk
 from config import NEXTCLOUD_URL, BOT_USERNAME, APP_PASSWORD, CONVERSATION_TOKEN
 
 def fetch_fear_greed_data(start_date_str):
-    """Fetches historical Fear & Greed Index data from CNN API."""
     BASE_URL = "https://production.dataviz.cnn.io/index/fearandgreed/graphdata/"
     ua = UserAgent()
     headers = {'User-Agent': ua.random}
-    
     try:
         r = requests.get(BASE_URL + start_date_str, headers=headers, timeout=15)
         r.raise_for_status()
         data = r.json()
-        
         fng_list = data['fear_and_greed_historical']['data']
         fng_df = pd.DataFrame(fng_list)
-        
         fng_df['Date'] = pd.to_datetime(fng_df['x'], unit='ms').dt.date
         fng_df = fng_df.rename(columns={'y': 'Fear_Greed_Index'})
-        
         fng_df = fng_df[['Date', 'Fear_Greed_Index']]
         fng_df.set_index('Date', inplace=True)
         return fng_df
@@ -43,58 +38,39 @@ def fetch_fear_greed_data(start_date_str):
         return pd.DataFrame()
 
 def fetch_stock_data(ticker, start_date):
-    """Fetches historical stock data from Yahoo Finance."""
     stock_df = yf.download(tickers=ticker, start=start_date, progress=False, auto_adjust=True)
     if stock_df.empty: return pd.DataFrame()
-
     if isinstance(stock_df.columns, pd.MultiIndex):
         stock_df.columns = stock_df.columns.get_level_values(0)
-
     stock_df.reset_index(inplace=True)
     stock_df['Date'] = stock_df['Date'].dt.date
     stock_df.set_index('Date', inplace=True)
-    
     if 'Close' not in stock_df.columns: return pd.DataFrame()
     return stock_df[['Close']].rename(columns={'Close': f'{ticker}_Close'})
 
 def get_sentiment_data():
-    """Helper function to fetch and merge data for both Plotly and Matplotlib."""
     today = datetime.now()
     start_date = (today - timedelta(days=365)).strftime('%Y-%m-%d')
-    
     fng_data = fetch_fear_greed_data(start_date)
     spy_data = fetch_stock_data('SPY', start_date)
-    
-    if fng_data.empty or spy_data.empty:
-        return None
-
+    if fng_data.empty or spy_data.empty: return None
     merged_df = spy_data.merge(fng_data, left_index=True, right_index=True, how='left')
     merged_df['Fear_Greed_Index'] = merged_df['Fear_Greed_Index'].ffill()
     merged_df.dropna(inplace=True)
     return merged_df
 
 def generate_sentiment_figure():
-    """Generates the interactive Plotly figure for the Web Dashboard."""
     merged_df = get_sentiment_data()
     if merged_df is None: return None
 
     fig = make_subplots(specs=[[{"secondary_y": True}]])
-
-    fig.add_trace(
-        go.Scatter(x=merged_df.index, y=merged_df['SPY_Close'], name="S&P 500", line=dict(color='#4da6ff', width=2)),
-        secondary_y=False,
-    )
-    fig.add_trace(
-        go.Scatter(x=merged_df.index, y=merged_df['Fear_Greed_Index'], name="F&G Index", line=dict(color='#ff4d4d', dash='dot', width=2)),
-        secondary_y=True,
-    )
+    fig.add_trace(go.Scatter(x=merged_df.index, y=merged_df['SPY_Close'], name="S&P 500", line=dict(color='#4da6ff', width=2)), secondary_y=False)
+    fig.add_trace(go.Scatter(x=merged_df.index, y=merged_df['Fear_Greed_Index'], name="F&G Index", line=dict(color='#ff4d4d', dash='dot', width=2)), secondary_y=True)
 
     levels = {25: 'Fear (25)', 50: 'Neutral (50)', 75: 'Greed (75)'}
     for level, text in levels.items():
-        fig.add_hline(y=level, line_dash="dash", line_color="#555", secondary_y=True, 
-                      annotation_text=text, annotation_position="top right", annotation_font_color="#aaa")
+        fig.add_hline(y=level, line_dash="dash", line_color="#555", secondary_y=True, annotation_text=text, annotation_position="top right", annotation_font_color="#aaa")
 
-    # Keep web chart nicely scaled (tight fit)
     min_spy = merged_df['SPY_Close'].min() * 0.98
     max_spy = merged_df['SPY_Close'].max() * 1.02
 
@@ -104,7 +80,6 @@ def generate_sentiment_figure():
         height=600,
         margin=dict(l=40, r=40, t=60, b=40),
         hovermode="x unified",
-        dragmode=False,
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
     fig.update_yaxes(title_text="S&P 500 Price ($)", range=[min_spy, max_spy], secondary_y=False)
@@ -115,35 +90,26 @@ def get_sentiment_html():
     fig = generate_sentiment_figure()
     if not fig: return "<p>Error loading sentiment data. Please try again later.</p>"
     
-    mobile_safe_config = {
+    clean_config = {
         'responsive': True,
-        'displayModeBar': False,
-        'scrollZoom': False,
-        'doubleClick': 'reset',
         'displaylogo': False
     }
     
-    return fig.to_html(full_html=False, include_plotlyjs='cdn', config=mobile_safe_config)
+    return fig.to_html(full_html=False, include_plotlyjs='cdn', config=clean_config)
 
 def run_nextcloud_alert():
-    """Background task: Uses Matplotlib to generate the PNG, then uploads to Nextcloud."""
     print("\n[DEBUG] 1/5 - Starting Market Sentiment Pipeline...")
     try:
         merged_df = get_sentiment_data()
-        if merged_df is None:
-            print("[DEBUG] FAILED at Step 1: Data fetch error.")
-            return False, "Failed to fetch data."
+        if merged_df is None: return False, "Failed to fetch data."
 
-        # FIXED: Append precise Hour-Minute-Second to guarantee Nextcloud database uniqueness
         time_stamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
         file_name = f"Fear_vs_Greed_{time_stamp}.png"
         local_path = file_name
         remote_path = f"StockAlerts/{file_name}"
 
-        print(f"[DEBUG] 2/5 - Data fetched. Rendering PNG to {local_path} via Matplotlib...")
         try:
             fig, ax1 = plt.subplots(figsize=(12, 6))
-            
             color = 'tab:blue'
             ax1.set_xlabel('Date')
             ax1.set_ylabel('S&P 500 Adjusted Close Price', color=color)
@@ -151,7 +117,6 @@ def run_nextcloud_alert():
             ax1.tick_params(axis='y', labelcolor=color)
             ax1.grid(True)
             
-            # FIXED: Dynamically calculate strict Y-Axis limits for S&P 500 to match old graph
             min_spy = merged_df['SPY_Close'].min() * 0.98
             max_spy = merged_df['SPY_Close'].max() * 1.02
             ax1.set_ylim(min_spy, max_spy)
@@ -161,14 +126,10 @@ def run_nextcloud_alert():
             ax2.set_ylabel('Fear & Greed Index (0-100)', color=color)
             ax2.plot(merged_df.index, merged_df['Fear_Greed_Index'], color=color, linestyle='--', alpha=0.6, label='F&G Index')
             ax2.tick_params(axis='y', labelcolor=color)
-            
             ax2.set_ylim(0, 100)  
             ax2.set_yticks([0, 25, 50, 75, 100])
             
-            sentiment_levels = {
-                0: 'Extreme Fear', 25: 'Fear', 50: 'Neutral', 75: 'Greed', 100: 'Extreme Greed'
-            }
-            
+            sentiment_levels = {0: 'Extreme Fear', 25: 'Fear', 50: 'Neutral', 75: 'Greed', 100: 'Extreme Greed'}
             for y_level, label in sentiment_levels.items():
                 ax2.axhline(y=y_level, color='gray', linestyle=':', alpha=0.4, linewidth=1)
                 ax2.text(merged_df.index[-1], y_level, f'— {label}', color='black', fontsize=9, ha='right', va='center')
@@ -179,53 +140,31 @@ def run_nextcloud_alert():
             ax1.legend(lines_1 + lines_2, labels_1 + labels_2, loc='upper left')
             
             plt.savefig(local_path, dpi=300, bbox_inches='tight')
-            plt.close(fig) # Explicitly clear memory
-            
+            plt.close(fig) 
         except Exception as e:
-            print(f"[DEBUG] FAILED at Step 2: Matplotlib Render Error - {e}")
             return False, f"Matplotlib Render Error: {str(e)}"
             
-        print(f"[DEBUG] 3/5 - PNG Rendered. Uploading via WebDAV to {remote_path}...")
         upload_success = upload_file_webdav(local_path, remote_path, NEXTCLOUD_URL, BOT_USERNAME, APP_PASSWORD, print)
-        if not upload_success:
-            print("[DEBUG] FAILED at Step 3: WebDAV Upload.")
-            return False, "WebDAV Upload Failed. Check credentials or folder path."
+        if not upload_success: return False, "WebDAV Upload Failed. Check credentials or folder path."
             
         report_message = "📊 *Fear & Greed Index overlayed with S&P 500 for comparison*"
-        
-        print("[DEBUG] 4/5 - WebDAV Success. Sharing to Nextcloud Talk...")
         share_success = share_file_to_talk(remote_path, CONVERSATION_TOKEN, NEXTCLOUD_URL, BOT_USERNAME, APP_PASSWORD, print)
         if share_success:
             report_message += "\n\n🟢 File successfully shared."
         else:
             report_message += "\n\n❌ WARNING: File sharing failed. Talk Token may be invalid."
 
-        print("[DEBUG] 5/5 - Sending final text message summary...")
         api_endpoint = f"{NEXTCLOUD_URL}/ocs/v2.php/apps/spreed/api/v1/chat/{CONVERSATION_TOKEN}"
-        resp = requests.post(
-            api_endpoint, 
-            headers={"OCS-APIRequest": "true", "Content-Type": "application/json"}, 
-            data=json.dumps({"message": report_message}), 
-            auth=(BOT_USERNAME, APP_PASSWORD),
-            timeout=15 
-        )
+        resp = requests.post(api_endpoint, headers={"OCS-APIRequest": "true", "Content-Type": "application/json"}, data=json.dumps({"message": report_message}), auth=(BOT_USERNAME, APP_PASSWORD), timeout=15)
         
         if resp.status_code in [200, 201]:
-            # STRICT RETURN: Ensure the file share actually succeeded
-            if share_success:
-                print("[DEBUG] PIPELINE COMPLETE. Success!")
-                return True, "Alert successfully generated, uploaded, and shared to Talk."
-            else:
-                print("[DEBUG] PIPELINE PARTIAL FAILURE. File share failed.")
-                return False, "File upload succeeded, but Talk Share failed. Check Conversation Token."
+            if share_success: return True, "Alert successfully generated, uploaded, and shared to Talk."
+            else: return False, "File upload succeeded, but Talk Share failed. Check Conversation Token."
         else:
-            print(f"[DEBUG] FAILED at Step 5: Text Message HTTP {resp.status_code}")
             return False, f"Failed to send final text message. HTTP {resp.status_code}"
 
     except Exception as e:
-        print(f"[DEBUG] UNEXPECTED SYSTEM ERROR: {e}")
         return False, f"Unexpected System Error: {str(e)}"
     finally:
         if os.path.exists(local_path):
             os.remove(local_path)
-            print("[DEBUG] Cleaned up temporary PNG file.")

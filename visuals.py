@@ -6,92 +6,52 @@ import ta
 from quant_signals import get_candlestick_patterns
 
 def create_intraday_chart(df, ticker, s1=None, s2=None, live_pattern_name=None, live_pattern_tooltip=None, live_pattern_score=None):
-    """
-    Generates a high-resolution, short-term chart using 5-minute data 
-    for the current trading day. Conditionally plots algorithmic floors (S1/S2).
-    """
-    # Extract the exact date dynamically from the dataframe index
     last_date = df.index[-1].date().strftime('%d-%b-%Y') if not df.empty else 'Today'
     
     fig = go.Figure(data=[go.Candlestick(
-        x=df.index,
-        open=df['Open'],
-        high=df['High'],
-        low=df['Low'],
-        close=df['Close'],
-        name="Intraday"
+        x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name="Intraday"
     )])
     
-    # Plot Pivot Point Floors if they were successfully calculated
     if s1 is not None:
-        fig.add_hline(y=s1, line_dash="dash", line_color="#00ffcc", 
-                      annotation_text="S1 Support", annotation_position="top left", 
-                      annotation_font_color="#00ffcc")
+        fig.add_hline(y=s1, line_dash="dash", line_color="#00ffcc", annotation_text="S1 Support", annotation_position="top left", annotation_font_color="#00ffcc")
     if s2 is not None:
-        fig.add_hline(y=s2, line_dash="dash", line_color="#00ffcc", 
-                      annotation_text="S2 Support", annotation_position="top left", 
-                      annotation_font_color="#00ffcc")
+        fig.add_hline(y=s2, line_dash="dash", line_color="#00ffcc", annotation_text="S2 Support", annotation_position="top left", annotation_font_color="#00ffcc")
     
-    # Construct the title cleanly (Removed <abbr> as Plotly SVG renderer does not support interactive tooltips)
     title_text = f"{last_date} Pulse (5-Minute Intervals) - {ticker}"
     if live_pattern_name:
         title_text += f"<br><span style='color:#ffaa00; font-size: 13px;'><i>Live Formation: {live_pattern_name} (Hover over chart marker for details)</i></span>"
 
-    # Add the Hover Marker to the very last 5-minute candle
     if live_pattern_name and live_pattern_tooltip and not df.empty:
         last_row = df.iloc[-1]
         score = live_pattern_score if live_pattern_score is not None else 0
-        
-        # Bullish patterns get a green upward arrow below the candle
         if score > 0:
-            fig.add_annotation(
-                x=last_row.name, y=last_row['Low'],
-                yshift=-15, text="▲", hovertext=f"<b>{live_pattern_name}</b><br>{live_pattern_tooltip}",
-                showarrow=False, font=dict(color="#00ff00", size=18)
-            )
-        # Bearish patterns get a red downward arrow above the candle
+            fig.add_annotation(x=last_row.name, y=last_row['Low'], yshift=-15, text="▲", hovertext=f"<b>{live_pattern_name}</b><br>{live_pattern_tooltip}", showarrow=False, font=dict(color="#00ff00", size=18))
         elif score < 0:
-            fig.add_annotation(
-                x=last_row.name, y=last_row['High'],
-                yshift=15, text="▼", hovertext=f"<b>{live_pattern_name}</b><br>{live_pattern_tooltip}",
-                showarrow=False, font=dict(color="#ff4d4d", size=18)
-            )
-        # Neutral patterns get a yellow diamond
+            fig.add_annotation(x=last_row.name, y=last_row['High'], yshift=15, text="▼", hovertext=f"<b>{live_pattern_name}</b><br>{live_pattern_tooltip}", showarrow=False, font=dict(color="#ff4d4d", size=18))
         else:
-            fig.add_annotation(
-                x=last_row.name, y=last_row['Low'],
-                yshift=-15, text="◆", hovertext=f"<b>{live_pattern_name}</b><br>{live_pattern_tooltip}",
-                showarrow=False, font=dict(color="#ffaa00", size=16)
-            )
+            fig.add_annotation(x=last_row.name, y=last_row['Low'], yshift=-15, text="◆", hovertext=f"<b>{live_pattern_name}</b><br>{live_pattern_tooltip}", showarrow=False, font=dict(color="#ffaa00", size=16))
     
     fig.update_layout(
         template="plotly_dark",
         height=400,
         margin=dict(l=20, r=20, t=60, b=20),
         xaxis_rangeslider_visible=False,
-        # Centering the title to avoid the fullscreen button
         title=dict(text=title_text, x=0.5),
-        dragmode=False,
         hovermode="x unified"
     )
 
-    mobile_safe_config = {
+    # Restored desktop features, keeping logo hidden
+    clean_config = {
         'responsive': True,
-        'displayModeBar': False,
-        'scrollZoom': False,
-        'doubleClick': 'reset',
         'displaylogo': False
     }
 
-    return fig.to_html(full_html=False, include_plotlyjs='cdn', config=mobile_safe_config)
+    return fig.to_html(full_html=False, include_plotlyjs='cdn', config=clean_config)
+
 
 def create_macro_chart(df, df_sp500, ticker):
-    """
-    Generates the 5-Row Institutional Macro Chart.
-    """
-    df = df.tail(126).copy() # Last 6 months
+    df = df.tail(126).copy()
     
-    # 1. Moving Averages & Bollinger Bands
     df['MA_21'] = df['Close'].rolling(window=21).mean()
     df['MA_50'] = df['Close'].rolling(window=50).mean()
     df['MA_200'] = df['Close'].rolling(window=200).mean()
@@ -100,34 +60,27 @@ def create_macro_chart(df, df_sp500, ticker):
     df['BB_High'] = indicator_bb.bollinger_hband()
     df['BB_Low'] = indicator_bb.bollinger_lband()
     
-    # 2. Relative Strength Line (vs S&P 500)
     if df_sp500 is not None:
         sp500_aligned = df_sp500['Close'].reindex(df.index, method='ffill')
         df['RS_Line'] = df['Close'] / sp500_aligned
         normalization_factor = df['Close'].iloc[0] / df['RS_Line'].iloc[0]
         df['RS_Normalized'] = df['RS_Line'] * normalization_factor
 
-    # 3. Oscillators & Volume
     df['RSI'] = ta.momentum.RSIIndicator(close=df['Close'], window=14).rsi()
     df['OBV'] = ta.volume.OnBalanceVolumeIndicator(close=df['Close'], volume=df['Volume']).on_balance_volume()
     
-    # 4. MACD
     macd = ta.trend.MACD(close=df['Close'])
     df['MACD_Line'] = macd.macd()
     df['MACD_Signal'] = macd.macd_signal()
     df['MACD_Hist'] = macd.macd_diff()
 
-    # Create 5 Subplots
     fig = make_subplots(
         rows=5, cols=1, shared_xaxes=True, 
         row_heights=[0.4, 0.15, 0.15, 0.15, 0.15],
         vertical_spacing=0.03,
-        subplot_titles=(
-            f"{ticker} Macro Trend", "Volume", "RSI (14)", "MACD (Trend Reversals)", "On-Balance Volume"
-        )
+        subplot_titles=(f"{ticker} Macro Trend", "Volume", "RSI (14)", "MACD (Trend Reversals)", "On-Balance Volume")
     )
 
-    # ROW 1: Price, MAs, and RS Line
     fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name="Price"), row=1, col=1)
     fig.add_trace(go.Scatter(x=df.index, y=df['MA_21'], line=dict(color='#00ffcc', width=1.5), name="21D MA"), row=1, col=1)
     fig.add_trace(go.Scatter(x=df.index, y=df['MA_50'], line=dict(color='yellow', width=1.5), name="50D MA"), row=1, col=1)
@@ -138,10 +91,7 @@ def create_macro_chart(df, df_sp500, ticker):
     if df_sp500 is not None:
         fig.add_trace(go.Scatter(x=df.index, y=df['RS_Normalized'], line=dict(color='cyan', width=2), name="RS vs S&P500"), row=1, col=1)
 
-    # ALGORITHMIC CHART ANNOTATIONS (Last 14 Days Only)
-    # Detects patterns and overlays visual triangles on the primary candlestick chart
     if len(df) >= 16:
-        # We need a buffer of 16 so we can always look back 2 days from the start of the 14-day window
         last_14_days = df.tail(16)
         for i in range(2, len(last_14_days)):
             prev2_row = last_14_days.iloc[i-2]
@@ -150,46 +100,27 @@ def create_macro_chart(df, df_sp500, ticker):
             
             patterns = get_candlestick_patterns(prev2_row, prev1_row, curr_row)
             for p in patterns:
-                # Bullish patterns get green upward arrows below the candle
                 if p["score"] > 0:
-                    fig.add_annotation(
-                        row=1, col=1, x=curr_row.name, y=curr_row['Low'],
-                        yshift=-15, text="▲", hovertext=f"<b>{p['name']}</b><br>{p['tooltip']}",
-                        showarrow=False, font=dict(color="#00ff00", size=14)
-                    )
-                # Bearish patterns get red downward arrows above the candle
+                    fig.add_annotation(row=1, col=1, x=curr_row.name, y=curr_row['Low'], yshift=-15, text="▲", hovertext=f"<b>{p['name']}</b><br>{p['tooltip']}", showarrow=False, font=dict(color="#00ff00", size=14))
                 elif p["score"] < 0:
-                    fig.add_annotation(
-                        row=1, col=1, x=curr_row.name, y=curr_row['High'],
-                        yshift=15, text="▼", hovertext=f"<b>{p['name']}</b><br>{p['tooltip']}",
-                        showarrow=False, font=dict(color="#ff4d4d", size=14)
-                    )
-                # Neutral patterns get a yellow diamond
+                    fig.add_annotation(row=1, col=1, x=curr_row.name, y=curr_row['High'], yshift=15, text="▼", hovertext=f"<b>{p['name']}</b><br>{p['tooltip']}", showarrow=False, font=dict(color="#ff4d4d", size=14))
                 else:
-                    fig.add_annotation(
-                        row=1, col=1, x=curr_row.name, y=curr_row['Low'],
-                        yshift=-15, text="◆", hovertext=f"<b>{p['name']}</b><br>{p['tooltip']}",
-                        showarrow=False, font=dict(color="#ffaa00", size=12)
-                    )
+                    fig.add_annotation(row=1, col=1, x=curr_row.name, y=curr_row['Low'], yshift=-15, text="◆", hovertext=f"<b>{p['name']}</b><br>{p['tooltip']}", showarrow=False, font=dict(color="#ffaa00", size=12))
 
-    # ROW 2: Volume
     colors = ['green' if row['Close'] >= row['Open'] else 'red' for index, row in df.iterrows()]
     fig.add_trace(go.Bar(x=df.index, y=df['Volume'], marker_color=colors, name="Volume"), row=2, col=1)
 
-    # ROW 3: RSI (With Text Annotations)
     fig.add_trace(go.Scatter(x=df.index, y=df['RSI'], line=dict(color='purple', width=2), name="RSI"), row=3, col=1)
     fig.add_hline(y=70, line_dash="dot", line_color="red", row=3, col=1)
     fig.add_hline(y=30, line_dash="dot", line_color="green", row=3, col=1)
     fig.add_annotation(row=3, col=1, x=df.index[0], y=70, text="Overbought (70)", showarrow=False, font=dict(color="red", size=10), xanchor="left", yshift=8)
     fig.add_annotation(row=3, col=1, x=df.index[0], y=30, text="Oversold (30)", showarrow=False, font=dict(color="green", size=10), xanchor="left", yshift=-8)
 
-    # ROW 4: MACD
     fig.add_trace(go.Scatter(x=df.index, y=df['MACD_Line'], line=dict(color='blue', width=1.5), name="MACD"), row=4, col=1)
     fig.add_trace(go.Scatter(x=df.index, y=df['MACD_Signal'], line=dict(color='orange', width=1.5), name="Signal"), row=4, col=1)
     macd_colors = ['green' if val >= 0 else 'red' for val in df['MACD_Hist']]
     fig.add_trace(go.Bar(x=df.index, y=df['MACD_Hist'], marker_color=macd_colors, name="Histogram"), row=4, col=1)
 
-    # ROW 5: OBV
     fig.add_trace(go.Scatter(x=df.index, y=df['OBV'], line=dict(color='lightblue', width=2), name="OBV"), row=5, col=1)
 
     fig.update_layout(
@@ -197,23 +128,13 @@ def create_macro_chart(df, df_sp500, ticker):
         height=1200, 
         margin=dict(l=20, r=20, t=80, b=20), 
         xaxis_rangeslider_visible=False,
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="center",
-            x=0.5
-        ),
-        dragmode=False,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
         hovermode="x unified"
     )
 
-    mobile_safe_config = {
+    clean_config = {
         'responsive': True,
-        'displayModeBar': False,
-        'scrollZoom': False,
-        'doubleClick': 'reset',
         'displaylogo': False
     }
 
-    return fig.to_html(full_html=False, include_plotlyjs='cdn', config=mobile_safe_config)
+    return fig.to_html(full_html=False, include_plotlyjs='cdn', config=clean_config)
