@@ -70,7 +70,8 @@ DEFAULT_CONFIG = {
             "FREQUENCY": "mon-fri",
             "START_TIME": "09:30",
             "END_TIME": "16:00",
-            "INTERVAL_MINUTES": 10
+            "INTERVAL_MINUTES": 10,
+            "FLASH_CRASH_THRESHOLD": 3.0
         },
         "MOONSHOT_ALERTS": {
             "ENABLED": False,
