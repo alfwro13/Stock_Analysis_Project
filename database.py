@@ -134,6 +134,19 @@ def init_db():
             status TEXT
         )
     ''')
+
+    # New table for Quantitative Earnings Options Volatility
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS earnings_volatility (
+            ticker TEXT PRIMARY KEY,
+            next_earnings_date TEXT,
+            implied_move_pct REAL,
+            historical_avg_move_pct REAL,
+            edge_score REAL,
+            options_volume INTEGER,
+            last_updated TEXT
+        )
+    ''')
     
     conn.commit()
     

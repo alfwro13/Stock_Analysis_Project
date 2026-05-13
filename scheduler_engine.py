@@ -13,9 +13,8 @@ from maintenance_engine import MaintenanceEngine
 from data_engine import DataEngine
 from quant_signals import QuantEngine
 from ghostfolio_sync import GhostfolioSyncEngine
-
-# --- NEW IMPORT ---
 from quant_engine import run_daily_quant_scan
+from earnings_vol_engine import run_earnings_vol_scan
 
 # --- Background Task Scheduler Setup ---
 scheduler = BackgroundScheduler()
@@ -73,6 +72,22 @@ def run_overnight_quant_scan():
         print("--- OVERNIGHT QUANT SCAN COMPLETE ---\n")
     except Exception as e:
         print(f"[ERROR] Overnight Quant Scan Failed: {e}")
+    finally:
+        task_lock.release()
+
+def run_weekend_earnings_scan():
+    """Executes the quantitative earnings volatility options scan."""
+    if not task_lock.acquire(blocking=False):
+        print("[WARNING] System is busy. Skipping Earnings Volatility Scan.")
+        return
+    try:
+        print("\n--- EARNINGS VOLATILITY SCAN INITIATED ---")
+        engine = DataEngine()
+        all_tickers = engine.get_all_tickers() 
+        run_earnings_vol_scan(all_tickers)
+        print("--- EARNINGS VOLATILITY SCAN COMPLETE ---\n")
+    except Exception as e:
+        print(f"[ERROR] Earnings Volatility Scan Failed: {e}")
     finally:
         task_lock.release()
 
@@ -216,13 +231,21 @@ def reload_scheduler():
         except Exception as e:
             print(f"[ERROR] Failed to schedule Maintenance Job: {e}")
 
-    # 7. NEW: Daily Overnight Quant Job (Native SQLite)
+    # 7. Daily Overnight Quant Job (Native SQLite)
     scheduler.add_job(
         run_overnight_quant_scan,
         CronTrigger(day_of_week='*', hour=1, minute=0), # Runs every day at 01:00 AM
         id='overnight_quant_scan_job'
     )
     print("[SCHEDULER] Overnight Quant Scan scheduled for every day at 01:00 AM")
+    
+    # 8. NEW: Weekly Earnings Volatility Options Scan
+    scheduler.add_job(
+        run_weekend_earnings_scan,
+        CronTrigger(day_of_week='sat', hour=10, minute=0), # Runs every Saturday at 10:00 AM
+        id='weekend_earnings_vol_scan_job'
+    )
+    print("[SCHEDULER] Earnings Volatility Scan scheduled for Saturday at 10:00 AM")
 
 def start_scheduler():
     scheduler.start()
