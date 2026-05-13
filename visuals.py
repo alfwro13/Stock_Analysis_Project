@@ -70,9 +70,20 @@ def create_intraday_chart(df, ticker, s1=None, s2=None, live_pattern_name=None, 
         margin=dict(l=20, r=20, t=60, b=20),
         xaxis_rangeslider_visible=False,
         # Centering the title to avoid the fullscreen button
-        title=dict(text=title_text, x=0.5)
+        title=dict(text=title_text, x=0.5),
+        dragmode=False,
+        hovermode="x unified"
     )
-    return fig.to_html(full_html=False, include_plotlyjs='cdn')
+
+    mobile_safe_config = {
+        'responsive': True,
+        'displayModeBar': False,
+        'scrollZoom': False,
+        'doubleClick': 'reset',
+        'displaylogo': False
+    }
+
+    return fig.to_html(full_html=False, include_plotlyjs='cdn', config=mobile_safe_config)
 
 def create_macro_chart(df, df_sp500, ticker):
     """
@@ -192,6 +203,17 @@ def create_macro_chart(df, df_sp500, ticker):
             y=1.02,
             xanchor="center",
             x=0.5
-        )
+        ),
+        dragmode=False,
+        hovermode="x unified"
     )
-    return fig.to_html(full_html=False, include_plotlyjs='cdn')
+
+    mobile_safe_config = {
+        'responsive': True,
+        'displayModeBar': False,
+        'scrollZoom': False,
+        'doubleClick': 'reset',
+        'displaylogo': False
+    }
+
+    return fig.to_html(full_html=False, include_plotlyjs='cdn', config=mobile_safe_config)

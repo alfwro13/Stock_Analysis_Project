@@ -104,6 +104,7 @@ def generate_sentiment_figure():
         height=600,
         margin=dict(l=40, r=40, t=60, b=40),
         hovermode="x unified",
+        dragmode=False,
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
     fig.update_yaxes(title_text="S&P 500 Price ($)", range=[min_spy, max_spy], secondary_y=False)
@@ -113,7 +114,16 @@ def generate_sentiment_figure():
 def get_sentiment_html():
     fig = generate_sentiment_figure()
     if not fig: return "<p>Error loading sentiment data. Please try again later.</p>"
-    return fig.to_html(full_html=False, include_plotlyjs='cdn')
+    
+    mobile_safe_config = {
+        'responsive': True,
+        'displayModeBar': False,
+        'scrollZoom': False,
+        'doubleClick': 'reset',
+        'displaylogo': False
+    }
+    
+    return fig.to_html(full_html=False, include_plotlyjs='cdn', config=mobile_safe_config)
 
 def run_nextcloud_alert():
     """Background task: Uses Matplotlib to generate the PNG, then uploads to Nextcloud."""

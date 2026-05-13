@@ -204,3 +204,32 @@ details.settings-card[open] > summary { border-bottom: 1px solid #333; margin-bo
     background-color: rgba(77, 166, 255, 0.1);
     text-decoration: none;
 }
+
+/* --- Mobile Optimization Overrides --- */
+@media (max-width: 768px) {
+    /* Force the browser to prioritize vertical scrolling over Plotly's JS canvas */
+    .chart-wrapper {
+        touch-action: pan-y !important;
+        padding: 5px;
+    }
+
+    /* Override the hardcoded 1200px height for the Macro Chart on mobile */
+    .js-plotly-plot, .plotly, .plotly div {
+        min-height: 400px;
+    }
+    
+    /* Shrink the fundamentals grid so it stacks neatly */
+    .fundamentals-grid {
+        grid-template-columns: 1fr;
+    }
+
+    /* Make the action buttons stack vertically on mobile to prevent squishing */
+    .action-buttons, .controls-container {
+        flex-direction: column;
+        gap: 10px;
+    }
+    
+    .filter-input, .filter-select {
+        width: 100%;
+    }
+}
