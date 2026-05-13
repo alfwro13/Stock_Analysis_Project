@@ -199,6 +199,43 @@ async def watchlist_page(request: Request, embed: bool = False):
         }
     )
 
+@page_router.get("/earnings-volatility", response_class=HTMLResponse)
+async def earnings_volatility_page(request: Request):
+    """
+    Renders the standalone Earnings Volatility Dashboard.
+    Fetches upcoming earnings options mispricing data from the SQLite database
+    and calculates the mathematical edge.
+    """
+    # Generate today's date string to filter out past earnings
+    today_str = datetime.now().strftime('%Y-%m-%d')
+    
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    # Fetch all future earnings events, ordered by date (closest first), then by best edge
+    query = """
+        SELECT * FROM earnings_volatility 
+        WHERE next_earnings_date >= ?
+        ORDER BY next_earnings_date ASC, edge_score DESC
+    """
+    cursor.execute(query, (today_str,))
+    rows = cursor.fetchall()
+    
+    # Convert SQLite Row objects to standard Python dictionaries
+    earnings_data = [dict(row) for row in rows]
+    
+    conn.close()
+    
+    return templates.TemplateResponse(
+        request=request, 
+        name="earnings_volatility.html", 
+        context={
+            "earnings_data": earnings_data,
+            "unread_count": get_unread_count(),
+            "config": load_config()
+        }
+    )
+
 @page_router.get("/quant-screener", response_class=HTMLResponse)
 async def quant_screener_page(request: Request):
     """

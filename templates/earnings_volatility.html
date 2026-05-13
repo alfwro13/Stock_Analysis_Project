@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="color-scheme" content="dark">
+    <title>Quantamental - Earnings Volatility</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+    
+    <style>
+        /* Isolated CSS specifically for formatting the report container */
+        .report-container {
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 40px;
+            background-color: #1e1e1e;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+            border-left: 4px solid #4da6ff;
+            line-height: 1.6;
+        }
+        .report-container h2 {
+            color: #00ffcc;
+            margin-bottom: 15px;
+            border-bottom: 1px solid #333;
+            padding-bottom: 5px;
+            font-size: 24px;
+        }
+        .report-container p {
+            color: #ccc;
+            font-size: 15px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body class="body-watchlist">
+    
+    <div class="header-container">
+        <div>
+            <div class="title-wrapper">
+                <a href="https://github.com/alfwro13/Stock_Analysis_Project" target="_blank" class="logo-link">
+                    <img src="/assets/logo_small.png" alt="Quantamental Logo" class="logo-img">
+                </a>
+                <h1><abbr title="Quantamental - a modern institutional strategy that combines Quantitative analysis with Fundamental analysis.">uantamental</abbr> Dashboard</h1>
+            </div>
+            
+            <p style="color: #aaaaaa; margin-top: 5px; font-size: 14px;">Options Mispricing & Volatility Arbitrage Scanner</p>
+            
+            <div class="nav-links">
+                <a href="/portfolio">💼 Portfolio</a>
+                <a href="/watchlist">👀 Watchlist</a>
+                <a href="/quant-screener">📊 Quant Screener</a>
+                <a href="/earnings-volatility" class="active">📅 Earnings Volatility</a>
+                <a href="/market-sentiment">Market Sentiment</a>
+                <a href="/settings">⚙️ Settings</a>
+                <a href="/glossary">📚 Glossary</a>
+                <a href="/notifications">🔔 Notifications {% if unread_count > 0 %}<span class="badge" id="nav-badge">{{ unread_count }}</span>{% endif %}</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="report-container">
+        <h2>Upcoming Earnings Volatility Edge</h2>
+        <p>Quantitative options mispricing evaluation. A positive edge score indicates that the At-The-Money (ATM) Straddle implies a smaller move than historical averages (Options are mathematically underpriced).</p>
+        
+        <table id="dataTable">
+            <thead>
+                <tr>
+                    <th onclick="sortTable('dataTable', 0)">Ticker ↕</th>
+                    <th onclick="sortTable('dataTable', 1)">Next Earnings ↕</th>
+                    <th onclick="sortTable('dataTable', 2)">Implied Move ↕</th>
+                    <th onclick="sortTable('dataTable', 3)">Historical Avg Move ↕</th>
+                    <th onclick="sortTable('dataTable', 4)">Edge Score ↕</th>
+                    <th onclick="sortTable('dataTable', 5)">Options Volume ↕</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in earnings_data %}
+                <tr>
+                    <td><a href="/stock/{{ row.ticker }}" style="color: #4da6ff; font-weight: bold;">{{ row.ticker }}</a></td>
+                    <td>{{ row.next_earnings_date }}</td>
+                    <td>{{ "{:,.2f}".format(row.implied_move_pct) }}%</td>
+                    <td>{{ "{:,.2f}".format(row.historical_avg_move_pct) }}%</td>
+                    <td style="font-weight: bold; color: {% if row.edge_score > 0 %}#00ff00{% elif row.edge_score < 0 %}#ff4d4d{% else %}#cccccc{% endif %};">
+                        {% if row.edge_score > 0 %}+{% endif %}{{ "{:,.2f}".format(row.edge_score) }}%
+                    </td>
+                    <td>{{ "{:,.0f}".format(row.options_volume) }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="6" style="text-align: center; color: #888; padding: 20px;">No upcoming earnings volatility data found. Ensure the background <code>weekend_earnings_vol_scan_job</code> has run successfully.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        // Leverage the existing table sorting logic from watchlist/portfolio
+        function sortTable(tableId, n) {
+            var table = document.getElementById(tableId);
+            var rows = table.rows;
+            var isNumericColumn = false;
+            var isDateColumn = false;
+
+            for (var i = 1; i < (rows.length - 1); i++) {
+                var cellText = (rows[i].getElementsByTagName("TD")[n].textContent || "").trim();
+                if (/^\d{4}-\d{2}-\d{2}/.test(cellText)) {
+                    isDateColumn = true;
+                    break;
+                }
+                var parsed = parseFloat(cellText.replace(/,/g, '').replace(/%/g, ''));
+                if (!isNaN(parsed)) {
+                    isNumericColumn = true;
+                    break;
+                }
+            }
+
+            var switching = true;
+            var dir = "asc";
+            var switchcount = 0;
+
+            while (switching) {
+                switching = false;
+                rows = table.rows;
+                for (var i = 1; i < (rows.length - 1); i++) {
+                    var shouldSwitch = false;
+                    var x = rows[i].getElementsByTagName("TD")[n];
+                    var y = rows[i + 1].getElementsByTagName("TD")[n];
+
+                    var textX = (x.textContent || x.innerText).trim();
+                    var textY = (y.textContent || y.innerText).trim();
+
+                    if (isDateColumn || !isNumericColumn) {
+                        if (dir == "asc") {
+                            if (textX.toLowerCase() > textY.toLowerCase()) { shouldSwitch = true; break; }
+                        } else if (dir == "desc") {
+                            if (textX.toLowerCase() < textY.toLowerCase()) { shouldSwitch = true; break; }
+                        }
+                    } else {
+                        var numX = parseFloat(textX.replace(/,/g, '').replace(/%/g, '').replace(/\+/g, ''));
+                        var numY = parseFloat(textY.replace(/,/g, '').replace(/%/g, '').replace(/\+/g, ''));
+
+                        if (isNaN(numX)) numX = -Infinity;
+                        if (isNaN(numY)) numY = -Infinity;
+
+                        if (dir == "asc") {
+                            if (numX > numY) { shouldSwitch = true; break; }
+                        } else if (dir == "desc") {
+                            if (numX < numY) { shouldSwitch = true; break; }
+                        }
+                    }
+                }
+                if (shouldSwitch) {
+                    rows[i].parentNode.insertBefore(rows[i + 1], rows[i]);
+                    switching = true;
+                    switchcount++;
+                } else {
+                    if (switchcount == 0 && dir == "asc") {
+                        dir = "desc";
+                        switching = true;
+                    }
+                }
+            }
+        }
+    </script>
+</body>
+</html>
