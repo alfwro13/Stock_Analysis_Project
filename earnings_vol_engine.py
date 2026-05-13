@@ -18,6 +18,21 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+def log_notification(message_type: str, message_text: str) -> None:
+    """Helper function to log scan progress to the system notification center."""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO system_notifications (message_type, message_text) VALUES (?, ?)",
+            (message_type, message_text)
+        )
+        conn.commit()
+    except Exception as e:
+        logger.error(f"Failed to log notification: {e}")
+    finally:
+        conn.close()
+
 def get_historical_earnings_move(ticker_obj: yf.Ticker) -> Optional[float]:
     """
     Calculates the average absolute percentage gap of the last 4 earnings events.
@@ -126,91 +141,106 @@ def run_earnings_vol_scan(ticker_list: List[str]) -> None:
     Iterates through assets, filters for upcoming earnings within the next 14 days, 
     calculates quantitative option mispricings (Edge), and saves to the SQLite database.
     """
+    total_tickers = len(ticker_list)
     if not ticker_list:
         logger.warning("Ticker list is empty. Aborting scan.")
         return
 
-    logger.info(f"Starting earnings volatility scan for {len(ticker_list)} assets...")
+    logger.info(f"Starting earnings volatility scan for {total_tickers} assets...")
+    log_notification("Info", f"Earnings Volatility Scan initiated for {total_tickers} assets.")
     
-    conn = get_connection()
-    cursor = conn.cursor()
-    
-    # Pre-fetch existing earnings dates from the core tracker table to minimize redundant API hits
-    placeholders = ','.join('?' for _ in ticker_list)
-    cursor.execute(f"SELECT ticker, next_earnings_date FROM stock_signals WHERE ticker IN ({placeholders})", ticker_list)
-    db_earnings_map = {row['ticker']: row['next_earnings_date'] for row in cursor.fetchall()}
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        
+        # Pre-fetch existing earnings dates from the core tracker table to minimize redundant API hits
+        placeholders = ','.join('?' for _ in ticker_list)
+        cursor.execute(f"SELECT ticker, next_earnings_date FROM stock_signals WHERE ticker IN ({placeholders})", ticker_list)
+        db_earnings_map = {row['ticker']: row['next_earnings_date'] for row in cursor.fetchall()}
 
-    today = datetime.now()
-    cutoff_date = today + timedelta(days=14)
+        today = datetime.now()
+        cutoff_date = today + timedelta(days=14)
 
-    for ticker in ticker_list:
-        try:
-            # 1. Evaluate Earnings Timeline
-            e_date_str = db_earnings_map.get(ticker)
-            if not e_date_str or e_date_str == 'Unknown':
-                continue
-                
+        for i, ticker in enumerate(ticker_list):
             try:
-                earnings_date = datetime.strptime(e_date_str, '%Y-%m-%d')
-            except ValueError:
-                continue
+                # 1. Evaluate Earnings Timeline
+                e_date_str = db_earnings_map.get(ticker)
+                if not e_date_str or e_date_str == 'Unknown':
+                    continue
+                    
+                try:
+                    earnings_date = datetime.strptime(e_date_str, '%Y-%m-%d')
+                except ValueError:
+                    continue
 
-            # Bypass if earnings are more than 14 days away or have already passed
-            if not (today <= earnings_date <= cutoff_date):
-                continue
+                # Bypass if earnings are more than 14 days away or have already passed
+                if not (today <= earnings_date <= cutoff_date):
+                    continue
+                    
+                logger.info(f"Analyzing {ticker} (Earnings Date: {e_date_str})...")
                 
-            logger.info(f"Analyzing {ticker} (Earnings Date: {e_date_str})...")
-            
-            ticker_obj = yf.Ticker(ticker)
-            hist = ticker_obj.history(period="5d")
-            
-            if hist.empty:
-                logger.warning(f"No underlying price data available for {ticker}. Skipping.")
-                continue
+                ticker_obj = yf.Ticker(ticker)
+                hist = ticker_obj.history(period="5d")
                 
-            underlying_price = hist['Close'].iloc[-1]
-            
-            # 2. Calculate Mathematical Vectors
-            hist_move_pct = get_historical_earnings_move(ticker_obj)
-            implied_move_pct, opt_volume = get_implied_straddle_move(ticker_obj, underlying_price, earnings_date)
-            
-            # Require both metrics to calculate a valid edge
-            if hist_move_pct is None or implied_move_pct is None:
-                logger.debug(f"Missing volatility parameters for {ticker}. Skipping edge calculation.")
-                continue
+                if hist.empty:
+                    logger.warning(f"No underlying price data available for {ticker}. Skipping.")
+                    continue
+                    
+                underlying_price = hist['Close'].iloc[-1]
+                
+                # 2. Calculate Mathematical Vectors
+                hist_move_pct = get_historical_earnings_move(ticker_obj)
+                implied_move_pct, opt_volume = get_implied_straddle_move(ticker_obj, underlying_price, earnings_date)
+                
+                # Require both metrics to calculate a valid edge
+                if hist_move_pct is None or implied_move_pct is None:
+                    logger.debug(f"Missing volatility parameters for {ticker}. Skipping edge calculation.")
+                    continue
 
-            # 3. Calculate the Options Mispricing Edge 
-            # (Positive indicates options are mathematically underpriced relative to historical reality)
-            edge_score = hist_move_pct - implied_move_pct
-            last_updated = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                # 3. Calculate the Options Mispricing Edge 
+                # (Positive indicates options are mathematically underpriced relative to historical reality)
+                edge_score = hist_move_pct - implied_move_pct
+                last_updated = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-            # 4. Save to Database securely
-            cursor.execute('''
-                INSERT OR REPLACE INTO earnings_volatility 
-                (ticker, next_earnings_date, implied_move_pct, historical_avg_move_pct, edge_score, options_volume, last_updated)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                ticker, 
-                e_date_str, 
-                round(implied_move_pct, 2), 
-                round(hist_move_pct, 2), 
-                round(edge_score, 2), 
-                opt_volume, 
-                last_updated
-            ))
-            conn.commit()
-            
-            logger.info(f"[{ticker}] Edge: {edge_score:.2f}% | Implied: {implied_move_pct:.2f}% | Hist: {hist_move_pct:.2f}%")
-            
-        except Exception as e:
-            logger.error(f"Fatal error analyzing {ticker}: {str(e)}")
-            conn.rollback()
-        finally:
-            # Mandated randomized API throttling
-            time.sleep(random.uniform(0.5, 1.5))
+                # 4. Save to Database securely
+                cursor.execute('''
+                    INSERT OR REPLACE INTO earnings_volatility 
+                    (ticker, next_earnings_date, implied_move_pct, historical_avg_move_pct, edge_score, options_volume, last_updated)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    ticker, 
+                    e_date_str, 
+                    round(implied_move_pct, 2), 
+                    round(hist_move_pct, 2), 
+                    round(edge_score, 2), 
+                    opt_volume, 
+                    last_updated
+                ))
+                conn.commit()
+                
+                logger.info(f"[{ticker}] Edge: {edge_score:.2f}% | Implied: {implied_move_pct:.2f}% | Hist: {hist_move_pct:.2f}%")
+                
+            except Exception as e:
+                logger.error(f"Error analyzing {ticker}: {str(e)}")
+                conn.rollback()
+            finally:
+                # Mandated randomized API throttling
+                time.sleep(random.uniform(0.5, 1.5))
 
-    conn.close()
-    logger.info("Earnings volatility options scan complete.")
+            # --- Progress Heartbeat ---
+            processed = i + 1
+            if total_tickers >= 4 and processed % max(1, total_tickers // 4) == 0 and processed < total_tickers:
+                pct = int((processed / total_tickers) * 100)
+                log_notification("Info", f"Earnings Volatility Scan Progress: {pct}% ({processed}/{total_tickers} tickers evaluated).")
+
+        logger.info("Earnings volatility options scan complete.")
+        log_notification("Success", f"Earnings Volatility Options Scan completed successfully across {total_tickers} tracked assets.")
+
+    except Exception as e:
+        logger.error(f"Fatal error during Earnings Scan: {str(e)}")
+        log_notification("Error", f"Earnings Volatility Scan failed with a fatal error: {str(e)}")
+    finally:
+        conn.close()
 
 if __name__ == "__main__":
     # Standalone execution logic for testing

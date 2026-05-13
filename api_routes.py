@@ -19,8 +19,41 @@ from sentiment_engine import run_nextcloud_alert
 from earnings_engine import run_earnings_alert
 from insider_engine import run_insider_alert
 from ai_engine import AIPromptEngine
+from data_engine import DataEngine
+from quant_engine import run_daily_quant_scan
+from earnings_vol_engine import run_earnings_vol_scan
 
 api_router = APIRouter(prefix="/api")
+
+def bg_execute_quant_scan():
+    """Background task wrapper for the heavy Quant engine."""
+    engine = DataEngine()
+    tickers = engine.get_all_tickers()
+    run_daily_quant_scan(tickers)
+
+def bg_execute_earnings_scan():
+    """Background task wrapper for the heavy Earnings Volatility engine."""
+    engine = DataEngine()
+    tickers = engine.get_all_tickers()
+    run_earnings_vol_scan(tickers)
+
+@api_router.post("/trigger-quant-scan")
+async def trigger_quant_scan_endpoint(background_tasks: BackgroundTasks):
+    """API endpoint to manually trigger the heavy overnight Quant Screener calculations."""
+    background_tasks.add_task(bg_execute_quant_scan)
+    return JSONResponse(content={
+        "status": "success", 
+        "message": "Quant Scan initiated in the background. Check System Notifications for progress updates."
+    })
+
+@api_router.post("/trigger-earnings-scan")
+async def trigger_earnings_scan_endpoint(background_tasks: BackgroundTasks):
+    """API endpoint to manually trigger the Options Implied Volatility calculations."""
+    background_tasks.add_task(bg_execute_earnings_scan)
+    return JSONResponse(content={
+        "status": "success", 
+        "message": "Earnings Volatility Scan initiated in the background. Check System Notifications for progress updates."
+    })
 
 class PulseRequest(BaseModel):
     tickers: Optional[List[str]] = []
