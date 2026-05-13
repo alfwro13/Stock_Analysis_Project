@@ -134,7 +134,13 @@ def fetch_and_save_pulse(tickers_to_fetch):
                 # Robust extraction handling multi-index vs single-index to prevent YF duplication bugs
                 if isinstance(df_daily.columns, pd.MultiIndex):
                     if ticker not in df_daily.columns.get_level_values(0) or ticker not in df_live.columns.get_level_values(0):
+                        # TICKER MISSING FROM YAHOO: Update timestamp to prevent infinite loop
+                        cursor.execute("UPDATE market_pulse_cache SET last_updated = ? WHERE ticker = ?", (current_time, ticker))
+                        if cursor.rowcount == 0:
+                            name = INDEX_TICKERS.get(ticker, ticker)
+                            cursor.execute("INSERT INTO market_pulse_cache (ticker, name, price, change_pts, change_pct, is_positive, last_updated) VALUES (?, ?, ?, ?, ?, ?, ?)", (ticker, name, "0.00", "0.00", "0.00", 1, current_time))
                         continue
+                        
                     t_daily = df_daily[ticker].copy()
                     t_live = df_live[ticker].copy()
                 else:
@@ -145,8 +151,14 @@ def fetch_and_save_pulse(tickers_to_fetch):
                 t_live.dropna(subset=['Close'], inplace=True)
                 
                 if t_daily.empty or t_live.empty:
+                    # DATA EMPTY: Update timestamp to prevent infinite loop
+                    cursor.execute("UPDATE market_pulse_cache SET last_updated = ? WHERE ticker = ?", (current_time, ticker))
+                    if cursor.rowcount == 0:
+                        name = INDEX_TICKERS.get(ticker, ticker)
+                        cursor.execute("INSERT INTO market_pulse_cache (ticker, name, price, change_pts, change_pct, is_positive, last_updated) VALUES (?, ?, ?, ?, ?, ?, ?)", (ticker, name, "0.00", "0.00", "0.00", 1, current_time))
                     continue
 
+                # Normal processing for successful data
                 current_price = t_live['Close'].iloc[-1]
                 last_daily_date = t_daily.index[-1].date()
                 live_date = t_live.index[-1].date()
