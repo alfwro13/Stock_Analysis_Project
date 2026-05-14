@@ -45,38 +45,30 @@
                     <th>Golden Cross</th>
                 </tr>
             </thead>
-            <tbody>
-                </tbody>
+            <tbody></tbody>
         </table>
 
         <div class="edu-footer">
-            <h3>📊 Key Metrics Explained</h3>
-            <div class="fundamentals-grid">
-                <div class="data-card">
-                    <h4>Momentum & Trend</h4>
-                    <p><span class="metric-label">RSI (14-Day):</span> Measures how fast a stock is rising or falling. Above 70 is "Overbought" (due for a pullback), while below 30 is "Oversold" (due for a bounce).</p>
-                    <p><span class="metric-label">MACD Histogram:</span> Measures acceleration. Green bars mean the stock is gaining speed upward; red or shrinking bars mean the trend is losing steam.</p>
-                    <p><span class="metric-label">Golden Cross:</span> A "super-signal" where the 50-day average crosses above the 200-day average, mathematically proving a shift into a major new uptrend.</p>
-                </div>
-                <div class="data-card">
-                    <h4>Institutional Support</h4>
-                    <p><span class="metric-label">Volume:</span> The total shares traded. High volume shows "Smart Money" conviction, while low volume moves are often unreliable "traps."</p>
-                    <p><span class="metric-label">Volume Surge:</span> Triggered when volume is 50% higher than the 20-day average. It highlights massive institutional buying or selling.</p>
-                    <p><span class="metric-label">50D & 200D SMA:</span> The 50D is the "Health Line" for medium-term trends. The 200D is the "Institutional Floor" used by large banks to judge long-term viability.</p>
-                </div>
+            <h3 style="margin-bottom: 15px;">📊 Key Metrics Explained</h3>
+            <div class="explanation-box">
+                <p><span class="metric-label">Volume:</span> Total shares traded today. High volume shows "Smart Money" interest, making price moves more credible. Low volume moves are often "traps" that can easily reverse.</p>
+                <p><span class="metric-label">RSI (14-Day):</span> Measures price momentum on a 0-100 scale. Above 70 is "Overbought" (due for a pullback); below 30 is "Oversold" (due for a potential bounce).</p>
+                <p><span class="metric-label">MACD Histogram:</span> Measures the speed and direction of momentum. Green/growing bars show upward acceleration; red/shrinking bars signal a loss of steam or a potential reversal.</p>
+                <p><span class="metric-label">50D SMA:</span> The 10-week average price, acting as a "Health Line." Trading above it signals a healthy medium-term uptrend; falling below suggests the trend has turned negative.</p>
+                <p><span class="metric-label">200D SMA:</span> The "Institutional Floor" representing the long-term trend. Large banks generally only buy stocks above this line, and breaking below it often marks the start of a bear market.</p>
+                <p><span class="metric-label">Volume Surge:</span> A specialized alert for volume 50% higher than the 20-day average. It highlights massive institutional activity and often confirms a major price breakout.</p>
+                <p><span class="metric-label">Golden Cross:</span> A "super-signal" where the 50-day average crosses above the 200-day average. It mathematically confirms a shift from a long-term decline into a major new uptrend.</p>
             </div>
         </div>
     </div>
 
     <script>
         $(document).ready(function() {
-            // 1. Parse URL Parameters
             const urlParams = new URLSearchParams(window.location.search);
             const targetSector = urlParams.get('sector');
             const reqBullishCross = urlParams.get('bullish_cross') === 'true';
             const reqAbove50d = urlParams.get('above_50d') === 'true';
 
-            // 2. Render Active Filters UI Banner if parameters exist
             if (targetSector || reqBullishCross || reqAbove50d) {
                 let filterLabels = [];
                 if (targetSector) filterLabels.push(`Sector: ${targetSector}`);
@@ -95,59 +87,36 @@
                 $('#screenerTable').parent().prepend(bannerHtml);
             }
 
-            // 3. Register Custom DataTables Filter
             $.fn.dataTable.ext.search.push(
                 function(settings, data, dataIndex, rowData) {
-                    if (targetSector && rowData.sector !== targetSector) {
-                        return false;
-                    }
-                    if (reqBullishCross && rowData.bullish_cross !== 1 && rowData.bullish_cross !== true) {
-                        return false;
-                    }
+                    if (targetSector && rowData.sector !== targetSector) return false;
+                    if (reqBullishCross && rowData.bullish_cross !== 1 && rowData.bullish_cross !== true) return false;
                     if (reqAbove50d) {
                         const price = parseFloat(rowData.close_price);
                         const sma50 = parseFloat(rowData.sma_50);
-                        if (isNaN(price) || isNaN(sma50) || price <= sma50) {
-                            return false;
-                        }
+                        if (isNaN(price) || isNaN(sma50) || price <= sma50) return false;
                     }
                     return true; 
                 }
             );
 
-            // 4. Initialize DataTables
             $('#screenerTable').DataTable({
                 ajax: '/api/screener-data',
                 deferRender: true,
                 pageLength: 25,
                 order: [[0, 'asc']], 
-                language: {
-                    search: "🔍 Search Everything:"
-                },
+                language: { search: "🔍 Search Everything:" },
                 columns: [
-                    { 
-                        data: 'ticker', 
-                        render: function(data) { 
-                            return '<a href="/stock/' + data + '" style="color: #4da6ff; font-weight: bold;">' + data + '</a>'; 
-                        } 
-                    },
+                    { data: 'ticker', render: function(data) { return '<a href="/stock/' + data + '" style="color: #4da6ff; font-weight: bold;">' + data + '</a>'; } },
                     { data: 'company_name', render: function(data) { return data || 'N/A'; } },
                     { data: 'sector', render: function(data) { return data || 'N/A'; } },
-                    { 
-                        data: 'close_price', 
-                        render: $.fn.dataTable.render.number(',', '.', 2, '$') 
-                    },
-                    { 
-                        data: 'volume', 
-                        render: $.fn.dataTable.render.number(',', '.', 0, '') 
-                    },
+                    { data: 'close_price', render: $.fn.dataTable.render.number(',', '.', 2, '$') },
+                    { data: 'volume', render: $.fn.dataTable.render.number(',', '.', 0, '') },
                     { 
                         data: 'rsi_14', 
                         render: function(data) { 
                             if (data === null || data === undefined) return 'N/A';
-                            let cssClass = '';
-                            if (data > 70) cssClass = 'negative-val'; 
-                            else if (data < 30) cssClass = 'positive-val'; 
+                            let cssClass = data > 70 ? 'negative-val' : (data < 30 ? 'positive-val' : '');
                             return `<span class="${cssClass}">${data.toFixed(2)}</span>`;
                         } 
                     },
@@ -159,36 +128,13 @@
                             return `<span class="${cssClass}">${data.toFixed(3)}</span>`;
                         } 
                     },
-                    { 
-                        data: 'sma_50', 
-                        render: function(data) {
-                            if (data === null || data === undefined) return 'N/A';
-                            return '$' + data.toFixed(2);
-                        }
-                    },
-                    { 
-                        data: 'sma_200', 
-                        render: function(data) {
-                            if (data === null || data === undefined) return 'N/A';
-                            return '$' + data.toFixed(2);
-                        }
-                    },
-                    { 
-                        data: 'volume_surge', 
-                        render: function(data) { 
-                            return data ? '<span class="badge-yes">YES</span>' : '<span class="badge-no">No</span>'; 
-                        } 
-                    },
-                    { 
-                        data: 'bullish_cross', 
-                        render: function(data) { 
-                            return data ? '<span class="badge-yes">YES</span>' : '<span class="badge-no">No</span>'; 
-                        } 
-                    }
+                    { data: 'sma_50', render: function(data) { return data === null ? 'N/A' : '$' + data.toFixed(2); } },
+                    { data: 'sma_200', render: function(data) { return data === null ? 'N/A' : '$' + data.toFixed(2); } },
+                    { data: 'volume_surge', render: function(data) { return data ? '<span class="badge-yes">YES</span>' : '<span class="badge-no">No</span>'; } },
+                    { data: 'bullish_cross', render: function(data) { return data ? '<span class="badge-yes">YES</span>' : '<span class="badge-no">No</span>'; } }
                 ]
             });
         });
     </script>
-
 </body>
 </html>

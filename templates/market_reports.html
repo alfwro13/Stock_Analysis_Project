@@ -46,17 +46,11 @@
         </table>
         
         <div class="edu-footer">
-            <h3>📊 Key Metrics Explained</h3>
-            <div class="fundamentals-grid">
-                <div class="data-card">
-                    <h4>Momentum Indicators</h4>
-                    <p><span class="metric-label">Average RSI (14):</span> Measures how fast the sector is rising or falling. Above 60 indicates the sector is running hot (bullish), while below 40 indicates heavy selling pressure.</p>
-                    <p><span class="metric-label">Bullish MACD Crosses:</span> The percentage of stocks where short-term momentum has just mathematically crossed positive, indicating a sudden influx of buying pressure.</p>
-                </div>
-                <div class="data-card">
-                    <h4>Trend Health</h4>
-                    <p><span class="metric-label">Stocks > 50D SMA:</span> The 50-day average is the institutional "health" line. High percentages here prove the sector is in a strong medium-term uptrend.</p>
-                </div>
+            <h3 style="margin-bottom: 15px;">📊 Key Metrics Explained</h3>
+            <div class="explanation-box">
+                <p><span class="metric-label">Average RSI (14):</span> Measures how fast the sector is rising or falling. Above 60 indicates the sector is running hot (bullish), while below 40 indicates heavy selling pressure.</p>
+                <p><span class="metric-label">Bullish MACD Crosses:</span> The percentage of stocks where short-term momentum has just mathematically crossed positive, indicating a sudden influx of buying pressure.</p>
+                <p><span class="metric-label">Stocks > 50D SMA:</span> The 50-day average is the institutional "health" line. High percentages here prove the sector is in a strong medium-term uptrend.</p>
             </div>
         </div>
     </div>
@@ -79,14 +73,10 @@
         </table>
 
         <div class="edu-footer">
-            <h3>📊 Leadership Metrics</h3>
-            <div class="fundamentals-grid">
-                <div class="data-card">
-                    <p><span class="metric-label">RSI (14):</span> True market leaders sustain high levels (70+) for long periods. This confirms massive institutional buying pressure.</p>
-                </div>
-                <div class="data-card">
-                    <p><span class="metric-label">MACD Hist:</span> Measures upward acceleration. Positive and growing bars mean the stock is gaining speed like a car accelerating.</p>
-                </div>
+            <h3 style="margin-bottom: 15px;">📊 Leadership Metrics</h3>
+            <div class="explanation-box">
+                <p><span class="metric-label">RSI (14):</span> True market leaders sustain high levels (70+) for long periods. This confirms massive institutional buying pressure and momentum.</p>
+                <p><span class="metric-label">MACD Hist:</span> Measures upward acceleration. Positive and growing bars mean the stock is gaining speed like a car accelerating.</p>
             </div>
         </div>
     </div>
@@ -118,22 +108,17 @@
         </table>
 
         <div class="edu-footer">
-            <h3>📊 Reversion Metrics</h3>
-            <div class="fundamentals-grid">
-                <div class="data-card">
-                    <p><span class="metric-label">200D SMA:</span> The ultimate institutional baseline. We only screen above this line to ensure we aren't catching a "falling knife" in a dying company.</p>
-                    <p><span class="metric-label">Dist from 200D (%):</span> Shows how far the stock has pulled back to its long-term floor. Smaller numbers are closer to major support.</p>
-                </div>
-                <div class="data-card">
-                    <p><span class="metric-label">RSI Threshold:</span> A value of 30 or below is "Oversold." It isolates extreme irrational fear, which often precedes a sharp snap-back bounce.</p>
-                </div>
+            <h3 style="margin-bottom: 15px;">📊 Reversion Metrics</h3>
+            <div class="explanation-box">
+                <p><span class="metric-label">200D SMA:</span> The ultimate institutional baseline. We only screen above this line to ensure we aren't catching a "falling knife" in a dying company.</p>
+                <p><span class="metric-label">Dist from 200D (%):</span> Shows how far the stock has pulled back to its long-term floor. Smaller numbers are closer to major support.</p>
+                <p><span class="metric-label">RSI Threshold:</span> A value of 30 or below is "Oversold." It isolates extreme irrational fear, which often precedes a sharp snap-back bounce.</p>
             </div>
         </div>
     </div>
 
     <script>
         let mrDataTable;
-
         $(document).ready(function() {
             $('#sectorTable').DataTable({
                 ajax: '/api/reports/sectors',
@@ -147,16 +132,14 @@
                         data: 'sector',
                         render: function(data) {
                             const encodedSector = encodeURIComponent(data);
-                            return `<a href="/market-screener?sector=${encodedSector}" style="color: #4da6ff; font-weight: bold;" title="View all ${data} stocks">${data}</a>`;
+                            return `<a href="/market-screener?sector=${encodedSector}" style="color: #4da6ff; font-weight: bold;">${data}</a>`;
                         }
                     },
                     { data: 'total_stocks' },
                     { 
                         data: 'avg_rsi',
                         render: function(data) {
-                            let cssClass = '';
-                            if (data > 60) cssClass = 'positive-val';
-                            else if (data < 40) cssClass = 'negative-val';
+                            let cssClass = data > 60 ? 'positive-val' : (data < 40 ? 'negative-val' : '');
                             return `<span class="${cssClass}">${data.toFixed(2)}</span>`;
                         }
                     },
@@ -164,14 +147,14 @@
                         data: 'pct_above_50d', 
                         render: function(data, type, row) {
                             const encodedSector = encodeURIComponent(row.sector);
-                            return `<a href="/market-screener?sector=${encodedSector}&above_50d=true" style="color: #e0e0e0; text-decoration: underline dotted;" title="Filter Screener">${data.toFixed(2)}%</a>`;
+                            return `<a href="/market-screener?sector=${encodedSector}&above_50d=true" style="color: #e0e0e0; text-decoration: underline dotted;">${data.toFixed(2)}%</a>`;
                         }
                     },
                     { 
                         data: 'pct_bullish_cross', 
                         render: function(data, type, row) {
                             const encodedSector = encodeURIComponent(row.sector);
-                            return `<a href="/market-screener?sector=${encodedSector}&bullish_cross=true" style="color: #e0e0e0; text-decoration: underline dotted;" title="Filter Screener">${data.toFixed(2)}%</a>`;
+                            return `<a href="/market-screener?sector=${encodedSector}&bullish_cross=true" style="color: #e0e0e0; text-decoration: underline dotted;">${data.toFixed(2)}%</a>`;
                         }
                     }
                 ]
@@ -206,7 +189,6 @@
                     { data: 'distance_from_200d_pct', render: function(data) { return `<span class="positive-val">+${data.toFixed(2)}%</span>`; } }
                 ]
             });
-            
             loadMeanReversionData();
         });
 
