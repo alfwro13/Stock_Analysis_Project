@@ -245,4 +245,11 @@ table.dataTable.display tbody tr.even > .sorting_1, table.dataTable.order-column
     .fundamentals-grid { grid-template-columns: 1fr; }
     .action-buttons, .controls-container { flex-direction: column; gap: 10px; }
     .filter-input, .filter-select { width: 100%; }
+
+/* --- 15. Educational Footers & Glossary Labels --- */
+.edu-footer { margin-top: 30px; padding-top: 20px; border-top: 1px solid #333; }
+.edu-footer h3 { color: #4da6ff; margin-bottom: 15px; }
+.edu-footer h4 { color: #00ffcc; margin-top: 0; }
+.edu-footer p { font-size: 13px; line-height: 1.5; color: #ccc; }
+.metric-label { color: #4da6ff; font-weight: bold; }
 }
