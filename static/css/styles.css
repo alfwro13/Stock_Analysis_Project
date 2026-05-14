@@ -31,7 +31,7 @@ abbr { text-decoration: underline dotted; cursor: help; color: #fff; }
 .title-wrapper { display: flex; align-items: center; }
 .logo-link { 
     display: inline-block; 
-    margin-right: -12px; /* Negative margin pulls the text into the logo's transparent space */
+    margin-right: -8px; 
     border: none; 
 }
 .logo-img { height: 45px; vertical-align: middle; transition: transform 0.2s; }
