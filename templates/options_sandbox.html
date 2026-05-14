@@ -23,6 +23,20 @@
         .chain-table { width: 100%; border-collapse: collapse; font-size: 13px; }
         .chain-table th, .chain-table td { padding: 6px; text-align: center; border-bottom: 1px solid #333; }
         .chain-table th { background: #2c2c2c; position: sticky; top: 0; }
+
+        /* Manual & Guide Styling */
+        .manual-container { max-width: 1400px; margin: 40px auto 40px auto; padding: 0 20px; display: block; }
+        .manual-section { background-color: #1e1e1e; border-radius: 8px; padding: 30px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); margin-bottom: 30px; }
+        .manual-header { border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 20px; color: #4da6ff; margin-top: 0; }
+        .manual-text { color: #ccc; font-size: 15px; line-height: 1.6; margin-bottom: 20px; }
+        
+        .guide-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+        .guide-card { background-color: #1a1a1a; padding: 20px; border-radius: 8px; border-top: 4px solid #555; box-shadow: 0 4px 6px rgba(0,0,0,0.2); transition: transform 0.2s ease, border-color 0.2s ease; }
+        .guide-card:hover { transform: translateY(-5px); border-top-color: #00ffcc; }
+        .guide-card h4 { color: #00ffcc; margin-top: 0; margin-bottom: 10px; font-size: 18px; }
+        .guide-card p { color: #ccc; font-size: 14px; line-height: 1.5; margin-bottom: 15px; }
+        .guide-card .setup { background: #121212; padding: 12px; border-radius: 4px; border-left: 3px solid #4da6ff; font-family: monospace; font-size: 13px; color: #e0e0e0; }
+        .guide-card .why-use-it { font-style: italic; color: #aaa; font-size: 13px; margin-top: 10px; border-top: 1px dashed #333; padding-top: 10px; }
     </style>
 </head>
 <body class="body-settings">
@@ -85,6 +99,110 @@
             <div id="strategyLegs"></div>
 
             <button class="btn btn-save" style="margin-top: 20px; padding: 10px;" onclick="calculatePayoff()">📊 Plot Payoff</button>
+        </div>
+    </div>
+
+    <div class="manual-container">
+        <div class="manual-section">
+            <h2 class="manual-header">📖 How to Use This Tool</h2>
+            <div class="manual-text">
+                <ol style="padding-left: 20px;">
+                    <li style="margin-bottom: 10px;"><strong>Load the Chain:</strong> Enter a valid stock or ETF ticker (e.g., AAPL, SPY) and click "Fetch Chain" to retrieve live market data and the nearest options expirations.</li>
+                    <li style="margin-bottom: 10px;"><strong>Select Expiration:</strong> Use the dropdown menu to select the expiration date you wish to trade.</li>
+                    <li style="margin-bottom: 10px;"><strong>Build Your Strategy:</strong> Click the <strong>"+"</strong> button next to any Call or Put to add it to your Strategy Builder panel. You can easily toggle between going <strong>Long (Buy)</strong> or <strong>Short (Sell)</strong>, and adjust your contract quantity.</li>
+                    <li style="margin-bottom: 10px;"><strong>Analyze the Payoff Chart:</strong> Click "Plot Payoff". 
+                        <ul style="margin-top: 5px;">
+                            <li>The <strong>X-axis</strong> represents the Underlying Stock Price at Expiration.</li>
+                            <li>The <strong>Y-axis</strong> represents your Net Profit/Loss (P&L) in dollars.</li>
+                            <li>The <strong>Zero-line</strong> is your Breakeven point. Green areas indicate profit, while red areas indicate loss.</li>
+                        </ul>
+                    </li>
+                </ol>
+            </div>
+        </div>
+
+        <div class="manual-section">
+            <h2 class="manual-header">🧠 Common Options Strategies</h2>
+            <div class="manual-text">
+                Understanding multi-leg options strategies is key to managing risk and taking advantage of different market conditions (directional moves, high volatility, or sideways chop). Here is a guide to standard setups you can build in the Sandbox.
+            </div>
+
+            <div class="guide-grid">
+                <div class="guide-card">
+                    <h4>Long Call / Long Put</h4>
+                    <p>The simplest directional bets. You are buying the right (but not the obligation) to buy or sell the stock at a specific strike price.</p>
+                    <div class="setup">
+                        <strong>Bullish:</strong> Buy 1 Call<br>
+                        <strong>Bearish:</strong> Buy 1 Put
+                    </div>
+                    <div class="why-use-it">
+                        Use when you have high conviction in a large directional move. Risk is strictly limited to the premium paid, while reward is theoretically unlimited (for calls).
+                    </div>
+                </div>
+
+                <div class="guide-card">
+                    <h4>Straddle</h4>
+                    <p>A delta-neutral volatility strategy. You make money if the stock makes a massive, explosive move in <em>either</em> direction.</p>
+                    <div class="setup">
+                        Buy 1 ATM Call<br>
+                        Buy 1 ATM Put<br>
+                        (Same Strike, Same Expiry)
+                    </div>
+                    <div class="why-use-it">
+                        Use right before major binary events (like Earnings Reports or Fed announcements) when you expect extreme volatility but are unsure of the direction.
+                    </div>
+                </div>
+
+                <div class="guide-card">
+                    <h4>Strangle</h4>
+                    <p>Similar to a Straddle, but uses Out-of-The-Money (OTM) options. It is much cheaper to construct but requires a substantially larger move to become profitable.</p>
+                    <div class="setup">
+                        Buy 1 OTM Call<br>
+                        Buy 1 OTM Put
+                    </div>
+                    <div class="why-use-it">
+                        Use when you expect an even more violently explosive move than a straddle prices in, and want to risk less initial capital on the premium.
+                    </div>
+                </div>
+
+                <div class="guide-card">
+                    <h4>Vertical Spread (Debit)</h4>
+                    <p>A directional bet that artificially caps both your maximum loss AND your maximum profit. Cheaper than buying a naked call or put.</p>
+                    <div class="setup">
+                        <strong>Bull Call Spread:</strong><br>
+                        Buy 1 ATM Call<br>
+                        Sell 1 OTM Call (Higher Strike)
+                    </div>
+                    <div class="why-use-it">
+                        Use when you are moderately bullish/bearish but want to mitigate the effects of Theta (time decay) and IV crush by financing your long leg with a short leg.
+                    </div>
+                </div>
+
+                <div class="guide-card">
+                    <h4>Iron Condor</h4>
+                    <p>A non-directional, income-generating strategy. You are betting that the stock will remain flat and stay trapped between two outer boundaries.</p>
+                    <div class="setup">
+                        Sell 1 OTM Put Spread<br>
+                        Sell 1 OTM Call Spread<br>
+                        (Creates a "Profit Tent")
+                    </div>
+                    <div class="why-use-it">
+                        Use when you expect low volatility and sideways market chop. You collect premium upfront and keep it if the stock expires between your short strikes.
+                    </div>
+                </div>
+
+                <div class="guide-card">
+                    <h4>Covered Call</h4>
+                    <p>An income-generating strategy where you sell someone else the right to buy your stock at a higher price.</p>
+                    <div class="setup">
+                        Own 100 Shares of Stock<br>
+                        Sell 1 OTM Call
+                    </div>
+                    <div class="why-use-it">
+                        Use when you are neutral to slightly bullish on a stock you already own. You collect premium, which lowers your cost basis, but cap your upside if the stock moons.
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
