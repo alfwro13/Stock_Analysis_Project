@@ -132,10 +132,14 @@
                 </div>
                 
                 {% if stock.business_summary %}
-                <div style="line-height: 1.6; background-color: #1a1a1a; padding: 15px; border-radius: 5px; margin-top: 15px; font-size: 14px; color: #ccc; border-left: 3px solid #555;">
-                    <strong style="color: #4da6ff;">Company Profile:</strong><br>
-                    {{ stock.business_summary }}
-                </div>
+                <details style="background-color: #1a1a1a; border-radius: 5px; margin-top: 15px; border-left: 3px solid #555;">
+                    <summary style="padding: 12px 15px; cursor: pointer; color: #4da6ff; font-weight: bold; outline: none; user-select: none;">
+                        🏢 Company Profile <span style="color: #888; font-size: 12px; font-weight: normal; margin-left: 10px;">(Click to expand)</span>
+                    </summary>
+                    <div style="padding: 0 15px 15px 15px; line-height: 1.6; font-size: 14px; color: #ccc;">
+                        {{ stock.business_summary }}
+                    </div>
+                </details>
                 {% endif %}
 
                 {% if stock.next_earnings_date and stock.next_earnings_date != 'Unknown' %}
