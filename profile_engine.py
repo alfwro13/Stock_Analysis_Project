@@ -34,7 +34,7 @@ def run_profile_audit(limit: int = 250):
     Identifies up to `limit` tickers missing from asset_profiles or older than 90 days.
     Fetches static metadata from Yahoo Finance and updates the DB to serve as the single source of truth.
     """
-    logger.info("Initiating Rolling Audit for Central Asset Profiles...")
+    logger.info(f"Initiating Audit for Central Asset Profiles (Limit: {limit})...")
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -66,9 +66,12 @@ def run_profile_audit(limit: int = 250):
         logger.info(f"Found {len(tickers_to_update)} profiles requiring initialization or refresh.")
         
         updated_count = 0
-        for ticker in tickers_to_update:
+        for i, ticker in enumerate(tickers_to_update):
             try:
-                logger.info(f"Fetching metadata for {ticker}...")
+                # Progress logger for large initial runs
+                if i % 50 == 0:
+                    logger.info(f"Progress: {i}/{len(tickers_to_update)} fetched...")
+                
                 info = yf.Ticker(ticker).info
                 
                 if not info:
@@ -101,7 +104,7 @@ def run_profile_audit(limit: int = 250):
                 logger.error(f"Failed to fetch/save profile for {ticker}: {e}")
             finally:
                 # Absolute requirement to avoid Yahoo Finance IP block over large loops
-                time.sleep(random.uniform(1.0, 2.5))
+                time.sleep(random.uniform(0.5, 1.5))
                 
         log_notification("Info", f"Asset Profile Audit complete. Updated {updated_count} static metadata records.")
         
@@ -111,4 +114,7 @@ def run_profile_audit(limit: int = 250):
         conn.close()
 
 if __name__ == "__main__":
-    run_profile_audit()
+    # When run manually from the terminal, process EVERYTHING (up to 5000). 
+    # When triggered by APScheduler in the background, it defaults to the safe limit of 250.
+    print("WARNING: Running initial massive data harvest. This will take ~1 to 1.5 hours to respect rate limits.")
+    run_profile_audit(limit=5000)
