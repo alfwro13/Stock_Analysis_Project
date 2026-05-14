@@ -1,6 +1,5 @@
 # universe_engine.py
 import os
-import time
 import logging
 from ftplib import FTP
 from pathlib import Path
@@ -77,7 +76,7 @@ def update_market_universe() -> None:
     logger.info("Parsing listed files and filtering for tradable Common Stock...")
     try:
         for filename, filepath in filenames.items():
-            with open(filepath, "r") as file_reader:
+            with open(filepath, "r", encoding="utf-8") as file_reader:
                 for i, line in enumerate(file_reader):
                     if i == 0:
                         continue # Skip header
@@ -103,8 +102,6 @@ def update_market_universe() -> None:
 
                     clean_symbol = symbol.replace(".", "-") # Normalize BRK.B to BRK-B for Yahoo Finance
                     
-                    # Note: Sector and Industry require individual YF lookups which takes too long for 4,000 stocks.
-                    # We leave them as NULL, to be enriched on-the-fly later or by the quant engine.
                     tickers_to_insert.append((
                         clean_symbol,
                         description,
@@ -149,5 +146,4 @@ def update_market_universe() -> None:
         conn.close()
 
 if __name__ == "__main__":
-    # Allow manual terminal execution
     update_market_universe()

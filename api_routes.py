@@ -43,28 +43,33 @@ class PayoffRequest(BaseModel):
 
 
 def bg_execute_quant_scan():
-    """Background task wrapper for the heavy Quant engine."""
+    """Background task wrapper for the heavy Quant engine (Portfolio/Watchlist)."""
+    engine = DataEngine()
+    tickers = engine.get_all_tickers()
+    run_daily_quant_scan(tickers)
+
+def bg_execute_earnings_scan():
+    """Background task wrapper for the heavy Earnings Volatility engine."""
+    engine = DataEngine()
+    tickers = engine.get_all_tickers()
+    run_earnings_vol_scan(tickers)
+
+def bg_execute_universe_quant_scan():
+    """Background task wrapper for scanning the entire 4,000+ Universe."""
     tickers = get_universe_tickers()
     if not tickers:
         print("[WARNING] Universe is empty. Please trigger a Universe Update first.")
         return
     run_daily_quant_scan(tickers)
 
-def bg_execute_earnings_scan():
-    """Background task wrapper for the heavy Earnings Volatility engine."""
-    tickers = get_universe_tickers()
-    if not tickers:
-        print("[WARNING] Universe is empty. Please trigger a Universe Update first.")
-        return
-    run_earnings_vol_scan(tickers)
 
 @api_router.post("/trigger-quant-scan")
 async def trigger_quant_scan_endpoint(background_tasks: BackgroundTasks):
-    """API endpoint to manually trigger the heavy overnight Quant Screener calculations."""
+    """API endpoint to manually trigger the daily Portfolio/Watchlist Quant Screener."""
     background_tasks.add_task(bg_execute_quant_scan)
     return JSONResponse(content={
         "status": "success", 
-        "message": "Quant Scan initiated in the background. Check System Notifications for progress updates."
+        "message": "Portfolio Quant Scan initiated in the background. Check System Notifications for progress updates."
     })
 
 @api_router.post("/trigger-earnings-scan")
@@ -83,6 +88,15 @@ async def trigger_universe_update_endpoint(background_tasks: BackgroundTasks):
     return JSONResponse(content={
         "status": "success", 
         "message": "Market Universe update initiated in the background. Check System Notifications for progress."
+    })
+
+@api_router.post("/trigger-universe-quant-scan")
+async def trigger_universe_quant_scan_endpoint(background_tasks: BackgroundTasks):
+    """API endpoint to manually trigger a full scan of the 4,000+ Universe tickers."""
+    background_tasks.add_task(bg_execute_universe_quant_scan)
+    return JSONResponse(content={
+        "status": "success", 
+        "message": "Full Universe Quant Scan initiated in the background. This will take over an hour. Check System Notifications for progress."
     })
 
 class PulseRequest(BaseModel):

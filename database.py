@@ -148,7 +148,7 @@ def init_db():
             last_updated TEXT
         )
     ''')
-    
+
     # New table for the Expanded Market Universe (4,000+ Tickers)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS market_universe (

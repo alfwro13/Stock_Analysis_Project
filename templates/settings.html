@@ -358,8 +358,8 @@
             {% set q_days = q_engine.DAYS if q_engine.DAYS else ['mon', 'tue', 'wed', 'thu', 'fri'] %}
             
             <div style="background-color: #2c2c2c; padding: 15px; border-radius: 5px; margin-bottom: 15px; border-left: 3px solid #00ffcc;">
-                <h4 style="margin-top: 0; color: #00ffcc;">📊 Daily Quant Screener Engine</h4>
-                <p style="font-size: 13px; color: #aaa; margin-top: 0;">Runs the heavy overnight quantitative data aggregation and scanning.</p>
+                <h4 style="margin-top: 0; color: #00ffcc;">📊 Daily Quant Screener (Portfolio & Watchlist)</h4>
+                <p style="font-size: 13px; color: #aaa; margin-top: 0;">Runs the fast overnight quantitative data aggregation and scanning for your active assets.</p>
                 
                 <div style="display: flex; gap: 15px; margin-bottom: 15px; flex-wrap: wrap;">
                     <label><input type="checkbox" class="quant-day" value="mon" {% if 'mon' in q_days %}checked{% endif %}> Mon</label>
@@ -376,7 +376,34 @@
                         <label>Execution Time</label>
                         <input type="time" id="QUANT_ENGINE_TIME" value="{{ q_engine.TIME | default('01:00') }}">
                     </div>
-                    <button type="button" class="btn-test" style="margin-top: 0;" onclick="triggerQuantScan()">▶️ Run Now</button>
+                    <button type="button" class="btn-test" style="margin-top: 0;" onclick="triggerQuantScan()">▶️ Run Daily Scan Now</button>
+                </div>
+            </div>
+
+            {% set u_engine = config.SCHEDULING.UNIVERSE_ENGINE if config.SCHEDULING.UNIVERSE_ENGINE else {} %}
+            {% set u_days = u_engine.DAYS if u_engine.DAYS else ['sat'] %}
+            
+            <div style="background-color: #2c2c2c; padding: 15px; border-radius: 5px; margin-bottom: 15px; border-left: 3px solid #b366ff;">
+                <h4 style="margin-top: 0; color: #b366ff;">🌍 Market Universe (Weekend Routine)</h4>
+                <p style="font-size: 13px; color: #aaa; margin-top: 0;">Downloads the 4,000+ US equity ticker list from Nasdaq and runs a complete massive quant scan. This process can take over an hour and is best run over the weekend.</p>
+                
+                <div style="display: flex; gap: 15px; margin-bottom: 15px; flex-wrap: wrap;">
+                    <label><input type="checkbox" class="universe-day" value="mon" {% if 'mon' in u_days %}checked{% endif %}> Mon</label>
+                    <label><input type="checkbox" class="universe-day" value="tue" {% if 'tue' in u_days %}checked{% endif %}> Tue</label>
+                    <label><input type="checkbox" class="universe-day" value="wed" {% if 'wed' in u_days %}checked{% endif %}> Wed</label>
+                    <label><input type="checkbox" class="universe-day" value="thu" {% if 'thu' in u_days %}checked{% endif %}> Thu</label>
+                    <label><input type="checkbox" class="universe-day" value="fri" {% if 'fri' in u_days %}checked{% endif %}> Fri</label>
+                    <label><input type="checkbox" class="universe-day" value="sat" {% if 'sat' in u_days %}checked{% endif %}> Sat</label>
+                    <label><input type="checkbox" class="universe-day" value="sun" {% if 'sun' in u_days %}checked{% endif %}> Sun</label>
+                </div>
+                
+                <div style="display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap;">
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label>Execution Time</label>
+                        <input type="time" id="UNIVERSE_ENGINE_TIME" value="{{ u_engine.TIME | default('02:00') }}">
+                    </div>
+                    <button type="button" class="btn-test" style="margin-top: 0; background-color: #8c1aff;" onclick="triggerUniverseUpdate()">⬇️ Update Ticker List</button>
+                    <button type="button" class="btn-test" style="margin-top: 0; background-color: #b366ff;" onclick="triggerUniverseQuantScan()">▶️ Run Full 4K Quant Scan</button>
                 </div>
             </div>
 
@@ -765,7 +792,7 @@
         async function triggerQuantScan() {
             try {
                 await fetch('/api/trigger-quant-scan', { method: 'POST' });
-                alert("Quant Scan initiated in background. Check notifications for progress updates.");
+                alert("Portfolio Quant Scan initiated in background. Check notifications for progress updates.");
             } catch (error) {
                 alert("Failed to initiate Quant Scan. Network or server error.");
             }
@@ -777,6 +804,24 @@
                 alert("Earnings Volatility Scan initiated in background. Check notifications for progress updates.");
             } catch (error) {
                 alert("Failed to initiate Earnings Scan. Network or server error.");
+            }
+        }
+
+        async function triggerUniverseUpdate() {
+            try {
+                await fetch('/api/trigger-universe-update', { method: 'POST' });
+                alert("Market Universe update initiated in background. Check notifications for progress updates.");
+            } catch (error) {
+                alert("Failed to initiate Universe Update. Network or server error.");
+            }
+        }
+
+        async function triggerUniverseQuantScan() {
+            try {
+                await fetch('/api/trigger-universe-quant-scan', { method: 'POST' });
+                alert("Full 4K Quant Scan initiated in background. This will take over an hour. Check notifications for progress updates.");
+            } catch (error) {
+                alert("Failed to initiate Full Quant Scan. Network or server error.");
             }
         }
 
@@ -801,6 +846,7 @@
             const quantDays = Array.from(document.querySelectorAll('.quant-day:checked')).map(cb => cb.value);
             const earnDays = Array.from(document.querySelectorAll('.earn-day:checked')).map(cb => cb.value);
             const dispatchDays = Array.from(document.querySelectorAll('.dispatch-day:checked')).map(cb => cb.value);
+            const universeDays = Array.from(document.querySelectorAll('.universe-day:checked')).map(cb => cb.value);
             
             const payload = {
                 "SERVER_URL": document.getElementById('SERVER_URL').value,
@@ -872,6 +918,10 @@
                         "ENABLED": document.getElementById('DISPATCHER_ENABLED').checked,
                         "DAYS": dispatchDays,
                         "TIME": document.getElementById('DISPATCHER_TIME').value
+                    },
+                    "UNIVERSE_ENGINE": {
+                        "DAYS": universeDays,
+                        "TIME": document.getElementById('UNIVERSE_ENGINE_TIME').value
                     }
                 },
                 "NOTIFICATIONS": {
