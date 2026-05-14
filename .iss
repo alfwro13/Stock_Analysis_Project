@@ -46,14 +46,6 @@ stock-price-prediction-model.py
 stock-weekday-volatility.py
             Future potential: If you rely on day-of-the-week seasonality for trading edge, this math is a perfect candidate for the future /backtester UI we discussed, where you can test rules like "Only buy on Thursdays."
 
-stock_correlations.py
-
-stockbee-market-monitor-plotter.py
-
-stocks_data_enricher.py
-
-streamgraph_chart.py
-
 tqqq-for-the-long-run.py - can we use that to come up with a strategy?
 
 trend-plotter.py
