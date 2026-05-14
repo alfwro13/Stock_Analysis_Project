@@ -2,7 +2,10 @@
 change portfolio and watchlist to use the same table as the 4K report
 fix the menus/liks
 make sure notification audo-refreshes (any new notifications)
+add company profile to details page
+for univers tickers -add dynamic data download from yahoo and caching so I ce see the details page
 
+the trading-utils has graphs for each ticker after running the make weekend routing - why do I not have that data? what are we doing different
 
 reporting: monthly_gains_3 etc
 
@@ -17,27 +20,31 @@ earnings_tracker.py  -> earnings_vol_engine
 Mabey later:
 portfolio-sizing.py - Trade execution math (like position sizing and risk management per ticket) falls slightly outside that scope. Furthermore, your Ghostfolio integration handles your actual portfolio tracking. If you want this back, we can easily add a small "Position Sizer" widget to the Settings or Watchlist page in the future!
 
-reit-correlation.py - how can we use this comparison? I'm not interested in reti but is the comparison useful for something else?
+reit-correlation.py
+            What it did: Calculated a Pearson correlation matrix to see how closely the daily price movements of various Real Estate Investment Trusts (REITs) tracked each other.
 
-rsi-estimate.py
+            Migration Status: Not Migrated.
 
-rsi_dips.py
+            Why the math is highly useful elsewhere:
 
-spy-vix-live-tracker.py  - what is the VIX index, and how can it be useful?
+            Pairs Trading (Statistical Arbitrage): You can use this logic to find two highly correlated stocks (like Visa and Mastercard). If their prices temporarily diverge, you short the winner and buy the loser, betting they will snap back together.
 
-spy_overnight_double_diagonal.py
+            Hedging: You can find assets that are negatively correlated to your current portfolio to protect yourself during market crashes.
 
-spy_performance.py
+            Diversification: If you own 5 tech stocks with a 0.95 correlation, you aren't actually diversified. This math proves true diversification.
 
-spy_weekly_gain_loss_charts.py
+            Future potential: We could easily repurpose this math to build a "Correlation Matrix" tool in your /market-reports dashboard, allowing you to test the correlation of your personal portfolio against SPY or QQQ!
 
-spy-vix-desktop-tracker.py
+spy-vix-live-tracker.py  -
+            Future potential: We can easily pull the daily VIX close into a "Macro/Market Pulse" widget on your dashboard to help you gauge overall market fear before you place trades!
+
 
 stock-price-prediction-model.py
+            Future potential: This is exactly what I mentioned in the "Option 3: Deep Tech Route" earlier! We can eventually use your massive new SQLite database to train a robust ML model and display an "AI Prediction Score" right next to your Technical Indicators on the Market Screener.
 
-stock-volatility.py
 
 stock-weekday-volatility.py
+            Future potential: If you rely on day-of-the-week seasonality for trading edge, this math is a perfect candidate for the future /backtester UI we discussed, where you can test rules like "Only buy on Thursdays."
 
 stock_correlations.py
 
