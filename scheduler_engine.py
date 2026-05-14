@@ -18,6 +18,7 @@ from earnings_vol_engine import run_earnings_vol_scan
 from report_dispatcher import push_morning_quant_briefing
 from database import get_universe_tickers
 from universe_engine import update_market_universe
+from profile_engine import run_profile_audit
 
 # --- Background Task Scheduler Setup ---
 scheduler = BackgroundScheduler()
@@ -129,6 +130,20 @@ def run_weekend_universe_routine():
         print("--- WEEKEND UNIVERSE ROUTINE COMPLETE ---\n")
     except Exception as e:
         print(f"[ERROR] Weekend Universe Routine Failed: {e}")
+    finally:
+        task_lock.release()
+
+def run_weekend_profile_audit():
+    """Executes the rolling metadata audit for 250 assets."""
+    if not task_lock.acquire(blocking=False):
+        print("[WARNING] System is busy. Skipping Profile Audit.")
+        return
+    try:
+        print("\n--- WEEKEND PROFILE AUDIT INITIATED ---")
+        run_profile_audit(limit=250)
+        print("--- WEEKEND PROFILE AUDIT COMPLETE ---\n")
+    except Exception as e:
+        print(f"[ERROR] Weekend Profile Audit Failed: {e}")
     finally:
         task_lock.release()
 
@@ -338,6 +353,16 @@ def reload_scheduler():
             id='universe_routine_job'
         )
         print(f"[SCHEDULER] Weekend Universe Routine scheduled for {uni_days} at {uni_time}")
+        
+        # 11. Profile Rolling Audit (Staggered 1 hour after the universe routine)
+        audit_hour = (hour + 1) % 24
+        scheduler.add_job(
+            run_weekend_profile_audit,
+            CronTrigger(day_of_week=uni_days, hour=audit_hour, minute=minute),
+            id='profile_audit_job'
+        )
+        print(f"[SCHEDULER] Weekend Profile Audit scheduled for {uni_days} at {audit_hour:02d}:{minute:02d}")
+        
     except Exception as e:
         print(f"[ERROR] Failed to schedule Weekend Universe Routine: {e}")
 

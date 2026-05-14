@@ -160,6 +160,22 @@ def init_db():
         )
     ''')
     
+    # --- CENTRALIZED STATIC ASSET PROFILES (3NF NORMALIZATION) ---
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS asset_profiles (
+            ticker TEXT PRIMARY KEY,
+            company_name TEXT,
+            sector TEXT,
+            industry TEXT,
+            country TEXT,
+            exchange TEXT,
+            currency TEXT,
+            quote_type TEXT,
+            business_summary TEXT,
+            last_verified_date TIMESTAMP
+        )
+    ''')
+    
     conn.commit()
     
     # Run the dynamic migration script to inject any missing columns safely

@@ -321,9 +321,15 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
     else:
         # Fallback for stocks in the universe but not in the user's explicit portfolio/watchlist (stock_signals)
         cursor.execute('''
-            SELECT q.*, m.company_name, m.sector 
+            SELECT q.*, 
+                   COALESCE(p.company_name, m.company_name, q.ticker) as company_name, 
+                   COALESCE(p.sector, 'Unclassified') as sector, 
+                   COALESCE(p.currency, 'USD') as currency, 
+                   COALESCE(p.quote_type, 'EQUITY') as quote_type, 
+                   p.business_summary 
             FROM quant_signals q
             LEFT JOIN market_universe m ON q.ticker = m.ticker
+            LEFT JOIN asset_profiles p ON q.ticker = p.ticker
             WHERE q.ticker = ? ORDER BY q.date DESC LIMIT 1
         ''', (ticker,))
         q_data = cursor.fetchone()
@@ -340,12 +346,12 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
                 "ticker": ticker,
                 "company_name": company_name,
                 "sector": q_data.get("sector") or "Unclassified",
-                "quote_type": "EQUITY",
-                "currency": "USD",
+                "quote_type": q_data.get("quote_type") or "EQUITY",
+                "currency": q_data.get("currency") or "USD",
                 "current_price": c_price,
                 "overall_signal": "UNIVERSE SCAN ONLY",
                 "composite_score": "N/A",
-                "educational_notes": "This asset is part of the broader market universe scan. Add it to your Ghostfolio or Watchlist to trigger a deep, institutional fundamental evaluation.",
+                "educational_notes": q_data.get("business_summary") or "This asset is part of the broader market universe scan. Add it to your Ghostfolio or Watchlist to trigger a deep, institutional fundamental evaluation.",
                 "next_earnings_date": "Unknown",
                 "target_price": None,
                 "trend_50d": "UP" if q_data.get("sma_50") and c_price > q_data.get("sma_50") else "DOWN",
