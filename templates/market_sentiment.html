@@ -20,19 +20,17 @@
                 {% include 'navbar.html' %}
         </div>
     </div>
-
+    <div class="chart-wrapper" style="border-left: 4px solid #ff4d4d;">
+        {{ sentiment_html | safe }}
+    </div>
 <div style="margin-top: 15px; padding-top: 15px; border-top: 1px dashed #333; font-size: 13px; color: #aaa; line-height: 1.6;">
-    <strong style="color: #e0e0e0;">Execution Guide:</strong>
+    <strong style="color: #e0e0e0;">How to read this chart:</strong>
     <div style="margin-top: 5px;">
         This visualization overlays the <strong style="color: #4da6ff;">S&P 500</strong> (Benchmark Health) against the <strong style="color: #4da6ff;">Fear & Greed Index</strong> (Sentiment Velocity). 
         Historically, local market bottoms correlate with <span style="color: #e0e0e0; font-weight: bold;">Extreme Fear (Below 25)</span>, indicating capitulation and high-probability entry points. 
         Conversely, <span style="color: #e0e0e0; font-weight: bold;">Extreme Greed (Above 75)</span> typically signals retail euphoria and institutional distribution, suggesting a defensive posture or profit-taking is warranted.
     </div>
 </div>
-
-    <div class="chart-wrapper" style="border-left: 4px solid #ff4d4d;">
-        {{ sentiment_html | safe }}
-    </div>
 
 </body>
 </html>
