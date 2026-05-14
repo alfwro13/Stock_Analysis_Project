@@ -216,16 +216,12 @@ async def watchlist_page(request: Request, embed: bool = False):
 async def earnings_volatility_page(request: Request):
     """
     Renders the standalone Earnings Volatility Dashboard.
-    Fetches upcoming earnings options mispricing data from the SQLite database
-    and calculates the mathematical edge.
     """
-    # Generate today's date string to filter out past earnings
     today_str = datetime.now().strftime('%Y-%m-%d')
     
     conn = get_connection()
     cursor = conn.cursor()
     
-    # Fetch all future earnings events, ordered by date (closest first), then by best edge
     query = """
         SELECT * FROM earnings_volatility 
         WHERE next_earnings_date >= ?
@@ -234,9 +230,7 @@ async def earnings_volatility_page(request: Request):
     cursor.execute(query, (today_str,))
     rows = cursor.fetchall()
     
-    # Convert SQLite Row objects to standard Python dictionaries
     earnings_data = [dict(row) for row in rows]
-    
     conn.close()
     
     return templates.TemplateResponse(
@@ -253,21 +247,17 @@ async def earnings_volatility_page(request: Request):
 async def quant_screener_page(request: Request):
     """
     Renders the standalone Quantitative Screener Dashboard.
-    Fetches overnight signals and falls back to the previous day if the current day's scan hasn't run yet.
     """
     today = datetime.now()
     target_date = today.strftime('%Y-%m-%d')
     
-    # Attempt to fetch today's quantitative signals
     signals = fetch_latest_signals(target_date)
     
-    # Fallback Logic: If the overnight engine hasn't run yet, fetch yesterday's signals
     if not signals:
         yesterday = today - timedelta(days=1)
         target_date = yesterday.strftime('%Y-%m-%d')
         signals = fetch_latest_signals(target_date)
         
-    # Generate the Markdown string. If STILL empty, return a graceful error message.
     if signals:
         markdown_content = generate_markdown_briefing(target_date, signals)
     else:
@@ -296,6 +286,21 @@ async def market_screener_page(request: Request):
     return templates.TemplateResponse(
         request=request, 
         name="market_screener.html", 
+        context={
+            "unread_count": get_unread_count(),
+            "config": load_config()
+        }
+    )
+
+@page_router.get("/market-reports", response_class=HTMLResponse)
+async def market_reports_page(request: Request):
+    """
+    Renders the native Advanced Market Reports Dashboard.
+    Replaces the old CLI-based reporting tools.
+    """
+    return templates.TemplateResponse(
+        request=request, 
+        name="market_reports.html", 
         context={
             "unread_count": get_unread_count(),
             "config": load_config()

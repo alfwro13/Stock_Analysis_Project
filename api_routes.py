@@ -24,6 +24,9 @@ from quant_engine import run_daily_quant_scan
 from earnings_vol_engine import run_earnings_vol_scan
 from universe_engine import update_market_universe
 
+# --- REPORTS ENGINE IMPORTS ---
+from reports_engine import get_sector_trends, get_mean_reversion_setups, get_leaders_laggards
+
 # --- OPTIONS SANDBOX IMPORTS ---
 from options_engine import fetch_options_chain, calculate_payoff_matrix
 
@@ -294,3 +297,19 @@ async def get_screener_data():
         
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e), "data": []})
+
+# --- ADVANCED MARKET REPORTS ENDPOINTS ---
+@api_router.get("/reports/sectors")
+async def api_reports_sectors():
+    data = get_sector_trends()
+    return JSONResponse(content={"data": data})
+
+@api_router.get("/reports/mean-reversion")
+async def api_reports_mean_reversion(max_rsi: float = 30.0, min_sma_distance: float = 0.0):
+    data = get_mean_reversion_setups(max_rsi=max_rsi, min_sma_distance=min_sma_distance)
+    return JSONResponse(content={"data": data})
+
+@api_router.get("/reports/leaders")
+async def api_reports_leaders():
+    data = get_leaders_laggards()
+    return JSONResponse(content={"data": data})
