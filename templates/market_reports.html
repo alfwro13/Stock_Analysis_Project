@@ -34,6 +34,7 @@
         <p><strong>How to use:</strong> Think of this as a "weather report" for the market. Instead of looking at one stock, we look at groups like Tech or Energy. <br>
             <strong>When to use:</strong> Check this first before buying any stock to see if its "neighborhood" is doing well. <br>
             <strong>The Benefit:</strong> It helps you "swim with the tide." It is much easier to make money picking a stock in a sector where the Average RSI is rising and most stocks are above their 50-day average.</p>
+        
         <table id="sectorTable" class="display" style="width:100%">
             <thead>
                 <tr>
@@ -46,13 +47,22 @@
             </thead>
             <tbody></tbody>
         </table>
+        
+        <div style="margin-top: 15px; padding-top: 15px; border-top: 1px dashed #333; font-size: 13px; color: #aaa; line-height: 1.6;">
+            <strong style="color: #e0e0e0;">Key Metrics Explained:</strong>
+            <ul style="margin-top: 5px; padding-left: 20px; margin-bottom: 0;">
+                <li><strong style="color: #4da6ff;">Average RSI (14):</strong> The Relative Strength Index measures momentum. An average above 60 indicates the sector is running hot (bullish), while below 40 indicates heavy selling pressure (bearish).</li>
+                <li><strong style="color: #4da6ff;">Stocks > 50D SMA:</strong> The 50-day Simple Moving Average is the institutional "health" line. If a high percentage of stocks in a sector are above this line, the sector is in a strong medium-term uptrend.</li>
+                <li><strong style="color: #4da6ff;">Bullish MACD Crosses:</strong> Shows the percentage of stocks where short-term momentum has just mathematically crossed positive. A high number here indicates a sudden influx of buying pressure across the sector.</li>
+            </ul>
+        </div>
     </div>
 
     <div class="report-section" style="border-left-color: #00ffcc;">
         <h2 style="color: #00ffcc;">Relative Strength Leaders</h2>
         <p>The top 50 strongest momentum stocks in the entire market (Above 50D SMA, sorted by highest RSI and MACD Histogram).</p>
-        <p><strong>How to use:</strong> These are the "MVP" stocks—the top 50 athletes currently outperforming the market. 
-        <strong>When to use:</strong> Use this during a healthy market to find where professional investors are putting their money. 
+        <p><strong>How to use:</strong> These are the "MVP" stocks—the top 50 athletes currently outperforming the market. <br>
+        <strong>When to use:</strong> Use this during a healthy market to find where professional investors are putting their money. <br>
         <strong>The Benefit:</strong> Momentum tends to persist. By owning leaders with high RSI and positive MACD Histograms, you are holding the winners that often go up more than the average stock during bull runs.</p>
         <table id="leadersTable" class="display" style="width:100%">
             <thead>
@@ -72,8 +82,8 @@
     <div class="report-section" style="border-left-color: #ffaa00;">
         <h2 style="color: #ffaa00;">Mean Reversion Screener</h2>
         <p>Find stocks fundamentally in a long-term uptrend (>200D SMA) experiencing a severe short-term panic sell-off.</p>
-        <p><strong>How to use:</strong> This is a "bargain hunter" tool. It finds stocks that are strong long-term (above their 200-day average) but have suddenly "snapped" like a rubber band due to short-term panic. 
-           <strong>When to use:</strong> Use this when you want to buy a high-quality stock "on sale" during a temporary dip. 
+        <p><strong>How to use:</strong> This is a "bargain hunter" tool. It finds stocks that are strong long-term (above their 200-day average) but have suddenly "snapped" like a rubber band due to short-term panic. <br>
+           <strong>When to use:</strong> Use this when you want to buy a high-quality stock "on sale" during a temporary dip. <br>
            <strong>The Benefit:</strong> It prevents you from "chasing" high prices. Instead, it mathematically identifies a low-risk entry point where the price is likely to "snap back" to its normal level.</p>
         <div class="controls-container" style="align-items: flex-end; margin-bottom: 20px;">
             <div class="form-group" style="margin-bottom: 0;">
@@ -116,7 +126,7 @@
                         data: 'sector',
                         render: function(data) {
                             const encodedSector = encodeURIComponent(data);
-                            return `<a href="/market-screener?sector=${encodedSector}" style="color: #4da6ff; font-weight: bold;">${data}</a>`;
+                            return `<a href="/market-screener?sector=${encodedSector}" style="color: #4da6ff; font-weight: bold;" title="View all ${data} stocks">${data}</a>`;
                         }
                     },
                     { data: 'total_stocks' },
@@ -133,14 +143,14 @@
                         data: 'pct_above_50d', 
                         render: function(data, type, row) {
                             const encodedSector = encodeURIComponent(row.sector);
-                            return `<a href="/market-screener?sector=${encodedSector}&above_50d=true" style="color: #e0e0e0; text-decoration: underline dotted;" title="View these specific stocks">${data.toFixed(2)}%</a>`;
+                            return `<a href="/market-screener?sector=${encodedSector}&above_50d=true" style="color: #e0e0e0; text-decoration: underline dotted;" title="Filter Screener for ${row.sector} > 50D SMA">${data.toFixed(2)}%</a>`;
                         }
                     },
                     { 
                         data: 'pct_bullish_cross', 
                         render: function(data, type, row) {
                             const encodedSector = encodeURIComponent(row.sector);
-                            return `<a href="/market-screener?sector=${encodedSector}&bullish_cross=true" style="color: #e0e0e0; text-decoration: underline dotted;" title="View these specific stocks">${data.toFixed(2)}%</a>`;
+                            return `<a href="/market-screener?sector=${encodedSector}&bullish_cross=true" style="color: #e0e0e0; text-decoration: underline dotted;" title="Filter Screener for ${row.sector} Golden Crosses">${data.toFixed(2)}%</a>`;
                         }
                     }
                 ]
