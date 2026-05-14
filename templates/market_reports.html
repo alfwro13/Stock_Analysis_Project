@@ -5,129 +5,252 @@
     <meta name="color-scheme" content="dark">
     <title>Quantamental - Market Reports</title>
     <link rel="stylesheet" href="/static/css/styles.css">
+    
     <link rel="stylesheet" href="https://cdn.datatables.net/1.13.7/css/jquery.dataTables.min.css">
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
+
     <style>
-        .help-text {
-            background-color: #1a2636;
-            border-left: 4px solid #4da6ff;
-            padding: 15px;
-            margin-bottom: 20px;
-            font-size: 14px;
-            line-height: 1.6;
+        /* Dark Theme Overrides for DataTables */
+        .dataTables_wrapper .dataTables_length, 
+        .dataTables_wrapper .dataTables_filter, 
+        .dataTables_wrapper .dataTables_info, 
+        .dataTables_wrapper .dataTables_processing, 
+        .dataTables_wrapper .dataTables_paginate {
+            color: #e0e0e0 !important;
+            margin-bottom: 10px;
+        }
+
+        .dataTables_wrapper .dataTables_filter input, 
+        .dataTables_wrapper .dataTables_length select {
+            background-color: #121212 !important;
+            border: 1px solid #444 !important;
+            color: #fff !important;
+            padding: 6px;
+            border-radius: 4px;
+        }
+
+        table.dataTable {
+            border-collapse: collapse;
+            background-color: #1e1e1e;
+            width: 100% !important;
+        }
+        table.dataTable thead th, table.dataTable thead td {
+            background-color: #2c2c2c;
+            color: #4da6ff;
+            border-bottom: 2px solid #333;
+            padding: 10px;
+        }
+        table.dataTable tbody tr {
+            background-color: #1e1e1e !important;
+            border-bottom: 1px solid #333;
             color: #e0e0e0;
         }
-        .report-section { margin-bottom: 50px; }
+        table.dataTable tbody tr:hover {
+            background-color: #1a2636 !important;
+        }
+
+        table.dataTable.display tbody tr.odd > .sorting_1, 
+        table.dataTable.order-column.stripe tbody tr.odd > .sorting_1 {
+            background-color: #262626 !important;
+        }
+        table.dataTable.display tbody tr.even > .sorting_1, 
+        table.dataTable.order-column.stripe tbody tr.even > .sorting_1 {
+            background-color: #1e1e1e !important;
+        }
+
+        .dataTables_wrapper .dataTables_paginate .paginate_button {
+            color: #ccc !important;
+            border: 1px solid transparent !important;
+            margin: 0 2px;
+        }
+        .dataTables_wrapper .dataTables_paginate .paginate_button.current, 
+        .dataTables_wrapper .dataTables_paginate .paginate_button.current:hover {
+            background: #4da6ff !important;
+            color: #121212 !important;
+            border: none !important;
+            border-radius: 4px;
+        }
+        .dataTables_wrapper .dataTables_paginate .paginate_button:hover {
+            background: #3388dd !important;
+            color: #fff !important;
+            border-radius: 4px;
+        }
+
+        /* Value highlighting */
         .positive-val { color: #00ff00; font-weight: bold; }
         .negative-val { color: #ff4d4d; font-weight: bold; }
+        
+        .report-section {
+            background-color: #1e1e1e; 
+            padding: 20px; 
+            border-radius: 8px; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3); 
+            margin-top: 20px;
+            margin-bottom: 40px;
+            border-left: 4px solid #4da6ff;
+        }
+        .report-section h2 { margin-top: 0; margin-bottom: 15px; color: #fff; }
+        .report-section p { color: #aaa; font-size: 14px; margin-top: 0; margin-bottom: 20px; }
     </style>
 </head>
 <body class="body-watchlist">
+
     <div class="header-container">
         <div>
             <div class="title-wrapper">
-                <a href="/" class="logo-link"><img src="/assets/logo_small.png" alt="Logo" class="logo-img"></a>
-                <h1>Market Reports</h1>
+                <a href="https://github.com/alfwro13/Stock_Analysis_Project" target="_blank" class="logo-link">
+                    <img src="/assets/logo_small.png" alt="Quantamental Logo" class="logo-img">
+                </a>
+                <h1><abbr title="Quantamental - a modern institutional strategy that combines Quantitative analysis with Fundamental analysis.">uantamental</abbr> Dashboard</h1>
             </div>
+            
+            <p style="color: #aaaaaa; margin-top: 5px; font-size: 14px;">Advanced Market Analytics & Screener Reports</p>
+            
             <div class="nav-links">
                 <a href="/portfolio">💼 Portfolio</a>
                 <a href="/watchlist">👀 Watchlist</a>
+                <a href="/quant-screener">📊 Quant Screener</a>
                 <a href="/market-screener">🌐 Market Screener</a>
                 <a href="/market-reports" class="active">📈 Market Reports</a>
+                <a href="/earnings-volatility">📅 Earnings Volatility</a>
+                <a href="/market-sentiment">Market Sentiment</a>
                 <a href="/settings">⚙️ Settings</a>
-                <a href="/glossary">📚 Glossary</a>
             </div>
         </div>
     </div>
 
-    <div class="container">
-        <div class="report-section">
-            <h2>Sector Trends & Momentum</h2>
-            <div class="help-text">
-                <strong>How to use:</strong> Think of this as a "weather report" for the market. Instead of looking at one stock, we look at groups like Tech or Energy. 
-                <strong>When to use:</strong> Check this first before buying any stock to see if its "neighborhood" is doing well. 
-                <strong>The Benefit:</strong> It helps you "swim with the tide." It is much easier to make money picking a stock in a sector where the Average RSI is rising and most stocks are above their 50-day average.
+    <div class="report-section">
+        <h2>Sector Trends & Momentum</h2>
+        <p>A macro view of overall market health aggregated by sector, sorted by average relative strength.</p>
+        <table id="sectorTable" class="display" style="width:100%">
+            <thead>
+                <tr>
+                    <th>Sector</th>
+                    <th>Total Stocks</th>
+                    <th>Average RSI (14)</th>
+                    <th>Stocks > 50D SMA (%)</th>
+                    <th>Bullish MACD Crosses (%)</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+
+    <div class="report-section" style="border-left-color: #00ffcc;">
+        <h2 style="color: #00ffcc;">Relative Strength Leaders</h2>
+        <p>The top 50 strongest momentum stocks in the entire market (Above 50D SMA, sorted by highest RSI and MACD Histogram).</p>
+        <table id="leadersTable" class="display" style="width:100%">
+            <thead>
+                <tr>
+                    <th>Ticker</th>
+                    <th>Company Name</th>
+                    <th>Sector</th>
+                    <th>Close Price</th>
+                    <th>RSI (14)</th>
+                    <th>MACD Hist</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+
+    <div class="report-section" style="border-left-color: #ffaa00;">
+        <h2 style="color: #ffaa00;">Mean Reversion Screener</h2>
+        <p>Find stocks fundamentally in a long-term uptrend (>200D SMA) experiencing a severe short-term panic sell-off.</p>
+        
+        <div class="controls-container" style="align-items: flex-end; margin-bottom: 20px;">
+            <div class="form-group" style="margin-bottom: 0;">
+                <label>Maximum RSI Threshold</label>
+                <input type="number" id="mrMaxRSI" class="filter-input" value="30" style="width: 120px;">
             </div>
-            <table id="sectorTable" class="display" style="width:100%">
-                <thead>
-                    <tr>
-                        <th>Sector</th>
-                        <th>Total Stocks</th>
-                        <th>Avg RSI</th>
-                        <th>% Above 50D SMA</th>
-                        <th>% Bullish Cross</th>
-                    </tr>
-                </thead>
-            </table>
+            <button class="btn btn-update" onclick="loadMeanReversionData()">🔍 Run Query</button>
         </div>
 
-        <div class="report-section">
-            <h2>Relative Strength Leaders</h2>
-            <div class="help-text">
-                <strong>How to use:</strong> These are the "MVP" stocks—the top 50 athletes currently outperforming the market. 
-                <strong>When to use:</strong> Use this during a healthy market to find where professional investors are putting their money. 
-                <strong>The Benefit:</strong> Momentum tends to persist. By owning leaders with high RSI and positive MACD Histograms, you are holding the winners that often go up more than the average stock during bull runs.
-            </div>
-            <table id="leadersTable" class="display" style="width:100%">
-                <thead>
-                    <tr>
-                        <th>Ticker</th>
-                        <th>Company Name</th>
-                        <th>Sector</th>
-                        <th>Price</th>
-                        <th>RSI</th>
-                        <th>MACD Hist</th>
-                    </tr>
-                </thead>
-            </table>
-        </div>
-
-        <div class="report-section">
-            <h2>Mean Reversion Screener</h2>
-            <div class="help-text">
-                <strong>How to use:</strong> This is a "bargain hunter" tool. It finds stocks that are strong long-term (above their 200-day average) but have suddenly "snapped" like a rubber band due to short-term panic. 
-                <strong>When to use:</strong> Use this when you want to buy a high-quality stock "on sale" during a temporary dip. 
-                <strong>The Benefit:</strong> It prevents you from "chasing" high prices. Instead, it mathematically identifies a low-risk entry point where the price is likely to "snap back" to its normal level.
-            </div>
-            <div class="controls-container">
-                <label>Max RSI:</label>
-                <input type="number" id="mrMaxRSI" value="30" style="width:60px;">
-                <button class="btn btn-update" onclick="loadMR()">Run Query</button>
-            </div>
-            <table id="mrTable" class="display" style="width:100%">
-                <thead>
-                    <tr>
-                        <th>Ticker</th>
-                        <th>Company</th>
-                        <th>Price</th>
-                        <th>RSI</th>
-                        <th>Dist from 200D</th>
-                    </tr>
-                </thead>
-            </table>
-        </div>
+        <table id="mrTable" class="display" style="width:100%">
+            <thead>
+                <tr>
+                    <th>Ticker</th>
+                    <th>Company Name</th>
+                    <th>Sector</th>
+                    <th>Close Price</th>
+                    <th>RSI (14)</th>
+                    <th>200D SMA</th>
+                    <th>Dist from 200D (%)</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
     </div>
 
     <script>
+        let mrDataTable;
+
         $(document).ready(function() {
-            $('#sectorTable').DataTable({ ajax: '/api/reports/sectors', columns: [
-                { data: 'sector' }, { data: 'total_stocks' }, { data: 'avg_rsi' },
-                { data: 'pct_above_50d' }, { data: 'pct_bullish_cross' }
-            ]});
-            $('#leadersTable').DataTable({ ajax: '/api/reports/leaders', columns: [
-                { data: 'ticker' }, { data: 'company_name' }, { data: 'sector' },
-                { data: 'close_price' }, { data: 'rsi_14' }, { data: 'macd_hist' }
-            ]});
-            loadMR();
+            // Sector Table
+            $('#sectorTable').DataTable({
+                ajax: '/api/reports/sectors',
+                deferRender: true,
+                paging: false,
+                info: false,
+                searching: false,
+                order: [[2, 'desc']], // Sort by Avg RSI descending
+                columns: [
+                    { data: 'sector' },
+                    { data: 'total_stocks' },
+                    { 
+                        data: 'avg_rsi',
+                        render: function(data) {
+                            let cssClass = '';
+                            if (data > 60) cssClass = 'positive-val';
+                            else if (data < 40) cssClass = 'negative-val';
+                            return `<span class="${cssClass}">${data.toFixed(2)}</span>`;
+                        }
+                    },
+                    { data: 'pct_above_50d', render: $.fn.dataTable.render.number(',', '.', 2, '', '%') },
+                    { data: 'pct_bullish_cross', render: $.fn.dataTable.render.number(',', '.', 2, '', '%') }
+                ]
+            });
+
+            // Leaders Table
+            $('#leadersTable').DataTable({
+                ajax: '/api/reports/leaders',
+                deferRender: true,
+                pageLength: 10,
+                order: [[4, 'desc']], // Sort by RSI
+                columns: [
+                    { data: 'ticker', render: function(data) { return '<a href="/stock/' + data + '" style="color: #4da6ff; font-weight: bold;">' + data + '</a>'; } },
+                    { data: 'company_name' },
+                    { data: 'sector' },
+                    { data: 'close_price', render: $.fn.dataTable.render.number(',', '.', 2, '$') },
+                    { data: 'rsi_14', render: function(data) { return `<span class="positive-val">${data.toFixed(2)}</span>`; } },
+                    { data: 'macd_hist', render: function(data) { return `<span class="positive-val">${data.toFixed(3)}</span>`; } }
+                ]
+            });
+
+            // Mean Reversion Table Initialization
+            mrDataTable = $('#mrTable').DataTable({
+                deferRender: true,
+                pageLength: 10,
+                order: [[4, 'asc']], // Sort by lowest RSI
+                columns: [
+                    { data: 'ticker', render: function(data) { return '<a href="/stock/' + data + '" style="color: #4da6ff; font-weight: bold;">' + data + '</a>'; } },
+                    { data: 'company_name' },
+                    { data: 'sector' },
+                    { data: 'close_price', render: $.fn.dataTable.render.number(',', '.', 2, '$') },
+                    { data: 'rsi_14', render: function(data) { return `<span class="negative-val">${data.toFixed(2)}</span>`; } },
+                    { data: 'sma_200', render: $.fn.dataTable.render.number(',', '.', 2, '$') },
+                    { data: 'distance_from_200d_pct', render: function(data) { return `<span class="positive-val">+${data.toFixed(2)}%</span>`; } }
+                ]
+            });
+            
+            // Initial load of Mean Reversion data
+            loadMeanReversionData();
         });
-        function loadMR() {
-            const rsi = document.getElementById('mrMaxRSI').value;
-            if ($.fn.DataTable.isDataTable('#mrTable')) { $('#mrTable').DataTable().destroy(); }
-            $('#mrTable').DataTable({ ajax: `/api/reports/mean-reversion?max_rsi=${rsi}`, columns: [
-                { data: 'ticker' }, { data: 'company_name' }, { data: 'close_price' },
-                { data: 'rsi_14' }, { data: 'distance_from_200d_pct' }
-            ]});
+
+        function loadMeanReversionData() {
+            const maxRsi = document.getElementById('mrMaxRSI').value || 30;
+            mrDataTable.ajax.url(`/api/reports/mean-reversion?max_rsi=${maxRsi}`).load();
         }
     </script>
 </body>
