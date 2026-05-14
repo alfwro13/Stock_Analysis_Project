@@ -260,3 +260,37 @@ async def api_options_payoff(req: PayoffRequest):
     legs_dict = [leg.model_dump() for leg in req.legs]
     matrix = calculate_payoff_matrix(legs_dict, req.current_price)
     return JSONResponse(content=matrix)
+
+
+# --- MARKET SCREENER API (4000+ UNIVERSE) ---
+@api_router.get("/screener-data")
+async def get_screener_data():
+    """
+    Fetches the 4000+ rows of quantitative signals from the overnight Market Universe scan.
+    Optimized SQLite join directly converting to a JSON array for DataTables.js rendering.
+    """
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        
+        # We only want the most recent scan date data
+        query = """
+        SELECT 
+            q.ticker, m.company_name, m.sector, q.date, q.close_price, 
+            q.volume, q.rsi_14, q.macd_hist, q.sma_50, q.sma_200, 
+            q.volume_surge, q.bullish_cross
+        FROM quant_signals q
+        LEFT JOIN market_universe m ON q.ticker = m.ticker
+        WHERE q.date = (SELECT MAX(date) FROM quant_signals)
+        """
+        cursor.execute(query)
+        rows = cursor.fetchall()
+        conn.close()
+        
+        # Convert sqlite3.Row objects to dictionaries
+        data = [dict(row) for row in rows]
+        
+        return JSONResponse(content={"data": data})
+        
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e), "data": []})

@@ -288,6 +288,20 @@ async def quant_screener_page(request: Request):
         }
     )
 
+@page_router.get("/market-screener", response_class=HTMLResponse)
+async def market_screener_page(request: Request):
+    """
+    Renders the DataTables.js interactive Market Screener for the 4,000+ Universe.
+    """
+    return templates.TemplateResponse(
+        request=request, 
+        name="market_screener.html", 
+        context={
+            "unread_count": get_unread_count(),
+            "config": load_config()
+        }
+    )
+
 @page_router.get("/stock/{ticker}", response_class=HTMLResponse)
 async def stock_detail(request: Request, ticker: str, embed: bool = False):
     conn = get_connection()

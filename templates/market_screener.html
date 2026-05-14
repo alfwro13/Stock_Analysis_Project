@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="color-scheme" content="dark">
+    <title>Quantamental - Market Screener</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+    
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.7/css/jquery.dataTables.min.css">
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
+
+    <style>
+        /* Dark Theme Overrides for DataTables */
+        .dataTables_wrapper .dataTables_length, 
+        .dataTables_wrapper .dataTables_filter, 
+        .dataTables_wrapper .dataTables_info, 
+        .dataTables_wrapper .dataTables_processing, 
+        .dataTables_wrapper .dataTables_paginate {
+            color: #e0e0e0 !important;
+            margin-bottom: 10px;
+        }
+
+        .dataTables_wrapper .dataTables_filter input, 
+        .dataTables_wrapper .dataTables_length select {
+            background-color: #121212 !important;
+            border: 1px solid #444 !important;
+            color: #fff !important;
+            padding: 6px;
+            border-radius: 4px;
+        }
+
+        /* Core Table Styling */
+        table.dataTable {
+            border-collapse: collapse;
+            background-color: #1e1e1e;
+            width: 100% !important;
+        }
+        table.dataTable thead th, table.dataTable thead td {
+            background-color: #2c2c2c;
+            color: #4da6ff;
+            border-bottom: 2px solid #333;
+            padding: 10px;
+        }
+        table.dataTable tbody tr {
+            background-color: #1e1e1e !important;
+            border-bottom: 1px solid #333;
+            color: #e0e0e0;
+        }
+        table.dataTable tbody tr:hover {
+            background-color: #1a2636 !important;
+        }
+
+        /* Override Sorting Column Background Colors */
+        table.dataTable.display tbody tr.odd > .sorting_1, 
+        table.dataTable.order-column.stripe tbody tr.odd > .sorting_1 {
+            background-color: #262626 !important;
+        }
+        table.dataTable.display tbody tr.even > .sorting_1, 
+        table.dataTable.order-column.stripe tbody tr.even > .sorting_1 {
+            background-color: #1e1e1e !important;
+        }
+
+        /* Pagination Buttons Styling */
+        .dataTables_wrapper .dataTables_paginate .paginate_button {
+            color: #ccc !important;
+            border: 1px solid transparent !important;
+            margin: 0 2px;
+        }
+        .dataTables_wrapper .dataTables_paginate .paginate_button.current, 
+        .dataTables_wrapper .dataTables_paginate .paginate_button.current:hover {
+            background: #4da6ff !important;
+            color: #121212 !important;
+            border: none !important;
+            border-radius: 4px;
+        }
+        .dataTables_wrapper .dataTables_paginate .paginate_button:hover {
+            background: #3388dd !important;
+            color: #fff !important;
+            border-radius: 4px;
+        }
+
+        /* Value highlighting */
+        .positive-val { color: #00ff00; font-weight: bold; }
+        .negative-val { color: #ff4d4d; font-weight: bold; }
+        .badge-yes { background-color: #00ff00; color: #121212; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; }
+        .badge-no { color: #555; }
+    </style>
+</head>
+<body class="body-watchlist">
+
+    <div class="header-container">
+        <div>
+            <div class="title-wrapper">
+                <a href="https://github.com/alfwro13/Stock_Analysis_Project" target="_blank" class="logo-link">
+                    <img src="/assets/logo_small.png" alt="Quantamental Logo" class="logo-img">
+                </a>
+                <h1><abbr title="Quantamental - a modern institutional strategy that combines Quantitative analysis with Fundamental analysis.">uantamental</abbr> Dashboard</h1>
+            </div>
+            
+            <p style="color: #aaaaaa; margin-top: 5px; font-size: 14px;">Market Screener: Scanning 4,000+ US Equities</p>
+            
+            <div class="nav-links">
+                <a href="/portfolio">💼 Portfolio</a>
+                <a href="/watchlist">👀 Watchlist</a>
+                <a href="/quant-screener">📊 Quant Screener</a>
+                <a href="/market-screener" class="active">🌐 Market Screener</a>
+                <a href="/earnings-volatility">📅 Earnings Volatility</a>
+                <a href="/options-sandbox">🎲 Options Sandbox</a>
+                <a href="/market-sentiment">Market Sentiment</a>
+                <a href="/settings">⚙️ Settings</a>
+                <a href="/glossary">📚 Glossary</a>
+                <a href="/notifications">🔔 Notifications {% if unread_count > 0 %}<span class="badge" id="nav-badge">{{ unread_count }}</span>{% endif %}</a>
+            </div>
+        </div>
+    </div>
+
+    <div style="background-color: #1e1e1e; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); margin-top: 20px;">
+        <table id="screenerTable" class="display" style="width:100%">
+            <thead>
+                <tr>
+                    <th>Ticker</th>
+                    <th>Company Name</th>
+                    <th>Sector</th>
+                    <th>Close Price</th>
+                    <th>Volume</th>
+                    <th>RSI (14)</th>
+                    <th>MACD Hist</th>
+                    <th>50D SMA</th>
+                    <th>200D SMA</th>
+                    <th>Volume Surge</th>
+                    <th>Golden Cross</th>
+                </tr>
+            </thead>
+            <tbody>
+                </tbody>
+        </table>
+    </div>
+
+    <script>
+        $(document).ready(function() {
+            $('#screenerTable').DataTable({
+                ajax: '/api/screener-data',
+                deferRender: true,
+                pageLength: 25,
+                order: [[0, 'asc']], // Default sort by ticker
+                language: {
+                    search: "🔍 Search Everything:"
+                },
+                columns: [
+                    { 
+                        data: 'ticker', 
+                        render: function(data) { 
+                            return '<a href="/stock/' + data + '" style="color: #4da6ff; font-weight: bold;">' + data + '</a>'; 
+                        } 
+                    },
+                    { data: 'company_name', render: function(data) { return data || 'N/A'; } },
+                    { data: 'sector', render: function(data) { return data || 'N/A'; } },
+                    { 
+                        data: 'close_price', 
+                        render: $.fn.dataTable.render.number(',', '.', 2, '$') 
+                    },
+                    { 
+                        data: 'volume', 
+                        render: $.fn.dataTable.render.number(',', '.', 0, '') 
+                    },
+                    { 
+                        data: 'rsi_14', 
+                        render: function(data) { 
+                            if (data === null || data === undefined) return 'N/A';
+                            let cssClass = '';
+                            if (data > 70) cssClass = 'negative-val'; // Overbought
+                            else if (data < 30) cssClass = 'positive-val'; // Oversold
+                            return `<span class="${cssClass}">${data.toFixed(2)}</span>`;
+                        } 
+                    },
+                    { 
+                        data: 'macd_hist', 
+                        render: function(data) { 
+                            if (data === null || data === undefined) return 'N/A';
+                            let cssClass = data > 0 ? 'positive-val' : 'negative-val';
+                            return `<span class="${cssClass}">${data.toFixed(3)}</span>`;
+                        } 
+                    },
+                    { 
+                        data: 'sma_50', 
+                        render: function(data) {
+                            if (data === null || data === undefined) return 'N/A';
+                            return '$' + data.toFixed(2);
+                        }
+                    },
+                    { 
+                        data: 'sma_200', 
+                        render: function(data) {
+                            if (data === null || data === undefined) return 'N/A';
+                            return '$' + data.toFixed(2);
+                        }
+                    },
+                    { 
+                        data: 'volume_surge', 
+                        render: function(data) { 
+                            return data ? '<span class="badge-yes">YES</span>' : '<span class="badge-no">No</span>'; 
+                        } 
+                    },
+                    { 
+                        data: 'bullish_cross', 
+                        render: function(data) { 
+                            return data ? '<span class="badge-yes">YES</span>' : '<span class="badge-no">No</span>'; 
+                        } 
+                    }
+                ]
+            });
+        });
+    </script>
+
+</body>
+</html>
