@@ -110,9 +110,9 @@ details.settings-card[open] > summary { border-bottom: 1px solid #333; margin-bo
 /* Unified Pill Base for Refresh Button */
 .btn-refresh { background-color: #1e1e1e; padding: 8px 18px; border-radius: 20px; font-weight: bold; cursor: pointer; transition: all 0.2s ease; font-size: 15px; display: flex; align-items: center; gap: 8px; }
 
-/* Status: Up-To-Date (Green) */
-.btn-refresh.green { border: 1px solid #00ff00; color: #00ff00; }
-.btn-refresh.green:hover { background-color: #00ff00; color: #121212; box-shadow: 0 0 10px rgba(0, 255, 0, 0.4); }
+/* Status: Up-To-Date (Neon matching the AI Button) */
+.btn-refresh.green { border: 1px solid #00ffcc; color: #00ffcc; }
+.btn-refresh.green:hover { background-color: #00ffcc; color: #121212; box-shadow: 0 0 10px rgba(0, 255, 204, 0.4); }
 
 /* Status: Stale Data (Yellow) */
 .btn-refresh.yellow { border: 1px solid #ffaa00; color: #ffaa00; }
