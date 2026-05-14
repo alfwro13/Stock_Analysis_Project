@@ -20,18 +20,21 @@ def get_sector_trends() -> List[Dict[str, Any]]:
         conn = get_connection()
         cursor = conn.cursor()
         
+        # Uses COALESCE to fallback to 'Unclassified' since Nasdaq FTP provides no sectors.
         query = """
         SELECT 
-            m.sector,
+            COALESCE(s.sector, m.sector, 'Unclassified') as sector,
             COUNT(q.ticker) as total_stocks,
             ROUND(AVG(q.rsi_14), 2) as avg_rsi,
             ROUND(SUM(CASE WHEN q.close_price > q.sma_50 THEN 1 ELSE 0 END) * 100.0 / COUNT(q.ticker), 2) as pct_above_50d,
             ROUND(SUM(CASE WHEN q.bullish_cross = 1 THEN 1 ELSE 0 END) * 100.0 / COUNT(q.ticker), 2) as pct_bullish_cross
         FROM quant_signals q
         INNER JOIN market_universe m ON q.ticker = m.ticker
+        LEFT JOIN stock_signals s ON q.ticker = s.ticker
         WHERE q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = q.ticker)
-          AND m.sector IS NOT NULL AND m.sector != 'None' AND m.sector != ''
-        GROUP BY m.sector
+          AND COALESCE(s.sector, m.sector, 'Unclassified') != 'None' 
+          AND COALESCE(s.sector, m.sector, 'Unclassified') != ''
+        GROUP BY COALESCE(s.sector, m.sector, 'Unclassified')
         ORDER BY avg_rsi DESC
         """
         cursor.execute(query)
@@ -55,12 +58,16 @@ def get_mean_reversion_setups(max_rsi: float = 30.0, min_sma_distance: float = 0
         
         query = """
         SELECT 
-            q.ticker, m.company_name, m.sector, q.close_price, 
+            q.ticker, 
+            REPLACE(REPLACE(m.company_name, ' - Common Stock', ''), ' Common Stock', '') as company_name, 
+            COALESCE(s.sector, m.sector, 'Unclassified') as sector, 
+            q.close_price, 
             ROUND(q.rsi_14, 2) as rsi_14, 
             ROUND(q.sma_200, 2) as sma_200,
             ROUND(((q.close_price - q.sma_200) / q.sma_200) * 100.0, 2) as distance_from_200d_pct
         FROM quant_signals q
         INNER JOIN market_universe m ON q.ticker = m.ticker
+        LEFT JOIN stock_signals s ON q.ticker = s.ticker
         WHERE q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = q.ticker)
           AND q.rsi_14 <= ? 
           AND q.close_price > q.sma_200
@@ -89,12 +96,16 @@ def get_leaders_laggards() -> List[Dict[str, Any]]:
         
         query = """
         SELECT 
-            q.ticker, m.company_name, m.sector, q.close_price, 
+            q.ticker, 
+            REPLACE(REPLACE(m.company_name, ' - Common Stock', ''), ' Common Stock', '') as company_name, 
+            COALESCE(s.sector, m.sector, 'Unclassified') as sector, 
+            q.close_price, 
             ROUND(q.rsi_14, 2) as rsi_14, 
             ROUND(q.macd_hist, 3) as macd_hist,
             q.volume_surge
         FROM quant_signals q
         INNER JOIN market_universe m ON q.ticker = m.ticker
+        LEFT JOIN stock_signals s ON q.ticker = s.ticker
         WHERE q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = q.ticker)
           AND q.close_price > q.sma_50
           AND q.rsi_14 IS NOT NULL

@@ -314,7 +314,64 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
     cursor.execute("SELECT * FROM stock_signals WHERE ticker = ?", (ticker,))
     stock_data = cursor.fetchone()
     
-    if stock_data: stock_data = dict(stock_data)
+    if stock_data: 
+        stock_data = dict(stock_data)
+        if stock_data.get("company_name"):
+            stock_data["company_name"] = stock_data["company_name"].replace(" - Common Stock", "").replace(" Common Stock", "").strip()
+    else:
+        # Fallback for stocks in the universe but not in the user's explicit portfolio/watchlist (stock_signals)
+        cursor.execute('''
+            SELECT q.*, m.company_name, m.sector 
+            FROM quant_signals q
+            LEFT JOIN market_universe m ON q.ticker = m.ticker
+            WHERE q.ticker = ? ORDER BY q.date DESC LIMIT 1
+        ''', (ticker,))
+        q_data = cursor.fetchone()
+        
+        if q_data:
+            q_data = dict(q_data)
+            company_name = q_data.get("company_name") or ticker
+            company_name = company_name.replace(" - Common Stock", "").replace(" Common Stock", "").strip()
+            
+            c_price = q_data.get("close_price")
+            c_price = float(c_price) if c_price is not None else 0.0
+            
+            stock_data = {
+                "ticker": ticker,
+                "company_name": company_name,
+                "sector": q_data.get("sector") or "Unclassified",
+                "quote_type": "EQUITY",
+                "currency": "USD",
+                "current_price": c_price,
+                "overall_signal": "UNIVERSE SCAN ONLY",
+                "composite_score": "N/A",
+                "educational_notes": "This asset is part of the broader market universe scan. Add it to your Ghostfolio or Watchlist to trigger a deep, institutional fundamental evaluation.",
+                "next_earnings_date": "Unknown",
+                "target_price": None,
+                "trend_50d": "UP" if q_data.get("sma_50") and c_price > q_data.get("sma_50") else "DOWN",
+                "trend_200d": "UP" if q_data.get("sma_200") and c_price > q_data.get("sma_200") else "DOWN",
+                "rsi_14": q_data.get("rsi_14"),
+                "atr_stop_loss": None
+            }
+        else:
+            stock_data = {
+                "ticker": ticker,
+                "company_name": ticker,
+                "sector": "Unknown",
+                "quote_type": "UNKNOWN",
+                "currency": "USD",
+                "current_price": 0.0,
+                "overall_signal": "UNKNOWN",
+                "composite_score": "N/A",
+                "educational_notes": "Data not found. Asset may not be tracked.",
+                "next_earnings_date": "Unknown",
+                "target_price": None,
+                "trend_50d": "N/A",
+                "trend_200d": "N/A",
+                "rsi_14": None,
+                "atr_stop_loss": None
+            }
+            
     conn.close()
     
     top_holdings = []
@@ -328,7 +385,7 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
 
     days_to_earnings = None
     volatility_date = None
-    if stock_data and stock_data['next_earnings_date'] and stock_data['next_earnings_date'] != 'Unknown':
+    if stock_data and stock_data.get('next_earnings_date') and stock_data['next_earnings_date'] != 'Unknown':
         try:
             e_date = datetime.strptime(stock_data['next_earnings_date'], '%Y-%m-%d').date()
             today = datetime.now().date()
@@ -341,7 +398,7 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
     user_asset = next((data for key, data in portfolio_json.items() if data.get("ticker") == ticker), None)
     
     portfolio_math = None
-    if user_asset and stock_data and stock_data['current_price']:
+    if user_asset and stock_data and stock_data.get('current_price'):
         exchange_rate = get_rate_from_base(stock_data['currency'])
         
         def calculate_pnl(shares, buy_price_base):
@@ -395,7 +452,7 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
             }
     except Exception as e:
         df_macro = pd.DataFrame()
-        macro_html = f"<p>Chart Data Unavailable: {e}</p>"
+        macro_html = f"<p style='color:#888; font-style:italic;'>Historical Chart Data Unavailable for this asset. Error: {e}</p>"
 
     live_pattern_name = live_pattern_tooltip = live_pattern_score = None
     try:
@@ -417,7 +474,7 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
         s2_val = price_action['s2'] if price_action else None
         intraday_html = create_intraday_chart(df_intraday, ticker, s1=s1_val, s2=s2_val, live_pattern_name=live_pattern_name, live_pattern_tooltip=live_pattern_tooltip, live_pattern_score=live_pattern_score)
     except Exception:
-        intraday_html = "<p>Intraday data unavailable.</p>"
+        intraday_html = "<p style='color:#888; font-style:italic;'>Intraday data unavailable.</p>"
         
     return templates.TemplateResponse(
         request=request, name="stock_detail.html", 

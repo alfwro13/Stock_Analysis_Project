@@ -101,10 +101,11 @@ def update_market_universe() -> None:
                         continue
 
                     clean_symbol = symbol.replace(".", "-") # Normalize BRK.B to BRK-B for Yahoo Finance
+                    clean_name = description.replace(" - Common Stock", "").replace(" Common Stock", "").strip()
                     
                     tickers_to_insert.append((
                         clean_symbol,
-                        description,
+                        clean_name,
                         None, # Sector
                         None, # Industry
                         last_updated

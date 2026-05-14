@@ -278,22 +278,25 @@ async def get_screener_data():
         conn = get_connection()
         cursor = conn.cursor()
         
-        # We only want the most recent scan date data per ticker
-        # INNER JOIN filters out non-equity artifacts (like futures contracts) missing from the universe
+        # COALESCE combines the empty universe sectors with the detailed portfolio sectors if available.
+        # String replacement dynamically cleans up the Nasdaq FTP formatting.
         query = """
         SELECT 
-            q.ticker, m.company_name, m.sector, q.date, q.close_price, 
+            q.ticker, 
+            REPLACE(REPLACE(m.company_name, ' - Common Stock', ''), ' Common Stock', '') as company_name, 
+            COALESCE(s.sector, m.sector, 'Unclassified') as sector, 
+            q.date, q.close_price, 
             q.volume, q.rsi_14, q.macd_hist, q.sma_50, q.sma_200, 
             q.volume_surge, q.bullish_cross
         FROM quant_signals q
         INNER JOIN market_universe m ON q.ticker = m.ticker
+        LEFT JOIN stock_signals s ON q.ticker = s.ticker
         WHERE q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = q.ticker)
         """
         cursor.execute(query)
         rows = cursor.fetchall()
         conn.close()
         
-        # Convert sqlite3.Row objects to dictionaries
         data = [dict(row) for row in rows]
         
         return JSONResponse(content={"data": data})
