@@ -112,7 +112,13 @@
                 searching: false,
                 order: [[2, 'desc']], // Sort by Avg RSI descending
                 columns: [
-                    { data: 'sector' },
+                    { 
+                        data: 'sector',
+                        render: function(data) {
+                            const encodedSector = encodeURIComponent(data);
+                            return `<a href="/market-screener?sector=${encodedSector}" style="color: #4da6ff; font-weight: bold;">${data}</a>`;
+                        }
+                    },
                     { data: 'total_stocks' },
                     { 
                         data: 'avg_rsi',
@@ -123,8 +129,20 @@
                             return `<span class="${cssClass}">${data.toFixed(2)}</span>`;
                         }
                     },
-                    { data: 'pct_above_50d', render: $.fn.dataTable.render.number(',', '.', 2, '', '%') },
-                    { data: 'pct_bullish_cross', render: $.fn.dataTable.render.number(',', '.', 2, '', '%') }
+                    { 
+                        data: 'pct_above_50d', 
+                        render: function(data, type, row) {
+                            const encodedSector = encodeURIComponent(row.sector);
+                            return `<a href="/market-screener?sector=${encodedSector}&above_50d=true" style="color: #e0e0e0; text-decoration: underline dotted;" title="View these specific stocks">${data.toFixed(2)}%</a>`;
+                        }
+                    },
+                    { 
+                        data: 'pct_bullish_cross', 
+                        render: function(data, type, row) {
+                            const encodedSector = encodeURIComponent(row.sector);
+                            return `<a href="/market-screener?sector=${encodedSector}&bullish_cross=true" style="color: #e0e0e0; text-decoration: underline dotted;" title="View these specific stocks">${data.toFixed(2)}%</a>`;
+                        }
+                    }
                 ]
             });
 

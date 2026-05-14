@@ -52,6 +52,58 @@
 
     <script>
         $(document).ready(function() {
+            // 1. Parse URL Parameters
+            const urlParams = new URLSearchParams(window.location.search);
+            const targetSector = urlParams.get('sector');
+            const reqBullishCross = urlParams.get('bullish_cross') === 'true';
+            const reqAbove50d = urlParams.get('above_50d') === 'true';
+
+            // 2. Render Active Filters UI Banner if parameters exist
+            if (targetSector || reqBullishCross || reqAbove50d) {
+                let filterLabels = [];
+                if (targetSector) filterLabels.push(`Sector: ${targetSector}`);
+                if (reqBullishCross) filterLabels.push('Golden MACD Crosses Only');
+                if (reqAbove50d) filterLabels.push('Price > 50D SMA');
+                
+                const bannerHtml = `
+                    <div id="activeFiltersBanner" style="background-color: #1a2636; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #00ffcc; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">
+                        <div>
+                            <strong style="color: #00ffcc;">Active Deep-Link Filters:</strong> 
+                            <span style="color: #e0e0e0; margin-left: 10px; font-weight: bold;">${filterLabels.join(' &nbsp;|&nbsp; ')}</span>
+                        </div>
+                        <button class="btn-remove" style="padding: 8px 15px; font-weight: bold; cursor: pointer; border: none;" onclick="window.location.href='/market-screener'">✖ Clear Filters</button>
+                    </div>
+                `;
+                $('#screenerTable').parent().prepend(bannerHtml);
+            }
+
+            // 3. Register Custom DataTables Filter
+            $.fn.dataTable.ext.search.push(
+                function(settings, data, dataIndex, rowData) {
+                    // Check Sector match
+                    if (targetSector && rowData.sector !== targetSector) {
+                        return false;
+                    }
+                    
+                    // Check Golden Cross (SQLite boolean 1/0 or True/False)
+                    if (reqBullishCross && rowData.bullish_cross !== 1 && rowData.bullish_cross !== true) {
+                        return false;
+                    }
+                    
+                    // Check mathematical comparative condition (Price > 50D SMA)
+                    if (reqAbove50d) {
+                        const price = parseFloat(rowData.close_price);
+                        const sma50 = parseFloat(rowData.sma_50);
+                        if (isNaN(price) || isNaN(sma50) || price <= sma50) {
+                            return false;
+                        }
+                    }
+                    
+                    return true; // Keep row if it passes all active checks
+                }
+            );
+
+            // 4. Initialize DataTables
             $('#screenerTable').DataTable({
                 ajax: '/api/screener-data',
                 deferRender: true,
