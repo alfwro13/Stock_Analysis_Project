@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from config import load_config, SECRETS_PATH
-from database import get_connection
+from database import get_connection, get_universe_tickers
 from scheduler_engine import run_update_pipeline, run_ghostfolio_sync, reload_scheduler
 from ghostfolio_sync import GhostfolioSyncEngine
 from market_pulse import get_cached_pulse_from_db, fetch_and_save_pulse
@@ -22,6 +22,7 @@ from ai_engine import AIPromptEngine
 from data_engine import DataEngine
 from quant_engine import run_daily_quant_scan
 from earnings_vol_engine import run_earnings_vol_scan
+from universe_engine import update_market_universe
 
 # --- OPTIONS SANDBOX IMPORTS ---
 from options_engine import fetch_options_chain, calculate_payoff_matrix
@@ -43,14 +44,18 @@ class PayoffRequest(BaseModel):
 
 def bg_execute_quant_scan():
     """Background task wrapper for the heavy Quant engine."""
-    engine = DataEngine()
-    tickers = engine.get_all_tickers()
+    tickers = get_universe_tickers()
+    if not tickers:
+        print("[WARNING] Universe is empty. Please trigger a Universe Update first.")
+        return
     run_daily_quant_scan(tickers)
 
 def bg_execute_earnings_scan():
     """Background task wrapper for the heavy Earnings Volatility engine."""
-    engine = DataEngine()
-    tickers = engine.get_all_tickers()
+    tickers = get_universe_tickers()
+    if not tickers:
+        print("[WARNING] Universe is empty. Please trigger a Universe Update first.")
+        return
     run_earnings_vol_scan(tickers)
 
 @api_router.post("/trigger-quant-scan")
@@ -69,6 +74,15 @@ async def trigger_earnings_scan_endpoint(background_tasks: BackgroundTasks):
     return JSONResponse(content={
         "status": "success", 
         "message": "Earnings Volatility Scan initiated in the background. Check System Notifications for progress updates."
+    })
+
+@api_router.post("/trigger-universe-update")
+async def trigger_universe_update_endpoint(background_tasks: BackgroundTasks):
+    """API endpoint to manually trigger a scrape of the Nasdaq FTP server."""
+    background_tasks.add_task(update_market_universe)
+    return JSONResponse(content={
+        "status": "success", 
+        "message": "Market Universe update initiated in the background. Check System Notifications for progress."
     })
 
 class PulseRequest(BaseModel):

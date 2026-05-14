@@ -1,5 +1,6 @@
 # database.py
 import sqlite3
+from typing import List
 from config import DB_PATH
 
 def get_connection():
@@ -148,6 +149,17 @@ def init_db():
         )
     ''')
     
+    # New table for the Expanded Market Universe (4,000+ Tickers)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS market_universe (
+            ticker TEXT PRIMARY KEY,
+            company_name TEXT,
+            sector TEXT,
+            industry TEXT,
+            last_updated TEXT
+        )
+    ''')
+    
     conn.commit()
     
     # Run the dynamic migration script to inject any missing columns safely
@@ -185,6 +197,22 @@ def migrate_db(conn, cursor):
             cursor.execute(f"ALTER TABLE stock_signals ADD COLUMN {col_name} {data_type}")
     
     conn.commit()
+
+def get_universe_tickers() -> List[str]:
+    """
+    Connects to the SQLite DB and extracts all tracked universe tickers.
+    If the universe is empty, returns an empty list.
+    """
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT ticker FROM market_universe")
+        tickers = [row['ticker'] for row in cursor.fetchall()]
+        conn.close()
+        return tickers
+    except Exception as e:
+        print(f"[ERROR] Failed to fetch universe tickers: {e}")
+        return []
 
 if __name__ == "__main__":
     init_db()

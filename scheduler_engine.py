@@ -16,6 +16,8 @@ from ghostfolio_sync import GhostfolioSyncEngine
 from quant_engine import run_daily_quant_scan
 from earnings_vol_engine import run_earnings_vol_scan
 from report_dispatcher import push_morning_quant_briefing
+from database import get_universe_tickers
+from universe_engine import update_market_universe
 
 # --- Background Task Scheduler Setup ---
 scheduler = BackgroundScheduler()
@@ -59,17 +61,19 @@ def run_ghostfolio_sync():
 
 def run_overnight_quant_scan():
     """
-    Fetches the combined list of portfolio and watchlist tickers, 
+    Fetches the MASTER UNIVERSE, 
     and executes the resumable daily quant scan natively.
     """
     if not task_lock.acquire(blocking=False):
         print("[WARNING] System is currently busy. Skipping Overnight Quant Scan.")
         return
     try:
-        print("\n--- OVERNIGHT QUANT SCAN INITIATED ---")
-        engine = DataEngine()
-        all_tickers = engine.get_all_tickers() 
-        run_daily_quant_scan(all_tickers)
+        print("\n--- OVERNIGHT QUANT SCAN INITIATED (FULL UNIVERSE) ---")
+        all_tickers = get_universe_tickers() 
+        if all_tickers:
+            run_daily_quant_scan(all_tickers)
+        else:
+            print("[WARNING] Cannot run Quant Scan: Market Universe is empty.")
         print("--- OVERNIGHT QUANT SCAN COMPLETE ---\n")
     except Exception as e:
         print(f"[ERROR] Overnight Quant Scan Failed: {e}")
@@ -82,10 +86,12 @@ def run_weekend_earnings_scan():
         print("[WARNING] System is busy. Skipping Earnings Volatility Scan.")
         return
     try:
-        print("\n--- EARNINGS VOLATILITY SCAN INITIATED ---")
-        engine = DataEngine()
-        all_tickers = engine.get_all_tickers() 
-        run_earnings_vol_scan(all_tickers)
+        print("\n--- EARNINGS VOLATILITY SCAN INITIATED (FULL UNIVERSE) ---")
+        all_tickers = get_universe_tickers() 
+        if all_tickers:
+            run_earnings_vol_scan(all_tickers)
+        else:
+            print("[WARNING] Cannot run Earnings Scan: Market Universe is empty.")
         print("--- EARNINGS VOLATILITY SCAN COMPLETE ---\n")
     except Exception as e:
         print(f"[ERROR] Earnings Volatility Scan Failed: {e}")
@@ -249,7 +255,6 @@ def reload_scheduler():
     # 7. Daily Quant Screener Engine
     quant_cfg = scheduling.get("QUANT_ENGINE", {})
     quant_days_list = quant_cfg.get("DAYS", ["mon", "tue", "wed", "thu", "fri"])
-    # APScheduler accepts days separated by commas. Fallback to mon-fri if array is completely empty.
     quant_days = ",".join(quant_days_list) if quant_days_list else "mon-fri"
     quant_time = quant_cfg.get("TIME", "01:00")
     
@@ -285,7 +290,6 @@ def reload_scheduler():
     disp_cfg = scheduling.get("DISPATCHER", {})
     if disp_cfg.get("ENABLED", False):
         disp_days_list = disp_cfg.get("DAYS", ["mon", "tue", "wed", "thu", "fri"])
-        # APScheduler accepts days separated by commas. Fallback to mon-fri if array is empty.
         disp_days = ",".join(disp_days_list) if disp_days_list else "mon-fri"
         disp_time = disp_cfg.get("TIME", "08:00")
         
@@ -300,10 +304,26 @@ def reload_scheduler():
         except Exception as e:
             print(f"[ERROR] Failed to schedule Morning Briefing Dispatch: {e}")
 
+    # 10. Master Universe Update Engine
+    uni_cfg = scheduling.get("UNIVERSE_ENGINE", {})
+    if uni_cfg.get("ENABLED", True):
+        # Default to Friday night after market close if not specified
+        uni_day = uni_cfg.get("DAY", "fri")
+        uni_time = uni_cfg.get("TIME", "23:00")
+        
+        try:
+            hour, minute = map(int, uni_time.split(':'))
+            scheduler.add_job(
+                update_market_universe,
+                CronTrigger(day_of_week=uni_day, hour=hour, minute=minute),
+                id='universe_update_job'
+            )
+            print(f"[SCHEDULER] Market Universe Update scheduled for {uni_day} at {uni_time}")
+        except Exception as e:
+            print(f"[ERROR] Failed to schedule Market Universe Update: {e}")
 
 def start_scheduler():
     scheduler.start()
-
 
 def shutdown_scheduler():
     scheduler.shutdown()
