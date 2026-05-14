@@ -33,7 +33,7 @@ def log_notification(message_type: str, message_text: str) -> None:
     finally:
         conn.close()
 
-def run_daily_quant_scan(ticker_list: List[str]) -> None:
+def run_daily_quant_scan(ticker_list: List[str], scan_type: str = 'daily') -> None:
     """
     Downloads historical OHLCV data, calculates technical indicators using vectorization,
     and inserts the data into the local SQLite database. Includes resumability, throttling,
@@ -41,14 +41,17 @@ def run_daily_quant_scan(ticker_list: List[str]) -> None:
     """
     total_tickers = len(ticker_list)
     if not ticker_list:
-        logger.warning("Ticker list is empty. Aborting scan.")
+        logger.warning(f"Ticker list is empty for scan type '{scan_type}'. Aborting scan.")
         return
 
     today_str = datetime.now().strftime('%Y-%m-%d')
+    # Use a composite key for state tracking to prevent daily and universe scans from overriding each other
+    state_key = f"{today_str}_{scan_type}"
+    
     conn = get_connection()
     cursor = conn.cursor()
 
-    log_notification("Info", f"Quant Scan initiated for {total_tickers} tickers.")
+    log_notification("Info", f"Quant Scan ({scan_type}) initiated for {total_tickers} tickers.")
 
     try:
         # ---------------------------------------------------------
@@ -56,7 +59,7 @@ def run_daily_quant_scan(ticker_list: List[str]) -> None:
         # ---------------------------------------------------------
         cursor.execute(
             "SELECT last_processed_ticker, status FROM quant_scan_states WHERE scan_date = ?",
-            (today_str,)
+            (state_key,)
         )
         state = cursor.fetchone()
 
@@ -66,22 +69,22 @@ def run_daily_quant_scan(ticker_list: List[str]) -> None:
             last_ticker = state['last_processed_ticker']
             
             if status == 'COMPLETED':
-                logger.info(f"Scan for {today_str} already completed. Skipping execution.")
+                logger.info(f"Scan '{scan_type}' for {today_str} already completed. Skipping execution.")
                 conn.close()
-                log_notification("Info", f"Quant Scan for {today_str} bypassed (Already Completed).")
+                log_notification("Info", f"Quant Scan '{scan_type}' for {today_str} bypassed (Already Completed).")
                 return
                 
             elif status == 'IN_PROGRESS' and last_ticker in ticker_list:
                 # Find index of last processed and resume from the NEXT ticker
                 start_idx = ticker_list.index(last_ticker) + 1
                 resume_ticker = ticker_list[start_idx] if start_idx < len(ticker_list) else 'END'
-                logger.info(f"Resuming incomplete scan for {today_str}. Starting from {resume_ticker}.")
-                log_notification("Info", f"Resuming incomplete Quant Scan from {resume_ticker}.")
+                logger.info(f"Resuming incomplete '{scan_type}' scan for {today_str}. Starting from {resume_ticker}.")
+                log_notification("Info", f"Resuming incomplete Quant Scan ({scan_type}) from {resume_ticker}.")
         else:
-            # Initialize new daily state
+            # Initialize new daily state using the composite state_key
             cursor.execute(
                 "INSERT INTO quant_scan_states (scan_date, last_processed_ticker, status) VALUES (?, ?, ?)",
-                (today_str, "", "IN_PROGRESS")
+                (state_key, "", "IN_PROGRESS")
             )
             conn.commit()
 
@@ -90,7 +93,7 @@ def run_daily_quant_scan(ticker_list: List[str]) -> None:
         # ---------------------------------------------------------
         for i in range(start_idx, total_tickers):
             ticker = ticker_list[i]
-            logger.info(f"Processing {ticker} ({i + 1}/{total_tickers})...")
+            logger.info(f"Processing {ticker} ({i + 1}/{total_tickers}) [{scan_type}]...")
             
             try:
                 # Fetch 1-year of data to guarantee accurate 200-day SMAs
@@ -151,8 +154,8 @@ def run_daily_quant_scan(ticker_list: List[str]) -> None:
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (ticker, last_date, c_price, c_vol, c_rsi, c_macd, c_signal, c_hist, c_sma50, c_sma200, vol_surge, bullish_cross))
 
-                # Update State Engine
-                cursor.execute("UPDATE quant_scan_states SET last_processed_ticker = ? WHERE scan_date = ?", (ticker, today_str))
+                # Update State Engine using state_key
+                cursor.execute("UPDATE quant_scan_states SET last_processed_ticker = ? WHERE scan_date = ?", (ticker, state_key))
                 conn.commit()
 
             except Exception as e:
@@ -166,23 +169,23 @@ def run_daily_quant_scan(ticker_list: List[str]) -> None:
             processed = i + 1
             if total_tickers >= 4 and processed % max(1, total_tickers // 4) == 0 and processed < total_tickers:
                 pct = int((processed / total_tickers) * 100)
-                log_notification("Info", f"Quant Scan Progress: {pct}% ({processed}/{total_tickers} tickers processed).")
+                log_notification("Info", f"Quant Scan ({scan_type}) Progress: {pct}% ({processed}/{total_tickers} tickers processed).")
 
         # ---------------------------------------------------------
         # 3. Finalize State
         # ---------------------------------------------------------
-        cursor.execute("UPDATE quant_scan_states SET status = 'COMPLETED' WHERE scan_date = ?", (today_str,))
+        cursor.execute("UPDATE quant_scan_states SET status = 'COMPLETED' WHERE scan_date = ?", (state_key,))
         conn.commit()
         
-        logger.info(f"Quant scan for {today_str} successfully finished executing.")
-        log_notification("Success", f"Quant Scan completed successfully. All {total_tickers} tracked assets processed.")
+        logger.info(f"Quant scan '{scan_type}' for {today_str} successfully finished executing.")
+        log_notification("Success", f"Quant Scan ({scan_type}) completed successfully. All {total_tickers} tracked assets processed.")
 
     except Exception as e:
-        logger.error(f"Fatal error during Quant Scan: {str(e)}")
-        log_notification("Error", f"Quant Scan failed with a fatal error: {str(e)}")
+        logger.error(f"Fatal error during Quant Scan '{scan_type}': {str(e)}")
+        log_notification("Error", f"Quant Scan ({scan_type}) failed with a fatal error: {str(e)}")
     finally:
         conn.close()
 
 if __name__ == "__main__":
     # Test script standalone
-    run_daily_quant_scan(["AAPL", "MSFT", "NVDA"])
+    run_daily_quant_scan(["AAPL", "MSFT", "NVDA"], scan_type='test')

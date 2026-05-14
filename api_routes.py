@@ -49,6 +49,7 @@ def bg_execute_quant_scan():
     """Background task wrapper for the heavy Quant engine (Portfolio/Watchlist)."""
     engine = DataEngine()
     tickers = engine.get_all_tickers()
+    # Defaults to scan_type='daily'
     run_daily_quant_scan(tickers)
 
 def bg_execute_earnings_scan():
@@ -63,7 +64,8 @@ def bg_execute_universe_quant_scan():
     if not tickers:
         print("[WARNING] Universe is empty. Please trigger a Universe Update first.")
         return
-    run_daily_quant_scan(tickers)
+    # Now correctly passes the scan_type argument to prevent idempotency clashes
+    run_daily_quant_scan(tickers, scan_type='universe')
 
 
 @api_router.post("/trigger-quant-scan")

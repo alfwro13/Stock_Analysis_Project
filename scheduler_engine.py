@@ -121,7 +121,8 @@ def run_weekend_universe_routine():
         # 2. Extract the fresh list and run the massive quant scan
         all_tickers = get_universe_tickers()
         if all_tickers:
-            run_daily_quant_scan(all_tickers)
+            # Pass scan_type='universe' to prevent collision with daily scans
+            run_daily_quant_scan(all_tickers, scan_type='universe')
         else:
             print("[WARNING] Universe is empty, skipping quant scan.")
             
