@@ -48,6 +48,36 @@
             <tbody>
                 </tbody>
         </table>
+
+        <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #333;">
+            <h3 style="color: #4da6ff; margin-bottom: 15px;">📊 Key Metrics Explained</h3>
+            <div class="fundamentals-grid">
+                <div class="data-card">
+                    <h4 style="color: #00ffcc; margin-top: 0;">Momentum & Trend</h4>
+                    <p style="font-size: 13px; line-height: 1.5; color: #ccc;">
+                        <strong>RSI (14-Day):</strong> Measures how fast a stock is rising or falling. Above 70 is "Overbought" (due for a pullback), while below 30 is "Oversold" (due for a bounce).
+                    </p>
+                    <p style="font-size: 13px; line-height: 1.5; color: #ccc;">
+                        <strong>MACD Histogram:</strong> Measures acceleration. Green bars mean the stock is gaining speed upward; red or shrinking bars mean the trend is losing steam.
+                    </p>
+                    <p style="font-size: 13px; line-height: 1.5; color: #ccc;">
+                        <strong>Golden Cross:</strong> A "super-signal" where the 50-day average crosses above the 200-day average, mathematically proving a shift into a major new uptrend.
+                    </p>
+                </div>
+                <div class="data-card">
+                    <h4 style="color: #00ffcc; margin-top: 0;">Institutional Support</h4>
+                    <p style="font-size: 13px; line-height: 1.5; color: #ccc;">
+                        <strong>Volume:</strong> The total shares traded. High volume shows "Smart Money" conviction, while low volume moves are often unreliable "traps."
+                    </p>
+                    <p style="font-size: 13px; line-height: 1.5; color: #ccc;">
+                        <strong>Volume Surge:</strong> Triggered when volume is 50% higher than the 20-day average. It highlights massive institutional buying or selling.
+                    </p>
+                    <p style="font-size: 13px; line-height: 1.5; color: #ccc;">
+                        <strong>50D & 200D SMA:</strong> The 50D is the "Health Line" for medium-term trends. The 200D is the "Institutional Floor" used by large banks to judge long-term viability.
+                    </p>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -80,17 +110,12 @@
             // 3. Register Custom DataTables Filter
             $.fn.dataTable.ext.search.push(
                 function(settings, data, dataIndex, rowData) {
-                    // Check Sector match
                     if (targetSector && rowData.sector !== targetSector) {
                         return false;
                     }
-                    
-                    // Check Golden Cross (SQLite boolean 1/0 or True/False)
                     if (reqBullishCross && rowData.bullish_cross !== 1 && rowData.bullish_cross !== true) {
                         return false;
                     }
-                    
-                    // Check mathematical comparative condition (Price > 50D SMA)
                     if (reqAbove50d) {
                         const price = parseFloat(rowData.close_price);
                         const sma50 = parseFloat(rowData.sma_50);
@@ -98,8 +123,7 @@
                             return false;
                         }
                     }
-                    
-                    return true; // Keep row if it passes all active checks
+                    return true; 
                 }
             );
 
@@ -108,7 +132,7 @@
                 ajax: '/api/screener-data',
                 deferRender: true,
                 pageLength: 25,
-                order: [[0, 'asc']], // Default sort by ticker
+                order: [[0, 'asc']], 
                 language: {
                     search: "🔍 Search Everything:"
                 },
@@ -134,8 +158,8 @@
                         render: function(data) { 
                             if (data === null || data === undefined) return 'N/A';
                             let cssClass = '';
-                            if (data > 70) cssClass = 'negative-val'; // Overbought
-                            else if (data < 30) cssClass = 'positive-val'; // Oversold
+                            if (data > 70) cssClass = 'negative-val'; 
+                            else if (data < 30) cssClass = 'positive-val'; 
                             return `<span class="${cssClass}">${data.toFixed(2)}</span>`;
                         } 
                     },
