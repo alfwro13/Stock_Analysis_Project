@@ -23,7 +23,23 @@ from data_engine import DataEngine
 from quant_engine import run_daily_quant_scan
 from earnings_vol_engine import run_earnings_vol_scan
 
+# --- OPTIONS SANDBOX IMPORTS ---
+from options_engine import fetch_options_chain, calculate_payoff_matrix
+
 api_router = APIRouter(prefix="/api")
+
+# --- OPTIONS SANDBOX PYDANTIC SCHEMAS ---
+class OptionLeg(BaseModel):
+    type: str
+    strike: float
+    premium: float
+    position: str
+    quantity: int = 1
+
+class PayoffRequest(BaseModel):
+    current_price: float
+    legs: List[OptionLeg]
+
 
 def bg_execute_quant_scan():
     """Background task wrapper for the heavy Quant engine."""
@@ -190,18 +206,6 @@ async def get_latest_notifications(last_id: int = 0):
     except Exception as e:
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
-@api_router.post("/notifications/mark-read")
-async def mark_notifications_read():
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("UPDATE system_notifications SET is_read = 1 WHERE is_read = 0")
-        conn.commit()
-        conn.close()
-        return JSONResponse(content={"status": "success"})
-    except Exception as e:
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
-
 @api_router.get("/ai-prompt/{ticker}")
 async def get_ai_prompt(ticker: str, mode: str = "Quantamental Deep-Dive"):
     try:
@@ -212,3 +216,19 @@ async def get_ai_prompt(ticker: str, mode: str = "Quantamental Deep-Dive"):
         return JSONResponse(content={"status": "success", "prompt": prompt})
     except Exception as e:
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+# --- OPTIONS SANDBOX ENDPOINTS ---
+@api_router.get("/options/chain/{ticker}")
+async def api_options_chain(ticker: str):
+    """Fetches the options chain for the Sandbox UI."""
+    data = fetch_options_chain(ticker)
+    if "error" in data:
+        return JSONResponse(status_code=400, content=data)
+    return JSONResponse(content=data)
+
+@api_router.post("/options/payoff")
+async def api_options_payoff(req: PayoffRequest):
+    """Calculates the P&L matrix for the provided strategy legs."""
+    legs_dict = [leg.model_dump() for leg in req.legs]
+    matrix = calculate_payoff_matrix(legs_dict, req.current_price)
+    return JSONResponse(content=matrix)

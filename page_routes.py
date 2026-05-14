@@ -46,6 +46,19 @@ async def settings_page(request: Request):
 async def market_sentiment_page(request: Request):
     return templates.TemplateResponse(request=request, name="market_sentiment.html", context={"sentiment_html": get_sentiment_html(), "unread_count": get_unread_count()})
 
+@page_router.get("/options-sandbox", response_class=HTMLResponse)
+async def options_sandbox_page(request: Request):
+    """Renders the standalone Options Payoff Simulator."""
+    return templates.TemplateResponse(
+        request=request, 
+        name="options_sandbox.html", 
+        context={
+            "unread_count": get_unread_count(),
+            "config": load_config(),
+            "cached_pulse": get_all_cached_pulse()
+        }
+    )
+
 @page_router.get("/notifications", response_class=HTMLResponse)
 async def notifications_page(request: Request):
     conn = get_connection()

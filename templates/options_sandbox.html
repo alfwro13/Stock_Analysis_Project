@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="color-scheme" content="dark">
+    <title>Quantamental - Options Sandbox</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <style>
+        .sandbox-container { max-width: 1400px; margin: 20px auto; padding: 20px; display: grid; grid-template-columns: 3fr 1fr; gap: 20px; }
+        .panel { background-color: #1e1e1e; border-radius: 8px; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        .data-panel { border-top: 4px solid #4da6ff; }
+        .strategy-panel { border-top: 4px solid #00ffcc; }
+        
+        .leg-item { background: #2c2c2c; padding: 10px; border-radius: 5px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; border-left: 3px solid #fff; }
+        .leg-long { border-left-color: #00ff00; }
+        .leg-short { border-left-color: #ff4d4d; }
+        
+        .btn-add { background-color: #4da6ff; color: #121212; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        .btn-remove { background-color: #ff4d4d; color: #fff; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; }
+        
+        .chain-table-container { max-height: 400px; overflow-y: auto; margin-top: 15px; }
+        .chain-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .chain-table th, .chain-table td { padding: 6px; text-align: center; border-bottom: 1px solid #333; }
+        .chain-table th { background: #2c2c2c; position: sticky; top: 0; }
+    </style>
+</head>
+<body class="body-settings">
+
+    <div class="header-container" style="max-width: 1400px; margin: 20px auto;">
+        <div>
+            <div class="title-wrapper">
+                <a href="/" class="logo-link"><img src="/assets/logo_small.png" alt="Logo" class="logo-img"></a>
+                <h1><abbr title="Quantamental">uantamental</abbr> Options Sandbox</h1>
+            </div>
+            <div class="nav-links">
+                <a href="/portfolio">💼 Portfolio</a>
+                <a href="/watchlist">👀 Watchlist</a>
+                <a href="/quant-screener">📊 Quant Screener</a>
+                <a href="/options-sandbox" class="active">🎲 Options Sandbox</a>
+                <a href="/earnings-volatility">📅 Earnings Volatility</a>
+                <a href="/market-sentiment">Market Sentiment</a>
+                <a href="/settings">⚙️ Settings</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="sandbox-container">
+        <div class="panel data-panel">
+            <div class="controls-container" style="margin-bottom: 20px;">
+                <input type="text" id="tickerInput" class="filter-input" placeholder="Enter Ticker (e.g., SPY, AAPL)" style="width: 200px;">
+                <button class="btn btn-update" onclick="fetchChain()">Fetch Chain</button>
+                <select id="expSelect" class="filter-select" style="display: none;" onchange="renderTables()"></select>
+                <span id="currentPriceDisplay" style="margin-left: auto; font-size: 18px; font-weight: bold; color: #00ffcc;"></span>
+            </div>
+
+            <div id="payoff-chart" style="width: 100%; height: 400px; background: #121212; border-radius: 5px; margin-bottom: 20px;"></div>
+
+            <div style="display: flex; gap: 20px;">
+                <div style="flex: 1;">
+                    <h3 style="color: #00ffcc;">Calls</h3>
+                    <div class="chain-table-container">
+                        <table class="chain-table" id="callsTable">
+                            <thead><tr><th>Strike</th><th>Last</th><th>Bid</th><th>Ask</th><th>Add</th></tr></thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div style="flex: 1;">
+                    <h3 style="color: #ff4d4d;">Puts</h3>
+                    <div class="chain-table-container">
+                        <table class="chain-table" id="putsTable">
+                            <thead><tr><th>Strike</th><th>Last</th><th>Bid</th><th>Ask</th><th>Add</th></tr></thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel strategy-panel">
+            <h2 style="margin-top: 0;">Strategy Builder</h2>
+            <p style="font-size: 13px; color: #aaa;">Add legs from the chain. Default calculation uses the Mid Price.</p>
+            
+            <div id="strategyLegs"></div>
+
+            <button class="btn btn-save" style="margin-top: 20px; padding: 10px;" onclick="calculatePayoff()">📊 Plot Payoff</button>
+        </div>
+    </div>
+
+    <script>
+        let currentChainData = {};
+        let strategyLegs = [];
+        let underlyingPrice = 0;
+
+        async function fetchChain() {
+            const ticker = document.getElementById('tickerInput').value.toUpperCase();
+            if (!ticker) return;
+
+            document.getElementById('currentPriceDisplay').innerText = "Fetching...";
+            
+            try {
+                const response = await fetch(`/api/options/chain/${ticker}`);
+                const data = await response.json();
+                
+                if (data.error) {
+                    alert(data.error);
+                    document.getElementById('currentPriceDisplay').innerText = "";
+                    return;
+                }
+
+                currentChainData = data;
+                underlyingPrice = data.current_price;
+                
+                document.getElementById('currentPriceDisplay').innerText = `Current Price: $${underlyingPrice.toFixed(2)}`;
+                
+                const expSelect = document.getElementById('expSelect');
+                expSelect.innerHTML = '';
+                data.expirations.forEach(exp => {
+                    const opt = document.createElement('option');
+                    opt.value = exp;
+                    opt.innerText = exp;
+                    expSelect.appendChild(opt);
+                });
+                expSelect.style.display = 'inline-block';
+                
+                renderTables();
+
+            } catch (err) {
+                alert("Failed to fetch options chain.");
+            }
+        }
+
+        function renderTables() {
+            const exp = document.getElementById('expSelect').value;
+            if (!exp || !currentChainData.chains) return;
+
+            const chain = currentChainData.chains[exp];
+            
+            const buildRows = (type, data) => {
+                let html = '';
+                data.forEach(opt => {
+                    // Calculate Mid Price
+                    let mid = opt.lastPrice;
+                    if (opt.bid > 0 && opt.ask > 0) { mid = (opt.bid + opt.ask) / 2; }
+                    
+                    html += `<tr>
+                        <td><strong>${opt.strike.toFixed(2)}</strong></td>
+                        <td>${opt.lastPrice.toFixed(2)}</td>
+                        <td>${opt.bid.toFixed(2)}</td>
+                        <td>${opt.ask.toFixed(2)}</td>
+                        <td><button class="btn-add" onclick="addLeg('${type}', ${opt.strike}, ${mid})">+</button></td>
+                    </tr>`;
+                });
+                return html;
+            };
+
+            document.querySelector('#callsTable tbody').innerHTML = buildRows('call', chain.calls);
+            document.querySelector('#putsTable tbody').innerHTML = buildRows('put', chain.puts);
+        }
+
+        function addLeg(type, strike, premium) {
+            strategyLegs.push({
+                id: Date.now(),
+                type: type,
+                strike: strike,
+                premium: premium,
+                position: 'long',
+                quantity: 1
+            });
+            renderLegs();
+            calculatePayoff();
+        }
+
+        function removeLeg(id) {
+            strategyLegs = strategyLegs.filter(leg => leg.id !== id);
+            renderLegs();
+            calculatePayoff();
+        }
+
+        function togglePosition(id) {
+            const leg = strategyLegs.find(l => l.id === id);
+            if(leg) { leg.position = leg.position === 'long' ? 'short' : 'long'; }
+            renderLegs();
+            calculatePayoff();
+        }
+
+        function updateQuantity(id, val) {
+            const leg = strategyLegs.find(l => l.id === id);
+            if(leg) { leg.quantity = parseInt(val) || 1; }
+            calculatePayoff();
+        }
+
+        function renderLegs() {
+            const container = document.getElementById('strategyLegs');
+            container.innerHTML = '';
+            
+            strategyLegs.forEach(leg => {
+                const isLong = leg.position === 'long';
+                const tagClass = isLong ? 'leg-long' : 'leg-short';
+                
+                container.innerHTML += `
+                    <div class="leg-item ${tagClass}">
+                        <div style="flex: 1;">
+                            <button class="btn-add" style="background:${isLong ? '#00ff00' : '#ff4d4d'}; color:#121212; padding:2px 5px;" onclick="togglePosition(${leg.id})">${leg.position.toUpperCase()}</button>
+                            <span style="font-weight:bold; margin-left:10px;">${leg.strike} ${leg.type.toUpperCase()}</span>
+                        </div>
+                        <div style="flex: 1;">
+                            <input type="number" value="${leg.quantity}" min="1" style="width:40px; background:#121212; color:#fff; border:1px solid #444;" onchange="updateQuantity(${leg.id}, this.value)">
+                            <span style="color:#aaa; font-size:12px; margin-left:5px;">@ $${leg.premium.toFixed(2)}</span>
+                        </div>
+                        <button class="btn-remove" onclick="removeLeg(${leg.id})">X</button>
+                    </div>
+                `;
+            });
+        }
+
+        async function calculatePayoff() {
+            if (strategyLegs.length === 0) {
+                Plotly.purge('payoff-chart');
+                return;
+            }
+
+            const payload = {
+                current_price: underlyingPrice,
+                legs: strategyLegs
+            };
+
+            const response = await fetch('/api/options/payoff', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await response.json();
+            plotChart(data.prices, data.payoffs);
+        }
+
+        function plotChart(prices, payoffs) {
+            // Split traces for Red/Green conditional coloring
+            const posPayoffs = payoffs.map(y => y >= 0 ? y : null);
+            const negPayoffs = payoffs.map(y => y <= 0 ? y : null);
+
+            const tracePos = {
+                x: prices, y: posPayoffs,
+                mode: 'lines', name: 'Profit',
+                line: { color: '#00ff00', width: 3 },
+                fill: 'tozeroy', fillcolor: 'rgba(0, 255, 0, 0.1)'
+            };
+
+            const traceNeg = {
+                x: prices, y: negPayoffs,
+                mode: 'lines', name: 'Loss',
+                line: { color: '#ff4d4d', width: 3 },
+                fill: 'tozeroy', fillcolor: 'rgba(255, 77, 77, 0.1)'
+            };
+
+            const layout = {
+                title: 'Strategy Payoff at Expiration',
+                template: 'plotly_dark',
+                paper_bgcolor: '#121212',
+                plot_bgcolor: '#121212',
+                margin: { l: 40, r: 20, t: 40, b: 30 },
+                xaxis: { title: 'Underlying Price at Expiration' },
+                yaxis: { title: 'Net P&L ($)', zeroline: true, zerolinecolor: '#888', zerolinewidth: 2 },
+                showlegend: false,
+                hovermode: 'x unified'
+            };
+
+            Plotly.newPlot('payoff-chart', [tracePos, traceNeg], layout, {responsive: true, displayModeBar: false});
+        }
+    </script>
+</body>
+</html>
