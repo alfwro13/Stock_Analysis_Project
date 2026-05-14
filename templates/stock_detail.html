@@ -14,7 +14,7 @@
                 <img src="/assets/logo_small.png" alt="Logo" style="height: 30px; vertical-align: middle; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">
             </a>
             
-            <a href="{% if embed %}/portfolio?embed=true{% else %}/{% endif %}">← Dashboard</a> 
+            <a href="javascript:history.back()">← Back</a> 
             
             {% if not embed %}
             <span class="divider">|</span>
