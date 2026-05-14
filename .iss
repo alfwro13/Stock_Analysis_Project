@@ -1,21 +1,21 @@
 
 change portfolio and watchlist to use the same table as the 4K report
 fix the menus/liks
-
+make sure notification audo-refreshes (any new notifications)
 
 
 reporting: monthly_gains_3 etc
 
 sector analysis
-
-
-
 to do later?
 Remove the Options sandbox - I do not see myself using it. I am not a day/swing trader. So I am not sure how much use this will be to me. 
 
-earnings_tracker.py
+Migrated
+earnings_tracker.py  -> earnings_vol_engine
 
-portfolio-sizing.py
+
+Mabey later:
+portfolio-sizing.py - Trade execution math (like position sizing and risk management per ticket) falls slightly outside that scope. Furthermore, your Ghostfolio integration handles your actual portfolio tracking. If you want this back, we can easily add a small "Position Sizer" widget to the Settings or Watchlist page in the future!
 
 reit-correlation.py - how can we use this comparison? I'm not interested in reti but is the comparison useful for something else?
 
