@@ -245,5 +245,18 @@ table.dataTable.display tbody tr.even > .sorting_1, table.dataTable.order-column
     .fundamentals-grid { grid-template-columns: 1fr; }
     .action-buttons, .controls-container { flex-direction: column; gap: 10px; }
     .filter-input, .filter-select { width: 100%; }
+/* --- 15. Market Reports & Screener Explanations --- */
+.metric-label { color: #4da6ff; font-weight: bold; }
+.explanation-footer { margin-top: 15px; padding-top: 15px; border-top: 1px dashed #333; font-size: 13px; color: #aaa; line-height: 1.6; }
+.explanation-footer-title { color: #e0e0e0; font-weight: bold; }
+.explanation-list { margin-top: 5px; padding-left: 20px; margin-bottom: 0; }
 
+.dotted-link { color: #e0e0e0; text-decoration: underline dotted; font-weight: normal; }
+.dotted-link:hover { color: #fff; text-decoration: underline dotted; }
+
+/* Section Theme Modifiers */
+.report-section.theme-green { border-left-color: #00ffcc; }
+.report-section.theme-green h2 { color: #00ffcc; }
+.report-section.theme-orange { border-left-color: #ffaa00; }
+.report-section.theme-orange h2 { color: #ffaa00; }
 }
