@@ -47,15 +47,8 @@
                 <a href="/" class="logo-link"><img src="/assets/logo_small.png" alt="Logo" class="logo-img"></a>
                 <h1><abbr title="Quantamental">uantamental</abbr> Options Sandbox</h1>
             </div>
-            <div class="nav-links">
-                <a href="/portfolio">💼 Portfolio</a>
-                <a href="/watchlist">👀 Watchlist</a>
-                <a href="/quant-screener">📊 Quant Screener</a>
-                <a href="/options-sandbox" class="active">🎲 Options Sandbox</a>
-                <a href="/earnings-volatility">📅 Earnings Volatility</a>
-                <a href="/market-sentiment">Market Sentiment</a>
-                <a href="/settings">⚙️ Settings</a>
-            </div>
+            {% set active_page = 'options_sandbox' %}
+                {% include 'navbar.html' %}
         </div>
     </div>
 

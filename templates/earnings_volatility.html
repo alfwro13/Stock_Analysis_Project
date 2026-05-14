@@ -45,19 +45,8 @@
             
             <p style="color: #aaaaaa; margin-top: 5px; font-size: 14px;">Options Mispricing & Volatility Arbitrage Scanner</p>
             
-            <div class="nav-links">
-                <a href="/portfolio">💼 Portfolio</a>
-                <a href="/watchlist">👀 Watchlist</a>
-                <a href="/quant-screener">📊 Quant Screener</a>
-                <a href="/earnings-volatility" class="active">📅 Earnings Volatility</a>
-                <a href="/options-sandbox">🎲 Options Sandbox</a>
-                <a href="/market-sentiment">Market Sentiment</a>
-                <a href="/market-screener">🌐 Market Screener</a>
-                <a href="/market-reports">📈 Market Reports</a>
-                <a href="/settings">⚙️ Settings</a>
-                <a href="/glossary">📚 Glossary</a>
-                <a href="/notifications">🔔 Notifications {% if unread_count > 0 %}<span class="badge" id="nav-badge">{{ unread_count }}</span>{% endif %}</a>
-            </div>
+            {% set active_page = 'earnings_volatility' %}
+                {% include 'navbar.html' %}
         </div>
     </div>
 

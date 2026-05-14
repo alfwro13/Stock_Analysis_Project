@@ -107,18 +107,8 @@
             
             <p style="color: #aaaaaa; margin-top: 5px; font-size: 14px;">Advanced Market Analytics & Screener Reports</p>
             
-            <div class="nav-links">
-                <a href="/portfolio">💼 Portfolio</a>
-                <a href="/watchlist">👀 Watchlist</a>
-                <a href="/quant-screener">📊 Quant Screener</a>
-                <a href="/earnings-volatility">📅 Earnings Volatility</a>
-                <a href="/options-sandbox">🎲 Options Sandbox</a>
-                <a href="/market-sentiment">Market Sentiment</a>
-                <a href="/market-screener">🌐 Market Screener</a>
-                <a href="/market-reports" class="active">📈 Market Reports</a>
-                <a href="/market-sentiment">Market Sentiment</a>
-                <a href="/settings">⚙️ Settings</a>
-            </div>
+            {% set active_page = 'market_reports' %}
+                {% include 'navbar.html' %}
         </div>
     </div>
 
