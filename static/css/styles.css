@@ -24,7 +24,7 @@ body {
 h1, h2, h3 { color: #ffffff; margin: 0; }
 a { color: #4da6ff; text-decoration: none; font-weight: bold; }
 a:hover { text-decoration: underline; }
-abbr { text-decoration: underline dotted; cursor: help; color: #fff; }
+abbr { text-decoration: underline dotted; cursor: pointer; color: #fff; }
 
 /* Header & Navigation */
 .header-container { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; padding-bottom: 20px; margin-bottom: 30px; }
