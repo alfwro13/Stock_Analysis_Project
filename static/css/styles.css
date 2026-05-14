@@ -97,8 +97,20 @@ details.settings-card[open] > summary { border-bottom: 1px solid #333; margin-bo
 .portfolio-box { background-color: #1a2636; padding: 20px; border-radius: 8px; margin-bottom: 20px; border-left: 5px solid #00ff00; }
 .explanation-box { background-color: #2c2c2c; padding: 15px; border-radius: 5px; margin-bottom: 20px; line-height: 1.6; font-size: 15px; color: #ccc; }
 .summary-row { background-color: #1a2636; padding: 15px 20px; border-radius: 8px; margin-bottom: 20px; display: flex; gap: 30px; border-left: 4px solid #00ffcc; box-shadow: 0 2px 4px rgba(0,0,0,0.3); }
+
+/* --- AI & Data Refresh Buttons --- */
 .ai-btn { background-color: #1e1e1e; color: #00ffcc; border: 1px solid #00ffcc; padding: 8px 18px; border-radius: 20px; font-weight: bold; cursor: pointer; transition: all 0.2s ease; font-size: 15px; display: flex; align-items: center; gap: 8px; }
 .ai-btn:hover { background-color: #00ffcc; color: #121212; box-shadow: 0 0 10px rgba(0, 255, 204, 0.4); }
+
+.btn-refresh { background-color: #1e1e1e; color: #fff; border: 1px solid #555; padding: 8px 18px; border-radius: 20px; font-weight: bold; cursor: pointer; transition: all 0.2s ease; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+.btn-refresh.green { border-color: #00ff00; color: #00ff00; }
+.btn-refresh.yellow { border-color: #ffaa00; color: #ffaa00; }
+.btn-refresh.red { border-color: #ff4d4d; color: #ff4d4d; }
+.btn-refresh:hover { background-color: #2c2c2c; }
+
+@keyframes spin { 100% { transform: rotate(360deg); } }
+.spin-icon { animation: spin 1s linear infinite; display: inline-block; }
+
 .ai-dropdown-content { display: none; position: absolute; right: 0; top: 100%; background-color: #1e1e1e; min-width: 260px; box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.6); z-index: 1000; border-radius: 8px; border: 1px solid #333; overflow: hidden; margin-top: 8px; }
 .ai-dropdown-content a { color: #e0e0e0; padding: 12px 16px; text-decoration: none; display: block; font-size: 14px; font-weight: normal; border-bottom: 1px solid #2a2a2a; }
 .ai-dropdown-content a:last-child { border-bottom: none; }

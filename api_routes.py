@@ -20,6 +20,7 @@ from earnings_engine import run_earnings_alert
 from insider_engine import run_insider_alert
 from ai_engine import AIPromptEngine
 from data_engine import DataEngine
+from quant_signals import QuantEngine
 from quant_engine import run_daily_quant_scan
 from earnings_vol_engine import run_earnings_vol_scan
 from universe_engine import update_market_universe
@@ -32,7 +33,10 @@ from options_engine import fetch_options_chain, calculate_payoff_matrix
 
 api_router = APIRouter(prefix="/api")
 
-# --- OPTIONS SANDBOX PYDANTIC SCHEMAS ---
+# --- SHARED PYDANTIC SCHEMAS ---
+class TickerRequest(BaseModel):
+    ticker: str
+
 class OptionLeg(BaseModel):
     type: str
     strike: float
@@ -258,6 +262,38 @@ async def get_ai_prompt(ticker: str, mode: str = "Quantamental Deep-Dive"):
         return JSONResponse(content={"status": "success", "prompt": prompt})
     except Exception as e:
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+# --- WATCHLIST MANAGEMENT ENDPOINTS ---
+@api_router.post("/watchlist/add")
+async def api_watchlist_add(req: TickerRequest):
+    """Adds a ticker to Ghostfolio and synchronizes the local JSON engine."""
+    engine = GhostfolioSyncEngine()
+    if engine.add_to_watchlist(req.ticker):
+        engine.sync_watchlist()
+        return JSONResponse(content={"status": "success"})
+    return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to add to Ghostfolio."})
+
+@api_router.post("/watchlist/remove")
+async def api_watchlist_remove(req: TickerRequest):
+    """Removes a ticker from Ghostfolio and synchronizes the local JSON engine."""
+    engine = GhostfolioSyncEngine()
+    if engine.remove_from_watchlist(req.ticker):
+        engine.sync_watchlist()
+        return JSONResponse(content={"status": "success"})
+    return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to remove from Ghostfolio."})
+
+# --- MANUAL DATA REFRESH ENDPOINT ---
+@api_router.post("/data/refresh-single")
+async def api_data_refresh_single(req: TickerRequest):
+    """Synchronously fetches fresh market data and evaluates the quant models for a single ticker."""
+    data_engine = DataEngine()
+    quant_engine = QuantEngine()
+    
+    if data_engine.fetch_and_save_data(req.ticker):
+        quant_engine.analyze_ticker(req.ticker)
+        return JSONResponse(content={"status": "success"})
+    return JSONResponse(status_code=500, content={"status": "error", "message": "Data fetch failed."})
+
 
 # --- OPTIONS SANDBOX ENDPOINTS ---
 @api_router.get("/options/chain/{ticker}")

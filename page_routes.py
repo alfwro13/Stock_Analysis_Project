@@ -295,6 +295,12 @@ async def market_reports_page(request: Request):
 
 @page_router.get("/stock/{ticker}", response_class=HTMLResponse)
 async def stock_detail(request: Request, ticker: str, embed: bool = False):
+    
+    # 1. Check if the ticker is currently in the Watchlist JSON
+    watchlist_json = get_json_data(WATCHLIST_PATH)
+    watchlist_tickers = watchlist_json.get("watchlist", [])
+    is_in_watchlist = ticker in watchlist_tickers
+
     conn = get_connection()
     cursor = conn.cursor()
     # MODIFIED: Joined asset_profiles table directly to pull business_summary for portfolio assets
@@ -349,7 +355,8 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
                 "trend_50d": "UP" if q_data.get("sma_50") and c_price > q_data.get("sma_50") else "DOWN",
                 "trend_200d": "UP" if q_data.get("sma_200") and c_price > q_data.get("sma_200") else "DOWN",
                 "rsi_14": q_data.get("rsi_14"),
-                "atr_stop_loss": None
+                "atr_stop_loss": None,
+                "last_updated": None
             }
         else:
             stock_data = {
@@ -368,11 +375,26 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
                 "trend_50d": "N/A",
                 "trend_200d": "N/A",
                 "rsi_14": None,
-                "atr_stop_loss": None
+                "atr_stop_loss": None,
+                "last_updated": None
             }
             
     conn.close()
     
+    # 2. Evaluate Data Staleness for the Refresh Button
+    data_status = 'red'
+    last_updated_str = "Never"
+    if stock_data and stock_data.get('last_updated'):
+        last_updated_str = stock_data['last_updated']
+        try:
+            lu_date = datetime.strptime(last_updated_str, "%Y-%m-%d %H:%M:%S")
+            if datetime.now() - lu_date < timedelta(hours=24):
+                data_status = 'green'
+            else:
+                data_status = 'yellow'
+        except Exception:
+            data_status = 'red'
+
     top_holdings = []
     sector_weightings = []
     if stock_data and stock_data.get('top_holdings'):
@@ -490,6 +512,9 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
             "unread_count": get_unread_count(),
             "embed": embed,
             "config": load_config(),
-            "cached_pulse": get_all_cached_pulse()
+            "cached_pulse": get_all_cached_pulse(),
+            "is_in_watchlist": is_in_watchlist,
+            "data_status": data_status,
+            "last_updated_str": last_updated_str
         }
     )
