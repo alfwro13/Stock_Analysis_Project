@@ -6,38 +6,6 @@
     <title>Quantamental - Options Sandbox</title>
     <link rel="stylesheet" href="/static/css/styles.css">
     <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
-    <style>
-        .sandbox-container { max-width: 1400px; margin: 20px auto; padding: 20px; display: grid; grid-template-columns: 3fr 1fr; gap: 20px; }
-        .panel { background-color: #1e1e1e; border-radius: 8px; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
-        .data-panel { border-top: 4px solid #4da6ff; }
-        .strategy-panel { border-top: 4px solid #00ffcc; }
-        
-        .leg-item { background: #2c2c2c; padding: 10px; border-radius: 5px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; border-left: 3px solid #fff; }
-        .leg-long { border-left-color: #00ff00; }
-        .leg-short { border-left-color: #ff4d4d; }
-        
-        .btn-add { background-color: #4da6ff; color: #121212; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-weight: bold; }
-        .btn-remove { background-color: #ff4d4d; color: #fff; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; }
-        
-        .chain-table-container { max-height: 400px; overflow-y: auto; margin-top: 15px; }
-        .chain-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-        .chain-table th, .chain-table td { padding: 6px; text-align: center; border-bottom: 1px solid #333; }
-        .chain-table th { background: #2c2c2c; position: sticky; top: 0; }
-
-        /* Manual & Guide Styling */
-        .manual-container { max-width: 1400px; margin: 40px auto 40px auto; padding: 0 20px; display: block; }
-        .manual-section { background-color: #1e1e1e; border-radius: 8px; padding: 30px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); margin-bottom: 30px; }
-        .manual-header { border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 20px; color: #4da6ff; margin-top: 0; }
-        .manual-text { color: #ccc; font-size: 15px; line-height: 1.6; margin-bottom: 20px; }
-        
-        .guide-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
-        .guide-card { background-color: #1a1a1a; padding: 20px; border-radius: 8px; border-top: 4px solid #555; box-shadow: 0 4px 6px rgba(0,0,0,0.2); transition: transform 0.2s ease, border-color 0.2s ease; }
-        .guide-card:hover { transform: translateY(-5px); border-top-color: #00ffcc; }
-        .guide-card h4 { color: #00ffcc; margin-top: 0; margin-bottom: 10px; font-size: 18px; }
-        .guide-card p { color: #ccc; font-size: 14px; line-height: 1.5; margin-bottom: 15px; }
-        .guide-card .setup { background: #121212; padding: 12px; border-radius: 4px; border-left: 3px solid #4da6ff; font-family: monospace; font-size: 13px; color: #e0e0e0; }
-        .guide-card .why-use-it { font-style: italic; color: #aaa; font-size: 13px; margin-top: 10px; border-top: 1px dashed #333; padding-top: 10px; }
-    </style>
 </head>
 <body class="body-settings">
 
@@ -91,14 +59,14 @@
             
             <div id="strategyLegs"></div>
 
-            <button class="btn btn-save" style="margin-top: 20px; padding: 10px;" onclick="calculatePayoff()">📊 Plot Payoff</button>
+            <button class="btn btn-save" style="margin-top: 20px; padding: 10px;" onclick="calculatePayoff()">投 Plot Payoff</button>
         </div>
     </div>
 
     <div class="manual-container">
 
         <div class="manual-section">
-            <h2 class="manual-header" style="color: #ffaa00;">🎯 Who is This Tool For?</h2>
+            <h2 class="manual-header" style="color: #ffaa00;">識 Who is This Tool For?</h2>
             <div class="manual-text">
                 <p>This sandbox is heavily aimed at <strong>short-term, swing, and event-driven trading</strong> (such as trading around upcoming Earnings Reports or Fed announcements). </p>
                 <p>Because these binary events rely heavily on immediate volatility spikes, the Python backend of this tool is specifically designed to only fetch the <strong>nearest upcoming expiration dates</strong>. Near-term options are the most mathematically sensitive to sudden price changes (Gamma) and volatility crushes (Vega), making them the ideal instruments for catching short-to-medium-term momentum shifts.</p>
@@ -106,7 +74,7 @@
         </div>
 
         <div class="manual-section">
-            <h2 class="manual-header">📚 Options 101: What is an Option?</h2>
+            <h2 class="manual-header">答 Options 101: What is an Option?</h2>
             <div class="manual-text">
                 <p>At its core, a financial Option is a legally binding derivative contract. It gives the buyer the <strong>right, but not the obligation</strong>, to buy or sell an underlying asset (like a stock or ETF) at a strictly agreed-upon price, on or before a specific date. Because you are buying a "right" rather than the underlying stock itself, options offer tremendous leverage and capital efficiency.</p>
                 
@@ -128,7 +96,7 @@
         </div>
 
         <div class="manual-section">
-            <h2 class="manual-header">📖 How to Use the Sandbox</h2>
+            <h2 class="manual-header">当 How to Use the Sandbox</h2>
             <div class="manual-text">
                 <ol style="padding-left: 20px;">
                     <li style="margin-bottom: 10px;"><strong>Load the Chain:</strong> Enter a valid stock or ETF ticker (e.g., AAPL, SPY) and click "Fetch Chain" to retrieve live market data and the nearest options expirations.</li>
@@ -146,7 +114,7 @@
         </div>
 
         <div class="manual-section">
-            <h2 class="manual-header">🧠 Common Options Strategies</h2>
+            <h2 class="manual-header">ｧ Common Options Strategies</h2>
             <div class="manual-text">
                 Understanding multi-leg options strategies is key to managing risk and taking advantage of different market conditions (directional moves, high volatility, or sideways chop). Here is a guide to standard setups you can build in the Sandbox.
             </div>
