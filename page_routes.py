@@ -48,7 +48,6 @@ async def market_sentiment_page(request: Request):
 
 @page_router.get("/options-sandbox", response_class=HTMLResponse)
 async def options_sandbox_page(request: Request):
-    """Renders the standalone Options Payoff Simulator."""
     return templates.TemplateResponse(
         request=request, 
         name="options_sandbox.html", 
@@ -214,9 +213,6 @@ async def watchlist_page(request: Request, embed: bool = False):
 
 @page_router.get("/earnings-volatility", response_class=HTMLResponse)
 async def earnings_volatility_page(request: Request):
-    """
-    Renders the standalone Earnings Volatility Dashboard.
-    """
     today_str = datetime.now().strftime('%Y-%m-%d')
     
     conn = get_connection()
@@ -245,9 +241,6 @@ async def earnings_volatility_page(request: Request):
 
 @page_router.get("/quant-screener", response_class=HTMLResponse)
 async def quant_screener_page(request: Request):
-    """
-    Renders the standalone Quantitative Screener Dashboard.
-    """
     today = datetime.now()
     target_date = today.strftime('%Y-%m-%d')
     
@@ -280,9 +273,6 @@ async def quant_screener_page(request: Request):
 
 @page_router.get("/market-screener", response_class=HTMLResponse)
 async def market_screener_page(request: Request):
-    """
-    Renders the DataTables.js interactive Market Screener for the 4,000+ Universe.
-    """
     return templates.TemplateResponse(
         request=request, 
         name="market_screener.html", 
@@ -294,10 +284,6 @@ async def market_screener_page(request: Request):
 
 @page_router.get("/market-reports", response_class=HTMLResponse)
 async def market_reports_page(request: Request):
-    """
-    Renders the native Advanced Market Reports Dashboard.
-    Replaces the old CLI-based reporting tools.
-    """
     return templates.TemplateResponse(
         request=request, 
         name="market_reports.html", 
@@ -311,7 +297,13 @@ async def market_reports_page(request: Request):
 async def stock_detail(request: Request, ticker: str, embed: bool = False):
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM stock_signals WHERE ticker = ?", (ticker,))
+    # MODIFIED: Joined asset_profiles table directly to pull business_summary for portfolio assets
+    cursor.execute('''
+        SELECT s.*, p.business_summary 
+        FROM stock_signals s
+        LEFT JOIN asset_profiles p ON s.ticker = p.ticker
+        WHERE s.ticker = ?
+    ''', (ticker,))
     stock_data = cursor.fetchone()
     
     if stock_data: 
@@ -319,7 +311,6 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
         if stock_data.get("company_name"):
             stock_data["company_name"] = stock_data["company_name"].replace(" - Common Stock", "").replace(" Common Stock", "").strip()
     else:
-        # Fallback for stocks in the universe but not in the user's explicit portfolio/watchlist (stock_signals)
         cursor.execute('''
             SELECT q.*, 
                    COALESCE(p.company_name, m.company_name, q.ticker) as company_name, 
@@ -351,7 +342,8 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
                 "current_price": c_price,
                 "overall_signal": "UNIVERSE SCAN ONLY",
                 "composite_score": "N/A",
-                "educational_notes": q_data.get("business_summary") or "This asset is part of the broader market universe scan. Add it to your Ghostfolio or Watchlist to trigger a deep, institutional fundamental evaluation.",
+                "educational_notes": "This asset is part of the broader market universe scan. Add it to your Ghostfolio or Watchlist to trigger a deep, institutional fundamental evaluation.",
+                "business_summary": q_data.get("business_summary"),
                 "next_earnings_date": "Unknown",
                 "target_price": None,
                 "trend_50d": "UP" if q_data.get("sma_50") and c_price > q_data.get("sma_50") else "DOWN",
@@ -370,6 +362,7 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
                 "overall_signal": "UNKNOWN",
                 "composite_score": "N/A",
                 "educational_notes": "Data not found. Asset may not be tracked.",
+                "business_summary": None,
                 "next_earnings_date": "Unknown",
                 "target_price": None,
                 "trend_50d": "N/A",

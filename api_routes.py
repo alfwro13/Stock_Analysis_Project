@@ -49,7 +49,6 @@ def bg_execute_quant_scan():
     """Background task wrapper for the heavy Quant engine (Portfolio/Watchlist)."""
     engine = DataEngine()
     tickers = engine.get_all_tickers()
-    # Defaults to scan_type='daily'
     run_daily_quant_scan(tickers)
 
 def bg_execute_earnings_scan():
@@ -64,7 +63,6 @@ def bg_execute_universe_quant_scan():
     if not tickers:
         print("[WARNING] Universe is empty. Please trigger a Universe Update first.")
         return
-    # Now correctly passes the scan_type argument to prevent idempotency clashes
     run_daily_quant_scan(tickers, scan_type='universe')
 
 
@@ -146,10 +144,8 @@ async def api_market_pulse(request: PulseRequest, background_tasks: BackgroundTa
     
     pulse_data = get_cached_pulse_from_db(request.tickers, refresh_rate)
     
-    # Check if any data returned was stale or entirely missing from the DB
     needs_fetch = [item['ticker'] for item in pulse_data['indexes'] + pulse_data['assets'] if item['is_stale']]
     if needs_fetch:
-        # Offload the slow Yahoo Finance extraction to a background thread
         background_tasks.add_task(fetch_and_save_pulse, needs_fetch)
         
     return JSONResponse(content={"status": "success", "data": pulse_data})
@@ -239,6 +235,19 @@ async def get_latest_notifications(last_id: int = 0):
     except Exception as e:
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
+@api_router.post("/notifications/mark-read")
+async def mark_notifications_read():
+    """API endpoint to mark all notifications as read."""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE system_notifications SET is_read = 1 WHERE is_read = 0")
+        conn.commit()
+        conn.close()
+        return JSONResponse(content={"status": "success", "message": "All notifications marked as read."})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
 @api_router.get("/ai-prompt/{ticker}")
 async def get_ai_prompt(ticker: str, mode: str = "Quantamental Deep-Dive"):
     try:
@@ -278,8 +287,6 @@ async def get_screener_data():
         conn = get_connection()
         cursor = conn.cursor()
         
-        # COALESCE combines the empty universe sectors with the detailed portfolio sectors if available.
-        # String replacement dynamically cleans up the Nasdaq FTP formatting.
         query = """
         SELECT 
             q.ticker, 

@@ -13,15 +13,15 @@
             <a href="https://github.com/alfwro13/Stock_Analysis_Project" target="_blank" style="margin-right: 15px; border: none;">
                 <img src="/assets/logo_small.png" alt="Logo" style="height: 30px; vertical-align: middle; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">
             </a>
+            
             <a href="{% if embed %}/portfolio?embed=true{% else %}/{% endif %}">← Dashboard</a> 
+            
             {% if not embed %}
             <span class="divider">|</span>
-            <a href="/market-sentiment">🧠 Market Sentiment</a> <span class="divider">|</span>
             <a href="#verdict">Verdict</a> <span class="divider">|</span>
             <a href="#charts">Interactive Charts</a> <span class="divider">|</span>
             <a href="#price-action">Price Action</a> <span class="divider">|</span>
             <a href="#fundamentals">Fundamentals</a> <span class="divider">|</span>
-            <a href="/settings">⚙️ Settings</a> <span class="divider">|</span>
             <a href="/glossary">📚 Glossary</a> <span class="divider">|</span>
             <a href="/notifications">🔔 Notifications {% if unread_count > 0 %}<span class="badge" id="nav-badge">{{ unread_count }}</span>{% endif %}</a>
             {% endif %}
@@ -121,6 +121,13 @@
                     {{ stock.educational_notes | safe }}
                 </div>
                 
+                {% if stock.business_summary %}
+                <div style="line-height: 1.6; background-color: #1a1a1a; padding: 15px; border-radius: 5px; margin-top: 15px; font-size: 14px; color: #ccc; border-left: 3px solid #555;">
+                    <strong style="color: #4da6ff;">Company Profile:</strong><br>
+                    {{ stock.business_summary }}
+                </div>
+                {% endif %}
+
                 {% if stock.next_earnings_date and stock.next_earnings_date != 'Unknown' %}
                     {% if days_to_earnings is not none %}
                         {% if days_to_earnings >= 0 %}
@@ -376,7 +383,6 @@
             document.getElementById("aiDropdown").classList.toggle("show");
         }
 
-        // Close the dropdown if the user clicks anywhere else
         window.onclick = function(event) {
             if (!event.target.matches('.ai-btn')) {
                 var dropdowns = document.getElementsByClassName("ai-dropdown-content");
@@ -393,35 +399,28 @@
             const btn = document.querySelector('.ai-btn');
             const originalText = btn.innerHTML;
             
-            // Visual feedback
             btn.innerText = "⏳ Generating...";
             btn.style.backgroundColor = "#ffaa00";
             btn.style.color = "#121212";
             btn.style.borderColor = "#ffaa00";
             
             try {
-                // Call the new backend engine
                 const response = await fetch(`/api/ai-prompt/${ticker}?mode=${encodeURIComponent(mode)}`);
                 const data = await response.json();
                 
                 if (response.ok) {
-                    
-                    // --- HTTP vs HTTPS CLIPBOARD FALLBACK LOGIC ---
                     if (navigator.clipboard && window.isSecureContext) {
-                        // Standard secure HTTPS / localhost copy
                         await navigator.clipboard.writeText(data.prompt);
                     } else {
-                        // Legacy fallback for local network HTTP (e.g. http://192.168.x.x)
                         const textArea = document.createElement("textarea");
                         textArea.value = data.prompt;
-                        textArea.style.position = "fixed";  // Avoid scrolling to bottom
+                        textArea.style.position = "fixed"; 
                         document.body.appendChild(textArea);
                         textArea.focus();
                         textArea.select();
                         document.execCommand('copy');
                         document.body.removeChild(textArea);
                     }
-                    // ----------------------------------------------
                     
                     btn.innerText = "✅ Copied!";
                     btn.style.backgroundColor = "#00ff00";
@@ -436,7 +435,6 @@
                 btn.style.backgroundColor = "#ff4d4d";
             }
             
-            // Revert button after 3 seconds
             setTimeout(() => { 
                 btn.innerHTML = originalText; 
                 btn.style.backgroundColor = ""; 

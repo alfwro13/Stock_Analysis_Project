@@ -1,0 +1,21 @@
+<div class="nav-links">
+    {% if active_page == 'portfolio' %}
+    <select class="context-selector" id="accountContextSelector" onchange="switchAccountContext()">
+        {% for opt in account_options %}
+        <option value="{{ opt.id }}" {% if selected_account == opt.id %}selected{% endif %}>{{ opt.name }}</option>
+        {% endfor %}
+    </select>
+    {% endif %}
+    
+    <a href="/portfolio" class="{% if active_page == 'portfolio' %}active{% endif %}">💼 Portfolio</a>
+    <a href="/watchlist" class="{% if active_page == 'watchlist' %}active{% endif %}">👀 Watchlist</a>
+    <a href="/quant-screener" class="{% if active_page == 'quant_screener' %}active{% endif %}">📊 Quant Screener</a>
+    <a href="/earnings-volatility" class="{% if active_page == 'earnings_volatility' %}active{% endif %}">📅 Earnings Volatility</a>
+    <a href="/options-sandbox" class="{% if active_page == 'options_sandbox' %}active{% endif %}">🎲 Options Sandbox</a>
+    <a href="/market-sentiment" class="{% if active_page == 'market_sentiment' %}active{% endif %}">🌡️ Market Sentiment</a>
+    <a href="/market-screener" class="{% if active_page == 'market_screener' %}active{% endif %}">🌐 Market Screener</a>
+    <a href="/market-reports" class="{% if active_page == 'market_reports' %}active{% endif %}">📈 Market Reports</a>
+    <a href="/settings" class="{% if active_page == 'settings' %}active{% endif %}">⚙️ Settings</a>
+    <a href="/glossary" class="{% if active_page == 'glossary' %}active{% endif %}">📚 Glossary</a>
+    <a href="/notifications" class="{% if active_page == 'notifications' %}active{% endif %}">🔔 Notifications {% if unread_count > 0 %}<span class="badge" id="nav-badge">{{ unread_count }}</span>{% endif %}</a>
+</div>

@@ -5,6 +5,29 @@
     <meta name="color-scheme" content="dark">
     <title>Quantamental - Portfolio</title>
     <link rel="stylesheet" href="/static/css/styles.css">
+    
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.7/css/jquery.dataTables.min.css">
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
+    
+    <style>
+        /* Shared DataTables Dark Theme Overrides */
+        .dataTables_wrapper .dataTables_length, 
+        .dataTables_wrapper .dataTables_filter, 
+        .dataTables_wrapper .dataTables_info, 
+        .dataTables_wrapper .dataTables_paginate { color: #e0e0e0 !important; margin-bottom: 10px; }
+        .dataTables_wrapper .dataTables_filter input, 
+        .dataTables_wrapper .dataTables_length select { background-color: #121212 !important; border: 1px solid #444 !important; color: #fff !important; padding: 6px; border-radius: 4px; }
+        table.dataTable { border-collapse: collapse; background-color: #1e1e1e; width: 100% !important; }
+        table.dataTable thead th { background-color: #2c2c2c; color: #4da6ff; border-bottom: 2px solid #333; padding: 10px; }
+        table.dataTable tbody tr { background-color: #1e1e1e !important; border-bottom: 1px solid #333; color: #e0e0e0; }
+        table.dataTable tbody tr:hover { background-color: #1a2636 !important; }
+        table.dataTable.display tbody tr.odd > .sorting_1, table.dataTable.order-column.stripe tbody tr.odd > .sorting_1 { background-color: #262626 !important; }
+        table.dataTable.display tbody tr.even > .sorting_1, table.dataTable.order-column.stripe tbody tr.even > .sorting_1 { background-color: #1e1e1e !important; }
+        .dataTables_wrapper .dataTables_paginate .paginate_button { color: #ccc !important; border: 1px solid transparent !important; margin: 0 2px; }
+        .dataTables_wrapper .dataTables_paginate .paginate_button.current { background: #4da6ff !important; color: #121212 !important; border: none !important; border-radius: 4px; }
+        .dataTables_wrapper .dataTables_paginate .paginate_button:hover { background: #3388dd !important; color: #fff !important; border-radius: 4px; }
+    </style>
 </head>
 <body class="body-portfolio">
     
@@ -12,30 +35,15 @@
     <div class="header-container">
         <div>
             <div class="title-wrapper">
-                <a href="[https://github.com/alfwro13/Stock_Analysis_Project](https://github.com/alfwro13/Stock_Analysis_Project)" target="_blank" class="logo-link">
+                <a href="https://github.com/alfwro13/Stock_Analysis_Project" target="_blank" class="logo-link">
                     <img src="/assets/logo_small.png" alt="Quantamental Logo" class="logo-img">
                 </a>
                 <h1><abbr title="Quantamental - a modern institutional strategy that combines Quantitative analysis with Fundamental analysis.">uantamental</abbr> Dashboard</h1>
             </div>
             <p style="color: #aaaaaa; margin-top: 5px; font-size: 14px;">Portfolio & Fundamentals Last Synced: <strong>{{ global_updated }}</strong></p>
-            <div class="nav-links">
-                <select class="context-selector" id="accountContextSelector" onchange="switchAccountContext()">
-                    {% for opt in account_options %}
-                    <option value="{{ opt.id }}" {% if selected_account == opt.id %}selected{% endif %}>{{ opt.name }}</option>
-                    {% endfor %}
-                </select>
-                <a href="/portfolio" class="active">💼 Portfolio</a>
-                <a href="/watchlist">👀 Watchlist</a>
-                <a href="/quant-screener">📊 Quant Screener</a>
-                <a href="/earnings-volatility">📅 Earnings Volatility</a>
-                <a href="/options-sandbox">🎲 Options Sandbox</a>
-                <a href="/market-sentiment">Market Sentiment</a>
-                <a href="/market-screener">🌐 Market Screener</a>
-                <a href="/market-reports">📈 Market Reports</a>
-                <a href="/settings">⚙️ Settings</a>
-                <a href="/glossary">📚 Glossary</a>
-                <a href="/notifications">🔔 Notifications {% if unread_count > 0 %}<span class="badge" id="nav-badge">{{ unread_count }}</span>{% endif %}</a>
-            </div>
+            
+            {% set active_page = 'portfolio' %}
+            {% include 'navbar.html' %}
         </div>
     </div>
     
@@ -68,15 +76,15 @@
     {% endif %}
 
     <div class="controls-container">
-        <input type="text" id="searchInput" class="filter-input" onkeyup="filterTable()" placeholder="🔍 Search ticker or name...">
-        <select id="signalFilter" class="filter-select" onchange="filterTable()">
+        <input type="text" id="customSearchInput" class="filter-input" placeholder="🔍 Search ticker or name...">
+        <select id="signalFilter" class="filter-select">
             <option value="ALL">All Signals</option>
             <option value="STRONG BUY">Strong Buy</option>
             <option value="BULLISH / HOLD">Bullish / Hold</option>
             <option value="NEUTRAL">Neutral</option>
             <option value="BEARISH / CAUTION">Bearish / Caution</option>
         </select>
-        <select id="tagFilter" class="filter-select" onchange="filterTable()">
+        <select id="tagFilter" class="filter-select">
             <option value="ALL">All Setup Tags</option>
             <option value="⚡ MACD Reversal">⚡ MACD Reversals</option>
             <option value="🔥 VCP Breakout">🔥 VCP Breakouts</option>
@@ -85,35 +93,35 @@
         </select>
     </div>
 
-    <table id="dataTable">
+    <table id="dataTable" class="display">
         <thead>
             <tr>
-                <th onclick="sortTable('dataTable', 0)">Ticker / Name ↕</th>
-                <th onclick="sortTable('dataTable', 1)">Price ↕</th>
-                <th onclick="sortTable('dataTable', 2)">Daily Change ↕</th>
-                <th onclick="sortTable('dataTable', 3)">Target ↕</th>
-                <th onclick="sortTable('dataTable', 4)">50D ↕</th>
-                <th onclick="sortTable('dataTable', 5)">200D ↕</th>
-                <th onclick="sortTable('dataTable', 6)"><abbr title="Standard PEG Ratio">PEG</abbr> ↕</th>
-                <th onclick="sortTable('dataTable', 7)"><abbr title="Peter Lynch Fair Value">PL PEG</abbr> ↕</th>
-                <th onclick="sortTable('dataTable', 8)">Stop-Loss ↕</th>
-                <th onclick="sortTable('dataTable', 9)">RSI ↕</th>
-                <th onclick="sortTable('dataTable', 10)">Earnings ↕</th>
-                <th onclick="sortTable('dataTable', 11)">Score ↕</th>
-                <th onclick="sortTable('dataTable', 12)">Setups & Tags ↕</th>
-                <th onclick="sortTable('dataTable', 13)">Signal ↕</th>
+                <th>Ticker / Name</th>
+                <th>Price</th>
+                <th>Daily Change</th>
+                <th>Target</th>
+                <th>50D</th>
+                <th>200D</th>
+                <th><abbr title="Standard PEG Ratio">PEG</abbr></th>
+                <th><abbr title="Peter Lynch Fair Value">PL PEG</abbr></th>
+                <th>Stop-Loss</th>
+                <th>RSI</th>
+                <th>Earnings</th>
+                <th>Score</th>
+                <th>Setups & Tags</th>
+                <th>Signal</th>
             </tr>
         </thead>
         <tbody>
             {% for item in portfolio %}
             <tr class="live-asset-row" data-ticker="{{ item.ticker }}" data-signal="{{ item.overall_signal | upper }}" data-tags="{% for tag in item.setup_tags_list %}{{ tag.name }} {% endfor %}">
-                <td>
+                <td data-sort="{{ item.ticker }}">
                     <a href="/stock/{{ item.ticker }}{% if embed %}?embed=true{% endif %}">{{ item.ticker }}</a><br>
                     <span style="font-size: 11px; color: #888;">{{ item.company_name[:20] }}{% if item.company_name|length > 20 %}...{% endif %}</span>
                 </td>
                 
                 {% set cp = cached_pulse.get(item.ticker) %}
-                <td id="price-{{ item.ticker }}" class="{% if cp and cp.is_stale %}stale-text{% endif %}">
+                <td data-sort="{{ cp.price if cp else (item.current_price or 0) }}" id="price-{{ item.ticker }}" class="{% if cp and cp.is_stale %}stale-text{% endif %}">
                     {% if cp %}
                         {{ cp.price }}
                     {% elif item.current_price is not none %}
@@ -123,7 +131,7 @@
                     {% endif %}
                 </td>
                 
-                <td id="change-{{ item.ticker }}" class="{% if cp and cp.is_stale %}stale-text{% elif cp %}{% if cp.is_positive %}trend-up{% else %}trend-down{% endif %}{% endif %}">
+                <td data-sort="{{ cp.change_pct if cp else 0 }}" id="change-{{ item.ticker }}" class="{% if cp and cp.is_stale %}stale-text{% elif cp %}{% if cp.is_positive %}trend-up{% else %}trend-down{% endif %}{% endif %}">
                     {% if cp %}
                         {% set sign = '+' if cp.is_positive else '' %}
                         {{ sign }}{{ cp.change_pct }}%
@@ -132,15 +140,15 @@
                     {% endif %}
                 </td>
                 
-                <td>{% if item.target_price is not none %}{{ "{:,.2f}".format(item.target_price) }}{% else %}N/A{% endif %}</td>
-                <td><span class="{% if item.trend_50d == 'UP' %}trend-up{% else %}trend-down{% endif %}">{{ item.trend_50d }}</span></td>
-                <td><span class="{% if item.trend_200d == 'UP' %}trend-up{% else %}trend-down{% endif %}">{{ item.trend_200d }}</span></td>
-                <td>{% if item.peg_ratio is not none %}{{ "{:,.2f}".format(item.peg_ratio) }}{% else %}N/A{% endif %}</td>
-                <td>{% if item.peter_lynch_peg is not none %}{{ "{:,.2f}".format(item.peter_lynch_peg) }}{% else %}N/A{% endif %}</td>
-                <td style="color: #ffaa00;">{% if item.atr_stop_loss is not none %}{{ "{:,.2f}".format(item.atr_stop_loss) }}{% else %}N/A{% endif %}</td>
-                <td>{% if item.rsi_14 is not none %}{{ "{:,.1f}".format(item.rsi_14) }}{% else %}N/A{% endif %}</td>
-                <td style="font-size: 12px; color: #bbb;">{% if item.next_earnings_date %}{{ item.next_earnings_date }}{% else %}N/A{% endif %}</td>
-                <td>{{ item.composite_score }}</td>
+                <td data-sort="{{ item.target_price or -999 }}">{% if item.target_price is not none %}{{ "{:,.2f}".format(item.target_price) }}{% else %}N/A{% endif %}</td>
+                <td data-sort="{{ 1 if item.trend_50d == 'UP' else 0 }}"><span class="{% if item.trend_50d == 'UP' %}trend-up{% else %}trend-down{% endif %}">{{ item.trend_50d }}</span></td>
+                <td data-sort="{{ 1 if item.trend_200d == 'UP' else 0 }}"><span class="{% if item.trend_200d == 'UP' %}trend-up{% else %}trend-down{% endif %}">{{ item.trend_200d }}</span></td>
+                <td data-sort="{{ item.peg_ratio or 999 }}">{% if item.peg_ratio is not none %}{{ "{:,.2f}".format(item.peg_ratio) }}{% else %}N/A{% endif %}</td>
+                <td data-sort="{{ item.peter_lynch_peg or 999 }}">{% if item.peter_lynch_peg is not none %}{{ "{:,.2f}".format(item.peter_lynch_peg) }}{% else %}N/A{% endif %}</td>
+                <td data-sort="{{ item.atr_stop_loss or -999 }}" style="color: #ffaa00;">{% if item.atr_stop_loss is not none %}{{ "{:,.2f}".format(item.atr_stop_loss) }}{% else %}N/A{% endif %}</td>
+                <td data-sort="{{ item.rsi_14 or -999 }}">{% if item.rsi_14 is not none %}{{ "{:,.1f}".format(item.rsi_14) }}{% else %}N/A{% endif %}</td>
+                <td data-sort="{{ item.next_earnings_date or '9999-12-31' }}" style="font-size: 12px; color: #bbb;">{% if item.next_earnings_date %}{{ item.next_earnings_date }}{% else %}N/A{% endif %}</td>
+                <td data-sort="{{ item.composite_score }}">{{ item.composite_score }}</td>
                 <td style="max-width: 150px;">
                     {% for tag in item.setup_tags_list %}
                         <div style="display: inline-block;">
@@ -162,100 +170,34 @@
             window.location.href = "/portfolio?account_id=" + selectedId;
         }
 
-        function filterTable() {
-            var input = document.getElementById("searchInput").value.toUpperCase();
-            var sigFilter = document.getElementById("signalFilter").value.toUpperCase();
-            var tagFilter = document.getElementById("tagFilter").value;
+        $(document).ready(function() {
+            // Initialize DataTables
+            var table = $('#dataTable').DataTable({
+                pageLength: 50,
+                deferRender: true,
+                dom: 'lrtip', // Hides the default DataTables search box since we map our custom one
+                order: [] // Preserves your initial backend sorting
+            });
             
-            var table = document.getElementById("dataTable");
-            var tr = table.getElementsByTagName("tr");
+            // Map Custom Search Box
+            $('#customSearchInput').on('keyup', function () {
+                table.search(this.value).draw();
+            });
 
-            for (var i = 1; i < tr.length; i++) {
-                var tickerTd = tr[i].getElementsByTagName("td")[0];
-                if (tickerTd) {
-                    var tickerText = tickerTd.textContent || tickerTd.innerText;
-                    var signalAttr = tr[i].getAttribute("data-signal");
-                    var tagsAttr = tr[i].getAttribute("data-tags") || "";
-                    
-                    var matchesSearch = tickerText.toUpperCase().indexOf(input) > -1;
-                    var matchesSig = (sigFilter === "ALL") || (signalAttr === sigFilter);
-                    var matchesTag = (tagFilter === "ALL") || tagsAttr.indexOf(tagFilter) > -1;
-                    
-                    if (matchesSearch && matchesSig && matchesTag) {
-                        tr[i].style.display = "";
-                    } else {
-                        tr[i].style.display = "none";
-                    }
-                }
-            }
-        }
+            // Map Custom Signal Dropdown
+            $('#signalFilter').on('change', function() {
+                var val = $(this).val();
+                if(val === 'ALL') { table.column(13).search('').draw(); } 
+                else { table.column(13).search('^' + val + '$', true, false).draw(); }
+            });
 
-        function sortTable(tableId, n) {
-            var table = document.getElementById(tableId);
-            var rows = table.rows;
-            var isNumericColumn = false;
-            var isDateColumn = false;
-
-            for (var i = 1; i < (rows.length - 1); i++) {
-                var cellText = (rows[i].getElementsByTagName("TD")[n].textContent || "").trim();
-                if (/^\d{4}-\d{2}-\d{2}/.test(cellText)) {
-                    isDateColumn = true;
-                    break;
-                }
-                var parsed = parseFloat(cellText.replace(/,/g, '').replace(/%/g, ''));
-                if (!isNaN(parsed)) {
-                    isNumericColumn = true;
-                    break;
-                }
-            }
-
-            var switching = true;
-            var dir = "asc";
-            var switchcount = 0;
-
-            while (switching) {
-                switching = false;
-                rows = table.rows;
-                for (var i = 1; i < (rows.length - 1); i++) {
-                    var shouldSwitch = false;
-                    var x = rows[i].getElementsByTagName("TD")[n];
-                    var y = rows[i + 1].getElementsByTagName("TD")[n];
-
-                    var textX = (x.textContent || x.innerText).trim();
-                    var textY = (y.textContent || y.innerText).trim();
-
-                    if (isDateColumn || !isNumericColumn) {
-                        if (dir == "asc") {
-                            if (textX.toLowerCase() > textY.toLowerCase()) { shouldSwitch = true; break; }
-                        } else if (dir == "desc") {
-                            if (textX.toLowerCase() < textY.toLowerCase()) { shouldSwitch = true; break; }
-                        }
-                    } else {
-                        var numX = parseFloat(textX.replace(/,/g, '').replace(/%/g, ''));
-                        var numY = parseFloat(textY.replace(/,/g, '').replace(/%/g, ''));
-
-                        if (isNaN(numX)) numX = -Infinity;
-                        if (isNaN(numY)) numY = -Infinity;
-
-                        if (dir == "asc") {
-                            if (numX > numY) { shouldSwitch = true; break; }
-                        } else if (dir == "desc") {
-                            if (numX < numY) { shouldSwitch = true; break; }
-                        }
-                    }
-                }
-                if (shouldSwitch) {
-                    rows[i].parentNode.insertBefore(rows[i + 1], rows[i]);
-                    switching = true;
-                    switchcount++;
-                } else {
-                    if (switchcount == 0 && dir == "asc") {
-                        dir = "desc";
-                        switching = true;
-                    }
-                }
-            }
-        }
+            // Map Custom Tags Dropdown
+            $('#tagFilter').on('change', function() {
+                var val = $(this).val();
+                if(val === 'ALL') { table.column(12).search('').draw(); } 
+                else { table.column(12).search(val).draw(); }
+            });
+        });
     </script>
 </body>
 </html>
