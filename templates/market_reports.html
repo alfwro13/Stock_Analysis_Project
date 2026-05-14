@@ -29,20 +29,20 @@
     </div>
 
     <div class="report-section">
-        <h2>Sector Trends & Momentum</h2>
-        <p>A macro view of overall market health aggregated by sector, sorted by average relative strength.</p>
-        <p><strong>How to use:</strong> Think of this as a "weather report" for the market. Instead of looking at one stock, we look at groups like Tech or Energy. <br>
-            <strong>When to use:</strong> Check this first before buying any stock to see if its "neighborhood" is doing well. <br>
-            <strong>The Benefit:</strong> It helps you "swim with the tide." It is much easier to make money picking a stock in a sector where the Average RSI is rising and most stocks are above their 50-day average.</p>
+        <h2>Sector Trends & <abbr title="The rate of acceleration of a security's price or volume.">Momentum</abbr></h2>
+        <p>A macro view of overall market health aggregated by sector, sorted by average <abbr title="Relative Strength Index (RSI) measures the speed and magnitude of recent price changes.">relative strength</abbr>.</p>
+        <p><strong>How to use:</strong> Think of this as a "weather report" for the market. Instead of looking at one stock, we look at groups like Tech or Energy. 
+            <strong>When to use:</strong> Check this first before buying any stock to see if its "neighborhood" is doing well. 
+            <strong>The Benefit:</strong> It helps you "swim with the tide." It is much easier to make money picking a stock in a sector where the Average <abbr title="Relative Strength Index">RSI</abbr> is rising and most stocks are above their <abbr title="50-day Simple Moving Average">50-day average</abbr>.</p>
         
         <table id="sectorTable" class="display" style="width:100%">
             <thead>
                 <tr>
                     <th>Sector</th>
                     <th>Total Stocks</th>
-                    <th>Average RSI (14)</th>
-                    <th>Stocks > 50D SMA (%)</th>
-                    <th>Bullish MACD Crosses (%)</th>
+                    <th><abbr title="Relative Strength Index (14-Day)">Average RSI (14)</abbr></th>
+                    <th><abbr title="Percentage of stocks trading above their 50-day Simple Moving Average">Stocks > 50D SMA (%)</abbr></th>
+                    <th><abbr title="Percentage of stocks where the MACD line has crossed above the Signal line">Bullish MACD Crosses (%)</abbr></th>
                 </tr>
             </thead>
             <tbody></tbody>
@@ -51,19 +51,19 @@
         <div style="margin-top: 15px; padding-top: 15px; border-top: 1px dashed #333; font-size: 13px; color: #aaa; line-height: 1.6;">
             <strong style="color: #e0e0e0;">Key Metrics Explained:</strong>
             <ul style="margin-top: 5px; padding-left: 20px; margin-bottom: 0;">
-                <li><strong style="color: #4da6ff;">Average RSI (14):</strong> The Relative Strength Index measures momentum. An average above 60 indicates the sector is running hot (bullish), while below 40 indicates heavy selling pressure (bearish).</li>
-                <li><strong style="color: #4da6ff;">Stocks > 50D SMA:</strong> The 50-day Simple Moving Average is the institutional "health" line. If a high percentage of stocks in a sector are above this line, the sector is in a strong medium-term uptrend.</li>
-                <li><strong style="color: #4da6ff;">Bullish MACD Crosses:</strong> Shows the percentage of stocks where short-term momentum has just mathematically crossed positive. A high number here indicates a sudden influx of buying pressure across the sector.</li>
+                <li><strong style="color: #4da6ff;">Average <abbr title="Relative Strength Index">RSI</abbr> (14):</strong> The Relative Strength Index measures <abbr title="The speed of price changes">momentum</abbr>. An average above 60 indicates the sector is running hot (bullish), while below 40 indicates heavy selling pressure (bearish).</li>
+                <li><strong style="color: #4da6ff;">Stocks > <abbr title="50-Day Simple Moving Average">50D SMA</abbr>:</strong> The 50-day Simple Moving Average is the institutional "health" line. If a high percentage of stocks in a sector are above this line, the sector is in a strong medium-term uptrend.</li>
+                <li><strong style="color: #4da6ff;">Bullish <abbr title="Moving Average Convergence Divergence">MACD</abbr> Crosses:</strong> Shows the percentage of stocks where short-term momentum has just mathematically crossed positive. A high number here indicates a sudden influx of buying pressure across the sector.</li>
             </ul>
         </div>
     </div>
 
     <div class="report-section" style="border-left-color: #00ffcc;">
         <h2 style="color: #00ffcc;">Relative Strength Leaders</h2>
-        <p>The top 50 strongest momentum stocks in the entire market (Above 50D SMA, sorted by highest RSI and MACD Histogram).</p>
-        <p><strong>How to use:</strong> These are the "MVP" stocks—the top 50 athletes currently outperforming the market. <br>
-        <strong>When to use:</strong> Use this during a healthy market to find where professional investors are putting their money. <br>
-        <strong>The Benefit:</strong> Momentum tends to persist. By owning leaders with high RSI and positive MACD Histograms, you are holding the winners that often go up more than the average stock during bull runs.</p>
+        <p>The top 50 strongest <abbr title="The speed of price changes">momentum</abbr> stocks in the entire market (Above <abbr title="50-Day Simple Moving Average">50D SMA</abbr>, sorted by highest <abbr title="Relative Strength Index">RSI</abbr> and <abbr title="Moving Average Convergence Divergence">MACD</abbr> Histogram).</p>
+        <p><strong>How to use:</strong> These are the "MVP" stocks—the top 50 athletes currently outperforming the market. 
+        <strong>When to use:</strong> Use this during a healthy market to find where professional investors are putting their money. 
+        <strong>The Benefit:</strong> Momentum tends to persist. By owning leaders with high <abbr title="Relative Strength Index">RSI</abbr> and positive <abbr title="Moving Average Convergence Divergence Histogram">MACD Histograms</abbr>, you are holding the winners that often go up more than the average stock during bull runs.</p>
         <table id="leadersTable" class="display" style="width:100%">
             <thead>
                 <tr>
@@ -71,23 +71,31 @@
                     <th>Company Name</th>
                     <th>Sector</th>
                     <th>Close Price</th>
-                    <th>RSI (14)</th>
-                    <th>MACD Hist</th>
+                    <th><abbr title="Relative Strength Index (14-Day)">RSI (14)</abbr></th>
+                    <th><abbr title="Moving Average Convergence Divergence Histogram">MACD Hist</abbr></th>
                 </tr>
             </thead>
             <tbody></tbody>
         </table>
+
+        <div style="margin-top: 15px; padding-top: 15px; border-top: 1px dashed #333; font-size: 13px; color: #aaa; line-height: 1.6;">
+            <strong style="color: #e0e0e0;">Key Metrics Explained:</strong>
+            <ul style="margin-top: 5px; padding-left: 20px; margin-bottom: 0;">
+                <li><strong style="color: #4da6ff;"><abbr title="Relative Strength Index">RSI</abbr> (14):</strong> While an RSI above 70 is normally considered "overbought," true market leaders can sustain elevated RSI levels for long periods. A high RSI here simply confirms massive institutional buying pressure.</li>
+                <li><strong style="color: #4da6ff;"><abbr title="Moving Average Convergence Divergence Histogram">MACD Hist</abbr>:</strong> The Histogram measures the distance between the MACD line and its signal line. A positive and growing bar means upward price acceleration is increasing.</li>
+            </ul>
+        </div>
     </div>
 
     <div class="report-section" style="border-left-color: #ffaa00;">
-        <h2 style="color: #ffaa00;">Mean Reversion Screener</h2>
-        <p>Find stocks fundamentally in a long-term uptrend (>200D SMA) experiencing a severe short-term panic sell-off.</p>
-        <p><strong>How to use:</strong> This is a "bargain hunter" tool. It finds stocks that are strong long-term (above their 200-day average) but have suddenly "snapped" like a rubber band due to short-term panic. <br>
-           <strong>When to use:</strong> Use this when you want to buy a high-quality stock "on sale" during a temporary dip. <br>
+        <h2 style="color: #ffaa00;"><abbr title="A financial theory suggesting that prices eventually return to their long-term average.">Mean Reversion</abbr> Screener</h2>
+        <p>Find stocks fundamentally in a long-term uptrend (><abbr title="200-Day Simple Moving Average">200D SMA</abbr>) experiencing a severe short-term panic sell-off.</p>
+        <p><strong>How to use:</strong> This is a "bargain hunter" tool. It finds stocks that are strong long-term (above their 200-day average) but have suddenly "snapped" like a rubber band due to short-term panic. 
+           <strong>When to use:</strong> Use this when you want to buy a high-quality stock "on sale" during a temporary dip. 
            <strong>The Benefit:</strong> It prevents you from "chasing" high prices. Instead, it mathematically identifies a low-risk entry point where the price is likely to "snap back" to its normal level.</p>
         <div class="controls-container" style="align-items: flex-end; margin-bottom: 20px;">
             <div class="form-group" style="margin-bottom: 0;">
-                <label>Maximum RSI Threshold</label>
+                <label>Maximum <abbr title="Relative Strength Index">RSI</abbr> Threshold</label>
                 <input type="number" id="mrMaxRSI" class="filter-input" value="30" style="width: 120px;">
             </div>
             <button class="btn btn-update" onclick="loadMeanReversionData()">🔍 Run Query</button>
@@ -100,13 +108,22 @@
                     <th>Company Name</th>
                     <th>Sector</th>
                     <th>Close Price</th>
-                    <th>RSI (14)</th>
-                    <th>200D SMA</th>
-                    <th>Dist from 200D (%)</th>
+                    <th><abbr title="Relative Strength Index (14-Day)">RSI (14)</abbr></th>
+                    <th><abbr title="200-Day Simple Moving Average">200D SMA</abbr></th>
+                    <th><abbr title="Percentage distance from the 200-day Simple Moving Average">Dist from 200D (%)</abbr></th>
                 </tr>
             </thead>
             <tbody></tbody>
         </table>
+
+        <div style="margin-top: 15px; padding-top: 15px; border-top: 1px dashed #333; font-size: 13px; color: #aaa; line-height: 1.6;">
+            <strong style="color: #e0e0e0;">Key Metrics Explained:</strong>
+            <ul style="margin-top: 5px; padding-left: 20px; margin-bottom: 0;">
+                <li><strong style="color: #4da6ff;"><abbr title="200-Day Simple Moving Average">200D SMA</abbr>:</strong> The ultimate baseline for long-term institutional health. We only screen for stocks above this line to ensure we aren't catching a "falling knife" in a dying company.</li>
+                <li><strong style="color: #4da6ff;">Dist from 200D (%):</strong> Shows how far the stock has pulled back toward its long-term baseline. A smaller positive number means it is closer to major institutional support.</li>
+                <li><strong style="color: #4da6ff;">Maximum <abbr title="Relative Strength Index">RSI</abbr> Threshold:</strong> The RSI oscillates on a scale from 0 to 100. A value of 50 is perfectly neutral. A value of <strong>30 or below</strong> is mathematically "oversold." This means the asset has been dumped aggressively by sellers without a single break. By setting this threshold to 30, the screener strictly isolates stocks experiencing extreme, irrational short-term fear, which often precedes a sharp "snap back" (<abbr title="Mean Reversion">bounce</abbr>).</li>
+            </ul>
+        </div>
     </div>
 
     <script>
