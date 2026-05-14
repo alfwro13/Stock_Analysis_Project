@@ -103,13 +103,44 @@
     </div>
 
     <div class="manual-container">
+
         <div class="manual-section">
-            <h2 class="manual-header">📖 How to Use This Tool</h2>
+            <h2 class="manual-header" style="color: #ffaa00;">🎯 Who is This Tool For?</h2>
+            <div class="manual-text">
+                <p>This sandbox is heavily aimed at <strong>short-term, swing, and event-driven trading</strong> (such as trading around upcoming Earnings Reports or Fed announcements). </p>
+                <p>Because these binary events rely heavily on immediate volatility spikes, the Python backend of this tool is specifically designed to only fetch the <strong>nearest upcoming expiration dates</strong>. Near-term options are the most mathematically sensitive to sudden price changes (Gamma) and volatility crushes (Vega), making them the ideal instruments for catching short-to-medium-term momentum shifts.</p>
+            </div>
+        </div>
+
+        <div class="manual-section">
+            <h2 class="manual-header">📚 Options 101: What is an Option?</h2>
+            <div class="manual-text">
+                <p>At its core, a financial Option is a legally binding derivative contract. It gives the buyer the <strong>right, but not the obligation</strong>, to buy or sell an underlying asset (like a stock or ETF) at a strictly agreed-upon price, on or before a specific date. Because you are buying a "right" rather than the underlying stock itself, options offer tremendous leverage and capital efficiency.</p>
+                
+                <h3 style="color: #fff; margin-top: 20px;">The Two Types of Options</h3>
+                <ul style="padding-left: 20px; margin-bottom: 20px;">
+                    <li style="margin-bottom: 10px;"><strong>The Call Option (Bullish):</strong> Gives you the right to <em>buy</em> the stock at a specific price. You buy a Call when you expect the stock price to surge upward.</li>
+                    <li><strong>The Put Option (Bearish):</strong> Gives you the right to <em>sell</em> the stock at a specific price. You buy a Put when you expect the stock price to crash (acting like an insurance policy).</li>
+                </ul>
+
+                <h3 style="color: #fff; margin-top: 20px;">The 4 Anatomy Parts of a Contract</h3>
+                <p>Every option traded in this sandbox relies on four required variables:</p>
+                <ul style="padding-left: 20px;">
+                    <li style="margin-bottom: 10px;"><strong>1. Underlying Asset:</strong> The specific stock the contract is tied to (e.g., AAPL, NVDA, SPY).</li>
+                    <li style="margin-bottom: 10px;"><strong>2. Strike Price:</strong> The agreed-upon target price. If you buy a Call with a $150 Strike, you lock in the right to buy the stock at exactly $150, even if the real market price moons to $300.</li>
+                    <li style="margin-bottom: 10px;"><strong>3. Expiration Date:</strong> Options are time-bound contracts. The expiration date is the exact day the contract ceases to exist. Because time is constantly running out, options suffer from "time decay" (Theta). If the stock doesn't reach your target before this ticking clock hits zero, the contract expires worthless.</li>
+                    <li style="margin-bottom: 10px;"><strong>4. Premium:</strong> The actual cash price you pay to purchase the contract. This represents the maximum possible risk/loss for an options buyer. <em>Note: In standard US equity markets, one contract always controls 100 shares. A $2.00 premium listed in the chain will actually cost $200 in real cash.</em></li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="manual-section">
+            <h2 class="manual-header">📖 How to Use the Sandbox</h2>
             <div class="manual-text">
                 <ol style="padding-left: 20px;">
                     <li style="margin-bottom: 10px;"><strong>Load the Chain:</strong> Enter a valid stock or ETF ticker (e.g., AAPL, SPY) and click "Fetch Chain" to retrieve live market data and the nearest options expirations.</li>
-                    <li style="margin-bottom: 10px;"><strong>Select Expiration:</strong> Use the dropdown menu to select the expiration date you wish to trade.</li>
-                    <li style="margin-bottom: 10px;"><strong>Build Your Strategy:</strong> Click the <strong>"+"</strong> button next to any Call or Put to add it to your Strategy Builder panel. You can easily toggle between going <strong>Long (Buy)</strong> or <strong>Short (Sell)</strong>, and adjust your contract quantity.</li>
+                    <li style="margin-bottom: 10px;"><strong>Select Expiration Date:</strong> Use the dropdown menu to select the specific day your contract will expire.</li>
+                    <li style="margin-bottom: 10px;"><strong>Build Your Strategy:</strong> Click the <strong>"+"</strong> button next to any Call or Put to add it to your Strategy Builder panel. You can toggle between going <strong>Long (Buy)</strong> or <strong>Short (Sell)</strong>, and adjust your contract quantity.</li>
                     <li style="margin-bottom: 10px;"><strong>Analyze the Payoff Chart:</strong> Click "Plot Payoff". 
                         <ul style="margin-top: 5px;">
                             <li>The <strong>X-axis</strong> represents the Underlying Stock Price at Expiration.</li>
