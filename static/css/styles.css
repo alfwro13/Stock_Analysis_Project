@@ -29,7 +29,11 @@ abbr { text-decoration: underline dotted; cursor: help; color: #fff; }
 /* Header & Navigation */
 .header-container { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; padding-bottom: 20px; margin-bottom: 30px; }
 .title-wrapper { display: flex; align-items: center; }
-.logo-link { display: inline-block; margin-right: 2px; border: none; }
+.logo-link { 
+    display: inline-block; 
+    margin-right: -12px; /* Negative margin pulls the text into the logo's transparent space */
+    border: none; 
+}
 .logo-img { height: 45px; vertical-align: middle; transition: transform 0.2s; }
 .logo-img:hover { transform: scale(1.05); }
 
