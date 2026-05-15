@@ -12,3 +12,4 @@ requests==2.33.1
 apscheduler==3.10.4
 fake-useragent==1.5.1
 matplotlib==3.10.0
+vaderSentiment==3.3.2
