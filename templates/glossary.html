@@ -26,6 +26,37 @@
         <p style="font-size: 16px; margin-bottom: 30px; color: #ccc;">This living document explains the mathematical algorithms, fundamental logic, and trading strategies used to score and evaluate your portfolio.</p>
 
         <details class="settings-card">
+            <summary>🤖 Machine Learning & Risk Metrics</summary>
+            
+            <p style="color: #aaa; margin-top: 0; margin-bottom: 20px;">This section explains the advanced predictive modeling, natural language processing, and tail-risk algorithms integrated into the quantitative engine.</p>
+            
+            <div class="term-box">
+                <span class="term-title">ML Confidence Score</span>
+                <p>The mathematical probability (0-100%) output by a Soft-Voting Ensemble (XGBoost + Random Forest) that the stock will generate a >3% return over the next 5 trading days. It evaluates dozens of technical features simultaneously to find high-probability setups.</p>
+            </div>
+            
+            <div class="term-box">
+                <span class="term-title">Value at Risk (VaR 95%)</span>
+                <p>An institutional metric for downside tail-risk. It calculates the maximum expected percentage loss over a standard holding period. For example, a VaR of 4% means there is historically only a 5% chance the stock drops more than 4% tomorrow.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Conditional VaR (CVaR)</span>
+                <p>Also known as "Expected Shortfall". This answers the question: <em>"If the 5% worst-case scenario actually happens, how bad will it be?"</em> It calculates the average loss magnitude when the VaR threshold is breached.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">VADER Sentiment</span>
+                <p>A Zero-LLM Natural Language Processing (NLP) engine that reads the latest news headlines for an asset and scores the narrative from <strong>-1.0 (Extreme Panic/Negative)</strong> to <strong>+1.0 (Extreme Euphoria/Positive)</strong>.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Turbulence Index & Regimes</span>
+                <p>A macroeconomic filter that actively monitors the historical volatility of the S&P 500 (SPY) alongside implied volatility (VIX). It classifies the market into <strong>Normal</strong>, <strong>Volatile</strong>, or <strong>Crash</strong> regimes, actively altering how the quant screener weighs 'Flight to Safety' setups.</p>
+            </div>
+        </details>
+
+        <details class="settings-card">
             <summary>🕵️ Overnight Quant Screener (Automated Briefings)</summary>
             
             <p style="color: #aaa; margin-top: 0; margin-bottom: 20px;">The daily automated screening system runs through all tracked equities to isolate four specific institutional-grade statistical anomalies.</p>
