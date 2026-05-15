@@ -150,9 +150,9 @@
                                     let comp = parseInt(row.composite_score);
                                     if (!isNaN(comp)) {
                                         if (comp >= 70 && data < 40) {
-                                            html += ` <span style="background-color: #ff4d4d; color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; margin-left: 5px; cursor: help;" title="High Quant Score but Low AI Confidence">⚠️ Divergence</span>`;
+                                            html += ` <span class="badge-divergence" title="High Quant Score but Low AI Confidence">⚠️ Divergence</span>`;
                                         } else if (comp >= 0 && comp < 40 && data >= 70) {
-                                            html += ` <span style="background-color: #4da6ff; color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; margin-left: 5px; cursor: help;" title="Low Quant Score but High AI Confidence">🤖 AI Buy</span>`;
+                                            html += ` <span class="badge-ai-buy" title="Low Quant Score but High AI Confidence">🤖 AI Buy</span>`;
                                         }
                                     }
                                 }
