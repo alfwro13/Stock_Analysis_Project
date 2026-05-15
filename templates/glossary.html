@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="color-scheme" content="dark">
-    <title>Financial Glossary & System Logic</title>
+    <title>uantamental - Reference Hub</title>
     <link rel="stylesheet" href="/static/css/styles.css">
 </head>
 <body class="body-glossary">
@@ -14,388 +14,234 @@
                 <a href="https://github.com/alfwro13/Stock_Analysis_Project" target="_blank" class="logo-link">
                     <img src="/assets/logo_small.png" alt="Quantamental Logo" class="logo-img">
                 </a>
-                <h1><abbr title="Quantamental - a modern institutional strategy that combines Quantitative analysis with Fundamental analysis.">uantamental</abbr> System Glossary</h1>
+                <h1><abbr title="Combining Quantitative and Fundamental Analysis">uantamental</abbr> System Reference</h1>
             </div>
-            <a href="javascript:history.back()" style="margin-right: 20px; color: #aaa;">← Back</a>
-                {% set active_page = 'glossary' %}
-                {% include 'navbar.html' %}
+            <p style="color: #aaaaaa; margin-top: 5px; font-size: 14px;">The mathematical blueprint behind your portfolio scores.</p>
+            
+            {% set active_page = 'glossary' %}
+            {% include 'navbar.html' %}
         </div>
     </div>
+
+    <div class="glossary-search-container">
+        <input type="text" id="glossarySearch" class="glossary-search-bar" placeholder="🔍 Search algorithms, candlestick patterns, or technical metrics..." autocomplete="off">
+    </div>
     
-    <div class="glossary-content">
-        <p style="font-size: 16px; margin-bottom: 30px; color: #ccc;">This living document explains the mathematical algorithms, fundamental logic, and trading strategies used to score and evaluate your portfolio.</p>
+    <div class="glossary-wrapper">
+        <aside class="glossary-sidebar">
+            <h3>Quick Jump</h3>
+            <a href="#machine-learning" class="sidebar-link">🤖 AI & Risk Metrics</a>
+            <a href="#quant-screener" class="sidebar-link">🕵️ Overnight Screener</a>
+            <a href="#earnings-vol" class="sidebar-link">📅 Earnings Volatility</a>
+            <a href="#strategies" class="sidebar-link">🎯 Trading Strategies</a>
+            <a href="#candlesticks" class="sidebar-link">🕯️ Candlestick Anatomy</a>
+            <a href="#technicals" class="sidebar-link">📈 Technical Analysis</a>
+            <a href="#fundamentals" class="sidebar-link">🏢 Company Valuation</a>
+            <a href="#methodology" class="sidebar-link">🧠 System Philosophy</a>
+        </aside>
 
-        <details class="settings-card">
-            <summary>🤖 Machine Learning & Risk Metrics</summary>
-            
-            <p style="color: #aaa; margin-top: 0; margin-bottom: 20px;">This section explains the advanced predictive modeling, natural language processing, and tail-risk algorithms integrated into the quantitative engine.</p>
-            
-            <div class="term-box">
-                <span class="term-title">ML Confidence Score</span>
-                <p>The mathematical probability (0-100%) output by a Soft-Voting Ensemble (XGBoost + Random Forest) that the stock will generate a >3% return over the next 5 trading days. It evaluates dozens of technical features simultaneously to find high-probability setups.</p>
-            </div>
-            
-            <div class="term-box">
-                <span class="term-title">Value at Risk (VaR 95%)</span>
-                <p>An institutional metric for downside tail-risk. It calculates the maximum expected percentage loss over a standard holding period. For example, a VaR of 4% means there is historically only a 5% chance the stock drops more than 4% tomorrow.</p>
-            </div>
+        <div class="glossary-content" id="glossaryContainer">
 
-            <div class="term-box">
-                <span class="term-title">Conditional VaR (CVaR)</span>
-                <p>Also known as "Expected Shortfall". This answers the question: <em>"If the 5% worst-case scenario actually happens, how bad will it be?"</em> It calculates the average loss magnitude when the VaR threshold is breached.</p>
-            </div>
+            <details class="settings-card" id="machine-learning" open>
+                <summary>🤖 Machine Learning & Risk Metrics</summary>
+                <div class="term-box">
+                    <span class="term-title">ML Confidence Score</span>
+                    <p>The mathematical probability (0-100%) output by a Soft-Voting Ensemble (XGBoost + Random Forest) that the stock will generate a >3% return over the next 5 trading days.</p>
+                </div>
+                <div class="term-box">
+                    <span class="term-title">Value at Risk (VaR 95%)</span>
+                    <p>An institutional metric for downside tail-risk. It calculates the maximum expected percentage loss over a standard holding period.</p>
+                </div>
+                <div class="term-box">
+                    <span class="term-title">Conditional VaR (CVaR)</span>
+                    <p>Also known as "Expected Shortfall". It calculates the average loss magnitude when the VaR threshold is breached.</p>
+                </div>
+                <div class="term-box">
+                    <span class="term-title">VADER Sentiment</span>
+                    <p>Natural Language Processing (NLP) engine that reads the latest news headlines and scores the narrative from -1.0 to +1.0.</p>
+                </div>
+                <div class="term-box">
+                    <span class="term-title">Turbulence Index & Regimes</span>
+                    <p>A macro filter monitoring SPY historical volatility vs VIX. Classifies market into Normal, Volatile, or Crash regimes.</p>
+                </div>
+            </details>
 
-            <div class="term-box">
-                <span class="term-title">VADER Sentiment</span>
-                <p>A Zero-LLM Natural Language Processing (NLP) engine that reads the latest news headlines for an asset and scores the narrative from <strong>-1.0 (Extreme Panic/Negative)</strong> to <strong>+1.0 (Extreme Euphoria/Positive)</strong>.</p>
-            </div>
+            <details class="settings-card" id="quant-screener">
+                <summary>🕵️ Overnight Quant Screener (Automated Briefings)</summary>
+                <div class="term-box">
+                    <span class="term-title">Oversold Reversals</span>
+                    <p>Equities aggressively sold off but demonstrating early signs of recovery.</p>
+                    <div class="rule">TRIGGER: RSI < 30 AND MACD Histogram > 0</div>
+                </div>
+                <div class="term-box">
+                    <span class="term-title">Golden MACD Crosses</span>
+                    <p>Momentum reversal indicating underlying institutional accumulation.</p>
+                    <div class="rule">TRIGGER: MACD Line crosses above the Signal Line.</div>
+                </div>
+                <div class="term-box">
+                    <span class="term-title">Momentum & Volume Surges</span>
+                    <p>Explosive buying volume while operating in a healthy momentum band.</p>
+                    <div class="rule">TRIGGER: Volume > 1.5x Avg AND RSI 50-70.</div>
+                </div>
+                <div class="term-box">
+                    <span class="term-title">Overbought Warnings</span>
+                    <p>Risk management alert for assets severely overextended.</p>
+                    <div class="rule" style="border-left-color: #ff4d4d;">TRIGGER: RSI > 70 AND MACD Histogram < 0</div>
+                </div>
+            </details>
 
-            <div class="term-box">
-                <span class="term-title">Turbulence Index & Regimes</span>
-                <p>A macroeconomic filter that actively monitors the historical volatility of the S&P 500 (SPY) alongside implied volatility (VIX). It classifies the market into <strong>Normal</strong>, <strong>Volatile</strong>, or <strong>Crash</strong> regimes, actively altering how the quant screener weighs 'Flight to Safety' setups.</p>
-            </div>
-        </details>
+            <details class="settings-card" id="earnings-vol">
+                <summary>📅 Earnings Volatility & Options Mispricing</summary>
+                <div class="term-box">
+                    <span class="term-title">Implied Move (ATM Straddle)</span>
+                    <p>Percentage move the options market expects based on the cost of ATM Call + Put.</p>
+                </div>
+                <div class="term-box">
+                    <span class="term-title">Historical Average Move</span>
+                    <p>The average absolute percentage price gap observed over the last 4 quarterly earnings events.</p>
+                </div>
+                <div class="term-box">
+                    <span class="term-title">Mathematical Edge Score</span>
+                    <p>The variance between Historical Move and Implied Move. Positive means options are underpriced.</p>
+                </div>
+            </details>
 
-        <details class="settings-card">
-            <summary>🕵️ Overnight Quant Screener (Automated Briefings)</summary>
-            
-            <p style="color: #aaa; margin-top: 0; margin-bottom: 20px;">The daily automated screening system runs through all tracked equities to isolate four specific institutional-grade statistical anomalies.</p>
-            
-            <div class="term-box">
-                <span class="term-title">Oversold Reversals</span>
-                <p>Equities that have been aggressively sold off but are demonstrating early quantitative signs of momentum recovery. These present high-conviction, deep-value entry opportunities with asymmetric risk/reward profiles.</p>
-                <div class="rule">TRIGGER: RSI < 30 AND MACD Histogram > 0</div>
-            </div>
-            
-            <div class="term-box">
-                <span class="term-title">Golden MACD Crosses</span>
-                <p>Equities that have triggered a Golden MACD Cross, indicating a potential mathematical momentum reversal to the upside and underlying institutional accumulation.</p>
-                <div class="rule">TRIGGER: MACD Line crosses above the Signal Line.</div>
-            </div>
+            <details class="settings-card" id="strategies">
+                <summary>🎯 The Multi-Regime Strategy (Scoring & Tags)</summary>
+                <div class="term-box">
+                    <span class="term-title">⚡ MACD Reversal</span>
+                    <p>Used for bottom-fishing when selling momentum has mathematically exhausted itself.</p>
+                    <div class="rule">TRIGGER: MACD crosses Signal while below the zero line.</div>
+                </div>
+                <div class="term-box">
+                    <span class="term-title">🔥 VCP Breakout (Volatility Contraction)</span>
+                    <p>Coiled spring setup: institutions absorbing supply without causing price spikes.</p>
+                    <div class="rule">TRIGGER: Weekly variance < 2.5% AND volume dry-up > 20%.</div>
+                </div>
+                <div class="term-box">
+                    <span class="term-title">👑 Market Leader</span>
+                    <p>Relative Strength (RS) compared to the S&P 500 Baseline.</p>
+                </div>
+            </details>
 
-            <div class="term-box">
-                <span class="term-title">Momentum & Volume Surges</span>
-                <p>Assets currently experiencing explosive buying volume while operating in a healthy momentum band. This signifies strong institutional backing without immediate overbought exhaustion risk.</p>
-                <div class="rule">TRIGGER: Volume > 1.5x the 20-Day Average Volume AND RSI is between 50 and 70.</div>
-            </div>
-
-            <div class="term-box">
-                <span class="term-title">Overbought Warnings (Distribution Risk)</span>
-                <p>A risk management alert. The asset is severely overextended and is beginning to flash negative momentum divergence. Trim positions or tighten stop-losses, as algorithmic mean-reversion is highly probable.</p>
-                <div class="rule" style="border-left-color: #ff4d4d;">TRIGGER: RSI > 70 AND MACD Histogram < 0</div>
-            </div>
-        </details>
-
-        <details class="settings-card">
-            <summary>📅 Earnings Volatility & Options Mispricing</summary>
-            
-            <p style="color: #aaa; margin-top: 0; margin-bottom: 20px;">The system scans the options chain to find mathematical mispricings (Arbitrage) in how Wall Street expects a stock to move after an earnings report.</p>
-            
-            <div class="term-box">
-                <span class="term-title">Implied Move (The ATM Straddle)</span>
-                <p>The percentage the options market expects the stock to move (up or down). Calculated by adding the cost of the At-The-Money (ATM) Call and Put options expiring immediately after the earnings event, divided by the current stock price.</p>
-            </div>
-            
-            <div class="term-box">
-                <span class="term-title">Historical Average Move</span>
-                <p>The actual, historical reality of how the stock behaved. The system calculates the average absolute percentage gap (Close-to-Close) over the last 4 quarterly earnings events.</p>
-            </div>
-
-            <div class="term-box">
-                <span class="term-title">Mathematical Edge Score</span>
-                <p>The difference between the Historical Move and the Implied Move.</p>
-                <div class="rule">IF Edge Score > 0 THEN: Options are mathematically underpriced. (Wall Street is underestimating the volatility based on history).</div>
-                <div class="rule" style="border-left-color: #ff4d4d;">IF Edge Score < 0 THEN: Options are overpriced. (A volatility crush / IV crush is highly likely after the report).</div>
-            </div>
-            
-            <div class="term-box">
-                <span class="term-title">Options Volume</span>
-                <p>A liquidity metric representing the combined open interest/volume of the ATM Call and Put. Used to verify if the options market for the asset is highly liquid or illiquid.</p>
-            </div>
-        </details>
-
-        <details class="settings-card">
-            <summary>🎯 The Multi-Regime Strategy (Scoring & Tags)</summary>
-            
-            <p style="color: #aaa; margin-top: 0;">Our system operates on a "Dual-Lens" architecture. The <strong>0-100 Score</strong> tells you if an asset is healthy to <em>hold</em>. The <strong>Setup Tags</strong> tell you exactly when it is mathematically optimal to <em>buy or sell</em>.</p>
-            
-            <div class="term-box">
-                <span class="term-title">⚡ MACD Reversal</span>
-                <p>An early trend reversal setup. The <abbr title="Moving Average Convergence Divergence. A momentum oscillator used to spot trend changes.">MACD</abbr> algorithm calculates when selling momentum has mathematically exhausted itself.</p>
-                <div class="rule">TRIGGER: Fast MACD crosses above the Slow Signal line while below the zero axis.</div>
-                <p style="color: #ccc; font-size: 14px; margin-bottom: 0;"><strong>Strategy:</strong> Used for bottom-fishing. Buy the asset as the bleeding stops, before the moving averages even realize the trend has changed.</p>
-            </div>
-
-            <div class="term-box">
-                <span class="term-title">🔥 VCP Breakout (Volatility Contraction)</span>
-                <p>Pioneered by Mark Minervini. It identifies stocks that are winding up like a coiled spring. Institutional investors are quietly absorbing supply without causing the price to spike.</p>
-                <div class="rule">TRIGGER: Weekly price variance < 2.5% over 3 weeks AND average volume dries up by > 20%.</div>
-                <p style="color: #ccc; font-size: 14px; margin-bottom: 0;"><strong>Strategy:</strong> The safest, highest-probability setup. Buy when the tag appears, expecting an explosive breakout as soon as volume returns.</p>
-            </div>
-
-            <div class="term-box">
-                <span class="term-title">👑 Market Leader</span>
-                <p>Capital flows to where it is treated best. This setup scans the <abbr title="Price divided by S&P 500 Baseline. Measures performance against the broader market.">Relative Strength (RS)</abbr> of the stock against the S&P 500.</p>
-                <div class="rule">TRIGGER: 60-day RS linear slope is sharply positive AND RS is near a 60-day high.</div>
-                <p style="color: #ccc; font-size: 14px; margin-bottom: 0;"><strong>Strategy:</strong> Add monthly capital to these stocks. Do not put money into laggards when market leaders are absorbing all the liquidity.</p>
-            </div>
-
-            <div class="term-box">
-                <span class="term-title">🚨 Divergence Warning (Circuit Breaker)</span>
-                <p>The ultimate risk-management alarm. It detects when the price is lying to retail investors.</p>
-                <div class="rule" style="border-left-color: #ff4d4d;">TRIGGER: Price makes a new High, but the RSI momentum oscillator makes a Lower High.</div>
-                <p style="color: #ccc; font-size: 14px; margin-bottom: 0;"><strong>Strategy:</strong> Sell or trim immediately. This indicates institutional distribution (selling) into retail buying pressure. A dump is imminent.</p>
-            </div>
-        </details>
-
-        <details class="settings-card">
-            <summary>🕯️ Candlestick Anatomy Masterclass</summary>
-            
-            <p style="color: #aaa; margin-top: 0; margin-bottom: 20px;">Unlike line charts, candlesticks reveal the psychological war between buyers and sellers within a single timeframe. The <strong>Body</strong> represents the Open and Close. The <strong>Wicks</strong> represent the extreme Highs and Lows reached intraday before the price retreated.</p>
-            
-            <div class="term-box">
-                <span class="term-title">🔨 The Hammer (Bullish Rejection)</span>
-                <div class="candle-display">
-                    <div class="candle-group">
-                        <div class="candle">
-                            <div class="wick" style="height: 100%; top: 0;"></div>
-                            <div class="body-green" style="height: 30%; top: 10%;"></div>
-                        </div>
-                    </div>
-                    <div class="candle-explanation">
-                        <strong>The Psychology:</strong> Sellers aggressively took control early in the day, driving the price down and creating a massive lower wick. However, institutional buyers stepped in, absorbed all the selling pressure, and violently pushed the price back up to close near the highs. <br><br>
-                        <strong>System Rule:</strong> Lower wick is at least 2x the size of the body. Upper wick is practically non-existent.
+            <details class="settings-card" id="candlesticks">
+                <summary>🕯️ Candlestick Anatomy Masterclass</summary>
+                <div class="term-box">
+                    <span class="term-title">🔨 The Hammer (Bullish Rejection)</span>
+                    <div class="candle-display">
+                        <div class="candle-group"><div class="candle"><div class="wick" style="height: 100%; top: 0;"></div><div class="body-green" style="height: 30%; top: 10%;"></div></div></div>
+                        <div class="candle-explanation">Sellers drove price down, but institutional buyers rejected the lows violently.</div>
                     </div>
                 </div>
-            </div>
-
-            <div class="term-box">
-                <span class="term-title">🌠 The Shooting Star (Bearish Rejection)</span>
-                <div class="candle-display">
-                    <div class="candle-group">
-                        <div class="candle">
-                            <div class="wick" style="height: 100%; top: 0;"></div>
-                            <div class="body-red" style="height: 30%; bottom: 10%;"></div>
+                <div class="term-box">
+                    <span class="term-title">🐂 Bullish Engulfing</span>
+                    <div class="candle-display">
+                        <div class="candle-group">
+                            <div class="candle"><div class="wick" style="height: 60%; top: 20%;"></div><div class="body-red" style="height: 40%; top: 30%;"></div></div>
+                            <div class="candle"><div class="wick" style="height: 100%; top: 0;"></div><div class="body-green" style="height: 80%; top: 10%;"></div></div>
                         </div>
-                    </div>
-                    <div class="candle-explanation">
-                        <strong>The Psychology:</strong> The exact opposite of a hammer. Euphoric retail buyers pushed the price to new highs intraday. However, institutions used this liquidity to secretly dump their shares, crushing the price back down to the lows before the close. <br><br>
-                        <strong>System Rule:</strong> Upper wick is at least 2x the size of the body. Indicates an imminent trend reversal to the downside.
+                        <div class="candle-explanation">Current day's green body completely overwhelms the previous red body.</div>
                     </div>
                 </div>
-            </div>
-
-            <div class="term-box">
-                <span class="term-title">🐂 Bullish Engulfing</span>
-                <div class="candle-display">
-                    <div class="candle-group">
-                        <div class="candle">
-                            <div class="wick" style="height: 60%; top: 20%;"></div>
-                            <div class="body-red" style="height: 40%; top: 30%;"></div>
-                        </div>
-                        <div class="candle">
-                            <div class="wick" style="height: 100%; top: 0;"></div>
-                            <div class="body-green" style="height: 80%; top: 10%;"></div>
-                        </div>
-                    </div>
-                    <div class="candle-explanation">
-                        <strong>The Psychology:</strong> A two-day pattern. Day 1 is a standard red day. On Day 2, the stock opens lower but buyers step in with overwhelming force, driving the price so high that the green body completely "engulfs" the previous day's red body. It signifies a massive shift in momentum from bears to bulls.
-                    </div>
+                <div class="term-box">
+                    <span class="term-title">🌅 Morning Star (3-Candle)</span>
+                    <p>Crown jewel of bottom-fishing. Panic (D1), Indecision (D2), then violent Reversal (D3).</p>
                 </div>
-            </div>
+            </details>
 
-            <div class="term-box">
-                <span class="term-title">⚖️ The Doji (Total Indecision)</span>
-                <div class="candle-display">
-                    <div class="candle-group">
-                        <div class="candle">
-                            <div class="wick" style="height: 100%; top: 0;"></div>
-                            <div class="body-doji" style="top: 48%;"></div>
-                        </div>
-                    </div>
-                    <div class="candle-explanation">
-                        <strong>The Psychology:</strong> A brutal tug-of-war occurred all day, but neither side won. The opening price and closing price are mathematically almost identical. A Doji acts as a "pause" in the market. It often precedes a violent breakout, as the market is winding up to pick a decisive direction.
-                    </div>
+            <details class="settings-card" id="technicals">
+                <summary>📈 Technical Analysis (Chart Momentum)</summary>
+                <div class="term-box">
+                    <span class="term-title">Moving Averages (5D, 10D, 21D, 50D, 200D)</span>
+                    <p>Smoothing price fluctuations to reveal trend. 50D is medium health; 200D is the institutional line.</p>
                 </div>
-            </div>
-
-            <div class="term-box">
-                <span class="term-title">🌅 The Morning Star (3-Candle Reversal)</span>
-                <div class="candle-display">
-                    <div class="candle-group">
-                        <div class="candle">
-                            <div class="wick" style="height: 90%; top: 5%;"></div>
-                            <div class="body-red" style="height: 70%; top: 10%;"></div>
-                        </div>
-                        <div class="candle">
-                            <div class="wick" style="height: 30%; bottom: 5%;"></div>
-                            <div class="body-doji" style="bottom: 18%;"></div>
-                        </div>
-                        <div class="candle">
-                            <div class="wick" style="height: 80%; top: 15%;"></div>
-                            <div class="body-green" style="height: 60%; top: 20%;"></div>
-                        </div>
-                    </div>
-                    <div class="candle-explanation">
-                        <strong>The Psychology:</strong> The crown jewel of bottom-fishing setups. <br>
-                        <strong>Day 1:</strong> Panic. A massive red candle as weak hands sell. <br>
-                        <strong>Day 2:</strong> Exhaustion. The stock gaps down, but selling dries up, forming a Doji (Indecision).<br>
-                        <strong>Day 3:</strong> The Reversal. Institutional buyers step in heavily, printing a massive green candle that pushes more than 50% into Day 1's red body, trapping short-sellers.
-                    </div>
+                <div class="term-box">
+                    <span class="term-title">RSI (Relative Strength Index)</span>
+                    <p>Measures velocity of price changes. Overbought > 70; Oversold < 30.</p>
                 </div>
+                <div class="term-box">
+                    <span class="term-title">ATR Stop-Loss (Average True Range)</span>
+                    <p>Volatility-adjusted trailing stop pinned 2x ATRs below current price.</p>
+                </div>
+            </details>
+
+            <details class="settings-card" id="fundamentals">
+                <summary>🏢 Fundamental Valuation (Company Health)</summary>
+                <div class="term-box">
+                    <span class="term-title">Peter Lynch Fair Value PEG</span>
+                    <p>Adaptation comparing Trailing P/E to actual YoY earnings growth.</p>
+                    <div class="rule">PEG < 1.0 = Undervalued; PEG > 2.0 = Overvalued.</div>
+                </div>
+                <div class="term-box">
+                    <span class="term-title">Financial Safety (Debt & Liquidity)</span>
+                    <p>Debt-to-Equity > 2.0 suggests bankruptcy risk in high-rate environments.</p>
+                </div>
+            </details>
+
+            <details class="settings-card" id="methodology">
+                <summary>🧠 System Methodology (The "Why")</summary>
+                <div class="term-box">
+                    <span class="term-title">Quantamental "Dual-Lens" Architecture</span>
+                    <p>Fundamentals decide WHAT to buy; Quantitative technicals decide WHEN to buy.</p>
+                </div>
+                <div class="term-box">
+                    <span class="term-title">Hierarchical Signal Purity</span>
+                    <p>Strict evaluation priority: 3-candle patterns override 2-candle patterns to prevent contradictions.</p>
+                </div>
+            </details>
+
+            <div id="noResults" style="display: none; text-align: center; padding: 50px; color: #888; border: 1px dashed #333; border-radius: 8px;">
+                <h3>No matching algorithmic terms found.</h3>
+                <p>Try searching for categories like "RSI", "MACD", or "VaR".</p>
             </div>
 
-        </details>
-
-        <details class="settings-card">
-            <summary>📈 Technical Analysis (Chart Momentum)</summary>
-            
-            <div class="term-box">
-                <span class="term-title">Moving Averages (5D, 10D, 21D, 50D, 200D)</span>
-                <p>A moving average smooths out daily price fluctuations to reveal the underlying trend.</p>
-                <ul style="color: #ccc; font-size: 14px; line-height: 1.6;">
-                    <li><strong>5D & 10D:</strong> Hyper-short-term momentum. If price is above, it is running hot.</li>
-                    <li><strong>21D (The Swing Line):</strong> The primary short-term trend line.</li>
-                    <li><strong>50D (The Health Line):</strong> Medium-term health. A stock is "healthy" if above this.</li>
-                    <li><strong>200D (The Institutional Line):</strong> The ultimate dividing line. Large funds rarely buy below this.</li>
-                </ul>
-                <div class="rule">IF 5D > 10D > 21D THEN: Short-term trends are perfectly aligned.</div>
-            </div>
-            
-            <div class="term-box">
-                <span class="term-title">MACD (Moving Average Convergence Divergence)</span>
-                <p>A momentum oscillator plotted on the 4th row of the macro chart. It shows the relationship between two moving averages of a stock's price.</p>
-                <ul style="color: #ccc; font-size: 14px; line-height: 1.6;">
-                    <li><strong>MACD Line (Blue):</strong> The fast momentum line.</li>
-                    <li><strong>Signal Line (Orange):</strong> The slow trailing line.</li>
-                    <li><strong>Histogram (Bars):</strong> The difference between the MACD and the Signal. Green bars mean momentum is accelerating upward.</li>
-                </ul>
-            </div>
-
-            <div class="term-box">
-                <span class="term-title">RSI (Relative Strength Index)</span>
-                <p>A momentum oscillator plotted on the 3rd row of the chart that measures the speed of recent price changes.</p>
-                <div class="rule" style="border-left-color: #ff4d4d;">IF RSI > 70 THEN: Overbought. It has risen too fast and is likely to pull back.</div>
-                <div class="rule">IF RSI < 30 THEN: Oversold. It has dropped too fast and may bounce.</div>
-            </div>
-            
-            <div class="term-box">
-                <span class="term-title">Bollinger Bands</span>
-                <p>The dashed gray lines encasing the price on the main macro chart. They measure standard deviations of volatility away from a simple moving average.</p>
-                <ul style="color: #ccc; font-size: 14px; line-height: 1.6;">
-                    <li>When price hits the <strong>Upper Band</strong>, the asset is statistically over-extended and may face resistance.</li>
-                    <li>When price hits the <strong>Lower Band</strong>, the asset is statistically crushed and may find support.</li>
-                    <li>When the bands squeeze tightly together, a massive explosive move is imminent.</li>
-                </ul>
-            </div>
-            
-            <div class="term-box">
-                <span class="term-title">On-Balance Volume (OBV)</span>
-                <p>Plotted on the bottom row of the macro chart. OBV adds the day's volume if the stock closed up, and subtracts it if the stock closed down. It tells us if "smart money" is quietly accumulating or distributing shares.</p>
-                <div class="rule">IF OBV is trending UP while Price is flat THEN: Institutions are accumulating heavily.</div>
-            </div>
-
-            <div class="term-box">
-                <span class="term-title">ATR Stop-Loss (Average True Range)</span>
-                <p>Calculates the average daily price swing. The system's trailing Stop Loss is pinned 2x ATRs below the current price.</p>
-                <div class="rule">IF Price drops below ATR Stop-Loss THEN: Normal volatility patterns are broken. Sell to manage risk.</div>
-            </div>
-        </details>
-
-        <details class="settings-card">
-            <summary>🏢 Fundamental Valuation (Company Health)</summary>
-
-            <div class="term-box">
-                <span class="term-title">Valuation Metrics (P/E & P/B)</span>
-                <p>Standard measures of a company's price tag relative to its real-world performance.</p>
-                <ul style="color: #ccc; font-size: 14px; line-height: 1.6;">
-                    <li><strong>Trailing P/E:</strong> Current price divided by actual earnings over the last 12 months.</li>
-                    <li><strong>Forward P/E:</strong> Current price divided by estimated earnings for the next 12 months.</li>
-                    <li><strong>Price-to-Book (P/B):</strong> Price divided by the literal net asset value of the company (if it were liquidated today).</li>
-                </ul>
-            </div>
-
-            <div class="term-box">
-                <span class="term-title">Peter Lynch Fair Value PEG</span>
-                <p>A custom adaptation of the PEG ratio that compares the standard P/E ratio to the company's <em>actual</em> earnings growth rate. Standard PEG often uses unreliable forward estimates.</p>
-                <div class="rule">IF Peter Lynch PEG < 1.0 THEN: Severely undervalued relative to its growth.</div>
-                <div class="rule" style="border-left-color: #ff4d4d;">IF Peter Lynch PEG > 2.0 THEN: Highly overvalued. Growth does not justify the price.</div>
-            </div>
-
-            <div class="term-box">
-                <span class="term-title">Financial Safety (Debt & Liquidity)</span>
-                <ul style="color: #ccc; font-size: 14px; line-height: 1.6;">
-                    <li><strong>Debt-to-Equity:</strong> > 2.0 can be a massive bankruptcy risk in high-interest-rate environments.</li>
-                    <li><strong>Current Ratio:</strong> Measures if they can pay their short-term bills. < 1.0 means they have more immediate debts than cash on hand.</li>
-                </ul>
-            </div>
-
-            <div class="term-box">
-                <span class="term-title">Institutional Sentiment</span>
-                <ul style="color: #ccc; font-size: 14px; line-height: 1.6;">
-                    <li><strong>Short Interest:</strong> The percentage of available shares that hedge funds are actively betting against. >10% implies extreme pessimism and volatility.</li>
-                    <li><strong>Beta (Risk):</strong> Volatility relative to the S&P 500. Beta > 1 is more volatile (High Risk), Beta < 1 is safer.</li>
-                </ul>
-            </div>
-        </details>
-        
-        <details class="settings-card">
-            <summary>🧠 System Methodology (The "Why")</summary>
-            
-            <p style="color: #aaa; margin-top: 0; margin-bottom: 20px;">This section documents the underlying philosophy and architectural decisions behind the system's quantitative engine.</p>
-            
-            <div class="term-box">
-                <span class="term-title">The "Dual-Lens" Architecture (Quantamental)</span>
-                <p style="font-size: 15px; color: #ccc;">Pure fundamental investors often fall into "Value Traps"—buying cheap companies that continue to bleed money for years. Pure technical traders often get wiped out buying junk companies simply because a chart looked pretty right before an earnings crash. <strong>Quantamental</strong> investing bridges this gap. The system uses <em>Fundamentals</em> to decide <strong>WHAT</strong> is safe to buy, and <em>Quantitative Technicals</em> to mathematically dictate exactly <strong>WHEN</strong> to buy it.</p>
-            </div>
-            
-            <div class="term-box">
-                <span class="term-title">Hierarchical Candlestick Evaluation</span>
-                <p style="font-size: 15px; color: #ccc;">In older versions of our engine, a candle could simultaneously trigger multiple overlapping patterns (e.g., flagging as both a neutral Doji and a bearish Shooting Star), causing visual contradictions. The current engine uses a strict <strong>Hierarchical Priority System</strong>. Because larger timeframes carry more psychological weight, the system evaluates 3-candle patterns first (Tier 1), then 2-candle patterns (Tier 2), and finally 1-candle patterns (Tier 3). If a Tier 1 pattern fires, evaluation immediately halts, ensuring absolute signal purity.</p>
-            </div>
-            
-            <div class="term-box">
-                <span class="term-title">Pseudo-Daily Intraday Math</span>
-                <p style="font-size: 15px; color: #ccc;">Candlestick patterns are designed for Daily charts; applying their rigid rules directly to 5-minute charts generates extreme noise. To provide live, intraday pattern alerts without the noise, the system intercepts the raw 5-minute ticks, mathematically compresses them into a single "pseudo-daily" candle, and evaluates that live formation against the previous closed days. This tells you what the Daily momentum is shaping up to be <em>before</em> the market officially closes.</p>
-            </div>
-            
-            <div class="term-box">
-                <span class="term-title">Ghostfolio Integration & VWAP Logic</span>
-                <p style="font-size: 15px; color: #ccc;">The system serves as a powerful overlay for Ghostfolio. Instead of merely copying Ghostfolio's data, the engine extracts the raw transactional history across all isolated accounts (Micro Ledgers) and aggregates them into a global Volume Weighted Average Price (VWAP). This prevents portfolio fragmentation and ensures foreign assets (e.g., USD stocks held by a UK investor) are dynamically converted to a unified base currency using live Exchange Rates, providing an institutional-grade assessment of true Unrealized P&L.</p>
-            </div>
-
-            <div class="term-box">
-                <span class="term-title">Market Regimes & The VIX "All-Clear"</span>
-                <p style="font-size: 15px; color: #ccc;">The system dynamically classifies the macro environment to prevent "False Positive" buy signals during high-turbulence periods. By monitoring the <strong>CBOE Volatility Index (VIX)</strong>, the engine assigns one of three regimes:</p>
-                <ul style="color: #ccc; font-size: 14px; line-height: 1.6; margin-bottom: 15px;">
-                    <li><strong>Normal (VIX < 20):</strong> The institutional "All-Clear." Standard technical thresholds apply, and momentum strategies operate without additional constraints.</li>
-                    <li><strong>Volatile (VIX 20 - 30):</strong> Signals increasing institutional hedging. The screener begins prioritizing "Flight to Safety" setups.</li>
-                    <li><strong>Crash (VIX > 30):</strong> Extreme panic. The system aggressively intercepts all bullish signals, requiring assets to strictly hold above their 200-Day SMA to be considered valid.</li>
-                </ul>
-                <p style="color: #ccc; font-size: 14px; margin-bottom: 0;"><strong>The Benefit:</strong> This prevents the system from suggesting "cheap" stocks during a primary bear market or a flash crash, ensuring you only deploy capital when the mathematical probability of a sustained recovery is high.</p>
-            </div>
-
-            <div class="term-box">
-                <span class="term-title">Predictive ML Ensemble Engine</span>
-                <p style="font-size: 15px; color: #ccc;">Beyond traditional technical indicators, the system employs a <strong>Soft-Voting Machine Learning Ensemble</strong> (XGBoost + Random Forest) to calculate statistical probabilities. The model is trained on a 2-year rolling window of historical data across a curated universe of 250+ Blue Chip assets.</p>
-                <ul style="color: #ccc; font-size: 14px; line-height: 1.6; margin-bottom: 15px;">
-                    <li><strong>The Objective:</strong> Predicts the probability (0-100%) that an asset will generate a <strong>&gt;3% return over the next 5 trading days</strong>.</li>
-                    <li><strong>Feature Vectorization:</strong> The engine simultaneously evaluates RSI, MACD trends, Volume Surges, Bullish Crosses, and the asset's current distance from institutional averages (50D and 200D SMAs).</li>
-                </ul>
-                <p style="color: #ccc; font-size: 14px; margin-bottom: 0;"><strong>Strategy:</strong> The ML Confidence Score acts as an institutional "Vetting" layer. It filters out setups that may appear bullish on a chart but have historically demonstrated a high probability of failure.</p>
-            </div>
-
-            <div class="term-box">
-                <span class="term-title">The Multi-Layer Divergence (The "Veto")</span>
-                <p style="font-size: 15px; color: #ccc;">Divergence is the system's ultimate "Risk Circuit Breaker," identifying periods where price action has decoupled from underlying mathematical momentum.</p>
-                <ul style="color: #ccc; font-size: 14px; line-height: 1.6; margin-bottom: 15px;">
-                    <li><strong>Technical Bearish Divergence:</strong> Occurs when the price prints a "Higher High" but the RSI oscillator prints a "Lower High". This indicates that buying pressure is mathematically exhausted and an imminent "dump" or mean-reversion is statistically probable.</li>
-                    <li><strong>AI/Quant Divergence:</strong> A high-level conflict where traditional technicals trigger a "Strong Buy," but the ML Engine flags a high probability of failure (Confidence &lt; 40%).</li>
-                </ul>
-                <p style="color: #ccc; font-size: 14px; margin-bottom: 0;"><strong>The Benefit:</strong> Layering these divergences prevents the system from falling into "Retail Traps." It ensures that capital is only deployed when both traditional momentum and historical statistical probability are in perfect alignment.</p>
-            </div>
-        </details>
+        </div>
     </div>
 
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const searchInput = document.getElementById('glossarySearch');
+            const sections = document.querySelectorAll('.settings-card');
+            const terms = document.querySelectorAll('.term-box');
+            const noResults = document.getElementById('noResults');
+
+            searchInput.addEventListener('input', function() {
+                const query = this.value.toLowerCase().trim();
+                let sectionsFound = 0;
+
+                sections.forEach(section => {
+                    const sectionTerms = section.querySelectorAll('.term-box');
+                    let matchInSection = false;
+
+                    sectionTerms.forEach(term => {
+                        const title = term.querySelector('.term-title').innerText.toLowerCase();
+                        const content = term.innerText.toLowerCase();
+
+                        if (title.includes(query) || content.includes(query)) {
+                            term.style.display = 'block';
+                            term.classList.add('search-match');
+                            matchInSection = true;
+                        } else {
+                            term.style.display = 'none';
+                            term.classList.remove('search-match');
+                        }
+                    });
+
+                    if (matchInSection || query === "") {
+                        section.style.display = 'block';
+                        // Force open details if searching
+                        if (query !== "") {
+                            section.setAttribute('open', '');
+                        }
+                        sectionsFound++;
+                    } else {
+                        section.style.display = 'none';
+                    }
+                });
+
+                noResults.style.display = (sectionsFound === 0) ? 'block' : 'none';
+            });
+        });
+    </script>
 </body>
 </html>
