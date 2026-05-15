@@ -189,7 +189,7 @@ def init_db() -> None:
             )
         ''')
 
-        # --- PHASE 1: MARKET REGIMES (MACRO TURBULENCE TRACKING) ---
+        # --- PHASE 1: MARKET REGIMES (MACRO TURBULENCE Tracking) ---
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS market_regimes (
                 date TEXT PRIMARY KEY,
@@ -214,6 +214,7 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
     """
     Dynamically checks the existing tables against a master list of required columns.
     Gracefully executes ALTER TABLE to apply schema updates without dropping data.
+    Wraps individual ALTER statements in try/except blocks to ensure atomic migrations.
     """
     # 1. Migrate stock_signals
     cursor.execute("PRAGMA table_info(stock_signals)")
@@ -237,8 +238,12 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
 
     for col_name, data_type in required_stock_columns.items():
         if col_name not in existing_stock_columns:
-            logger.info(f"[MIGRATION] Adding missing column: '{col_name}' to stock_signals...")
-            cursor.execute(f"ALTER TABLE stock_signals ADD COLUMN {col_name} {data_type}")
+            try:
+                logger.info(f"[MIGRATION] Adding missing column: '{col_name}' to stock_signals...")
+                cursor.execute(f"ALTER TABLE stock_signals ADD COLUMN {col_name} {data_type}")
+            except Exception as e:
+                logger.error(f"[MIGRATION ERROR] Failed to add '{col_name}' to stock_signals: {e}")
+                continue
             
     # 2. Migrate quant_signals (Adding ML and Risk Factor Columns)
     cursor.execute("PRAGMA table_info(quant_signals)")
@@ -253,10 +258,18 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
 
     for col_name, data_type in required_quant_columns.items():
         if col_name not in existing_quant_columns:
-            logger.info(f"[MIGRATION] Adding missing column: '{col_name}' to quant_signals...")
-            cursor.execute(f"ALTER TABLE quant_signals ADD COLUMN {col_name} {data_type}")
+            try:
+                logger.info(f"[MIGRATION] Adding missing column: '{col_name}' to quant_signals...")
+                cursor.execute(f"ALTER TABLE quant_signals ADD COLUMN {col_name} {data_type}")
+            except Exception as e:
+                logger.error(f"[MIGRATION ERROR] Failed to add '{col_name}' to quant_signals: {e}")
+                continue
 
-    conn.commit()
+    try:
+        conn.commit()
+    except Exception as e:
+        logger.error(f"[MIGRATION ERROR] Failed to commit migration changes: {e}")
+        conn.rollback()
 
 def get_universe_tickers() -> List[str]:
     """

@@ -48,18 +48,15 @@ pip install -r requirements.txt
 
 ### **3. Initial Configuration**
 
-You must create a config.json file in the root directory to store your credentials. You can start with the bare minimum and configure the rest later via the Web UI.
+The Quantamental system features an automated configuration engine. You do not need to manually build the settings file from scratch.
 
-Create config.json:
-```
-{  
-    "GHOSTFOLIO_URL": "http://YOUR_GHOSTFOLIO_IP:PORT",  
-    "API_TOKEN": "your_long_lived_ghostfolio_security_token",  
-    "PORT": 8090,  
-    "BASE_CURRENCY": "GBP"  
-}
-```
-**Note:** BASE_CURRENCY ensures that foreign assets (like USD stocks) are mathematically converted to your local currency using live FX rates for accurate P&L calculation.
+1. **Bootstrap the System:** Simply start the server for the first time by running `python main.py`. The engine will automatically detect a fresh install and generate a fully structured `config.json` file in your root directory.
+2. **Configure via Web UI:** Open your browser and navigate to **http://localhost:8090**. Go to the **⚙️ Settings** tab.
+3. **Connect Your Portfolio:** Enter your `GHOSTFOLIO_URL` and `API_TOKEN`, then click **"Save & Apply"**. 
+
+*Alternatively, you can manually edit the generated `config.json` file in your code editor.*
+
+**Note:** Ensure your `BASE_CURRENCY` (e.g., GBP, USD, EUR) is set correctly in the Settings. This ensures that foreign assets are mathematically converted to your local currency using live FX rates for accurate P&L calculations.
 
 
 ### **4. Initial AI Training (Cold Start)**
