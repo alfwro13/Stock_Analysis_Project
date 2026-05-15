@@ -33,6 +33,19 @@
         </details>
 
         <details class="settings-card">
+            <summary>🌍 Market Universe Sideloading</summary>
+            <p style="font-size: 13px; color: #aaa; margin-top: 0; margin-bottom: 15px;">Securely upload custom CSV files representing different market universes (e.g., LSE, TSX) to expand the reach of the quantitative screener beyond the standard US Nasdaq baseline.</p>
+            <div class="form-group" style="margin-bottom: 15px;">
+                <label>Upload Custom Universe CSV</label>
+                <div style="display: flex; gap: 15px; align-items: center;">
+                    <input type="file" id="csvFileInput" accept=".csv" style="flex: 1; padding: 6px; font-size: 14px; background-color: #121212; border: 1px solid #444; border-radius: 5px; color: #fff;">
+                    <button type="button" class="btn-update" style="padding: 10px 20px; font-weight: bold; border-radius: 5px; border: none; cursor: pointer;" onclick="uploadUniverseCSV()">📤 Sideload CSV</button>
+                </div>
+            </div>
+            <div id="upload-status-msg" style="font-weight: bold; font-family: monospace; font-size: 13px; margin-top: 10px;"></div>
+        </details>
+
+        <details class="settings-card">
             <summary>🖥️ Live UI Updates & Notifications</summary>
             <p style="font-size: 13px; color: #aaa; margin-top: 0; margin-bottom: 15px;">Enable or disable real-time price fetching for individual stocks on specific pages. Market Indexes will always remain live.</p>
             
@@ -621,6 +634,45 @@
             btn.innerText = "Updating..."; btn.disabled = true;
             try { await fetch('/api/update', { method: 'POST' }); alert("Analysis initiated in the background! The system is building fresh mathematical models."); } catch (e) { }
             setTimeout(() => { btn.innerText = "↻ Force Update Analysis Models"; btn.disabled = false; }, 15000);
+        }
+
+        async function uploadUniverseCSV() {
+            const fileInput = document.getElementById('csvFileInput');
+            const statusMsg = document.getElementById('upload-status-msg');
+            
+            if (!fileInput.files.length) {
+                statusMsg.innerText = "❌ Please select a CSV file first.";
+                statusMsg.style.color = "#ff4d4d";
+                return;
+            }
+
+            const file = fileInput.files[0];
+            const formData = new FormData();
+            formData.append('file', file);
+
+            statusMsg.innerText = "📤 Uploading and processing...";
+            statusMsg.style.color = "#aaa";
+
+            try {
+                const response = await fetch('/api/universe/import', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    statusMsg.innerText = "✅ " + result.message;
+                    statusMsg.style.color = "#00ffcc";
+                    fileInput.value = ""; // clear input
+                } else {
+                    statusMsg.innerText = "❌ Error: " + result.message;
+                    statusMsg.style.color = "#ff4d4d";
+                }
+            } catch (error) {
+                statusMsg.innerText = "❌ Network Error during upload.";
+                statusMsg.style.color = "#ff4d4d";
+            }
         }
 
         async function discoverGhostfolioAccounts() {

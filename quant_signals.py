@@ -258,6 +258,15 @@ class QuantEngine:
             fifty_two_week_low = info.get('fiftyTwoWeekLow', None)
             fifty_two_week_high = info.get('fiftyTwoWeekHigh', None)
             
+            # --- PHASE 6: Country Extraction & Normalization ---
+            country_raw = info.get('country', 'Unknown')
+            if country_raw == "United Kingdom":
+                country = "UK"
+            elif country_raw == "United States":
+                country = "US"
+            else:
+                country = country_raw
+            
             ytd_return = info.get('ytdReturn', None)
             total_assets = info.get('totalAssets', None)
             nav_price = info.get('navPrice', None)
@@ -391,8 +400,10 @@ class QuantEngine:
 
             # Save to DB (JSON dumping the array of dictionaries)
             tags_json = json.dumps(tags)
+            
+            # --- PHASE 6: Pass country to save_to_db ---
             self.save_to_db(
-                ticker, company_name, sector, currency, quote_type,
+                ticker, company_name, sector, country, currency, quote_type,
                 current_price, ma5, ma10, ma21, trend_50d, trend_200d, rsi_val, stop_loss,
                 fifty_two_week_low, fifty_two_week_high,
                 trailing_pe, forward_pe, peg_ratio, peter_lynch_peg, price_to_book,
@@ -406,7 +417,7 @@ class QuantEngine:
         except Exception as e:
             logger.error(f"Failed to analyze {ticker}: {e}")
 
-    def save_to_db(self, ticker, company_name, sector, currency, quote_type,
+    def save_to_db(self, ticker, company_name, sector, country, currency, quote_type,
                    price, ma5, ma10, ma21, trend_50d, trend_200d, rsi, stop_loss,
                    fifty_two_week_low, fifty_two_week_high,
                    trailing_pe, forward_pe, peg_ratio, peter_lynch_peg, price_to_book,
@@ -435,9 +446,11 @@ class QuantEngine:
             return v
 
         cursor = self.conn.cursor()
+        
+        # --- PHASE 6: Update SQL to include country column ---
         query = '''
             INSERT OR REPLACE INTO stock_signals (
-                ticker, last_updated, company_name, sector, currency, quote_type,
+                ticker, last_updated, company_name, sector, country, currency, quote_type,
                 current_price, ma_5_day, ma_10_day, ma_21_day, trend_50d, trend_200d, rsi_14, atr_stop_loss,
                 fifty_two_week_low, fifty_two_week_high,
                 trailing_pe, forward_pe, peg_ratio, peter_lynch_peg, price_to_book,
@@ -447,7 +460,7 @@ class QuantEngine:
                 short_interest, institutional_ownership, beta,
                 composite_score, overall_signal, educational_notes, setup_tags
             ) VALUES (
-                ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?, ?, ?, ?,
                 ?, ?,
                 ?, ?, ?, ?, ?,
@@ -461,7 +474,7 @@ class QuantEngine:
         
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         values = (
-            ticker, timestamp, company_name, sector, currency, quote_type,
+            ticker, timestamp, company_name, sector, country, currency, quote_type,
             _clean(price), _clean(ma5), _clean(ma10), _clean(ma21), trend_50d, trend_200d, _clean(rsi), _clean(stop_loss),
             _clean(fifty_two_week_low), _clean(fifty_two_week_high),
             _clean(trailing_pe), _clean(forward_pe), _clean(peg_ratio), _clean(peter_lynch_peg), _clean(price_to_book),

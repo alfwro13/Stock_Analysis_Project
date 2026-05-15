@@ -36,7 +36,7 @@
             {{ stock.company_name }} ({{ stock.ticker }}) 
             <a href="https://finance.yahoo.com/quote/{{ stock.ticker }}" target="_blank" class="yahoo-link" style="margin-left: auto;">↗ View on Yahoo Finance</a>
         </h1>
-        <p class="subtitle">Type: {{ stock.quote_type }} | Sector/Category: {{ stock.sector }} | Currency: {{ stock.currency }}</p>
+        <p class="subtitle">Type: {{ stock.quote_type }} | Sector/Category: {{ stock.sector }} | Currency: {{ stock.currency }} | Country: {{ stock.country }}</p>
         
         <script>
             window.ENABLE_LIVE_ASSETS = {% if config and config.UI_PREFERENCES and config.UI_PREFERENCES.LIVE_DETAILS %}true{% else %}false{% endif %};
