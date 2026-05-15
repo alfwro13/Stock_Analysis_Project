@@ -1,4 +1,5 @@
 import os
+import re
 import csv
 import time
 import random
@@ -31,6 +32,38 @@ file_handler = logging.FileHandler(error_log_path, mode='a')
 file_handler.setLevel(logging.ERROR)
 file_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
+
+def clean_company_name(name: str) -> str:
+    """
+    Strips LSE par value garbage and fixes all-caps names while preserving 
+    properly formatted acronyms from Yahoo Finance.
+    """
+    if pd.isna(name) or name == 'Unknown':
+        return 'Unknown'
+        
+    name = str(name)
+    
+    # 1. Strip common LSE share class suffixes (e.g., " ORD 10P", " NPV")
+    name = re.sub(r'\s+ORD\b.*$', '', name, flags=re.IGNORECASE)
+    name = re.sub(r'\s+NPV\b.*$', '', name, flags=re.IGNORECASE)
+    
+    # 2. Clean trailing commas, dots, or spaces
+    name = name.strip(',. ')
+    
+    # 3. Smart Capitalization
+    # Check if the letters in the string are entirely uppercase
+    letters_only = re.sub(r'[^a-zA-Z]', '', name)
+    if letters_only and letters_only.isupper():
+        # Title case it
+        name = name.title()
+        
+        # Fix standard corporate suffixes mapped by regex
+        name = re.sub(r'\bPlc\b', 'plc', name)
+        name = re.sub(r'\bLlc\b', 'LLC', name)
+        name = re.sub(r'\bLtd\b', 'Ltd', name)
+        name = re.sub(r'\bUk\b', 'UK', name)
+        
+    return name
 
 def fetch_lse_data(url: str) -> Optional[pd.DataFrame]:
     """
@@ -136,14 +169,12 @@ def enrich_and_save(df: pd.DataFrame, output_filepath: str) -> None:
                 yf_ticker = yf.Ticker(ticker)
                 info = yf_ticker.info
                 
-                # Extract accurately cased name from Yahoo, fallback to LSE .title() if missing
+                # Extract accurately cased name from Yahoo, fallback to LSE if missing
                 yf_name = info.get('shortName') or info.get('longName')
-                if yf_name:
-                    company_name = yf_name
-                elif base_company_name != 'Unknown':
-                    company_name = base_company_name.title()
-                else:
-                    company_name = 'Unknown'
+                raw_name = yf_name if yf_name else base_company_name
+                
+                # Run the string scrubber
+                company_name = clean_company_name(raw_name)
                 
                 # Extract data with fallbacks
                 sector = info.get('sector')
@@ -167,7 +198,7 @@ def enrich_and_save(df: pd.DataFrame, output_filepath: str) -> None:
             except Exception as e:
                 logger.error(f"API failure for {ticker}: {e}")
                 # Fallbacks on failure
-                company_name = base_company_name.title() if base_company_name != 'Unknown' else 'Unknown'
+                company_name = clean_company_name(base_company_name)
                 sector = 'Unclassified'
                 industry = 'Unclassified'
                 country = 'Unknown'
@@ -214,4 +245,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-    
