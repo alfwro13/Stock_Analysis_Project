@@ -457,6 +457,36 @@
         </details>
 
         <details class="settings-card">
+            <summary>🧠 Machine Learning & AI Engine</summary>
+
+            {% set ml_engine = config.SCHEDULING.ML_ENGINE if config.SCHEDULING.ML_ENGINE else {} %}
+            {% set ml_days = ml_engine.DAYS if ml_engine.DAYS else ['sun'] %}
+            
+            <div style="background-color: #2c2c2c; padding: 15px; border-radius: 5px; margin-bottom: 15px; border-left: 3px solid #ff00ff;">
+                <h4 style="margin-top: 0; color: #ff00ff;">🤖 ML Pipeline Initialization & Scheduling</h4>
+                <p style="font-size: 13px; color: #aaa; margin-top: 0;">Automated Machine Learning pipeline to fetch 2 years of history, construct vectorized features, and train the global Voting Classifier ensemble.</p>
+                
+                <div style="display: flex; gap: 15px; margin-bottom: 15px; flex-wrap: wrap;">
+                    <label><input type="checkbox" class="ml-day" value="mon" {% if 'mon' in ml_days %}checked{% endif %}> Mon</label>
+                    <label><input type="checkbox" class="ml-day" value="tue" {% if 'tue' in ml_days %}checked{% endif %}> Tue</label>
+                    <label><input type="checkbox" class="ml-day" value="wed" {% if 'wed' in ml_days %}checked{% endif %}> Wed</label>
+                    <label><input type="checkbox" class="ml-day" value="thu" {% if 'thu' in ml_days %}checked{% endif %}> Thu</label>
+                    <label><input type="checkbox" class="ml-day" value="fri" {% if 'fri' in ml_days %}checked{% endif %}> Fri</label>
+                    <label><input type="checkbox" class="ml-day" value="sat" {% if 'sat' in ml_days %}checked{% endif %}> Sat</label>
+                    <label><input type="checkbox" class="ml-day" value="sun" {% if 'sun' in ml_days %}checked{% endif %}> Sun</label>
+                </div>
+                
+                <div style="display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap;">
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label>Execution Time</label>
+                        <input type="time" id="ML_ENGINE_TIME" value="{{ ml_engine.TIME | default('04:00') }}">
+                    </div>
+                    <button type="button" class="btn-test" style="margin-top: 0; background-color: #ff00ff; color: #121212;" onclick="triggerMLInit()">⚙️ Initialize AI Engine (Backfill & Train)</button>
+                </div>
+            </div>
+        </details>
+
+        <details class="settings-card">
             <summary>🌐 Core System & Currencies</summary>
             <div class="form-group">
                 <label>Server URL (Base URL for alerts, e.g. http://localhost)</label>
@@ -790,15 +820,6 @@
             }
         }
 
-        async function triggerEarningsScan() {
-            try {
-                await fetch('/api/trigger-earnings-scan', { method: 'POST' });
-                alert("Earnings Volatility Scan initiated in background. Check notifications for progress updates.");
-            } catch (error) {
-                alert("Failed to initiate Earnings Scan. Network or server error.");
-            }
-        }
-
         async function triggerUniverseUpdate() {
             try {
                 await fetch('/api/trigger-universe-update', { method: 'POST' });
@@ -815,6 +836,33 @@
             } catch (error) {
                 alert("Failed to initiate Full Quant Scan. Network or server error.");
             }
+        }
+
+        async function triggerEarningsScan() {
+            try {
+                await fetch('/api/trigger-earnings-scan', { method: 'POST' });
+                alert("Earnings Volatility Scan initiated in background. Check notifications for progress updates.");
+            } catch (error) {
+                alert("Failed to initiate Earnings Scan. Network or server error.");
+            }
+        }
+
+        async function triggerMLInit() {
+            const btn = document.querySelector('button[onclick="triggerMLInit()"]');
+            btn.disabled = true;
+            btn.innerText = "⚙️ Initializing Engine...";
+            
+            try {
+                await fetch('/api/ml/init-pipeline', { method: 'POST' });
+                alert("ML Pipeline initialized in the background. It will execute the Historical Backfill, Train the Model, and Run Daily Predictions sequentially. Check system notifications for progress.");
+            } catch (error) {
+                alert("Failed to initiate ML Pipeline. Network or server error.");
+            }
+            
+            setTimeout(() => {
+                btn.disabled = false;
+                btn.innerText = "⚙️ Initialize AI Engine (Backfill & Train)";
+            }, 3000);
         }
 
         async function saveSettings(silent = false) {
@@ -839,6 +887,7 @@
             const earnDays = Array.from(document.querySelectorAll('.earn-day:checked')).map(cb => cb.value);
             const dispatchDays = Array.from(document.querySelectorAll('.dispatch-day:checked')).map(cb => cb.value);
             const universeDays = Array.from(document.querySelectorAll('.universe-day:checked')).map(cb => cb.value);
+            const mlDays = Array.from(document.querySelectorAll('.ml-day:checked')).map(cb => cb.value);
             
             const payload = {
                 "SERVER_URL": document.getElementById('SERVER_URL').value,
@@ -914,6 +963,10 @@
                     "UNIVERSE_ENGINE": {
                         "DAYS": universeDays,
                         "TIME": document.getElementById('UNIVERSE_ENGINE_TIME').value
+                    },
+                    "ML_ENGINE": {
+                        "DAYS": mlDays,
+                        "TIME": document.getElementById('ML_ENGINE_TIME').value
                     }
                 },
                 "NOTIFICATIONS": {

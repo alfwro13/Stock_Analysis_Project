@@ -31,6 +31,9 @@ from reports_engine import get_sector_trends, get_mean_reversion_setups, get_lea
 # --- OPTIONS SANDBOX IMPORTS ---
 from options_engine import fetch_options_chain, calculate_payoff_matrix
 
+# --- AI PREDICTION ENGINE IMPORTS ---
+from ai_prediction_engine import train_global_ml_model, update_daily_ml_predictions, run_historical_backfill
+
 api_router = APIRouter(prefix="/api")
 
 # --- SHARED PYDANTIC SCHEMAS ---
@@ -69,6 +72,28 @@ def bg_execute_universe_quant_scan():
         return
     run_daily_quant_scan(tickers, scan_type='universe')
 
+def bg_init_ml_pipeline():
+    """Background task wrapper for initializing the AI engine end-to-end."""
+    run_historical_backfill()
+    train_global_ml_model()
+    
+    tickers = get_universe_tickers()
+    if not tickers:
+        engine = DataEngine()
+        tickers = engine.get_all_tickers()
+        
+    if tickers:
+        update_daily_ml_predictions(tickers)
+
+
+@api_router.post("/ml/init-pipeline")
+async def trigger_ml_init_endpoint(background_tasks: BackgroundTasks):
+    """API endpoint to manually trigger the end-to-end ML initialization."""
+    background_tasks.add_task(bg_init_ml_pipeline)
+    return JSONResponse(content={
+        "status": "success", 
+        "message": "ML Pipeline initialized in the background. Check System Notifications for progress updates."
+    })
 
 @api_router.post("/trigger-quant-scan")
 async def trigger_quant_scan_endpoint(background_tasks: BackgroundTasks):

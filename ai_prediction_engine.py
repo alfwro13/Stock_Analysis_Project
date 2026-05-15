@@ -1,15 +1,19 @@
+import time
 import logging
 import sqlite3
 import pandas as pd
 import numpy as np
 import joblib
+import yfinance as yf
+import ta
 from pathlib import Path
-from typing import List
+from typing import List, Tuple
 from xgboost import XGBClassifier
 from sklearn.ensemble import RandomForestClassifier, VotingClassifier
 
 from config import BASE_DIR
 from database import get_connection
+from data_engine import DataEngine
 
 # Configure robust module-level logging
 logging.basicConfig(
@@ -29,6 +33,149 @@ FEATURE_COLS = [
     'volume_surge', 'bullish_cross', 'dist_sma_50', 'dist_sma_200'
 ]
 
+# Hardcoded list of High Quality Blue Chips to supplement the dataset
+BLUE_CHIPS = [
+    "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "BRK-B", "LLY", "TSLA", 
+    "AVGO", "JPM", "UNH", "V", "XOM", "MA", "JNJ", "PG", "HD", "COST", "MRK", 
+    "ABBV", "CVX", "CRM", "AMD", "BAC", "PEP", "KO", "LIN", "TMO", "WMT", "MCD", 
+    "DIS", "CSCO", "ACN", "ABT", "INTU", "QCOM", "IBM", "CAT", "VZ", "AMGN", 
+    "TXN", "NOW", "PFE", "COP", "BA", "SPY", "QQQ", "DIA", "IWM"
+]
+
+def log_notification(message_type: str, message_text: str) -> None:
+    """Helper function to log scan progress to the system notification center."""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO system_notifications (message_type, message_text) VALUES (?, ?)",
+            (message_type, message_text)
+        )
+        conn.commit()
+    except Exception as e:
+        logger.error(f"Failed to log notification: {e}")
+    finally:
+        conn.close()
+
+def get_target_tickers() -> List[str]:
+    """
+    Combines the user's existing portfolio/watchlist tickers with a curated list
+    of Blue Chips. Deduplicates and limits the final payload to 250 tickers.
+    """
+    logger.info("Extracting user portfolio and watchlist tickers...")
+    try:
+        engine = DataEngine()
+        user_tickers = engine.get_all_tickers()
+    except Exception as e:
+        logger.error(f"Failed to fetch user tickers from DataEngine: {e}")
+        user_tickers = []
+
+    # Combine, deduplicate, and sort for determinism
+    combined_set = set(user_tickers).union(set(BLUE_CHIPS))
+    
+    # Filter out mutual funds (0P...) or known bad tickers if any slipped through
+    cleaned_list = [t for t in combined_set if t and not t.startswith("0P")]
+    
+    # Limit to maximum 250 tickers
+    final_tickers = sorted(cleaned_list)[:250]
+    
+    logger.info(f"Targeting {len(final_tickers)} unique tickers for historical backfill.")
+    return final_tickers
+
+def run_historical_backfill() -> None:
+    """
+    Downloads 2 years of daily data per ticker, calculates vectorized 
+    technical indicators, and executes bulk INSERT OR IGNORE operations into SQLite.
+    """
+    tickers = get_target_tickers()
+    if not tickers:
+        logger.warning("No tickers found to backfill. Aborting.")
+        return
+
+    log_notification("Info", f"ML Historical Backfill initiated for {len(tickers)} assets.")
+    conn = get_connection()
+    
+    try:
+        total_inserted = 0
+        total_tickers = len(tickers)
+        
+        for i, ticker in enumerate(tickers):
+            logger.info(f"[{i+1}/{total_tickers}] Processing 2y historical data for {ticker}...")
+            
+            try:
+                df = yf.download(ticker, period="2y", interval="1d", progress=False, auto_adjust=True)
+                
+                if df.empty:
+                    continue
+
+                if isinstance(df.columns, pd.MultiIndex):
+                    df.columns = df.columns.get_level_values(0)
+
+                df.dropna(subset=['Close', 'Volume'], inplace=True)
+                
+                if len(df) < 200:
+                    continue
+
+                # Vector-calculate technical indicators via 'ta' library
+                df['rsi_14'] = ta.momentum.RSIIndicator(close=df['Close'], window=14).rsi()
+                
+                macd_indicator = ta.trend.MACD(close=df['Close'])
+                df['macd'] = macd_indicator.macd()
+                df['macd_signal'] = macd_indicator.macd_signal()
+                df['macd_hist'] = macd_indicator.macd_diff()
+                
+                df['sma_50'] = ta.trend.SMAIndicator(close=df['Close'], window=50).sma_indicator()
+                df['sma_200'] = ta.trend.SMAIndicator(close=df['Close'], window=200).sma_indicator()
+                df['vol_sma_20'] = ta.trend.SMAIndicator(close=df['Volume'], window=20).sma_indicator()
+
+                # Vectorize proxy logic for boolean triggers
+                df['volume_surge'] = (df['Volume'] > (df['vol_sma_20'] * 1.5)).astype(int)
+                df['bullish_cross'] = ((df['macd'] > df['macd_signal']) & (df['macd'].shift(1) <= df['macd_signal'].shift(1))).astype(int)
+
+                df.dropna(inplace=True)
+                if df.empty:
+                    continue
+
+                records: List[Tuple] = []
+                for index, row in df.iterrows():
+                    date_str = index.strftime('%Y-%m-%d')
+                    records.append((
+                        ticker, date_str, float(row['Close']), int(row['Volume']),
+                        float(row['rsi_14']), float(row['macd']), float(row['macd_signal']),
+                        float(row['macd_hist']), float(row['sma_50']), float(row['sma_200']),
+                        int(row['volume_surge']), int(row['bullish_cross'])
+                    ))
+
+                cursor = conn.cursor()
+                query = """
+                    INSERT OR IGNORE INTO quant_signals 
+                    (ticker, date, close_price, volume, rsi_14, macd, macd_signal, macd_hist, sma_50, sma_200, volume_surge, bullish_cross)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """
+                cursor.executemany(query, records)
+                conn.commit()
+                
+                inserted = cursor.rowcount
+                total_inserted += inserted
+
+            except Exception as e:
+                logger.error(f"Error processing ticker {ticker}: {e}")
+                conn.rollback()
+            finally:
+                time.sleep(0.5)
+
+            processed = i + 1
+            if total_tickers >= 2 and processed == total_tickers // 2:
+                log_notification("Info", f"ML Historical Backfill is 50% complete ({processed}/{total_tickers}).")
+
+        logger.info(f"--- BACKFILL COMPLETE. Injected {total_inserted} new historical rows. ---")
+        log_notification("Success", f"ML Historical Backfill completed successfully. Injected {total_inserted:,} data points.")
+
+    except Exception as e:
+        logger.error(f"Fatal error during historical backfill execution: {e}")
+        log_notification("Error", f"ML Historical Backfill failed: {str(e)}")
+    finally:
+        conn.close()
 
 def train_global_ml_model() -> None:
     """
@@ -36,6 +183,7 @@ def train_global_ml_model() -> None:
     and trains a global ensemble model predicting >3% returns over 5 days.
     """
     logger.info("Initiating Global ML Model Training pipeline...")
+    log_notification("Info", "Global ML Model Training pipeline initiated.")
     
     try:
         conn = get_connection()
@@ -79,6 +227,7 @@ def train_global_ml_model() -> None:
 
         if len(X) < 1000:
             logger.warning(f"Insufficient training samples ({len(X)}). Need more historical data.")
+            log_notification("Error", f"Insufficient training samples ({len(X)}). Backfill required.")
             return
 
         # 4. Train the Ensemble Model
@@ -106,10 +255,11 @@ def train_global_ml_model() -> None:
         # 5. Persist to Disk
         joblib.dump(ensemble, MODEL_PATH)
         logger.info(f"✅ ML Ensemble successfully trained and saved to {MODEL_PATH}")
+        log_notification("Success", f"Global ML Model successfully trained and persisted. Samples evaluated: {len(X):,}")
 
     except Exception as e:
         logger.error(f"Fatal error during ML model training: {e}")
-
+        log_notification("Error", f"ML Model Training failed: {str(e)}")
 
 def update_daily_ml_predictions(tickers: List[str]) -> None:
     """
