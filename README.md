@@ -1,6 +1,6 @@
 # **📈 Quantamental Portfolio Dashboard**
 
-Self-hosted web application that merges **Quantitative Analysis** (algorithmic momentum, trend-following, candlestick patterns) with **Fundamental Analysis** (valuation, balance sheet health, and market sentiment).
+Self-hosted web application that merges **Quantitative Analysis** (algorithmic momentum, trend-following, candlestick patterns) with **Fundamental Analysis** (valuation, balance sheet health, and market sentiment), enhanced by **Machine Learning** and **Institutional Tail-Risk Management**.
 
 Designed for Linux environments, this system pulls live holdings from your [Ghostfolio](https://ghostfol.io/) instance, scrapes multi-dimensional market data via Yahoo Finance, and generates an interactive, Bloomberg-style dashboard using FastAPI and Plotly.
 
@@ -8,6 +8,10 @@ Please note that this is a hobby project not an investment platform.
 
 ## **✨ Core Features**
 
+* **Ensemble Machine Learning Prediction Engine:** Utilizes a soft-voting classifier (XGBoost + Random Forest) trained on historical vectorized features to calculate the probability (0-100%) of an asset returning >3% over the next 5 days.
+* **Institutional Tail-Risk Management:** Dynamically calculates Parametric Value at Risk (VaR) and Conditional VaR (Expected Shortfall) at a 95% confidence interval to quantify extreme downside exposure.
+* **Zero-LLM Market Sentiment Pulse:** Leverages VADER Natural Language Processing (NLP) to read and score live news headlines, quantifying media narratives on a strict -1.0 (Panic) to +1.0 (Euphoria) scale.
+* **Turbulence-Aware Macro Regimes:** Actively monitors the S&P 500's historical volatility alongside implied volatility (VIX) to classify the market as Normal, Volatile, or Crash—dynamically altering the quant screener to prioritize 'Flight to Safety' setups during turbulence.
 * **Auto-Syncing Portfolio (Multi-Account):** Integrates directly with Ghostfolio via API to automatically pull your live holdings. Now supports opt-in account discovery, allowing you to selectively sync specific accounts and calculate accurate global VWAP Cost Basis and Unrealized P&L across different currencies.  
 * **Multi-Dimensional Data Engine:** Downloads 2-year macro daily data, 1-day 5-minute intraday data, and deep fundamental .info payloads.  
 * **Nextcloud Talk Integration:** A comprehensive alert ecosystem that pushes rich notifications directly to your Nextcloud Talk app.  
@@ -16,7 +20,6 @@ Please note that this is a hobby project not an investment platform.
 * **Market Sentiment & Insider Tracking:** Maps the CNN Fear & Greed Index against the S&P 500 (with visual chart generation) and scrapes SEC Form 4 filings for major insider buying aligning with algorithmic dips.  
 * **Proprietary Scoring (0-100):** A custom algorithm that grades stocks based on Moving Average alignment, RSI, Volatility Contraction (3-Weeks-Tight), MACD Reversals, and On-Balance Volume.  
 * **Built-in Task Scheduler:** Fully autonomous background scheduling via APScheduler. No external cron jobs required. Manage execution times directly from the web UI.  
-* **In-App Management:** Update configurations, test webhooks, perform git pull repository updates, and restart the background service directly from the Settings GUI.  
 * **Crash-Proof Local Storage & Maintenance:** Persists heavy time-series data locally using highly compressed .parquet files and SQLite3. An automated Maintenance Engine prunes orphaned files and defragments the database weekly.
 
 Watch list Dashboard:
@@ -25,17 +28,6 @@ Market Sentiment Page:
 <img width="2265" height="1630" alt="market_sentiment" src="https://github.com/user-attachments/assets/1c70fd70-6cdf-4ee3-855b-f70d9ca3c5a4" />
 Holding detailed view:
 <img width="867" height="1805" alt="detailed_view" src="https://github.com/user-attachments/assets/35beacd7-df5e-435c-aa55-dd4f087e5b7b" />
-
-
-
-
-## **🛠️ Architecture**
-
-* **Backend:** Python 3.10+, FastAPI, Uvicorn, APScheduler  
-* **Data Engineering:** pandas, pyarrow, yfinance, sqlite3  
-* **Quantitative Math:** ta (Technical Analysis Library), numpy  
-* **Frontend:** Jinja2 Templates, HTML/CSS/JS (Vanilla), Plotly & Matplotlib (Interactive Charting)  
-* **Integrations:** Ghostfolio API, Nextcloud Talk (WebDAV & OCS API)
 
 ## **🚀 Installation & Setup**
 
@@ -46,8 +38,8 @@ You must have **Python 3.10 or higher** installed on your system.
 ### **2. Clone and Install**
 
 Clone the repository and install the required dependencies using a virtual environment:
-```
-git clone https://github.com/alfwro13/Stock_Analysis_Project.git  
+```bash
+git clone [https://github.com/alfwro13/Stock_Analysis_Project.git](https://github.com/alfwro13/Stock_Analysis_Project.git)  
 cd Stock_Analysis_Project  
 python3 -m venv venv  
 source venv/bin/activate  
@@ -68,6 +60,18 @@ Create config.json:
 }
 ```
 **Note:** BASE_CURRENCY ensures that foreign assets (like USD stocks) are mathematically converted to your local currency using live FX rates for accurate P&L calculation.
+
+
+### **4. Initial AI Training (Cold Start)**
+Before the system can provide Machine Learning predictions, it must build its historical training set.
+
+1. Start the server (python main.py) and navigate to http://localhost:8090.
+2. Go to the ⚙️ Settings tab.
+3. Scroll down to the 🧠 Machine Learning & AI Engine section.
+4. Click "⚙️ Initialize AI Engine (Backfill & Train)".
+
+This will run securely in the background. It downloads 2 years of daily data for a curated list of ~250 Blue Chip stocks plus your portfolio, engineers the vectorized features, and trains the global ml_ensemble.joblib model. You can track its progress in the Notifications tab.
+
 
 ## **💻 Usage & The Web UI**
 
@@ -173,4 +177,8 @@ This custom integration is a personal project and is provided strictly "as is" a
 
 ## **🙌 Credits & Acknowledgments**
 
-Parts of this project's structural inspiration and specific script logic were adapted from the excellent [namuan/trading-utils](https://github.com/namuan/trading-utils/) repository. A huge thank you to the author for their open-source contributions to the quantitative trading and financial data community!
+[AI4Finance-Foundation:](https://github.com/AI4Finance-Foundation) A massive thank you for the architectural inspiration behind FinRL's market regime switching, and FinGPT's approach to robust NLP sentiment analysis.
+
+[leorigasaki/stock-market-prediction-engine:](https://www.google.com/search?q=https://github.com/leorigasaki/stock-market-prediction-engine&authuser=1) Credit for the core mathematical inspiration governing the Time-Series Walk-Forward validation, feature extraction logic, and the structural foundation of the XGBoost/Random Forest soft-voting ensemble used in this project.
+
+[namuan/trading-utils:](https://github.com/namuan/trading-utils/) Parts of this project's structural inspiration and specific script logic were adapted from this excellent repository. A huge thank you to the author for their open-source contributions to the quantitative trading community!
