@@ -1,12 +1,16 @@
 # sentiment_engine.py
 import os
 import json
+import time
+import random
+import logging
 import pandas as pd
 import requests
 from fake_useragent import UserAgent
 from datetime import datetime, timedelta
-import yfinance as yf
+from typing import List
 
+import yfinance as yf
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
@@ -15,10 +19,26 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
+# NLP Sentiment Analyzer
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+
 from nextcloud_talk import upload_file_webdav, share_file_to_talk
 from config import NEXTCLOUD_URL, BOT_USERNAME, APP_PASSWORD, CONVERSATION_TOKEN
+from database import get_connection
 
-def fetch_fear_greed_data(start_date_str):
+# Configure robust module-level logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - SENTIMENT_ENGINE - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+
+# ==========================================================
+# 1. MACRO SENTIMENT (FEAR & GREED INDEX)
+# ==========================================================
+
+def fetch_fear_greed_data(start_date_str: str) -> pd.DataFrame:
     BASE_URL = "https://production.dataviz.cnn.io/index/fearandgreed/graphdata/"
     ua = UserAgent()
     headers = {'User-Agent': ua.random}
@@ -34,10 +54,10 @@ def fetch_fear_greed_data(start_date_str):
         fng_df.set_index('Date', inplace=True)
         return fng_df
     except Exception as e:
-        print(f"[ERROR] Fetching F&G data: {e}")
+        logger.error(f"Fetching F&G data failed: {e}")
         return pd.DataFrame()
 
-def fetch_stock_data(ticker, start_date):
+def fetch_stock_data(ticker: str, start_date: str) -> pd.DataFrame:
     stock_df = yf.download(tickers=ticker, start=start_date, progress=False, auto_adjust=True)
     if stock_df.empty: return pd.DataFrame()
     if isinstance(stock_df.columns, pd.MultiIndex):
@@ -48,7 +68,7 @@ def fetch_stock_data(ticker, start_date):
     if 'Close' not in stock_df.columns: return pd.DataFrame()
     return stock_df[['Close']].rename(columns={'Close': f'{ticker}_Close'})
 
-def get_sentiment_data():
+def get_sentiment_data() -> pd.DataFrame:
     today = datetime.now()
     start_date = (today - timedelta(days=365)).strftime('%Y-%m-%d')
     fng_data = fetch_fear_greed_data(start_date)
@@ -86,7 +106,7 @@ def generate_sentiment_figure():
     fig.update_yaxes(title_text="Fear & Greed Index (0-100)", range=[0, 100], secondary_y=True)
     return fig
 
-def get_sentiment_html():
+def get_sentiment_html() -> str:
     fig = generate_sentiment_figure()
     if not fig: return "<p>Error loading sentiment data. Please try again later.</p>"
     
@@ -98,7 +118,7 @@ def get_sentiment_html():
     return fig.to_html(full_html=False, include_plotlyjs='cdn', config=clean_config)
 
 def run_nextcloud_alert():
-    print("\n[DEBUG] 1/5 - Starting Market Sentiment Pipeline...")
+    logger.info("Starting Market Sentiment Pipeline...")
     try:
         merged_df = get_sentiment_data()
         if merged_df is None: return False, "Failed to fetch data."
@@ -168,3 +188,92 @@ def run_nextcloud_alert():
     finally:
         if os.path.exists(local_path):
             os.remove(local_path)
+
+
+# ==========================================================
+# 2. MICRO SENTIMENT (VADER NLP ON NEWS HEADLINES)
+# ==========================================================
+
+def fetch_and_score_news(ticker: str, analyzer: SentimentIntensityAnalyzer) -> float:
+    """
+    Fetches the latest 15 news headlines for a ticker via Yahoo Finance.
+    Scores the text utilizing VADER NLP and returns the normalized compound average.
+    """
+    try:
+        stock = yf.Ticker(ticker)
+        news = stock.news
+        
+        if not news or not isinstance(news, list):
+            return 0.0
+            
+        scores = []
+        for item in news[:15]:
+            # Aggregate title and publisher/summary context for richer NLP context
+            title = item.get('title', '')
+            summary = item.get('summary', '')
+            publisher = item.get('publisher', '')
+            
+            text_to_analyze = f"{title}. {summary}. {publisher}"
+            
+            if not text_to_analyze.strip(". "):
+                continue
+                
+            score_dict = analyzer.polarity_scores(text_to_analyze)
+            scores.append(score_dict['compound'])
+            
+        if not scores:
+            return 0.0
+            
+        return sum(scores) / len(scores)
+        
+    except Exception as e:
+        logger.debug(f"Failed to fetch/score news for {ticker}: {e}")
+        return 0.0
+
+def update_all_sentiment(tickers: List[str]) -> None:
+    """
+    Loops through the target list, fetches the VADER sentiment score, 
+    and updates the latest record in the quant_signals database table.
+    """
+    if not tickers:
+        logger.warning("Ticker list is empty. Aborting VADER sentiment scan.")
+        return
+
+    logger.info(f"Initiating Zero-LLM VADER Sentiment Scan for {len(tickers)} assets...")
+    
+    analyzer = SentimentIntensityAnalyzer()
+    
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    # Safely inject the column if it's missing from earlier migrations
+    try:
+        cursor.execute("ALTER TABLE quant_signals ADD COLUMN sentiment_score REAL")
+        conn.commit()
+        logger.info("Database Schema Migrated: Added 'sentiment_score' to quant_signals.")
+    except Exception:
+        pass # Column already exists
+
+    for i, ticker in enumerate(tickers):
+        try:
+            score = fetch_and_score_news(ticker, analyzer)
+            
+            # Map the sentiment score strictly to the LATEST row for that ticker
+            cursor.execute("""
+                UPDATE quant_signals 
+                SET sentiment_score = ? 
+                WHERE ticker = ? AND date = (SELECT MAX(date) FROM quant_signals WHERE ticker = ?)
+            """, (score, ticker, ticker))
+            
+            conn.commit()
+            logger.info(f"[{ticker}] Processed Sentiment: {score:+.3f}")
+            
+        except Exception as e:
+            logger.error(f"Failed to process sentiment for {ticker}: {e}")
+            conn.rollback()
+        finally:
+            # Respect API Throttling
+            time.sleep(random.uniform(0.5, 1.5))
+            
+    conn.close()
+    logger.info("VADER Local Sentiment Analysis completed successfully.")

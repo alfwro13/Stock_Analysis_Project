@@ -19,8 +19,7 @@ from report_dispatcher import push_morning_quant_briefing
 from database import get_universe_tickers
 from universe_engine import update_market_universe
 from profile_engine import run_profile_audit
-
-# --- NEW: Turbulence-Aware Market Regime Engine ---
+from sentiment_engine import run_nextcloud_alert, update_all_sentiment
 from regime_engine import calculate_market_regime
 
 # --- Background Task Scheduler Setup ---
@@ -66,20 +65,22 @@ def run_ghostfolio_sync():
 def run_overnight_quant_scan():
     """
     Fetches the combined list of portfolio and watchlist tickers, 
-    calculates the daily market regime, and executes the resumable daily quant scan natively.
+    executes the resumable daily quant scan, and runs the VADER NLP sentiment pipeline.
     """
     if not task_lock.acquire(blocking=False):
         print("[WARNING] System is currently busy. Skipping Overnight Quant Scan.")
         return
     try:
         print("\n--- OVERNIGHT QUANT SCAN INITIATED ---")
-        
-        # Calculate the daily Market Regime (Turbulence Index) before screening begins
-        calculate_market_regime()
-        
         engine = DataEngine()
         all_tickers = engine.get_all_tickers() 
+        
+        # 1. Execute Technical Analysis Pipeline
         run_daily_quant_scan(all_tickers)
+        
+        # 2. Execute NLP Sentiment Pipeline (Phase 4)
+        print("--- OVERNIGHT SENTIMENT ANALYSIS INITIATED ---")
+        update_all_sentiment(all_tickers)
         
         print("--- OVERNIGHT QUANT SCAN COMPLETE ---\n")
     except Exception as e:
