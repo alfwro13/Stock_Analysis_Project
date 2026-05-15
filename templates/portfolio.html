@@ -156,11 +156,15 @@
                         {% set ml_class = 'metric-excellent' if item.ml_confidence_score > 75 else ('metric-poor' if item.ml_confidence_score < 40 else 'metric-neutral') %}
                         <span class="{{ ml_class }}">{{ "{:,.1f}".format(item.ml_confidence_score) }}%</span>
                         
-                        {% set comp = item.composite_score|int if item.composite_score != 'N/A' and item.composite_score is not none else -1 %}
+                        {% set comp = -1 %}
+                        {% if item.composite_score is not none and item.composite_score != 'N/A' %}
+                            {% set comp = item.composite_score|int %}
+                        {% endif %}
+                        
                         {% if comp >= 70 and item.ml_confidence_score < 40 %}
-                            <span style="margin-left: 5px; font-size: 11px; padding: 2px 4px; border-radius: 4px; border: 1px solid #ff4d4d; color: #ff4d4d; cursor: help;" title="High Quant Score but Low AI Confidence">⚠️ Div</span>
+                            <span style="background-color: #ff4d4d; color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; margin-left: 5px; cursor: help;" title="High Quant Score but Low AI Confidence">⚠️ Divergence</span>
                         {% elif comp >= 0 and comp < 40 and item.ml_confidence_score >= 70 %}
-                            <span style="margin-left: 5px; font-size: 11px; padding: 2px 4px; border-radius: 4px; border: 1px solid #4da6ff; color: #4da6ff; cursor: help;" title="Low Quant Score but High AI Confidence">🤖 AI Buy</span>
+                            <span style="background-color: #4da6ff; color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; margin-left: 5px; cursor: help;" title="Low Quant Score but High AI Confidence">🤖 AI Buy</span>
                         {% endif %}
                     {% else %}
                         N/A

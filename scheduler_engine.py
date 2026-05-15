@@ -407,7 +407,7 @@ def reload_scheduler():
             CronTrigger(day_of_week=ml_days, hour=hour, minute=minute),
             id='ml_training_job'
         )
-        print(f"[SCHEDULER] Weekend ML Training scheduled for {ml_days} at {ml_time:02d}:{minute:02d}")
+        print(f"[SCHEDULER] Weekend ML Training scheduled for {ml_days} at {hour:02d}:{minute:02d}")
     except Exception as e:
         print(f"[ERROR] Failed to schedule ML Training: {e}")
 

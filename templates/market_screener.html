@@ -140,38 +140,50 @@
                         data: 'ml_confidence_score',
                         render: function(data, type, row) {
                             if (data === null || data === undefined) return 'N/A';
-                            let cssClass = data > 75 ? 'metric-excellent' : (data < 40 ? 'metric-poor' : 'metric-neutral');
-                            let html = `<span class="${cssClass}">${data.toFixed(1)}%</span>`;
                             
-                            // Divergence Logic Evaluation
-                            if (row.composite_score !== undefined && row.composite_score !== null) {
-                                let comp = parseInt(row.composite_score);
-                                if (!isNaN(comp)) {
-                                    if (comp >= 70 && data < 40) {
-                                        html += ` <span style="margin-left: 5px; font-size: 11px; padding: 2px 4px; border-radius: 4px; border: 1px solid #ff4d4d; color: #ff4d4d; cursor: help;" title="High Quant Score but Low AI Confidence">⚠️ Div</span>`;
-                                    } else if (comp < 40 && data >= 70) {
-                                        html += ` <span style="margin-left: 5px; font-size: 11px; padding: 2px 4px; border-radius: 4px; border: 1px solid #4da6ff; color: #4da6ff; cursor: help;" title="Low Quant Score but High AI Confidence">🤖 AI Buy</span>`;
+                            // Essential DataTables Fix: Only render HTML when displaying, return raw 'data' for sorting
+                            if (type === 'display') {
+                                let cssClass = data > 75 ? 'metric-excellent' : (data < 40 ? 'metric-poor' : 'metric-neutral');
+                                let html = `<span class="${cssClass}">${data.toFixed(1)}%</span>`;
+                                
+                                if (row.composite_score !== undefined && row.composite_score !== null && row.composite_score !== 'N/A') {
+                                    let comp = parseInt(row.composite_score);
+                                    if (!isNaN(comp)) {
+                                        if (comp >= 70 && data < 40) {
+                                            html += ` <span style="background-color: #ff4d4d; color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; margin-left: 5px; cursor: help;" title="High Quant Score but Low AI Confidence">⚠️ Divergence</span>`;
+                                        } else if (comp >= 0 && comp < 40 && data >= 70) {
+                                            html += ` <span style="background-color: #4da6ff; color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; margin-left: 5px; cursor: help;" title="Low Quant Score but High AI Confidence">🤖 AI Buy</span>`;
+                                        }
                                     }
                                 }
+                                return html;
                             }
-                            return html;
+                            return data;
                         }
                     },
                     {
                         data: 'var_95',
                         render: function(data, type, row) {
                             if (data === null || data === undefined) return 'N/A';
-                            let cssClass = data > 0.05 ? 'metric-poor' : 'metric-neutral';
-                            let cvarText = row.cvar_95 !== null && row.cvar_95 !== undefined ? `Expected Shortfall (CVaR): ${(row.cvar_95 * 100).toFixed(2)}%` : 'CVaR: N/A';
-                            return `<abbr title="${cvarText}" style="text-decoration: underline dotted; cursor: help;"><span class="${cssClass}">${(data * 100).toFixed(2)}%</span></abbr>`;
+                            
+                            if (type === 'display') {
+                                let cssClass = data > 0.05 ? 'metric-poor' : 'metric-neutral';
+                                let cvarText = row.cvar_95 !== null && row.cvar_95 !== undefined ? `Expected Shortfall (CVaR): ${(row.cvar_95 * 100).toFixed(2)}%` : 'CVaR: N/A';
+                                return `<abbr title="${cvarText}" style="text-decoration: underline dotted; cursor: help;"><span class="${cssClass}">${(data * 100).toFixed(2)}%</span></abbr>`;
+                            }
+                            return data;
                         }
                     },
                     {
                         data: 'sentiment_score',
-                        render: function(data) {
+                        render: function(data, type) {
                             if (data === null || data === undefined) return 'N/A';
-                            let cssClass = data > 0.5 ? 'metric-excellent' : (data < -0.5 ? 'metric-poor' : 'metric-neutral');
-                            return `<span class="${cssClass}">${data.toFixed(3)}</span>`;
+                            
+                            if (type === 'display') {
+                                let cssClass = data > 0.5 ? 'metric-excellent' : (data < -0.5 ? 'metric-poor' : 'metric-neutral');
+                                return `<span class="${cssClass}">${data.toFixed(3)}</span>`;
+                            }
+                            return data;
                         }
                     }
                 ]
