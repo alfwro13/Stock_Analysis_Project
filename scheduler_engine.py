@@ -1,5 +1,6 @@
 # scheduler_engine.py
 import threading
+import logging
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
@@ -23,6 +24,13 @@ from sentiment_engine import run_nextcloud_alert, update_all_sentiment
 from regime_engine import calculate_market_regime
 from ai_prediction_engine import train_global_ml_model, update_daily_ml_predictions
 
+# Configure robust module-level logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - SCHEDULER_ENGINE - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
 # --- Background Task Scheduler Setup ---
 scheduler = BackgroundScheduler()
 task_lock = threading.Lock()
@@ -42,20 +50,20 @@ def run_maintenance_engine():
 def run_update_pipeline():
     """Executes the heavy data ingestion and mathematical quant modeling."""
     if not task_lock.acquire(blocking=False):
-        print("[WARNING] System is currently busy. Skipping Update Analysis to prevent clash.")
+        logger.warning("System is currently busy. Skipping Update Analysis to prevent clash.")
         return
     try:
-        print("\n--- BACKGROUND UPDATE INITIATED ---")
+        logger.info("Background update initiated.")
         DataEngine().update_all_data()
         QuantEngine().run_all()
-        print("--- BACKGROUND UPDATE COMPLETE ---\n")
+        logger.info("Background update complete.")
     finally:
         task_lock.release()
 
 def run_ghostfolio_sync():
     """Executes the Ghostfolio API Sync to extract account holdings."""
     if not task_lock.acquire(blocking=False):
-        print("[WARNING] System is currently busy. Skipping Ghostfolio Sync to prevent clash.")
+        logger.warning("System is currently busy. Skipping Ghostfolio Sync to prevent clash.")
         return
     try:
         sync_engine = GhostfolioSyncEngine()
@@ -69,10 +77,10 @@ def run_overnight_quant_scan():
     executes the resumable daily quant scan, runs the ML Engine, and executes VADER NLP.
     """
     if not task_lock.acquire(blocking=False):
-        print("[WARNING] System is currently busy. Skipping Overnight Quant Scan.")
+        logger.warning("System is currently busy. Skipping Overnight Quant Scan.")
         return
     try:
-        print("\n--- OVERNIGHT QUANT SCAN INITIATED ---")
+        logger.info("Overnight quant scan initiated.")
         engine = DataEngine()
         all_tickers = engine.get_all_tickers() 
         
@@ -80,56 +88,56 @@ def run_overnight_quant_scan():
         run_daily_quant_scan(all_tickers)
         
         # 2. Execute ML Inference Pipeline (Phase 5)
-        print("--- OVERNIGHT ML INFERENCE INITIATED ---")
+        logger.info("Overnight ML inference initiated.")
         update_daily_ml_predictions(all_tickers)
         
         # 3. Execute NLP Sentiment Pipeline (Phase 4)
-        print("--- OVERNIGHT SENTIMENT ANALYSIS INITIATED ---")
+        logger.info("Overnight sentiment analysis initiated.")
         update_all_sentiment(all_tickers)
         
-        print("--- OVERNIGHT QUANT SCAN COMPLETE ---\n")
+        logger.info("Overnight quant scan complete.")
     except Exception as e:
-        print(f"[ERROR] Overnight Quant Scan Failed: {e}")
+        logger.error(f"Overnight Quant Scan Failed: {e}")
     finally:
         task_lock.release()
 
 def run_weekend_earnings_scan():
     """Executes the quantitative earnings volatility options scan."""
     if not task_lock.acquire(blocking=False):
-        print("[WARNING] System is busy. Skipping Earnings Volatility Scan.")
+        logger.warning("System is busy. Skipping Earnings Volatility Scan.")
         return
     try:
-        print("\n--- EARNINGS VOLATILITY SCAN INITIATED ---")
+        logger.info("Earnings volatility scan initiated.")
         engine = DataEngine()
         all_tickers = engine.get_all_tickers() 
         run_earnings_vol_scan(all_tickers)
-        print("--- EARNINGS VOLATILITY SCAN COMPLETE ---\n")
+        logger.info("Earnings volatility scan complete.")
     except Exception as e:
-        print(f"[ERROR] Earnings Volatility Scan Failed: {e}")
+        logger.error(f"Earnings Volatility Scan Failed: {e}")
     finally:
         task_lock.release()
 
 def run_morning_briefing_dispatch():
     """Executes the morning quant briefing dispatch."""
     if not task_lock.acquire(blocking=False):
-        print("[WARNING] System is busy. Skipping Morning Briefing Dispatch.")
+        logger.warning("System is busy. Skipping Morning Briefing Dispatch.")
         return
     try:
-        print("\n--- MORNING BRIEFING DISPATCH INITIATED ---")
+        logger.info("Morning briefing dispatch initiated.")
         push_morning_quant_briefing()
-        print("--- MORNING BRIEFING DISPATCH COMPLETE ---\n")
+        logger.info("Morning briefing dispatch complete.")
     except Exception as e:
-        print(f"[ERROR] Morning Briefing Dispatch Failed: {e}")
+        logger.error(f"Morning Briefing Dispatch Failed: {e}")
     finally:
         task_lock.release()
 
 def run_weekend_universe_routine():
     """Executes the massive 4000+ Universe Download and Quant Scan."""
     if not task_lock.acquire(blocking=False):
-        print("[WARNING] System is busy. Skipping Weekend Universe Routine.")
+        logger.warning("System is busy. Skipping Weekend Universe Routine.")
         return
     try:
-        print("\n--- WEEKEND UNIVERSE ROUTINE INITIATED ---")
+        logger.info("Weekend universe routine initiated.")
         # 1. Update the Ticker List from the FTP server
         update_market_universe()
         
@@ -139,45 +147,45 @@ def run_weekend_universe_routine():
             # Pass scan_type='universe' to prevent collision with daily scans
             run_daily_quant_scan(all_tickers, scan_type='universe')
         else:
-            print("[WARNING] Universe is empty, skipping quant scan.")
+            logger.warning("Universe is empty, skipping quant scan.")
             
-        print("--- WEEKEND UNIVERSE ROUTINE COMPLETE ---\n")
+        logger.info("Weekend universe routine complete.")
     except Exception as e:
-        print(f"[ERROR] Weekend Universe Routine Failed: {e}")
+        logger.error(f"Weekend Universe Routine Failed: {e}")
     finally:
         task_lock.release()
 
 def run_weekend_profile_audit():
     """Executes the rolling metadata audit for 250 assets."""
     if not task_lock.acquire(blocking=False):
-        print("[WARNING] System is busy. Skipping Profile Audit.")
+        logger.warning("System is busy. Skipping Profile Audit.")
         return
     try:
-        print("\n--- WEEKEND PROFILE AUDIT INITIATED ---")
+        logger.info("Weekend profile audit initiated.")
         run_profile_audit(limit=250)
-        print("--- WEEKEND PROFILE AUDIT COMPLETE ---\n")
+        logger.info("Weekend profile audit complete.")
     except Exception as e:
-        print(f"[ERROR] Weekend Profile Audit Failed: {e}")
+        logger.error(f"Weekend Profile Audit Failed: {e}")
     finally:
         task_lock.release()
 
 def run_weekend_ml_training():
     """Executes the global Machine Learning training cycle."""
     if not task_lock.acquire(blocking=False):
-        print("[WARNING] System is busy. Skipping ML Training.")
+        logger.warning("System is busy. Skipping ML Training.")
         return
     try:
-        print("\n--- WEEKEND ML TRAINING INITIATED ---")
+        logger.info("Weekend ML training initiated.")
         train_global_ml_model()
-        print("--- WEEKEND ML TRAINING COMPLETE ---\n")
+        logger.info("Weekend ML training complete.")
     except Exception as e:
-        print(f"[ERROR] Weekend ML Training Failed: {e}")
+        logger.error(f"Weekend ML Training Failed: {e}")
     finally:
         task_lock.release()
 
 def reload_scheduler():
     """Reads the latest config.json and updates APScheduler dynamically."""
-    print("[SCHEDULER] Reloading scheduled jobs from configuration...")
+    logger.info("Reloading scheduled jobs from configuration...")
     scheduler.remove_all_jobs()
     
     config = load_config()
@@ -196,9 +204,9 @@ def reload_scheduler():
                 CronTrigger(day_of_week=freq, hour=hour, minute=minute),
                 id='market_sentiment_job'
             )
-            print(f"[SCHEDULER] Market Sentiment Job scheduled for {freq} at {time_str}")
+            logger.info(f"Market Sentiment Job scheduled for {freq} at {time_str}")
         except Exception as e:
-            print(f"[ERROR] Failed to schedule Market Sentiment: {e}")
+            logger.error(f"Failed to schedule Market Sentiment: {e}")
 
     # 2. Earnings Alerts Job
     earnings_cfg = notifications.get("EARNINGS_ALERTS", {})
@@ -211,9 +219,9 @@ def reload_scheduler():
                 CronTrigger(day_of_week='mon-fri', hour=hour, minute=minute),
                 id='earnings_alert_job'
             )
-            print(f"[SCHEDULER] Earnings Alerts Job scheduled for mon-fri at {time_str}")
+            logger.info(f"Earnings Alerts Job scheduled for mon-fri at {time_str}")
         except Exception as e:
-            print(f"[ERROR] Failed to schedule Earnings Alerts: {e}")
+            logger.error(f"Failed to schedule Earnings Alerts: {e}")
     
     # 3. Insider Trading Alerts Job
     insider_cfg = notifications.get("INSIDER_TRADING", {})
@@ -227,9 +235,9 @@ def reload_scheduler():
                 CronTrigger(day_of_week=freq, hour=hour, minute=minute),
                 id='insider_alert_job'
             )
-            print(f"[SCHEDULER] Insider Trading Alert Job scheduled for {freq} at {time_str}")
+            logger.info(f"Insider Trading Alert Job scheduled for {freq} at {time_str}")
         except Exception as e:
-            print(f"[ERROR] Failed to schedule Insider Alerts: {e}")
+            logger.error(f"Failed to schedule Insider Alerts: {e}")
 
     # 4. Core System Schedulers (Ghostfolio & Quant Analysis)
     ghost_cfg = scheduling.get("GHOSTFOLIO_SYNC", {})
@@ -238,7 +246,7 @@ def reload_scheduler():
         freq = ghost_cfg.get("FREQUENCY", "mon-fri")
         if interval > 0:
             scheduler.add_job(run_ghostfolio_sync, IntervalTrigger(hours=interval), id='ghostfolio_sync_job')
-            print(f"[SCHEDULER] Ghostfolio Sync scheduled every {interval} hours.")
+            logger.info(f"Ghostfolio Sync scheduled every {interval} hours.")
         else:
             time_str = ghost_cfg.get("TIME", "06:00")
             try:
@@ -248,9 +256,9 @@ def reload_scheduler():
                     CronTrigger(day_of_week=freq, hour=hour, minute=minute), 
                     id='ghostfolio_sync_job'
                 )
-                print(f"[SCHEDULER] Ghostfolio Sync scheduled for {freq} at {time_str}")
+                logger.info(f"Ghostfolio Sync scheduled for {freq} at {time_str}")
             except Exception as e:
-                print(f"[ERROR] Failed to schedule Ghostfolio Sync: {e}")
+                logger.error(f"Failed to schedule Ghostfolio Sync: {e}")
 
     quant_cfg = scheduling.get("QUANT_ANALYSIS", {})
     if quant_cfg.get("ENABLED"):
@@ -258,7 +266,7 @@ def reload_scheduler():
         freq = quant_cfg.get("FREQUENCY", "mon-fri")
         if interval > 0:
             scheduler.add_job(run_update_pipeline, IntervalTrigger(hours=interval), id='quant_analysis_job')
-            print(f"[SCHEDULER] Quant Analysis scheduled every {interval} hours.")
+            logger.info(f"Quant Analysis scheduled every {interval} hours.")
         else:
             time_str = quant_cfg.get("TIME", "18:00")
             try:
@@ -268,9 +276,9 @@ def reload_scheduler():
                     CronTrigger(day_of_week=freq, hour=hour, minute=minute), 
                     id='quant_analysis_job'
                 )
-                print(f"[SCHEDULER] Quant Analysis scheduled for {freq} at {time_str}")
+                logger.info(f"Quant Analysis scheduled for {freq} at {time_str}")
             except Exception as e:
-                print(f"[ERROR] Failed to schedule Quant Analysis: {e}")
+                logger.error(f"Failed to schedule Quant Analysis: {e}")
 
     # 5. Unified Intraday Orchestrator
     crash_cfg = scheduling.get("CRASH_ALERTS", {})
@@ -295,9 +303,9 @@ def reload_scheduler():
                 CronTrigger(day_of_week=freq, hour=f"{start_h}-{end_h}", minute=f"*/{interval_mins}"),
                 id='intraday_orchestrator_job'
             )
-            print(f"[SCHEDULER] Unified Intraday Orchestrator scheduled for {freq} between {start_time}-{end_time} every {interval_mins} mins.")
+            logger.info(f"Unified Intraday Orchestrator scheduled for {freq} between {start_time}-{end_time} every {interval_mins} mins.")
         except Exception as e:
-            print(f"[ERROR] Failed to schedule Intraday Orchestrator: {e}")
+            logger.error(f"Failed to schedule Intraday Orchestrator: {e}")
 
     # 6. System Maintenance Engine
     maint_cfg = scheduling.get("MAINTENANCE", {})
@@ -311,9 +319,9 @@ def reload_scheduler():
                 CronTrigger(day_of_week=day_of_week, hour=hour, minute=minute),
                 id='maintenance_job'
             )
-            print(f"[SCHEDULER] DB/File Maintenance scheduled for {day_of_week} at {time_str}")
+            logger.info(f"DB/File Maintenance scheduled for {day_of_week} at {time_str}")
         except Exception as e:
-            print(f"[ERROR] Failed to schedule Maintenance Job: {e}")
+            logger.error(f"Failed to schedule Maintenance Job: {e}")
 
     # 7. Daily Quant Screener Engine (Portfolio/Watchlist)
     quant_cfg = scheduling.get("QUANT_ENGINE", {})
@@ -328,9 +336,9 @@ def reload_scheduler():
             CronTrigger(day_of_week=quant_days, hour=hour, minute=minute),
             id='overnight_quant_scan_job'
         )
-        print(f"[SCHEDULER] Overnight Quant Scan scheduled for {quant_days} at {quant_time}")
+        logger.info(f"Overnight Quant Scan scheduled for {quant_days} at {quant_time}")
     except Exception as e:
-        print(f"[ERROR] Failed to schedule Overnight Quant Scan: {e}")
+        logger.error(f"Failed to schedule Overnight Quant Scan: {e}")
 
     # 8. Earnings Volatility Engine
     earn_cfg = scheduling.get("EARNINGS_ENGINE", {})
@@ -345,9 +353,9 @@ def reload_scheduler():
             CronTrigger(day_of_week=earn_days, hour=hour, minute=minute),
             id='weekend_earnings_vol_scan_job'
         )
-        print(f"[SCHEDULER] Earnings Volatility Scan scheduled for {earn_days} at {earn_time}")
+        logger.info(f"Earnings Volatility Scan scheduled for {earn_days} at {earn_time}")
     except Exception as e:
-        print(f"[ERROR] Failed to schedule Earnings Volatility Scan: {e}")
+        logger.error(f"Failed to schedule Earnings Volatility Scan: {e}")
 
     # 9. Morning Briefing Dispatch Engine
     disp_cfg = scheduling.get("DISPATCHER", {})
@@ -363,9 +371,9 @@ def reload_scheduler():
                 CronTrigger(day_of_week=disp_days, hour=hour, minute=minute),
                 id='morning_briefing_dispatch_job'
             )
-            print(f"[SCHEDULER] Morning Briefing Dispatch scheduled for {disp_days} at {disp_time}")
+            logger.info(f"Morning Briefing Dispatch scheduled for {disp_days} at {disp_time}")
         except Exception as e:
-            print(f"[ERROR] Failed to schedule Morning Briefing Dispatch: {e}")
+            logger.error(f"Failed to schedule Morning Briefing Dispatch: {e}")
 
     # 10. Weekend Universe Routine (4000+ Tickers)
     uni_cfg = scheduling.get("UNIVERSE_ENGINE", {})
@@ -380,7 +388,7 @@ def reload_scheduler():
             CronTrigger(day_of_week=uni_days, hour=hour, minute=minute),
             id='universe_routine_job'
         )
-        print(f"[SCHEDULER] Weekend Universe Routine scheduled for {uni_days} at {uni_time}")
+        logger.info(f"Weekend Universe Routine scheduled for {uni_days} at {uni_time}")
         
         # 11. Profile Rolling Audit (Staggered 1 hour after the universe routine)
         audit_hour = (hour + 1) % 24
@@ -389,10 +397,10 @@ def reload_scheduler():
             CronTrigger(day_of_week=uni_days, hour=audit_hour, minute=minute),
             id='profile_audit_job'
         )
-        print(f"[SCHEDULER] Weekend Profile Audit scheduled for {uni_days} at {audit_hour:02d}:{minute:02d}")
+        logger.info(f"Weekend Profile Audit scheduled for {uni_days} at {audit_hour:02d}:{minute:02d}")
         
     except Exception as e:
-        print(f"[ERROR] Failed to schedule Weekend Universe Routine: {e}")
+        logger.error(f"Failed to schedule Weekend Universe Routine: {e}")
 
     # 12. ML Engine (Weekend Routine)
     ml_cfg = scheduling.get("ML_ENGINE", {})
@@ -407,9 +415,9 @@ def reload_scheduler():
             CronTrigger(day_of_week=ml_days, hour=hour, minute=minute),
             id='ml_training_job'
         )
-        print(f"[SCHEDULER] Weekend ML Training scheduled for {ml_days} at {hour:02d}:{minute:02d}")
+        logger.info(f"Weekend ML Training scheduled for {ml_days} at {hour:02d}:{minute:02d}")
     except Exception as e:
-        print(f"[ERROR] Failed to schedule ML Training: {e}")
+        logger.error(f"Failed to schedule ML Training: {e}")
 
 
 def start_scheduler():
