@@ -36,6 +36,7 @@ def init_db() -> None:
                 company_name TEXT,
                 sector TEXT,
                 currency TEXT,
+                country TEXT,
                 quote_type TEXT,
                 
                 -- Core Technicals
@@ -162,13 +163,14 @@ def init_db() -> None:
             )
         ''')
 
-        # New table for the Expanded Market Universe (4,000+ Tickers)
+        # Expanded Market Universe (4,000+ Tickers) supporting multi-national assets
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS market_universe (
                 ticker TEXT PRIMARY KEY,
                 company_name TEXT,
                 sector TEXT,
                 industry TEXT,
+                country TEXT,
                 last_updated TEXT
             )
         ''')
@@ -221,7 +223,7 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
     existing_stock_columns = [info['name'] for info in cursor.fetchall()]
 
     required_stock_columns = {
-        'company_name': 'TEXT', 'sector': 'TEXT', 'currency': 'TEXT', 'quote_type': 'TEXT',
+        'company_name': 'TEXT', 'sector': 'TEXT', 'currency': 'TEXT', 'country': 'TEXT', 'quote_type': 'TEXT',
         'trend_50d': 'TEXT', 'trend_200d': 'TEXT',
         'fifty_two_week_low': 'REAL', 'fifty_two_week_high': 'REAL',
         'trailing_pe': 'REAL', 'forward_pe': 'REAL', 'peg_ratio': 'REAL',
@@ -263,6 +265,23 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
                 cursor.execute(f"ALTER TABLE quant_signals ADD COLUMN {col_name} {data_type}")
             except Exception as e:
                 logger.error(f"[MIGRATION ERROR] Failed to add '{col_name}' to quant_signals: {e}")
+                continue
+                
+    # 3. Migrate market_universe (Adding Country origin column)
+    cursor.execute("PRAGMA table_info(market_universe)")
+    existing_universe_columns = [info['name'] for info in cursor.fetchall()]
+    
+    required_universe_columns = {
+        'country': 'TEXT'
+    }
+
+    for col_name, data_type in required_universe_columns.items():
+        if col_name not in existing_universe_columns:
+            try:
+                logger.info(f"[MIGRATION] Adding missing column: '{col_name}' to market_universe...")
+                cursor.execute(f"ALTER TABLE market_universe ADD COLUMN {col_name} {data_type}")
+            except Exception as e:
+                logger.error(f"[MIGRATION ERROR] Failed to add '{col_name}' to market_universe: {e}")
                 continue
 
     try:

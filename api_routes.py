@@ -1,12 +1,15 @@
 # api_routes.py
 import os
+import io
 import json
 import time
 import signal
 import subprocess
+import pandas as pd
+from datetime import datetime
 from typing import List, Optional
 
-from fastapi import APIRouter, Request, BackgroundTasks
+from fastapi import APIRouter, Request, BackgroundTasks, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -130,6 +133,64 @@ async def trigger_universe_quant_scan_endpoint(background_tasks: BackgroundTasks
         "status": "success", 
         "message": "Full Universe Quant Scan initiated in the background. This will take over an hour. Check System Notifications for progress."
     })
+
+@api_router.post("/universe/import")
+async def import_universe_csv(file: UploadFile = File(...)):
+    """
+    API endpoint to securely accept a CSV containing a custom market universe, 
+    parse it instantly using Pandas, and bulk-load it into SQLite.
+    """
+    if not file.filename.endswith('.csv'):
+        return JSONResponse(status_code=400, content={"status": "error", "message": "Invalid file type. Only .csv files are supported."})
+    
+    try:
+        # Load the uploaded file stream entirely into memory
+        contents = await file.read()
+        csv_data = io.StringIO(contents.decode('utf-8'))
+        df = pd.read_csv(csv_data)
+        
+        # Enforce exact column structures 
+        required_cols = ['ticker', 'company_name', 'sector', 'industry', 'currency', 'country']
+        for col in required_cols:
+            if col not in df.columns:
+                return JSONResponse(status_code=400, content={"status": "error", "message": f"Malformed CSV. Missing required column: {col}"})
+        
+        # Scrub unprocessable rows
+        df = df.dropna(subset=['ticker'])
+        
+        records = []
+        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        for _, row in df.iterrows():
+            records.append((
+                str(row['ticker']),
+                str(row['company_name']) if pd.notna(row['company_name']) else 'Unknown',
+                str(row['sector']) if pd.notna(row['sector']) else 'Unclassified',
+                str(row['industry']) if pd.notna(row['industry']) else 'Unclassified',
+                str(row['country']) if pd.notna(row['country']) else 'Unknown',
+                current_time
+            ))
+        
+        conn = get_connection()
+        cursor = conn.cursor()
+        
+        # Optimized SQLite bulk insert utilizing transaction wrapping
+        cursor.executemany('''
+            INSERT OR REPLACE INTO market_universe 
+            (ticker, company_name, sector, industry, country, last_updated)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', records)
+        
+        conn.commit()
+        conn.close()
+        
+        return JSONResponse(content={
+            "status": "success", 
+            "message": f"Successfully sideloaded {len(records)} assets into the local Market Universe."
+        })
+        
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"status": "error", "message": f"Fatal error executing CSV parser: {str(e)}"})
 
 class PulseRequest(BaseModel):
     tickers: Optional[List[str]] = []
