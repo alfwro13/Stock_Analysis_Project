@@ -119,15 +119,15 @@
                     {% endif %}
                 </td>
                 
-                <td data-sort="{{ item.target_price or -999 }}">{% if item.target_price is not none %}{{ "{:,.2f}".format(item.target_price) }}{% else %}N/A{% endif %}</td>
+                <td data-sort="{{ item.target_price if item.target_price is not none else -999 }}">{% if item.target_price is not none %}{{ "{:,.2f}".format(item.target_price) }}{% else %}N/A{% endif %}</td>
                 <td data-sort="{{ 1 if item.trend_50d == 'UP' else 0 }}"><span class="{% if item.trend_50d == 'UP' %}trend-up{% else %}trend-down{% endif %}">{{ item.trend_50d }}</span></td>
                 <td data-sort="{{ 1 if item.trend_200d == 'UP' else 0 }}"><span class="{% if item.trend_200d == 'UP' %}trend-up{% else %}trend-down{% endif %}">{{ item.trend_200d }}</span></td>
-                <td data-sort="{{ item.peg_ratio or 999 }}">{% if item.peg_ratio is not none %}{{ "{:,.2f}".format(item.peg_ratio) }}{% else %}N/A{% endif %}</td>
-                <td data-sort="{{ item.peter_lynch_peg or 999 }}">{% if item.peter_lynch_peg is not none %}{{ "{:,.2f}".format(item.peter_lynch_peg) }}{% else %}N/A{% endif %}</td>
-                <td data-sort="{{ item.atr_stop_loss or -999 }}" style="color: #ffaa00;">{% if item.atr_stop_loss is not none %}{{ "{:,.2f}".format(item.atr_stop_loss) }}{% else %}N/A{% endif %}</td>
-                <td data-sort="{{ item.rsi_14 or -999 }}">{% if item.rsi_14 is not none %}{{ "{:,.1f}".format(item.rsi_14) }}{% else %}N/A{% endif %}</td>
+                <td data-sort="{{ item.peg_ratio if item.peg_ratio is not none else 999 }}">{% if item.peg_ratio is not none %}{{ "{:,.2f}".format(item.peg_ratio) }}{% else %}N/A{% endif %}</td>
+                <td data-sort="{{ item.peter_lynch_peg if item.peter_lynch_peg is not none else 999 }}">{% if item.peter_lynch_peg is not none %}{{ "{:,.2f}".format(item.peter_lynch_peg) }}{% else %}N/A{% endif %}</td>
+                <td data-sort="{{ item.atr_stop_loss if item.atr_stop_loss is not none else -999 }}" style="color: #ffaa00;">{% if item.atr_stop_loss is not none %}{{ "{:,.2f}".format(item.atr_stop_loss) }}{% else %}N/A{% endif %}</td>
+                <td data-sort="{{ item.rsi_14 if item.rsi_14 is not none else -999 }}">{% if item.rsi_14 is not none %}{{ "{:,.1f}".format(item.rsi_14) }}{% else %}N/A{% endif %}</td>
                 
-                <td data-sort="{{ item.ml_confidence_score or -999 }}">
+                <td data-sort="{{ item.ml_confidence_score if item.ml_confidence_score is not none else -999 }}">
                     {% if item.ml_confidence_score is not none %}
                         {% set ml_class = 'metric-excellent' if item.ml_confidence_score > 75 else ('metric-poor' if item.ml_confidence_score < 40 else 'metric-neutral') %}
                         <span class="{{ ml_class }}">{{ "{:,.1f}".format(item.ml_confidence_score) }}%</span>
@@ -135,17 +135,17 @@
                         N/A
                     {% endif %}
                 </td>
-                <td data-sort="{{ item.var_95 or -999 }}">
+                <td data-sort="{{ item.var_95 if item.var_95 is not none else -999 }}">
                     {% if item.var_95 is not none %}
                         {% set var_class = 'metric-poor' if item.var_95 > 0.05 else 'metric-neutral' %}
-                        <abbr title="Expected Shortfall (CVaR): {% if item.cvar_95 is not none %}{{ '{:,.2f}'.format(item.cvar_95 * 100) }}%{% else %}N/A{% endif %}" style="text-decoration: underline dotted; cursor: help;">
+                        <abbr title="Expected Shortfall (CVaR): {% if item.cvar_95 is not none %}{{ '{:,.2f}'.format(item.cvar_95 * 100) }}%{% else %}N/A{% endif %}">
                             <span class="{{ var_class }}">{{ "{:,.2f}".format(item.var_95 * 100) }}%</span>
                         </abbr>
                     {% else %}
                         N/A
                     {% endif %}
                 </td>
-                <td data-sort="{{ item.sentiment_score or -999 }}">
+                <td data-sort="{{ item.sentiment_score if item.sentiment_score is not none else -999 }}">
                     {% if item.sentiment_score is not none %}
                         {% set sent_class = 'metric-excellent' if item.sentiment_score > 0.5 else ('metric-poor' if item.sentiment_score < -0.5 else 'metric-neutral') %}
                         <span class="{{ sent_class }}">{{ "{:,.3f}".format(item.sentiment_score) }}</span>

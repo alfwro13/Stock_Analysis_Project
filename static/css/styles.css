@@ -6,7 +6,7 @@
 .metric-excellent { color: #4caf50; font-weight: bold; }
 .metric-poor { color: #f44336; font-weight: bold; }
 .metric-neutral { color: #e0e0e0; }
-
+.card-risk { border-top: 3px solid #ffaa00; }
 
 /* --- 1. Base Elements & Typography --- */
 html { scroll-behavior: smooth; }
@@ -14,7 +14,7 @@ body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-
 h1, h2, h3, h4, h5, h6 { color: #ffffff; margin: 0; }
 a { color: #4da6ff; text-decoration: none; font-weight: bold; }
 a:hover { text-decoration: underline; }
-abbr { text-decoration: underline dotted #666; text-underline-offset: 3px;cursor: pointer; color: inherit; }
+abbr { text-decoration: underline dotted #666; text-underline-offset: 3px; cursor: pointer; color: inherit; }
 
 /* --- 2. Layout & Containers --- */
 .container { max-width: 1400px; margin: auto; padding: 0 20px; }
