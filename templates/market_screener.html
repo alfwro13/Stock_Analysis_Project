@@ -43,6 +43,9 @@
                     <th>200D SMA</th>
                     <th>Volume Surge</th>
                     <th>Golden Cross</th>
+                    <th>ML Conf</th>
+                    <th>VaR (95%)</th>
+                    <th>Sentiment</th>
                 </tr>
             </thead>
             <tbody></tbody>
@@ -56,8 +59,9 @@
         <li><strong style="color: #4da6ff;"><abbr title="Moving Average Convergence Divergence">MACD</abbr> Histogram:</strong> Measures momentum velocity. Expanding green bars confirm acceleration; red or shrinking bars signal momentum decay or a trend pivot.</li>
         <li><strong style="color: #4da6ff;">50D <abbr title="Simple Moving Average">SMA</abbr>:</strong> The "Health Line" representing the 10-week price mean. Trading above it confirms a medium-term uptrend; falling below suggests a structural loss of strength.</li>
         <li><strong style="color: #4da6ff;">200D <abbr title="Simple Moving Average">SMA</abbr>:</strong> The "Institutional Floor." Banks and funds use this as the ultimate line in the sand; breaking below it often marks the shift into a primary bear market.</li>
-        <li><strong style="color: #4da6ff;">Volume Surge:</strong> Triggered when volume is >50% above the 20-day average. This highlights massive institutional entry or exit points that often lead to major breakouts.</li>
-        <li><strong style="color: #4da6ff;">Golden Cross:</strong> A high-conviction signal where the 50D SMA crosses above the 200D SMA, mathematically confirming the transition from a downtrend to a long-term bull cycle.</li>
+        <li><strong style="color: #4da6ff;">ML Conf:</strong> Machine Learning Ensemble confidence score predicting a >3% return over the next 5 days. >75% is highly actionable.</li>
+        <li><strong style="color: #4da6ff;">VaR (95%):</strong> Parametric Value at Risk. The expected maximum percentage loss over a standard holding period with 95% confidence.</li>
+        <li><strong style="color: #4da6ff;">Sentiment:</strong> VADER NLP compound score generated from the latest news headlines. Positive values indicate bullish media framing.</li>
     </ul>
 </div>
     </div>
@@ -131,7 +135,31 @@
                     { data: 'sma_50', render: function(data) { return data === null ? 'N/A' : '$' + data.toFixed(2); } },
                     { data: 'sma_200', render: function(data) { return data === null ? 'N/A' : '$' + data.toFixed(2); } },
                     { data: 'volume_surge', render: function(data) { return data ? '<span class="badge-yes">YES</span>' : '<span class="badge-no">No</span>'; } },
-                    { data: 'bullish_cross', render: function(data) { return data ? '<span class="badge-yes">YES</span>' : '<span class="badge-no">No</span>'; } }
+                    { data: 'bullish_cross', render: function(data) { return data ? '<span class="badge-yes">YES</span>' : '<span class="badge-no">No</span>'; } },
+                    {
+                        data: 'ml_confidence_score',
+                        render: function(data) {
+                            if (data === null || data === undefined) return 'N/A';
+                            let cssClass = data > 75 ? 'metric-excellent' : (data < 40 ? 'metric-poor' : 'metric-neutral');
+                            return `<span class="${cssClass}">${data.toFixed(1)}%</span>`;
+                        }
+                    },
+                    {
+                        data: 'var_95',
+                        render: function(data) {
+                            if (data === null || data === undefined) return 'N/A';
+                            let cssClass = data > 0.05 ? 'metric-poor' : 'metric-neutral';
+                            return `<span class="${cssClass}">${(data * 100).toFixed(2)}%</span>`;
+                        }
+                    },
+                    {
+                        data: 'sentiment_score',
+                        render: function(data) {
+                            if (data === null || data === undefined) return 'N/A';
+                            let cssClass = data > 0.5 ? 'metric-excellent' : (data < -0.5 ? 'metric-poor' : 'metric-neutral');
+                            return `<span class="${cssClass}">${data.toFixed(3)}</span>`;
+                        }
+                    }
                 ]
             });
         });

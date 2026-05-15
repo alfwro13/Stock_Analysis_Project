@@ -106,6 +106,9 @@
                 <th><abbr title="Peter Lynch Fair Value">PL PEG</abbr></th>
                 <th>Stop-Loss</th>
                 <th>RSI</th>
+                <th>ML Conf</th>
+                <th>VaR (95%)</th>
+                <th>Sentiment</th>
                 <th>Earnings</th>
                 <th>Score</th>
                 <th>Setups & Tags</th>
@@ -147,6 +150,32 @@
                 <td data-sort="{{ item.peter_lynch_peg or 999 }}">{% if item.peter_lynch_peg is not none %}{{ "{:,.2f}".format(item.peter_lynch_peg) }}{% else %}N/A{% endif %}</td>
                 <td data-sort="{{ item.atr_stop_loss or -999 }}" style="color: #ffaa00;">{% if item.atr_stop_loss is not none %}{{ "{:,.2f}".format(item.atr_stop_loss) }}{% else %}N/A{% endif %}</td>
                 <td data-sort="{{ item.rsi_14 or -999 }}">{% if item.rsi_14 is not none %}{{ "{:,.1f}".format(item.rsi_14) }}{% else %}N/A{% endif %}</td>
+
+                <td data-sort="{{ item.ml_confidence_score or -999 }}">
+                    {% if item.ml_confidence_score is not none %}
+                        {% set ml_class = 'metric-excellent' if item.ml_confidence_score > 75 else ('metric-poor' if item.ml_confidence_score < 40 else 'metric-neutral') %}
+                        <span class="{{ ml_class }}">{{ "{:,.1f}".format(item.ml_confidence_score) }}%</span>
+                    {% else %}
+                        N/A
+                    {% endif %}
+                </td>
+                <td data-sort="{{ item.var_95 or -999 }}">
+                    {% if item.var_95 is not none %}
+                        {% set var_class = 'metric-poor' if item.var_95 > 0.05 else 'metric-neutral' %}
+                        <span class="{{ var_class }}">{{ "{:,.2f}".format(item.var_95 * 100) }}%</span>
+                    {% else %}
+                        N/A
+                    {% endif %}
+                </td>
+                <td data-sort="{{ item.sentiment_score or -999 }}">
+                    {% if item.sentiment_score is not none %}
+                        {% set sent_class = 'metric-excellent' if item.sentiment_score > 0.5 else ('metric-poor' if item.sentiment_score < -0.5 else 'metric-neutral') %}
+                        <span class="{{ sent_class }}">{{ "{:,.3f}".format(item.sentiment_score) }}</span>
+                    {% else %}
+                        N/A
+                    {% endif %}
+                </td>
+
                 <td data-sort="{{ item.next_earnings_date or '9999-12-31' }}" style="font-size: 12px; color: #bbb;">{% if item.next_earnings_date %}{{ item.next_earnings_date }}{% else %}N/A{% endif %}</td>
                 <td data-sort="{{ item.composite_score }}">{{ item.composite_score }}</td>
                 <td style="max-width: 150px;">
@@ -184,18 +213,18 @@
                 table.search(this.value).draw();
             });
 
-            // Map Custom Signal Dropdown
+            // Map Custom Signal Dropdown (Updated index to 16 due to 3 new columns)
             $('#signalFilter').on('change', function() {
                 var val = $(this).val();
-                if(val === 'ALL') { table.column(13).search('').draw(); } 
-                else { table.column(13).search('^' + val + '$', true, false).draw(); }
+                if(val === 'ALL') { table.column(16).search('').draw(); } 
+                else { table.column(16).search('^' + val + '$', true, false).draw(); }
             });
 
-            // Map Custom Tags Dropdown
+            // Map Custom Tags Dropdown (Updated index to 15 due to 3 new columns)
             $('#tagFilter').on('change', function() {
                 var val = $(this).val();
-                if(val === 'ALL') { table.column(12).search('').draw(); } 
-                else { table.column(12).search(val).draw(); }
+                if(val === 'ALL') { table.column(15).search('').draw(); } 
+                else { table.column(15).search(val).draw(); }
             });
         });
     </script>
