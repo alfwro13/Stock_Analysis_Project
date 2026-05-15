@@ -21,6 +21,7 @@ from universe_engine import update_market_universe
 from profile_engine import run_profile_audit
 from sentiment_engine import run_nextcloud_alert, update_all_sentiment
 from regime_engine import calculate_market_regime
+from ai_prediction_engine import train_global_ml_model, update_daily_ml_predictions
 
 # --- Background Task Scheduler Setup ---
 scheduler = BackgroundScheduler()
@@ -65,7 +66,7 @@ def run_ghostfolio_sync():
 def run_overnight_quant_scan():
     """
     Fetches the combined list of portfolio and watchlist tickers, 
-    executes the resumable daily quant scan, and runs the VADER NLP sentiment pipeline.
+    executes the resumable daily quant scan, runs the ML Engine, and executes VADER NLP.
     """
     if not task_lock.acquire(blocking=False):
         print("[WARNING] System is currently busy. Skipping Overnight Quant Scan.")
@@ -78,7 +79,11 @@ def run_overnight_quant_scan():
         # 1. Execute Technical Analysis Pipeline
         run_daily_quant_scan(all_tickers)
         
-        # 2. Execute NLP Sentiment Pipeline (Phase 4)
+        # 2. Execute ML Inference Pipeline (Phase 5)
+        print("--- OVERNIGHT ML INFERENCE INITIATED ---")
+        update_daily_ml_predictions(all_tickers)
+        
+        # 3. Execute NLP Sentiment Pipeline (Phase 4)
         print("--- OVERNIGHT SENTIMENT ANALYSIS INITIATED ---")
         update_all_sentiment(all_tickers)
         
@@ -153,6 +158,20 @@ def run_weekend_profile_audit():
         print("--- WEEKEND PROFILE AUDIT COMPLETE ---\n")
     except Exception as e:
         print(f"[ERROR] Weekend Profile Audit Failed: {e}")
+    finally:
+        task_lock.release()
+
+def run_weekend_ml_training():
+    """Executes the global Machine Learning training cycle."""
+    if not task_lock.acquire(blocking=False):
+        print("[WARNING] System is busy. Skipping ML Training.")
+        return
+    try:
+        print("\n--- WEEKEND ML TRAINING INITIATED ---")
+        train_global_ml_model()
+        print("--- WEEKEND ML TRAINING COMPLETE ---\n")
+    except Exception as e:
+        print(f"[ERROR] Weekend ML Training Failed: {e}")
     finally:
         task_lock.release()
 
@@ -374,6 +393,23 @@ def reload_scheduler():
         
     except Exception as e:
         print(f"[ERROR] Failed to schedule Weekend Universe Routine: {e}")
+
+    # 12. ML Engine (Weekend Routine)
+    ml_cfg = scheduling.get("ML_ENGINE", {})
+    ml_days_list = ml_cfg.get("DAYS", ["sun"])
+    ml_days = ",".join(ml_days_list) if ml_days_list else "sun"
+    ml_time = ml_cfg.get("TIME", "04:00")
+    
+    try:
+        hour, minute = map(int, ml_time.split(':'))
+        scheduler.add_job(
+            run_weekend_ml_training,
+            CronTrigger(day_of_week=ml_days, hour=hour, minute=minute),
+            id='ml_training_job'
+        )
+        print(f"[SCHEDULER] Weekend ML Training scheduled for {ml_days} at {ml_time:02d}:{minute:02d}")
+    except Exception as e:
+        print(f"[ERROR] Failed to schedule ML Training: {e}")
 
 
 def start_scheduler():
