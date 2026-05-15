@@ -1,0 +1,3 @@
+pandas>=2.0.0
+yfinance>=0.2.30
+xlrd>=2.0.1
