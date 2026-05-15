@@ -58,7 +58,7 @@ th:hover { background-color: #3d3d3d; }
 .stale-text { color: #888 !important; }
 .badge-yes { background-color: #00ff00; color: #121212; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; }
 .badge-no { color: #555; }
-.setup-tag { display: inline-block; background-color: #333; color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 11px; margin-right: 4px; margin-bottom: 4px; border: 1px solid #555; cursor: help; }
+.setup-tag { display: inline-block; background-color: #333; color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 11px; margin-right: 4px; margin-bottom: 4px; border: 1px solid #555; cursor: default; }
 
 /* --- 5. Form Controls & Buttons --- */
 .controls-container { display: flex; gap: 15px; margin-bottom: 15px; }
