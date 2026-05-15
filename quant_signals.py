@@ -152,10 +152,13 @@ class QuantEngine:
         variance_pct = (last_3_weeks['Close'].max() - last_3_weeks['Close'].min()) / last_3_weeks['Close'].min()
         is_tight = variance_pct <= 0.025
         
-        # Volume Dry-up Check
+        # Volume Dry-up Check gracefully handles missing 50-day data
         avg_vol_50d = df['Volume'].rolling(50).mean().iloc[-1]
-        avg_vol_3w = last_3_weeks['Volume'].mean() / 5 # Approx daily average over the 3 weeks
-        is_dry_volume = avg_vol_3w < (avg_vol_50d * 0.8) # Volume must be 20% below average
+        if pd.isna(avg_vol_50d):
+            is_dry_volume = False
+        else:
+            avg_vol_3w = last_3_weeks['Volume'].mean() / 5 # Approx daily average over the 3 weeks
+            is_dry_volume = avg_vol_3w < (avg_vol_50d * 0.8) # Volume must be 20% below average
         
         return is_tight, is_dry_volume
 
@@ -184,8 +187,9 @@ class QuantEngine:
             info = self.load_fundamentals(ticker)
             df_sp500 = self.load_parquet("SP500_BASELINE")
             
-            if df is None or len(df) < 200:
-                logger.warning(f"[SKIP] Not enough historical data to analyze {ticker} (requires 200 days).")
+            # Decoupled 200-day limit to support recent IPOs or API data truncations
+            if df is None or len(df) < 21:
+                logger.warning(f"[SKIP] Not enough historical data to analyze {ticker} (requires at least 21 days).")
                 return
 
             # ==========================================
@@ -199,25 +203,27 @@ class QuantEngine:
             df['MA_50'] = df['Close'].rolling(window=50).mean()
             df['MA_200'] = df['Close'].rolling(window=200).mean()
             
-            ma5 = df['MA_5'].iloc[-1]
-            ma10 = df['MA_10'].iloc[-1]
-            ma21 = df['MA_21'].iloc[-1]
-            ma50 = df['MA_50'].iloc[-1]
-            ma200 = df['MA_200'].iloc[-1]
+            # Safe extraction avoiding NaNs
+            ma5 = df['MA_5'].iloc[-1] if not pd.isna(df['MA_5'].iloc[-1]) else None
+            ma10 = df['MA_10'].iloc[-1] if not pd.isna(df['MA_10'].iloc[-1]) else None
+            ma21 = df['MA_21'].iloc[-1] if not pd.isna(df['MA_21'].iloc[-1]) else None
+            ma50 = df['MA_50'].iloc[-1] if not pd.isna(df['MA_50'].iloc[-1]) else None
+            ma200 = df['MA_200'].iloc[-1] if not pd.isna(df['MA_200'].iloc[-1]) else None
             
-            trend_50d = "UP" if ma50 > df['MA_50'].iloc[-10] else "DOWN"
-            trend_200d = "UP" if ma200 > df['MA_200'].iloc[-20] else "DOWN"
+            # Safe Trend Calculation protecting against bounds errors
+            trend_50d = "UP" if ma50 and len(df) >= 60 and ma50 > df['MA_50'].iloc[-10] else "DOWN"
+            trend_200d = "UP" if ma200 and len(df) >= 220 and ma200 > df['MA_200'].iloc[-20] else "DOWN"
 
             df['RSI'] = ta.momentum.RSIIndicator(close=df['Close'], window=14).rsi()
             rsi_val = df['RSI'].iloc[-1]
             
             df['ATR'] = ta.volatility.AverageTrueRange(high=df['High'], low=df['Low'], close=df['Close'], window=14).average_true_range()
             atr_val = df['ATR'].iloc[-1]
-            stop_loss = current_price - (2 * atr_val)
+            stop_loss = current_price - (2 * atr_val) if not pd.isna(atr_val) else None
 
             df['OBV'] = ta.volume.OnBalanceVolumeIndicator(close=df['Close'], volume=df['Volume']).on_balance_volume()
             df['OBV_MA'] = df['OBV'].rolling(window=21).mean()
-            obv_bullish = df['OBV'].iloc[-1] > df['OBV_MA'].iloc[-1]
+            obv_bullish = df['OBV'].iloc[-1] > df['OBV_MA'].iloc[-1] if not pd.isna(df['OBV_MA'].iloc[-1]) else False
 
             macd = ta.trend.MACD(close=df['Close'])
             df['MACD_Line'] = macd.macd()
@@ -336,11 +342,11 @@ class QuantEngine:
                 breakdown.append("+0: <abbr title='Relative Strength slope is negative. This asset is underperforming the broader market.'>Laggard vs S&P 500</abbr>")
 
             # Standard Core Score
-            if current_price > ma5: 
+            if ma5 and current_price > ma5: 
                 score += 15
                 breakdown.append("+15: Price > 5D MA (Short-term Momentum)")
             
-            if ma5 > ma10 and ma10 > ma21: 
+            if ma5 and ma10 and ma21 and ma5 > ma10 and ma10 > ma21: 
                 score += 15
                 breakdown.append("+15: MAs Aligned (5 > 10 > 21)")
 
@@ -348,7 +354,7 @@ class QuantEngine:
                 score += 15
                 breakdown.append("+15: 200D Trend UP (Institutional Backing)")
 
-            if 40 <= rsi_val <= 65: 
+            if not pd.isna(rsi_val) and 40 <= rsi_val <= 65: 
                 score += 10
                 breakdown.append("+10: RSI Healthy (Room to run)")
 
@@ -378,9 +384,10 @@ class QuantEngine:
                 notes_html += f"<li style='margin-bottom: 5px;'>{item}</li>"
             notes_html += "</ul>"
             
-            notes_html += f"<strong>Risk Management:</strong> Mathematical <abbr title='Based on Average True Range.'>ATR Stop-Loss</abbr> is {stop_loss:,.2f} {currency}.<br><br>"
+            if stop_loss:
+                notes_html += f"<strong>Risk Management:</strong> Mathematical <abbr title='Based on Average True Range.'>ATR Stop-Loss</abbr> is {stop_loss:,.2f} {currency}.<br><br>"
             
-            if not is_fund and rsi_val > 70:
+            if not is_fund and not pd.isna(rsi_val) and rsi_val > 70:
                 notes_html += "<strong><span style='color: #ff4d4d;'>Warning:</span></strong> Stock is technically overbought (RSI > 70).<br>"
 
             # Save to DB (JSON dumping the array of dictionaries)
@@ -410,10 +417,20 @@ class QuantEngine:
                    short_interest, institutional_ownership, beta,
                    score, signal, notes, tags_json):
         
-        # Internal cleaner to prevent SQLite InterfaceErrors from pandas NaN/Inf values
+        # Internal cleaner to aggressively handle pandas NaNs, Inf, and String Variants
         def _clean(v):
             if v is None: 
                 return None
+            if isinstance(v, str):
+                if v.lower() in ['nan', 'infinity', '-infinity', 'inf', '-inf']:
+                    return None
+                try:
+                    # Catch strings that are implicitly numeric
+                    val = float(v)
+                    if pd.isna(val) or np.isinf(val): return None
+                    return val
+                except ValueError:
+                    return v # Preserve genuine strings
             if isinstance(v, (float, int)) and (pd.isna(v) or np.isinf(v)): 
                 return None
             return v
