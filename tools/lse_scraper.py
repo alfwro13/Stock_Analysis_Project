@@ -1,4 +1,5 @@
 import os
+import csv
 import time
 import random
 import logging
@@ -83,102 +84,119 @@ def transform_lse_data(df: pd.DataFrame) -> pd.DataFrame:
     logger.info("Base transformation complete.")
     return clean_df
 
-def enrich_with_yfinance(df: pd.DataFrame) -> pd.DataFrame:
+def enrich_and_save(df: pd.DataFrame, output_filepath: str) -> None:
     """
-    Iterates through normalized tickers to fetch sector, industry, and country data.
-    Enforces randomized rate limiting to prevent IP bans.
+    Iterates through normalized tickers, fetching YF data, and writes to CSV incrementally.
+    Implements checkpointing to resume from the last processed ticker if interrupted.
+    Pulls correctly capitalized company names from Yahoo Finance to preserve acronyms.
     """
-    logger.info("Initiating Yahoo Finance enrichment phase. This may take a while due to rate limiting.")
+    logger.info("Initiating stateful Yahoo Finance enrichment phase.")
     
-    sectors = []
-    industries = []
-    countries = []
-    
-    total_tickers = len(df)
-    
-    for index, row in df.iterrows():
-        ticker = row['ticker']
-        company_name = row['company_name']
-        
-        try:
-            # Query Yahoo Finance
-            yf_ticker = yf.Ticker(ticker)
-            info = yf_ticker.info
-            
-            # Extract data with fallbacks
-            sector = info.get('sector')
-            industry = info.get('industry')
-            country = info.get('country')
-            
-            # Null/Empty string checking
-            sector = sector if sector else 'Unclassified'
-            industry = industry if industry else 'Unclassified'
-            country = country if country else 'Unknown'
-            
-            # Normalize country strings based on requirements
-            if country == "United Kingdom":
-                country = "UK"
-            elif country == "United States":
-                country = "US"
-                
-            sectors.append(sector)
-            industries.append(industry)
-            countries.append(country)
-            
-            # Log the full enriched row
-            logger.info(f"Enriched [{index + 1}/{total_tickers}]: {ticker} | {company_name} | {sector} | {industry} | {country}")
-            
-        except Exception as e:
-            logger.error(f"API failure for {ticker}: {e}")
-            sectors.append('Unclassified')
-            industries.append('Unclassified')
-            countries.append('Unknown')
-            
-        finally:
-            # Strictly enforced rate limiting
-            sleep_time = random.uniform(1, 3)
-            time.sleep(sleep_time)
-
-    # Append enriched columns
-    df['sector'] = sectors
-    df['industry'] = industries
-    df['country'] = countries
-    
-    logger.info("Yahoo Finance enrichment complete.")
-    return df
-
-def export_data(df: pd.DataFrame, output_path: str) -> None:
-    """
-    Subsets the required columns and writes to a standardized CSV.
-    """
-    required_columns = ['ticker', 'company_name', 'sector', 'industry', 'currency', 'country']
-    
-    # Ensure only the strictly required columns are exported, in the exact order
-    try:
-        final_df = df[required_columns]
-    except KeyError as e:
-        logger.error(f"Missing required columns before export: {e}")
-        return
-
-    # Create directories if they do not exist
-    path_obj = Path(output_path)
-    # Resolve relative to the project root assuming script is run from project root or inside tools
-    # Using absolute path resolution relative to current working directory
+    path_obj = Path(output_filepath)
     path_obj.parent.mkdir(parents=True, exist_ok=True)
     
-    try:
-        final_df.to_csv(path_obj, index=False)
-        logger.info(f"Successfully exported enriched universe to {output_path}")
-    except Exception as e:
-        logger.error(f"Failed to write CSV output: {e}")
+    # 1. Build the checkpoint lookup set
+    processed_tickers = set()
+    file_exists = path_obj.exists()
+    
+    if file_exists:
+        try:
+            existing_df = pd.read_csv(path_obj)
+            if 'ticker' in existing_df.columns:
+                processed_tickers = set(existing_df['ticker'].dropna().astype(str))
+                logger.info(f"Found existing data. Resuming operation. Skipping {len(processed_tickers)} already processed tickers.")
+        except Exception as e:
+            logger.error(f"Could not read existing checkpoint file. Proceeding cautiously. Error: {e}")
+
+    # 2. Open file in append mode and process
+    required_columns = ['ticker', 'company_name', 'sector', 'industry', 'currency', 'country']
+    total_tickers = len(df)
+    
+    with open(path_obj, mode='a', newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=required_columns)
+        
+        # Write header only if we are creating a brand new file
+        if not file_exists or os.path.getsize(path_obj) == 0:
+            writer.writeheader()
+            
+        for index, row in df.iterrows():
+            ticker = row['ticker']
+            
+            # Base LSE fallback data
+            base_company_name = str(row['company_name']) if pd.notna(row['company_name']) else 'Unknown'
+            currency = str(row['currency']) if pd.notna(row['currency']) else 'Unknown'
+            
+            # Checkpoint verification
+            if ticker in processed_tickers:
+                logger.info(f"Skipping [{index + 1}/{total_tickers}]: {ticker} (Already present in CSV)")
+                continue
+                
+            try:
+                # Query Yahoo Finance
+                yf_ticker = yf.Ticker(ticker)
+                info = yf_ticker.info
+                
+                # Extract accurately cased name from Yahoo, fallback to LSE .title() if missing
+                yf_name = info.get('shortName') or info.get('longName')
+                if yf_name:
+                    company_name = yf_name
+                elif base_company_name != 'Unknown':
+                    company_name = base_company_name.title()
+                else:
+                    company_name = 'Unknown'
+                
+                # Extract data with fallbacks
+                sector = info.get('sector')
+                industry = info.get('industry')
+                country = info.get('country')
+                
+                # Null/Empty string checking
+                sector = sector if sector else 'Unclassified'
+                industry = industry if industry else 'Unclassified'
+                country = country if country else 'Unknown'
+                
+                # Normalize country strings based on requirements
+                if country == "United Kingdom":
+                    country = "UK"
+                elif country == "United States":
+                    country = "US"
+                
+                # Log the full enriched row
+                logger.info(f"Enriched [{index + 1}/{total_tickers}]: {ticker} | {company_name} | {sector} | {industry} | {country}")
+                
+            except Exception as e:
+                logger.error(f"API failure for {ticker}: {e}")
+                # Fallbacks on failure
+                company_name = base_company_name.title() if base_company_name != 'Unknown' else 'Unknown'
+                sector = 'Unclassified'
+                industry = 'Unclassified'
+                country = 'Unknown'
+                
+            finally:
+                # Atomically write the row and force disk flush
+                writer.writerow({
+                    'ticker': ticker,
+                    'company_name': company_name,
+                    'sector': sector,
+                    'industry': industry,
+                    'currency': currency,
+                    'country': country
+                })
+                f.flush()
+                
+                # Strictly enforced rate limiting
+                sleep_time = random.uniform(1, 3)
+                time.sleep(sleep_time)
+
+    logger.info("Yahoo Finance enrichment and export phase complete.")
 
 def main() -> None:
     url = "https://docs.londonstockexchange.com/sites/default/files/documents/List%20of%20SETS%20securities_0.xls"
     
-    # Assuming the script is executed from the project root (e.g., `python tools/lse_scraper.py`)
+    # Output path relative to execution directory
     output_filepath = "data/imports/uk_universe.csv"
     
-    logger.info("Starting LSE Scraper Job.")
+    logger.info("Starting Stateful LSE Scraper Job.")
     
     # 1. Extraction
     raw_df = fetch_lse_data(url)
@@ -189,13 +207,10 @@ def main() -> None:
     # 2. Transformation
     clean_df = transform_lse_data(raw_df)
     
-    # 3. Enrichment
-    enriched_df = enrich_with_yfinance(clean_df)
+    # 3. Enrichment & Export (Combined for Fault Tolerance)
+    enrich_and_save(clean_df, output_filepath)
     
-    # 4. Export
-    export_data(enriched_df, output_filepath)
-    
-    logger.info("LSE Scraper Job finished successfully.")
+    logger.info("Stateful LSE Scraper Job finished successfully.")
 
 if __name__ == "__main__":
     main()
