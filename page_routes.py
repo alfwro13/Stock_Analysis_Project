@@ -79,7 +79,18 @@ async def home():
 async def portfolio_page(request: Request, account_id: str = "all", embed: bool = False):
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM stock_signals")
+    
+    # 1. ADDED LEFT JOIN TO PULL ML, RISK, AND SENTIMENT METRICS
+    cursor.execute("""
+        SELECT s.*, 
+               q.ml_confidence_score, 
+               q.var_95, 
+               q.cvar_95, 
+               q.sentiment_score
+        FROM stock_signals s
+        LEFT JOIN quant_signals q ON s.ticker = q.ticker 
+        AND q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = s.ticker)
+    """)
     db_rows = cursor.fetchall()
     
     cursor.execute("SELECT MAX(last_updated) as global_updated FROM stock_signals")
@@ -177,7 +188,18 @@ async def portfolio_page(request: Request, account_id: str = "all", embed: bool 
 async def watchlist_page(request: Request, embed: bool = False):
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM stock_signals")
+    
+    # 1. ADDED LEFT JOIN TO PULL ML, RISK, AND SENTIMENT METRICS
+    cursor.execute("""
+        SELECT s.*, 
+               q.ml_confidence_score, 
+               q.var_95, 
+               q.cvar_95, 
+               q.sentiment_score
+        FROM stock_signals s
+        LEFT JOIN quant_signals q ON s.ticker = q.ticker 
+        AND q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = s.ticker)
+    """)
     db_rows = cursor.fetchall()
     
     cursor.execute("SELECT MAX(last_updated) as global_updated FROM stock_signals")
@@ -303,11 +325,14 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
 
     conn = get_connection()
     cursor = conn.cursor()
-    # MODIFIED: Joined asset_profiles table directly to pull business_summary for portfolio assets
+    # MODIFIED: Joined asset_profiles & quant_signals to pull ML, Risk, and Summary
     cursor.execute('''
-        SELECT s.*, p.business_summary 
+        SELECT s.*, p.business_summary,
+               q.ml_confidence_score, q.var_95, q.cvar_95, q.sentiment_score
         FROM stock_signals s
         LEFT JOIN asset_profiles p ON s.ticker = p.ticker
+        LEFT JOIN quant_signals q ON s.ticker = q.ticker
+            AND q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = s.ticker)
         WHERE s.ticker = ?
     ''', (ticker,))
     stock_data = cursor.fetchone()
@@ -356,7 +381,11 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
                 "trend_200d": "UP" if q_data.get("sma_200") and c_price > q_data.get("sma_200") else "DOWN",
                 "rsi_14": q_data.get("rsi_14"),
                 "atr_stop_loss": None,
-                "last_updated": None
+                "last_updated": None,
+                "ml_confidence_score": q_data.get("ml_confidence_score"),
+                "var_95": q_data.get("var_95"),
+                "cvar_95": q_data.get("cvar_95"),
+                "sentiment_score": q_data.get("sentiment_score")
             }
         else:
             stock_data = {
@@ -376,7 +405,11 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
                 "trend_200d": "N/A",
                 "rsi_14": None,
                 "atr_stop_loss": None,
-                "last_updated": None
+                "last_updated": None,
+                "ml_confidence_score": None,
+                "var_95": None,
+                "cvar_95": None,
+                "sentiment_score": None
             }
             
     conn.close()

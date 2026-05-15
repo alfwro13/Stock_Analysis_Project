@@ -75,10 +75,22 @@ class AIPromptEngine:
         """
         Compiles the master prompt string based on the requested analysis mode.
         """
-        # 1. Fetch Core Database Record
+        # 1. Fetch Core Database Record & Advanced Metrics
         conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM stock_signals WHERE ticker = ?", (ticker,))
+        
+        # ADDED: LEFT JOIN to ensure the LLM receives the ML, Risk, and Sentiment context.
+        cursor.execute("""
+            SELECT s.*, 
+                   q.ml_confidence_score, 
+                   q.var_95, 
+                   q.cvar_95, 
+                   q.sentiment_score
+            FROM stock_signals s
+            LEFT JOIN quant_signals q ON s.ticker = q.ticker 
+                AND q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = s.ticker)
+            WHERE s.ticker = ?
+        """, (ticker,))
         stock_data = cursor.fetchone()
         conn.close()
 
@@ -108,6 +120,12 @@ class AIPromptEngine:
         
         low_52 = fmt_float(stock_data.get('fifty_two_week_low'))
         high_52 = fmt_float(stock_data.get('fifty_two_week_high'))
+
+        # Advanced Engine Metrics Formatting
+        ml_conf_str = f"{stock_data.get('ml_confidence_score'):.1f}%" if stock_data.get('ml_confidence_score') is not None else "N/A"
+        var_str = f"{(stock_data.get('var_95') * 100):.2f}%" if stock_data.get('var_95') is not None else "N/A"
+        cvar_str = f"{(stock_data.get('cvar_95') * 100):.2f}%" if stock_data.get('cvar_95') is not None else "N/A"
+        sentiment_str = f"{stock_data.get('sentiment_score'):.3f}" if stock_data.get('sentiment_score') is not None else "N/A"
 
         # --- LIVE EXCHANGE RATE LOGIC (Matches main.py) ---
         stock_currency = stock_data['currency']
@@ -190,6 +208,12 @@ Current Price: {stock_data['current_price']:,.2f} {stock_data['currency']}
 System Verdict: {stock_data['overall_signal']} (Score: {stock_data['composite_score']}/100)
 ATR Stop-Loss: {stock_data['atr_stop_loss']:,.2f} {stock_data['currency']}
 
+--- AI, RISK & SENTIMENT ---
+ML Confidence Score (>3% return in 5d): {ml_conf_str}
+Parametric VaR (95%): {var_str}
+Conditional VaR (95% Tail Risk): {cvar_str}
+VADER Media Sentiment: {sentiment_str}
+
 --- FUNDAMENTALS & RISK ---
 Wall Street Analyst Rating: {stock_data.get('analyst_rating', 'Unknown')}
 Beta (Volatility vs Market): {beta_str}
@@ -228,15 +252,15 @@ However, once you have acknowledged the narrative, carefully point out the mathe
         elif mode == "Risk/Reward Audit":
             prompt_wrapper = f"""
 You are an elite-level Financial Risk Manager.
-Review the Quantamental context provided below. Focus heavily on the ATR Stop-Loss, the user's specific Unrealized P&L, and the 52-Week Range.
-Calculate the mathematical risk buffer between the current price, the user's entry, and the ATR floor. Suggest position sizing, profit-taking, or tightening stops based on the current volatility (Beta) and RSI.
+Review the Quantamental context provided below. Focus heavily on the ATR Stop-Loss, the user's specific Unrealized P&L, the Parametric Value at Risk (VaR), and the 52-Week Range.
+Calculate the mathematical risk buffer between the current price, the user's entry, and the ATR floor. Suggest position sizing, profit-taking, or tightening stops based on the current volatility (Beta), VaR, and RSI.
 
 {context_payload}
 """
         elif mode == "Quantamental Deep-Dive":
             prompt_wrapper = f"""
 You are an elite-level Hedge Fund Strategist.
-Review the Quantamental context provided below. Synthesize the fundamental metrics (e.g., Peter Lynch PEG, Sector, Growth) with the technical setup (e.g., 52-Week Range, VCP Breakouts, MAs).
+Review the Quantamental context provided below. Synthesize the fundamental metrics (e.g., Peter Lynch PEG, Sector, Growth) with the technical setup (e.g., 52-Week Range, VCP Breakouts, MAs), and the Machine Learning/Sentiment vectors.
 Determine if the fundamental "story" of the business validates the current mathematical price action on the chart. Provide a comprehensive 12-month conviction rating.
 
 {context_payload}
@@ -244,7 +268,7 @@ Determine if the fundamental "story" of the business validates the current mathe
         elif mode == "Earnings Strategy":
             prompt_wrapper = f"""
 You are a Senior Options & Volatility Analyst.
-Review the Quantamental context provided below, paying special attention to the approaching earnings date, the stock's Beta, and its Unrealized P&L.
+Review the Quantamental context provided below, paying special attention to the approaching earnings date, the stock's Beta, its Expected Shortfall (CVaR), and its Unrealized P&L.
 Based on the current technical extensions (RSI, MAs) and fundamental valuation, outline a strategic playbook. Should the user hold through earnings, trim the position to lock in gains, or hedge? Explain your logic clearly.
 
 {context_payload}

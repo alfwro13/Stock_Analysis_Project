@@ -292,6 +292,46 @@
             {% else %}
             
             <div class="fundamentals-grid">
+                <div class="data-card" style="border-top: 3px solid #ffaa00;">
+                    <h3>Quantitative Risk & AI</h3>
+                    <div class="data-row">
+                        <span class="data-label"><abbr title="Machine Learning Ensemble confidence score predicting a >3% return over the next 5 days.">ML Confidence:</abbr></span>
+                        <span class="data-value">
+                            {% if stock.ml_confidence_score is not none %}
+                                {% set ml_class = 'metric-excellent' if stock.ml_confidence_score > 75 else ('metric-poor' if stock.ml_confidence_score < 40 else 'metric-neutral') %}
+                                <span class="{{ ml_class }}">{{ "{:,.1f}".format(stock.ml_confidence_score) }}%</span>
+                            {% else %}N/A{% endif %}
+                        </span>
+                    </div>
+                    <div class="data-row">
+                        <span class="data-label"><abbr title="Parametric Value at Risk. The expected maximum percentage loss over a standard holding period with 95% confidence.">VaR (95%):</abbr></span>
+                        <span class="data-value">
+                            {% if stock.var_95 is not none %}
+                                {% set var_class = 'metric-poor' if stock.var_95 > 0.05 else 'metric-neutral' %}
+                                <span class="{{ var_class }}">{{ "{:,.2f}".format(stock.var_95 * 100) }}%</span>
+                            {% else %}N/A{% endif %}
+                        </span>
+                    </div>
+                    <div class="data-row">
+                        <span class="data-label"><abbr title="Conditional Value at Risk (Expected Shortfall). The expected loss magnitude IF the VaR threshold is breached.">CVaR (95%):</abbr></span>
+                        <span class="data-value">
+                            {% if stock.cvar_95 is not none %}
+                                {% set cvar_class = 'metric-poor' if stock.cvar_95 > 0.07 else 'metric-neutral' %}
+                                <span class="{{ cvar_class }}">{{ "{:,.2f}".format(stock.cvar_95 * 100) }}%</span>
+                            {% else %}N/A{% endif %}
+                        </span>
+                    </div>
+                    <div class="data-row">
+                        <span class="data-label"><abbr title="VADER NLP compound score generated from the latest news headlines.">Media Sentiment:</abbr></span>
+                        <span class="data-value">
+                            {% if stock.sentiment_score is not none %}
+                                {% set sent_class = 'metric-excellent' if stock.sentiment_score > 0.5 else ('metric-poor' if stock.sentiment_score < -0.5 else 'metric-neutral') %}
+                                <span class="{{ sent_class }}">{{ "{:,.3f}".format(stock.sentiment_score) }}</span>
+                            {% else %}N/A{% endif %}
+                        </span>
+                    </div>
+                </div>
+
                 <div class="data-card">
                     <h3>Valuation Metrics</h3>
                     <div class="data-row">

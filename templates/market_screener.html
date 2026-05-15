@@ -60,7 +60,7 @@
         <li><strong style="color: #4da6ff;">50D <abbr title="Simple Moving Average">SMA</abbr>:</strong> The "Health Line" representing the 10-week price mean. Trading above it confirms a medium-term uptrend; falling below suggests a structural loss of strength.</li>
         <li><strong style="color: #4da6ff;">200D <abbr title="Simple Moving Average">SMA</abbr>:</strong> The "Institutional Floor." Banks and funds use this as the ultimate line in the sand; breaking below it often marks the shift into a primary bear market.</li>
         <li><strong style="color: #4da6ff;">ML Conf:</strong> Machine Learning Ensemble confidence score predicting a >3% return over the next 5 days. >75% is highly actionable.</li>
-        <li><strong style="color: #4da6ff;">VaR (95%):</strong> Parametric Value at Risk. The expected maximum percentage loss over a standard holding period with 95% confidence.</li>
+        <li><strong style="color: #4da6ff;">VaR (95%):</strong> Parametric Value at Risk. The expected maximum percentage loss over a standard holding period with 95% confidence. <em>(Hover over for Conditional VaR / Expected Shortfall).</em></li>
         <li><strong style="color: #4da6ff;">Sentiment:</strong> VADER NLP compound score generated from the latest news headlines. Positive values indicate bullish media framing.</li>
     </ul>
 </div>
@@ -146,10 +146,11 @@
                     },
                     {
                         data: 'var_95',
-                        render: function(data) {
+                        render: function(data, type, row) {
                             if (data === null || data === undefined) return 'N/A';
                             let cssClass = data > 0.05 ? 'metric-poor' : 'metric-neutral';
-                            return `<span class="${cssClass}">${(data * 100).toFixed(2)}%</span>`;
+                            let cvarText = row.cvar_95 !== null && row.cvar_95 !== undefined ? `Expected Shortfall (CVaR): ${(row.cvar_95 * 100).toFixed(2)}%` : 'CVaR: N/A';
+                            return `<abbr title="${cvarText}" style="text-decoration: underline dotted; cursor: help;"><span class="${cssClass}">${(data * 100).toFixed(2)}%</span></abbr>`;
                         }
                     },
                     {

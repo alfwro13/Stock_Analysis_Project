@@ -162,7 +162,9 @@
                 <td data-sort="{{ item.var_95 or -999 }}">
                     {% if item.var_95 is not none %}
                         {% set var_class = 'metric-poor' if item.var_95 > 0.05 else 'metric-neutral' %}
-                        <span class="{{ var_class }}">{{ "{:,.2f}".format(item.var_95 * 100) }}%</span>
+                        <abbr title="Expected Shortfall (CVaR): {% if item.cvar_95 is not none %}{{ '{:,.2f}'.format(item.cvar_95 * 100) }}%{% else %}N/A{% endif %}" style="text-decoration: underline dotted; cursor: help;">
+                            <span class="{{ var_class }}">{{ "{:,.2f}".format(item.var_95 * 100) }}%</span>
+                        </abbr>
                     {% else %}
                         N/A
                     {% endif %}
