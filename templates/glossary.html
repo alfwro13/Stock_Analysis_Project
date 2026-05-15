@@ -363,6 +363,37 @@
                 <span class="term-title">Ghostfolio Integration & VWAP Logic</span>
                 <p style="font-size: 15px; color: #ccc;">The system serves as a powerful overlay for Ghostfolio. Instead of merely copying Ghostfolio's data, the engine extracts the raw transactional history across all isolated accounts (Micro Ledgers) and aggregates them into a global Volume Weighted Average Price (VWAP). This prevents portfolio fragmentation and ensures foreign assets (e.g., USD stocks held by a UK investor) are dynamically converted to a unified base currency using live Exchange Rates, providing an institutional-grade assessment of true Unrealized P&L.</p>
             </div>
+
+            <div class="term-box">
+                <span class="term-title">Market Regimes & The VIX "All-Clear"</span>
+                <p style="font-size: 15px; color: #ccc;">The system dynamically classifies the macro environment to prevent "False Positive" buy signals during high-turbulence periods. By monitoring the <strong>CBOE Volatility Index (VIX)</strong>, the engine assigns one of three regimes:</p>
+                <ul style="color: #ccc; font-size: 14px; line-height: 1.6; margin-bottom: 15px;">
+                    <li><strong>Normal (VIX < 20):</strong> The institutional "All-Clear." Standard technical thresholds apply, and momentum strategies operate without additional constraints.</li>
+                    <li><strong>Volatile (VIX 20 - 30):</strong> Signals increasing institutional hedging. The screener begins prioritizing "Flight to Safety" setups.</li>
+                    <li><strong>Crash (VIX > 30):</strong> Extreme panic. The system aggressively intercepts all bullish signals, requiring assets to strictly hold above their 200-Day SMA to be considered valid.</li>
+                </ul>
+                <p style="color: #ccc; font-size: 14px; margin-bottom: 0;"><strong>The Benefit:</strong> This prevents the system from suggesting "cheap" stocks during a primary bear market or a flash crash, ensuring you only deploy capital when the mathematical probability of a sustained recovery is high.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Predictive ML Ensemble Engine</span>
+                <p style="font-size: 15px; color: #ccc;">Beyond traditional technical indicators, the system employs a <strong>Soft-Voting Machine Learning Ensemble</strong> (XGBoost + Random Forest) to calculate statistical probabilities. The model is trained on a 2-year rolling window of historical data across a curated universe of 250+ Blue Chip assets.</p>
+                <ul style="color: #ccc; font-size: 14px; line-height: 1.6; margin-bottom: 15px;">
+                    <li><strong>The Objective:</strong> Predicts the probability (0-100%) that an asset will generate a <strong>&gt;3% return over the next 5 trading days</strong>.</li>
+                    <li><strong>Feature Vectorization:</strong> The engine simultaneously evaluates RSI, MACD trends, Volume Surges, Bullish Crosses, and the asset's current distance from institutional averages (50D and 200D SMAs).</li>
+                </ul>
+                <p style="color: #ccc; font-size: 14px; margin-bottom: 0;"><strong>Strategy:</strong> The ML Confidence Score acts as an institutional "Vetting" layer. It filters out setups that may appear bullish on a chart but have historically demonstrated a high probability of failure.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">The Multi-Layer Divergence (The "Veto")</span>
+                <p style="font-size: 15px; color: #ccc;">Divergence is the system's ultimate "Risk Circuit Breaker," identifying periods where price action has decoupled from underlying mathematical momentum.</p>
+                <ul style="color: #ccc; font-size: 14px; line-height: 1.6; margin-bottom: 15px;">
+                    <li><strong>Technical Bearish Divergence:</strong> Occurs when the price prints a "Higher High" but the RSI oscillator prints a "Lower High". This indicates that buying pressure is mathematically exhausted and an imminent "dump" or mean-reversion is statistically probable.</li>
+                    <li><strong>AI/Quant Divergence:</strong> A high-level conflict where traditional technicals trigger a "Strong Buy," but the ML Engine flags a high probability of failure (Confidence &lt; 40%).</li>
+                </ul>
+                <p style="color: #ccc; font-size: 14px; margin-bottom: 0;"><strong>The Benefit:</strong> Layering these divergences prevents the system from falling into "Retail Traps." It ensures that capital is only deployed when both traditional momentum and historical statistical probability are in perfect alignment.</p>
+            </div>
         </details>
     </div>
 
