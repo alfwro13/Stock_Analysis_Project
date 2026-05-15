@@ -41,18 +41,24 @@ class DataEngine:
 
     def fetch_market_baseline(self):
         """
-        Downloads the S&P 500 (^GSPC) data. 
+        Downloads the S&P 500 (^GSPC) and FTSE 100 (^FTSE) data. 
         This is absolutely required to calculate the Relative Strength (RS) line later.
         """
-        print("Fetching S&P 500 baseline for Relative Strength calculation...")
+        print("Fetching S&P 500 and FTSE 100 baselines for Relative Strength calculation...")
         try:
             sp500 = yf.Ticker("^GSPC")
             df = sp500.history(period="2y")
             df.index = df.index.tz_localize(None)
             df.to_parquet(HISTORICAL_DIR / "SP500_BASELINE.parquet", engine='pyarrow')
-            print("[SUCCESS] Market Baseline secured.")
+            
+            ftse = yf.Ticker("^FTSE")
+            df_ftse = ftse.history(period="2y")
+            df_ftse.index = df_ftse.index.tz_localize(None)
+            df_ftse.to_parquet(HISTORICAL_DIR / "FTSE_BASELINE.parquet", engine='pyarrow')
+            
+            print("[SUCCESS] Market Baselines secured.")
         except Exception as e:
-            print(f"[ERROR] Failed to fetch S&P 500 baseline: {e}")
+            print(f"[ERROR] Failed to fetch Market baselines: {e}")
 
     def fetch_and_save_data(self, ticker):
         """

@@ -497,8 +497,21 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
     price_action = None
     try:
         df_macro = pd.read_parquet(HISTORICAL_DIR / f"{ticker}.parquet")
-        df_sp500 = pd.read_parquet(HISTORICAL_DIR / "SP500_BASELINE.parquet")
-        macro_html = create_macro_chart(df_macro, df_sp500, ticker)
+        
+        # --- DYNAMIC BENCHMARK SELECTION ---
+        currency = stock_data.get('currency', 'USD') if stock_data else 'USD'
+        if ticker.endswith('.L') or currency in ['GBp', 'GBP']:
+            try:
+                df_baseline = pd.read_parquet(HISTORICAL_DIR / "FTSE_BASELINE.parquet")
+            except Exception:
+                df_baseline = None
+        else:
+            try:
+                df_baseline = pd.read_parquet(HISTORICAL_DIR / "SP500_BASELINE.parquet")
+            except Exception:
+                df_baseline = None
+                
+        macro_html = create_macro_chart(df_macro, df_baseline, ticker)
         
         if not df_macro.empty:
             last_day = df_macro.iloc[-1]

@@ -18,7 +18,7 @@ class MaintenanceEngine:
 
     def __init__(self):
         self.days_to_keep_logs = 30
-        self.protected_files = ["SP500_BASELINE.parquet"]
+        self.protected_files = ["SP500_BASELINE.parquet", "FTSE_BASELINE.parquet"]
         # Track metrics for the final notification log
         self.metrics = {
             "logs_deleted": 0,

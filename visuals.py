@@ -58,7 +58,7 @@ def create_intraday_chart(df, ticker, s1=None, s2=None, live_pattern_name=None, 
     return fig.to_html(full_html=False, include_plotlyjs='cdn', config=clean_config)
 
 
-def create_macro_chart(df, df_sp500, ticker):
+def create_macro_chart(df, df_baseline, ticker):
     """
     Generates the 5-Row Institutional Macro Chart.
     """
@@ -72,9 +72,10 @@ def create_macro_chart(df, df_sp500, ticker):
     df['BB_High'] = indicator_bb.bollinger_hband()
     df['BB_Low'] = indicator_bb.bollinger_lband()
     
-    if df_sp500 is not None:
-        sp500_aligned = df_sp500['Close'].reindex(df.index, method='ffill')
-        df['RS_Line'] = df['Close'] / sp500_aligned
+    # Use dynamically passed baseline (SP500 or FTSE)
+    if df_baseline is not None:
+        baseline_aligned = df_baseline['Close'].reindex(df.index, method='ffill')
+        df['RS_Line'] = df['Close'] / baseline_aligned
         normalization_factor = df['Close'].iloc[0] / df['RS_Line'].iloc[0]
         df['RS_Normalized'] = df['RS_Line'] * normalization_factor
 
@@ -100,8 +101,8 @@ def create_macro_chart(df, df_sp500, ticker):
     fig.add_trace(go.Scatter(x=df.index, y=df['BB_High'], line=dict(color='gray', dash='dash'), name="BB Upper"), row=1, col=1)
     fig.add_trace(go.Scatter(x=df.index, y=df['BB_Low'], line=dict(color='gray', dash='dash'), name="BB Lower"), row=1, col=1)
     
-    if df_sp500 is not None:
-        fig.add_trace(go.Scatter(x=df.index, y=df['RS_Normalized'], line=dict(color='cyan', width=2), name="RS vs S&P500"), row=1, col=1)
+    if df_baseline is not None:
+        fig.add_trace(go.Scatter(x=df.index, y=df['RS_Normalized'], line=dict(color='cyan', width=2), name="RS vs Benchmark"), row=1, col=1)
 
     if len(df) >= 16:
         last_14_days = df.tail(16)

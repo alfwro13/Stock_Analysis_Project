@@ -10,7 +10,6 @@ import yfinance as yf
 import ta
 
 from database import get_connection
-from risk_engine import calculate_tail_risk
 
 # Configure robust module-level logging
 logging.basicConfig(
@@ -158,12 +157,6 @@ def run_daily_quant_scan(ticker_list: List[str], scan_type: str = 'daily') -> No
                 # Update State Engine using state_key
                 cursor.execute("UPDATE quant_scan_states SET last_processed_ticker = ? WHERE scan_date = ?", (ticker, state_key))
                 conn.commit()
-
-                # --- 3. Institutional Tail-Risk Evaluation (VaR & CVaR) ---
-                try:
-                    calculate_tail_risk(ticker, last_date)
-                except Exception as risk_err:
-                    logger.error(f"Tail risk calculation failed for {ticker}: {str(risk_err)}")
 
             except Exception as e:
                 logger.error(f"Error analyzing {ticker}: {str(e)}")

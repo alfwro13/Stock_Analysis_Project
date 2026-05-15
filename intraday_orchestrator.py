@@ -1,5 +1,7 @@
 # intraday_orchestrator.py
 import os
+import re
+import time
 import json
 import yfinance as yf
 import pandas as pd
@@ -34,6 +36,22 @@ def format_currency(price, currency_code):
     else:
         return f"{price:,.2f} {currency_code}"
 
+def build_stock_url(server_url, port, ticker):
+    """
+    Intelligently constructs the URL. If the server is a domain/proxy, it drops the port.
+    If it's an IP address or localhost, it appends the port automatically.
+    """
+    base = str(server_url).rstrip('/')
+    # Regex to check if the base URL is localhost or an IPv4 address
+    is_ip_or_local = bool(re.search(r'localhost|\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}', base))
+    # Check if a port is already explicitly defined in the base URL string
+    has_port = bool(re.search(r':\d+$', base))
+    
+    if is_ip_or_local and not has_port:
+        return f"{base}:{port}/stock/{ticker}"
+    return f"{base}/stock/{ticker}"
+
+
 class IntradayOrchestrator:
     """
     Centralized monitor that batches network and disk I/O operations, 
@@ -57,7 +75,7 @@ class IntradayOrchestrator:
             return []
 
     def get_asset_metadata(self, tickers):
-        """Fetches currency, ATR stop loss, and company name in a single bulk SQLite query."""
+        """Fetches currency, ATR stop loss, company name, ML, and Risk metrics in a single bulk SQLite query."""
         if not tickers:
             return {}
             
@@ -66,9 +84,12 @@ class IntradayOrchestrator:
         placeholders = ','.join('?' for _ in tickers)
         
         query = f"""
-            SELECT ticker, company_name, currency, atr_stop_loss 
-            FROM stock_signals 
-            WHERE ticker IN ({placeholders})
+            SELECT s.ticker, s.company_name, s.currency, s.atr_stop_loss,
+                   q.ml_confidence_score, q.var_95, q.sentiment_score
+            FROM stock_signals s
+            LEFT JOIN quant_signals q ON s.ticker = q.ticker 
+                AND q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = s.ticker)
+            WHERE s.ticker IN ({placeholders})
         """
         cursor.execute(query, tickers)
         
@@ -77,7 +98,10 @@ class IntradayOrchestrator:
             metadata[row['ticker']] = {
                 'company_name': row['company_name'],
                 'currency': row['currency'],
-                'atr_stop_loss': row['atr_stop_loss']
+                'atr_stop_loss': row['atr_stop_loss'],
+                'ml_confidence_score': row['ml_confidence_score'],
+                'var_95': row['var_95'],
+                'sentiment_score': row['sentiment_score']
             }
         conn.close()
         return metadata
@@ -161,7 +185,7 @@ class IntradayOrchestrator:
 
         for ticker in tickers:
             try:
-                # Robust MultiIndex handling
+                # Robust MultiIndex handling to prevent yfinance stripping bugs when mixing US/UK markets
                 if isinstance(df_bulk.columns, pd.MultiIndex):
                     if ticker not in df_bulk.columns.get_level_values(0):
                         continue
@@ -175,12 +199,13 @@ class IntradayOrchestrator:
                 if df_intraday.empty:
                     continue
 
-                # Save Intraday Parquet
+                # Save Intraday Parquet for the Web Dashboard to keep it live
                 df_intraday.index = df_intraday.index.tz_localize(None)
                 df_intraday.to_parquet(INTRADAY_DIR / f"{ticker}_intraday.parquet", engine='pyarrow')
                 
                 current_price = float(df_intraday['Close'].iloc[-1])
                 
+                # Load Historical Data for stitching and math
                 hist_path = HISTORICAL_DIR / f"{ticker}.parquet"
                 if not hist_path.exists():
                     continue
@@ -209,45 +234,69 @@ class IntradayOrchestrator:
                     if not self.is_alert_suppressed("Crash", ticker):
                         crash_alert = self.crash_engine.evaluate(ticker, current_price, df_combined, asset_meta)
                         if crash_alert:
-                            crash_alerts_to_send.append((ticker, crash_alert, currency))
+                            crash_alerts_to_send.append((ticker, crash_alert, currency, asset_meta))
                 
                 # --- EVALUATE MOONSHOT ENGINE ---
                 if moonshot_enabled:
                     if not self.is_alert_suppressed("Moonshot", ticker):
                         moonshot_alert = self.moonshot_engine.evaluate(ticker, current_price, df_combined, asset_meta, df_hist)
                         if moonshot_alert:
-                            moonshot_alerts_to_send.append((ticker, moonshot_alert, currency))
+                            moonshot_alerts_to_send.append((ticker, moonshot_alert, currency, asset_meta))
 
             except Exception as e:
                 print(f"[ORCHESTRATOR] Error processing {ticker}: {e}")
 
-        # --- BATCH DISPATCH ALERTS ---
-        combined_message = ""
-        
-        if crash_alerts_to_send:
-            combined_message += f"🚨 **INTRADAY CRASH ALERT** ({datetime.now().strftime('%H:%M')}) 🚨\n\n"
-            for ticker, alert, currency in crash_alerts_to_send:
-                formatted_price = format_currency(alert['price'], currency)
-                url = f"{SERVER_URL}:{PORT}/stock/{ticker}"
-                combined_message += f"📉 **{ticker}**: {formatted_price}\n⚠️ {alert['reason']}\n📊 [View Breakdown]({url})\n\n"
-                self.log_notification("Crash", f"Intraday Alert triggered for {ticker}. Reason: {alert['reason']}")
-        
-        if moonshot_alerts_to_send:
-            combined_message += f"🚀 **MOONSHOT ALERT** ({datetime.now().strftime('%H:%M')}) 🚀\n\n"
-            for ticker, alert, currency in moonshot_alerts_to_send:
-                formatted_price = format_currency(alert['price'], currency)
-                url = f"{SERVER_URL}:{PORT}/stock/{ticker}"
-                combined_message += f"📈 **{ticker}**: {formatted_price}\n🔥 {alert['reason']}\n"
-                for caution in alert.get('cautions', []):
-                    combined_message += f"⚠️ *CAUTION:* {caution}\n"
-                combined_message += f"📊 [View Breakdown]({url})\n\n"
-                self.log_notification("Moonshot", f"Moonshot triggered for {ticker}. Reason: {alert['reason']}")
+        # --- BATCH DISPATCH ALERTS (One Message Per Ticker) ---
+        for ticker, alert, currency, meta in crash_alerts_to_send:
+            formatted_price = format_currency(alert['price'], currency)
+            url = build_stock_url(SERVER_URL, PORT, ticker)
+            
+            ml_conf = f"{meta.get('ml_confidence_score'):.1f}%" if meta.get('ml_confidence_score') is not None else "N/A"
+            var = f"{(meta.get('var_95') * 100):.2f}%" if meta.get('var_95') is not None else "N/A"
+            sent = f"{meta.get('sentiment_score'):.3f}" if meta.get('sentiment_score') is not None else "N/A"
 
-        if combined_message:
-            send_text_message(combined_message.strip(), self.config)
-            print(f"[ORCHESTRATOR] Dispatched batch alert: {len(crash_alerts_to_send)} crashes, {len(moonshot_alerts_to_send)} moonshots.")
-        else:
-            print("[ORCHESTRATOR] Scan complete. No unsuppressed signatures detected.")
+            msg = (
+                f"🚨 **INTRADAY CRASH ALERT: {ticker}** 🚨\n\n"
+                f"**Price:** {formatted_price}\n"
+                f"**Trigger:** {alert['reason']}\n\n"
+                f"📊 **Context:**\n"
+                f"• AI Confidence: {ml_conf}\n"
+                f"• Downside VaR: {var}\n"
+                f"• NLP Sentiment: {sent}\n\n"
+                f"🔗 [View Breakdown]({url})"
+            )
+            send_text_message(msg, self.config)
+            self.log_notification("Crash", f"Intraday Alert triggered for {ticker}. Reason: {alert['reason']}")
+            time.sleep(1) # Prevent Nextcloud rate-limiting
+
+        for ticker, alert, currency, meta in moonshot_alerts_to_send:
+            formatted_price = format_currency(alert['price'], currency)
+            url = build_stock_url(SERVER_URL, PORT, ticker)
+            
+            ml_conf = f"{meta.get('ml_confidence_score'):.1f}%" if meta.get('ml_confidence_score') is not None else "N/A"
+            var = f"{(meta.get('var_95') * 100):.2f}%" if meta.get('var_95') is not None else "N/A"
+            sent = f"{meta.get('sentiment_score'):.3f}" if meta.get('sentiment_score') is not None else "N/A"
+
+            cautions = ""
+            for caution in alert.get('cautions', []):
+                cautions += f"⚠️ *{caution}*\n"
+
+            msg = (
+                f"🚀 **MOONSHOT ALERT: {ticker}** 🚀\n\n"
+                f"**Price:** {formatted_price}\n"
+                f"**Trigger:** {alert['reason']}\n\n"
+                f"{cautions}\n"
+                f"📊 **Context:**\n"
+                f"• AI Confidence: {ml_conf}\n"
+                f"• Downside VaR: {var}\n"
+                f"• NLP Sentiment: {sent}\n\n"
+                f"🔗 [View Breakdown]({url})"
+            )
+            send_text_message(msg, self.config)
+            self.log_notification("Moonshot", f"Moonshot triggered for {ticker}. Reason: {alert['reason']}")
+            time.sleep(1)
+
+        print(f"[ORCHESTRATOR] Scan complete. Dispatched {len(crash_alerts_to_send)} crashes and {len(moonshot_alerts_to_send)} moonshots.")
 
 if __name__ == "__main__":
     engine = IntradayOrchestrator()

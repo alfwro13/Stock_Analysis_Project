@@ -16,12 +16,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ==============================================================================
-# IMPORTANT: Any further methodology, technical indicators, or algorithmic logic 
-# added to this engine MUST be formally documented in the templates/glossary.html 
-# "Methodology" and "Glossary" sections to maintain institutional transparency.
-# ==============================================================================
-
 def get_candlestick_patterns(prev2, prev1, curr):
     """
     Algorithmic Candlestick Pattern Recognition (Hierarchical Engine).
@@ -185,7 +179,12 @@ class QuantEngine:
         try:
             df = self.load_parquet(ticker)
             info = self.load_fundamentals(ticker)
-            df_sp500 = self.load_parquet("SP500_BASELINE")
+            
+            # --- DYNAMIC BENCHMARK SELECTION ---
+            currency = info.get('currency', 'USD')
+            is_uk_asset = ticker.endswith('.L') or currency in ['GBp', 'GBP']
+            baseline_name = "FTSE_BASELINE" if is_uk_asset else "SP500_BASELINE"
+            df_baseline = self.load_parquet(baseline_name)
             
             # Decoupled 200-day limit to support recent IPOs or API data truncations
             if df is None or len(df) < 21:
@@ -236,9 +235,9 @@ class QuantEngine:
             # Relative Strength Math
             rs_slope = 0
             is_market_leader = False
-            if df_sp500 is not None and not df_sp500.empty:
-                sp500_aligned = df_sp500['Close'].reindex(df.index, method='ffill')
-                df['RS_Line'] = df['Close'] / sp500_aligned
+            if df_baseline is not None and not df_baseline.empty:
+                baseline_aligned = df_baseline['Close'].reindex(df.index, method='ffill')
+                df['RS_Line'] = df['Close'] / baseline_aligned
                 if len(df['RS_Line'].dropna()) >= 60:
                     y = df['RS_Line'].dropna().tail(60).values
                     x = np.arange(len(y))
@@ -334,12 +333,12 @@ class QuantEngine:
             if is_market_leader and rs_slope > 0:
                 tags.append({
                     "name": "👑 Market Leader", 
-                    "tooltip": "The Relative Strength line compared to the S&P 500 is sloped sharply up. This asset is aggressively absorbing market liquidity."
+                    "tooltip": "The Relative Strength line compared to the Benchmark is sloped sharply up. This asset is aggressively absorbing market liquidity."
                 })
                 score += 15
-                breakdown.append("+15: <abbr title='Relative Strength line is sloped sharply up. This asset is absorbing market liquidity.'>Market Leader vs S&P 500</abbr>")
+                breakdown.append("+15: <abbr title='Relative Strength line is sloped sharply up. This asset is absorbing market liquidity.'>Market Leader vs Benchmark</abbr>")
             elif rs_slope < -0.001:
-                breakdown.append("+0: <abbr title='Relative Strength slope is negative. This asset is underperforming the broader market.'>Laggard vs S&P 500</abbr>")
+                breakdown.append("+0: <abbr title='Relative Strength slope is negative. This asset is underperforming the broader market.'>Laggard vs Benchmark</abbr>")
 
             # Standard Core Score
             if ma5 and current_price > ma5: 
@@ -480,7 +479,7 @@ class QuantEngine:
     def run_all(self):
         logger.info("Starting Institutional Quantamental Engine...")
         for filename in os.listdir(HISTORICAL_DIR):
-            if filename.endswith(".parquet") and "SP500" not in filename:
+            if filename.endswith(".parquet") and "BASELINE" not in filename:
                 ticker = filename.replace(".parquet", "")
                 self.analyze_ticker(ticker)
         logger.info("Analysis Complete. Master Database is fully updated.")
