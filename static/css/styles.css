@@ -16,9 +16,6 @@ a { color: #4da6ff; text-decoration: none; font-weight: bold; }
 a:hover { text-decoration: underline; }
 abbr { text-decoration: underline dotted #666; text-underline-offset: 3px; cursor: pointer; color: inherit; }
 
-/* --- ML Divergence & AI Flags --- */
-.badge-divergence { background-color: #ff4d4d; color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; margin-left: 5px; cursor: default; }
-.badge-ai-buy { background-color: #4da6ff; color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; margin-left: 5px; cursor: default; }
 
 /* --- 2. Layout & Containers --- */
 .container { max-width: 1400px; margin: auto; padding: 0 20px; }
