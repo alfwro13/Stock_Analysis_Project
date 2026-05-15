@@ -7,6 +7,7 @@ import time
 import signal
 import subprocess
 import pandas as pd
+import logging
 from datetime import datetime
 from typing import List, Optional
 from pathlib import Path
@@ -15,7 +16,7 @@ from fastapi import APIRouter, Request, BackgroundTasks, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from config import load_config, SECRETS_PATH, DATA_DIR
+from config import load_config, SECRETS_PATH, DATA_DIR, BASE_DIR
 from database import get_connection, get_universe_tickers
 from scheduler_engine import run_update_pipeline, run_ghostfolio_sync, reload_scheduler
 from ghostfolio_sync import GhostfolioSyncEngine
@@ -39,8 +40,13 @@ from options_engine import fetch_options_chain, calculate_payoff_matrix
 # --- AI PREDICTION ENGINE IMPORTS ---
 from ai_prediction_engine import train_global_ml_model, update_daily_ml_predictions, run_historical_backfill
 
+# Configure logger
+logger = logging.getLogger(__name__)
+
 api_router = APIRouter(prefix="/api")
 
+# --- RESOLVE CORRECT IMPORT DIRECTORY ---
+# The scraper outputs to tools/data/imports. We align the API to match this path.
 IMPORT_DIR = BASE_DIR / "tools" / "data" / "imports"
 
 # --- SHARED PYDANTIC SCHEMAS ---
@@ -151,10 +157,12 @@ async def list_importable_csvs():
         # Ensure directory exists to prevent crashes on fresh installs
         IMPORT_DIR.mkdir(parents=True, exist_ok=True)
         
-        # Use pathlib globbing to extract valid CSVs from the tools directory
+        # Use pathlib globbing to extract valid CSVs
         files = [f.name for f in IMPORT_DIR.glob("*.csv")]
+        logger.info(f"Scan found {len(files)} CSV files in {IMPORT_DIR}")
         return JSONResponse(content={"status": "success", "files": files})
     except Exception as e:
+        logger.error(f"Failed to list import directory {IMPORT_DIR}: {e}")
         return JSONResponse(status_code=500, content={"status": "error", "message": f"Failed to list import directory: {str(e)}"})
 
 @api_router.post("/universe/import/server")
@@ -215,6 +223,7 @@ async def import_server_csv(request: ImportRequest):
         })
         
     except Exception as e:
+        logger.error(f"Fatal error executing CSV parser for {request.filename}: {e}")
         return JSONResponse(status_code=500, content={"status": "error", "message": f"Fatal error executing CSV parser: {str(e)}"})
 
 
