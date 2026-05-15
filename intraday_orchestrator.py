@@ -114,7 +114,7 @@ class IntradayOrchestrator:
     def run(self):
         print(f"\n--- [INTRADAY ORCHESTRATOR] Scan Initiated @ {datetime.now().strftime('%H:%M:%S')} ---")
         
-        # Check active bounds - We use crash_cfg bounds as the unified boundary to avoid timezone drift
+        # Check active bounds
         sched_cfg = self.config.get("SCHEDULING", {}).get("CRASH_ALERTS", {})
         start_str = sched_cfg.get("START_TIME", "09:30")
         end_str = sched_cfg.get("END_TIME", "16:00")
@@ -132,7 +132,7 @@ class IntradayOrchestrator:
         tickers = self.get_portfolio_tickers()
         ignored = self.config.get("IGNORED_TICKERS", [])
         
-        # Filter out ignored list AND Mutual Funds (which never have 5m intraday data)
+        # Filter out ignored list AND Mutual Funds
         tickers = [t for t in tickers if t not in ignored and not t.startswith('0P')]
         
         if not tickers:
@@ -143,7 +143,6 @@ class IntradayOrchestrator:
         
         print(f"[ORCHESTRATOR] Performing bulk YF 5m fetch for {len(tickers)} assets...")
         try:
-            # group_by='ticker' structures columns predictably when len(tickers) > 1
             df_bulk = yf.download(tickers, period="1d", interval="5m", group_by='ticker', auto_adjust=True, progress=False)
         except Exception as e:
             print(f"[ORCHESTRATOR] Bulk download failed: {e}")
@@ -155,16 +154,19 @@ class IntradayOrchestrator:
 
         crash_alerts_to_send = []
         moonshot_alerts_to_send = []
+        
+        # Check correct config paths for enablement (SCHEDULING, not NOTIFICATIONS)
+        crash_enabled = self.config.get("SCHEDULING", {}).get("CRASH_ALERTS", {}).get("ENABLED", False)
+        moonshot_enabled = self.config.get("SCHEDULING", {}).get("MOONSHOT_ALERTS", {}).get("ENABLED", False)
 
         for ticker in tickers:
             try:
-                # Robust MultiIndex handling to prevent yfinance stripping bugs when mixing US/UK markets
+                # Robust MultiIndex handling
                 if isinstance(df_bulk.columns, pd.MultiIndex):
                     if ticker not in df_bulk.columns.get_level_values(0):
                         continue
                     df_intraday = df_bulk[ticker].copy()
                 else:
-                    # If not a MultiIndex, yfinance collapsed it (either 1 ticker passed, or all others failed)
                     if 'Close' not in df_bulk.columns:
                         continue
                     df_intraday = df_bulk.copy()
@@ -173,13 +175,12 @@ class IntradayOrchestrator:
                 if df_intraday.empty:
                     continue
 
-                # Save Intraday Parquet for the Web Dashboard to keep it live
+                # Save Intraday Parquet
                 df_intraday.index = df_intraday.index.tz_localize(None)
                 df_intraday.to_parquet(INTRADAY_DIR / f"{ticker}_intraday.parquet", engine='pyarrow')
                 
                 current_price = float(df_intraday['Close'].iloc[-1])
                 
-                # Load Historical Data for stitching and math
                 hist_path = HISTORICAL_DIR / f"{ticker}.parquet"
                 if not hist_path.exists():
                     continue
@@ -188,20 +189,15 @@ class IntradayOrchestrator:
                 if df_hist.empty or len(df_hist) < 20:
                     continue
                     
-                # --- CRITICAL FIX: Time-Series Stitching Normalization ---
-                # Compare the raw dates (ignoring hours/minutes) to ensure we don't accidentally
-                # duplicate the current day if the macro daily fetch already ran today.
+                # Strict Time-Series Stitching Normalization
                 latest_dt = df_intraday.index[-1]
                 latest_date_only = latest_dt.normalize()
                 hist_last_date_only = df_hist.index[-1].normalize()
                 
                 if hist_last_date_only == latest_date_only:
-                    # Today is already in the historical dataframe. Overwrite the closing value
-                    # to ensure iloc[-2] remains strictly yesterday's close.
                     df_combined = df_hist[['Close']].copy()
                     df_combined.loc[df_hist.index[-1], 'Close'] = current_price
                 else:
-                    # Append the live intraday price as a genuinely new row.
                     new_row = pd.DataFrame({'Close': [current_price]}, index=[latest_dt])
                     df_combined = pd.concat([df_hist[['Close']], new_row])
 
@@ -209,14 +205,14 @@ class IntradayOrchestrator:
                 currency = asset_meta.get('currency', 'USD')
                 
                 # --- EVALUATE CRASH ENGINE ---
-                if self.config.get("NOTIFICATIONS", {}).get("CRASH_ALERTS", {}).get("ENABLED", False):
+                if crash_enabled:
                     if not self.is_alert_suppressed("Crash", ticker):
                         crash_alert = self.crash_engine.evaluate(ticker, current_price, df_combined, asset_meta)
                         if crash_alert:
                             crash_alerts_to_send.append((ticker, crash_alert, currency))
                 
                 # --- EVALUATE MOONSHOT ENGINE ---
-                if self.config.get("NOTIFICATIONS", {}).get("MOONSHOT_ALERTS", {}).get("ENABLED", False):
+                if moonshot_enabled:
                     if not self.is_alert_suppressed("Moonshot", ticker):
                         moonshot_alert = self.moonshot_engine.evaluate(ticker, current_price, df_combined, asset_meta, df_hist)
                         if moonshot_alert:
