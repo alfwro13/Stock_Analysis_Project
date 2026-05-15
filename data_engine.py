@@ -1,8 +1,16 @@
 # data_engine.py
 import json
+import logging
 import yfinance as yf
 import pandas as pd
 from config import PORTFOLIO_PATH, WATCHLIST_PATH, HISTORICAL_DIR, INTRADAY_DIR, FUNDAMENTALS_DIR, load_config
+
+# Configure robust module-level logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - DATA_ENGINE - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 class DataEngine:
     def __init__(self):
@@ -10,12 +18,12 @@ class DataEngine:
         self.watchlist = self._load_json(WATCHLIST_PATH)
         
     def _load_json(self, filepath):
-        """Safely loads JSON files and handles Missing File errors gracefully."""
+        """Safely loads JSON files and logs Missing File errors gracefully."""
         try:
             with open(filepath, 'r') as f:
                 return json.load(f)
         except FileNotFoundError:
-            print(f"[ERROR] Missing JSON file: {filepath}")
+            logger.error(f"Missing JSON file: {filepath}")
             return {}
             
     def get_all_tickers(self):
@@ -44,7 +52,7 @@ class DataEngine:
         Downloads the S&P 500 (^GSPC) and FTSE 100 (^FTSE) data. 
         This is absolutely required to calculate the Relative Strength (RS) line later.
         """
-        print("Fetching S&P 500 and FTSE 100 baselines for Relative Strength calculation...")
+        logger.info("Fetching S&P 500 and FTSE 100 baselines for Relative Strength calculation...")
         try:
             sp500 = yf.Ticker("^GSPC")
             df = sp500.history(period="2y")
@@ -56,9 +64,9 @@ class DataEngine:
             df_ftse.index = df_ftse.index.tz_localize(None)
             df_ftse.to_parquet(HISTORICAL_DIR / "FTSE_BASELINE.parquet", engine='pyarrow')
             
-            print("[SUCCESS] Market Baselines secured.")
+            logger.info("Market Baselines secured.")
         except Exception as e:
-            print(f"[ERROR] Failed to fetch Market baselines: {e}")
+            logger.error(f"Failed to fetch Market baselines: {e}")
 
     def fetch_and_save_data(self, ticker):
         """
@@ -67,7 +75,7 @@ class DataEngine:
         2. 1-Day 5-Minute Intraday (For the live pulse chart)
         3. Fundamental Info (For Valuation, Profitability, and Sentiment)
         """
-        print(f"\n--- Processing Data for {ticker} ---")
+        logger.info(f"Processing Data for {ticker}...")
         try:
             stock = yf.Ticker(ticker)
             
@@ -76,28 +84,28 @@ class DataEngine:
             if not df_daily.empty:
                 df_daily.index = df_daily.index.tz_localize(None) 
                 df_daily.to_parquet(HISTORICAL_DIR / f"{ticker}.parquet", engine='pyarrow')
-                print(f"[{ticker}] Macro Data Saved.")
+                logger.info(f"Macro Data Saved for {ticker}.")
             else:
-                print(f"[{ticker}] [WARNING] No Macro data returned.")
+                logger.warning(f"No Macro data returned for {ticker}.")
 
             # 2. Fetch Intraday Data (5-minute intervals for today)
             df_intraday = stock.history(period="1d", interval="5m")
             if not df_intraday.empty:
                 df_intraday.index = df_intraday.index.tz_localize(None)
                 df_intraday.to_parquet(INTRADAY_DIR / f"{ticker}_intraday.parquet", engine='pyarrow')
-                print(f"[{ticker}] Intraday Data Saved.")
+                logger.info(f"Intraday Data Saved for {ticker}.")
 
             # 3. Fetch Fundamental & Sentiment Data
             # yfinance returns a massive dictionary. We save it raw to process later.
             fundamentals = stock.info
             with open(FUNDAMENTALS_DIR / f"{ticker}.json", 'w') as f:
                 json.dump(fundamentals, f)
-            print(f"[{ticker}] Fundamentals & Sentiment Saved.")
+            logger.info(f"Fundamentals & Sentiment Saved for {ticker}.")
             
             return True
             
         except Exception as e:
-            print(f"[ERROR] Pipeline failed for {ticker}: {str(e)}")
+            logger.error(f"Pipeline failed for {ticker}: {str(e)}")
             return False
 
     def update_all_data(self):
@@ -105,7 +113,7 @@ class DataEngine:
         self.fetch_market_baseline()
         
         tickers = self.get_all_tickers()
-        print(f"\nTarget Acquisition: Found {len(tickers)} unique assets.")
+        logger.info(f"Target Acquisition: Found {len(tickers)} unique assets.")
         
         for ticker in tickers:
             self.fetch_and_save_data(ticker)
