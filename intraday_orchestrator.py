@@ -158,12 +158,15 @@ class IntradayOrchestrator:
 
         for ticker in tickers:
             try:
-                # Extract single-ticker data from the bulk MultiIndex result
-                if len(tickers) > 1:
+                # Robust MultiIndex handling to prevent yfinance stripping bugs when mixing US/UK markets
+                if isinstance(df_bulk.columns, pd.MultiIndex):
                     if ticker not in df_bulk.columns.get_level_values(0):
                         continue
                     df_intraday = df_bulk[ticker].copy()
                 else:
+                    # If not a MultiIndex, yfinance collapsed it (either 1 ticker passed, or all others failed)
+                    if 'Close' not in df_bulk.columns:
+                        continue
                     df_intraday = df_bulk.copy()
 
                 df_intraday.dropna(subset=['Close'], inplace=True)
@@ -174,7 +177,7 @@ class IntradayOrchestrator:
                 df_intraday.index = df_intraday.index.tz_localize(None)
                 df_intraday.to_parquet(INTRADAY_DIR / f"{ticker}_intraday.parquet", engine='pyarrow')
                 
-                current_price = df_intraday['Close'].iloc[-1]
+                current_price = float(df_intraday['Close'].iloc[-1])
                 
                 # Load Historical Data for stitching and math
                 hist_path = HISTORICAL_DIR / f"{ticker}.parquet"
@@ -185,13 +188,22 @@ class IntradayOrchestrator:
                 if df_hist.empty or len(df_hist) < 20:
                     continue
                     
-                latest_date = df_intraday.index[-1]
-                if latest_date not in df_hist.index:
-                    new_row = pd.DataFrame({'Close': [current_price]}, index=[latest_date])
-                    df_combined = pd.concat([df_hist[['Close']], new_row])
-                else:
+                # --- CRITICAL FIX: Time-Series Stitching Normalization ---
+                # Compare the raw dates (ignoring hours/minutes) to ensure we don't accidentally
+                # duplicate the current day if the macro daily fetch already ran today.
+                latest_dt = df_intraday.index[-1]
+                latest_date_only = latest_dt.normalize()
+                hist_last_date_only = df_hist.index[-1].normalize()
+                
+                if hist_last_date_only == latest_date_only:
+                    # Today is already in the historical dataframe. Overwrite the closing value
+                    # to ensure iloc[-2] remains strictly yesterday's close.
                     df_combined = df_hist[['Close']].copy()
-                    df_combined.loc[latest_date, 'Close'] = current_price
+                    df_combined.loc[df_hist.index[-1], 'Close'] = current_price
+                else:
+                    # Append the live intraday price as a genuinely new row.
+                    new_row = pd.DataFrame({'Close': [current_price]}, index=[latest_dt])
+                    df_combined = pd.concat([df_hist[['Close']], new_row])
 
                 asset_meta = metadata.get(ticker, {})
                 currency = asset_meta.get('currency', 'USD')
