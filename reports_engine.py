@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 def get_sector_trends() -> List[Dict[str, Any]]:
     """
-    Calculates aggregated momentum and trend health metrics grouped by market sector.
+    Calculates aggregated momentum and trend health metrics grouped by market sector and country.
     Requires joining the latest quantitative signals with the market universe table.
     """
     logger.info("Generating Sector Trends Report...")
@@ -20,9 +20,11 @@ def get_sector_trends() -> List[Dict[str, Any]]:
         conn = get_connection()
         cursor = conn.cursor()
         
-        # Uses COALESCE to fallback to 'Unclassified' since Nasdaq FTP provides no sectors.
+        # Uses COALESCE to fallback to 'Unclassified' since Nasdaq FTP provides no sectors,
+        # and dynamically segments by Country origin.
         query = """
         SELECT 
+            COALESCE(m.country, p.country, 'US') as country,
             COALESCE(p.sector, s.sector, 'Unclassified') as sector,
             COUNT(q.ticker) as total_stocks,
             ROUND(AVG(q.rsi_14), 2) as avg_rsi,
@@ -35,8 +37,8 @@ def get_sector_trends() -> List[Dict[str, Any]]:
         WHERE q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = q.ticker)
           AND COALESCE(p.sector, s.sector, 'Unclassified') != 'None' 
           AND COALESCE(p.sector, s.sector, 'Unclassified') != ''
-        GROUP BY COALESCE(p.sector, s.sector, 'Unclassified')
-        ORDER BY avg_rsi DESC
+        GROUP BY COALESCE(m.country, p.country, 'US'), COALESCE(p.sector, s.sector, 'Unclassified')
+        ORDER BY country ASC, avg_rsi DESC
         """
         cursor.execute(query)
         rows = cursor.fetchall()
@@ -61,6 +63,7 @@ def get_mean_reversion_setups(max_rsi: float = 30.0, min_sma_distance: float = 0
         SELECT 
             q.ticker, 
             COALESCE(p.company_name, m.company_name, q.ticker) as company_name, 
+            COALESCE(m.country, p.country, 'US') as country,
             COALESCE(p.sector, s.sector, 'Unclassified') as sector, 
             q.close_price, 
             ROUND(q.rsi_14, 2) as rsi_14, 
@@ -100,6 +103,7 @@ def get_leaders_laggards() -> List[Dict[str, Any]]:
         SELECT 
             q.ticker, 
             COALESCE(p.company_name, m.company_name, q.ticker) as company_name, 
+            COALESCE(m.country, p.country, 'US') as country,
             COALESCE(p.sector, s.sector, 'Unclassified') as sector, 
             q.close_price, 
             ROUND(q.rsi_14, 2) as rsi_14, 

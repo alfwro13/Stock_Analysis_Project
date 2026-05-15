@@ -108,6 +108,7 @@ def update_market_universe() -> None:
                         clean_name,
                         None, # Sector
                         None, # Industry
+                        'US', # Country
                         last_updated
                     ))
     except Exception as e:
@@ -132,8 +133,8 @@ def update_market_universe() -> None:
         
         # We use executemany for rapid, transaction-safe bulk inserts
         cursor.executemany('''
-            INSERT OR REPLACE INTO market_universe (ticker, company_name, sector, industry, last_updated)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT OR REPLACE INTO market_universe (ticker, company_name, sector, industry, country, last_updated)
+            VALUES (?, ?, ?, ?, ?, ?)
         ''', tickers_to_insert)
         
         conn.commit()
