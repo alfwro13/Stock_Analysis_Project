@@ -6,5 +6,5 @@ reports/
 data/
 
 # Ignore specific files
-to_do.txt
+to_do*.txt
 config.json
