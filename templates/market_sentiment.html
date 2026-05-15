@@ -17,20 +17,42 @@
                 <h1>Market Sentiment</h1>
             </div>
             {% set active_page = 'market_sentiment' %}
-                {% include 'navbar.html' %}
+            {% include 'navbar.html' %}
         </div>
     </div>
-    <div class="chart-wrapper" style="border-left: 4px solid #ff4d4d;">
+
+    <div class="regime-callout">
+        <div class="regime-callout-title">🌍 Market Regime Context</div>
+        <p class="regime-callout-text">Current Classification: <strong>{{ regime_data.regime_label }}</strong> (Turbulence Index: {{ "%.2f"|format(regime_data.turbulence_index) }})</p>
+        <p class="regime-callout-text">Market conditions are currently <strong>{{ 'highly turbulent' if regime_data.regime_label in ['Crash', 'Volatile'] else 'normal and stable' }}</strong>. Standard quantitative thresholds {{ 'are aggressively filtered for Flight to Safety' if regime_data.regime_label in ['Crash', 'Volatile'] else 'apply' }}.</p>
+    </div>
+
+    <div class="chart-wrapper chart-wrapper-fg">
         {{ sentiment_html | safe }}
     </div>
-<div style="margin-top: 15px; padding-top: 15px; border-top: 1px dashed #333; font-size: 13px; color: #aaa; line-height: 1.6;">
-    <strong style="color: #e0e0e0;">How to read this chart:</strong>
-    <div style="margin-top: 5px;">
-        This visualization overlays the <strong style="color: #4da6ff;">S&P 500</strong> (Benchmark Health) against the <strong style="color: #4da6ff;">Fear & Greed Index</strong> (Sentiment Velocity). 
-        Historically, local market bottoms correlate with <span style="color: #e0e0e0; font-weight: bold;">Extreme Fear (Below 25)</span>, indicating capitulation and high-probability entry points. 
-        Conversely, <span style="color: #e0e0e0; font-weight: bold;">Extreme Greed (Above 75)</span> typically signals retail euphoria and institutional distribution, suggesting a defensive posture or profit-taking is warranted.
+    
+    <div class="sentiment-footer">
+        <span class="sentiment-footer-title">How to read this chart:</span>
+        <div class="sentiment-footer-text">
+            This visualization overlays the <span class="sentiment-highlight">S&P 500</span> (Benchmark Health) against the <span class="sentiment-highlight">Fear & Greed Index</span> (Sentiment Velocity). 
+            Historically, local market bottoms correlate with <span class="sentiment-extreme">Extreme Fear (Below 25)</span>, indicating capitulation and high-probability entry points. 
+            Conversely, <span class="sentiment-extreme">Extreme Greed (Above 75)</span> typically signals retail euphoria and institutional distribution, suggesting a defensive posture or profit-taking is warranted.
+        </div>
     </div>
-</div>
+
+    <div class="chart-wrapper chart-wrapper-vix" style="margin-top: 40px;">
+        {{ vix_spy_html | safe }}
+    </div>
+    
+    <div class="sentiment-footer">
+        <span class="sentiment-footer-title">How to read this chart:</span>
+        <div class="sentiment-footer-text">
+            This visualization overlays the <span class="sentiment-highlight">S&P 500</span> against the <span class="sentiment-highlight">CBOE Volatility Index (VIX)</span>.
+            The VIX measures the stock market's expectation of volatility based on S&P 500 index options. 
+            A VIX level <span class="sentiment-extreme">Above 20</span> indicates high turbulence and institutional hedging, marking a Volatile regime. 
+            A VIX level <span class="sentiment-extreme">Above 30</span> signals a Crash regime, characterized by extreme fear and erratic price swings.
+        </div>
+    </div>
 
 </body>
 </html>

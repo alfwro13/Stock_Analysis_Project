@@ -9,7 +9,8 @@ from fastapi.templating import Jinja2Templates
 
 from config import load_config, PORTFOLIO_PATH, WATCHLIST_PATH, HISTORICAL_DIR, INTRADAY_DIR, BASE_CURRENCY
 from database import get_connection
-from sentiment_engine import get_sentiment_html
+from regime_engine import get_latest_regime
+from sentiment_engine import get_sentiment_html, get_vix_spy_html
 from market_pulse import get_all_cached_pulse
 from visuals import create_macro_chart, create_intraday_chart
 from portfolio_service import get_rate_to_base, get_rate_from_base
@@ -44,7 +45,21 @@ async def settings_page(request: Request):
 
 @page_router.get("/market-sentiment", response_class=HTMLResponse)
 async def market_sentiment_page(request: Request):
-    return templates.TemplateResponse(request=request, name="market_sentiment.html", context={"sentiment_html": get_sentiment_html(), "unread_count": get_unread_count()})
+    regime_data = get_latest_regime()
+    if not regime_data:
+        regime_data = {"regime_label": "Unknown", "turbulence_index": 0.0}
+        
+    return templates.TemplateResponse(
+        request=request, 
+        name="market_sentiment.html", 
+        context={
+            "sentiment_html": get_sentiment_html(), 
+            "vix_spy_html": get_vix_spy_html(),
+            "regime_data": regime_data,
+            "unread_count": get_unread_count(),
+            "config": load_config()
+        }
+    )
 
 @page_router.get("/options-sandbox", response_class=HTMLResponse)
 async def options_sandbox_page(request: Request):
@@ -189,7 +204,6 @@ async def watchlist_page(request: Request, embed: bool = False):
     conn = get_connection()
     cursor = conn.cursor()
     
-    # 1. ADDED LEFT JOIN TO PULL ML, RISK, AND SENTIMENT METRICS
     cursor.execute("""
         SELECT s.*, 
                q.ml_confidence_score, 
@@ -317,15 +331,12 @@ async def market_reports_page(request: Request):
 
 @page_router.get("/stock/{ticker}", response_class=HTMLResponse)
 async def stock_detail(request: Request, ticker: str, embed: bool = False):
-    
-    # 1. Check if the ticker is currently in the Watchlist JSON
     watchlist_json = get_json_data(WATCHLIST_PATH)
     watchlist_tickers = watchlist_json.get("watchlist", [])
     is_in_watchlist = ticker in watchlist_tickers
 
     conn = get_connection()
     cursor = conn.cursor()
-    # MODIFIED: Joined asset_profiles & quant_signals to pull ML, Risk, and Summary
     cursor.execute('''
         SELECT s.*, p.business_summary,
                q.ml_confidence_score, q.var_95, q.cvar_95, q.sentiment_score
@@ -414,7 +425,6 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
             
     conn.close()
     
-    # 2. Evaluate Data Staleness for the Refresh Button
     data_status = 'red'
     last_updated_str = "Never"
     if stock_data and stock_data.get('last_updated'):

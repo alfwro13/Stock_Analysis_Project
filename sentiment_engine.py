@@ -117,6 +117,81 @@ def get_sentiment_html() -> str:
     
     return fig.to_html(full_html=False, include_plotlyjs='cdn', config=clean_config)
 
+# ==========================================================
+# 2. MARKET REGIME (VIX vs SPY)
+# ==========================================================
+
+def get_vix_spy_data() -> pd.DataFrame:
+    try:
+        tickers = ["SPY", "^VIX"]
+        df = yf.download(tickers, period="1y", interval="1d", group_by='ticker', auto_adjust=True, progress=False)
+        
+        if df.empty or 'SPY' not in df.columns or '^VIX' not in df.columns:
+            logger.error("Failed to fetch SPY or VIX data from Yahoo Finance.")
+            return None
+
+        spy_data = df['SPY'].dropna(subset=['Close']).rename(columns={'Close': 'SPY_Close'})
+        vix_data = df['^VIX'].dropna(subset=['Close']).rename(columns={'Close': 'VIX_Close'})
+        
+        if spy_data.empty or vix_data.empty:
+            logger.error("Incomplete data received for SPY or VIX.")
+            return None
+
+        merged_df = spy_data[['SPY_Close']].merge(vix_data[['VIX_Close']], left_index=True, right_index=True, how='inner')
+        return merged_df
+        
+    except Exception as e:
+        logger.error(f"Fatal error fetching VIX vs SPY data: {e}")
+        return None
+
+def generate_vix_spy_figure():
+    merged_df = get_vix_spy_data()
+    if merged_df is None: return None
+
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    fig.add_trace(go.Scatter(x=merged_df.index, y=merged_df['SPY_Close'], name="S&P 500", line=dict(color='#4da6ff', width=2)), secondary_y=False)
+    fig.add_trace(go.Scatter(x=merged_df.index, y=merged_df['VIX_Close'], name="VIX", line=dict(color='#ffaa00', dash='dot', width=2)), secondary_y=True)
+
+    # Annotate key Regime transition lines
+    fig.add_hline(y=20, line_dash="dash", line_color="#ffaa00", secondary_y=True, annotation_text="Volatile (20)", annotation_position="top right", annotation_font_color="#ffaa00")
+    fig.add_hline(y=30, line_dash="dash", line_color="#ff4d4d", secondary_y=True, annotation_text="Crash (30)", annotation_position="top right", annotation_font_color="#ff4d4d")
+
+    min_spy = merged_df['SPY_Close'].min() * 0.98
+    max_spy = merged_df['SPY_Close'].max() * 1.02
+
+    fig.update_layout(
+        title="S&P 500 vs VIX (1 Year)",
+        template="plotly_dark",
+        height=600,
+        margin=dict(l=40, r=40, t=60, b=40),
+        hovermode="x unified",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+    )
+    
+    fig.update_yaxes(title_text="S&P 500 Price ($)", range=[min_spy, max_spy], secondary_y=False)
+    
+    # Scale secondary axis to handle extreme VIX blowouts without crushing the chart
+    max_vix = max(50, merged_df['VIX_Close'].max() * 1.1)
+    fig.update_yaxes(title_text="VIX Level", range=[0, max_vix], secondary_y=True)
+    
+    return fig
+
+def get_vix_spy_html() -> str:
+    fig = generate_vix_spy_figure()
+    if not fig: return "<p>Error loading VIX data. Please try again later.</p>"
+    
+    clean_config = {
+        'responsive': True,
+        'displaylogo': False
+    }
+    
+    return fig.to_html(full_html=False, include_plotlyjs='cdn', config=clean_config)
+
+
+# ==========================================================
+# 3. NEXTCLOUD ALERTS (PNG PUSH)
+# ==========================================================
+
 def run_nextcloud_alert():
     logger.info("Starting Market Sentiment Pipeline...")
     try:
@@ -191,7 +266,7 @@ def run_nextcloud_alert():
 
 
 # ==========================================================
-# 2. MICRO SENTIMENT (VADER NLP ON NEWS HEADLINES)
+# 4. MICRO SENTIMENT (VADER NLP ON NEWS HEADLINES)
 # ==========================================================
 
 def fetch_and_score_news(ticker: str, analyzer: SentimentIntensityAnalyzer) -> float:
@@ -208,7 +283,6 @@ def fetch_and_score_news(ticker: str, analyzer: SentimentIntensityAnalyzer) -> f
             
         scores = []
         for item in news[:15]:
-            # Aggregate title and publisher/summary context for richer NLP context
             title = item.get('title', '')
             summary = item.get('summary', '')
             publisher = item.get('publisher', '')
@@ -246,7 +320,6 @@ def update_all_sentiment(tickers: List[str]) -> None:
     conn = get_connection()
     cursor = conn.cursor()
 
-    # Safely inject the column if it's missing from earlier migrations
     try:
         cursor.execute("ALTER TABLE quant_signals ADD COLUMN sentiment_score REAL")
         conn.commit()
@@ -258,7 +331,6 @@ def update_all_sentiment(tickers: List[str]) -> None:
         try:
             score = fetch_and_score_news(ticker, analyzer)
             
-            # Map the sentiment score strictly to the LATEST row for that ticker
             cursor.execute("""
                 UPDATE quant_signals 
                 SET sentiment_score = ? 
@@ -272,7 +344,6 @@ def update_all_sentiment(tickers: List[str]) -> None:
             logger.error(f"Failed to process sentiment for {ticker}: {e}")
             conn.rollback()
         finally:
-            # Respect API Throttling
             time.sleep(random.uniform(0.5, 1.5))
             
     conn.close()
