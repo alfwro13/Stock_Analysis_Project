@@ -1,6 +1,7 @@
 # Ignore Python cache folders
 __pycache__/
 reports/
+models/
 
 # Ignore data folder and all its contents
 data/
