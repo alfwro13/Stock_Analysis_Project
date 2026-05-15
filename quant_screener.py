@@ -10,7 +10,7 @@ a deterministic Morning Quant Briefing in Markdown format.
 import os
 import logging
 from datetime import datetime, timedelta
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 
 from database import get_connection
 from regime_engine import get_latest_regime
@@ -105,6 +105,20 @@ def get_overbought_warnings(data: List[Dict[str, Any]], regime_label: str) -> Li
                 results.append(row)
     return results
 
+def filter_ai_vetoes(setups: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """
+    Evaluates ML prediction metrics on algorithmic setups. 
+    If ML Confidence < 40%, the asset is stripped from the standard list and funnelled to the veto list.
+    """
+    approved = []
+    vetoed = []
+    for row in setups:
+        ml_conf = row.get('ml_confidence_score')
+        if ml_conf is not None and ml_conf < 40.0:
+            vetoed.append(row)
+        else:
+            approved.append(row)
+    return approved, vetoed
 
 # --- Data Retrieval ---
 
@@ -146,8 +160,8 @@ def _format_markdown_table(data: List[Dict[str, Any]]) -> str:
     if not data:
         return "*No assets met the criteria for this screen today.*\n"
         
-    table = "| Ticker | Close Price | RSI (14) | MACD Hist | Vol Surge | Bullish Cross |\n"
-    table += "|--------|-------------|----------|-----------|-----------|---------------|\n"
+    table = "| Ticker | Close Price | RSI (14) | MACD Hist | Vol Surge | Bullish Cross | ML Conf (%) |\n"
+    table += "|--------|-------------|----------|-----------|-----------|---------------|-------------|\n"
     
     for row in data:
         ticker = row.get('ticker', 'N/A')
@@ -156,8 +170,9 @@ def _format_markdown_table(data: List[Dict[str, Any]]) -> str:
         macd_hist = f"{row.get('macd_hist', 0):.3f}" if row.get('macd_hist') is not None else "N/A"
         vol_surge = "Yes" if row.get('volume_surge') in (1, True) else "No"
         bullish_cross = "Yes" if row.get('bullish_cross') in (1, True) else "No"
+        ml_conf = f"{row.get('ml_confidence_score'):.1f}%" if row.get('ml_confidence_score') is not None else "N/A"
         
-        table += f"| **{ticker}** | {price} | {rsi} | {macd_hist} | {vol_surge} | {bullish_cross} |\n"
+        table += f"| **{ticker}** | {price} | {rsi} | {macd_hist} | {vol_surge} | {bullish_cross} | {ml_conf} |\n"
         
     return table
 
@@ -174,12 +189,25 @@ def generate_markdown_briefing(target_date: str, data: List[Dict[str, Any]]) -> 
     turbulence_idx = regime_data.get('turbulence_index', 0.0) if regime_data else 0.0
     
     # 2. Execute Screens mapped by Regime
-    oversold = get_oversold_reversals(data, regime_label)
-    golden_crosses = get_golden_crosses(data, regime_label)
-    surges = get_momentum_surges(data, regime_label)
+    raw_oversold = get_oversold_reversals(data, regime_label)
+    raw_golden_crosses = get_golden_crosses(data, regime_label)
+    raw_surges = get_momentum_surges(data, regime_label)
+    
+    # We do not veto warnings (bearish flags), only bullish ones.
     warnings = get_overbought_warnings(data, regime_label)
     
-    # 3. Build Markdown String
+    # 3. Intercept & Filter ML Divergences
+    oversold, veto_1 = filter_ai_vetoes(raw_oversold)
+    golden_crosses, veto_2 = filter_ai_vetoes(raw_golden_crosses)
+    surges, veto_3 = filter_ai_vetoes(raw_surges)
+    
+    # Combine all vetoed setups, deduping by ticker
+    vetoed_dict = {}
+    for row in veto_1 + veto_2 + veto_3:
+        vetoed_dict[row['ticker']] = row
+    ai_vetoed = list(vetoed_dict.values())
+    
+    # 4. Build Markdown String
     report = f"# 📊 Morning Quant Briefing\n"
     report += f"**Date:** {target_date}\n\n"
     
@@ -205,6 +233,10 @@ def generate_markdown_briefing(target_date: str, data: List[Dict[str, Any]]) -> 
     report += "## 🚀 Momentum & Volume Surges\n"
     report += "*These assets are currently experiencing explosive buying volume (Volume > 1.5x 20-Day SMA) while operating in a healthy momentum band (RSI between 50 and 70). This signifies strong institutional backing without immediate overbought exhaustion risk.*\n\n"
     report += _format_markdown_table(surges) + "\n"
+    
+    report += "## 🚨 AI Vetoed Setups (Divergence Warnings)\n"
+    report += "*The following equities triggered strong mathematical buy signals, but the Machine Learning Ensemble predicts a high probability of failure (Confidence < 40%). Proceed with extreme caution.*\n\n"
+    report += _format_markdown_table(ai_vetoed) + "\n"
     
     report += "## 🚨 Overbought Warnings (Distribution Risk)\n"
     report += "*Risk Management Alert: The following assets are mathematically overextended and are beginning to flash negative momentum divergence (Negative MACD Histogram). Trim positions or tighten stop-losses, as algorithmic mean-reversion is highly probable.*\n\n"

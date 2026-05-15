@@ -138,10 +138,23 @@
                     { data: 'bullish_cross', render: function(data) { return data ? '<span class="badge-yes">YES</span>' : '<span class="badge-no">No</span>'; } },
                     {
                         data: 'ml_confidence_score',
-                        render: function(data) {
+                        render: function(data, type, row) {
                             if (data === null || data === undefined) return 'N/A';
                             let cssClass = data > 75 ? 'metric-excellent' : (data < 40 ? 'metric-poor' : 'metric-neutral');
-                            return `<span class="${cssClass}">${data.toFixed(1)}%</span>`;
+                            let html = `<span class="${cssClass}">${data.toFixed(1)}%</span>`;
+                            
+                            // Divergence Logic Evaluation
+                            if (row.composite_score !== undefined && row.composite_score !== null) {
+                                let comp = parseInt(row.composite_score);
+                                if (!isNaN(comp)) {
+                                    if (comp >= 70 && data < 40) {
+                                        html += ` <span style="margin-left: 5px; font-size: 11px; padding: 2px 4px; border-radius: 4px; border: 1px solid #ff4d4d; color: #ff4d4d; cursor: help;" title="High Quant Score but Low AI Confidence">⚠️ Div</span>`;
+                                    } else if (comp < 40 && data >= 70) {
+                                        html += ` <span style="margin-left: 5px; font-size: 11px; padding: 2px 4px; border-radius: 4px; border: 1px solid #4da6ff; color: #4da6ff; cursor: help;" title="Low Quant Score but High AI Confidence">🤖 AI Buy</span>`;
+                                    }
+                                }
+                            }
+                            return html;
                         }
                     },
                     {

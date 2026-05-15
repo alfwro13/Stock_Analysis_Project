@@ -348,7 +348,7 @@ async def get_screener_data():
         conn = get_connection()
         cursor = conn.cursor()
         
-        # UPDATED QUERY: Added ml_confidence_score, sentiment_score, var_95, and cvar_95
+        # UPDATED QUERY: Added composite_score for frontend UI ML divergence correlation
         query = """
         SELECT 
             q.ticker, 
@@ -357,7 +357,8 @@ async def get_screener_data():
             q.date, q.close_price, 
             q.volume, q.rsi_14, q.macd_hist, q.sma_50, q.sma_200, 
             q.volume_surge, q.bullish_cross,
-            q.ml_confidence_score, q.sentiment_score, q.var_95, q.cvar_95
+            q.ml_confidence_score, q.sentiment_score, q.var_95, q.cvar_95,
+            s.composite_score
         FROM quant_signals q
         INNER JOIN market_universe m ON q.ticker = m.ticker
         LEFT JOIN asset_profiles p ON q.ticker = p.ticker
