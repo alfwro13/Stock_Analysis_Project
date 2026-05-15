@@ -20,6 +20,9 @@ from database import get_universe_tickers
 from universe_engine import update_market_universe
 from profile_engine import run_profile_audit
 
+# --- NEW: Turbulence-Aware Market Regime Engine ---
+from regime_engine import calculate_market_regime
+
 # --- Background Task Scheduler Setup ---
 scheduler = BackgroundScheduler()
 task_lock = threading.Lock()
@@ -63,16 +66,21 @@ def run_ghostfolio_sync():
 def run_overnight_quant_scan():
     """
     Fetches the combined list of portfolio and watchlist tickers, 
-    and executes the resumable daily quant scan natively.
+    calculates the daily market regime, and executes the resumable daily quant scan natively.
     """
     if not task_lock.acquire(blocking=False):
         print("[WARNING] System is currently busy. Skipping Overnight Quant Scan.")
         return
     try:
         print("\n--- OVERNIGHT QUANT SCAN INITIATED ---")
+        
+        # Calculate the daily Market Regime (Turbulence Index) before screening begins
+        calculate_market_regime()
+        
         engine = DataEngine()
         all_tickers = engine.get_all_tickers() 
         run_daily_quant_scan(all_tickers)
+        
         print("--- OVERNIGHT QUANT SCAN COMPLETE ---\n")
     except Exception as e:
         print(f"[ERROR] Overnight Quant Scan Failed: {e}")
