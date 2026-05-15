@@ -3,7 +3,7 @@ import time
 import random
 import logging
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 
 import pandas as pd
 import yfinance as yf
@@ -147,12 +147,23 @@ def run_daily_quant_scan(ticker_list: List[str], scan_type: str = 'daily') -> No
                     prev_sig = macd_indicator.macd_signal().iloc[-2]
                     bullish_cross = bool((c_macd > c_signal) and (prev_macd <= prev_sig))
 
+                # --- placeholders for Phase 1 ML and Risk calculations ---
+                # To be populated by our new models in the upcoming steps.
+                c_ml_confidence_score: Optional[float] = None
+                c_sentiment_score: Optional[float] = None
+                c_var_95: Optional[float] = None
+                c_cvar_95: Optional[float] = None
+
                 # --- Database Write ---
                 cursor.execute('''
                     INSERT OR REPLACE INTO quant_signals 
-                    (ticker, date, close_price, volume, rsi_14, macd, macd_signal, macd_hist, sma_50, sma_200, volume_surge, bullish_cross)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (ticker, last_date, c_price, c_vol, c_rsi, c_macd, c_signal, c_hist, c_sma50, c_sma200, vol_surge, bullish_cross))
+                    (ticker, date, close_price, volume, rsi_14, macd, macd_signal, macd_hist, sma_50, sma_200, volume_surge, bullish_cross,
+                     ml_confidence_score, sentiment_score, var_95, cvar_95)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    ticker, last_date, c_price, c_vol, c_rsi, c_macd, c_signal, c_hist, c_sma50, c_sma200, vol_surge, bullish_cross,
+                    c_ml_confidence_score, c_sentiment_score, c_var_95, c_cvar_95
+                ))
 
                 # Update State Engine using state_key
                 cursor.execute("UPDATE quant_scan_states SET last_processed_ticker = ? WHERE scan_date = ?", (ticker, state_key))
