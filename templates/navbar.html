@@ -19,3 +19,68 @@
     <a href="/glossary" class="{% if active_page == 'glossary' %}active{% endif %}">📚 Glossary</a>
     <a href="/notifications" class="{% if active_page == 'notifications' %}active{% endif %}">🔔 Notifications {% if unread_count > 0 %}<span class="badge" id="nav-badge">{{ unread_count }}</span>{% endif %}</a>
 </div>
+
+<script>
+    // --- GLOBAL DESKTOP NOTIFICATION ENGINE ---
+    // Runs persistently on every page to ensure background alerts are never missed.
+    let globalLastNotificationId = null;
+
+    async function initGlobalBrowserNotifications() {
+        if (!("Notification" in window)) return;
+        if (Notification.permission !== "granted" && Notification.permission !== "denied") {
+            Notification.requestPermission();
+        }
+    }
+
+    async function pollGlobalSystemNotifications() {
+        if (!("Notification" in window) || Notification.permission !== "granted") return;
+
+        try {
+            const response = await fetch(`/api/notifications/latest?last_id=${globalLastNotificationId || 0}`);
+            const result = await response.json();
+            
+            if (response.ok && result.status === 'success') {
+                const notes = result.notifications;
+                if (notes.length > 0) {
+                    if (globalLastNotificationId === null) {
+                        // First load: Baseline to the highest ID to prevent spamming old alerts
+                        globalLastNotificationId = notes[notes.length - 1].id;
+                    } else {
+                        // Subsequent polls: Trigger native desktop notifications
+                        notes.forEach(note => {
+                            const notification = new Notification(`🚨 Quantamental: ${note.type} Alert`, {
+                                body: note.text.substring(0, 120) + (note.text.length > 120 ? '...' : ''),
+                                icon: '/assets/logo_small.png'
+                            });
+                            
+                            notification.onclick = function() {
+                                window.open("/notifications", "_blank");
+                                notification.close();
+                            };
+                            
+                            globalLastNotificationId = Math.max(globalLastNotificationId, note.id);
+                        });
+                        
+                        // Dynamically update the navbar badge
+                        const badge = document.getElementById('nav-badge');
+                        if (badge) {
+                            badge.innerText = parseInt(badge.innerText || '0') + notes.length;
+                            badge.style.display = 'inline-block';
+                        }
+                    }
+                } else if (globalLastNotificationId === null) {
+                    globalLastNotificationId = 0; // Baseline if DB is entirely empty
+                }
+            }
+        } catch (error) {
+            console.error("Failed to poll system notifications globally:", error);
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        initGlobalBrowserNotifications();
+        // Poll for new alerts exactly every 15 seconds in the background
+        setInterval(pollGlobalSystemNotifications, 15000);
+        pollGlobalSystemNotifications(); // Run once immediately on load
+    });
+</script>

@@ -14,72 +14,8 @@
     const REFRESH_RATE_MS = (window.REFRESH_RATE_MS || 60000); 
     const FAST_POLL_MS = 3000; // Check every 3 seconds while waiting for background refresh
 
-    // --- BROWSER NOTIFICATIONS LOGIC ---
-    let lastNotificationId = null;
-
-    async function initBrowserNotifications() {
-        if (!("Notification" in window)) {
-            console.log("This browser does not support desktop notifications.");
-            return;
-        }
-        // If not explicitly granted or denied, request it
-        if (Notification.permission !== "granted" && Notification.permission !== "denied") {
-            Notification.requestPermission();
-        }
-    }
-
-    async function pollSystemNotifications() {
-        if (Notification.permission !== "granted") return;
-
-        try {
-            const response = await fetch(`/api/notifications/latest?last_id=${lastNotificationId || 0}`);
-            const result = await response.json();
-            
-            if (response.ok && result.status === 'success') {
-                const notes = result.notifications;
-                if (notes.length > 0) {
-                    if (lastNotificationId === null) {
-                        // First load: just set baseline to highest ID to avoid spamming old unread alerts
-                        lastNotificationId = notes[notes.length - 1].id;
-                    } else {
-                        // Subsequent polls: trigger native notifications
-                        notes.forEach(note => {
-                            const notification = new Notification(`🚨 Quantamental: ${note.type} Alert`, {
-                                body: note.text.substring(0, 120) + (note.text.length > 120 ? '...' : ''),
-                                icon: '/assets/logo_small.png'
-                            });
-                            
-                            // Click the native notification to open the dashboard notifications page
-                            notification.onclick = function() {
-                                window.open("/notifications", "_blank");
-                                notification.close();
-                            };
-                            
-                            lastNotificationId = Math.max(lastNotificationId, note.id);
-                        });
-                        
-                        // Dynamically update the top navbar badge if it exists
-                        const badge = document.getElementById('nav-badge');
-                        if (badge) {
-                            badge.innerText = parseInt(badge.innerText || '0') + notes.length;
-                            badge.style.display = 'inline-block';
-                        }
-                    }
-                } else if (lastNotificationId === null) {
-                    lastNotificationId = 0; // Baseline if DB is entirely empty
-                }
-            }
-        } catch (error) {
-            console.error("Failed to poll system notifications:", error);
-        }
-    }
-    // -----------------------------------
-
     async function fetchMarketPulse() {
         try {
-            // Run the notification poll concurrently with the pulse fetch
-            pollSystemNotifications();
-
             let requestedTickers = [];
             if (window.ENABLE_LIVE_ASSETS) {
                 const rows = document.querySelectorAll('.live-asset-row');
@@ -239,7 +175,6 @@
     });
 
     document.addEventListener('DOMContentLoaded', () => {
-        initBrowserNotifications();
         if (!document.hidden) {
             startPulseEngine();
         }
