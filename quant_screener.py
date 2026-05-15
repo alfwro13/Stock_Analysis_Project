@@ -4,7 +4,7 @@ quant_screener.py
 Elite-level rule-based screening system for the Quantamental Dashboard.
 Queries overnight mathematical signal data from the local SQLite database,
 applies Turbulence-Aware Market Regime contextual filtering, and generates 
-a deterministic Morning Quant Briefing in Markdown format.
+a deterministic Morning Quant Briefing in a mobile-optimized Markdown format.
 """
 
 import os
@@ -155,14 +155,15 @@ def fetch_latest_signals(target_date: str) -> List[Dict[str, Any]]:
 
 # --- Report Generation ---
 
-def _format_markdown_table(data: List[Dict[str, Any]]) -> str:
-    """Helper function to format a list of dictionaries into a Markdown table."""
+def _format_mobile_markdown_list(data: List[Dict[str, Any]]) -> str:
+    """
+    Helper function to format a list of dictionaries into a mobile-friendly 
+    Markdown list, bypassing the lack of table support in mobile chat apps.
+    """
     if not data:
-        return "*No assets met the criteria for this screen today.*\n"
+        return "*No assets met the criteria for this screen today.*\n\n"
         
-    table = "| Ticker | Close Price | RSI (14) | MACD Hist | Vol Surge | Bullish Cross | ML Conf (%) |\n"
-    table += "|--------|-------------|----------|-----------|-----------|---------------|-------------|\n"
-    
+    output = ""
     for row in data:
         ticker = row.get('ticker', 'N/A')
         price = f"${row.get('close_price', 0):.2f}"
@@ -172,9 +173,11 @@ def _format_markdown_table(data: List[Dict[str, Any]]) -> str:
         bullish_cross = "Yes" if row.get('bullish_cross') in (1, True) else "No"
         ml_conf = f"{row.get('ml_confidence_score'):.1f}%" if row.get('ml_confidence_score') is not None else "N/A"
         
-        table += f"| **{ticker}** | {price} | {rsi} | {macd_hist} | {vol_surge} | {bullish_cross} | {ml_conf} |\n"
+        # Dense, mobile-friendly 2-line structure
+        output += f"🔹 **{ticker}** ({price}) | **RSI:** {rsi} | **ML:** {ml_conf}\n"
+        output += f"&nbsp;&nbsp;&nbsp;↳ *MACD:* {macd_hist} | *Vol Surge:* {vol_surge} | *Cross:* {bullish_cross}\n\n"
         
-    return table
+    return output
 
 def generate_markdown_briefing(target_date: str, data: List[Dict[str, Any]]) -> str:
     """
@@ -224,23 +227,23 @@ def generate_markdown_briefing(target_date: str, data: List[Dict[str, Any]]) -> 
     
     report += "## 📉 Oversold Reversals\n"
     report += "*The following equities have been aggressively sold off (RSI < 30) but are demonstrating early quantitative signs of momentum recovery (Positive MACD Histogram). These present high-conviction, deep-value entry opportunities with asymmetric risk/reward profiles.*\n\n"
-    report += _format_markdown_table(oversold) + "\n"
+    report += _format_mobile_markdown_list(oversold)
     
     report += "## 📈 Golden MACD Crosses\n"
     report += "*The following equities have triggered a Golden MACD Cross, indicating a potential mathematical momentum reversal to the upside and underlying institutional accumulation.*\n\n"
-    report += _format_markdown_table(golden_crosses) + "\n"
+    report += _format_mobile_markdown_list(golden_crosses)
     
     report += "## 🚀 Momentum & Volume Surges\n"
     report += "*These assets are currently experiencing explosive buying volume (Volume > 1.5x 20-Day SMA) while operating in a healthy momentum band (RSI between 50 and 70). This signifies strong institutional backing without immediate overbought exhaustion risk.*\n\n"
-    report += _format_markdown_table(surges) + "\n"
+    report += _format_mobile_markdown_list(surges)
     
     report += "## 🚨 AI Vetoed Setups (Divergence Warnings)\n"
     report += "*The following equities triggered strong mathematical buy signals, but the Machine Learning Ensemble predicts a high probability of failure (Confidence < 40%). Proceed with extreme caution.*\n\n"
-    report += _format_markdown_table(ai_vetoed) + "\n"
+    report += _format_mobile_markdown_list(ai_vetoed)
     
     report += "## 🚨 Overbought Warnings (Distribution Risk)\n"
     report += "*Risk Management Alert: The following assets are mathematically overextended and are beginning to flash negative momentum divergence (Negative MACD Histogram). Trim positions or tighten stop-losses, as algorithmic mean-reversion is highly probable.*\n\n"
-    report += _format_markdown_table(warnings) + "\n"
+    report += _format_mobile_markdown_list(warnings)
     
     report += "---\n"
     report += "*Generated automatically by the Quantamental Python Engine.*"
