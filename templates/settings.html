@@ -34,12 +34,12 @@
 
         <details class="settings-card">
             <summary>🌍 Market Universe Sideloading</summary>
-            <p style="font-size: 13px; color: #aaa; margin-top: 0; margin-bottom: 15px;">Securely upload custom CSV files representing different market universes (e.g., LSE, TSX) to expand the reach of the quantitative screener beyond the standard US Nasdaq baseline.</p>
+            <p style="font-size: 13px; color: #aaa; margin-top: 0; margin-bottom: 15px;">Securely load custom CSV files representing different market universes (e.g., LSE, TSX) from the server's imports directory to expand the reach of the quantitative screener beyond the standard US Nasdaq baseline.</p>
             <div class="form-group" style="margin-bottom: 15px;">
-                <label>Upload Custom Universe CSV</label>
-                <div style="display: flex; gap: 15px; align-items: center;">
-                    <input type="file" id="csvFileInput" accept=".csv" style="flex: 1; padding: 6px; font-size: 14px; background-color: #121212; border: 1px solid #444; border-radius: 5px; color: #fff;">
-                    <button type="button" class="btn-update" style="padding: 10px 20px; font-weight: bold; border-radius: 5px; border: none; cursor: pointer;" onclick="uploadUniverseCSV()">📤 Sideload CSV</button>
+                <button type="button" class="btn-test" onclick="scanImportDirectory()">🔍 Scan Server Directory</button>
+                <div id="csvSelectContainer" style="display: none; margin-top: 15px; display: flex; gap: 15px;">
+                    <select id="serverCsvSelect" class="filter-select" style="flex: 2;"></select>
+                    <button type="button" id="importBtn" class="btn-update" style="flex: 1;" onclick="importServerCSV()">📥 Import Selected</button>
                 </div>
             </div>
             <div id="upload-status-msg" style="font-weight: bold; font-family: monospace; font-size: 13px; margin-top: 10px;"></div>
@@ -636,27 +636,67 @@
             setTimeout(() => { btn.innerText = "↻ Force Update Analysis Models"; btn.disabled = false; }, 15000);
         }
 
-        async function uploadUniverseCSV() {
-            const fileInput = document.getElementById('csvFileInput');
+        async function scanImportDirectory() {
             const statusMsg = document.getElementById('upload-status-msg');
+            const container = document.getElementById('csvSelectContainer');
+            const select = document.getElementById('serverCsvSelect');
             
-            if (!fileInput.files.length) {
-                statusMsg.innerText = "❌ Please select a CSV file first.";
+            statusMsg.innerText = "🔍 Scanning...";
+            statusMsg.style.color = "#aaa";
+            container.style.display = 'none';
+
+            try {
+                const response = await fetch('/api/universe/imports/list');
+                const result = await response.json();
+                
+                if (response.ok && result.status === 'success') {
+                    if (result.files && result.files.length > 0) {
+                        select.innerHTML = '';
+                        result.files.forEach(file => {
+                            const opt = document.createElement('option');
+                            opt.value = file;
+                            opt.innerText = file;
+                            select.appendChild(opt);
+                        });
+                        container.style.display = 'flex';
+                        statusMsg.innerText = `✅ Found ${result.files.length} CSV file(s).`;
+                        statusMsg.style.color = "#00ffcc";
+                    } else {
+                        statusMsg.innerText = "⚠️ No CSV files found in the data/imports/ directory.";
+                        statusMsg.style.color = "#ffaa00";
+                    }
+                } else {
+                    statusMsg.innerText = "❌ Error: " + (result.message || "Could not scan directory.");
+                    statusMsg.style.color = "#ff4d4d";
+                }
+            } catch (error) {
+                statusMsg.innerText = "❌ Network Error during scan.";
+                statusMsg.style.color = "#ff4d4d";
+            }
+        }
+
+        async function importServerCSV() {
+            const select = document.getElementById('serverCsvSelect');
+            const statusMsg = document.getElementById('upload-status-msg');
+            const btn = document.getElementById('importBtn');
+            const filename = select.value;
+            
+            if (!filename) {
+                statusMsg.innerText = "❌ Please select a file to import.";
                 statusMsg.style.color = "#ff4d4d";
                 return;
             }
 
-            const file = fileInput.files[0];
-            const formData = new FormData();
-            formData.append('file', file);
-
-            statusMsg.innerText = "📤 Uploading and processing...";
+            btn.disabled = true;
+            btn.innerText = "📥 Importing...";
+            statusMsg.innerText = `📤 Processing ${filename}...`;
             statusMsg.style.color = "#aaa";
 
             try {
-                const response = await fetch('/api/universe/import', {
+                const response = await fetch('/api/universe/import/server', {
                     method: 'POST',
-                    body: formData
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ filename: filename })
                 });
                 
                 const result = await response.json();
@@ -664,15 +704,17 @@
                 if (response.ok) {
                     statusMsg.innerText = "✅ " + result.message;
                     statusMsg.style.color = "#00ffcc";
-                    fileInput.value = ""; // clear input
                 } else {
                     statusMsg.innerText = "❌ Error: " + result.message;
                     statusMsg.style.color = "#ff4d4d";
                 }
             } catch (error) {
-                statusMsg.innerText = "❌ Network Error during upload.";
+                statusMsg.innerText = "❌ Network Error during import.";
                 statusMsg.style.color = "#ff4d4d";
             }
+            
+            btn.disabled = false;
+            btn.innerText = "📥 Import Selected";
         }
 
         async function discoverGhostfolioAccounts() {

@@ -1,6 +1,7 @@
 # api_routes.py
 import os
 import io
+import glob
 import json
 import time
 import signal
@@ -8,12 +9,13 @@ import subprocess
 import pandas as pd
 from datetime import datetime
 from typing import List, Optional
+from pathlib import Path
 
-from fastapi import APIRouter, Request, BackgroundTasks, UploadFile, File, HTTPException
+from fastapi import APIRouter, Request, BackgroundTasks, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from config import load_config, SECRETS_PATH
+from config import load_config, SECRETS_PATH, DATA_DIR
 from database import get_connection, get_universe_tickers
 from scheduler_engine import run_update_pipeline, run_ghostfolio_sync, reload_scheduler
 from ghostfolio_sync import GhostfolioSyncEngine
@@ -53,6 +55,12 @@ class OptionLeg(BaseModel):
 class PayoffRequest(BaseModel):
     current_price: float
     legs: List[OptionLeg]
+
+class ImportRequest(BaseModel):
+    filename: str
+
+class PulseRequest(BaseModel):
+    tickers: Optional[List[str]] = []
 
 
 def bg_execute_quant_scan():
@@ -134,20 +142,37 @@ async def trigger_universe_quant_scan_endpoint(background_tasks: BackgroundTasks
         "message": "Full Universe Quant Scan initiated in the background. This will take over an hour. Check System Notifications for progress."
     })
 
-@api_router.post("/universe/import")
-async def import_universe_csv(file: UploadFile = File(...)):
+@api_router.get("/universe/imports/list")
+async def list_importable_csvs():
+    """Scans the designated imports directory on the server for CSV files."""
+    try:
+        imports_dir = DATA_DIR / "imports"
+        # Ensure directory exists to prevent crashes on fresh installs
+        imports_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Use pathlib globbing to extract valid CSVs
+        files = [f.name for f in imports_dir.glob("*.csv")]
+        return JSONResponse(content={"status": "success", "files": files})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"status": "error", "message": f"Failed to list import directory: {str(e)}"})
+
+@api_router.post("/universe/import/server")
+async def import_server_csv(request: ImportRequest):
     """
-    API endpoint to securely accept a CSV containing a custom market universe, 
-    parse it instantly using Pandas, and bulk-load it into SQLite.
+    API endpoint to securely read a CSV file directly from the server's imports directory,
+    parse it using Pandas, and bulk-load it into SQLite.
     """
-    if not file.filename.endswith('.csv'):
+    if not request.filename.endswith('.csv'):
         return JSONResponse(status_code=400, content={"status": "error", "message": "Invalid file type. Only .csv files are supported."})
     
     try:
-        # Load the uploaded file stream entirely into memory
-        contents = await file.read()
-        csv_data = io.StringIO(contents.decode('utf-8'))
-        df = pd.read_csv(csv_data)
+        imports_dir = DATA_DIR / "imports"
+        file_path = imports_dir / request.filename
+        
+        if not file_path.exists():
+            return JSONResponse(status_code=404, content={"status": "error", "message": f"File '{request.filename}' not found on server."})
+            
+        df = pd.read_csv(file_path)
         
         # Enforce exact column structures 
         required_cols = ['ticker', 'company_name', 'sector', 'industry', 'currency', 'country']
@@ -186,14 +211,12 @@ async def import_universe_csv(file: UploadFile = File(...)):
         
         return JSONResponse(content={
             "status": "success", 
-            "message": f"Successfully sideloaded {len(records)} assets into the local Market Universe."
+            "message": f"Successfully sideloaded {len(records)} assets from '{request.filename}' into the local Market Universe."
         })
         
     except Exception as e:
         return JSONResponse(status_code=500, content={"status": "error", "message": f"Fatal error executing CSV parser: {str(e)}"})
 
-class PulseRequest(BaseModel):
-    tickers: Optional[List[str]] = []
 
 def execute_restart():
     """Background task to wait 2 seconds, then kill the Python process."""
