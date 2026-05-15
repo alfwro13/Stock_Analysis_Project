@@ -409,12 +409,13 @@ async def get_screener_data():
         conn = get_connection()
         cursor = conn.cursor()
         
-        # UPDATED QUERY: Added composite_score for frontend UI ML divergence correlation
+        # UPDATED QUERY: Added composite_score for frontend UI ML divergence correlation, and Country support
         query = """
         SELECT 
             q.ticker, 
             COALESCE(p.company_name, m.company_name, q.ticker) as company_name, 
             COALESCE(p.sector, s.sector, 'Unclassified') as sector, 
+            COALESCE(p.country, m.country, 'US') as country,
             q.date, q.close_price, 
             q.volume, q.rsi_14, q.macd_hist, q.sma_50, q.sma_200, 
             q.volume_surge, q.bullish_cross,

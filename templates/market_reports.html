@@ -39,6 +39,7 @@
             <thead>
                 <tr>
                     <th>Sector</th>
+                    <th>Country</th>
                     <th>Total Stocks</th>
                     <th><abbr title="Relative Strength Index (14-Day)">Average RSI (14)</abbr></th>
                     <th><abbr title="Percentage of stocks trading above their 50-day Simple Moving Average">Stocks > 50D SMA (%)</abbr></th>
@@ -70,6 +71,7 @@
                     <th>Ticker</th>
                     <th>Company Name</th>
                     <th>Sector</th>
+                    <th>Country</th>
                     <th>Close Price</th>
                     <th><abbr title="Relative Strength Index (14-Day)">RSI (14)</abbr></th>
                     <th><abbr title="Moving Average Convergence Divergence Histogram">MACD Hist</abbr></th>
@@ -107,6 +109,7 @@
                     <th>Ticker</th>
                     <th>Company Name</th>
                     <th>Sector</th>
+                    <th>Country</th>
                     <th>Close Price</th>
                     <th><abbr title="Relative Strength Index (14-Day)">RSI (14)</abbr></th>
                     <th><abbr title="200-Day Simple Moving Average">200D SMA</abbr></th>
@@ -137,7 +140,7 @@
                 paging: false,
                 info: false,
                 searching: false,
-                order: [[2, 'desc']], // Sort by Avg RSI descending
+                order: [[3, 'desc']], // Sort by Avg RSI descending (Updated index to 3)
                 columns: [
                     { 
                         data: 'sector',
@@ -146,6 +149,7 @@
                             return `<a href="/market-screener?sector=${encodedSector}" style="color: #4da6ff; font-weight: bold;" title="View all ${data} stocks">${data}</a>`;
                         }
                     },
+                    { data: 'country', render: function(data) { return data || 'US'; } },
                     { data: 'total_stocks' },
                     { 
                         data: 'avg_rsi',
@@ -178,11 +182,12 @@
                 ajax: '/api/reports/leaders',
                 deferRender: true,
                 pageLength: 10,
-                order: [[4, 'desc']], // Sort by RSI
+                order: [[5, 'desc']], // Sort by RSI (Updated index to 5)
                 columns: [
                     { data: 'ticker', render: function(data) { return '<a href="/stock/' + data + '" style="color: #4da6ff; font-weight: bold;">' + data + '</a>'; } },
                     { data: 'company_name' },
                     { data: 'sector' },
+                    { data: 'country', render: function(data) { return data || 'US'; } },
                     { data: 'close_price', render: $.fn.dataTable.render.number(',', '.', 2, '$') },
                     { data: 'rsi_14', render: function(data) { return `<span class="positive-val">${data.toFixed(2)}</span>`; } },
                     { data: 'macd_hist', render: function(data) { return `<span class="positive-val">${data.toFixed(3)}</span>`; } }
@@ -193,11 +198,12 @@
             mrDataTable = $('#mrTable').DataTable({
                 deferRender: true,
                 pageLength: 10,
-                order: [[4, 'asc']], // Sort by lowest RSI
+                order: [[5, 'asc']], // Sort by lowest RSI (Updated index to 5)
                 columns: [
                     { data: 'ticker', render: function(data) { return '<a href="/stock/' + data + '" style="color: #4da6ff; font-weight: bold;">' + data + '</a>'; } },
                     { data: 'company_name' },
                     { data: 'sector' },
+                    { data: 'country', render: function(data) { return data || 'US'; } },
                     { data: 'close_price', render: $.fn.dataTable.render.number(',', '.', 2, '$') },
                     { data: 'rsi_14', render: function(data) { return `<span class="negative-val">${data.toFixed(2)}</span>`; } },
                     { data: 'sma_200', render: $.fn.dataTable.render.number(',', '.', 2, '$') },
