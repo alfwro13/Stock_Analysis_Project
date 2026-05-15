@@ -1,5 +1,6 @@
 # database.py
 import sqlite3
+from typing import List
 from config import DB_PATH
 
 def get_connection():
@@ -106,6 +107,74 @@ def init_db():
             last_updated REAL
         )
     ''')
+
+    # New table for Quantitative Signals Tracking (Enricher Engine)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS quant_signals (
+            ticker TEXT,
+            date TEXT,
+            close_price REAL,
+            volume INTEGER,
+            rsi_14 REAL,
+            macd REAL,
+            macd_signal REAL,
+            macd_hist REAL,
+            sma_50 REAL,
+            sma_200 REAL,
+            volume_surge BOOLEAN,
+            bullish_cross BOOLEAN,
+            PRIMARY KEY (ticker, date)
+        )
+    ''')
+
+    # New table for Quant Scan State / Resumability Tracking
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS quant_scan_states (
+            scan_date TEXT PRIMARY KEY,
+            last_processed_ticker TEXT,
+            status TEXT
+        )
+    ''')
+
+    # New table for Quantitative Earnings Options Volatility
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS earnings_volatility (
+            ticker TEXT PRIMARY KEY,
+            next_earnings_date TEXT,
+            implied_move_pct REAL,
+            historical_avg_move_pct REAL,
+            edge_score REAL,
+            options_volume INTEGER,
+            last_updated TEXT
+        )
+    ''')
+
+    # New table for the Expanded Market Universe (4,000+ Tickers)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS market_universe (
+            ticker TEXT PRIMARY KEY,
+            company_name TEXT,
+            sector TEXT,
+            industry TEXT,
+            last_updated TEXT
+        )
+    ''')
+    
+    # --- CENTRALIZED STATIC ASSET PROFILES (3NF NORMALIZATION) ---
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS asset_profiles (
+            ticker TEXT PRIMARY KEY,
+            company_name TEXT,
+            sector TEXT,
+            industry TEXT,
+            country TEXT,
+            exchange TEXT,
+            currency TEXT,
+            quote_type TEXT,
+            business_summary TEXT,
+            last_verified_date TIMESTAMP
+        )
+    ''')
     
     conn.commit()
     
@@ -144,6 +213,22 @@ def migrate_db(conn, cursor):
             cursor.execute(f"ALTER TABLE stock_signals ADD COLUMN {col_name} {data_type}")
     
     conn.commit()
+
+def get_universe_tickers() -> List[str]:
+    """
+    Connects to the SQLite DB and extracts all tracked universe tickers.
+    If the universe is empty, returns an empty list.
+    """
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT ticker FROM market_universe")
+        tickers = [row['ticker'] for row in cursor.fetchall()]
+        conn.close()
+        return tickers
+    except Exception as e:
+        print(f"[ERROR] Failed to fetch universe tickers: {e}")
+        return []
 
 if __name__ == "__main__":
     init_db()

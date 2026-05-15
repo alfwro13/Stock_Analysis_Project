@@ -171,3 +171,6 @@ This custom integration is a personal project and is provided strictly "as is" a
 * **No Liability:** The author takes absolutely no responsibility for any damage, data loss, misuse, system instability, or any other issues caused by the installation or operation of this software. This software is for informational and educational purposes only. It is not financial advice. The proprietary scoring system, candlestick recognition, and ATR Stop-Loss calculations are mathematical models, not guarantees of market performance. Always do your own due diligence before trading.
 * **Community Driven:** You are free to fork, modify, and use this integration however you see fit. If you encounter bugs, you are welcome to submit a Pull Request, but do not expect immediate fixes or dedicated maintenance.
 
+## **🙌 Credits & Acknowledgments**
+
+Parts of this project's structural inspiration and specific script logic were adapted from the excellent [namuan/trading-utils](https://github.com/namuan/trading-utils/) repository. A huge thank you to the author for their open-source contributions to the quantitative trading and financial data community!

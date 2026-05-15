@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="color-scheme" content="dark">
+    <title>Quantamental - Quant Screener</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+    
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body class="body-watchlist">
+    
+    <div class="header-container">
+        <div>
+            <div class="title-wrapper">
+                <a href="https://github.com/alfwro13/Stock_Analysis_Project" target="_blank" class="logo-link">
+                    <img src="/assets/logo_small.png" alt="Quantamental Logo" class="logo-img">
+                </a>
+                <h1><abbr title="Quantamental - a modern institutional strategy that combines Quantitative analysis with Fundamental analysis.">uantamental</abbr> Dashboard</h1>
+            </div>
+            
+            <p style="color: #aaaaaa; margin-top: 5px; font-size: 14px;">Signals Generated For: <strong>{{ target_date }}</strong></p>
+            
+            <div class="nav-links">
+                <a href="/portfolio">💼 Portfolio</a>
+                <a href="/watchlist">👀 Watchlist</a>
+                <a href="/quant-screener" class="active">📊 Quant Screener</a>
+                <a href="/earnings-volatility">📅 Earnings Volatility</a>
+                <a href="/options-sandbox">🎲 Options Sandbox</a>
+                <a href="/market-sentiment">Market Sentiment</a>
+                <a href="/market-screener">🌐 Market Screener</a>
+                <a href="/market-reports">📈 Market Reports</a>
+                <a href="/settings">⚙️ Settings</a>
+                <a href="/glossary">📚 Glossary</a>
+                <a href="/notifications">🔔 Notifications {% if unread_count > 0 %}<span class="badge" id="nav-badge">{{ unread_count }}</span>{% endif %}</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="report-container" id="markdown-render-area">
+        </div>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            // Securely extract the JSON-escaped markdown payload from the backend
+            const rawMarkdown = {{ markdown_content | tojson | safe }};
+            
+            // Parse the markdown into HTML and inject it into the DOM container
+            document.getElementById('markdown-render-area').innerHTML = marked.parse(rawMarkdown);
+        });
+    </script>
+</body>
+</html>

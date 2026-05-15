@@ -16,17 +16,9 @@
                 </a>
                 <h1>System Notifications</h1>
             </div>
-            <div class="nav-links">
-                <a href="/portfolio">💼 Portfolio</a>
-                <a href="/watchlist">👀 Watchlist</a>
-                <a href="/market-sentiment">🧠 Market Sentiment</a>
-                <a href="/settings">⚙️ Settings</a>
-                <a href="/glossary">📚 Glossary</a>
-                <a href="/notifications" class="active">
-                    🔔 Notifications 
-                    {% if unread_count > 0 %}<span class="badge" id="nav-badge">{{ unread_count }}</span>{% endif %}
-                </a>
-            </div>
+            
+            {% set active_page = 'notifications' %}
+            {% include 'navbar.html' %}
         </div>
         <div>
             <button class="btn-read" onclick="markAllAsRead()">✓ Mark All as Read</button>
@@ -45,15 +37,62 @@
             </div>
             {% endfor %}
         {% else %}
-            <div class="notification-card">
+            <div class="notification-card" id="empty-state-msg">
                 <div class="notification-body" style="text-align: center; color: #888;">
-                    No notifications generated yet.
+                    No notifications generated yet. Wait for a background scan to complete.
                 </div>
             </div>
         {% endif %}
     </div>
 
     <script>
+        // Store the highest ID generated on initial render so we only fetch exactly what's new.
+        let lastNotificationId = {% if notifications %}{{ notifications[0].id }}{% else %}0{% endif %};
+
+        // Delta Auto-Refresh Polling Engine
+        setInterval(async () => {
+            try {
+                const response = await fetch(`/api/notifications/latest?last_id=${lastNotificationId}`);
+                const result = await response.json();
+                
+                if (response.ok && result.status === 'success') {
+                    const notes = result.notifications;
+                    if (notes.length > 0) {
+                        const list = document.querySelector('.notification-list');
+                        
+                        // Clear out the empty state message dynamically if it exists
+                        const emptyMsg = document.getElementById('empty-state-msg');
+                        if (emptyMsg) emptyMsg.remove();
+
+                        notes.forEach(note => {
+                            const card = document.createElement('div');
+                            card.className = 'notification-card unread';
+                            card.innerHTML = `
+                                <div class="notification-header">
+                                    <span class="notification-type">${note.type} Alert</span>
+                                    <span>${note.timestamp}</span>
+                                </div>
+                                <div class="notification-body">${note.text}</div>
+                            `;
+                            list.prepend(card);
+                            
+                            // Advance the marker to the newest ID
+                            lastNotificationId = Math.max(lastNotificationId, note.id);
+                        });
+
+                        // Dynamically increase the navbar badge if it exists
+                        const badge = document.getElementById('nav-badge');
+                        if (badge) {
+                            badge.innerText = parseInt(badge.innerText || '0') + notes.length;
+                            badge.style.display = 'inline-block';
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error("Failed to poll notifications:", error);
+            }
+        }, 15000); // Checks for new database rows every 15 seconds
+
         async function markAllAsRead() {
             const btn = document.querySelector('.btn-read');
             btn.disabled = true;
@@ -63,11 +102,9 @@
                 const response = await fetch('/api/notifications/mark-read', { method: 'POST' });
                 
                 if (response.ok) {
-                    // Update the UI dynamically to remove unread styling
                     const unreadCards = document.querySelectorAll('.notification-card.unread');
                     unreadCards.forEach(card => card.classList.remove('unread'));
                     
-                    // Remove the badge
                     const badge = document.getElementById('nav-badge');
                     if (badge) badge.style.display = 'none';
                     

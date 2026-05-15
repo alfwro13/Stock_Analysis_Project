@@ -14,6 +14,7 @@ from market_pulse import get_all_cached_pulse
 from visuals import create_macro_chart, create_intraday_chart
 from portfolio_service import get_rate_to_base, get_rate_from_base
 from quant_signals import get_candlestick_patterns
+from quant_screener import fetch_latest_signals, generate_markdown_briefing
 
 page_router = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -44,6 +45,18 @@ async def settings_page(request: Request):
 @page_router.get("/market-sentiment", response_class=HTMLResponse)
 async def market_sentiment_page(request: Request):
     return templates.TemplateResponse(request=request, name="market_sentiment.html", context={"sentiment_html": get_sentiment_html(), "unread_count": get_unread_count()})
+
+@page_router.get("/options-sandbox", response_class=HTMLResponse)
+async def options_sandbox_page(request: Request):
+    return templates.TemplateResponse(
+        request=request, 
+        name="options_sandbox.html", 
+        context={
+            "unread_count": get_unread_count(),
+            "config": load_config(),
+            "cached_pulse": get_all_cached_pulse()
+        }
+    )
 
 @page_router.get("/notifications", response_class=HTMLResponse)
 async def notifications_page(request: Request):
@@ -198,16 +211,190 @@ async def watchlist_page(request: Request, embed: bool = False):
         }
     )
 
-@page_router.get("/stock/{ticker}", response_class=HTMLResponse)
-async def stock_detail(request: Request, ticker: str, embed: bool = False):
+@page_router.get("/earnings-volatility", response_class=HTMLResponse)
+async def earnings_volatility_page(request: Request):
+    today_str = datetime.now().strftime('%Y-%m-%d')
+    
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM stock_signals WHERE ticker = ?", (ticker,))
-    stock_data = cursor.fetchone()
     
-    if stock_data: stock_data = dict(stock_data)
+    query = """
+        SELECT * FROM earnings_volatility 
+        WHERE next_earnings_date >= ?
+        ORDER BY next_earnings_date ASC, edge_score DESC
+    """
+    cursor.execute(query, (today_str,))
+    rows = cursor.fetchall()
+    
+    earnings_data = [dict(row) for row in rows]
     conn.close()
     
+    return templates.TemplateResponse(
+        request=request, 
+        name="earnings_volatility.html", 
+        context={
+            "earnings_data": earnings_data,
+            "unread_count": get_unread_count(),
+            "config": load_config()
+        }
+    )
+
+@page_router.get("/quant-screener", response_class=HTMLResponse)
+async def quant_screener_page(request: Request):
+    today = datetime.now()
+    target_date = today.strftime('%Y-%m-%d')
+    
+    signals = fetch_latest_signals(target_date)
+    
+    if not signals:
+        yesterday = today - timedelta(days=1)
+        target_date = yesterday.strftime('%Y-%m-%d')
+        signals = fetch_latest_signals(target_date)
+        
+    if signals:
+        markdown_content = generate_markdown_briefing(target_date, signals)
+    else:
+        markdown_content = (
+            f"# 📊 Morning Quant Briefing\n"
+            f"**Date:** {target_date}\n\n"
+            f"*No signals available for today or yesterday. Ensure the `quant_engine` scheduled overnight scan is running successfully.*"
+        )
+        
+    return templates.TemplateResponse(
+        request=request, 
+        name="quant_screener.html", 
+        context={
+            "markdown_content": markdown_content,
+            "target_date": target_date,
+            "unread_count": get_unread_count(),
+            "config": load_config()
+        }
+    )
+
+@page_router.get("/market-screener", response_class=HTMLResponse)
+async def market_screener_page(request: Request):
+    return templates.TemplateResponse(
+        request=request, 
+        name="market_screener.html", 
+        context={
+            "unread_count": get_unread_count(),
+            "config": load_config()
+        }
+    )
+
+@page_router.get("/market-reports", response_class=HTMLResponse)
+async def market_reports_page(request: Request):
+    return templates.TemplateResponse(
+        request=request, 
+        name="market_reports.html", 
+        context={
+            "unread_count": get_unread_count(),
+            "config": load_config()
+        }
+    )
+
+@page_router.get("/stock/{ticker}", response_class=HTMLResponse)
+async def stock_detail(request: Request, ticker: str, embed: bool = False):
+    
+    # 1. Check if the ticker is currently in the Watchlist JSON
+    watchlist_json = get_json_data(WATCHLIST_PATH)
+    watchlist_tickers = watchlist_json.get("watchlist", [])
+    is_in_watchlist = ticker in watchlist_tickers
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    # MODIFIED: Joined asset_profiles table directly to pull business_summary for portfolio assets
+    cursor.execute('''
+        SELECT s.*, p.business_summary 
+        FROM stock_signals s
+        LEFT JOIN asset_profiles p ON s.ticker = p.ticker
+        WHERE s.ticker = ?
+    ''', (ticker,))
+    stock_data = cursor.fetchone()
+    
+    if stock_data: 
+        stock_data = dict(stock_data)
+        if stock_data.get("company_name"):
+            stock_data["company_name"] = stock_data["company_name"].replace(" - Common Stock", "").replace(" Common Stock", "").strip()
+    else:
+        cursor.execute('''
+            SELECT q.*, 
+                   COALESCE(p.company_name, m.company_name, q.ticker) as company_name, 
+                   COALESCE(p.sector, 'Unclassified') as sector, 
+                   COALESCE(p.currency, 'USD') as currency, 
+                   COALESCE(p.quote_type, 'EQUITY') as quote_type, 
+                   p.business_summary 
+            FROM quant_signals q
+            LEFT JOIN market_universe m ON q.ticker = m.ticker
+            LEFT JOIN asset_profiles p ON q.ticker = p.ticker
+            WHERE q.ticker = ? ORDER BY q.date DESC LIMIT 1
+        ''', (ticker,))
+        q_data = cursor.fetchone()
+        
+        if q_data:
+            q_data = dict(q_data)
+            company_name = q_data.get("company_name") or ticker
+            company_name = company_name.replace(" - Common Stock", "").replace(" Common Stock", "").strip()
+            
+            c_price = q_data.get("close_price")
+            c_price = float(c_price) if c_price is not None else 0.0
+            
+            stock_data = {
+                "ticker": ticker,
+                "company_name": company_name,
+                "sector": q_data.get("sector") or "Unclassified",
+                "quote_type": q_data.get("quote_type") or "EQUITY",
+                "currency": q_data.get("currency") or "USD",
+                "current_price": c_price,
+                "overall_signal": "UNIVERSE SCAN ONLY",
+                "composite_score": "N/A",
+                "educational_notes": "This asset is part of the broader market universe scan. Add it to your Ghostfolio or Watchlist to trigger a deep, institutional fundamental evaluation.",
+                "business_summary": q_data.get("business_summary"),
+                "next_earnings_date": "Unknown",
+                "target_price": None,
+                "trend_50d": "UP" if q_data.get("sma_50") and c_price > q_data.get("sma_50") else "DOWN",
+                "trend_200d": "UP" if q_data.get("sma_200") and c_price > q_data.get("sma_200") else "DOWN",
+                "rsi_14": q_data.get("rsi_14"),
+                "atr_stop_loss": None,
+                "last_updated": None
+            }
+        else:
+            stock_data = {
+                "ticker": ticker,
+                "company_name": ticker,
+                "sector": "Unknown",
+                "quote_type": "UNKNOWN",
+                "currency": "USD",
+                "current_price": 0.0,
+                "overall_signal": "UNKNOWN",
+                "composite_score": "N/A",
+                "educational_notes": "Data not found. Asset may not be tracked.",
+                "business_summary": None,
+                "next_earnings_date": "Unknown",
+                "target_price": None,
+                "trend_50d": "N/A",
+                "trend_200d": "N/A",
+                "rsi_14": None,
+                "atr_stop_loss": None,
+                "last_updated": None
+            }
+            
+    conn.close()
+    
+    # 2. Evaluate Data Staleness for the Refresh Button
+    data_status = 'red'
+    last_updated_str = "Never"
+    if stock_data and stock_data.get('last_updated'):
+        last_updated_str = stock_data['last_updated']
+        try:
+            lu_date = datetime.strptime(last_updated_str, "%Y-%m-%d %H:%M:%S")
+            if datetime.now() - lu_date < timedelta(hours=24):
+                data_status = 'green'
+            else:
+                data_status = 'yellow'
+        except Exception:
+            data_status = 'red'
+
     top_holdings = []
     sector_weightings = []
     if stock_data and stock_data.get('top_holdings'):
@@ -219,7 +406,7 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
 
     days_to_earnings = None
     volatility_date = None
-    if stock_data and stock_data['next_earnings_date'] and stock_data['next_earnings_date'] != 'Unknown':
+    if stock_data and stock_data.get('next_earnings_date') and stock_data['next_earnings_date'] != 'Unknown':
         try:
             e_date = datetime.strptime(stock_data['next_earnings_date'], '%Y-%m-%d').date()
             today = datetime.now().date()
@@ -232,7 +419,7 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
     user_asset = next((data for key, data in portfolio_json.items() if data.get("ticker") == ticker), None)
     
     portfolio_math = None
-    if user_asset and stock_data and stock_data['current_price']:
+    if user_asset and stock_data and stock_data.get('current_price'):
         exchange_rate = get_rate_from_base(stock_data['currency'])
         
         def calculate_pnl(shares, buy_price_base):
@@ -286,7 +473,7 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
             }
     except Exception as e:
         df_macro = pd.DataFrame()
-        macro_html = f"<p>Chart Data Unavailable: {e}</p>"
+        macro_html = f"<p style='color:#888; font-style:italic;'>Historical Chart Data Unavailable for this asset. Error: {e}</p>"
 
     live_pattern_name = live_pattern_tooltip = live_pattern_score = None
     try:
@@ -308,7 +495,7 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
         s2_val = price_action['s2'] if price_action else None
         intraday_html = create_intraday_chart(df_intraday, ticker, s1=s1_val, s2=s2_val, live_pattern_name=live_pattern_name, live_pattern_tooltip=live_pattern_tooltip, live_pattern_score=live_pattern_score)
     except Exception:
-        intraday_html = "<p>Intraday data unavailable.</p>"
+        intraday_html = "<p style='color:#888; font-style:italic;'>Intraday data unavailable.</p>"
         
     return templates.TemplateResponse(
         request=request, name="stock_detail.html", 
@@ -325,6 +512,9 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
             "unread_count": get_unread_count(),
             "embed": embed,
             "config": load_config(),
-            "cached_pulse": get_all_cached_pulse()
+            "cached_pulse": get_all_cached_pulse(),
+            "is_in_watchlist": is_in_watchlist,
+            "data_status": data_status,
+            "last_updated_str": last_updated_str
         }
     )

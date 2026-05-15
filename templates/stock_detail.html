@@ -13,15 +13,15 @@
             <a href="https://github.com/alfwro13/Stock_Analysis_Project" target="_blank" style="margin-right: 15px; border: none;">
                 <img src="/assets/logo_small.png" alt="Logo" style="height: 30px; vertical-align: middle; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">
             </a>
-            <a href="{% if embed %}/portfolio?embed=true{% else %}/{% endif %}">← Dashboard</a> 
+            
+            <a href="javascript:history.back()">← Back</a> 
+            
             {% if not embed %}
             <span class="divider">|</span>
-            <a href="/market-sentiment">🧠 Market Sentiment</a> <span class="divider">|</span>
             <a href="#verdict">Verdict</a> <span class="divider">|</span>
             <a href="#charts">Interactive Charts</a> <span class="divider">|</span>
             <a href="#price-action">Price Action</a> <span class="divider">|</span>
             <a href="#fundamentals">Fundamentals</a> <span class="divider">|</span>
-            <a href="/settings">⚙️ Settings</a> <span class="divider">|</span>
             <a href="/glossary">📚 Glossary</a> <span class="divider">|</span>
             <a href="/notifications">🔔 Notifications {% if unread_count > 0 %}<span class="badge" id="nav-badge">{{ unread_count }}</span>{% endif %}</a>
             {% endif %}
@@ -29,7 +29,13 @@
     </div>
 
     <div class="container">
-        <h1>{{ stock.company_name }} ({{ stock.ticker }}) <a href="https://finance.yahoo.com/quote/{{ stock.ticker }}" target="_blank" class="yahoo-link">↗ View on Yahoo Finance</a></h1>
+        <h1 style="display: flex; align-items: center; gap: 10px; position: relative;">
+            <span id="watchlist-star" style="cursor: pointer; color: #ffaa00; user-select: none;" title="Toggle Watchlist" onclick="toggleWatchlist('{{ stock.ticker }}')">
+                {% if is_in_watchlist %}★{% else %}☆{% endif %}
+            </span>
+            {{ stock.company_name }} ({{ stock.ticker }}) 
+            <a href="https://finance.yahoo.com/quote/{{ stock.ticker }}" target="_blank" class="yahoo-link" style="margin-left: auto;">↗ View on Yahoo Finance</a>
+        </h1>
         <p class="subtitle">Type: {{ stock.quote_type }} | Sector/Category: {{ stock.sector }} | Currency: {{ stock.currency }}</p>
         
         <script>
@@ -81,7 +87,11 @@
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <h2 style="border:none; margin: 0; padding:0;">System Verdict: {{ stock.overall_signal }} ({{ stock.composite_score }}/100)</h2>
                     
-                    <div style="position: relative; display: inline-block;">
+                    <div style="position: relative; display: inline-flex; gap: 10px; align-items: center;">
+                        <button id="refreshDataBtn" onclick="refreshSingleData('{{ stock.ticker }}')" class="btn-refresh {{ data_status }}" title="Data Last Updated: {{ last_updated_str }}">
+                            <span class="btn-icon">↻</span> Refresh
+                        </button>
+
                         <button onclick="toggleAIDropdown()" class="ai-btn">✨ AI</button>
                         <div id="aiDropdown" class="ai-dropdown-content">
                             <a href="javascript:void(0)" onclick="fetchAndCopyAIPrompt('{{ stock.ticker }}', 'The Devil\'s Advocate analysis')">The Devil's Advocate analysis</a>
@@ -121,6 +131,17 @@
                     {{ stock.educational_notes | safe }}
                 </div>
                 
+                {% if stock.business_summary %}
+                <details style="background-color: #1a1a1a; border-radius: 5px; margin-top: 15px; border-left: 3px solid #555;">
+                    <summary style="padding: 12px 15px; cursor: pointer; color: #4da6ff; font-weight: bold; outline: none; user-select: none;">
+                        🏢 Company Profile <span style="color: #888; font-size: 12px; font-weight: normal; margin-left: 10px;">(Click to expand)</span>
+                    </summary>
+                    <div style="padding: 0 15px 15px 15px; line-height: 1.6; font-size: 14px; color: #ccc;">
+                        {{ stock.business_summary }}
+                    </div>
+                </details>
+                {% endif %}
+
                 {% if stock.next_earnings_date and stock.next_earnings_date != 'Unknown' %}
                     {% if days_to_earnings is not none %}
                         {% if days_to_earnings >= 0 %}
@@ -356,6 +377,79 @@
     </div>
 
     <script>
+        // --- WATCHLIST TOGGLE LOGIC ---
+        let isInWatchlist = {{ 'true' if is_in_watchlist else 'false' }};
+        
+        async function toggleWatchlist(ticker) {
+            const star = document.getElementById('watchlist-star');
+            star.style.pointerEvents = 'none';
+            star.style.opacity = '0.5';
+            
+            const endpoint = isInWatchlist ? '/api/watchlist/remove' : '/api/watchlist/add';
+            
+            try {
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ticker: ticker })
+                });
+                const data = await response.json();
+                
+                if (response.ok && data.status === 'success') {
+                    isInWatchlist = !isInWatchlist;
+                    star.innerText = isInWatchlist ? '★' : '☆';
+                    
+                    // Show a transient success indicator next to the star
+                    const msg = document.createElement('span');
+                    msg.innerText = " Syncing...";
+                    msg.style.fontSize = "13px";
+                    msg.style.color = "#00ffcc";
+                    msg.style.position = "absolute";
+                    msg.style.marginLeft = "30px";
+                    msg.style.top = "50%";
+                    msg.style.transform = "translateY(-50%)";
+                    star.parentNode.appendChild(msg);
+                    
+                    setTimeout(() => msg.remove(), 2000);
+                } else {
+                    alert("Failed to update watchlist: " + (data.message || "Unknown error"));
+                }
+            } catch (e) {
+                alert("Network error updating watchlist.");
+            }
+            
+            star.style.pointerEvents = 'auto';
+            star.style.opacity = '1';
+        }
+
+        // --- SINGLE ASSET REFRESH LOGIC ---
+        async function refreshSingleData(ticker) {
+            const btn = document.getElementById('refreshDataBtn');
+            btn.disabled = true;
+            btn.innerHTML = `<span class="btn-icon spin-icon">↻</span> Crunching...`;
+            
+            try {
+                const response = await fetch('/api/data/refresh-single', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ticker: ticker })
+                });
+                const data = await response.json();
+                if (response.ok && data.status === 'success') {
+                    // Instantly reload to show the freshly calculated math and new Data Status colors
+                    window.location.reload();
+                } else {
+                    alert("Failed to refresh data: " + (data.message || "Unknown error"));
+                    btn.disabled = false;
+                    btn.innerHTML = `<span class="btn-icon">↻</span> Refresh`;
+                }
+            } catch (e) {
+                alert("Network error refreshing data.");
+                btn.disabled = false;
+                btn.innerHTML = `<span class="btn-icon">↻</span> Refresh`;
+            }
+        }
+
         function toggleFullscreen(wrapperId) {
             const wrapper = document.getElementById(wrapperId);
             const isFullscreen = wrapper.classList.contains('is-fullscreen');
@@ -376,7 +470,6 @@
             document.getElementById("aiDropdown").classList.toggle("show");
         }
 
-        // Close the dropdown if the user clicks anywhere else
         window.onclick = function(event) {
             if (!event.target.matches('.ai-btn')) {
                 var dropdowns = document.getElementsByClassName("ai-dropdown-content");
@@ -393,35 +486,28 @@
             const btn = document.querySelector('.ai-btn');
             const originalText = btn.innerHTML;
             
-            // Visual feedback
             btn.innerText = "⏳ Generating...";
             btn.style.backgroundColor = "#ffaa00";
             btn.style.color = "#121212";
             btn.style.borderColor = "#ffaa00";
             
             try {
-                // Call the new backend engine
                 const response = await fetch(`/api/ai-prompt/${ticker}?mode=${encodeURIComponent(mode)}`);
                 const data = await response.json();
                 
                 if (response.ok) {
-                    
-                    // --- HTTP vs HTTPS CLIPBOARD FALLBACK LOGIC ---
                     if (navigator.clipboard && window.isSecureContext) {
-                        // Standard secure HTTPS / localhost copy
                         await navigator.clipboard.writeText(data.prompt);
                     } else {
-                        // Legacy fallback for local network HTTP (e.g. http://192.168.x.x)
                         const textArea = document.createElement("textarea");
                         textArea.value = data.prompt;
-                        textArea.style.position = "fixed";  // Avoid scrolling to bottom
+                        textArea.style.position = "fixed"; 
                         document.body.appendChild(textArea);
                         textArea.focus();
                         textArea.select();
                         document.execCommand('copy');
                         document.body.removeChild(textArea);
                     }
-                    // ----------------------------------------------
                     
                     btn.innerText = "✅ Copied!";
                     btn.style.backgroundColor = "#00ff00";
@@ -436,7 +522,6 @@
                 btn.style.backgroundColor = "#ff4d4d";
             }
             
-            // Revert button after 3 seconds
             setTimeout(() => { 
                 btn.innerHTML = originalText; 
                 btn.style.backgroundColor = ""; 

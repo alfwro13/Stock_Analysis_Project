@@ -234,6 +234,39 @@ class GhostfolioSyncEngine:
             print(f"[ERROR] Failed to sync watchlist: {e}")
             return False
 
+    def add_to_watchlist(self, symbol: str) -> bool:
+        """Adds a single ticker to the Ghostfolio Watchlist using the default YAHOO dataSource."""
+        if not self.authenticate():
+            return False
+        try:
+            payload = {"symbol": symbol, "dataSource": "YAHOO"}
+            response = requests.post(f"{self.url}/api/v1/watchlist", json=payload, headers=self.headers, verify=False, timeout=10)
+            if response.status_code in [200, 201]:
+                print(f"[SUCCESS] Added {symbol} to Ghostfolio Watchlist.")
+                return True
+            else:
+                print(f"[ERROR] Failed to add {symbol} to Watchlist: HTTP {response.status_code} - {response.text}")
+                return False
+        except Exception as e:
+            print(f"[ERROR] Exception adding {symbol} to Watchlist: {e}")
+            return False
+
+    def remove_from_watchlist(self, symbol: str) -> bool:
+        """Removes a single ticker from the Ghostfolio Watchlist using the YAHOO dataSource route."""
+        if not self.authenticate():
+            return False
+        try:
+            response = requests.delete(f"{self.url}/api/v1/watchlist/YAHOO/{symbol}", headers=self.headers, verify=False, timeout=10)
+            if response.status_code in [200, 204]:
+                print(f"[SUCCESS] Removed {symbol} from Ghostfolio Watchlist.")
+                return True
+            else:
+                print(f"[ERROR] Failed to remove {symbol} from Watchlist: HTTP {response.status_code} - {response.text}")
+                return False
+        except Exception as e:
+            print(f"[ERROR] Exception removing {symbol} from Watchlist: {e}")
+            return False
+
     def run_full_sync(self) -> bool:
         """Executes the complete Ghostfolio extraction pipeline sequentially."""
         print("\n--- INITIATING INSTITUTIONAL GHOSTFOLIO SYNC ---")

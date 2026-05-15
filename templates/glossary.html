@@ -16,20 +16,72 @@
                 </a>
                 <h1><abbr title="Quantamental - a modern institutional strategy that combines Quantitative analysis with Fundamental analysis.">uantamental</abbr> System Glossary</h1>
             </div>
-            <div class="nav-links">
-                <a href="javascript:history.back()">← Back</a>
-                <a href="/portfolio">💼 Portfolio</a>
-                <a href="/watchlist">👀 Watchlist</a>
-                <a href="/market-sentiment">Market Sentiment</a>
-                <a href="/settings">⚙️ Settings</a>
-                <a href="/glossary" class="active">📚 Glossary</a>
-                <a href="/notifications">🔔 Notifications {% if unread_count > 0 %}<span class="badge" id="nav-badge">{{ unread_count }}</span>{% endif %}</a>
-            </div>
+            <a href="javascript:history.back()" style="margin-right: 20px; color: #aaa;">← Back</a>
+                {% set active_page = 'glossary' %}
+                {% include 'navbar.html' %}
         </div>
     </div>
     
     <div class="glossary-content">
         <p style="font-size: 16px; margin-bottom: 30px; color: #ccc;">This living document explains the mathematical algorithms, fundamental logic, and trading strategies used to score and evaluate your portfolio.</p>
+
+        <details class="settings-card">
+            <summary>🕵️ Overnight Quant Screener (Automated Briefings)</summary>
+            
+            <p style="color: #aaa; margin-top: 0; margin-bottom: 20px;">The daily automated screening system runs through all tracked equities to isolate four specific institutional-grade statistical anomalies.</p>
+            
+            <div class="term-box">
+                <span class="term-title">Oversold Reversals</span>
+                <p>Equities that have been aggressively sold off but are demonstrating early quantitative signs of momentum recovery. These present high-conviction, deep-value entry opportunities with asymmetric risk/reward profiles.</p>
+                <div class="rule">TRIGGER: RSI < 30 AND MACD Histogram > 0</div>
+            </div>
+            
+            <div class="term-box">
+                <span class="term-title">Golden MACD Crosses</span>
+                <p>Equities that have triggered a Golden MACD Cross, indicating a potential mathematical momentum reversal to the upside and underlying institutional accumulation.</p>
+                <div class="rule">TRIGGER: MACD Line crosses above the Signal Line.</div>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Momentum & Volume Surges</span>
+                <p>Assets currently experiencing explosive buying volume while operating in a healthy momentum band. This signifies strong institutional backing without immediate overbought exhaustion risk.</p>
+                <div class="rule">TRIGGER: Volume > 1.5x the 20-Day Average Volume AND RSI is between 50 and 70.</div>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Overbought Warnings (Distribution Risk)</span>
+                <p>A risk management alert. The asset is severely overextended and is beginning to flash negative momentum divergence. Trim positions or tighten stop-losses, as algorithmic mean-reversion is highly probable.</p>
+                <div class="rule" style="border-left-color: #ff4d4d;">TRIGGER: RSI > 70 AND MACD Histogram < 0</div>
+            </div>
+        </details>
+
+        <details class="settings-card">
+            <summary>📅 Earnings Volatility & Options Mispricing</summary>
+            
+            <p style="color: #aaa; margin-top: 0; margin-bottom: 20px;">The system scans the options chain to find mathematical mispricings (Arbitrage) in how Wall Street expects a stock to move after an earnings report.</p>
+            
+            <div class="term-box">
+                <span class="term-title">Implied Move (The ATM Straddle)</span>
+                <p>The percentage the options market expects the stock to move (up or down). Calculated by adding the cost of the At-The-Money (ATM) Call and Put options expiring immediately after the earnings event, divided by the current stock price.</p>
+            </div>
+            
+            <div class="term-box">
+                <span class="term-title">Historical Average Move</span>
+                <p>The actual, historical reality of how the stock behaved. The system calculates the average absolute percentage gap (Close-to-Close) over the last 4 quarterly earnings events.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Mathematical Edge Score</span>
+                <p>The difference between the Historical Move and the Implied Move.</p>
+                <div class="rule">IF Edge Score > 0 THEN: Options are mathematically underpriced. (Wall Street is underestimating the volatility based on history).</div>
+                <div class="rule" style="border-left-color: #ff4d4d;">IF Edge Score < 0 THEN: Options are overpriced. (A volatility crush / IV crush is highly likely after the report).</div>
+            </div>
+            
+            <div class="term-box">
+                <span class="term-title">Options Volume</span>
+                <p>A liquidity metric representing the combined open interest/volume of the ATM Call and Put. Used to verify if the options market for the asset is highly liquid or illiquid.</p>
+            </div>
+        </details>
 
         <details class="settings-card">
             <summary>🎯 The Multi-Regime Strategy (Scoring & Tags)</summary>

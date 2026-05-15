@@ -13,6 +13,12 @@ from maintenance_engine import MaintenanceEngine
 from data_engine import DataEngine
 from quant_signals import QuantEngine
 from ghostfolio_sync import GhostfolioSyncEngine
+from quant_engine import run_daily_quant_scan
+from earnings_vol_engine import run_earnings_vol_scan
+from report_dispatcher import push_morning_quant_briefing
+from database import get_universe_tickers
+from universe_engine import update_market_universe
+from profile_engine import run_profile_audit
 
 # --- Background Task Scheduler Setup ---
 scheduler = BackgroundScheduler()
@@ -51,6 +57,93 @@ def run_ghostfolio_sync():
     try:
         sync_engine = GhostfolioSyncEngine()
         sync_engine.run_full_sync()
+    finally:
+        task_lock.release()
+
+def run_overnight_quant_scan():
+    """
+    Fetches the combined list of portfolio and watchlist tickers, 
+    and executes the resumable daily quant scan natively.
+    """
+    if not task_lock.acquire(blocking=False):
+        print("[WARNING] System is currently busy. Skipping Overnight Quant Scan.")
+        return
+    try:
+        print("\n--- OVERNIGHT QUANT SCAN INITIATED ---")
+        engine = DataEngine()
+        all_tickers = engine.get_all_tickers() 
+        run_daily_quant_scan(all_tickers)
+        print("--- OVERNIGHT QUANT SCAN COMPLETE ---\n")
+    except Exception as e:
+        print(f"[ERROR] Overnight Quant Scan Failed: {e}")
+    finally:
+        task_lock.release()
+
+def run_weekend_earnings_scan():
+    """Executes the quantitative earnings volatility options scan."""
+    if not task_lock.acquire(blocking=False):
+        print("[WARNING] System is busy. Skipping Earnings Volatility Scan.")
+        return
+    try:
+        print("\n--- EARNINGS VOLATILITY SCAN INITIATED ---")
+        engine = DataEngine()
+        all_tickers = engine.get_all_tickers() 
+        run_earnings_vol_scan(all_tickers)
+        print("--- EARNINGS VOLATILITY SCAN COMPLETE ---\n")
+    except Exception as e:
+        print(f"[ERROR] Earnings Volatility Scan Failed: {e}")
+    finally:
+        task_lock.release()
+
+def run_morning_briefing_dispatch():
+    """Executes the morning quant briefing dispatch."""
+    if not task_lock.acquire(blocking=False):
+        print("[WARNING] System is busy. Skipping Morning Briefing Dispatch.")
+        return
+    try:
+        print("\n--- MORNING BRIEFING DISPATCH INITIATED ---")
+        push_morning_quant_briefing()
+        print("--- MORNING BRIEFING DISPATCH COMPLETE ---\n")
+    except Exception as e:
+        print(f"[ERROR] Morning Briefing Dispatch Failed: {e}")
+    finally:
+        task_lock.release()
+
+def run_weekend_universe_routine():
+    """Executes the massive 4000+ Universe Download and Quant Scan."""
+    if not task_lock.acquire(blocking=False):
+        print("[WARNING] System is busy. Skipping Weekend Universe Routine.")
+        return
+    try:
+        print("\n--- WEEKEND UNIVERSE ROUTINE INITIATED ---")
+        # 1. Update the Ticker List from the FTP server
+        update_market_universe()
+        
+        # 2. Extract the fresh list and run the massive quant scan
+        all_tickers = get_universe_tickers()
+        if all_tickers:
+            # Pass scan_type='universe' to prevent collision with daily scans
+            run_daily_quant_scan(all_tickers, scan_type='universe')
+        else:
+            print("[WARNING] Universe is empty, skipping quant scan.")
+            
+        print("--- WEEKEND UNIVERSE ROUTINE COMPLETE ---\n")
+    except Exception as e:
+        print(f"[ERROR] Weekend Universe Routine Failed: {e}")
+    finally:
+        task_lock.release()
+
+def run_weekend_profile_audit():
+    """Executes the rolling metadata audit for 250 assets."""
+    if not task_lock.acquire(blocking=False):
+        print("[WARNING] System is busy. Skipping Profile Audit.")
+        return
+    try:
+        print("\n--- WEEKEND PROFILE AUDIT INITIATED ---")
+        run_profile_audit(limit=250)
+        print("--- WEEKEND PROFILE AUDIT COMPLETE ---\n")
+    except Exception as e:
+        print(f"[ERROR] Weekend Profile Audit Failed: {e}")
     finally:
         task_lock.release()
 
@@ -194,8 +287,89 @@ def reload_scheduler():
         except Exception as e:
             print(f"[ERROR] Failed to schedule Maintenance Job: {e}")
 
+    # 7. Daily Quant Screener Engine (Portfolio/Watchlist)
+    quant_cfg = scheduling.get("QUANT_ENGINE", {})
+    quant_days_list = quant_cfg.get("DAYS", ["mon", "tue", "wed", "thu", "fri"])
+    quant_days = ",".join(quant_days_list) if quant_days_list else "mon-fri"
+    quant_time = quant_cfg.get("TIME", "01:00")
+    
+    try:
+        hour, minute = map(int, quant_time.split(':'))
+        scheduler.add_job(
+            run_overnight_quant_scan,
+            CronTrigger(day_of_week=quant_days, hour=hour, minute=minute),
+            id='overnight_quant_scan_job'
+        )
+        print(f"[SCHEDULER] Overnight Quant Scan scheduled for {quant_days} at {quant_time}")
+    except Exception as e:
+        print(f"[ERROR] Failed to schedule Overnight Quant Scan: {e}")
+
+    # 8. Earnings Volatility Engine
+    earn_cfg = scheduling.get("EARNINGS_ENGINE", {})
+    earn_days_list = earn_cfg.get("DAYS", ["sat"])
+    earn_days = ",".join(earn_days_list) if earn_days_list else "sat"
+    earn_time = earn_cfg.get("TIME", "10:00")
+    
+    try:
+        hour, minute = map(int, earn_time.split(':'))
+        scheduler.add_job(
+            run_weekend_earnings_scan,
+            CronTrigger(day_of_week=earn_days, hour=hour, minute=minute),
+            id='weekend_earnings_vol_scan_job'
+        )
+        print(f"[SCHEDULER] Earnings Volatility Scan scheduled for {earn_days} at {earn_time}")
+    except Exception as e:
+        print(f"[ERROR] Failed to schedule Earnings Volatility Scan: {e}")
+
+    # 9. Morning Briefing Dispatch Engine
+    disp_cfg = scheduling.get("DISPATCHER", {})
+    if disp_cfg.get("ENABLED", False):
+        disp_days_list = disp_cfg.get("DAYS", ["mon", "tue", "wed", "thu", "fri"])
+        disp_days = ",".join(disp_days_list) if disp_days_list else "mon-fri"
+        disp_time = disp_cfg.get("TIME", "08:00")
+        
+        try:
+            hour, minute = map(int, disp_time.split(':'))
+            scheduler.add_job(
+                run_morning_briefing_dispatch,
+                CronTrigger(day_of_week=disp_days, hour=hour, minute=minute),
+                id='morning_briefing_dispatch_job'
+            )
+            print(f"[SCHEDULER] Morning Briefing Dispatch scheduled for {disp_days} at {disp_time}")
+        except Exception as e:
+            print(f"[ERROR] Failed to schedule Morning Briefing Dispatch: {e}")
+
+    # 10. Weekend Universe Routine (4000+ Tickers)
+    uni_cfg = scheduling.get("UNIVERSE_ENGINE", {})
+    uni_days_list = uni_cfg.get("DAYS", ["sat"])
+    uni_days = ",".join(uni_days_list) if uni_days_list else "sat"
+    uni_time = uni_cfg.get("TIME", "02:00")
+    
+    try:
+        hour, minute = map(int, uni_time.split(':'))
+        scheduler.add_job(
+            run_weekend_universe_routine,
+            CronTrigger(day_of_week=uni_days, hour=hour, minute=minute),
+            id='universe_routine_job'
+        )
+        print(f"[SCHEDULER] Weekend Universe Routine scheduled for {uni_days} at {uni_time}")
+        
+        # 11. Profile Rolling Audit (Staggered 1 hour after the universe routine)
+        audit_hour = (hour + 1) % 24
+        scheduler.add_job(
+            run_weekend_profile_audit,
+            CronTrigger(day_of_week=uni_days, hour=audit_hour, minute=minute),
+            id='profile_audit_job'
+        )
+        print(f"[SCHEDULER] Weekend Profile Audit scheduled for {uni_days} at {audit_hour:02d}:{minute:02d}")
+        
+    except Exception as e:
+        print(f"[ERROR] Failed to schedule Weekend Universe Routine: {e}")
+
+
 def start_scheduler():
     scheduler.start()
+
 
 def shutdown_scheduler():
     scheduler.shutdown()

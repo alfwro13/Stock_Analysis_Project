@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from config import load_config, SECRETS_PATH
-from database import get_connection
+from database import get_connection, get_universe_tickers
 from scheduler_engine import run_update_pipeline, run_ghostfolio_sync, reload_scheduler
 from ghostfolio_sync import GhostfolioSyncEngine
 from market_pulse import get_cached_pulse_from_db, fetch_and_save_pulse
@@ -19,8 +19,92 @@ from sentiment_engine import run_nextcloud_alert
 from earnings_engine import run_earnings_alert
 from insider_engine import run_insider_alert
 from ai_engine import AIPromptEngine
+from data_engine import DataEngine
+from quant_signals import QuantEngine
+from quant_engine import run_daily_quant_scan
+from earnings_vol_engine import run_earnings_vol_scan
+from universe_engine import update_market_universe
+
+# --- REPORTS ENGINE IMPORTS ---
+from reports_engine import get_sector_trends, get_mean_reversion_setups, get_leaders_laggards
+
+# --- OPTIONS SANDBOX IMPORTS ---
+from options_engine import fetch_options_chain, calculate_payoff_matrix
 
 api_router = APIRouter(prefix="/api")
+
+# --- SHARED PYDANTIC SCHEMAS ---
+class TickerRequest(BaseModel):
+    ticker: str
+
+class OptionLeg(BaseModel):
+    type: str
+    strike: float
+    premium: float
+    position: str
+    quantity: int = 1
+
+class PayoffRequest(BaseModel):
+    current_price: float
+    legs: List[OptionLeg]
+
+
+def bg_execute_quant_scan():
+    """Background task wrapper for the heavy Quant engine (Portfolio/Watchlist)."""
+    engine = DataEngine()
+    tickers = engine.get_all_tickers()
+    run_daily_quant_scan(tickers)
+
+def bg_execute_earnings_scan():
+    """Background task wrapper for the heavy Earnings Volatility engine."""
+    engine = DataEngine()
+    tickers = engine.get_all_tickers()
+    run_earnings_vol_scan(tickers)
+
+def bg_execute_universe_quant_scan():
+    """Background task wrapper for scanning the entire 4,000+ Universe."""
+    tickers = get_universe_tickers()
+    if not tickers:
+        print("[WARNING] Universe is empty. Please trigger a Universe Update first.")
+        return
+    run_daily_quant_scan(tickers, scan_type='universe')
+
+
+@api_router.post("/trigger-quant-scan")
+async def trigger_quant_scan_endpoint(background_tasks: BackgroundTasks):
+    """API endpoint to manually trigger the daily Portfolio/Watchlist Quant Screener."""
+    background_tasks.add_task(bg_execute_quant_scan)
+    return JSONResponse(content={
+        "status": "success", 
+        "message": "Portfolio Quant Scan initiated in the background. Check System Notifications for progress updates."
+    })
+
+@api_router.post("/trigger-earnings-scan")
+async def trigger_earnings_scan_endpoint(background_tasks: BackgroundTasks):
+    """API endpoint to manually trigger the Options Implied Volatility calculations."""
+    background_tasks.add_task(bg_execute_earnings_scan)
+    return JSONResponse(content={
+        "status": "success", 
+        "message": "Earnings Volatility Scan initiated in the background. Check System Notifications for progress updates."
+    })
+
+@api_router.post("/trigger-universe-update")
+async def trigger_universe_update_endpoint(background_tasks: BackgroundTasks):
+    """API endpoint to manually trigger a scrape of the Nasdaq FTP server."""
+    background_tasks.add_task(update_market_universe)
+    return JSONResponse(content={
+        "status": "success", 
+        "message": "Market Universe update initiated in the background. Check System Notifications for progress."
+    })
+
+@api_router.post("/trigger-universe-quant-scan")
+async def trigger_universe_quant_scan_endpoint(background_tasks: BackgroundTasks):
+    """API endpoint to manually trigger a full scan of the 4,000+ Universe tickers."""
+    background_tasks.add_task(bg_execute_universe_quant_scan)
+    return JSONResponse(content={
+        "status": "success", 
+        "message": "Full Universe Quant Scan initiated in the background. This will take over an hour. Check System Notifications for progress."
+    })
 
 class PulseRequest(BaseModel):
     tickers: Optional[List[str]] = []
@@ -64,10 +148,8 @@ async def api_market_pulse(request: PulseRequest, background_tasks: BackgroundTa
     
     pulse_data = get_cached_pulse_from_db(request.tickers, refresh_rate)
     
-    # Check if any data returned was stale or entirely missing from the DB
     needs_fetch = [item['ticker'] for item in pulse_data['indexes'] + pulse_data['assets'] if item['is_stale']]
     if needs_fetch:
-        # Offload the slow Yahoo Finance extraction to a background thread
         background_tasks.add_task(fetch_and_save_pulse, needs_fetch)
         
     return JSONResponse(content={"status": "success", "data": pulse_data})
@@ -159,13 +241,14 @@ async def get_latest_notifications(last_id: int = 0):
 
 @api_router.post("/notifications/mark-read")
 async def mark_notifications_read():
+    """API endpoint to mark all notifications as read."""
     try:
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute("UPDATE system_notifications SET is_read = 1 WHERE is_read = 0")
         conn.commit()
         conn.close()
-        return JSONResponse(content={"status": "success"})
+        return JSONResponse(content={"status": "success", "message": "All notifications marked as read."})
     except Exception as e:
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
@@ -179,3 +262,104 @@ async def get_ai_prompt(ticker: str, mode: str = "Quantamental Deep-Dive"):
         return JSONResponse(content={"status": "success", "prompt": prompt})
     except Exception as e:
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+# --- WATCHLIST MANAGEMENT ENDPOINTS ---
+@api_router.post("/watchlist/add")
+async def api_watchlist_add(req: TickerRequest):
+    """Adds a ticker to Ghostfolio and synchronizes the local JSON engine."""
+    engine = GhostfolioSyncEngine()
+    if engine.add_to_watchlist(req.ticker):
+        engine.sync_watchlist()
+        return JSONResponse(content={"status": "success"})
+    return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to add to Ghostfolio."})
+
+@api_router.post("/watchlist/remove")
+async def api_watchlist_remove(req: TickerRequest):
+    """Removes a ticker from Ghostfolio and synchronizes the local JSON engine."""
+    engine = GhostfolioSyncEngine()
+    if engine.remove_from_watchlist(req.ticker):
+        engine.sync_watchlist()
+        return JSONResponse(content={"status": "success"})
+    return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to remove from Ghostfolio."})
+
+# --- MANUAL DATA REFRESH ENDPOINT ---
+@api_router.post("/data/refresh-single")
+async def api_data_refresh_single(req: TickerRequest):
+    """Synchronously fetches fresh market data and evaluates the quant models for a single ticker."""
+    data_engine = DataEngine()
+    quant_engine = QuantEngine()
+    
+    if data_engine.fetch_and_save_data(req.ticker):
+        quant_engine.analyze_ticker(req.ticker)
+        return JSONResponse(content={"status": "success"})
+    return JSONResponse(status_code=500, content={"status": "error", "message": "Data fetch failed."})
+
+
+# --- OPTIONS SANDBOX ENDPOINTS ---
+@api_router.get("/options/chain/{ticker}")
+async def api_options_chain(ticker: str):
+    """Fetches the options chain for the Sandbox UI."""
+    data = fetch_options_chain(ticker)
+    if "error" in data:
+        return JSONResponse(status_code=400, content=data)
+    return JSONResponse(content=data)
+
+@api_router.post("/options/payoff")
+async def api_options_payoff(req: PayoffRequest):
+    """Calculates the P&L matrix for the provided strategy legs."""
+    legs_dict = [leg.model_dump() for leg in req.legs]
+    matrix = calculate_payoff_matrix(legs_dict, req.current_price)
+    return JSONResponse(content=matrix)
+
+
+# --- MARKET SCREENER API (4000+ UNIVERSE) ---
+@api_router.get("/screener-data")
+async def get_screener_data():
+    """
+    Fetches the 4000+ rows of quantitative signals from the overnight Market Universe scan.
+    Optimized SQLite join directly converting to a JSON array for DataTables.js rendering.
+    """
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        
+        query = """
+        SELECT 
+            q.ticker, 
+            COALESCE(p.company_name, m.company_name, q.ticker) as company_name, 
+            COALESCE(p.sector, s.sector, 'Unclassified') as sector, 
+            q.date, q.close_price, 
+            q.volume, q.rsi_14, q.macd_hist, q.sma_50, q.sma_200, 
+            q.volume_surge, q.bullish_cross
+        FROM quant_signals q
+        INNER JOIN market_universe m ON q.ticker = m.ticker
+        LEFT JOIN asset_profiles p ON q.ticker = p.ticker
+        LEFT JOIN stock_signals s ON q.ticker = s.ticker
+        WHERE q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = q.ticker)
+        """
+        cursor.execute(query)
+        rows = cursor.fetchall()
+        conn.close()
+        
+        data = [dict(row) for row in rows]
+        
+        return JSONResponse(content={"data": data})
+        
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e), "data": []})
+
+# --- ADVANCED MARKET REPORTS ENDPOINTS ---
+@api_router.get("/reports/sectors")
+async def api_reports_sectors():
+    data = get_sector_trends()
+    return JSONResponse(content={"data": data})
+
+@api_router.get("/reports/mean-reversion")
+async def api_reports_mean_reversion(max_rsi: float = 30.0, min_sma_distance: float = 0.0):
+    data = get_mean_reversion_setups(max_rsi=max_rsi, min_sma_distance=min_sma_distance)
+    return JSONResponse(content={"data": data})
+
+@api_router.get("/reports/leaders")
+async def api_reports_leaders():
+    data = get_leaders_laggards()
+    return JSONResponse(content={"data": data})
