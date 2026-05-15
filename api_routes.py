@@ -41,6 +41,8 @@ from ai_prediction_engine import train_global_ml_model, update_daily_ml_predicti
 
 api_router = APIRouter(prefix="/api")
 
+IMPORT_DIR = BASE_DIR / "tools" / "data" / "imports"
+
 # --- SHARED PYDANTIC SCHEMAS ---
 class TickerRequest(BaseModel):
     ticker: str
@@ -144,14 +146,13 @@ async def trigger_universe_quant_scan_endpoint(background_tasks: BackgroundTasks
 
 @api_router.get("/universe/imports/list")
 async def list_importable_csvs():
-    """Scans the designated imports directory on the server for CSV files."""
+    """Scans the designated imports directory in tools/data/imports for CSV files."""
     try:
-        imports_dir = DATA_DIR / "imports"
         # Ensure directory exists to prevent crashes on fresh installs
-        imports_dir.mkdir(parents=True, exist_ok=True)
+        IMPORT_DIR.mkdir(parents=True, exist_ok=True)
         
-        # Use pathlib globbing to extract valid CSVs
-        files = [f.name for f in imports_dir.glob("*.csv")]
+        # Use pathlib globbing to extract valid CSVs from the tools directory
+        files = [f.name for f in IMPORT_DIR.glob("*.csv")]
         return JSONResponse(content={"status": "success", "files": files})
     except Exception as e:
         return JSONResponse(status_code=500, content={"status": "error", "message": f"Failed to list import directory: {str(e)}"})
@@ -159,18 +160,17 @@ async def list_importable_csvs():
 @api_router.post("/universe/import/server")
 async def import_server_csv(request: ImportRequest):
     """
-    API endpoint to securely read a CSV file directly from the server's imports directory,
+    API endpoint to securely read a CSV file directly from the tools/data/imports directory,
     parse it using Pandas, and bulk-load it into SQLite.
     """
     if not request.filename.endswith('.csv'):
         return JSONResponse(status_code=400, content={"status": "error", "message": "Invalid file type. Only .csv files are supported."})
     
     try:
-        imports_dir = DATA_DIR / "imports"
-        file_path = imports_dir / request.filename
+        file_path = IMPORT_DIR / request.filename
         
         if not file_path.exists():
-            return JSONResponse(status_code=404, content={"status": "error", "message": f"File '{request.filename}' not found on server."})
+            return JSONResponse(status_code=404, content={"status": "error", "message": f"File '{request.filename}' not found on server at {file_path}."})
             
         df = pd.read_csv(file_path)
         
