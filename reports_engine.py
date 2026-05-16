@@ -127,3 +127,47 @@ def get_leaders_laggards() -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Failed to generate Leaders & Laggards: {e}")
         return []
+
+def get_dividend_harvest_setups(min_yield: float = 0.02, min_score: int = 50) -> List[Dict[str, Any]]:
+    """
+    Fetches high-yield dividend stocks approaching their ex-dividend date,
+    filtering out potential 'Yield Traps' using a minimum quantitative score.
+    """
+    try:
+        conn = get_connection()
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        query = """
+        SELECT 
+            q.ticker, 
+            COALESCE(p.company_name, m.company_name, q.ticker) as company_name, 
+            COALESCE(p.country, m.country, 'US') as country,
+            COALESCE(p.sector, m.sector, 'Unclassified') as sector, 
+            COALESCE(m.exchange, p.exchange, 'US') as exchange,
+            q.close_price, 
+            s.dividend_yield, 
+            s.ex_dividend_date, 
+            s.composite_score, 
+            q.ml_confidence_score
+        FROM quant_signals q
+        INNER JOIN market_universe m ON q.ticker = m.ticker
+        LEFT JOIN asset_profiles p ON q.ticker = p.ticker
+        LEFT JOIN stock_signals s ON q.ticker = s.ticker
+        WHERE q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = q.ticker)
+          AND s.dividend_yield >= ?
+          AND s.composite_score >= ?
+          AND s.ex_dividend_date IS NOT NULL 
+          AND s.ex_dividend_date != 'Unknown'
+        ORDER BY s.ex_dividend_date ASC
+        """
+        
+        cursor.execute(query, (min_yield, min_score))
+        rows = cursor.fetchall()
+        conn.close()
+        
+        return [dict(row) for row in rows]
+        
+    except Exception as e:
+        logger.error(f"Failed to fetch dividend harvest setups: {e}")
+        return []

@@ -280,4 +280,51 @@ table.dataTable.display tbody tr.even > .sorting_1, table.dataTable.order-column
     .fundamentals-grid { grid-template-columns: 1fr; }
     .action-buttons, .controls-container { flex-direction: column; gap: 10px; }
     .filter-input, .filter-select { width: 100%; }
+
+/* --- DIVIDEND HARVEST REPORT STYLES --- */
+.report-section-dividend {
+    border-left-color: #b366ff;
+}
+.text-dividend {
+    color: #b366ff;
+}
+.text-light {
+    color: #e0e0e0;
+}
+.text-accent {
+    color: #4da6ff;
+}
+.ticker-link {
+    color: #4da6ff;
+    font-weight: bold;
+}
+.controls-flex-end {
+    align-items: flex-end; 
+    margin-bottom: 20px;
+}
+.form-group-no-margin {
+    margin-bottom: 0;
+}
+.input-width-small {
+    width: 120px;
+}
+.ml-15 {
+    margin-left: 15px;
+}
+.w-100 {
+    width: 100%;
+}
+.explanation-container {
+    margin-top: 15px; 
+    padding-top: 15px; 
+    border-top: 1px dashed #333; 
+    font-size: 13px; 
+    color: #aaa; 
+    line-height: 1.6;
+}
+.explanation-list {
+    margin-top: 5px; 
+    padding-left: 20px; 
+    margin-bottom: 0;
+}
 }

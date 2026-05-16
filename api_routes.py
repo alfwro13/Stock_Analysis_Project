@@ -30,15 +30,10 @@ from quant_signals import QuantEngine
 from quant_engine import run_daily_quant_scan
 from earnings_vol_engine import run_earnings_vol_scan
 from universe_engine import update_market_universe
-
-# --- REPORTS ENGINE IMPORTS ---
-from reports_engine import get_sector_trends, get_mean_reversion_setups, get_leaders_laggards
-
-# --- OPTIONS SANDBOX IMPORTS ---
+from reports_engine import get_sector_trends, get_mean_reversion_setups, get_leaders_laggards, get_dividend_harvest_setups
 from options_engine import fetch_options_chain, calculate_payoff_matrix
-
-# --- AI PREDICTION ENGINE IMPORTS ---
 from ai_prediction_engine import train_global_ml_model, update_daily_ml_predictions, run_historical_backfill
+
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -492,4 +487,13 @@ async def api_reports_mean_reversion(max_rsi: float = 30.0, min_sma_distance: fl
 @api_router.get("/reports/leaders")
 async def api_reports_leaders():
     data = get_leaders_laggards()
+    return JSONResponse(content={"data": data})
+
+@api_router.get("/reports/dividends")
+async def api_reports_dividends(min_yield: float = 0.02, min_score: int = 50):
+    """
+    API Endpoint for the Dividend Harvest Screener.
+    Takes yield as a decimal (e.g., 0.02 for 2%) and composite score as integer.
+    """
+    data = get_dividend_harvest_setups(min_yield=min_yield, min_score=min_score)
     return JSONResponse(content={"data": data})

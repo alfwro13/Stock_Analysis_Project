@@ -134,8 +134,51 @@
         </div>
     </div>
 
+    <div class="report-section report-section-dividend">
+        <h2 class="text-dividend">💸 Dividend Harvest (Income Screener)</h2>
+        <p>Identifies high-yield assets approaching their ex-dividend date. Filters out "Yield Traps" by strictly requiring a Quantamental System Score of 50 or higher.</p>
+        
+        <div class="controls-container controls-flex-end">
+            <div class="form-group form-group-no-margin">
+                <label>Minimum Yield (%)</label>
+                <input type="number" id="divMinYield" class="filter-input input-width-small" value="2" step="0.1">
+            </div>
+            <div class="form-group form-group-no-margin ml-15">
+                <label>Minimum Quant Score</label>
+                <input type="number" id="divMinScore" class="filter-input input-width-small" value="50">
+            </div>
+            <button class="btn btn-update ml-15" onclick="loadDividendData()">🔍 Run Query</button>
+        </div>
+
+        <table id="dividendTable" class="display w-100">
+            <thead>
+                <tr>
+                    <th>Ticker</th>
+                    <th>Company Name</th>
+                    <th>Sector</th>
+                    <th>Close Price</th>
+                    <th>Dividend Yield</th>
+                    <th>Ex-Dividend Date</th>
+                    <th>Quant Score</th>
+                    <th>ML Conf</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+
+        <div class="explanation-container">
+            <strong class="text-light">Key Metrics Explained:</strong>
+            <ul class="explanation-list">
+                <li><strong class="text-accent">Ex-Dividend Date:</strong> To receive the upcoming dividend payout, you must purchase the stock *before* this date.</li>
+                <li><strong class="text-accent">Yield Traps:</strong> A high dividend yield is often a red flag indicating a crashing stock price. We require a strong quant score to ensure the company is fundamentally sound.</li>
+                <li><strong class="text-accent">Quant Score:</strong> Our proprietary composite metric combining momentum, mean-reversion, and fundamental data. A score >50 indicates a structurally healthy asset.</li>
+            </ul>
+        </div>
+    </div>
+
     <script>
         let mrDataTable;
+        let divDataTable;
 
         $(document).ready(function() {
             const urlParams = new URLSearchParams(window.location.search);
@@ -258,14 +301,46 @@
                     { data: 'distance_from_200d_pct', render: function(data) { return `<span class="positive-val">+${data.toFixed(2)}%</span>`; } }
                 ]
             });
+
+            // Dividend Harvest Table Initialization
+            divDataTable = $('#dividendTable').DataTable({
+                deferRender: true,
+                pageLength: 10,
+                order: [[5, 'asc']], // Sort by closest Ex-Dividend Date
+                columns: [
+                    { data: 'ticker', render: function(data) { return '<a href="/stock/' + data + '" class="ticker-link">' + data + '</a>'; } },
+                    { data: 'company_name' },
+                    { data: 'sector' },
+                    { data: 'close_price', render: $.fn.dataTable.render.number(',', '.', 2, '$') },
+                    { data: 'dividend_yield', render: function(data) { return `<span class="positive-val">${(data * 100).toFixed(2)}%</span>`; } },
+                    { data: 'ex_dividend_date' },
+                    { data: 'composite_score', render: function(data) { 
+                        let cssClass = data >= 70 ? 'positive-val' : (data < 40 ? 'negative-val' : '');
+                        return `<span class="${cssClass}">${data}</span>`; 
+                    } },
+                    { data: 'ml_confidence_score', render: function(data) {
+                        if (data == null) return '-';
+                        return `${(data * 100).toFixed(1)}%`;
+                    } }
+                ]
+            });
             
-            // Initial load of Mean Reversion data
+            // Initial load of Mean Reversion & Dividend data
             loadMeanReversionData();
+            loadDividendData();
         });
 
         function loadMeanReversionData() {
             const maxRsi = document.getElementById('mrMaxRSI').value || 30;
             mrDataTable.ajax.url(`/api/reports/mean-reversion?max_rsi=${maxRsi}`).load();
+        }
+
+        function loadDividendData() {
+            const minYieldInput = parseFloat(document.getElementById('divMinYield').value) || 2.0;
+            const minYield = minYieldInput / 100.0; // Convert frontend percentage to backend decimal
+            const minScore = parseInt(document.getElementById('divMinScore').value) || 50;
+            
+            divDataTable.ajax.url(`/api/reports/dividends?min_yield=${minYield}&min_score=${minScore}`).load();
         }
     </script>
 </body>
