@@ -11,7 +11,7 @@ from database import get_connection
 # Configure robust module-level logging
 logger = logging.getLogger(__name__)
 
-# Dictionary mapping market identifiers to clear UI display names.
+# Dictionary mapping market identifiers to clean UI display names.
 # Registering 'UK10YG' directly below 'GBPUSD=X' places the tile right next to it.
 INDEX_TICKERS: Dict[str, str] = {
     "^FTSE": "UK FTSE 100",
@@ -215,10 +215,20 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
                 
                 gilt_service = GiltDataService()
                 live_gilt_yield = gilt_service.fetch_live_ft_yield()
+                parquet_path = HISTORICAL_DIR / "UK_GILT_BASELINE.parquet"
+                
+                # Resilient Fallback: If live scrape returns None, pull the last verified close from Parquet
+                if live_gilt_yield is None and parquet_path.exists():
+                    try:
+                        df_gilt_hist = pd.read_parquet(parquet_path)
+                        if not df_gilt_hist.empty:
+                            live_gilt_yield = float(df_gilt_hist['Close'].iloc[-1])
+                            logger.info(f"Live FT scrape returned None. Falling back to Parquet value: {live_gilt_yield}")
+                    except Exception as ex:
+                        logger.error(f"Failed to read Parquet fallback for market pulse: {ex}")
                 
                 if live_gilt_yield is not None:
                     gilt_prev_close: float = live_gilt_yield
-                    parquet_path = HISTORICAL_DIR / "UK_GILT_BASELINE.parquet"
                     
                     if parquet_path.exists():
                         try:
