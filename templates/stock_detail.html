@@ -127,6 +127,16 @@
                     </span>
                 </div>
                 
+                {% if stock.yield_correlation is not none and stock.yield_correlation <= -0.3 %}
+                    {% if (stock.trailing_pe is not none and stock.trailing_pe > 30) or (stock.debt_to_equity is not none and stock.debt_to_equity > 1.5) %}
+                        <div class="yield-sensitive-container">
+                            <abbr title="This asset has high debt or a high P/E ratio, AND possesses a strong negative correlation ({{ '{:.2f}'.format(stock.yield_correlation) }}) to rising interest rates. If yields spike, this stock is mathematically likely to crash.">
+                                <span class="yield-sensitive-tag">⚠️ Yield Sensitive (Macro Trap)</span>
+                            </abbr>
+                        </div>
+                    {% endif %}
+                {% endif %}
+
                 <div style="line-height: 1.6; background-color: #2c2c2c; padding: 15px; border-radius: 5px; margin-top: 15px;">
                     {{ stock.educational_notes | safe }}
                 </div>

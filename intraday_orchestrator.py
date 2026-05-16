@@ -3,6 +3,7 @@ import os
 import re
 import time
 import json
+import logging
 import yfinance as yf
 import pandas as pd
 from datetime import datetime
@@ -165,9 +166,13 @@ class IntradayOrchestrator:
 
         metadata = self.get_asset_metadata(tickers)
         
-        print(f"[ORCHESTRATOR] Performing bulk YF 5m fetch for {len(tickers)} assets...")
+        # Add system yield benchmarks for macro shock detection
+        macro_tickers = ["^TYX", "TUKG10Y=X"]
+        download_list = list(set(tickers + macro_tickers))
+        
+        print(f"[ORCHESTRATOR] Performing bulk YF 5m fetch for {len(download_list)} assets & macro benchmarks...")
         try:
-            df_bulk = yf.download(tickers, period="1d", interval="5m", group_by='ticker', auto_adjust=True, progress=False)
+            df_bulk = yf.download(download_list, period="1d", interval="5m", group_by='ticker', auto_adjust=True, progress=False)
         except Exception as e:
             print(f"[ORCHESTRATOR] Bulk download failed: {e}")
             return
@@ -175,6 +180,45 @@ class IntradayOrchestrator:
         if df_bulk.empty:
             print("[ORCHESTRATOR] Bulk download returned empty DataFrame.")
             return
+
+        # --- MACRO FLASH SURGE DETECTION ---
+        for m_ticker in macro_tickers:
+            try:
+                if isinstance(df_bulk.columns, pd.MultiIndex):
+                    if m_ticker not in df_bulk.columns.get_level_values(0):
+                        continue
+                    m_df = df_bulk[m_ticker].copy()
+                else:
+                    if 'Close' not in df_bulk.columns:
+                        continue
+                    m_df = df_bulk.copy() if len(download_list) == 1 else pd.DataFrame()
+                    
+                m_df.dropna(subset=['Close'], inplace=True)
+                if len(m_df) < 5: 
+                    continue
+                
+                m_open = float(m_df['Close'].iloc[0])
+                m_curr = float(m_df['Close'].iloc[-1])
+                
+                if m_open > 0:
+                    m_spike = ((m_curr - m_open) / m_open) * 100.0
+                    
+                    # If yield spikes more than 1.5% intraday, it's a systemic shock
+                    if m_spike >= 1.5 and not self.is_alert_suppressed("Macro", m_ticker):
+                        name = "US 30Y Treasury" if m_ticker == "^TYX" else "UK 10Y Gilt"
+                        msg = (
+                            f"🚨 **SYSTEMIC MACRO ALERT: {name} SURGING** 🚨\n\n"
+                            f"**Current Yield:** {m_curr:.3f}%\n"
+                            f"**Intraday Spike:** +{m_spike:.2f}%\n\n"
+                            f"⚠️ The cost of capital is experiencing a violent intraday shock. "
+                            f"Expect immediate severe valuation compression across high-multiple and tech equities. "
+                            f"Risk-Off environment detected."
+                        )
+                        send_text_message(msg, self.config)
+                        self.log_notification("Macro", f"Systemic Yield Surge detected on {m_ticker} (+{m_spike:.2f}%)")
+            except Exception as e:
+                print(f"[ORCHESTRATOR] Macro eval failed for {m_ticker}: {e}")
+
 
         crash_alerts_to_send = []
         moonshot_alerts_to_send = []

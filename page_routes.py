@@ -2,6 +2,7 @@
 import json
 import pandas as pd
 from datetime import datetime, timedelta
+from typing import Dict, Any
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -20,14 +21,14 @@ from quant_screener import fetch_latest_signals, generate_markdown_briefing
 page_router = APIRouter()
 templates = Jinja2Templates(directory="templates")
 
-def get_json_data(filepath):
+def get_json_data(filepath: str) -> Dict[str, Any]:
     try:
         with open(filepath, 'r') as f:
             return json.load(f)
     except Exception:
         return {}
 
-def get_unread_count():
+def get_unread_count() -> int:
     try:
         conn = get_connection()
         cursor = conn.cursor()
@@ -95,7 +96,6 @@ async def portfolio_page(request: Request, account_id: str = "all", embed: bool 
     conn = get_connection()
     cursor = conn.cursor()
     
-    # 1. ADDED LEFT JOIN TO PULL ML, RISK, AND SENTIMENT METRICS
     cursor.execute("""
         SELECT s.*, 
                q.ml_confidence_score, 
@@ -107,6 +107,10 @@ async def portfolio_page(request: Request, account_id: str = "all", embed: bool 
         AND q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = s.ticker)
     """)
     db_rows = cursor.fetchall()
+    
+    cursor.execute("SELECT * FROM macro_regimes ORDER BY date DESC LIMIT 1")
+    macro_row = cursor.fetchone()
+    macro_regime = dict(macro_row) if macro_row else None
     
     cursor.execute("SELECT MAX(last_updated) as global_updated FROM stock_signals")
     global_update_val = cursor.fetchone()['global_updated']
@@ -195,7 +199,8 @@ async def portfolio_page(request: Request, account_id: str = "all", embed: bool 
             "selected_account": account_id,
             "summary_math": formatted_summary,
             "config": config_data,
-            "cached_pulse": get_all_cached_pulse()
+            "cached_pulse": get_all_cached_pulse(),
+            "macro_regime": macro_regime
         }
     )
 
@@ -215,6 +220,10 @@ async def watchlist_page(request: Request, embed: bool = False):
         AND q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = s.ticker)
     """)
     db_rows = cursor.fetchall()
+    
+    cursor.execute("SELECT * FROM macro_regimes ORDER BY date DESC LIMIT 1")
+    macro_row = cursor.fetchone()
+    macro_regime = dict(macro_row) if macro_row else None
     
     cursor.execute("SELECT MAX(last_updated) as global_updated FROM stock_signals")
     global_update_val = cursor.fetchone()['global_updated']
@@ -243,7 +252,8 @@ async def watchlist_page(request: Request, embed: bool = False):
             "embed": embed, 
             "unread_count": get_unread_count(),
             "config": load_config(),
-            "cached_pulse": get_all_cached_pulse()
+            "cached_pulse": get_all_cached_pulse(),
+            "macro_regime": macro_regime
         }
     )
 

@@ -3,8 +3,8 @@ quant_screener.py
 
 Elite-level rule-based screening system for the Quantamental Dashboard.
 Queries overnight mathematical signal data from the local SQLite database,
-applies Turbulence-Aware Market Regime contextual filtering, and generates 
-a deterministic Morning Quant Briefing in a mobile-optimized Markdown format.
+applies Turbulence-Aware Market Regime and Macro Yield Threat contextual filtering,
+and generates a deterministic Morning Quant Briefing in a mobile-optimized Markdown format.
 """
 
 import os
@@ -120,12 +120,36 @@ def filter_ai_vetoes(setups: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]]
             approved.append(row)
     return approved, vetoed
 
+def filter_macro_vetoes(setups: List[Dict[str, Any]], threat_level: str) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """
+    Vetoes high-multiple or highly indebted stocks that negatively correlate with surging yields.
+    If global yields are spiking (RED/YELLOW), these assets are mathematically likely to compress.
+    """
+    if threat_level not in ['RED', 'YELLOW']:
+        return setups, []
+        
+    approved = []
+    vetoed = []
+    for row in setups:
+        pe = row.get('trailing_pe')
+        debt = row.get('debt_to_equity')
+        corr = row.get('yield_correlation', 0.0)
+        
+        is_high_multiple = (pe is not None and pe > 30) or (debt is not None and debt > 1.5)
+        is_neg_corr = corr is not None and corr <= -0.3
+        
+        if is_high_multiple and is_neg_corr:
+            vetoed.append(row)
+        else:
+            approved.append(row)
+    return approved, vetoed
+
 # --- Data Retrieval ---
 
 def fetch_latest_signals(target_date: str) -> List[Dict[str, Any]]:
     """
-    Connects to the SQLite database and retrieves all quantitative signals for the target date.
-    Returns a list of dictionaries for clean downstream processing.
+    Connects to the SQLite database and retrieves all quantitative signals for the target date,
+    joining stock_signals to capture valuation and macro correlation metrics required for veto filters.
     """
     logger.info(f"Fetching overnight quant signals for date: {target_date}")
     
@@ -133,13 +157,14 @@ def fetch_latest_signals(target_date: str) -> List[Dict[str, Any]]:
         conn = get_connection()
         cursor = conn.cursor()
         
-        # Parameterized query to prevent SQL injection
-        cursor.execute(
-            "SELECT * FROM quant_signals WHERE date = ?",
-            (target_date,)
-        )
+        # Parameterized query to prevent SQL injection, joining fundamentals
+        cursor.execute('''
+            SELECT q.*, s.trailing_pe, s.debt_to_equity, s.yield_correlation 
+            FROM quant_signals q
+            LEFT JOIN stock_signals s ON q.ticker = s.ticker
+            WHERE q.date = ?
+        ''', (target_date,))
         
-        # Convert sqlite3.Row objects to standard Python dictionaries
         rows = cursor.fetchall()
         data = [dict(row) for row in rows]
         
@@ -151,7 +176,6 @@ def fetch_latest_signals(target_date: str) -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Failed to fetch quant signals: {e}")
         return []
-
 
 # --- Report Generation ---
 
@@ -181,68 +205,91 @@ def _format_mobile_markdown_list(data: List[Dict[str, Any]]) -> str:
 
 def generate_markdown_briefing(target_date: str, data: List[Dict[str, Any]]) -> str:
     """
-    Executes all rule-based screens contextualized by Market Regime, and generates 
-    the final formatted Markdown report. Writes the output to a local 'reports' directory.
+    Executes all rule-based screens contextualized by Market and Macro Regime, 
+    and generates the final formatted Markdown report. Writes the output to disk.
     """
     logger.info("Applying contextual screening rules and generating Markdown briefing...")
     
-    # 1. Fetch Market Regime Context
+    # 1. Fetch Market Regime Context (Volatility)
     regime_data = get_latest_regime()
     regime_label = regime_data.get('regime_label', 'Normal') if regime_data else 'Normal'
     turbulence_idx = regime_data.get('turbulence_index', 0.0) if regime_data else 0.0
+
+    # Fetch Macro Regime Context (Systemic Yields)
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM macro_regimes ORDER BY date DESC LIMIT 1")
+    macro_row = cursor.fetchone()
+    conn.close()
+    macro_regime = dict(macro_row) if macro_row else {}
+    threat_level = macro_regime.get('systemic_threat_level', 'GREEN')
     
     # 2. Execute Screens mapped by Regime
     raw_oversold = get_oversold_reversals(data, regime_label)
     raw_golden_crosses = get_golden_crosses(data, regime_label)
     raw_surges = get_momentum_surges(data, regime_label)
-    
-    # We do not veto warnings (bearish flags), only bullish ones.
     warnings = get_overbought_warnings(data, regime_label)
     
-    # 3. Intercept & Filter ML Divergences
-    oversold, veto_1 = filter_ai_vetoes(raw_oversold)
-    golden_crosses, veto_2 = filter_ai_vetoes(raw_golden_crosses)
-    surges, veto_3 = filter_ai_vetoes(raw_surges)
+    # 3. Intercept & Filter ML Divergences & Macro Yield Vetoes
+    approved_1, ml_veto_1 = filter_ai_vetoes(raw_oversold)
+    oversold, macro_veto_1 = filter_macro_vetoes(approved_1, threat_level)
+
+    approved_2, ml_veto_2 = filter_ai_vetoes(raw_golden_crosses)
+    golden_crosses, macro_veto_2 = filter_macro_vetoes(approved_2, threat_level)
+
+    approved_3, ml_veto_3 = filter_ai_vetoes(raw_surges)
+    surges, macro_veto_3 = filter_macro_vetoes(approved_3, threat_level)
     
-    # Combine all vetoed setups, deduping by ticker
-    vetoed_dict = {}
-    for row in veto_1 + veto_2 + veto_3:
-        vetoed_dict[row['ticker']] = row
-    ai_vetoed = list(vetoed_dict.values())
+    # Combine Vetoes natively, deduplicating by ticker
+    ml_vetoed_dict = {row['ticker']: row for row in ml_veto_1 + ml_veto_2 + ml_veto_3}
+    ml_vetoed = list(ml_vetoed_dict.values())
+
+    macro_vetoed_dict = {row['ticker']: row for row in macro_veto_1 + macro_veto_2 + macro_veto_3}
+    macro_vetoed = list(macro_vetoed_dict.values())
     
     # 4. Build Markdown String
     report = f"# 📊 Morning Quant Briefing\n"
     report += f"**Date:** {target_date}\n\n"
     
     report += "## 🌍 Market Regime Context\n"
-    report += f"**Current Classification:** {regime_label} *(Turbulence Index: {turbulence_idx:.2f})*\n"
-    if regime_label in ['Crash', 'Volatile']:
-        report += "*⚠️ Market is highly turbulent. The quantitative screener has aggressively filtered for 'Flight to Safety' setups. Only assets displaying structural strength above their 200-day moving average are included in bullish setups.*\n\n"
+    report += f"**Volatility Classification:** {regime_label} *(Turbulence Index: {turbulence_idx:.2f})*\n"
+    report += f"**Systemic Yield Threat:** {threat_level} *(Velocity: {macro_regime.get('yield_velocity', 0.0):+.2f}% | Source: {macro_regime.get('threat_source', 'N/A')})*\n\n"
+    
+    if threat_level in ['RED', 'YELLOW']:
+        report += "*⚠️ SYSTEMIC YIELD WARNING: Global cost of capital is surging. The quantitative screener has aggressively vetoed highly indebted and high P/E equities that show strong negative correlations to rising interest rates.*\n\n"
+    elif regime_label in ['Crash', 'Volatile']:
+        report += "*⚠️ VOLATILITY WARNING: Market is highly turbulent. The screener has filtered for 'Flight to Safety' setups above the 200-day moving average.*\n\n"
     else:
-        report += "*Market conditions are currently normal and stable. Standard quantitative thresholds apply.*\n\n"
+        report += "*Market conditions are normal and stable. Standard quantitative thresholds apply.*\n\n"
     
     report += "## Executive Summary\n"
     report += f"Automated overnight screening executed against {len(data)} tracked equities. "
-    report += "The following report identifies high-probability statistical anomalies, momentum shifts, and risk-management triggers based on institutional-grade technical parameters.\n\n"
+    report += "Identifies high-probability statistical anomalies, momentum shifts, and risk-management triggers based on institutional-grade technical parameters.\n\n"
     
     report += "## 📉 Oversold Reversals\n"
-    report += "*The following equities have been aggressively sold off (RSI < 30) but are demonstrating early quantitative signs of momentum recovery (Positive MACD Histogram). These present high-conviction, deep-value entry opportunities with asymmetric risk/reward profiles.*\n\n"
+    report += "*Aggressively sold off (RSI < 30) but demonstrating early quantitative signs of momentum recovery (Positive MACD Histogram). High-conviction, deep-value entry opportunities.*\n\n"
     report += _format_mobile_markdown_list(oversold)
     
     report += "## 📈 Golden MACD Crosses\n"
-    report += "*The following equities have triggered a Golden MACD Cross, indicating a potential mathematical momentum reversal to the upside and underlying institutional accumulation.*\n\n"
+    report += "*Triggered a Golden MACD Cross, indicating a mathematical momentum reversal to the upside and underlying institutional accumulation.*\n\n"
     report += _format_mobile_markdown_list(golden_crosses)
     
     report += "## 🚀 Momentum & Volume Surges\n"
-    report += "*These assets are currently experiencing explosive buying volume (Volume > 1.5x 20-Day SMA) while operating in a healthy momentum band (RSI between 50 and 70). This signifies strong institutional backing without immediate overbought exhaustion risk.*\n\n"
+    report += "*Explosive buying volume (Volume > 1.5x 20-Day SMA) operating in a healthy momentum band (RSI 50-70). Strong institutional backing without immediate overbought exhaustion risk.*\n\n"
     report += _format_mobile_markdown_list(surges)
     
-    report += "## 🚨 AI Vetoed Setups (Divergence Warnings)\n"
-    report += "*The following equities triggered strong mathematical buy signals, but the Machine Learning Ensemble predicts a high probability of failure (Confidence < 40%). Proceed with extreme caution.*\n\n"
-    report += _format_mobile_markdown_list(ai_vetoed)
+    if macro_vetoed:
+        report += "## 🏛️ Macro Vetoed Setups (Yield Sensitive)\n"
+        report += "*These equities triggered algorithmic buy signals but were VETOED by the Intermarket Engine due to surging global interest rates. They exhibit high debt or extreme P/E ratios and historically crash when yields spike. Avoid entry.*\n\n"
+        report += _format_mobile_markdown_list(macro_vetoed)
+
+    if ml_vetoed:
+        report += "## 🤖 AI Vetoed Setups (Divergence Warnings)\n"
+        report += "*These equities triggered algorithmic buy signals, but the Machine Learning Ensemble predicts a high probability of failure (Confidence < 40%). Proceed with extreme caution.*\n\n"
+        report += _format_mobile_markdown_list(ml_vetoed)
     
     report += "## 🚨 Overbought Warnings (Distribution Risk)\n"
-    report += "*Risk Management Alert: The following assets are mathematically overextended and are beginning to flash negative momentum divergence (Negative MACD Histogram). Trim positions or tighten stop-losses, as algorithmic mean-reversion is highly probable.*\n\n"
+    report += "*Risk Management Alert: Mathematically overextended and beginning to flash negative momentum divergence (Negative MACD Histogram). Trim positions or tighten stop-losses, as algorithmic mean-reversion is highly probable.*\n\n"
     report += _format_mobile_markdown_list(warnings)
     
     report += "---\n"
