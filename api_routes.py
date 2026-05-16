@@ -444,13 +444,19 @@ async def get_screener_data():
         conn = get_connection()
         cursor = conn.cursor()
         
-        # UPDATED QUERY: Added composite_score for frontend UI ML divergence correlation, and Exchange support
+        # UPDATED QUERY: Enforcing UPPER() to handle messy yfinance casing inputs
         query = """
         SELECT 
             q.ticker, 
             COALESCE(p.company_name, m.company_name, q.ticker) as company_name, 
             COALESCE(p.sector, s.sector, 'Unclassified') as sector, 
-            COALESCE(m.exchange, p.exchange, 'US') as exchange,
+            CASE 
+                WHEN UPPER(COALESCE(m.exchange, p.exchange)) = 'NMS' THEN 'NASDAQ'
+                WHEN UPPER(COALESCE(m.exchange, p.exchange)) = 'NYQ' THEN 'NYSE/AMEX'
+                WHEN COALESCE(m.exchange, p.exchange) IS NOT NULL THEN UPPER(COALESCE(m.exchange, p.exchange))
+                WHEN UPPER(q.ticker) LIKE '%.L' THEN 'LSE'
+                ELSE 'US'
+            END as exchange,
             q.date, q.close_price, 
             q.volume, q.rsi_14, q.macd_hist, q.sma_50, q.sma_200, 
             q.volume_surge, q.bullish_cross,
@@ -471,6 +477,7 @@ async def get_screener_data():
         return JSONResponse(content={"data": data})
         
     except Exception as e:
+        logger.error(f"Failed to fetch screener data: {e}")
         return JSONResponse(status_code=500, content={"error": str(e), "data": []})
 
 # --- ADVANCED MARKET REPORTS ENDPOINTS ---
