@@ -23,10 +23,16 @@ def get_sector_trends() -> List[Dict[str, Any]]:
         cursor = conn.cursor()
         
         # Uses COALESCE to fallback to 'Unclassified' since Nasdaq FTP provides no sectors,
-        # and dynamically segments by Exchange origin.
+        # and dynamically segments by the normalized Exchange origin.
         query = """
         SELECT 
-            COALESCE(m.exchange, p.exchange, 'US') as exchange,
+            CASE 
+                WHEN UPPER(COALESCE(m.exchange, p.exchange)) = 'NMS' THEN 'NASDAQ'
+                WHEN UPPER(COALESCE(m.exchange, p.exchange)) = 'NYQ' THEN 'NYSE/AMEX'
+                WHEN COALESCE(m.exchange, p.exchange) IS NOT NULL THEN UPPER(COALESCE(m.exchange, p.exchange))
+                WHEN UPPER(q.ticker) LIKE '%.L' THEN 'LSE'
+                ELSE 'US'
+            END as exchange,
             COALESCE(p.sector, s.sector, 'Unclassified') as sector,
             COUNT(q.ticker) as total_stocks,
             ROUND(AVG(q.rsi_14), 2) as avg_rsi,
@@ -39,7 +45,7 @@ def get_sector_trends() -> List[Dict[str, Any]]:
         WHERE q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = q.ticker)
           AND COALESCE(p.sector, s.sector, 'Unclassified') != 'None' 
           AND COALESCE(p.sector, s.sector, 'Unclassified') != ''
-        GROUP BY COALESCE(m.exchange, p.exchange, 'US'), COALESCE(p.sector, s.sector, 'Unclassified')
+        GROUP BY exchange, COALESCE(p.sector, s.sector, 'Unclassified')
         ORDER BY exchange ASC, avg_rsi DESC
         """
         cursor.execute(query)
@@ -107,7 +113,13 @@ def get_leaders_laggards() -> List[Dict[str, Any]]:
             COALESCE(p.company_name, m.company_name, q.ticker) as company_name, 
             COALESCE(m.country, p.country, 'US') as country,
             COALESCE(p.sector, s.sector, 'Unclassified') as sector, 
-            COALESCE(m.exchange, p.exchange, 'US') as exchange,
+            CASE 
+                WHEN UPPER(COALESCE(m.exchange, p.exchange)) = 'NMS' THEN 'NASDAQ'
+                WHEN UPPER(COALESCE(m.exchange, p.exchange)) = 'NYQ' THEN 'NYSE/AMEX'
+                WHEN COALESCE(m.exchange, p.exchange) IS NOT NULL THEN UPPER(COALESCE(m.exchange, p.exchange))
+                WHEN UPPER(q.ticker) LIKE '%.L' THEN 'LSE'
+                ELSE 'US'
+            END as exchange,
             q.close_price, 
             ROUND(q.rsi_14, 2) as rsi_14, 
             ROUND(q.macd_hist, 3) as macd_hist,
@@ -148,7 +160,13 @@ def get_dividend_harvest_setups(min_yield: float = 0.02, min_score: int = 50) ->
             COALESCE(p.company_name, m.company_name, q.ticker) as company_name, 
             COALESCE(p.country, m.country, 'US') as country,
             COALESCE(p.sector, m.sector, 'Unclassified') as sector, 
-            COALESCE(m.exchange, p.exchange, 'US') as exchange,
+            CASE 
+                WHEN UPPER(COALESCE(m.exchange, p.exchange)) = 'NMS' THEN 'NASDAQ'
+                WHEN UPPER(COALESCE(m.exchange, p.exchange)) = 'NYQ' THEN 'NYSE/AMEX'
+                WHEN COALESCE(m.exchange, p.exchange) IS NOT NULL THEN UPPER(COALESCE(m.exchange, p.exchange))
+                WHEN UPPER(q.ticker) LIKE '%.L' THEN 'LSE'
+                ELSE 'US'
+            END as exchange,
             q.close_price, 
             s.dividend_yield, 
             s.ex_dividend_date, 
