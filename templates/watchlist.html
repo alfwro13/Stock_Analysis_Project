@@ -38,30 +38,26 @@
     {% endif %}
 
     {% if macro_regime %}
-    <div class="macro-banner 
-        {% if macro_regime.systemic_threat_level == 'RED' %} macro-banner-red
-        {% elif macro_regime.systemic_threat_level == 'YELLOW' %} macro-banner-yellow
-        {% else %} macro-banner-green {% endif %}">
-        
-        <h3 class="macro-header 
-            {% if macro_regime.systemic_threat_level == 'RED' %} macro-header-red
-            {% elif macro_regime.systemic_threat_level == 'YELLOW' %} macro-header-yellow
-            {% else %} macro-header-green {% endif %}">
-            {% if macro_regime.systemic_threat_level == 'RED' %}🚨 SYSTEMIC RISK: HIGH (LIQUIDATION THREAT)
-            {% elif macro_regime.systemic_threat_level == 'YELLOW' %}⚠️ SYSTEMIC RISK: ELEVATED (COMPRESSION WARNING)
-            {% else %}✅ SYSTEMIC RISK: LOW (STABLE MACRO){% endif %}
-        </h3>
-        
-        <p class="macro-details">
-            <strong>Trigger Source:</strong> {{ macro_regime.threat_source }} | <strong>3-Day Velocity:</strong> {{ "{:+.2f}".format(macro_regime.yield_velocity) }}%<br>
-            {% if macro_regime.systemic_threat_level == 'RED' %}
-            Global yields are surging vertically. High-multiple growth stocks and highly indebted assets are at extreme risk of immediate valuation compression.
-            {% elif macro_regime.systemic_threat_level == 'YELLOW' %}
-            The cost of capital is creeping higher. Monitor yield-sensitive assets closely for technical breakdowns.
-            {% else %}
-            Global yields are stable or falling. Favorable environment for equity expansion and risk-on assets.
-            {% endif %}
-        </p>
+    <div class="summary-row risk-summary-row {% if macro_regime.systemic_threat_level == 'RED' %}risk-summary-red{% elif macro_regime.systemic_threat_level == 'YELLOW' %}risk-summary-yellow{% else %}risk-summary-green{% endif %}">
+        <div class="risk-summary-body">
+            <h3 class="risk-summary-header {% if macro_regime.systemic_threat_level == 'RED' %}red{% elif macro_regime.systemic_threat_level == 'YELLOW' %}yellow{% else %}green{% endif %}">
+                {% if macro_regime.systemic_threat_level == 'RED' %}🚨 SYSTEMIC RISK: HIGH (LIQUIDATION THREAT)
+                {% elif macro_regime.systemic_threat_level == 'YELLOW' %}⚠️ SYSTEMIC RISK: ELEVATED (COMPRESSION WARNING)
+                {% else %}✅ SYSTEMIC RISK: LOW (STABLE MACRO){% endif %}
+            </h3>
+            <p class="risk-summary-text">
+                <strong>Trigger Source:</strong> {{ macro_regime.threat_source }} &nbsp;|&nbsp; 
+                <strong>3-Day Velocity:</strong> <span class="{% if macro_regime.systemic_threat_level == 'RED' %}negative-val{% elif macro_regime.systemic_threat_level == 'YELLOW' %}warning-text{% else %}positive-val{% endif %}">{{ "{:+.2f}".format(macro_regime.yield_velocity) }}%</span>
+                <br>
+                {% if macro_regime.systemic_threat_level == 'RED' %}
+                Global yields are surging vertically. High-multiple growth stocks and highly indebted assets are at extreme risk of immediate valuation compression.
+                {% elif macro_regime.systemic_threat_level == 'YELLOW' %}
+                The cost of capital is creeping higher. Monitor yield-sensitive assets closely for technical breakdowns.
+                {% else %}
+                Global yields are stable or falling. Favorable environment for equity expansion and risk-on assets.
+                {% endif %}
+            </p>
+        </div>
     </div>
     {% endif %}
 

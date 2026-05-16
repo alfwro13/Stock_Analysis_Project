@@ -348,3 +348,54 @@ def update_all_sentiment(tickers: List[str]) -> None:
             
     conn.close()
     logger.info("VADER Local Sentiment Analysis completed successfully.")
+
+def get_yield_gauge_html() -> str:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT yield_velocity, systemic_threat_level FROM macro_regimes ORDER BY date DESC LIMIT 1")
+    row = cursor.fetchone()
+    conn.close()
+    
+    velocity = float(row['yield_velocity']) if row else 0.0
+    
+    fig = go.Figure(go.Indicator(
+        mode = "gauge+number",
+        value = velocity,
+        domain = {'x': [0, 1], 'y': [0, 1]},
+        title = {'text': "3-Day Yield Velocity (%)", 'font': {'size': 18, 'color': '#ccc'}},
+        gauge = {
+            'axis': {'range': [-5, 5], 'tickwidth': 1, 'tickcolor': "white"},
+            'bar': {'color': "white", 'thickness': 0.2},
+            'bgcolor': "#1e1e1e",
+            'borderwidth': 2,
+            'bordercolor': "#333",
+            'steps': [
+                {'range': [-5, 1.5], 'color': '#00ff00'},
+                {'range': [1.5, 3.5], 'color': '#ffaa00'},
+                {'range': [3.5, 5.0], 'color': '#ff4d4d'}],
+        }
+    ))
+    fig.update_layout(template="plotly_dark", height=300, margin=dict(l=40, r=40, t=60, b=40), paper_bgcolor='#1e1e1e')
+    return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
+
+def get_yield_equity_html() -> str:
+    today = datetime.now()
+    start_date = (today - timedelta(days=365)).strftime('%Y-%m-%d')
+    spy_data = fetch_stock_data('SPY', start_date)
+    tyx_data = fetch_stock_data('^TYX', start_date)
+    
+    if spy_data.empty or tyx_data.empty: return "<p>Error loading Cost of Capital data.</p>"
+    merged_df = spy_data.merge(tyx_data, left_index=True, right_index=True, how='inner')
+
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    fig.add_trace(go.Scatter(x=merged_df.index, y=merged_df['SPY_Close'], name="S&P 500", line=dict(color='#4da6ff', width=2)), secondary_y=False)
+    fig.add_trace(go.Scatter(x=merged_df.index, y=merged_df['^TYX_Close'], name="30Y Treasury Yield", line=dict(color='#ff4d4d', dash='dot', width=2)), secondary_y=True)
+
+    fig.update_layout(
+        title="Cost of Capital: 30Y Treasury Yield vs S&P 500 (1 Year)",
+        template="plotly_dark", height=600, margin=dict(l=40, r=40, t=60, b=40),
+        hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+    )
+    fig.update_yaxes(title_text="S&P 500 Price ($)", secondary_y=False)
+    fig.update_yaxes(title_text="30Y Yield (%)", secondary_y=True)
+    return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})

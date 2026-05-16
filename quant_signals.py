@@ -186,6 +186,14 @@ class QuantEngine:
             baseline_name = "FTSE_BASELINE" if is_uk_asset else "SP500_BASELINE"
             df_baseline = self.load_parquet(baseline_name)
             
+            # --- Global Cost of Capital Baseline ---
+            df_yield = self.load_parquet("TYX_BASELINE")
+            
+            # Decoupled 200-day limit to support recent IPOs or API data truncations
+            if df is None or len(df) < 21:
+                logger.warning(f"[SKIP] Not enough historical data to analyze {ticker} (requires at least 21 days).")
+                return
+            
             # Decoupled 200-day limit to support recent IPOs or API data truncations
             if df is None or len(df) < 21:
                 logger.warning(f"[SKIP] Not enough historical data to analyze {ticker} (requires at least 21 days).")

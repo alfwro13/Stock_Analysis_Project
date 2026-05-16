@@ -66,8 +66,9 @@ def run_update_pipeline():
     try:
         logger.info("Background update initiated.")
         DataEngine().update_all_data()
-        from regime_engine import calculate_systemic_macro_threat
+        from regime_engine import calculate_systemic_macro_threat, calculate_market_regime
         calculate_systemic_macro_threat()
+        calculate_market_regime()
         QuantEngine().run_all()
         logger.info("Background update complete.")
         log_sched_notification("Success", "Update Pipeline completed successfully.")

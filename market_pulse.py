@@ -7,16 +7,14 @@ from database import get_connection
 
 # Dictionary mapping Yahoo Finance tickers to our clean UI display names
 INDEX_TICKERS = {
-    "^GSPC": "S&P 500",
-    "ES=F": "S&P 500 Futures",
-    "^NDX": "Nasdaq 100",
-    "NQ=F": "Nasdaq 100 Futures",
-    "^FTSE": "FTSE 100",
+    "^FTSE": "UK FTSE 100",
+    "^FTMC": "UK FTSE 250",
+    "GBPUSD=X": "GBP/USD",
+    "^GSPC": "US S&P 500",
+    "^NDX": "US Nasdaq 100",
     "^TYX": "US 30Y Yield",
     "^TNX": "US 10Y Yield",
-    "DX=F": "US Dollar Index",
-    "TUKG10Y=X": "UK 10Y Gilt",
-    "GBPUSD=X": "GBP/USD"
+    "DX-Y.NYB": "US Dollar Index"
 }
 
 # Simple thread safety flag to prevent duplicate background fetch spawns
@@ -74,39 +72,35 @@ def get_cached_pulse_from_db(asset_tickers, refresh_rate):
 
     results = {"indexes": [], "assets": []}
     current_time = time.time()
-    found_tickers = set()
+    
+    # Map database rows for O(1) lookup
+    db_map = {row['ticker']: row for row in rows}
 
-    # Load found data from the database
-    for row in rows:
-        ticker = row['ticker']
-        found_tickers.add(ticker)
-        is_stale = (current_time - row['last_updated']) > refresh_rate
-        data_obj = {
-            "ticker": ticker,
-            "name": row['name'],
-            "price": row['price'],
-            "change_pts": row['change_pts'],
-            "change_pct": row['change_pct'],
-            "is_positive": bool(row['is_positive']),
-            "is_stale": is_stale
-        }
-        if ticker in INDEX_TICKERS:
-            results["indexes"].append(data_obj)
+    # Iterate through our strictly ordered all_tickers list
+    for t in all_tickers:
+        if t in db_map:
+            row = db_map[t]
+            is_stale = (current_time - row['last_updated']) > refresh_rate
+            data_obj = {
+                "ticker": t,
+                "name": row['name'],
+                "price": row['price'],
+                "change_pts": row['change_pts'],
+                "change_pct": row['change_pct'],
+                "is_positive": bool(row['is_positive']),
+                "is_stale": is_stale
+            }
         else:
-            results["assets"].append(data_obj)
+            data_obj = {
+                "ticker": t,
+                "name": INDEX_TICKERS.get(t, t),
+                "price": "0.00",
+                "change_pts": "0.00",
+                "change_pct": "0.00",
+                "is_positive": True,
+                "is_stale": True
+            }
             
-    # For completely missing tickers, mark them as stale skeletons immediately
-    missing = [t for t in all_tickers if t not in found_tickers]
-    for t in missing:
-        data_obj = {
-            "ticker": t,
-            "name": INDEX_TICKERS.get(t, t),
-            "price": "0.00",
-            "change_pts": "0.00",
-            "change_pct": "0.00",
-            "is_positive": True,
-            "is_stale": True
-        }
         if t in INDEX_TICKERS:
             results["indexes"].append(data_obj)
         else:

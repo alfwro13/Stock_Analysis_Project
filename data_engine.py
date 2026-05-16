@@ -47,7 +47,7 @@ class DataEngine:
         valid_tickers = [t for t in tickers if t not in ignored_tickers]
         return valid_tickers
 
-    def fetch_market_baseline(self):
+def fetch_market_baseline(self):
         """Downloads macroeconomic gravity indices and benchmarks for intermarket calculations."""
         logger.info("Fetching Market and Intermarket Baselines (US & UK)...")
         try:
@@ -56,8 +56,7 @@ class DataEngine:
                 ("^FTSE", "FTSE_BASELINE"), 
                 ("^TYX", "TYX_BASELINE"), 
                 ("^TNX", "TNX_BASELINE"), 
-                ("DX=F", "DXY_BASELINE"),
-                ("TUKG10Y=X", "UK_GILT_BASELINE"),
+                ("DX-Y.NYB", "DXY_BASELINE"),
                 ("GBPUSD=X", "GBPUSD_BASELINE")
             ]
             for ticker, name in baselines:

@@ -11,7 +11,7 @@ from fastapi.templating import Jinja2Templates
 from config import load_config, PORTFOLIO_PATH, WATCHLIST_PATH, HISTORICAL_DIR, INTRADAY_DIR, BASE_CURRENCY
 from database import get_connection
 from regime_engine import get_latest_regime
-from sentiment_engine import get_sentiment_html, get_vix_spy_html
+from sentiment_engine import get_sentiment_html, get_vix_spy_html, get_yield_gauge_html, get_yield_equity_html
 from market_pulse import get_all_cached_pulse
 from visuals import create_macro_chart, create_intraday_chart
 from portfolio_service import get_rate_to_base, get_rate_from_base
@@ -56,6 +56,8 @@ async def market_sentiment_page(request: Request):
         context={
             "sentiment_html": get_sentiment_html(), 
             "vix_spy_html": get_vix_spy_html(),
+            "yield_gauge_html": get_yield_gauge_html(),
+            "yield_equity_html": get_yield_equity_html(),
             "regime_data": regime_data,
             "unread_count": get_unread_count(),
             "config": load_config()
