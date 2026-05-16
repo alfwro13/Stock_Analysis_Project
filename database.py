@@ -85,6 +85,7 @@ def init_db() -> None:
                 short_interest REAL,
                 institutional_ownership REAL,
                 beta REAL,
+                yield_correlation REAL,
                 
                 -- System Outputs
                 composite_score INTEGER,
@@ -200,6 +201,21 @@ def init_db() -> None:
                 turbulence_index REAL
             )
         ''')
+
+        # --- PHASE 2: SYSTEMIC MACRO RISK TRACKING ---
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS macro_regimes (
+                date TEXT PRIMARY KEY,
+                tyx_close REAL,
+                tnx_close REAL,
+                dxy_close REAL,
+                uk_gilt_close REAL,
+                gbpusd_close REAL,
+                yield_velocity REAL,
+                systemic_threat_level TEXT,
+                threat_source TEXT
+            )
+        ''')
         
         conn.commit()
         
@@ -236,7 +252,7 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
         'dividend_yield': 'REAL', 'ex_dividend_date': 'TEXT', 'target_price': 'REAL',
         'analyst_rating': 'TEXT', 'next_earnings_date': 'TEXT',
         'short_interest': 'REAL', 'institutional_ownership': 'REAL', 'beta': 'REAL',
-        'setup_tags': 'TEXT'
+        'yield_correlation': 'REAL', 'setup_tags': 'TEXT'
     }
 
     for col_name, data_type in required_stock_columns.items():

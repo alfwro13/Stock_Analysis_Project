@@ -48,23 +48,27 @@ class DataEngine:
         return valid_tickers
 
     def fetch_market_baseline(self):
-        """
-        Downloads the S&P 500 (^GSPC) and FTSE 100 (^FTSE) data. 
-        This is absolutely required to calculate the Relative Strength (RS) line later.
-        """
-        logger.info("Fetching S&P 500 and FTSE 100 baselines for Relative Strength calculation...")
+        """Downloads macroeconomic gravity indices and benchmarks for intermarket calculations."""
+        logger.info("Fetching Market and Intermarket Baselines (US & UK)...")
         try:
-            sp500 = yf.Ticker("^GSPC")
-            df = sp500.history(period="2y")
-            df.index = df.index.tz_localize(None)
-            df.to_parquet(HISTORICAL_DIR / "SP500_BASELINE.parquet", engine='pyarrow')
-            
-            ftse = yf.Ticker("^FTSE")
-            df_ftse = ftse.history(period="2y")
-            df_ftse.index = df_ftse.index.tz_localize(None)
-            df_ftse.to_parquet(HISTORICAL_DIR / "FTSE_BASELINE.parquet", engine='pyarrow')
-            
-            logger.info("Market Baselines secured.")
+            baselines = [
+                ("^GSPC", "SP500_BASELINE"), 
+                ("^FTSE", "FTSE_BASELINE"), 
+                ("^TYX", "TYX_BASELINE"), 
+                ("^TNX", "TNX_BASELINE"), 
+                ("DX=F", "DXY_BASELINE"),
+                ("TUKG10Y=X", "UK_GILT_BASELINE"),
+                ("GBPUSD=X", "GBPUSD_BASELINE")
+            ]
+            for ticker, name in baselines:
+                stock = yf.Ticker(ticker)
+                df = stock.history(period="2y")
+                if not df.empty:
+                    if isinstance(df.columns, pd.MultiIndex):
+                        df.columns = df.columns.get_level_values(0)
+                    df.index = df.index.tz_localize(None)
+                    df.to_parquet(HISTORICAL_DIR / f"{name}.parquet", engine='pyarrow')
+            logger.info("All Market and Intermarket Baselines secured successfully.")
         except Exception as e:
             logger.error(f"Failed to fetch Market baselines: {e}")
 

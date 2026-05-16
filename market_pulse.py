@@ -12,8 +12,11 @@ INDEX_TICKERS = {
     "^NDX": "Nasdaq 100",
     "NQ=F": "Nasdaq 100 Futures",
     "^FTSE": "FTSE 100",
-    "^FTMC": "FTSE 250",
-    "^KS11": "KOSPI"
+    "^TYX": "US 30Y Yield",
+    "^TNX": "US 10Y Yield",
+    "DX=F": "US Dollar Index",
+    "TUKG10Y=X": "UK 10Y Gilt",
+    "GBPUSD=X": "GBP/USD"
 }
 
 # Simple thread safety flag to prevent duplicate background fetch spawns

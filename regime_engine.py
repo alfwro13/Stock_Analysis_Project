@@ -124,3 +124,60 @@ def get_latest_regime() -> Optional[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Failed to fetch latest regime: {e}")
         return None
+
+def calculate_systemic_macro_threat() -> None:
+    """Calculates yield rate of change (US & UK) and logs global systemic compression risk to SQLite."""
+    try:
+        tyx = yf.Ticker("^TYX").history(period="5d")
+        tnx = yf.Ticker("^TNX").history(period="5d")
+        dxy = yf.Ticker("DX=F").history(period="5d")
+        gilt = yf.Ticker("TUKG10Y=X").history(period="5d")
+        gbpusd = yf.Ticker("GBPUSD=X").history(period="5d")
+        
+        if tyx.empty or len(tyx) < 4:
+            return
+            
+        # Current and Past (3 trading days ago) values
+        curr_tyx = float(tyx['Close'].iloc[-1])
+        past_tyx = float(tyx['Close'].iloc[-4])
+        
+        curr_gilt = float(gilt['Close'].iloc[-1]) if not gilt.empty and len(gilt) >= 4 else curr_tyx
+        past_gilt = float(gilt['Close'].iloc[-4]) if not gilt.empty and len(gilt) >= 4 else past_tyx
+        
+        curr_tnx = float(tnx['Close'].iloc[-1]) if not tnx.empty else 0.0
+        curr_dxy = float(dxy['Close'].iloc[-1]) if not dxy.empty else 0.0
+        curr_gbpusd = float(gbpusd['Close'].iloc[-1]) if not gbpusd.empty else 0.0
+        
+        # Calculate yield velocity % change over 72 trading hours
+        tyx_velocity = ((curr_tyx - past_tyx) / past_tyx) * 100.0 if past_tyx > 0 else 0.0
+        gilt_velocity = ((curr_gilt - past_gilt) / past_gilt) * 100.0 if past_gilt > 0 else 0.0
+        
+        # Determine the highest threat
+        max_velocity = max(tyx_velocity, gilt_velocity)
+        threat_source = "US Treasury" if tyx_velocity >= gilt_velocity else "UK Gilt"
+        
+        # Institutional Rule Classification
+        if max_velocity >= 3.5 or curr_tyx >= 5.0 or curr_gilt >= 5.0:
+            threat_level = "RED"
+        elif max_velocity >= 1.5:
+            threat_level = "YELLOW"
+        else:
+            threat_level = "GREEN"
+            
+        latest_date = tyx.index[-1].strftime('%Y-%m-%d')
+        
+        conn = get_connection()
+        cursor = conn.cursor()
+        
+        # Native upsert into our dedicated macro ledger
+        cursor.execute('''
+            INSERT OR REPLACE INTO macro_regimes 
+            (date, tyx_close, tnx_close, dxy_close, uk_gilt_close, gbpusd_close, yield_velocity, systemic_threat_level, threat_source)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (latest_date, round(curr_tyx, 3), round(curr_tnx, 3), round(curr_dxy, 3), round(curr_gilt, 3), round(curr_gbpusd, 4), round(max_velocity, 2), threat_level, threat_source))
+        
+        conn.commit()
+        conn.close()
+        logger.info(f"Systemic Macro Risk Evaluated: Threat level is {threat_level} (Source: {threat_source}, Velocity: {max_velocity:+.2f}%)")
+    except Exception as e:
+        logger.error(f"Fatal crash inside systemic threat calculator: {e}")
