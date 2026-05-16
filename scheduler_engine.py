@@ -17,7 +17,7 @@ from ghostfolio_sync import GhostfolioSyncEngine
 from quant_engine import run_daily_quant_scan
 from earnings_vol_engine import run_earnings_vol_scan
 from report_dispatcher import push_morning_quant_briefing
-from database import get_universe_tickers
+from database import get_universe_tickers, get_connection
 from universe_engine import update_market_universe
 from profile_engine import run_profile_audit
 from sentiment_engine import run_nextcloud_alert, update_all_sentiment
@@ -34,6 +34,16 @@ logger = logging.getLogger(__name__)
 # --- Background Task Scheduler Setup ---
 scheduler = BackgroundScheduler()
 task_lock = threading.Lock()
+
+def log_sched_notification(msg_type: str, msg_text: str):
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO system_notifications (message_type, message_text) VALUES (?, ?)", (msg_type, msg_text))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"Failed to log notification: {e}")
 
 def trigger_sentiment_report():
     """Triggered by the scheduler to run the Nextcloud Market Sentiment alert."""
@@ -52,11 +62,15 @@ def run_update_pipeline():
     if not task_lock.acquire(blocking=False):
         logger.warning("System is currently busy. Skipping Update Analysis to prevent clash.")
         return
+    log_sched_notification("Scheduler", "Started Update Pipeline...")
     try:
         logger.info("Background update initiated.")
         DataEngine().update_all_data()
         QuantEngine().run_all()
         logger.info("Background update complete.")
+        log_sched_notification("Success", "Update Pipeline completed successfully.")
+    except Exception as e:
+        log_sched_notification("Error", f"Update Pipeline failed: {e}")
     finally:
         task_lock.release()
 
@@ -65,9 +79,13 @@ def run_ghostfolio_sync():
     if not task_lock.acquire(blocking=False):
         logger.warning("System is currently busy. Skipping Ghostfolio Sync to prevent clash.")
         return
+    log_sched_notification("Scheduler", "Started Ghostfolio Sync...")
     try:
         sync_engine = GhostfolioSyncEngine()
         sync_engine.run_full_sync()
+        log_sched_notification("Success", "Ghostfolio Sync completed successfully.")
+    except Exception as e:
+        log_sched_notification("Error", f"Ghostfolio Sync failed: {e}")
     finally:
         task_lock.release()
 
@@ -79,6 +97,7 @@ def run_overnight_quant_scan():
     if not task_lock.acquire(blocking=False):
         logger.warning("System is currently busy. Skipping Overnight Quant Scan.")
         return
+    log_sched_notification("Scheduler", "Started Overnight Quant Scan...")
     try:
         logger.info("Overnight quant scan initiated.")
         engine = DataEngine()
@@ -96,8 +115,10 @@ def run_overnight_quant_scan():
         update_all_sentiment(all_tickers)
         
         logger.info("Overnight quant scan complete.")
+        log_sched_notification("Success", "Overnight Quant Scan completed successfully.")
     except Exception as e:
         logger.error(f"Overnight Quant Scan Failed: {e}")
+        log_sched_notification("Error", f"Overnight Quant Scan failed: {e}")
     finally:
         task_lock.release()
 
@@ -106,14 +127,17 @@ def run_weekend_earnings_scan():
     if not task_lock.acquire(blocking=False):
         logger.warning("System is busy. Skipping Earnings Volatility Scan.")
         return
+    log_sched_notification("Scheduler", "Started Earnings Volatility Scan...")
     try:
         logger.info("Earnings volatility scan initiated.")
         engine = DataEngine()
         all_tickers = engine.get_all_tickers() 
         run_earnings_vol_scan(all_tickers)
         logger.info("Earnings volatility scan complete.")
+        log_sched_notification("Success", "Earnings Volatility Scan completed successfully.")
     except Exception as e:
         logger.error(f"Earnings Volatility Scan Failed: {e}")
+        log_sched_notification("Error", f"Earnings Volatility Scan failed: {e}")
     finally:
         task_lock.release()
 
@@ -122,12 +146,15 @@ def run_morning_briefing_dispatch():
     if not task_lock.acquire(blocking=False):
         logger.warning("System is busy. Skipping Morning Briefing Dispatch.")
         return
+    log_sched_notification("Scheduler", "Started Morning Briefing Dispatch...")
     try:
         logger.info("Morning briefing dispatch initiated.")
         push_morning_quant_briefing()
         logger.info("Morning briefing dispatch complete.")
+        log_sched_notification("Success", "Morning Briefing Dispatch completed successfully.")
     except Exception as e:
         logger.error(f"Morning Briefing Dispatch Failed: {e}")
+        log_sched_notification("Error", f"Morning Briefing Dispatch failed: {e}")
     finally:
         task_lock.release()
 
@@ -136,6 +163,7 @@ def run_weekend_universe_routine():
     if not task_lock.acquire(blocking=False):
         logger.warning("System is busy. Skipping Weekend Universe Routine.")
         return
+    log_sched_notification("Scheduler", "Started Weekend Universe Routine...")
     try:
         logger.info("Weekend universe routine initiated.")
         # 1. Update the Ticker List from the FTP server
@@ -150,8 +178,10 @@ def run_weekend_universe_routine():
             logger.warning("Universe is empty, skipping quant scan.")
             
         logger.info("Weekend universe routine complete.")
+        log_sched_notification("Success", "Weekend Universe Routine completed successfully.")
     except Exception as e:
         logger.error(f"Weekend Universe Routine Failed: {e}")
+        log_sched_notification("Error", f"Weekend Universe Routine failed: {e}")
     finally:
         task_lock.release()
 
@@ -160,12 +190,15 @@ def run_weekend_profile_audit():
     if not task_lock.acquire(blocking=False):
         logger.warning("System is busy. Skipping Profile Audit.")
         return
+    log_sched_notification("Scheduler", "Started Weekend Profile Audit...")
     try:
         logger.info("Weekend profile audit initiated.")
         run_profile_audit(limit=250)
         logger.info("Weekend profile audit complete.")
+        log_sched_notification("Success", "Weekend Profile Audit completed successfully.")
     except Exception as e:
         logger.error(f"Weekend Profile Audit Failed: {e}")
+        log_sched_notification("Error", f"Weekend Profile Audit failed: {e}")
     finally:
         task_lock.release()
 
@@ -174,12 +207,15 @@ def run_weekend_ml_training():
     if not task_lock.acquire(blocking=False):
         logger.warning("System is busy. Skipping ML Training.")
         return
+    log_sched_notification("Scheduler", "Started Weekend ML Training...")
     try:
         logger.info("Weekend ML training initiated.")
         train_global_ml_model()
         logger.info("Weekend ML training complete.")
+        log_sched_notification("Success", "Weekend ML Training completed successfully.")
     except Exception as e:
         logger.error(f"Weekend ML Training Failed: {e}")
+        log_sched_notification("Error", f"Weekend ML Training failed: {e}")
     finally:
         task_lock.release()
 

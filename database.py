@@ -171,6 +171,7 @@ def init_db() -> None:
                 sector TEXT,
                 industry TEXT,
                 country TEXT,
+                exchange TEXT,
                 last_updated TEXT
             )
         ''')
@@ -267,12 +268,13 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
                 logger.error(f"[MIGRATION ERROR] Failed to add '{col_name}' to quant_signals: {e}")
                 continue
                 
-    # 3. Migrate market_universe (Adding Country origin column)
+    # 3. Migrate market_universe (Adding Country and Exchange origin columns)
     cursor.execute("PRAGMA table_info(market_universe)")
     existing_universe_columns = [info['name'] for info in cursor.fetchall()]
     
     required_universe_columns = {
-        'country': 'TEXT'
+        'country': 'TEXT',
+        'exchange': 'TEXT'
     }
 
     for col_name, data_type in required_universe_columns.items():

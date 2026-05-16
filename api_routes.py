@@ -91,6 +91,10 @@ def bg_execute_universe_quant_scan():
         return
     run_daily_quant_scan(tickers, scan_type='universe')
 
+def bg_execute_universe_quant_scan_subset(tickers: List[str]):
+    """Background task to exclusively scan newly imported universe tickers."""
+    run_daily_quant_scan(tickers, scan_type='sideload')
+
 def bg_init_ml_pipeline():
     """Background task wrapper for initializing the AI engine end-to-end."""
     run_historical_backfill()
@@ -166,7 +170,7 @@ async def list_importable_csvs():
         return JSONResponse(status_code=500, content={"status": "error", "message": f"Failed to list import directory: {str(e)}"})
 
 @api_router.post("/universe/import/server")
-async def import_server_csv(request: ImportRequest):
+async def import_server_csv(request: ImportRequest, background_tasks: BackgroundTasks):
     """
     API endpoint to securely read a CSV file directly from the tools/data/imports directory,
     parse it using Pandas, and bulk-load it into SQLite.
@@ -183,7 +187,7 @@ async def import_server_csv(request: ImportRequest):
         df = pd.read_csv(file_path)
         
         # Enforce exact column structures 
-        required_cols = ['ticker', 'company_name', 'sector', 'industry', 'currency', 'country']
+        required_cols = ['ticker', 'company_name', 'sector', 'industry', 'currency', 'country', 'exchange']
         for col in required_cols:
             if col not in df.columns:
                 return JSONResponse(status_code=400, content={"status": "error", "message": f"Malformed CSV. Missing required column: {col}"})
@@ -201,6 +205,7 @@ async def import_server_csv(request: ImportRequest):
                 str(row['sector']) if pd.notna(row['sector']) else 'Unclassified',
                 str(row['industry']) if pd.notna(row['industry']) else 'Unclassified',
                 str(row['country']) if pd.notna(row['country']) else 'Unknown',
+                str(row['exchange']) if pd.notna(row['exchange']) else 'Unknown',
                 current_time
             ))
         
@@ -210,12 +215,15 @@ async def import_server_csv(request: ImportRequest):
         # Optimized SQLite bulk insert utilizing transaction wrapping
         cursor.executemany('''
             INSERT OR REPLACE INTO market_universe 
-            (ticker, company_name, sector, industry, country, last_updated)
-            VALUES (?, ?, ?, ?, ?, ?)
+            (ticker, company_name, sector, industry, country, exchange, last_updated)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         ''', records)
         
         conn.commit()
         conn.close()
+        
+        # Immediately push an asynchronous scan for purely these newly added assets
+        background_tasks.add_task(bg_execute_universe_quant_scan_subset, [r[0] for r in records])
         
         return JSONResponse(content={
             "status": "success", 
@@ -441,13 +449,13 @@ async def get_screener_data():
         conn = get_connection()
         cursor = conn.cursor()
         
-        # UPDATED QUERY: Added composite_score for frontend UI ML divergence correlation, and Country support
+        # UPDATED QUERY: Added composite_score for frontend UI ML divergence correlation, and Exchange support
         query = """
         SELECT 
             q.ticker, 
             COALESCE(p.company_name, m.company_name, q.ticker) as company_name, 
             COALESCE(p.sector, s.sector, 'Unclassified') as sector, 
-            COALESCE(p.country, m.country, 'US') as country,
+            COALESCE(m.exchange, p.exchange, 'US') as exchange,
             q.date, q.close_price, 
             q.volume, q.rsi_14, q.macd_hist, q.sma_50, q.sma_200, 
             q.volume_surge, q.bullish_cross,

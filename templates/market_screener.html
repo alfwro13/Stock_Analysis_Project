@@ -31,10 +31,11 @@
     <div style="background-color: #1e1e1e; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); margin-top: 20px;">
         
         <div class="controls-container" style="margin-bottom: 20px;">
-            <select id="countryFilter" class="filter-select">
-                <option value="ALL">All Countries</option>
-                <option value="US">US</option>
-                <option value="UK">UK</option>
+            <select id="exchangeFilter" class="filter-select">
+                <option value="ALL">All Exchanges</option>
+                <option value="NASDAQ">NASDAQ</option>
+                <option value="NYSE/AMEX">NYSE/AMEX</option>
+                <option value="LSE">LSE</option>
             </select>
         </div>
 
@@ -44,7 +45,7 @@
                     <th>Ticker</th>
                     <th>Company Name</th>
                     <th>Sector</th>
-                    <th>Country</th>
+                    <th>Exchange</th>
                     <th>Close Price</th>
                     <th>Volume</th>
                     <th>RSI (14)</th>
@@ -124,7 +125,7 @@
                     { data: 'ticker', render: function(data) { return '<a href="/stock/' + data + '" style="color: #4da6ff; font-weight: bold;">' + data + '</a>'; } },
                     { data: 'company_name', render: function(data) { return data || 'N/A'; } },
                     { data: 'sector', render: function(data) { return data || 'N/A'; } },
-                    { data: 'country', render: function(data) { return data || 'US'; } },
+                    { data: 'exchange', render: function(data) { return data || 'US'; } },
                     { data: 'close_price', render: $.fn.dataTable.render.number(',', '.', 2, '$') },
                     { data: 'volume', render: $.fn.dataTable.render.number(',', '.', 0, '') },
                     { 
@@ -199,8 +200,8 @@
                 ]
             });
 
-            // Map Country Filter
-            $('#countryFilter').on('change', function() {
+            // Map Exchange Filter
+            $('#exchangeFilter').on('change', function() {
                 var val = $(this).val();
                 if(val === 'ALL') { table.column(3).search('').draw(); } 
                 else { table.column(3).search('^' + val + '$', true, false).draw(); }

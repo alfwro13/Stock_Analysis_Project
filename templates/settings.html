@@ -35,6 +35,7 @@
         <details class="settings-card">
             <summary>🌍 Market Universe Sideloading</summary>
             <p style="font-size: 13px; color: #aaa; margin-top: 0; margin-bottom: 15px;">Securely load custom CSV files representing different market universes (e.g., LSE, TSX) from the server's imports directory to expand the reach of the quantitative screener beyond the standard US Nasdaq baseline.</p>
+            <p style="font-size: 13px; color: #ffaa00; margin-top: 0; margin-bottom: 15px;"><strong>Note:</strong> Sideloaded assets will remain invisible in the Market Screener until they have been mathematically scanned. The system will automatically initiate a background quant scan for these specific tickers immediately upon successful import.</p>
             <div class="form-group" style="margin-bottom: 15px;">
                 <button type="button" class="btn-test" onclick="scanImportDirectory()">🔍 Scan Server Directory</button>
                 <div id="csvSelectContainer" style="display: none; margin-top: 15px; display: flex; gap: 15px;">

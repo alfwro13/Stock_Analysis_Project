@@ -142,7 +142,7 @@ def enrich_and_save(df: pd.DataFrame, output_filepath: str) -> None:
             logger.error(f"Could not read existing checkpoint file. Proceeding cautiously. Error: {e}")
 
     # 2. Open file in append mode and process
-    required_columns = ['ticker', 'company_name', 'sector', 'industry', 'currency', 'country']
+    required_columns = ['ticker', 'company_name', 'sector', 'industry', 'currency', 'country', 'exchange']
     total_tickers = len(df)
     
     with open(path_obj, mode='a', newline='', encoding='utf-8') as f:
@@ -211,7 +211,8 @@ def enrich_and_save(df: pd.DataFrame, output_filepath: str) -> None:
                     'sector': sector,
                     'industry': industry,
                     'currency': currency,
-                    'country': country
+                    'country': country,
+                    'exchange': 'LSE'
                 })
                 f.flush()
                 
