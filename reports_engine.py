@@ -1,5 +1,7 @@
 # reports_engine.py
 import logging
+import sqlite3
+from datetime import datetime
 from typing import List, Dict, Any
 from database import get_connection
 
@@ -139,7 +141,6 @@ def get_dividend_harvest_setups(min_yield: float = 0.02, min_score: int = 50) ->
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
-        # CHANGED: Switched to LEFT JOINs to ensure portfolio-only assets aren't dropped
         query = """
         SELECT 
             q.ticker, 
@@ -172,8 +173,6 @@ def get_dividend_harvest_setups(min_yield: float = 0.02, min_score: int = 50) ->
         for row in rows:
             row_dict = dict(row)
             
-            # Yahoo Finance returns exDividendDate as a Unix Timestamp integer.
-            # We must parse this back into a human-readable YYYY-MM-DD string.
             ex_date_raw = row_dict['ex_dividend_date']
             try:
                 ts = float(ex_date_raw)
