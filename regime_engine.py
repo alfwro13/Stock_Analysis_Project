@@ -1,3 +1,4 @@
+# regime_engine.py
 import logging
 from datetime import datetime
 from typing import Dict, Any, Optional
@@ -7,6 +8,7 @@ import pandas as pd
 import yfinance as yf
 
 from database import get_connection
+from config import HISTORICAL_DIR
 
 # Configure robust module-level logging
 logging.basicConfig(
@@ -15,7 +17,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def initialize_regime_table():
+def initialize_regime_table() -> None:
     """Ensures the market_regimes table exists before insertion."""
     try:
         conn = get_connection()
@@ -126,7 +128,7 @@ def get_latest_regime() -> Optional[Dict[str, Any]]:
         return None
 
 def calculate_systemic_macro_threat() -> None:
-    """Calculates yield rate of change (US) and logs global systemic compression risk to SQLite."""
+    """Calculates yield rate of change (US & UK) and logs global systemic compression risk to SQLite."""
     try:
         tyx = yf.Ticker("^TYX").history(period="5d")
         tnx = yf.Ticker("^TNX").history(period="5d")
@@ -144,14 +146,25 @@ def calculate_systemic_macro_threat() -> None:
         curr_dxy = float(dxy['Close'].iloc[-1]) if not dxy.empty else 0.0
         curr_gbpusd = float(gbpusd['Close'].iloc[-1]) if not gbpusd.empty else 0.0
         
+        # Read the UK Gilt data from our custom FT.com parquet scraper
+        uk_gilt_path = HISTORICAL_DIR / "UK_GILT_BASELINE.parquet"
+        if uk_gilt_path.exists():
+            gilt_df = pd.read_parquet(uk_gilt_path)
+            curr_gilt = float(gilt_df['Close'].iloc[-1]) if len(gilt_df) >= 1 else curr_tyx
+            past_gilt = float(gilt_df['Close'].iloc[-4]) if len(gilt_df) >= 4 else past_tyx
+        else:
+            curr_gilt, past_gilt = curr_tyx, past_tyx
+            
         # Calculate yield velocity % change over 72 trading hours
         tyx_velocity = ((curr_tyx - past_tyx) / past_tyx) * 100.0 if past_tyx > 0 else 0.0
+        gilt_velocity = ((curr_gilt - past_gilt) / past_gilt) * 100.0 if past_gilt > 0 else 0.0
         
-        max_velocity = tyx_velocity
-        threat_source = "US 30Y Treasury"
+        # Determine the highest threat
+        max_velocity = max(tyx_velocity, gilt_velocity)
+        threat_source = "US 30Y Treasury" if tyx_velocity >= gilt_velocity else "UK 10Y Gilt"
         
         # Institutional Rule Classification
-        if max_velocity >= 3.5 or curr_tyx >= 5.0:
+        if max_velocity >= 3.5 or curr_tyx >= 5.0 or curr_gilt >= 5.0:
             threat_level = "RED"
         elif max_velocity >= 1.5:
             threat_level = "YELLOW"
@@ -168,7 +181,7 @@ def calculate_systemic_macro_threat() -> None:
             INSERT OR REPLACE INTO macro_regimes 
             (date, tyx_close, tnx_close, dxy_close, uk_gilt_close, gbpusd_close, yield_velocity, systemic_threat_level, threat_source)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (latest_date, round(curr_tyx, 3), round(curr_tnx, 3), round(curr_dxy, 3), 0.0, round(curr_gbpusd, 4), round(max_velocity, 2), threat_level, threat_source))
+        ''', (latest_date, round(curr_tyx, 3), round(curr_tnx, 3), round(curr_dxy, 3), round(curr_gilt, 3), round(curr_gbpusd, 4), round(max_velocity, 2), threat_level, threat_source))
         
         conn.commit()
         conn.close()

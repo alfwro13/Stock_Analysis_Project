@@ -3,7 +3,10 @@ import json
 import logging
 import yfinance as yf
 import pandas as pd
+from typing import Set, List
+
 from config import PORTFOLIO_PATH, WATCHLIST_PATH, HISTORICAL_DIR, INTRADAY_DIR, FUNDAMENTALS_DIR, load_config
+from gilt_engine import GiltDataService
 
 # Configure robust module-level logging
 logging.basicConfig(
@@ -13,11 +16,11 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 class DataEngine:
-    def __init__(self):
+    def __init__(self) -> None:
         self.portfolio = self._load_json(PORTFOLIO_PATH)
         self.watchlist = self._load_json(WATCHLIST_PATH)
         
-    def _load_json(self, filepath):
+    def _load_json(self, filepath: str) -> dict:
         """Safely loads JSON files and logs Missing File errors gracefully."""
         try:
             with open(filepath, 'r') as f:
@@ -26,9 +29,9 @@ class DataEngine:
             logger.error(f"Missing JSON file: {filepath}")
             return {}
             
-    def get_all_tickers(self):
+    def get_all_tickers(self) -> List[str]:
         """Extracts a unique set of tickers from both Portfolio and Watchlist, excluding ignored items."""
-        tickers = set()
+        tickers: Set[str] = set()
         
         # Parse Portfolio
         for asset_key, asset_data in self.portfolio.items():
@@ -47,7 +50,7 @@ class DataEngine:
         valid_tickers = [t for t in tickers if t not in ignored_tickers]
         return valid_tickers
 
-    def fetch_market_baseline(self):
+    def fetch_market_baseline(self) -> None:
         """Downloads macroeconomic gravity indices and benchmarks for intermarket calculations."""
         logger.info("Fetching Market and Intermarket Baselines (US & UK)...")
         try:
@@ -68,10 +71,14 @@ class DataEngine:
                     df.index = df.index.tz_localize(None)
                     df.to_parquet(HISTORICAL_DIR / f"{name}.parquet", engine='pyarrow')
             logger.info("All Market and Intermarket Baselines secured successfully.")
+            
+            # Call our custom FT scraper for the UK Gilt
+            GiltDataService().sync_gilt_data()
+            
         except Exception as e:
             logger.error(f"Failed to fetch Market baselines: {e}")
 
-    def fetch_and_save_data(self, ticker):
+    def fetch_and_save_data(self, ticker: str) -> bool:
         """
         The Master Fetcher. Downloads three distinct data dimensions:
         1. 2-Year Daily OHLCV (For Macro Charts & MAs)
@@ -111,7 +118,7 @@ class DataEngine:
             logger.error(f"Pipeline failed for {ticker}: {str(e)}")
             return False
 
-    def update_all_data(self):
+    def update_all_data(self) -> None:
         """Master function triggered by the system to update all core assets."""
         self.fetch_market_baseline()
         
