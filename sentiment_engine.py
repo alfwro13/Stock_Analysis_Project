@@ -4,11 +4,12 @@ import json
 import time
 import random
 import logging
+import threading
 import pandas as pd
 import requests
 from fake_useragent import UserAgent
 from datetime import datetime, timedelta
-from typing import List
+from typing import List, Dict, Any, Optional
 
 import yfinance as yf
 import plotly.graph_objects as go
@@ -23,15 +24,22 @@ import matplotlib.pyplot as plt
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
 from nextcloud_talk import upload_file_webdav, share_file_to_talk
-from config import NEXTCLOUD_URL, BOT_USERNAME, APP_PASSWORD, CONVERSATION_TOKEN
+from config import NEXTCLOUD_URL, BOT_USERNAME, APP_PASSWORD, CONVERSATION_TOKEN, load_config
 from database import get_connection
 
 # Configure robust module-level logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - SENTIMENT_ENGINE - %(levelname)s - %(message)s'
-)
 logger = logging.getLogger(__name__)
+
+# --- GLOBAL THREAD-SAFE STORAGE AND STATE MATRIX ---
+_CACHE_LOCK = threading.Lock()
+_IS_REFRESHING = False
+_LAST_CACHE_TIME = 0.0
+
+_MACRO_HTML_CACHE: Dict[str, str] = {
+    "sentiment_html": "",
+    "vix_spy_html": "",
+    "yield_equity_html": ""
+}
 
 
 # ==========================================================
@@ -57,31 +65,38 @@ def fetch_fear_greed_data(start_date_str: str) -> pd.DataFrame:
         logger.error(f"Fetching F&G data failed: {e}")
         return pd.DataFrame()
 
+
 def fetch_stock_data(ticker: str, start_date: str) -> pd.DataFrame:
     stock_df = yf.download(tickers=ticker, start=start_date, progress=False, auto_adjust=True)
-    if stock_df.empty: return pd.DataFrame()
+    if stock_df.empty: 
+        return pd.DataFrame()
     if isinstance(stock_df.columns, pd.MultiIndex):
         stock_df.columns = stock_df.columns.get_level_values(0)
     stock_df.reset_index(inplace=True)
     stock_df['Date'] = stock_df['Date'].dt.date
     stock_df.set_index('Date', inplace=True)
-    if 'Close' not in stock_df.columns: return pd.DataFrame()
+    if 'Close' not in stock_df.columns: 
+        return pd.DataFrame()
     return stock_df[['Close']].rename(columns={'Close': f'{ticker}_Close'})
 
-def get_sentiment_data() -> pd.DataFrame:
+
+def get_sentiment_data() -> Optional[pd.DataFrame]:
     today = datetime.now()
     start_date = (today - timedelta(days=365)).strftime('%Y-%m-%d')
     fng_data = fetch_fear_greed_data(start_date)
     spy_data = fetch_stock_data('SPY', start_date)
-    if fng_data.empty or spy_data.empty: return None
+    if fng_data.empty or spy_data.empty: 
+        return None
     merged_df = spy_data.merge(fng_data, left_index=True, right_index=True, how='left')
     merged_df['Fear_Greed_Index'] = merged_df['Fear_Greed_Index'].ffill()
     merged_df.dropna(inplace=True)
     return merged_df
 
-def generate_sentiment_figure():
+
+def generate_sentiment_figure() -> Optional[go.Figure]:
     merged_df = get_sentiment_data()
-    if merged_df is None: return None
+    if merged_df is None: 
+        return None
 
     fig = make_subplots(specs=[[{"secondary_y": True}]])
     fig.add_trace(go.Scatter(x=merged_df.index, y=merged_df['SPY_Close'], name="S&P 500", line=dict(color='#4da6ff', width=2)), secondary_y=False)
@@ -106,22 +121,12 @@ def generate_sentiment_figure():
     fig.update_yaxes(title_text="Fear & Greed Index (0-100)", range=[0, 100], secondary_y=True)
     return fig
 
-def get_sentiment_html() -> str:
-    fig = generate_sentiment_figure()
-    if not fig: return "<p>Error loading sentiment data. Please try again later.</p>"
-    
-    clean_config = {
-        'responsive': True,
-        'displaylogo': False
-    }
-    
-    return fig.to_html(full_html=False, include_plotlyjs='cdn', config=clean_config)
 
 # ==========================================================
 # 2. MARKET REGIME (VIX vs SPY)
 # ==========================================================
 
-def get_vix_spy_data() -> pd.DataFrame:
+def get_vix_spy_data() -> Optional[pd.DataFrame]:
     try:
         tickers = ["SPY", "^VIX"]
         df = yf.download(tickers, period="1y", interval="1d", group_by='ticker', auto_adjust=True, progress=False)
@@ -144,15 +149,16 @@ def get_vix_spy_data() -> pd.DataFrame:
         logger.error(f"Fatal error fetching VIX vs SPY data: {e}")
         return None
 
-def generate_vix_spy_figure():
+
+def generate_vix_spy_figure() -> Optional[go.Figure]:
     merged_df = get_vix_spy_data()
-    if merged_df is None: return None
+    if merged_df is None: 
+        return None
 
     fig = make_subplots(specs=[[{"secondary_y": True}]])
     fig.add_trace(go.Scatter(x=merged_df.index, y=merged_df['SPY_Close'], name="S&P 500", line=dict(color='#4da6ff', width=2)), secondary_y=False)
     fig.add_trace(go.Scatter(x=merged_df.index, y=merged_df['VIX_Close'], name="VIX", line=dict(color='#ffaa00', dash='dot', width=2)), secondary_y=True)
 
-    # Annotate key Regime transition lines
     fig.add_hline(y=20, line_dash="dash", line_color="#ffaa00", secondary_y=True, annotation_text="Volatile (20)", annotation_position="top right", annotation_font_color="#ffaa00")
     fig.add_hline(y=30, line_dash="dash", line_color="#ff4d4d", secondary_y=True, annotation_text="Crash (30)", annotation_position="top right", annotation_font_color="#ff4d4d")
 
@@ -169,34 +175,182 @@ def generate_vix_spy_figure():
     )
     
     fig.update_yaxes(title_text="S&P 500 Price ($)", range=[min_spy, max_spy], secondary_y=False)
-    
-    # Scale secondary axis to handle extreme VIX blowouts without crushing the chart
     max_vix = max(50, merged_df['VIX_Close'].max() * 1.1)
     fig.update_yaxes(title_text="VIX Level", range=[0, max_vix], secondary_y=True)
-    
     return fig
 
+
+# ==========================================================
+# 3. INTERMARKET COST OF CAPITAL (YIELDS VS EQUITIES)
+# ==========================================================
+
+def get_yield_equity_html() -> str:
+    """Renders the Cost of Capital baseline chart comparing Treasury yields against Equities."""
+    _check_and_trigger_async_refresh()
+    if _MACRO_HTML_CACHE["yield_equity_html"]:
+        return _MACRO_HTML_CACHE["yield_equity_html"]
+    
+    # Cold start initialization block
+    today = datetime.now()
+    start_date = (today - timedelta(days=365)).strftime('%Y-%m-%d')
+    spy_data = fetch_stock_data('SPY', start_date)
+    tyx_data = fetch_stock_data('^TYX', start_date)
+    
+    if spy_data.empty or tyx_data.empty: 
+        return "<p>Error loading Cost of Capital data.</p>"
+    merged_df = spy_data.merge(tyx_data, left_index=True, right_index=True, how='inner')
+
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    fig.add_trace(go.Scatter(x=merged_df.index, y=merged_df['SPY_Close'], name="S&P 500", line=dict(color='#4da6ff', width=2)), secondary_y=False)
+    fig.add_trace(go.Scatter(x=merged_df.index, y=merged_df['^TYX_Close'], name="30Y Treasury Yield", line=dict(color='#ff4d4d', dash='dot', width=2)), secondary_y=True)
+
+    fig.update_layout(
+        title="Cost of Capital: 30Y Treasury Yield vs S&P 500 (1 Year)",
+        template="plotly_dark", height=600, margin=dict(l=40, r=40, t=60, b=40),
+        hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+    )
+    fig.update_yaxes(title_text="S&P 500 Price ($)", secondary_y=False)
+    fig.update_yaxes(title_text="30Y Yield (%)", secondary_y=True)
+    return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
+
+
+def get_sentiment_html() -> str:
+    """Renders the Fear and Greed Index overlay frame."""
+    _check_and_trigger_async_refresh()
+    if _MACRO_HTML_CACHE["sentiment_html"]:
+        return _MACRO_HTML_CACHE["sentiment_html"]
+    
+    fig = generate_sentiment_figure()
+    if not fig: 
+        return "<p>Error loading sentiment data. Please try again later.</p>"
+    return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
+
+
 def get_vix_spy_html() -> str:
+    """Renders the standard VIX versus SPY regime volatility matrix."""
+    _check_and_trigger_async_refresh()
+    if _MACRO_HTML_CACHE["vix_spy_html"]:
+        return _MACRO_HTML_CACHE["vix_spy_html"]
+        
     fig = generate_vix_spy_figure()
-    if not fig: return "<p>Error loading VIX data. Please try again later.</p>"
+    if not fig: 
+        return "<p>Error loading VIX data. Please try again later.</p>"
+    return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
+
+
+def get_yield_gauge_html() -> str:
+    """Queries the local SQLite macro regimes table to calculate the 3-day yield velocity gauge."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT yield_velocity, systemic_threat_level FROM macro_regimes ORDER BY date DESC LIMIT 1")
+    row = cursor.fetchone()
+    conn.close()
     
-    clean_config = {
-        'responsive': True,
-        'displaylogo': False
-    }
+    velocity = float(row['yield_velocity']) if row else 0.0
     
-    return fig.to_html(full_html=False, include_plotlyjs='cdn', config=clean_config)
+    fig = go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=velocity,
+        domain={'x': [0, 1], 'y': [0, 1]},
+        title={'text': "3-Day Yield Velocity (%)", 'font': {'size': 18, 'color': '#ccc'}},
+        gauge={
+            'axis': {'range': [-5, 5], 'tickwidth': 1, 'tickcolor': "white"},
+            'bar': {'color': "white", 'thickness': 0.2},
+            'bgcolor': "#1e1e1e",
+            'borderwidth': 2,
+            'bordercolor': "#333",
+            'steps': [
+                {'range': [-5, 1.5], 'color': '#00ff00'},
+                {'range': [1.5, 3.5], 'color': '#ffaa00'},
+                {'range': [3.5, 5.0], 'color': '#ff4d4d'}],
+        }
+    ))
+    fig.update_layout(template="plotly_dark", height=300, margin=dict(l=40, r=40, t=60, b=40), paper_bgcolor='#1e1e1e')
+    return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
 
 
 # ==========================================================
-# 3. NEXTCLOUD ALERTS (PNG PUSH)
+# 4. UNIFIED CACHE MANAGEMENT & BACKGROUND PROCESSING WORKER
 # ==========================================================
 
-def run_nextcloud_alert():
+def _check_and_trigger_async_refresh() -> None:
+    """Evaluates the cache baseline age and shifts heavy processing out-of-band to a dedicated thread."""
+    global _LAST_CACHE_TIME, _IS_REFRESHING
+    
+    config_data = load_config()
+    refresh_rate: int = config_data.get("UI_PREFERENCES", {}).get("REFRESH_RATE", 60)
+    current_time: float = time.time()
+    
+    if (current_time - _LAST_CACHE_TIME) > refresh_rate:
+        with _CACHE_LOCK:
+            if not _IS_REFRESHING:
+                _IS_REFRESHING = True
+                logger.info("Macro Sentiment visual cache is stale. Spawning background refresh worker thread...")
+                threading.Thread(target=_async_chart_cruncher_worker, daemon=True).start()
+
+
+def _async_chart_cruncher_worker() -> None:
+    """Isolated thread runner dedicated to handling external network I/O loops safely."""
+    global _LAST_CACHE_TIME, _IS_REFRESHING
+    try:
+        logger.info("Background cruncher started compiling Plotly HTML fragments...")
+        
+        # 1. Re-render Fear and Greed Matrix
+        fig_sentiment = generate_sentiment_figure()
+        html_sentiment = fig_sentiment.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False}) if fig_sentiment else ""
+        
+        # 2. Re-render VIX Volatility Matrix
+        fig_vix = generate_vix_spy_figure()
+        html_vix = fig_vix.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False}) if fig_vix else ""
+        
+        # 3. Re-render Yield Compression Trend Chart
+        today = datetime.now()
+        start_date = (today - timedelta(days=365)).strftime('%Y-%m-%d')
+        spy_df = fetch_stock_data('SPY', start_date)
+        tyx_df = fetch_stock_data('^TYX', start_date)
+        
+        html_yield_equity = ""
+        if not spy_df.empty and not tyx_df.empty:
+            m_df = spy_df.merge(tyx_df, left_index=True, right_index=True, how='inner')
+            fig_yield_equity = make_subplots(specs=[[{"secondary_y": True}]])
+            fig_yield_equity.add_trace(go.Scatter(x=m_df.index, y=m_df['SPY_Close'], name="S&P 500", line=dict(color='#4da6ff', width=2)), secondary_y=False)
+            fig_yield_equity.add_trace(go.Scatter(x=m_df.index, y=m_df['^TYX_Close'], name="30Y Treasury Yield", line=dict(color='#ff4d4d', dash='dot', width=2)), secondary_y=True)
+            fig_yield_equity.update_layout(
+                title="Cost of Capital: 30Y Treasury Yield vs S&P 500 (1 Year)",
+                template="plotly_dark", height=600, margin=dict(l=40, r=40, t=60, b=40),
+                hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+            )
+            fig_yield_equity.update_yaxes(title_text="S&P 500 Price ($)", secondary_y=False)
+            fig_yield_equity.update_yaxes(title_text="30Y Yield (%)", secondary_y=True)
+            html_yield_equity = fig_yield_equity.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
+
+        # Atomic update under synchronization fence
+        with _CACHE_LOCK:
+            if html_sentiment:
+                _MACRO_HTML_CACHE["sentiment_html"] = html_sentiment
+            if html_vix:
+                _MACRO_HTML_CACHE["vix_spy_html"] = html_vix
+            if html_yield_equity:
+                _MACRO_HTML_CACHE["yield_equity_html"] = html_yield_equity
+            _LAST_CACHE_TIME = time.time()
+            
+        logger.info("Visual macro caches synchronized successfully.")
+    except Exception as ex:
+        logger.error(f"Background visual cruncher encountered a processing error: {ex}")
+    finally:
+        _IS_REFRESHING = False
+
+
+# ==========================================================
+# 5. NEXTCLOUD ALERTS & MICRO SENTIMENT (VADER NLP ON HEADLINES)
+# ==========================================================
+
+def run_nextcloud_alert() -> tuple:
     logger.info("Starting Market Sentiment Pipeline...")
     try:
         merged_df = get_sentiment_data()
-        if merged_df is None: return False, "Failed to fetch data."
+        if merged_df is None: 
+            return False, "Failed to fetch data."
 
         time_stamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
         file_name = f"Fear_vs_Greed_{time_stamp}.png"
@@ -240,7 +394,8 @@ def run_nextcloud_alert():
             return False, f"Matplotlib Render Error: {str(e)}"
             
         upload_success = upload_file_webdav(local_path, remote_path, NEXTCLOUD_URL, BOT_USERNAME, APP_PASSWORD, print)
-        if not upload_success: return False, "WebDAV Upload Failed. Check credentials or folder path."
+        if not upload_success: 
+            return False, "WebDAV Upload Failed. Check credentials or folder path."
             
         report_message = "📊 *Fear & Greed Index overlayed with S&P 500 for comparison*"
         share_success = share_file_to_talk(remote_path, CONVERSATION_TOKEN, NEXTCLOUD_URL, BOT_USERNAME, APP_PASSWORD, print)
@@ -253,8 +408,10 @@ def run_nextcloud_alert():
         resp = requests.post(api_endpoint, headers={"OCS-APIRequest": "true", "Content-Type": "application/json"}, data=json.dumps({"message": report_message}), auth=(BOT_USERNAME, APP_PASSWORD), timeout=15)
         
         if resp.status_code in [200, 201]:
-            if share_success: return True, "Alert successfully generated, uploaded, and shared to Talk."
-            else: return False, "File upload succeeded, but Talk Share failed. Check Conversation Token."
+            if share_success: 
+                return True, "Alert successfully generated, uploaded, and shared to Talk."
+            else: 
+                return False, "File upload succeeded, but Talk Share failed. Check Conversation Token."
         else:
             return False, f"Failed to send final text message. HTTP {resp.status_code}"
 
@@ -264,10 +421,6 @@ def run_nextcloud_alert():
         if os.path.exists(local_path):
             os.remove(local_path)
 
-
-# ==========================================================
-# 4. MICRO SENTIMENT (VADER NLP ON NEWS HEADLINES)
-# ==========================================================
 
 def fetch_and_score_news(ticker: str, analyzer: SentimentIntensityAnalyzer) -> float:
     """
@@ -303,6 +456,7 @@ def fetch_and_score_news(ticker: str, analyzer: SentimentIntensityAnalyzer) -> f
     except Exception as e:
         logger.debug(f"Failed to fetch/score news for {ticker}: {e}")
         return 0.0
+
 
 def update_all_sentiment(tickers: List[str]) -> None:
     """
@@ -348,54 +502,3 @@ def update_all_sentiment(tickers: List[str]) -> None:
             
     conn.close()
     logger.info("VADER Local Sentiment Analysis completed successfully.")
-
-def get_yield_gauge_html() -> str:
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT yield_velocity, systemic_threat_level FROM macro_regimes ORDER BY date DESC LIMIT 1")
-    row = cursor.fetchone()
-    conn.close()
-    
-    velocity = float(row['yield_velocity']) if row else 0.0
-    
-    fig = go.Figure(go.Indicator(
-        mode = "gauge+number",
-        value = velocity,
-        domain = {'x': [0, 1], 'y': [0, 1]},
-        title = {'text': "3-Day Yield Velocity (%)", 'font': {'size': 18, 'color': '#ccc'}},
-        gauge = {
-            'axis': {'range': [-5, 5], 'tickwidth': 1, 'tickcolor': "white"},
-            'bar': {'color': "white", 'thickness': 0.2},
-            'bgcolor': "#1e1e1e",
-            'borderwidth': 2,
-            'bordercolor': "#333",
-            'steps': [
-                {'range': [-5, 1.5], 'color': '#00ff00'},
-                {'range': [1.5, 3.5], 'color': '#ffaa00'},
-                {'range': [3.5, 5.0], 'color': '#ff4d4d'}],
-        }
-    ))
-    fig.update_layout(template="plotly_dark", height=300, margin=dict(l=40, r=40, t=60, b=40), paper_bgcolor='#1e1e1e')
-    return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
-
-def get_yield_equity_html() -> str:
-    today = datetime.now()
-    start_date = (today - timedelta(days=365)).strftime('%Y-%m-%d')
-    spy_data = fetch_stock_data('SPY', start_date)
-    tyx_data = fetch_stock_data('^TYX', start_date)
-    
-    if spy_data.empty or tyx_data.empty: return "<p>Error loading Cost of Capital data.</p>"
-    merged_df = spy_data.merge(tyx_data, left_index=True, right_index=True, how='inner')
-
-    fig = make_subplots(specs=[[{"secondary_y": True}]])
-    fig.add_trace(go.Scatter(x=merged_df.index, y=merged_df['SPY_Close'], name="S&P 500", line=dict(color='#4da6ff', width=2)), secondary_y=False)
-    fig.add_trace(go.Scatter(x=merged_df.index, y=merged_df['^TYX_Close'], name="30Y Treasury Yield", line=dict(color='#ff4d4d', dash='dot', width=2)), secondary_y=True)
-
-    fig.update_layout(
-        title="Cost of Capital: 30Y Treasury Yield vs S&P 500 (1 Year)",
-        template="plotly_dark", height=600, margin=dict(l=40, r=40, t=60, b=40),
-        hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-    )
-    fig.update_yaxes(title_text="S&P 500 Price ($)", secondary_y=False)
-    fig.update_yaxes(title_text="30Y Yield (%)", secondary_y=True)
-    return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
