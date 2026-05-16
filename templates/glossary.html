@@ -50,11 +50,17 @@
                 </div>
                 <div class="term-box">
                     <span class="term-title">Value at Risk (VaR 95%)</span>
-                    <p>An institutional metric for downside tail-risk. It calculates the maximum expected percentage loss over a standard holding period.</p>
+                    <p>An institutional metric for downside tail-risk that defines the worst-case scenario under normal market conditions.</p>
+                    <ul>
+                        <li><strong>The Safe Zone:</strong> There is a 95% probability that the asset will not lose more than the VaR percentage in a single trading day.</li>
+                        <li><strong>The Danger Zone:</strong> There is a 5% probability (roughly 1 out of every 20 days) that the asset will drop by the VaR amount <em>or worse</em>.</li>
+                    </ul>
+                    <div class="rule">EXAMPLE: On a $100,000 position with a 12.76% VaR, you are 95% confident your daily loss will not exceed $12,760.</div>
                 </div>
                 <div class="term-box">
                     <span class="term-title">Conditional VaR (CVaR)</span>
-                    <p>Also known as "Expected Shortfall". It calculates the average loss magnitude when the VaR threshold is breached.</p>
+                    <p>Also known as "Expected Shortfall". While VaR tells you where the cliff edge is, CVaR tells you how far the drop is once you fall off.</p>
+                    <p>It calculates the <strong>average expected loss</strong> on the specific days that the VaR threshold is actually breached (the 5% tail events). This measures the true severity of market shocks, flash crashes, or extreme sell-offs beyond the VaR boundary.</p>
                 </div>
                 <div class="term-box">
                     <span class="term-title">VADER Sentiment</span>
