@@ -22,8 +22,8 @@ def get_sector_trends() -> List[Dict[str, Any]]:
         conn = get_connection()
         cursor = conn.cursor()
         
-        # Uses COALESCE to fallback to 'Unclassified' since Nasdaq FTP provides no sectors,
-        # and dynamically segments by the normalized Exchange origin.
+        # Uses positional grouping (GROUP BY 1, 2) to avoid SQLite 'ambiguous column' 
+        # errors when grouping by our generated 'exchange' alias.
         query = """
         SELECT 
             CASE 
@@ -45,8 +45,8 @@ def get_sector_trends() -> List[Dict[str, Any]]:
         WHERE q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = q.ticker)
           AND COALESCE(p.sector, s.sector, 'Unclassified') != 'None' 
           AND COALESCE(p.sector, s.sector, 'Unclassified') != ''
-        GROUP BY exchange, COALESCE(p.sector, s.sector, 'Unclassified')
-        ORDER BY exchange ASC, avg_rsi DESC
+        GROUP BY 1, 2
+        ORDER BY 1 ASC, 4 DESC
         """
         cursor.execute(query)
         rows = cursor.fetchall()
