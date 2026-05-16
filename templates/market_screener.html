@@ -33,9 +33,6 @@
         <div class="controls-container" style="margin-bottom: 20px;">
             <select id="exchangeFilter" class="filter-select">
                 <option value="ALL">All Exchanges</option>
-                <option value="NASDAQ">NASDAQ</option>
-                <option value="NYSE/AMEX">NYSE/AMEX</option>
-                <option value="LSE">LSE</option>
             </select>
         </div>
 
@@ -121,6 +118,22 @@
                 pageLength: 25,
                 order: [[0, 'asc']], 
                 language: { search: "🔍 Search Everything:" },
+                
+                // NEW LOGIC: Dynamic Dropdown Population
+                initComplete: function () {
+                    // Column index 3 is our "Exchange" column
+                    var column = this.api().column(3); 
+                    var select = $('#exchangeFilter');
+                    
+                    // Extract unique sorted values from the JSON data
+                    column.data().unique().sort().each( function ( d, j ) {
+                        // Skip empty data fragments just in case
+                        if(d && d !== 'N/A') {
+                            select.append( '<option value="'+d+'">'+d+'</option>' );
+                        }
+                    });
+                },
+                
                 columns: [
                     { data: 'ticker', render: function(data) { return '<a href="/stock/' + data + '" style="color: #4da6ff; font-weight: bold;">' + data + '</a>'; } },
                     { data: 'company_name', render: function(data) { return data || 'N/A'; } },
