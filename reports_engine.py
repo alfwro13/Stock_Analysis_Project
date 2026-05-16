@@ -130,14 +130,16 @@ def get_leaders_laggards() -> List[Dict[str, Any]]:
 
 def get_dividend_harvest_setups(min_yield: float = 0.02, min_score: int = 50) -> List[Dict[str, Any]]:
     """
-    Fetches high-yield dividend stocks approaching their ex-dividend date,
-    filtering out potential 'Yield Traps' using a minimum quantitative score.
+    Fetches high-yield dividend stocks, filtering out potential 'Yield Traps' 
+    using a minimum quantitative score. Parses YF Unix timestamps dynamically.
     """
+    logger.info(f"Generating Dividend Harvest Report (Min Yield: {min_yield}, Min Score: {min_score})...")
     try:
         conn = get_connection()
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
+        # CHANGED: Switched to LEFT JOINs to ensure portfolio-only assets aren't dropped
         query = """
         SELECT 
             q.ticker, 
@@ -151,7 +153,7 @@ def get_dividend_harvest_setups(min_yield: float = 0.02, min_score: int = 50) ->
             s.composite_score, 
             q.ml_confidence_score
         FROM quant_signals q
-        INNER JOIN market_universe m ON q.ticker = m.ticker
+        LEFT JOIN market_universe m ON q.ticker = m.ticker
         LEFT JOIN asset_profiles p ON q.ticker = p.ticker
         LEFT JOIN stock_signals s ON q.ticker = s.ticker
         WHERE q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = q.ticker)
@@ -159,14 +161,36 @@ def get_dividend_harvest_setups(min_yield: float = 0.02, min_score: int = 50) ->
           AND s.composite_score >= ?
           AND s.ex_dividend_date IS NOT NULL 
           AND s.ex_dividend_date != 'Unknown'
-        ORDER BY s.ex_dividend_date ASC
+          AND s.ex_dividend_date != ''
         """
         
         cursor.execute(query, (min_yield, min_score))
         rows = cursor.fetchall()
         conn.close()
         
-        return [dict(row) for row in rows]
+        results = []
+        for row in rows:
+            row_dict = dict(row)
+            
+            # Yahoo Finance returns exDividendDate as a Unix Timestamp integer.
+            # We must parse this back into a human-readable YYYY-MM-DD string.
+            ex_date_raw = row_dict['ex_dividend_date']
+            try:
+                ts = float(ex_date_raw)
+                # Ensure it is a valid, modern timestamp
+                if ts > 946684800: 
+                    dt = datetime.fromtimestamp(ts)
+                    row_dict['ex_dividend_date'] = dt.strftime('%Y-%m-%d')
+            except ValueError:
+                # If YF changes their API and returns a string, ignore the float cast
+                pass
+                
+            results.append(row_dict)
+            
+        # Sort entirely in Python to guarantee descending chronological order
+        results = sorted(results, key=lambda x: str(x['ex_dividend_date']), reverse=True)
+        
+        return results
         
     except Exception as e:
         logger.error(f"Failed to fetch dividend harvest setups: {e}")
