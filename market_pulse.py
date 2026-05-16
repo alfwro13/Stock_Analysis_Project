@@ -1,15 +1,23 @@
 # market_pulse.py
-import yfinance as yf
-import pandas as pd
 import time
+import logging
+from typing import List, Dict, Any
+import pandas as pd
+import yfinance as yf
+
 from config import load_config
 from database import get_connection
 
-# Dictionary mapping Yahoo Finance tickers to our clean UI display names
-INDEX_TICKERS = {
+# Configure robust module-level logging
+logger = logging.getLogger(__name__)
+
+# Dictionary mapping market identifiers to clear UI display names.
+# Registering 'UK10YG' directly below 'GBPUSD=X' places the tile right next to it.
+INDEX_TICKERS: Dict[str, str] = {
     "^FTSE": "UK FTSE 100",
     "^FTMC": "UK FTSE 250",
     "GBPUSD=X": "GBP/USD",
+    "UK10YG": "UK 10Y Gilt",
     "^GSPC": "US S&P 500",
     "^NDX": "US Nasdaq 100",
     "^TYX": "US 30Y Yield",
@@ -17,10 +25,11 @@ INDEX_TICKERS = {
     "DX-Y.NYB": "US Dollar Index"
 }
 
-# Simple thread safety flag to prevent duplicate background fetch spawns
-_FETCHING = False
+# Thread safety flag to prevent duplicate background fetch spawns
+_FETCHING: bool = False
 
-def get_all_cached_pulse():
+
+def get_all_cached_pulse() -> Dict[str, Dict[str, Any]]:
     """Returns all pulse data from DB for Jinja template pre-rendering."""
     conn = get_connection()
     cursor = conn.cursor()
@@ -29,12 +38,12 @@ def get_all_cached_pulse():
     conn.close()
     
     config_data = load_config()
-    refresh_rate = config_data.get("UI_PREFERENCES", {}).get("REFRESH_RATE", 60)
-    current_time = time.time()
+    refresh_rate: int = config_data.get("UI_PREFERENCES", {}).get("REFRESH_RATE", 60)
+    current_time: float = time.time()
     
-    cache = {}
+    cache: Dict[str, Dict[str, Any]] = {}
     for row in rows:
-        is_stale = (current_time - row['last_updated']) > refresh_rate
+        is_stale: bool = (current_time - row['last_updated']) > refresh_rate
         cache[row['ticker']] = {
             "ticker": row['ticker'],
             "name": row['name'],
@@ -46,7 +55,8 @@ def get_all_cached_pulse():
         }
     return cache
 
-def get_cached_pulse_from_db(asset_tickers, refresh_rate):
+
+def get_cached_pulse_from_db(asset_tickers: List[str], refresh_rate: int) -> Dict[str, List[Dict[str, Any]]]:
     """
     Fetches the latest live prices from the SQLite Cache to ensure instant UI rendering.
     Calculates if the data is stale based on the user's refresh rate.
@@ -55,10 +65,10 @@ def get_cached_pulse_from_db(asset_tickers, refresh_rate):
         asset_tickers = []
         
     config_data = load_config()
-    ignored_tickers = config_data.get("IGNORED_TICKERS", [])
+    ignored_tickers: List[str] = config_data.get("IGNORED_TICKERS", [])
         
-    requested_assets = [t for t in asset_tickers if t not in INDEX_TICKERS and t not in ignored_tickers]
-    all_tickers = list(INDEX_TICKERS.keys()) + requested_assets
+    requested_assets: List[str] = [t for t in asset_tickers if t not in INDEX_TICKERS and t not in ignored_tickers]
+    all_tickers: List[str] = list(INDEX_TICKERS.keys()) + requested_assets
     
     conn = get_connection()
     cursor = conn.cursor()
@@ -70,8 +80,8 @@ def get_cached_pulse_from_db(asset_tickers, refresh_rate):
         rows = cursor.fetchall()
     conn.close()
 
-    results = {"indexes": [], "assets": []}
-    current_time = time.time()
+    results: Dict[str, List[Dict[str, Any]]] = {"indexes": [], "assets": []}
+    current_time: float = time.time()
     
     # Map database rows for O(1) lookup
     db_map = {row['ticker']: row for row in rows}
@@ -80,8 +90,8 @@ def get_cached_pulse_from_db(asset_tickers, refresh_rate):
     for t in all_tickers:
         if t in db_map:
             row = db_map[t]
-            is_stale = (current_time - row['last_updated']) > refresh_rate
-            data_obj = {
+            is_stale: bool = (current_time - row['last_updated']) > refresh_rate
+            data_obj: Dict[str, Any] = {
                 "ticker": t,
                 "name": row['name'],
                 "price": row['price'],
@@ -108,10 +118,11 @@ def get_cached_pulse_from_db(asset_tickers, refresh_rate):
 
     return results
 
-def fetch_and_save_pulse(tickers_to_fetch):
+
+def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
     """
     Background Task: Connects to Yahoo Finance to fetch raw ticks and saves them to the DB.
-    Never blocks the main FastAPI UI thread.
+    Intercepts and evaluates UK10YG exclusively via the official FT.com engine scraper.
     """
     global _FETCHING
     if _FETCHING:
@@ -119,24 +130,35 @@ def fetch_and_save_pulse(tickers_to_fetch):
     _FETCHING = True
     
     try:
-        df_daily = yf.download(tickers_to_fetch, period="5d", interval="1d", group_by='ticker', progress=False)
-        df_live = yf.download(tickers_to_fetch, period="1d", interval="2m", prepost=True, group_by='ticker', progress=False)
+        # Separate the custom Financial Times target from the yfinance payload list
+        handle_gilt: bool = False
+        if "UK10YG" in tickers_to_fetch:
+            handle_gilt = True
+            tickers_to_fetch = [t for t in tickers_to_fetch if t != "UK10YG"]
+            
+        df_daily = pd.DataFrame()
+        df_live = pd.DataFrame()
         
+        if tickers_to_fetch:
+            df_daily = yf.download(tickers_to_fetch, period="5d", interval="1d", group_by='ticker', progress=False)
+            df_live = yf.download(tickers_to_fetch, period="1d", interval="2m", prepost=True, group_by='ticker', progress=False)
         
         conn = get_connection()
         cursor = conn.cursor()
-        current_time = time.time()
+        current_time: float = time.time()
         
+        # 1. Ingest Standard Yahoo Finance Securities
         for ticker in tickers_to_fetch:
             try:
-                # Robust extraction handling multi-index vs single-index to prevent YF duplication bugs
                 if isinstance(df_daily.columns, pd.MultiIndex):
                     if ticker not in df_daily.columns.get_level_values(0) or ticker not in df_live.columns.get_level_values(0):
-                        # TICKER MISSING FROM YAHOO: Update timestamp to prevent infinite loop
                         cursor.execute("UPDATE market_pulse_cache SET last_updated = ? WHERE ticker = ?", (current_time, ticker))
                         if cursor.rowcount == 0:
                             name = INDEX_TICKERS.get(ticker, ticker)
-                            cursor.execute("INSERT INTO market_pulse_cache (ticker, name, price, change_pts, change_pct, is_positive, last_updated) VALUES (?, ?, ?, ?, ?, ?, ?)", (ticker, name, "0.00", "0.00", "0.00", 1, current_time))
+                            cursor.execute(
+                                "INSERT INTO market_pulse_cache (ticker, name, price, change_pts, change_pct, is_positive, last_updated) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                                (ticker, name, "0.00", "0.00", "0.00", 1, current_time)
+                            )
                         continue
                         
                     t_daily = df_daily[ticker].copy()
@@ -149,31 +171,32 @@ def fetch_and_save_pulse(tickers_to_fetch):
                 t_live.dropna(subset=['Close'], inplace=True)
                 
                 if t_daily.empty or t_live.empty:
-                    # DATA EMPTY: Update timestamp to prevent infinite loop
                     cursor.execute("UPDATE market_pulse_cache SET last_updated = ? WHERE ticker = ?", (current_time, ticker))
                     if cursor.rowcount == 0:
                         name = INDEX_TICKERS.get(ticker, ticker)
-                        cursor.execute("INSERT INTO market_pulse_cache (ticker, name, price, change_pts, change_pct, is_positive, last_updated) VALUES (?, ?, ?, ?, ?, ?, ?)", (ticker, name, "0.00", "0.00", "0.00", 1, current_time))
+                        cursor.execute(
+                            "INSERT INTO market_pulse_cache (ticker, name, price, change_pts, change_pct, is_positive, last_updated) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                            (ticker, name, "0.00", "0.00", "0.00", 1, current_time)
+                        )
                     continue
 
-                # Normal processing for successful data
-                current_price = t_live['Close'].iloc[-1]
+                current_price: float = float(t_live['Close'].iloc[-1])
                 last_daily_date = t_daily.index[-1].date()
                 live_date = t_live.index[-1].date()
                 
                 if last_daily_date >= live_date and len(t_daily) >= 2:
-                    prev_close = t_daily['Close'].iloc[-2]
+                    prev_close: float = float(t_daily['Close'].iloc[-2])
                 else:
-                    prev_close = t_daily['Close'].iloc[-1]
+                    prev_close = float(t_daily['Close'].iloc[-1])
                     
-                change_pts = current_price - prev_close
-                change_pct = (change_pts / prev_close) * 100.0 if not pd.isna(prev_close) and prev_close != 0 else 0.0
+                change_pts: float = current_price - prev_close
+                change_pct: float = (change_pts / prev_close) * 100.0 if not pd.isna(prev_close) and prev_close != 0 else 0.0
 
-                name = INDEX_TICKERS.get(ticker, ticker)
-                price_str = f"{current_price:,.2f}"
-                change_pts_str = f"{change_pts:,.2f}"
-                change_pct_str = f"{change_pct:,.2f}"
-                is_positive = int(change_pts >= 0)
+                name: str = INDEX_TICKERS.get(ticker, ticker)
+                price_str: str = f"{current_price:,.2f}"
+                change_pts_str: str = f"{change_pts:,.2f}"
+                change_pct_str: str = f"{change_pct:,.2f}"
+                is_positive: int = int(change_pts >= 0)
                 
                 cursor.execute('''
                     INSERT OR REPLACE INTO market_pulse_cache 
@@ -183,6 +206,50 @@ def fetch_and_save_pulse(tickers_to_fetch):
                 
             except Exception as e:
                 print(f"[MARKET PULSE BACKGROUND] Error processing {ticker}: {e}")
+                
+        # 2. Ingest Sovereign UK 10Y Gilt Exclusively via FT.com Scraper Engine
+        if handle_gilt:
+            try:
+                from gilt_engine import GiltDataService
+                from config import HISTORICAL_DIR
+                
+                gilt_service = GiltDataService()
+                live_gilt_yield = gilt_service.fetch_live_ft_yield()
+                
+                if live_gilt_yield is not None:
+                    gilt_prev_close: float = live_gilt_yield
+                    parquet_path = HISTORICAL_DIR / "UK_GILT_BASELINE.parquet"
+                    
+                    if parquet_path.exists():
+                        try:
+                            df_gilt_hist = pd.read_parquet(parquet_path)
+                            if len(df_gilt_hist) >= 2:
+                                gilt_prev_close = float(df_gilt_hist['Close'].iloc[-2])
+                            elif len(df_gilt_hist) == 1:
+                                gilt_prev_close = float(df_gilt_hist['Close'].iloc[-1])
+                        except Exception:
+                            pass
+                            
+                    gilt_change_pts: float = live_gilt_yield - gilt_prev_close
+                    gilt_change_pct: float = (gilt_change_pts / gilt_prev_close) * 100.0 if gilt_prev_close != 0.0 else 0.0
+                    
+                    gilt_name: str = INDEX_TICKERS.get("UK10YG", "UK 10Y Gilt")
+                    gilt_price_str: str = f"{live_gilt_yield:,.2f}"
+                    gilt_change_pts_str: str = f"{gilt_change_pts:,.2f}"
+                    gilt_change_pct_str: str = f"{gilt_change_pct:,.2f}"
+                    gilt_is_positive: int = int(gilt_change_pts >= 0)
+                    
+                    cursor.execute('''
+                        INSERT OR REPLACE INTO market_pulse_cache 
+                        (ticker, name, price, change_pts, change_pct, is_positive, last_updated)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ''', ("UK10YG", gilt_name, gilt_price_str, gilt_change_pts_str, gilt_change_pct_str, gilt_is_positive, current_time))
+                else:
+                    # Enforce update boundary on scraper failure to avoid thread deadlock
+                    cursor.execute("UPDATE market_pulse_cache SET last_updated = ? WHERE ticker = 'UK10YG'", (current_time,))
+            except Exception as ex:
+                print(f"[MARKET PULSE BACKGROUND] FT Gilt pipeline execution failed: {ex}")
+                
         conn.commit()
         conn.close()
     except Exception as e:
