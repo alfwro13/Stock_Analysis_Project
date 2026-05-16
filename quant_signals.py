@@ -1,11 +1,14 @@
 # quant_signals.py
-import pandas as pd
-import numpy as np
-import ta
 import os
 import json
 import logging
 from datetime import datetime
+from typing import List, Dict, Any, Optional, Tuple
+
+import numpy as np
+import pandas as pd
+import ta
+
 from config import HISTORICAL_DIR, FUNDAMENTALS_DIR
 from database import get_connection
 
@@ -16,12 +19,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def get_candlestick_patterns(prev2, prev1, curr):
+
+def get_candlestick_patterns(prev2: pd.Series, prev1: pd.Series, curr: pd.Series) -> List[Dict[str, Any]]:
     """
     Algorithmic Candlestick Pattern Recognition (Hierarchical Engine).
     Evaluates in order of mathematical priority to prevent overlapping bugs.
     """
-    patterns = []
+    patterns: List[Dict[str, Any]] = []
     
     # --- Anatomy of the Current Candle ---
     curr_body = abs(curr['Open'] - curr['Close'])
@@ -29,17 +33,17 @@ def get_candlestick_patterns(prev2, prev1, curr):
     curr_range = max(curr['High'] - curr['Low'], 0.001) 
     curr_upper_wick = curr['High'] - max(curr['Open'], curr['Close'])
     curr_lower_wick = min(curr['Open'], curr['Close']) - curr['Low']
-    curr_is_bullish = curr['Close'] > curr['Open']
-    curr_is_bearish = curr['Close'] < curr['Open']
+    curr_is_bullish = bool(curr['Close'] > curr['Open'])
+    curr_is_bearish = bool(curr['Close'] < curr['Open'])
 
     # --- Anatomy of the Previous Candles ---
     prev1_body = abs(prev1['Open'] - prev1['Close'])
     prev1_range = max(prev1['High'] - prev1['Low'], 0.001)
-    prev1_is_bearish = prev1['Close'] < prev1['Open']
-    prev1_is_bullish = prev1['Close'] > prev1['Open']
+    prev1_is_bearish = bool(prev1['Close'] < prev1['Open'])
+    prev1_is_bullish = bool(prev1['Close'] > prev1['Open'])
     
     prev2_body = abs(prev2['Open'] - prev2['Close'])
-    prev2_is_bearish = prev2['Close'] < prev2['Open']
+    prev2_is_bearish = bool(prev2['Close'] < prev2['Open'])
     
     # ==========================================
     # TIER 1: 3-CANDLE PATTERNS (Highest Priority)
@@ -47,17 +51,17 @@ def get_candlestick_patterns(prev2, prev1, curr):
     
     # 1. Morning Star (Bullish Reversal)
     # Day 1: Strong Bearish. Day 2: Indecision/Gap down. Day 3: Strong Bullish pushing > 50% into Day 1.
-    prev2_midpoint = (prev2['Open'] + prev2['Close']) / 2
-    if prev2_is_bearish and prev2_body > (prev2['High'] - prev2['Low']) * 0.5:  # Day 1 is solid red
-        if prev1_body <= (prev1_range * 0.3):                                   # Day 2 is a doji/spinning top
-            if curr_is_bullish and curr['Close'] > prev2_midpoint:              # Day 3 is green and breaches Day 1 midpoint
+    prev2_midpoint = (prev2['Open'] + prev2['Close']) / 2.0
+    if prev2_is_bearish and prev2_body > (prev2['High'] - prev2['Low']) * 0.5:
+        if prev1_body <= (prev1_range * 0.3):
+            if curr_is_bullish and curr['Close'] > prev2_midpoint:
                 patterns.append({
                     "name": "🌅 Morning Star",
                     "tooltip": "A highly reliable 3-day bottoming pattern. Panic selling (Day 1) was met with indecision (Day 2), followed by strong institutional buying (Day 3) that recovered the majority of the original dump.",
                     "breakdown": "+20: <abbr title='3-Day Pattern: Heavy dump, followed by indecision, followed by violent recovery buying.'>Morning Star Reversal</abbr>",
                     "score": 20
                 })
-                return patterns # Return immediately to prevent lower-tier overlaps
+                return patterns 
 
     # ==========================================
     # TIER 2: 2-CANDLE PATTERNS
@@ -88,7 +92,7 @@ def get_candlestick_patterns(prev2, prev1, curr):
     # ==========================================
 
     # 4. Hammer / Dragonfly Doji (Bullish Rejection)
-    if curr_lower_wick >= (2 * curr_body_safe) and curr_upper_wick <= (0.2 * curr_range):
+    if curr_lower_wick >= (2.0 * curr_body_safe) and curr_upper_wick <= (0.2 * curr_range):
         patterns.append({
             "name": "🔨 Hammer Rejection",
             "tooltip": "Sellers tried to crash the price intraday, but institutional buyers violently rejected it and bought the dip. Indicates strong underlying support.",
@@ -97,7 +101,7 @@ def get_candlestick_patterns(prev2, prev1, curr):
         })
         
     # 5. Shooting Star / Gravestone Doji (Bearish Rejection)
-    elif curr_upper_wick >= (2 * curr_body_safe) and curr_lower_wick <= (0.2 * curr_range):
+    elif curr_upper_wick >= (2.0 * curr_body_safe) and curr_lower_wick <= (0.2 * curr_range):
         patterns.append({
             "name": "🌠 Shooting Star",
             "tooltip": "Retail buyers tried to push the price up, but institutional sellers aggressively dumped shares into the rally. Momentum is fading.",
@@ -116,19 +120,19 @@ def get_candlestick_patterns(prev2, prev1, curr):
         
     return patterns
 
+
 class QuantEngine:
-    def __init__(self):
-        # Establish connection to the SQLite database
+    def __init__(self) -> None:
         self.conn = get_connection()
 
-    def load_parquet(self, ticker):
+    def load_parquet(self, ticker: str) -> Optional[pd.DataFrame]:
         """Loads the historical daily data from the local Parquet file."""
         filepath = HISTORICAL_DIR / f"{ticker}.parquet"
         if not filepath.exists():
             return None
         return pd.read_parquet(filepath)
 
-    def load_fundamentals(self, ticker):
+    def load_fundamentals(self, ticker: str) -> dict:
         """Loads the raw Yahoo Finance .info dictionary."""
         filepath = FUNDAMENTALS_DIR / f"{ticker}.json"
         if not filepath.exists():
@@ -136,7 +140,7 @@ class QuantEngine:
         with open(filepath, 'r') as f:
             return json.load(f)
 
-    def calculate_vcp_breakout(self, df):
+    def calculate_vcp_breakout(self, df: pd.DataFrame) -> Tuple[bool, bool]:
         """Advanced Minervini VCP: Price contraction AND Volume dry-up."""
         weekly_data = df.resample('W-FRI').agg({'Close': 'last', 'Volume': 'sum'})
         if len(weekly_data) < 4:
@@ -144,34 +148,32 @@ class QuantEngine:
         
         last_3_weeks = weekly_data.iloc[-4:-1]
         variance_pct = (last_3_weeks['Close'].max() - last_3_weeks['Close'].min()) / last_3_weeks['Close'].min()
-        is_tight = variance_pct <= 0.025
+        is_tight = bool(variance_pct <= 0.025)
         
-        # Volume Dry-up Check gracefully handles missing 50-day data
         avg_vol_50d = df['Volume'].rolling(50).mean().iloc[-1]
         if pd.isna(avg_vol_50d):
             is_dry_volume = False
         else:
-            avg_vol_3w = last_3_weeks['Volume'].mean() / 5 # Approx daily average over the 3 weeks
-            is_dry_volume = avg_vol_3w < (avg_vol_50d * 0.8) # Volume must be 20% below average
+            avg_vol_3w = last_3_weeks['Volume'].mean() / 5.0 # Approx daily average over the 3 weeks
+            is_dry_volume = bool(avg_vol_3w < (avg_vol_50d * 0.8)) # Volume must be 20% below average
         
         return is_tight, is_dry_volume
 
-    def detect_bearish_divergence(self, df):
+    def detect_bearish_divergence(self, df: pd.DataFrame) -> bool:
         """Checks if price is making higher highs while RSI makes lower highs."""
-        # Simple local peak detection over last 30 days
         last_30 = df.tail(30)
-        if len(last_30) < 30: return False
+        if len(last_30) < 30: 
+            return False
         
         price_max_idx = last_30['Close'].idxmax()
         rsi_at_max_price = last_30.loc[price_max_idx, 'RSI']
         
-        # If the absolute highest RSI in the period occurred BEFORE the highest price, momentum is fading
         rsi_max_idx = last_30['RSI'].idxmax()
-        if price_max_idx > rsi_max_idx and rsi_at_max_price < 60 and last_30['RSI'].max() > 70:
+        if price_max_idx > rsi_max_idx and rsi_at_max_price < 60.0 and last_30['RSI'].max() > 70.0:
             return True
         return False
 
-    def analyze_ticker(self, ticker):
+    def analyze_ticker(self, ticker: str) -> None:
         """
         Runs the combined Technical and Fundamental analysis.
         NOTE: Any new mathematical scoring rules added below MUST be documented in the glossary.
@@ -180,24 +182,32 @@ class QuantEngine:
             df = self.load_parquet(ticker)
             info = self.load_fundamentals(ticker)
             
+            if df is None or len(df) < 21:
+                logger.warning(f"[SKIP] Not enough historical data to analyze {ticker} (requires at least 21 days).")
+                return
+            
             # --- DYNAMIC BENCHMARK SELECTION ---
             currency = info.get('currency', 'USD')
-            is_uk_asset = ticker.endswith('.L') or currency in ['GBp', 'GBP']
+            is_uk_asset = bool(ticker.endswith('.L') or currency in ['GBp', 'GBP'])
             baseline_name = "FTSE_BASELINE" if is_uk_asset else "SP500_BASELINE"
             df_baseline = self.load_parquet(baseline_name)
             
-            # --- Global Cost of Capital Baseline ---
-            df_yield = self.load_parquet("TYX_BASELINE")
+            # --- INTERMARKET COST OF CAPITAL TRACKING ---
+            yield_baseline = "UK_GILT_BASELINE" if is_uk_asset else "TYX_BASELINE"
+            df_yield = self.load_parquet(yield_baseline)
             
-            # Decoupled 200-day limit to support recent IPOs or API data truncations
-            if df is None or len(df) < 21:
-                logger.warning(f"[SKIP] Not enough historical data to analyze {ticker} (requires at least 21 days).")
-                return
-            
-            # Decoupled 200-day limit to support recent IPOs or API data truncations
-            if df is None or len(df) < 21:
-                logger.warning(f"[SKIP] Not enough historical data to analyze {ticker} (requires at least 21 days).")
-                return
+            # Mathematical Vector Correlation Math (60-Day Lookback Window)
+            yield_correlation = None
+            if df_yield is not None and not df_yield.empty and len(df) >= 60:
+                try:
+                    yield_aligned = df_yield['Close'].reindex(df.index, method='ffill')
+                    asset_returns = df['Close'].pct_change()
+                    yield_returns = yield_aligned.pct_change()
+                    rolling_corr = asset_returns.rolling(window=60).corr(yield_returns)
+                    if not pd.isna(rolling_corr.iloc[-1]):
+                        yield_correlation = float(rolling_corr.iloc[-1])
+                except Exception as ex:
+                    logger.debug(f"Failed rolling yield correlation calculations for {ticker}: {ex}")
 
             # ==========================================
             # PART 1: TECHNICAL ANALYSIS & MATH
@@ -226,11 +236,11 @@ class QuantEngine:
             
             df['ATR'] = ta.volatility.AverageTrueRange(high=df['High'], low=df['Low'], close=df['Close'], window=14).average_true_range()
             atr_val = df['ATR'].iloc[-1]
-            stop_loss = current_price - (2 * atr_val) if not pd.isna(atr_val) else None
+            stop_loss = current_price - (2.0 * atr_val) if not pd.isna(atr_val) else None
 
             df['OBV'] = ta.volume.OnBalanceVolumeIndicator(close=df['Close'], volume=df['Volume']).on_balance_volume()
             df['OBV_MA'] = df['OBV'].rolling(window=21).mean()
-            obv_bullish = df['OBV'].iloc[-1] > df['OBV_MA'].iloc[-1] if not pd.isna(df['OBV_MA'].iloc[-1]) else False
+            obv_bullish = bool(df['OBV'].iloc[-1] > df['OBV_MA'].iloc[-1]) if not pd.isna(df['OBV_MA'].iloc[-1]) else False
 
             macd = ta.trend.MACD(close=df['Close'])
             df['MACD_Line'] = macd.macd()
@@ -241,7 +251,7 @@ class QuantEngine:
             is_bearish_divergence = self.detect_bearish_divergence(df)
 
             # Relative Strength Math
-            rs_slope = 0
+            rs_slope = 0.0
             is_market_leader = False
             if df_baseline is not None and not df_baseline.empty:
                 baseline_aligned = df_baseline['Close'].reindex(df.index, method='ffill')
@@ -259,21 +269,16 @@ class QuantEngine:
             # PART 2: FUNDAMENTAL EXTRACTION
             # ==========================================
             quote_type = info.get('quoteType', 'EQUITY')
-            is_fund = quote_type in ['ETF', 'MUTUALFUND']
+            is_fund = bool(quote_type in ['ETF', 'MUTUALFUND'])
             company_name = info.get('shortName', ticker)
             sector = info.get('category', info.get('sector', 'Fund')) if is_fund else info.get('sector', 'Unknown')
             currency = info.get('currency', 'USD')
             fifty_two_week_low = info.get('fiftyTwoWeekLow', None)
             fifty_two_week_high = info.get('fiftyTwoWeekHigh', None)
             
-            # --- PHASE 6: Country Extraction & Normalization ---
+            # Country Extraction & Normalization
             country_raw = info.get('country', 'Unknown')
-            if country_raw == "United Kingdom":
-                country = "UK"
-            elif country_raw == "United States":
-                country = "US"
-            else:
-                country = country_raw
+            country = "UK" if country_raw == "United Kingdom" else ("US" if country_raw == "United States" else country_raw)
             
             ytd_return = info.get('ytdReturn', None)
             total_assets = info.get('totalAssets', None)
@@ -307,14 +312,14 @@ class QuantEngine:
 
             peter_lynch_peg = None
             if trailing_pe and earnings_growth and earnings_growth > 0:
-                peter_lynch_peg = trailing_pe / (earnings_growth * 100)
+                peter_lynch_peg = trailing_pe / (earnings_growth * 100.0)
 
             # ==========================================
             # PART 3: SCORING & SETUP TAGS
             # ==========================================
             score = 0
             breakdown = []
-            tags = []
+            tags: List[Dict[str, str]] = []
 
             # Tag: Algorithmic Candlestick Pattern Injection
             if not is_fund and len(df) >= 3:
@@ -370,7 +375,7 @@ class QuantEngine:
                 score += 15
                 breakdown.append("+15: 200D Trend UP (Institutional Backing)")
 
-            if not pd.isna(rsi_val) and 40 <= rsi_val <= 65: 
+            if not pd.isna(rsi_val) and 40.0 <= rsi_val <= 65.0: 
                 score += 10
                 breakdown.append("+10: RSI Healthy (Room to run)")
 
@@ -403,13 +408,12 @@ class QuantEngine:
             if stop_loss:
                 notes_html += f"<strong>Risk Management:</strong> Mathematical <abbr title='Based on Average True Range.'>ATR Stop-Loss</abbr> is {stop_loss:,.2f} {currency}.<br><br>"
             
-            if not is_fund and not pd.isna(rsi_val) and rsi_val > 70:
+            if not is_fund and not pd.isna(rsi_val) and rsi_val > 70.0:
                 notes_html += "<strong><span style='color: #ff4d4d;'>Warning:</span></strong> Stock is technically overbought (RSI > 70).<br>"
 
             # Save to DB (JSON dumping the array of dictionaries)
             tags_json = json.dumps(tags)
             
-            # --- PHASE 6: Pass country to save_to_db ---
             self.save_to_db(
                 ticker, company_name, sector, country, currency, quote_type,
                 current_price, ma5, ma10, ma21, trend_50d, trend_200d, rsi_val, stop_loss,
@@ -418,34 +422,39 @@ class QuantEngine:
                 profit_margin, roe, revenue_growth, debt_to_equity, current_ratio, operating_cash_flow,
                 ytd_return, total_assets, nav_price, expense_ratio, top_holdings, sector_weightings,
                 dividend_yield, ex_dividend_date, target_price, analyst_rating, next_earnings_date,
-                short_interest, institutional_ownership, beta,
+                short_interest, institutional_ownership, beta, yield_correlation,
                 score, signal, notes_html, tags_json
             )
             
         except Exception as e:
             logger.error(f"Failed to analyze {ticker}: {e}")
 
-    def save_to_db(self, ticker, company_name, sector, country, currency, quote_type,
-                   price, ma5, ma10, ma21, trend_50d, trend_200d, rsi, stop_loss,
-                   fifty_two_week_low, fifty_two_week_high,
-                   trailing_pe, forward_pe, peg_ratio, peter_lynch_peg, price_to_book,
-                   profit_margin, roe, revenue_growth, debt_to_equity, current_ratio, operating_cash_flow,
-                   ytd_return, total_assets, nav_price, expense_ratio, top_holdings, sector_weightings,
-                   dividend_yield, ex_dividend_date, target_price, analyst_rating, next_earnings_date,
-                   short_interest, institutional_ownership, beta,
-                   score, signal, notes, tags_json):
+    def save_to_db(self, ticker: str, company_name: str, sector: str, country: str, currency: str, quote_type: str,
+                   price: Optional[float], ma5: Optional[float], ma10: Optional[float], ma21: Optional[float], 
+                   trend_50d: str, trend_200d: str, rsi: Optional[float], stop_loss: Optional[float],
+                   fifty_two_week_low: Optional[float], fifty_two_week_high: Optional[float],
+                   trailing_pe: Optional[float], forward_pe: Optional[float], peg_ratio: Optional[float], 
+                   peter_lynch_peg: Optional[float], price_to_book: Optional[float],
+                   profit_margin: Optional[float], roe: Optional[float], revenue_growth: Optional[float], 
+                   debt_to_equity: Optional[float], current_ratio: Optional[float], operating_cash_flow: Optional[float],
+                   ytd_return: Optional[float], total_assets: Optional[float], nav_price: Optional[float], 
+                   expense_ratio: Optional[float], top_holdings: str, sector_weightings: str,
+                   dividend_yield: Optional[float], ex_dividend_date: Optional[str], target_price: Optional[float], 
+                   analyst_rating: str, next_earnings_date: str, short_interest: Optional[float], 
+                   institutional_ownership: Optional[float], beta: Optional[float], yield_correlation: Optional[float],
+                   score: int, signal: str, notes: str, tags_json: str) -> None:
         
         # Internal cleaner to aggressively handle pandas NaNs, Inf, and String Variants
-        def _clean(v):
+        def _clean(v: Any) -> Any:
             if v is None: 
                 return None
             if isinstance(v, str):
                 if v.lower() in ['nan', 'infinity', '-infinity', 'inf', '-inf']:
                     return None
                 try:
-                    # Catch strings that are implicitly numeric
                     val = float(v)
-                    if pd.isna(val) or np.isinf(val): return None
+                    if pd.isna(val) or np.isinf(val): 
+                        return None
                     return val
                 except ValueError:
                     return v # Preserve genuine strings
@@ -455,7 +464,7 @@ class QuantEngine:
 
         cursor = self.conn.cursor()
         
-        # --- PHASE 6: Update SQL to include country column ---
+        # FIX EMBEDDED: 47 total mapping column dimensions with exactly 47 corresponding question mark nodes
         query = '''
             INSERT OR REPLACE INTO stock_signals (
                 ticker, last_updated, company_name, sector, country, currency, quote_type,
@@ -465,7 +474,7 @@ class QuantEngine:
                 profit_margin, roe, revenue_growth, debt_to_equity, current_ratio, operating_cash_flow,
                 ytd_return, total_assets, nav_price, expense_ratio, top_holdings, sector_weightings,
                 dividend_yield, ex_dividend_date, target_price, analyst_rating, next_earnings_date,
-                short_interest, institutional_ownership, beta,
+                short_interest, institutional_ownership, beta, yield_correlation,
                 composite_score, overall_signal, educational_notes, setup_tags
             ) VALUES (
                 ?, ?, ?, ?, ?, ?, ?,
@@ -475,7 +484,7 @@ class QuantEngine:
                 ?, ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?,
-                ?, ?, ?,
+                ?, ?, ?, ?,
                 ?, ?, ?, ?
             )
         '''
@@ -489,7 +498,7 @@ class QuantEngine:
             _clean(profit_margin), _clean(roe), _clean(revenue_growth), _clean(debt_to_equity), _clean(current_ratio), _clean(operating_cash_flow),
             _clean(ytd_return), _clean(total_assets), _clean(nav_price), _clean(expense_ratio), top_holdings, sector_weightings,
             _clean(dividend_yield), ex_dividend_date, _clean(target_price), analyst_rating, next_earnings_date,
-            _clean(short_interest), _clean(institutional_ownership), _clean(beta),
+            _clean(short_interest), _clean(institutional_ownership), _clean(beta), _clean(yield_correlation),
             _clean(score), signal, notes, tags_json
         )
         
@@ -497,13 +506,14 @@ class QuantEngine:
         self.conn.commit()
         logger.info(f"[SUCCESS] Analyzed {ticker} | Signal: {signal} | Score: {score}/100")
 
-    def run_all(self):
+    def run_all(self) -> None:
         logger.info("Starting Institutional Quantamental Engine...")
         for filename in os.listdir(HISTORICAL_DIR):
             if filename.endswith(".parquet") and "BASELINE" not in filename:
                 ticker = filename.replace(".parquet", "")
                 self.analyze_ticker(ticker)
         logger.info("Analysis Complete. Master Database is fully updated.")
+
 
 if __name__ == "__main__":
     engine = QuantEngine()
