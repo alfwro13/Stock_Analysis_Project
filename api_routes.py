@@ -21,7 +21,7 @@ from database import get_connection, get_universe_tickers
 from scheduler_engine import run_update_pipeline, run_ghostfolio_sync, reload_scheduler
 from ghostfolio_sync import GhostfolioSyncEngine
 from market_pulse import get_cached_pulse_from_db, fetch_and_save_pulse
-from sentiment_engine import run_nextcloud_alert
+from sentiment_engine import run_nextcloud_alert, update_all_sentiment
 from earnings_engine import run_earnings_alert
 from insider_engine import run_insider_alert
 from ai_engine import AIPromptEngine
@@ -33,6 +33,7 @@ from universe_engine import update_market_universe
 from reports_engine import get_sector_trends, get_mean_reversion_setups, get_leaders_laggards, get_dividend_harvest_setups
 from options_engine import fetch_options_chain, calculate_payoff_matrix
 from ai_prediction_engine import train_global_ml_model, update_daily_ml_predictions, run_historical_backfill
+from risk_engine import update_all_tail_risks
 
 
 # Configure logger
@@ -406,12 +407,19 @@ async def api_watchlist_remove(req: TickerRequest):
 # --- MANUAL DATA REFRESH ENDPOINT ---
 @api_router.post("/data/refresh-single")
 async def api_data_refresh_single(req: TickerRequest):
-    """Synchronously fetches fresh market data and evaluates the quant models for a single ticker."""
+    """Synchronously fetches fresh market data and evaluates ALL quant models for a single ticker."""
     data_engine = DataEngine()
     quant_engine = QuantEngine()
     
     if data_engine.fetch_and_save_data(req.ticker):
         quant_engine.analyze_ticker(req.ticker)
+        
+        # Force immediate calculation of advanced metrics for this specific ticker
+        target_list = [req.ticker]
+        update_daily_ml_predictions(target_list)
+        update_all_tail_risks(target_list)
+        update_all_sentiment(target_list)
+        
         return JSONResponse(content={"status": "success"})
     return JSONResponse(status_code=500, content={"status": "error", "message": "Data fetch failed."})
 

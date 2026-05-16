@@ -6,7 +6,7 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from config import load_config
-from sentiment_engine import run_nextcloud_alert
+from sentiment_engine import run_nextcloud_alert, update_all_sentiment
 from earnings_engine import run_earnings_alert
 from insider_engine import run_insider_alert
 from intraday_orchestrator import IntradayOrchestrator
@@ -20,9 +20,9 @@ from report_dispatcher import push_morning_quant_briefing
 from database import get_universe_tickers, get_connection
 from universe_engine import update_market_universe
 from profile_engine import run_profile_audit
-from sentiment_engine import run_nextcloud_alert, update_all_sentiment
 from regime_engine import calculate_market_regime
 from ai_prediction_engine import train_global_ml_model, update_daily_ml_predictions
+from risk_engine import update_all_tail_risks
 
 # Configure robust module-level logging
 logging.basicConfig(
@@ -92,7 +92,7 @@ def run_ghostfolio_sync():
 def run_overnight_quant_scan():
     """
     Fetches the combined list of portfolio and watchlist tickers, 
-    executes the resumable daily quant scan, runs the ML Engine, and executes VADER NLP.
+    executes the resumable daily quant scan, runs the ML Engine, Tail Risk, and VADER NLP.
     """
     if not task_lock.acquire(blocking=False):
         logger.warning("System is currently busy. Skipping Overnight Quant Scan.")
@@ -106,9 +106,10 @@ def run_overnight_quant_scan():
         # 1. Execute Technical Analysis Pipeline
         run_daily_quant_scan(all_tickers)
         
-        # 2. Execute ML Inference Pipeline (Phase 5)
+        # 2. Execute ML Inference Pipeline & Tail Risk (Phase 5)
         logger.info("Overnight ML inference initiated.")
         update_daily_ml_predictions(all_tickers)
+        update_all_tail_risks(all_tickers)
         
         # 3. Execute NLP Sentiment Pipeline (Phase 4)
         logger.info("Overnight sentiment analysis initiated.")
@@ -172,8 +173,13 @@ def run_weekend_universe_routine():
         # 2. Extract the fresh list and run the massive quant scan
         all_tickers = get_universe_tickers()
         if all_tickers:
-            # Pass scan_type='universe' to prevent collision with daily scans
+            # 2a. Execute Core Technicals
             run_daily_quant_scan(all_tickers, scan_type='universe')
+            # 2b. Execute Heavy Metrics (ML, Risk, Sentiment)
+            logger.info("Universe Technicals complete. Proceeding to heavy metric crunch (ML, VaR, Sentiment)...")
+            update_daily_ml_predictions(all_tickers)
+            update_all_tail_risks(all_tickers)
+            update_all_sentiment(all_tickers)
         else:
             logger.warning("Universe is empty, skipping quant scan.")
             

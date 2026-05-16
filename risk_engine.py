@@ -1,4 +1,6 @@
 import logging
+import time
+import random
 import numpy as np
 import pandas as pd
 import yfinance as yf
@@ -95,6 +97,18 @@ def calculate_tail_risk(ticker: str, target_date: Optional[str] = None) -> None:
         
     except Exception as e:
         logger.error(f"Fatal error calculating tail risk for {ticker}: {e}")
+
+def update_all_tail_risks(tickers: list) -> None:
+    """Iterates through a list of tickers and calculates their VaR/CVaR profiles."""
+    if not tickers:
+        logger.warning("Ticker list is empty. Aborting tail risk scan.")
+        return
+        
+    logger.info(f"Initiating Tail Risk (VaR) Scan for {len(tickers)} assets...")
+    for ticker in tickers:
+        calculate_tail_risk(ticker)
+        time.sleep(random.uniform(0.5, 1.5))
+    logger.info("Tail Risk Scan completed successfully.")
 
 if __name__ == "__main__":
     # Test script standalone
