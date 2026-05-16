@@ -119,19 +119,28 @@
                 order: [[0, 'asc']], 
                 language: { search: "🔍 Search Everything:" },
                 
-                // NEW LOGIC: Dynamic Dropdown Population
+                // Dynamic Dropdown Population & Default Selection
                 initComplete: function () {
-                    // Column index 3 is our "Exchange" column
                     var column = this.api().column(3); 
                     var select = $('#exchangeFilter');
                     
-                    // Extract unique sorted values from the JSON data
+                    // 1. Extract unique sorted values and populate dropdown
                     column.data().unique().sort().each( function ( d, j ) {
-                        // Skip empty data fragments just in case
                         if(d && d !== 'N/A') {
                             select.append( '<option value="'+d+'">'+d+'</option>' );
                         }
                     });
+
+                    // 2. Determine default value (URL param or Hardcoded Fallback)
+                    // Change 'NASDAQ' below to any specific exchange you want as the hardcoded default,
+                    // or set it to 'ALL' to revert to the standard behavior.
+                    const defaultExchange = urlParams.get('exchange') || 'NASDAQ'; 
+                    
+                    // 3. Apply the default if it exists in the data
+                    if (defaultExchange !== 'ALL' && select.find('option[value="' + defaultExchange + '"]').length > 0) {
+                        select.val(defaultExchange);
+                        column.search('^' + defaultExchange + '$', true, false).draw();
+                    }
                 },
                 
                 columns: [
@@ -213,7 +222,7 @@
                 ]
             });
 
-            // Map Exchange Filter
+            // Map Exchange Filter (Manual Override)
             $('#exchangeFilter').on('change', function() {
                 var val = $(this).val();
                 if(val === 'ALL') { table.column(3).search('').draw(); } 

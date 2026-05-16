@@ -138,6 +138,8 @@
         let mrDataTable;
 
         $(document).ready(function() {
+            const urlParams = new URLSearchParams(window.location.search);
+
             // Sector Table
             var sectorTable = $('#sectorTable').DataTable({
                 ajax: '/api/reports/sectors',
@@ -148,16 +150,28 @@
                 dom: 't', // Only show the table body (hides the default DataTables search box)
                 order: [[3, 'desc']], // Sort by Avg RSI descending
                 
-                // Dynamic Dropdown Population for the Hidden Exchange Column
+                // Dynamic Dropdown Population & Default Selection
                 initComplete: function () {
                     var column = this.api().column(1); 
                     var select = $('#sectorExchangeFilter');
                     
+                    // 1. Populate dropdown
                     column.data().unique().sort().each( function ( d, j ) {
                         if(d && d !== 'N/A') {
                             select.append( '<option value="'+d+'">'+d+'</option>' );
                         }
                     });
+
+                    // 2. Determine default value (URL param or Hardcoded Fallback)
+                    // Change 'NASDAQ' below to any specific exchange you want as the default,
+                    // or set it to 'ALL' to revert to standard behavior.
+                    const defaultExchange = urlParams.get('exchange') || 'NASDAQ'; 
+                    
+                    // 3. Apply the default if it exists in the data
+                    if (defaultExchange !== 'ALL' && select.find('option[value="' + defaultExchange + '"]').length > 0) {
+                        select.val(defaultExchange);
+                        column.search('^' + defaultExchange + '$', true, false).draw();
+                    }
                 },
                 
                 columns: [
@@ -201,7 +215,7 @@
                 ]
             });
 
-            // Bind the Exchange Filter to Sector Table Column 1
+            // Bind the Exchange Filter to Sector Table Column 1 (Manual Override)
             $('#sectorExchangeFilter').on('change', function() {
                 var val = $(this).val();
                 if(val === 'ALL') { 
