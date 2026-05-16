@@ -107,6 +107,7 @@ def get_leaders_laggards() -> List[Dict[str, Any]]:
             COALESCE(p.company_name, m.company_name, q.ticker) as company_name, 
             COALESCE(m.country, p.country, 'US') as country,
             COALESCE(p.sector, s.sector, 'Unclassified') as sector, 
+            COALESCE(m.exchange, p.exchange, 'US') as exchange,
             q.close_price, 
             ROUND(q.rsi_14, 2) as rsi_14, 
             ROUND(q.macd_hist, 3) as macd_hist,
@@ -119,7 +120,7 @@ def get_leaders_laggards() -> List[Dict[str, Any]]:
           AND q.close_price > q.sma_50
           AND q.rsi_14 IS NOT NULL
         ORDER BY q.rsi_14 DESC, q.macd_hist DESC
-        LIMIT 50
+        LIMIT 500
         """
         cursor.execute(query)
         rows = cursor.fetchall()

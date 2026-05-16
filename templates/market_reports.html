@@ -66,16 +66,24 @@
 
     <div class="report-section" style="border-left-color: #00ffcc;">
         <h2 style="color: #00ffcc;">Relative Strength Leaders</h2>
-        <p>The top 50 strongest <abbr title="The speed of price changes">momentum</abbr> stocks in the entire market (Above <abbr title="50-Day Simple Moving Average">50D SMA</abbr>, sorted by highest <abbr title="Relative Strength Index">RSI</abbr> and <abbr title="Moving Average Convergence Divergence">MACD</abbr> Histogram).</p>
-        <p><strong>How to use:</strong> These are the "MVP" stocks—the top 50 athletes currently outperforming the market. <br>
+        <p>The top 500 strongest <abbr title="The speed of price changes">momentum</abbr> stocks in the entire market (Above <abbr title="50-Day Simple Moving Average">50D SMA</abbr>, sorted by highest <abbr title="Relative Strength Index">RSI</abbr> and <abbr title="Moving Average Convergence Divergence">MACD</abbr> Histogram).</p>
+        <p><strong>How to use:</strong> These are the "MVP" stocks—the top athletes currently outperforming the market. <br>
         <strong>When to use:</strong> Use this during a healthy market to find where professional investors are putting their money. <br>
         <strong>The Benefit:</strong> Momentum tends to persist. By owning leaders with high <abbr title="Relative Strength Index">RSI</abbr> and positive <abbr title="Moving Average Convergence Divergence Histogram">MACD Histograms</abbr>, you are holding the winners that often go up more than the average stock during bull runs.</p>
+        
+        <div class="controls-container" style="margin-bottom: 20px;">
+            <select id="leadersExchangeFilter" class="filter-select">
+                <option value="ALL">All Exchanges</option>
+            </select>
+        </div>
+
         <table id="leadersTable" class="display" style="width:100%">
             <thead>
                 <tr>
                     <th>Ticker</th>
                     <th>Company Name</th>
                     <th>Sector</th>
+                    <th>Exchange</th>
                     <th>Country</th>
                     <th>Close Price</th>
                     <th><abbr title="Relative Strength Index (14-Day)">RSI (14)</abbr></th>
@@ -136,7 +144,7 @@
 
     <div class="report-section report-section-dividend">
         <h2 class="text-dividend">💸 Dividend Harvest (Income Screener)</h2>
-        <p>Identifies high-yield assets approaching their ex-dividend date. Filters out "Yield Traps" by strictly requiring a Quantamental System Score of 50 or higher.</p>
+        <p>Identifies high-yield assets approaching their ex-dividend date. Filters out "Yield Traps" by strictly requiring a Quantamental System Score of 50 or higher. This scans only the Portfolio and Watchlist tickers.</p>
         
         <div class="controls-container controls-flex-end">
             <div class="form-group form-group-no-margin">
@@ -269,20 +277,52 @@
             });
 
             // Leaders Table
-            $('#leadersTable').DataTable({
+            var leadersTable = $('#leadersTable').DataTable({
                 ajax: '/api/reports/leaders',
                 deferRender: true,
                 pageLength: 10,
-                order: [[5, 'desc']], // Sort by RSI
+                order: [[6, 'desc']], // Sort by RSI (Index 6)
+                
+                initComplete: function () {
+                    var column = this.api().column(3); // Exchange column is Index 3
+                    var select = $('#leadersExchangeFilter');
+                    
+                    // Populate dropdown with unique exchanges
+                    column.data().unique().sort().each( function ( d, j ) {
+                        if(d && d !== 'N/A') {
+                            select.append( '<option value="'+d+'">'+d+'</option>' );
+                        }
+                    });
+
+                    // Default to NASDAQ
+                    const defaultExchange = urlParams.get('exchange') || 'NASDAQ'; 
+                    
+                    if (defaultExchange !== 'ALL' && select.find('option[value="' + defaultExchange + '"]').length > 0) {
+                        select.val(defaultExchange);
+                        column.search('^' + defaultExchange + '$', true, false).draw();
+                    }
+                },
+                
                 columns: [
                     { data: 'ticker', render: function(data) { return '<a href="/stock/' + data + '" style="color: #4da6ff; font-weight: bold;">' + data + '</a>'; } },
                     { data: 'company_name' },
                     { data: 'sector' },
+                    { data: 'exchange', visible: false, defaultContent: 'US' }, // Hidden from UI but used for filtering
                     { data: 'country', render: function(data) { return data || 'US'; } },
                     { data: 'close_price', render: $.fn.dataTable.render.number(',', '.', 2, '$') },
                     { data: 'rsi_14', render: function(data) { return `<span class="positive-val">${data.toFixed(2)}</span>`; } },
                     { data: 'macd_hist', render: function(data) { return `<span class="positive-val">${data.toFixed(3)}</span>`; } }
                 ]
+            });
+
+            // Bind the Dropdown Filter to the hidden Exchange column
+            $('#leadersExchangeFilter').on('change', function() {
+                var val = $(this).val();
+                if(val === 'ALL') { 
+                    leadersTable.column(3).search('').draw(); 
+                } else { 
+                    leadersTable.column(3).search('^' + val + '$', true, false).draw(); 
+                }
             });
 
             // Mean Reversion Table Initialization
