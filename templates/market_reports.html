@@ -45,7 +45,7 @@
             <thead>
                 <tr>
                     <th>Sector</th>
-                    <th>Total Stocks</th>
+                    <th>Exchange</th> <th>Total Stocks</th>
                     <th><abbr title="Relative Strength Index (14-Day)">Average RSI (14)</abbr></th>
                     <th><abbr title="Percentage of stocks trading above their 50-day Simple Moving Average">Stocks > 50D SMA (%)</abbr></th>
                     <th><abbr title="Percentage of stocks where the MACD line has crossed above the Signal line">Bullish MACD Crosses (%)</abbr></th>
@@ -216,7 +216,7 @@
                 ajax: '/api/reports/leaders',
                 deferRender: true,
                 pageLength: 10,
-                order: [[5, 'desc']], // Sort by RSI (Updated index to 5)
+                order: [[5, 'desc']], // Sort by RSI
                 columns: [
                     { data: 'ticker', render: function(data) { return '<a href="/stock/' + data + '" style="color: #4da6ff; font-weight: bold;">' + data + '</a>'; } },
                     { data: 'company_name' },
@@ -232,7 +232,7 @@
             mrDataTable = $('#mrTable').DataTable({
                 deferRender: true,
                 pageLength: 10,
-                order: [[5, 'asc']], // Sort by lowest RSI (Updated index to 5)
+                order: [[5, 'asc']], // Sort by lowest RSI
                 columns: [
                     { data: 'ticker', render: function(data) { return '<a href="/stock/' + data + '" style="color: #4da6ff; font-weight: bold;">' + data + '</a>'; } },
                     { data: 'company_name' },
