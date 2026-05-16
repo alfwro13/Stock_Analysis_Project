@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 def get_sector_trends() -> List[Dict[str, Any]]:
     """
-    Calculates aggregated momentum and trend health metrics grouped by market sector and country.
+    Calculates aggregated momentum and trend health metrics grouped by market sector and exchange.
     Requires joining the latest quantitative signals with the market universe table.
     """
     logger.info("Generating Sector Trends Report...")
@@ -21,10 +21,10 @@ def get_sector_trends() -> List[Dict[str, Any]]:
         cursor = conn.cursor()
         
         # Uses COALESCE to fallback to 'Unclassified' since Nasdaq FTP provides no sectors,
-        # and dynamically segments by Country origin.
+        # and dynamically segments by Exchange origin.
         query = """
         SELECT 
-            COALESCE(m.country, p.country, 'US') as country,
+            COALESCE(m.exchange, p.exchange, 'US') as exchange,
             COALESCE(p.sector, s.sector, 'Unclassified') as sector,
             COUNT(q.ticker) as total_stocks,
             ROUND(AVG(q.rsi_14), 2) as avg_rsi,
@@ -37,8 +37,8 @@ def get_sector_trends() -> List[Dict[str, Any]]:
         WHERE q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = q.ticker)
           AND COALESCE(p.sector, s.sector, 'Unclassified') != 'None' 
           AND COALESCE(p.sector, s.sector, 'Unclassified') != ''
-        GROUP BY COALESCE(m.country, p.country, 'US'), COALESCE(p.sector, s.sector, 'Unclassified')
-        ORDER BY country ASC, avg_rsi DESC
+        GROUP BY COALESCE(m.exchange, p.exchange, 'US'), COALESCE(p.sector, s.sector, 'Unclassified')
+        ORDER BY exchange ASC, avg_rsi DESC
         """
         cursor.execute(query)
         rows = cursor.fetchall()
