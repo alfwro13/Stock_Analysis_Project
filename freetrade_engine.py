@@ -66,48 +66,64 @@ def log_freetrade_notification(msg_type: str, msg_text: str) -> None:
             conn.close()
 
 def resolve_ticker(symbol: str, isin: str, mic: str, cache_dict: Dict[str, str], ft_config: Dict) -> Tuple[Optional[str], bool]:
-    raw_symbol = str(symbol).strip()
+    ft_symbol = str(symbol).strip()
     mic = str(mic).strip().upper()
     
     us_mics = ft_config.get("US_MICS", [])
     exchanges = ft_config.get("EXCHANGES", {})
     
+    # 1. Specialized ISIN Search for Mutual Funds
+    if mic == "MUTUAL_FUND_EXCHANGE":
+        if pd.notna(isin) and str(isin).strip():
+            isin = str(isin).strip()
+            if isin in cache_dict:
+                return cache_dict[isin], True
+                
+            url = f"https://query2.finance.yahoo.com/v1/finance/search?q={isin}"
+            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+            
+            try:
+                time.sleep(random.uniform(0.3, 0.7)) 
+                response = requests.get(url, headers=headers, timeout=10)
+                if response.status_code == 200:
+                    data = response.json()
+                    quotes = data.get('quotes', [])
+                    if quotes:
+                        resolved_symbol = quotes[0].get('symbol')
+                        if resolved_symbol:
+                            cache_dict[isin] = resolved_symbol
+                            return resolved_symbol, True
+            except Exception:
+                pass
+        
+        # Fallback if ISIN lookup fails for a mutual fund
+        return ft_symbol + ".L", True
+
+    # 2. Standard US Exchanges
     if mic in us_mics:
-        return raw_symbol.replace('.', '-').upper(), True
+        return ft_symbol.replace('.', '-').upper(), True
         
     if mic not in exchanges:
         return None, False
         
-    if pd.notna(isin) and str(isin).strip():
-        isin = str(isin).strip()
-        if isin in cache_dict:
-            return cache_dict[isin], True
-            
-        url = f"https://query2.finance.yahoo.com/v1/finance/search?q={isin}"
-        headers = {'User-Agent': 'Mozilla/5.0'}
-        
-        try:
-            time.sleep(random.uniform(0.3, 0.7)) 
-            response = requests.get(url, headers=headers, timeout=10)
-            if response.status_code == 200:
-                data = response.json()
-                quotes = data.get('quotes', [])
-                if quotes:
-                    resolved_symbol = quotes[0].get('symbol')
-                    if resolved_symbol:
-                        cache_dict[isin] = resolved_symbol
-                        return resolved_symbol, True
-        except Exception:
-            pass
-            
+    # 3. Dynamic Lowercase Suffix Stripping
+    has_lower_suffix = ft_symbol[-1].islower() if ft_symbol else False
+    base_symbol = ft_symbol[:-1] if has_lower_suffix else ft_symbol
+
+    # 4. Stockholm Class Shares Mapping
+    if mic == "XSTO":
+        if base_symbol.endswith("A") or base_symbol.endswith("B"):
+            base_symbol = base_symbol[:-1] + "-" + base_symbol[-1]
+        return base_symbol + ".ST", True
+
+    # 5. European Composite Tickers (.XC)
+    if mic in ["MTAA", "XHEL", "XAMS", "XBRU", "XLIS"]:
+        return ft_symbol.upper() + ".XC", True
+
+    # 6. Standard Mappings (Stripped Suffix)
     exchange_info = exchanges[mic]
-    ft_char = exchange_info.get("ft_char", "")
     yf_suffix = exchange_info.get("yf_suffix", "")
-    
-    if ft_char and raw_symbol.endswith(ft_char):
-        raw_symbol = raw_symbol[:-len(ft_char)]
-        
-    clean_symbol = raw_symbol.replace('.', '-').upper()
+    clean_symbol = base_symbol.replace('.', '-').upper()
     
     if not clean_symbol.endswith(yf_suffix):
         return clean_symbol + yf_suffix, True

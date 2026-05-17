@@ -75,9 +75,12 @@ def run_profile_audit(limit: int = 250):
                 info = yf.Ticker(ticker).info
                 
                 # --- THE AUTOMATED BLACKLIST PURGE ---
-                # If Yahoo Finance returns nothing (404), banish it from the system entirely.
-                if not info or len(info) < 5:
-                    logger.warning(f"No payload for {ticker}. Permanently blacklisting and purging from database.")
+                # Softened check: Mutual Funds often have very small info dictionaries. 
+                # We only blacklist if we get absolutely no identifying information back from Yahoo.
+                has_identity = 'shortName' in info or 'longName' in info or 'symbol' in info or 'regularMarketPrice' in info
+                
+                if not info or not has_identity:
+                    logger.warning(f"No valid payload for {ticker}. Permanently blacklisting and purging from database.")
                     blacklist.add(ticker)
                     save_blacklist(blacklist)
                     
