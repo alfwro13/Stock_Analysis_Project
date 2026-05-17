@@ -76,13 +76,13 @@ def log_freetrade_notification(msg_type: str, msg_text: str) -> None:
             conn.close()
 
 def resolve_ticker(symbol: str, isin: str, mic: str, cache_dict: Dict[str, str]) -> str:
-    """Intelligently routes ticker resolution using US bypassing and Local Caching."""
-    symbol = str(symbol).strip().replace('.', '-')
+    """Intelligently routes ticker resolution using US bypassing, Local Caching, and EU Suffix Stripping."""
+    raw_symbol = str(symbol).strip()
     mic = str(mic).strip().upper()
     
     # 1. Fast Path: US Stocks
     if mic in US_MICS:
-        return symbol
+        return raw_symbol.replace('.', '-').upper()
         
     # 2. Check Local Cache
     if pd.notna(isin) and str(isin).strip():
@@ -112,10 +112,21 @@ def resolve_ticker(symbol: str, isin: str, mic: str, cache_dict: Dict[str, str])
             
     # 4. Ultimate Fallback Logic
     if mic in MIC_YF_SUFFIX_MAP:
+        # Freetrade appends lowercase country codes to European symbols to avoid internal collisions.
+        # Examples: 'BNBb' (Brussels), 'BNPp' (Paris), 'BNRd' (Germany).
+        # We strip this trailing lowercase letter before formatting for Yahoo Finance.
+        if len(raw_symbol) > 1 and raw_symbol[-1].islower():
+            raw_symbol = raw_symbol[:-1]
+            
+        # Format '.' to '-' for share classes (e.g., BT.A -> BT-A)
+        clean_symbol = raw_symbol.replace('.', '-').upper()
         suffix = MIC_YF_SUFFIX_MAP[mic]
-        if not symbol.endswith(suffix):
-            return symbol + suffix
-    return symbol
+        
+        if not clean_symbol.endswith(suffix):
+            return clean_symbol + suffix
+        return clean_symbol
+
+    return raw_symbol.replace('.', '-').upper()
 
 def sync_freetrade_universe() -> None:
     """Master Pipeline for downloading, resolving, and upserting the Freetrade catalog."""
@@ -165,7 +176,7 @@ def sync_freetrade_universe() -> None:
             
             processed_count += 1
             
-            # 🟢 THE FIX: STRICT COUNTER PROGRESS LOGGING
+            # Strict counter progress logging
             if processed_count % 50 == 0:
                 logger.info(f"Freetrade Sync Progress: {processed_count} / {total_rows} assets parsed...")
                 
@@ -185,8 +196,11 @@ def sync_freetrade_universe() -> None:
         cursor = conn.cursor()
         
         try:
-            logger.info("Executing Bulk SQLite Upsert...")
-            cursor.execute("UPDATE market_universe SET is_freetrade = 0")
+            logger.info("Executing Bulk SQLite Purge & Upsert...")
+            
+            # CRITICAL FIX: Purge the old freetrade universe to permanently clear out malformed 
+            # tickers (e.g., BNBb.BR) from previous runs to stop the profile_engine 404 errors.
+            cursor.execute("DELETE FROM market_universe WHERE is_freetrade = 1")
             
             upsert_query = """
                 INSERT INTO market_universe (ticker, company_name, freetrade_subtitle, is_freetrade, freetrade_url, exchange)
@@ -203,7 +217,7 @@ def sync_freetrade_universe() -> None:
             
             success_msg = (
                 f"Successfully synced {len(records)} Freetrade assets to the database.\n"
-                "ACTION REQUIRED: Run 'python profile_engine.py' in your terminal, then trigger a Full Quant Scan from the settings UI."
+                "ACTION REQUIRED: Run 'python profile_engine.py' in your terminal to fetch their profiles, then trigger a Full Quant Scan from the settings UI."
             )
             logger.info(success_msg)
             log_freetrade_notification("Success", success_msg)
