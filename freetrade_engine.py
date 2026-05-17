@@ -5,6 +5,7 @@ import time
 import random
 import requests
 import logging
+import argparse
 import pandas as pd
 from pathlib import Path
 from typing import Optional, Dict, Any, Tuple
@@ -23,7 +24,6 @@ FREETRADE_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTGZT9-lSDD
 ISIN_CACHE_PATH = Path("data/isin_ticker_cache.json")
 
 def load_isin_cache() -> Dict[str, str]:
-    """Loads the previously resolved ISIN mapping from disk."""
     if ISIN_CACHE_PATH.exists():
         try:
             with open(ISIN_CACHE_PATH, 'r') as f:
@@ -33,7 +33,6 @@ def load_isin_cache() -> Dict[str, str]:
     return {}
 
 def save_isin_cache(cache_dict: Dict[str, str]) -> None:
-    """Saves the ISIN mapping securely to disk."""
     try:
         ISIN_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
         with open(ISIN_CACHE_PATH, 'w') as f:
@@ -42,7 +41,6 @@ def save_isin_cache(cache_dict: Dict[str, str]) -> None:
         logger.error(f"Failed to save ISIN cache: {e}")
 
 def log_freetrade_notification(msg_type: str, msg_text: str) -> None:
-    """Pushes an alert directly to the dashboard notification UI."""
     try:
         conn = get_connection()
         cursor = conn.cursor()
@@ -58,11 +56,7 @@ def log_freetrade_notification(msg_type: str, msg_text: str) -> None:
             conn.close()
 
 def resolve_ticker(symbol: str, isin: str, mic: str, cache_dict: Dict[str, str], ft_config: Dict) -> Tuple[Optional[str], bool]:
-    """
-    Intelligently routes ticker resolution using the dynamic mapping config.
-    Returns: (Resolved Ticker String, Is_Mapped Boolean)
-    """
-    # DO NOT UPPERCASE YET. We need the exact casing to strip Freetrade's lowercase identifiers safely.
+    # Do not uppercase yet. Preserve original casing to analyze FT's suffix patterns.
     raw_symbol = str(symbol).strip()
     mic = str(mic).strip().upper()
     
@@ -85,12 +79,10 @@ def resolve_ticker(symbol: str, isin: str, mic: str, cache_dict: Dict[str, str],
             
         # 4. Query Yahoo Finance API
         url = f"https://query2.finance.yahoo.com/v1/finance/search?q={isin}"
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
+        headers = {'User-Agent': 'Mozilla/5.0'}
         
         try:
-            # Mandatory IP safety throttle
             time.sleep(random.uniform(0.3, 0.7)) 
-            
             response = requests.get(url, headers=headers, timeout=10)
             if response.status_code == 200:
                 data = response.json()
@@ -101,14 +93,14 @@ def resolve_ticker(symbol: str, isin: str, mic: str, cache_dict: Dict[str, str],
                         cache_dict[isin] = resolved_symbol
                         return resolved_symbol, True
         except Exception:
-            pass # Silently fallback below
+            pass
             
     # 5. Configurable Fallback Logic
     exchange_info = exchanges[mic]
     ft_char = exchange_info.get("ft_char", "")
     yf_suffix = exchange_info.get("yf_suffix", "")
     
-    # Case-sensitive check! This ensures we strip 'b' (ECONBb) but ignore 'B' (WALLB)
+    # Stripping logic: Using case-sensitive exact match from config
     if ft_char and raw_symbol.endswith(ft_char):
         raw_symbol = raw_symbol[:-len(ft_char)]
         
@@ -119,19 +111,26 @@ def resolve_ticker(symbol: str, isin: str, mic: str, cache_dict: Dict[str, str],
         
     return clean_symbol, True
 
-def sync_freetrade_universe() -> None:
-    """Master Pipeline for downloading, resolving, and upserting the Freetrade catalog."""
+def sync_freetrade_universe(target_mic: Optional[str] = None, limit: Optional[int] = None) -> None:
     logger.info("Starting Configuration-Enhanced Freetrade Universe Sync...")
     
     try:
         df = pd.read_csv(FREETRADE_CSV_URL)
-        logger.info(f"Successfully downloaded {len(df)} records from Freetrade.")
-        
         df.columns = df.columns.str.strip()
+        
         if 'Symbol' not in df.columns:
             raise ValueError("CRITICAL: 'Symbol' column is missing from CSV.")
             
-        # Extract KIID dynamically
+        # Apply CLI Filters
+        if target_mic:
+            target_mic = target_mic.strip().upper()
+            df = df[df['MIC'].astype(str).str.strip().str.upper() == target_mic]
+            logger.info(f"Filtered for MIC: {target_mic}. Found {len(df)} records.")
+            
+        if limit:
+            df = df.head(limit)
+            logger.info(f"Limited run to {limit} records for testing.")
+            
         kiid_col = next((c for c in df.columns if 'kiid' in c.lower()), None)
         def clean_url(val: Any) -> Optional[str]:
             if isinstance(val, str) and val.strip().lower().startswith("https://"):
@@ -159,11 +158,14 @@ def sync_freetrade_universe() -> None:
                 
             resolved_ticker, is_mapped = resolve_ticker(symbol_raw, isin, mic, cache_dict, ft_config)
             
+            # CLI Debug Output
+            if target_mic or limit:
+                logger.info(f"TEST: Original: '{symbol_raw}' (ISIN: {isin}) -> Resolved: '{resolved_ticker}'")
+            
             if not is_mapped:
                 unmapped_mics.add(mic)
                 continue
             
-            # Fetch the clean UI Name from config, fallback to the raw MIC if missing
             ui_exchange = ft_config.get("EXCHANGES", {}).get(mic, {}).get("ui_name", mic)
             if mic in ft_config.get("US_MICS", []):
                 ui_exchange = "US Equities"
@@ -178,10 +180,8 @@ def sync_freetrade_universe() -> None:
 
         save_isin_cache(cache_dict)
         
-        # Fire Unmapped MIC Alert to the user
         if unmapped_mics:
             logger.warning(f"Unmapped Freetrade MICs detected and skipped: {list(unmapped_mics)}")
-            log_freetrade_notification("Warning", f"Skipped assets due to unmapped exchanges: {list(unmapped_mics)}. Add them to FREETRADE_MAPPINGS in your config.json file to process them.")
         
         if not records:
             logger.warning("No valid records to insert.")
@@ -191,10 +191,12 @@ def sync_freetrade_universe() -> None:
         cursor = conn.cursor()
         
         try:
-            logger.info("Executing Bulk SQLite Purge & Upsert...")
-            
-            # CRITICAL: This wipes out all malformed Freetrade tickers from the database.
-            cursor.execute("DELETE FROM market_universe WHERE is_freetrade = 1")
+            # ONLY wipe the database if we are running a full, un-filtered sync
+            if not target_mic and not limit:
+                logger.info("Executing Bulk SQLite Purge & Upsert...")
+                cursor.execute("DELETE FROM market_universe WHERE is_freetrade = 1")
+            else:
+                logger.info("Running in Safe Mode (No purge). Upserting records...")
             
             upsert_query = """
                 INSERT INTO market_universe (ticker, company_name, freetrade_subtitle, is_freetrade, freetrade_url, exchange)
@@ -209,8 +211,7 @@ def sync_freetrade_universe() -> None:
             cursor.executemany(upsert_query, records)
             conn.commit()
             
-            success_msg = f"Successfully synced {len(records)} Freetrade assets to the database."
-            logger.info(success_msg)
+            logger.info(f"Successfully synced {len(records)} Freetrade assets to the database.")
             
         except Exception as db_err:
             conn.rollback()
@@ -219,9 +220,13 @@ def sync_freetrade_universe() -> None:
             conn.close()
 
     except Exception as e:
-        error_msg = f"Failed to sync Freetrade Universe: {e}"
-        logger.error(error_msg)
-        raise e
+        logger.error(f"Failed to sync Freetrade Universe: {e}")
 
 if __name__ == "__main__":
-    sync_freetrade_universe()
+    parser = argparse.ArgumentParser(description="Freetrade Universe Data Ingestion")
+    parser.add_argument("--mic", type=str, help="Specific MIC to process (e.g., XPAR, XBRU)", default=None)
+    parser.add_argument("--limit", type=int, help="Limit the number of records to process", default=None)
+    
+    args = parser.parse_args()
+    
+    sync_freetrade_universe(target_mic=args.mic, limit=args.limit)
