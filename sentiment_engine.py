@@ -343,7 +343,8 @@ def get_yield_gauge_html() -> str:
                 {'range': [3.5, 5.0], 'color': '#ff4d4d'}],
         }
     ))
-    fig.update_layout(template="plotly_dark", height=450, margin=dict(l=40, r=40, t=60, b=40), paper_bgcolor='#1e1e1e')
+    # Reduced height from 450 to 320 to keep it compact inside the CSS grid
+    fig.update_layout(template="plotly_dark", height=320, margin=dict(l=40, r=40, t=60, b=40), paper_bgcolor='#1e1e1e')
     return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
 
 
