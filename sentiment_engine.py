@@ -20,11 +20,14 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-# NLP Sentiment Analyzer
-from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+# NLP Sentiment Analyzer (FinBERT via HuggingFace)
+from transformers import pipeline
 
 from nextcloud_talk import upload_file_webdav, share_file_to_talk
-from config import NEXTCLOUD_URL, BOT_USERNAME, APP_PASSWORD, CONVERSATION_TOKEN, load_config, HISTORICAL_DIR
+from config import (
+    NEXTCLOUD_URL, BOT_USERNAME, APP_PASSWORD, CONVERSATION_TOKEN,
+    load_config, HISTORICAL_DIR
+)
 from database import get_connection
 
 # Configure robust module-level logging
@@ -49,11 +52,11 @@ _MACRO_HTML_CACHE: Dict[str, str] = {
 # ==========================================================
 
 def fetch_fear_greed_data(start_date_str: str) -> pd.DataFrame:
-    BASE_URL = "https://production.dataviz.cnn.io/index/fearandgreed/graphdata/"
+    base_url = "https://production.dataviz.cnn.io/index/fearandgreed/graphdata/"
     ua = UserAgent()
     headers = {'User-Agent': ua.random}
     try:
-        r = requests.get(BASE_URL + start_date_str, headers=headers, timeout=15)
+        r = requests.get(base_url + start_date_str, headers=headers, timeout=15)
         r.raise_for_status()
         data = r.json()
         fng_list = data['fear_and_greed_historical']['data']
@@ -69,21 +72,23 @@ def fetch_fear_greed_data(start_date_str: str) -> pd.DataFrame:
 
 
 def fetch_stock_data(ticker: str, start_date: str) -> pd.DataFrame:
-    stock_df = yf.download(tickers=ticker, start=start_date, progress=False, auto_adjust=True)
-    if stock_df.empty: 
+    stock_df = yf.download(
+        tickers=ticker, start=start_date, progress=False, auto_adjust=True
+    )
+    if stock_df.empty:
         return pd.DataFrame()
     if isinstance(stock_df.columns, pd.MultiIndex):
         stock_df.columns = stock_df.columns.get_level_values(0)
     stock_df.reset_index(inplace=True)
     stock_df['Date'] = stock_df['Date'].dt.date
     stock_df.set_index('Date', inplace=True)
-    if 'Close' not in stock_df.columns: 
+    if 'Close' not in stock_df.columns:
         return pd.DataFrame()
     return stock_df[['Close']].rename(columns={'Close': f'{ticker}_Close'})
 
 
 def fetch_parquet_data(parquet_name: str, start_date: str) -> pd.DataFrame:
-    """Reads heavily sanitized local baseline data directly from the DataEngine parquet files."""
+    """Reads heavily sanitized local baseline data directly from Parquet files."""
     path = HISTORICAL_DIR / parquet_name
     if not path.exists():
         return pd.DataFrame()
@@ -104,7 +109,7 @@ def get_sentiment_data() -> Optional[pd.DataFrame]:
     start_date = (today - timedelta(days=365)).strftime('%Y-%m-%d')
     fng_data = fetch_fear_greed_data(start_date)
     spy_data = fetch_stock_data('SPY', start_date)
-    if fng_data.empty or spy_data.empty: 
+    if fng_data.empty or spy_data.empty:
         return None
     merged_df = spy_data.merge(fng_data, left_index=True, right_index=True, how='left')
     merged_df['Fear_Greed_Index'] = merged_df['Fear_Greed_Index'].ffill()
@@ -114,16 +119,24 @@ def get_sentiment_data() -> Optional[pd.DataFrame]:
 
 def generate_sentiment_figure() -> Optional[go.Figure]:
     merged_df = get_sentiment_data()
-    if merged_df is None: 
+    if merged_df is None:
         return None
 
     fig = make_subplots(specs=[[{"secondary_y": True}]])
-    fig.add_trace(go.Scatter(x=merged_df.index, y=merged_df['SPY_Close'], name="S&P 500", line=dict(color='#4da6ff', width=2)), secondary_y=False)
-    fig.add_trace(go.Scatter(x=merged_df.index, y=merged_df['Fear_Greed_Index'], name="F&G Index", line=dict(color='#ff4d4d', dash='dot', width=2)), secondary_y=True)
+    fig.add_trace(go.Scatter(
+        x=merged_df.index, y=merged_df['SPY_Close'], name="S&P 500",
+        line=dict(color='#4da6ff', width=2)), secondary_y=False)
+    fig.add_trace(go.Scatter(
+        x=merged_df.index, y=merged_df['Fear_Greed_Index'], name="F&G Index",
+        line=dict(color='#ff4d4d', dash='dot', width=2)), secondary_y=True)
 
     levels = {25: 'Fear (25)', 50: 'Neutral (50)', 75: 'Greed (75)'}
     for level, text in levels.items():
-        fig.add_hline(y=level, line_dash="dash", line_color="#555", secondary_y=True, annotation_text=text, annotation_position="top right", annotation_font_color="#aaa")
+        fig.add_hline(
+            y=level, line_dash="dash", line_color="#555", secondary_y=True,
+            annotation_text=text, annotation_position="top right",
+            annotation_font_color="#aaa"
+        )
 
     min_spy = merged_df['SPY_Close'].min() * 0.98
     max_spy = merged_df['SPY_Close'].max() * 1.02
@@ -148,7 +161,10 @@ def generate_sentiment_figure() -> Optional[go.Figure]:
 def get_vix_spy_data() -> Optional[pd.DataFrame]:
     try:
         tickers = ["SPY", "^VIX"]
-        df = yf.download(tickers, period="1y", interval="1d", group_by='ticker', auto_adjust=True, progress=False)
+        df = yf.download(
+            tickers, period="1y", interval="1d", group_by='ticker',
+            auto_adjust=True, progress=False
+        )
         
         if df.empty or 'SPY' not in df.columns or '^VIX' not in df.columns:
             logger.error("Failed to fetch SPY or VIX data from Yahoo Finance.")
@@ -161,7 +177,9 @@ def get_vix_spy_data() -> Optional[pd.DataFrame]:
             logger.error("Incomplete data received for SPY or VIX.")
             return None
 
-        merged_df = spy_data[['SPY_Close']].merge(vix_data[['VIX_Close']], left_index=True, right_index=True, how='inner')
+        merged_df = spy_data[['SPY_Close']].merge(
+            vix_data[['VIX_Close']], left_index=True, right_index=True, how='inner'
+        )
         return merged_df
         
     except Exception as e:
@@ -171,15 +189,27 @@ def get_vix_spy_data() -> Optional[pd.DataFrame]:
 
 def generate_vix_spy_figure() -> Optional[go.Figure]:
     merged_df = get_vix_spy_data()
-    if merged_df is None: 
+    if merged_df is None:
         return None
 
     fig = make_subplots(specs=[[{"secondary_y": True}]])
-    fig.add_trace(go.Scatter(x=merged_df.index, y=merged_df['SPY_Close'], name="S&P 500", line=dict(color='#4da6ff', width=2)), secondary_y=False)
-    fig.add_trace(go.Scatter(x=merged_df.index, y=merged_df['VIX_Close'], name="VIX", line=dict(color='#ffaa00', dash='dot', width=2)), secondary_y=True)
+    fig.add_trace(go.Scatter(
+        x=merged_df.index, y=merged_df['SPY_Close'], name="S&P 500",
+        line=dict(color='#4da6ff', width=2)), secondary_y=False)
+    fig.add_trace(go.Scatter(
+        x=merged_df.index, y=merged_df['VIX_Close'], name="VIX",
+        line=dict(color='#ffaa00', dash='dot', width=2)), secondary_y=True)
 
-    fig.add_hline(y=20, line_dash="dash", line_color="#ffaa00", secondary_y=True, annotation_text="Volatile (20)", annotation_position="top right", annotation_font_color="#ffaa00")
-    fig.add_hline(y=30, line_dash="dash", line_color="#ff4d4d", secondary_y=True, annotation_text="Crash (30)", annotation_position="top right", annotation_font_color="#ff4d4d")
+    fig.add_hline(
+        y=20, line_dash="dash", line_color="#ffaa00", secondary_y=True,
+        annotation_text="Volatile (20)", annotation_position="top right",
+        annotation_font_color="#ffaa00"
+    )
+    fig.add_hline(
+        y=30, line_dash="dash", line_color="#ff4d4d", secondary_y=True,
+        annotation_text="Crash (30)", annotation_position="top right",
+        annotation_font_color="#ff4d4d"
+    )
 
     min_spy = merged_df['SPY_Close'].min() * 0.98
     max_spy = merged_df['SPY_Close'].max() * 1.02
@@ -214,13 +244,17 @@ def get_yield_equity_html() -> str:
     spy_data = fetch_stock_data('SPY', start_date)
     tyx_data = fetch_stock_data('^TYX', start_date)
     
-    if spy_data.empty or tyx_data.empty: 
+    if spy_data.empty or tyx_data.empty:
         return "<p>Error loading US Cost of Capital data.</p>"
     merged_df = spy_data.merge(tyx_data, left_index=True, right_index=True, how='inner')
 
     fig = make_subplots(specs=[[{"secondary_y": True}]])
-    fig.add_trace(go.Scatter(x=merged_df.index, y=merged_df['SPY_Close'], name="S&P 500", line=dict(color='#4da6ff', width=2)), secondary_y=False)
-    fig.add_trace(go.Scatter(x=merged_df.index, y=merged_df['^TYX_Close'], name="30Y Treasury Yield", line=dict(color='#ff4d4d', dash='dot', width=2)), secondary_y=True)
+    fig.add_trace(go.Scatter(
+        x=merged_df.index, y=merged_df['SPY_Close'], name="S&P 500",
+        line=dict(color='#4da6ff', width=2)), secondary_y=False)
+    fig.add_trace(go.Scatter(
+        x=merged_df.index, y=merged_df['^TYX_Close'], name="30Y Treasury Yield",
+        line=dict(color='#ff4d4d', dash='dot', width=2)), secondary_y=True)
 
     fig.update_layout(
         title="US Cost of Capital: 30Y Treasury Yield vs S&P 500 (1 Year)",
@@ -243,14 +277,18 @@ def get_uk_yield_equity_html() -> str:
     ftse_data = fetch_parquet_data('FTSE_BASELINE.parquet', start_date)
     gilt_data = fetch_parquet_data('UK_GILT_BASELINE.parquet', start_date)
     
-    if ftse_data.empty or gilt_data.empty: 
+    if ftse_data.empty or gilt_data.empty:
         return "<p>Error loading UK Cost of Capital data. Ensure Gilt Data Service has run.</p>"
         
     merged_df = ftse_data.merge(gilt_data, left_index=True, right_index=True, how='inner')
 
     fig = make_subplots(specs=[[{"secondary_y": True}]])
-    fig.add_trace(go.Scatter(x=merged_df.index, y=merged_df['FTSE_Close'], name="FTSE 100", line=dict(color='#4da6ff', width=2)), secondary_y=False)
-    fig.add_trace(go.Scatter(x=merged_df.index, y=merged_df['UK_Close'], name="10Y Gilt Yield", line=dict(color='#ff4d4d', dash='dot', width=2)), secondary_y=True)
+    fig.add_trace(go.Scatter(
+        x=merged_df.index, y=merged_df['FTSE_Close'], name="FTSE 100",
+        line=dict(color='#4da6ff', width=2)), secondary_y=False)
+    fig.add_trace(go.Scatter(
+        x=merged_df.index, y=merged_df['UK_Close'], name="10Y Gilt Yield",
+        line=dict(color='#ff4d4d', dash='dot', width=2)), secondary_y=True)
 
     fig.update_layout(
         title="UK Cost of Capital: 10Y Gilt Yield vs FTSE 100 (1 Year)",
@@ -273,14 +311,18 @@ def get_ftse_gbp_html() -> str:
     ftse_data = fetch_parquet_data('FTSE_BASELINE.parquet', start_date)
     gbp_data = fetch_parquet_data('GBPUSD_BASELINE.parquet', start_date)
     
-    if ftse_data.empty or gbp_data.empty: 
+    if ftse_data.empty or gbp_data.empty:
         return "<p>Error loading GBP/USD Data.</p>"
         
     merged_df = ftse_data.merge(gbp_data, left_index=True, right_index=True, how='inner')
 
     fig = make_subplots(specs=[[{"secondary_y": True}]])
-    fig.add_trace(go.Scatter(x=merged_df.index, y=merged_df['FTSE_Close'], name="FTSE 100", line=dict(color='#4da6ff', width=2)), secondary_y=False)
-    fig.add_trace(go.Scatter(x=merged_df.index, y=merged_df['GBPUSD_Close'], name="GBP/USD", line=dict(color='#00ffcc', dash='dot', width=2)), secondary_y=True)
+    fig.add_trace(go.Scatter(
+        x=merged_df.index, y=merged_df['FTSE_Close'], name="FTSE 100",
+        line=dict(color='#4da6ff', width=2)), secondary_y=False)
+    fig.add_trace(go.Scatter(
+        x=merged_df.index, y=merged_df['GBPUSD_Close'], name="GBP/USD",
+        line=dict(color='#00ffcc', dash='dot', width=2)), secondary_y=True)
 
     fig.update_layout(
         title="Currency Impact: GBP/USD vs FTSE 100 (1 Year)",
@@ -299,7 +341,7 @@ def get_sentiment_html() -> str:
         return _MACRO_HTML_CACHE["sentiment_html"]
     
     fig = generate_sentiment_figure()
-    if not fig: 
+    if not fig:
         return "<p>Error loading sentiment data. Please try again later.</p>"
     return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
 
@@ -311,7 +353,7 @@ def get_vix_spy_html() -> str:
         return _MACRO_HTML_CACHE["vix_spy_html"]
         
     fig = generate_vix_spy_figure()
-    if not fig: 
+    if not fig:
         return "<p>Error loading VIX data. Please try again later.</p>"
     return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
 
@@ -343,8 +385,10 @@ def get_yield_gauge_html() -> str:
                 {'range': [3.5, 5.0], 'color': '#ff4d4d'}],
         }
     ))
-    # Reduced height from 450 to 320 to keep it compact inside the CSS grid
-    fig.update_layout(template="plotly_dark", height=320, margin=dict(l=40, r=40, t=60, b=40), paper_bgcolor='#1e1e1e')
+    fig.update_layout(
+        template="plotly_dark", height=320, margin=dict(l=40, r=40, t=60, b=40),
+        paper_bgcolor='#1e1e1e'
+    )
     return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
 
 
@@ -376,11 +420,15 @@ def _async_chart_cruncher_worker() -> None:
         
         # 1. Re-render Fear and Greed Matrix
         fig_sentiment = generate_sentiment_figure()
-        html_sentiment = fig_sentiment.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False}) if fig_sentiment else ""
+        html_sentiment = fig_sentiment.to_html(
+            full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False}
+        ) if fig_sentiment else ""
         
         # 2. Re-render VIX Volatility Matrix
         fig_vix = generate_vix_spy_figure()
-        html_vix = fig_vix.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False}) if fig_vix else ""
+        html_vix = fig_vix.to_html(
+            full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False}
+        ) if fig_vix else ""
         
         # 3. Re-render US Yield Compression
         today = datetime.now()
@@ -392,8 +440,12 @@ def _async_chart_cruncher_worker() -> None:
         if not spy_df.empty and not tyx_df.empty:
             m_df = spy_df.merge(tyx_df, left_index=True, right_index=True, how='inner')
             fig_yield_equity = make_subplots(specs=[[{"secondary_y": True}]])
-            fig_yield_equity.add_trace(go.Scatter(x=m_df.index, y=m_df['SPY_Close'], name="S&P 500", line=dict(color='#4da6ff', width=2)), secondary_y=False)
-            fig_yield_equity.add_trace(go.Scatter(x=m_df.index, y=m_df['^TYX_Close'], name="30Y Treasury Yield", line=dict(color='#ff4d4d', dash='dot', width=2)), secondary_y=True)
+            fig_yield_equity.add_trace(go.Scatter(
+                x=m_df.index, y=m_df['SPY_Close'], name="S&P 500",
+                line=dict(color='#4da6ff', width=2)), secondary_y=False)
+            fig_yield_equity.add_trace(go.Scatter(
+                x=m_df.index, y=m_df['^TYX_Close'], name="30Y Treasury Yield",
+                line=dict(color='#ff4d4d', dash='dot', width=2)), secondary_y=True)
             fig_yield_equity.update_layout(
                 title="US Cost of Capital: 30Y Treasury Yield vs S&P 500 (1 Year)",
                 template="plotly_dark", height=450, margin=dict(l=40, r=40, t=60, b=40),
@@ -401,7 +453,9 @@ def _async_chart_cruncher_worker() -> None:
             )
             fig_yield_equity.update_yaxes(title_text="S&P 500 Price ($)", secondary_y=False)
             fig_yield_equity.update_yaxes(title_text="30Y Yield (%)", secondary_y=True)
-            html_yield_equity = fig_yield_equity.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
+            html_yield_equity = fig_yield_equity.to_html(
+                full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False}
+            )
 
         # 4. Re-render UK Yield Compression
         ftse_data = fetch_parquet_data('FTSE_BASELINE.parquet', start_date)
@@ -411,8 +465,12 @@ def _async_chart_cruncher_worker() -> None:
         if not ftse_data.empty and not gilt_data.empty:
             m_df_uk = ftse_data.merge(gilt_data, left_index=True, right_index=True, how='inner')
             fig_uk_yield = make_subplots(specs=[[{"secondary_y": True}]])
-            fig_uk_yield.add_trace(go.Scatter(x=m_df_uk.index, y=m_df_uk['FTSE_Close'], name="FTSE 100", line=dict(color='#4da6ff', width=2)), secondary_y=False)
-            fig_uk_yield.add_trace(go.Scatter(x=m_df_uk.index, y=m_df_uk['UK_Close'], name="10Y Gilt Yield", line=dict(color='#ff4d4d', dash='dot', width=2)), secondary_y=True)
+            fig_uk_yield.add_trace(go.Scatter(
+                x=m_df_uk.index, y=m_df_uk['FTSE_Close'], name="FTSE 100",
+                line=dict(color='#4da6ff', width=2)), secondary_y=False)
+            fig_uk_yield.add_trace(go.Scatter(
+                x=m_df_uk.index, y=m_df_uk['UK_Close'], name="10Y Gilt Yield",
+                line=dict(color='#ff4d4d', dash='dot', width=2)), secondary_y=True)
             fig_uk_yield.update_layout(
                 title="UK Cost of Capital: 10Y Gilt Yield vs FTSE 100 (1 Year)",
                 template="plotly_dark", height=450, margin=dict(l=40, r=40, t=60, b=40),
@@ -420,7 +478,9 @@ def _async_chart_cruncher_worker() -> None:
             )
             fig_uk_yield.update_yaxes(title_text="FTSE 100 Points", secondary_y=False)
             fig_uk_yield.update_yaxes(title_text="10Y Gilt Yield (%)", secondary_y=True)
-            html_uk_yield_equity = fig_uk_yield.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
+            html_uk_yield_equity = fig_uk_yield.to_html(
+                full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False}
+            )
 
         # 5. Re-render UK Currency Impact
         gbp_data = fetch_parquet_data('GBPUSD_BASELINE.parquet', start_date)
@@ -428,8 +488,12 @@ def _async_chart_cruncher_worker() -> None:
         if not ftse_data.empty and not gbp_data.empty:
             m_df_gbp = ftse_data.merge(gbp_data, left_index=True, right_index=True, how='inner')
             fig_gbp = make_subplots(specs=[[{"secondary_y": True}]])
-            fig_gbp.add_trace(go.Scatter(x=m_df_gbp.index, y=m_df_gbp['FTSE_Close'], name="FTSE 100", line=dict(color='#4da6ff', width=2)), secondary_y=False)
-            fig_gbp.add_trace(go.Scatter(x=m_df_gbp.index, y=m_df_gbp['GBPUSD_Close'], name="GBP/USD", line=dict(color='#00ffcc', dash='dot', width=2)), secondary_y=True)
+            fig_gbp.add_trace(go.Scatter(
+                x=m_df_gbp.index, y=m_df_gbp['FTSE_Close'], name="FTSE 100",
+                line=dict(color='#4da6ff', width=2)), secondary_y=False)
+            fig_gbp.add_trace(go.Scatter(
+                x=m_df_gbp.index, y=m_df_gbp['GBPUSD_Close'], name="GBP/USD",
+                line=dict(color='#00ffcc', dash='dot', width=2)), secondary_y=True)
             fig_gbp.update_layout(
                 title="Currency Impact: GBP/USD vs FTSE 100 (1 Year)",
                 template="plotly_dark", height=450, margin=dict(l=40, r=40, t=60, b=40),
@@ -437,8 +501,9 @@ def _async_chart_cruncher_worker() -> None:
             )
             fig_gbp.update_yaxes(title_text="FTSE 100 Points", secondary_y=False)
             fig_gbp.update_yaxes(title_text="GBP/USD Rate", secondary_y=True)
-            html_ftse_gbp = fig_gbp.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
-
+            html_ftse_gbp = fig_gbp.to_html(
+                full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False}
+            )
 
         # Atomic update under synchronization fence
         with _CACHE_LOCK:
@@ -457,14 +522,14 @@ def _async_chart_cruncher_worker() -> None:
 
 
 # ==========================================================
-# 5. NEXTCLOUD ALERTS & MICRO SENTIMENT (VADER NLP ON HEADLINES)
+# 5. NEXTCLOUD ALERTS & MICRO SENTIMENT (FINBERT NLP)
 # ==========================================================
 
 def run_nextcloud_alert() -> tuple:
     logger.info("Starting Market Sentiment Pipeline...")
     try:
         merged_df = get_sentiment_data()
-        if merged_df is None: 
+        if merged_df is None:
             return False, "Failed to fetch data."
 
         time_stamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
@@ -485,12 +550,12 @@ def run_nextcloud_alert() -> tuple:
             max_spy = merged_df['SPY_Close'].max() * 1.02
             ax1.set_ylim(min_spy, max_spy)
             
-            ax2 = ax1.twinx()  
+            ax2 = ax1.twinx()
             color = 'tab:red'
             ax2.set_ylabel('Fear & Greed Index (0-100)', color=color)
             ax2.plot(merged_df.index, merged_df['Fear_Greed_Index'], color=color, linestyle='--', alpha=0.6, label='F&G Index')
             ax2.tick_params(axis='y', labelcolor=color)
-            ax2.set_ylim(0, 100)  
+            ax2.set_ylim(0, 100)
             ax2.set_yticks([0, 25, 50, 75, 100])
             
             sentiment_levels = {0: 'Extreme Fear', 25: 'Fear', 50: 'Neutral', 75: 'Greed', 100: 'Extreme Greed'}
@@ -504,12 +569,12 @@ def run_nextcloud_alert() -> tuple:
             ax1.legend(lines_1 + lines_2, labels_1 + labels_2, loc='upper left')
             
             plt.savefig(local_path, dpi=300, bbox_inches='tight')
-            plt.close(fig) 
+            plt.close(fig)
         except Exception as e:
             return False, f"Matplotlib Render Error: {str(e)}"
             
         upload_success = upload_file_webdav(local_path, remote_path, NEXTCLOUD_URL, BOT_USERNAME, APP_PASSWORD, print)
-        if not upload_success: 
+        if not upload_success:
             return False, "WebDAV Upload Failed. Check credentials or folder path."
             
         report_message = "📊 *Fear & Greed Index overlayed with S&P 500 for comparison*"
@@ -520,12 +585,18 @@ def run_nextcloud_alert() -> tuple:
             report_message += "\n\n❌ WARNING: File sharing failed. Talk Token may be invalid."
 
         api_endpoint = f"{NEXTCLOUD_URL}/ocs/v2.php/apps/spreed/api/v1/chat/{CONVERSATION_TOKEN}"
-        resp = requests.post(api_endpoint, headers={"OCS-APIRequest": "true", "Content-Type": "application/json"}, data=json.dumps({"message": report_message}), auth=(BOT_USERNAME, APP_PASSWORD), timeout=15)
+        resp = requests.post(
+            api_endpoint,
+            headers={"OCS-APIRequest": "true", "Content-Type": "application/json"},
+            data=json.dumps({"message": report_message}),
+            auth=(BOT_USERNAME, APP_PASSWORD),
+            timeout=15
+        )
         
         if resp.status_code in [200, 201]:
-            if share_success: 
+            if share_success:
                 return True, "Alert successfully generated, uploaded, and shared to Talk."
-            else: 
+            else:
                 return False, "File upload succeeded, but Talk Share failed. Check Conversation Token."
         else:
             return False, f"Failed to send final text message. HTTP {resp.status_code}"
@@ -537,10 +608,10 @@ def run_nextcloud_alert() -> tuple:
             os.remove(local_path)
 
 
-def fetch_and_score_news(ticker: str, analyzer: SentimentIntensityAnalyzer) -> float:
+def fetch_and_score_news(ticker: str, analyzer) -> float:
     """
     Fetches the latest 15 news headlines for a ticker via Yahoo Finance.
-    Scores the text utilizing VADER NLP and returns the normalized compound average.
+    Scores the text utilizing FinBERT NLP and returns the normalized compound average.
     """
     try:
         stock = yf.Ticker(ticker)
@@ -551,17 +622,41 @@ def fetch_and_score_news(ticker: str, analyzer: SentimentIntensityAnalyzer) -> f
             
         scores = []
         for item in news[:15]:
-            title = item.get('title', '')
-            summary = item.get('summary', '')
-            publisher = item.get('publisher', '')
+            # Defensively un-nest the Yahoo Finance payload
+            content = item.get('content', item)
             
+            title = content.get('title', '')
+            summary = content.get('summary', '')
+            
+            # Publisher could be under 'publisher', 'provider', or nested inside provider
+            publisher = content.get('publisher', '')
+            if not publisher and isinstance(content.get('provider'), dict):
+                publisher = content['provider'].get('displayName', '')
+                
             text_to_analyze = f"{title}. {summary}. {publisher}"
             
+            # Skip if the combined string is entirely empty
             if not text_to_analyze.strip(". "):
                 continue
                 
-            score_dict = analyzer.polarity_scores(text_to_analyze)
-            scores.append(score_dict['compound'])
+            # FinBERT output is typically [{'label': 'positive', 'score': 0.85}]
+            try:
+                # We truncate to 512 characters to avoid exceeding BERT's maximum token limit
+                result = analyzer(text_to_analyze[:512])[0]
+                label = result['label'].lower()
+                prob = result['score']
+                
+                if label == 'positive':
+                    compound = prob
+                elif label == 'negative':
+                    compound = -prob
+                else:
+                    compound = 0.0
+                    
+                scores.append(compound)
+            except Exception as e:
+                logger.debug(f"FinBERT failed to score string for {ticker}: {e}")
+                continue
             
         if not scores:
             return 0.0
@@ -575,16 +670,22 @@ def fetch_and_score_news(ticker: str, analyzer: SentimentIntensityAnalyzer) -> f
 
 def update_all_sentiment(tickers: List[str]) -> None:
     """
-    Loops through the target list, fetches the VADER sentiment score, 
+    Loops through the target list, fetches the FinBERT sentiment score, 
     and updates the latest record in the quant_signals database table.
     """
     if not tickers:
-        logger.warning("Ticker list is empty. Aborting VADER sentiment scan.")
+        logger.warning("Ticker list is empty. Aborting FinBERT sentiment scan.")
         return
 
-    logger.info(f"Initiating Zero-LLM VADER Sentiment Scan for {len(tickers)} assets...")
+    logger.info(f"Initiating FinBERT NLP Sentiment Scan for {len(tickers)} assets. Loading model into memory...")
     
-    analyzer = SentimentIntensityAnalyzer()
+    # Initialize the HuggingFace pipeline with FinBERT
+    # Note: On first run, this will download the model weights (~400MB)
+    try:
+        analyzer = pipeline("sentiment-analysis", model="ProsusAI/finbert")
+    except Exception as e:
+        logger.error(f"Failed to initialize HuggingFace FinBERT pipeline: {e}")
+        return
     
     conn = get_connection()
     cursor = conn.cursor()
@@ -616,4 +717,4 @@ def update_all_sentiment(tickers: List[str]) -> None:
             time.sleep(random.uniform(0.5, 1.5))
             
     conn.close()
-    logger.info("VADER Local Sentiment Analysis completed successfully.")
+    logger.info("FinBERT NLP Analysis completed successfully.")

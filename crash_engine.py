@@ -4,6 +4,7 @@ import yfinance as yf
 import ta
 from datetime import datetime, timedelta
 
+
 class CrashEngine:
     def __init__(self, config):
         """Initializes the Crash Engine with dynamically loaded configurations."""
@@ -79,12 +80,32 @@ class CrashEngine:
                 report.append("\n**Potential Catalysts / Recent Headlines:**")
                 # Grab the top 3 most recent news articles
                 for item in news[:3]:
-                    headline = item.get('title', '')
-                    publisher = item.get('publisher', '')
-                    # Only include relevant news from the last 48 hours
-                    pub_time = datetime.fromtimestamp(item.get('providerPublishTime', 0))
-                    if datetime.now() - pub_time < timedelta(days=2):
-                        report.append(f"- *{publisher}:* {headline}")
+                    # Handle new yfinance nested 'content' structure
+                    content = item.get('content', item)
+                    headline = content.get('title', '')
+                    
+                    publisher = content.get('publisher', '')
+                    if not publisher and isinstance(content.get('provider'), dict):
+                        publisher = content['provider'].get('displayName', '')
+                        
+                    # Extract publish time flexibly
+                    pub_time_raw = content.get('pubDate') or content.get('providerPublishTime') or item.get('providerPublishTime', 0)
+                    
+                    try:
+                        # Handle both string (ISO) and float (UNIX) timestamp formats
+                        if isinstance(pub_time_raw, str):
+                            import pandas as pd
+                            pub_time = pd.to_datetime(pub_time_raw).tz_localize(None)
+                        else:
+                            from datetime import datetime
+                            pub_time = datetime.fromtimestamp(float(pub_time_raw))
+                            
+                        # Only include relevant news from the last 48 hours
+                        from datetime import timedelta
+                        if datetime.now() - pub_time < timedelta(days=2):
+                            report.append(f"- *{publisher}:* {headline}")
+                    except Exception:
+                        pass
         except Exception:
             report.append("\n**Catalysts:** No major breaking news headlines found on Yahoo Finance within the last 48 hours.")
 
@@ -132,16 +153,16 @@ class CrashEngine:
             context_report = ""
             
             # Prioritize the Flash Crash reporting
-            if is_flash_crash: 
+            if is_flash_crash:
                 reason.append(f"INTRADAY CRASH: Dropped {abs(intraday_drop_pct):.2f}% today.")
                 # Run the heavy Context Analyzer only when a crash actually occurs
                 context_report = self._generate_context_report(ticker, intraday_drop_pct, df_combined, asset_meta)
             
-            if is_dropping_fast and not is_flash_crash: 
+            if is_dropping_fast and not is_flash_crash:
                 reason.append(f"Multi-Day Bleed: Dropped {abs(price_drop_pct):.2f}% in {self.drop_days}d")
-            if is_breaking_sma and not is_flash_crash: 
+            if is_breaking_sma and not is_flash_crash:
                 reason.append(f"Fell {below_sma_pct:.2f}% below {self.sma_length}d SMA")
-            if is_below_atr: 
+            if is_below_atr:
                 reason.append(f"Price ({current_price:.2f}) broke Quantamental ATR floor ({atr_stop:.2f})")
             
             final_reason = " | ".join(reason)
