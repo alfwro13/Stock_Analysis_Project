@@ -66,7 +66,8 @@ def log_freetrade_notification(msg_type: str, msg_text: str) -> None:
             conn.close()
 
 def resolve_ticker(symbol: str, isin: str, mic: str, cache_dict: Dict[str, str], ft_config: Dict) -> Tuple[Optional[str], bool]:
-    ft_symbol = str(symbol).strip()
+    # Strip whitespace and any trailing periods (Fixes RR. and BP. becoming RR..L)
+    ft_symbol = str(symbol).strip().rstrip('.')
     mic = str(mic).strip().upper()
     
     us_mics = ft_config.get("US_MICS", [])
@@ -99,16 +100,17 @@ def resolve_ticker(symbol: str, isin: str, mic: str, cache_dict: Dict[str, str],
         # Fallback if ISIN lookup fails for a mutual fund
         return ft_symbol + ".L", True
 
-    # 2. Standard US Exchanges
+    # 2. Standard US Exchanges (Replace internal dots with hyphens, e.g., BRK.B -> BRK-B)
     if mic in us_mics:
         return ft_symbol.replace('.', '-').upper(), True
         
-    # 3. The Filter! If the MIC is not in our config (e.g., XETR, XPAR), reject it
+    # 3. The Filter! If the MIC is not in our config (e.g., XETR, XPAR), reject it immediately
     if mic not in exchanges:
         return None, False
         
     # 4. Standard London Equities (XLON)
     return ft_symbol + ".L", True
+
 
 def sync_freetrade_universe(target_mic: Optional[str] = None, limit: Optional[int] = None) -> None:
     logger.info("Starting Configuration-Enhanced Freetrade Universe Sync...")
