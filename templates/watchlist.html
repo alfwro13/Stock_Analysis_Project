@@ -107,6 +107,9 @@
                 <td data-sort="{{ item.ticker }}">
                     <a href="/stock/{{ item.ticker }}{% if embed %}?embed=true{% endif %}">{{ item.ticker }}</a><br>
                     <span style="font-size: 11px; color: #888;">{{ item.company_name[:20] }}{% if item.company_name|length > 20 %}...{% endif %}</span>
+                    {% if freetrade_only and not item.is_freetrade %}
+                    <br><span class="badge badge-freetrade">Not on Freetrade</span>
+                    {% endif %}
                 </td>
                 
                 {% set cp = cached_pulse.get(item.ticker) %}

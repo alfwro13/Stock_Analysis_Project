@@ -216,10 +216,12 @@ async def watchlist_page(request: Request, embed: bool = False):
                q.ml_confidence_score, 
                q.var_95, 
                q.cvar_95, 
-               q.sentiment_score
+               q.sentiment_score,
+               m.is_freetrade
         FROM stock_signals s
         LEFT JOIN quant_signals q ON s.ticker = q.ticker 
         AND q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = s.ticker)
+        LEFT JOIN market_universe m ON s.ticker = m.ticker
     """)
     db_rows = cursor.fetchall()
     
@@ -245,6 +247,9 @@ async def watchlist_page(request: Request, embed: bool = False):
             else:
                 row_dict['setup_tags_list'] = []
             watchlist_data.append(row_dict)
+
+    config_data = load_config()
+    freetrade_only = config_data.get("UI_PREFERENCES", {}).get("FREETRADE_ONLY_MODE", False)
             
     return templates.TemplateResponse(
         request=request, name="watchlist.html", 
@@ -253,9 +258,10 @@ async def watchlist_page(request: Request, embed: bool = False):
             "global_updated": global_updated, 
             "embed": embed, 
             "unread_count": get_unread_count(),
-            "config": load_config(),
+            "config": config_data,
             "cached_pulse": get_all_cached_pulse(),
-            "macro_regime": macro_regime
+            "macro_regime": macro_regime,
+            "freetrade_only": freetrade_only
         }
     )
 

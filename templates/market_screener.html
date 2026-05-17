@@ -21,7 +21,7 @@
                 <h1><abbr title="Quantamental - a modern institutional strategy that combines Quantitative analysis with Fundamental analysis.">uantamental</abbr> Dashboard</h1>
             </div>
             
-            <p style="color: #aaaaaa; margin-top: 5px; font-size: 14px;">Market Screener: Scanning 4,000+ US Equities</p>
+            <p style="color: #aaaaaa; margin-top: 5px; font-size: 14px;">Market Screener: Scanning 4,000+ US Equities & ETFs</p>
             
             {% set active_page = 'market_screener' %}
                 {% include 'navbar.html' %}
@@ -30,6 +30,11 @@
 
     <div style="background-color: #1e1e1e; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); margin-top: 20px;">
         
+        <div class="toggle-group">
+            <button class="toggle-btn" data-mode="equities">View Equities</button>
+            <button class="toggle-btn" data-mode="funds">View Funds & ETFs</button>
+        </div>
+
         <div class="controls-container" style="margin-bottom: 20px;">
             <select id="exchangeFilter" class="filter-select">
                 <option value="ALL">All Exchanges</option>
@@ -41,8 +46,10 @@
                 <tr>
                     <th>Ticker</th>
                     <th>Company Name</th>
+                    <th>Subtitle</th>
                     <th>Sector</th>
                     <th>Exchange</th>
+                    <th>Quote Type</th>
                     <th>Close Price</th>
                     <th>Volume</th>
                     <th>RSI (14)</th>
@@ -54,6 +61,8 @@
                     <th>ML Conf</th>
                     <th>VaR (95%)</th>
                     <th>Sentiment</th>
+                    <th>Expense Ratio</th>
+                    <th>Freetrade Link</th>
                 </tr>
             </thead>
             <tbody></tbody>
@@ -121,33 +130,33 @@
                 
                 // Dynamic Dropdown Population & Default Selection
                 initComplete: function () {
-                    var column = this.api().column(3); 
+                    var column = this.api().column(4); // Exchange is column 4 now
                     var select = $('#exchangeFilter');
                     
-                    // 1. Extract unique sorted values and populate dropdown
                     column.data().unique().sort().each( function ( d, j ) {
                         if(d && d !== 'N/A') {
                             select.append( '<option value="'+d+'">'+d+'</option>' );
                         }
                     });
 
-                    // 2. Determine default value (URL param or Hardcoded Fallback)
-                    // Change 'NASDAQ' below to any specific exchange you want as the hardcoded default,
-                    // or set it to 'ALL' to revert to the standard behavior.
                     const defaultExchange = urlParams.get('exchange') || 'NASDAQ'; 
                     
-                    // 3. Apply the default if it exists in the data
                     if (defaultExchange !== 'ALL' && select.find('option[value="' + defaultExchange + '"]').length > 0) {
                         select.val(defaultExchange);
                         column.search('^' + defaultExchange + '$', true, false).draw();
                     }
+
+                    // Default to Equities View on Load
+                    $('[data-mode="equities"]').click();
                 },
                 
                 columns: [
                     { data: 'ticker', render: function(data) { return '<a href="/stock/' + data + '" style="color: #4da6ff; font-weight: bold;">' + data + '</a>'; } },
                     { data: 'company_name', render: function(data) { return data || 'N/A'; } },
+                    { data: 'subtitle', render: function(data) { return data || 'N/A'; } },
                     { data: 'sector', render: function(data) { return data || 'N/A'; } },
                     { data: 'exchange', render: function(data) { return data || 'US'; } },
+                    { data: 'quote_type', visible: false }, // Hidden strictly for toggle logic
                     { data: 'close_price', render: $.fn.dataTable.render.number(',', '.', 2, '$') },
                     { data: 'volume', render: $.fn.dataTable.render.number(',', '.', 0, '') },
                     { 
@@ -218,15 +227,34 @@
                             }
                             return data;
                         }
-                    }
+                    },
+                    { data: 'expense_ratio', render: function(data) { return data ? data + '%' : 'N/A'; } },
+                    { data: 'freetrade_link', render: function(data) { return data && data !== 'N/A' ? '<a href="' + data + '" target="_blank" style="color: #b366ff;">KIID Document</a>' : 'N/A'; } }
                 ]
             });
 
             // Map Exchange Filter (Manual Override)
             $('#exchangeFilter').on('change', function() {
                 var val = $(this).val();
-                if(val === 'ALL') { table.column(3).search('').draw(); } 
-                else { table.column(3).search('^' + val + '$', true, false).draw(); }
+                if(val === 'ALL') { table.column(4).search('').draw(); } 
+                else { table.column(4).search('^' + val + '$', true, false).draw(); }
+            });
+
+            // Handle Asset Class Toggle View
+            $('.toggle-btn').on('click', function() {
+                $('.toggle-btn').removeClass('active');
+                $(this).addClass('active');
+
+                var mode = $(this).data('mode');
+                if (mode === 'equities') {
+                    table.column(5).search('^EQUITY$', true, false).draw();
+                    table.column(17).visible(false); // Hide Expense Ratio
+                    table.column(18).visible(false); // Hide FT Link
+                } else {
+                    table.column(5).search('ETF|MUTUALFUND', true, false).draw();
+                    table.column(17).visible(true); // Show Expense Ratio
+                    table.column(18).visible(true); // Show FT Link
+                }
             });
         });
     </script>

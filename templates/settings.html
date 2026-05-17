@@ -28,6 +28,7 @@
             <p style="font-size: 13px; color: #aaa; margin-top: 0; margin-bottom: 15px;">Manually trigger system processes. These operations run in the background. Please wait a few moments before refreshing your views.</p>
             <div style="display: flex; gap: 15px; margin-top: 15px;">
                 <button type="button" id="syncBtn" class="btn btn-sync" style="flex: 1;" onclick="triggerGhostfolioSync()">⬇️ Sync Ghostfolio Data</button>
+                <button type="button" id="ftSyncBtn" class="btn btn-sync" style="flex: 1;" onclick="triggerFreetradeSync()">⬇️ Sync Freetrade Universe</button>
                 <button type="button" id="updateBtn" class="btn btn-update" style="flex: 1;" onclick="triggerUpdate()">↻ Force Update Analysis Models</button>
             </div>
         </details>
@@ -61,6 +62,10 @@
             <div class="checkbox-group">
                 <input type="checkbox" id="LIVE_DETAILS" {% if config.UI_PREFERENCES.LIVE_DETAILS %}checked{% endif %}>
                 <label for="LIVE_DETAILS">Live prices on Stock Detail View</label>
+            </div>
+            <div class="checkbox-group" style="margin-top: 15px; border-top: 1px solid #333; padding-top: 15px;">
+                <input type="checkbox" id="FREETRADE_ONLY_MODE" {% if config.UI_PREFERENCES.FREETRADE_ONLY_MODE %}checked{% endif %}>
+                <label for="FREETRADE_ONLY_MODE" style="color: #00ffcc;">Freetrade Only Mode (Hides unsupported assets from screeners)</label>
             </div>
             <div class="form-group" style="margin-top: 10px; margin-bottom: 20px;">
                 <label>Polling Refresh Rate (Seconds)</label>
@@ -182,6 +187,29 @@
                     <div class="form-group" style="flex: 1;">
                         <label>Specific Time (if Interval = 0)</label>
                         <input type="time" id="GHOSTFOLIO_SYNC_TIME" value="{{ config.SCHEDULING.GHOSTFOLIO_SYNC.TIME }}">
+                    </div>
+                </div>
+            </div>
+
+            <div style="background-color: #2c2c2c; padding: 15px; border-radius: 5px; margin-bottom: 15px; border-left: 3px solid #b366ff;">
+                <h4 style="margin-top: 0; color: #b366ff;">📈 Freetrade Import Scheduler</h4>
+                <p style="font-size: 13px; color: #aaa; margin-top: 0;">Automated pipeline to sync the supported asset universe directly from Freetrade JSON APIs.</p>
+                <div class="checkbox-group">
+                    <input type="checkbox" id="FREETRADE_SYNC_ENABLED" {% if config.SCHEDULING.FREETRADE_SYNC.ENABLED %}checked{% endif %}>
+                    <label for="FREETRADE_SYNC_ENABLED">Enable automated Freetrade Sync</label>
+                </div>
+                <div style="display: flex; gap: 15px; margin-bottom: 10px;">
+                    <div class="form-group" style="flex: 1;">
+                        <label>Frequency</label>
+                        <select id="FREETRADE_SYNC_FREQ">
+                            <option value="mon-fri" {% if config.SCHEDULING.FREETRADE_SYNC.FREQUENCY == 'mon-fri' %}selected{% endif %}>Mon-Fri</option>
+                            <option value="weekends" {% if config.SCHEDULING.FREETRADE_SYNC.FREQUENCY == 'weekends' %}selected{% endif %}>Weekends Only</option>
+                            <option value="*" {% if config.SCHEDULING.FREETRADE_SYNC.FREQUENCY == '*' %}selected{% endif %}>Every Day</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label>Execution Time</label>
+                        <input type="time" id="FREETRADE_SYNC_TIME" value="{{ config.SCHEDULING.FREETRADE_SYNC.TIME }}">
                     </div>
                 </div>
             </div>
@@ -630,6 +658,13 @@
             setTimeout(() => { btn.innerText = "⬇️ Sync Ghostfolio Data"; btn.disabled = false; }, 5000);
         }
 
+        async function triggerFreetradeSync() {
+            const btn = document.getElementById('ftSyncBtn');
+            btn.innerText = "Syncing Universe..."; btn.disabled = true;
+            try { await fetch('/api/trigger-freetrade-sync', { method: 'POST' }); alert("Freetrade Universe Sync initiated in the background!"); } catch (e) { }
+            setTimeout(() => { btn.innerText = "⬇️ Sync Freetrade Universe"; btn.disabled = false; }, 5000);
+        }
+
         async function triggerUpdate() {
             const btn = document.getElementById('updateBtn');
             btn.innerText = "Updating..."; btn.disabled = true;
@@ -1003,6 +1038,7 @@
                     "LIVE_PORTFOLIO": document.getElementById('LIVE_PORTFOLIO').checked,
                     "LIVE_WATCHLIST": document.getElementById('LIVE_WATCHLIST').checked,
                     "LIVE_DETAILS": document.getElementById('LIVE_DETAILS').checked,
+                    "FREETRADE_ONLY_MODE": document.getElementById('FREETRADE_ONLY_MODE').checked,
                     "REFRESH_RATE": parseInt(document.getElementById('REFRESH_RATE').value) || 60
                 },
                 "SCHEDULING": {
@@ -1011,6 +1047,11 @@
                         "FREQUENCY": document.getElementById('GHOSTFOLIO_SYNC_FREQ').value,
                         "INTERVAL_HOURS": parseInt(document.getElementById('GHOSTFOLIO_SYNC_INTERVAL').value) || 0,
                         "TIME": document.getElementById('GHOSTFOLIO_SYNC_TIME').value
+                    },
+                    "FREETRADE_SYNC": {
+                        "ENABLED": document.getElementById('FREETRADE_SYNC_ENABLED').checked,
+                        "FREQUENCY": document.getElementById('FREETRADE_SYNC_FREQ').value,
+                        "TIME": document.getElementById('FREETRADE_SYNC_TIME').value
                     },
                     "QUANT_ANALYSIS": {
                         "ENABLED": document.getElementById('QUANT_ANALYSIS_ENABLED').checked,
