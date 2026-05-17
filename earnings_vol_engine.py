@@ -66,15 +66,14 @@ def get_historical_earnings_move(ticker_obj: yf.Ticker) -> Optional[float]:
                 if len(hist) < 2:
                     continue
                     
-                # CRITICAL FIX: Strip timezones from BOTH the history index and the target date 
-                # to prevent pandas dtype comparison crashes (tz-aware vs tz-naive)
-                if hist.index.tz is not None:
-                    hist.index = hist.index.tz_localize(None)
-                    
-                tz_naive_date = e_date.tz_localize(None) if e_date.tz is not None else e_date
+                # BULLETPROOF FIX: Convert everything to pure, timezone-naive normalized dates (00:00:00)
+                # This completely destroys the [s] vs [us] resolution conflict crashing Pandas
+                hist_dates = pd.to_datetime(hist.index).tz_localize(None).normalize()
+                target_date = pd.to_datetime(e_date).tz_localize(None).normalize()
                 
-                # Find the exact index closest to the earnings date
-                closest_idx = hist.index.get_indexer([tz_naive_date], method='nearest')[0]
+                # Calculate absolute differences in days to find the closest trading day
+                time_diffs = abs(hist_dates - target_date)
+                closest_idx = time_diffs.argmin()
                 
                 # Calculate Close-to-Close jump over the binary earnings event
                 if closest_idx > 0 and closest_idx < len(hist):
