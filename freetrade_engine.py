@@ -154,7 +154,13 @@ def sync_freetrade_universe() -> None:
             cursor.executemany(upsert_query, records)
             
             conn.commit()
-            success_msg = f"Successfully synced {len(records)} Freetrade assets to the database."
+            
+            # The expanded, actionable success message
+            success_msg = (
+                f"Successfully synced {len(records)} Freetrade assets to the database. "
+                "ACTION REQUIRED: These new assets are currently dormant. To make them visible in the screeners, "
+                "you MUST run 'python profile_engine.py' in your terminal, and then trigger a Full Quant Scan from the settings UI."
+            )
             logger.info(success_msg)
             log_freetrade_notification("Success", success_msg)
             
