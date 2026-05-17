@@ -33,7 +33,7 @@ def log_freetrade_notification(msg_type: str, msg_text: str) -> None:
 def sync_freetrade_universe() -> None:
     """
     Downloads the official Freetrade CSV universe, cleans ticker symbols,
-    validates KIID URLs, and performs an idempotent upsert into the database.
+    validates KIID URLs, and performs a safe UPSERT into the database.
     Hardened against upstream schema drift and missing columns.
     """
     logger.info("Starting Freetrade Universe Sync...")
@@ -62,15 +62,19 @@ def sync_freetrade_universe() -> None:
         else:
             logger.warning("'MIC' column not found. Skipping London Stock Exchange '.L' suffix appending.")
             
-        # 4. Conditional Vectorization for 'KIID URL'
-        if 'KIID URL' in df.columns:
+        # 4. Dynamic Column Matching for KIID URL
+        # We look for any column containing 'kiid' to bypass exact string matching bugs
+        kiid_col = next((c for c in df.columns if 'kiid' in c.lower()), None)
+        
+        if kiid_col:
             def clean_url(val: any) -> Optional[str]:
-                if isinstance(val, str) and val.strip().startswith("https://"):
+                # Strictly enforces https:// and drops 'n/a' or empty strings
+                if isinstance(val, str) and val.strip().lower().startswith("https://"):
                     return val.strip()
                 return None
-            df['KIID URL'] = df['KIID URL'].apply(clean_url)
+            df['KIID URL'] = df[kiid_col].apply(clean_url)
         else:
-            logger.warning("'KIID URL' column not found. Defaulting all URLs to None.")
+            logger.warning("No column matching 'KIID' was found. Defaulting all URLs to None.")
             df['KIID URL'] = None
             
         # Prepare records for bulk database insert
@@ -80,14 +84,14 @@ def sync_freetrade_universe() -> None:
             symbol = row.get('Symbol')
             title = row.get('Title')
             subtitle = row.get('Subtitle')
-            currency = row.get('Currency')
             kiid_url = row.get('KIID URL')
             
             # Skip rows where symbol resolved to NaN or is empty
             if pd.isna(symbol) or str(symbol).lower() == 'nan' or not str(symbol).strip():
                 continue
                 
-            records.append((symbol, title, subtitle, currency, kiid_url))
+            # Notice we dropped currency here, as it belongs in the asset_profiles table
+            records.append((symbol, title, subtitle, kiid_url))
             
         if not records:
             logger.warning("No valid records found after processing Freetrade CSV.")
@@ -101,11 +105,16 @@ def sync_freetrade_universe() -> None:
             # Reset Freetrade flag across the board
             cursor.execute("UPDATE market_universe SET is_freetrade = 0")
             
-            # Idempotent Upsert
+            # Safe Upsert: Inserts new rows, but if the ticker exists, it strictly updates 
+            # the freetrade fields without destroying existing sector/industry/exchange data.
             upsert_query = """
-                INSERT OR REPLACE INTO market_universe 
-                (ticker, company_name, freetrade_subtitle, currency, is_freetrade, freetrade_url) 
-                VALUES (?, ?, ?, ?, 1, ?)
+                INSERT INTO market_universe (ticker, company_name, freetrade_subtitle, is_freetrade, freetrade_url)
+                VALUES (?, ?, ?, 1, ?)
+                ON CONFLICT(ticker) DO UPDATE SET
+                    is_freetrade = 1,
+                    freetrade_subtitle = excluded.freetrade_subtitle,
+                    freetrade_url = excluded.freetrade_url,
+                    company_name = COALESCE(market_universe.company_name, excluded.company_name)
             """
             cursor.executemany(upsert_query, records)
             
