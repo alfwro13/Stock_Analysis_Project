@@ -67,11 +67,12 @@ DEFAULT_CONFIG = {
             "XMIL": {"yf_suffix": ".MI", "ft_char": "m", "ui_name": "Milan"},
             "XLIS": {"yf_suffix": ".LS", "ft_char": "u", "ui_name": "Lisbon"},
             "XHEL": {"yf_suffix": ".HE", "ft_char": "h", "ui_name": "Helsinki"},
-            "XSTO": {"yf_suffix": ".ST", "ft_char": "s", "ui_name": "Stockholm"},
+            "XSTO": {"yf_suffix": ".ST", "ft_char": "", "ui_name": "Stockholm"},
             "XOSL": {"yf_suffix": ".OL", "ft_char": "o", "ui_name": "Oslo"},
             "XCSE": {"yf_suffix": ".CO", "ft_char": "c", "ui_name": "Copenhagen"},
             "XVIE": {"yf_suffix": ".VI", "ft_char": "v", "ui_name": "Vienna"},
             "XSWX": {"yf_suffix": ".SW", "ft_char": "z", "ui_name": "Swiss"},
+            "XWBO": {"yf_suffix": ".VI", "ft_char": "v", "ui_name": "Vienna"},
             "MTAA": {"yf_suffix": ".XC", "ft_char": "m", "ui_name": "Borsa Italiana"},
             "MUTUAL_FUND_EXCHANGE": {"yf_suffix": ".L", "ft_char": "", "ui_name": "UK Mutual Fund"}
         }

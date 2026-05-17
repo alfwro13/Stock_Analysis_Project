@@ -62,6 +62,7 @@ def resolve_ticker(symbol: str, isin: str, mic: str, cache_dict: Dict[str, str],
     Intelligently routes ticker resolution using the dynamic mapping config.
     Returns: (Resolved Ticker String, Is_Mapped Boolean)
     """
+    # DO NOT UPPERCASE YET. We need the exact casing to strip Freetrade's lowercase identifiers safely.
     raw_symbol = str(symbol).strip()
     mic = str(mic).strip().upper()
     
@@ -107,7 +108,7 @@ def resolve_ticker(symbol: str, isin: str, mic: str, cache_dict: Dict[str, str],
     ft_char = exchange_info.get("ft_char", "")
     yf_suffix = exchange_info.get("yf_suffix", "")
     
-    # Strip the Freetrade lowercase character if present
+    # Case-sensitive check! This ensures we strip 'b' (ECONBb) but ignore 'B' (WALLB)
     if ft_char and raw_symbol.endswith(ft_char):
         raw_symbol = raw_symbol[:-len(ft_char)]
         
@@ -121,7 +122,6 @@ def resolve_ticker(symbol: str, isin: str, mic: str, cache_dict: Dict[str, str],
 def sync_freetrade_universe() -> None:
     """Master Pipeline for downloading, resolving, and upserting the Freetrade catalog."""
     logger.info("Starting Configuration-Enhanced Freetrade Universe Sync...")
-    log_freetrade_notification("Info", "Freetrade Sync initiated. Fetching CSV and resolving ISINs... This will take ~15 minutes.")
     
     try:
         df = pd.read_csv(FREETRADE_CSV_URL)
@@ -192,6 +192,8 @@ def sync_freetrade_universe() -> None:
         
         try:
             logger.info("Executing Bulk SQLite Purge & Upsert...")
+            
+            # CRITICAL: This wipes out all malformed Freetrade tickers from the database.
             cursor.execute("DELETE FROM market_universe WHERE is_freetrade = 1")
             
             upsert_query = """
@@ -209,7 +211,6 @@ def sync_freetrade_universe() -> None:
             
             success_msg = f"Successfully synced {len(records)} Freetrade assets to the database."
             logger.info(success_msg)
-            log_freetrade_notification("Success", success_msg)
             
         except Exception as db_err:
             conn.rollback()
@@ -220,7 +221,6 @@ def sync_freetrade_universe() -> None:
     except Exception as e:
         error_msg = f"Failed to sync Freetrade Universe: {e}"
         logger.error(error_msg)
-        log_freetrade_notification("Error", error_msg)
         raise e
 
 if __name__ == "__main__":
