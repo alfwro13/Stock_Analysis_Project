@@ -16,6 +16,7 @@ def get_sector_trends() -> List[Dict[str, Any]]:
     """
     Calculates aggregated momentum and trend health metrics grouped by market sector and exchange.
     Requires joining the latest quantitative signals with the market universe table.
+    Strictly filters for EQUITIES to prevent Mutual Funds (NAV priced) from skewing RSI momentum averages.
     """
     logger.info("Generating Sector Trends Report...")
     try:
@@ -45,6 +46,7 @@ def get_sector_trends() -> List[Dict[str, Any]]:
         WHERE q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = q.ticker)
           AND COALESCE(p.sector, s.sector, 'Unclassified') != 'None' 
           AND COALESCE(p.sector, s.sector, 'Unclassified') != ''
+          AND COALESCE(p.quote_type, s.quote_type, 'EQUITY') = 'EQUITY'
         GROUP BY 1, 2
         ORDER BY 1 ASC, 4 DESC
         """
@@ -61,6 +63,7 @@ def get_mean_reversion_setups(max_rsi: float = 30.0, min_sma_distance: float = 0
     """
     Identifies stocks that are fundamentally in a long-term uptrend (Price > 200D SMA)
     but are experiencing a severe short-term sell-off (RSI < max_rsi).
+    Strictly filters for EQUITIES to prevent illiquid funds from appearing.
     """
     logger.info(f"Generating Mean Reversion Report (Max RSI: {max_rsi})...")
     try:
@@ -84,6 +87,7 @@ def get_mean_reversion_setups(max_rsi: float = 30.0, min_sma_distance: float = 0
         WHERE q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = q.ticker)
           AND q.rsi_14 <= ? 
           AND q.close_price > q.sma_200
+          AND COALESCE(p.quote_type, s.quote_type, 'EQUITY') = 'EQUITY'
         ORDER BY q.rsi_14 ASC
         """
         cursor.execute(query, (max_rsi,))
@@ -101,6 +105,7 @@ def get_leaders_laggards() -> List[Dict[str, Any]]:
     """
     Identifies the strongest momentum leaders in the market right now.
     Filters for stocks above their 50D SMA, sorted by highest RSI and MACD Histogram.
+    Strictly filters for EQUITIES to prevent indexing ETFs from dominating the leaderboards.
     """
     logger.info("Generating Momentum Leaders Report...")
     try:
@@ -131,6 +136,7 @@ def get_leaders_laggards() -> List[Dict[str, Any]]:
         WHERE q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = q.ticker)
           AND q.close_price > q.sma_50
           AND q.rsi_14 IS NOT NULL
+          AND COALESCE(p.quote_type, s.quote_type, 'EQUITY') = 'EQUITY'
         ORDER BY q.rsi_14 DESC, q.macd_hist DESC
         LIMIT 500
         """
@@ -147,6 +153,7 @@ def get_dividend_harvest_setups(min_yield: float = 0.02, min_score: int = 50) ->
     """
     Fetches high-yield dividend stocks, filtering out potential 'Yield Traps' 
     using a minimum quantitative score. Parses YF Unix timestamps dynamically.
+    (Note: Retains ETFs and Mutual funds as these are highly valid for dividend income).
     """
     logger.info(f"Generating Dividend Harvest Report (Min Yield: {min_yield}, Min Score: {min_score})...")
     try:
