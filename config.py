@@ -57,23 +57,6 @@ DEFAULT_CONFIG = {
         "US_MICS": ["XNAS", "XNYS", "ARCX", "BATS", "PINK"],
         "EXCHANGES": {
             "XLON": {"yf_suffix": ".L", "ui_name": "LSE"},
-            "XFRA": {"yf_suffix": ".DE", "ui_name": "Frankfurt"},
-            "XETR": {"yf_suffix": ".DE", "ui_name": "XETRA"},
-            "XPAR": {"yf_suffix": ".PA", "ui_name": "Paris"},
-            "XAMS": {"yf_suffix": ".XC", "ui_name": "Amsterdam"},
-            "XBRU": {"yf_suffix": ".XC", "ui_name": "Brussels"},
-            "XDUB": {"yf_suffix": ".IR", "ui_name": "Dublin"},
-            "XMAD": {"yf_suffix": ".MC", "ui_name": "Madrid"},
-            "XMIL": {"yf_suffix": ".MI", "ui_name": "Milan"},
-            "XLIS": {"yf_suffix": ".XC", "ui_name": "Lisbon"},
-            "XHEL": {"yf_suffix": ".XC", "ui_name": "Helsinki"},
-            "XSTO": {"yf_suffix": ".ST", "ui_name": "Stockholm"},
-            "XOSL": {"yf_suffix": ".OL", "ui_name": "Oslo"},
-            "XCSE": {"yf_suffix": ".CO", "ui_name": "Copenhagen"},
-            "XVIE": {"yf_suffix": ".VI", "ui_name": "Vienna"},
-            "XSWX": {"yf_suffix": ".SW", "ui_name": "Swiss"},
-            "XWBO": {"yf_suffix": ".VI", "ui_name": "Vienna"},
-            "MTAA": {"yf_suffix": ".XC", "ui_name": "Borsa Italiana"},
             "MUTUAL_FUND_EXCHANGE": {"yf_suffix": ".L", "ui_name": "UK Mutual Fund"}
         }
     },
