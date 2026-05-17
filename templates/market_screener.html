@@ -9,6 +9,19 @@
     <link rel="stylesheet" href="https://cdn.datatables.net/1.13.7/css/jquery.dataTables.min.css">
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
+
+    <style>
+        /* DataTables DOM layout overrides for specific positioning */
+        .top-controls { display: flex; justify-content: flex-start; margin-bottom: 15px; width: 100%; }
+        .dataTables_wrapper .dataTables_filter { float: none !important; text-align: left !important; }
+        .dataTables_wrapper .dataTables_filter input { width: 300px; padding: 8px; font-size: 15px; }
+        
+        .bottom-controls { display: flex; justify-content: space-between; align-items: center; margin-top: 15px; width: 100%; flex-wrap: wrap; }
+        .bottom-left-controls { display: flex; align-items: center; gap: 20px; }
+        .dataTables_wrapper .dataTables_length { float: none !important; margin-bottom: 0 !important; }
+        .dataTables_wrapper .dataTables_info { float: none !important; margin-bottom: 0 !important; padding-top: 0 !important; }
+        .dataTables_wrapper .dataTables_paginate { float: none !important; margin-top: 0 !important; }
+    </style>
 </head>
 <body class="body-watchlist">
 
@@ -29,16 +42,58 @@
     </div>
 
     <div style="background-color: #1e1e1e; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); margin-top: 20px;">
-        
-        <div class="toggle-group">
-            <button class="toggle-btn" data-mode="equities">View Equities</button>
-            <button class="toggle-btn" data-mode="funds">View Funds & ETFs</button>
-        </div>
 
-        <div class="controls-container" style="margin-bottom: 20px;">
-            <select id="exchangeFilter" class="filter-select">
-                <option value="ALL">All Exchanges</option>
-            </select>
+        <div class="controls-container" style="margin-bottom: 20px; flex-wrap: wrap; gap: 15px; align-items: flex-end; background-color: #1a2636; padding: 15px; border-radius: 8px; border-left: 4px solid #4da6ff;">
+            
+            <div class="form-group" style="margin-bottom: 0;">
+                <label style="color: #aaa; font-size: 13px; margin-bottom: 5px;">Asset Type</label>
+                <select id="typeFilter" class="filter-select">
+                    <option value="ALL">All Types</option>
+                    <option value="EQUITY">Equities</option>
+                    <option value="ETF">ETFs</option>
+                    <option value="MUTUALFUND">Funds</option>
+                </select>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 0;">
+                <label style="color: #aaa; font-size: 13px; margin-bottom: 5px;">Exchange</label>
+                <select id="exchangeFilter" class="filter-select">
+                    <option value="ALL">All Exchanges</option>
+                </select>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 0;">
+                <label style="color: #aaa; font-size: 13px; margin-bottom: 5px;">Sector</label>
+                <select id="sectorFilter" class="filter-select">
+                    <option value="ALL">All Sectors</option>
+                </select>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 0;">
+                <label style="color: #aaa; font-size: 13px; margin-bottom: 5px;">RSI (14)</label>
+                <div style="display: flex; gap: 5px;">
+                    <select id="rsiOp" class="filter-select" style="padding: 8px; width: 60px;">
+                        <option value="any">--</option>
+                        <option value="gt">&gt;</option>
+                        <option value="lt">&lt;</option>
+                    </select>
+                    <input type="number" id="rsiVal" class="filter-input" style="width: 80px;" placeholder="Val">
+                </div>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 0;">
+                <label style="color: #aaa; font-size: 13px; margin-bottom: 5px;">MACD Hist</label>
+                <div style="display: flex; gap: 5px;">
+                    <select id="macdOp" class="filter-select" style="padding: 8px; width: 60px;">
+                        <option value="any">--</option>
+                        <option value="gt">&gt;</option>
+                        <option value="lt">&lt;</option>
+                    </select>
+                    <input type="number" id="macdVal" class="filter-input" style="width: 80px;" placeholder="Val">
+                </div>
+            </div>
+
+            <button id="clearFiltersBtn" class="btn btn-danger" style="padding: 9px 15px; margin-left: auto;">✖ Clear Filters</button>
         </div>
 
         <table id="screenerTable" class="display" style="width:100%">
@@ -68,19 +123,19 @@
             <tbody></tbody>
         </table>
 
-<div style="margin-top: 15px; padding-top: 15px; border-top: 1px dashed #333; font-size: 13px; color: #aaa; line-height: 1.6;">
-    <strong style="color: #e0e0e0;">Key Metrics Explained:</strong>
-    <ul style="margin-top: 5px; padding-left: 20px; margin-bottom: 0;">
-        <li><strong style="color: #4da6ff;">Volume:</strong> Total shares traded today. High volume indicates "Smart Money" conviction, validating price action. Low volume moves are often "traps" lacking institutional backing.</li>
-        <li><strong style="color: #4da6ff;"><abbr title="Relative Strength Index">RSI</abbr> (14-Day):</strong> Oscillates 0-100. Values above 70 are "Overbought" (mean reversion risk); values below 30 are "Oversold" (potential accumulation zone).</li>
-        <li><strong style="color: #4da6ff;"><abbr title="Moving Average Convergence Divergence">MACD</abbr> Histogram:</strong> Measures momentum velocity. Expanding green bars confirm acceleration; red or shrinking bars signal momentum decay or a trend pivot.</li>
-        <li><strong style="color: #4da6ff;">50D <abbr title="Simple Moving Average">SMA</abbr>:</strong> The "Health Line" representing the 10-week price mean. Trading above it confirms a medium-term uptrend; falling below suggests a structural loss of strength.</li>
-        <li><strong style="color: #4da6ff;">200D <abbr title="Simple Moving Average">SMA</abbr>:</strong> The "Institutional Floor." Banks and funds use this as the ultimate line in the sand; breaking below it often marks the shift into a primary bear market.</li>
-        <li><strong style="color: #4da6ff;">ML Conf:</strong> Machine Learning Ensemble confidence score predicting a >3% return over the next 5 days. >75% is highly actionable.</li>
-        <li><strong style="color: #4da6ff;">VaR (95%):</strong> Parametric Value at Risk. The expected maximum percentage loss over a standard holding period with 95% confidence. <em>(Hover over for Conditional VaR / Expected Shortfall).</em></li>
-        <li><strong style="color: #4da6ff;">Sentiment:</strong> VADER NLP compound score generated from the latest news headlines. Positive values indicate bullish media framing.</li>
-    </ul>
-</div>
+        <div style="margin-top: 15px; padding-top: 15px; border-top: 1px dashed #333; font-size: 13px; color: #aaa; line-height: 1.6;">
+            <strong style="color: #e0e0e0;">Key Metrics Explained:</strong>
+            <ul style="margin-top: 5px; padding-left: 20px; margin-bottom: 0;">
+                <li><strong style="color: #4da6ff;">Volume:</strong> Total shares traded today. High volume indicates "Smart Money" conviction, validating price action. Low volume moves are often "traps" lacking institutional backing.</li>
+                <li><strong style="color: #4da6ff;"><abbr title="Relative Strength Index">RSI</abbr> (14-Day):</strong> Oscillates 0-100. Values above 70 are "Overbought" (mean reversion risk); values below 30 are "Oversold" (potential accumulation zone).</li>
+                <li><strong style="color: #4da6ff;"><abbr title="Moving Average Convergence Divergence">MACD</abbr> Histogram:</strong> Measures momentum velocity. Expanding green bars confirm acceleration; red or shrinking bars signal momentum decay or a trend pivot.</li>
+                <li><strong style="color: #4da6ff;">50D <abbr title="Simple Moving Average">SMA</abbr>:</strong> The "Health Line" representing the 10-week price mean. Trading above it confirms a medium-term uptrend; falling below suggests a structural loss of strength.</li>
+                <li><strong style="color: #4da6ff;">200D <abbr title="Simple Moving Average">SMA</abbr>:</strong> The "Institutional Floor." Banks and funds use this as the ultimate line in the sand; breaking below it often marks the shift into a primary bear market.</li>
+                <li><strong style="color: #4da6ff;">ML Conf:</strong> Machine Learning Ensemble confidence score predicting a >3% return over the next 5 days. >75% is highly actionable.</li>
+                <li><strong style="color: #4da6ff;">VaR (95%):</strong> Parametric Value at Risk. The expected maximum percentage loss over a standard holding period with 95% confidence. <em>(Hover over for Conditional VaR / Expected Shortfall).</em></li>
+                <li><strong style="color: #4da6ff;">Sentiment:</strong> VADER NLP compound score generated from the latest news headlines. Positive values indicate bullish media framing.</li>
+            </ul>
+        </div>
     </div>
 
     <script>
@@ -108,8 +163,10 @@
                 $('#screenerTable').parent().prepend(bannerHtml);
             }
 
+            // Core Multi-Filtering Engine
             $.fn.dataTable.ext.search.push(
                 function(settings, data, dataIndex, rowData) {
+                    // Legacy URL Params Override
                     if (targetSector && rowData.sector !== targetSector) return false;
                     if (reqBullishCross && rowData.bullish_cross !== 1 && rowData.bullish_cross !== true) return false;
                     if (reqAbove50d) {
@@ -117,6 +174,37 @@
                         const sma50 = parseFloat(rowData.sma_50);
                         if (isNaN(price) || isNaN(sma50) || price <= sma50) return false;
                     }
+
+                    // --- Dynamic UI Filters ---
+                    const typeVal = $('#typeFilter').val();
+                    if (typeVal !== 'ALL' && rowData.quote_type !== typeVal) return false;
+
+                    const exchVal = $('#exchangeFilter').val();
+                    if (exchVal !== 'ALL' && rowData.exchange !== exchVal) return false;
+
+                    const secVal = $('#sectorFilter').val();
+                    if (secVal !== 'ALL' && rowData.sector !== secVal) return false;
+
+                    // RSI Logic
+                    const rsiOp = $('#rsiOp').val();
+                    const rsiVal = parseFloat($('#rsiVal').val());
+                    const rsiData = parseFloat(rowData.rsi_14);
+                    if (rsiOp !== 'any' && !isNaN(rsiVal)) {
+                        if (isNaN(rsiData)) return false;
+                        if (rsiOp === 'gt' && rsiData <= rsiVal) return false;
+                        if (rsiOp === 'lt' && rsiData >= rsiVal) return false;
+                    }
+
+                    // MACD Logic
+                    const macdOp = $('#macdOp').val();
+                    const macdVal = parseFloat($('#macdVal').val());
+                    const macdData = parseFloat(rowData.macd_hist);
+                    if (macdOp !== 'any' && !isNaN(macdVal)) {
+                        if (isNaN(macdData)) return false;
+                        if (macdOp === 'gt' && macdData <= macdVal) return false;
+                        if (macdOp === 'lt' && macdData >= macdVal) return false;
+                    }
+
                     return true; 
                 }
             );
@@ -127,27 +215,36 @@
                 pageLength: 25,
                 order: [[0, 'asc']], 
                 language: { search: "🔍 Search Everything:" },
+                // Custom DOM to pin Search top-left, and Length/Info bottom-left
+                dom: '<"top-controls"f>rt<"bottom-controls"<"bottom-left-controls"li>p>',
                 
-                // Dynamic Dropdown Population & Default Selection
                 initComplete: function () {
-                    var column = this.api().column(4); // Exchange is column 4 now
-                    var select = $('#exchangeFilter');
+                    var exchCol = this.api().column(4); 
+                    var secCol = this.api().column(3); 
                     
-                    column.data().unique().sort().each( function ( d, j ) {
+                    var exchSelect = $('#exchangeFilter');
+                    var secSelect = $('#sectorFilter');
+                    
+                    exchCol.data().unique().sort().each( function ( d, j ) {
                         if(d && d !== 'N/A') {
-                            select.append( '<option value="'+d+'">'+d+'</option>' );
+                            exchSelect.append( '<option value="'+d+'">'+d+'</option>' );
                         }
                     });
 
-                    const defaultExchange = urlParams.get('exchange') || 'NASDAQ'; 
-                    
-                    if (defaultExchange !== 'ALL' && select.find('option[value="' + defaultExchange + '"]').length > 0) {
-                        select.val(defaultExchange);
-                        column.search('^' + defaultExchange + '$', true, false).draw();
-                    }
+                    secCol.data().unique().sort().each( function ( d, j ) {
+                        if(d && d !== 'N/A' && d !== 'Unclassified') {
+                            secSelect.append( '<option value="'+d+'">'+d+'</option>' );
+                        }
+                    });
 
-                    // Default to Equities View on Load
-                    $('[data-mode="equities"]').click();
+                    // Default Fallbacks
+                    const defaultExchange = urlParams.get('exchange') || 'ALL'; 
+                    if (defaultExchange !== 'ALL' && exchSelect.find('option[value="' + defaultExchange + '"]').length > 0) {
+                        exchSelect.val(defaultExchange);
+                    }
+                    
+                    // Trigger initial draw
+                    table.draw();
                 },
                 
                 columns: [
@@ -156,7 +253,7 @@
                     { data: 'subtitle', render: function(data) { return data || 'N/A'; } },
                     { data: 'sector', render: function(data) { return data || 'N/A'; } },
                     { data: 'exchange', render: function(data) { return data || 'US'; } },
-                    { data: 'quote_type', visible: false }, // Hidden strictly for toggle logic
+                    { data: 'quote_type', visible: false }, // Hidden strictly for filter logic
                     { data: 'close_price', render: $.fn.dataTable.render.number(',', '.', 2, '$') },
                     { data: 'volume', render: $.fn.dataTable.render.number(',', '.', 0, '') },
                     { 
@@ -233,28 +330,41 @@
                 ]
             });
 
-            // Map Exchange Filter (Manual Override)
-            $('#exchangeFilter').on('change', function() {
-                var val = $(this).val();
-                if(val === 'ALL') { table.column(4).search('').draw(); } 
-                else { table.column(4).search('^' + val + '$', true, false).draw(); }
+            // Live event listeners to trigger instant filtering
+            $('#typeFilter, #exchangeFilter, #sectorFilter, #rsiOp, #macdOp').on('change', function() { 
+                // Toggle columns visibility based on Asset Type
+                if (this.id === 'typeFilter') {
+                    var val = $(this).val();
+                    if (val === 'EQUITY') {
+                        table.column(17).visible(false); // Hide Expense Ratio
+                        table.column(18).visible(false); // Hide FT Link
+                    } else {
+                        table.column(17).visible(true); // Show Expense Ratio
+                        table.column(18).visible(true); // Show FT Link
+                    }
+                }
+                table.draw(); 
             });
 
-            // Handle Asset Class Toggle View
-            $('.toggle-btn').on('click', function() {
-                $('.toggle-btn').removeClass('active');
-                $(this).addClass('active');
+            $('#rsiVal, #macdVal').on('keyup change', function() { 
+                table.draw(); 
+            });
 
-                var mode = $(this).data('mode');
-                if (mode === 'equities') {
-                    table.column(5).search('^EQUITY$', true, false).draw();
-                    table.column(17).visible(false); // Hide Expense Ratio
-                    table.column(18).visible(false); // Hide FT Link
-                } else {
-                    table.column(5).search('ETF|MUTUALFUND', true, false).draw();
-                    table.column(17).visible(true); // Show Expense Ratio
-                    table.column(18).visible(true); // Show FT Link
-                }
+            // Reset mechanism
+            $('#clearFiltersBtn').on('click', function() {
+                $('#typeFilter').val('ALL');
+                $('#exchangeFilter').val('ALL');
+                $('#sectorFilter').val('ALL');
+                $('#rsiOp').val('any');
+                $('#rsiVal').val('');
+                $('#macdOp').val('any');
+                $('#macdVal').val('');
+                
+                table.column(17).visible(true);
+                table.column(18).visible(true);
+                
+                table.search(''); // Reset main search box
+                table.draw();
             });
         });
     </script>
