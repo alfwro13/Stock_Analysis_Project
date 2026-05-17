@@ -43,11 +43,6 @@
 
     <div style="background-color: #1e1e1e; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); margin-top: 20px;">
 
-        <div class="toggle-group">
-            <button class="toggle-btn" data-mode="equities">View Equities</button>
-            <button class="toggle-btn" data-mode="funds">View Funds & ETFs</button>
-        </div>
-
         <div class="controls-container" style="margin-bottom: 20px; flex-wrap: wrap; gap: 15px; align-items: flex-end; background-color: #1a2636; padding: 15px; border-radius: 8px; border-left: 4px solid #4da6ff;">
             
             <div class="form-group" style="margin-bottom: 0;">
@@ -242,21 +237,35 @@
                         }
                     });
 
-                    // Default Fallbacks
+                    // --- LOAD DEFAULTS ---
+                    // 1. Set Asset Type to Equity and hide fund columns
+                    $('#typeFilter').val('EQUITY');
+                    table.column(17).visible(false); // Hide Expense Ratio
+                    table.column(18).visible(false); // Hide FT Link
+
+                    // 2. Set Exchange (from URL or fallback to ALL)
                     const defaultExchange = urlParams.get('exchange') || 'ALL'; 
                     if (defaultExchange !== 'ALL' && exchSelect.find('option[value="' + defaultExchange + '"]').length > 0) {
                         exchSelect.val(defaultExchange);
+                    } else {
+                        exchSelect.val('ALL');
                     }
-                    
-                    // Trigger initial draw and set to Equities view
+
+                    // 3. Set Sector Default (Technology)
+                    const defaultSector = urlParams.get('sector') || 'Technology';
+                    // Check if 'Technology' exists in the options before selecting
+                    if (defaultSector !== 'ALL' && secSelect.find('option[value="' + defaultSector + '"]').length > 0) {
+                        secSelect.val(defaultSector);
+                    }
+
+                    // Trigger the final draw to apply the combined default filters
                     table.draw();
-                    $('[data-mode="equities"]').click();
                 },
                 
                 columns: [
                     { data: 'ticker', render: function(data) { return '<a href="/stock/' + data + '" style="color: #4da6ff; font-weight: bold;">' + data + '</a>'; } },
                     { data: 'company_name', render: function(data) { return data || 'N/A'; } },
-                    { data: 'freetrade_subtitle', render: function(data) { return data || 'N/A'; } }, // Corrected mapping here
+                    { data: 'subtitle', render: function(data) { return data || 'N/A'; } },
                     { data: 'sector', render: function(data) { return data || 'N/A'; } },
                     { data: 'exchange', render: function(data) { return data || 'US'; } },
                     { data: 'quote_type', visible: false }, // Hidden strictly for filter logic
@@ -332,30 +341,8 @@
                         }
                     },
                     { data: 'expense_ratio', render: function(data) { return data ? data + '%' : 'N/A'; } },
-                    { data: 'freetrade_url', render: function(data) { return data && data !== 'N/A' ? '<a href="' + data + '" target="_blank" style="color: #b366ff;">KIID Document</a>' : 'N/A'; } }
+                    { data: 'freetrade_link', render: function(data) { return data && data !== 'N/A' ? '<a href="' + data + '" target="_blank" style="color: #b366ff;">KIID Document</a>' : 'N/A'; } }
                 ]
-            });
-
-            // Handle Asset Class Toggle View
-            $('.toggle-btn').on('click', function() {
-                $('.toggle-btn').removeClass('active');
-                $(this).addClass('active');
-
-                var mode = $(this).data('mode');
-                if (mode === 'equities') {
-                    // Update Dropdown filter internally and manually override the datatable search
-                    $('#typeFilter').val('EQUITY');
-                    table.column(2).visible(false); // Hide Subtitle
-                    table.column(17).visible(false); // Hide Expense Ratio
-                    table.column(18).visible(false); // Hide FT Link
-                } else {
-                    // Set type filter to ALL but regex search for Funds/ETFs
-                    $('#typeFilter').val('ALL');
-                    table.column(2).visible(true); // Show Subtitle
-                    table.column(17).visible(true); // Show Expense Ratio
-                    table.column(18).visible(true); // Show FT Link
-                }
-                table.draw();
             });
 
             // Live event listeners to trigger instant filtering
@@ -363,18 +350,13 @@
                 // Toggle columns visibility based on Asset Type Dropdown
                 if (this.id === 'typeFilter') {
                     var val = $(this).val();
-                    $('.toggle-btn').removeClass('active'); // Un-focus buttons if dropdown used
-                    
                     if (val === 'EQUITY') {
-                        table.column(2).visible(false); // Hide Subtitle
-                        table.column(17).visible(false); // Hide Expense
+                        table.column(17).visible(false); // Hide Expense Ratio
                         table.column(18).visible(false); // Hide FT Link
                     } else if (val === 'ETF' || val === 'MUTUALFUND') {
-                        table.column(2).visible(true); // Show Subtitle
-                        table.column(17).visible(true); // Show Expense
-                        table.column(18).visible(true); // Show FT Link
+                        table.column(17).visible(true);  // Show Expense Ratio
+                        table.column(18).visible(true);  // Show FT Link
                     } else { // ALL
-                        table.column(2).visible(true); 
                         table.column(17).visible(true); 
                         table.column(18).visible(true); 
                     }
@@ -386,21 +368,20 @@
                 table.draw(); 
             });
 
-            // Reset mechanism
+            // Reset mechanism: Reverts to your custom "Home" defaults
             $('#clearFiltersBtn').on('click', function() {
-                $('#typeFilter').val('ALL');
+                $('#typeFilter').val('EQUITY');
                 $('#exchangeFilter').val('ALL');
-                $('#sectorFilter').val('ALL');
+                $('#sectorFilter').val('Technology');
+                
                 $('#rsiOp').val('any');
                 $('#rsiVal').val('');
                 $('#macdOp').val('any');
                 $('#macdVal').val('');
                 
-                table.column(2).visible(true);
-                table.column(17).visible(true);
-                table.column(18).visible(true);
-                
-                $('.toggle-btn').removeClass('active');
+                // Hide fund columns because we reset to EQUITY
+                table.column(17).visible(false);
+                table.column(18).visible(false);
                 
                 table.search(''); // Reset main search box
                 table.draw();
