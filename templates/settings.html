@@ -32,8 +32,8 @@
             </div>
         </details>
 
-        <details class="settings-card">
-            <summary>🇬🇧 Freetrade Universe Integration</summary>
+        <details class="settings-card" open>
+            <summary>🌐 Freetrade Universe Integration</summary>
             <p style="font-size: 13px; color: #aaa; margin-top: 0; margin-bottom: 15px;">Manage the synchronization and visibility of the Freetrade broker universe.</p>
             
             <div class="checkbox-group" style="background-color: #2c2c2c; padding: 15px; border-radius: 5px; margin-bottom: 15px; border-left: 3px solid #00ffcc;">
@@ -43,11 +43,12 @@
 
             <div style="background-color: #2c2c2c; padding: 15px; border-radius: 5px; margin-bottom: 15px;">
                 <h4 style="margin-top: 0; color: #4da6ff;">📥 Manual Data Import</h4>
-                <p style="font-size: 13px; color: #aaa; margin-top: 0; margin-bottom: 10px;">Fetches the latest official CSV directly from Freetrade's published Google Sheet.</p>
+                <p style="font-size: 13px; color: #aaa; margin-top: 0; margin-bottom: 10px;">Fetches the latest official CSV directly from Freetrade's published Google Sheet, maps European tickers to Yahoo Finance standard formats via ISIN, and updates the local database.</p>
                 <button type="button" id="ftSyncBtn" class="btn-update" onclick="triggerFreetradeSync()">⬇️ Sync Freetrade Universe</button>
+                <div id="ft-sync-status-msg"></div>
             </div>
 
-            <div style="background-color: #2c2c2c; padding: 15px; border-radius: 5px; margin-bottom: 10px;">
+            <div style="background-color: #2c2c2c; padding: 15px; border-radius: 5px; margin-bottom: 10px; border-left: 3px solid #b366ff;">
                 <h4 style="margin-top: 0; color: #b366ff;">📈 Automated Sync Scheduler</h4>
                 <div class="checkbox-group">
                     <input type="checkbox" id="FREETRADE_SYNC_ENABLED" {% if config.SCHEDULING.FREETRADE_SYNC.ENABLED %}checked{% endif %}>
@@ -100,6 +101,7 @@
                 <input type="checkbox" id="LIVE_DETAILS" {% if config.UI_PREFERENCES.LIVE_DETAILS %}checked{% endif %}>
                 <label for="LIVE_DETAILS">Live prices on Stock Detail View</label>
             </div>
+            
             <div class="form-group" style="margin-top: 10px; margin-bottom: 20px;">
                 <label>Polling Refresh Rate (Seconds)</label>
                 <input type="number" id="REFRESH_RATE" value="{{ config.UI_PREFERENCES.REFRESH_RATE | default(60) }}" min="15">
@@ -670,14 +672,40 @@
 
         async function triggerFreetradeSync() {
             const btn = document.getElementById('ftSyncBtn');
-            btn.innerText = "Syncing Universe..."; btn.disabled = true;
+            const statusMsg = document.getElementById('ft-sync-status-msg');
+            
+            btn.innerText = "Syncing Universe..."; 
+            btn.disabled = true;
+            statusMsg.style.display = "block";
+            statusMsg.innerText = "⏳ Sync initiated in the background. Resolving ISINs...";
+            statusMsg.style.color = "#ffaa00";
+
             try { 
-                await fetch('/api/trigger-freetrade-sync', { method: 'POST' }); 
-                alert("Freetrade Universe Sync initiated in the background!\n\nIMPORTANT: Once the sync completes, the new assets will NOT be visible immediately.\n\nNext steps:\n1. Open your terminal and run 'python profile_engine.py' (run twice to catch all 8000+ assets).\n2. Go to 'Market Universe' settings and click '▶️ Run Full Quant Scan'."); 
+                const response = await fetch('/api/trigger-freetrade-sync', { method: 'POST' }); 
+                if (response.ok) {
+                    statusMsg.innerHTML = `
+                        <div style="background-color: #1a2636; border-left: 4px solid #00ffcc; padding: 15px; border-radius: 5px; margin-top: 15px;">
+                            <span style="color: #00ffcc; font-size: 16px;">✅ Sync initiated successfully!</span><br><br>
+                            <span style="color: #e0e0e0;">The engine is actively pulling the CSV and resolving ISINs in the background. You will receive a notification when it finishes.</span><br><br>
+                            <span style="color: #ff4d4d; font-weight: bold;">⚠️ IMPORTANT NEXT STEPS:</span><br>
+                            Once the sync notification arrives, the new assets are still "dormant". To activate them:<br>
+                            1. Open your terminal and run <code>python profile_engine.py</code>.<br>
+                            2. Go to 'Background Automation Schedulers' below and click <strong>▶️ Run Full Quant Scan</strong> under the Market Universe routine.
+                        </div>
+                    `;
+                } else {
+                    statusMsg.innerText = "❌ Failed to initiate sync. Server returned an error.";
+                    statusMsg.style.color = "#ff4d4d";
+                }
             } catch (e) { 
-                alert("Failed to initiate sync.");
+                statusMsg.innerText = "❌ Failed to initiate sync. Check your network or server logs.";
+                statusMsg.style.color = "#ff4d4d";
             }
-            setTimeout(() => { btn.innerText = "⬇️ Sync Freetrade Universe"; btn.disabled = false; }, 5000);
+            
+            setTimeout(() => { 
+                btn.innerText = "⬇️ Sync Freetrade Universe"; 
+                btn.disabled = false; 
+            }, 5000);
         }
 
         async function triggerUpdate() {
