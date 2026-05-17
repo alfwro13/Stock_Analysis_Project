@@ -82,7 +82,8 @@
     <table id="dataTable" class="display">
         <thead>
             <tr>
-                <th>Ticker / Name</th>
+                <th>Ticker</th>
+                <th>Company Name</th>
                 <th>Price</th>
                 <th>Daily Change</th>
                 <th>Target</th>
@@ -105,11 +106,13 @@
             {% for item in watchlist %}
             <tr class="live-asset-row" data-ticker="{{ item.ticker }}" data-signal="{{ item.overall_signal | upper }}" data-tags="{% for tag in item.setup_tags_list %}{{ tag.name }} {% endfor %}">
                 <td data-sort="{{ item.ticker }}">
-                    <a href="/stock/{{ item.ticker }}{% if embed %}?embed=true{% endif %}">{{ item.ticker }}</a><br>
-                    <span style="font-size: 11px; color: #888;">{{ item.company_name[:20] }}{% if item.company_name|length > 20 %}...{% endif %}</span>
+                    <a href="/stock/{{ item.ticker }}{% if embed %}?embed=true{% endif %}">{{ item.ticker }}</a>
                     {% if freetrade_only and not item.is_freetrade %}
                     <br><span class="badge badge-freetrade">Not on Freetrade</span>
                     {% endif %}
+                </td>
+                <td data-sort="{{ item.company_name }}">
+                    {{ item.company_name }}
                 </td>
                 
                 {% set cp = cached_pulse.get(item.ticker) %}
@@ -218,18 +221,18 @@
                 table.search(this.value).draw();
             });
 
-            // Map Custom Signal Dropdown (Updated index to 16 due to 3 new columns)
+            // Map Custom Signal Dropdown (Updated index to 17 due to new column)
             $('#signalFilter').on('change', function() {
                 var val = $(this).val();
-                if(val === 'ALL') { table.column(16).search('').draw(); } 
-                else { table.column(16).search('^' + val + '$', true, false).draw(); }
+                if(val === 'ALL') { table.column(17).search('').draw(); } 
+                else { table.column(17).search('^' + val + '$', true, false).draw(); }
             });
 
-            // Map Custom Tags Dropdown (Updated index to 15 due to 3 new columns)
+            // Map Custom Tags Dropdown (Updated index to 16 due to new column)
             $('#tagFilter').on('change', function() {
                 var val = $(this).val();
-                if(val === 'ALL') { table.column(15).search('').draw(); } 
-                else { table.column(15).search(val).draw(); }
+                if(val === 'ALL') { table.column(16).search('').draw(); } 
+                else { table.column(16).search(val).draw(); }
             });
         });
     </script>
