@@ -2,10 +2,10 @@
 import json
 import logging
 import sqlite3
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 
 import yfinance as yf
-from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+from transformers import pipeline
 
 from database import DB_PATH, get_connection
 
@@ -26,7 +26,7 @@ def test_yfinance_news_extraction(ticker: str) -> List[Dict[str, Any]]:
         news = stock.news
         
         if not news:
-            logger.error(f"❌ yfinance returned empty news for {ticker}. API might be broken or blocked.")
+            logger.error(f"❌ yfinance returned empty news for {ticker}. API might be blocked.")
             return []
             
         if not isinstance(news, list):
@@ -34,58 +34,72 @@ def test_yfinance_news_extraction(ticker: str) -> List[Dict[str, Any]]:
             return []
             
         logger.info(f"✅ yfinance successfully returned {len(news)} news articles.")
-        
-        # Display the first article to verify structure
-        first_article = news[0]
-        logger.info(f"Sample Article Title: {first_article.get('title', 'NO TITLE')}")
-        logger.info(f"Sample Article Publisher: {first_article.get('publisher', 'NO PUBLISHER')}")
-        
         return news
         
     except Exception as e:
         logger.error(f"❌ Exception during yfinance news fetch: {e}")
         return []
 
-def test_vader_nlp_scoring(news_data: List[Dict[str, Any]]) -> float:
+def test_finbert_nlp_scoring(news_data: List[Dict[str, Any]]) -> float:
     """
-    Tests the VADER SentimentIntensityAnalyzer on the extracted news payload.
+    Tests the FinBERT Sentiment Analyzer on the un-nested news payload.
     """
-    logger.info("--- [TEST 2] Testing VADER NLP Scoring Logic ---")
+    logger.info("--- [TEST 2] Testing FinBERT NLP Scoring & Un-nesting Logic ---")
     if not news_data:
-        logger.warning("No news data provided to VADER. Returning 0.0")
+        logger.warning("No news data provided to FinBERT. Returning 0.0")
         return 0.0
         
     try:
-        analyzer = SentimentIntensityAnalyzer()
+        logger.info("Loading FinBERT model into memory...")
+        analyzer = pipeline("sentiment-analysis", model="ProsusAI/finbert")
         scores: List[float] = []
         
-        for i, item in enumerate(news_data[:5]): # Test first 5 for brevity
-            title = item.get('title', '')
-            summary = item.get('summary', '')
-            publisher = item.get('publisher', '')
+        for i, item in enumerate(news_data[:5]):  # Test first 5 for brevity
+            # 1. Defensive Extraction (Un-nesting Yahoo's payload)
+            content = item.get('content', item)
             
+            title = content.get('title', '')
+            summary = content.get('summary', '')
+            
+            # Publisher could be under 'publisher', 'provider', or nested inside provider
+            publisher = content.get('publisher', '')
+            if not publisher and isinstance(content.get('provider'), dict):
+                publisher = content['provider'].get('displayName', '')
+                
+            # 2. Construct the analysis string
             text_to_analyze = f"{title}. {summary}. {publisher}"
             
             if not text_to_analyze.strip(". "):
                 logger.warning(f"Article {i+1} resulted in empty text string.")
                 continue
                 
-            score_dict = analyzer.polarity_scores(text_to_analyze)
-            compound_score = score_dict['compound']
-            scores.append(compound_score)
+            # 3. Execute FinBERT Scoring (truncated to 512 chars)
+            result = analyzer(text_to_analyze[:512])[0]
+            label = result['label'].lower()
+            prob = result['score']
             
-            logger.info(f"Article {i+1} Score: {compound_score:+.3f} | Text: {text_to_analyze[:60]}...")
+            # Map FinBERT's output to your database's expected -1.0 to 1.0 compound float
+            if label == 'positive':
+                compound = prob
+            elif label == 'negative':
+                compound = -prob
+            else:
+                compound = 0.0
+                
+            scores.append(compound)
+            
+            logger.info(f"Article {i+1} [{label.upper()}] Score: {compound:+.3f} | Text: {text_to_analyze[:60]}...")
             
         if not scores:
-            logger.error("❌ VADER failed to score any articles.")
+            logger.error("❌ FinBERT failed to score any articles.")
             return 0.0
             
         avg_score = sum(scores) / len(scores)
-        logger.info(f"✅ VADER NLP successful. Average Compound Score: {avg_score:+.3f}")
+        logger.info(f"✅ FinBERT NLP successful. Average Compound Score: {avg_score:+.3f}")
         return avg_score
         
     except Exception as e:
-        logger.error(f"❌ Exception during VADER scoring: {e}")
+        logger.error(f"❌ Exception during FinBERT scoring: {e}")
         return 0.0
 
 def test_database_state(ticker: str) -> None:
@@ -136,7 +150,7 @@ def test_database_state(ticker: str) -> None:
 
 def run_diagnostics() -> None:
     print("=========================================================")
-    print(" 🧠 SENTIMENT ENGINE DIAGNOSTICS")
+    print(" 🧠 FINBERT SENTIMENT ENGINE DIAGNOSTICS")
     print("=========================================================")
     
     # Test with a highly liquid asset that is guaranteed to have news
@@ -144,7 +158,7 @@ def run_diagnostics() -> None:
     
     news_data = test_yfinance_news_extraction(target_ticker)
     print("")
-    test_vader_nlp_scoring(news_data)
+    test_finbert_nlp_scoring(news_data)
     print("")
     test_database_state(target_ticker)
     
