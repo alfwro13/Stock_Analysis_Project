@@ -23,7 +23,7 @@
 
     <form id="settingsForm">
 
-        <details class="settings-card" open>
+        <details class="settings-card">
             <summary>🛠️ Manual Actions</summary>
             <p style="font-size: 13px; color: #aaa; margin-top: 0; margin-bottom: 15px;">Manually trigger system processes. These operations run in the background. Please wait a few moments before refreshing your views.</p>
             <div style="display: flex; gap: 15px; margin-top: 15px;">
@@ -42,14 +42,14 @@
             </div>
 
             <div style="background-color: #2c2c2c; padding: 15px; border-radius: 5px; margin-bottom: 15px;">
-                <h4 style="margin-top: 0; color: #4da6ff;">📥 Manual Data Import</h4>
+                <h4 style="margin-top: 0; color: #4da6ff;">Manual Data Import</h4>
                 <p style="font-size: 13px; color: #aaa; margin-top: 0; margin-bottom: 10px;">Fetches the latest official CSV directly from Freetrade's published Google Sheet, maps European tickers to Yahoo Finance standard formats via ISIN, and updates the local database.</p>
                 <button type="button" id="ftSyncBtn" class="btn-update" onclick="triggerFreetradeSync()">⬇️ Sync Freetrade Universe</button>
                 <div id="ft-sync-status-msg"></div>
             </div>
 
             <div style="background-color: #2c2c2c; padding: 15px; border-radius: 5px; margin-bottom: 10px; border-left: 3px solid #b366ff;">
-                <h4 style="margin-top: 0; color: #b366ff;">📈 Automated Sync Scheduler</h4>
+                <h4 style="margin-top: 0; color: #b366ff;">Automated Sync Scheduler</h4>
                 <div class="checkbox-group">
                     <input type="checkbox" id="FREETRADE_SYNC_ENABLED" {% if config.SCHEDULING.FREETRADE_SYNC.ENABLED %}checked{% endif %}>
                     <label for="FREETRADE_SYNC_ENABLED">Enable automated background sync</label>
