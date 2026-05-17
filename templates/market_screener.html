@@ -139,6 +139,26 @@
     </div>
 
     <script>
+        function formatCurrency(value, currencyCode) {
+            if (value === null || value === undefined) return 'N/A';
+            let num = parseFloat(value);
+            if (isNaN(num)) return 'N/A';
+
+            let symbol = '$';
+            if (currencyCode === 'GBp') {
+                num = num / 100.0;
+                symbol = '£';
+            } else if (currencyCode === 'GBP') {
+                symbol = '£';
+            } else if (currencyCode === 'EUR') {
+                symbol = '€';
+            } else if (currencyCode && currencyCode !== 'USD') {
+                return num.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' ' + currencyCode;
+            }
+            
+            return symbol + num.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        }
+
         $(document).ready(function() {
             const urlParams = new URLSearchParams(window.location.search);
             const targetSector = urlParams.get('sector');
@@ -269,7 +289,12 @@
                     { data: 'sector', render: function(data) { return data || 'N/A'; } },
                     { data: 'exchange', render: function(data) { return data || 'US'; } },
                     { data: 'quote_type', visible: false }, // Hidden strictly for filter logic
-                    { data: 'close_price', render: $.fn.dataTable.render.number(',', '.', 2, '$') },
+                    { 
+                        data: 'close_price', 
+                        render: function(data, type, row) { 
+                            return type === 'display' ? formatCurrency(data, row.currency) : data;
+                        } 
+                    },
                     { data: 'volume', render: $.fn.dataTable.render.number(',', '.', 0, '') },
                     { 
                         data: 'rsi_14', 
@@ -287,8 +312,18 @@
                             return `<span class="${cssClass}">${data.toFixed(3)}</span>`;
                         } 
                     },
-                    { data: 'sma_50', render: function(data) { return data === null ? 'N/A' : '$' + data.toFixed(2); } },
-                    { data: 'sma_200', render: function(data) { return data === null ? 'N/A' : '$' + data.toFixed(2); } },
+                    { 
+                        data: 'sma_50', 
+                        render: function(data, type, row) { 
+                            return type === 'display' ? formatCurrency(data, row.currency) : data;
+                        } 
+                    },
+                    { 
+                        data: 'sma_200', 
+                        render: function(data, type, row) { 
+                            return type === 'display' ? formatCurrency(data, row.currency) : data;
+                        } 
+                    },
                     { data: 'volume_surge', render: function(data) { return data ? '<span class="badge-yes">YES</span>' : '<span class="badge-no">No</span>'; } },
                     { data: 'bullish_cross', render: function(data) { return data ? '<span class="badge-yes">YES</span>' : '<span class="badge-no">No</span>'; } },
                     {

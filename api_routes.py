@@ -480,6 +480,7 @@ async def get_screener_data():
                 WHEN UPPER(q.ticker) LIKE '%.L' THEN 'LSE'
                 ELSE 'US'
             END as exchange,
+            COALESCE(p.currency, s.currency, 'USD') as currency,
             q.date, q.close_price, 
             q.volume, q.rsi_14, q.macd_hist, q.sma_50, q.sma_200, 
             q.volume_surge, q.bullish_cross,
