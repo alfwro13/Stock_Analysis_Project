@@ -27,73 +27,60 @@
         <p class="regime-callout-text">Market conditions are currently <strong>{{ 'highly turbulent' if regime_data.regime_label in ['Crash', 'Volatile'] else 'normal and stable' }}</strong>. Standard quantitative thresholds {{ 'are aggressively filtered for Flight to Safety' if regime_data.regime_label in ['Crash', 'Volatile'] else 'apply' }}.</p>
     </div>
 
-    <div class="sentiment-master-grid">
-        <div>
-            <h2 style="color: #4da6ff; margin-bottom: 15px; border-bottom: 2px solid #333; padding-bottom: 10px;">🇺🇸 US Market Context</h2>
+    <h2 style="color: #4da6ff; margin-bottom: 15px; border-bottom: 2px solid #333; padding-bottom: 10px;">🇺🇸 US Market Context</h2>
 
-            <div class="chart-wrapper chart-wrapper-fg" style="margin-bottom: 0;">
-                {{ sentiment_html | safe }}
-            </div>
-            
-            <div class="sentiment-footer">
-                <span class="sentiment-footer-title">Fear & Greed Index:</span>
-                <div class="sentiment-footer-text">
-                    Historically, local market bottoms correlate with <span class="sentiment-extreme">Extreme Fear (Below 25)</span>, indicating capitulation and high-probability entry points. Conversely, <span class="sentiment-extreme">Extreme Greed (Above 75)</span> typically signals retail euphoria and institutional distribution, suggesting a defensive posture or profit-taking is warranted.
-                </div>
-            </div>
-
-            <div class="us-sub-grid">
-                <div class="chart-wrapper" style="margin-bottom: 0;">
-                    {{ yield_gauge_html | safe }}
-                </div>
-                <div class="chart-wrapper" style="margin-bottom: 0;">
-                    {{ yield_equity_html | safe }}
-                </div>
-            </div>
-
-            <div class="sentiment-footer">
-                <span class="sentiment-footer-title">US Cost of Capital:</span>
-                <div class="sentiment-footer-text">
-                    The 3-Day Velocity Gauge tracks the short-term rate of change in yields. Rapid spikes (Red) cause severe equity compression. The Yield vs S&P 500 chart visualizes the long-term inverse correlation between borrowing costs and market health.
-                </div>
-            </div>
-
-            <div class="chart-wrapper chart-wrapper-vix" style="margin-bottom: 0;">
-                {{ vix_spy_html | safe }}
-            </div>
-            
-            <div class="sentiment-footer">
-                <span class="sentiment-footer-title">Volatility (VIX):</span>
-                <div class="sentiment-footer-text">
-                    This visualization overlays the <span class="sentiment-highlight">S&P 500</span> against the <span class="sentiment-highlight">CBOE Volatility Index (VIX)</span>. A VIX level <span class="sentiment-extreme">Above 20</span> indicates high turbulence and institutional hedging. A VIX level <span class="sentiment-extreme">Above 30</span> signals a Crash regime.
-                </div>
-            </div>
+    <div class="chart-wrapper chart-wrapper-fg">
+        {{ sentiment_html | safe }}
+    </div>
+    
+    <div class="sentiment-footer" style="margin-bottom: 40px;">
+        <span class="sentiment-footer-title">How to read this chart:</span>
+        <div class="sentiment-footer-text">
+            This visualization overlays the <span class="sentiment-highlight">S&P 500</span> (Benchmark Health) against the <span class="sentiment-highlight">Fear & Greed Index</span> (Sentiment Velocity). 
+            Historically, local market bottoms correlate with <span class="sentiment-extreme">Extreme Fear (Below 25)</span>, indicating capitulation and high-probability entry points. 
+            Conversely, <span class="sentiment-extreme">Extreme Greed (Above 75)</span> typically signals retail euphoria and institutional distribution, suggesting a defensive posture or profit-taking is warranted.
         </div>
+    </div>
 
-        <div>
-            <h2 style="color: #b366ff; margin-bottom: 15px; border-bottom: 2px solid #333; padding-bottom: 10px;">🇬🇧 UK Market Context</h2>
+    <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 20px; margin-bottom: 40px;">
+        <div class="chart-wrapper" style="margin-bottom: 0;">
+            {{ yield_gauge_html | safe }}
+        </div>
+        <div class="chart-wrapper" style="margin-bottom: 0;">
+            {{ yield_equity_html | safe }}
+        </div>
+    </div>
 
-            <div class="chart-wrapper" style="margin-bottom: 0; border-left: 4px solid #b366ff;">
-                {{ uk_yield_equity_html | safe }}
-            </div>
+    <div class="chart-wrapper chart-wrapper-vix" style="margin-top: 40px;">
+        {{ vix_spy_html | safe }}
+    </div>
+    
+    <div class="sentiment-footer" style="margin-bottom: 60px;">
+        <span class="sentiment-footer-title">How to read this chart:</span>
+        <div class="sentiment-footer-text">
+            This visualization overlays the <span class="sentiment-highlight">S&P 500</span> against the <span class="sentiment-highlight">CBOE Volatility Index (VIX)</span>.
+            The VIX measures the stock market's expectation of volatility based on S&P 500 index options. 
+            A VIX level <span class="sentiment-extreme">Above 20</span> indicates high turbulence and institutional hedging, marking a Volatile regime. 
+            A VIX level <span class="sentiment-extreme">Above 30</span> signals a Crash regime, characterized by extreme fear and erratic price swings.
+        </div>
+    </div>
 
-            <div class="sentiment-footer">
-                <span class="sentiment-footer-title">UK Cost of Capital:</span>
-                <div class="sentiment-footer-text">
-                    <strong style="color: #b366ff;">10Y Gilt Yields vs FTSE 100:</strong> Just like the US, rising borrowing costs typically compress equity valuations. Rapid spikes in the Gilt yield create strong headwinds for UK domestic equities.
-                </div>
-            </div>
+    <h2 style="color: #b366ff; margin-bottom: 15px; border-bottom: 2px solid #333; padding-bottom: 10px;">🇬🇧 UK Market Context</h2>
 
-            <div class="chart-wrapper" style="margin-bottom: 0; border-left: 4px solid #00ffcc;">
-                {{ ftse_gbp_html | safe }}
-            </div>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+        <div class="chart-wrapper" style="margin-bottom: 0; border-left: 4px solid #b366ff;">
+            {{ uk_yield_equity_html | safe }}
+        </div>
+        <div class="chart-wrapper" style="margin-bottom: 0; border-left: 4px solid #00ffcc;">
+            {{ ftse_gbp_html | safe }}
+        </div>
+    </div>
 
-            <div class="sentiment-footer">
-                <span class="sentiment-footer-title">Currency Impact (GBP/USD):</span>
-                <div class="sentiment-footer-text">
-                    <strong style="color: #00ffcc;">Inverse Correlation:</strong> Because roughly 70-75% of FTSE 100 corporate revenue is generated outside the UK (priced in USD and EUR), a <em>weakening</em> Pound Sterling (GBP) often drives the FTSE 100 <em>up</em>. Their overseas earnings are artificially inflated when converted back into GBP. Look for an inverse correlation between the GBP/USD rate and the FTSE 100 points.
-                </div>
-            </div>
+    <div class="sentiment-footer">
+        <span class="sentiment-footer-title">UK Dynamics Explained:</span>
+        <div class="sentiment-footer-text">
+            <strong style="color: #b366ff;">UK Cost of Capital:</strong> Just like the US, rising borrowing costs (10Y Gilt Yields) typically compress equity valuations. <br>
+            <strong style="color: #00ffcc;">Currency Impact:</strong> Because roughly 70-75% of FTSE 100 corporate revenue is generated outside the UK (priced in USD and EUR), a <em>weakening</em> Pound Sterling (GBP) often drives the FTSE 100 <em>up</em>. This is because their overseas earnings are artificially inflated when converted back into GBP. Look for an inverse correlation between the GBP/USD rate and the FTSE 100 points.
         </div>
     </div>
 
