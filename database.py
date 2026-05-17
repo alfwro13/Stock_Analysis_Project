@@ -197,11 +197,14 @@ def init_db() -> None:
         ''')
 
         # --- PHASE 1: MARKET REGIMES (MACRO TURBULENCE Tracking) ---
+        # ALIGNED FIX: Tables built here match the five-dimensional calculation schema
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS market_regimes (
                 date TEXT PRIMARY KEY,
-                regime_label TEXT,
-                turbulence_index REAL
+                vix_close REAL,
+                spy_volatility REAL,
+                turbulence_index REAL,
+                regime_label TEXT
             )
         ''')
 
@@ -306,6 +309,24 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
                 cursor.execute(f"ALTER TABLE market_universe ADD COLUMN {col_name} {data_type}")
             except Exception as e:
                 logger.error(f"[MIGRATION ERROR] Failed to add '{col_name}' to market_universe: {e}")
+                continue
+
+    # ALIGNED FIX MIGRATION: Auto-patches existing database files that use the limited 3-column setup
+    cursor.execute("PRAGMA table_info(market_regimes)")
+    existing_regime_columns = [info['name'] for info in cursor.fetchall()]
+    
+    required_regime_columns = {
+        'vix_close': 'REAL',
+        'spy_volatility': 'REAL'
+    }
+
+    for col_name, data_type in required_regime_columns.items():
+        if col_name not in existing_regime_columns:
+            try:
+                logger.info(f"[MIGRATION] Patching historical schema anomaly. Adding missing column: '{col_name}' to market_regimes...")
+                cursor.execute(f"ALTER TABLE market_regimes ADD COLUMN {col_name} {data_type}")
+            except Exception as e:
+                logger.error(f"[MIGRATION ERROR] Failed to patch market_regimes column '{col_name}': {e}")
                 continue
 
     try:
