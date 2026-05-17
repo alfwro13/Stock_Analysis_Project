@@ -21,9 +21,18 @@ logger = logging.getLogger(__name__)
 FREETRADE_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTGZT9-lSDDlgQzHsH0vYdTSz-xnL7zIJQ1SHUddo-BBD5_QlN--57cRe_8Zvw-7QsMrw6X1phz-vKq/pub?output=csv"
 ISIN_CACHE_PATH = Path("data/isin_ticker_cache.json")
 
+# US Markets don't need ISIN resolution (Fast Path)
 US_MICS = {'XNAS', 'XNYS', 'ARCX', 'BATS'}
 
-# MIC mapping for Human Readable Exchanges
+# Fallback Suffix Map
+MIC_YF_SUFFIX_MAP = {
+    'XLON': '.L', 'XFRA': '.DE', 'XETR': '.DE', 'XPAR': '.PA',
+    'XAMS': '.AS', 'XBRU': '.BR', 'XDUB': '.IR', 'XMAD': '.MC',
+    'XMIL': '.MI', 'XLIS': '.LS', 'XHEL': '.HE', 'XSTO': '.ST',
+    'XOSL': '.OL', 'XCSE': '.CO', 'XVIE': '.VI', 'XSWX': '.SW'
+}
+
+# UI Exchange Map
 MIC_EXCHANGE_MAP = {
     'XLON': 'LSE', 'XNAS': 'NASDAQ', 'XNYS': 'NYSE', 'ARCX': 'NYSE ARCA',
     'BATS': 'BATS', 'XFRA': 'Frankfurt', 'XETR': 'XETRA', 'XPAR': 'Paris',
@@ -31,28 +40,27 @@ MIC_EXCHANGE_MAP = {
     'XMIL': 'Milan', 'XHEL': 'Helsinki', 'XSTO': 'Stockholm', 'XOSL': 'Oslo'
 }
 
-# MIC mapping for Yahoo Finance Suffixes (Fallback)
-MIC_YF_SUFFIX_MAP = {
-    'XLON': '.L',    # London
-    'XFRA': '.DE',   # Frankfurt
-    'XETR': '.DE',   # Xetra
-    'XPAR': '.PA',   # Paris
-    'XAMS': '.AS',   # Amsterdam
-    'XBRU': '.BR',   # Brussels
-    'XDUB': '.IR',   # Dublin
-    'XMAD': '.MC',   # Madrid
-    'XMIL': '.MI',   # Milan
-    'XLIS': '.LS',   # Lisbon
-    'XHEL': '.HE',   # Helsinki
-    'XSTO': '.ST',   # Stockholm
-    'XOSL': '.OL',   # Oslo
-    'XCSE': '.CO',   # Copenhagen
-    'XVIE': '.VI',   # Vienna
-    'XSWX': '.SW'    # Swiss
-}
+def load_isin_cache() -> Dict[str, str]:
+    """Loads the previously resolved ISIN mapping from disk."""
+    if ISIN_CACHE_PATH.exists():
+        try:
+            with open(ISIN_CACHE_PATH, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            logger.error(f"Failed to load ISIN cache: {e}")
+    return {}
+
+def save_isin_cache(cache_dict: Dict[str, str]) -> None:
+    """Saves the ISIN mapping securely to disk."""
+    try:
+        ISIN_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with open(ISIN_CACHE_PATH, 'w') as f:
+            json.dump(cache_dict, f, indent=4)
+    except Exception as e:
+        logger.error(f"Failed to save ISIN cache: {e}")
 
 def log_freetrade_notification(msg_type: str, msg_text: str) -> None:
-    """Logs system notifications securely into the database."""
+    """Pushes an alert directly to the dashboard notification UI."""
     try:
         conn = get_connection()
         cursor = conn.cursor()
@@ -67,151 +75,117 @@ def log_freetrade_notification(msg_type: str, msg_text: str) -> None:
         if 'conn' in locals():
             conn.close()
 
-def load_isin_cache() -> Dict[str, str]:
-    """Loads the ISIN to Ticker resolution cache from disk."""
-    if ISIN_CACHE_PATH.exists():
-        try:
-            with open(ISIN_CACHE_PATH, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except json.JSONDecodeError:
-            logger.warning("ISIN cache corrupted. Initializing fresh cache.")
-            return {}
-        except Exception as e:
-            logger.error(f"Failed to load ISIN cache: {e}. Proceeding without cache.")
-            return {}
-    return {}
-
-def save_isin_cache(cache_dict: Dict[str, str]) -> None:
-    """Saves the ISIN to Ticker resolution cache to disk safely."""
-    try:
-        ISIN_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        with open(ISIN_CACHE_PATH, 'w', encoding='utf-8') as f:
-            json.dump(cache_dict, f, indent=4)
-    except Exception as e:
-        logger.error(f"Failed to save ISIN cache: {e}")
-
 def resolve_ticker(symbol: str, isin: str, mic: str, cache_dict: Dict[str, str]) -> str:
-    """
-    Deterministically resolves a ticker format for Yahoo Finance using ISIN search.
-    Implements cascading fallbacks and local caching.
-    """
-    symbol = str(symbol).strip()
+    """Intelligently routes ticker resolution using US bypassing and Local Caching."""
+    symbol = str(symbol).strip().replace('.', '-')
     mic = str(mic).strip().upper()
-    isin = str(isin).strip()
     
-    # Base normalization for base symbols
-    base_symbol = symbol.replace('.', '-')
-
-    # Rule 1: US MICS require no suffix processing and are assumed 1:1 mapped
+    # 1. Fast Path: US Stocks
     if mic in US_MICS:
-        return base_symbol
-
-    # Helper for legacy fallback logic
-    def fallback_resolution() -> str:
-        if mic in MIC_YF_SUFFIX_MAP:
-            suffix = MIC_YF_SUFFIX_MAP[mic]
-            if not base_symbol.endswith(suffix):
-                return f"{base_symbol}{suffix}"
-        return base_symbol
-
-    # Rule 2: If ISIN is missing or invalid, fallback immediately
-    if not isin or isin.lower() == 'nan':
-        return fallback_resolution()
-
-    # Rule 3: Check Local Cache
-    if isin in cache_dict:
-        return cache_dict[isin]
-
-    # Rule 4: Query Yahoo Finance API
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-    }
-    url = f"https://query2.finance.yahoo.com/v1/finance/search?q={isin}"
-    
-    try:
-        response = requests.get(url, headers=headers, timeout=10)
-        response.raise_for_status()
-        data = response.json()
+        return symbol
         
-        if 'quotes' in data and len(data['quotes']) > 0:
-            resolved_ticker = data['quotes'][0].get('symbol')
-            if resolved_ticker:
-                cache_dict[isin] = resolved_ticker
-                # Enforce stochastic delay to avoid IP bans
-                time.sleep(random.uniform(0.3, 0.7))
-                return resolved_ticker
-                
-    except requests.exceptions.RequestException as req_err:
-        logger.warning(f"Network error resolving ISIN {isin} for symbol {symbol}: {req_err}. Triggering fallback.")
-    except (KeyError, IndexError, ValueError) as parse_err:
-        logger.warning(f"Data parsing error resolving ISIN {isin} for symbol {symbol}: {parse_err}. Triggering fallback.")
+    # 2. Check Local Cache
+    if pd.notna(isin) and str(isin).strip():
+        isin = str(isin).strip()
+        if isin in cache_dict:
+            return cache_dict[isin]
+            
+        # 3. Query Yahoo Finance API
+        url = f"https://query2.finance.yahoo.com/v1/finance/search?q={isin}"
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
         
-    # Final Fallback if API successfully called but returned no usable data or errored out
-    return fallback_resolution()
+        try:
+            # Mandatory IP safety throttle
+            time.sleep(random.uniform(0.3, 0.7)) 
+            
+            response = requests.get(url, headers=headers, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                quotes = data.get('quotes', [])
+                if quotes:
+                    resolved_symbol = quotes[0].get('symbol')
+                    if resolved_symbol:
+                        cache_dict[isin] = resolved_symbol
+                        return resolved_symbol
+        except Exception:
+            pass # Silently fallback below
+            
+    # 4. Ultimate Fallback Logic
+    if mic in MIC_YF_SUFFIX_MAP:
+        suffix = MIC_YF_SUFFIX_MAP[mic]
+        if not symbol.endswith(suffix):
+            return symbol + suffix
+    return symbol
 
 def sync_freetrade_universe() -> None:
-    """
-    Downloads the official Freetrade CSV universe, cleans ticker symbols,
-    applies ISIN-based Yahoo Finance resolution, maps metadata, 
-    and performs a safe UPSERT into the database.
-    """
+    """Master Pipeline for downloading, resolving, and upserting the Freetrade catalog."""
     logger.info("Starting ISIN-Enhanced Freetrade Universe Sync...")
+    log_freetrade_notification("Info", "Freetrade Sync initiated. Fetching CSV and resolving ISINs... This will take ~15 minutes in the background.")
     
     try:
         df = pd.read_csv(FREETRADE_CSV_URL)
         logger.info(f"Successfully downloaded {len(df)} records from Freetrade.")
         
-        # Clean column headers
         df.columns = df.columns.str.strip()
         
-        # Validate critical columns
-        required_cols = {'Symbol', 'MIC', 'ISIN'}
-        missing_cols = required_cols - set(df.columns)
-        if missing_cols:
-            raise ValueError(f"CRITICAL: Missing essential columns in Freetrade CSV: {missing_cols}")
+        if 'Symbol' not in df.columns:
+            raise ValueError("CRITICAL: 'Symbol' column is missing from CSV.")
             
-        isin_cache = load_isin_cache()
-        
-        # Dynamic Column Matching for KIID URL
+        # Extract KIID dynamically
         kiid_col = next((c for c in df.columns if 'kiid' in c.lower()), None)
-        
         def clean_url(val: Any) -> Optional[str]:
             if isinstance(val, str) and val.strip().lower().startswith("https://"):
                 return val.strip()
             return None
+        df['KIID URL'] = df[kiid_col].apply(clean_url) if kiid_col else None
             
+        cache_dict = load_isin_cache()
         records = []
-        for index, row in df.iterrows():
-            raw_symbol = row.get('Symbol')
-            if pd.isna(raw_symbol) or str(raw_symbol).lower() == 'nan' or not str(raw_symbol).strip():
+        
+        total_rows = len(df)
+        logger.info(f"Resolving {total_rows} tickers. EU assets will be checked against Yahoo Finance...")
+        
+        processed_count = 0
+        
+        for i, row in df.iterrows():
+            symbol_raw = row.get('Symbol')
+            isin = row.get('ISIN')
+            mic = row.get('MIC')
+            title = row.get('Title', 'Unknown')
+            subtitle = row.get('Subtitle', '')
+            kiid_url = row.get('KIID URL')
+            
+            if pd.isna(symbol_raw) or str(symbol_raw).lower() == 'nan' or not str(symbol_raw).strip():
                 continue
                 
-            mic = str(row.get('MIC', 'UNKNOWN'))
-            isin = str(row.get('ISIN', ''))
-            
-            # Utilize the newly upgraded ISIN engine
-            resolved_ticker = resolve_ticker(raw_symbol, isin, mic, isin_cache)
-            
-            title = row.get('Title')
-            subtitle = row.get('Subtitle')
-            kiid_url = clean_url(row.get(kiid_col)) if kiid_col else None
-            exchange = MIC_EXCHANGE_MAP.get(mic.upper(), mic if mic.upper() != 'NAN' else 'Unknown')
+            resolved_ticker = resolve_ticker(symbol_raw, isin, mic, cache_dict)
+            exchange = MIC_EXCHANGE_MAP.get(str(mic).strip().upper(), str(mic).strip().upper())
             
             records.append((resolved_ticker, title, subtitle, kiid_url, exchange))
-
-        # Save cache back to disk immediately after the loop
-        save_isin_cache(isin_cache)
             
+            processed_count += 1
+            
+            # 🟢 THE FIX: STRICT COUNTER PROGRESS LOGGING
+            if processed_count % 50 == 0:
+                logger.info(f"Freetrade Sync Progress: {processed_count} / {total_rows} assets parsed...")
+                
+            # DB Notification & Cache Save every 500 to avoid locking the UI/DB
+            if processed_count % 500 == 0:
+                log_freetrade_notification("Info", f"Freetrade Sync Progress: {processed_count} / {total_rows} assets parsed...")
+                save_isin_cache(cache_dict)
+
+        # Final Cache Save
+        save_isin_cache(cache_dict)
+        
         if not records:
-            logger.warning("No valid records found after processing Freetrade CSV.")
+            logger.warning("No valid records to insert.")
             return
 
-        # Database Execution
         conn = get_connection()
         cursor = conn.cursor()
         
         try:
-            # Clear current universe flags
+            logger.info("Executing Bulk SQLite Upsert...")
             cursor.execute("UPDATE market_universe SET is_freetrade = 0")
             
             upsert_query = """
@@ -228,9 +202,8 @@ def sync_freetrade_universe() -> None:
             conn.commit()
             
             success_msg = (
-                f"Successfully synced {len(records)} Freetrade assets to the database. "
-                "ACTION REQUIRED: These new assets are currently dormant. To make them visible in the screeners, "
-                "you MUST run 'python profile_engine.py' in your terminal, and then trigger a Full Quant Scan from the settings UI."
+                f"Successfully synced {len(records)} Freetrade assets to the database.\n"
+                "ACTION REQUIRED: Run 'python profile_engine.py' in your terminal, then trigger a Full Quant Scan from the settings UI."
             )
             logger.info(success_msg)
             log_freetrade_notification("Success", success_msg)
@@ -248,5 +221,4 @@ def sync_freetrade_universe() -> None:
         raise e
 
 if __name__ == "__main__":
-    # Standard script invocation fallback for manual overrides
     sync_freetrade_universe()
