@@ -2,44 +2,42 @@
 import time
 import random
 import logging
+import json
+from pathlib import Path
 from datetime import datetime
 import yfinance as yf
 
 from database import get_connection
 
-# Configure robust module-level logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - PROFILE_ENGINE - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - PROFILE_ENGINE - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-def log_notification(message_type: str, message_text: str) -> None:
+BLACKLIST_PATH = Path("data/freetrade_blacklist.json")
+
+def load_blacklist() -> set:
+    if BLACKLIST_PATH.exists():
+        try:
+            with open(BLACKLIST_PATH, 'r') as f:
+                return set(json.load(f))
+        except Exception:
+            pass
+    return set()
+
+def save_blacklist(blacklist: set) -> None:
     try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO system_notifications (message_type, message_text) VALUES (?, ?)",
-            (message_type, message_text)
-        )
-        conn.commit()
+        BLACKLIST_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with open(BLACKLIST_PATH, 'w') as f:
+            json.dump(sorted(list(blacklist)), f, indent=4)
     except Exception as e:
-        logger.error(f"Failed to log notification: {e}")
-    finally:
-        conn.close()
+        logger.error(f"Failed to save blacklist: {e}")
 
 def run_profile_audit(limit: int = 250):
-    """
-    The 'Rolling Audit'.
-    Identifies up to `limit` tickers missing from asset_profiles or older than 90 days.
-    Fetches static metadata from Yahoo Finance and updates the DB to serve as the single source of truth.
-    """
     logger.info(f"Initiating Audit for Central Asset Profiles (Limit: {limit})...")
     conn = get_connection()
     cursor = conn.cursor()
+    blacklist = load_blacklist()
 
     try:
-        # Union all active tickers across the system (Universe + Personal Portfolio/Watchlist)
         cursor.execute("""
             WITH AllTickers AS (
                 SELECT ticker FROM market_universe
@@ -67,15 +65,28 @@ def run_profile_audit(limit: int = 250):
         
         updated_count = 0
         for i, ticker in enumerate(tickers_to_update):
+            # Skip if it's already in the blacklist from a previous run
+            if ticker in blacklist:
+                continue
+
             try:
-                # Progress logger for large initial runs
-                if i % 50 == 0:
-                    logger.info(f"Progress: {i}/{len(tickers_to_update)} fetched...")
+                if i % 50 == 0: logger.info(f"Progress: {i}/{len(tickers_to_update)} fetched...")
                 
                 info = yf.Ticker(ticker).info
                 
-                if not info:
-                    logger.warning(f"No info payload returned for {ticker}. Skipping.")
+                # --- THE AUTOMATED BLACKLIST PURGE ---
+                # If Yahoo Finance returns nothing (404), banish it from the system entirely.
+                if not info or len(info) < 5:
+                    logger.warning(f"No payload for {ticker}. Permanently blacklisting and purging from database.")
+                    blacklist.add(ticker)
+                    save_blacklist(blacklist)
+                    
+                    # Ruthlessly delete the orphan from all tables
+                    cursor.execute("DELETE FROM market_universe WHERE ticker = ?", (ticker,))
+                    cursor.execute("DELETE FROM asset_profiles WHERE ticker = ?", (ticker,))
+                    cursor.execute("DELETE FROM stock_signals WHERE ticker = ?", (ticker,))
+                    cursor.execute("DELETE FROM quant_signals WHERE ticker = ?", (ticker,))
+                    conn.commit()
                     continue
                     
                 company_name = info.get('shortName') or info.get('longName') or ticker
@@ -88,7 +99,6 @@ def run_profile_audit(limit: int = 250):
                 summary = info.get('longBusinessSummary', 'No business summary available.')
                 last_verified = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-                # Clean company name formatting anomalies
                 company_name = company_name.replace(" - Common Stock", "").replace(" Common Stock", "").strip()
                 
                 cursor.execute('''
@@ -103,10 +113,9 @@ def run_profile_audit(limit: int = 250):
             except Exception as e:
                 logger.error(f"Failed to fetch/save profile for {ticker}: {e}")
             finally:
-                # Absolute requirement to avoid Yahoo Finance IP block over large loops
                 time.sleep(random.uniform(0.5, 1.5))
                 
-        log_notification("Info", f"Asset Profile Audit complete. Updated {updated_count} static metadata records.")
+        logger.info(f"Asset Profile Audit complete. Updated {updated_count} static metadata records.")
         
     except Exception as e:
         logger.error(f"Fatal error during Asset Profile Audit: {e}")
@@ -114,7 +123,5 @@ def run_profile_audit(limit: int = 250):
         conn.close()
 
 if __name__ == "__main__":
-    # When run manually from the terminal, process EVERYTHING (up to 5000). 
-    # When triggered by APScheduler in the background, it defaults to the safe limit of 250.
     print("WARNING: Running initial massive data harvest. This will take ~1 to 1.5 hours to respect rate limits.")
     run_profile_audit(limit=5000)

@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 # Constants
 FREETRADE_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTGZT9-lSDDlgQzHsH0vYdTSz-xnL7zIJQ1SHUddo-BBD5_QlN--57cRe_8Zvw-7QsMrw6X1phz-vKq/pub?output=csv"
 ISIN_CACHE_PATH = Path("data/isin_ticker_cache.json")
+BLACKLIST_PATH = Path("data/freetrade_blacklist.json")
 
 def load_isin_cache() -> Dict[str, str]:
     if ISIN_CACHE_PATH.exists():
@@ -40,6 +41,15 @@ def save_isin_cache(cache_dict: Dict[str, str]) -> None:
     except Exception as e:
         logger.error(f"Failed to save ISIN cache: {e}")
 
+def load_blacklist() -> set:
+    if BLACKLIST_PATH.exists():
+        try:
+            with open(BLACKLIST_PATH, 'r') as f:
+                return set(json.load(f))
+        except Exception:
+            pass
+    return set()
+
 def log_freetrade_notification(msg_type: str, msg_text: str) -> None:
     try:
         conn = get_connection()
@@ -56,28 +66,23 @@ def log_freetrade_notification(msg_type: str, msg_text: str) -> None:
             conn.close()
 
 def resolve_ticker(symbol: str, isin: str, mic: str, cache_dict: Dict[str, str], ft_config: Dict) -> Tuple[Optional[str], bool]:
-    # Do not uppercase yet. Preserve original casing to analyze FT's suffix patterns.
     raw_symbol = str(symbol).strip()
     mic = str(mic).strip().upper()
     
     us_mics = ft_config.get("US_MICS", [])
     exchanges = ft_config.get("EXCHANGES", {})
     
-    # 1. Fast Path: US Stocks
     if mic in us_mics:
         return raw_symbol.replace('.', '-').upper(), True
         
-    # 2. Unmapped Circuit Breaker
     if mic not in exchanges:
         return None, False
         
-    # 3. Check Local ISIN Cache
     if pd.notna(isin) and str(isin).strip():
         isin = str(isin).strip()
         if isin in cache_dict:
             return cache_dict[isin], True
             
-        # 4. Query Yahoo Finance API
         url = f"https://query2.finance.yahoo.com/v1/finance/search?q={isin}"
         headers = {'User-Agent': 'Mozilla/5.0'}
         
@@ -95,12 +100,10 @@ def resolve_ticker(symbol: str, isin: str, mic: str, cache_dict: Dict[str, str],
         except Exception:
             pass
             
-    # 5. Configurable Fallback Logic
     exchange_info = exchanges[mic]
     ft_char = exchange_info.get("ft_char", "")
     yf_suffix = exchange_info.get("yf_suffix", "")
     
-    # Stripping logic: Using case-sensitive exact match from config
     if ft_char and raw_symbol.endswith(ft_char):
         raw_symbol = raw_symbol[:-len(ft_char)]
         
@@ -121,7 +124,6 @@ def sync_freetrade_universe(target_mic: Optional[str] = None, limit: Optional[in
         if 'Symbol' not in df.columns:
             raise ValueError("CRITICAL: 'Symbol' column is missing from CSV.")
             
-        # Apply CLI Filters
         if target_mic:
             target_mic = target_mic.strip().upper()
             df = df[df['MIC'].astype(str).str.strip().str.upper() == target_mic]
@@ -139,6 +141,7 @@ def sync_freetrade_universe(target_mic: Optional[str] = None, limit: Optional[in
         df['KIID URL'] = df[kiid_col].apply(clean_url) if kiid_col else None
             
         cache_dict = load_isin_cache()
+        blacklist = load_blacklist()
         ft_config = load_config().get("FREETRADE_MAPPINGS", {})
         
         records = []
@@ -158,12 +161,17 @@ def sync_freetrade_universe(target_mic: Optional[str] = None, limit: Optional[in
                 
             resolved_ticker, is_mapped = resolve_ticker(symbol_raw, isin, mic, cache_dict, ft_config)
             
-            # CLI Debug Output
             if target_mic or limit:
                 logger.info(f"TEST: Original: '{symbol_raw}' (ISIN: {isin}) -> Resolved: '{resolved_ticker}'")
             
             if not is_mapped:
                 unmapped_mics.add(mic)
+                continue
+                
+            # --- BLACKLIST FILTER ---
+            if resolved_ticker in blacklist:
+                if target_mic or limit:
+                    logger.info(f"TEST: '{resolved_ticker}' is on the Blacklist. Skipping DB insertion.")
                 continue
             
             ui_exchange = ft_config.get("EXCHANGES", {}).get(mic, {}).get("ui_name", mic)
@@ -191,7 +199,6 @@ def sync_freetrade_universe(target_mic: Optional[str] = None, limit: Optional[in
         cursor = conn.cursor()
         
         try:
-            # ONLY wipe the database if we are running a full, un-filtered sync
             if not target_mic and not limit:
                 logger.info("Executing Bulk SQLite Purge & Upsert...")
                 cursor.execute("DELETE FROM market_universe WHERE is_freetrade = 1")
