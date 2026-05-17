@@ -15,7 +15,7 @@ fake-useragent==1.5.1
 matplotlib==3.10.0
 scipy>=1.17.1
 joblib==1.4.2
-scikit-learn==1.5.0
+scikit-learn==1.8.0
 xgboost==2.0.3
 lxml
 html5lib
