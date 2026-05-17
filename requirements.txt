@@ -13,10 +13,11 @@ requests==2.33.1
 apscheduler==3.10.4
 fake-useragent==1.5.1
 matplotlib==3.10.0
-vaderSentiment==3.3.2
 scipy==1.13.0
 joblib==1.4.2
 scikit-learn==1.5.0
 xgboost==2.0.3
 lxml
 html5lib
+transformers>=4.37.0
+torch>=2.0.0
