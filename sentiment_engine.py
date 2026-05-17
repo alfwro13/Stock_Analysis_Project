@@ -131,7 +131,7 @@ def generate_sentiment_figure() -> Optional[go.Figure]:
     fig.update_layout(
         title="Fear & Greed vs S&P 500 (1 Year)",
         template="plotly_dark",
-        height=600,
+        height=450,
         margin=dict(l=40, r=40, t=60, b=40),
         hovermode="x unified",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
@@ -187,7 +187,7 @@ def generate_vix_spy_figure() -> Optional[go.Figure]:
     fig.update_layout(
         title="S&P 500 vs VIX (1 Year)",
         template="plotly_dark",
-        height=600,
+        height=450,
         margin=dict(l=40, r=40, t=60, b=40),
         hovermode="x unified",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
