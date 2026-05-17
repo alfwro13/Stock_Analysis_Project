@@ -465,11 +465,13 @@ async def get_screener_data():
         conn = get_connection()
         cursor = conn.cursor()
         
-        # Base query with dynamic configuration checks
+        # Base query with dynamic configuration checks.
+        # Fallback priority ensures we immediately use the 'stock_signals' company name
+        # if the weekend 'profile_engine' hasn't run yet.
         query = """
         SELECT 
             q.ticker, 
-            COALESCE(p.company_name, m.company_name, q.ticker) as company_name, 
+            COALESCE(p.company_name, s.company_name, m.company_name, q.ticker) as company_name, 
             COALESCE(p.sector, s.sector, 'Unclassified') as sector, 
             CASE 
                 WHEN UPPER(COALESCE(m.exchange, p.exchange)) = 'NMS' THEN 'NASDAQ'
@@ -483,7 +485,7 @@ async def get_screener_data():
             q.volume_surge, q.bullish_cross,
             q.ml_confidence_score, q.sentiment_score, q.var_95, q.cvar_95,
             s.composite_score,
-            m.is_freetrade, m.freetrade_subtitle, m.freetrade_url, p.quote_type
+            m.is_freetrade, m.freetrade_subtitle, m.freetrade_url, COALESCE(p.quote_type, s.quote_type, 'EQUITY') as quote_type
         FROM quant_signals q
         INNER JOIN market_universe m ON q.ticker = m.ticker
         LEFT JOIN asset_profiles p ON q.ticker = p.ticker

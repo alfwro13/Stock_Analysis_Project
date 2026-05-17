@@ -270,8 +270,11 @@ class QuantEngine:
             # ==========================================
             quote_type = info.get('quoteType', 'EQUITY')
             is_fund = bool(quote_type in ['ETF', 'MUTUALFUND'])
-            company_name = info.get('shortName', ticker)
+            
+            # Robust fallback for Mutual Funds which often omit 'shortName'
+            company_name = info.get('shortName') or info.get('longName') or ticker
             sector = info.get('category', info.get('sector', 'Fund')) if is_fund else info.get('sector', 'Unknown')
+            
             currency = info.get('currency', 'USD')
             fifty_two_week_low = info.get('fiftyTwoWeekLow', None)
             fifty_two_week_high = info.get('fiftyTwoWeekHigh', None)
