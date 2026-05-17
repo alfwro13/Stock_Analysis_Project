@@ -76,6 +76,7 @@ def get_mean_reversion_setups(max_rsi: float = 30.0, min_sma_distance: float = 0
             COALESCE(p.company_name, m.company_name, q.ticker) as company_name, 
             COALESCE(m.country, p.country, 'US') as country,
             COALESCE(p.sector, s.sector, 'Unclassified') as sector, 
+            COALESCE(p.currency, s.currency, 'USD') as currency,
             q.close_price, 
             ROUND(q.rsi_14, 2) as rsi_14, 
             ROUND(q.sma_200, 2) as sma_200,
@@ -125,6 +126,7 @@ def get_leaders_laggards() -> List[Dict[str, Any]]:
                 WHEN UPPER(q.ticker) LIKE '%.L' THEN 'LSE'
                 ELSE 'US'
             END as exchange,
+            COALESCE(p.currency, s.currency, 'USD') as currency,
             q.close_price, 
             ROUND(q.rsi_14, 2) as rsi_14, 
             ROUND(q.macd_hist, 3) as macd_hist,
@@ -174,6 +176,7 @@ def get_dividend_harvest_setups(min_yield: float = 0.02, min_score: int = 50) ->
                 WHEN UPPER(q.ticker) LIKE '%.L' THEN 'LSE'
                 ELSE 'US'
             END as exchange,
+            COALESCE(p.currency, s.currency, 'USD') as currency,
             q.close_price, 
             s.dividend_yield, 
             s.ex_dividend_date, 

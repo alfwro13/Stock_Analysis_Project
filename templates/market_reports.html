@@ -113,7 +113,7 @@
                 <label>Maximum <abbr title="Relative Strength Index">RSI</abbr> Threshold</label>
                 <input type="number" id="mrMaxRSI" class="filter-input" value="30" style="width: 120px;">
             </div>
-            <button class="btn btn-update" onclick="loadMeanReversionData()">🔍 Run Query</button>
+            <button class="btn btn-update" onclick="loadMeanReversionData()">🔄 Run Query</button>
         </div>
 
         <table id="mrTable" class="display" style="width:100%">
@@ -143,7 +143,7 @@
     </div>
 
     <div class="report-section report-section-dividend">
-        <h2 class="text-dividend">💸 Dividend Harvest (Income Screener)</h2>
+        <h2 class="text-dividend">💰 Dividend Harvest (Income Screener)</h2>
         <p>Identifies high-yield assets approaching their ex-dividend date. Filters out "Yield Traps" by strictly requiring a Quantamental System Score of 50 or higher. This scans only the Portfolio and Watchlist tickers.</p>
         
         <div class="controls-container controls-flex-end">
@@ -155,7 +155,7 @@
                 <label>Minimum Quant Score</label>
                 <input type="number" id="divMinScore" class="filter-input input-width-small" value="50">
             </div>
-            <button class="btn btn-update ml-15" onclick="loadDividendData()">🔍 Run Query</button>
+            <button class="btn btn-update ml-15" onclick="loadDividendData()">🔄 Run Query</button>
         </div>
 
         <table id="dividendTable" class="display w-100">
@@ -187,6 +187,26 @@
     <script>
         let mrDataTable;
         let divDataTable;
+
+        function formatCurrency(value, currencyCode) {
+            if (value === null || value === undefined) return 'N/A';
+            let num = parseFloat(value);
+            if (isNaN(num)) return 'N/A';
+
+            let symbol = '$';
+            if (currencyCode === 'GBp') {
+                num = num / 100.0;
+                symbol = '£';
+            } else if (currencyCode === 'GBP') {
+                symbol = '£';
+            } else if (currencyCode === 'EUR') {
+                symbol = '€';
+            } else if (currencyCode && currencyCode !== 'USD') {
+                return num.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' ' + currencyCode;
+            }
+            
+            return symbol + num.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        }
 
         $(document).ready(function() {
             const urlParams = new URLSearchParams(window.location.search);
@@ -309,7 +329,12 @@
                     { data: 'sector' },
                     { data: 'exchange', visible: false, defaultContent: 'US' }, // Hidden from UI but used for filtering
                     { data: 'country', render: function(data) { return data || 'US'; } },
-                    { data: 'close_price', render: $.fn.dataTable.render.number(',', '.', 2, '$') },
+                    { 
+                        data: 'close_price', 
+                        render: function(data, type, row) { 
+                            return type === 'display' ? formatCurrency(data, row.currency) : data;
+                        } 
+                    },
                     { data: 'rsi_14', render: function(data) { return `<span class="positive-val">${data.toFixed(2)}</span>`; } },
                     { data: 'macd_hist', render: function(data) { return `<span class="positive-val">${data.toFixed(3)}</span>`; } }
                 ]
@@ -335,9 +360,19 @@
                     { data: 'company_name' },
                     { data: 'sector' },
                     { data: 'country', render: function(data) { return data || 'US'; } },
-                    { data: 'close_price', render: $.fn.dataTable.render.number(',', '.', 2, '$') },
+                    { 
+                        data: 'close_price', 
+                        render: function(data, type, row) { 
+                            return type === 'display' ? formatCurrency(data, row.currency) : data;
+                        } 
+                    },
                     { data: 'rsi_14', render: function(data) { return `<span class="negative-val">${data.toFixed(2)}</span>`; } },
-                    { data: 'sma_200', render: $.fn.dataTable.render.number(',', '.', 2, '$') },
+                    { 
+                        data: 'sma_200', 
+                        render: function(data, type, row) { 
+                            return type === 'display' ? formatCurrency(data, row.currency) : data;
+                        } 
+                    },
                     { data: 'distance_from_200d_pct', render: function(data) { return `<span class="positive-val">+${data.toFixed(2)}%</span>`; } }
                 ]
             });
@@ -351,7 +386,12 @@
                     { data: 'ticker', render: function(data) { return '<a href="/stock/' + data + '" class="ticker-link">' + data + '</a>'; } },
                     { data: 'company_name' },
                     { data: 'sector' },
-                    { data: 'close_price', render: $.fn.dataTable.render.number(',', '.', 2, '$') },
+                    { 
+                        data: 'close_price', 
+                        render: function(data, type, row) { 
+                            return type === 'display' ? formatCurrency(data, row.currency) : data;
+                        } 
+                    },
                     { data: 'dividend_yield', render: function(data) { return `<span class="positive-val">${(data * 100).toFixed(2)}%</span>`; } },
                     { data: 'ex_dividend_date' },
                     { data: 'composite_score', render: function(data) { 
