@@ -18,7 +18,8 @@ from pydantic import BaseModel
 
 from config import load_config, SECRETS_PATH, DATA_DIR, BASE_DIR
 from database import get_connection, get_universe_tickers
-from scheduler_engine import run_update_pipeline, run_ghostfolio_sync, reload_scheduler
+# Assumed run_freetrade_sync is managed by the scheduler engine alongside ghostfolio
+from scheduler_engine import run_update_pipeline, run_ghostfolio_sync, run_freetrade_sync, reload_scheduler
 from ghostfolio_sync import GhostfolioSyncEngine
 from market_pulse import get_cached_pulse_from_db, fetch_and_save_pulse
 from sentiment_engine import run_nextcloud_alert, update_all_sentiment
@@ -248,6 +249,15 @@ async def trigger_ghostfolio_sync(background_tasks: BackgroundTasks):
     background_tasks.add_task(run_ghostfolio_sync)
     return {"status": "success"}
 
+@api_router.post("/trigger-freetrade-sync")
+async def trigger_freetrade_sync_endpoint(background_tasks: BackgroundTasks):
+    """API endpoint to manually trigger the Freetrade catalog and portfolio synchronization."""
+    background_tasks.add_task(run_freetrade_sync)
+    return JSONResponse(content={
+        "status": "success",
+        "message": "Freetrade synchronization initiated in the background. Check System Notifications for progress updates."
+    })
+
 @api_router.post("/ghostfolio/discover")
 async def trigger_discovery():
     """Triggers the Ghostfolio API to discover all active accounts and update config.json."""
@@ -449,10 +459,13 @@ async def get_screener_data():
     Optimized SQLite join directly converting to a JSON array for DataTables.js rendering.
     """
     try:
+        config_data = load_config()
+        freetrade_only = config_data.get("UI_PREFERENCES", {}).get("FREETRADE_ONLY_MODE", False)
+        
         conn = get_connection()
         cursor = conn.cursor()
         
-        # UPDATED QUERY: Enforcing UPPER() to handle messy yfinance casing inputs
+        # Base query with dynamic configuration checks
         query = """
         SELECT 
             q.ticker, 
@@ -469,13 +482,18 @@ async def get_screener_data():
             q.volume, q.rsi_14, q.macd_hist, q.sma_50, q.sma_200, 
             q.volume_surge, q.bullish_cross,
             q.ml_confidence_score, q.sentiment_score, q.var_95, q.cvar_95,
-            s.composite_score
+            s.composite_score,
+            m.is_freetrade, m.freetrade_subtitle, m.freetrade_url, p.quote_type
         FROM quant_signals q
         INNER JOIN market_universe m ON q.ticker = m.ticker
         LEFT JOIN asset_profiles p ON q.ticker = p.ticker
         LEFT JOIN stock_signals s ON q.ticker = s.ticker
         WHERE q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = q.ticker)
         """
+        
+        if freetrade_only:
+            query += " AND m.is_freetrade = 1"
+            
         cursor.execute(query)
         rows = cursor.fetchall()
         conn.close()

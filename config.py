@@ -50,7 +50,8 @@ DEFAULT_CONFIG = {
         "LIVE_PORTFOLIO": False,
         "LIVE_WATCHLIST": False,
         "LIVE_DETAILS": False,
-        "REFRESH_RATE": 60
+        "REFRESH_RATE": 60,
+        "FREETRADE_ONLY_MODE": False
     },
     "SCHEDULING": {
         "GHOSTFOLIO_SYNC": {
@@ -84,6 +85,11 @@ DEFAULT_CONFIG = {
             "ENABLED": True,
             "DAY_OF_WEEK": "sun",
             "TIME": "02:00"
+        },
+        "FREETRADE_SYNC": {
+            "ENABLED": False,
+            "FREQUENCY": "mon-fri",
+            "TIME": "04:00"
         }
     },
     "NOTIFICATIONS": {

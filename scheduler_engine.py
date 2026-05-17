@@ -23,6 +23,7 @@ from profile_engine import run_profile_audit
 from regime_engine import calculate_market_regime
 from ai_prediction_engine import train_global_ml_model, update_daily_ml_predictions
 from risk_engine import update_all_tail_risks
+from freetrade_engine import sync_freetrade_universe
 
 # Configure robust module-level logging
 logging.basicConfig(
@@ -89,6 +90,23 @@ def run_ghostfolio_sync():
         log_sched_notification("Success", "Ghostfolio Sync completed successfully.")
     except Exception as e:
         log_sched_notification("Error", f"Ghostfolio Sync failed: {e}")
+    finally:
+        task_lock.release()
+
+def run_freetrade_sync():
+    """Executes the Freetrade Universe CSV Sync."""
+    if not task_lock.acquire(blocking=False):
+        logger.warning("System is currently busy. Skipping Freetrade Sync.")
+        return
+    log_sched_notification("Scheduler", "Started Freetrade Sync...")
+    try:
+        logger.info("Freetrade sync initiated.")
+        sync_freetrade_universe()
+        logger.info("Freetrade sync complete.")
+        log_sched_notification("Success", "Freetrade Sync completed successfully.")
+    except Exception as e:
+        logger.error(f"Freetrade Sync Failed: {e}")
+        log_sched_notification("Error", f"Freetrade Sync failed: {e}")
     finally:
         task_lock.release()
 
@@ -464,6 +482,22 @@ def reload_scheduler():
     except Exception as e:
         logger.error(f"Failed to schedule ML Training: {e}")
 
+    # 13. Freetrade Universe Sync Engine
+    ft_cfg = scheduling.get("FREETRADE_SYNC", {})
+    if ft_cfg.get("ENABLED", False):
+        ft_days_list = ft_cfg.get("DAYS", ["mon", "tue", "wed", "thu", "fri"])
+        ft_days = ",".join(ft_days_list) if ft_days_list else "mon-fri"
+        ft_time = ft_cfg.get("TIME", "03:00")
+        try:
+            hour, minute = map(int, ft_time.split(':'))
+            scheduler.add_job(
+                run_freetrade_sync,
+                CronTrigger(day_of_week=ft_days, hour=hour, minute=minute),
+                id='freetrade_sync_job'
+            )
+            logger.info(f"Freetrade Sync scheduled for {ft_days} at {ft_time}")
+        except Exception as e:
+            logger.error(f"Failed to schedule Freetrade Sync: {e}")
 
 def start_scheduler():
     scheduler.start()
