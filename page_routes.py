@@ -11,7 +11,14 @@ from fastapi.templating import Jinja2Templates
 from config import load_config, PORTFOLIO_PATH, WATCHLIST_PATH, HISTORICAL_DIR, INTRADAY_DIR, BASE_CURRENCY
 from database import get_connection
 from regime_engine import get_latest_regime
-from sentiment_engine import get_sentiment_html, get_vix_spy_html, get_yield_gauge_html, get_yield_equity_html
+from sentiment_engine import (
+    get_sentiment_html,
+    get_vix_spy_html,
+    get_yield_gauge_html,
+    get_yield_equity_html,
+    get_uk_yield_equity_html,
+    get_ftse_gbp_html
+)
 from market_pulse import get_all_cached_pulse
 from visuals import create_macro_chart, create_intraday_chart
 from portfolio_service import get_rate_to_base, get_rate_from_base
@@ -21,12 +28,14 @@ from quant_screener import fetch_latest_signals, generate_markdown_briefing
 page_router = APIRouter()
 templates = Jinja2Templates(directory="templates")
 
+
 def get_json_data(filepath: str) -> Dict[str, Any]:
     try:
         with open(filepath, 'r') as f:
             return json.load(f)
     except Exception:
         return {}
+
 
 def get_unread_count() -> int:
     try:
@@ -39,10 +48,16 @@ def get_unread_count() -> int:
     except Exception:
         return 0
 
+
 @page_router.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request):
     config_data = load_config()
-    return templates.TemplateResponse(request=request, name="settings.html", context={"config": config_data, "unread_count": get_unread_count()})
+    return templates.TemplateResponse(
+        request=request,
+        name="settings.html",
+        context={"config": config_data, "unread_count": get_unread_count()}
+    )
+
 
 @page_router.get("/market-sentiment", response_class=HTMLResponse)
 async def market_sentiment_page(request: Request):
@@ -58,11 +73,14 @@ async def market_sentiment_page(request: Request):
             "vix_spy_html": get_vix_spy_html(),
             "yield_gauge_html": get_yield_gauge_html(),
             "yield_equity_html": get_yield_equity_html(),
+            "uk_yield_equity_html": get_uk_yield_equity_html(),
+            "ftse_gbp_html": get_ftse_gbp_html(),
             "regime_data": regime_data,
             "unread_count": get_unread_count(),
             "config": load_config()
         }
     )
+
 
 @page_router.get("/options-sandbox", response_class=HTMLResponse)
 async def options_sandbox_page(request: Request):
@@ -76,6 +94,7 @@ async def options_sandbox_page(request: Request):
         }
     )
 
+
 @page_router.get("/notifications", response_class=HTMLResponse)
 async def notifications_page(request: Request):
     conn = get_connection()
@@ -83,15 +102,26 @@ async def notifications_page(request: Request):
     cursor.execute("SELECT * FROM system_notifications ORDER BY timestamp DESC LIMIT 100")
     notifications = cursor.fetchall()
     conn.close()
-    return templates.TemplateResponse(request=request, name="notifications.html", context={"notifications": notifications, "unread_count": get_unread_count()})
+    return templates.TemplateResponse(
+        request=request,
+        name="notifications.html",
+        context={"notifications": notifications, "unread_count": get_unread_count()}
+    )
+
 
 @page_router.get("/glossary", response_class=HTMLResponse)
 async def glossary(request: Request):
-    return templates.TemplateResponse(request=request, name="glossary.html", context={"unread_count": get_unread_count()})
+    return templates.TemplateResponse(
+        request=request,
+        name="glossary.html",
+        context={"unread_count": get_unread_count()}
+    )
+
 
 @page_router.get("/", response_class=RedirectResponse)
 async def home():
     return RedirectResponse(url="/portfolio")
+
 
 @page_router.get("/portfolio", response_class=HTMLResponse)
 async def portfolio_page(request: Request, account_id: str = "all", embed: bool = False):
@@ -148,8 +178,10 @@ async def portfolio_page(request: Request, account_id: str = "all", embed: bool 
         row_dict = dict(row)
         if row_dict['ticker'] in portfolio_tickers:
             if row_dict.get('setup_tags'):
-                try: row_dict['setup_tags_list'] = json.loads(row_dict['setup_tags'])
-                except: row_dict['setup_tags_list'] = []
+                try: 
+                    row_dict['setup_tags_list'] = json.loads(row_dict['setup_tags'])
+                except Exception: 
+                    row_dict['setup_tags_list'] = []
             else:
                 row_dict['setup_tags_list'] = []
             
@@ -206,6 +238,7 @@ async def portfolio_page(request: Request, account_id: str = "all", embed: bool 
         }
     )
 
+
 @page_router.get("/watchlist", response_class=HTMLResponse)
 async def watchlist_page(request: Request, embed: bool = False):
     conn = get_connection()
@@ -242,8 +275,10 @@ async def watchlist_page(request: Request, embed: bool = False):
         row_dict = dict(row)
         if row_dict['ticker'] in watchlist_tickers:
             if row_dict.get('setup_tags'):
-                try: row_dict['setup_tags_list'] = json.loads(row_dict['setup_tags'])
-                except: row_dict['setup_tags_list'] = []
+                try: 
+                    row_dict['setup_tags_list'] = json.loads(row_dict['setup_tags'])
+                except Exception: 
+                    row_dict['setup_tags_list'] = []
             else:
                 row_dict['setup_tags_list'] = []
             watchlist_data.append(row_dict)
@@ -264,6 +299,7 @@ async def watchlist_page(request: Request, embed: bool = False):
             "freetrade_only": freetrade_only
         }
     )
+
 
 @page_router.get("/earnings-volatility", response_class=HTMLResponse)
 async def earnings_volatility_page(request: Request):
@@ -292,6 +328,7 @@ async def earnings_volatility_page(request: Request):
             "config": load_config()
         }
     )
+
 
 @page_router.get("/quant-screener", response_class=HTMLResponse)
 async def quant_screener_page(request: Request):
@@ -325,6 +362,7 @@ async def quant_screener_page(request: Request):
         }
     )
 
+
 @page_router.get("/market-screener", response_class=HTMLResponse)
 async def market_screener_page(request: Request):
     return templates.TemplateResponse(
@@ -336,6 +374,7 @@ async def market_screener_page(request: Request):
         }
     )
 
+
 @page_router.get("/market-reports", response_class=HTMLResponse)
 async def market_reports_page(request: Request):
     return templates.TemplateResponse(
@@ -346,6 +385,7 @@ async def market_reports_page(request: Request):
             "config": load_config()
         }
     )
+
 
 @page_router.get("/stock/{ticker}", response_class=HTMLResponse)
 async def stock_detail(request: Request, ticker: str, embed: bool = False):
@@ -459,11 +499,15 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
     top_holdings = []
     sector_weightings = []
     if stock_data and stock_data.get('top_holdings'):
-        try: top_holdings = json.loads(stock_data['top_holdings'])
-        except: pass
+        try: 
+            top_holdings = json.loads(stock_data['top_holdings'])
+        except Exception: 
+            pass
     if stock_data and stock_data.get('sector_weightings'):
-        try: sector_weightings = json.loads(stock_data['sector_weightings'])
-        except: pass
+        try: 
+            sector_weightings = json.loads(stock_data['sector_weightings'])
+        except Exception: 
+            pass
 
     days_to_earnings = None
     volatility_date = None
@@ -486,7 +530,8 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
         def calculate_pnl(shares, buy_price_base):
             if shares <= 0: return None
             bp_adj = buy_price_base * exchange_rate
-            if user_asset.get('price_in_pence', False): bp_adj *= 100
+            if user_asset.get('price_in_pence', False): 
+                bp_adj *= 100
                 
             current_value = shares * stock_data['current_price']
             cost_basis = shares * bp_adj
@@ -567,7 +612,12 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
 
         s1_val = price_action['s1'] if price_action else None
         s2_val = price_action['s2'] if price_action else None
-        intraday_html = create_intraday_chart(df_intraday, ticker, s1=s1_val, s2=s2_val, live_pattern_name=live_pattern_name, live_pattern_tooltip=live_pattern_tooltip, live_pattern_score=live_pattern_score)
+        intraday_html = create_intraday_chart(
+            df_intraday, ticker, s1=s1_val, s2=s2_val,
+            live_pattern_name=live_pattern_name,
+            live_pattern_tooltip=live_pattern_tooltip,
+            live_pattern_score=live_pattern_score
+        )
     except Exception:
         intraday_html = "<p style='color:#888; font-style:italic;'>Intraday data unavailable.</p>"
         

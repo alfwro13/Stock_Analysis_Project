@@ -24,7 +24,7 @@ import matplotlib.pyplot as plt
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
 from nextcloud_talk import upload_file_webdav, share_file_to_talk
-from config import NEXTCLOUD_URL, BOT_USERNAME, APP_PASSWORD, CONVERSATION_TOKEN, load_config
+from config import NEXTCLOUD_URL, BOT_USERNAME, APP_PASSWORD, CONVERSATION_TOKEN, load_config, HISTORICAL_DIR
 from database import get_connection
 
 # Configure robust module-level logging
@@ -38,7 +38,9 @@ _LAST_CACHE_TIME = 0.0
 _MACRO_HTML_CACHE: Dict[str, str] = {
     "sentiment_html": "",
     "vix_spy_html": "",
-    "yield_equity_html": ""
+    "yield_equity_html": "",
+    "uk_yield_equity_html": "",
+    "ftse_gbp_html": ""
 }
 
 
@@ -78,6 +80,23 @@ def fetch_stock_data(ticker: str, start_date: str) -> pd.DataFrame:
     if 'Close' not in stock_df.columns: 
         return pd.DataFrame()
     return stock_df[['Close']].rename(columns={'Close': f'{ticker}_Close'})
+
+
+def fetch_parquet_data(parquet_name: str, start_date: str) -> pd.DataFrame:
+    """Reads heavily sanitized local baseline data directly from the DataEngine parquet files."""
+    path = HISTORICAL_DIR / parquet_name
+    if not path.exists():
+        return pd.DataFrame()
+    try:
+        df = pd.read_parquet(path)
+        df.index = pd.to_datetime(df.index).date
+        df = df[df.index >= pd.to_datetime(start_date).date()]
+        # Extract prefix (e.g., 'FTSE' from 'FTSE_BASELINE.parquet')
+        prefix = parquet_name.split("_")[0]
+        return df[['Close']].rename(columns={'Close': f'{prefix}_Close'})
+    except Exception as e:
+        logger.error(f"Failed to read parquet {parquet_name}: {e}")
+        return pd.DataFrame()
 
 
 def get_sentiment_data() -> Optional[pd.DataFrame]:
@@ -187,17 +206,16 @@ def generate_vix_spy_figure() -> Optional[go.Figure]:
 def get_yield_equity_html() -> str:
     """Renders the Cost of Capital baseline chart comparing Treasury yields against Equities."""
     _check_and_trigger_async_refresh()
-    if _MACRO_HTML_CACHE["yield_equity_html"]:
+    if _MACRO_HTML_CACHE.get("yield_equity_html"):
         return _MACRO_HTML_CACHE["yield_equity_html"]
     
-    # Cold start initialization block
     today = datetime.now()
     start_date = (today - timedelta(days=365)).strftime('%Y-%m-%d')
     spy_data = fetch_stock_data('SPY', start_date)
     tyx_data = fetch_stock_data('^TYX', start_date)
     
     if spy_data.empty or tyx_data.empty: 
-        return "<p>Error loading Cost of Capital data.</p>"
+        return "<p>Error loading US Cost of Capital data.</p>"
     merged_df = spy_data.merge(tyx_data, left_index=True, right_index=True, how='inner')
 
     fig = make_subplots(specs=[[{"secondary_y": True}]])
@@ -205,8 +223,8 @@ def get_yield_equity_html() -> str:
     fig.add_trace(go.Scatter(x=merged_df.index, y=merged_df['^TYX_Close'], name="30Y Treasury Yield", line=dict(color='#ff4d4d', dash='dot', width=2)), secondary_y=True)
 
     fig.update_layout(
-        title="Cost of Capital: 30Y Treasury Yield vs S&P 500 (1 Year)",
-        template="plotly_dark", height=600, margin=dict(l=40, r=40, t=60, b=40),
+        title="US Cost of Capital: 30Y Treasury Yield vs S&P 500 (1 Year)",
+        template="plotly_dark", height=450, margin=dict(l=40, r=40, t=60, b=40),
         hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
     fig.update_yaxes(title_text="S&P 500 Price ($)", secondary_y=False)
@@ -214,10 +232,70 @@ def get_yield_equity_html() -> str:
     return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
 
 
+def get_uk_yield_equity_html() -> str:
+    """Renders the Cost of Capital baseline chart comparing UK 10Y Gilt yields against FTSE 100."""
+    _check_and_trigger_async_refresh()
+    if _MACRO_HTML_CACHE.get("uk_yield_equity_html"):
+        return _MACRO_HTML_CACHE["uk_yield_equity_html"]
+    
+    today = datetime.now()
+    start_date = (today - timedelta(days=365)).strftime('%Y-%m-%d')
+    ftse_data = fetch_parquet_data('FTSE_BASELINE.parquet', start_date)
+    gilt_data = fetch_parquet_data('UK_GILT_BASELINE.parquet', start_date)
+    
+    if ftse_data.empty or gilt_data.empty: 
+        return "<p>Error loading UK Cost of Capital data. Ensure Gilt Data Service has run.</p>"
+        
+    merged_df = ftse_data.merge(gilt_data, left_index=True, right_index=True, how='inner')
+
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    fig.add_trace(go.Scatter(x=merged_df.index, y=merged_df['FTSE_Close'], name="FTSE 100", line=dict(color='#4da6ff', width=2)), secondary_y=False)
+    fig.add_trace(go.Scatter(x=merged_df.index, y=merged_df['UK_Close'], name="10Y Gilt Yield", line=dict(color='#ff4d4d', dash='dot', width=2)), secondary_y=True)
+
+    fig.update_layout(
+        title="UK Cost of Capital: 10Y Gilt Yield vs FTSE 100 (1 Year)",
+        template="plotly_dark", height=450, margin=dict(l=40, r=40, t=60, b=40),
+        hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+    )
+    fig.update_yaxes(title_text="FTSE 100 Points", secondary_y=False)
+    fig.update_yaxes(title_text="10Y Gilt Yield (%)", secondary_y=True)
+    return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
+
+
+def get_ftse_gbp_html() -> str:
+    """Renders the currency impact chart comparing GBP/USD against FTSE 100."""
+    _check_and_trigger_async_refresh()
+    if _MACRO_HTML_CACHE.get("ftse_gbp_html"):
+        return _MACRO_HTML_CACHE["ftse_gbp_html"]
+    
+    today = datetime.now()
+    start_date = (today - timedelta(days=365)).strftime('%Y-%m-%d')
+    ftse_data = fetch_parquet_data('FTSE_BASELINE.parquet', start_date)
+    gbp_data = fetch_parquet_data('GBPUSD_BASELINE.parquet', start_date)
+    
+    if ftse_data.empty or gbp_data.empty: 
+        return "<p>Error loading GBP/USD Data.</p>"
+        
+    merged_df = ftse_data.merge(gbp_data, left_index=True, right_index=True, how='inner')
+
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    fig.add_trace(go.Scatter(x=merged_df.index, y=merged_df['FTSE_Close'], name="FTSE 100", line=dict(color='#4da6ff', width=2)), secondary_y=False)
+    fig.add_trace(go.Scatter(x=merged_df.index, y=merged_df['GBPUSD_Close'], name="GBP/USD", line=dict(color='#00ffcc', dash='dot', width=2)), secondary_y=True)
+
+    fig.update_layout(
+        title="Currency Impact: GBP/USD vs FTSE 100 (1 Year)",
+        template="plotly_dark", height=450, margin=dict(l=40, r=40, t=60, b=40),
+        hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+    )
+    fig.update_yaxes(title_text="FTSE 100 Points", secondary_y=False)
+    fig.update_yaxes(title_text="GBP/USD Rate", secondary_y=True)
+    return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
+
+
 def get_sentiment_html() -> str:
     """Renders the Fear and Greed Index overlay frame."""
     _check_and_trigger_async_refresh()
-    if _MACRO_HTML_CACHE["sentiment_html"]:
+    if _MACRO_HTML_CACHE.get("sentiment_html"):
         return _MACRO_HTML_CACHE["sentiment_html"]
     
     fig = generate_sentiment_figure()
@@ -229,7 +307,7 @@ def get_sentiment_html() -> str:
 def get_vix_spy_html() -> str:
     """Renders the standard VIX versus SPY regime volatility matrix."""
     _check_and_trigger_async_refresh()
-    if _MACRO_HTML_CACHE["vix_spy_html"]:
+    if _MACRO_HTML_CACHE.get("vix_spy_html"):
         return _MACRO_HTML_CACHE["vix_spy_html"]
         
     fig = generate_vix_spy_figure()
@@ -265,7 +343,7 @@ def get_yield_gauge_html() -> str:
                 {'range': [3.5, 5.0], 'color': '#ff4d4d'}],
         }
     ))
-    fig.update_layout(template="plotly_dark", height=300, margin=dict(l=40, r=40, t=60, b=40), paper_bgcolor='#1e1e1e')
+    fig.update_layout(template="plotly_dark", height=450, margin=dict(l=40, r=40, t=60, b=40), paper_bgcolor='#1e1e1e')
     return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
 
 
@@ -303,7 +381,7 @@ def _async_chart_cruncher_worker() -> None:
         fig_vix = generate_vix_spy_figure()
         html_vix = fig_vix.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False}) if fig_vix else ""
         
-        # 3. Re-render Yield Compression Trend Chart
+        # 3. Re-render US Yield Compression
         today = datetime.now()
         start_date = (today - timedelta(days=365)).strftime('%Y-%m-%d')
         spy_df = fetch_stock_data('SPY', start_date)
@@ -316,22 +394,58 @@ def _async_chart_cruncher_worker() -> None:
             fig_yield_equity.add_trace(go.Scatter(x=m_df.index, y=m_df['SPY_Close'], name="S&P 500", line=dict(color='#4da6ff', width=2)), secondary_y=False)
             fig_yield_equity.add_trace(go.Scatter(x=m_df.index, y=m_df['^TYX_Close'], name="30Y Treasury Yield", line=dict(color='#ff4d4d', dash='dot', width=2)), secondary_y=True)
             fig_yield_equity.update_layout(
-                title="Cost of Capital: 30Y Treasury Yield vs S&P 500 (1 Year)",
-                template="plotly_dark", height=600, margin=dict(l=40, r=40, t=60, b=40),
+                title="US Cost of Capital: 30Y Treasury Yield vs S&P 500 (1 Year)",
+                template="plotly_dark", height=450, margin=dict(l=40, r=40, t=60, b=40),
                 hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
             )
             fig_yield_equity.update_yaxes(title_text="S&P 500 Price ($)", secondary_y=False)
             fig_yield_equity.update_yaxes(title_text="30Y Yield (%)", secondary_y=True)
             html_yield_equity = fig_yield_equity.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
 
+        # 4. Re-render UK Yield Compression
+        ftse_data = fetch_parquet_data('FTSE_BASELINE.parquet', start_date)
+        gilt_data = fetch_parquet_data('UK_GILT_BASELINE.parquet', start_date)
+        
+        html_uk_yield_equity = ""
+        if not ftse_data.empty and not gilt_data.empty:
+            m_df_uk = ftse_data.merge(gilt_data, left_index=True, right_index=True, how='inner')
+            fig_uk_yield = make_subplots(specs=[[{"secondary_y": True}]])
+            fig_uk_yield.add_trace(go.Scatter(x=m_df_uk.index, y=m_df_uk['FTSE_Close'], name="FTSE 100", line=dict(color='#4da6ff', width=2)), secondary_y=False)
+            fig_uk_yield.add_trace(go.Scatter(x=m_df_uk.index, y=m_df_uk['UK_Close'], name="10Y Gilt Yield", line=dict(color='#ff4d4d', dash='dot', width=2)), secondary_y=True)
+            fig_uk_yield.update_layout(
+                title="UK Cost of Capital: 10Y Gilt Yield vs FTSE 100 (1 Year)",
+                template="plotly_dark", height=450, margin=dict(l=40, r=40, t=60, b=40),
+                hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+            )
+            fig_uk_yield.update_yaxes(title_text="FTSE 100 Points", secondary_y=False)
+            fig_uk_yield.update_yaxes(title_text="10Y Gilt Yield (%)", secondary_y=True)
+            html_uk_yield_equity = fig_uk_yield.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
+
+        # 5. Re-render UK Currency Impact
+        gbp_data = fetch_parquet_data('GBPUSD_BASELINE.parquet', start_date)
+        html_ftse_gbp = ""
+        if not ftse_data.empty and not gbp_data.empty:
+            m_df_gbp = ftse_data.merge(gbp_data, left_index=True, right_index=True, how='inner')
+            fig_gbp = make_subplots(specs=[[{"secondary_y": True}]])
+            fig_gbp.add_trace(go.Scatter(x=m_df_gbp.index, y=m_df_gbp['FTSE_Close'], name="FTSE 100", line=dict(color='#4da6ff', width=2)), secondary_y=False)
+            fig_gbp.add_trace(go.Scatter(x=m_df_gbp.index, y=m_df_gbp['GBPUSD_Close'], name="GBP/USD", line=dict(color='#00ffcc', dash='dot', width=2)), secondary_y=True)
+            fig_gbp.update_layout(
+                title="Currency Impact: GBP/USD vs FTSE 100 (1 Year)",
+                template="plotly_dark", height=450, margin=dict(l=40, r=40, t=60, b=40),
+                hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+            )
+            fig_gbp.update_yaxes(title_text="FTSE 100 Points", secondary_y=False)
+            fig_gbp.update_yaxes(title_text="GBP/USD Rate", secondary_y=True)
+            html_ftse_gbp = fig_gbp.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
+
+
         # Atomic update under synchronization fence
         with _CACHE_LOCK:
-            if html_sentiment:
-                _MACRO_HTML_CACHE["sentiment_html"] = html_sentiment
-            if html_vix:
-                _MACRO_HTML_CACHE["vix_spy_html"] = html_vix
-            if html_yield_equity:
-                _MACRO_HTML_CACHE["yield_equity_html"] = html_yield_equity
+            if html_sentiment: _MACRO_HTML_CACHE["sentiment_html"] = html_sentiment
+            if html_vix: _MACRO_HTML_CACHE["vix_spy_html"] = html_vix
+            if html_yield_equity: _MACRO_HTML_CACHE["yield_equity_html"] = html_yield_equity
+            if html_uk_yield_equity: _MACRO_HTML_CACHE["uk_yield_equity_html"] = html_uk_yield_equity
+            if html_ftse_gbp: _MACRO_HTML_CACHE["ftse_gbp_html"] = html_ftse_gbp
             _LAST_CACHE_TIME = time.time()
             
         logger.info("Visual macro caches synchronized successfully.")
