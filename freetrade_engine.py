@@ -7,8 +7,9 @@ import requests
 import logging
 import pandas as pd
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Tuple
 from database import get_connection
+from config import load_config
 
 # Configure robust module-level logging
 logging.basicConfig(
@@ -20,25 +21,6 @@ logger = logging.getLogger(__name__)
 # Constants
 FREETRADE_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTGZT9-lSDDlgQzHsH0vYdTSz-xnL7zIJQ1SHUddo-BBD5_QlN--57cRe_8Zvw-7QsMrw6X1phz-vKq/pub?output=csv"
 ISIN_CACHE_PATH = Path("data/isin_ticker_cache.json")
-
-# US Markets don't need ISIN resolution (Fast Path)
-US_MICS = {'XNAS', 'XNYS', 'ARCX', 'BATS'}
-
-# Fallback Suffix Map
-MIC_YF_SUFFIX_MAP = {
-    'XLON': '.L', 'XFRA': '.DE', 'XETR': '.DE', 'XPAR': '.PA',
-    'XAMS': '.AS', 'XBRU': '.BR', 'XDUB': '.IR', 'XMAD': '.MC',
-    'XMIL': '.MI', 'XLIS': '.LS', 'XHEL': '.HE', 'XSTO': '.ST',
-    'XOSL': '.OL', 'XCSE': '.CO', 'XVIE': '.VI', 'XSWX': '.SW'
-}
-
-# UI Exchange Map
-MIC_EXCHANGE_MAP = {
-    'XLON': 'LSE', 'XNAS': 'NASDAQ', 'XNYS': 'NYSE', 'ARCX': 'NYSE ARCA',
-    'BATS': 'BATS', 'XFRA': 'Frankfurt', 'XETR': 'XETRA', 'XPAR': 'Paris',
-    'XAMS': 'Amsterdam', 'XBRU': 'Brussels', 'XDUB': 'Dublin', 'XMAD': 'Madrid',
-    'XMIL': 'Milan', 'XHEL': 'Helsinki', 'XSTO': 'Stockholm', 'XOSL': 'Oslo'
-}
 
 def load_isin_cache() -> Dict[str, str]:
     """Loads the previously resolved ISIN mapping from disk."""
@@ -75,22 +57,32 @@ def log_freetrade_notification(msg_type: str, msg_text: str) -> None:
         if 'conn' in locals():
             conn.close()
 
-def resolve_ticker(symbol: str, isin: str, mic: str, cache_dict: Dict[str, str]) -> str:
-    """Intelligently routes ticker resolution using US bypassing, Local Caching, and EU Suffix Stripping."""
+def resolve_ticker(symbol: str, isin: str, mic: str, cache_dict: Dict[str, str], ft_config: Dict) -> Tuple[Optional[str], bool]:
+    """
+    Intelligently routes ticker resolution using the dynamic mapping config.
+    Returns: (Resolved Ticker String, Is_Mapped Boolean)
+    """
     raw_symbol = str(symbol).strip()
     mic = str(mic).strip().upper()
     
+    us_mics = ft_config.get("US_MICS", [])
+    exchanges = ft_config.get("EXCHANGES", {})
+    
     # 1. Fast Path: US Stocks
-    if mic in US_MICS:
-        return raw_symbol.replace('.', '-').upper()
+    if mic in us_mics:
+        return raw_symbol.replace('.', '-').upper(), True
         
-    # 2. Check Local Cache
+    # 2. Unmapped Circuit Breaker
+    if mic not in exchanges:
+        return None, False
+        
+    # 3. Check Local ISIN Cache
     if pd.notna(isin) and str(isin).strip():
         isin = str(isin).strip()
         if isin in cache_dict:
-            return cache_dict[isin]
+            return cache_dict[isin], True
             
-        # 3. Query Yahoo Finance API
+        # 4. Query Yahoo Finance API
         url = f"https://query2.finance.yahoo.com/v1/finance/search?q={isin}"
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
         
@@ -106,39 +98,36 @@ def resolve_ticker(symbol: str, isin: str, mic: str, cache_dict: Dict[str, str])
                     resolved_symbol = quotes[0].get('symbol')
                     if resolved_symbol:
                         cache_dict[isin] = resolved_symbol
-                        return resolved_symbol
+                        return resolved_symbol, True
         except Exception:
             pass # Silently fallback below
             
-    # 4. Ultimate Fallback Logic
-    if mic in MIC_YF_SUFFIX_MAP:
-        # Freetrade appends lowercase country codes to European symbols to avoid internal collisions.
-        # Examples: 'BNBb' (Brussels), 'BNPp' (Paris), 'BNRd' (Germany).
-        # We strip this trailing lowercase letter before formatting for Yahoo Finance.
-        if len(raw_symbol) > 1 and raw_symbol[-1].islower():
-            raw_symbol = raw_symbol[:-1]
-            
-        # Format '.' to '-' for share classes (e.g., BT.A -> BT-A)
-        clean_symbol = raw_symbol.replace('.', '-').upper()
-        suffix = MIC_YF_SUFFIX_MAP[mic]
+    # 5. Configurable Fallback Logic
+    exchange_info = exchanges[mic]
+    ft_char = exchange_info.get("ft_char", "")
+    yf_suffix = exchange_info.get("yf_suffix", "")
+    
+    # Strip the Freetrade lowercase character if present
+    if ft_char and raw_symbol.endswith(ft_char):
+        raw_symbol = raw_symbol[:-len(ft_char)]
         
-        if not clean_symbol.endswith(suffix):
-            return clean_symbol + suffix
-        return clean_symbol
-
-    return raw_symbol.replace('.', '-').upper()
+    clean_symbol = raw_symbol.replace('.', '-').upper()
+    
+    if not clean_symbol.endswith(yf_suffix):
+        return clean_symbol + yf_suffix, True
+        
+    return clean_symbol, True
 
 def sync_freetrade_universe() -> None:
     """Master Pipeline for downloading, resolving, and upserting the Freetrade catalog."""
-    logger.info("Starting ISIN-Enhanced Freetrade Universe Sync...")
-    log_freetrade_notification("Info", "Freetrade Sync initiated. Fetching CSV and resolving ISINs... This will take ~15 minutes in the background.")
+    logger.info("Starting Configuration-Enhanced Freetrade Universe Sync...")
+    log_freetrade_notification("Info", "Freetrade Sync initiated. Fetching CSV and resolving ISINs... This will take ~15 minutes.")
     
     try:
         df = pd.read_csv(FREETRADE_CSV_URL)
         logger.info(f"Successfully downloaded {len(df)} records from Freetrade.")
         
         df.columns = df.columns.str.strip()
-        
         if 'Symbol' not in df.columns:
             raise ValueError("CRITICAL: 'Symbol' column is missing from CSV.")
             
@@ -151,42 +140,48 @@ def sync_freetrade_universe() -> None:
         df['KIID URL'] = df[kiid_col].apply(clean_url) if kiid_col else None
             
         cache_dict = load_isin_cache()
+        ft_config = load_config().get("FREETRADE_MAPPINGS", {})
+        
         records = []
-        
-        total_rows = len(df)
-        logger.info(f"Resolving {total_rows} tickers. EU assets will be checked against Yahoo Finance...")
-        
+        unmapped_mics = set()
         processed_count = 0
+        total_rows = len(df)
+        
+        logger.info(f"Resolving {total_rows} tickers against dynamic configuration map...")
         
         for i, row in df.iterrows():
             symbol_raw = row.get('Symbol')
             isin = row.get('ISIN')
-            mic = row.get('MIC')
-            title = row.get('Title', 'Unknown')
-            subtitle = row.get('Subtitle', '')
-            kiid_url = row.get('KIID URL')
+            mic = str(row.get('MIC')).strip().upper()
             
             if pd.isna(symbol_raw) or str(symbol_raw).lower() == 'nan' or not str(symbol_raw).strip():
                 continue
                 
-            resolved_ticker = resolve_ticker(symbol_raw, isin, mic, cache_dict)
-            exchange = MIC_EXCHANGE_MAP.get(str(mic).strip().upper(), str(mic).strip().upper())
+            resolved_ticker, is_mapped = resolve_ticker(symbol_raw, isin, mic, cache_dict, ft_config)
             
-            records.append((resolved_ticker, title, subtitle, kiid_url, exchange))
+            if not is_mapped:
+                unmapped_mics.add(mic)
+                continue
             
+            # Fetch the clean UI Name from config, fallback to the raw MIC if missing
+            ui_exchange = ft_config.get("EXCHANGES", {}).get(mic, {}).get("ui_name", mic)
+            if mic in ft_config.get("US_MICS", []):
+                ui_exchange = "US Equities"
+            
+            records.append((resolved_ticker, row.get('Title', 'Unknown'), row.get('Subtitle', ''), row.get('KIID URL'), ui_exchange))
             processed_count += 1
             
-            # Strict counter progress logging
             if processed_count % 50 == 0:
-                logger.info(f"Freetrade Sync Progress: {processed_count} / {total_rows} assets parsed...")
-                
-            # DB Notification & Cache Save every 500 to avoid locking the UI/DB
+                logger.info(f"Freetrade Sync Progress: {processed_count} assets processed...")
             if processed_count % 500 == 0:
-                log_freetrade_notification("Info", f"Freetrade Sync Progress: {processed_count} / {total_rows} assets parsed...")
                 save_isin_cache(cache_dict)
 
-        # Final Cache Save
         save_isin_cache(cache_dict)
+        
+        # Fire Unmapped MIC Alert to the user
+        if unmapped_mics:
+            logger.warning(f"Unmapped Freetrade MICs detected and skipped: {list(unmapped_mics)}")
+            log_freetrade_notification("Warning", f"Skipped assets due to unmapped exchanges: {list(unmapped_mics)}. Add them to FREETRADE_MAPPINGS in your config.json file to process them.")
         
         if not records:
             logger.warning("No valid records to insert.")
@@ -197,9 +192,6 @@ def sync_freetrade_universe() -> None:
         
         try:
             logger.info("Executing Bulk SQLite Purge & Upsert...")
-            
-            # CRITICAL FIX: Purge the old freetrade universe to permanently clear out malformed 
-            # tickers (e.g., BNBb.BR) from previous runs to stop the profile_engine 404 errors.
             cursor.execute("DELETE FROM market_universe WHERE is_freetrade = 1")
             
             upsert_query = """
@@ -215,10 +207,7 @@ def sync_freetrade_universe() -> None:
             cursor.executemany(upsert_query, records)
             conn.commit()
             
-            success_msg = (
-                f"Successfully synced {len(records)} Freetrade assets to the database.\n"
-                "ACTION REQUIRED: Run 'python profile_engine.py' in your terminal to fetch their profiles, then trigger a Full Quant Scan from the settings UI."
-            )
+            success_msg = f"Successfully synced {len(records)} Freetrade assets to the database."
             logger.info(success_msg)
             log_freetrade_notification("Success", success_msg)
             

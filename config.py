@@ -53,6 +53,29 @@ DEFAULT_CONFIG = {
         "REFRESH_RATE": 60,
         "FREETRADE_ONLY_MODE": False
     },
+    "FREETRADE_MAPPINGS": {
+        "US_MICS": ["XNAS", "XNYS", "ARCX", "BATS", "PINK"],
+        "EXCHANGES": {
+            "XLON": {"yf_suffix": ".L", "ft_char": "", "ui_name": "LSE"},
+            "XFRA": {"yf_suffix": ".DE", "ft_char": "d", "ui_name": "Frankfurt"},
+            "XETR": {"yf_suffix": ".DE", "ft_char": "d", "ui_name": "XETRA"},
+            "XPAR": {"yf_suffix": ".PA", "ft_char": "p", "ui_name": "Paris"},
+            "XAMS": {"yf_suffix": ".AS", "ft_char": "a", "ui_name": "Amsterdam"},
+            "XBRU": {"yf_suffix": ".BR", "ft_char": "b", "ui_name": "Brussels"},
+            "XDUB": {"yf_suffix": ".IR", "ft_char": "i", "ui_name": "Dublin"},
+            "XMAD": {"yf_suffix": ".MC", "ft_char": "e", "ui_name": "Madrid"},
+            "XMIL": {"yf_suffix": ".MI", "ft_char": "m", "ui_name": "Milan"},
+            "XLIS": {"yf_suffix": ".LS", "ft_char": "u", "ui_name": "Lisbon"},
+            "XHEL": {"yf_suffix": ".HE", "ft_char": "h", "ui_name": "Helsinki"},
+            "XSTO": {"yf_suffix": ".ST", "ft_char": "s", "ui_name": "Stockholm"},
+            "XOSL": {"yf_suffix": ".OL", "ft_char": "o", "ui_name": "Oslo"},
+            "XCSE": {"yf_suffix": ".CO", "ft_char": "c", "ui_name": "Copenhagen"},
+            "XVIE": {"yf_suffix": ".VI", "ft_char": "v", "ui_name": "Vienna"},
+            "XSWX": {"yf_suffix": ".SW", "ft_char": "z", "ui_name": "Swiss"},
+            "MTAA": {"yf_suffix": ".XC", "ft_char": "m", "ui_name": "Borsa Italiana"},
+            "MUTUAL_FUND_EXCHANGE": {"yf_suffix": ".L", "ft_char": "", "ui_name": "UK Mutual Fund"}
+        }
+    },
     "SCHEDULING": {
         "GHOSTFOLIO_SYNC": {
             "ENABLED": False,
@@ -144,7 +167,7 @@ def load_config() -> dict:
             
             # Safely merge nested dictionaries without deleting missing keys
             for key, val in data.items():
-                if key in ["NOTIFICATIONS", "SCHEDULING", "GHOSTFOLIO_ACCOUNTS", "UI_PREFERENCES"] and isinstance(val, dict):
+                if key in ["NOTIFICATIONS", "SCHEDULING", "GHOSTFOLIO_ACCOUNTS", "UI_PREFERENCES", "FREETRADE_MAPPINGS"] and isinstance(val, dict):
                     for sub_key, sub_val in val.items():
                         if sub_key in merged_config[key]:
                             if isinstance(sub_val, dict) and isinstance(merged_config[key][sub_key], dict):
