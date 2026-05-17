@@ -2,56 +2,70 @@
 import os
 import json
 import sqlite3
+from pathlib import Path
 
-PORTFOLIO_PATH = "data/portfolio.json"
-WATCHLIST_PATH = "data/watchlist.json"
-DB_PATH = "data/analysis.db"
+PORTFOLIO_PATH = Path("data/portfolio.json")
+WATCHLIST_PATH = Path("data/watchlist.json")
+DB_PATH = Path("data/analysis.db")
+ISIN_CACHE_PATH = Path("data/isin_ticker_cache.json")
+BLACKLIST_PATH = Path("data/freetrade_blacklist.json")
 
-def get_json_tickers():
+def get_json_tickers() -> set:
     tickers = set()
-    # Get Portfolio Tickers
-    if os.path.exists(PORTFOLIO_PATH):
+    if PORTFOLIO_PATH.exists():
         try:
             with open(PORTFOLIO_PATH, 'r') as f:
                 data = json.load(f)
                 for v in data.values():
                     if 'ticker' in v:
-                        tickers.add(v['ticker'])
+                        tickers.add(v['ticker'].strip())
         except Exception: pass
         
-    # Get Watchlist Tickers
-    if os.path.exists(WATCHLIST_PATH):
+    if WATCHLIST_PATH.exists():
         try:
             with open(WATCHLIST_PATH, 'r') as f:
                 data = json.load(f)
                 if 'watchlist' in data:
-                    tickers.update(data['watchlist'])
+                    for t in data['watchlist']:
+                        tickers.add(t.strip())
         except Exception: pass
-        
     return tickers
 
-def clean_database():
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
+def sanitize_system_layers():
+    print("🚀 Initiating Deep System Cleansing Protocol...")
     
-    print("Building whitelist of valid tickers...")
-    
-    # 1. Get all valid tickers from the freshly synced Market Universe
-    cursor.execute("SELECT ticker FROM market_universe")
-    valid_universe = {row[0] for row in cursor.fetchall()}
-    
-    # 2. Add user's personal JSON tickers
-    valid_json = get_json_tickers()
-    
-    # 3. The Master Whitelist
-    whitelist = valid_universe.union(valid_json)
-    print(f"Whitelist created: {len(whitelist)} valid assets identified.")
-    
-    if not whitelist:
-        print("Error: Whitelist is empty. Make sure you ran the freetrade engine first.")
+    # 1. Banish poisoned cache files to avoid fast-path re-injection loops
+    if ISIN_CACHE_PATH.exists():
+        try:
+            ISIN_CACHE_PATH.unlink()
+            print(" -> Successfully deleted corrupted ISIN ticker cache file.")
+        except Exception as e:
+            print(f" -> Error deleting ISIN cache: {e}")
+
+    if BLACKLIST_PATH.exists():
+        try:
+            BLACKLIST_PATH.unlink()
+            print(" -> Resetting freetrade blacklist tracker file for clean baseline.")
+        except Exception as e:
+            print(f" -> Error deleting blacklist tracker: {e}")
+
+    # 2. Connect to local relational database engine
+    if not DB_PATH.exists():
+        print(f"CRITICAL: Database not found at {DB_PATH}. Run freetrade_engine first.")
         return
 
-    # 4. Ruthlessly purge orphans from all operational tables
+    conn = sqlite3.connect(str(DB_PATH))
+    cursor = conn.cursor()
+    
+    # 3. Aggressively purge any Freetrade records from market universe to clear structural faults
+    cursor.execute("DELETE FROM market_universe WHERE is_freetrade = 1")
+    print(f" -> Cleared {cursor.rowcount} entries from market_universe.")
+
+    # 4. Extract current valid tickers from pristine sources
+    cursor.execute("SELECT ticker FROM market_universe")
+    whitelist = {row[0] for row in cursor.fetchall()}.union(get_json_tickers())
+    print(f" -> Compiled pristine security whitelist: {len(whitelist)} tracking tokens approved.")
+
     tables_to_clean = [
         'stock_signals', 
         'quant_signals', 
@@ -60,35 +74,43 @@ def clean_database():
         'market_pulse_cache'
     ]
     
-    total_deleted = 0
-    # SQLite has a limit on the number of variables in an IN clause (usually 999),
-    # so we delete in batches.
-    whitelist_list = list(whitelist)
-    batch_size = 900
+    total_orphans_purged = 0
     
     for table in tables_to_clean:
-        print(f"Cleaning table: {table}...")
+        # Check if table exists before querying
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,))
+        if not cursor.fetchone():
+            continue
+            
+        # Target 1: Wipe out legacy rows containing ANY lowercase letter (Freetrade ghosts)
+        cursor.execute(f"SELECT ticker FROM {table}")
+        all_tickers = [row[0] for row in cursor.fetchall() if row[0]]
         
-        # First, find out what is in the table to see what needs deleting
+        bad_tickers = [t for t in all_tickers if any(char.islower() for char in t)]
+        if bad_tickers:
+            placeholders = ','.join('?' for _ in bad_tickers)
+            cursor.execute(f"DELETE FROM {table} WHERE ticker IN ({placeholders})", bad_tickers)
+            total_orphans_purged += cursor.rowcount
+            print(f" -> Surgically removed {cursor.rowcount} explicit lowercase tokens from '{table}'.")
+
+        # Target 2: Banish standard orphan keys not represented within our asset universe Whitelist
         cursor.execute(f"SELECT DISTINCT ticker FROM {table}")
-        table_tickers = {row[0] for row in cursor.fetchall()}
+        remaining_tickers = {row[0] for row in cursor.fetchall() if row[0]}
+        orphans = remaining_tickers - whitelist
         
-        orphans = table_tickers - whitelist
         if orphans:
             orphan_list = list(orphans)
+            batch_size = 900
             for i in range(0, len(orphan_list), batch_size):
                 batch = orphan_list[i:i + batch_size]
                 placeholders = ','.join('?' for _ in batch)
                 cursor.execute(f"DELETE FROM {table} WHERE ticker IN ({placeholders})", batch)
-                total_deleted += cursor.rowcount
-            print(f" -> Purged {len(orphans)} ghost tickers from {table}.")
-        else:
-            print(f" -> {table} is already clean.")
+                total_orphans_purged += cursor.rowcount
+            print(f" -> Cleaned {len(orphans)} unaligned orphan records from '{table}'.")
 
     conn.commit()
     conn.close()
-    
-    print(f"\nSUCCESS! Database completely sanitized. Purged {total_deleted} orphaned rows.")
+    print(f"✨ Purge complete. Surgically extracted {total_orphans_purged} polluted references.")
 
 if __name__ == "__main__":
-    clean_database()
+    sanitize_system_layers()
