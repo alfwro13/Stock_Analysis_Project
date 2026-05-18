@@ -435,7 +435,7 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
         ''', (ticker,))
         q_data = cursor.fetchone()
         
-        if q_data:
+        if q_data: 
             q_data = dict(q_data)
             company_name = q_data.get("company_name") or ticker
             company_name = company_name.replace(" - Common Stock", "").replace(" Common Stock", "").strip()
@@ -464,7 +464,29 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
                 "ml_confidence_score": q_data.get("ml_confidence_score"),
                 "var_95": q_data.get("var_95"),
                 "cvar_95": q_data.get("cvar_95"),
-                "sentiment_score": q_data.get("sentiment_score")
+                "sentiment_score": q_data.get("sentiment_score"),
+                "yield_correlation": None,
+                "trailing_pe": None,
+                "debt_to_equity": None,
+                "forward_pe": None,
+                "peg_ratio": None,
+                "peter_lynch_peg": None,
+                "price_to_book": None,
+                "profit_margin": None,
+                "roe": None,
+                "revenue_growth": None,
+                "current_ratio": None,
+                "operating_cash_flow": None,
+                "short_interest": None,
+                "institutional_ownership": None,
+                "beta": None,
+                "expense_ratio": None,
+                "ytd_return": None,
+                "total_assets": None,
+                "nav_price": None,
+                "dividend_yield": None,
+                "top_holdings": None,
+                "sector_weightings": None
             }
         else:
             stock_data = {
@@ -488,7 +510,29 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
                 "ml_confidence_score": None,
                 "var_95": None,
                 "cvar_95": None,
-                "sentiment_score": None
+                "sentiment_score": None,
+                "yield_correlation": None,
+                "trailing_pe": None,
+                "debt_to_equity": None,
+                "forward_pe": None,
+                "peg_ratio": None,
+                "peter_lynch_peg": None,
+                "price_to_book": None,
+                "profit_margin": None,
+                "roe": None,
+                "revenue_growth": None,
+                "current_ratio": None,
+                "operating_cash_flow": None,
+                "short_interest": None,
+                "institutional_ownership": None,
+                "beta": None,
+                "expense_ratio": None,
+                "ytd_return": None,
+                "total_assets": None,
+                "nav_price": None,
+                "dividend_yield": None,
+                "top_holdings": None,
+                "sector_weightings": None
             }
             
     conn.close()
