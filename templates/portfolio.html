@@ -57,25 +57,56 @@
     {% endif %}
 
     {% if macro_regime %}
-    <div class="summary-row risk-summary-row {% if macro_regime.systemic_threat_level == 'RED' %}risk-summary-red{% elif macro_regime.systemic_threat_level == 'YELLOW' %}risk-summary-yellow{% else %}risk-summary-green{% endif %}">
-        <div class="risk-summary-body">
-            <h3 class="risk-summary-header {% if macro_regime.systemic_threat_level == 'RED' %}red{% elif macro_regime.systemic_threat_level == 'YELLOW' %}yellow{% else %}green{% endif %}">
-                {% if macro_regime.systemic_threat_level == 'RED' %}🚨 SYSTEMIC RISK: HIGH (LIQUIDATION THREAT)
-                {% elif macro_regime.systemic_threat_level == 'YELLOW' %}⚠️ SYSTEMIC RISK: ELEVATED (COMPRESSION WARNING)
-                {% else %}✅ SYSTEMIC RISK: LOW (STABLE MACRO){% endif %}
-            </h3>
-            <p class="risk-summary-text">
-                <strong>Trigger Source:</strong> {{ macro_regime.threat_source }} &nbsp;|&nbsp; 
-                <strong>3-Day Velocity:</strong> <span class="{% if macro_regime.systemic_threat_level == 'RED' %}negative-val{% elif macro_regime.systemic_threat_level == 'YELLOW' %}warning-text{% else %}positive-val{% endif %}">{{ "{:+.2f}".format(macro_regime.yield_velocity) }}%</span>
-                <br>
-                {% if macro_regime.systemic_threat_level == 'RED' %}
-                Global yields are surging vertically. High-multiple growth stocks and highly indebted assets are at extreme risk of immediate valuation compression.
-                {% elif macro_regime.systemic_threat_level == 'YELLOW' %}
-                The cost of capital is creeping higher. Monitor yield-sensitive assets closely for technical breakdowns.
-                {% else %}
-                Global yields are stable or falling. Favorable environment for equity expansion and risk-on assets.
-                {% endif %}
-            </p>
+    {% set global_threat = 'GREEN' %}
+    {% if macro_regime.us_threat_level == 'RED' or macro_regime.uk_threat_level == 'RED' %}
+        {% set global_threat = 'RED' %}
+    {% elif macro_regime.us_threat_level == 'YELLOW' or macro_regime.uk_threat_level == 'YELLOW' %}
+        {% set global_threat = 'YELLOW' %}
+    {% endif %}
+    
+    <div class="summary-row risk-summary-row {% if global_threat == 'RED' %}risk-summary-red{% elif global_threat == 'YELLOW' %}risk-summary-yellow{% else %}risk-summary-green{% endif %}">
+        <div style="display: flex; flex-wrap: wrap; gap: 20px; width: 100%;">
+            
+            <div style="flex: 1; min-width: 300px;">
+                <h3 class="risk-summary-header {% if macro_regime.us_threat_level == 'RED' %}red{% elif macro_regime.us_threat_level == 'YELLOW' %}yellow{% else %}green{% endif %}">
+                    🇺🇸 US 30Y Treasury: 
+                    {% if macro_regime.us_threat_level == 'RED' %}🚨 HIGH
+                    {% elif macro_regime.us_threat_level == 'YELLOW' %}⚠️ ELEVATED
+                    {% else %}✅ LOW{% endif %}
+                </h3>
+                <p class="risk-summary-text">
+                    <strong>3-Day Velocity:</strong> <span class="{% if macro_regime.us_threat_level == 'RED' %}negative-val{% elif macro_regime.us_threat_level == 'YELLOW' %}warning-text{% else %}positive-val{% endif %}">{{ "{:+.2f}".format(macro_regime.us_yield_velocity) }}%</span>
+                    <br>
+                    {% if macro_regime.us_threat_level == 'RED' %}
+                    US yields are surging vertically. High-multiple growth stocks and highly indebted US assets are at extreme risk of immediate valuation compression.
+                    {% elif macro_regime.us_threat_level == 'YELLOW' %}
+                    The cost of US capital is creeping higher. Monitor dollar-denominated yield-sensitive assets closely for technical breakdowns.
+                    {% else %}
+                    US yields are stable or falling. Favorable environment for US equity expansion and risk-on assets.
+                    {% endif %}
+                </p>
+            </div>
+
+            <div style="flex: 1; min-width: 300px;">
+                <h3 class="risk-summary-header {% if macro_regime.uk_threat_level == 'RED' %}red{% elif macro_regime.uk_threat_level == 'YELLOW' %}yellow{% else %}green{% endif %}">
+                    🇬🇧 UK 10Y Gilt: 
+                    {% if macro_regime.uk_threat_level == 'RED' %}🚨 HIGH
+                    {% elif macro_regime.uk_threat_level == 'YELLOW' %}⚠️ ELEVATED
+                    {% else %}✅ LOW{% endif %}
+                </h3>
+                <p class="risk-summary-text">
+                    <strong>3-Day Velocity:</strong> <span class="{% if macro_regime.uk_threat_level == 'RED' %}negative-val{% elif macro_regime.uk_threat_level == 'YELLOW' %}warning-text{% else %}positive-val{% endif %}">{{ "{:+.2f}".format(macro_regime.uk_yield_velocity) }}%</span>
+                    <br>
+                    {% if macro_regime.uk_threat_level == 'RED' %}
+                    UK yields are surging vertically. Domestic equities and highly indebted UK assets are at extreme risk of immediate valuation compression.
+                    {% elif macro_regime.uk_threat_level == 'YELLOW' %}
+                    The cost of UK capital is creeping higher. Monitor GBP-denominated yield-sensitive assets closely for technical breakdowns.
+                    {% else %}
+                    UK yields are stable or falling. Favorable environment for UK equity expansion and risk-on assets.
+                    {% endif %}
+                </p>
+            </div>
+
         </div>
     </div>
     {% endif %}
