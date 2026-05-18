@@ -208,7 +208,7 @@ def init_db() -> None:
             )
         ''')
 
-        # --- PHASE 2: SYSTEMIC MACRO RISK TRACKING ---
+        # --- PHASE 2: SYSTEMIC MACRO RISK TRACKING (DUAL-REGION UPGRADE) ---
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS macro_regimes (
                 date TEXT PRIMARY KEY,
@@ -217,9 +217,10 @@ def init_db() -> None:
                 dxy_close REAL,
                 uk_gilt_close REAL,
                 gbpusd_close REAL,
-                yield_velocity REAL,
-                systemic_threat_level TEXT,
-                threat_source TEXT
+                us_yield_velocity REAL,
+                us_threat_level TEXT,
+                uk_yield_velocity REAL,
+                uk_threat_level TEXT
             )
         ''')
         
@@ -311,7 +312,7 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
                 logger.error(f"[MIGRATION ERROR] Failed to add '{col_name}' to market_universe: {e}")
                 continue
 
-    # ALIGNED FIX MIGRATION: Auto-patches existing database files that use the limited 3-column setup
+    # 4. ALIGNED FIX MIGRATION: Auto-patches existing database files that use the limited 3-column setup
     cursor.execute("PRAGMA table_info(market_regimes)")
     existing_regime_columns = [info['name'] for info in cursor.fetchall()]
     
@@ -327,6 +328,26 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
                 cursor.execute(f"ALTER TABLE market_regimes ADD COLUMN {col_name} {data_type}")
             except Exception as e:
                 logger.error(f"[MIGRATION ERROR] Failed to patch market_regimes column '{col_name}': {e}")
+                continue
+
+    # 5. DUAL-REGION MACRO RISK MIGRATION
+    cursor.execute("PRAGMA table_info(macro_regimes)")
+    existing_macro_columns = [info['name'] for info in cursor.fetchall()]
+    
+    required_macro_columns = {
+        'us_yield_velocity': 'REAL',
+        'us_threat_level': 'TEXT',
+        'uk_yield_velocity': 'REAL',
+        'uk_threat_level': 'TEXT'
+    }
+
+    for col_name, data_type in required_macro_columns.items():
+        if col_name not in existing_macro_columns:
+            try:
+                logger.info(f"[MIGRATION] Adding dual-region risk column: '{col_name}' to macro_regimes...")
+                cursor.execute(f"ALTER TABLE macro_regimes ADD COLUMN {col_name} {data_type}")
+            except Exception as e:
+                logger.error(f"[MIGRATION ERROR] Failed to add '{col_name}' to macro_regimes: {e}")
                 continue
 
     try:
