@@ -60,6 +60,7 @@ def get_cached_pulse_from_db(asset_tickers: List[str], refresh_rate: int) -> Dic
     """
     Fetches the latest live prices from the SQLite Cache to ensure instant UI rendering.
     Calculates if the data is stale based on the user's refresh rate.
+    Also merges the latest FinBERT sentiment score securely fetched via subquery.
     """
     if asset_tickers is None:
         asset_tickers = []
@@ -74,10 +75,28 @@ def get_cached_pulse_from_db(asset_tickers: List[str], refresh_rate: int) -> Dic
     cursor = conn.cursor()
     
     rows = []
+    sentiment_scores: Dict[str, float] = {}
+    
     if all_tickers:
         placeholders = ','.join('?' for _ in all_tickers)
+        
+        # 1. Fetch Market Pulse baseline
         cursor.execute(f"SELECT * FROM market_pulse_cache WHERE ticker IN ({placeholders})", all_tickers)
         rows = cursor.fetchall()
+        
+        # 2. Fetch Latest Sentiment Output
+        query = f"""
+            SELECT ticker, sentiment_score 
+            FROM quant_signals 
+            WHERE ticker IN ({placeholders}) 
+            AND date = (SELECT MAX(date) FROM quant_signals qs WHERE qs.ticker = quant_signals.ticker)
+        """
+        cursor.execute(query, all_tickers)
+        sentiment_rows = cursor.fetchall()
+        
+        for s_row in sentiment_rows:
+            sentiment_scores[s_row['ticker']] = s_row['sentiment_score']
+            
     conn.close()
 
     results: Dict[str, List[Dict[str, Any]]] = {"indexes": [], "assets": []}
@@ -98,7 +117,8 @@ def get_cached_pulse_from_db(asset_tickers: List[str], refresh_rate: int) -> Dic
                 "change_pts": row['change_pts'],
                 "change_pct": row['change_pct'],
                 "is_positive": bool(row['is_positive']),
-                "is_stale": is_stale
+                "is_stale": is_stale,
+                "sentiment_score": sentiment_scores.get(t, None)
             }
         else:
             data_obj = {
@@ -108,7 +128,8 @@ def get_cached_pulse_from_db(asset_tickers: List[str], refresh_rate: int) -> Dic
                 "change_pts": "0.00",
                 "change_pct": "0.00",
                 "is_positive": True,
-                "is_stale": True
+                "is_stale": True,
+                "sentiment_score": sentiment_scores.get(t, None)
             }
             
         if t in INDEX_TICKERS:

@@ -673,11 +673,14 @@ def update_all_sentiment(tickers: List[str]) -> None:
     Loops through the target list, fetches the FinBERT sentiment score, 
     and updates the latest record in the quant_signals database table.
     """
-    if not tickers:
+    macro_tickers = ["^GSPC", "^NDX", "^FTSE", "^FTMC", "GBPUSD=X", "DX-Y.NYB"]
+    combined_tickers = list(set((tickers if tickers else []) + macro_tickers))
+
+    if not combined_tickers:
         logger.warning("Ticker list is empty. Aborting FinBERT sentiment scan.")
         return
 
-    logger.info(f"Initiating FinBERT NLP Sentiment Scan for {len(tickers)} assets. Loading model into memory...")
+    logger.info(f"Initiating FinBERT NLP Sentiment Scan for {len(combined_tickers)} assets. Loading model into memory...")
     
     # Initialize the HuggingFace pipeline with FinBERT
     # Note: On first run, this will download the model weights (~400MB)
@@ -697,7 +700,7 @@ def update_all_sentiment(tickers: List[str]) -> None:
     except Exception:
         pass # Column already exists
 
-    for i, ticker in enumerate(tickers):
+    for i, ticker in enumerate(combined_tickers):
         try:
             score = fetch_and_score_news(ticker, analyzer)
             
