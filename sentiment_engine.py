@@ -43,9 +43,7 @@ _MACRO_HTML_CACHE: Dict[str, str] = {
     "vix_spy_html": "",
     "yield_equity_html": "",
     "uk_yield_equity_html": "",
-    "ftse_gbp_html": "",
-    "us_yield_gauge_html": "",
-    "uk_yield_gauge_html": ""
+    "ftse_gbp_html": ""
 }
 
 
@@ -360,86 +358,6 @@ def get_vix_spy_html() -> str:
     return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
 
 
-def get_us_yield_gauge_html() -> str:
-    """Queries the local SQLite macro regimes table to calculate the US 3-day yield velocity gauge."""
-    _check_and_trigger_async_refresh()
-    if _MACRO_HTML_CACHE.get("us_yield_gauge_html"):
-        return _MACRO_HTML_CACHE["us_yield_gauge_html"]
-
-    conn = get_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT us_yield_velocity FROM macro_regimes ORDER BY date DESC LIMIT 1")
-        row = cursor.fetchone()
-    finally:
-        conn.close()
-    
-    us_velocity = float(row['us_yield_velocity']) if row and row['us_yield_velocity'] is not None else 0.0
-    
-    fig = go.Figure(go.Indicator(
-        mode="gauge+number",
-        value=us_velocity,
-        domain={'x': [0, 1], 'y': [0, 1]},
-        title={'text': "US 3-Day Yield Velocity (%)", 'font': {'size': 18, 'color': '#ccc'}},
-        gauge={
-            'axis': {'range': [-5, 5], 'tickwidth': 1, 'tickcolor': "white"},
-            'bar': {'color': "white", 'thickness': 0.2},
-            'bgcolor': "#1e1e1e",
-            'borderwidth': 2,
-            'bordercolor': "#333",
-            'steps': [
-                {'range': [-5, 1.5], 'color': '#00ff00'},
-                {'range': [1.5, 3.5], 'color': '#ffaa00'},
-                {'range': [3.5, 5.0], 'color': '#ff4d4d'}],
-        }
-    ))
-    fig.update_layout(
-        template="plotly_dark", height=320, margin=dict(l=40, r=40, t=60, b=40),
-        paper_bgcolor='#1e1e1e'
-    )
-    return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
-
-
-def get_uk_yield_gauge_html() -> str:
-    """Queries the local SQLite macro regimes table to calculate the UK 3-day yield velocity gauge."""
-    _check_and_trigger_async_refresh()
-    if _MACRO_HTML_CACHE.get("uk_yield_gauge_html"):
-        return _MACRO_HTML_CACHE["uk_yield_gauge_html"]
-
-    conn = get_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT uk_yield_velocity FROM macro_regimes ORDER BY date DESC LIMIT 1")
-        row = cursor.fetchone()
-    finally:
-        conn.close()
-    
-    uk_velocity = float(row['uk_yield_velocity']) if row and row['uk_yield_velocity'] is not None else 0.0
-    
-    fig = go.Figure(go.Indicator(
-        mode="gauge+number",
-        value=uk_velocity,
-        domain={'x': [0, 1], 'y': [0, 1]},
-        title={'text': "UK 3-Day Yield Velocity (%)", 'font': {'size': 18, 'color': '#ccc'}},
-        gauge={
-            'axis': {'range': [-5, 5], 'tickwidth': 1, 'tickcolor': "white"},
-            'bar': {'color': "white", 'thickness': 0.2},
-            'bgcolor': "#1e1e1e",
-            'borderwidth': 2,
-            'bordercolor': "#333",
-            'steps': [
-                {'range': [-5, 1.5], 'color': '#00ff00'},
-                {'range': [1.5, 3.5], 'color': '#ffaa00'},
-                {'range': [3.5, 5.0], 'color': '#ff4d4d'}],
-        }
-    ))
-    fig.update_layout(
-        template="plotly_dark", height=320, margin=dict(l=40, r=40, t=60, b=40),
-        paper_bgcolor='#1e1e1e'
-    )
-    return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
-
-
 # ==========================================================
 # 4. UNIFIED CACHE MANAGEMENT & BACKGROUND PROCESSING WORKER
 # ==========================================================
@@ -553,50 +471,6 @@ def _async_chart_cruncher_worker() -> None:
                 full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False}
             )
 
-        # 6. Re-render Dual Yield Velocity Gauges
-        conn = get_connection()
-        try:
-            cursor = conn.cursor()
-            cursor.execute("SELECT us_yield_velocity, uk_yield_velocity FROM macro_regimes ORDER BY date DESC LIMIT 1")
-            row = cursor.fetchone()
-        finally:
-            conn.close()
-
-        us_velocity = float(row['us_yield_velocity']) if row and row['us_yield_velocity'] is not None else 0.0
-        uk_velocity = float(row['uk_yield_velocity']) if row and row['uk_yield_velocity'] is not None else 0.0
-
-        fig_us_gauge = go.Figure(go.Indicator(
-            mode="gauge+number", value=us_velocity, domain={'x': [0, 1], 'y': [0, 1]},
-            title={'text': "US 3-Day Yield Velocity (%)", 'font': {'size': 18, 'color': '#ccc'}},
-            gauge={
-                'axis': {'range': [-5, 5], 'tickwidth': 1, 'tickcolor': "white"},
-                'bar': {'color': "white", 'thickness': 0.2},
-                'bgcolor': "#1e1e1e", 'borderwidth': 2, 'bordercolor': "#333",
-                'steps': [
-                    {'range': [-5, 1.5], 'color': '#00ff00'},
-                    {'range': [1.5, 3.5], 'color': '#ffaa00'},
-                    {'range': [3.5, 5.0], 'color': '#ff4d4d'}],
-            }
-        ))
-        fig_us_gauge.update_layout(template="plotly_dark", height=320, margin=dict(l=40, r=40, t=60, b=40), paper_bgcolor='#1e1e1e')
-        html_us_yield_gauge = fig_us_gauge.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
-
-        fig_uk_gauge = go.Figure(go.Indicator(
-            mode="gauge+number", value=uk_velocity, domain={'x': [0, 1], 'y': [0, 1]},
-            title={'text': "UK 3-Day Yield Velocity (%)", 'font': {'size': 18, 'color': '#ccc'}},
-            gauge={
-                'axis': {'range': [-5, 5], 'tickwidth': 1, 'tickcolor': "white"},
-                'bar': {'color': "white", 'thickness': 0.2},
-                'bgcolor': "#1e1e1e", 'borderwidth': 2, 'bordercolor': "#333",
-                'steps': [
-                    {'range': [-5, 1.5], 'color': '#00ff00'},
-                    {'range': [1.5, 3.5], 'color': '#ffaa00'},
-                    {'range': [3.5, 5.0], 'color': '#ff4d4d'}],
-            }
-        ))
-        fig_uk_gauge.update_layout(template="plotly_dark", height=320, margin=dict(l=40, r=40, t=60, b=40), paper_bgcolor='#1e1e1e')
-        html_uk_yield_gauge = fig_uk_gauge.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
-
         # Atomic update under synchronization fence
         with _CACHE_LOCK:
             if html_sentiment: _MACRO_HTML_CACHE["sentiment_html"] = html_sentiment
@@ -604,8 +478,6 @@ def _async_chart_cruncher_worker() -> None:
             if html_yield_equity: _MACRO_HTML_CACHE["yield_equity_html"] = html_yield_equity
             if html_uk_yield_equity: _MACRO_HTML_CACHE["uk_yield_equity_html"] = html_uk_yield_equity
             if html_ftse_gbp: _MACRO_HTML_CACHE["ftse_gbp_html"] = html_ftse_gbp
-            _MACRO_HTML_CACHE["us_yield_gauge_html"] = html_us_yield_gauge
-            _MACRO_HTML_CACHE["uk_yield_gauge_html"] = html_uk_yield_gauge
             _LAST_CACHE_TIME = time.time()
             
         logger.info("Visual macro caches synchronized successfully.")

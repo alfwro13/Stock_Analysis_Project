@@ -36,9 +36,9 @@
     {% endif %}
     
     <div class="summary-row risk-summary-row {% if global_threat == 'RED' %}risk-summary-red{% elif global_threat == 'YELLOW' %}risk-summary-yellow{% else %}risk-summary-green{% endif %}">
-        <div style="display: flex; flex-wrap: wrap; gap: 20px; width: 100%;">
+        <div class="risk-summary-flex">
             
-            <div style="flex: 1; min-width: 300px;">
+            <div class="risk-summary-flex-item">
                 <h3 class="risk-summary-header {% if macro_regime.us_threat_level == 'RED' %}red{% elif macro_regime.us_threat_level == 'YELLOW' %}yellow{% else %}green{% endif %}">
                     🇺🇸 US 30Y Treasury: 
                     {% if macro_regime.us_threat_level == 'RED' %}🚨 HIGH
@@ -58,7 +58,7 @@
                 </p>
             </div>
 
-            <div style="flex: 1; min-width: 300px;">
+            <div class="risk-summary-flex-item">
                 <h3 class="risk-summary-header {% if macro_regime.uk_threat_level == 'RED' %}red{% elif macro_regime.uk_threat_level == 'YELLOW' %}yellow{% else %}green{% endif %}">
                     🇬🇧 UK 10Y Gilt: 
                     {% if macro_regime.uk_threat_level == 'RED' %}🚨 HIGH
@@ -85,9 +85,10 @@
     <div class="sentiment-split-grid">
         
         <div class="sentiment-column">
-            <h2 style="color: #4da6ff; margin-bottom: 15px; border-bottom: 2px solid #333; padding-bottom: 10px;">🇺🇸 US Market Context</h2>
+            <h2 class="us-market-header">🇺🇸 US Market Context</h2>
 
-            <div class="chart-wrapper chart-wrapper-fg">
+            <div id="us-fg-wrapper" class="chart-wrapper chart-wrapper-fg">
+                <button class="fullscreen-btn" onclick="toggleFullscreen('us-fg-wrapper')">⛶ Fullscreen</button>
                 {{ sentiment_html | safe }}
             </div>
             
@@ -100,7 +101,8 @@
                 </div>
             </div>
 
-            <div class="chart-wrapper chart-wrapper-vix">
+            <div id="us-vix-wrapper" class="chart-wrapper chart-wrapper-vix">
+                <button class="fullscreen-btn" onclick="toggleFullscreen('us-vix-wrapper')">⛶ Fullscreen</button>
                 {{ vix_spy_html | safe }}
             </div>
             
@@ -114,11 +116,8 @@
                 </div>
             </div>
 
-            <div class="chart-wrapper">
-                {{ us_yield_gauge_html | safe }}
-            </div>
-
-            <div class="chart-wrapper">
+            <div id="us-yield-wrapper" class="chart-wrapper">
+                <button class="fullscreen-btn" onclick="toggleFullscreen('us-yield-wrapper')">⛶ Fullscreen</button>
                 {{ yield_equity_html | safe }}
             </div>
 
@@ -131,30 +130,67 @@
         </div>
 
         <div class="sentiment-column">
-            <h2 style="color: #b366ff; margin-bottom: 15px; border-bottom: 2px solid #333; padding-bottom: 10px;">🇬🇧 UK Market Context</h2>
+            <h2 class="uk-market-header">🇬🇧 UK Market Context</h2>
 
-            <div class="chart-wrapper" style="border-left: 4px solid #00ffcc;">
+            <div id="uk-gbp-wrapper" class="chart-wrapper chart-wrapper-accent-cyan">
+                <button class="fullscreen-btn" onclick="toggleFullscreen('uk-gbp-wrapper')">⛶ Fullscreen</button>
                 {{ ftse_gbp_html | safe }}
             </div>
 
-            <div class="chart-wrapper">
-                {{ uk_yield_gauge_html | safe }}
+            <div class="sentiment-footer">
+                <span class="sentiment-footer-title">How to read this chart:</span>
+                <div class="sentiment-footer-text">
+                    <strong class="text-accent-cyan">Currency Impact:</strong> Because roughly 70-75% of FTSE 100 corporate revenue is generated outside the UK (priced in USD and EUR), a <em>weakening</em> Pound Sterling (GBP) often drives the FTSE 100 <em>up</em>. This is because their overseas earnings are artificially inflated when converted back into GBP. Look for an inverse correlation between the GBP/USD rate and the FTSE 100 points.
+                </div>
             </div>
 
-            <div class="chart-wrapper" style="border-left: 4px solid #b366ff;">
+            <div id="uk-yield-wrapper" class="chart-wrapper chart-wrapper-accent-purple">
+                <button class="fullscreen-btn" onclick="toggleFullscreen('uk-yield-wrapper')">⛶ Fullscreen</button>
                 {{ uk_yield_equity_html | safe }}
             </div>
 
             <div class="sentiment-footer">
-                <span class="sentiment-footer-title">UK Dynamics Explained:</span>
+                <span class="sentiment-footer-title">UK Cost of Capital Explained:</span>
                 <div class="sentiment-footer-text">
-                    <strong style="color: #b366ff;">UK Cost of Capital:</strong> Just like the US, rising borrowing costs (10Y Gilt Yields) typically compress equity valuations. <br><br>
-                    <strong style="color: #00ffcc;">Currency Impact:</strong> Because roughly 70-75% of FTSE 100 corporate revenue is generated outside the UK (priced in USD and EUR), a <em>weakening</em> Pound Sterling (GBP) often drives the FTSE 100 <em>up</em>. This is because their overseas earnings are artificially inflated when converted back into GBP. Look for an inverse correlation between the GBP/USD rate and the FTSE 100 points.
+                    <strong class="text-accent-purple">UK Cost of Capital:</strong> Just like the US, rising borrowing costs (10Y Gilt Yields) typically compress equity valuations. High yields increase corporate borrowing expenses and provide institutional capital with a risk-free alternative to volatile equities.
                 </div>
             </div>
         </div>
 
     </div>
 
+    <script>
+        function toggleFullscreen(wrapperId) {
+            const elem = document.getElementById(wrapperId);
+            if (!elem) return;
+
+            if (!document.fullscreenElement && !document.mozFullScreenElement && 
+                !document.webkitFullscreenElement && !document.msFullscreenElement) {
+                // Enter fullscreen
+                if (elem.requestFullscreen) {
+                    elem.requestFullscreen();
+                } else if (elem.msRequestFullscreen) {
+                    elem.msRequestFullscreen();
+                } else if (elem.mozRequestFullScreen) {
+                    elem.mozRequestFullScreen();
+                } else if (elem.webkitRequestFullscreen) {
+                    elem.webkitRequestFullscreen(Element.ALLOW_KEYBOARD_INPUT);
+                }
+                elem.classList.add('is-fullscreen');
+            } else {
+                // Exit fullscreen
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                } else if (document.msExitFullscreen) {
+                    document.msExitFullscreen();
+                } else if (document.mozCancelFullScreen) {
+                    document.mozCancelFullScreen();
+                } else if (document.webkitExitFullscreen) {
+                    document.webkitExitFullscreen();
+                }
+                elem.classList.remove('is-fullscreen');
+            }
+        }
+    </script>
 </body>
 </html>

@@ -14,8 +14,6 @@ from regime_engine import get_latest_regime
 from sentiment_engine import (
     get_sentiment_html,
     get_vix_spy_html,
-    get_us_yield_gauge_html,
-    get_uk_yield_gauge_html,
     get_yield_equity_html,
     get_uk_yield_equity_html,
     get_ftse_gbp_html
@@ -83,8 +81,6 @@ async def market_sentiment_page(request: Request):
         context={
             "sentiment_html": get_sentiment_html(), 
             "vix_spy_html": get_vix_spy_html(),
-            "us_yield_gauge_html": get_us_yield_gauge_html(),
-            "uk_yield_gauge_html": get_uk_yield_gauge_html(),
             "yield_equity_html": get_yield_equity_html(),
             "uk_yield_equity_html": get_uk_yield_equity_html(),
             "ftse_gbp_html": get_ftse_gbp_html(),
