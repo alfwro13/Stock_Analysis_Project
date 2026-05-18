@@ -1,207 +1,115 @@
-# regime_engine.py
 import logging
-from datetime import datetime
-from typing import Dict, Any, Optional
-
+import time
+import random
 import numpy as np
 import pandas as pd
 import yfinance as yf
+from scipy import stats
+from typing import Optional
 
 from database import get_connection
-from config import HISTORICAL_DIR
 
 # Configure robust module-level logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - REGIME_ENGINE - %(levelname)s - %(message)s'
+    format='%(asctime)s - RISK_ENGINE - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
-def initialize_regime_table() -> None:
-    """Ensures the market_regimes table exists before insertion."""
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS market_regimes (
-                date TEXT PRIMARY KEY,
-                vix_close REAL,
-                spy_volatility REAL,
-                turbulence_index REAL,
-                regime_label TEXT
-            )
-        ''')
-        conn.commit()
-    except Exception as e:
-        logger.error(f"Failed to initialize market_regimes table: {e}")
-    finally:
-        conn.close()
-
-def calculate_market_regime() -> None:
+def calculate_tail_risk(ticker: str, target_date: Optional[str] = None) -> None:
     """
-    Downloads 1 year of SPY and VIX data.
-    Calculates the annualized 21-day historical volatility of SPY's log returns.
-    Creates a composite Turbulence Index and classifies the market regime.
-    Persists the data natively to SQLite.
+    Fetches 1 year of daily historical prices to calculate Parametric Value at Risk (VaR)
+    and Conditional Value at Risk (CVaR) at a 95% confidence interval.
+    Updates the existing row in the quant_signals SQLite table.
     """
-    logger.info("Initiating daily Market Regime calculation...")
-    initialize_regime_table()
-    
     try:
-        # 1. Fetch exactly 1 year of historical market data
-        tickers = ["SPY", "^VIX"]
-        df = yf.download(tickers, period="1y", interval="1d", group_by='ticker', auto_adjust=True, progress=False)
+        # 1. Fetch 1 year (approx 252 trading days) of historical data
+        df = yf.download(ticker, period="1y", interval="1d", progress=False, auto_adjust=True)
         
-        if df.empty or 'SPY' not in df.columns or '^VIX' not in df.columns:
-            logger.error("Failed to fetch SPY or VIX data from Yahoo Finance.")
+        if df.empty or len(df) < 50:
+            logger.warning(f"Insufficient historical data to calculate tail risk for {ticker}.")
             return
 
-        spy_data = df['SPY'].dropna(subset=['Close'])
-        vix_data = df['^VIX'].dropna(subset=['Close'])
+        # Handle multi-index columns returned by newer yfinance versions
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+
+        df.dropna(subset=['Close'], inplace=True)
         
-        if spy_data.empty or vix_data.empty:
-            logger.error("Incomplete data received for SPY or VIX.")
+        # 2. Calculate daily logarithmic returns
+        # Log returns are strictly preferred for statistical modeling over simple percentage returns
+        log_returns = np.log(df['Close'] / df['Close'].shift(1)).dropna().values
+        
+        if len(log_returns) < 50:
+            logger.warning(f"Insufficient valid log returns to calculate tail risk for {ticker}.")
             return
 
-        # 2. Calculate SPY 21-Day Annualized Historical Volatility
-        # Log returns: ln(P_t / P_{t-1})
-        spy_log_returns = np.log(spy_data['Close'] / spy_data['Close'].shift(1))
-        # Volatility = Standard Deviation of log returns * sqrt(252 trading days) * 100
-        spy_vol_21d = spy_log_returns.rolling(window=21).std() * np.sqrt(252) * 100.0
-
-        # Extract latest metrics
-        latest_date = spy_data.index[-1].strftime('%Y-%m-%d')
-        latest_vix = float(vix_data['Close'].iloc[-1])
-        latest_spy_vol = float(spy_vol_21d.iloc[-1])
+        # 3. Calculate Parametric VaR at 95% Confidence
+        alpha = 0.05  # 95% confidence level
+        mu = np.mean(log_returns)
+        sigma = np.std(log_returns)
         
-        if pd.isna(latest_spy_vol):
-            logger.warning("Not enough data to calculate 21-day rolling volatility.")
-            return
-
-        # 3. Calculate Composite Turbulence Index
-        # A blended metric weighing implied volatility (VIX) and realized historical volatility (SPY Vol)
-        turbulence_index = (latest_vix + latest_spy_vol) / 2.0
+        # ppf(0.05) gives the z-score for the 5th percentile (approx -1.645)
+        var_95_threshold = mu + sigma * stats.norm.ppf(alpha)
         
-        # 4. Classify Market Regime
-        if turbulence_index >= 30.0 or latest_vix >= 30.0:
-            regime_label = 'Crash'
-        elif turbulence_index >= 20.0 or latest_vix >= 20.0:
-            regime_label = 'Volatile'
+        # Express VaR as a positive float representing the percentage drop
+        var_95 = float(-var_95_threshold) if var_95_threshold < 0 else 0.0
+        
+        # 4. Calculate CVaR (Expected Shortfall) at 95% Confidence
+        # First, attempt to calculate the empirical CVaR (average of returns worse than VaR)
+        tail_returns = log_returns[log_returns <= var_95_threshold]
+        
+        if len(tail_returns) > 0:
+            cvar_95 = float(-np.mean(tail_returns))
         else:
-            regime_label = 'Normal'
+            # Fallback to parametric CVaR if no historical data points breached the threshold
+            # Formula: mu - sigma * (PDF(z) / alpha)
+            z_score = stats.norm.ppf(alpha)
+            cvar_95 = float(-(mu - sigma * (stats.norm.pdf(z_score) / alpha)))
+            
+        # Prevent negative risk metrics in extreme outlier cases (e.g., asset only went straight up)
+        var_95 = max(var_95, 0.0)
+        cvar_95 = max(cvar_95, 0.0)
 
-        # 5. Persist to Database (Idempotent Insert)
+        # 5. Database Update (Strictly UPDATE, no INSERT)
         conn = get_connection()
         cursor = conn.cursor()
         
-        cursor.execute('''
-            INSERT OR REPLACE INTO market_regimes 
-            (date, vix_close, spy_volatility, turbulence_index, regime_label)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (latest_date, round(latest_vix, 2), round(latest_spy_vol, 2), round(turbulence_index, 2), regime_label))
+        if target_date:
+            query = """
+                UPDATE quant_signals 
+                SET var_95 = ?, cvar_95 = ? 
+                WHERE ticker = ? AND date = ?
+            """
+            cursor.execute(query, (var_95, cvar_95, ticker, target_date))
+        else:
+            query = """
+                UPDATE quant_signals 
+                SET var_95 = ?, cvar_95 = ? 
+                WHERE ticker = ? AND date = (SELECT MAX(date) FROM quant_signals WHERE ticker = ?)
+            """
+            cursor.execute(query, (var_95, cvar_95, ticker, ticker))
         
         conn.commit()
         conn.close()
         
-        logger.info(f"Market Regime recorded for {latest_date}: {regime_label} (Turbulence: {turbulence_index:.2f})")
+        logger.info(f"[{ticker}] Tail Risk Calculated -> VaR(95%): {var_95*100:.2f}%, CVaR(95%): {cvar_95*100:.2f}%")
         
     except Exception as e:
-        logger.error(f"Fatal error calculating market regime: {e}")
+        logger.error(f"Fatal error calculating tail risk for {ticker}: {e}")
 
-def get_latest_regime() -> Optional[Dict[str, Any]]:
-    """
-    Queries the database for the most recent market regime classification.
-    Returns a dictionary with the regime details or None if unavailable.
-    """
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM market_regimes ORDER BY date DESC LIMIT 1")
-        row = cursor.fetchone()
-        conn.close()
+def update_all_tail_risks(tickers: list) -> None:
+    """Iterates through a list of tickers and calculates their VaR/CVaR profiles."""
+    if not tickers:
+        logger.warning("Ticker list is empty. Aborting tail risk scan.")
+        return
         
-        if row:
-            return dict(row)
-        return None
-    except Exception as e:
-        logger.error(f"Failed to fetch latest regime: {e}")
-        return None
+    logger.info(f"Initiating Tail Risk (VaR) Scan for {len(tickers)} assets...")
+    for ticker in tickers:
+        calculate_tail_risk(ticker)
+        time.sleep(random.uniform(0.5, 1.5))
+    logger.info("Tail Risk Scan completed successfully.")
 
-def calculate_systemic_macro_threat() -> None:
-    """Calculates yield rate of change (US & UK) and logs granular systemic compression risk to SQLite."""
-    try:
-        tyx = yf.Ticker("^TYX").history(period="5d")
-        tnx = yf.Ticker("^TNX").history(period="5d")
-        dxy = yf.Ticker("DX-Y.NYB").history(period="5d")
-        gbpusd = yf.Ticker("GBPUSD=X").history(period="5d")
-        
-        if tyx.empty or len(tyx) < 4:
-            return
-            
-        # Current and Past (3 trading days ago) values
-        curr_tyx = float(tyx['Close'].iloc[-1])
-        past_tyx = float(tyx['Close'].iloc[-4])
-        
-        curr_tnx = float(tnx['Close'].iloc[-1]) if not tnx.empty else 0.0
-        curr_dxy = float(dxy['Close'].iloc[-1]) if not dxy.empty else 0.0
-        curr_gbpusd = float(gbpusd['Close'].iloc[-1]) if not gbpusd.empty else 0.0
-        
-        # Read the UK Gilt data from our custom FT.com parquet scraper
-        uk_gilt_path = HISTORICAL_DIR / "UK_GILT_BASELINE.parquet"
-        if uk_gilt_path.exists():
-            gilt_df = pd.read_parquet(uk_gilt_path)
-            curr_gilt = float(gilt_df['Close'].iloc[-1]) if len(gilt_df) >= 1 else curr_tyx
-            past_gilt = float(gilt_df['Close'].iloc[-4]) if len(gilt_df) >= 4 else past_tyx
-        else:
-            curr_gilt, past_gilt = curr_tyx, past_tyx
-            
-        # Calculate yield velocity % change over 72 trading hours
-        tyx_velocity = ((curr_tyx - past_tyx) / past_tyx) * 100.0 if past_tyx > 0 else 0.0
-        gilt_velocity = ((curr_gilt - past_gilt) / past_gilt) * 100.0 if past_gilt > 0 else 0.0
-        
-        # US Institutional Rule Classification
-        if tyx_velocity >= 3.5 or curr_tyx >= 5.0:
-            us_threat_level = "RED"
-        elif tyx_velocity >= 1.5:
-            us_threat_level = "YELLOW"
-        else:
-            us_threat_level = "GREEN"
-
-        # UK Institutional Rule Classification
-        if gilt_velocity >= 3.5 or curr_gilt >= 5.0:
-            uk_threat_level = "RED"
-        elif gilt_velocity >= 1.5:
-            uk_threat_level = "YELLOW"
-        else:
-            uk_threat_level = "GREEN"
-            
-        latest_date = tyx.index[-1].strftime('%Y-%m-%d')
-        
-        conn = get_connection()
-        cursor = conn.cursor()
-        
-        # Native upsert into our dedicated macro ledger with full independent region schemas
-        cursor.execute('''
-            INSERT OR REPLACE INTO macro_regimes 
-            (date, tyx_close, tnx_close, dxy_close, uk_gilt_close, gbpusd_close, us_yield_velocity, us_threat_level, uk_yield_velocity, uk_threat_level)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (
-            latest_date, 
-            round(curr_tyx, 3), 
-            round(curr_tnx, 3), 
-            round(curr_dxy, 3), 
-            round(curr_gilt, 3), 
-            round(curr_gbpusd, 4), 
-            round(tyx_velocity, 2), 
-            us_threat_level, 
-            round(gilt_velocity, 2), 
-            uk_threat_level
-        ))
-        
-        conn.commit()
-        conn.close()
-        
-        logger.info(f"Systemic Macro Risk Evaluated | US Threat: {us_threat_level} (Vel: {tyx_velocity:+.2f}%) | UK Threat: {uk_threat_level} (Vel: {gilt_velocity:+.2f}%)")
-        
-    except Exception as e:
-        logger.error(f"Fatal crash inside systemic threat calculator: {e}")
+if __name__ == "__main__":
+    # Test script standalone
+    calculate_tail_risk("SPY")
