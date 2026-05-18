@@ -222,7 +222,23 @@ def generate_markdown_briefing(target_date: str, data: List[Dict[str, Any]]) -> 
     macro_row = cursor.fetchone()
     conn.close()
     macro_regime = dict(macro_row) if macro_row else {}
-    threat_level = macro_regime.get('systemic_threat_level', 'GREEN')
+    
+    # Extract dual-region metrics
+    us_threat = macro_regime.get('us_threat_level', 'GREEN')
+    uk_threat = macro_regime.get('uk_threat_level', 'GREEN')
+    us_vel_raw = macro_regime.get('us_yield_velocity')
+    uk_vel_raw = macro_regime.get('uk_yield_velocity')
+    
+    us_vel = float(us_vel_raw) if us_vel_raw is not None else 0.0
+    uk_vel = float(uk_vel_raw) if uk_vel_raw is not None else 0.0
+    
+    # Calculate Unified Global Threat Level for downstream filtering
+    if us_threat == 'RED' or uk_threat == 'RED':
+        threat_level = 'RED'
+    elif us_threat == 'YELLOW' or uk_threat == 'YELLOW':
+        threat_level = 'YELLOW'
+    else:
+        threat_level = 'GREEN'
     
     # 2. Execute Screens mapped by Regime
     raw_oversold = get_oversold_reversals(data, regime_label)
@@ -253,7 +269,8 @@ def generate_markdown_briefing(target_date: str, data: List[Dict[str, Any]]) -> 
     
     report += "## 🌍 Market Regime Context\n"
     report += f"**Volatility Classification:** {regime_label} *(Turbulence Index: {turbulence_idx:.2f})*\n"
-    report += f"**Systemic Yield Threat:** {threat_level} *(Velocity: {macro_regime.get('yield_velocity', 0.0):+.2f}% | Source: {macro_regime.get('threat_source', 'N/A')})*\n\n"
+    report += f"**US Yield Threat:** {us_threat} *(Velocity: {us_vel:+.2f}%)*\n"
+    report += f"**UK Yield Threat:** {uk_threat} *(Velocity: {uk_vel:+.2f}%)*\n\n"
     
     if threat_level in ['RED', 'YELLOW']:
         report += "*⚠️ SYSTEMIC YIELD WARNING: Global cost of capital is surging. The quantitative screener has aggressively vetoed highly indebted and high P/E equities that show strong negative correlations to rising interest rates.*\n\n"
