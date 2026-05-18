@@ -235,21 +235,26 @@
                 </div>
                 <div style="display: flex; gap: 15px; margin-bottom: 10px;">
                     <div class="form-group" style="flex: 1;">
-                        <label>Frequency</label>
+                        <label>Active Days</label>
                         <select id="SENTIMENT_ENGINE_FREQ">
                             <option value="mon-fri" {% if config.SCHEDULING.SENTIMENT_ENGINE.FREQUENCY == 'mon-fri' %}selected{% endif %}>Mon-Fri</option>
                             <option value="*" {% if config.SCHEDULING.SENTIMENT_ENGINE.FREQUENCY == '*' %}selected{% endif %}>Every Day</option>
                         </select>
                     </div>
                     <div class="form-group" style="flex: 1;">
-                        <label>Interval (Hours)</label>
-                        <input type="number" id="SENTIMENT_ENGINE_INTERVAL" value="{{ config.SCHEDULING.SENTIMENT_ENGINE.INTERVAL_HOURS }}" min="0" placeholder="0 to run once">
+                        <label>Start Time</label>
+                        <input type="time" id="SENTIMENT_ENGINE_START" value="{{ config.SCHEDULING.SENTIMENT_ENGINE.START_TIME | default('09:30') }}">
                     </div>
                     <div class="form-group" style="flex: 1;">
-                        <label>Specific Time (if Interval = 0)</label>
-                        <input type="time" id="SENTIMENT_ENGINE_TIME" value="{{ config.SCHEDULING.SENTIMENT_ENGINE.TIME }}">
+                        <label>End Time</label>
+                        <input type="time" id="SENTIMENT_ENGINE_END" value="{{ config.SCHEDULING.SENTIMENT_ENGINE.END_TIME | default('16:00') }}">
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label>Interval (Hours)</label>
+                        <input type="number" id="SENTIMENT_ENGINE_INTERVAL" value="{{ config.SCHEDULING.SENTIMENT_ENGINE.INTERVAL_HOURS | default(4) }}" min="1">
                     </div>
                 </div>
+                <button type="button" class="btn-test" style="margin-top: 0; background-color: #00bcd4; color: #121212;" onclick="triggerSentimentScan()">▶️ Run Sentiment Scan Now</button>
             </div>
 
             <div style="background-color: #2c2c2c; padding: 15px; border-radius: 5px; margin-bottom: 10px; border-left: 3px solid #ffaa00;">
@@ -1046,6 +1051,15 @@
             }
         }
 
+        async function triggerSentimentScan() {
+            try {
+                await fetch('/api/trigger-sentiment-scan', { method: 'POST' });
+                alert("Sentiment Scan initiated in background. Check notifications for progress updates.");
+            } catch (error) {
+                alert("Failed to initiate Sentiment Scan. Network or server error.");
+            }
+        }
+
         async function triggerMLInit() {
             const btn = document.querySelector('button[onclick="triggerMLInit()"]');
             btn.disabled = true;
@@ -1131,8 +1145,9 @@
                     "SENTIMENT_ENGINE": {
                         "ENABLED": document.getElementById('SENTIMENT_ENGINE_ENABLED').checked,
                         "FREQUENCY": document.getElementById('SENTIMENT_ENGINE_FREQ').value,
-                        "INTERVAL_HOURS": parseInt(document.getElementById('SENTIMENT_ENGINE_INTERVAL').value) || 0,
-                        "TIME": document.getElementById('SENTIMENT_ENGINE_TIME').value
+                        "START_TIME": document.getElementById('SENTIMENT_ENGINE_START').value,
+                        "END_TIME": document.getElementById('SENTIMENT_ENGINE_END').value,
+                        "INTERVAL_HOURS": parseInt(document.getElementById('SENTIMENT_ENGINE_INTERVAL').value) || 4
                     },
                     "CRASH_ALERTS": {
                         "ENABLED": document.getElementById('CRASH_ALERTS_SCHED_ENABLED').checked,

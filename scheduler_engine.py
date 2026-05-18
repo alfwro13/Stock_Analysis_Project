@@ -361,23 +361,23 @@ def reload_scheduler():
     # 4b. Standalone NLP Market Sentiment Engine
     sent_scan_cfg = scheduling.get("SENTIMENT_ENGINE", {})
     if sent_scan_cfg.get("ENABLED"):
-        interval = int(sent_scan_cfg.get("INTERVAL_HOURS", 0))
         freq = sent_scan_cfg.get("FREQUENCY", "mon-fri")
-        if interval > 0:
-            scheduler.add_job(run_sentiment_scan, IntervalTrigger(hours=interval), id='sentiment_scan_job')
-            logger.info(f"Sentiment Scan scheduled every {interval} hours.")
-        else:
-            time_str = sent_scan_cfg.get("TIME", "09:00")
-            try:
-                hour, minute = map(int, time_str.split(':'))
-                scheduler.add_job(
-                    run_sentiment_scan,
-                    CronTrigger(day_of_week=freq, hour=hour, minute=minute),
-                    id='sentiment_scan_job'
-                )
-                logger.info(f"Sentiment Scan scheduled for {freq} at {time_str}")
-            except Exception as e:
-                logger.error(f"Failed to schedule Sentiment Scan: {e}")
+        start_time = sent_scan_cfg.get("START_TIME", "09:30")
+        end_time = sent_scan_cfg.get("END_TIME", "16:00")
+        interval_hours = int(sent_scan_cfg.get("INTERVAL_HOURS", 4))
+        
+        try:
+            start_h, _ = map(int, start_time.split(':'))
+            end_h, _ = map(int, end_time.split(':'))
+            
+            scheduler.add_job(
+                run_sentiment_scan,
+                CronTrigger(day_of_week=freq, hour=f"{start_h}-{end_h}/{interval_hours}"),
+                id='sentiment_scan_job'
+            )
+            logger.info(f"Sentiment Scan scheduled for {freq} between {start_time}-{end_time} every {interval_hours} hours.")
+        except Exception as e:
+            logger.error(f"Failed to schedule Sentiment Scan: {e}")
 
     # 5. Unified Intraday Orchestrator
     crash_cfg = scheduling.get("CRASH_ALERTS", {})

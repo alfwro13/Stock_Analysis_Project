@@ -19,7 +19,7 @@ from pydantic import BaseModel
 from config import load_config, SECRETS_PATH, DATA_DIR, BASE_DIR
 from database import get_connection, get_universe_tickers
 # Assumed run_freetrade_sync is managed by the scheduler engine alongside ghostfolio
-from scheduler_engine import run_update_pipeline, run_ghostfolio_sync, run_freetrade_sync, reload_scheduler
+from scheduler_engine import run_update_pipeline, run_ghostfolio_sync, run_freetrade_sync, reload_scheduler, run_sentiment_scan
 from ghostfolio_sync import GhostfolioSyncEngine
 from market_pulse import get_cached_pulse_from_db, fetch_and_save_pulse
 from sentiment_engine import run_nextcloud_alert, update_all_sentiment
@@ -149,6 +149,15 @@ async def trigger_universe_quant_scan_endpoint(background_tasks: BackgroundTasks
     return JSONResponse(content={
         "status": "success", 
         "message": "Full Universe Quant Scan initiated in the background. This will take over an hour. Check System Notifications for progress."
+    })
+
+@api_router.post("/trigger-sentiment-scan")
+async def trigger_sentiment_scan_endpoint(background_tasks: BackgroundTasks):
+    """API endpoint to manually trigger the NLP Sentiment Scan."""
+    background_tasks.add_task(run_sentiment_scan)
+    return JSONResponse(content={
+        "status": "success", 
+        "message": "Sentiment Scan initiated in the background. Check System Notifications for progress."
     })
 
 @api_router.get("/universe/imports/list")
