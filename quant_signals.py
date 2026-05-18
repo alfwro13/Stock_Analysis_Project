@@ -365,26 +365,36 @@ class QuantEngine:
             elif rs_slope < -0.001:
                 breakdown.append("+0: <abbr title='Relative Strength slope is negative. This asset is underperforming the broader market.'>Laggard vs Benchmark</abbr>")
 
-            # Standard Core Score
+            # Standard Core Score with Baseline Pass/Fail Architecture
             if ma5 and current_price > ma5: 
                 score += 15
                 breakdown.append("+15: Price > 5D MA (Short-term Momentum)")
+            else:
+                breakdown.append("+0: Price <= 5D MA or Data Missing (Bearish short-term momentum)")
             
             if ma5 and ma10 and ma21 and ma5 > ma10 and ma10 > ma21: 
                 score += 15
                 breakdown.append("+15: MAs Aligned (5 > 10 > 21)")
+            else:
+                breakdown.append("+0: MAs Not Aligned (Lacking strict uptrend)")
 
             if trend_200d == "UP":
                 score += 15
                 breakdown.append("+15: 200D Trend UP (Institutional Backing)")
+            else:
+                breakdown.append("+0: 200D Trend DOWN (Lacking institutional backing)")
 
             if not pd.isna(rsi_val) and 40.0 <= rsi_val <= 65.0: 
                 score += 10
                 breakdown.append("+10: RSI Healthy (Room to run)")
+            else:
+                breakdown.append("+0: RSI Unhealthy (Overbought, oversold, or lacking momentum)")
 
             if is_fund or obv_bullish: 
                 score += 20
                 breakdown.append("+20: OBV Bullish / Fund Exemption")
+            else:
+                breakdown.append("+0: OBV Bearish (Volume distribution or lacking conviction)")
 
             # Tag: Divergence Circuit Breaker
             if is_bearish_divergence and not is_fund:
@@ -395,6 +405,7 @@ class QuantEngine:
                 score -= 30
                 breakdown.append("-30: <abbr title='Price made a higher high, but RSI made a lower high. Momentum is secretly dying. High risk of dump.'>Algorithmic Bearish Divergence</abbr>")
 
+            # Keep score strictly bounded between 0 and 100
             score = max(0, min(score, 100))
 
             if score >= 80: signal = "STRONG BUY"

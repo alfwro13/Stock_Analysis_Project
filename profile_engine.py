@@ -31,11 +31,74 @@ def save_blacklist(blacklist: set) -> None:
     except Exception as e:
         logger.error(f"Failed to save blacklist: {e}")
 
+def update_single_profile(ticker: str) -> bool:
+    """
+    Fetches static metadata for a single ticker via yfinance and inserts it into asset_profiles.
+    Handles blacklisting and orphan purging automatically.
+    Returns True if successful, False if blacklisted or failed.
+    """
+    blacklist = load_blacklist()
+    
+    # Skip immediately if it has been blacklisted previously
+    if ticker in blacklist:
+        logger.info(f"Skipping profile update for {ticker}: Present in blacklist.")
+        return False
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    try:
+        info = yf.Ticker(ticker).info
+        
+        # --- THE AUTOMATED BLACKLIST PURGE ---
+        # Softened check: Mutual Funds often have very small info dictionaries. 
+        # We only blacklist if we get absolutely no identifying information back from Yahoo.
+        has_identity = 'shortName' in info or 'longName' in info or 'symbol' in info or 'regularMarketPrice' in info
+        
+        if not info or not has_identity:
+            logger.warning(f"No valid payload for {ticker}. Permanently blacklisting and purging from database.")
+            blacklist.add(ticker)
+            save_blacklist(blacklist)
+            
+            # Ruthlessly delete the orphan from all tables
+            cursor.execute("DELETE FROM market_universe WHERE ticker = ?", (ticker,))
+            cursor.execute("DELETE FROM asset_profiles WHERE ticker = ?", (ticker,))
+            cursor.execute("DELETE FROM stock_signals WHERE ticker = ?", (ticker,))
+            cursor.execute("DELETE FROM quant_signals WHERE ticker = ?", (ticker,))
+            conn.commit()
+            return False
+            
+        company_name = info.get('shortName') or info.get('longName') or ticker
+        sector = info.get('sector', 'Unclassified')
+        industry = info.get('industry', 'Unclassified')
+        country = info.get('country', 'Unknown')
+        exchange = info.get('exchange', 'Unknown')
+        currency = info.get('currency', 'USD')
+        quote_type = info.get('quoteType', 'EQUITY')
+        summary = info.get('longBusinessSummary', 'No business summary available.')
+        last_verified = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        company_name = company_name.replace(" - Common Stock", "").replace(" Common Stock", "").strip()
+        
+        cursor.execute('''
+            INSERT OR REPLACE INTO asset_profiles 
+            (ticker, company_name, sector, industry, country, exchange, currency, quote_type, business_summary, last_verified_date)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (ticker, company_name, sector, industry, country, exchange, currency, quote_type, summary, last_verified))
+        
+        conn.commit()
+        return True
+        
+    except Exception as e:
+        logger.error(f"Failed to fetch/save profile for {ticker}: {e}")
+        return False
+    finally:
+        conn.close()
+
 def run_profile_audit(limit: int = 250):
     logger.info(f"Initiating Audit for Central Asset Profiles (Limit: {limit})...")
     conn = get_connection()
     cursor = conn.cursor()
-    blacklist = load_blacklist()
 
     try:
         cursor.execute("""
@@ -57,73 +120,32 @@ def run_profile_audit(limit: int = 250):
         rows = cursor.fetchall()
         tickers_to_update = [row['ticker'] for row in rows]
         
-        if not tickers_to_update:
-            logger.info("All asset profiles are up-to-date within the last 90 days. No action needed.")
-            return
-
-        logger.info(f"Found {len(tickers_to_update)} profiles requiring initialization or refresh.")
-        
-        updated_count = 0
-        for i, ticker in enumerate(tickers_to_update):
-            # Skip if it's already in the blacklist from a previous run
-            if ticker in blacklist:
-                continue
-
-            try:
-                if i % 50 == 0: logger.info(f"Progress: {i}/{len(tickers_to_update)} fetched...")
-                
-                info = yf.Ticker(ticker).info
-                
-                # --- THE AUTOMATED BLACKLIST PURGE ---
-                # Softened check: Mutual Funds often have very small info dictionaries. 
-                # We only blacklist if we get absolutely no identifying information back from Yahoo.
-                has_identity = 'shortName' in info or 'longName' in info or 'symbol' in info or 'regularMarketPrice' in info
-                
-                if not info or not has_identity:
-                    logger.warning(f"No valid payload for {ticker}. Permanently blacklisting and purging from database.")
-                    blacklist.add(ticker)
-                    save_blacklist(blacklist)
-                    
-                    # Ruthlessly delete the orphan from all tables
-                    cursor.execute("DELETE FROM market_universe WHERE ticker = ?", (ticker,))
-                    cursor.execute("DELETE FROM asset_profiles WHERE ticker = ?", (ticker,))
-                    cursor.execute("DELETE FROM stock_signals WHERE ticker = ?", (ticker,))
-                    cursor.execute("DELETE FROM quant_signals WHERE ticker = ?", (ticker,))
-                    conn.commit()
-                    continue
-                    
-                company_name = info.get('shortName') or info.get('longName') or ticker
-                sector = info.get('sector', 'Unclassified')
-                industry = info.get('industry', 'Unclassified')
-                country = info.get('country', 'Unknown')
-                exchange = info.get('exchange', 'Unknown')
-                currency = info.get('currency', 'USD')
-                quote_type = info.get('quoteType', 'EQUITY')
-                summary = info.get('longBusinessSummary', 'No business summary available.')
-                last_verified = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-                company_name = company_name.replace(" - Common Stock", "").replace(" Common Stock", "").strip()
-                
-                cursor.execute('''
-                    INSERT OR REPLACE INTO asset_profiles 
-                    (ticker, company_name, sector, industry, country, exchange, currency, quote_type, business_summary, last_verified_date)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (ticker, company_name, sector, industry, country, exchange, currency, quote_type, summary, last_verified))
-                
-                conn.commit()
-                updated_count += 1
-                
-            except Exception as e:
-                logger.error(f"Failed to fetch/save profile for {ticker}: {e}")
-            finally:
-                time.sleep(random.uniform(0.5, 1.5))
-                
-        logger.info(f"Asset Profile Audit complete. Updated {updated_count} static metadata records.")
-        
     except Exception as e:
-        logger.error(f"Fatal error during Asset Profile Audit: {e}")
+        logger.error(f"Fatal error fetching target tickers during Asset Profile Audit: {e}")
+        return
     finally:
+        # Close connection before executing the long-running fetch loop to prevent DB locks
         conn.close()
+
+    if not tickers_to_update:
+        logger.info("All asset profiles are up-to-date within the last 90 days. No action needed.")
+        return
+
+    logger.info(f"Found {len(tickers_to_update)} profiles requiring initialization or refresh.")
+    
+    updated_count = 0
+    for i, ticker in enumerate(tickers_to_update):
+        if i > 0 and i % 50 == 0: 
+            logger.info(f"Progress: {i}/{len(tickers_to_update)} fetched...")
+            
+        success = update_single_profile(ticker)
+        if success:
+            updated_count += 1
+            
+        # Respect API rate limits gracefully
+        time.sleep(random.uniform(0.5, 1.5))
+            
+    logger.info(f"Asset Profile Audit complete. Updated {updated_count} static metadata records.")
 
 if __name__ == "__main__":
     print("WARNING: Running initial massive data harvest. This will take ~1 to 1.5 hours to respect rate limits.")

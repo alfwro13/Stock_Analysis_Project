@@ -35,6 +35,7 @@ from reports_engine import get_sector_trends, get_mean_reversion_setups, get_lea
 from options_engine import fetch_options_chain, calculate_payoff_matrix
 from ai_prediction_engine import train_global_ml_model, update_daily_ml_predictions, run_historical_backfill
 from risk_engine import update_all_tail_risks
+from profile_engine import update_single_profile
 
 
 # Configure logger
@@ -427,6 +428,9 @@ async def api_watchlist_remove(req: TickerRequest):
 @api_router.post("/data/refresh-single")
 async def api_data_refresh_single(req: TickerRequest):
     """Synchronously fetches fresh market data and evaluates ALL quant models for a single ticker."""
+    # Hydrate static profile metadata to prevent Cold Start UI issues
+    update_single_profile(req.ticker)
+    
     data_engine = DataEngine()
     quant_engine = QuantEngine()
     

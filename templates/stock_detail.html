@@ -19,7 +19,7 @@
             {% if not embed %}
             <span class="divider">|</span>
             <a href="#verdict">Verdict</a> <span class="divider">|</span>
-            <a href="#charts">Interactive Charts</a> <span class="divider">|</span>
+            <a href="#intraday-section">Interactive Charts</a> <span class="divider">|</span>
             <a href="#price-action">Price Action</a> <span class="divider">|</span>
             <a href="#fundamentals">Fundamentals</a> <span class="divider">|</span>
             <a href="/glossary">📚 Glossary</a> <span class="divider">|</span>
@@ -47,442 +47,449 @@
         {% include 'macro_cards.html' %}
         {% endif %}
 
-        <div id="verdict">
-            {% if portfolio_math %}
-            <div class="portfolio-box">
-                <h2 style="border:none; margin: 0; padding:0;">Your Position (Global Aggregation)</h2>
-                <div style="display: flex; gap: 40px; font-size: 16px; margin-top: 15px; margin-bottom: 20px;">
-                    <div><span style="color: #aaa;">Shares Owned:</span> <strong>{{ portfolio_math.global.shares }}</strong></div>
-                    <div><span style="color: #aaa;">Avg VWAP Cost:</span> <strong>{{ "{:,.2f}".format(portfolio_math.global.buy_price) }} {{ stock.currency }}</strong></div>
-                    <div><span style="color: #aaa;">Current Value:</span> <strong>{{ "{:,.2f}".format(portfolio_math.global.current_value) }} {{ stock.currency }}</strong></div>
-                    <div>
-                        <span style="color: #aaa;"><abbr title="Theoretical P&L if you sold right now.">Unrealized P&L:</abbr></span> 
-                        <strong class="{% if portfolio_math.global.pnl > 0 %}success-text{% else %}warning-text{% endif %}">
-                            {{ "{:,.2f}".format(portfolio_math.global.pnl) }} {{ stock.currency }} ({{ portfolio_math.global.pnl_pct|round(2) }}%)
-                        </strong>
-                    </div>
-                </div>
-
-                {% if portfolio_math.accounts|length > 1 %}
-                    <h3 style="color: #888; font-size: 14px; text-transform: uppercase; margin-bottom: 5px;">Account Breakdown</h3>
-                    {% for acc in portfolio_math.accounts %}
-                    <div class="sub-account-row">
-                        <div class="sub-account-name">{{ acc.name }}</div>
-                        <div><span style="color: #aaa;">Shares:</span> {{ acc.shares }}</div>
-                        <div><span style="color: #aaa;">Cost Basis:</span> {{ "{:,.2f}".format(acc.buy_price) }} {{ stock.currency }}</div>
-                        <div><span style="color: #aaa;">Value:</span> {{ "{:,.2f}".format(acc.current_value) }} {{ stock.currency }}</div>
-                        <div>
-                            <span style="color: #aaa;">P&L:</span> 
-                            <span class="{% if acc.pnl > 0 %}success-text{% else %}warning-text{% endif %}">
-                                {{ "{:,.2f}".format(acc.pnl) }} {{ stock.currency }} ({{ acc.pnl_pct|round(2) }}%)
-                            </span>
-                        </div>
-                    </div>
-                    {% endfor %}
-                {% endif %}
-            </div>
-            {% endif %}
-
-            <div class="summary-box">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <h2 style="border:none; margin: 0; padding:0;">System Verdict: {{ stock.overall_signal }} ({{ stock.composite_score }}/100)</h2>
-                    
-                    <div style="position: relative; display: inline-flex; gap: 10px; align-items: center;">
-                        <button id="refreshDataBtn" onclick="refreshSingleData('{{ stock.ticker }}')" class="btn-refresh {{ data_status }}" title="Data Last Updated: {{ last_updated_str }}">
-                            <span class="btn-icon">↻</span> Refresh
-                        </button>
-
-                        <button onclick="toggleAIDropdown()" class="ai-btn">✨ AI</button>
-                        <div id="aiDropdown" class="ai-dropdown-content">
-                            <a href="javascript:void(0)" onclick="fetchAndCopyAIPrompt('{{ stock.ticker }}', 'The Devil\'s Advocate analysis')">The Devil's Advocate analysis</a>
-                            <a href="javascript:void(0)" onclick="fetchAndCopyAIPrompt('{{ stock.ticker }}', 'Risk/Reward Audit')">Risk/Reward Audit</a>
-                            <a href="javascript:void(0)" onclick="fetchAndCopyAIPrompt('{{ stock.ticker }}', 'Quantamental Deep-Dive')">Quantamental Deep-Dive</a>
-                            <a href="javascript:void(0)" onclick="fetchAndCopyAIPrompt('{{ stock.ticker }}', 'Earnings Strategy')">Earnings Strategy</a>
-                        </div>
-                    </div>
-                </div>
-
-                {% set cp = cached_pulse.get(stock.ticker) %}
-                <div class="live-asset-row" data-ticker="{{ stock.ticker }}" style="font-size: 18px; margin-top: 15px; margin-bottom: 15px;">
-                    <strong>Current Price:</strong> 
-                    <span id="price-{{ stock.ticker }}">
-                        {% if cp %}
-                            {{ cp.price }}
-                        {% elif stock.current_price is not none %}
-                            {{ "{:,.2f}".format(stock.current_price) }}
-                        {% else %}
-                            N/A
-                        {% endif %}
-                    </span> {{ stock.currency }}
-                    
-                    <span id="change-{{ stock.ticker }}" style="margin-left: 15px; font-weight: bold; font-size: 16px;">
-                        {% if cp %}
-                            {% set sign = '+' if cp.is_positive else '' %}
-                            <span class="{% if cp.is_positive %}trend-up{% else %}trend-down{% endif %}">
-                                {{ sign }}{{ cp.change_pct }}%
-                            </span>
-                        {% else %}
-                            -
-                        {% endif %}
-                    </span>
-                </div>
-                
-                {% if stock.yield_correlation is not none and stock.yield_correlation <= -0.3 %}
-                    {% if (stock.trailing_pe is not none and stock.trailing_pe > 30) or (stock.debt_to_equity is not none and stock.debt_to_equity > 1.5) %}
-                        <div class="yield-sensitive-container">
-                            <abbr title="This asset has high debt or a high P/E ratio, AND possesses a strong negative correlation ({{ '{:.2f}'.format(stock.yield_correlation) }}) to rising interest rates. If yields spike, this stock is mathematically likely to crash.">
-                                <span class="yield-sensitive-tag">⚠️ Yield Sensitive (Macro Trap)</span>
-                            </abbr>
-                        </div>
-                    {% endif %}
-                {% endif %}
-
-                <div style="line-height: 1.6; background-color: #2c2c2c; padding: 15px; border-radius: 5px; margin-top: 15px;">
-                    {{ stock.educational_notes | safe }}
-                </div>
-                
-                {% if stock.business_summary %}
-                <details style="background-color: #1a1a1a; border-radius: 5px; margin-top: 15px; border-left: 3px solid #555;">
-                    <summary style="padding: 12px 15px; cursor: pointer; color: #4da6ff; font-weight: bold; outline: none; user-select: none;">
-                        🏢 Company Profile <span style="color: #888; font-size: 12px; font-weight: normal; margin-left: 10px;">(Click to expand)</span>
-                    </summary>
-                    <div style="padding: 0 15px 15px 15px; line-height: 1.6; font-size: 14px; color: #ccc;">
-                        {{ stock.business_summary }}
-                    </div>
-                </details>
-                {% endif %}
-
-                {% if stock.next_earnings_date and stock.next_earnings_date != 'Unknown' %}
-                    {% if days_to_earnings is not none %}
-                        {% if days_to_earnings >= 0 %}
-                            {% if days_to_earnings <= 14 %}
-                                <p class="warning-text" style="margin-top: 15px;">⚠️ Caution: Next Earnings Report is scheduled for {{ stock.next_earnings_date }} (in {{ days_to_earnings }} days). Expect high volatility from approx: {{ volatility_date }}.</p>
-                            {% elif days_to_earnings <= 30 %}
-                                <p class="info-text" style="margin-top: 15px;">⚠️ Notice: Next Earnings Report is scheduled for {{ stock.next_earnings_date }} (in {{ days_to_earnings }} days).</p>
-                            {% else %}
-                                <p style="margin-top: 15px; color: #4da6ff; font-weight: bold;">📅 Future Event: Next Earnings Report is scheduled for {{ stock.next_earnings_date }} (in {{ days_to_earnings }} days).</p>
-                            {% endif %}
-                        {% elif days_to_earnings >= -7 %}
-                            <p class="info-text" style="margin-top: 15px;">ℹ️ Post-Earnings: The report was recently released on {{ stock.next_earnings_date }}. Volatility may still be settling.</p>
-                        {% endif %}
-                    {% endif %}
-                {% endif %}
-            </div>
-        </div>
-
-        <div id="charts">
-            <h2>Interactive Momentum Charts</h2>
+        <div class="detail-split-grid">
             
-            {% if stock.quote_type != 'MUTUALFUND' %}
-            <div class="chart-wrapper" id="intraday-wrapper">
-                <button class="fullscreen-btn" onclick="toggleFullscreen('intraday-wrapper')">⛶ Fullscreen</button>
-                {{ intraday_html | safe }}
-            </div>
-            {% else %}
-            <p style="color: #aaa; font-style: italic; background-color: #1e1e1e; padding: 15px; border-radius: 5px; border-left: 3px solid #555;">Intraday charts are mathematically hidden for Mutual Funds, as they only report price updates once daily at the market close (NAV).</p>
-            {% endif %}
-
-            <div class="chart-wrapper" id="macro-wrapper">
-                <button class="fullscreen-btn" onclick="toggleFullscreen('macro-wrapper')">⛶ Fullscreen</button>
-                {{ macro_html | safe }}
-            </div>
-        </div>
-
-        <div id="price-action">
-            <h2>Price Action & Pivot Levels</h2>
-            {% if price_action %}
-            <div class="fundamentals-grid">
-                <div class="data-card">
-                    <h3>Trading Ranges</h3>
-                    <div class="data-row"><span class="data-label">Daily Low:</span> <span class="data-value">{{ "{:,.2f}".format(price_action.day_low) }} {{ stock.currency }}</span></div>
-                    <div class="data-row"><span class="data-label">Daily High:</span> <span class="data-value">{{ "{:,.2f}".format(price_action.day_high) }} {{ stock.currency }}</span></div>
-                    
-                    <div style="border-bottom: 1px solid #333; margin: 10px 0;"></div>
-                    
-                    <div class="data-row"><span class="data-label">1-Month Low:</span> <span class="data-value">{{ "{:,.2f}".format(price_action.month_low) }} {{ stock.currency }}</span></div>
-                    <div class="data-row"><span class="data-label">1-Month High:</span> <span class="data-value">{{ "{:,.2f}".format(price_action.month_high) }} {{ stock.currency }}</span></div>
-                    
-                    <div style="border-bottom: 1px solid #333; margin: 10px 0;"></div>
-                    
-                    <div class="data-row"><span class="data-label">52-Week Low:</span> <span class="data-value">{% if stock.fifty_two_week_low %}{{ "{:,.2f}".format(stock.fifty_two_week_low) }} {{ stock.currency }}{% else %}N/A{% endif %}</span></div>
-                    <div class="data-row"><span class="data-label">52-Week High:</span> <span class="data-value">{% if stock.fifty_two_week_high %}{{ "{:,.2f}".format(stock.fifty_two_week_high) }} {{ stock.currency }}{% else %}N/A{% endif %}</span></div>
-                </div>
+            <div class="detail-left-column">
                 
-                <div class="data-card">
-                    <h3>Pivot Points (Daily Floors)</h3>
-                    <p style="font-size: 13px; color: #888; margin-top: 0; margin-bottom: 15px;">Calculated from the previous day's close. These lines act as algorithmic intraday support levels.</p>
-                    
-                    <div class="data-row">
-                        <span class="data-label"><abbr title="First mathematical support level. A common area where intraday price pullbacks bounce.">Support 1 (S1):</abbr></span> 
-                        <span style="color: #00ffcc; font-weight: bold; font-size: 18px;">{{ "{:,.2f}".format(price_action.s1) }} {{ stock.currency }}</span>
-                    </div>
-                    
-                    <div class="data-row">
-                        <span class="data-label"><abbr title="Second mathematical support level. A drop to this line indicates extreme intraday weakness but strong bounce potential.">Support 2 (S2):</abbr></span> 
-                        <span style="color: #00ffcc; font-weight: bold; font-size: 18px;">{{ "{:,.2f}".format(price_action.s2) }} {{ stock.currency }}</span>
-                    </div>
-                </div>
-            </div>
-            {% else %}
-            <p>Not enough historical data to generate Price Action metrics.</p>
-            {% endif %}
-        </div>
+                <div id="verdict">
+                    {% if portfolio_math %}
+                    <div class="portfolio-box">
+                        <h2 style="border:none; margin: 0; padding:0;">Your Position (Global Aggregation)</h2>
+                        <div style="display: flex; gap: 40px; font-size: 16px; margin-top: 15px; margin-bottom: 20px;">
+                            <div><span style="color: #aaa;">Shares Owned:</span> <strong>{{ portfolio_math.global.shares }}</strong></div>
+                            <div><span style="color: #aaa;">Avg VWAP Cost:</span> <strong>{{ "{:,.2f}".format(portfolio_math.global.buy_price) }} {{ stock.currency }}</strong></div>
+                            <div><span style="color: #aaa;">Current Value:</span> <strong>{{ "{:,.2f}".format(portfolio_math.global.current_value) }} {{ stock.currency }}</strong></div>
+                            <div>
+                                <span style="color: #aaa;"><abbr title="Theoretical P&L if you sold right now.">Unrealized P&L:</abbr></span> 
+                                <strong class="{% if portfolio_math.global.pnl > 0 %}success-text{% else %}warning-text{% endif %}">
+                                    {{ "{:,.2f}".format(portfolio_math.global.pnl) }} {{ stock.currency }} ({{ portfolio_math.global.pnl_pct|round(2) }}%)
+                                </strong>
+                            </div>
+                        </div>
 
-        <div id="fundamentals">
-            <h2>Fundamentals & Business Health</h2>
-            
-            {% if stock.quote_type in ['ETF', 'MUTUALFUND'] %}
-            
-            <div class="fundamentals-grid">
-                <div class="data-card card-risk">
-                    <h3>Quantitative Risk & AI</h3>
-                    <div class="data-row">
-                        <span class="data-label"><abbr title="Machine Learning Ensemble confidence score predicting a >3% return over the next 5 days.">ML Confidence:</abbr></span>
-                        <span class="data-value">
-                            {% if stock.ml_confidence_score is not none %}
-                                {% set ml_class = 'metric-excellent' if stock.ml_confidence_score > 75 else ('metric-poor' if stock.ml_confidence_score < 40 else 'metric-neutral') %}
-                                <span class="{{ ml_class }}">{{ "{:,.1f}".format(stock.ml_confidence_score) }}%</span>
-                            {% else %}N/A{% endif %}
-                        </span>
-                    </div>
-                    <div class="data-row">
-                        <span class="data-label"><abbr title="Parametric Value at Risk. The expected maximum percentage loss over a standard holding period with 95% confidence.">VaR (95%):</abbr></span>
-                        <span class="data-value">
-                            {% if stock.var_95 is not none %}
-                                {% set var_class = 'metric-poor' if stock.var_95 > 0.05 else 'metric-neutral' %}
-                                <span class="{{ var_class }}">{{ "{:,.2f}".format(stock.var_95 * 100) }}%</span>
-                            {% else %}N/A{% endif %}
-                        </span>
-                    </div>
-                    <div class="data-row">
-                        <span class="data-label"><abbr title="Conditional Value at Risk (Expected Shortfall). The expected loss magnitude IF the VaR threshold is breached.">CVaR (95%):</abbr></span>
-                        <span class="data-value">
-                            {% if stock.cvar_95 is not none %}
-                                {% set cvar_class = 'metric-poor' if stock.cvar_95 > 0.07 else 'metric-neutral' %}
-                                <span class="{{ cvar_class }}">{{ "{:,.2f}".format(stock.cvar_95 * 100) }}%</span>
-                            {% else %}N/A{% endif %}
-                        </span>
-                    </div>
-                    <div class="data-row">
-                        <span class="data-label"><abbr title="VADER NLP compound score generated from the latest news headlines.">Media Sentiment:</abbr></span>
-                        <span class="data-value">
-                            {% if stock.sentiment_score is not none %}
-                                {% if stock.sentiment_score > 0.6 %}
-                                    <span class="sent-badge sent-euphoria">Euphoria ({{ "{:,.3f}".format(stock.sentiment_score) }})</span>
-                                {% elif stock.sentiment_score > 0.2 %}
-                                    <span class="sent-badge sent-bullish">Bullish ({{ "{:,.3f}".format(stock.sentiment_score) }})</span>
-                                {% elif stock.sentiment_score >= -0.2 %}
-                                    <span class="sent-badge sent-neutral">Neutral ({{ "{:,.3f}".format(stock.sentiment_score) }})</span>
-                                {% elif stock.sentiment_score > -0.6 %}
-                                    <span class="sent-badge sent-bearish">Bearish ({{ "{:,.3f}".format(stock.sentiment_score) }})</span>
-                                {% else %}
-                                    <span class="sent-badge sent-fear">Extreme Fear ({{ "{:,.3f}".format(stock.sentiment_score) }})</span>
-                                {% endif %}
-                            {% else %}N/A{% endif %}
-                        </span>
-                    </div>
-                </div>
-
-                <div class="data-card">
-                    <h3>Fund Metrics</h3>
-                    <div class="data-row">
-                        <span class="data-label">Expense Ratio:</span> 
-                        <span class="data-value">{% if stock.expense_ratio %}{{ (stock.expense_ratio * 100)|round(2) }}%{% else %}N/A{% endif %}</span>
-                    </div>
-                    <div class="data-row">
-                        <span class="data-label">YTD Return:</span> 
-                        <span class="data-value">{% if stock.ytd_return %}{{ (stock.ytd_return * 100)|round(2) }}%{% else %}N/A{% endif %}</span>
-                    </div>
-                    <div class="data-row">
-                        <span class="data-label">Total Assets:</span> 
-                        <span class="data-value">{% if stock.total_assets %}{{ "{:,.0f}".format(stock.total_assets) }} {{ stock.currency }}{% else %}N/A{% endif %}</span>
-                    </div>
-                    <div class="data-row">
-                        <span class="data-label">NAV Price:</span> 
-                        <span class="data-value">{% if stock.nav_price %}{{ "{:,.2f}".format(stock.nav_price) }} {{ stock.currency }}{% else %}N/A{% endif %}</span>
-                    </div>
-                    <div class="data-row">
-                        <span class="data-label">Dividend Yield:</span> 
-                        <span class="data-value">{% if stock.dividend_yield %}{{ (stock.dividend_yield * 100)|round(2) }}%{% else %}N/A{% endif %}</span>
-                    </div>
-                </div>
-                
-                {% if top_holdings %}
-                <div class="data-card">
-                    <h3>Top 10 Holdings</h3>
-                    <table style="width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px;">
-                        <tr style="border-bottom: 1px solid #333; color: #aaa;">
-                            <th style="text-align: left; padding-bottom: 5px;">Symbol</th>
-                            <th style="text-align: left; padding-bottom: 5px;">Name</th>
-                            <th style="text-align: right; padding-bottom: 5px;">Weight</th>
-                        </tr>
-                        {% for holding in top_holdings[:10] %}
-                        <tr style="border-bottom: 1px solid #333;">
-                            <td style="padding: 5px 0;"><a href="/stock/{{ holding.symbol }}" style="color: #4da6ff;">{{ holding.symbol }}</a></td>
-                            <td style="padding: 5px 0; color: #e0e0e0;">{{ holding.holdingName[:15] }}...</td>
-                            <td style="text-align: right; padding: 5px 0;">{{ (holding.holdingPercent * 100)|round(2) }}%</td>
-                        </tr>
-                        {% endfor %}
-                    </table>
-                </div>
-                {% endif %}
-
-                {% if sector_weightings %}
-                <div class="data-card">
-                    <h3>Sector Weightings</h3>
-                    <table style="width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px;">
-                        <tr style="border-bottom: 1px solid #333; color: #aaa;">
-                            <th style="text-align: left; padding-bottom: 5px;">Sector</th>
-                            <th style="text-align: right; padding-bottom: 5px;">Weight</th>
-                        </tr>
-                        {% for sector_dict in sector_weightings %}
-                            {% for key, val in sector_dict.items() %}
-                            <tr style="border-bottom: 1px solid #333;">
-                                <td style="padding: 5px 0; color: #e0e0e0; text-transform: capitalize;">{{ key | replace('_', ' ') }}</td>
-                                <td style="text-align: right; padding: 5px 0;">{{ (val * 100)|round(2) }}%</td>
-                            </tr>
+                        {% if portfolio_math.accounts|length > 1 %}
+                            <h3 style="color: #888; font-size: 14px; text-transform: uppercase; margin-bottom: 5px;">Account Breakdown</h3>
+                            {% for acc in portfolio_math.accounts %}
+                            <div class="sub-account-row">
+                                <div class="sub-account-name">{{ acc.name }}</div>
+                                <div><span style="color: #aaa;">Shares:</span> {{ acc.shares }}</div>
+                                <div><span style="color: #aaa;">Cost Basis:</span> {{ "{:,.2f}".format(acc.buy_price) }} {{ stock.currency }}</div>
+                                <div><span style="color: #aaa;">Value:</span> {{ "{:,.2f}".format(acc.current_value) }} {{ stock.currency }}</div>
+                                <div>
+                                    <span style="color: #aaa;">P&L:</span> 
+                                    <span class="{% if acc.pnl > 0 %}success-text{% else %}warning-text{% endif %}">
+                                        {{ "{:,.2f}".format(acc.pnl) }} {{ stock.currency }} ({{ acc.pnl_pct|round(2) }}%)
+                                    </span>
+                                </div>
+                            </div>
                             {% endfor %}
-                        {% endfor %}
-                    </table>
-                </div>
-                {% endif %}
-            </div>
-            
-            {% else %}
-            
-            <div class="fundamentals-grid">
-                <div class="data-card card-risk">
-                    <h3>Quantitative Risk & AI</h3>
-                    <div class="data-row">
-                        <span class="data-label"><abbr title="Machine Learning Ensemble confidence score predicting a >3% return over the next 5 days.">ML Confidence:</abbr></span>
-                        <span class="data-value">
-                            {% if stock.ml_confidence_score is not none %}
-                                {% set ml_class = 'metric-excellent' if stock.ml_confidence_score > 75 else ('metric-poor' if stock.ml_confidence_score < 40 else 'metric-neutral') %}
-                                <span class="{{ ml_class }}">{{ "{:,.1f}".format(stock.ml_confidence_score) }}%</span>
-                            {% else %}N/A{% endif %}
-                        </span>
+                        {% endif %}
                     </div>
-                    <div class="data-row">
-                        <span class="data-label"><abbr title="Parametric Value at Risk. The expected maximum percentage loss over a standard holding period with 95% confidence.">VaR (95%):</abbr></span>
-                        <span class="data-value">
-                            {% if stock.var_95 is not none %}
-                                {% set var_class = 'metric-poor' if stock.var_95 > 0.05 else 'metric-neutral' %}
-                                <span class="{{ var_class }}">{{ "{:,.2f}".format(stock.var_95 * 100) }}%</span>
-                            {% else %}N/A{% endif %}
-                        </span>
-                    </div>
-                    <div class="data-row">
-                        <span class="data-label"><abbr title="Conditional Value at Risk (Expected Shortfall). The expected loss magnitude IF the VaR threshold is breached.">CVaR (95%):</abbr></span>
-                        <span class="data-value">
-                            {% if stock.cvar_95 is not none %}
-                                {% set cvar_class = 'metric-poor' if stock.cvar_95 > 0.07 else 'metric-neutral' %}
-                                <span class="{{ cvar_class }}">{{ "{:,.2f}".format(stock.cvar_95 * 100) }}%</span>
-                            {% else %}N/A{% endif %}
-                        </span>
-                    </div>
-                    <div class="data-row">
-                        <span class="data-label"><abbr title="VADER NLP compound score generated from the latest news headlines.">Media Sentiment:</abbr></span>
-                        <span class="data-value">
-                            {% if stock.sentiment_score is not none %}
-                                {% if stock.sentiment_score > 0.6 %}
-                                    <span class="sent-badge sent-euphoria">Euphoria ({{ "{:,.3f}".format(stock.sentiment_score) }})</span>
-                                {% elif stock.sentiment_score > 0.2 %}
-                                    <span class="sent-badge sent-bullish">Bullish ({{ "{:,.3f}".format(stock.sentiment_score) }})</span>
-                                {% elif stock.sentiment_score >= -0.2 %}
-                                    <span class="sent-badge sent-neutral">Neutral ({{ "{:,.3f}".format(stock.sentiment_score) }})</span>
-                                {% elif stock.sentiment_score > -0.6 %}
-                                    <span class="sent-badge sent-bearish">Bearish ({{ "{:,.3f}".format(stock.sentiment_score) }})</span>
+                    {% endif %}
+
+                    <div class="summary-box">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <h2 style="border:none; margin: 0; padding:0;">System Verdict: {{ stock.overall_signal }} ({{ stock.composite_score }}/100)</h2>
+                            
+                            <div style="position: relative; display: inline-flex; gap: 10px; align-items: center;">
+                                <button id="refreshDataBtn" onclick="refreshSingleData('{{ stock.ticker }}')" class="btn-refresh {{ data_status }}" title="Data Last Updated: {{ last_updated_str }}">
+                                    <span class="btn-icon">↻</span> Refresh
+                                </button>
+
+                                <button onclick="toggleAIDropdown()" class="ai-btn">✨ AI</button>
+                                <div id="aiDropdown" class="ai-dropdown-content">
+                                    <a href="javascript:void(0)" onclick="fetchAndCopyAIPrompt('{{ stock.ticker }}', 'The Devil\'s Advocate analysis')">The Devil's Advocate analysis</a>
+                                    <a href="javascript:void(0)" onclick="fetchAndCopyAIPrompt('{{ stock.ticker }}', 'Risk/Reward Audit')">Risk/Reward Audit</a>
+                                    <a href="javascript:void(0)" onclick="fetchAndCopyAIPrompt('{{ stock.ticker }}', 'Quantamental Deep-Dive')">Quantamental Deep-Dive</a>
+                                    <a href="javascript:void(0)" onclick="fetchAndCopyAIPrompt('{{ stock.ticker }}', 'Earnings Strategy')">Earnings Strategy</a>
+                                </div>
+                            </div>
+                        </div>
+
+                        {% set cp = cached_pulse.get(stock.ticker) %}
+                        <div class="live-asset-row" data-ticker="{{ stock.ticker }}" style="font-size: 18px; margin-top: 15px; margin-bottom: 15px;">
+                            <strong>Current Price:</strong> 
+                            <span id="price-{{ stock.ticker }}">
+                                {% if cp %}
+                                    {{ cp.price }}
+                                {% elif stock.current_price is not none %}
+                                    {{ "{:,.2f}".format(stock.current_price) }}
                                 {% else %}
-                                    <span class="sent-badge sent-fear">Extreme Fear ({{ "{:,.3f}".format(stock.sentiment_score) }})</span>
+                                    N/A
                                 {% endif %}
-                            {% else %}N/A{% endif %}
-                        </span>
+                            </span> {{ stock.currency }}
+                            
+                            <span id="change-{{ stock.ticker }}" style="margin-left: 15px; font-weight: bold; font-size: 16px;">
+                                {% if cp %}
+                                    {% set sign = '+' if cp.is_positive else '' %}
+                                    <span class="{% if cp.is_positive %}trend-up{% else %}trend-down{% endif %}">
+                                        {{ sign }}{{ cp.change_pct }}%
+                                    </span>
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </span>
+                        </div>
+                        
+                        {% if stock.yield_correlation is not none and stock.yield_correlation <= -0.3 %}
+                            {% if (stock.trailing_pe is not none and stock.trailing_pe > 30) or (stock.debt_to_equity is not none and stock.debt_to_equity > 1.5) %}
+                                <div class="yield-sensitive-container">
+                                    <abbr title="This asset has high debt or a high P/E ratio, AND possesses a strong negative correlation ({{ '{:.2f}'.format(stock.yield_correlation) }}) to rising interest rates. If yields spike, this stock is mathematically likely to crash.">
+                                        <span class="yield-sensitive-tag">⚠️ Yield Sensitive (Macro Trap)</span>
+                                    </abbr>
+                                </div>
+                            {% endif %}
+                        {% endif %}
+
+                        <div style="line-height: 1.6; background-color: #2c2c2c; padding: 15px; border-radius: 5px; margin-top: 15px;">
+                            {{ stock.educational_notes | safe }}
+                        </div>
+                        
+                        {% if stock.business_summary %}
+                        <details style="background-color: #1a1a1a; border-radius: 5px; margin-top: 15px; border-left: 3px solid #555;">
+                            <summary style="padding: 12px 15px; cursor: pointer; color: #4da6ff; font-weight: bold; outline: none; user-select: none;">
+                                🏢 Company Profile <span style="color: #888; font-size: 12px; font-weight: normal; margin-left: 10px;">(Click to expand)</span>
+                            </summary>
+                            <div style="padding: 0 15px 15px 15px; line-height: 1.6; font-size: 14px; color: #ccc;">
+                                {{ stock.business_summary }}
+                            </div>
+                        </details>
+                        {% endif %}
+
+                        {% if stock.next_earnings_date and stock.next_earnings_date != 'Unknown' %}
+                            {% if days_to_earnings is not none %}
+                                {% if days_to_earnings >= 0 %}
+                                    {% if days_to_earnings <= 14 %}
+                                        <p class="warning-text" style="margin-top: 15px;">⚠️ Caution: Next Earnings Report is scheduled for {{ stock.next_earnings_date }} (in {{ days_to_earnings }} days). Expect high volatility from approx: {{ volatility_date }}.</p>
+                                    {% elif days_to_earnings <= 30 %}
+                                        <p class="info-text" style="margin-top: 15px;">⚠️ Notice: Next Earnings Report is scheduled for {{ stock.next_earnings_date }} (in {{ days_to_earnings }} days).</p>
+                                    {% else %}
+                                        <p style="margin-top: 15px; color: #4da6ff; font-weight: bold;">📅 Future Event: Next Earnings Report is scheduled for {{ stock.next_earnings_date }} (in {{ days_to_earnings }} days).</p>
+                                    {% endif %}
+                                {% elif days_to_earnings >= -7 %}
+                                    <p class="info-text" style="margin-top: 15px;">ℹ️ Post-Earnings: The report was recently released on {{ stock.next_earnings_date }}. Volatility may still be settling.</p>
+                                {% endif %}
+                            {% endif %}
+                        {% endif %}
                     </div>
                 </div>
 
-                <div class="data-card">
-                    <h3>Valuation Metrics</h3>
-                    <div class="data-row">
-                        <span class="data-label"><abbr title="Current Price divided by Last Year's Earnings.">Trailing P/E:</abbr></span>
-                        <span class="data-value">{% if stock.trailing_pe %}{{ stock.trailing_pe|round(2) }}{% else %}N/A{% endif %}</span>
+                <div id="intraday-section">
+                    <h2>Intraday Pulse</h2>
+                    {% if stock.quote_type != 'MUTUALFUND' %}
+                    <div class="chart-wrapper" id="intraday-wrapper">
+                        <button class="fullscreen-btn" onclick="toggleFullscreen('intraday-wrapper')">⛶ Fullscreen</button>
+                        {{ intraday_html | safe }}
                     </div>
-                    <div class="data-row">
-                        <span class="data-label"><abbr title="Current Price divided by Next Year's Estimated Earnings.">Forward P/E:</abbr></span>
-                        <span class="data-value">{% if stock.forward_pe %}{{ stock.forward_pe|round(2) }}{% else %}N/A{% endif %}</span>
-                    </div>
-                    <div class="data-row">
-                        <span class="data-label"><abbr title="Price/Earnings divided by Growth. < 1.0 is considered cheap.">PEG Ratio:</abbr></span>
-                        <span class="data-value">{% if stock.peg_ratio %}{{ stock.peg_ratio|round(2) }}{% else %}N/A{% endif %}</span>
-                    </div>
-                    <div class="data-row">
-                        <span class="data-label"><abbr title="Custom Calculation: P/E divided by Actual Earnings Growth.">Peter Lynch PEG:</abbr></span>
-                        <span class="data-value">{% if stock.peter_lynch_peg %}{{ stock.peter_lynch_peg|round(2) }}{% else %}N/A{% endif %}</span>
-                    </div>
-                    <div class="data-row">
-                        <span class="data-label"><abbr title="Price divided by the literal net asset value of the company.">Price-to-Book:</abbr></span>
-                        <span class="data-value">{% if stock.price_to_book %}{{ stock.price_to_book|round(2) }}{% else %}N/A{% endif %}</span>
-                    </div>
+                    {% else %}
+                    <p class="explanation-box" style="font-style: italic; border-left: 3px solid #555;">Intraday charts are mathematically hidden for Mutual Funds, as they only report price updates once daily at the market close (NAV).</p>
+                    {% endif %}
                 </div>
 
-                <div class="data-card">
-                    <h3>Profitability & Growth</h3>
-                    <div class="data-row">
-                        <span class="data-label">Profit Margin:</span>
-                        <span class="data-value">{% if stock.profit_margin %}{{ (stock.profit_margin * 100)|round(1) }}%{% else %}N/A{% endif %}</span>
+                <div id="price-action">
+                    <h2>Price Action & Pivot Levels</h2>
+                    {% if price_action %}
+                    <div class="fundamentals-grid">
+                        <div class="data-card">
+                            <h3>Trading Ranges</h3>
+                            <div class="data-row"><span class="data-label">Daily Low:</span> <span class="data-value">{{ "{:,.2f}".format(price_action.day_low) }} {{ stock.currency }}</span></div>
+                            <div class="data-row"><span class="data-label">Daily High:</span> <span class="data-value">{{ "{:,.2f}".format(price_action.day_high) }} {{ stock.currency }}</span></div>
+                            
+                            <div style="border-bottom: 1px solid #333; margin: 10px 0;"></div>
+                            
+                            <div class="data-row"><span class="data-label">1-Month Low:</span> <span class="data-value">{{ "{:,.2f}".format(price_action.month_low) }} {{ stock.currency }}</span></div>
+                            <div class="data-row"><span class="data-label">1-Month High:</span> <span class="data-value">{{ "{:,.2f}".format(price_action.month_high) }} {{ stock.currency }}</span></div>
+                            
+                            <div style="border-bottom: 1px solid #333; margin: 10px 0;"></div>
+                            
+                            <div class="data-row"><span class="data-label">52-Week Low:</span> <span class="data-value">{% if stock.fifty_two_week_low %}{{ "{:,.2f}".format(stock.fifty_two_week_low) }} {{ stock.currency }}{% else %}N/A{% endif %}</span></div>
+                            <div class="data-row"><span class="data-label">52-Week High:</span> <span class="data-value">{% if stock.fifty_two_week_high %}{{ "{:,.2f}".format(stock.fifty_two_week_high) }} {{ stock.currency }}{% else %}N/A{% endif %}</span></div>
+                        </div>
+                        
+                        <div class="data-card">
+                            <h3>Pivot Points (Daily Floors)</h3>
+                            <p style="font-size: 13px; color: #888; margin-top: 0; margin-bottom: 15px;">Calculated from the previous day's close. These lines act as algorithmic intraday support levels.</p>
+                            
+                            <div class="data-row">
+                                <span class="data-label"><abbr title="First mathematical support level. A common area where intraday price pullbacks bounce.">Support 1 (S1):</abbr></span> 
+                                <span style="color: #00ffcc; font-weight: bold; font-size: 18px;">{{ "{:,.2f}".format(price_action.s1) }} {{ stock.currency }}</span>
+                            </div>
+                            
+                            <div class="data-row">
+                                <span class="data-label"><abbr title="Second mathematical support level. A drop to this line indicates extreme intraday weakness but strong bounce potential.">Support 2 (S2):</abbr></span> 
+                                <span style="color: #00ffcc; font-weight: bold; font-size: 18px;">{{ "{:,.2f}".format(price_action.s2) }} {{ stock.currency }}</span>
+                            </div>
+                        </div>
                     </div>
-                    <div class="data-row">
-                        <span class="data-label"><abbr title="Return on Equity: How well management generates returns on your investment.">ROE:</abbr></span>
-                        <span class="data-value">{% if stock.roe %}{{ (stock.roe * 100)|round(1) }}%{% else %}N/A{% endif %}</span>
-                    </div>
-                    <div class="data-row">
-                        <span class="data-label">Revenue Growth (YoY):</span>
-                        <span class="data-value">{% if stock.revenue_growth %}{{ (stock.revenue_growth * 100)|round(1) }}%{% else %}N/A{% endif %}</span>
-                    </div>
+                    {% else %}
+                    <p>Not enough historical data to generate Price Action metrics.</p>
+                    {% endif %}
                 </div>
 
-                <div class="data-card">
-                    <h3>Financial Health</h3>
-                    <div class="data-row">
-                        <span class="data-label"><abbr title="Total Debt divided by Total Equity. > 2.0 can be risky in high interest environments.">Debt-to-Equity:</abbr></span>
-                        <span class="data-value">{% if stock.debt_to_equity %}{{ stock.debt_to_equity|round(2) }}{% else %}N/A{% endif %}</span>
-                    </div>
-                    <div class="data-row">
-                        <span class="data-label"><abbr title="Current Assets divided by Current Liabilities. > 1.0 means they can pay short-term bills.">Current Ratio:</abbr></span>
-                        <span class="data-value">{% if stock.current_ratio %}{{ stock.current_ratio|round(2) }}{% else %}N/A{% endif %}</span>
-                    </div>
-                    <div class="data-row">
-                        <span class="data-label">Operating Cash Flow:</span>
-                        <span class="data-value">{% if stock.operating_cash_flow %}{{ "{:,.0f}".format(stock.operating_cash_flow) }} {{ stock.currency }}{% else %}N/A{% endif %}</span>
-                    </div>
-                </div>
+                <div id="fundamentals">
+                    <h2>Fundamentals & Business Health</h2>
+                    
+                    {% if stock.quote_type in ['ETF', 'MUTUALFUND'] %}
+                    
+                    <div class="fundamentals-grid">
+                        <div class="data-card card-risk">
+                            <h3>Quantitative Risk & AI</h3>
+                            <div class="data-row">
+                                <span class="data-label"><abbr title="Machine Learning Ensemble confidence score predicting a >3% return over the next 5 days.">ML Confidence:</abbr></span>
+                                <span class="data-value">
+                                    {% if stock.ml_confidence_score is not none %}
+                                        {% set ml_class = 'metric-excellent' if stock.ml_confidence_score > 75 else ('metric-poor' if stock.ml_confidence_score < 40 else 'metric-neutral') %}
+                                        <span class="{{ ml_class }}">{{ "{:,.1f}".format(stock.ml_confidence_score) }}%</span>
+                                    {% else %}N/A{% endif %}
+                                </span>
+                            </div>
+                            <div class="data-row">
+                                <span class="data-label"><abbr title="Parametric Value at Risk. The expected maximum percentage loss over a standard holding period with 95% confidence.">VaR (95%):</abbr></span>
+                                <span class="data-value">
+                                    {% if stock.var_95 is not none %}
+                                        {% set var_class = 'metric-poor' if stock.var_95 > 0.05 else 'metric-neutral' %}
+                                        <span class="{{ var_class }}">{{ "{:,.2f}".format(stock.var_95 * 100) }}%</span>
+                                    {% else %}N/A{% endif %}
+                                </span>
+                            </div>
+                            <div class="data-row">
+                                <span class="data-label"><abbr title="Conditional Value at Risk (Expected Shortfall). The expected loss magnitude IF the VaR threshold is breached.">CVaR (95%):</abbr></span>
+                                <span class="data-value">
+                                    {% if stock.cvar_95 is not none %}
+                                        {% set cvar_class = 'metric-poor' if stock.cvar_95 > 0.07 else 'metric-neutral' %}
+                                        <span class="{{ cvar_class }}">{{ "{:,.2f}".format(stock.cvar_95 * 100) }}%</span>
+                                    {% else %}N/A{% endif %}
+                                </span>
+                            </div>
+                            <div class="data-row">
+                                <span class="data-label"><abbr title="VADER NLP compound score generated from the latest news headlines.">Media Sentiment:</abbr></span>
+                                <span class="data-value">
+                                    {% if stock.sentiment_score is not none %}
+                                        {% if stock.sentiment_score > 0.6 %}
+                                            <span class="sent-badge sent-euphoria">Euphoria ({{ "{:,.3f}".format(stock.sentiment_score) }})</span>
+                                        {% elif stock.sentiment_score > 0.2 %}
+                                            <span class="sent-badge sent-bullish">Bullish ({{ "{:,.3f}".format(stock.sentiment_score) }})</span>
+                                        {% elif stock.sentiment_score >= -0.2 %}
+                                            <span class="sent-badge sent-neutral">Neutral ({{ "{:,.3f}".format(stock.sentiment_score) }})</span>
+                                        {% elif stock.sentiment_score > -0.6 %}
+                                            <span class="sent-badge sent-bearish">Bearish ({{ "{:,.3f}".format(stock.sentiment_score) }})</span>
+                                        {% else %}
+                                            <span class="sent-badge sent-fear">Extreme Fear ({{ "{:,.3f}".format(stock.sentiment_score) }})</span>
+                                        {% endif %}
+                                    {% else %}N/A{% endif %}
+                                </span>
+                            </div>
+                        </div>
 
-                <div class="data-card">
-                    <h3>Market Sentiment</h3>
-                    <div class="data-row">
-                        <span class="data-label">Wall Street Target:</span>
-                        <span class="data-value">{% if stock.target_price %}{{ "{:,.2f}".format(stock.target_price) }} {{ stock.currency }}{% else %}N/A{% endif %}</span>
+                        <div class="data-card">
+                            <h3>Fund Metrics</h3>
+                            <div class="data-row">
+                                <span class="data-label">Expense Ratio:</span> 
+                                <span class="data-value">{% if stock.expense_ratio %}{{ (stock.expense_ratio * 100)|round(2) }}%{% else %}N/A{% endif %}</span>
+                            </div>
+                            <div class="data-row">
+                                <span class="data-label">YTD Return:</span> 
+                                <span class="data-value">{% if stock.ytd_return %}{{ (stock.ytd_return * 100)|round(2) }}%{% else %}N/A{% endif %}</span>
+                            </div>
+                            <div class="data-row">
+                                <span class="data-label">Total Assets:</span> 
+                                <span class="data-value">{% if stock.total_assets %}{{ "{:,.0f}".format(stock.total_assets) }} {{ stock.currency }}{% else %}N/A{% endif %}</span>
+                            </div>
+                            <div class="data-row">
+                                <span class="data-label">NAV Price:</span> 
+                                <span class="data-value">{% if stock.nav_price %}{{ "{:,.2f}".format(stock.nav_price) }} {{ stock.currency }}{% else %}N/A{% endif %}</span>
+                            </div>
+                            <div class="data-row">
+                                <span class="data-label">Dividend Yield:</span> 
+                                <span class="data-value">{% if stock.dividend_yield %}{{ (stock.dividend_yield * 100)|round(2) }}%{% else %}N/A{% endif %}</span>
+                            </div>
+                        </div>
+                        
+                        {% if top_holdings %}
+                        <div class="data-card">
+                            <h3>Top 10 Holdings</h3>
+                            <table style="width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px;">
+                                <tr style="border-bottom: 1px solid #333; color: #aaa;">
+                                    <th style="text-align: left; padding-bottom: 5px;">Symbol</th>
+                                    <th style="text-align: left; padding-bottom: 5px;">Name</th>
+                                    <th style="text-align: right; padding-bottom: 5px;">Weight</th>
+                                </tr>
+                                {% for holding in top_holdings[:10] %}
+                                <tr style="border-bottom: 1px solid #333;">
+                                    <td style="padding: 5px 0;"><a href="/stock/{{ holding.symbol }}" style="color: #4da6ff;">{{ holding.symbol }}</a></td>
+                                    <td style="padding: 5px 0; color: #e0e0e0;">{{ holding.holdingName[:15] }}...</td>
+                                    <td style="text-align: right; padding: 5px 0;">{{ (holding.holdingPercent * 100)|round(2) }}%</td>
+                                </tr>
+                                {% endfor %}
+                            </table>
+                        </div>
+                        {% endif %}
+
+                        {% if sector_weightings %}
+                        <div class="data-card">
+                            <h3>Sector Weightings</h3>
+                            <table style="width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px;">
+                                <tr style="border-bottom: 1px solid #333; color: #aaa;">
+                                    <th style="text-align: left; padding-bottom: 5px;">Sector</th>
+                                    <th style="text-align: right; padding-bottom: 5px;">Weight</th>
+                                </tr>
+                                {% for sector_dict in sector_weightings %}
+                                    {% for key, val in sector_dict.items() %}
+                                    <tr style="border-bottom: 1px solid #333;">
+                                        <td style="padding: 5px 0; color: #e0e0e0; text-transform: capitalize;">{{ key | replace('_', ' ') }}</td>
+                                        <td style="text-align: right; padding: 5px 0;">{{ (val * 100)|round(2) }}%</td>
+                                    </tr>
+                                    {% endfor %}
+                                {% endfor %}
+                            </table>
+                        </div>
+                        {% endif %}
                     </div>
-                    <div class="data-row">
-                        <span class="data-label">Analyst Rating:</span>
-                        <span class="data-value">{{ stock.analyst_rating }}</span>
+                    
+                    {% else %}
+                    
+                    <div class="fundamentals-grid">
+                        <div class="data-card card-risk">
+                            <h3>Quantitative Risk & AI</h3>
+                            <div class="data-row">
+                                <span class="data-label"><abbr title="Machine Learning Ensemble confidence score predicting a >3% return over the next 5 days.">ML Confidence:</abbr></span>
+                                <span class="data-value">
+                                    {% if stock.ml_confidence_score is not none %}
+                                        {% set ml_class = 'metric-excellent' if stock.ml_confidence_score > 75 else ('metric-poor' if stock.ml_confidence_score < 40 else 'metric-neutral') %}
+                                        <span class="{{ ml_class }}">{{ "{:,.1f}".format(stock.ml_confidence_score) }}%</span>
+                                    {% else %}N/A{% endif %}
+                                </span>
+                            </div>
+                            <div class="data-row">
+                                <span class="data-label"><abbr title="Parametric Value at Risk. The expected maximum percentage loss over a standard holding period with 95% confidence.">VaR (95%):</abbr></span>
+                                <span class="data-value">
+                                    {% if stock.var_95 is not none %}
+                                        {% set var_class = 'metric-poor' if stock.var_95 > 0.05 else 'metric-neutral' %}
+                                        <span class="{{ var_class }}">{{ "{:,.2f}".format(stock.var_95 * 100) }}%</span>
+                                    {% else %}N/A{% endif %}
+                                </span>
+                            </div>
+                            <div class="data-row">
+                                <span class="data-label"><abbr title="Conditional Value at Risk (Expected Shortfall). The expected loss magnitude IF the VaR threshold is breached.">CVaR (95%):</abbr></span>
+                                <span class="data-value">
+                                    {% if stock.cvar_95 is not none %}
+                                        {% set cvar_class = 'metric-poor' if stock.cvar_95 > 0.07 else 'metric-neutral' %}
+                                        <span class="{{ cvar_class }}">{{ "{:,.2f}".format(stock.cvar_95 * 100) }}%</span>
+                                    {% else %}N/A{% endif %}
+                                </span>
+                            </div>
+                            <div class="data-row">
+                                <span class="data-label"><abbr title="VADER NLP compound score generated from the latest news headlines.">Media Sentiment:</abbr></span>
+                                <span class="data-value">
+                                    {% if stock.sentiment_score is not none %}
+                                        {% if stock.sentiment_score > 0.6 %}
+                                            <span class="sent-badge sent-euphoria">Euphoria ({{ "{:,.3f}".format(stock.sentiment_score) }})</span>
+                                        {% elif stock.sentiment_score > 0.2 %}
+                                            <span class="sent-badge sent-bullish">Bullish ({{ "{:,.3f}".format(stock.sentiment_score) }})</span>
+                                        {% elif stock.sentiment_score >= -0.2 %}
+                                            <span class="sent-badge sent-neutral">Neutral ({{ "{:,.3f}".format(stock.sentiment_score) }})</span>
+                                        {% elif stock.sentiment_score > -0.6 %}
+                                            <span class="sent-badge sent-bearish">Bearish ({{ "{:,.3f}".format(stock.sentiment_score) }})</span>
+                                        {% else %}
+                                            <span class="sent-badge sent-fear">Extreme Fear ({{ "{:,.3f}".format(stock.sentiment_score) }})</span>
+                                        {% endif %}
+                                    {% else %}N/A{% endif %}
+                                </span>
+                            </div>
+                        </div>
+
+                        <div class="data-card">
+                            <h3>Valuation Metrics</h3>
+                            <div class="data-row">
+                                <span class="data-label"><abbr title="Current Price divided by Last Year's Earnings.">Trailing P/E:</abbr></span>
+                                <span class="data-value">{% if stock.trailing_pe %}{{ stock.trailing_pe|round(2) }}{% else %}N/A{% endif %}</span>
+                            </div>
+                            <div class="data-row">
+                                <span class="data-label"><abbr title="Current Price divided by Next Year's Estimated Earnings.">Forward P/E:</abbr></span>
+                                <span class="data-value">{% if stock.forward_pe %}{{ stock.forward_pe|round(2) }}{% else %}N/A{% endif %}</span>
+                            </div>
+                            <div class="data-row">
+                                <span class="data-label"><abbr title="Price/Earnings divided by Growth. < 1.0 is considered cheap.">PEG Ratio:</abbr></span>
+                                <span class="data-value">{% if stock.peg_ratio %}{{ stock.peg_ratio|round(2) }}{% else %}N/A{% endif %}</span>
+                            </div>
+                            <div class="data-row">
+                                <span class="data-label"><abbr title="Custom Calculation: P/E divided by Actual Earnings Growth.">Peter Lynch PEG:</abbr></span>
+                                <span class="data-value">{% if stock.peter_lynch_peg %}{{ stock.peter_lynch_peg|round(2) }}{% else %}N/A{% endif %}</span>
+                            </div>
+                            <div class="data-row">
+                                <span class="data-label"><abbr title="Price divided by the literal net asset value of the company.">Price-to-Book:</abbr></span>
+                                <span class="data-value">{% if stock.price_to_book %}{{ stock.price_to_book|round(2) }}{% else %}N/A{% endif %}</span>
+                            </div>
+                        </div>
+
+                        <div class="data-card">
+                            <h3>Profitability & Growth</h3>
+                            <div class="data-row">
+                                <span class="data-label">Profit Margin:</span>
+                                <span class="data-value">{% if stock.profit_margin %}{{ (stock.profit_margin * 100)|round(1) }}%{% else %}N/A{% endif %}</span>
+                            </div>
+                            <div class="data-row">
+                                <span class="data-label"><abbr title="Return on Equity: How well management generates returns on your investment.">ROE:</abbr></span>
+                                <span class="data-value">{% if stock.roe %}{{ (stock.roe * 100)|round(1) }}%{% else %}N/A{% endif %}</span>
+                            </div>
+                            <div class="data-row">
+                                <span class="data-label">Revenue Growth (YoY):</span>
+                                <span class="data-value">{% if stock.revenue_growth %}{{ (stock.revenue_growth * 100)|round(1) }}%{% else %}N/A{% endif %}</span>
+                            </div>
+                        </div>
+
+                        <div class="data-card">
+                            <h3>Financial Health</h3>
+                            <div class="data-row">
+                                <span class="data-label"><abbr title="Total Debt divided by Total Equity. > 2.0 can be risky in high interest environments.">Debt-to-Equity:</abbr></span>
+                                <span class="data-value">{% if stock.debt_to_equity %}{{ stock.debt_to_equity|round(2) }}{% else %}N/A{% endif %}</span>
+                            </div>
+                            <div class="data-row">
+                                <span class="data-label"><abbr title="Current Assets divided by Current Liabilities. > 1.0 means they can pay short-term bills.">Current Ratio:</abbr></span>
+                                <span class="data-value">{% if stock.current_ratio %}{{ stock.current_ratio|round(2) }}{% else %}N/A{% endif %}</span>
+                            </div>
+                            <div class="data-row">
+                                <span class="data-label">Operating Cash Flow:</span>
+                                <span class="data-value">{% if stock.operating_cash_flow %}{{ "{:,.0f}".format(stock.operating_cash_flow) }} {{ stock.currency }}{% else %}N/A{% endif %}</span>
+                            </div>
+                        </div>
+
+                        <div class="data-card">
+                            <h3>Market Sentiment</h3>
+                            <div class="data-row">
+                                <span class="data-label">Wall Street Target:</span>
+                                <span class="data-value">{% if stock.target_price %}{{ "{:,.2f}".format(stock.target_price) }} {{ stock.currency }}{% else %}N/A{% endif %}</span>
+                            </div>
+                            <div class="data-row">
+                                <span class="data-label">Analyst Rating:</span>
+                                <span class="data-value">{{ stock.analyst_rating }}</span>
+                            </div>
+                            <div class="data-row">
+                                <span class="data-label"><abbr title="Percentage of shares shorted. >10% indicates high pessimism and volatility risk.">Short Interest:</abbr></span>
+                                <span class="data-value">{% if stock.short_interest %}{{ (stock.short_interest * 100)|round(2) }}%{% else %}N/A{% endif %}</span>
+                            </div>
+                            <div class="data-row">
+                                <span class="data-label"><abbr title="Percentage owned by 'Smart Money' (Hedge funds, mutual funds).">Inst. Ownership:</abbr></span>
+                                <span class="data-value">{% if stock.institutional_ownership %}{{ (stock.institutional_ownership * 100)|round(1) }}%{% else %}N/A{% endif %}</span>
+                            </div>
+                            <div class="data-row">
+                                <span class="data-label"><abbr title="Volatility relative to the S&P500. Beta > 1 is more volatile, Beta < 1 is safer.">Beta (Risk):</abbr></span>
+                                <span class="data-value">{% if stock.beta %}{{ stock.beta|round(2) }}{% else %}N/A{% endif %}</span>
+                            </div>
+                        </div>
                     </div>
-                    <div class="data-row">
-                        <span class="data-label"><abbr title="Percentage of shares shorted. >10% indicates high pessimism and volatility risk.">Short Interest:</abbr></span>
-                        <span class="data-value">{% if stock.short_interest %}{{ (stock.short_interest * 100)|round(2) }}%{% else %}N/A{% endif %}</span>
-                    </div>
-                    <div class="data-row">
-                        <span class="data-label"><abbr title="Percentage owned by 'Smart Money' (Hedge funds, mutual funds).">Inst. Ownership:</abbr></span>
-                        <span class="data-value">{% if stock.institutional_ownership %}{{ (stock.institutional_ownership * 100)|round(1) }}%{% else %}N/A{% endif %}</span>
-                    </div>
-                    <div class="data-row">
-                        <span class="data-label"><abbr title="Volatility relative to the S&P500. Beta > 1 is more volatile, Beta < 1 is safer.">Beta (Risk):</abbr></span>
-                        <span class="data-value">{% if stock.beta %}{{ stock.beta|round(2) }}{% else %}N/A{% endif %}</span>
+                    {% endif %}
+                </div>
+                
+            </div> <div class="detail-right-column">
+                <div id="macro-section">
+                    <h2>Macro Trend</h2>
+                    <div class="chart-wrapper" id="macro-wrapper">
+                        <button class="fullscreen-btn" onclick="toggleFullscreen('macro-wrapper')">⛶ Fullscreen</button>
+                        {{ macro_html | safe }}
                     </div>
                 </div>
-            </div>
-            {% endif %}
-        </div>
-    </div>
+            </div> </div> </div>
 
     <script>
         // --- WATCHLIST TOGGLE LOGIC ---

@@ -33,6 +33,10 @@ abbr { text-decoration: underline dotted #666; text-underline-offset: 3px; curso
 .body-settings { max-width: 900px; margin: auto; }
 .sentiment-split-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; width: 100%; box-sizing: border-box; margin-bottom: 30px; }
 
+/* Grid Layout for Detail View */
+.detail-split-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 30px; align-items: start; margin-top: 20px; }
+.detail-right-column { position: sticky; top: 90px; height: max-content; }
+
 /* --- 3. Header & Navigation --- */
 .header-container { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; padding-bottom: 20px; margin-bottom: 30px; }
 .title-wrapper { display: flex; align-items: center; }
@@ -201,13 +205,13 @@ details.settings-card[open] > summary { border-bottom: 1px solid #333; margin-bo
 .notification-body { font-size: 15px; line-height: 1.5; white-space: pre-wrap; color: #ccc; }
 
 /* --- 10. Fundamentals & Chart Wrappers --- */
-.fundamentals-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-top: 20px; }
+.fundamentals-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-top: 20px; margin-bottom: 30px; }
 .data-card { background-color: #1e1e1e; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
 .data-card h3 { margin-top: 0; color: #4da6ff; border-bottom: 1px solid #333; padding-bottom: 10px; }
 .data-row { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 15px; }
 .data-label { color: #aaa; }
 .data-value { font-weight: bold; color: #fff; }
-.chart-wrapper { position: relative; background-color: #1e1e1e; padding: 10px; border-radius: 8px; margin-bottom: 20px; }
+.chart-wrapper { position: relative; background-color: #1e1e1e; padding: 10px; border-radius: 8px; margin-bottom: 30px; }
 .fullscreen-btn { position: absolute; top: 15px; left: 20px; z-index: 50; background: #333; color: white; border: 1px solid #555; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-weight: bold; }
 .fullscreen-btn:hover { background: #4da6ff; color: #121212; }
 .is-fullscreen { position: fixed !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 100vh !important; z-index: 9999 !important; background-color: #121212 !important; border-radius: 0 !important; margin: 0 !important; padding: 20px !important; box-sizing: border-box; }
@@ -307,6 +311,11 @@ table.dataTable.display tbody tr.even > .sorting_1, table.dataTable.order-column
 .yield-sensitive-tag { background-color: #4d0000; border-color: #ff4d4d; color: #ff4d4d; font-size: 13px; padding: 4px 8px; border: 1px solid #ff4d4d; border-radius: 4px; display: inline-block; cursor: default; }
 
 /* --- 16. Mobile Optimization Overrides --- */
+@media (max-width: 1200px) {
+    .detail-split-grid { grid-template-columns: 1fr; }
+    .detail-right-column { position: static; height: auto; margin-top: 20px; }
+}
+
 @media (max-width: 992px) {
     .glossary-wrapper { grid-template-columns: 1fr; }
     .glossary-sidebar { display: none; }
