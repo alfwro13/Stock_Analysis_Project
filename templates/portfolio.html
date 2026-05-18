@@ -75,7 +75,7 @@
                     {% else %}✅ LOW{% endif %}
                 </h3>
                 <p class="risk-summary-text">
-                    <strong>3-Day Velocity:</strong> <span class="{% if macro_regime.us_threat_level == 'RED' %}negative-val{% elif macro_regime.us_threat_level == 'YELLOW' %}warning-text{% else %}positive-val{% endif %}">{{ "{:+.2f}".format(macro_regime.us_yield_velocity) }}%</span>
+                    <strong>3-Day Velocity:</strong> <span class="{% if macro_regime.us_threat_level == 'RED' %}negative-val{% elif macro_regime.us_threat_level == 'YELLOW' %}warning-text{% else %}positive-val{% endif %}">{{ "{:+.2f}".format(macro_regime.us_yield_velocity or 0.0) }}%</span>
                     <br>
                     {% if macro_regime.us_threat_level == 'RED' %}
                     US yields are surging vertically. High-multiple growth stocks and highly indebted US assets are at extreme risk of immediate valuation compression.
@@ -95,7 +95,7 @@
                     {% else %}✅ LOW{% endif %}
                 </h3>
                 <p class="risk-summary-text">
-                    <strong>3-Day Velocity:</strong> <span class="{% if macro_regime.uk_threat_level == 'RED' %}negative-val{% elif macro_regime.uk_threat_level == 'YELLOW' %}warning-text{% else %}positive-val{% endif %}">{{ "{:+.2f}".format(macro_regime.uk_yield_velocity) }}%</span>
+                    <strong>3-Day Velocity:</strong> <span class="{% if macro_regime.uk_threat_level == 'RED' %}negative-val{% elif macro_regime.uk_threat_level == 'YELLOW' %}warning-text{% else %}positive-val{% endif %}">{{ "{:+.2f}".format(macro_regime.uk_yield_velocity or 0.0) }}%</span>
                     <br>
                     {% if macro_regime.uk_threat_level == 'RED' %}
                     UK yields are surging vertically. Domestic equities and highly indebted UK assets are at extreme risk of immediate valuation compression.
