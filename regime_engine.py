@@ -130,10 +130,11 @@ def get_latest_regime() -> Optional[Dict[str, Any]]:
 def calculate_systemic_macro_threat() -> None:
     """Calculates yield rate of change (US & UK) and logs granular systemic compression risk to SQLite."""
     try:
-        tyx = yf.Ticker("^TYX").history(period="5d")
-        tnx = yf.Ticker("^TNX").history(period="5d")
-        dxy = yf.Ticker("DX-Y.NYB").history(period="5d")
-        gbpusd = yf.Ticker("GBPUSD=X").history(period="5d")
+        # PULL 10 DAYS TO SURVIVE WEEKENDS AND HOLIDAYS
+        tyx = yf.Ticker("^TYX").history(period="10d")
+        tnx = yf.Ticker("^TNX").history(period="10d")
+        dxy = yf.Ticker("DX-Y.NYB").history(period="10d")
+        gbpusd = yf.Ticker("GBPUSD=X").history(period="10d")
         
         if tyx.empty or len(tyx) < 4:
             return
@@ -150,6 +151,10 @@ def calculate_systemic_macro_threat() -> None:
         uk_gilt_path = HISTORICAL_DIR / "UK_GILT_BASELINE.parquet"
         if uk_gilt_path.exists():
             gilt_df = pd.read_parquet(uk_gilt_path)
+            
+            # 🛠️ THE FIX: Strip out weekend padding (Saturday=5, Sunday=6) to align with trading days
+            gilt_df = gilt_df[gilt_df.index.dayofweek < 5]
+            
             curr_gilt = float(gilt_df['Close'].iloc[-1]) if len(gilt_df) >= 1 else curr_tyx
             past_gilt = float(gilt_df['Close'].iloc[-4]) if len(gilt_df) >= 4 else past_tyx
         else:
