@@ -142,7 +142,7 @@ def generate_sentiment_figure() -> Optional[go.Figure]:
     max_spy = merged_df['SPY_Close'].max() * 1.02
 
     fig.update_layout(
-        title="Fear & Greed vs S&P 500 (1 Year)",
+        title=dict(text="Fear & Greed vs S&P 500 (1 Year)", x=0.5, xanchor='center'),
         template="plotly_dark",
         height=450,
         margin=dict(l=40, r=40, t=60, b=40),
@@ -215,7 +215,7 @@ def generate_vix_spy_figure() -> Optional[go.Figure]:
     max_spy = merged_df['SPY_Close'].max() * 1.02
 
     fig.update_layout(
-        title="S&P 500 vs VIX (1 Year)",
+        title=dict(text="S&P 500 vs VIX (1 Year)", x=0.5, xanchor='center'),
         template="plotly_dark",
         height=450,
         margin=dict(l=40, r=40, t=60, b=40),
@@ -257,7 +257,7 @@ def get_yield_equity_html() -> str:
         line=dict(color='#ff4d4d', dash='dot', width=2)), secondary_y=True)
 
     fig.update_layout(
-        title="US Cost of Capital: 30Y Treasury Yield vs S&P 500 (1 Year)",
+        title=dict(text="US Cost of Capital: 30Y Treasury Yield vs S&P 500 (1 Year)", x=0.5, xanchor='center'),
         template="plotly_dark", height=450, margin=dict(l=40, r=40, t=60, b=40),
         hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
@@ -291,7 +291,7 @@ def get_uk_yield_equity_html() -> str:
         line=dict(color='#ff4d4d', dash='dot', width=2)), secondary_y=True)
 
     fig.update_layout(
-        title="UK Cost of Capital: 10Y Gilt Yield vs FTSE 100 (1 Year)",
+        title=dict(text="UK Cost of Capital: 10Y Gilt Yield vs FTSE 100 (1 Year)", x=0.5, xanchor='center'),
         template="plotly_dark", height=450, margin=dict(l=40, r=40, t=60, b=40),
         hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
@@ -325,7 +325,7 @@ def get_ftse_gbp_html() -> str:
         line=dict(color='#00ffcc', dash='dot', width=2)), secondary_y=True)
 
     fig.update_layout(
-        title="Currency Impact: GBP/USD vs FTSE 100 (1 Year)",
+        title=dict(text="Currency Impact: GBP/USD vs FTSE 100 (1 Year)", x=0.5, xanchor='center'),
         template="plotly_dark", height=450, margin=dict(l=40, r=40, t=60, b=40),
         hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
@@ -413,7 +413,7 @@ def _async_chart_cruncher_worker() -> None:
                 x=m_df.index, y=m_df['^TYX_Close'], name="30Y Treasury Yield",
                 line=dict(color='#ff4d4d', dash='dot', width=2)), secondary_y=True)
             fig_yield_equity.update_layout(
-                title="US Cost of Capital: 30Y Treasury Yield vs S&P 500 (1 Year)",
+                title=dict(text="US Cost of Capital: 30Y Treasury Yield vs S&P 500 (1 Year)", x=0.5, xanchor='center'),
                 template="plotly_dark", height=450, margin=dict(l=40, r=40, t=60, b=40),
                 hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
             )
@@ -438,7 +438,7 @@ def _async_chart_cruncher_worker() -> None:
                 x=m_df_uk.index, y=m_df_uk['UK_Close'], name="10Y Gilt Yield",
                 line=dict(color='#ff4d4d', dash='dot', width=2)), secondary_y=True)
             fig_uk_yield.update_layout(
-                title="UK Cost of Capital: 10Y Gilt Yield vs FTSE 100 (1 Year)",
+                title=dict(text="UK Cost of Capital: 10Y Gilt Yield vs FTSE 100 (1 Year)", x=0.5, xanchor='center'),
                 template="plotly_dark", height=450, margin=dict(l=40, r=40, t=60, b=40),
                 hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
             )
@@ -461,7 +461,7 @@ def _async_chart_cruncher_worker() -> None:
                 x=m_df_gbp.index, y=m_df_gbp['GBPUSD_Close'], name="GBP/USD",
                 line=dict(color='#00ffcc', dash='dot', width=2)), secondary_y=True)
             fig_gbp.update_layout(
-                title="Currency Impact: GBP/USD vs FTSE 100 (1 Year)",
+                title=dict(text="Currency Impact: GBP/USD vs FTSE 100 (1 Year)", x=0.5, xanchor='center'),
                 template="plotly_dark", height=450, margin=dict(l=40, r=40, t=60, b=40),
                 hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
             )
