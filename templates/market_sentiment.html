@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="color-scheme" content="dark">
     <title>Quantamental - Market Sentiment</title>
-    <link rel="stylesheet" href="/static/css/styles.css">
+    <link rel="stylesheet" href="/static/css/styles.css?v=2.0">
 </head>
 <body class="body-sentiment">
 
@@ -27,23 +27,65 @@
         <p class="regime-callout-text">Market conditions are currently <strong>{{ 'highly turbulent' if regime_data.regime_label in ['Crash', 'Volatile'] else 'normal and stable' }}</strong>. Standard quantitative thresholds {{ 'are aggressively filtered for Flight to Safety' if regime_data.regime_label in ['Crash', 'Volatile'] else 'apply' }}.</p>
     </div>
 
-    <div class="risk-summary-row">
-        {% if us_yield_threat %}
-        <div class="risk-alert risk-alert-us">
-            ⚠️ <strong>US Systemic Yield Threat:</strong> 10-Year Treasuries have breached critical threshold. Valuation multiples under severe pressure.
+    {% if macro_regime %}
+    {% set global_threat = 'GREEN' %}
+    {% if macro_regime.us_threat_level == 'RED' or macro_regime.uk_threat_level == 'RED' %}
+        {% set global_threat = 'RED' %}
+    {% elif macro_regime.us_threat_level == 'YELLOW' or macro_regime.uk_threat_level == 'YELLOW' %}
+        {% set global_threat = 'YELLOW' %}
+    {% endif %}
+    
+    <div class="summary-row risk-summary-row {% if global_threat == 'RED' %}risk-summary-red{% elif global_threat == 'YELLOW' %}risk-summary-yellow{% else %}risk-summary-green{% endif %}">
+        <div style="display: flex; flex-wrap: wrap; gap: 20px; width: 100%;">
+            
+            <div style="flex: 1; min-width: 300px;">
+                <h3 class="risk-summary-header {% if macro_regime.us_threat_level == 'RED' %}red{% elif macro_regime.us_threat_level == 'YELLOW' %}yellow{% else %}green{% endif %}">
+                    🇺🇸 US 30Y Treasury: 
+                    {% if macro_regime.us_threat_level == 'RED' %}🚨 HIGH
+                    {% elif macro_regime.us_threat_level == 'YELLOW' %}⚠️ ELEVATED
+                    {% else %}✅ LOW{% endif %}
+                </h3>
+                <p class="risk-summary-text">
+                    <strong>3-Day Velocity:</strong> <span class="{% if macro_regime.us_threat_level == 'RED' %}negative-val{% elif macro_regime.us_threat_level == 'YELLOW' %}warning-text{% else %}positive-val{% endif %}">{{ "{:+.2f}".format(macro_regime.us_yield_velocity or 0.0) }}%</span>
+                    <br>
+                    {% if macro_regime.us_threat_level == 'RED' %}
+                    US yields are surging vertically. High-multiple growth stocks and highly indebted US assets are at extreme risk of immediate valuation compression.
+                    {% elif macro_regime.us_threat_level == 'YELLOW' %}
+                    The cost of US capital is creeping higher. Monitor dollar-denominated yield-sensitive assets closely for technical breakdowns.
+                    {% else %}
+                    US yields are stable or falling. Favorable environment for US equity expansion and risk-on assets.
+                    {% endif %}
+                </p>
+            </div>
+
+            <div style="flex: 1; min-width: 300px;">
+                <h3 class="risk-summary-header {% if macro_regime.uk_threat_level == 'RED' %}red{% elif macro_regime.uk_threat_level == 'YELLOW' %}yellow{% else %}green{% endif %}">
+                    🇬🇧 UK 10Y Gilt: 
+                    {% if macro_regime.uk_threat_level == 'RED' %}🚨 HIGH
+                    {% elif macro_regime.uk_threat_level == 'YELLOW' %}⚠️ ELEVATED
+                    {% else %}✅ LOW{% endif %}
+                </h3>
+                <p class="risk-summary-text">
+                    <strong>3-Day Velocity:</strong> <span class="{% if macro_regime.uk_threat_level == 'RED' %}negative-val{% elif macro_regime.uk_threat_level == 'YELLOW' %}warning-text{% else %}positive-val{% endif %}">{{ "{:+.2f}".format(macro_regime.uk_yield_velocity or 0.0) }}%</span>
+                    <br>
+                    {% if macro_regime.uk_threat_level == 'RED' %}
+                    UK yields are surging vertically. Domestic equities and highly indebted UK assets are at extreme risk of immediate valuation compression.
+                    {% elif macro_regime.uk_threat_level == 'YELLOW' %}
+                    The cost of UK capital is creeping higher. Monitor GBP-denominated yield-sensitive assets closely for technical breakdowns.
+                    {% else %}
+                    UK yields are stable or falling. Favorable environment for UK equity expansion and risk-on assets.
+                    {% endif %}
+                </p>
+            </div>
+
         </div>
-        {% endif %}
-        {% if uk_yield_threat %}
-        <div class="risk-alert risk-alert-uk">
-            ⚠️ <strong>UK Systemic Yield Threat:</strong> 10-Year Gilts are signaling elevated cost of capital risk for domestic equities.
-        </div>
-        {% endif %}
     </div>
+    {% endif %}
 
     <div class="sentiment-split-grid">
         
         <div class="sentiment-column">
-            <h2 class="region-header us-header">🇺🇸 US Market Context</h2>
+            <h2 style="color: #4da6ff; margin-bottom: 15px; border-bottom: 2px solid #333; padding-bottom: 10px;">🇺🇸 US Market Context</h2>
 
             <div class="chart-wrapper chart-wrapper-fg">
                 {{ sentiment_html | safe }}
@@ -73,7 +115,7 @@
             </div>
 
             <div class="chart-wrapper">
-                {{ yield_gauge_html | safe }}
+                {{ us_yield_gauge_html | safe }}
             </div>
 
             <div class="chart-wrapper">
@@ -83,15 +125,15 @@
             <div class="sentiment-footer">
                 <span class="sentiment-footer-title">US Cost of Capital Explained:</span>
                 <div class="sentiment-footer-text">
-                    As the <span class="sentiment-highlight">10-Year Treasury Yield</span> rises, the risk-free rate increases. This exerts downward pressure on equity valuation multiples (P/E ratios) because future corporate cash flows are discounted at a higher rate. Conversely, falling yields often act as a tailwind for long-duration equities like technology stocks.
+                    As the <span class="sentiment-highlight">10-Year Treasury Yield</span> rises, the risk-free rate increases. This exerts downward pressure on equity valuation multiples (P/E ratios) because future corporate cash flows are discounted at a higher rate. A strong negative correlation means high-multiple tech stocks are highly likely to compress when the red dotted line spikes. Conversely, falling yields often act as a tailwind for long-duration equities.
                 </div>
             </div>
         </div>
 
         <div class="sentiment-column">
-            <h2 class="region-header uk-header">🇬🇧 UK Market Context</h2>
+            <h2 style="color: #b366ff; margin-bottom: 15px; border-bottom: 2px solid #333; padding-bottom: 10px;">🇬🇧 UK Market Context</h2>
 
-            <div class="chart-wrapper chart-border-teal">
+            <div class="chart-wrapper" style="border-left: 4px solid #00ffcc;">
                 {{ ftse_gbp_html | safe }}
             </div>
 
@@ -99,15 +141,15 @@
                 {{ uk_yield_gauge_html | safe }}
             </div>
 
-            <div class="chart-wrapper chart-border-purple">
+            <div class="chart-wrapper" style="border-left: 4px solid #b366ff;">
                 {{ uk_yield_equity_html | safe }}
             </div>
 
             <div class="sentiment-footer">
                 <span class="sentiment-footer-title">UK Dynamics Explained:</span>
                 <div class="sentiment-footer-text">
-                    <strong class="text-purple">UK Cost of Capital:</strong> Just like the US, rising borrowing costs (10Y Gilt Yields) typically compress equity valuations. <br>
-                    <strong class="text-teal">Currency Impact:</strong> Because roughly 70-75% of FTSE 100 corporate revenue is generated outside the UK (priced in USD and EUR), a <em>weakening</em> Pound Sterling (GBP) often drives the FTSE 100 <em>up</em>. This is because their overseas earnings are artificially inflated when converted back into GBP. Look for an inverse correlation between the GBP/USD rate and the FTSE 100 points.
+                    <strong style="color: #b366ff;">UK Cost of Capital:</strong> Just like the US, rising borrowing costs (10Y Gilt Yields) typically compress equity valuations. <br><br>
+                    <strong style="color: #00ffcc;">Currency Impact:</strong> Because roughly 70-75% of FTSE 100 corporate revenue is generated outside the UK (priced in USD and EUR), a <em>weakening</em> Pound Sterling (GBP) often drives the FTSE 100 <em>up</em>. This is because their overseas earnings are artificially inflated when converted back into GBP. Look for an inverse correlation between the GBP/USD rate and the FTSE 100 points.
                 </div>
             </div>
         </div>
