@@ -168,7 +168,7 @@ def get_dividend_harvest_setups(min_yield: float = 0.02, min_score: int = 50) ->
             q.ticker, 
             COALESCE(p.company_name, m.company_name, q.ticker) as company_name, 
             COALESCE(p.country, m.country, 'US') as country,
-            COALESCE(p.sector, m.sector, 'Unclassified') as sector, 
+            COALESCE(p.sector, s.sector, m.sector, 'Unclassified') as sector,
             CASE 
                 WHEN UPPER(COALESCE(m.exchange, p.exchange)) = 'NMS' THEN 'NASDAQ'
                 WHEN UPPER(COALESCE(m.exchange, p.exchange)) = 'NYQ' THEN 'NYSE/AMEX'

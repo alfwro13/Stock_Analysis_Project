@@ -400,7 +400,7 @@
                     } },
                     { data: 'ml_confidence_score', render: function(data) {
                         if (data == null) return '-';
-                        return `${(data * 100).toFixed(1)}%`;
+                        return `${data.toFixed(1)}%`;
                     } }
                 ]
             });

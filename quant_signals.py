@@ -301,7 +301,11 @@ class QuantEngine:
             debt_to_equity = info.get('debtToEquity', None)
             current_ratio = info.get('currentRatio', None)
             operating_cash_flow = info.get('operatingCashflow', None)
+            
             dividend_yield = info.get('dividendYield', None)
+            if dividend_yield is not None and dividend_yield > 1.0 and currency in ['GBp', 'GBP']:
+                dividend_yield = dividend_yield / 100.0
+
             ex_dividend_date = info.get('exDividendDate', None)
             target_price = info.get('targetMeanPrice', None)
             analyst_rating = info.get('recommendationKey', 'None').upper()
