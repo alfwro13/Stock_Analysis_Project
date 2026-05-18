@@ -110,10 +110,29 @@ def run_freetrade_sync():
     finally:
         task_lock.release()
 
+def run_sentiment_scan():
+    """Executes the standalone NLP Sentiment pipeline."""
+    if not task_lock.acquire(blocking=False):
+        logger.warning("System is currently busy. Skipping Sentiment Scan.")
+        return
+    log_sched_notification("Scheduler", "Started Sentiment Scan...")
+    try:
+        logger.info("Sentiment scan initiated.")
+        engine = DataEngine()
+        all_tickers = engine.get_all_tickers()
+        update_all_sentiment(all_tickers)
+        logger.info("Sentiment scan complete.")
+        log_sched_notification("Success", "Sentiment Scan completed successfully.")
+    except Exception as e:
+        logger.error(f"Sentiment Scan Failed: {e}")
+        log_sched_notification("Error", f"Sentiment Scan failed: {e}")
+    finally:
+        task_lock.release()
+
 def run_overnight_quant_scan():
     """
     Fetches the combined list of portfolio and watchlist tickers, 
-    executes the resumable daily quant scan, runs the ML Engine, Tail Risk, and VADER NLP.
+    executes the resumable daily quant scan, runs the ML Engine and Tail Risk.
     """
     if not task_lock.acquire(blocking=False):
         logger.warning("System is currently busy. Skipping Overnight Quant Scan.")
@@ -127,14 +146,10 @@ def run_overnight_quant_scan():
         # 1. Execute Technical Analysis Pipeline
         run_daily_quant_scan(all_tickers)
         
-        # 2. Execute ML Inference Pipeline & Tail Risk (Phase 5)
+        # 2. Execute ML Inference Pipeline & Tail Risk
         logger.info("Overnight ML inference initiated.")
         update_daily_ml_predictions(all_tickers)
         update_all_tail_risks(all_tickers)
-        
-        # 3. Execute NLP Sentiment Pipeline (Phase 4)
-        logger.info("Overnight sentiment analysis initiated.")
-        update_all_sentiment(all_tickers)
         
         logger.info("Overnight quant scan complete.")
         log_sched_notification("Success", "Overnight Quant Scan completed successfully.")
@@ -342,6 +357,27 @@ def reload_scheduler():
                 logger.info(f"Quant Analysis scheduled for {freq} at {time_str}")
             except Exception as e:
                 logger.error(f"Failed to schedule Quant Analysis: {e}")
+
+    # 4b. Standalone NLP Market Sentiment Engine
+    sent_scan_cfg = scheduling.get("SENTIMENT_ENGINE", {})
+    if sent_scan_cfg.get("ENABLED"):
+        interval = int(sent_scan_cfg.get("INTERVAL_HOURS", 0))
+        freq = sent_scan_cfg.get("FREQUENCY", "mon-fri")
+        if interval > 0:
+            scheduler.add_job(run_sentiment_scan, IntervalTrigger(hours=interval), id='sentiment_scan_job')
+            logger.info(f"Sentiment Scan scheduled every {interval} hours.")
+        else:
+            time_str = sent_scan_cfg.get("TIME", "09:00")
+            try:
+                hour, minute = map(int, time_str.split(':'))
+                scheduler.add_job(
+                    run_sentiment_scan,
+                    CronTrigger(day_of_week=freq, hour=hour, minute=minute),
+                    id='sentiment_scan_job'
+                )
+                logger.info(f"Sentiment Scan scheduled for {freq} at {time_str}")
+            except Exception as e:
+                logger.error(f"Failed to schedule Sentiment Scan: {e}")
 
     # 5. Unified Intraday Orchestrator
     crash_cfg = scheduling.get("CRASH_ALERTS", {})

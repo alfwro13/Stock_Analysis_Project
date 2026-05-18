@@ -73,6 +73,12 @@ DEFAULT_CONFIG = {
             "INTERVAL_HOURS": 0,
             "TIME": "18:00"
         },
+        "SENTIMENT_ENGINE": {
+            "ENABLED": False,
+            "FREQUENCY": "mon-fri",
+            "INTERVAL_HOURS": 4,
+            "TIME": "09:00"
+        },
         "CRASH_ALERTS": {
             "ENABLED": False,
             "FREQUENCY": "mon-fri",
