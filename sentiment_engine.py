@@ -362,17 +362,23 @@ def get_yield_gauge_html() -> str:
     """Queries the local SQLite macro regimes table to calculate the 3-day yield velocity gauge."""
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT yield_velocity, systemic_threat_level FROM macro_regimes ORDER BY date DESC LIMIT 1")
+    # UPGRADED: Query the new dual-region columns instead of legacy single column
+    cursor.execute("SELECT us_yield_velocity, uk_yield_velocity FROM macro_regimes ORDER BY date DESC LIMIT 1")
     row = cursor.fetchone()
     conn.close()
     
-    velocity = float(row['yield_velocity']) if row else 0.0
+    # Defensively handle None/NULL states from the database migration mapping
+    us_velocity = float(row['us_yield_velocity']) if row and row['us_yield_velocity'] is not None else 0.0
+    uk_velocity = float(row['uk_yield_velocity']) if row and row['uk_yield_velocity'] is not None else 0.0
+    
+    # Display whichever yield market is currently accelerating or decelerating the hardest
+    velocity = us_velocity if abs(us_velocity) >= abs(uk_velocity) else uk_velocity
     
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
         value=velocity,
         domain={'x': [0, 1], 'y': [0, 1]},
-        title={'text': "3-Day Yield Velocity (%)", 'font': {'size': 18, 'color': '#ccc'}},
+        title={'text': "Blended 3-Day Yield Velocity (%)", 'font': {'size': 18, 'color': '#ccc'}},
         gauge={
             'axis': {'range': [-5, 5], 'tickwidth': 1, 'tickcolor': "white"},
             'bar': {'color': "white", 'thickness': 0.2},
