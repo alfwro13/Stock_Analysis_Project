@@ -26,7 +26,7 @@ abbr { text-decoration: underline dotted #666; text-underline-offset: 3px; curso
 
 /* --- 2. Layout & Containers --- */
 .container { max-width: 1400px; margin: auto; padding: 0 20px; }
-.container-fluid { width: 100%; max-width: 1920px; margin: auto; padding: 0 30px; box-sizing: border-box; }
+.container-fluid { width: 100%; max-width: none; margin: auto; padding: 0 30px; box-sizing: border-box; }
 .body-glossary { max-width: 1400px; margin: auto; }
 .body-notifications { max-width: 1400px; margin: auto; }
 .body-portfolio, .body-watchlist, .body-detail, .body-screener, .body-sentiment { margin: 0; padding: 20px; }
@@ -35,7 +35,7 @@ abbr { text-decoration: underline dotted #666; text-underline-offset: 3px; curso
 .sentiment-split-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; width: 100%; box-sizing: border-box; margin-bottom: 30px; }
 
 /* Grid Layout for Detail View (Fluid Full-Screen) */
-.detail-split-grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 3fr); gap: 30px; align-items: start; margin-top: 20px; }
+.detail-split-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; width: 100%; box-sizing: border-box; align-items: start; margin-top: 20px; }
 .detail-right-column { position: sticky; top: 90px; height: max-content; }
 
 /* --- 3. Header & Navigation --- */
