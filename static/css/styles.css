@@ -27,8 +27,8 @@ abbr { text-decoration: underline dotted #666; text-underline-offset: 3px; curso
 /* --- 2. Layout & Containers --- */
 .container { max-width: 1400px; margin: auto; padding: 0 20px; }
 .body-glossary { max-width: 1400px; margin: auto; }
-.body-sentiment, .body-notifications { max-width: 1400px; margin: auto; }
-.body-portfolio, .body-watchlist, .body-detail, .body-screener { margin: 0; padding: 20px; }
+.body-notifications { max-width: 1400px; margin: auto; }
+.body-portfolio, .body-watchlist, .body-detail, .body-screener, .body-sentiment { margin: 0; padding: 20px; }
 .body-detail { padding-bottom: 50px; }
 .body-settings { max-width: 900px; margin: auto; }
 .sentiment-split-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; width: 100%; box-sizing: border-box; margin-bottom: 30px; }
