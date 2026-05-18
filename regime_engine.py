@@ -128,7 +128,7 @@ def get_latest_regime() -> Optional[Dict[str, Any]]:
         return None
 
 def calculate_systemic_macro_threat() -> None:
-    """Calculates yield rate of change (US & UK) and logs global systemic compression risk to SQLite."""
+    """Calculates yield rate of change (US & UK) and logs granular systemic compression risk to SQLite."""
     try:
         tyx = yf.Ticker("^TYX").history(period="5d")
         tnx = yf.Ticker("^TNX").history(period="5d")
@@ -159,32 +159,49 @@ def calculate_systemic_macro_threat() -> None:
         tyx_velocity = ((curr_tyx - past_tyx) / past_tyx) * 100.0 if past_tyx > 0 else 0.0
         gilt_velocity = ((curr_gilt - past_gilt) / past_gilt) * 100.0 if past_gilt > 0 else 0.0
         
-        # Determine the highest threat
-        max_velocity = max(tyx_velocity, gilt_velocity)
-        threat_source = "US 30Y Treasury" if tyx_velocity >= gilt_velocity else "UK 10Y Gilt"
-        
-        # Institutional Rule Classification
-        if max_velocity >= 3.5 or curr_tyx >= 5.0 or curr_gilt >= 5.0:
-            threat_level = "RED"
-        elif max_velocity >= 1.5:
-            threat_level = "YELLOW"
+        # US Institutional Rule Classification
+        if tyx_velocity >= 3.5 or curr_tyx >= 5.0:
+            us_threat_level = "RED"
+        elif tyx_velocity >= 1.5:
+            us_threat_level = "YELLOW"
         else:
-            threat_level = "GREEN"
+            us_threat_level = "GREEN"
+
+        # UK Institutional Rule Classification
+        if gilt_velocity >= 3.5 or curr_gilt >= 5.0:
+            uk_threat_level = "RED"
+        elif gilt_velocity >= 1.5:
+            uk_threat_level = "YELLOW"
+        else:
+            uk_threat_level = "GREEN"
             
         latest_date = tyx.index[-1].strftime('%Y-%m-%d')
         
         conn = get_connection()
         cursor = conn.cursor()
         
-        # Native upsert into our dedicated macro ledger
+        # Native upsert into our dedicated macro ledger with full independent region schemas
         cursor.execute('''
             INSERT OR REPLACE INTO macro_regimes 
-            (date, tyx_close, tnx_close, dxy_close, uk_gilt_close, gbpusd_close, yield_velocity, systemic_threat_level, threat_source)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (latest_date, round(curr_tyx, 3), round(curr_tnx, 3), round(curr_dxy, 3), round(curr_gilt, 3), round(curr_gbpusd, 4), round(max_velocity, 2), threat_level, threat_source))
+            (date, tyx_close, tnx_close, dxy_close, uk_gilt_close, gbpusd_close, us_yield_velocity, us_threat_level, uk_yield_velocity, uk_threat_level)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            latest_date, 
+            round(curr_tyx, 3), 
+            round(curr_tnx, 3), 
+            round(curr_dxy, 3), 
+            round(curr_gilt, 3), 
+            round(curr_gbpusd, 4), 
+            round(tyx_velocity, 2), 
+            us_threat_level, 
+            round(gilt_velocity, 2), 
+            uk_threat_level
+        ))
         
         conn.commit()
         conn.close()
-        logger.info(f"Systemic Macro Risk Evaluated: Threat level is {threat_level} (Source: {threat_source}, Velocity: {max_velocity:+.2f}%)")
+        
+        logger.info(f"Systemic Macro Risk Evaluated | US Threat: {us_threat_level} (Vel: {tyx_velocity:+.2f}%) | UK Threat: {uk_threat_level} (Vel: {gilt_velocity:+.2f}%)")
+        
     except Exception as e:
         logger.error(f"Fatal crash inside systemic threat calculator: {e}")
