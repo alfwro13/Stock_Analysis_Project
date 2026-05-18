@@ -31,6 +31,7 @@ abbr { text-decoration: underline dotted #666; text-underline-offset: 3px; curso
 .body-portfolio, .body-watchlist, .body-detail, .body-screener { margin: 0; padding: 20px; }
 .body-detail { padding-bottom: 50px; }
 .body-settings { max-width: 900px; margin: auto; }
+.sentiment-split-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; width: 100%; box-sizing: border-box; margin-bottom: 30px; }
 
 /* --- 3. Header & Navigation --- */
 .header-container { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; padding-bottom: 20px; margin-bottom: 30px; }
@@ -309,6 +310,7 @@ table.dataTable.display tbody tr.even > .sorting_1, table.dataTable.order-column
 @media (max-width: 992px) {
     .glossary-wrapper { grid-template-columns: 1fr; }
     .glossary-sidebar { display: none; }
+    .sentiment-split-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 768px) {

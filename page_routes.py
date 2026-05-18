@@ -14,7 +14,8 @@ from regime_engine import get_latest_regime
 from sentiment_engine import (
     get_sentiment_html,
     get_vix_spy_html,
-    get_yield_gauge_html,
+    get_us_yield_gauge_html,
+    get_uk_yield_gauge_html,
     get_yield_equity_html,
     get_uk_yield_equity_html,
     get_ftse_gbp_html
@@ -65,17 +66,30 @@ async def market_sentiment_page(request: Request):
     if not regime_data:
         regime_data = {"regime_label": "Unknown", "turbulence_index": 0.0}
         
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM macro_regimes ORDER BY date DESC LIMIT 1")
+        macro_row = cursor.fetchone()
+        macro_regime = dict(macro_row) if macro_row else None
+    except Exception:
+        macro_regime = None
+    finally:
+        conn.close()
+        
     return templates.TemplateResponse(
         request=request, 
         name="market_sentiment.html", 
         context={
             "sentiment_html": get_sentiment_html(), 
             "vix_spy_html": get_vix_spy_html(),
-            "yield_gauge_html": get_yield_gauge_html(),
+            "us_yield_gauge_html": get_us_yield_gauge_html(),
+            "uk_yield_gauge_html": get_uk_yield_gauge_html(),
             "yield_equity_html": get_yield_equity_html(),
             "uk_yield_equity_html": get_uk_yield_equity_html(),
             "ftse_gbp_html": get_ftse_gbp_html(),
             "regime_data": regime_data,
+            "macro_regime": macro_regime,
             "unread_count": get_unread_count(),
             "config": load_config()
         }
