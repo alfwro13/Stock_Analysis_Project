@@ -9,7 +9,7 @@
 <body class="body-detail">
 
     <div class="sticky-nav">
-        <div class="container" style="display: flex; align-items: center; flex-wrap: wrap;">
+        <div class="container-fluid" style="display: flex; align-items: center; flex-wrap: wrap;">
             <a href="https://github.com/alfwro13/Stock_Analysis_Project" target="_blank" style="margin-right: 15px; border: none;">
                 <img src="/assets/logo_small.png" alt="Logo" style="height: 30px; vertical-align: middle; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">
             </a>
@@ -28,7 +28,7 @@
         </div>
     </div>
 
-    <div class="container">
+    <div class="container-fluid">
         <h1 style="display: flex; align-items: center; gap: 10px; position: relative;">
             <span id="watchlist-star" style="cursor: pointer; color: #ffaa00; user-select: none;" title="Toggle Watchlist" onclick="toggleWatchlist('{{ stock.ticker }}')">
                 {% if is_in_watchlist %}★{% else %}☆{% endif %}
