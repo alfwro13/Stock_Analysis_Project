@@ -8,6 +8,14 @@
 .metric-neutral { color: #e0e0e0; }
 .card-risk { border-top: 3px solid #ffaa00; }
 
+/* --- Sentiment Badges --- */
+.sent-badge { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; text-align: center; text-transform: uppercase; letter-spacing: 0.5px; }
+.sent-euphoria { background-color: #00ff00; color: #121212; box-shadow: 0 0 8px rgba(0, 255, 0, 0.4); }
+.sent-bullish { background-color: #85e085; color: #121212; }
+.sent-neutral { background-color: #555555; color: #e0e0e0; }
+.sent-bearish { background-color: #ff8080; color: #121212; }
+.sent-fear { background-color: #ff4d4d; color: #ffffff; box-shadow: 0 0 8px rgba(255, 77, 77, 0.4); }
+
 /* --- 1. Base Elements & Typography --- */
 html { scroll-behavior: smooth; }
 body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #121212; color: #e0e0e0; margin: 0; padding: 20px; }
@@ -20,7 +28,7 @@ abbr { text-decoration: underline dotted #666; text-underline-offset: 3px; curso
 .container { max-width: 1400px; margin: auto; padding: 0 20px; }
 .body-glossary { max-width: 1400px; margin: auto; }
 .body-sentiment, .body-notifications { max-width: 1400px; margin: auto; }
-.body-portfolio, .body-watchlist, .body-detail { margin: 0; padding: 20px; }
+.body-portfolio, .body-watchlist, .body-detail, .body-screener { margin: 0; padding: 20px; }
 .body-detail { padding-bottom: 50px; }
 .body-settings { max-width: 900px; margin: auto; }
 
@@ -341,4 +349,3 @@ table.dataTable.display tbody tr.even > .sorting_1, table.dataTable.order-column
 .toggle-btn { background-color: #1a2636; color: #aaa; border: none; padding: 10px 20px; font-weight: bold; cursor: pointer; transition: background-color 0.3s ease, color 0.3s ease; font-size: 14px; }
 .toggle-btn:hover { background-color: #2c3e50; color: #fff; }
 .toggle-btn.active { background-color: #4da6ff; color: #121212; }
-

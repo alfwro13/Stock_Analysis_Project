@@ -267,8 +267,17 @@
                         <span class="data-label"><abbr title="VADER NLP compound score generated from the latest news headlines.">Media Sentiment:</abbr></span>
                         <span class="data-value">
                             {% if stock.sentiment_score is not none %}
-                                {% set sent_class = 'metric-excellent' if stock.sentiment_score > 0.5 else ('metric-poor' if stock.sentiment_score < -0.5 else 'metric-neutral') %}
-                                <span class="{{ sent_class }}">{{ "{:,.3f}".format(stock.sentiment_score) }}</span>
+                                {% if stock.sentiment_score > 0.6 %}
+                                    <span class="sent-badge sent-euphoria">Euphoria ({{ "{:,.3f}".format(stock.sentiment_score) }})</span>
+                                {% elif stock.sentiment_score > 0.2 %}
+                                    <span class="sent-badge sent-bullish">Bullish ({{ "{:,.3f}".format(stock.sentiment_score) }})</span>
+                                {% elif stock.sentiment_score >= -0.2 %}
+                                    <span class="sent-badge sent-neutral">Neutral ({{ "{:,.3f}".format(stock.sentiment_score) }})</span>
+                                {% elif stock.sentiment_score > -0.6 %}
+                                    <span class="sent-badge sent-bearish">Bearish ({{ "{:,.3f}".format(stock.sentiment_score) }})</span>
+                                {% else %}
+                                    <span class="sent-badge sent-fear">Extreme Fear ({{ "{:,.3f}".format(stock.sentiment_score) }})</span>
+                                {% endif %}
                             {% else %}N/A{% endif %}
                         </span>
                     </div>
@@ -375,8 +384,17 @@
                         <span class="data-label"><abbr title="VADER NLP compound score generated from the latest news headlines.">Media Sentiment:</abbr></span>
                         <span class="data-value">
                             {% if stock.sentiment_score is not none %}
-                                {% set sent_class = 'metric-excellent' if stock.sentiment_score > 0.5 else ('metric-poor' if stock.sentiment_score < -0.5 else 'metric-neutral') %}
-                                <span class="{{ sent_class }}">{{ "{:,.3f}".format(stock.sentiment_score) }}</span>
+                                {% if stock.sentiment_score > 0.6 %}
+                                    <span class="sent-badge sent-euphoria">Euphoria ({{ "{:,.3f}".format(stock.sentiment_score) }})</span>
+                                {% elif stock.sentiment_score > 0.2 %}
+                                    <span class="sent-badge sent-bullish">Bullish ({{ "{:,.3f}".format(stock.sentiment_score) }})</span>
+                                {% elif stock.sentiment_score >= -0.2 %}
+                                    <span class="sent-badge sent-neutral">Neutral ({{ "{:,.3f}".format(stock.sentiment_score) }})</span>
+                                {% elif stock.sentiment_score > -0.6 %}
+                                    <span class="sent-badge sent-bearish">Bearish ({{ "{:,.3f}".format(stock.sentiment_score) }})</span>
+                                {% else %}
+                                    <span class="sent-badge sent-fear">Extreme Fear ({{ "{:,.3f}".format(stock.sentiment_score) }})</span>
+                                {% endif %}
                             {% else %}N/A{% endif %}
                         </span>
                     </div>

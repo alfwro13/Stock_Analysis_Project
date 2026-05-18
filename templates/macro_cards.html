@@ -104,6 +104,21 @@
             // Assign transparent gray classes if the DB data is older than refresh rate
             const staleClass = index.is_stale ? 'stale-card' : '';
             const staleText = index.is_stale ? 'stale-text' : '';
+
+            // Map Sentiment Badges dynamically via JS
+            let sentBadgeHTML = '';
+            if (index.sentiment_score !== undefined && index.sentiment_score !== null) {
+                let sScore = parseFloat(index.sentiment_score);
+                let sClass = '';
+                let sText = '';
+                if (sScore > 0.6) { sClass = 'sent-euphoria'; sText = 'Euphoria'; }
+                else if (sScore > 0.2) { sClass = 'sent-bullish'; sText = 'Bullish'; }
+                else if (sScore >= -0.2) { sClass = 'sent-neutral'; sText = 'Neutral'; }
+                else if (sScore > -0.6) { sClass = 'sent-bearish'; sText = 'Bearish'; }
+                else { sClass = 'sent-fear'; sText = 'Extreme Fear'; }
+                
+                sentBadgeHTML = `<div style="margin-top: 10px;"><span class="sent-badge ${sClass}">${sText} (${sScore.toFixed(3)})</span></div>`;
+            }
             
             const cardHTML = `
                 <div class="macro-card ${cardClass} ${staleClass}">
@@ -112,6 +127,7 @@
                     <div class="macro-change ${changeClass} ${staleText}">
                         ${sign}${index.change_pct}%
                     </div>
+                    ${sentBadgeHTML}
                 </div>
             `;
             container.innerHTML += cardHTML;

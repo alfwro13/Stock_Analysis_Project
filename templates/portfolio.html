@@ -196,10 +196,20 @@
                         N/A
                     {% endif %}
                 </td>
+                
                 <td data-sort="{{ item.sentiment_score if item.sentiment_score is not none else -999 }}">
                     {% if item.sentiment_score is not none %}
-                        {% set sent_class = 'metric-excellent' if item.sentiment_score > 0.5 else ('metric-poor' if item.sentiment_score < -0.5 else 'metric-neutral') %}
-                        <span class="{{ sent_class }}">{{ "{:,.3f}".format(item.sentiment_score) }}</span>
+                        {% if item.sentiment_score > 0.6 %}
+                            <span class="sent-badge sent-euphoria">Euphoria ({{ "{:,.3f}".format(item.sentiment_score) }})</span>
+                        {% elif item.sentiment_score > 0.2 %}
+                            <span class="sent-badge sent-bullish">Bullish ({{ "{:,.3f}".format(item.sentiment_score) }})</span>
+                        {% elif item.sentiment_score >= -0.2 %}
+                            <span class="sent-badge sent-neutral">Neutral ({{ "{:,.3f}".format(item.sentiment_score) }})</span>
+                        {% elif item.sentiment_score > -0.6 %}
+                            <span class="sent-badge sent-bearish">Bearish ({{ "{:,.3f}".format(item.sentiment_score) }})</span>
+                        {% else %}
+                            <span class="sent-badge sent-fear">Extreme Fear ({{ "{:,.3f}".format(item.sentiment_score) }})</span>
+                        {% endif %}
                     {% else %}
                         N/A
                     {% endif %}

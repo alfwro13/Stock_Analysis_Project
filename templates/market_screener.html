@@ -369,8 +369,17 @@
                             if (data === null || data === undefined) return 'N/A';
                             
                             if (type === 'display') {
-                                let cssClass = data > 0.5 ? 'metric-excellent' : (data < -0.5 ? 'metric-poor' : 'metric-neutral');
-                                return `<span class="${cssClass}">${data.toFixed(3)}</span>`;
+                                let sScore = parseFloat(data);
+                                let sClass = '';
+                                let sText = '';
+
+                                if (sScore > 0.6) { sClass = 'sent-euphoria'; sText = 'Euphoria'; }
+                                else if (sScore > 0.2) { sClass = 'sent-bullish'; sText = 'Bullish'; }
+                                else if (sScore >= -0.2) { sClass = 'sent-neutral'; sText = 'Neutral'; }
+                                else if (sScore > -0.6) { sClass = 'sent-bearish'; sText = 'Bearish'; }
+                                else { sClass = 'sent-fear'; sText = 'Extreme Fear'; }
+
+                                return `<span class="sent-badge ${sClass}">${sText} (${sScore.toFixed(3)})</span>`;
                             }
                             return data;
                         }
