@@ -194,6 +194,14 @@
                     <span class="term-title">Hierarchical Signal Purity</span>
                     <p>Strict evaluation priority: 3-candle patterns override 2-candle patterns to prevent contradictions.</p>
                 </div>
+                <div class="term-box">
+                    <span class="term-title">FinBERT NLP Sentiment Engine</span>
+                    <p>An institutional-grade Natural Language Processing model powered by HuggingFace's <code>ProsusAI/finbert</code>. It continuously ingests the latest financial news, truncates the text to fit strict BERT token limits, and processes Wall Street narratives to output a standardized sentiment score.</p>
+                    <p>The raw float scores are mapped into five distinct emotional states: Euphoria, Bullish, Neutral, Bearish, and Extreme Fear.</p>
+                    <div class="rule" style="border-left-color: #ff4d4d;">
+                        <strong>Architectural Note (The Yield Trap):</strong> Sovereign bond yields (e.g., US 30Y or UK Gilt) are strictly excluded from NLP scoring. NLP models natively interpret words like "surging" or "breaking out" as positive. However, surging risk-free yields are fundamentally toxic for equities. Excluding them prevents critical inverse-logic UI errors.
+                    </div>
+                </div>
             </details>
 
             <div id="noResults" style="display: none; text-align: center; padding: 50px; color: #888; border: 1px dashed #333; border-radius: 8px;">

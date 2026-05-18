@@ -710,6 +710,14 @@ def update_all_sentiment(tickers: List[str]) -> None:
                 WHERE ticker = ? AND date = (SELECT MAX(date) FROM quant_signals WHERE ticker = ?)
             """, (score, ticker, ticker))
             
+            # INSERT macro tickers / new assets if the UPDATE didn't hit any existing rows
+            if cursor.rowcount == 0:
+                today_str = datetime.now().strftime('%Y-%m-%d')
+                cursor.execute("""
+                    INSERT INTO quant_signals (ticker, date, sentiment_score)
+                    VALUES (?, ?, ?)
+                """, (ticker, today_str, score))
+            
             conn.commit()
             logger.info(f"[{ticker}] Processed Sentiment: {score:+.3f}")
             
