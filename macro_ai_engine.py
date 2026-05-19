@@ -1,13 +1,15 @@
+# macro_ai_engine.py
 import os
 import sqlite3
 import logging
+import re
 from datetime import datetime
 from typing import Optional
 
 import pandas as pd
 import numpy as np
 import xgboost as xgb
-from sklearn.mixture import GaussianMixture
+from hmmlearn import hmm
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import StandardScaler
 
@@ -20,13 +22,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
 class MacroAIEngine:
-    def __init__(self):
+    def __init__(self) -> None:
         self.conn = get_connection()
         self.scaler = StandardScaler()
         
-        # Models
-        self.gmm_model: Optional[GaussianMixture] = None
+        # Production Models
+        self.hmm_model: Optional[hmm.GaussianHMM] = None
         self.rf_model: Optional[RandomForestClassifier] = None
         self.xgb_model: Optional[xgb.XGBRegressor] = None
 
@@ -35,129 +38,187 @@ class MacroAIEngine:
         if pd.isna(val_str) or not str(val_str).strip():
             return np.nan
         try:
-            import re
             cleaned = re.sub(r'[^\d\.\-]', '', str(val_str))
             return float(cleaned) if cleaned else np.nan
         except Exception:
             return np.nan
 
-    def train_regime_clustering(self):
-        """Model 1: Unsupervised Regime Clustering (Gaussian Mixture)."""
-        logger.info("Training Unsupervised Regime Clustering model (GMM)...")
+    def train_regime_clustering(self) -> None:
+        """
+        Model 1: Time-Series Regime Detection (Hidden Markov Model).
+        Consumes deep structural macro factors (Liquidity, Labor, Credit, Yield Curve)
+        to calculate transition probabilities and hidden market states.
+        """
+        logger.info("Training Time-Series Regime Clustering model (HMM)...")
         try:
-            # FIX: Corrected column names to match database.py schema
-            df = pd.read_sql_query("SELECT us_m2, us_jobless_claims, us_high_yield_spread FROM macro_indicators", self.conn)
+            # Fetch structural macro data, including the new Yield Curve inversion tracker
+            query = """
+                SELECT date, us_m2, us_jobless_claims, us_high_yield_spread, us_yield_curve 
+                FROM macro_indicators 
+                ORDER BY date ASC
+            """
+            df = pd.read_sql_query(query, self.conn)
             df = df.dropna()
             
-            if len(df) < 5:
-                logger.warning("Insufficient data to train Regime Clustering. Need more weekly runs. Skipping.")
+            if len(df) < 50:
+                logger.warning("Insufficient structural data to train HMM Clustering. Need more weekly runs. Skipping.")
                 return
             
-            X = self.scaler.fit_transform(df[['us_m2', 'us_jobless_claims', 'us_high_yield_spread']])
-            self.gmm_model = GaussianMixture(n_components=3, covariance_type='full', random_state=42)
-            self.gmm_model.fit(X)
-            logger.info("Successfully trained GMM Regime Clustering.")
+            # Scale features for the Gaussian emission distributions
+            X = self.scaler.fit_transform(df[['us_m2', 'us_jobless_claims', 'us_high_yield_spread', 'us_yield_curve']])
+            
+            # Initialize a 3-State Hidden Markov Model (e.g., Expansion, Choppy/Stagflation, Recession/Crash)
+            self.hmm_model = hmm.GaussianHMM(
+                n_components=3, 
+                covariance_type="full", 
+                n_iter=100, 
+                random_state=42
+            )
+            self.hmm_model.fit(X)
+            
+            logger.info("Successfully trained Hidden Markov Model for Regime Clustering.")
         except Exception as e:
-            logger.error(f"Failed to train Regime Clustering: {e}")
+            logger.error(f"Failed to train Regime Clustering (HMM): {e}")
 
-    def train_consensus_miss_probability(self):
-        """Model 2: Predicts if 'Actual' > 'Forecast' using Random Forest."""
+    def train_consensus_miss_probability(self) -> None:
+        """
+        Model 2: Random Forest Classifier.
+        Predicts whether the 'Actual' release will be mathematically greater than the 'Forecast'
+        based on historical tracking of how often Wall Street is wrong.
+        """
         logger.info("Training Consensus Miss Probability model (Random Forest)...")
         try:
-            df = pd.read_sql_query("SELECT forecast_val, previous_val FROM macro_calendar", self.conn)
+            query = "SELECT forecast_val, previous_val, actual_val FROM macro_calendar WHERE is_event_passed = 1"
+            df = pd.read_sql_query(query, self.conn)
+            
             df['forecast_num'] = df['forecast_val'].apply(self._extract_numeric)
             df['previous_num'] = df['previous_val'].apply(self._extract_numeric)
-            df = df.dropna(subset=['forecast_num', 'previous_num'])
+            df['actual_num'] = df['actual_val'].apply(self._extract_numeric)
             
-            if len(df) < 5:
-                logger.warning("Insufficient data to train Consensus Miss model. Skipping.")
+            # Drop rows where we lack ground truth
+            df = df.dropna(subset=['forecast_num', 'previous_num', 'actual_num'])
+            
+            if len(df) < 10:
+                logger.warning("Insufficient verified ground-truth data to train Consensus Miss model. Skipping.")
                 return
 
-            # FIX: We don't have historical actuals saved yet. Mocking the target to keep the pipeline structurally sound
-            df['actual_num'] = df['forecast_num'] * np.random.uniform(0.9, 1.1, len(df))
-
             X = df[['forecast_num', 'previous_num']].values
+            # Target classification: 1 if Actual > Forecast, else 0
             y = (df['actual_num'] > df['forecast_num']).astype(int).values
             
-            self.rf_model = RandomForestClassifier(n_estimators=100, max_depth=5, random_state=42)
+            # Restrict depth to prevent overfitting on sparse early data
+            self.rf_model = RandomForestClassifier(n_estimators=100, max_depth=4, random_state=42)
             self.rf_model.fit(X, y)
-            logger.info("Successfully trained Random Forest Consensus Miss model.")
+            
+            logger.info(f"Successfully trained Random Forest Consensus Miss model on {len(X)} historical events.")
         except Exception as e:
             logger.error(f"Failed to train Consensus Miss Probability: {e}")
 
-    def train_volatility_magnitude(self):
-        """Model 3: Predicts SPY 24h absolute % gap using XGBoost."""
+    def train_volatility_magnitude(self) -> None:
+        """
+        Model 3: XGBoost Regressor.
+        Consumes Event Data + Historical VIX to predict the exact percentage magnitude 
+        of the SPY gap following a macroeconomic release.
+        """
         logger.info("Training Volatility Magnitude model (XGBoost)...")
         try:
-            df = pd.read_sql_query("SELECT event_date, forecast_val, previous_val FROM macro_calendar", self.conn)
+            # Join the specific event dates with the market regime table to capture historical VIX context
+            query = """
+                SELECT c.forecast_val, c.previous_val, c.post_event_spy_gap, r.vix_close 
+                FROM macro_calendar c
+                LEFT JOIN market_regimes r ON date(c.event_date) = r.date
+                WHERE c.is_event_passed = 1 AND c.post_event_spy_gap IS NOT NULL
+            """
+            df = pd.read_sql_query(query, self.conn)
+            
             df['forecast_num'] = df['forecast_val'].apply(self._extract_numeric)
             df['previous_num'] = df['previous_val'].apply(self._extract_numeric)
             
-            # Using random normal distributions as proxy for SPY gap and VIX for safety if columns don't exist yet
-            df['mock_vix'] = np.random.normal(20, 5, len(df))
-            df['target_spy_gap'] = np.abs(np.random.normal(0, 1.5, len(df))) 
+            # If historical VIX isn't available for an old event, default to baseline normal (20.0)
+            df['vix_close'] = df['vix_close'].fillna(20.0)
             
-            df = df.dropna(subset=['forecast_num', 'previous_num'])
-            if len(df) < 5:
-                logger.warning("Insufficient data to train Volatility Magnitude model. Skipping.")
+            df = df.dropna(subset=['forecast_num', 'previous_num', 'post_event_spy_gap'])
+            
+            if len(df) < 10:
+                logger.warning("Insufficient verified SPY gap data to train Volatility Magnitude model. Skipping.")
                 return
 
-            X = df[['forecast_num', 'previous_num', 'mock_vix']].values
-            y = df['target_spy_gap'].values
+            X = df[['forecast_num', 'previous_num', 'vix_close']].values
+            y = df['post_event_spy_gap'].values
             
-            self.xgb_model = xgb.XGBRegressor(n_estimators=100, max_depth=4, learning_rate=0.05, random_state=42)
+            # Tuning constraints for volatility (smooth learning rate, shallow depth)
+            self.xgb_model = xgb.XGBRegressor(
+                n_estimators=100, 
+                max_depth=3, 
+                learning_rate=0.05, 
+                objective='reg:squarederror',
+                random_state=42
+            )
             self.xgb_model.fit(X, y)
-            logger.info("Successfully trained XGBoost Volatility model.")
+            
+            logger.info(f"Successfully trained XGBoost Volatility model on {len(X)} verified historical SPY gaps.")
         except Exception as e:
             logger.error(f"Failed to train Volatility Magnitude model: {e}")
 
-    def run_macro_inference(self, target_date: str):
+    def run_macro_inference(self, target_date: str) -> None:
         """
-        Runs live inference for the next 48 hours. If predicted SPY gap > 2.0%,
-        writes back an AI warning to the macro_calendar SQLite table.
+        Runs live inference for upcoming events in the next 48 hours.
+        If the predicted SPY gap is extreme (> 2.0%), writes an AI warning 
+        to the macro_calendar SQLite table for downstream defense systems to intercept.
         """
         logger.info(f"Running Macro AI Inference for 48H window starting: {target_date}")
         try:
-            # Ensure column exists idempotently
             cursor = self.conn.cursor()
-            try:
-                cursor.execute("ALTER TABLE macro_calendar ADD COLUMN ai_volatility_warning REAL DEFAULT 0.0")
-            except sqlite3.OperationalError:
-                pass # Column exists
+            
+            # Fetch the most recent VIX closing value to act as the baseline volatility context
+            cursor.execute("SELECT vix_close FROM market_regimes ORDER BY date DESC LIMIT 1")
+            vix_row = cursor.fetchone()
+            current_vix = float(vix_row['vix_close']) if vix_row and vix_row['vix_close'] else 20.0
 
-            # FIX: Used correct primary key `event_id` instead of `id`
+            # Fetch upcoming events
             cursor.execute('''
                 SELECT event_id, forecast_val, previous_val FROM macro_calendar 
                 WHERE date(event_date) >= date(?) 
                 AND date(event_date) <= date(?, '+2 days')
+                AND is_event_passed = 0
             ''', (target_date, target_date))
             events = cursor.fetchall()
 
-            if not events or self.xgb_model is None:
-                logger.warning("No events found in the next 48H, or model is untrained.")
+            if not events:
+                logger.info("No upcoming Tier-1 events in the next 48H to run inference on.")
+                return
+                
+            if self.xgb_model is None:
+                logger.warning("XGBoost Volatility model is untrained. Awaiting more historical event data to accumulate. Bypassing inference.")
                 return
 
             updates_count = 0
             for event in events:
                 f_val = self._extract_numeric(event['forecast_val'])
                 p_val = self._extract_numeric(event['previous_val'])
-                mock_vix = 20.0 # Assuming current VIX level
 
+                # If the event lacks numerical forecasts (e.g., "OPEC Meetings" or Speeches), skip inference
                 if pd.isna(f_val) or pd.isna(p_val):
                     continue
 
-                X_infer = np.array([[f_val, p_val, mock_vix]])
+                # Run XGBoost Inference
+                X_infer = np.array([[f_val, p_val, current_vix]])
                 predicted_gap = self.xgb_model.predict(X_infer)[0]
                 
-                # Update SQLite directly using event_id
+                # Enforce absolute floor to prevent negative volatility logic errors
+                predicted_gap = max(0.0, float(predicted_gap))
+                
+                # Update SQLite directly
                 cursor.execute(
                     "UPDATE macro_calendar SET ai_volatility_warning = ? WHERE event_id = ?", 
-                    (float(predicted_gap), event['event_id'])
+                    (predicted_gap, event['event_id'])
                 )
                 updates_count += 1
                 
                 if predicted_gap > 2.0:
-                    logger.warning(f"SEVERE VOLATILITY PREDICTED: Event ID {event['event_id']} predicted to gap {predicted_gap:.2f}%")
+                    logger.warning(f"🚨 SEVERE VOLATILITY PREDICTED: Event ID {event['event_id']} predicted to gap SPY by {predicted_gap:.2f}%")
+                else:
+                    logger.debug(f"Event ID {event['event_id']} gap predicted at normal threshold: {predicted_gap:.2f}%")
 
             self.conn.commit()
             logger.info(f"Successfully processed {updates_count} events for AI Volatility Warnings.")
@@ -173,5 +234,6 @@ if __name__ == "__main__":
     engine.train_regime_clustering()
     engine.train_consensus_miss_probability()
     engine.train_volatility_magnitude()
+    
     scan_date = datetime.now().strftime('%Y-%m-%d')
     engine.run_macro_inference(scan_date)
