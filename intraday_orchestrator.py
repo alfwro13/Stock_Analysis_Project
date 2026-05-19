@@ -219,6 +219,26 @@ class IntradayOrchestrator:
             except Exception as e:
                 print(f"[ORCHESTRATOR] Macro eval failed for {m_ticker}: {e}")
 
+        # --- PHASE 4: AI MACRO DEFENSE OVERRIDE ---
+        # Dynamically tighten the crash threshold if the XGBoost AI model predicts an imminent > 2.0% SPY gap today.
+        try:
+            conn = get_connection()
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT MAX(ai_volatility_warning) as max_warning 
+                FROM macro_calendar 
+                WHERE date(event_date) = date('now') 
+                AND is_event_passed = 0
+            ''')
+            ai_warning_row = cursor.fetchone()
+            conn.close()
+
+            if ai_warning_row and ai_warning_row['max_warning'] and float(ai_warning_row['max_warning']) > 2.0:
+                print(f"[ORCHESTRATOR] 🛡️ AI Volatility Defense Active: Tightening Flash Crash Threshold to 1.5%")
+                self.crash_engine.flash_crash_threshold = 1.5
+        except Exception as e:
+            print(f"[ORCHESTRATOR] Failed to query AI Macro Defense status: {e}")
+
 
         crash_alerts_to_send = []
         moonshot_alerts_to_send = []
