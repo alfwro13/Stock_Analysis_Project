@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import List, Tuple
 from xgboost import XGBClassifier
 from sklearn.ensemble import RandomForestClassifier, VotingClassifier
+from sklearn.metrics import accuracy_score, classification_report
 
 from config import BASE_DIR
 from database import get_connection
@@ -23,9 +24,9 @@ MODELS_DIR = BASE_DIR / "models"
 MODELS_DIR.mkdir(parents=True, exist_ok=True)
 MODEL_PATH = MODELS_DIR / "ml_ensemble.joblib"
 
-# The exact feature space expected by the model
+# The exact feature space expected by the model - Updated to normalize price bias
 FEATURE_COLS = [
-    'rsi_14', 'macd', 'macd_signal', 'macd_hist', 
+    'rsi_14', 'macd_pct', 'macd_signal_pct', 'macd_hist_pct', 
     'volume_surge', 'bullish_cross', 'dist_sma_50', 'dist_sma_200'
 ]
 
@@ -82,7 +83,8 @@ def get_target_tickers() -> List[str]:
 def run_historical_backfill() -> None:
     """
     Downloads 2 years of daily data per ticker, calculates vectorized 
-    technical indicators, and executes bulk INSERT OR IGNORE operations into SQLite.
+    technical indicators (with stationary normalizations), and executes 
+    bulk INSERT OR IGNORE operations into SQLite.
     """
     tickers = get_target_tickers()
     if not tickers:
@@ -122,6 +124,11 @@ def run_historical_backfill() -> None:
                 df['macd_signal'] = macd_indicator.macd_signal()
                 df['macd_hist'] = macd_indicator.macd_diff()
                 
+                # CRITICAL-26: Normalize MACD by price to create scale-invariant features
+                df['macd_pct'] = df['macd'] / df['Close']
+                df['macd_signal_pct'] = df['macd_signal'] / df['Close']
+                df['macd_hist_pct'] = df['macd_hist'] / df['Close']
+                
                 df['sma_50'] = ta.trend.SMAIndicator(close=df['Close'], window=50).sma_indicator()
                 df['sma_200'] = ta.trend.SMAIndicator(close=df['Close'], window=200).sma_indicator()
                 df['vol_sma_20'] = df['Volume'].rolling(window=20).mean()
@@ -139,14 +146,14 @@ def run_historical_backfill() -> None:
                     date_str = index.strftime('%Y-%m-%d')
                     records.append((
                         ticker, date_str, float(row['Close']), int(row['Volume']),
-                        float(row['rsi_14']), float(row['macd']), float(row['macd_signal']),
-                        float(row['macd_hist']), float(row['sma_50']), float(row['sma_200']),
+                        float(row['rsi_14']), float(row['macd_pct']), float(row['macd_signal_pct']),
+                        float(row['macd_hist_pct']), float(row['sma_50']), float(row['sma_200']),
                         int(row['volume_surge']), int(row['bullish_cross'])
                     ))
 
                 query = """
                     INSERT OR IGNORE INTO quant_signals 
-                    (ticker, date, close_price, volume, rsi_14, macd, macd_signal, macd_hist, sma_50, sma_200, volume_surge, bullish_cross)
+                    (ticker, date, close_price, volume, rsi_14, macd_pct, macd_signal_pct, macd_hist_pct, sma_50, sma_200, volume_surge, bullish_cross)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """
                 cursor.executemany(query, records)
@@ -177,20 +184,21 @@ def run_historical_backfill() -> None:
 def train_global_ml_model() -> None:
     """
     Connects to the local SQLite DB, builds technical features and targets,
-    and trains a global ensemble model predicting >3% returns over 5 days.
+    implements Walk-Forward Validation, handles class imbalances, and trains 
+    a global ensemble model predicting >3% returns over 5 days.
     """
-    logger.info("Initiating Global ML Model Training pipeline...")
+    logger.info("Initiating Global ML Model Training pipeline with Walk-Forward Validation...")
     log_notification("Info", "Global ML Model Training pipeline initiated.")
     
     try:
         conn = get_connection()
         
-        # 1. Fetch all historical quantitative data
+        # 1. Fetch all historical quantitative data using normalized MACD columns
         query = """
-            SELECT ticker, date, close_price, rsi_14, macd, macd_signal, macd_hist, 
+            SELECT ticker, date, close_price, rsi_14, macd_pct, macd_signal_pct, macd_hist_pct, 
                    sma_50, sma_200, volume_surge, bullish_cross 
             FROM quant_signals 
-            ORDER BY ticker, date ASC
+            ORDER BY date ASC
         """
         df = pd.read_sql_query(query, conn)
         conn.close()
@@ -219,40 +227,68 @@ def train_global_ml_model() -> None:
         # Classification Target: 1 if return > 3%, else 0
         df['target'] = ((df['future_close'] - df['close_price']) / df['close_price'] > 0.03).astype(int)
 
-        X = df[FEATURE_COLS]
-        y = df['target']
-
-        if len(X) < 1000:
-            logger.warning(f"Insufficient training samples ({len(X)}). Need more historical data.")
-            log_notification("Error", f"Insufficient training samples ({len(X)}). Backfill required.")
+        if len(df) < 1000:
+            logger.warning(f"Insufficient training samples ({len(df)}). Need more historical data.")
+            log_notification("Error", f"Insufficient training samples ({len(df)}). Backfill required.")
             return
 
-        # 4. Train the Ensemble Model
-        logger.info(f"Training Soft-Voting Ensemble on {len(X)} samples with {y.sum()} positive classes...")
+        # CRITICAL-25: Walk-Forward Validation Setup
+        # Sort values strictly by date to prevent lookahead bias
+        df.sort_values('date', inplace=True)
         
+        # 80/20 Temporal Split
+        split_idx = int(len(df) * 0.8)
+        train_df = df.iloc[:split_idx]
+        test_df = df.iloc[split_idx:]
+        
+        X_train = train_df[FEATURE_COLS]
+        y_train = train_df['target']
+        X_test = test_df[FEATURE_COLS]
+        y_test = test_df['target']
+
+        # HIGH-27: Handle Class Imbalance mathematically
+        neg_count = (y_train == 0).sum()
+        pos_count = (y_train == 1).sum()
+        scale_pos_weight = neg_count / pos_count if pos_count > 0 else 1.0
+        
+        logger.info(f"Training ensemble: Temporal Train {len(X_train)} | OOS Test {len(X_test)}")
+        logger.info(f"Class Distribution -> Neg: {neg_count}, Pos: {pos_count} (Ratio: {scale_pos_weight:.2f})")
+
+        # 4. Train the Ensemble Model with dynamic penalties applied
         rf = RandomForestClassifier(
             n_estimators=150, 
             max_depth=6, 
+            class_weight='balanced', # Imbalance handling
             random_state=42, 
             n_jobs=-1
         )
+        
         xgb = XGBClassifier(
             n_estimators=150, 
             max_depth=6, 
             learning_rate=0.05, 
+            scale_pos_weight=scale_pos_weight, # Imbalance handling
             random_state=42, 
             n_jobs=-1, 
-            use_label_encoder=False, 
             eval_metric='logloss'
         )
 
         ensemble = VotingClassifier(estimators=[('rf', rf), ('xgb', xgb)], voting='soft')
-        ensemble.fit(X, y)
+        ensemble.fit(X_train, y_train)
 
-        # 5. Persist to Disk
+        # 5. Out of Sample (OOS) Validation and Logging
+        y_pred = ensemble.predict(X_test)
+        oos_accuracy = accuracy_score(y_test, y_pred)
+        oos_report = classification_report(y_test, y_pred, zero_division=0)
+        
+        logger.info(f"--- OUT OF SAMPLE (OOS) EVALUATION ---")
+        logger.info(f"OOS Accuracy: {oos_accuracy:.4f}")
+        logger.info(f"OOS Classification Report:\n{oos_report}")
+
+        # 6. Persist to Disk
         joblib.dump(ensemble, MODEL_PATH)
         logger.info(f"✅ ML Ensemble successfully trained and saved to {MODEL_PATH}")
-        log_notification("Success", f"Global ML Model successfully trained and persisted. Samples evaluated: {len(X):,}")
+        log_notification("Success", f"Global ML Model trained (OOS Accuracy: {oos_accuracy:.2%}).")
 
     except Exception as e:
         logger.error(f"Fatal error during ML model training: {e}")
@@ -277,10 +313,10 @@ def update_daily_ml_predictions(tickers: List[str]) -> None:
         model = joblib.load(MODEL_PATH)
         conn = get_connection()
         
-        # Fetch the most recent quantitative row for the target assets
+        # Fetch the most recent quantitative row for the target assets with normalized MACD
         placeholders = ','.join('?' for _ in tickers)
         query = f"""
-            SELECT ticker, date, close_price, rsi_14, macd, macd_signal, macd_hist, 
+            SELECT ticker, date, close_price, rsi_14, macd_pct, macd_signal_pct, macd_hist_pct, 
                    sma_50, sma_200, volume_surge, bullish_cross 
             FROM quant_signals 
             WHERE ticker IN ({placeholders})
