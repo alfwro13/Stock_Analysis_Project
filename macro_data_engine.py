@@ -187,42 +187,36 @@ def fetch_ons_taxonomy_data(session: requests.Session, series_id: str, start_dat
 def update_macro_indicators() -> None:
     """
     Master pipeline: Aggregates FRED, BoE, and ONS data. Aligns daily, weekly, 
-    and monthly structural indices using a forward-fill mechanism, then upserts.
+    and monthly structural indices using a forward-fill mechanism, then bulk upserts history.
     """
-    # Load configuration dynamically to extract API Keys
     config = load_config()
     fred_api_key = config.get("FRED_API_KEY")
     if not fred_api_key:
         logger.error("FRED_API_KEY is not configured in settings. Aborting FRED API fetch.")
-        # We will continue the execution to fetch BoE and ONS even if FRED fails
 
     setup_database()
     
     end_dt = datetime.now()
-    start_dt = end_dt - timedelta(days=90) # Trailing 90 days to capture quarterly/monthly lags
+    # UPGRADE: Extended to 730 days (2 years) to provide deep history for AI Clustering
+    start_dt = end_dt - timedelta(days=730) 
     session = get_retry_session()
     
     dfs = []
 
-    # 1. Fetch FRED Data (US + UK Corporate Credit)
     if fred_api_key:
-        logger.info("Fetching FRED Institutional Data...")
-        # WM2NS: US M2, ICSA: US Jobless Claims, BAMLH0A0HYM2: US HY Spread, BAMLC0A0CM: UK Corporate Spread
+        logger.info("Fetching FRED Institutional Data (2-Year History)...")
         fred_tickers = ['WM2NS', 'ICSA', 'BAMLH0A0HYM2', 'BAMLC0A0CM']
-        
         for ticker in fred_tickers:
             df = fetch_fred_api(session, ticker, start_dt, end_dt, fred_api_key)
             if not df.empty:
                 dfs.append(df)
             
-    # 2. Fetch Bank of England (UK Broad Money)
-    logger.info("Fetching Bank of England IADB Data...")
+    logger.info("Fetching Bank of England IADB Data (2-Year History)...")
     df_boe = fetch_boe_data(session, 'LPMVWNM', start_dt, end_dt)
     if not df_boe.empty:
         dfs.append(df_boe)
         
-    # 3. Fetch ONS Data (UK Real Economy)
-    logger.info("Fetching UK ONS Taxonomy Data...")
+    logger.info("Fetching UK ONS Taxonomy Data (2-Year History)...")
     for ticker in ONS_TAXONOMY.keys():
         df = fetch_ons_taxonomy_data(session, ticker, start_dt)
         if not df.empty:
@@ -232,45 +226,38 @@ def update_macro_indicators() -> None:
         logger.error("All data sources returned empty. Engine execution halted.")
         return
 
-    # Merge, sort by date, and forward fill across differing frequencies
     merged_df = pd.concat(dfs, axis=1, sort=False)
     merged_df.sort_index(inplace=True)
     merged_df.ffill(inplace=True)
     
-    # Extract the most recent macro state
-    latest_state = merged_df.iloc[-1]
-    snapshot_date = end_dt.strftime("%Y-%m-%d")
-    
-    def safe_get(ticker: str) -> Optional[float]:
-        if ticker in latest_state and pd.notna(latest_state[ticker]):
-            return float(latest_state[ticker])
-        return None
-    
-    payload = (
-        snapshot_date,
-        safe_get('WM2NS'),
-        safe_get('ICSA'),
-        safe_get('BAMLH0A0HYM2'),
-        safe_get('LPMVWNM'),
-        safe_get('BAMLC0A0CM'),
-        safe_get('D7G7'),
-        safe_get('BCJD')
-    )
+    # UPGRADE: Bulk Insert the entire time-series matrix instead of just iloc[-1]
+    records = []
+    for dt, row in merged_df.iterrows():
+        records.append((
+            dt.strftime("%Y-%m-%d"),
+            float(row['WM2NS']) if pd.notna(row.get('WM2NS')) else None,
+            float(row['ICSA']) if pd.notna(row.get('ICSA')) else None,
+            float(row['BAMLH0A0HYM2']) if pd.notna(row.get('BAMLH0A0HYM2')) else None,
+            float(row['LPMVWNM']) if pd.notna(row.get('LPMVWNM')) else None,
+            float(row['BAMLC0A0CM']) if pd.notna(row.get('BAMLC0A0CM')) else None,
+            float(row['D7G7']) if pd.notna(row.get('D7G7')) else None,
+            float(row['BCJD']) if pd.notna(row.get('BCJD')) else None
+        ))
     
     conn = get_connection()
     cursor = conn.cursor()
     
     try:
-        cursor.execute('''
+        cursor.executemany('''
             INSERT OR REPLACE INTO macro_indicators (
                 date, us_m2, us_jobless_claims, us_high_yield_spread, 
                 uk_m4, uk_corporate_spread, uk_cpi_inflation, uk_claimant_count
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ''', payload)
+        ''', records)
         conn.commit()
-        logger.info(f"Successfully upserted Macro Regime Snapshot for {snapshot_date}")
+        logger.info(f"Successfully bulk-upserted {cursor.rowcount} Macro Regime historical days for AI Training.")
     except sqlite3.Error as e:
-        logger.error(f"Database insertion failed: {e}")
+        logger.error(f"Database bulk insertion failed: {e}")
         conn.rollback()
     finally:
         conn.close()
