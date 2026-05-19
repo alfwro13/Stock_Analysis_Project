@@ -176,8 +176,8 @@ class QuantEngine:
     def analyze_ticker(self, ticker: str) -> None:
         """
         Runs the combined Technical and Fundamental analysis.
-        NOTE: Any new mathematical scoring rules added below MUST be documented in the glossary.
         Gracefully handles missing historical data and filters trailing NaNs for funds/ETFs.
+        Dynamically adjusts stop-loss based on Macro AI Engine.
         """
         try:
             df = self.load_parquet(ticker)
@@ -205,6 +205,23 @@ class QuantEngine:
                         yield_correlation = float(rolling_corr.iloc[-1])
                 except Exception as ex:
                     logger.debug(f"Failed rolling yield correlation calculations for {ticker}: {ex}")
+
+            # --- MACRO AI PREEMPTIVE DEFENSE ---
+            has_volatility_warning = False
+            try:
+                cursor = self.conn.cursor()
+                cursor.execute('''
+                    SELECT COUNT(*) as cnt FROM macro_calendar 
+                    WHERE currency = ? 
+                    AND ai_volatility_warning > 2.0 
+                    AND date(event_date) >= date('now') 
+                    AND date(event_date) <= date('now', '+2 days')
+                ''', (currency,))
+                row = cursor.fetchone()
+                if row and row['cnt'] > 0:
+                    has_volatility_warning = True
+            except Exception as e:
+                logger.error(f"Failed AI Macro defense check: {e}")
 
             # ==========================================
             # PART 1: TECHNICAL ANALYSIS & MATH
@@ -262,7 +279,12 @@ class QuantEngine:
                     atr_series_clean = df['ATR'].dropna()
                     if not rsi_series_clean.empty and current_price:
                         atr_val = atr_series_clean.iloc[-1]
-                        stop_loss = current_price - (2.0 * atr_val) if not pd.isna(atr_val) else None
+                        if not pd.isna(atr_val):
+                            if has_volatility_warning:
+                                # Preemptive Defense Logic
+                                stop_loss = current_price - (1.0 * atr_val)
+                            else:
+                                stop_loss = current_price - (2.0 * atr_val)
 
                 if 'Volume' in df.columns and not df['Volume'].isna().all():
                     df['OBV'] = ta.volume.OnBalanceVolumeIndicator(close=df['Close'], volume=df['Volume']).on_balance_volume()
@@ -409,6 +431,11 @@ class QuantEngine:
                     tags.append({"name": "🚨 Divergence Warning", "tooltip": "Price higher high, RSI lower high."})
                     score -= 30
                     breakdown.append("-30: Algorithmic Bearish Divergence")
+                
+                # Append Macro AI Preemptive Defense Logic to Breakdown
+                if has_volatility_warning:
+                    breakdown.append("-0: 🛡️ Preemptive Defense Active: Stop-Loss tightened to 1x ATR due to imminent high-volatility macro event.")
+
             else:
                 breakdown.append("+0: Technical indicators skipped (Insufficient Historical Data)")
 

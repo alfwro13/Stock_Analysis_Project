@@ -570,6 +570,58 @@
                 </div>
             </div>
         </details>
+        
+        <details class="settings-card">
+            <summary>🏦 Macroeconomic Data</summary>
+            
+            <p style="font-size: 13px; color: #aaa; margin-top: 0; margin-bottom: 15px;">The Federal Reserve Economic Data (FRED) API is required to fetch structural macroeconomic indicators like M2 Money Supply and High Yield Spreads. Get a free API key at <a href="https://fred.stlouisfed.org/docs/api/api_key.html" target="_blank" style="color: #00ffcc;">fred.stlouisfed.org</a>.</p>
+            <div class="form-group" style="margin-bottom: 25px;">
+                <label>FRED API Key</label>
+                <input type="password" id="FRED_API_KEY" value="{{ config.FRED_API_KEY | default('') }}">
+            </div>
+
+            {% set macro_sched = config.SCHEDULING.MACRO_ENGINE if config.SCHEDULING.MACRO_ENGINE else {} %}
+            
+            <div style="background-color: #2c2c2c; padding: 15px; border-radius: 5px; margin-bottom: 15px; border-left: 3px solid #00bcd4;">
+                <h4 style="margin-top: 0; color: #00bcd4;">📊 Macroeconomic Automation Schedulers</h4>
+                <p style="font-size: 13px; color: #aaa; margin-top: 0; margin-bottom: 15px;">Manage the background synchronization for the Tier-1 Economic Calendar and structural Macro Indicators.</p>
+                
+                <div class="checkbox-group">
+                    <input type="checkbox" id="MACRO_ENGINE_ENABLED" {% if macro_sched.ENABLED %}checked{% endif %}>
+                    <label for="MACRO_ENGINE_ENABLED">Enable automated Macro data fetching</label>
+                </div>
+                
+                <div style="display: flex; gap: 15px; margin-bottom: 15px;">
+                    <div class="form-group" style="flex: 1;">
+                        <label>Daily Calendar Sync Time</label>
+                        <input type="time" id="MACRO_CALENDAR_TIME" value="{{ macro_sched.CALENDAR_TIME | default('04:00') }}">
+                    </div>
+                </div>
+                
+                <div style="display: flex; gap: 15px; margin-bottom: 15px;">
+                    <div class="form-group" style="flex: 1;">
+                        <label>Weekly Data Fetch Day</label>
+                        <select id="MACRO_DATA_DAY">
+                            <option value="sun" {% if macro_sched.DATA_DAY == 'sun' %}selected{% endif %}>Sunday</option>
+                            <option value="sat" {% if macro_sched.DATA_DAY == 'sat' %}selected{% endif %}>Saturday</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label>Weekly Data Fetch Time</label>
+                        <input type="time" id="MACRO_DATA_TIME" value="{{ macro_sched.DATA_TIME | default('05:00') }}">
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 15px; align-items: flex-end;">
+                    {% if macro_sched.INITIALIZED %}
+                        <button type="button" class="btn-test" style="margin-top: 0; background-color: #00bcd4; color: #121212;" onclick="triggerMacroRun()">▶️ Run Now</button>
+                    {% else %}
+                        <button type="button" class="btn-test" style="margin-top: 0; background-color: #00bcd4; color: #121212;" onclick="triggerMacroInit()">⚙️ Initialize Macro AI Pipeline</button>
+                    {% endif %}
+                </div>
+            </div>
+
+        </details>
 
         <details class="settings-card">
             <summary>🌐 Core System & Currencies</summary>
@@ -668,10 +720,14 @@
     <script type="application/json" id="discoveredAccountsData">
         {{ config.GHOSTFOLIO_ACCOUNTS.discovered | tojson | safe }}
     </script>
+    <script type="application/json" id="macroInitState">
+        {% if config.SCHEDULING.MACRO_ENGINE.INITIALIZED %}true{% else %}false{% endif %}
+    </script>
 
     <script>
         const accountsDataNode = document.getElementById('discoveredAccountsData').textContent;
         let currentDiscoveredAccounts = JSON.parse(accountsDataNode);
+        const macroInitState = JSON.parse(document.getElementById('macroInitState').textContent);
 
         function requestBrowserNotificationPermission() {
             if (!("Notification" in window)) {
@@ -1078,6 +1134,42 @@
             }, 3000);
         }
 
+        async function triggerMacroInit() {
+            const btn = document.querySelector('button[onclick="triggerMacroInit()"]');
+            btn.disabled = true;
+            btn.innerText = "⚙️ Initializing Macro Engine...";
+            
+            try {
+                await fetch('/api/macro/init-pipeline', { method: 'POST' });
+                alert("Macro AI Pipeline initialized in the background. It will seed the calendar, sync events, and train the models sequentially. Check system notifications for progress. The page will reload once complete to update the button state.");
+            } catch (error) {
+                alert("Failed to initiate Macro AI Pipeline. Network or server error.");
+            }
+            
+            setTimeout(() => {
+                btn.disabled = false;
+                btn.innerText = "⚙️ Initialize Macro AI Pipeline";
+            }, 3000);
+        }
+
+        async function triggerMacroRun() {
+            const btn = document.querySelector('button[onclick="triggerMacroRun()"]');
+            btn.disabled = true;
+            btn.innerText = "▶️ Running Macro Inference...";
+            
+            try {
+                await fetch('/api/macro/run-pipeline', { method: 'POST' });
+                alert("Macro AI Run initiated in the background. Check system notifications for progress.");
+            } catch (error) {
+                alert("Failed to run Macro AI Pipeline. Network or server error.");
+            }
+            
+            setTimeout(() => {
+                btn.disabled = false;
+                btn.innerText = "▶️ Run Now";
+            }, 3000);
+        }
+
         async function saveSettings(silent = false) {
             const btn = document.querySelector('.btn-save');
             const statusMsg = document.getElementById('status-msg');
@@ -1109,6 +1201,7 @@
                 "IGNORED_TICKERS": document.getElementById('IGNORED_TICKERS').value.split(',').map(s => s.trim()).filter(Boolean),
                 "GHOSTFOLIO_URL": document.getElementById('GHOSTFOLIO_URL').value,
                 "API_TOKEN": document.getElementById('API_TOKEN').value,
+                "FRED_API_KEY": document.getElementById('FRED_API_KEY').value,
                 "GHOSTFOLIO_ACCOUNTS": {
                     "discovered": currentDiscoveredAccounts, 
                     "active": activeAccounts
@@ -1193,6 +1286,13 @@
                     "ML_ENGINE": {
                         "DAYS": mlDays,
                         "TIME": document.getElementById('ML_ENGINE_TIME').value
+                    },
+                    "MACRO_ENGINE": {
+                        "ENABLED": document.getElementById('MACRO_ENGINE_ENABLED').checked,
+                        "INITIALIZED": macroInitState,
+                        "CALENDAR_TIME": document.getElementById('MACRO_CALENDAR_TIME').value,
+                        "DATA_DAY": document.getElementById('MACRO_DATA_DAY').value,
+                        "DATA_TIME": document.getElementById('MACRO_DATA_TIME').value
                     }
                 },
                 "NOTIFICATIONS": {

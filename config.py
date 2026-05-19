@@ -35,6 +35,7 @@ DEFAULT_CONFIG = {
     "SERVER_URL": "http://localhost",
     "GHOSTFOLIO_URL": "",
     "API_TOKEN": "",
+    "FRED_API_KEY": "",
     "PORT": 8090,
     "BASE_CURRENCY": "GBP",
     "IGNORED_TICKERS": ["GBP", "USD", "EUR"],
@@ -104,6 +105,13 @@ DEFAULT_CONFIG = {
             "ENABLED": False,
             "FREQUENCY": "mon-fri",
             "TIME": "04:00"
+        },
+        "MACRO_ENGINE": {
+            "ENABLED": True,
+            "INITIALIZED": False,
+            "CALENDAR_TIME": "04:00",
+            "DATA_DAY": "sat",
+            "DATA_TIME": "05:00"
         }
     },
     "NOTIFICATIONS": {

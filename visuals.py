@@ -155,3 +155,123 @@ def create_macro_chart(df, df_baseline, ticker):
     }
 
     return fig.to_html(full_html=False, include_plotlyjs='cdn', config=clean_config)
+
+
+def create_us_liquidity_chart(df_spy: pd.DataFrame, df_m2: pd.DataFrame) -> str:
+    """
+    Overlays S&P 500 Price against US M2 Money Supply.
+    """
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    
+    if not df_spy.empty and 'Close' in df_spy.columns:
+        fig.add_trace(
+            go.Scatter(x=df_spy.index, y=df_spy['Close'], name="S&P 500", line=dict(color="#00ffcc", width=2)),
+            secondary_y=False,
+        )
+    
+    if not df_m2.empty and 'value' in df_m2.columns:
+        fig.add_trace(
+            go.Scatter(x=df_m2.index, y=df_m2['value'], name="US M2 Supply", line=dict(color="#ffaa00", width=2, dash='dot')),
+            secondary_y=True,
+        )
+
+    fig.update_layout(
+        title="US Liquidity: S&P 500 vs M2 Money Supply",
+        template="plotly_dark",
+        height=350,
+        margin=dict(l=20, r=20, t=50, b=20),
+        hovermode="x unified",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5)
+    )
+    
+    fig.update_yaxes(title_text="S&P 500 Index", secondary_y=False, showgrid=False)
+    fig.update_yaxes(title_text="M2 Supply (Trillions)", secondary_y=True, showgrid=False)
+
+    return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
+
+
+def create_us_credit_chart(df_spread: pd.DataFrame) -> str:
+    """
+    Plots ICE BofA US High Yield Spread with Danger Zone thresholds.
+    """
+    fig = go.Figure()
+
+    if not df_spread.empty and 'value' in df_spread.columns:
+        fig.add_trace(go.Scatter(x=df_spread.index, y=df_spread['value'], name="High Yield Spread", line=dict(color="#ff4d4d", width=2)))
+
+    # Danger Zone
+    fig.add_hline(y=5.0, line_dash="dash", line_color="#ff4d4d", 
+                  annotation_text="Danger Zone (5.0%)", 
+                  annotation_position="top left", 
+                  annotation_font_color="#ff4d4d")
+
+    fig.update_layout(
+        title="US Credit Stress: ICE BofA High Yield Spread",
+        template="plotly_dark",
+        height=350,
+        margin=dict(l=20, r=20, t=50, b=20),
+        hovermode="x unified"
+    )
+    fig.update_yaxes(title_text="Spread (%)", showgrid=True, gridcolor="#333333")
+
+    return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
+
+
+def create_uk_liquidity_chart(df_ftse: pd.DataFrame, df_m4: pd.DataFrame) -> str:
+    """
+    Overlays FTSE 100 against UK M4 Money Supply.
+    """
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    
+    if not df_ftse.empty and 'Close' in df_ftse.columns:
+        fig.add_trace(
+            go.Scatter(x=df_ftse.index, y=df_ftse['Close'], name="FTSE 100", line=dict(color="#00ffff", width=2)),
+            secondary_y=False,
+        )
+    
+    if not df_m4.empty and 'value' in df_m4.columns:
+        fig.add_trace(
+            go.Scatter(x=df_m4.index, y=df_m4['value'], name="UK M4 Supply", line=dict(color="#bb86fc", width=2, dash='dot')),
+            secondary_y=True,
+        )
+
+    fig.update_layout(
+        title="UK Liquidity: FTSE 100 vs M4 Money Supply",
+        template="plotly_dark",
+        height=350,
+        margin=dict(l=20, r=20, t=50, b=20),
+        hovermode="x unified",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5)
+    )
+    
+    fig.update_yaxes(title_text="FTSE 100 Index", secondary_y=False, showgrid=False)
+    fig.update_yaxes(title_text="M4 Supply (Billions)", secondary_y=True, showgrid=False)
+
+    return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
+
+
+def create_uk_credit_chart(df_spread: pd.DataFrame) -> str:
+    """
+    Plots Sterling Non-Gilt Investment Grade Spread.
+    """
+    fig = go.Figure()
+
+    if not df_spread.empty and 'value' in df_spread.columns:
+        fig.add_trace(go.Scatter(x=df_spread.index, y=df_spread['value'], name="UK IG Spread", line=dict(color="#ff4d4d", width=2)))
+
+    # Danger Zone
+    fig.add_hline(y=3.0, line_dash="dash", line_color="#ff4d4d", 
+                  annotation_text="Danger Zone (3.0%)", 
+                  annotation_position="top left", 
+                  annotation_font_color="#ff4d4d")
+
+    fig.update_layout(
+        title="UK Credit Stress: Sterling Corporate Spread",
+        template="plotly_dark",
+        height=350,
+        margin=dict(l=20, r=20, t=50, b=20),
+        hovermode="x unified"
+    )
+    fig.update_yaxes(title_text="Spread (%)", showgrid=True, gridcolor="#333333")
+
+    return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
