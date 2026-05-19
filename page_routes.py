@@ -19,7 +19,14 @@ from sentiment_engine import (
     get_ftse_gbp_html
 )
 from market_pulse import get_all_cached_pulse
-from visuals import create_macro_chart, create_intraday_chart
+from visuals import (
+    create_macro_chart, 
+    create_intraday_chart,
+    create_us_liquidity_chart,
+    create_us_credit_chart,
+    create_uk_liquidity_chart,
+    create_uk_credit_chart
+)
 from portfolio_service import get_rate_to_base, get_rate_from_base
 from quant_signals import get_candlestick_patterns
 from quant_screener import fetch_latest_signals, generate_markdown_briefing
@@ -70,8 +77,99 @@ async def market_sentiment_page(request: Request):
         cursor.execute("SELECT * FROM macro_regimes ORDER BY date DESC LIMIT 1")
         macro_row = cursor.fetchone()
         macro_regime = dict(macro_row) if macro_row else None
-    except Exception:
+        
+        # --- Phase 3: Macroeconomic Event Routing ---
+        now = datetime.now()
+        horizon_48h = (now + timedelta(hours=48)).strftime('%Y-%m-%d %H:%M:%S')
+        horizon_7d = (now + timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')
+        now_str = now.strftime('%Y-%m-%d %H:%M:%S')
+
+        # Create tables if they don't exist yet to prevent routing errors
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS macro_calendar (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_date TEXT,
+                currency TEXT,
+                event_name TEXT,
+                forecast_val REAL,
+                previous_val REAL
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS macro_indicators (
+                date TEXT,
+                indicator_name TEXT,
+                value REAL
+            )
+        """)
+        
+        # Fetch Urgent Events (48 hours)
+        cursor.execute("""
+            SELECT * FROM macro_calendar 
+            WHERE event_date BETWEEN ? AND ? 
+            ORDER BY event_date ASC
+        """, (now_str, horizon_48h))
+        urgent_events = [dict(row) for row in cursor.fetchall()]
+
+        # Fetch US 7-Day Calendar
+        cursor.execute("""
+            SELECT * FROM macro_calendar 
+            WHERE currency = 'USD' AND event_date BETWEEN ? AND ? 
+            ORDER BY event_date ASC
+        """, (now_str, horizon_7d))
+        us_events = [dict(row) for row in cursor.fetchall()]
+
+        # Fetch UK 7-Day Calendar
+        cursor.execute("""
+            SELECT * FROM macro_calendar 
+            WHERE currency = 'GBP' AND event_date BETWEEN ? AND ? 
+            ORDER BY event_date ASC
+        """, (now_str, horizon_7d))
+        uk_events = [dict(row) for row in cursor.fetchall()]
+
+        # Process Historical DataFrame Indicators
+        df_indicators = pd.read_sql_query("SELECT * FROM macro_indicators", conn)
+        
+        if not df_indicators.empty and 'date' in df_indicators.columns:
+            df_indicators['date'] = pd.to_datetime(df_indicators['date'])
+            df_indicators.set_index('date', inplace=True)
+            
+            df_m2 = df_indicators[df_indicators['indicator_name'] == 'US_M2'].sort_index()
+            df_us_hy = df_indicators[df_indicators['indicator_name'] == 'US_HY_SPREAD'].sort_index()
+            df_m4 = df_indicators[df_indicators['indicator_name'] == 'UK_M4'].sort_index()
+            df_uk_ig = df_indicators[df_indicators['indicator_name'] == 'UK_CORP_SPREAD'].sort_index()
+        else:
+            df_m2 = pd.DataFrame()
+            df_us_hy = pd.DataFrame()
+            df_m4 = pd.DataFrame()
+            df_uk_ig = pd.DataFrame()
+
+        # Safely fetch baseline SPY & FTSE prices
+        try:
+            df_spy = pd.read_parquet(HISTORICAL_DIR / "SP500_BASELINE.parquet")
+        except Exception:
+            df_spy = pd.DataFrame()
+            
+        try:
+            df_ftse = pd.read_parquet(HISTORICAL_DIR / "FTSE_BASELINE.parquet")
+        except Exception:
+            df_ftse = pd.DataFrame()
+            
+        # Generate chart HTML
+        us_liquidity_html = create_us_liquidity_chart(df_spy, df_m2)
+        us_credit_html = create_us_credit_chart(df_us_hy)
+        uk_liquidity_html = create_uk_liquidity_chart(df_ftse, df_m4)
+        uk_credit_html = create_uk_credit_chart(df_uk_ig)
+
+    except Exception as e:
         macro_regime = None
+        urgent_events = []
+        us_events = []
+        uk_events = []
+        us_liquidity_html = "<p>Data unavailable.</p>"
+        us_credit_html = "<p>Data unavailable.</p>"
+        uk_liquidity_html = "<p>Data unavailable.</p>"
+        uk_credit_html = "<p>Data unavailable.</p>"
     finally:
         conn.close()
         
@@ -84,8 +182,15 @@ async def market_sentiment_page(request: Request):
             "yield_equity_html": get_yield_equity_html(),
             "uk_yield_equity_html": get_uk_yield_equity_html(),
             "ftse_gbp_html": get_ftse_gbp_html(),
+            "us_liquidity_html": us_liquidity_html,
+            "us_credit_html": us_credit_html,
+            "uk_liquidity_html": uk_liquidity_html,
+            "uk_credit_html": uk_credit_html,
             "regime_data": regime_data,
             "macro_regime": macro_regime,
+            "urgent_events": urgent_events,
+            "us_events": us_events,
+            "uk_events": uk_events,
             "unread_count": get_unread_count(),
             "config": load_config()
         }

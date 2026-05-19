@@ -5,6 +5,43 @@
     <meta name="color-scheme" content="dark">
     <title>Quantamental - Market Sentiment</title>
     <link rel="stylesheet" href="/static/css/styles.css?v=2.0">
+    <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.css">
+    <style>
+        .macro-banner {
+            padding: 15px;
+            margin: 20px auto;
+            width: 95%;
+            border-radius: 8px;
+            text-align: center;
+            font-weight: bold;
+            font-size: 16px;
+        }
+        .macro-banner-red {
+            background-color: rgba(255, 77, 77, 0.2);
+            border: 1px solid #ff4d4d;
+            color: #ff4d4d;
+        }
+        .macro-banner-yellow {
+            background-color: rgba(255, 170, 0, 0.2);
+            border: 1px solid #ffaa00;
+            color: #ffaa00;
+        }
+        .calendar-table-wrapper {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #1a1a1a;
+            border-radius: 8px;
+            border: 1px solid #333;
+        }
+        .calendar-table-wrapper h3 {
+            margin-top: 0;
+            margin-bottom: 15px;
+            color: #fff;
+        }
+        /* Overriding DataTables generic text color for dark mode */
+        table.dataTable tbody tr { background-color: transparent !important; }
+        table.dataTable tbody tr td { color: #ccc; }
+    </style>
 </head>
 <body class="body-sentiment">
 
@@ -26,6 +63,15 @@
         <p class="regime-callout-text">Current Classification: <strong>{{ regime_data.regime_label }}</strong> (Turbulence Index: {{ "%.2f"|format(regime_data.turbulence_index) }})</p>
         <p class="regime-callout-text">Market conditions are currently <strong>{{ 'highly turbulent' if regime_data.regime_label in ['Crash', 'Volatile'] else 'normal and stable' }}</strong>. Standard quantitative thresholds {{ 'are aggressively filtered for Flight to Safety' if regime_data.regime_label in ['Crash', 'Volatile'] else 'apply' }}.</p>
     </div>
+
+    {% if urgent_events %}
+    <div class="macro-banner {% if global_threat == 'RED' or macro_regime.us_threat_level == 'RED' %}macro-banner-red{% else %}macro-banner-yellow{% endif %}">
+        ⚠️ URGENT MACRO EVENTS (Next 48 Hours): 
+        {% for evt in urgent_events %}
+            [{{ evt.event_date }}] {{ evt.event_name }} (Est: {{ evt.forecast_val }} | Prev: {{ evt.previous_val }}){% if not loop.last %} • {% endif %}
+        {% endfor %}
+    </div>
+    {% endif %}
 
     {% if macro_regime %}
     {% set global_threat = 'GREEN' %}
@@ -127,6 +173,54 @@
                     As the <span class="sentiment-highlight">10-Year Treasury Yield</span> rises, the risk-free rate increases. This exerts downward pressure on equity valuation multiples (P/E ratios) because future corporate cash flows are discounted at a higher rate. A strong negative correlation means high-multiple tech stocks are highly likely to compress when the red dotted line spikes. Conversely, falling yields often act as a tailwind for long-duration equities.
                 </div>
             </div>
+
+            <div id="us-liquidity-wrapper" class="chart-wrapper">
+                <button class="fullscreen-btn" onclick="toggleFullscreen('us-liquidity-wrapper')">⛶ Fullscreen</button>
+                {{ us_liquidity_html | safe }}
+            </div>
+            <div class="sentiment-footer">
+                <span class="sentiment-footer-title">US Liquidity (M2) Explained:</span>
+                <div class="sentiment-footer-text">
+                    M2 represents total institutional and retail liquidity. Expanding liquidity acts as a structural tailwind for risk assets. If the S&P 500 diverges upwards while M2 contracts, equities are technically overextended on poor liquidity foundations.
+                </div>
+            </div>
+
+            <div id="us-credit-wrapper" class="chart-wrapper">
+                <button class="fullscreen-btn" onclick="toggleFullscreen('us-credit-wrapper')">⛶ Fullscreen</button>
+                {{ us_credit_html | safe }}
+            </div>
+            <div class="sentiment-footer">
+                <span class="sentiment-footer-title">US High Yield Spread Explained:</span>
+                <div class="sentiment-footer-text">
+                    A spike above 5.0% indicates credit markets are pricing in severe corporate default risk. Equity markets rarely rally sustainably when credit markets panic.
+                </div>
+            </div>
+
+            <div class="calendar-table-wrapper">
+                <h3>🇺🇸 US Economic Events (7-Day Horizon)</h3>
+                <table id="usCalendarTable" class="display" style="width:100%">
+                    <thead>
+                        <tr>
+                            <th>Date (UTC)</th>
+                            <th>Event</th>
+                            <th>Forecast</th>
+                            <th>Previous</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in us_events %}
+                        <tr>
+                            <td>{{ row.event_date }}</td>
+                            <td>{{ row.event_name }}</td>
+                            <td class="{% if row.forecast_val and row.previous_val and row.forecast_val > row.previous_val %}warning-text{% endif %}">
+                                {{ row.forecast_val }}
+                            </td>
+                            <td>{{ row.previous_val }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         </div>
 
         <div class="sentiment-column">
@@ -155,11 +249,83 @@
                     <strong class="text-accent-purple">UK Cost of Capital:</strong> Just like the US, rising borrowing costs (10Y Gilt Yields) typically compress equity valuations. High yields increase corporate borrowing expenses and provide institutional capital with a risk-free alternative to volatile equities.
                 </div>
             </div>
+
+            <div id="uk-liquidity-wrapper" class="chart-wrapper chart-wrapper-accent-cyan">
+                <button class="fullscreen-btn" onclick="toggleFullscreen('uk-liquidity-wrapper')">⛶ Fullscreen</button>
+                {{ uk_liquidity_html | safe }}
+            </div>
+            <div class="sentiment-footer">
+                <span class="sentiment-footer-title">UK Liquidity (M4) Explained:</span>
+                <div class="sentiment-footer-text">
+                    M4 represents broad money supply in the UK. Similar to the US M2, a contracting M4 removes structural support for UK equities, making domestic growth significantly harder to achieve.
+                </div>
+            </div>
+
+            <div id="uk-credit-wrapper" class="chart-wrapper chart-wrapper-accent-purple">
+                <button class="fullscreen-btn" onclick="toggleFullscreen('uk-credit-wrapper')">⛶ Fullscreen</button>
+                {{ uk_credit_html | safe }}
+            </div>
+            <div class="sentiment-footer">
+                <span class="sentiment-footer-title">UK IG Spread Explained:</span>
+                <div class="sentiment-footer-text">
+                    The Sterling Non-Gilt Investment Grade Spread indicates distress in high-quality corporate debt. Breaching the 3.0% threshold signals acute institutional derisking.
+                </div>
+            </div>
+
+            <div class="calendar-table-wrapper">
+                <h3>🇬🇧 UK Economic Events (7-Day Horizon)</h3>
+                <table id="ukCalendarTable" class="display" style="width:100%">
+                    <thead>
+                        <tr>
+                            <th>Date (UTC)</th>
+                            <th>Event</th>
+                            <th>Forecast</th>
+                            <th>Previous</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in uk_events %}
+                        <tr>
+                            <td>{{ row.event_date }}</td>
+                            <td>{{ row.event_name }}</td>
+                            <td class="{% if row.forecast_val and row.previous_val and row.forecast_val > row.previous_val %}warning-text{% endif %}">
+                                {{ row.forecast_val }}
+                            </td>
+                            <td>{{ row.previous_val }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
         </div>
 
     </div>
 
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script type="text/javascript" charset="utf8" src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.js"></script>
     <script>
+        $(document).ready(function() {
+            // Initialize DataTables with deferred rendering for optimal performance
+            $('#usCalendarTable').DataTable({
+                "deferRender": true,
+                "order": [[ 0, "asc" ]],
+                "pageLength": 10,
+                "lengthChange": false,
+                "searching": false,
+                "info": false
+            });
+
+            $('#ukCalendarTable').DataTable({
+                "deferRender": true,
+                "order": [[ 0, "asc" ]],
+                "pageLength": 10,
+                "lengthChange": false,
+                "searching": false,
+                "info": false
+            });
+        });
+
         function toggleFullscreen(wrapperId) {
             const elem = document.getElementById(wrapperId);
             if (!elem) return;
