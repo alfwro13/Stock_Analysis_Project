@@ -8,6 +8,7 @@ and generates a deterministic Morning Quant Briefing in a mobile-optimized Markd
 """
 
 import os
+import re
 import logging
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Tuple
@@ -177,6 +178,32 @@ def fetch_latest_signals(target_date: str) -> List[Dict[str, Any]]:
         logger.error(f"Failed to fetch quant signals: {e}")
         return []
 
+def fetch_upcoming_macro_events(target_date: str) -> List[Dict[str, Any]]:
+    """
+    Retrieves Tier-1 macroeconomic events occurring within a rolling 48-hour window from the target date.
+    """
+    logger.info(f"Fetching upcoming Tier-1 macro events for 48-hour window starting: {target_date}")
+    
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT * FROM macro_calendar 
+            WHERE date(event_date) >= date(?) 
+            AND date(event_date) <= date(?, '+2 days') 
+            ORDER BY event_date ASC
+        ''', (target_date, target_date))
+        
+        rows = cursor.fetchall()
+        events = [dict(row) for row in rows]
+        conn.close()
+        
+        return events
+    except Exception as e:
+        logger.error(f"Failed to fetch upcoming macro events: {e}")
+        return []
+
 # --- Report Generation ---
 
 def _format_mobile_markdown_list(data: List[Dict[str, Any]]) -> str:
@@ -202,6 +229,17 @@ def _format_mobile_markdown_list(data: List[Dict[str, Any]]) -> str:
         output += f"&nbsp;&nbsp;&nbsp;↳ *MACD:* {macd_hist} | *Vol Surge:* {vol_surge} | *Cross:* {bullish_cross}\n\n"
         
     return output
+
+def _extract_numeric(val_str: str) -> float:
+    """Helper to extract a clean float from formatted strings (e.g., '5.0%', '-1.2K')."""
+    if not val_str:
+        return None
+    try:
+        # Strip everything except numbers, decimal points, and negative signs
+        cleaned = re.sub(r'[^\d\.\-]', '', str(val_str))
+        return float(cleaned) if cleaned else None
+    except Exception:
+        return None
 
 def generate_markdown_briefing(target_date: str, data: List[Dict[str, Any]]) -> str:
     """
@@ -239,6 +277,9 @@ def generate_markdown_briefing(target_date: str, data: List[Dict[str, Any]]) -> 
         threat_level = 'YELLOW'
     else:
         threat_level = 'GREEN'
+        
+    # Fetch 48H Macro Events
+    macro_events = fetch_upcoming_macro_events(target_date)
     
     # 2. Execute Screens mapped by Regime
     raw_oversold = get_oversold_reversals(data, regime_label)
@@ -278,6 +319,33 @@ def generate_markdown_briefing(target_date: str, data: List[Dict[str, Any]]) -> 
         report += "*⚠️ VOLATILITY WARNING: Market is highly turbulent. The screener has filtered for 'Flight to Safety' setups above the 200-day moving average.*\n\n"
     else:
         report += "*Market conditions are normal and stable. Standard quantitative thresholds apply.*\n\n"
+        
+    report += "## 📅 Upcoming Tier-1 Macro Events (48H Radar)\n"
+    if not macro_events:
+        report += "*No Tier-1 macroeconomic events scheduled for USD or GBP in the next 48 hours.*\n\n"
+    else:
+        for ev in macro_events:
+            ev_date = ev.get('event_date', 'N/A')
+            ev_name = ev.get('event_name', 'Unknown Event')
+            currency = ev.get('currency', 'USD')
+            prev_val = ev.get('previous_val', 'N/A')
+            fcst_val = ev.get('forecast_val', 'N/A')
+            
+            # Mathematical evaluation of divergence
+            is_divergent = False
+            if prev_val != 'N/A' and fcst_val != 'N/A':
+                prev_num = _extract_numeric(prev_val)
+                fcst_num = _extract_numeric(fcst_val)
+                
+                # Flag if there is a measurable expectation shift
+                if prev_num is not None and fcst_num is not None and abs(prev_num - fcst_num) > 0.0001:
+                    is_divergent = True
+                elif prev_val != fcst_val: # Fallback to string matching
+                    is_divergent = True
+            
+            flag = "⚠️ " if is_divergent else ""
+            report += f"🔹 **{ev_date}** | [{currency}] {ev_name}\n"
+            report += f"&nbsp;&nbsp;&nbsp;↳ {flag}*Forecast:* {fcst_val} | *Previous:* {prev_val}\n\n"
     
     report += "## Executive Summary\n"
     report += f"Automated overnight screening executed against {len(data)} tracked equities. "

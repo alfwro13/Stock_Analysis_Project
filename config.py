@@ -104,6 +104,12 @@ DEFAULT_CONFIG = {
             "ENABLED": False,
             "FREQUENCY": "mon-fri",
             "TIME": "04:00"
+        },
+        "MACRO_ENGINE": {
+            "ENABLED": True,
+            "CALENDAR_TIME": "04:00",
+            "DATA_DAY": "sat",
+            "DATA_TIME": "05:00"
         }
     },
     "NOTIFICATIONS": {

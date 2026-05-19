@@ -25,6 +25,10 @@ from ai_prediction_engine import train_global_ml_model, update_daily_ml_predicti
 from risk_engine import update_all_tail_risks
 from freetrade_engine import sync_freetrade_universe
 
+# Import new Macro Engines
+from macro_calendar_engine import update_macro_calendar
+from macro_data_engine import update_macro_indicators
+
 # Configure robust module-level logging
 logging.basicConfig(
     level=logging.INFO,
@@ -258,6 +262,40 @@ def run_weekend_ml_training():
     except Exception as e:
         logger.error(f"Weekend ML Training Failed: {e}")
         log_sched_notification("Error", f"Weekend ML Training failed: {e}")
+    finally:
+        task_lock.release()
+
+def run_macro_calendar_update():
+    """Executes the daily Tier-1 Macro Calendar refresh."""
+    if not task_lock.acquire(blocking=False):
+        logger.warning("System is busy. Skipping Macro Calendar Update.")
+        return
+    log_sched_notification("Scheduler", "Started Macro Calendar Update...")
+    try:
+        logger.info("Macro calendar update initiated.")
+        update_macro_calendar()
+        logger.info("Macro calendar update complete.")
+        log_sched_notification("Success", "Macro Calendar Update completed successfully.")
+    except Exception as e:
+        logger.error(f"Macro Calendar Update Failed: {e}")
+        log_sched_notification("Error", f"Macro Calendar Update failed: {e}")
+    finally:
+        task_lock.release()
+
+def run_macro_data_update():
+    """Executes the weekly structural Macroeconomic Data sync (FRED/BoE)."""
+    if not task_lock.acquire(blocking=False):
+        logger.warning("System is busy. Skipping Macro Data Update.")
+        return
+    log_sched_notification("Scheduler", "Started Macro Data Update...")
+    try:
+        logger.info("Macro data update initiated.")
+        update_macro_indicators()
+        logger.info("Macro data update complete.")
+        log_sched_notification("Success", "Macro Data Update completed successfully.")
+    except Exception as e:
+        logger.error(f"Macro Data Update Failed: {e}")
+        log_sched_notification("Error", f"Macro Data Update failed: {e}")
     finally:
         task_lock.release()
 
@@ -534,6 +572,32 @@ def reload_scheduler():
             logger.info(f"Freetrade Sync scheduled for {ft_days} at {ft_time}")
         except Exception as e:
             logger.error(f"Failed to schedule Freetrade Sync: {e}")
+
+    # 14. Macro Calendar and Data Engines
+    macro_cfg = scheduling.get("MACRO_ENGINE", {})
+    if macro_cfg.get("ENABLED", True):
+        calendar_time = macro_cfg.get("CALENDAR_TIME", "04:00")
+        data_day = macro_cfg.get("DATA_DAY", "sat")
+        data_time = macro_cfg.get("DATA_TIME", "05:00")
+        
+        try:
+            cal_hour, cal_minute = map(int, calendar_time.split(':'))
+            scheduler.add_job(
+                run_macro_calendar_update,
+                CronTrigger(day_of_week='mon-sun', hour=cal_hour, minute=cal_minute),
+                id='macro_calendar_job'
+            )
+            logger.info(f"Macro Calendar Update scheduled daily at {calendar_time}")
+            
+            data_hour, data_minute = map(int, data_time.split(':'))
+            scheduler.add_job(
+                run_macro_data_update,
+                CronTrigger(day_of_week=data_day, hour=data_hour, minute=data_minute),
+                id='macro_data_job'
+            )
+            logger.info(f"Macro Data Update scheduled for {data_day} at {data_time}")
+        except Exception as e:
+            logger.error(f"Failed to schedule Macro Engine Jobs: {e}")
 
 def start_scheduler():
     scheduler.start()
