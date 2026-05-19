@@ -148,8 +148,12 @@ def upsert_calendar_events(events: List[Tuple]) -> None:
     finally:
         conn.close()
 
-if __name__ == "__main__":
+def update_macro_calendar() -> None:
+    """Master function to execute the calendar ingestion pipeline."""
     logger.info("Starting Macro Calendar Ingestion...")
     data = fetch_and_process_calendar()
     upsert_calendar_events(data)
     logger.info("Macro Calendar Ingestion Complete.")
+
+if __name__ == "__main__":
+    update_macro_calendar()

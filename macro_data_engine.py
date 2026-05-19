@@ -61,7 +61,7 @@ def fetch_boe_data(series_code: str, start_date: datetime, end_date: datetime) -
         logger.error(f"Failed to fetch BoE data for {series_code}: {e}")
         return pd.DataFrame()
 
-def process_macro_indicators() -> None:
+def update_macro_indicators() -> None:
     """
     Fetches US (FRED) and UK (BoE) macro indicators, aligns their differing
     frequencies (daily, weekly, monthly) using a forward fill over a trailing window,
@@ -130,5 +130,5 @@ def process_macro_indicators() -> None:
 
 if __name__ == "__main__":
     logger.info("Starting Macroeconomic Structural Data Ingestion...")
-    process_macro_indicators()
+    update_macro_indicators()
     logger.info("Macro Data Ingestion Complete.")
