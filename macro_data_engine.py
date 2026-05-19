@@ -4,7 +4,6 @@ import logging
 import requests
 import io
 import pandas as pd
-import pandas_datareader.data as web
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -61,6 +60,33 @@ def fetch_boe_data(series_code: str, start_date: datetime, end_date: datetime) -
         logger.error(f"Failed to fetch BoE data for {series_code}: {e}")
         return pd.DataFrame()
 
+def fetch_fred_data(series_id: str, start_date: datetime, end_date: datetime) -> pd.DataFrame:
+    """
+    Fetches data directly from FRED's public CSV export to bypass the broken pandas_datareader library.
+    """
+    url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}"
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Quantamental-Engine'}
+    
+    try:
+        response = requests.get(url, headers=headers, timeout=15)
+        response.raise_for_status()
+        
+        # Read the CSV, FRED uses '.' for missing values which we handle via na_values
+        df = pd.read_csv(io.StringIO(response.text), na_values=['.'])
+        
+        if df.empty or 'DATE' not in df.columns:
+            logger.warning(f"FRED returned empty data for {series_id}")
+            return pd.DataFrame()
+            
+        df['DATE'] = pd.to_datetime(df['DATE'])
+        df = df[(df['DATE'] >= start_date) & (df['DATE'] <= end_date)]
+        df.set_index('DATE', inplace=True)
+        return df[[series_id]]
+        
+    except Exception as e:
+        logger.error(f"Failed to fetch FRED data for {series_id}: {e}")
+        return pd.DataFrame()
+
 def update_macro_indicators() -> None:
     """
     Fetches US (FRED) and UK (BoE) macro indicators, aligns their differing
@@ -71,12 +97,17 @@ def update_macro_indicators() -> None:
     start_dt = end_dt - timedelta(days=90) # Trailing 90 days to ensure we catch monthly releases
     
     logger.info("Fetching US Structural Indicators from FRED...")
-    try:
-        # WM2NS: M2 Money Supply, ICSA: Initial Jobless Claims, BAMLH0A0HYM2: US HY Spread
-        fred_tickers = ['WM2NS', 'ICSA', 'BAMLH0A0HYM2']
-        us_data = web.DataReader(fred_tickers, 'fred', start_dt, end_dt)
-    except Exception as e:
-        logger.error(f"Failed to fetch FRED data: {e}")
+    fred_tickers = ['WM2NS', 'ICSA', 'BAMLH0A0HYM2']
+    us_dfs = []
+    
+    for ticker in fred_tickers:
+        df_fred = fetch_fred_data(ticker, start_dt, end_dt)
+        if not df_fred.empty:
+            us_dfs.append(df_fred)
+            
+    if us_dfs:
+        us_data = pd.concat(us_dfs, axis=1)
+    else:
         us_data = pd.DataFrame()
 
     logger.info("Fetching UK Structural Indicators from Bank of England...")
@@ -84,7 +115,8 @@ def update_macro_indicators() -> None:
     uk_spread_data = fetch_boe_data(BOE_SPREAD_CODE, start_dt, end_dt)
     
     # Consolidate DataFrames
-    dfs_to_concat = [us_data]
+    dfs_to_concat = []
+    if not us_data.empty: dfs_to_concat.append(us_data)
     if not uk_m4_data.empty: dfs_to_concat.append(uk_m4_data)
     if not uk_spread_data.empty: dfs_to_concat.append(uk_spread_data)
     
