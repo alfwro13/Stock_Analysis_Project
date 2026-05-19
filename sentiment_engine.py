@@ -767,10 +767,12 @@ def run_central_bank_nlp_alert(event_name: str, currency: str) -> bool:
         avg_score = sum(scores) / len(scores)
         
         # 4. Map General Sentiment to Monetary Policy Tone
-        if avg_score > 0.15:
+        # FinBERT scores "Yields surging" as Negative (- score) because it hurts stocks. Negative = Hawkish.
+        # FinBERT scores "Rate cuts" as Positive (+ score) because it helps stocks. Positive = Dovish.
+        if avg_score < -0.15:
             tone = "🦅 HAWKISH (Restrictive)"
             equity_impact = "Bearish for Equities"
-        elif avg_score < -0.15:
+        elif avg_score > 0.15:
             tone = "🕊️ DOVISH (Accommodative)"
             equity_impact = "Bullish for Equities"
         else:
