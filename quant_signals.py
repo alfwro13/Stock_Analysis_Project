@@ -142,12 +142,24 @@ class QuantEngine:
 
     def calculate_vcp_breakout(self, df: pd.DataFrame) -> Tuple[bool, bool]:
         """Advanced Minervini VCP: Price contraction AND Volume dry-up."""
-        weekly_data = df.resample('W-FRI').agg({'Close': 'last', 'Volume': 'sum'})
+        weekly_data = df.resample('W-FRI').agg({
+            'Open': 'first',
+            'High': 'max',
+            'Low': 'min',
+            'Close': 'last',
+            'Volume': 'sum'
+        })
+        
         if len(weekly_data) < 4:
             return False, False
         
         last_3_weeks = weekly_data.iloc[-4:-1]
-        variance_pct = (last_3_weeks['Close'].max() - last_3_weeks['Close'].min()) / last_3_weeks['Close'].min()
+        
+        # Calculate variance using the High-Low range across the 3 weeks
+        max_high = last_3_weeks['High'].max()
+        min_low = last_3_weeks['Low'].min()
+        
+        variance_pct = (max_high - min_low) / min_low if min_low > 0 else 1.0
         is_tight = bool(variance_pct <= 0.025)
         
         avg_vol_50d = df['Volume'].rolling(50).mean().iloc[-1]
@@ -160,16 +172,23 @@ class QuantEngine:
         return is_tight, is_dry_volume
 
     def detect_bearish_divergence(self, df: pd.DataFrame) -> bool:
-        """Checks if price is making higher highs while RSI makes lower highs."""
-        last_30 = df.tail(30)
+        """Checks if price is making structurally higher highs while RSI makes lower highs."""
+        last_30 = df.tail(30).copy()
         if len(last_30) < 30: 
             return False
         
-        price_max_idx = last_30['Close'].idxmax()
-        rsi_at_max_price = last_30.loc[price_max_idx, 'RSI']
+        # Split into two 15-day halves to ensure true structural peaks
+        p1 = last_30.iloc[:15]
+        p2 = last_30.iloc[15:]
         
-        rsi_max_idx = last_30['RSI'].idxmax()
-        if price_max_idx > rsi_max_idx and rsi_at_max_price < 60.0 and last_30['RSI'].max() > 70.0:
+        price_peak1 = p1['High'].max() if 'High' in p1.columns else p1['Close'].max()
+        price_peak2 = p2['High'].max() if 'High' in p2.columns else p2['Close'].max()
+        
+        rsi_peak1 = p1['RSI'].max()
+        rsi_peak2 = p2['RSI'].max()
+        
+        # Divergence confirmed: Price is higher, RSI is lower, and the first RSI peak was overbought
+        if price_peak2 > price_peak1 and rsi_peak2 < rsi_peak1 and rsi_peak1 > 70.0:
             return True
         return False
 
@@ -277,7 +296,7 @@ class QuantEngine:
                 if 'High' in df.columns and 'Low' in df.columns:
                     df['ATR'] = ta.volatility.AverageTrueRange(high=df['High'], low=df['Low'], close=df['Close'], window=14).average_true_range()
                     atr_series_clean = df['ATR'].dropna()
-                    if not rsi_series_clean.empty and current_price:
+                    if not rsi_series_clean.empty and current_price is not None:
                         atr_val = atr_series_clean.iloc[-1]
                         if not pd.isna(atr_val):
                             if has_volatility_warning:
@@ -306,7 +325,9 @@ class QuantEngine:
                         y = df['RS_Line'].dropna().tail(60).values
                         x = np.arange(len(y))
                         slope, _ = np.polyfit(x, y, 1)
-                        rs_slope = slope
+                        # Normalize slope by the initial value to prevent price-bias
+                        rs_slope = slope / y[0] if y[0] != 0 else slope
+                        
                         if rs_slope > 0 and df['RS_Line'].iloc[-1] >= (df['RS_Line'].tail(60).max() * 0.95):
                             is_market_leader = True
             else:
@@ -348,7 +369,7 @@ class QuantEngine:
             operating_cash_flow = info.get('operatingCashflow', None)
             
             dividend_yield = info.get('dividendYield', None)
-            if dividend_yield is not None and dividend_yield > 1.0 and currency in ['GBp', 'GBP']:
+            if dividend_yield is not None and dividend_yield > 0.50 and currency in ['GBp', 'GBP']:
                 dividend_yield = dividend_yield / 100.0
 
             ex_dividend_date = info.get('exDividendDate', None)
@@ -363,7 +384,7 @@ class QuantEngine:
             beta = info.get('beta', None)
 
             peter_lynch_peg = None
-            if trailing_pe and earnings_growth and earnings_growth > 0:
+            if trailing_pe and trailing_pe > 0 and earnings_growth and earnings_growth > 0:
                 peter_lynch_peg = trailing_pe / (earnings_growth * 100.0)
 
             # ==========================================
@@ -403,13 +424,13 @@ class QuantEngine:
                     score += 15
                     breakdown.append("+15: Market Leader vs Benchmark")
 
-                if ma5 and current_price and current_price > ma5: 
+                if ma5 is not None and current_price is not None and current_price > ma5: 
                     score += 15
                     breakdown.append("+15: Price > 5D MA (Short-term Momentum)")
                 else:
                     breakdown.append("+0: Price <= 5D MA (Bearish short-term momentum)")
                 
-                if ma5 and ma10 and ma21 and ma5 > ma10 and ma10 > ma21: 
+                if ma5 is not None and ma10 is not None and ma21 is not None and ma5 > ma10 and ma10 > ma21: 
                     score += 15
                     breakdown.append("+15: MAs Aligned (5 > 10 > 21)")
 
@@ -423,9 +444,15 @@ class QuantEngine:
                     score += 10
                     breakdown.append("+10: RSI Healthy (Room to run)")
 
-                if is_fund or obv_bullish: 
+                # Exclude OBV from Mutual Funds logic to prevent artificial point boosts
+                if is_fund: 
+                    score += 0
+                    breakdown.append("+0: OBV Ignored (Fund Exemption)")
+                elif obv_bullish:
                     score += 20
-                    breakdown.append("+20: OBV Bullish / Fund Exemption")
+                    breakdown.append("+20: OBV Bullish")
+                else:
+                    breakdown.append("+0: OBV Bearish")
 
                 if is_bearish_divergence and not is_fund:
                     tags.append({"name": "🚨 Divergence Warning", "tooltip": "Price higher high, RSI lower high."})
@@ -451,7 +478,7 @@ class QuantEngine:
                 notes_html += f"<li style='margin-bottom: 5px;'>{item}</li>"
             notes_html += "</ul>"
             
-            if stop_loss:
+            if stop_loss is not None:
                 notes_html += f"<strong>Risk Management:</strong> Mathematical <abbr title='Based on Average True Range.'>ATR Stop-Loss</abbr> is {stop_loss:,.2f} {currency}.<br><br>"
             
             if not is_fund and rsi_val is not None and rsi_val > 70.0:

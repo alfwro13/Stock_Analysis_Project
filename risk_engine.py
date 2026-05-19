@@ -1,3 +1,4 @@
+# risk_engine.py
 import logging
 import time
 import random
@@ -52,8 +53,13 @@ def calculate_tail_risk(ticker: str, target_date: Optional[str] = None) -> None:
         # ppf(0.05) gives the z-score for the 5th percentile (approx -1.645)
         var_95_threshold = mu + sigma * stats.norm.ppf(alpha)
         
-        # Express VaR as a positive float representing the percentage drop
-        var_95 = float(-var_95_threshold) if var_95_threshold < 0 else 0.0
+        # Express VaR as a positive float representing the percentage drop.
+        # Fallback to empirical historical VaR if the parametric curve returns a positive threshold.
+        if var_95_threshold < 0:
+            var_95 = float(-var_95_threshold)
+        else:
+            empirical_var_95 = -np.percentile(log_returns, 5)
+            var_95 = float(empirical_var_95) if empirical_var_95 > 0 else 0.0
         
         # 4. Calculate CVaR (Expected Shortfall) at 95% Confidence
         # First, attempt to calculate the empirical CVaR (average of returns worse than VaR)

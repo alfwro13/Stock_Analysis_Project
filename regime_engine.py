@@ -79,8 +79,8 @@ def calculate_market_regime() -> None:
             return
 
         # 3. Calculate Composite Turbulence Index
-        # A blended metric weighing implied volatility (VIX) and realized historical volatility (SPY Vol)
-        turbulence_index = (latest_vix + latest_spy_vol) / 2.0
+        # Weighted 60% implied forward-looking volatility (VIX) and 40% backward-looking realized vol.
+        turbulence_index = (latest_vix * 0.6) + (latest_spy_vol * 0.4)
         
         # 4. Classify Market Regime
         if turbulence_index >= 30.0 or latest_vix >= 30.0:
@@ -128,22 +128,21 @@ def get_latest_regime() -> Optional[Dict[str, Any]]:
         return None
 
 def calculate_systemic_macro_threat() -> None:
-    """Calculates yield rate of change (US & UK) and logs granular systemic compression risk to SQLite."""
+    """Calculates yield rate of change in basis points (US & UK) and logs granular systemic compression risk to SQLite."""
     try:
-        # PULL 10 DAYS TO SURVIVE WEEKENDS AND HOLIDAYS
-        tyx = yf.Ticker("^TYX").history(period="10d")
+        # Pull 10 days to survive weekends and holidays.
+        # Switch from ^TYX (30Y) to ^TNX (10Y) to align maturities with the 10Y UK Gilt.
         tnx = yf.Ticker("^TNX").history(period="10d")
         dxy = yf.Ticker("DX-Y.NYB").history(period="10d")
         gbpusd = yf.Ticker("GBPUSD=X").history(period="10d")
         
-        if tyx.empty or len(tyx) < 4:
+        if tnx.empty or len(tnx) < 4:
             return
             
         # Current and Past (3 trading days ago) values
-        curr_tyx = float(tyx['Close'].iloc[-1])
-        past_tyx = float(tyx['Close'].iloc[-4])
+        curr_tnx = float(tnx['Close'].iloc[-1])
+        past_tnx = float(tnx['Close'].iloc[-4])
         
-        curr_tnx = float(tnx['Close'].iloc[-1]) if not tnx.empty else 0.0
         curr_dxy = float(dxy['Close'].iloc[-1]) if not dxy.empty else 0.0
         curr_gbpusd = float(gbpusd['Close'].iloc[-1]) if not gbpusd.empty else 0.0
         
@@ -155,49 +154,50 @@ def calculate_systemic_macro_threat() -> None:
             # 🛠️ THE FIX: Strip out weekend padding (Saturday=5, Sunday=6) to align with trading days
             gilt_df = gilt_df[gilt_df.index.dayofweek < 5]
             
-            curr_gilt = float(gilt_df['Close'].iloc[-1]) if len(gilt_df) >= 1 else curr_tyx
-            past_gilt = float(gilt_df['Close'].iloc[-4]) if len(gilt_df) >= 4 else past_tyx
+            curr_gilt = float(gilt_df['Close'].iloc[-1]) if len(gilt_df) >= 1 else curr_tnx
+            past_gilt = float(gilt_df['Close'].iloc[-4]) if len(gilt_df) >= 4 else past_tnx
         else:
-            curr_gilt, past_gilt = curr_tyx, past_tyx
+            curr_gilt, past_gilt = curr_tnx, past_tnx
             
-        # Calculate yield velocity % change over 72 trading hours
-        tyx_velocity = ((curr_tyx - past_tyx) / past_tyx) * 100.0 if past_tyx > 0 else 0.0
-        gilt_velocity = ((curr_gilt - past_gilt) / past_gilt) * 100.0 if past_gilt > 0 else 0.0
+        # Calculate yield velocity in basis points (bps) difference
+        us_velocity = (curr_tnx - past_tnx) * 100.0
+        gilt_velocity = (curr_gilt - past_gilt) * 100.0
         
         # US Institutional Rule Classification
-        if tyx_velocity >= 3.5 or curr_tyx >= 5.0:
+        if us_velocity >= 30.0 or curr_tnx >= 5.0:
             us_threat_level = "RED"
-        elif tyx_velocity >= 1.5:
+        elif us_velocity >= 15.0:
             us_threat_level = "YELLOW"
         else:
             us_threat_level = "GREEN"
 
         # UK Institutional Rule Classification
-        if gilt_velocity >= 3.5 or curr_gilt >= 5.0:
+        if gilt_velocity >= 30.0 or curr_gilt >= 5.0:
             uk_threat_level = "RED"
-        elif gilt_velocity >= 1.5:
+        elif gilt_velocity >= 15.0:
             uk_threat_level = "YELLOW"
         else:
             uk_threat_level = "GREEN"
             
-        latest_date = tyx.index[-1].strftime('%Y-%m-%d')
+        latest_date = tnx.index[-1].strftime('%Y-%m-%d')
         
         conn = get_connection()
         cursor = conn.cursor()
         
         # Native upsert into our dedicated macro ledger with full independent region schemas
+        # Note: Database schema uses tyx_close for legacy reasons. We supply curr_tnx to populate it.
         cursor.execute('''
             INSERT OR REPLACE INTO macro_regimes 
             (date, tyx_close, tnx_close, dxy_close, uk_gilt_close, gbpusd_close, us_yield_velocity, us_threat_level, uk_yield_velocity, uk_threat_level)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             latest_date, 
-            round(curr_tyx, 3), 
+            round(curr_tnx, 3), 
             round(curr_tnx, 3), 
             round(curr_dxy, 3), 
             round(curr_gilt, 3), 
             round(curr_gbpusd, 4), 
-            round(tyx_velocity, 2), 
+            round(us_velocity, 2), 
             us_threat_level, 
             round(gilt_velocity, 2), 
             uk_threat_level
@@ -206,7 +206,7 @@ def calculate_systemic_macro_threat() -> None:
         conn.commit()
         conn.close()
         
-        logger.info(f"Systemic Macro Risk Evaluated | US Threat: {us_threat_level} (Vel: {tyx_velocity:+.2f}%) | UK Threat: {uk_threat_level} (Vel: {gilt_velocity:+.2f}%)")
+        logger.info(f"Systemic Macro Risk Evaluated | US Threat: {us_threat_level} (Vel: {us_velocity:+.2f} bps) | UK Threat: {uk_threat_level} (Vel: {gilt_velocity:+.2f} bps)")
         
     except Exception as e:
         logger.error(f"Fatal crash inside systemic threat calculator: {e}")
