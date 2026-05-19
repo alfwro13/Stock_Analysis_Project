@@ -1,11 +1,13 @@
-# macro_data_engine.py
+import os
 import sqlite3
 import logging
 import requests
 import io
 import pandas as pd
 from datetime import datetime, timedelta
-from typing import Optional
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+from typing import Optional, List, Dict
 
 # Configure module-level logging
 logging.basicConfig(
@@ -16,20 +18,95 @@ logger = logging.getLogger(__name__)
 
 DB_PATH = "data/analysis.db"
 
-# Bank of England specific series codes for UK M4 and Corporate Spreads
-BOE_M4_CODE = "LPMVWNM"  # Broad Money M4
-BOE_SPREAD_CODE = "IUMAAH2" # Proxy for IG spread via BoE
-
-# Standard browser headers to bypass API bot-blocks
+# Standard headers to bypass WAF challenges
 HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Accept': 'application/json, text/csv'
+}
+
+# The modern ONS Taxonomy Dictionary linking Tickers to exact JSON data paths
+ONS_TAXONOMY: Dict[str, str] = {
+    "D7G7": "/economy/inflationandpriceindices/timeseries/d7g7/mm23/data",
+    "BCJD": "/employmentandlabourmarket/peoplenotinwork/outofworkbenefits/timeseries/bcjd/unem/data"
 }
 
 def get_connection() -> sqlite3.Connection:
+    """Returns a native SQLite connection."""
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     return sqlite3.connect(DB_PATH)
 
-def fetch_boe_data(series_code: str, start_date: datetime, end_date: datetime) -> pd.DataFrame:
-    """Queries the Bank of England IADB CSV endpoint safely."""
+def setup_database() -> None:
+    """Ensures the macro_indicators table is structured idempotently."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS macro_indicators (
+            date TEXT PRIMARY KEY,
+            us_m2 REAL,
+            us_jobless_claims REAL,
+            us_high_yield_spread REAL,
+            uk_m4 REAL,
+            uk_corporate_spread REAL,
+            uk_cpi_inflation REAL,
+            uk_claimant_count REAL
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+def get_retry_session() -> requests.Session:
+    """Constructs a robust requests Session with exponential backoff retries."""
+    session = requests.Session()
+    retry_strategy = Retry(
+        total=5,
+        backoff_factor=1.5,
+        status_forcelist=[429, 500, 502, 503, 504],
+        allowed_methods=["GET"]
+    )
+    adapter = HTTPAdapter(max_retries=retry_strategy, pool_connections=10, pool_maxsize=10)
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    session.headers.update(HEADERS)
+    return session
+
+def fetch_fred_api(session: requests.Session, series_id: str, start_date: datetime, end_date: datetime, api_key: str) -> pd.DataFrame:
+    """Fetches US Macro and Credit data using the Official FRED REST API."""
+    cosd = start_date.strftime('%Y-%m-%d')
+    coed = end_date.strftime('%Y-%m-%d')
+    
+    url = "https://api.stlouisfed.org/fred/series/observations"
+    params = {
+        "series_id": series_id,
+        "api_key": api_key,
+        "file_type": "json",
+        "observation_start": cosd,
+        "observation_end": coed
+    }
+    
+    try:
+        response = session.get(url, params=params, timeout=15)
+        response.raise_for_status()
+        data = response.json()
+        
+        if 'observations' not in data or not data['observations']:
+            return pd.DataFrame()
+            
+        df = pd.DataFrame(data['observations'])
+        df['value'] = pd.to_numeric(df['value'].replace('.', pd.NA), errors='coerce')
+        df['date'] = pd.to_datetime(df['date'], errors='coerce')
+        
+        df.dropna(subset=['date'], inplace=True)
+        df.set_index('date', inplace=True)
+        df.rename(columns={'value': series_id}, inplace=True)
+        
+        return df[[series_id]]
+        
+    except Exception as e:
+        logger.error(f"Failed to fetch FRED {series_id}: {e}")
+        return pd.DataFrame()
+
+def fetch_boe_data(session: requests.Session, series_code: str, start_date: datetime, end_date: datetime) -> pd.DataFrame:
+    """Fetches Broad Money M4 from Bank of England CSV interface."""
     fmt_start = start_date.strftime("%d/%b/%Y")
     fmt_end = end_date.strftime("%d/%b/%Y")
     
@@ -40,115 +117,140 @@ def fetch_boe_data(series_code: str, start_date: datetime, end_date: datetime) -
     )
     
     try:
-        response = requests.get(url, headers=HEADERS, timeout=15)
+        response = session.get(url, timeout=30)
         response.raise_for_status()
         
-        # Prevent Pandas from crashing if BoE returns an HTML error page
-        if "<html" in response.text.lower() or "<!doctype" in response.text.lower():
-            logger.warning(f"BoE returned HTML instead of CSV for {series_code}. Code may be invalid.")
+        if "<html" in response.text.lower():
+            logger.error(f"BoE returned HTML instead of CSV for {series_code}.")
             return pd.DataFrame()
 
         df = pd.read_csv(io.StringIO(response.text))
         
         if df.empty or 'DATE' not in df.columns:
-            logger.warning(f"BoE returned empty data for {series_code}")
             return pd.DataFrame()
             
         df['DATE'] = pd.to_datetime(df['DATE'], errors='coerce')
         df.dropna(subset=['DATE'], inplace=True)
         df.set_index('DATE', inplace=True)
         df.rename(columns={col: series_code for col in df.columns if series_code in col}, inplace=True)
+        
         return df[[series_code]]
         
     except Exception as e:
-        logger.error(f"Failed to fetch BoE data for {series_code}: {e}")
+        logger.error(f"Failed to fetch BoE {series_code}: {e}")
         return pd.DataFrame()
 
-def fetch_fred_data(series_id: str, start_date: datetime, end_date: datetime) -> pd.DataFrame:
-    """Fetches data directly from FRED's public CSV export using precise date parameters."""
-    cosd = start_date.strftime('%Y-%m-%d')
-    coed = end_date.strftime('%Y-%m-%d')
-    url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}&cosd={cosd}&coed={coed}"
+def fetch_ons_taxonomy_data(session: requests.Session, series_id: str, start_date: datetime) -> pd.DataFrame:
+    """Fetches high-frequency UK Real Economy indicators via ONS Taxonomy paths."""
+    taxonomy_path = ONS_TAXONOMY.get(series_id)
+    if not taxonomy_path:
+        return pd.DataFrame()
+
+    url = f"https://www.ons.gov.uk{taxonomy_path}"
     
     try:
-        response = requests.get(url, headers=HEADERS, timeout=15)
+        response = session.get(url, timeout=15)
         response.raise_for_status()
+        data = response.json()
         
-        # FRED uses '.' for missing values
-        df = pd.read_csv(io.StringIO(response.text), na_values=['.'])
-        
-        if df.empty or 'DATE' not in df.columns:
-            logger.warning(f"FRED returned empty data for {series_id}")
+        if 'months' not in data or not data['months']:
             return pd.DataFrame()
             
-        df['DATE'] = pd.to_datetime(df['DATE'], errors='coerce')
-        df.dropna(subset=['DATE'], inplace=True)
-        df.set_index('DATE', inplace=True)
+        observations = data['months']
+        records = []
         
-        # Ensure column matches series_id and is numeric
-        if series_id in df.columns:
-            df[series_id] = pd.to_numeric(df[series_id], errors='coerce')
-            return df[[series_id]]
-        return pd.DataFrame()
+        for obs in observations:
+            raw_date = obs.get('date')
+            val = obs.get('value')
+            if raw_date and val:
+                try:
+                    # Roll ONS "YYYY MMM" format to Month End for database alignment
+                    dt = pd.to_datetime(raw_date, format='%Y %b') + pd.offsets.MonthEnd(1)
+                    if dt >= start_date:
+                        records.append({'DATE': dt, series_id: float(val)})
+                except ValueError:
+                    continue
+                    
+        df = pd.DataFrame(records)
+        if df.empty:
+            return pd.DataFrame()
+            
+        df.set_index('DATE', inplace=True)
+        df.sort_index(inplace=True)
+        return df[[series_id]]
         
     except Exception as e:
-        logger.error(f"Failed to fetch FRED data for {series_id}: {e}")
+        logger.error(f"Failed to fetch ONS {series_id}: {e}")
         return pd.DataFrame()
 
 def update_macro_indicators() -> None:
     """
-    Fetches US (FRED) and UK (BoE) macro indicators, aligns their differing
-    frequencies (daily, weekly, monthly) using a forward fill over a trailing window,
-    and upserts the current regime state into the database.
+    Master pipeline: Aggregates FRED, BoE, and ONS data. Aligns daily, weekly, 
+    and monthly structural indices using a forward-fill mechanism, then upserts.
     """
-    end_dt = datetime.now()
-    start_dt = end_dt - timedelta(days=90) # Trailing 90 days to ensure we catch monthly releases
-    
-    logger.info("Fetching US Structural Indicators from FRED...")
-    fred_tickers = ['WM2NS', 'ICSA', 'BAMLH0A0HYM2']
-    us_dfs = []
-    
-    for ticker in fred_tickers:
-        df_fred = fetch_fred_data(ticker, start_dt, end_dt)
-        if not df_fred.empty:
-            us_dfs.append(df_fred)
-            
-    if us_dfs:
-        us_data = pd.concat(us_dfs, axis=1)
-    else:
-        us_data = pd.DataFrame()
-
-    logger.info("Fetching UK Structural Indicators from Bank of England...")
-    uk_m4_data = fetch_boe_data(BOE_M4_CODE, start_dt, end_dt)
-    uk_spread_data = fetch_boe_data(BOE_SPREAD_CODE, start_dt, end_dt)
-    
-    # Consolidate DataFrames
-    dfs_to_concat = []
-    if not us_data.empty: dfs_to_concat.append(us_data)
-    if not uk_m4_data.empty: dfs_to_concat.append(uk_m4_data)
-    if not uk_spread_data.empty: dfs_to_concat.append(uk_spread_data)
-    
-    if not dfs_to_concat:
-        logger.error("All data sources failed. Aborting macro engine update.")
+    # Environment config
+    fred_api_key = os.environ.get("FRED_API_KEY")
+    if not fred_api_key:
+        logger.error("FRED_API_KEY environment variable not set. Aborting engine run.")
         return
 
-    # Merge on date index and forward-fill missing values
-    merged_df = pd.concat(dfs_to_concat, axis=1)
+    setup_database()
+    
+    end_dt = datetime.now()
+    start_dt = end_dt - timedelta(days=90) # Trailing 90 days to capture quarterly/monthly lags
+    session = get_retry_session()
+    
+    # 1. Fetch FRED Data (US + UK Corporate Credit)
+    # WM2NS: US M2, ICSA: US Jobless Claims, BAMLH0A0HYM2: US HY Spread, BAMLC0A0CM: UK Corporate Spread
+    logger.info("Fetching FRED Institutional Data...")
+    fred_tickers = ['WM2NS', 'ICSA', 'BAMLH0A0HYM2', 'BAMLC0A0CM']
+    dfs = []
+    
+    for ticker in fred_tickers:
+        df = fetch_fred_api(session, ticker, start_dt, end_dt, fred_api_key)
+        if not df.empty:
+            dfs.append(df)
+            
+    # 2. Fetch Bank of England (UK Broad Money)
+    logger.info("Fetching Bank of England IADB Data...")
+    df_boe = fetch_boe_data(session, 'LPMVWNM', start_dt, end_dt)
+    if not df_boe.empty:
+        dfs.append(df_boe)
+        
+    # 3. Fetch ONS Data (UK Real Economy)
+    logger.info("Fetching UK ONS Taxonomy Data...")
+    for ticker in ONS_TAXONOMY.keys():
+        df = fetch_ons_taxonomy_data(session, ticker, start_dt)
+        if not df.empty:
+            dfs.append(df)
+
+    if not dfs:
+        logger.error("All data sources returned empty. Engine execution halted.")
+        return
+
+    # Merge, sort by date, and forward fill across differing frequencies
+    merged_df = pd.concat(dfs, axis=1)
     merged_df.sort_index(inplace=True)
     merged_df.ffill(inplace=True)
     
-    # Extract the most recent state vector
+    # Extract the most recent macro state
     latest_state = merged_df.iloc[-1]
     snapshot_date = end_dt.strftime("%Y-%m-%d")
     
-    # Map raw data to database columns
+    def safe_get(ticker: str) -> Optional[float]:
+        if ticker in latest_state and pd.notna(latest_state[ticker]):
+            return float(latest_state[ticker])
+        return None
+    
     payload = (
         snapshot_date,
-        float(latest_state.get('WM2NS', 0.0)) if 'WM2NS' in latest_state and pd.notna(latest_state['WM2NS']) else 0.0,
-        float(latest_state.get('ICSA', 0.0)) if 'ICSA' in latest_state and pd.notna(latest_state['ICSA']) else 0.0,
-        float(latest_state.get('BAMLH0A0HYM2', 0.0)) if 'BAMLH0A0HYM2' in latest_state and pd.notna(latest_state['BAMLH0A0HYM2']) else 0.0,
-        float(latest_state.get(BOE_M4_CODE, 0.0)) if BOE_M4_CODE in latest_state and pd.notna(latest_state[BOE_M4_CODE]) else None,
-        float(latest_state.get(BOE_SPREAD_CODE, 0.0)) if BOE_SPREAD_CODE in latest_state and pd.notna(latest_state[BOE_SPREAD_CODE]) else None
+        safe_get('WM2NS'),
+        safe_get('ICSA'),
+        safe_get('BAMLH0A0HYM2'),
+        safe_get('LPMVWNM'),
+        safe_get('BAMLC0A0CM'),
+        safe_get('D7G7'),
+        safe_get('BCJD')
     )
     
     conn = get_connection()
@@ -157,18 +259,19 @@ def update_macro_indicators() -> None:
     try:
         cursor.execute('''
             INSERT OR REPLACE INTO macro_indicators (
-                date, us_m2, us_jobless_claims, us_high_yield_spread, uk_m4, uk_corporate_spread
-            ) VALUES (?, ?, ?, ?, ?, ?)
+                date, us_m2, us_jobless_claims, us_high_yield_spread, 
+                uk_m4, uk_corporate_spread, uk_cpi_inflation, uk_claimant_count
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ''', payload)
         conn.commit()
         logger.info(f"Successfully upserted Macro Regime Snapshot for {snapshot_date}")
     except sqlite3.Error as e:
-        logger.error(f"Database insertion failed for macro snapshot: {e}")
+        logger.error(f"Database insertion failed: {e}")
         conn.rollback()
     finally:
         conn.close()
 
 if __name__ == "__main__":
-    logger.info("Starting Macroeconomic Structural Data Ingestion...")
+    logger.info("Initializing Master Macro Data Engine...")
     update_macro_indicators()
-    logger.info("Macro Data Ingestion Complete.")
+    logger.info("Macro Data Engine Execution Complete.")
