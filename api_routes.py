@@ -37,14 +37,12 @@ from ai_prediction_engine import train_global_ml_model, update_daily_ml_predicti
 from risk_engine import update_all_tail_risks
 from profile_engine import update_single_profile
 
-
 # Configure logger
 logger = logging.getLogger(__name__)
 
 api_router = APIRouter(prefix="/api")
 
 # --- RESOLVE CORRECT IMPORT DIRECTORY ---
-# The scraper outputs to tools/data/imports. We align the API to match this path.
 IMPORT_DIR = BASE_DIR / "tools" / "data" / "imports"
 
 # --- SHARED PYDANTIC SCHEMAS ---
@@ -68,21 +66,32 @@ class ImportRequest(BaseModel):
 class PulseRequest(BaseModel):
     tickers: Optional[List[str]] = []
 
+def log_notification(message_type: str, message_text: str) -> None:
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO system_notifications (message_type, message_text) VALUES (?, ?)",
+            (message_type, message_text)
+        )
+        conn.commit()
+    except Exception as e:
+        logger.error(f"Failed to log notification: {e}")
+    finally:
+        if 'conn' in locals():
+            conn.close()
 
 def bg_execute_quant_scan():
-    """Background task wrapper for the heavy Quant engine (Portfolio/Watchlist)."""
     engine = DataEngine()
     tickers = engine.get_all_tickers()
     run_daily_quant_scan(tickers)
 
 def bg_execute_earnings_scan():
-    """Background task wrapper for the heavy Earnings Volatility engine."""
     engine = DataEngine()
     tickers = engine.get_all_tickers()
     run_earnings_vol_scan(tickers)
 
 def bg_execute_universe_quant_scan():
-    """Background task wrapper for scanning the entire 4,000+ Universe."""
     tickers = get_universe_tickers()
     if not tickers:
         print("[WARNING] Universe is empty. Please trigger a Universe Update first.")
@@ -90,11 +99,9 @@ def bg_execute_universe_quant_scan():
     run_daily_quant_scan(tickers, scan_type='universe')
 
 def bg_execute_universe_quant_scan_subset(tickers: List[str]):
-    """Background task to exclusively scan newly imported universe tickers."""
     run_daily_quant_scan(tickers, scan_type='sideload')
 
 def bg_init_ml_pipeline():
-    """Background task wrapper for initializing the AI engine end-to-end."""
     run_historical_backfill()
     train_global_ml_model()
     
@@ -106,10 +113,83 @@ def bg_init_ml_pipeline():
     if tickers:
         update_daily_ml_predictions(tickers)
 
+def bg_init_macro_pipeline():
+    """Executes full Macro AI initialization: Seeding -> Calendar Sync -> Training -> Inference."""
+    try:
+        from seed_macro_calendar import seed_calendar
+        from macro_calendar_engine import update_macro_calendar
+        from macro_ai_engine import MacroAIEngine
+        
+        logger.info("Starting Macro AI Initialization Sequence...")
+        
+        seed_calendar()
+        update_macro_calendar()
+        
+        ai_engine = MacroAIEngine()
+        ai_engine.train_regime_clustering()
+        ai_engine.train_consensus_miss_probability()
+        ai_engine.train_volatility_magnitude()
+        
+        scan_date = datetime.now().strftime('%Y-%m-%d')
+        ai_engine.run_macro_inference(scan_date)
+        
+        # Update config.json to mark initialization as complete
+        if SECRETS_PATH.exists():
+            with open(SECRETS_PATH, 'r') as f:
+                config_data = json.load(f)
+                
+            if "SCHEDULING" not in config_data:
+                config_data["SCHEDULING"] = {}
+            if "MACRO_ENGINE" not in config_data["SCHEDULING"]:
+                config_data["SCHEDULING"]["MACRO_ENGINE"] = {}
+                
+            config_data["SCHEDULING"]["MACRO_ENGINE"]["INITIALIZED"] = True
+            
+            with open(SECRETS_PATH, 'w') as f:
+                json.dump(config_data, f, indent=4)
+        
+        log_notification("Success", "Macro AI Pipeline successfully initialized and trained.")
+    except Exception as e:
+        logger.error(f"Macro AI Pipeline initialization failed: {e}")
+        log_notification("Error", f"Macro AI Pipeline Initialization failed: {e}")
+
+def bg_run_macro_pipeline():
+    """Executes standard Macro AI run: Calendar Sync -> Inference."""
+    try:
+        from macro_calendar_engine import update_macro_calendar
+        from macro_ai_engine import MacroAIEngine
+        
+        logger.info("Starting Macro AI Run Sequence...")
+        
+        update_macro_calendar()
+        
+        ai_engine = MacroAIEngine()
+        scan_date = datetime.now().strftime('%Y-%m-%d')
+        ai_engine.run_macro_inference(scan_date)
+        
+        log_notification("Success", "Macro AI Pipeline executed successfully.")
+    except Exception as e:
+        logger.error(f"Macro AI Pipeline execution failed: {e}")
+        log_notification("Error", f"Macro AI Pipeline execution failed: {e}")
+
+@api_router.post("/macro/init-pipeline")
+async def trigger_macro_init_endpoint(background_tasks: BackgroundTasks):
+    background_tasks.add_task(bg_init_macro_pipeline)
+    return JSONResponse(content={
+        "status": "success", 
+        "message": "Macro AI Initialization started in the background. Check notifications."
+    })
+
+@api_router.post("/macro/run-pipeline")
+async def trigger_macro_run_endpoint(background_tasks: BackgroundTasks):
+    background_tasks.add_task(bg_run_macro_pipeline)
+    return JSONResponse(content={
+        "status": "success", 
+        "message": "Macro AI Run initiated in the background. Check notifications."
+    })
 
 @api_router.post("/ml/init-pipeline")
 async def trigger_ml_init_endpoint(background_tasks: BackgroundTasks):
-    """API endpoint to manually trigger the end-to-end ML initialization."""
     background_tasks.add_task(bg_init_ml_pipeline)
     return JSONResponse(content={
         "status": "success", 
@@ -118,7 +198,6 @@ async def trigger_ml_init_endpoint(background_tasks: BackgroundTasks):
 
 @api_router.post("/trigger-quant-scan")
 async def trigger_quant_scan_endpoint(background_tasks: BackgroundTasks):
-    """API endpoint to manually trigger the daily Portfolio/Watchlist Quant Screener."""
     background_tasks.add_task(bg_execute_quant_scan)
     return JSONResponse(content={
         "status": "success", 
@@ -127,7 +206,6 @@ async def trigger_quant_scan_endpoint(background_tasks: BackgroundTasks):
 
 @api_router.post("/trigger-earnings-scan")
 async def trigger_earnings_scan_endpoint(background_tasks: BackgroundTasks):
-    """API endpoint to manually trigger the Options Implied Volatility calculations."""
     background_tasks.add_task(bg_execute_earnings_scan)
     return JSONResponse(content={
         "status": "success", 
@@ -136,7 +214,6 @@ async def trigger_earnings_scan_endpoint(background_tasks: BackgroundTasks):
 
 @api_router.post("/trigger-universe-update")
 async def trigger_universe_update_endpoint(background_tasks: BackgroundTasks):
-    """API endpoint to manually trigger a scrape of the Nasdaq FTP server."""
     background_tasks.add_task(update_market_universe)
     return JSONResponse(content={
         "status": "success", 
@@ -145,7 +222,6 @@ async def trigger_universe_update_endpoint(background_tasks: BackgroundTasks):
 
 @api_router.post("/trigger-universe-quant-scan")
 async def trigger_universe_quant_scan_endpoint(background_tasks: BackgroundTasks):
-    """API endpoint to manually trigger a full scan of the 4,000+ Universe tickers."""
     background_tasks.add_task(bg_execute_universe_quant_scan)
     return JSONResponse(content={
         "status": "success", 
@@ -154,7 +230,6 @@ async def trigger_universe_quant_scan_endpoint(background_tasks: BackgroundTasks
 
 @api_router.post("/trigger-sentiment-scan")
 async def trigger_sentiment_scan_endpoint(background_tasks: BackgroundTasks):
-    """API endpoint to manually trigger the NLP Sentiment Scan."""
     background_tasks.add_task(run_sentiment_scan)
     return JSONResponse(content={
         "status": "success", 
@@ -163,12 +238,8 @@ async def trigger_sentiment_scan_endpoint(background_tasks: BackgroundTasks):
 
 @api_router.get("/universe/imports/list")
 async def list_importable_csvs():
-    """Scans the designated imports directory in tools/data/imports for CSV files."""
     try:
-        # Ensure directory exists to prevent crashes on fresh installs
         IMPORT_DIR.mkdir(parents=True, exist_ok=True)
-        
-        # Use pathlib globbing to extract valid CSVs
         files = [f.name for f in IMPORT_DIR.glob("*.csv")]
         logger.info(f"Scan found {len(files)} CSV files in {IMPORT_DIR}")
         return JSONResponse(content={"status": "success", "files": files})
@@ -178,33 +249,22 @@ async def list_importable_csvs():
 
 @api_router.post("/universe/import/server")
 async def import_server_csv(request: ImportRequest, background_tasks: BackgroundTasks):
-    """
-    API endpoint to securely read a CSV file directly from the tools/data/imports directory,
-    parse it using Pandas, and bulk-load it into SQLite.
-    """
     if not request.filename.endswith('.csv'):
         return JSONResponse(status_code=400, content={"status": "error", "message": "Invalid file type. Only .csv files are supported."})
-    
     try:
         file_path = IMPORT_DIR / request.filename
-        
         if not file_path.exists():
             return JSONResponse(status_code=404, content={"status": "error", "message": f"File '{request.filename}' not found on server at {file_path}."})
             
         df = pd.read_csv(file_path)
-        
-        # Enforce exact column structures 
         required_cols = ['ticker', 'company_name', 'sector', 'industry', 'currency', 'country', 'exchange']
         for col in required_cols:
             if col not in df.columns:
                 return JSONResponse(status_code=400, content={"status": "error", "message": f"Malformed CSV. Missing required column: {col}"})
         
-        # Scrub unprocessable rows
         df = df.dropna(subset=['ticker'])
-        
         records = []
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
         for _, row in df.iterrows():
             records.append((
                 str(row['ticker']),
@@ -218,50 +278,39 @@ async def import_server_csv(request: ImportRequest, background_tasks: Background
         
         conn = get_connection()
         cursor = conn.cursor()
-        
-        # Optimized SQLite bulk insert utilizing transaction wrapping
         cursor.executemany('''
             INSERT OR REPLACE INTO market_universe 
             (ticker, company_name, sector, industry, country, exchange, last_updated)
             VALUES (?, ?, ?, ?, ?, ?, ?)
         ''', records)
-        
         conn.commit()
         conn.close()
         
-        # Immediately push an asynchronous scan for purely these newly added assets
         background_tasks.add_task(bg_execute_universe_quant_scan_subset, [r[0] for r in records])
-        
         return JSONResponse(content={
             "status": "success", 
             "message": f"Successfully sideloaded {len(records)} assets from '{request.filename}' into the local Market Universe."
         })
-        
     except Exception as e:
         logger.error(f"Fatal error executing CSV parser for {request.filename}: {e}")
         return JSONResponse(status_code=500, content={"status": "error", "message": f"Fatal error executing CSV parser: {str(e)}"})
 
-
 def execute_restart():
-    """Background task to wait 2 seconds, then kill the Python process."""
     time.sleep(2)
     os.kill(os.getpid(), signal.SIGTERM)
 
 @api_router.post("/update")
 async def trigger_update(background_tasks: BackgroundTasks):
-    """API endpoint to manually trigger the full market data update."""
     background_tasks.add_task(run_update_pipeline)
     return {"status": "success"}
 
 @api_router.post("/sync-ghostfolio")
 async def trigger_ghostfolio_sync(background_tasks: BackgroundTasks):
-    """API endpoint to manually trigger the Ghostfolio synchronization."""
     background_tasks.add_task(run_ghostfolio_sync)
     return {"status": "success"}
 
 @api_router.post("/trigger-freetrade-sync")
 async def trigger_freetrade_sync_endpoint(background_tasks: BackgroundTasks):
-    """API endpoint to manually trigger the Freetrade catalog and portfolio synchronization."""
     background_tasks.add_task(run_freetrade_sync)
     return JSONResponse(content={
         "status": "success",
@@ -270,11 +319,9 @@ async def trigger_freetrade_sync_endpoint(background_tasks: BackgroundTasks):
 
 @api_router.post("/ghostfolio/discover")
 async def trigger_discovery():
-    """Triggers the Ghostfolio API to discover all active accounts and update config.json."""
     engine = GhostfolioSyncEngine()
     if not engine.authenticate():
         return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to authenticate with Ghostfolio."})
-    
     accounts = engine.discover_accounts()
     if accounts:
         reload_scheduler()
@@ -284,29 +331,22 @@ async def trigger_discovery():
 
 @api_router.post("/market-pulse")
 async def api_market_pulse(request: PulseRequest, background_tasks: BackgroundTasks):
-    """API endpoint to fetch live index data AND requested asset prices instantaneously from DB."""
     config_data = load_config()
     refresh_rate = config_data.get("UI_PREFERENCES", {}).get("REFRESH_RATE", 60)
-    
     pulse_data = get_cached_pulse_from_db(request.tickers, refresh_rate)
-    
     needs_fetch = [item['ticker'] for item in pulse_data['indexes'] + pulse_data['assets'] if item['is_stale']]
     if needs_fetch:
         background_tasks.add_task(fetch_and_save_pulse, needs_fetch)
-        
     return JSONResponse(content={"status": "success", "data": pulse_data})
 
 @api_router.get("/market-pulse")
 async def api_market_pulse_get(background_tasks: BackgroundTasks):
     config_data = load_config()
     refresh_rate = config_data.get("UI_PREFERENCES", {}).get("REFRESH_RATE", 60)
-    
     pulse_data = get_cached_pulse_from_db([], refresh_rate)
-    
     needs_fetch = [item['ticker'] for item in pulse_data['indexes'] if item['is_stale']]
     if needs_fetch:
         background_tasks.add_task(fetch_and_save_pulse, needs_fetch)
-        
     return JSONResponse(content={"status": "success", "data": pulse_data.get("indexes", [])})
 
 @api_router.post("/test-sentiment-alert")
@@ -329,7 +369,6 @@ def test_insider_alert():
 
 @api_router.post("/system/git-pull")
 async def git_pull_update():
-    """Executes a git pull to fetch the latest code from GitHub."""
     try:
         result = subprocess.run(["git", "pull"], capture_output=True, text=True, timeout=15)
         if result.returncode == 0:
@@ -357,7 +396,6 @@ async def save_settings(request: Request):
 
 @api_router.get("/notifications/latest")
 async def get_latest_notifications(last_id: int = 0):
-    """API endpoint to poll for new system notifications for browser alerts."""
     try:
         conn = get_connection()
         cursor = conn.cursor()
@@ -367,7 +405,6 @@ async def get_latest_notifications(last_id: int = 0):
         )
         rows = cursor.fetchall()
         conn.close()
-        
         notifications = [
             {
                 "id": row["id"], 
@@ -383,7 +420,6 @@ async def get_latest_notifications(last_id: int = 0):
 
 @api_router.post("/notifications/mark-read")
 async def mark_notifications_read():
-    """API endpoint to mark all notifications as read."""
     try:
         conn = get_connection()
         cursor = conn.cursor()
@@ -405,10 +441,8 @@ async def get_ai_prompt(ticker: str, mode: str = "Quantamental Deep-Dive"):
     except Exception as e:
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
-# --- WATCHLIST MANAGEMENT ENDPOINTS ---
 @api_router.post("/watchlist/add")
 async def api_watchlist_add(req: TickerRequest):
-    """Adds a ticker to Ghostfolio and synchronizes the local JSON engine."""
     engine = GhostfolioSyncEngine()
     if engine.add_to_watchlist(req.ticker):
         engine.sync_watchlist()
@@ -417,40 +451,28 @@ async def api_watchlist_add(req: TickerRequest):
 
 @api_router.post("/watchlist/remove")
 async def api_watchlist_remove(req: TickerRequest):
-    """Removes a ticker from Ghostfolio and synchronizes the local JSON engine."""
     engine = GhostfolioSyncEngine()
     if engine.remove_from_watchlist(req.ticker):
         engine.sync_watchlist()
         return JSONResponse(content={"status": "success"})
     return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to remove from Ghostfolio."})
 
-# --- MANUAL DATA REFRESH ENDPOINT ---
 @api_router.post("/data/refresh-single")
 async def api_data_refresh_single(req: TickerRequest):
-    """Synchronously fetches fresh market data and evaluates ALL quant models for a single ticker."""
-    # Hydrate static profile metadata to prevent Cold Start UI issues
     update_single_profile(req.ticker)
-    
     data_engine = DataEngine()
     quant_engine = QuantEngine()
-    
     if data_engine.fetch_and_save_data(req.ticker):
         quant_engine.analyze_ticker(req.ticker)
-        
-        # Force immediate calculation of advanced metrics for this specific ticker
         target_list = [req.ticker]
         update_daily_ml_predictions(target_list)
         update_all_tail_risks(target_list)
         update_all_sentiment(target_list)
-        
         return JSONResponse(content={"status": "success"})
     return JSONResponse(status_code=500, content={"status": "error", "message": "Data fetch failed."})
 
-
-# --- OPTIONS SANDBOX ENDPOINTS ---
 @api_router.get("/options/chain/{ticker}")
 async def api_options_chain(ticker: str):
-    """Fetches the options chain for the Sandbox UI."""
     data = fetch_options_chain(ticker)
     if "error" in data:
         return JSONResponse(status_code=400, content=data)
@@ -458,29 +480,18 @@ async def api_options_chain(ticker: str):
 
 @api_router.post("/options/payoff")
 async def api_options_payoff(req: PayoffRequest):
-    """Calculates the P&L matrix for the provided strategy legs."""
     legs_dict = [leg.model_dump() for leg in req.legs]
     matrix = calculate_payoff_matrix(legs_dict, req.current_price)
     return JSONResponse(content=matrix)
 
-
-# --- MARKET SCREENER API (4000+ UNIVERSE) ---
 @api_router.get("/screener-data")
 async def get_screener_data():
-    """
-    Fetches the 4000+ rows of quantitative signals from the overnight Market Universe scan.
-    Optimized SQLite join directly converting to a JSON array for DataTables.js rendering.
-    """
     try:
         config_data = load_config()
         freetrade_only = config_data.get("UI_PREFERENCES", {}).get("FREETRADE_ONLY_MODE", False)
         
         conn = get_connection()
         cursor = conn.cursor()
-        
-        # Base query with dynamic configuration checks.
-        # Fallback priority ensures we immediately use the 'stock_signals' company name
-        # if the weekend 'profile_engine' hasn't run yet.
         query = """
         SELECT 
             q.ticker, 
@@ -506,7 +517,6 @@ async def get_screener_data():
         LEFT JOIN stock_signals s ON q.ticker = s.ticker
         WHERE q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = q.ticker)
         """
-        
         if freetrade_only:
             query += " AND m.is_freetrade = 1"
             
@@ -515,14 +525,11 @@ async def get_screener_data():
         conn.close()
         
         data = [dict(row) for row in rows]
-        
         return JSONResponse(content={"data": data})
-        
     except Exception as e:
         logger.error(f"Failed to fetch screener data: {e}")
         return JSONResponse(status_code=500, content={"error": str(e), "data": []})
 
-# --- ADVANCED MARKET REPORTS ENDPOINTS ---
 @api_router.get("/reports/sectors")
 async def api_reports_sectors():
     data = get_sector_trends()
@@ -540,9 +547,5 @@ async def api_reports_leaders():
 
 @api_router.get("/reports/dividends")
 async def api_reports_dividends(min_yield: float = 0.02, min_score: int = 50):
-    """
-    API Endpoint for the Dividend Harvest Screener.
-    Takes yield as a decimal (e.g., 0.02 for 2%) and composite score as integer.
-    """
     data = get_dividend_harvest_setups(min_yield=min_yield, min_score=min_score)
     return JSONResponse(content={"data": data})

@@ -108,6 +108,7 @@ DEFAULT_CONFIG = {
         },
         "MACRO_ENGINE": {
             "ENABLED": True,
+            "INITIALIZED": False,
             "CALENDAR_TIME": "04:00",
             "DATA_DAY": "sat",
             "DATA_TIME": "05:00"
