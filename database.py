@@ -2,6 +2,8 @@
 import sqlite3
 import logging
 from typing import List, Optional
+
+# Assuming DB_PATH is exported from a sibling config.py file
 from config import DB_PATH
 
 # Configure robust module-level logging
@@ -11,22 +13,25 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
 def get_connection() -> sqlite3.Connection:
     """
     Creates and returns a connection to the local SQLite database.
     Using sqlite3.Row allows us to access columns by name (e.g., row['ticker']).
     """
     conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row 
+    conn.row_factory = sqlite3.Row
     return conn
+
 
 def init_db() -> None:
     """
     Initializes the master database schema for the Quantamental dashboard.
+    Includes the Event-Driven Macroeconomic tracking tables.
     """
     conn = get_connection()
     cursor = conn.cursor()
-    
+
     try:
         # Base table creation for quantitative analysis data
         cursor.execute('''
@@ -94,7 +99,7 @@ def init_db() -> None:
                 setup_tags TEXT
             )
         ''')
-        
+
         # New table for the Notification Center
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS system_notifications (
@@ -105,7 +110,7 @@ def init_db() -> None:
                 is_read BOOLEAN DEFAULT 0
             )
         ''')
-        
+
         # New table for the Live Market Pulse Database Cache
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS market_pulse_cache (
@@ -179,7 +184,7 @@ def init_db() -> None:
                 last_updated TEXT
             )
         ''')
-        
+
         # --- CENTRALIZED STATIC ASSET PROFILES (3NF NORMALIZATION) ---
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS asset_profiles (
@@ -197,7 +202,6 @@ def init_db() -> None:
         ''')
 
         # --- PHASE 1: MARKET REGIMES (MACRO TURBULENCE Tracking) ---
-        # ALIGNED FIX: Tables built here match the five-dimensional calculation schema
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS market_regimes (
                 date TEXT PRIMARY KEY,
@@ -223,18 +227,46 @@ def init_db() -> None:
                 uk_threat_level TEXT
             )
         ''')
-        
+
+        # --- PHASE 3: MACROECONOMIC CALENDAR EVENTS ---
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS macro_calendar (
+                event_id TEXT PRIMARY KEY,
+                event_date TIMESTAMP,
+                currency TEXT,
+                impact TEXT,
+                event_name TEXT,
+                forecast_val REAL,
+                previous_val REAL,
+                is_event_passed BOOLEAN DEFAULT 0,
+                alert_dispatched BOOLEAN DEFAULT 0
+            )
+        ''')
+
+        # --- PHASE 3: STRUCTURAL MACRO INDICATORS ---
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS macro_indicators (
+                date TEXT PRIMARY KEY,
+                us_m2 REAL,
+                us_jobless_claims REAL,
+                us_high_yield_spread REAL,
+                uk_m4 REAL,
+                uk_corporate_spread REAL
+            )
+        ''')
+
         conn.commit()
-        
+
         # Run the dynamic migration script to inject any missing columns safely
         migrate_db(conn, cursor)
-        
+
         logger.info("Database connection verified and schema is fully up-to-date.")
-    
+
     except Exception as e:
         logger.error(f"Failed to initialize database schema: {e}")
     finally:
         conn.close()
+
 
 def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
     """
@@ -247,15 +279,16 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
     existing_stock_columns = [info['name'] for info in cursor.fetchall()]
 
     required_stock_columns = {
-        'company_name': 'TEXT', 'sector': 'TEXT', 'currency': 'TEXT', 'country': 'TEXT', 'quote_type': 'TEXT',
+        'company_name': 'TEXT', 'sector': 'TEXT', 'currency': 'TEXT',
+        'country': 'TEXT', 'quote_type': 'TEXT',
         'trend_50d': 'TEXT', 'trend_200d': 'TEXT',
         'fifty_two_week_low': 'REAL', 'fifty_two_week_high': 'REAL',
         'trailing_pe': 'REAL', 'forward_pe': 'REAL', 'peg_ratio': 'REAL',
         'peter_lynch_peg': 'REAL', 'price_to_book': 'REAL',
         'profit_margin': 'REAL', 'roe': 'REAL', 'revenue_growth': 'REAL',
         'debt_to_equity': 'REAL', 'current_ratio': 'REAL', 'operating_cash_flow': 'REAL',
-        'ytd_return': 'REAL', 'total_assets': 'REAL', 'nav_price': 'REAL', 'expense_ratio': 'REAL',
-        'top_holdings': 'TEXT', 'sector_weightings': 'TEXT',
+        'ytd_return': 'REAL', 'total_assets': 'REAL', 'nav_price': 'REAL',
+        'expense_ratio': 'REAL', 'top_holdings': 'TEXT', 'sector_weightings': 'TEXT',
         'dividend_yield': 'REAL', 'ex_dividend_date': 'TEXT', 'target_price': 'REAL',
         'analyst_rating': 'TEXT', 'next_earnings_date': 'TEXT',
         'short_interest': 'REAL', 'institutional_ownership': 'REAL', 'beta': 'REAL',
@@ -265,16 +298,16 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
     for col_name, data_type in required_stock_columns.items():
         if col_name not in existing_stock_columns:
             try:
-                logger.info(f"[MIGRATION] Adding missing column: '{col_name}' to stock_signals...")
+                logger.info(f"[MIGRATION] Adding column: '{col_name}' to stock_signals...")
                 cursor.execute(f"ALTER TABLE stock_signals ADD COLUMN {col_name} {data_type}")
             except Exception as e:
-                logger.error(f"[MIGRATION ERROR] Failed to add '{col_name}' to stock_signals: {e}")
+                logger.error(f"[MIGRATION ERROR] Failed on stock_signals: {e}")
                 continue
-            
+
     # 2. Migrate quant_signals (Adding ML and Risk Factor Columns)
     cursor.execute("PRAGMA table_info(quant_signals)")
     existing_quant_columns = [info['name'] for info in cursor.fetchall()]
-    
+
     required_quant_columns = {
         'ml_confidence_score': 'REAL',
         'sentiment_score': 'REAL',
@@ -285,16 +318,16 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
     for col_name, data_type in required_quant_columns.items():
         if col_name not in existing_quant_columns:
             try:
-                logger.info(f"[MIGRATION] Adding missing column: '{col_name}' to quant_signals...")
+                logger.info(f"[MIGRATION] Adding column: '{col_name}' to quant_signals...")
                 cursor.execute(f"ALTER TABLE quant_signals ADD COLUMN {col_name} {data_type}")
             except Exception as e:
-                logger.error(f"[MIGRATION ERROR] Failed to add '{col_name}' to quant_signals: {e}")
+                logger.error(f"[MIGRATION ERROR] Failed on quant_signals: {e}")
                 continue
-                
-    # 3. Migrate market_universe (Adding Country, Exchange origin, and Freetrade columns)
+
+    # 3. Migrate market_universe
     cursor.execute("PRAGMA table_info(market_universe)")
     existing_universe_columns = [info['name'] for info in cursor.fetchall()]
-    
+
     required_universe_columns = {
         'country': 'TEXT',
         'exchange': 'TEXT',
@@ -306,16 +339,16 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
     for col_name, data_type in required_universe_columns.items():
         if col_name not in existing_universe_columns:
             try:
-                logger.info(f"[MIGRATION] Adding missing column: '{col_name}' to market_universe...")
+                logger.info(f"[MIGRATION] Adding column: '{col_name}' to market_universe...")
                 cursor.execute(f"ALTER TABLE market_universe ADD COLUMN {col_name} {data_type}")
             except Exception as e:
-                logger.error(f"[MIGRATION ERROR] Failed to add '{col_name}' to market_universe: {e}")
+                logger.error(f"[MIGRATION ERROR] Failed on market_universe: {e}")
                 continue
 
-    # 4. ALIGNED FIX MIGRATION: Auto-patches existing database files that use the limited 3-column setup
+    # 4. Migrate market_regimes
     cursor.execute("PRAGMA table_info(market_regimes)")
     existing_regime_columns = [info['name'] for info in cursor.fetchall()]
-    
+
     required_regime_columns = {
         'vix_close': 'REAL',
         'spy_volatility': 'REAL'
@@ -324,16 +357,16 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
     for col_name, data_type in required_regime_columns.items():
         if col_name not in existing_regime_columns:
             try:
-                logger.info(f"[MIGRATION] Patching historical schema anomaly. Adding missing column: '{col_name}' to market_regimes...")
+                logger.info(f"[MIGRATION] Patching market_regimes anomaly: '{col_name}'...")
                 cursor.execute(f"ALTER TABLE market_regimes ADD COLUMN {col_name} {data_type}")
             except Exception as e:
-                logger.error(f"[MIGRATION ERROR] Failed to patch market_regimes column '{col_name}': {e}")
+                logger.error(f"[MIGRATION ERROR] Failed on market_regimes: {e}")
                 continue
 
-    # 5. DUAL-REGION MACRO RISK MIGRATION
+    # 5. Migrate macro_regimes
     cursor.execute("PRAGMA table_info(macro_regimes)")
     existing_macro_columns = [info['name'] for info in cursor.fetchall()]
-    
+
     required_macro_columns = {
         'us_yield_velocity': 'REAL',
         'us_threat_level': 'TEXT',
@@ -344,10 +377,47 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
     for col_name, data_type in required_macro_columns.items():
         if col_name not in existing_macro_columns:
             try:
-                logger.info(f"[MIGRATION] Adding dual-region risk column: '{col_name}' to macro_regimes...")
+                logger.info(f"[MIGRATION] Adding dual-region risk column '{col_name}'...")
                 cursor.execute(f"ALTER TABLE macro_regimes ADD COLUMN {col_name} {data_type}")
             except Exception as e:
-                logger.error(f"[MIGRATION ERROR] Failed to add '{col_name}' to macro_regimes: {e}")
+                logger.error(f"[MIGRATION ERROR] Failed on macro_regimes: {e}")
+                continue
+
+    # 6. Migrate macro_calendar
+    cursor.execute("PRAGMA table_info(macro_calendar)")
+    existing_calendar_columns = [info['name'] for info in cursor.fetchall()]
+
+    required_calendar_columns = {
+        'event_date': 'TIMESTAMP', 'currency': 'TEXT', 'impact': 'TEXT',
+        'event_name': 'TEXT', 'forecast_val': 'REAL', 'previous_val': 'REAL',
+        'is_event_passed': 'BOOLEAN DEFAULT 0', 'alert_dispatched': 'BOOLEAN DEFAULT 0'
+    }
+
+    for col_name, data_type in required_calendar_columns.items():
+        if col_name not in existing_calendar_columns:
+            try:
+                logger.info(f"[MIGRATION] Adding missing column '{col_name}' to macro_calendar...")
+                cursor.execute(f"ALTER TABLE macro_calendar ADD COLUMN {col_name} {data_type}")
+            except Exception as e:
+                logger.error(f"[MIGRATION ERROR] Failed on macro_calendar: {e}")
+                continue
+
+    # 7. Migrate macro_indicators
+    cursor.execute("PRAGMA table_info(macro_indicators)")
+    existing_indicator_columns = [info['name'] for info in cursor.fetchall()]
+
+    required_indicator_columns = {
+        'us_m2': 'REAL', 'us_jobless_claims': 'REAL', 'us_high_yield_spread': 'REAL',
+        'uk_m4': 'REAL', 'uk_corporate_spread': 'REAL'
+    }
+
+    for col_name, data_type in required_indicator_columns.items():
+        if col_name not in existing_indicator_columns:
+            try:
+                logger.info(f"[MIGRATION] Adding missing column '{col_name}' to macro_indicators...")
+                cursor.execute(f"ALTER TABLE macro_indicators ADD COLUMN {col_name} {data_type}")
+            except Exception as e:
+                logger.error(f"[MIGRATION ERROR] Failed on macro_indicators: {e}")
                 continue
 
     try:
@@ -355,6 +425,7 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
     except Exception as e:
         logger.error(f"[MIGRATION ERROR] Failed to commit migration changes: {e}")
         conn.rollback()
+
 
 def get_universe_tickers() -> List[str]:
     """
@@ -371,6 +442,7 @@ def get_universe_tickers() -> List[str]:
     except Exception as e:
         logger.error(f"Failed to fetch universe tickers: {e}")
         return []
+
 
 def upsert_quant_signal(
     ticker: str,
@@ -398,7 +470,7 @@ def upsert_quant_signal(
     try:
         conn = get_connection()
         cursor = conn.cursor()
-        
+
         query = '''
             INSERT OR REPLACE INTO quant_signals (
                 ticker, date, close_price, volume, rsi_14, macd, macd_signal, macd_hist, 
@@ -406,13 +478,13 @@ def upsert_quant_signal(
                 ml_confidence_score, sentiment_score, var_95, cvar_95
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         '''
-        
+
         cursor.execute(query, (
             ticker, date, close_price, volume, rsi_14, macd, macd_signal, macd_hist,
             sma_50, sma_200, volume_surge, bullish_cross,
             ml_confidence_score, sentiment_score, var_95, cvar_95
         ))
-        
+
         conn.commit()
         return True
     except Exception as e:
@@ -420,6 +492,7 @@ def upsert_quant_signal(
         return False
     finally:
         conn.close()
+
 
 if __name__ == "__main__":
     init_db()
