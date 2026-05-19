@@ -11,6 +11,7 @@ from urllib3.util.retry import Retry
 from typing import Optional, List, Dict
 from config import load_config
 
+# Configure module-level logging
 logger = logging.getLogger(__name__)
 
 DB_PATH = "data/analysis.db"
@@ -206,8 +207,8 @@ def update_macro_indicators() -> None:
 
     if fred_api_key:
         logger.info("Fetching FRED Institutional Data (2-Year History)...")
-        # Updated BoE UK Corporate spread string as requested
-        fred_tickers = ['WM2NS', 'ICSA', 'BAMLH0A0HYM2', 'BAMLC4A0C7PYEY', 'T10Y2Y']
+        # BAMLC0A0CM serves as our global proxy for Investment Grade corporate spread
+        fred_tickers = ['WM2NS', 'ICSA', 'BAMLH0A0HYM2', 'BAMLC0A0CM', 'T10Y2Y']
         for ticker in fred_tickers:
             df = fetch_fred_api(session, ticker, start_dt, end_dt, fred_api_key)
             if not df.empty:
@@ -231,7 +232,8 @@ def update_macro_indicators() -> None:
     merged_df = pd.concat(dfs, axis=1, sort=False)
     merged_df.sort_index(inplace=True)
     merged_df.ffill(inplace=True)
-    # Removed structural backfilling to prevent look-ahead bias
+    
+    # Phase 1 Remediation: Lookahead bias removed. No .bfill() is applied here.
     
     records = []
     for dt, row in merged_df.iterrows():
@@ -242,7 +244,7 @@ def update_macro_indicators() -> None:
             float(row['BAMLH0A0HYM2']) if 'BAMLH0A0HYM2' in row and pd.notna(row['BAMLH0A0HYM2']) else None,
             float(row['T10Y2Y']) if 'T10Y2Y' in row and pd.notna(row['T10Y2Y']) else None,
             float(row['LPMVWNM']) if 'LPMVWNM' in row and pd.notna(row['LPMVWNM']) else None,
-            float(row['BAMLC4A0C7PYEY']) if 'BAMLC4A0C7PYEY' in row and pd.notna(row['BAMLC4A0C7PYEY']) else None,
+            float(row['BAMLC0A0CM']) if 'BAMLC0A0CM' in row and pd.notna(row['BAMLC0A0CM']) else None,
             float(row['D7G7']) if 'D7G7' in row and pd.notna(row['D7G7']) else None,
             float(row['BCJD']) if 'BCJD' in row and pd.notna(row['BCJD']) else None
         ))
