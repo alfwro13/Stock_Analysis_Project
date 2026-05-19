@@ -25,7 +25,8 @@ from visuals import (
     create_us_liquidity_chart,
     create_us_credit_chart,
     create_uk_liquidity_chart,
-    create_uk_credit_chart
+    create_uk_credit_chart,
+    create_yield_curve_chart
 )
 from portfolio_service import get_rate_to_base, get_rate_from_base
 from quant_signals import get_candlestick_patterns
@@ -125,11 +126,12 @@ async def market_sentiment_page(request: Request):
                 df_us_hy = df_indicators[['us_high_yield_spread']].rename(columns={'us_high_yield_spread': 'value'}).dropna().sort_index() if 'us_high_yield_spread' in df_indicators.columns else pd.DataFrame()
                 df_m4 = df_indicators[['uk_m4']].rename(columns={'uk_m4': 'value'}).dropna().sort_index() if 'uk_m4' in df_indicators.columns else pd.DataFrame()
                 df_uk_ig = df_indicators[['uk_corporate_spread']].rename(columns={'uk_corporate_spread': 'value'}).dropna().sort_index() if 'uk_corporate_spread' in df_indicators.columns else pd.DataFrame()
+                df_yield_curve = df_indicators[['us_yield_curve']].rename(columns={'us_yield_curve': 'value'}).dropna().sort_index() if 'us_yield_curve' in df_indicators.columns else pd.DataFrame()
             else:
-                df_m2, df_us_hy, df_m4, df_uk_ig = pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+                df_m2, df_us_hy, df_m4, df_uk_ig, df_yield_curve = pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
         except Exception as e:
             print(f"[DEBUG] Error processing macro indicators matrix: {e}")
-            df_m2, df_us_hy, df_m4, df_uk_ig = pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+            df_m2, df_us_hy, df_m4, df_uk_ig, df_yield_curve = pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
         # Safely fetch baseline SPY & FTSE prices
         try:
@@ -147,6 +149,7 @@ async def market_sentiment_page(request: Request):
         us_credit_html = create_us_credit_chart(df_us_hy)
         uk_liquidity_html = create_uk_liquidity_chart(df_ftse, df_m4)
         uk_credit_html = create_uk_credit_chart(df_uk_ig)
+        yield_curve_html = create_yield_curve_chart(df_yield_curve)
 
     except Exception as e:
         print(f"[DEBUG] Fatal error in market_sentiment route: {e}")
@@ -158,6 +161,7 @@ async def market_sentiment_page(request: Request):
         us_credit_html = "<p>Data unavailable.</p>"
         uk_liquidity_html = "<p>Data unavailable.</p>"
         uk_credit_html = "<p>Data unavailable.</p>"
+        yield_curve_html = "<p>Data unavailable.</p>"
     finally:
         conn.close()
         
@@ -174,6 +178,7 @@ async def market_sentiment_page(request: Request):
             "us_credit_html": us_credit_html,
             "uk_liquidity_html": uk_liquidity_html,
             "uk_credit_html": uk_credit_html,
+            "yield_curve_html": yield_curve_html,
             "regime_data": regime_data,
             "macro_regime": macro_regime,
             "urgent_events": urgent_events,

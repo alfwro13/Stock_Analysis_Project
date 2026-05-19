@@ -7,6 +7,16 @@
     <link rel="stylesheet" href="/static/css/styles.css?v=2.0">
     <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.css">
     <style>
+        @keyframes pulse-red {
+            0% { box-shadow: 0 0 0 0 rgba(255, 77, 77, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(255, 77, 77, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(255, 77, 77, 0); }
+        }
+        @keyframes pulse-yellow {
+            0% { box-shadow: 0 0 0 0 rgba(255, 170, 0, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(255, 170, 0, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(255, 170, 0, 0); }
+        }
         .macro-banner {
             padding: 15px;
             margin: 20px auto;
@@ -20,11 +30,13 @@
             background-color: rgba(255, 77, 77, 0.2);
             border: 1px solid #ff4d4d;
             color: #ff4d4d;
+            animation: pulse-red 2s infinite;
         }
         .macro-banner-yellow {
             background-color: rgba(255, 170, 0, 0.2);
             border: 1px solid #ffaa00;
             color: #ffaa00;
+            animation: pulse-yellow 2s infinite;
         }
         .calendar-table-wrapper {
             margin-top: 20px;
@@ -171,6 +183,18 @@
                 <span class="sentiment-footer-title">US Cost of Capital Explained:</span>
                 <div class="sentiment-footer-text">
                     As the <span class="sentiment-highlight">10-Year Treasury Yield</span> rises, the risk-free rate increases. This exerts downward pressure on equity valuation multiples (P/E ratios) because future corporate cash flows are discounted at a higher rate. A strong negative correlation means high-multiple tech stocks are highly likely to compress when the red dotted line spikes. Conversely, falling yields often act as a tailwind for long-duration equities.
+                </div>
+            </div>
+
+            <div id="us-yield-curve-wrapper" class="chart-wrapper">
+                <button class="fullscreen-btn" onclick="toggleFullscreen('us-yield-curve-wrapper')">⛶ Fullscreen</button>
+                {{ yield_curve_html | safe }}
+            </div>
+            
+            <div class="sentiment-footer">
+                <span class="sentiment-footer-title">Yield Curve Radar (T10Y2Y) Explained:</span>
+                <div class="sentiment-footer-text">
+                    This charts the spread between the 10-Year and 2-Year US Treasuries. A healthy economy has a positive, upward-sloping curve. If the curve <span class="sentiment-extreme">inverts (drops below zero into the red zone)</span>, it signals extreme systemic stress and is widely considered Wall Street's most historically accurate leading indicator of an impending recession.
                 </div>
             </div>
 
