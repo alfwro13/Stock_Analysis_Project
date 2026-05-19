@@ -177,7 +177,7 @@ class QuantEngine:
         """
         Runs the combined Technical and Fundamental analysis.
         NOTE: Any new mathematical scoring rules added below MUST be documented in the glossary.
-        Gracefully handles missing historical data (e.g., Mutual Funds).
+        Gracefully handles missing historical data and filters trailing NaNs for funds/ETFs.
         """
         try:
             df = self.load_parquet(ticker)
@@ -228,22 +228,41 @@ class QuantEngine:
                 df['MA_50'] = df['Close'].rolling(window=50).mean()
                 df['MA_200'] = df['Close'].rolling(window=200).mean()
                 
-                ma5 = df['MA_5'].iloc[-1] if not pd.isna(df['MA_5'].iloc[-1]) else None
-                ma10 = df['MA_10'].iloc[-1] if not pd.isna(df['MA_10'].iloc[-1]) else None
-                ma21 = df['MA_21'].iloc[-1] if not pd.isna(df['MA_21'].iloc[-1]) else None
-                ma50 = df['MA_50'].iloc[-1] if not pd.isna(df['MA_50'].iloc[-1]) else None
-                ma200 = df['MA_200'].iloc[-1] if not pd.isna(df['MA_200'].iloc[-1]) else None
+                # Filter out any trailing NaNs caused by dividend distribution rows
+                valid_ma5 = df['MA_5'].dropna()
+                valid_ma10 = df['MA_10'].dropna()
+                valid_ma21 = df['MA_21'].dropna()
+                valid_ma50 = df['MA_50'].dropna()
+                valid_ma200 = df['MA_200'].dropna()
+
+                # Extract last valid technical metrics
+                ma5 = valid_ma5.iloc[-1] if not valid_ma5.empty else None
+                ma10 = valid_ma10.iloc[-1] if not valid_ma10.empty else None
+                ma21 = valid_ma21.iloc[-1] if not valid_ma21.empty else None
+                ma50 = valid_ma50.iloc[-1] if not valid_ma50.empty else None
+                ma200 = valid_ma200.iloc[-1] if not valid_ma200.empty else None
                 
-                trend_50d = "UP" if ma50 and len(df) >= 60 and ma50 > df['MA_50'].iloc[-10] else "DOWN"
-                trend_200d = "UP" if ma200 and len(df) >= 220 and ma200 > df['MA_200'].iloc[-20] else "DOWN"
+                # Bulletproof Trend Direction Checks using sanitized series lengths
+                if not valid_ma50.empty and len(valid_ma50) >= 10:
+                    trend_50d = "UP" if valid_ma50.iloc[-1] > valid_ma50.iloc[-10] else "DOWN"
+                else:
+                    trend_50d = "DOWN"
+
+                if not valid_ma200.empty and len(valid_ma200) >= 20:
+                    trend_200d = "UP" if valid_ma200.iloc[-1] > valid_ma200.iloc[-20] else "DOWN"
+                else:
+                    trend_200d = "DOWN"
 
                 df['RSI'] = ta.momentum.RSIIndicator(close=df['Close'], window=14).rsi()
-                rsi_val = df['RSI'].iloc[-1]
+                rsi_series_clean = df['RSI'].dropna()
+                rsi_val = rsi_series_clean.iloc[-1] if not rsi_series_clean.empty else None
                 
                 if 'High' in df.columns and 'Low' in df.columns:
                     df['ATR'] = ta.volatility.AverageTrueRange(high=df['High'], low=df['Low'], close=df['Close'], window=14).average_true_range()
-                    atr_val = df['ATR'].iloc[-1]
-                    stop_loss = current_price - (2.0 * atr_val) if not pd.isna(atr_val) else None
+                    atr_series_clean = df['ATR'].dropna()
+                    if not rsi_series_clean.empty and current_price:
+                        atr_val = atr_series_clean.iloc[-1]
+                        stop_loss = current_price - (2.0 * atr_val) if not pd.isna(atr_val) else None
 
                 if 'Volume' in df.columns and not df['Volume'].isna().all():
                     df['OBV'] = ta.volume.OnBalanceVolumeIndicator(close=df['Close'], volume=df['Volume']).on_balance_volume()
@@ -270,7 +289,6 @@ class QuantEngine:
                             is_market_leader = True
             else:
                 logger.warning(f"[PARTIAL SKIP] Insufficient historical data for {ticker}. Proceeding with fundamental analysis only.")
-                # Fallback for current price if history is missing (critical for portfolio P&L rendering)
                 current_price = info.get('navPrice') or info.get('regularMarketPrice') or info.get('previousClose')
 
             # ==========================================
@@ -334,7 +352,6 @@ class QuantEngine:
             tags = []
 
             if df is not None and len(df) >= 21:
-                # Tag: Algorithmic Candlestick Pattern Injection
                 if not is_fund and len(df) >= 3 and 'Open' in df.columns:
                     candlestick_patterns = get_candlestick_patterns(df.iloc[-3], df.iloc[-2], df.iloc[-1])
                     for pattern in candlestick_patterns:
@@ -342,7 +359,6 @@ class QuantEngine:
                         breakdown.append(pattern["breakdown"])
                         score += pattern["score"]
 
-                # Tag: MACD Reversal
                 if df['MACD_Line'].iloc[-1] > df['MACD_Signal'].iloc[-1] and df['MACD_Line'].iloc[-2] <= df['MACD_Signal'].iloc[-2]:
                     if df['MACD_Line'].iloc[-1] < 0 and rsi_val is not None and rsi_val > 30:
                         tags.append({
@@ -350,9 +366,8 @@ class QuantEngine:
                             "tooltip": "The MACD momentum line just crossed positive from below the zero line."
                         })
                         score += 10
-                        breakdown.append("+10: <abbr title='MACD just crossed positive from below the zero line.'>MACD Golden Reversal</abbr>")
+                        breakdown.append("+10: <abbr title='MACD Golden Reversal'>MACD Golden Reversal</abbr>")
 
-                # Tag: VCP Breakout
                 if is_tight and is_dry_volume and not is_fund:
                     tags.append({"name": "🔥 VCP Breakout", "tooltip": "Volatility Contraction Pattern."})
                     score += 20
@@ -361,7 +376,6 @@ class QuantEngine:
                     score += 10
                     breakdown.append("+10: 3-Weeks-Tight")
 
-                # Tag: Market Leader
                 if is_market_leader and rs_slope > 0:
                     tags.append({"name": "👑 Market Leader", "tooltip": "Relative Strength slope is sharply up."})
                     score += 15
@@ -392,13 +406,12 @@ class QuantEngine:
                     breakdown.append("+20: OBV Bullish / Fund Exemption")
 
                 if is_bearish_divergence and not is_fund:
-                    tags.append({"name": "🚨 Divergence Warning", "tooltip": "Price made a higher high, but RSI made a lower high."})
+                    tags.append({"name": "🚨 Divergence Warning", "tooltip": "Price higher high, RSI lower high."})
                     score -= 30
                     breakdown.append("-30: Algorithmic Bearish Divergence")
             else:
                 breakdown.append("+0: Technical indicators skipped (Insufficient Historical Data)")
 
-            # Keep score strictly bounded between 0 and 100
             score = max(0, min(score, 100))
 
             if score >= 80: signal = "STRONG BUY"
@@ -406,7 +419,6 @@ class QuantEngine:
             elif score >= 40: signal = "NEUTRAL"
             else: signal = "BEARISH / CAUTION"
 
-            # Construct Educational Notes
             notes_html = "<strong>Algorithmic Breakdown:</strong><br><ul style='margin-top: 5px; margin-bottom: 15px; font-size: 15px; color: #ccc; padding-left: 20px;'>"
             for item in breakdown:
                 notes_html += f"<li style='margin-bottom: 5px;'>{item}</li>"
@@ -418,7 +430,6 @@ class QuantEngine:
             if not is_fund and rsi_val is not None and rsi_val > 70.0:
                 notes_html += "<strong><span style='color: #ff4d4d;'>Warning:</span></strong> Stock is technically overbought (RSI > 70).<br>"
 
-            # Save to DB (JSON dumping the array of dictionaries)
             tags_json = json.dumps(tags)
             
             self.save_to_db(
