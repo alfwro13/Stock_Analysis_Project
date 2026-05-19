@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from typing import Optional, List, Dict
+from config import load_config
 
 # Configure module-level logging
 logging.basicConfig(
@@ -188,11 +189,12 @@ def update_macro_indicators() -> None:
     Master pipeline: Aggregates FRED, BoE, and ONS data. Aligns daily, weekly, 
     and monthly structural indices using a forward-fill mechanism, then upserts.
     """
-    # Environment config
-    fred_api_key = os.environ.get("FRED_API_KEY")
+    # Load configuration dynamically to extract API Keys
+    config = load_config()
+    fred_api_key = config.get("FRED_API_KEY")
     if not fred_api_key:
-        logger.error("FRED_API_KEY environment variable not set. Aborting engine run.")
-        return
+        logger.error("FRED_API_KEY is not configured in settings. Aborting FRED API fetch.")
+        # We will continue the execution to fetch BoE and ONS even if FRED fails
 
     setup_database()
     
@@ -200,16 +202,18 @@ def update_macro_indicators() -> None:
     start_dt = end_dt - timedelta(days=90) # Trailing 90 days to capture quarterly/monthly lags
     session = get_retry_session()
     
-    # 1. Fetch FRED Data (US + UK Corporate Credit)
-    # WM2NS: US M2, ICSA: US Jobless Claims, BAMLH0A0HYM2: US HY Spread, BAMLC0A0CM: UK Corporate Spread
-    logger.info("Fetching FRED Institutional Data...")
-    fred_tickers = ['WM2NS', 'ICSA', 'BAMLH0A0HYM2', 'BAMLC0A0CM']
     dfs = []
-    
-    for ticker in fred_tickers:
-        df = fetch_fred_api(session, ticker, start_dt, end_dt, fred_api_key)
-        if not df.empty:
-            dfs.append(df)
+
+    # 1. Fetch FRED Data (US + UK Corporate Credit)
+    if fred_api_key:
+        logger.info("Fetching FRED Institutional Data...")
+        # WM2NS: US M2, ICSA: US Jobless Claims, BAMLH0A0HYM2: US HY Spread, BAMLC0A0CM: UK Corporate Spread
+        fred_tickers = ['WM2NS', 'ICSA', 'BAMLH0A0HYM2', 'BAMLC0A0CM']
+        
+        for ticker in fred_tickers:
+            df = fetch_fred_api(session, ticker, start_dt, end_dt, fred_api_key)
+            if not df.empty:
+                dfs.append(df)
             
     # 2. Fetch Bank of England (UK Broad Money)
     logger.info("Fetching Bank of England IADB Data...")

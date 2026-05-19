@@ -35,6 +35,7 @@ DEFAULT_CONFIG = {
     "SERVER_URL": "http://localhost",
     "GHOSTFOLIO_URL": "",
     "API_TOKEN": "",
+    "FRED_API_KEY": "",
     "PORT": 8090,
     "BASE_CURRENCY": "GBP",
     "IGNORED_TICKERS": ["GBP", "USD", "EUR"],

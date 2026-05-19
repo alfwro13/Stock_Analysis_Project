@@ -570,6 +570,15 @@
                 </div>
             </div>
         </details>
+        
+        <details class="settings-card">
+            <summary>🏦 Macroeconomic Data API (FRED)</summary>
+            <p style="font-size: 13px; color: #aaa; margin-top: 0; margin-bottom: 15px;">The Federal Reserve Economic Data (FRED) API is required to fetch structural macroeconomic indicators like M2 Money Supply and High Yield Spreads. Get a free API key at <a href="https://fred.stlouisfed.org/docs/api/api_key.html" target="_blank" style="color: #00ffcc;">fred.stlouisfed.org</a>.</p>
+            <div class="form-group">
+                <label>FRED API Key</label>
+                <input type="password" id="FRED_API_KEY" value="{{ config.FRED_API_KEY | default('') }}">
+            </div>
+        </details>
 
         <details class="settings-card">
             <summary>🌐 Core System & Currencies</summary>
@@ -1109,6 +1118,7 @@
                 "IGNORED_TICKERS": document.getElementById('IGNORED_TICKERS').value.split(',').map(s => s.trim()).filter(Boolean),
                 "GHOSTFOLIO_URL": document.getElementById('GHOSTFOLIO_URL').value,
                 "API_TOKEN": document.getElementById('API_TOKEN').value,
+                "FRED_API_KEY": document.getElementById('FRED_API_KEY').value,
                 "GHOSTFOLIO_ACCOUNTS": {
                     "discovered": currentDiscoveredAccounts, 
                     "active": activeAccounts
