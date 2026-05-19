@@ -22,21 +22,29 @@
             margin: 20px auto;
             width: 95%;
             border-radius: 8px;
-            text-align: center;
-            font-weight: bold;
-            font-size: 16px;
+            font-size: 15px;
         }
         .macro-banner-red {
-            background-color: rgba(255, 77, 77, 0.2);
+            background-color: rgba(255, 77, 77, 0.1);
             border: 1px solid #ff4d4d;
-            color: #ff4d4d;
             animation: pulse-red 2s infinite;
         }
         .macro-banner-yellow {
-            background-color: rgba(255, 170, 0, 0.2);
+            background-color: rgba(255, 170, 0, 0.1);
             border: 1px solid #ffaa00;
-            color: #ffaa00;
             animation: pulse-yellow 2s infinite;
+        }
+        .urgent-event-row {
+            background-color: rgba(0, 0, 0, 0.4);
+            padding: 10px 15px;
+            border-radius: 6px;
+            border-left: 4px solid #ff4d4d;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+        }
+        .urgent-event-row:last-child {
+            margin-bottom: 0;
         }
         .calendar-table-wrapper {
             margin-top: 20px;
@@ -78,10 +86,26 @@
 
     {% if urgent_events %}
     <div class="macro-banner {% if global_threat == 'RED' or macro_regime.us_threat_level == 'RED' %}macro-banner-red{% else %}macro-banner-yellow{% endif %}">
-        ⚠️ URGENT MACRO EVENTS (Next 48 Hours): 
-        {% for evt in urgent_events %}
-            [{{ evt.event_date }}] {{ evt.event_name }} (Est: {{ evt.forecast_val }} | Prev: {{ evt.previous_val }}){% if not loop.last %} • {% endif %}
-        {% endfor %}
+        <div style="margin-bottom: 15px; font-weight: bold; color: {% if global_threat == 'RED' or macro_regime.us_threat_level == 'RED' %}#ff4d4d{% else %}#ffaa00{% endif %};">
+            ⚠️ URGENT TIER-1 MACRO EVENTS (Next 48 Hours)
+        </div>
+        <div style="display: flex; flex-direction: column;">
+            {% for evt in urgent_events %}
+            <div class="urgent-event-row">
+                <span style="color: #ccc; font-family: monospace; font-size: 13px; width: 160px;">[{{ evt.event_date }}]</span>
+                <span style="margin-left: 10px; font-weight: bold; color: #fff; flex: 1;">
+                    {% if evt.context %}
+                        <abbr title="{{ evt.context }}" style="text-decoration: underline dotted #666; cursor: help;">{{ evt.event_name }}</abbr>
+                    {% else %}
+                        {{ evt.event_name }}
+                    {% endif %}
+                </span>
+                <span style="color: #aaa; font-size: 13px;">
+                    Est: <span style="color: #fff;">{{ evt.forecast_val }}</span> | Prev: <span style="color: #fff;">{{ evt.previous_val }}</span>
+                </span>
+            </div>
+            {% endfor %}
+        </div>
     </div>
     {% endif %}
 
@@ -234,8 +258,14 @@
                     <tbody>
                         {% for row in us_events %}
                         <tr>
-                            <td>{{ row.event_date }}</td>
-                            <td>{{ row.event_name }}</td>
+                            <td style="font-family: monospace; font-size: 13px;">{{ row.event_date }}</td>
+                            <td style="font-weight: bold;">
+                                {% if row.context %}
+                                    <abbr title="{{ row.context }}" style="text-decoration: underline dotted #666; cursor: help; color: #fff;">{{ row.event_name }}</abbr>
+                                {% else %}
+                                    {{ row.event_name }}
+                                {% endif %}
+                            </td>
                             <td class="{% if row.forecast_val and row.previous_val and row.forecast_val > row.previous_val %}warning-text{% endif %}">
                                 {{ row.forecast_val }}
                             </td>
@@ -310,8 +340,14 @@
                     <tbody>
                         {% for row in uk_events %}
                         <tr>
-                            <td>{{ row.event_date }}</td>
-                            <td>{{ row.event_name }}</td>
+                            <td style="font-family: monospace; font-size: 13px;">{{ row.event_date }}</td>
+                            <td style="font-weight: bold;">
+                                {% if row.context %}
+                                    <abbr title="{{ row.context }}" style="text-decoration: underline dotted #666; cursor: help; color: #fff;">{{ row.event_name }}</abbr>
+                                {% else %}
+                                    {{ row.event_name }}
+                                {% endif %}
+                            </td>
                             <td class="{% if row.forecast_val and row.previous_val and row.forecast_val > row.previous_val %}warning-text{% endif %}">
                                 {{ row.forecast_val }}
                             </td>

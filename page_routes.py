@@ -1,8 +1,9 @@
 # page_routes.py
 import json
+import re
 import pandas as pd
 from datetime import datetime, timedelta
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -56,6 +57,33 @@ def get_unread_count() -> int:
         return 0
 
 
+# --- MACRO GLOSSARY MAPPING ---
+# Used to dynamically translate ForexFactory jargon into actionable institutional intelligence.
+EVENT_GLOSSARY = {
+    r"\bcpi\b": "Consumer Price Index (Inflation). Higher than expected is bearish for stocks, as it forces Central Banks to keep interest rates high.",
+    r"\bpmi\b": "Purchasing Managers' Index. A leading indicator of economic health. >50.0 indicates expansion; <50.0 indicates contraction/recession.",
+    r"claimant count": "UK Unemployment. The change in the number of people claiming jobless benefits. A rising number indicates economic weakness.",
+    r"\bfomc\b": "Federal Open Market Committee. The Fed's policy-making body. Their rate decisions and tone dictate global liquidity.",
+    r"\bgdp\b": "Gross Domestic Product. The total value of goods produced. High GDP is bullish, but too hot can trigger inflation fears.",
+    r"non-farm|nfp": "Non-Farm Payrolls. US employment data. Strong jobs data can be bearish if it forces the Fed to keep rates high to cool the economy.",
+    r"retail sales": "Measures consumer spending. A primary driver of economic growth.",
+    r"\bboe\b": "Bank of England. The UK's central bank, responsible for setting interest rates and monetary policy.",
+    r"unemployment rate": "Percentage of the total labor force that is unemployed. Rising unemployment is a recessionary signal but may force central banks to cut rates (dovish).",
+    r"jobless claims": "Number of individuals filing for unemployment insurance for the first time. A leading indicator of labor market health."
+}
+
+def enrich_macro_events(events_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Scans event names against the glossary to append tooltips for the frontend."""
+    for evt in events_list:
+        evt_name = evt.get('event_name', '')
+        evt['context'] = None
+        for pattern, context_text in EVENT_GLOSSARY.items():
+            if re.search(pattern, evt_name, re.IGNORECASE):
+                evt['context'] = context_text
+                break
+    return events_list
+
+
 @page_router.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request):
     config_data = load_config()
@@ -79,7 +107,7 @@ async def market_sentiment_page(request: Request):
         macro_row = cursor.fetchone()
         macro_regime = dict(macro_row) if macro_row else None
         
-        # --- Phase 3: Macroeconomic Event Routing ---
+        # --- Macroeconomic Event Routing ---
         now = datetime.now()
         
         # Start the lookup from the beginning of TODAY to ensure events from earlier this morning appear.
@@ -95,7 +123,7 @@ async def market_sentiment_page(request: Request):
             WHERE event_date BETWEEN ? AND ? 
             ORDER BY event_date ASC
         """, (now_str, horizon_48h))
-        urgent_events = [dict(row) for row in cursor.fetchall()]
+        urgent_events = enrich_macro_events([dict(row) for row in cursor.fetchall()])
 
         # Fetch US 7-Day Calendar
         cursor.execute("""
@@ -103,7 +131,7 @@ async def market_sentiment_page(request: Request):
             WHERE currency = 'USD' AND event_date BETWEEN ? AND ? 
             ORDER BY event_date ASC
         """, (now_str, horizon_7d))
-        us_events = [dict(row) for row in cursor.fetchall()]
+        us_events = enrich_macro_events([dict(row) for row in cursor.fetchall()])
 
         # Fetch UK 7-Day Calendar
         cursor.execute("""
@@ -111,7 +139,7 @@ async def market_sentiment_page(request: Request):
             WHERE currency = 'GBP' AND event_date BETWEEN ? AND ? 
             ORDER BY event_date ASC
         """, (now_str, horizon_7d))
-        uk_events = [dict(row) for row in cursor.fetchall()]
+        uk_events = enrich_macro_events([dict(row) for row in cursor.fetchall()])
 
         # Process Historical DataFrame Indicators
         try:
