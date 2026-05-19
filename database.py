@@ -238,6 +238,9 @@ def init_db() -> None:
                 event_name TEXT,
                 forecast_val REAL,
                 previous_val REAL,
+                actual_val REAL,
+                post_event_spy_gap REAL,
+                ai_volatility_warning REAL DEFAULT 0.0,
                 is_event_passed BOOLEAN DEFAULT 0,
                 alert_dispatched BOOLEAN DEFAULT 0
             )
@@ -250,6 +253,7 @@ def init_db() -> None:
                 us_m2 REAL,
                 us_jobless_claims REAL,
                 us_high_yield_spread REAL,
+                us_yield_curve REAL,
                 uk_m4 REAL,
                 uk_corporate_spread REAL,
                 uk_cpi_inflation REAL,
@@ -385,39 +389,40 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
                 logger.error(f"[MIGRATION ERROR] Failed on macro_regimes: {e}")
                 continue
 
-    # 6. Migrate macro_calendar
+    # 6. Migrate macro_calendar (PHASE 1 UPGRADES)
     cursor.execute("PRAGMA table_info(macro_calendar)")
     existing_calendar_columns = [info['name'] for info in cursor.fetchall()]
 
     required_calendar_columns = {
         'event_date': 'TIMESTAMP', 'currency': 'TEXT', 'impact': 'TEXT',
         'event_name': 'TEXT', 'forecast_val': 'REAL', 'previous_val': 'REAL',
+        'actual_val': 'REAL', 'post_event_spy_gap': 'REAL', 'ai_volatility_warning': 'REAL DEFAULT 0.0',
         'is_event_passed': 'BOOLEAN DEFAULT 0', 'alert_dispatched': 'BOOLEAN DEFAULT 0'
     }
 
     for col_name, data_type in required_calendar_columns.items():
         if col_name not in existing_calendar_columns:
             try:
-                logger.info(f"[MIGRATION] Adding missing column '{col_name}' to macro_calendar...")
+                logger.info(f"[MIGRATION] Adding Phase 1 ML column '{col_name}' to macro_calendar...")
                 cursor.execute(f"ALTER TABLE macro_calendar ADD COLUMN {col_name} {data_type}")
             except Exception as e:
                 logger.error(f"[MIGRATION ERROR] Failed on macro_calendar: {e}")
                 continue
 
-    # 7. Migrate macro_indicators
+    # 7. Migrate macro_indicators (PHASE 1 UPGRADES)
     cursor.execute("PRAGMA table_info(macro_indicators)")
     existing_indicator_columns = [info['name'] for info in cursor.fetchall()]
 
     required_indicator_columns = {
         'us_m2': 'REAL', 'us_jobless_claims': 'REAL', 'us_high_yield_spread': 'REAL',
-        'uk_m4': 'REAL', 'uk_corporate_spread': 'REAL',
+        'us_yield_curve': 'REAL', 'uk_m4': 'REAL', 'uk_corporate_spread': 'REAL',
         'uk_cpi_inflation': 'REAL', 'uk_claimant_count': 'REAL'
     }
 
     for col_name, data_type in required_indicator_columns.items():
         if col_name not in existing_indicator_columns:
             try:
-                logger.info(f"[MIGRATION] Adding missing column '{col_name}' to macro_indicators...")
+                logger.info(f"[MIGRATION] Adding Phase 1 Yield Curve column '{col_name}' to macro_indicators...")
                 cursor.execute(f"ALTER TABLE macro_indicators ADD COLUMN {col_name} {data_type}")
             except Exception as e:
                 logger.error(f"[MIGRATION ERROR] Failed on macro_indicators: {e}")
@@ -467,7 +472,6 @@ def upsert_quant_signal(
 ) -> bool:
     """
     Centralized, highly-typed function to insert or update daily quantitative signals.
-    Gracefully accepts newly integrated Machine Learning and Risk (VaR) parameters.
     Returns True on success, False on failure.
     """
     try:

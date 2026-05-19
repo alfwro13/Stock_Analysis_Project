@@ -1,3 +1,4 @@
+# macro_data_engine.py
 import os
 import sqlite3
 import logging
@@ -46,6 +47,7 @@ def setup_database() -> None:
             us_m2 REAL,
             us_jobless_claims REAL,
             us_high_yield_spread REAL,
+            us_yield_curve REAL,
             uk_m4 REAL,
             uk_corporate_spread REAL,
             uk_cpi_inflation REAL,
@@ -134,7 +136,7 @@ def fetch_boe_data(session: requests.Session, series_code: str, start_date: date
         df.dropna(subset=['DATE'], inplace=True)
         df.set_index('DATE', inplace=True)
         
-        # Defensive renaming mechanism: Try finding it as substring, if fails rename the only value column
+        # Defensive renaming mechanism
         df.rename(columns={col: series_code for col in df.columns if series_code in col}, inplace=True)
         if series_code in df.columns:
             return df[[series_code]]
@@ -171,7 +173,6 @@ def fetch_ons_taxonomy_data(session: requests.Session, series_id: str, start_dat
             val = obs.get('value')
             if raw_date and val:
                 try:
-                    # Roll ONS "YYYY MMM" format to Month End for database alignment
                     dt = pd.to_datetime(raw_date, format='%Y %b') + pd.offsets.MonthEnd(1)
                     if dt >= start_date:
                         records.append({'DATE': dt, series_id: float(val)})
@@ -203,7 +204,6 @@ def update_macro_indicators() -> None:
     setup_database()
     
     end_dt = datetime.now()
-    # UPGRADE: Extended to 730 days (2 years) to provide deep history for AI Clustering
     start_dt = end_dt - timedelta(days=730) 
     session = get_retry_session()
     
@@ -211,8 +211,8 @@ def update_macro_indicators() -> None:
 
     if fred_api_key:
         logger.info("Fetching FRED Institutional Data (2-Year History)...")
-        # REVERTED: Restored BAMLC0A0CM (US Corporate Master) as proxy because FRED does not offer the Sterling index for free.
-        fred_tickers = ['WM2NS', 'ICSA', 'BAMLH0A0HYM2', 'BAMLC0A0CM']
+        # Added T10Y2Y to map the Yield Curve
+        fred_tickers = ['WM2NS', 'ICSA', 'BAMLH0A0HYM2', 'BAMLC0A0CM', 'T10Y2Y']
         for ticker in fred_tickers:
             df = fetch_fred_api(session, ticker, start_dt, end_dt, fred_api_key)
             if not df.empty:
@@ -235,19 +235,17 @@ def update_macro_indicators() -> None:
 
     merged_df = pd.concat(dfs, axis=1, sort=False)
     merged_df.sort_index(inplace=True)
-    # FIX: Applying both forward and backward filling to ensure initial monthly gaps (like BoE and ONS) are covered
     merged_df.ffill(inplace=True)
     merged_df.bfill(inplace=True) 
     
-    # UPGRADE: Bulk Insert the entire time-series matrix instead of just iloc[-1]
     records = []
     for dt, row in merged_df.iterrows():
-        # Defensive check to ensure columns are present to avoid KeyError exceptions on skipped APIs
         records.append((
             dt.strftime("%Y-%m-%d"),
             float(row['WM2NS']) if 'WM2NS' in row and pd.notna(row['WM2NS']) else None,
             float(row['ICSA']) if 'ICSA' in row and pd.notna(row['ICSA']) else None,
             float(row['BAMLH0A0HYM2']) if 'BAMLH0A0HYM2' in row and pd.notna(row['BAMLH0A0HYM2']) else None,
+            float(row['T10Y2Y']) if 'T10Y2Y' in row and pd.notna(row['T10Y2Y']) else None,
             float(row['LPMVWNM']) if 'LPMVWNM' in row and pd.notna(row['LPMVWNM']) else None,
             float(row['BAMLC0A0CM']) if 'BAMLC0A0CM' in row and pd.notna(row['BAMLC0A0CM']) else None,
             float(row['D7G7']) if 'D7G7' in row and pd.notna(row['D7G7']) else None,
@@ -260,9 +258,9 @@ def update_macro_indicators() -> None:
     try:
         cursor.executemany('''
             INSERT OR REPLACE INTO macro_indicators (
-                date, us_m2, us_jobless_claims, us_high_yield_spread, 
+                date, us_m2, us_jobless_claims, us_high_yield_spread, us_yield_curve,
                 uk_m4, uk_corporate_spread, uk_cpi_inflation, uk_claimant_count
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', records)
         conn.commit()
         logger.info(f"Successfully bulk-upserted {cursor.rowcount} Macro Regime historical days for AI Training.")
