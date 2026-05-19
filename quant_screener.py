@@ -128,8 +128,10 @@ def filter_macro_vetoes(setups: List[Dict[str, Any]], threat_level: str) -> Tupl
         cursor.execute("SELECT us_high_yield_spread, uk_corporate_spread FROM macro_indicators ORDER BY date DESC LIMIT 1")
         row = cursor.fetchone()
         if row:
-            us_spread = float(row.get('us_high_yield_spread') or 0.0)
-            uk_spread = float(row.get('uk_corporate_spread') or 0.0)
+            # FIX: Cast sqlite3.Row to dict to use .get()
+            row_dict = dict(row)
+            us_spread = float(row_dict.get('us_high_yield_spread') or 0.0)
+            uk_spread = float(row_dict.get('uk_corporate_spread') or 0.0)
     except Exception as e:
         logger.error(f"Failed to fetch credit spreads for circuit breaker: {e}")
     finally:
