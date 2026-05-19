@@ -177,14 +177,11 @@ class QuantEngine:
         """
         Runs the combined Technical and Fundamental analysis.
         NOTE: Any new mathematical scoring rules added below MUST be documented in the glossary.
+        Gracefully handles missing historical data (e.g., Mutual Funds).
         """
         try:
             df = self.load_parquet(ticker)
             info = self.load_fundamentals(ticker)
-            
-            if df is None or len(df) < 21:
-                logger.warning(f"[SKIP] Not enough historical data to analyze {ticker} (requires at least 21 days).")
-                return
             
             # --- DYNAMIC BENCHMARK SELECTION ---
             currency = info.get('currency', 'USD')
@@ -198,7 +195,7 @@ class QuantEngine:
             
             # Mathematical Vector Correlation Math (60-Day Lookback Window)
             yield_correlation = None
-            if df_yield is not None and not df_yield.empty and len(df) >= 60:
+            if df_yield is not None and not df_yield.empty and df is not None and len(df) >= 60:
                 try:
                     yield_aligned = df_yield['Close'].reindex(df.index, method='ffill')
                     asset_returns = df['Close'].pct_change()
@@ -212,58 +209,69 @@ class QuantEngine:
             # ==========================================
             # PART 1: TECHNICAL ANALYSIS & MATH
             # ==========================================
-            current_price = df['Close'].iloc[-1]
-            
-            df['MA_5'] = df['Close'].rolling(window=5).mean()
-            df['MA_10'] = df['Close'].rolling(window=10).mean()
-            df['MA_21'] = df['Close'].rolling(window=21).mean()
-            df['MA_50'] = df['Close'].rolling(window=50).mean()
-            df['MA_200'] = df['Close'].rolling(window=200).mean()
-            
-            # Safe extraction avoiding NaNs
-            ma5 = df['MA_5'].iloc[-1] if not pd.isna(df['MA_5'].iloc[-1]) else None
-            ma10 = df['MA_10'].iloc[-1] if not pd.isna(df['MA_10'].iloc[-1]) else None
-            ma21 = df['MA_21'].iloc[-1] if not pd.isna(df['MA_21'].iloc[-1]) else None
-            ma50 = df['MA_50'].iloc[-1] if not pd.isna(df['MA_50'].iloc[-1]) else None
-            ma200 = df['MA_200'].iloc[-1] if not pd.isna(df['MA_200'].iloc[-1]) else None
-            
-            # Safe Trend Calculation protecting against bounds errors
-            trend_50d = "UP" if ma50 and len(df) >= 60 and ma50 > df['MA_50'].iloc[-10] else "DOWN"
-            trend_200d = "UP" if ma200 and len(df) >= 220 and ma200 > df['MA_200'].iloc[-20] else "DOWN"
-
-            df['RSI'] = ta.momentum.RSIIndicator(close=df['Close'], window=14).rsi()
-            rsi_val = df['RSI'].iloc[-1]
-            
-            df['ATR'] = ta.volatility.AverageTrueRange(high=df['High'], low=df['Low'], close=df['Close'], window=14).average_true_range()
-            atr_val = df['ATR'].iloc[-1]
-            stop_loss = current_price - (2.0 * atr_val) if not pd.isna(atr_val) else None
-
-            df['OBV'] = ta.volume.OnBalanceVolumeIndicator(close=df['Close'], volume=df['Volume']).on_balance_volume()
-            df['OBV_MA'] = df['OBV'].rolling(window=21).mean()
-            obv_bullish = bool(df['OBV'].iloc[-1] > df['OBV_MA'].iloc[-1]) if not pd.isna(df['OBV_MA'].iloc[-1]) else False
-
-            macd = ta.trend.MACD(close=df['Close'])
-            df['MACD_Line'] = macd.macd()
-            df['MACD_Signal'] = macd.macd_signal()
-            df['MACD_Hist'] = macd.macd_diff()
-
-            is_tight, is_dry_volume = self.calculate_vcp_breakout(df)
-            is_bearish_divergence = self.detect_bearish_divergence(df)
-
-            # Relative Strength Math
-            rs_slope = 0.0
+            current_price = None
+            ma5 = ma10 = ma21 = ma50 = ma200 = None
+            trend_50d = trend_200d = "N/A"
+            rsi_val = stop_loss = None
+            obv_bullish = False
+            is_tight = is_dry_volume = False
+            is_bearish_divergence = False
             is_market_leader = False
-            if df_baseline is not None and not df_baseline.empty:
-                baseline_aligned = df_baseline['Close'].reindex(df.index, method='ffill')
-                df['RS_Line'] = df['Close'] / baseline_aligned
-                if len(df['RS_Line'].dropna()) >= 60:
-                    y = df['RS_Line'].dropna().tail(60).values
-                    x = np.arange(len(y))
-                    slope, _ = np.polyfit(x, y, 1)
-                    rs_slope = slope
-                    # If slope is sharply up and we are near the 60-day RS High
-                    if rs_slope > 0 and df['RS_Line'].iloc[-1] >= (df['RS_Line'].tail(60).max() * 0.95):
-                        is_market_leader = True
+            rs_slope = 0.0
+
+            if df is not None and len(df) >= 21:
+                current_price = df['Close'].iloc[-1]
+                
+                df['MA_5'] = df['Close'].rolling(window=5).mean()
+                df['MA_10'] = df['Close'].rolling(window=10).mean()
+                df['MA_21'] = df['Close'].rolling(window=21).mean()
+                df['MA_50'] = df['Close'].rolling(window=50).mean()
+                df['MA_200'] = df['Close'].rolling(window=200).mean()
+                
+                ma5 = df['MA_5'].iloc[-1] if not pd.isna(df['MA_5'].iloc[-1]) else None
+                ma10 = df['MA_10'].iloc[-1] if not pd.isna(df['MA_10'].iloc[-1]) else None
+                ma21 = df['MA_21'].iloc[-1] if not pd.isna(df['MA_21'].iloc[-1]) else None
+                ma50 = df['MA_50'].iloc[-1] if not pd.isna(df['MA_50'].iloc[-1]) else None
+                ma200 = df['MA_200'].iloc[-1] if not pd.isna(df['MA_200'].iloc[-1]) else None
+                
+                trend_50d = "UP" if ma50 and len(df) >= 60 and ma50 > df['MA_50'].iloc[-10] else "DOWN"
+                trend_200d = "UP" if ma200 and len(df) >= 220 and ma200 > df['MA_200'].iloc[-20] else "DOWN"
+
+                df['RSI'] = ta.momentum.RSIIndicator(close=df['Close'], window=14).rsi()
+                rsi_val = df['RSI'].iloc[-1]
+                
+                if 'High' in df.columns and 'Low' in df.columns:
+                    df['ATR'] = ta.volatility.AverageTrueRange(high=df['High'], low=df['Low'], close=df['Close'], window=14).average_true_range()
+                    atr_val = df['ATR'].iloc[-1]
+                    stop_loss = current_price - (2.0 * atr_val) if not pd.isna(atr_val) else None
+
+                if 'Volume' in df.columns and not df['Volume'].isna().all():
+                    df['OBV'] = ta.volume.OnBalanceVolumeIndicator(close=df['Close'], volume=df['Volume']).on_balance_volume()
+                    df['OBV_MA'] = df['OBV'].rolling(window=21).mean()
+                    obv_bullish = bool(df['OBV'].iloc[-1] > df['OBV_MA'].iloc[-1]) if not pd.isna(df['OBV_MA'].iloc[-1]) else False
+
+                macd = ta.trend.MACD(close=df['Close'])
+                df['MACD_Line'] = macd.macd()
+                df['MACD_Signal'] = macd.macd_signal()
+                df['MACD_Hist'] = macd.macd_diff()
+
+                is_tight, is_dry_volume = self.calculate_vcp_breakout(df)
+                is_bearish_divergence = self.detect_bearish_divergence(df)
+
+                if df_baseline is not None and not df_baseline.empty:
+                    baseline_aligned = df_baseline['Close'].reindex(df.index, method='ffill')
+                    df['RS_Line'] = df['Close'] / baseline_aligned
+                    if len(df['RS_Line'].dropna()) >= 60:
+                        y = df['RS_Line'].dropna().tail(60).values
+                        x = np.arange(len(y))
+                        slope, _ = np.polyfit(x, y, 1)
+                        rs_slope = slope
+                        if rs_slope > 0 and df['RS_Line'].iloc[-1] >= (df['RS_Line'].tail(60).max() * 0.95):
+                            is_market_leader = True
+            else:
+                logger.warning(f"[PARTIAL SKIP] Insufficient historical data for {ticker}. Proceeding with fundamental analysis only.")
+                # Fallback for current price if history is missing (critical for portfolio P&L rendering)
+                current_price = info.get('navPrice') or info.get('regularMarketPrice') or info.get('previousClose')
 
             # ==========================================
             # PART 2: FUNDAMENTAL EXTRACTION
@@ -271,15 +279,12 @@ class QuantEngine:
             quote_type = info.get('quoteType', 'EQUITY')
             is_fund = bool(quote_type in ['ETF', 'MUTUALFUND'])
             
-            # Robust fallback for Mutual Funds which often omit 'shortName'
             company_name = info.get('shortName') or info.get('longName') or ticker
             sector = info.get('category', info.get('sector', 'Fund')) if is_fund else info.get('sector', 'Unknown')
             
-            currency = info.get('currency', 'USD')
             fifty_two_week_low = info.get('fiftyTwoWeekLow', None)
             fifty_two_week_high = info.get('fiftyTwoWeekHigh', None)
             
-            # Country Extraction & Normalization
             country_raw = info.get('country', 'Unknown')
             country = "UK" if country_raw == "United Kingdom" else ("US" if country_raw == "United States" else country_raw)
             
@@ -326,88 +331,72 @@ class QuantEngine:
             # ==========================================
             score = 0
             breakdown = []
-            tags: List[Dict[str, str]] = []
+            tags = []
 
-            # Tag: Algorithmic Candlestick Pattern Injection
-            if not is_fund and len(df) >= 3:
-                candlestick_patterns = get_candlestick_patterns(df.iloc[-3], df.iloc[-2], df.iloc[-1])
-                for pattern in candlestick_patterns:
-                    tags.append({"name": pattern["name"], "tooltip": pattern["tooltip"]})
-                    breakdown.append(pattern["breakdown"])
-                    score += pattern["score"]
+            if df is not None and len(df) >= 21:
+                # Tag: Algorithmic Candlestick Pattern Injection
+                if not is_fund and len(df) >= 3 and 'Open' in df.columns:
+                    candlestick_patterns = get_candlestick_patterns(df.iloc[-3], df.iloc[-2], df.iloc[-1])
+                    for pattern in candlestick_patterns:
+                        tags.append({"name": pattern["name"], "tooltip": pattern["tooltip"]})
+                        breakdown.append(pattern["breakdown"])
+                        score += pattern["score"]
 
-            # Tag: MACD Reversal
-            if df['MACD_Line'].iloc[-1] > df['MACD_Signal'].iloc[-1] and df['MACD_Line'].iloc[-2] <= df['MACD_Signal'].iloc[-2]:
-                if df['MACD_Line'].iloc[-1] < 0 and rsi_val > 30:
-                    tags.append({
-                        "name": "⚡ MACD Reversal", 
-                        "tooltip": "The MACD momentum line just crossed positive from below the zero line. This is an early indicator that a downtrend is mathematically exhausting itself."
-                    })
+                # Tag: MACD Reversal
+                if df['MACD_Line'].iloc[-1] > df['MACD_Signal'].iloc[-1] and df['MACD_Line'].iloc[-2] <= df['MACD_Signal'].iloc[-2]:
+                    if df['MACD_Line'].iloc[-1] < 0 and rsi_val is not None and rsi_val > 30:
+                        tags.append({
+                            "name": "⚡ MACD Reversal", 
+                            "tooltip": "The MACD momentum line just crossed positive from below the zero line."
+                        })
+                        score += 10
+                        breakdown.append("+10: <abbr title='MACD just crossed positive from below the zero line.'>MACD Golden Reversal</abbr>")
+
+                # Tag: VCP Breakout
+                if is_tight and is_dry_volume and not is_fund:
+                    tags.append({"name": "🔥 VCP Breakout", "tooltip": "Volatility Contraction Pattern."})
+                    score += 20
+                    breakdown.append("+20: Minervini VCP")
+                elif is_tight:
                     score += 10
-                    breakdown.append("+10: <abbr title='MACD just crossed positive from below the zero line. An early indicator that a downtrend is ending.'>MACD Golden Reversal</abbr>")
+                    breakdown.append("+10: 3-Weeks-Tight")
 
-            # Tag: VCP Breakout
-            if is_tight and is_dry_volume and not is_fund:
-                tags.append({
-                    "name": "🔥 VCP Breakout", 
-                    "tooltip": "Volatility Contraction Pattern. Price has tightened over 3 weeks and volume has dried up. Institutions have stopped selling; asset is ready for a breakout."
-                })
-                score += 20
-                breakdown.append("+20: <abbr title='Price tightened over 3 weeks AND volume dried up. Institutions have stopped selling; ready for breakout.'>Minervini VCP (Price + Vol Contraction)</abbr>")
-            elif is_tight:
-                score += 10
-                breakdown.append("+10: <abbr title='Price is tight, but volume has not dried up yet. Potential base forming.'>3-Weeks-Tight (No Vol Contraction)</abbr>")
+                # Tag: Market Leader
+                if is_market_leader and rs_slope > 0:
+                    tags.append({"name": "👑 Market Leader", "tooltip": "Relative Strength slope is sharply up."})
+                    score += 15
+                    breakdown.append("+15: Market Leader vs Benchmark")
 
-            # Tag: Market Leader
-            if is_market_leader and rs_slope > 0:
-                tags.append({
-                    "name": "👑 Market Leader", 
-                    "tooltip": "The Relative Strength line compared to the Benchmark is sloped sharply up. This asset is aggressively absorbing market liquidity."
-                })
-                score += 15
-                breakdown.append("+15: <abbr title='Relative Strength line is sloped sharply up. This asset is absorbing market liquidity.'>Market Leader vs Benchmark</abbr>")
-            elif rs_slope < -0.001:
-                breakdown.append("+0: <abbr title='Relative Strength slope is negative. This asset is underperforming the broader market.'>Laggard vs Benchmark</abbr>")
+                if ma5 and current_price and current_price > ma5: 
+                    score += 15
+                    breakdown.append("+15: Price > 5D MA (Short-term Momentum)")
+                else:
+                    breakdown.append("+0: Price <= 5D MA (Bearish short-term momentum)")
+                
+                if ma5 and ma10 and ma21 and ma5 > ma10 and ma10 > ma21: 
+                    score += 15
+                    breakdown.append("+15: MAs Aligned (5 > 10 > 21)")
 
-            # Standard Core Score with Baseline Pass/Fail Architecture
-            if ma5 and current_price > ma5: 
-                score += 15
-                breakdown.append("+15: Price > 5D MA (Short-term Momentum)")
+                if trend_200d == "UP":
+                    score += 15
+                    breakdown.append("+15: 200D Trend UP (Institutional Backing)")
+                else:
+                    breakdown.append("+0: 200D Trend DOWN (Lacking institutional backing)")
+
+                if rsi_val is not None and 40.0 <= rsi_val <= 65.0: 
+                    score += 10
+                    breakdown.append("+10: RSI Healthy (Room to run)")
+
+                if is_fund or obv_bullish: 
+                    score += 20
+                    breakdown.append("+20: OBV Bullish / Fund Exemption")
+
+                if is_bearish_divergence and not is_fund:
+                    tags.append({"name": "🚨 Divergence Warning", "tooltip": "Price made a higher high, but RSI made a lower high."})
+                    score -= 30
+                    breakdown.append("-30: Algorithmic Bearish Divergence")
             else:
-                breakdown.append("+0: Price <= 5D MA or Data Missing (Bearish short-term momentum)")
-            
-            if ma5 and ma10 and ma21 and ma5 > ma10 and ma10 > ma21: 
-                score += 15
-                breakdown.append("+15: MAs Aligned (5 > 10 > 21)")
-            else:
-                breakdown.append("+0: MAs Not Aligned (Lacking strict uptrend)")
-
-            if trend_200d == "UP":
-                score += 15
-                breakdown.append("+15: 200D Trend UP (Institutional Backing)")
-            else:
-                breakdown.append("+0: 200D Trend DOWN (Lacking institutional backing)")
-
-            if not pd.isna(rsi_val) and 40.0 <= rsi_val <= 65.0: 
-                score += 10
-                breakdown.append("+10: RSI Healthy (Room to run)")
-            else:
-                breakdown.append("+0: RSI Unhealthy (Overbought, oversold, or lacking momentum)")
-
-            if is_fund or obv_bullish: 
-                score += 20
-                breakdown.append("+20: OBV Bullish / Fund Exemption")
-            else:
-                breakdown.append("+0: OBV Bearish (Volume distribution or lacking conviction)")
-
-            # Tag: Divergence Circuit Breaker
-            if is_bearish_divergence and not is_fund:
-                tags.append({
-                    "name": "🚨 Divergence Warning", 
-                    "tooltip": "Price made a higher high, but the RSI oscillator made a lower high. Momentum is secretly dying. High risk of an imminent dump."
-                })
-                score -= 30
-                breakdown.append("-30: <abbr title='Price made a higher high, but RSI made a lower high. Momentum is secretly dying. High risk of dump.'>Algorithmic Bearish Divergence</abbr>")
+                breakdown.append("+0: Technical indicators skipped (Insufficient Historical Data)")
 
             # Keep score strictly bounded between 0 and 100
             score = max(0, min(score, 100))
@@ -426,7 +415,7 @@ class QuantEngine:
             if stop_loss:
                 notes_html += f"<strong>Risk Management:</strong> Mathematical <abbr title='Based on Average True Range.'>ATR Stop-Loss</abbr> is {stop_loss:,.2f} {currency}.<br><br>"
             
-            if not is_fund and not pd.isna(rsi_val) and rsi_val > 70.0:
+            if not is_fund and rsi_val is not None and rsi_val > 70.0:
                 notes_html += "<strong><span style='color: #ff4d4d;'>Warning:</span></strong> Stock is technically overbought (RSI > 70).<br>"
 
             # Save to DB (JSON dumping the array of dictionaries)
