@@ -1,3 +1,4 @@
+# macro_data_engine.py
 import os
 import sqlite3
 import logging
@@ -133,9 +134,15 @@ def fetch_boe_data(session: requests.Session, series_code: str, start_date: date
         df['DATE'] = pd.to_datetime(df['DATE'], errors='coerce')
         df.dropna(subset=['DATE'], inplace=True)
         df.set_index('DATE', inplace=True)
-        df.rename(columns={col: series_code for col in df.columns if series_code in col}, inplace=True)
         
-        return df[[series_code]]
+        # Defensive renaming mechanism: Try finding it as substring, if fails rename the only value column
+        df.rename(columns={col: series_code for col in df.columns if series_code in col}, inplace=True)
+        if series_code in df.columns:
+            return df[[series_code]]
+        else:
+            val_col = [c for c in df.columns if c != 'DATE'][0]
+            df.rename(columns={val_col: series_code}, inplace=True)
+            return df[[series_code]]
         
     except Exception as e:
         logger.error(f"Failed to fetch BoE {series_code}: {e}")
@@ -205,7 +212,8 @@ def update_macro_indicators() -> None:
 
     if fred_api_key:
         logger.info("Fetching FRED Institutional Data (2-Year History)...")
-        fred_tickers = ['WM2NS', 'ICSA', 'BAMLH0A0HYM2', 'BAMLC0A0CM']
+        # FIXED: Replaced BAMLC0A0CM (US Corporate) with BAMLC4A0C4SY (Sterling Non-Gilt Corporate)
+        fred_tickers = ['WM2NS', 'ICSA', 'BAMLH0A0HYM2', 'BAMLC4A0C4SY']
         for ticker in fred_tickers:
             df = fetch_fred_api(session, ticker, start_dt, end_dt, fred_api_key)
             if not df.empty:
@@ -228,20 +236,23 @@ def update_macro_indicators() -> None:
 
     merged_df = pd.concat(dfs, axis=1, sort=False)
     merged_df.sort_index(inplace=True)
+    # FIX: Applying both forward and backward filling to ensure initial monthly gaps (like BoE and ONS) are covered
     merged_df.ffill(inplace=True)
+    merged_df.bfill(inplace=True) 
     
     # UPGRADE: Bulk Insert the entire time-series matrix instead of just iloc[-1]
     records = []
     for dt, row in merged_df.iterrows():
+        # Defensive check to ensure columns are present to avoid KeyError exceptions on skipped APIs
         records.append((
             dt.strftime("%Y-%m-%d"),
-            float(row['WM2NS']) if pd.notna(row.get('WM2NS')) else None,
-            float(row['ICSA']) if pd.notna(row.get('ICSA')) else None,
-            float(row['BAMLH0A0HYM2']) if pd.notna(row.get('BAMLH0A0HYM2')) else None,
-            float(row['LPMVWNM']) if pd.notna(row.get('LPMVWNM')) else None,
-            float(row['BAMLC0A0CM']) if pd.notna(row.get('BAMLC0A0CM')) else None,
-            float(row['D7G7']) if pd.notna(row.get('D7G7')) else None,
-            float(row['BCJD']) if pd.notna(row.get('BCJD')) else None
+            float(row['WM2NS']) if 'WM2NS' in row and pd.notna(row['WM2NS']) else None,
+            float(row['ICSA']) if 'ICSA' in row and pd.notna(row['ICSA']) else None,
+            float(row['BAMLH0A0HYM2']) if 'BAMLH0A0HYM2' in row and pd.notna(row['BAMLH0A0HYM2']) else None,
+            float(row['LPMVWNM']) if 'LPMVWNM' in row and pd.notna(row['LPMVWNM']) else None,
+            float(row['BAMLC4A0C4SY']) if 'BAMLC4A0C4SY' in row and pd.notna(row['BAMLC4A0C4SY']) else None,
+            float(row['D7G7']) if 'D7G7' in row and pd.notna(row['D7G7']) else None,
+            float(row['BCJD']) if 'BCJD' in row and pd.notna(row['BCJD']) else None
         ))
     
     conn = get_connection()

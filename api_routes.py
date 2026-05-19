@@ -114,16 +114,18 @@ def bg_init_ml_pipeline():
         update_daily_ml_predictions(tickers)
 
 def bg_init_macro_pipeline():
-    """Executes full Macro AI initialization: Seeding -> Calendar Sync -> Training -> Inference."""
+    """Executes full Macro AI initialization: Seeding -> Calendar Sync -> Data Sync -> Training -> Inference."""
     try:
         from seed_macro_calendar import seed_calendar
         from macro_calendar_engine import update_macro_calendar
+        from macro_data_engine import update_macro_indicators
         from macro_ai_engine import MacroAIEngine
         
         logger.info("Starting Macro AI Initialization Sequence...")
         
         seed_calendar()
         update_macro_calendar()
+        update_macro_indicators() # FETCH THE MACRO INDICATOR DATA
         
         ai_engine = MacroAIEngine()
         ai_engine.train_regime_clustering()
@@ -154,14 +156,16 @@ def bg_init_macro_pipeline():
         log_notification("Error", f"Macro AI Pipeline Initialization failed: {e}")
 
 def bg_run_macro_pipeline():
-    """Executes standard Macro AI run: Calendar Sync -> Inference."""
+    """Executes standard Macro AI run: Calendar Sync -> Data Sync -> Inference."""
     try:
         from macro_calendar_engine import update_macro_calendar
+        from macro_data_engine import update_macro_indicators
         from macro_ai_engine import MacroAIEngine
         
         logger.info("Starting Macro AI Run Sequence...")
         
         update_macro_calendar()
+        update_macro_indicators() # REFRESH THE MACRO INDICATOR DATA
         
         ai_engine = MacroAIEngine()
         scan_date = datetime.now().strftime('%Y-%m-%d')
