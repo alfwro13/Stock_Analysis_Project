@@ -20,7 +20,6 @@
         .macro-banner {
             padding: 15px;
             margin: 20px auto;
-            width: 95%;
             border-radius: 8px;
             font-size: 15px;
         }
@@ -36,16 +35,52 @@
         }
         .urgent-event-row {
             background-color: rgba(0, 0, 0, 0.4);
-            padding: 10px 15px;
+            padding: 12px 15px;
             border-radius: 6px;
             border-left: 4px solid #ff4d4d;
             margin-bottom: 8px;
             display: flex;
+            flex-wrap: wrap;
             align-items: center;
+            justify-content: flex-start;
+            gap: 15px;
         }
         .urgent-event-row:last-child {
             margin-bottom: 0;
         }
+        .ue-date { color: #ccc; font-family: monospace; font-size: 13px; }
+        .ue-name { font-weight: bold; color: #fff; flex: 1; min-width: 200px; }
+        .ue-insight { color: #aaa; font-size: 13px; display: flex; gap: 15px; flex-wrap: wrap; }
+
+        /* Unified Sentiment Module Styling */
+        .sentiment-module {
+            background-color: #1e1e1e;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .sentiment-module .chart-wrapper {
+            border-left: none !important;
+            margin-bottom: 0;
+            padding-bottom: 5px;
+            background-color: transparent;
+            box-shadow: none;
+            border-radius: 0;
+        }
+        .sentiment-module .sentiment-footer {
+            padding: 0 20px 20px 20px;
+            margin-top: 0;
+            border-top: none;
+        }
+        .module-red { border-left: 4px solid #ff4d4d; }
+        .module-yellow { border-left: 4px solid #ffaa00; }
+        .module-cyan { border-left: 4px solid #00ffcc; }
+        .module-purple { border-left: 4px solid #b366ff; }
+        .module-default { border-left: 4px solid #4da6ff; }
+
         .calendar-table-wrapper {
             margin-top: 20px;
             padding: 15px;
@@ -92,18 +127,18 @@
         <div style="display: flex; flex-direction: column;">
             {% for evt in urgent_events %}
             <div class="urgent-event-row">
-                <span style="color: #ccc; font-family: monospace; font-size: 13px; width: 160px;">[{{ evt.event_date }}]</span>
-                <span style="margin-left: 10px; font-weight: bold; color: #fff; flex: 1;">
+                <span class="ue-date">[{{ evt.event_date }}]</span>
+                <span class="ue-name">
                     {% if evt.context %}
                         <abbr title="{{ evt.context }}" style="text-decoration: underline dotted #666; cursor: help;">{{ evt.event_name }}</abbr>
                     {% else %}
                         {{ evt.event_name }}
                     {% endif %}
                 </span>
-                <span style="color: #aaa; font-size: 13px;">
-                    Est: <span style="color: #fff;">{{ evt.forecast_val }}</span> | Prev: <span style="color: #fff;">{{ evt.previous_val }}</span>
+                <span class="ue-insight">
+                    <span>Est: <span style="color: #fff;">{{ evt.forecast_val }}</span> | Prev: <span style="color: #fff;">{{ evt.previous_val }}</span></span>
                     {% if evt.insight %}
-                    &nbsp;|&nbsp;<span style="color: #00ffcc;">{{ evt.insight }}</span>
+                    <span style="color: #00ffcc;">{{ evt.insight }}</span>
                     {% endif %}
                 </span>
             </div>
@@ -172,78 +207,81 @@
         <div class="sentiment-column">
             <h2 class="us-market-header">🇺🇸 US Market Context</h2>
 
-            <div id="us-fg-wrapper" class="chart-wrapper chart-wrapper-fg">
-                <button class="fullscreen-btn" onclick="toggleFullscreen('us-fg-wrapper')">⛶ Fullscreen</button>
-                {{ sentiment_html | safe }}
-            </div>
-            
-            <div class="sentiment-footer">
-                <span class="sentiment-footer-title">How to read this chart:</span>
-                <div class="sentiment-footer-text">
-                    This visualization overlays the <span class="sentiment-highlight">S&P 500</span> (Benchmark Health) against the <span class="sentiment-highlight">Fear & Greed Index</span> (Sentiment Velocity). 
-                    Historically, local market bottoms correlate with <span class="sentiment-extreme">Extreme Fear (Below 25)</span>, indicating capitulation and high-probability entry points. 
-                    Conversely, <span class="sentiment-extreme">Extreme Greed (Above 75)</span> typically signals retail euphoria and institutional distribution, suggesting a defensive posture or profit-taking is warranted.
+            <div class="sentiment-module module-red">
+                <div id="us-fg-wrapper" class="chart-wrapper">
+                    <button class="fullscreen-btn" onclick="toggleFullscreen('us-fg-wrapper')">⛶ Fullscreen</button>
+                    {{ sentiment_html | safe }}
+                </div>
+                <div class="sentiment-footer">
+                    <span class="sentiment-footer-title">How to read this chart:</span>
+                    <div class="sentiment-footer-text">
+                        This visualization tracks the stock market's "Health" (S&P 500) against Wall Street's "Emotion" (Fear & Greed Index). When the red dotted line crashes below 25, the market is panicking—which is historically the safest time to buy. When it spikes above 75, investors are overly greedy, meaning a sell-off is highly likely.
+                    </div>
                 </div>
             </div>
 
-            <div id="us-vix-wrapper" class="chart-wrapper chart-wrapper-vix">
-                <button class="fullscreen-btn" onclick="toggleFullscreen('us-vix-wrapper')">⛶ Fullscreen</button>
-                {{ vix_spy_html | safe }}
-            </div>
-            
-            <div class="sentiment-footer">
-                <span class="sentiment-footer-title">How to read this chart:</span>
-                <div class="sentiment-footer-text">
-                    This visualization overlays the <span class="sentiment-highlight">S&P 500</span> against the <span class="sentiment-highlight">CBOE Volatility Index (VIX)</span>.
-                    The VIX measures the stock market's expectation of volatility based on S&P 500 index options. 
-                    A VIX level <span class="sentiment-extreme">Above 20</span> indicates high turbulence and institutional hedging, marking a Volatile regime. 
-                    A VIX level <span class="sentiment-extreme">Above 30</span> signals a Crash regime, characterized by extreme fear and erratic price swings.
+            <div class="sentiment-module module-yellow">
+                <div id="us-vix-wrapper" class="chart-wrapper">
+                    <button class="fullscreen-btn" onclick="toggleFullscreen('us-vix-wrapper')">⛶ Fullscreen</button>
+                    {{ vix_spy_html | safe }}
+                </div>
+                <div class="sentiment-footer">
+                    <span class="sentiment-footer-title">How to read this chart:</span>
+                    <div class="sentiment-footer-text">
+                        The VIX is Wall Street's "Fear Gauge". It measures how much money investors are spending on crash insurance. If the VIX stays below 20, the market is calm and safe. If it spikes above 20, conditions are choppy and unpredictable. A spike above 30 means pure panic and high risk.
+                    </div>
                 </div>
             </div>
 
-            <div id="us-yield-wrapper" class="chart-wrapper">
-                <button class="fullscreen-btn" onclick="toggleFullscreen('us-yield-wrapper')">⛶ Fullscreen</button>
-                {{ yield_equity_html | safe }}
-            </div>
-
-            <div class="sentiment-footer">
-                <span class="sentiment-footer-title">US Cost of Capital Explained:</span>
-                <div class="sentiment-footer-text">
-                    As the <span class="sentiment-highlight">10-Year Treasury Yield</span> rises, the risk-free rate increases. This exerts downward pressure on equity valuation multiples (P/E ratios) because future corporate cash flows are discounted at a higher rate. A strong negative correlation means high-multiple tech stocks are highly likely to compress when the red dotted line spikes. Conversely, falling yields often act as a tailwind for long-duration equities.
+            <div class="sentiment-module module-default">
+                <div id="us-yield-wrapper" class="chart-wrapper">
+                    <button class="fullscreen-btn" onclick="toggleFullscreen('us-yield-wrapper')">⛶ Fullscreen</button>
+                    {{ yield_equity_html | safe }}
+                </div>
+                <div class="sentiment-footer">
+                    <span class="sentiment-footer-title">US Cost of Capital Explained:</span>
+                    <div class="sentiment-footer-text">
+                        Think of the 30-Year Treasury Yield as the ultimate "interest rate" for the economy. When this red line spikes, borrowing money becomes expensive for companies and consumers, which suffocates economic growth and crushes stock prices. Conversely, falling yields act as rocket fuel for bull markets.
+                    </div>
                 </div>
             </div>
 
-            <div id="us-yield-curve-wrapper" class="chart-wrapper">
-                <button class="fullscreen-btn" onclick="toggleFullscreen('us-yield-curve-wrapper')">⛶ Fullscreen</button>
-                {{ yield_curve_html | safe }}
-            </div>
-            
-            <div class="sentiment-footer">
-                <span class="sentiment-footer-title">Yield Curve Radar (T10Y2Y) Explained:</span>
-                <div class="sentiment-footer-text">
-                    This charts the spread between the 10-Year and 2-Year US Treasuries. A healthy economy has a positive, upward-sloping curve. If the curve <span class="sentiment-extreme">inverts (drops below zero into the red zone)</span>, it signals extreme systemic stress and is widely considered Wall Street's most historically accurate leading indicator of an impending recession.
+            <div class="sentiment-module module-default">
+                <div id="us-yield-curve-wrapper" class="chart-wrapper">
+                    <button class="fullscreen-btn" onclick="toggleFullscreen('us-yield-curve-wrapper')">⛶ Fullscreen</button>
+                    {{ yield_curve_html | safe }}
+                </div>
+                <div class="sentiment-footer">
+                    <span class="sentiment-footer-title">Yield Curve Radar (T10Y2Y) Explained:</span>
+                    <div class="sentiment-footer-text">
+                        Normally, locking your money up in a 10-Year bond pays more interest than a 2-Year bond. However, when investors panic about a near-term economic crash, they rush to the 10-Year safety, driving its payout below the 2-Year. When this line drops below zero into the red zone, it is Wall Street's ultimate recession warning.
+                    </div>
                 </div>
             </div>
 
-            <div id="us-liquidity-wrapper" class="chart-wrapper">
-                <button class="fullscreen-btn" onclick="toggleFullscreen('us-liquidity-wrapper')">⛶ Fullscreen</button>
-                {{ us_liquidity_html | safe }}
-            </div>
-            <div class="sentiment-footer">
-                <span class="sentiment-footer-title">US Liquidity (M2) Explained:</span>
-                <div class="sentiment-footer-text">
-                    M2 represents total institutional and retail liquidity. Expanding liquidity acts as a structural tailwind for risk assets. If the S&P 500 diverges upwards while M2 contracts, equities are technically overextended on poor liquidity foundations.
+            <div class="sentiment-module module-default">
+                <div id="us-liquidity-wrapper" class="chart-wrapper">
+                    <button class="fullscreen-btn" onclick="toggleFullscreen('us-liquidity-wrapper')">⛶ Fullscreen</button>
+                    {{ us_liquidity_html | safe }}
+                </div>
+                <div class="sentiment-footer">
+                    <span class="sentiment-footer-title">US Liquidity (M2) Explained:</span>
+                    <div class="sentiment-footer-text">
+                        M2 Money Supply represents the raw "fuel" in the economy—literally the amount of cash sitting in bank accounts and circulation. Expanding liquidity makes it incredibly easy for the stock market to rise. If the stock market is rising while this yellow line is falling, the rally is running on empty fumes.
+                    </div>
                 </div>
             </div>
 
-            <div id="us-credit-wrapper" class="chart-wrapper">
-                <button class="fullscreen-btn" onclick="toggleFullscreen('us-credit-wrapper')">⛶ Fullscreen</button>
-                {{ us_credit_html | safe }}
-            </div>
-            <div class="sentiment-footer">
-                <span class="sentiment-footer-title">US High Yield Spread Explained:</span>
-                <div class="sentiment-footer-text">
-                    A spike above 5.0% indicates credit markets are pricing in severe corporate default risk. Equity markets rarely rally sustainably when credit markets panic.
+            <div class="sentiment-module module-default">
+                <div id="us-credit-wrapper" class="chart-wrapper">
+                    <button class="fullscreen-btn" onclick="toggleFullscreen('us-credit-wrapper')">⛶ Fullscreen</button>
+                    {{ us_credit_html | safe }}
+                </div>
+                <div class="sentiment-footer">
+                    <span class="sentiment-footer-title">US High Yield Spread Explained:</span>
+                    <div class="sentiment-footer-text">
+                        "ICE BofA" is just the data provider. The "High Yield Spread" simply measures the penalty interest rate that risky companies have to pay to get loans. If this red line spikes into the Danger Zone (>5.0%), banks are terrified of bankruptcies and are refusing to lend. The stock market rarely survives when credit markets panic.
+                    </div>
                 </div>
             </div>
 
@@ -285,49 +323,55 @@
         <div class="sentiment-column">
             <h2 class="uk-market-header">🇬🇧 UK Market Context</h2>
 
-            <div id="uk-gbp-wrapper" class="chart-wrapper chart-wrapper-accent-cyan">
-                <button class="fullscreen-btn" onclick="toggleFullscreen('uk-gbp-wrapper')">⛶ Fullscreen</button>
-                {{ ftse_gbp_html | safe }}
-            </div>
-
-            <div class="sentiment-footer">
-                <span class="sentiment-footer-title">How to read this chart:</span>
-                <div class="sentiment-footer-text">
-                    <strong class="text-accent-cyan">Currency Impact:</strong> Because roughly 70-75% of FTSE 100 corporate revenue is generated outside the UK (priced in USD and EUR), a <em>weakening</em> Pound Sterling (GBP) often drives the FTSE 100 <em>up</em>. This is because their overseas earnings are artificially inflated when converted back into GBP. Look for an inverse correlation between the GBP/USD rate and the FTSE 100 points.
+            <div class="sentiment-module module-cyan">
+                <div id="uk-gbp-wrapper" class="chart-wrapper">
+                    <button class="fullscreen-btn" onclick="toggleFullscreen('uk-gbp-wrapper')">⛶ Fullscreen</button>
+                    {{ ftse_gbp_html | safe }}
+                </div>
+                <div class="sentiment-footer">
+                    <span class="sentiment-footer-title">How to read this chart:</span>
+                    <div class="sentiment-footer-text">
+                        Because the biggest UK companies make most of their money overseas in Dollars and Euros, a weak Pound (GBP) is actually great for the FTSE 100. Their foreign profits look much bigger when converted back to a weak home currency. Look for the blue and green lines to move in opposite directions.
+                    </div>
                 </div>
             </div>
 
-            <div id="uk-yield-wrapper" class="chart-wrapper chart-wrapper-accent-purple">
-                <button class="fullscreen-btn" onclick="toggleFullscreen('uk-yield-wrapper')">⛶ Fullscreen</button>
-                {{ uk_yield_equity_html | safe }}
-            </div>
-
-            <div class="sentiment-footer">
-                <span class="sentiment-footer-title">UK Cost of Capital Explained:</span>
-                <div class="sentiment-footer-text">
-                    <strong class="text-accent-purple">UK Cost of Capital:</strong> Just like the US, rising borrowing costs (10Y Gilt Yields) typically compress equity valuations. High yields increase corporate borrowing expenses and provide institutional capital with a risk-free alternative to volatile equities.
+            <div class="sentiment-module module-purple">
+                <div id="uk-yield-wrapper" class="chart-wrapper">
+                    <button class="fullscreen-btn" onclick="toggleFullscreen('uk-yield-wrapper')">⛶ Fullscreen</button>
+                    {{ uk_yield_equity_html | safe }}
+                </div>
+                <div class="sentiment-footer">
+                    <span class="sentiment-footer-title">UK Cost of Capital Explained:</span>
+                    <div class="sentiment-footer-text">
+                        Just like the US, rising borrowing costs (the 10-Year Gilt Yield) act as gravity on the UK stock market. High yields mean expensive mortgages for consumers and expensive loans for businesses, which drags down the FTSE 100.
+                    </div>
                 </div>
             </div>
 
-            <div id="uk-liquidity-wrapper" class="chart-wrapper chart-wrapper-accent-cyan">
-                <button class="fullscreen-btn" onclick="toggleFullscreen('uk-liquidity-wrapper')">⛶ Fullscreen</button>
-                {{ uk_liquidity_html | safe }}
-            </div>
-            <div class="sentiment-footer">
-                <span class="sentiment-footer-title">UK Liquidity (M4) Explained:</span>
-                <div class="sentiment-footer-text">
-                    M4 represents broad money supply in the UK. Similar to the US M2, a contracting M4 removes structural support for UK equities, making domestic growth significantly harder to achieve.
+            <div class="sentiment-module module-cyan">
+                <div id="uk-liquidity-wrapper" class="chart-wrapper">
+                    <button class="fullscreen-btn" onclick="toggleFullscreen('uk-liquidity-wrapper')">⛶ Fullscreen</button>
+                    {{ uk_liquidity_html | safe }}
+                </div>
+                <div class="sentiment-footer">
+                    <span class="sentiment-footer-title">UK Liquidity (M4) Explained:</span>
+                    <div class="sentiment-footer-text">
+                        M4 represents the total cash flowing through the UK economy. A growing money supply acts as a safety net, supporting business expansion and stock market rallies. A contracting money supply pulls that safety net away, making it very hard for the market to grow.
+                    </div>
                 </div>
             </div>
 
-            <div id="uk-credit-wrapper" class="chart-wrapper chart-wrapper-accent-purple">
-                <button class="fullscreen-btn" onclick="toggleFullscreen('uk-credit-wrapper')">⛶ Fullscreen</button>
-                {{ uk_credit_html | safe }}
-            </div>
-            <div class="sentiment-footer">
-                <span class="sentiment-footer-title">UK IG Spread Explained:</span>
-                <div class="sentiment-footer-text">
-                    The Sterling Non-Gilt Investment Grade Spread indicates distress in high-quality corporate debt. Breaching the 3.0% threshold signals acute institutional derisking.
+            <div class="sentiment-module module-purple">
+                <div id="uk-credit-wrapper" class="chart-wrapper">
+                    <button class="fullscreen-btn" onclick="toggleFullscreen('uk-credit-wrapper')">⛶ Fullscreen</button>
+                    {{ uk_credit_html | safe }}
+                </div>
+                <div class="sentiment-footer">
+                    <span class="sentiment-footer-title">UK IG Spread Explained:</span>
+                    <div class="sentiment-footer-text">
+                        This measures the financial stress of high-quality UK corporations. If this line crosses into the Danger Zone (>3.0%), it means investors are demanding massive premiums to lend money to even the safest UK companies. This signals a severe economic freeze.
+                    </div>
                 </div>
             </div>
 

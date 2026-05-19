@@ -44,9 +44,9 @@ def create_intraday_chart(df, ticker, s1=None, s2=None, live_pattern_name=None, 
         height=400,
         margin=dict(l=20, r=20, t=60, b=20),
         xaxis_rangeslider_visible=False,
-        title=dict(text=title_text, x=0.5),
+        title=dict(text=title_text, x=0.5, xanchor='center'),
         hovermode="x unified",
-        hoverlabel=dict(align="left") 
+        hoverlabel=dict(align="left")
     )
 
     clean_config = {
@@ -155,12 +155,13 @@ def create_macro_chart(df, df_baseline, ticker):
 def create_us_liquidity_chart(df_spy: pd.DataFrame, df_m2: pd.DataFrame) -> str:
     fig = make_subplots(specs=[[{"secondary_y": True}]])
     if not df_spy.empty and 'Close' in df_spy.columns:
-        fig.add_trace(go.Scatter(x=df_spy.index, y=df_spy['Close'], name="S&P 500", line=dict(color="#00ffcc", width=2)), secondary_y=False)
+        fig.add_trace(go.Scatter(x=df_spy.index, y=df_spy['Close'], name="S&P 500", line=dict(color="#00ffcc", width=2), connectgaps=True), secondary_y=False)
     if not df_m2.empty and 'value' in df_m2.columns:
-        fig.add_trace(go.Scatter(x=df_m2.index, y=df_m2['value'], name="US M2 Supply", line=dict(color="#ffaa00", width=2, dash='dot')), secondary_y=True)
+        fig.add_trace(go.Scatter(x=df_m2.index, y=df_m2['value'], name="US M2 Supply", line=dict(color="#ffaa00", width=2, dash='dot'), connectgaps=True), secondary_y=True)
 
     fig.update_layout(
-        title="US Liquidity: S&P 500 vs M2 Money Supply", template="plotly_dark", height=350,
+        title=dict(text="US Liquidity: S&P 500 vs M2 Money Supply", x=0.5, xanchor='center'),
+        template="plotly_dark", height=350,
         margin=dict(l=20, r=20, t=50, b=20), hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5)
     )
     fig.update_yaxes(title_text="S&P 500 Index", secondary_y=False, showgrid=False)
@@ -170,12 +171,13 @@ def create_us_liquidity_chart(df_spy: pd.DataFrame, df_m2: pd.DataFrame) -> str:
 def create_us_credit_chart(df_spread: pd.DataFrame) -> str:
     fig = go.Figure()
     if not df_spread.empty and 'value' in df_spread.columns:
-        fig.add_trace(go.Scatter(x=df_spread.index, y=df_spread['value'], name="High Yield Spread", line=dict(color="#ff4d4d", width=2)))
+        fig.add_trace(go.Scatter(x=df_spread.index, y=df_spread['value'], name="High Yield Spread", line=dict(color="#ff4d4d", width=2), connectgaps=True))
 
-    fig.add_hline(y=5.0, line_dash="dash", line_color="#ff4d4d", annotation_text="Danger Zone (5.0%)", annotation_position="top left", annotation_font_color="#ff4d4d")
+    fig.add_hline(y=5.0, line_dash="dash", line_color="#ff4d4d", annotation_text="Danger Zone (> 5.0%)", annotation_position="top left", annotation_font_color="#ff4d4d")
 
     fig.update_layout(
-        title="US Credit Stress: ICE BofA High Yield Spread", template="plotly_dark", height=350,
+        title=dict(text="US Credit Stress: ICE BofA High Yield Spread", x=0.5, xanchor='center'),
+        template="plotly_dark", height=350,
         margin=dict(l=20, r=20, t=50, b=20), hovermode="x unified"
     )
     fig.update_yaxes(title_text="Spread (%)", showgrid=True, gridcolor="#333333")
@@ -184,12 +186,13 @@ def create_us_credit_chart(df_spread: pd.DataFrame) -> str:
 def create_uk_liquidity_chart(df_ftse: pd.DataFrame, df_m4: pd.DataFrame) -> str:
     fig = make_subplots(specs=[[{"secondary_y": True}]])
     if not df_ftse.empty and 'Close' in df_ftse.columns:
-        fig.add_trace(go.Scatter(x=df_ftse.index, y=df_ftse['Close'], name="FTSE 100", line=dict(color="#00ffff", width=2)), secondary_y=False)
+        fig.add_trace(go.Scatter(x=df_ftse.index, y=df_ftse['Close'], name="FTSE 100", line=dict(color="#00ffff", width=2), connectgaps=True), secondary_y=False)
     if not df_m4.empty and 'value' in df_m4.columns:
-        fig.add_trace(go.Scatter(x=df_m4.index, y=df_m4['value'], name="UK M4 Supply", line=dict(color="#bb86fc", width=2, dash='dot')), secondary_y=True)
+        fig.add_trace(go.Scatter(x=df_m4.index, y=df_m4['value'], name="UK M4 Supply", line=dict(color="#bb86fc", width=2, dash='dot'), connectgaps=True), secondary_y=True)
 
     fig.update_layout(
-        title="UK Liquidity: FTSE 100 vs M4 Money Supply", template="plotly_dark", height=350,
+        title=dict(text="UK Liquidity: FTSE 100 vs M4 Money Supply", x=0.5, xanchor='center'),
+        template="plotly_dark", height=350,
         margin=dict(l=20, r=20, t=50, b=20), hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5)
     )
     fig.update_yaxes(title_text="FTSE 100 Index", secondary_y=False, showgrid=False)
@@ -199,33 +202,29 @@ def create_uk_liquidity_chart(df_ftse: pd.DataFrame, df_m4: pd.DataFrame) -> str
 def create_uk_credit_chart(df_spread: pd.DataFrame) -> str:
     fig = go.Figure()
     if not df_spread.empty and 'value' in df_spread.columns:
-        fig.add_trace(go.Scatter(x=df_spread.index, y=df_spread['value'], name="UK IG Spread", line=dict(color="#ff4d4d", width=2)))
+        fig.add_trace(go.Scatter(x=df_spread.index, y=df_spread['value'], name="UK IG Spread", line=dict(color="#ff4d4d", width=2), connectgaps=True))
 
-    fig.add_hline(y=3.0, line_dash="dash", line_color="#ff4d4d", annotation_text="Danger Zone (3.0%)", annotation_position="top left", annotation_font_color="#ff4d4d")
+    fig.add_hline(y=3.0, line_dash="dash", line_color="#ff4d4d", annotation_text="Danger Zone (> 3.0%)", annotation_position="top left", annotation_font_color="#ff4d4d")
 
     fig.update_layout(
-        title="UK Credit Stress: Sterling Corporate Spread", template="plotly_dark", height=350,
+        title=dict(text="UK Credit Stress: Sterling Corporate Spread", x=0.5, xanchor='center'),
+        template="plotly_dark", height=350,
         margin=dict(l=20, r=20, t=50, b=20), hovermode="x unified"
     )
     fig.update_yaxes(title_text="Spread (%)", showgrid=True, gridcolor="#333333")
     return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
 
 def create_yield_curve_chart(df_curve: pd.DataFrame) -> str:
-    """
-    Plots the T10Y2Y Yield Curve. Fills the area below 0.0 with red to highlight Inversion/Recession warnings.
-    """
     fig = go.Figure()
 
     if not df_curve.empty and 'value' in df_curve.columns:
-        # Base line trace
         fig.add_trace(go.Scatter(
             x=df_curve.index, y=df_curve['value'], 
             name="10Y-2Y Spread", 
-            line=dict(color="#b366ff", width=2)
+            line=dict(color="#b366ff", width=2),
+            connectgaps=True
         ))
         
-        # Add red fill for the inverted areas (below 0)
-        # We duplicate the trace, clipping values > 0, to selectively fill to zero
         df_inverted = df_curve['value'].clip(upper=0)
         fig.add_trace(go.Scatter(
             x=df_curve.index, y=df_inverted,
@@ -235,17 +234,17 @@ def create_yield_curve_chart(df_curve: pd.DataFrame) -> str:
             fill='tozeroy',
             fillcolor='rgba(255, 77, 77, 0.3)',
             showlegend=False,
-            hoverinfo='skip'
+            hoverinfo='skip',
+            connectgaps=True
         ))
 
-    # The Zero Line (Recession Threshold)
     fig.add_hline(y=0.0, line_dash="solid", line_color="#ff4d4d", 
                   annotation_text="Inversion Threshold (Recession Warning)", 
                   annotation_position="top left", 
                   annotation_font_color="#ff4d4d")
 
     fig.update_layout(
-        title="Yield Curve Radar: US 10-Year vs 2-Year Treasury Spread",
+        title=dict(text="Yield Curve Radar: US 10-Year vs 2-Year Treasury Spread", x=0.5, xanchor='center'),
         template="plotly_dark",
         height=350,
         margin=dict(l=20, r=20, t=50, b=20),
