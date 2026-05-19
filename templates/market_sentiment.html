@@ -102,6 +102,9 @@
                 </span>
                 <span style="color: #aaa; font-size: 13px;">
                     Est: <span style="color: #fff;">{{ evt.forecast_val }}</span> | Prev: <span style="color: #fff;">{{ evt.previous_val }}</span>
+                    {% if evt.insight %}
+                    &nbsp;|&nbsp;<span style="color: #00ffcc;">{{ evt.insight }}</span>
+                    {% endif %}
                 </span>
             </div>
             {% endfor %}
@@ -253,6 +256,7 @@
                             <th>Event</th>
                             <th>Forecast</th>
                             <th>Previous</th>
+                            <th>Market Insight</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -270,6 +274,7 @@
                                 {{ row.forecast_val }}
                             </td>
                             <td>{{ row.previous_val }}</td>
+                            <td style="font-size: 13px; color: #00ffcc;">{{ row.insight }}</td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -335,6 +340,7 @@
                             <th>Event</th>
                             <th>Forecast</th>
                             <th>Previous</th>
+                            <th>Market Insight</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -352,6 +358,7 @@
                                 {{ row.forecast_val }}
                             </td>
                             <td>{{ row.previous_val }}</td>
+                            <td style="font-size: 13px; color: #00ffcc;">{{ row.insight }}</td>
                         </tr>
                         {% endfor %}
                     </tbody>

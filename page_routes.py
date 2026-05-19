@@ -57,30 +57,105 @@ def get_unread_count() -> int:
         return 0
 
 
-# --- MACRO GLOSSARY MAPPING ---
-# Used to dynamically translate ForexFactory jargon into actionable institutional intelligence.
+# --- COMPREHENSIVE MACRO GLOSSARY & POLARITY MAPPING ---
 EVENT_GLOSSARY = {
-    r"\bcpi\b": "Consumer Price Index (Inflation). Higher than expected is bearish for stocks, as it forces Central Banks to keep interest rates high.",
-    r"\bpmi\b": "Purchasing Managers' Index. A leading indicator of economic health. >50.0 indicates expansion; <50.0 indicates contraction/recession.",
-    r"claimant count": "UK Unemployment. The change in the number of people claiming jobless benefits. A rising number indicates economic weakness.",
-    r"\bfomc\b": "Federal Open Market Committee. The Fed's policy-making body. Their rate decisions and tone dictate global liquidity.",
-    r"\bgdp\b": "Gross Domestic Product. The total value of goods produced. High GDP is bullish, but too hot can trigger inflation fears.",
-    r"non-farm|nfp": "Non-Farm Payrolls. US employment data. Strong jobs data can be bearish if it forces the Fed to keep rates high to cool the economy.",
-    r"retail sales": "Measures consumer spending. A primary driver of economic growth.",
-    r"\bboe\b": "Bank of England. The UK's central bank, responsible for setting interest rates and monetary policy.",
-    r"unemployment rate": "Percentage of the total labor force that is unemployed. Rising unemployment is a recessionary signal but may force central banks to cut rates (dovish).",
-    r"jobless claims": "Number of individuals filing for unemployment insurance for the first time. A leading indicator of labor market health."
+    # --- INFLATION & PRICES (Inverse Polarity) ---
+    r"\bcpi\b": {"desc": "Consumer Price Index. The primary measure of inflation. Higher than expected forces Central Banks to keep rates high (Bearish for equities).", "polarity": "inverse"},
+    r"\bppi\b": {"desc": "Producer Price Index. Measures wholesale inflation before it reaches consumers. A leading indicator for future CPI.", "polarity": "inverse"},
+    r"\brpi\b|retail price index": {"desc": "Retail Price Index. An older UK inflation measure, still used heavily for wage and contract pricing negotiations.", "polarity": "inverse"},
+    r"house price index": {"desc": "Measures housing inflation and consumer wealth effect.", "polarity": "direct"},
+    
+    # --- CENTRAL BANKS & LIQUIDITY (Neutral/Narrative Polarity) ---
+    r"\bfomc\b": {"desc": "Federal Open Market Committee. The Fed's policy body. Their rate decisions and minutes dictate global liquidity.", "polarity": "neutral"},
+    r"\bboe\b": {"desc": "Bank of England. The UK's central bank. Sets base rates impacting GBP and UK equities.", "polarity": "neutral"},
+    r"fed's.*speech|boe's.*speech": {"desc": "Central Bank Speaker. Unscheduled volatility risk. Markets scan these speeches for hawkish or dovish policy hints.", "polarity": "neutral"},
+    r"auction": {"desc": "Sovereign Debt Auction (Bonds/Bills). Weak demand can cause Treasury yields to spike, triggering algorithmic equity sell-offs.", "polarity": "neutral"},
+
+    # --- ECONOMIC GROWTH & ACTIVITY (Direct/Threshold Polarity) ---
+    r"\bpmi\b": {"desc": "Purchasing Managers' Index. A leading indicator of economic health. >50.0 indicates expansion; <50.0 indicates contraction/recession.", "polarity": "threshold"},
+    r"\bgdp\b": {"desc": "Gross Domestic Product. The total value of goods produced. High GDP is bullish, but too hot can trigger inflation fears.", "polarity": "direct"},
+    r"retail sales": {"desc": "Measures consumer spending, which makes up the majority of Western economic growth.", "polarity": "direct"},
+    r"fed manufacturing|empire state|fed activity": {"desc": "Regional Fed Surveys (e.g., Philly, Kansas, NY). Early localized indicators of manufacturing health before national PMI data drops.", "polarity": "direct"},
+
+    # --- LABOR MARKET ---
+    r"non-farm|nfp": {"desc": "Non-Farm Payrolls. US employment data. Strong jobs data can be bearish if it forces the Fed to keep rates high to cool the economy.", "polarity": "direct"},
+    r"claimant count": {"desc": "UK Unemployment. The change in the number of people claiming jobless benefits. A rising number indicates economic weakness.", "polarity": "inverse"},
+    r"jobless claims": {"desc": "US Unemployment filings. Rising claims signal a cooling labor market, which can be perversely bullish if the market expects rate cuts.", "polarity": "inverse"},
+    r"unemployment rate": {"desc": "Percentage of the total labor force that is unemployed. Serves as a primary mandate metric for central bank policy.", "polarity": "inverse"},
+
+    # --- HOUSING & REAL ESTATE (Direct Polarity) ---
+    r"building permits|housing starts": {"desc": "Leading indicators for the construction sector and broader economic health. Highly sensitive to interest rates.", "polarity": "direct"},
+    r"mortgage applications": {"desc": "A direct measure of housing demand. Drops significantly when bond yields/mortgage rates rise.", "polarity": "direct"},
+
+    # --- ENERGY & COMMODITIES (Inverse/Neutral Polarity) ---
+    r"crude oil|natural gas": {"desc": "Energy Inventories (EIA/API). Drops in supply can spike oil prices, driving up inflation and hurting consumer discretionary stocks.", "polarity": "inverse"}
 }
 
 def enrich_macro_events(events_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Scans event names against the glossary to append tooltips for the frontend."""
+    """
+    Scans event names against the glossary to append tooltips and mathematically 
+    calculates the Delta between Forecast and Previous to generate actionable insights.
+    """
     for evt in events_list:
         evt_name = evt.get('event_name', '')
         evt['context'] = None
-        for pattern, context_text in EVENT_GLOSSARY.items():
+        evt['insight'] = ""
+        
+        polarity = "neutral"
+        
+        # 1. Match Glossary Context and Polarity
+        for pattern, data in EVENT_GLOSSARY.items():
             if re.search(pattern, evt_name, re.IGNORECASE):
-                evt['context'] = context_text
+                evt['context'] = data["desc"]
+                polarity = data["polarity"]
                 break
+                
+        # 2. Calculate Mathematical Delta & Generate Insight
+        f_val = evt.get('forecast_val')
+        p_val = evt.get('previous_val')
+        
+        if f_val is not None and p_val is not None:
+            try:
+                f_num = float(f_val)
+                p_num = float(p_val)
+                delta = f_num - p_num
+                
+                # Apply Polarity Rules
+                if polarity == "inverse":
+                    if delta < 0:
+                        evt['insight'] = f"📉 Expected to drop by {delta:+.2f} (Cooling / Dovish)"
+                    elif delta > 0:
+                        evt['insight'] = f"📈 Expected to rise by {delta:+.2f} (Hot / Hawkish)"
+                    else:
+                        evt['insight'] = "⚖️ Expected to remain unchanged"
+                        
+                elif polarity == "direct":
+                    if delta > 0:
+                        evt['insight'] = f"📈 Expected to grow by {delta:+.2f} (Expanding / Bullish)"
+                    elif delta < 0:
+                        evt['insight'] = f"📉 Expected to shrink by {delta:+.2f} (Slowing / Bearish)"
+                    else:
+                        evt['insight'] = "⚖️ Expected to remain unchanged"
+                        
+                elif polarity == "threshold":
+                    status = "Expansion" if f_num > 50.0 else "Contraction"
+                    if delta > 0:
+                        evt['insight'] = f"📈 Expected to rise by {delta:+.2f} (Est: {f_num} - {status})"
+                    elif delta < 0:
+                        evt['insight'] = f"📉 Expected to drop by {delta:+.2f} (Est: {f_num} - {status})"
+                    else:
+                        evt['insight'] = f"⚖️ Expected unchanged (Est: {f_num} - {status})"
+                        
+                else:
+                    if delta != 0:
+                        evt['insight'] = f"Expected change: {delta:+.2f}"
+                    else:
+                        evt['insight'] = "Expected unchanged"
+                        
+            except ValueError:
+                # Fallback if values cannot be cast to floats
+                pass
+                
     return events_list
 
 
@@ -109,8 +184,6 @@ async def market_sentiment_page(request: Request):
         
         # --- Macroeconomic Event Routing ---
         now = datetime.now()
-        
-        # Start the lookup from the beginning of TODAY to ensure events from earlier this morning appear.
         start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
         
         horizon_48h = (now + timedelta(hours=48)).strftime('%Y-%m-%d %H:%M:%S')
