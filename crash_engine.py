@@ -4,7 +4,6 @@ import yfinance as yf
 import ta
 from datetime import datetime, timedelta
 
-
 class CrashEngine:
     def __init__(self, config):
         """Initializes the Crash Engine with dynamically loaded configurations."""
@@ -18,7 +17,7 @@ class CrashEngine:
         self.sma_gap_percent = float(self.crash_cfg.get("SMA_GAP_PERCENT", 2.0))
         
         # New Circuit Breaker Threshold for instant Intraday Drops
-        self.flash_crash_threshold = float(self.crash_cfg.get("FLASH_CRASH_THRESHOLD", 3.0))
+        self.session_crash_threshold = float(self.crash_cfg.get("SESSION_CRASH_THRESHOLD", self.crash_cfg.get("FLASH_CRASH_THRESHOLD", 3.0)))
 
     def _fetch_market_context(self) -> float:
         """Fetches S&P 500 intraday performance to gauge macroeconomic conditions."""
@@ -54,13 +53,20 @@ class CrashEngine:
             live_ticker = yf.Ticker(ticker)
             live_data = live_ticker.history(period="1mo")
             if not live_data.empty and 'Volume' in live_data.columns:
-                avg_vol = live_data['Volume'].rolling(20).mean().iloc[-2] # 20-day average
                 current_vol = live_data['Volume'].iloc[-1]
+                valid_vol = live_data['Volume'].dropna()
                 
-                if current_vol > (avg_vol * 1.5):
-                    report.append(f"Selling pressure is severe. Intraday volume has already surged to {current_vol:,.0f}, which is massively above its 20-day average. This indicates heavy institutional distribution.")
+                # Safely calculate rolling mean avoiding NaN for assets with < 20 days history
+                if len(valid_vol) >= 20:
+                    avg_vol = valid_vol.rolling(20).mean().iloc[-2]
                 else:
-                    report.append("Interestingly, this price drop is occurring on relatively low/average volume, suggesting a lack of liquidity or an absence of buyers rather than aggressive institutional dumping.")
+                    avg_vol = valid_vol.mean()
+                    
+                if not pd.isna(avg_vol) and avg_vol > 0:
+                    if current_vol > (avg_vol * 1.5):
+                        report.append(f"Selling pressure is severe. Intraday volume has already surged to {current_vol:,.0f}, which is massively above its recent average. This indicates heavy institutional distribution.")
+                    else:
+                        report.append("Interestingly, this price drop is occurring on relatively low/average volume, suggesting a lack of liquidity or an absence of buyers rather than aggressive institutional dumping.")
         except Exception:
             pass
 
@@ -115,18 +121,18 @@ class CrashEngine:
 
     def evaluate(self, ticker, current_price, df_combined, asset_meta):
         """
-        Evaluates mathematical crash signatures, now prioritizing Flash Crashes.
+        Evaluates mathematical crash signatures, now prioritizing Session Crashes.
         Returns an alert dictionary if triggered, else None.
         """
         if df_combined.empty or len(df_combined) < self.sma_length:
             return None
 
-        # --- 1. NEW LOGIC: Daily Intraday Flash Crash ---
+        # --- 1. NEW LOGIC: Daily Intraday Session Crash ---
         # Look at yesterday's close vs today's live price
         prev_close = df_combined['Close'].iloc[-2] if len(df_combined) >= 2 else current_price
         intraday_drop_pct = ((current_price - prev_close) / prev_close) * 100.0
         
-        is_flash_crash = intraday_drop_pct <= -self.flash_crash_threshold
+        is_session_crash = intraday_drop_pct <= -self.session_crash_threshold
 
         # --- 2. OLD LOGIC: Prolonged Trend Bleed ---
         lookback_idx = -(self.drop_days + 1)
@@ -147,20 +153,20 @@ class CrashEngine:
         atr_stop = asset_meta.get('atr_stop_loss')
         is_below_atr = atr_stop is not None and (0 < current_price < atr_stop)
 
-        # Execution Logic: If Flash Crash OR (X-Drop AND Y-Gap) OR (Broke Mathematical ATR)
-        if is_flash_crash or (is_dropping_fast and is_breaking_sma) or is_below_atr:
+        # Execution Logic: If Session Crash OR (X-Drop AND Y-Gap) OR (Broke Mathematical ATR)
+        if is_session_crash or (is_dropping_fast and is_breaking_sma) or is_below_atr:
             reason = []
             context_report = ""
             
-            # Prioritize the Flash Crash reporting
-            if is_flash_crash:
-                reason.append(f"INTRADAY CRASH: Dropped {abs(intraday_drop_pct):.2f}% today.")
+            # Prioritize the Session Crash reporting
+            if is_session_crash:
+                reason.append(f"SESSION CRASH / GAP DOWN: Dropped {abs(intraday_drop_pct):.2f}% today.")
                 # Run the heavy Context Analyzer only when a crash actually occurs
                 context_report = self._generate_context_report(ticker, intraday_drop_pct, df_combined, asset_meta)
             
-            if is_dropping_fast and not is_flash_crash:
+            if is_dropping_fast and not is_session_crash:
                 reason.append(f"Multi-Day Bleed: Dropped {abs(price_drop_pct):.2f}% in {self.drop_days}d")
-            if is_breaking_sma and not is_flash_crash:
+            if is_breaking_sma and not is_session_crash:
                 reason.append(f"Fell {below_sma_pct:.2f}% below {self.sma_length}d SMA")
             if is_below_atr:
                 reason.append(f"Price ({current_price:.2f}) broke Quantamental ATR floor ({atr_stop:.2f})")

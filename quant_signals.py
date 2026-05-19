@@ -403,13 +403,13 @@ class QuantEngine:
                         score += pattern["score"]
 
                 if df['MACD_Line'].iloc[-1] > df['MACD_Signal'].iloc[-1] and df['MACD_Line'].iloc[-2] <= df['MACD_Signal'].iloc[-2]:
-                    if df['MACD_Line'].iloc[-1] < 0 and rsi_val is not None and rsi_val > 30:
-                        tags.append({
-                            "name": "⚡ MACD Reversal", 
-                            "tooltip": "The MACD momentum line just crossed positive from below the zero line."
-                        })
-                        score += 10
-                        breakdown.append("+10: <abbr title='MACD Golden Reversal'>MACD Golden Reversal</abbr>")
+                    # MACD Bullish Crossover in any zone
+                    tags.append({
+                        "name": "⚡ MACD Bullish Cross", 
+                        "tooltip": "The MACD momentum line just crossed positive over the signal line."
+                    })
+                    score += 10
+                    breakdown.append("+10: <abbr title='MACD Bullish Crossover'>MACD Bullish Crossover</abbr>")
 
                 if is_tight and is_dry_volume and not is_fund:
                     tags.append({"name": "🔥 VCP Breakout", "tooltip": "Volatility Contraction Pattern."})
@@ -473,16 +473,16 @@ class QuantEngine:
             elif score >= 40: signal = "NEUTRAL"
             else: signal = "BEARISH / CAUTION"
 
-            notes_html = "<strong>Algorithmic Breakdown:</strong><br><ul style='margin-top: 5px; margin-bottom: 15px; font-size: 15px; color: #ccc; padding-left: 20px;'>"
+            notes_html = "<strong>Algorithmic Breakdown:</strong><br><ul class='algo-breakdown-list'>"
             for item in breakdown:
-                notes_html += f"<li style='margin-bottom: 5px;'>{item}</li>"
+                notes_html += f"<li>{item}</li>"
             notes_html += "</ul>"
             
             if stop_loss is not None:
                 notes_html += f"<strong>Risk Management:</strong> Mathematical <abbr title='Based on Average True Range.'>ATR Stop-Loss</abbr> is {stop_loss:,.2f} {currency}.<br><br>"
             
             if not is_fund and rsi_val is not None and rsi_val > 70.0:
-                notes_html += "<strong><span style='color: #ff4d4d;'>Warning:</span></strong> Stock is technically overbought (RSI > 70).<br>"
+                notes_html += "<strong><span class='risk-warning'>Warning:</span></strong> Stock is technically overbought (RSI > 70).<br>"
 
             tags_json = json.dumps(tags)
             

@@ -40,9 +40,9 @@ def get_oversold_reversals(data: List[Dict[str, Any]], regime_label: str) -> Lis
                     results.append(row)
     return results
 
-def get_golden_crosses(data: List[Dict[str, Any]], regime_label: str) -> List[Dict[str, Any]]:
+def get_macd_bullish_crosses(data: List[Dict[str, Any]], regime_label: str) -> List[Dict[str, Any]]:
     """
-    Identifies assets that have triggered a bullish MACD crossover.
+    Identifies assets that have triggered a MACD Bullish Cross.
     Logic: bullish_cross == 1 (True)
     Regime Context: In 'Crash'/'Volatile', strictly requires Price > 200D SMA to avoid false bear-market rallies.
     """
@@ -101,13 +101,13 @@ def get_overbought_warnings(data: List[Dict[str, Any]], regime_label: str) -> Li
 def filter_ai_vetoes(setups: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     """
     Evaluates ML prediction metrics on algorithmic setups. 
-    If ML Confidence < 40%, the asset is stripped from the standard list and funnelled to the veto list.
+    If ML Confidence < 40% (or missing), the asset is stripped from the standard list and funnelled to the veto list.
     """
     approved = []
     vetoed = []
     for row in setups:
         ml_conf = row.get('ml_confidence_score')
-        if ml_conf is not None and ml_conf < 40.0:
+        if ml_conf is None or ml_conf < 40.0:
             vetoed.append(row)
         else:
             approved.append(row)
@@ -146,8 +146,8 @@ def filter_macro_vetoes(setups: List[Dict[str, Any]], threat_level: str) -> Tupl
         is_us_asset = country == 'US' or currency == 'USD'
         is_uk_asset = country == 'UK' or currency in ['GBP', 'GBp']
         
-        # 2. Hard Liquidity Drain Circuit Breaker (Trumps all logic)
-        if (is_us_asset and us_spread > 5.0) or (is_uk_asset and uk_spread > 3.0):
+        # 2. Hard Liquidity Drain Circuit Breaker (Trumps all logic) - Threshold raised to 6.5
+        if (is_us_asset and us_spread > 6.5) or (is_uk_asset and uk_spread > 3.0):
             vetoed.append(row)
             continue
             
@@ -158,10 +158,14 @@ def filter_macro_vetoes(setups: List[Dict[str, Any]], threat_level: str) -> Tupl
             
         pe = row.get('trailing_pe')
         debt = row.get('debt_to_equity')
-        corr = row.get('yield_correlation', 0.0)
+        corr = row.get('yield_correlation')
         
+        # Punitive evaluation for null correlation
+        if corr is None:
+            corr = -1.0
+            
         is_high_multiple = (pe is not None and pe > 30) or (debt is not None and debt > 1.5)
-        is_neg_corr = corr is not None and corr <= -0.3
+        is_neg_corr = corr <= -0.3
         
         if is_high_multiple and is_neg_corr:
             vetoed.append(row)
@@ -308,7 +312,7 @@ def generate_markdown_briefing(target_date: str, data: List[Dict[str, Any]]) -> 
     
     # 2. Execute Screens mapped by Regime
     raw_oversold = get_oversold_reversals(data, regime_label)
-    raw_golden_crosses = get_golden_crosses(data, regime_label)
+    raw_macd_crosses = get_macd_bullish_crosses(data, regime_label)
     raw_surges = get_momentum_surges(data, regime_label)
     warnings = get_overbought_warnings(data, regime_label)
     
@@ -316,8 +320,8 @@ def generate_markdown_briefing(target_date: str, data: List[Dict[str, Any]]) -> 
     approved_1, ml_veto_1 = filter_ai_vetoes(raw_oversold)
     oversold, macro_veto_1 = filter_macro_vetoes(approved_1, threat_level)
 
-    approved_2, ml_veto_2 = filter_ai_vetoes(raw_golden_crosses)
-    golden_crosses, macro_veto_2 = filter_macro_vetoes(approved_2, threat_level)
+    approved_2, ml_veto_2 = filter_ai_vetoes(raw_macd_crosses)
+    macd_crosses, macro_veto_2 = filter_macro_vetoes(approved_2, threat_level)
 
     approved_3, ml_veto_3 = filter_ai_vetoes(raw_surges)
     surges, macro_veto_3 = filter_macro_vetoes(approved_3, threat_level)
@@ -384,9 +388,9 @@ def generate_markdown_briefing(target_date: str, data: List[Dict[str, Any]]) -> 
     report += "*Aggressively sold off (RSI < 30) but demonstrating early quantitative signs of momentum recovery (Positive MACD Histogram). High-conviction, deep-value entry opportunities.*\n\n"
     report += _format_mobile_markdown_list(oversold)
     
-    report += "## 📈 Golden MACD Crosses\n"
-    report += "*Triggered a Golden MACD Cross, indicating a mathematical momentum reversal to the upside and underlying institutional accumulation.*\n\n"
-    report += _format_mobile_markdown_list(golden_crosses)
+    report += "## 📈 MACD Bullish Crosses\n"
+    report += "*Triggered a Bullish MACD Crossover, indicating a mathematical momentum reversal to the upside and underlying institutional accumulation.*\n\n"
+    report += _format_mobile_markdown_list(macd_crosses)
     
     report += "## 🚀 Momentum & Volume Surges\n"
     report += "*Explosive buying volume (Volume > 1.5x 20-Day SMA) operating in a healthy momentum band (RSI 50-70). Strong institutional backing without immediate overbought exhaustion risk.*\n\n"

@@ -404,3 +404,8 @@ table.dataTable.display tbody tr.even > .sorting_1, table.dataTable.order-column
 .text-accent-purple {
     color: #b366ff;
 }
+
+/* --- 19. Algorithmic Breakdown Lists & Risk Warnings --- */
+.algo-breakdown-list { margin-top: 5px; margin-bottom: 15px; font-size: 15px; color: #ccc; padding-left: 20px; }
+.algo-breakdown-list li { margin-bottom: 5px; }
+.risk-warning { color: #ff4d4d; font-weight: bold; }
