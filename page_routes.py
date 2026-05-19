@@ -80,9 +80,14 @@ async def market_sentiment_page(request: Request):
         
         # --- Phase 3: Macroeconomic Event Routing ---
         now = datetime.now()
+        
+        # FIX: Start the lookup from the beginning of TODAY instead of "right now".
+        # This ensures events that happened earlier this morning still appear.
+        start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        
         horizon_48h = (now + timedelta(hours=48)).strftime('%Y-%m-%d %H:%M:%S')
         horizon_7d = (now + timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')
-        now_str = now.strftime('%Y-%m-%d %H:%M:%S')
+        now_str = start_of_day.strftime('%Y-%m-%d %H:%M:%S')
 
         # Create tables if they don't exist yet to prevent routing errors
         cursor.execute("""

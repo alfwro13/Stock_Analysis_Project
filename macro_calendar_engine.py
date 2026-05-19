@@ -92,18 +92,25 @@ def fetch_and_process_calendar() -> List[Tuple]:
         
         # Filter logic
         if impact == TARGET_IMPACT and currency in TARGET_CURRENCIES:
-            date_str = event.findtext('date', '')
-            time_str = event.findtext('time', '')
+            date_str = event.findtext('date', '').strip()
+            time_str = event.findtext('time', '').strip()
             event_name = event.findtext('title', '').strip()
             
-            # Combine date and time
-            dt_str = f"{date_str} {time_str}".strip()
+            # --- BULLETPROOF DATE PARSING ---
+            formatted_date = ""
             try:
-                # Format specific to ForexFactory XML: "05-19-2026 10:45am"
-                dt_obj = datetime.strptime(dt_str, "%m-%d-%Y %I:%M%p")
+                # Clean time string (e.g., '10:45 am' -> '10:45am')
+                time_clean = time_str.replace(' ', '').lower()
+                dt_obj = datetime.strptime(f"{date_str} {time_clean}", "%m-%d-%Y %I:%M%p")
                 formatted_date = dt_obj.strftime("%Y-%m-%d %H:%M:%S")
             except ValueError:
-                formatted_date = dt_str # Fallback to raw string
+                try:
+                    # Fallback for "All Day" or "Tentative" events
+                    dt_obj = datetime.strptime(date_str, "%m-%d-%Y")
+                    formatted_date = dt_obj.strftime("%Y-%m-%d 00:00:00")
+                except ValueError:
+                    logger.warning(f"Could not parse date: {date_str} {time_str}")
+                    formatted_date = f"{date_str} {time_str}" # Emergency fallback
                 
             event_id = generate_event_id(formatted_date, currency, event_name)
             
