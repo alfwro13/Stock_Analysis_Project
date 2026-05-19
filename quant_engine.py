@@ -11,11 +11,6 @@ import ta
 
 from database import get_connection
 
-# Configure robust module-level logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - QUANT_ENGINE - %(levelname)s - %(message)s'
-)
 logger = logging.getLogger(__name__)
 
 def log_notification(message_type: str, message_text: str) -> None:
@@ -96,8 +91,8 @@ def run_daily_quant_scan(ticker_list: List[str], scan_type: str = 'daily') -> No
             logger.info(f"Processing {ticker} ({i + 1}/{total_tickers}) [{scan_type}]...")
             
             try:
-                # Fetch 1-year of data to guarantee accurate 200-day SMAs
-                df = yf.download(ticker, period="1y", interval="1d", progress=False, auto_adjust=True)
+                # Fetch 2-years of data to guarantee an accurate 200-day SMA baseline
+                df = yf.download(ticker, period="2y", interval="1d", progress=False, auto_adjust=True)
                 
                 if df.empty:
                     logger.warning(f"No OHLCV data returned for {ticker}. Skipping.")
@@ -121,7 +116,9 @@ def run_daily_quant_scan(ticker_list: List[str], scan_type: str = 'daily') -> No
                 macd_indicator = ta.trend.MACD(close=close_s)
                 sma_50 = ta.trend.SMAIndicator(close=close_s, window=50).sma_indicator()
                 sma_200 = ta.trend.SMAIndicator(close=close_s, window=200).sma_indicator()
-                vol_sma_20 = ta.trend.SMAIndicator(close=volume_s, window=20).sma_indicator()
+                
+                # Replaced 'ta' call with raw pandas rolling mean for reliability
+                vol_sma_20 = volume_s.rolling(window=20).mean()
 
                 # Extract latest localized date and metrics
                 last_date = df.index[-1].strftime('%Y-%m-%d')
@@ -141,7 +138,8 @@ def run_daily_quant_scan(ticker_list: List[str], scan_type: str = 'daily') -> No
                     vol_surge = bool(c_vol > (vol_sma_20.iloc[-1] * 1.5))
 
                 bullish_cross = False
-                if len(macd_indicator.macd()) >= 2 and not pd.isna(macd_indicator.macd().iloc[-2]):
+                # Explicit guards added for MACD variables to prevent TypeErrors in cross calculations
+                if c_macd is not None and c_signal is not None and len(macd_indicator.macd()) >= 2 and not pd.isna(macd_indicator.macd().iloc[-2]):
                     # Golden MACD Cross: MACD crosses ABOVE signal line
                     prev_macd = macd_indicator.macd().iloc[-2]
                     prev_sig = macd_indicator.macd_signal().iloc[-2]

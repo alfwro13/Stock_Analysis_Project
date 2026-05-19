@@ -1,3 +1,4 @@
+# ai_prediction_engine.py
 import time
 import logging
 import sqlite3
@@ -15,11 +16,6 @@ from config import BASE_DIR
 from database import get_connection
 from data_engine import DataEngine
 
-# Configure robust module-level logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - AI_PREDICTION_ENGINE - %(levelname)s - %(message)s'
-)
 logger = logging.getLogger(__name__)
 
 # Constants
@@ -55,7 +51,8 @@ def log_notification(message_type: str, message_text: str) -> None:
     except Exception as e:
         logger.error(f"Failed to log notification: {e}")
     finally:
-        conn.close()
+        if 'conn' in locals():
+            conn.close()
 
 def get_target_tickers() -> List[str]:
     """
@@ -94,6 +91,7 @@ def run_historical_backfill() -> None:
 
     log_notification("Info", f"ML Historical Backfill initiated for {len(tickers)} assets.")
     conn = get_connection()
+    cursor = conn.cursor()
     
     try:
         total_inserted = 0
@@ -126,7 +124,7 @@ def run_historical_backfill() -> None:
                 
                 df['sma_50'] = ta.trend.SMAIndicator(close=df['Close'], window=50).sma_indicator()
                 df['sma_200'] = ta.trend.SMAIndicator(close=df['Close'], window=200).sma_indicator()
-                df['vol_sma_20'] = ta.trend.SMAIndicator(close=df['Volume'], window=20).sma_indicator()
+                df['vol_sma_20'] = df['Volume'].rolling(window=20).mean()
 
                 # Vectorize proxy logic for boolean triggers
                 df['volume_surge'] = (df['Volume'] > (df['vol_sma_20'] * 1.5)).astype(int)
@@ -146,7 +144,6 @@ def run_historical_backfill() -> None:
                         int(row['volume_surge']), int(row['bullish_cross'])
                     ))
 
-                cursor = conn.cursor()
                 query = """
                     INSERT OR IGNORE INTO quant_signals 
                     (ticker, date, close_price, volume, rsi_14, macd, macd_signal, macd_hist, sma_50, sma_200, volume_surge, bullish_cross)

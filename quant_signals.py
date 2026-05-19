@@ -12,11 +12,6 @@ import ta
 from config import HISTORICAL_DIR, FUNDAMENTALS_DIR
 from database import get_connection
 
-# Configure robust module-level logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - QUANT_SIGNALS - %(levelname)s - %(message)s'
-)
 logger = logging.getLogger(__name__)
 
 
@@ -124,6 +119,11 @@ def get_candlestick_patterns(prev2: pd.Series, prev1: pd.Series, curr: pd.Series
 class QuantEngine:
     def __init__(self) -> None:
         self.conn = get_connection()
+
+    def close(self):
+        """Safely closes the database connection."""
+        if hasattr(self, 'conn') and self.conn:
+            self.conn.close()
 
     def load_parquet(self, ticker: str) -> Optional[pd.DataFrame]:
         """Loads the historical daily data from the local Parquet file."""
@@ -553,12 +553,14 @@ class QuantEngine:
 
     def run_all(self) -> None:
         logger.info("Starting Institutional Quantamental Engine...")
-        for filename in os.listdir(HISTORICAL_DIR):
-            if filename.endswith(".parquet") and "BASELINE" not in filename:
-                ticker = filename.replace(".parquet", "")
-                self.analyze_ticker(ticker)
-        logger.info("Analysis Complete. Master Database is fully updated.")
-
+        try:
+            for filename in os.listdir(HISTORICAL_DIR):
+                if filename.endswith(".parquet") and "BASELINE" not in filename:
+                    ticker = filename.replace(".parquet", "")
+                    self.analyze_ticker(ticker)
+            logger.info("Analysis Complete. Master Database is fully updated.")
+        finally:
+            self.close()
 
 if __name__ == "__main__":
     engine = QuantEngine()
