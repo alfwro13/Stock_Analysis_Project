@@ -1,4 +1,3 @@
-# macro_data_engine.py
 import os
 import sqlite3
 import logging
@@ -212,8 +211,8 @@ def update_macro_indicators() -> None:
 
     if fred_api_key:
         logger.info("Fetching FRED Institutional Data (2-Year History)...")
-        # FIXED: Replaced BAMLC0A0CM (US Corporate) with BAMLC4A0C4SY (Sterling Non-Gilt Corporate)
-        fred_tickers = ['WM2NS', 'ICSA', 'BAMLH0A0HYM2', 'BAMLC4A0C4SY']
+        # REVERTED: Restored BAMLC0A0CM (US Corporate Master) as proxy because FRED does not offer the Sterling index for free.
+        fred_tickers = ['WM2NS', 'ICSA', 'BAMLH0A0HYM2', 'BAMLC0A0CM']
         for ticker in fred_tickers:
             df = fetch_fred_api(session, ticker, start_dt, end_dt, fred_api_key)
             if not df.empty:
@@ -250,7 +249,7 @@ def update_macro_indicators() -> None:
             float(row['ICSA']) if 'ICSA' in row and pd.notna(row['ICSA']) else None,
             float(row['BAMLH0A0HYM2']) if 'BAMLH0A0HYM2' in row and pd.notna(row['BAMLH0A0HYM2']) else None,
             float(row['LPMVWNM']) if 'LPMVWNM' in row and pd.notna(row['LPMVWNM']) else None,
-            float(row['BAMLC4A0C4SY']) if 'BAMLC4A0C4SY' in row and pd.notna(row['BAMLC4A0C4SY']) else None,
+            float(row['BAMLC0A0CM']) if 'BAMLC0A0CM' in row and pd.notna(row['BAMLC0A0CM']) else None,
             float(row['D7G7']) if 'D7G7' in row and pd.notna(row['D7G7']) else None,
             float(row['BCJD']) if 'BCJD' in row and pd.notna(row['BCJD']) else None
         ))
