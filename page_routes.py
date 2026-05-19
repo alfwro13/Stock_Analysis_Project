@@ -81,33 +81,13 @@ async def market_sentiment_page(request: Request):
         # --- Phase 3: Macroeconomic Event Routing ---
         now = datetime.now()
         
-        # FIX: Start the lookup from the beginning of TODAY instead of "right now".
-        # This ensures events that happened earlier this morning still appear.
+        # Start the lookup from the beginning of TODAY to ensure events from earlier this morning appear.
         start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
         
         horizon_48h = (now + timedelta(hours=48)).strftime('%Y-%m-%d %H:%M:%S')
         horizon_7d = (now + timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')
         now_str = start_of_day.strftime('%Y-%m-%d %H:%M:%S')
 
-        # Create tables if they don't exist yet to prevent routing errors
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS macro_calendar (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                event_date TEXT,
-                currency TEXT,
-                event_name TEXT,
-                forecast_val REAL,
-                previous_val REAL
-            )
-        """)
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS macro_indicators (
-                date TEXT,
-                indicator_name TEXT,
-                value REAL
-            )
-        """)
-        
         # Fetch Urgent Events (48 hours)
         cursor.execute("""
             SELECT * FROM macro_calendar 
@@ -133,21 +113,23 @@ async def market_sentiment_page(request: Request):
         uk_events = [dict(row) for row in cursor.fetchall()]
 
         # Process Historical DataFrame Indicators
-        df_indicators = pd.read_sql_query("SELECT * FROM macro_indicators", conn)
-        
-        if not df_indicators.empty and 'date' in df_indicators.columns:
-            df_indicators['date'] = pd.to_datetime(df_indicators['date'])
-            df_indicators.set_index('date', inplace=True)
+        try:
+            df_indicators = pd.read_sql_query("SELECT * FROM macro_indicators", conn)
             
-            df_m2 = df_indicators[df_indicators['indicator_name'] == 'US_M2'].sort_index()
-            df_us_hy = df_indicators[df_indicators['indicator_name'] == 'US_HY_SPREAD'].sort_index()
-            df_m4 = df_indicators[df_indicators['indicator_name'] == 'UK_M4'].sort_index()
-            df_uk_ig = df_indicators[df_indicators['indicator_name'] == 'UK_CORP_SPREAD'].sort_index()
-        else:
-            df_m2 = pd.DataFrame()
-            df_us_hy = pd.DataFrame()
-            df_m4 = pd.DataFrame()
-            df_uk_ig = pd.DataFrame()
+            if not df_indicators.empty and 'date' in df_indicators.columns:
+                df_indicators['date'] = pd.to_datetime(df_indicators['date'])
+                df_indicators.set_index('date', inplace=True)
+                
+                # Extract wide columns and rename to 'value' to satisfy the Plotly wrappers
+                df_m2 = df_indicators[['us_m2']].rename(columns={'us_m2': 'value'}).dropna().sort_index() if 'us_m2' in df_indicators.columns else pd.DataFrame()
+                df_us_hy = df_indicators[['us_high_yield_spread']].rename(columns={'us_high_yield_spread': 'value'}).dropna().sort_index() if 'us_high_yield_spread' in df_indicators.columns else pd.DataFrame()
+                df_m4 = df_indicators[['uk_m4']].rename(columns={'uk_m4': 'value'}).dropna().sort_index() if 'uk_m4' in df_indicators.columns else pd.DataFrame()
+                df_uk_ig = df_indicators[['uk_corporate_spread']].rename(columns={'uk_corporate_spread': 'value'}).dropna().sort_index() if 'uk_corporate_spread' in df_indicators.columns else pd.DataFrame()
+            else:
+                df_m2, df_us_hy, df_m4, df_uk_ig = pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+        except Exception as e:
+            print(f"[DEBUG] Error processing macro indicators matrix: {e}")
+            df_m2, df_us_hy, df_m4, df_uk_ig = pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
         # Safely fetch baseline SPY & FTSE prices
         try:
@@ -167,6 +149,7 @@ async def market_sentiment_page(request: Request):
         uk_credit_html = create_uk_credit_chart(df_uk_ig)
 
     except Exception as e:
+        print(f"[DEBUG] Fatal error in market_sentiment route: {e}")
         macro_regime = None
         urgent_events = []
         us_events = []
