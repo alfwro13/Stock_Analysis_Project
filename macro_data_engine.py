@@ -233,7 +233,7 @@ def update_macro_indicators() -> None:
         return
 
     # Merge, sort by date, and forward fill across differing frequencies
-    merged_df = pd.concat(dfs, axis=1)
+    merged_df = pd.concat(dfs, axis=1, sort=False)
     merged_df.sort_index(inplace=True)
     merged_df.ffill(inplace=True)
     
