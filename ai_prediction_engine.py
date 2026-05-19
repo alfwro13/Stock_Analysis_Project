@@ -83,8 +83,7 @@ def get_target_tickers() -> List[str]:
 def run_historical_backfill() -> None:
     """
     Downloads 2 years of daily data per ticker, calculates vectorized 
-    technical indicators (with stationary normalizations), and executes 
-    bulk INSERT OR IGNORE operations into SQLite.
+    technical indicators, and executes bulk INSERT OR IGNORE operations into SQLite.
     """
     tickers = get_target_tickers()
     if not tickers:
@@ -124,11 +123,6 @@ def run_historical_backfill() -> None:
                 df['macd_signal'] = macd_indicator.macd_signal()
                 df['macd_hist'] = macd_indicator.macd_diff()
                 
-                # CRITICAL-26: Normalize MACD by price to create scale-invariant features
-                df['macd_pct'] = df['macd'] / df['Close']
-                df['macd_signal_pct'] = df['macd_signal'] / df['Close']
-                df['macd_hist_pct'] = df['macd_hist'] / df['Close']
-                
                 df['sma_50'] = ta.trend.SMAIndicator(close=df['Close'], window=50).sma_indicator()
                 df['sma_200'] = ta.trend.SMAIndicator(close=df['Close'], window=200).sma_indicator()
                 df['vol_sma_20'] = df['Volume'].rolling(window=20).mean()
@@ -144,16 +138,17 @@ def run_historical_backfill() -> None:
                 records: List[Tuple] = []
                 for index, row in df.iterrows():
                     date_str = index.strftime('%Y-%m-%d')
+                    # Keep DB insertion RAW to match the schema
                     records.append((
                         ticker, date_str, float(row['Close']), int(row['Volume']),
-                        float(row['rsi_14']), float(row['macd_pct']), float(row['macd_signal_pct']),
-                        float(row['macd_hist_pct']), float(row['sma_50']), float(row['sma_200']),
+                        float(row['rsi_14']), float(row['macd']), float(row['macd_signal']),
+                        float(row['macd_hist']), float(row['sma_50']), float(row['sma_200']),
                         int(row['volume_surge']), int(row['bullish_cross'])
                     ))
 
                 query = """
                     INSERT OR IGNORE INTO quant_signals 
-                    (ticker, date, close_price, volume, rsi_14, macd_pct, macd_signal_pct, macd_hist_pct, sma_50, sma_200, volume_surge, bullish_cross)
+                    (ticker, date, close_price, volume, rsi_14, macd, macd_signal, macd_hist, sma_50, sma_200, volume_surge, bullish_cross)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """
                 cursor.executemany(query, records)
@@ -193,9 +188,9 @@ def train_global_ml_model() -> None:
     try:
         conn = get_connection()
         
-        # 1. Fetch all historical quantitative data using normalized MACD columns
+        # 1. Fetch raw historical quantitative data (using RAW columns)
         query = """
-            SELECT ticker, date, close_price, rsi_14, macd_pct, macd_signal_pct, macd_hist_pct, 
+            SELECT ticker, date, close_price, rsi_14, macd, macd_signal, macd_hist, 
                    sma_50, sma_200, volume_surge, bullish_cross 
             FROM quant_signals 
             ORDER BY date ASC
@@ -211,6 +206,11 @@ def train_global_ml_model() -> None:
         logger.info(f"Extracting features from {len(df)} historical records...")
         df['dist_sma_50'] = (df['close_price'] - df['sma_50']) / df['sma_50']
         df['dist_sma_200'] = (df['close_price'] - df['sma_200']) / df['sma_200']
+        
+        # CRITICAL-26: Price-normalize MACD mathematically in Pandas to prevent cross-ticker bias
+        df['macd_pct'] = df['macd'] / df['close_price']
+        df['macd_signal_pct'] = df['macd_signal'] / df['close_price']
+        df['macd_hist_pct'] = df['macd_hist'] / df['close_price']
         
         # Coerce boolean/int proxy columns to strict integers
         df['volume_surge'] = df['volume_surge'].fillna(0).astype(int)
@@ -232,7 +232,7 @@ def train_global_ml_model() -> None:
             log_notification("Error", f"Insufficient training samples ({len(df)}). Backfill required.")
             return
 
-        # CRITICAL-25: Walk-Forward Validation Setup
+        # --- 4. Walk-Forward Validation Split (Resolves Issue #25) ---
         # Sort values strictly by date to prevent lookahead bias
         df.sort_values('date', inplace=True)
         
@@ -297,7 +297,7 @@ def train_global_ml_model() -> None:
 def update_daily_ml_predictions(tickers: List[str]) -> None:
     """
     Loads the trained model, fetches the latest raw row for each ticker,
-    calculates inference features, and updates the database with confidence scores.
+    calculates inference features dynamically, and updates the database with confidence scores.
     """
     if not tickers:
         logger.warning("Empty ticker list provided for ML inference. Skipping.")
@@ -313,10 +313,10 @@ def update_daily_ml_predictions(tickers: List[str]) -> None:
         model = joblib.load(MODEL_PATH)
         conn = get_connection()
         
-        # Fetch the most recent quantitative row for the target assets with normalized MACD
+        # Fetch raw db columns
         placeholders = ','.join('?' for _ in tickers)
         query = f"""
-            SELECT ticker, date, close_price, rsi_14, macd_pct, macd_signal_pct, macd_hist_pct, 
+            SELECT ticker, date, close_price, rsi_14, macd, macd_signal, macd_hist, 
                    sma_50, sma_200, volume_surge, bullish_cross 
             FROM quant_signals 
             WHERE ticker IN ({placeholders})
@@ -329,9 +329,14 @@ def update_daily_ml_predictions(tickers: List[str]) -> None:
             conn.close()
             return
 
-        # Feature Engineering (Same logic as training)
+        # Feature Engineering: On-the-fly normalization 
         df['dist_sma_50'] = (df['close_price'] - df['sma_50']) / df['sma_50']
         df['dist_sma_200'] = (df['close_price'] - df['sma_200']) / df['sma_200']
+        
+        df['macd_pct'] = df['macd'] / df['close_price']
+        df['macd_signal_pct'] = df['macd_signal'] / df['close_price']
+        df['macd_hist_pct'] = df['macd_hist'] / df['close_price']
+        
         df['volume_surge'] = df['volume_surge'].fillna(0).astype(int)
         df['bullish_cross'] = df['bullish_cross'].fillna(0).astype(int)
         
@@ -339,14 +344,11 @@ def update_daily_ml_predictions(tickers: List[str]) -> None:
         
         update_payloads = []
         for _, row in df.iterrows():
-            # If standard indicators are missing, skip prediction safely
             if pd.isna(row[FEATURE_COLS]).any():
                 continue
                 
-            # Isolate the exact feature array order expected by the model
             X_infer = pd.DataFrame([row[FEATURE_COLS]])
             
-            # Predict Probability [Class 0, Class 1] -> Extract Class 1
             prob = model.predict_proba(X_infer)[0][1]
             ml_confidence_score = round(prob * 100.0, 2)
             
