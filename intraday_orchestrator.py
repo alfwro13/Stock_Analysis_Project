@@ -167,7 +167,7 @@ class IntradayOrchestrator:
         metadata = self.get_asset_metadata(tickers)
         
         # Add system yield benchmarks for macro shock detection
-        macro_tickers = ["^TYX", "TUKG10Y=X"]
+        macro_tickers = ["^TYX"]
         download_list = list(set(tickers + macro_tickers))
         
         print(f"[ORCHESTRATOR] Performing bulk YF 5m fetch for {len(download_list)} assets & macro benchmarks...")
