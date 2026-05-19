@@ -23,7 +23,7 @@ import matplotlib.pyplot as plt
 # NLP Sentiment Analyzer (FinBERT via HuggingFace)
 from transformers import pipeline
 
-from nextcloud_talk import upload_file_webdav, share_file_to_talk
+from nextcloud_talk import upload_file_webdav, share_file_to_talk, send_text_message
 from config import (
     NEXTCLOUD_URL, BOT_USERNAME, APP_PASSWORD, CONVERSATION_TOKEN,
     load_config, HISTORICAL_DIR
@@ -695,3 +695,110 @@ def update_all_sentiment(tickers: List[str]) -> None:
             
     conn.close()
     logger.info("FinBERT NLP Analysis completed successfully.")
+
+
+def run_central_bank_nlp_alert(event_name: str, currency: str) -> bool:
+    """
+    Specifically targets Tier-1 Central Bank events (FOMC, BoE).
+    Parses immediate media reactions to determine if the monetary policy tone 
+    is mathematically 'Hawkish' (Bearish for equities) or 'Dovish' (Bullish for equities).
+    Dispatches a specialized alert to Nextcloud Talk.
+    """
+    logger.info(f"Intercepting Central Bank Event for NLP Analysis: {event_name}")
+    config = load_config()
+    
+    # 1. Initialize FinBERT 
+    try:
+        analyzer = pipeline("sentiment-analysis", model="ProsusAI/finbert")
+    except Exception as e:
+        logger.error(f"Failed to load FinBERT for Central Bank NLP: {e}")
+        return False
+
+    # 2. Determine target entity for proxy news scraping
+    if currency == "USD":
+        target_entity = "Federal Reserve"
+        ticker_proxy = "^TNX" # 10Y Treasury news usually captures Fed statements fastest
+    elif currency == "GBP":
+        target_entity = "Bank of England"
+        ticker_proxy = "^FTSE"
+    else:
+        logger.warning(f"Unsupported currency {currency} for Central Bank NLP.")
+        return False
+
+    # 3. Fetch latest headlines
+    try:
+        stock = yf.Ticker(ticker_proxy)
+        news = stock.news
+        if not news:
+            return False
+            
+        scores = []
+        parsed_headlines = []
+        
+        for item in news[:20]:
+            content = item.get('content', item)
+            title = content.get('title', '')
+            summary = content.get('summary', '')
+            
+            # Ensure the news is actually talking about the central bank or rates
+            text_to_analyze = f"{title}. {summary}"
+            if "rate" not in text_to_analyze.lower() and "inflation" not in text_to_analyze.lower() and target_entity.lower() not in text_to_analyze.lower():
+                continue
+                
+            # Score with FinBERT
+            result = analyzer(text_to_analyze[:512])[0]
+            label = result['label'].lower()
+            prob = result['score']
+            
+            if label == 'positive':
+                compound = prob
+            elif label == 'negative':
+                compound = -prob
+            else:
+                compound = 0.0
+                
+            scores.append(compound)
+            parsed_headlines.append(title)
+            
+        if not scores:
+            logger.info("No relevant Central Bank headlines found in the immediate fetch window.")
+            return False
+            
+        avg_score = sum(scores) / len(scores)
+        
+        # 4. Map General Sentiment to Monetary Policy Tone
+        if avg_score > 0.15:
+            tone = "🦅 HAWKISH (Restrictive)"
+            equity_impact = "Bearish for Equities"
+        elif avg_score < -0.15:
+            tone = "🕊️ DOVISH (Accommodative)"
+            equity_impact = "Bullish for Equities"
+        else:
+            tone = "⚖️ NEUTRAL"
+            equity_impact = "Market pricing unchanged"
+            
+        # 5. Dispatch Alert
+        msg = (
+            f"🏛️ **CENTRAL BANK NLP ANALYSIS** 🏛️\n\n"
+            f"**Event:** {event_name} ({currency})\n"
+            f"**Calculated Tone:** {tone}\n"
+            f"**Expected Equity Impact:** {equity_impact}\n\n"
+            f"**Analyzed FinBERT Score:** {avg_score:+.3f}\n"
+            f"*Top Headline Parsed:* {parsed_headlines[0]}"
+        )
+        
+        send_text_message(msg, config)
+        
+        # Log to DB
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO system_notifications (message_type, message_text) VALUES (?, ?)", ("Macro NLP", msg))
+        conn.commit()
+        conn.close()
+        
+        logger.info(f"Central Bank NLP successfully dispatched: {tone}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Central Bank NLP analysis failed: {e}")
+        return False
