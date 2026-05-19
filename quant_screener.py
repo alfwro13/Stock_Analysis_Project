@@ -1,12 +1,4 @@
-"""
-quant_screener.py
-
-Elite-level rule-based screening system for the Quantamental Dashboard.
-Queries overnight mathematical signal data from the local SQLite database,
-applies Turbulence-Aware Market Regime and Macro Yield Threat contextual filtering,
-and generates a deterministic Morning Quant Briefing in a mobile-optimized Markdown format.
-"""
-
+# quant_screener.py
 import os
 import re
 import logging
@@ -123,15 +115,47 @@ def filter_ai_vetoes(setups: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]]
 
 def filter_macro_vetoes(setups: List[Dict[str, Any]], threat_level: str) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     """
-    Vetoes high-multiple or highly indebted stocks that negatively correlate with surging yields.
-    If global yields are spiking (RED/YELLOW), these assets are mathematically likely to compress.
+    Applies Systemic Liquidity Drain Circuit Breaker via credit spreads and vetoes high-multiple 
+    or highly indebted stocks that negatively correlate with surging yields.
     """
-    if threat_level not in ['RED', 'YELLOW']:
-        return setups, []
-        
+    # 1. Fetch Systemic Liquidity Constraints (Credit Spreads)
+    us_spread = 0.0
+    uk_spread = 0.0
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT us_high_yield_spread, uk_corporate_spread FROM macro_indicators ORDER BY date DESC LIMIT 1")
+        row = cursor.fetchone()
+        if row:
+            us_spread = float(row.get('us_high_yield_spread') or 0.0)
+            uk_spread = float(row.get('uk_corporate_spread') or 0.0)
+    except Exception as e:
+        logger.error(f"Failed to fetch credit spreads for circuit breaker: {e}")
+    finally:
+        if conn:
+            conn.close()
+
     approved = []
     vetoed = []
+    
     for row in setups:
+        country = row.get('country', 'US')
+        currency = row.get('currency', 'USD')
+        
+        is_us_asset = country == 'US' or currency == 'USD'
+        is_uk_asset = country == 'UK' or currency in ['GBP', 'GBp']
+        
+        # 2. Hard Liquidity Drain Circuit Breaker (Trumps all logic)
+        if (is_us_asset and us_spread > 5.0) or (is_uk_asset and uk_spread > 3.0):
+            vetoed.append(row)
+            continue
+            
+        # 3. Macro Yield Valuation Vetoes
+        if threat_level not in ['RED', 'YELLOW']:
+            approved.append(row)
+            continue
+            
         pe = row.get('trailing_pe')
         debt = row.get('debt_to_equity')
         corr = row.get('yield_correlation', 0.0)
@@ -143,6 +167,7 @@ def filter_macro_vetoes(setups: List[Dict[str, Any]], threat_level: str) -> Tupl
             vetoed.append(row)
         else:
             approved.append(row)
+            
     return approved, vetoed
 
 # --- Data Retrieval ---
@@ -160,7 +185,7 @@ def fetch_latest_signals(target_date: str) -> List[Dict[str, Any]]:
         
         # Parameterized query to prevent SQL injection, joining fundamentals
         cursor.execute('''
-            SELECT q.*, s.trailing_pe, s.debt_to_equity, s.yield_correlation 
+            SELECT q.*, s.trailing_pe, s.debt_to_equity, s.yield_correlation, s.country, s.currency
             FROM quant_signals q
             LEFT JOIN stock_signals s ON q.ticker = s.ticker
             WHERE q.date = ?
@@ -330,6 +355,7 @@ def generate_markdown_briefing(target_date: str, data: List[Dict[str, Any]]) -> 
             currency = ev.get('currency', 'USD')
             prev_val = ev.get('previous_val', 'N/A')
             fcst_val = ev.get('forecast_val', 'N/A')
+            ai_warning = ev.get('ai_volatility_warning', 0.0)
             
             # Mathematical evaluation of divergence
             is_divergent = False
@@ -344,6 +370,9 @@ def generate_markdown_briefing(target_date: str, data: List[Dict[str, Any]]) -> 
                     is_divergent = True
             
             flag = "⚠️ " if is_divergent else ""
+            if ai_warning > 2.0:
+                flag = "🚨 [AI VOLATILITY WARNING] "
+
             report += f"🔹 **{ev_date}** | [{currency}] {ev_name}\n"
             report += f"&nbsp;&nbsp;&nbsp;↳ {flag}*Forecast:* {fcst_val} | *Previous:* {prev_val}\n\n"
     
@@ -364,8 +393,8 @@ def generate_markdown_briefing(target_date: str, data: List[Dict[str, Any]]) -> 
     report += _format_mobile_markdown_list(surges)
     
     if macro_vetoed:
-        report += "## 🏛️ Macro Vetoed Setups (Yield Sensitive)\n"
-        report += "*These equities triggered algorithmic buy signals but were VETOED by the Intermarket Engine due to surging global interest rates. They exhibit high debt or extreme P/E ratios and historically crash when yields spike. Avoid entry.*\n\n"
+        report += "## 🏛️ Macro/Liquidity Vetoed Setups\n"
+        report += "*These equities triggered algorithmic buy signals but were VETOED by the Intermarket Engine due to surging global interest rates or failing systemic credit spreads. Avoid entry.*\n\n"
         report += _format_mobile_markdown_list(macro_vetoed)
 
     if ml_vetoed:

@@ -21,3 +21,4 @@ lxml
 html5lib
 transformers>=4.37.0
 torch>=2.0.0
+pandas-datareader>=0.10.0
