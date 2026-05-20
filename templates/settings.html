@@ -544,29 +544,96 @@
         <details class="settings-card">
             <summary>🧠 Machine Learning & AI Engine</summary>
 
-            {% set ml_engine = config.SCHEDULING.ML_ENGINE if config.SCHEDULING.ML_ENGINE else {} %}
-            {% set ml_days = ml_engine.DAYS if ml_engine.DAYS else ['sun'] %}
+            {% set ml_backfill = config.SCHEDULING.ML_BACKFILL if config.SCHEDULING.ML_BACKFILL else {} %}
+            {% set ml_backfill_days = ml_backfill.DAYS if ml_backfill.DAYS else ['sat'] %}
             
-            <div style="background-color: #2c2c2c; padding: 15px; border-radius: 5px; margin-bottom: 15px; border-left: 3px solid #ff00ff;">
-                <h4 style="margin-top: 0; color: #ff00ff;">🤖 ML Pipeline Initialization & Scheduling</h4>
-                <p style="font-size: 13px; color: #aaa; margin-top: 0;">Automated Machine Learning pipeline to fetch 2 years of history, construct vectorized features, and train the global Voting Classifier ensemble.</p>
+            <div style="background-color: #2c2c2c; padding: 15px; border-radius: 5px; margin-bottom: 15px; border-left: 3px solid #ffaa00;">
+                <h4 style="margin-top: 0; color: #ffaa00;">⚙️ Historical Data Backfill & Sync</h4>
+                <p style="font-size: 13px; color: #aaa; margin-top: 0;">Heavy ETL job that synchronizes structural metadata (Beta, Sector) and fetches 2 years of history for ML feature vectors.</p>
                 
+                <div class="checkbox-group">
+                    <input type="checkbox" id="ML_BACKFILL_ENABLED" {% if ml_backfill.ENABLED %}checked{% endif %}>
+                    <label for="ML_BACKFILL_ENABLED">Enable automated background execution</label>
+                </div>
+
                 <div style="display: flex; gap: 15px; margin-bottom: 15px; flex-wrap: wrap;">
-                    <label><input type="checkbox" class="ml-day" value="mon" {% if 'mon' in ml_days %}checked{% endif %}> Mon</label>
-                    <label><input type="checkbox" class="ml-day" value="tue" {% if 'tue' in ml_days %}checked{% endif %}> Tue</label>
-                    <label><input type="checkbox" class="ml-day" value="wed" {% if 'wed' in ml_days %}checked{% endif %}> Wed</label>
-                    <label><input type="checkbox" class="ml-day" value="thu" {% if 'thu' in ml_days %}checked{% endif %}> Thu</label>
-                    <label><input type="checkbox" class="ml-day" value="fri" {% if 'fri' in ml_days %}checked{% endif %}> Fri</label>
-                    <label><input type="checkbox" class="ml-day" value="sat" {% if 'sat' in ml_days %}checked{% endif %}> Sat</label>
-                    <label><input type="checkbox" class="ml-day" value="sun" {% if 'sun' in ml_days %}checked{% endif %}> Sun</label>
+                    <label><input type="checkbox" class="ml-backfill-day" value="mon" {% if 'mon' in ml_backfill_days %}checked{% endif %}> Mon</label>
+                    <label><input type="checkbox" class="ml-backfill-day" value="tue" {% if 'tue' in ml_backfill_days %}checked{% endif %}> Tue</label>
+                    <label><input type="checkbox" class="ml-backfill-day" value="wed" {% if 'wed' in ml_backfill_days %}checked{% endif %}> Wed</label>
+                    <label><input type="checkbox" class="ml-backfill-day" value="thu" {% if 'thu' in ml_backfill_days %}checked{% endif %}> Thu</label>
+                    <label><input type="checkbox" class="ml-backfill-day" value="fri" {% if 'fri' in ml_backfill_days %}checked{% endif %}> Fri</label>
+                    <label><input type="checkbox" class="ml-backfill-day" value="sat" {% if 'sat' in ml_backfill_days %}checked{% endif %}> Sat</label>
+                    <label><input type="checkbox" class="ml-backfill-day" value="sun" {% if 'sun' in ml_backfill_days %}checked{% endif %}> Sun</label>
                 </div>
                 
                 <div style="display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap;">
                     <div class="form-group" style="margin-bottom: 0;">
                         <label>Execution Time</label>
-                        <input type="time" id="ML_ENGINE_TIME" value="{{ ml_engine.TIME | default('04:00') }}">
+                        <input type="time" id="ML_BACKFILL_TIME" value="{{ ml_backfill.TIME | default('02:00') }}">
                     </div>
-                    <button type="button" class="btn-test" style="margin-top: 0; background-color: #ff00ff; color: #121212;" onclick="triggerMLInit()">⚙️ Initialize AI Engine (Backfill & Train)</button>
+                    <button type="button" class="btn-test" style="margin-top: 0; background-color: #ffaa00; color: #121212;" onclick="triggerMLBackfill()">▶️ Run Backfill Now</button>
+                </div>
+            </div>
+
+            {% set ml_training = config.SCHEDULING.ML_TRAINING if config.SCHEDULING.ML_TRAINING else {} %}
+            {% set ml_train_days = ml_training.DAYS if ml_training.DAYS else ['sun'] %}
+
+            <div style="background-color: #2c2c2c; padding: 15px; border-radius: 5px; margin-bottom: 15px; border-left: 3px solid #ff00ff;">
+                <h4 style="margin-top: 0; color: #ff00ff;">🧠 Global Model Training (Walk-Forward)</h4>
+                <p style="font-size: 13px; color: #aaa; margin-top: 0;">Compute-heavy process that executes Anchored Walk-Forward Cross Validation and trains the global Voting Classifier ensemble.</p>
+                
+                <div class="checkbox-group">
+                    <input type="checkbox" id="ML_TRAINING_ENABLED" {% if ml_training.ENABLED %}checked{% endif %}>
+                    <label for="ML_TRAINING_ENABLED">Enable automated background execution</label>
+                </div>
+
+                <div style="display: flex; gap: 15px; margin-bottom: 15px; flex-wrap: wrap;">
+                    <label><input type="checkbox" class="ml-training-day" value="mon" {% if 'mon' in ml_train_days %}checked{% endif %}> Mon</label>
+                    <label><input type="checkbox" class="ml-training-day" value="tue" {% if 'tue' in ml_train_days %}checked{% endif %}> Tue</label>
+                    <label><input type="checkbox" class="ml-training-day" value="wed" {% if 'wed' in ml_train_days %}checked{% endif %}> Wed</label>
+                    <label><input type="checkbox" class="ml-training-day" value="thu" {% if 'thu' in ml_train_days %}checked{% endif %}> Thu</label>
+                    <label><input type="checkbox" class="ml-training-day" value="fri" {% if 'fri' in ml_train_days %}checked{% endif %}> Fri</label>
+                    <label><input type="checkbox" class="ml-training-day" value="sat" {% if 'sat' in ml_train_days %}checked{% endif %}> Sat</label>
+                    <label><input type="checkbox" class="ml-training-day" value="sun" {% if 'sun' in ml_train_days %}checked{% endif %}> Sun</label>
+                </div>
+                
+                <div style="display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap;">
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label>Execution Time</label>
+                        <input type="time" id="ML_TRAINING_TIME" value="{{ ml_training.TIME | default('04:00') }}">
+                    </div>
+                    <button type="button" class="btn-test" style="margin-top: 0; background-color: #ff00ff; color: #121212;" onclick="triggerMLTraining()">▶️ Run Training Now</button>
+                </div>
+            </div>
+
+            {% set ml_inference = config.SCHEDULING.ML_INFERENCE if config.SCHEDULING.ML_INFERENCE else {} %}
+            {% set ml_infer_days = ml_inference.DAYS if ml_inference.DAYS else ['mon', 'tue', 'wed', 'thu', 'fri'] %}
+
+            <div style="background-color: #2c2c2c; padding: 15px; border-radius: 5px; margin-bottom: 15px; border-left: 3px solid #00ffcc;">
+                <h4 style="margin-top: 0; color: #00ffcc;">🔮 Daily ML Inference</h4>
+                <p style="font-size: 13px; color: #aaa; margin-top: 0;">Loads the trained model and performs rapid daily predictions on your portfolio and the market universe. Should run shortly after the Overnight Quant Scan.</p>
+                
+                <div class="checkbox-group">
+                    <input type="checkbox" id="ML_INFERENCE_ENABLED" {% if ml_inference.ENABLED %}checked{% endif %}>
+                    <label for="ML_INFERENCE_ENABLED">Enable automated background execution</label>
+                </div>
+
+                <div style="display: flex; gap: 15px; margin-bottom: 15px; flex-wrap: wrap;">
+                    <label><input type="checkbox" class="ml-inference-day" value="mon" {% if 'mon' in ml_infer_days %}checked{% endif %}> Mon</label>
+                    <label><input type="checkbox" class="ml-inference-day" value="tue" {% if 'tue' in ml_infer_days %}checked{% endif %}> Tue</label>
+                    <label><input type="checkbox" class="ml-inference-day" value="wed" {% if 'wed' in ml_infer_days %}checked{% endif %}> Wed</label>
+                    <label><input type="checkbox" class="ml-inference-day" value="thu" {% if 'thu' in ml_infer_days %}checked{% endif %}> Thu</label>
+                    <label><input type="checkbox" class="ml-inference-day" value="fri" {% if 'fri' in ml_infer_days %}checked{% endif %}> Fri</label>
+                    <label><input type="checkbox" class="ml-inference-day" value="sat" {% if 'sat' in ml_infer_days %}checked{% endif %}> Sat</label>
+                    <label><input type="checkbox" class="ml-inference-day" value="sun" {% if 'sun' in ml_infer_days %}checked{% endif %}> Sun</label>
+                </div>
+                
+                <div style="display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap;">
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label>Execution Time</label>
+                        <input type="time" id="ML_INFERENCE_TIME" value="{{ ml_inference.TIME | default('01:30') }}">
+                    </div>
+                    <button type="button" class="btn-test" style="margin-top: 0; background-color: #00ffcc; color: #121212;" onclick="triggerMLInference()">▶️ Run Inference Now</button>
                 </div>
             </div>
         </details>
@@ -1116,21 +1183,57 @@
             }
         }
 
-        async function triggerMLInit() {
-            const btn = document.querySelector('button[onclick="triggerMLInit()"]');
+        async function triggerMLBackfill() {
+            const btn = document.querySelector('button[onclick="triggerMLBackfill()"]');
             btn.disabled = true;
-            btn.innerText = "⚙️ Initializing Engine...";
+            btn.innerText = "▶️ Initiating Backfill...";
             
             try {
-                await fetch('/api/ml/init-pipeline', { method: 'POST' });
-                alert("ML Pipeline initialized in the background. It will execute the Historical Backfill, Train the Model, and Run Daily Predictions sequentially. Check system notifications for progress.");
+                await fetch('/api/ml/trigger-backfill', { method: 'POST' });
+                alert("ML Historical Backfill initiated in the background. Check system notifications for progress.");
             } catch (error) {
-                alert("Failed to initiate ML Pipeline. Network or server error.");
+                alert("Failed to initiate ML Backfill. Network or server error.");
             }
             
             setTimeout(() => {
                 btn.disabled = false;
-                btn.innerText = "⚙️ Initialize AI Engine (Backfill & Train)";
+                btn.innerText = "▶️ Run Backfill Now";
+            }, 3000);
+        }
+
+        async function triggerMLTraining() {
+            const btn = document.querySelector('button[onclick="triggerMLTraining()"]');
+            btn.disabled = true;
+            btn.innerText = "▶️ Initiating Training...";
+            
+            try {
+                await fetch('/api/ml/trigger-training', { method: 'POST' });
+                alert("Global ML Walk-Forward Training initiated in the background. Check system notifications for progress.");
+            } catch (error) {
+                alert("Failed to initiate ML Training. Network or server error.");
+            }
+            
+            setTimeout(() => {
+                btn.disabled = false;
+                btn.innerText = "▶️ Run Training Now";
+            }, 3000);
+        }
+
+        async function triggerMLInference() {
+            const btn = document.querySelector('button[onclick="triggerMLInference()"]');
+            btn.disabled = true;
+            btn.innerText = "▶️ Initiating Inference...";
+            
+            try {
+                await fetch('/api/ml/trigger-inference', { method: 'POST' });
+                alert("Daily ML Inference initiated in the background. Check system notifications for progress.");
+            } catch (error) {
+                alert("Failed to initiate ML Inference. Network or server error.");
+            }
+            
+            setTimeout(() => {
+                btn.disabled = false;
+                btn.innerText = "▶️ Run Inference Now";
             }, 3000);
         }
 
@@ -1192,7 +1295,9 @@
             const earnDays = Array.from(document.querySelectorAll('.earn-day:checked')).map(cb => cb.value);
             const dispatchDays = Array.from(document.querySelectorAll('.dispatch-day:checked')).map(cb => cb.value);
             const universeDays = Array.from(document.querySelectorAll('.universe-day:checked')).map(cb => cb.value);
-            const mlDays = Array.from(document.querySelectorAll('.ml-day:checked')).map(cb => cb.value);
+            const mlBackfillDays = Array.from(document.querySelectorAll('.ml-backfill-day:checked')).map(cb => cb.value);
+            const mlTrainingDays = Array.from(document.querySelectorAll('.ml-training-day:checked')).map(cb => cb.value);
+            const mlInferenceDays = Array.from(document.querySelectorAll('.ml-inference-day:checked')).map(cb => cb.value);
             
             const payload = {
                 "SERVER_URL": document.getElementById('SERVER_URL').value,
@@ -1283,9 +1388,20 @@
                         "DAYS": universeDays,
                         "TIME": document.getElementById('UNIVERSE_ENGINE_TIME').value
                     },
-                    "ML_ENGINE": {
-                        "DAYS": mlDays,
-                        "TIME": document.getElementById('ML_ENGINE_TIME').value
+                    "ML_BACKFILL": {
+                        "ENABLED": document.getElementById('ML_BACKFILL_ENABLED').checked,
+                        "DAYS": mlBackfillDays,
+                        "TIME": document.getElementById('ML_BACKFILL_TIME').value
+                    },
+                    "ML_TRAINING": {
+                        "ENABLED": document.getElementById('ML_TRAINING_ENABLED').checked,
+                        "DAYS": mlTrainingDays,
+                        "TIME": document.getElementById('ML_TRAINING_TIME').value
+                    },
+                    "ML_INFERENCE": {
+                        "ENABLED": document.getElementById('ML_INFERENCE_ENABLED').checked,
+                        "DAYS": mlInferenceDays,
+                        "TIME": document.getElementById('ML_INFERENCE_TIME').value
                     },
                     "MACRO_ENGINE": {
                         "ENABLED": document.getElementById('MACRO_ENGINE_ENABLED').checked,

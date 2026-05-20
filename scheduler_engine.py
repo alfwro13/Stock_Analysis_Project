@@ -21,7 +21,7 @@ from database import get_universe_tickers, get_connection
 from universe_engine import update_market_universe
 from profile_engine import run_profile_audit
 from regime_engine import calculate_market_regime
-from ai_prediction_engine import train_global_ml_model, update_daily_ml_predictions
+from ai_prediction_engine import train_global_ml_model, update_daily_ml_predictions, run_historical_backfill
 from risk_engine import update_all_tail_risks
 from freetrade_engine import sync_freetrade_universe
 
@@ -136,7 +136,7 @@ def run_sentiment_scan():
 def run_overnight_quant_scan():
     """
     Fetches the combined list of portfolio and watchlist tickers, 
-    executes the resumable daily quant scan, runs the ML Engine and Tail Risk.
+    executes the resumable daily quant scan, and Tail Risk.
     """
     if not task_lock.acquire(blocking=False):
         logger.warning("System is currently busy. Skipping Overnight Quant Scan.")
@@ -150,9 +150,8 @@ def run_overnight_quant_scan():
         # 1. Execute Technical Analysis Pipeline
         run_daily_quant_scan(all_tickers)
         
-        # 2. Execute ML Inference Pipeline & Tail Risk
-        logger.info("Overnight ML inference initiated.")
-        update_daily_ml_predictions(all_tickers)
+        # 2. Execute Tail Risk calculations
+        logger.info("Overnight tail risk computation initiated.")
         update_all_tail_risks(all_tickers)
         
         logger.info("Overnight quant scan complete.")
@@ -215,9 +214,8 @@ def run_weekend_universe_routine():
         if all_tickers:
             # 2a. Execute Core Technicals
             run_daily_quant_scan(all_tickers, scan_type='universe')
-            # 2b. Execute Heavy Metrics (ML, Risk, Sentiment)
-            logger.info("Universe Technicals complete. Proceeding to heavy metric crunch (ML, VaR, Sentiment)...")
-            update_daily_ml_predictions(all_tickers)
+            # 2b. Execute Heavy Metrics (Risk, Sentiment)
+            logger.info("Universe Technicals complete. Proceeding to heavy metric crunch (VaR, Sentiment)...")
             update_all_tail_risks(all_tickers)
             update_all_sentiment(all_tickers)
         else:
@@ -248,20 +246,61 @@ def run_weekend_profile_audit():
     finally:
         task_lock.release()
 
-def run_weekend_ml_training():
-    """Executes the global Machine Learning training cycle."""
+# --- MODULAR ML PIPELINE RUNNERS ---
+
+def run_ml_backfill():
+    """Executes the Historical Data Backfill for the Machine Learning pipeline."""
+    if not task_lock.acquire(blocking=False):
+        logger.warning("System is busy. Skipping ML Backfill.")
+        return
+    log_sched_notification("Scheduler", "Started ML Historical Backfill...")
+    try:
+        logger.info("ML Historical Backfill initiated.")
+        run_historical_backfill()
+        logger.info("ML Historical Backfill complete.")
+        log_sched_notification("Success", "ML Historical Backfill completed successfully.")
+    except Exception as e:
+        logger.error(f"ML Historical Backfill Failed: {e}")
+        log_sched_notification("Error", f"ML Historical Backfill failed: {e}")
+    finally:
+        task_lock.release()
+
+def run_ml_training():
+    """Executes the Global Machine Learning Walk-Forward Training cycle."""
     if not task_lock.acquire(blocking=False):
         logger.warning("System is busy. Skipping ML Training.")
         return
-    log_sched_notification("Scheduler", "Started Weekend ML Training...")
+    log_sched_notification("Scheduler", "Started ML Global Training...")
     try:
-        logger.info("Weekend ML training initiated.")
+        logger.info("ML Global Training initiated.")
         train_global_ml_model()
-        logger.info("Weekend ML training complete.")
-        log_sched_notification("Success", "Weekend ML Training completed successfully.")
+        logger.info("ML Global Training complete.")
+        log_sched_notification("Success", "ML Global Training completed successfully.")
     except Exception as e:
-        logger.error(f"Weekend ML Training Failed: {e}")
-        log_sched_notification("Error", f"Weekend ML Training failed: {e}")
+        logger.error(f"ML Global Training Failed: {e}")
+        log_sched_notification("Error", f"ML Global Training failed: {e}")
+    finally:
+        task_lock.release()
+
+def run_ml_inference():
+    """Executes the Daily Machine Learning Prediction Inference."""
+    if not task_lock.acquire(blocking=False):
+        logger.warning("System is busy. Skipping ML Inference.")
+        return
+    log_sched_notification("Scheduler", "Started Daily ML Inference...")
+    try:
+        logger.info("Daily ML Inference initiated.")
+        tickers = get_universe_tickers()
+        if not tickers:
+            engine = DataEngine()
+            tickers = engine.get_all_tickers()
+        if tickers:
+            update_daily_ml_predictions(tickers)
+        logger.info("Daily ML Inference complete.")
+        log_sched_notification("Success", "Daily ML Inference completed successfully.")
+    except Exception as e:
+        logger.error(f"Daily ML Inference Failed: {e}")
+        log_sched_notification("Error", f"Daily ML Inference failed: {e}")
     finally:
         task_lock.release()
 
@@ -539,22 +578,54 @@ def reload_scheduler():
     except Exception as e:
         logger.error(f"Failed to schedule Weekend Universe Routine: {e}")
 
-    # 12. ML Engine (Weekend Routine)
-    ml_cfg = scheduling.get("ML_ENGINE", {})
-    ml_days_list = ml_cfg.get("DAYS", ["sun"])
-    ml_days = ",".join(ml_days_list) if ml_days_list else "sun"
-    ml_time = ml_cfg.get("TIME", "04:00")
-    
-    try:
-        hour, minute = map(int, ml_time.split(':'))
-        scheduler.add_job(
-            run_weekend_ml_training,
-            CronTrigger(day_of_week=ml_days, hour=hour, minute=minute),
-            id='ml_training_job'
-        )
-        logger.info(f"Weekend ML Training scheduled for {ml_days} at {hour:02d}:{minute:02d}")
-    except Exception as e:
-        logger.error(f"Failed to schedule ML Training: {e}")
+    # 12. Modular ML Engine Scheduling
+    ml_backfill_cfg = scheduling.get("ML_BACKFILL", {})
+    if ml_backfill_cfg.get("ENABLED", False):
+        backfill_days_list = ml_backfill_cfg.get("DAYS", ["sat"])
+        backfill_days = ",".join(backfill_days_list) if backfill_days_list else "sat"
+        backfill_time = ml_backfill_cfg.get("TIME", "02:00")
+        try:
+            hour, minute = map(int, backfill_time.split(':'))
+            scheduler.add_job(
+                run_ml_backfill,
+                CronTrigger(day_of_week=backfill_days, hour=hour, minute=minute),
+                id='ml_backfill_job'
+            )
+            logger.info(f"ML Historical Backfill scheduled for {backfill_days} at {backfill_time}")
+        except Exception as e:
+            logger.error(f"Failed to schedule ML Backfill: {e}")
+
+    ml_training_cfg = scheduling.get("ML_TRAINING", {})
+    if ml_training_cfg.get("ENABLED", True):
+        train_days_list = ml_training_cfg.get("DAYS", ["sun"])
+        train_days = ",".join(train_days_list) if train_days_list else "sun"
+        train_time = ml_training_cfg.get("TIME", "04:00")
+        try:
+            hour, minute = map(int, train_time.split(':'))
+            scheduler.add_job(
+                run_ml_training,
+                CronTrigger(day_of_week=train_days, hour=hour, minute=minute),
+                id='ml_training_job'
+            )
+            logger.info(f"ML Global Training scheduled for {train_days} at {train_time}")
+        except Exception as e:
+            logger.error(f"Failed to schedule ML Training: {e}")
+
+    ml_infer_cfg = scheduling.get("ML_INFERENCE", {})
+    if ml_infer_cfg.get("ENABLED", True):
+        infer_days_list = ml_infer_cfg.get("DAYS", ["mon", "tue", "wed", "thu", "fri"])
+        infer_days = ",".join(infer_days_list) if infer_days_list else "mon-fri"
+        infer_time = ml_infer_cfg.get("TIME", "01:30")
+        try:
+            hour, minute = map(int, infer_time.split(':'))
+            scheduler.add_job(
+                run_ml_inference,
+                CronTrigger(day_of_week=infer_days, hour=hour, minute=minute),
+                id='ml_inference_job'
+            )
+            logger.info(f"Daily ML Inference scheduled for {infer_days} at {infer_time}")
+        except Exception as e:
+            logger.error(f"Failed to schedule ML Inference: {e}")
 
     # 13. Freetrade Universe Sync Engine
     ft_cfg = scheduling.get("FREETRADE_SYNC", {})

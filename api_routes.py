@@ -114,10 +114,8 @@ def bg_execute_universe_quant_scan():
 def bg_execute_universe_quant_scan_subset(tickers: List[str]):
     run_daily_quant_scan(tickers, scan_type='sideload')
 
-def bg_init_ml_pipeline():
-    run_historical_backfill()
-    train_global_ml_model()
-    
+def bg_execute_ml_inference():
+    """Wrapper function to perform the dynamic ML daily inference routing."""
     tickers = get_universe_tickers()
     if not tickers:
         engine = DataEngine()
@@ -205,12 +203,29 @@ async def trigger_macro_run_endpoint(background_tasks: BackgroundTasks):
         "message": "Macro AI Run initiated in the background. Check notifications."
     })
 
-@api_router.post("/ml/init-pipeline")
-async def trigger_ml_init_endpoint(background_tasks: BackgroundTasks):
-    background_tasks.add_task(bg_init_ml_pipeline)
+# --- MODULAR ML ENDPOINTS ---
+@api_router.post("/ml/trigger-backfill")
+async def trigger_ml_backfill_endpoint(background_tasks: BackgroundTasks):
+    background_tasks.add_task(run_historical_backfill)
     return JSONResponse(content={
         "status": "success", 
-        "message": "ML Pipeline initialized in the background. Check System Notifications for progress updates."
+        "message": "ML Historical Backfill initiated in the background. Check System Notifications."
+    })
+
+@api_router.post("/ml/trigger-training")
+async def trigger_ml_training_endpoint(background_tasks: BackgroundTasks):
+    background_tasks.add_task(train_global_ml_model)
+    return JSONResponse(content={
+        "status": "success", 
+        "message": "Global ML Walk-Forward Training initiated in the background. Check System Notifications."
+    })
+
+@api_router.post("/ml/trigger-inference")
+async def trigger_ml_inference_endpoint(background_tasks: BackgroundTasks):
+    background_tasks.add_task(bg_execute_ml_inference)
+    return JSONResponse(content={
+        "status": "success", 
+        "message": "Daily ML Inference initiated in the background. Check System Notifications."
     })
 
 @api_router.post("/trigger-quant-scan")

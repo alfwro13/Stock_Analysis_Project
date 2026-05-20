@@ -112,6 +112,22 @@ DEFAULT_CONFIG = {
             "CALENDAR_TIME": "04:00",
             "DATA_DAY": "sat",
             "DATA_TIME": "05:00"
+        },
+        # --- NEW MODULAR ML PIPELINE SCHEDULING ---
+        "ML_BACKFILL": {
+            "ENABLED": False,
+            "DAYS": ["sat"],
+            "TIME": "02:00"
+        },
+        "ML_TRAINING": {
+            "ENABLED": True,
+            "DAYS": ["sun"],
+            "TIME": "04:00"
+        },
+        "ML_INFERENCE": {
+            "ENABLED": True,
+            "DAYS": ["mon", "tue", "wed", "thu", "fri"],
+            "TIME": "01:30"
         }
     },
     "NOTIFICATIONS": {
