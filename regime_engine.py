@@ -158,6 +158,7 @@ def calculate_systemic_macro_threat() -> None:
     """Calculates yield rate of change in basis points (US & UK) and logs granular systemic compression risk to SQLite."""
     try:
         # Pull 10 days to survive weekends and holidays.
+        tyx = yf.Ticker("^TYX").history(period="10d")
         tnx = yf.Ticker("^TNX").history(period="10d")
         dxy = yf.Ticker("DX-Y.NYB").history(period="10d")
         gbpusd = yf.Ticker("GBPUSD=X").history(period="10d")
@@ -170,6 +171,9 @@ def calculate_systemic_macro_threat() -> None:
         curr_tnx = float(tnx['Close'].iloc[-1])
         past_tnx = float(tnx['Close'].iloc[-4])
         
+        # FIX ISSUE-M02: Fetch and assign 30Y Treasury Data safely
+        curr_tyx = float(tyx['Close'].iloc[-1]) if not tyx.empty else curr_tnx
+
         curr_dxy = float(dxy['Close'].iloc[-1]) if not dxy.empty else 0.0
         curr_gbpusd = float(gbpusd['Close'].iloc[-1]) if not gbpusd.empty else 0.0
         
@@ -222,7 +226,7 @@ def calculate_systemic_macro_threat() -> None:
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 latest_date, 
-                round(curr_tnx, 3), 
+                round(curr_tyx, 3), 
                 round(curr_tnx, 3), 
                 round(curr_dxy, 3), 
                 round(curr_gilt, 3), 
