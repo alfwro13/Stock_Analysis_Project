@@ -24,7 +24,7 @@ def verify_database_state() -> None:
     """
     Connects to the SQLite database to verify the schema updates and data ingestion.
     """
-    db_path = BASE_DIR / "data" / "quant_terminal.db" # Adjust path if your DB lives elsewhere
+    db_path = BASE_DIR / "data" / "analysis.db" 
     if not db_path.exists():
         logger.warning(f"Database not found at {db_path}. Assuming handled by get_connection().")
         return
