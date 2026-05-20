@@ -315,25 +315,26 @@ def train_global_ml_model() -> None:
         pos_count_full = (y_full == 1).sum()
         scale_pos_weight_full = neg_count_full / pos_count_full if pos_count_full > 0 else 1.0
 
-        # --- Custom Temporal Cross-Validation Iterator for Panel Data ---
-        logger.info("Constructing Date-Based Walk-Forward Iterator for Hyperparameter Optimization...")
-        
+        # --- Strict Temporal Out-Of-Sample (OOS) Split for Panel Data ---
+        logger.info("Constructing Strict Temporal 80/20 Walk-Forward Split for Hyperparameter Optimization...")
+
         unique_dates = np.sort(df['date'].unique())
-        tscv_dates = TimeSeriesSplit(n_splits=5, gap=5)  # gap=5 days ensures zero overlap
-        
         date_series = df['date'].reset_index(drop=True)
-        cv_splits = []
         
-        for train_date_idx, test_date_idx in tscv_dates.split(unique_dates):
-            train_dates = unique_dates[train_date_idx]
-            test_dates = unique_dates[test_date_idx]
-            
-            # Map valid dates back to explicit integer row indices required by GridSearchCV
-            train_idx = date_series.index[date_series.isin(train_dates)].tolist()
-            test_idx = date_series.index[date_series.isin(test_dates)].tolist()
-            
-            if len(train_idx) > 0 and len(test_idx) > 0:
-                cv_splits.append((train_idx, test_idx))
+        # Calculate the index for the 80% temporal cutoff
+        cutoff_idx = int(len(unique_dates) * 0.8)
+        
+        # Apply a strict 5-day embargo gap to prevent target leakage (since target is 5-day forward return)
+        train_dates = unique_dates[:cutoff_idx - 5]
+        test_dates = unique_dates[cutoff_idx:]
+        
+        # Map valid dates back to explicit integer row indices required by GridSearchCV
+        train_idx = date_series.index[date_series.isin(train_dates)].tolist()
+        test_idx = date_series.index[date_series.isin(test_dates)].tolist()
+        
+        cv_splits = []
+        if len(train_idx) > 0 and len(test_idx) > 0:
+            cv_splits.append((train_idx, test_idx))
 
         # --- Hyperparameter Grids ---
         rf_base = RandomForestClassifier(class_weight='balanced', random_state=42, n_jobs=-1)
