@@ -36,6 +36,7 @@ DEFAULT_CONFIG = {
     "GHOSTFOLIO_URL": "",
     "API_TOKEN": "",
     "FRED_API_KEY": "",
+    "YAHOO_IPV6_ADDRESS": "",
     "PORT": 8090,
     "BASE_CURRENCY": "GBP",
     "IGNORED_TICKERS": ["GBP", "USD", "EUR"],
@@ -205,6 +206,8 @@ current_config = load_config()
 SERVER_URL = current_config.get("SERVER_URL", "http://localhost")
 GHOSTFOLIO_URL = current_config.get("GHOSTFOLIO_URL", "")
 GHOSTFOLIO_TOKEN = current_config.get("API_TOKEN", "")
+FRED_API_KEY = current_config.get("FRED_API_KEY", "")
+YAHOO_IPV6_ADDRESS = current_config.get("YAHOO_IPV6_ADDRESS", "")
 GHOSTFOLIO_ACCOUNTS = current_config.get("GHOSTFOLIO_ACCOUNTS", {"discovered": [], "active": []})
 PORT = current_config.get("PORT", 8090)
 BASE_CURRENCY = current_config.get("BASE_CURRENCY", "GBP")
