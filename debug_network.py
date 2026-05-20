@@ -2,8 +2,8 @@
 import logging
 import yfinance as yf
 from config import load_config
-from tools.network_engine import IPv6SourceAddressAdapter, yahoo_connection_boundary
-import requests
+from tools.network_engine import yahoo_connection_boundary
+from curl_cffi import requests as cffi_requests
 
 # Set logging to see the internal network_engine logs during the test
 logging.basicConfig(
@@ -36,13 +36,9 @@ def run_diagnostics():
     # ---------------------------------------------------------
     if ipv6_addr:
         print(f"\n[TEST 2] Testing Strict IPv6 Socket Binding to {ipv6_addr}...")
-        test_session = requests.Session()
-        adapter = IPv6SourceAddressAdapter(source_address=ipv6_addr)
-        test_session.mount("https://", adapter)
-        test_session.mount("http://", adapter)
+        test_session = cffi_requests.Session(impersonate="chrome", interface=ipv6_addr)
         
         try:
-            # Force a short timeout so we don't hang forever if the route is dead
             tk = yf.Ticker("SPY", session=test_session)
             df = tk.history(period="1d")
             
@@ -63,22 +59,16 @@ def run_diagnostics():
     # ---------------------------------------------------------
     print("\n[TEST 3] Simulating a Network Fault to Test Self-Healing Failover...")
     
-    # We temporarily inject a universally dead "documentation" IPv6 address into the config 
-    # to guarantee a connection failure and force the failover logic to trigger.
     dead_ipv6 = "2001:db8::dead:beef"
     config["YAHOO_IPV6_ADDRESS"] = dead_ipv6 
     
     print(f"   -> Forcing engine to use dead IP: {dead_ipv6}")
     
-    # We must patch the load_config function temporarily for this test scope
-    # so the connection boundary reads our dead IP.
     import config as config_module
     original_load = config_module.load_config
     config_module.load_config = lambda: config
 
     try:
-        # This SHOULD trigger the fallback, drop the dead IPv6, print an error to the log,
-        # send you a Nextcloud alert, and then successfully download the data via IPv4.
         with yahoo_connection_boundary("Diagnostic Failover Test") as session:
             tk = yf.Ticker("QQQ", session=session)
             df = tk.history(period="1d")
@@ -92,7 +82,6 @@ def run_diagnostics():
         print(f"❌ FAILOVER FATAL ERROR: The system crashed and failed to self-heal.")
         print(f"   Details: {e}")
     finally:
-        # Restore original config behavior
         config_module.load_config = original_load
 
     print("\n" + "="*70)
