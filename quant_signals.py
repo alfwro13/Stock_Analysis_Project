@@ -153,7 +153,7 @@ class QuantEngine:
         if len(weekly_data) < 4:
             return False, False
         
-        # [MATH-03] Determine if the current week is complete (Friday is 4)
+        # Determine if the current week is complete (Friday is 4)
         if df.index[-1].weekday() == 4:
             last_3_weeks = weekly_data.iloc[-3:]
         else:
@@ -162,7 +162,7 @@ class QuantEngine:
         if len(last_3_weeks) < 3:
             return False, False
         
-        # [MATH-01] Calculate sequential variance using the High-Low range across the 3 weeks
+        # Calculate sequential variance using the High-Low range across the 3 weeks
         w1_range = last_3_weeks.iloc[0]['High'] - last_3_weeks.iloc[0]['Low']
         w2_range = last_3_weeks.iloc[1]['High'] - last_3_weeks.iloc[1]['Low']
         w3_range = last_3_weeks.iloc[2]['High'] - last_3_weeks.iloc[2]['Low']
@@ -177,7 +177,7 @@ class QuantEngine:
         
         is_tight = is_contracting and (total_range_pct <= 0.10)
         
-        # [MATH-02] Compare weekly volumes directly to weekly rolling averages
+        # Compare weekly volumes directly to weekly rolling averages
         weekly_vol_avg_50d = weekly_data['Volume'].rolling(10).mean().iloc[-1]
         
         if pd.isna(weekly_vol_avg_50d):
@@ -190,6 +190,10 @@ class QuantEngine:
 
     def detect_bearish_divergence(self, df: pd.DataFrame) -> bool:
         """Checks if price is making structurally higher highs while RSI makes lower highs."""
+        # [BUG-11] Guard against missing RSI column before execution
+        if 'RSI' not in df.columns:
+            return False
+
         last_30 = df.tail(30).copy()
         if len(last_30) < 30: 
             return False
@@ -200,7 +204,7 @@ class QuantEngine:
         
         high_col = 'High' if 'High' in df.columns else 'Close'
         
-        # [MATH-04] Find the exact index of the price high in each half
+        # Find the exact index of the price high in each half
         price_peak1_idx = p1[high_col].idxmax()
         price_peak2_idx = p2[high_col].idxmax()
         
@@ -321,7 +325,6 @@ class QuantEngine:
                     df['ATR'] = ta.volatility.AverageTrueRange(high=df['High'], low=df['Low'], close=df['Close'], window=14).average_true_range()
                     atr_series_clean = df['ATR'].dropna()
                     
-                    # [MATH-05] Guard condition corrected to check the proper series
                     if not atr_series_clean.empty and current_price is not None:
                         atr_val = atr_series_clean.iloc[-1]
                         if not pd.isna(atr_val):
@@ -334,7 +337,13 @@ class QuantEngine:
                 if 'Volume' in df.columns and not df['Volume'].isna().all():
                     df['OBV'] = ta.volume.OnBalanceVolumeIndicator(close=df['Close'], volume=df['Volume']).on_balance_volume()
                     df['OBV_MA'] = df['OBV'].rolling(window=21).mean()
-                    obv_bullish = bool(df['OBV'].iloc[-1] > df['OBV_MA'].iloc[-1]) if not pd.isna(df['OBV_MA'].iloc[-1]) else False
+                    
+                    # [BUG-07] Guard both OBV and OBV_MA against NaN before boolean comparison
+                    obv_bullish = (
+                        bool(df['OBV'].iloc[-1] > df['OBV_MA'].iloc[-1])
+                        if not pd.isna(df['OBV_MA'].iloc[-1]) and not pd.isna(df['OBV'].iloc[-1])
+                        else False
+                    )
 
                 macd = ta.trend.MACD(close=df['Close'])
                 df['MACD_Line'] = macd.macd()
@@ -395,7 +404,8 @@ class QuantEngine:
             operating_cash_flow = info.get('operatingCashflow', None)
             
             dividend_yield = info.get('dividendYield', None)
-            if dividend_yield is not None and dividend_yield > 0.50 and currency in ['GBp', 'GBP']:
+            # [DESIGN-03] Robust heuristic: legitimate yields > 25% are virtually impossible, heavily implies pence misquote
+            if dividend_yield is not None and dividend_yield > 0.25 and currency in ['GBp', 'GBP']:
                 dividend_yield = dividend_yield / 100.0
 
             ex_dividend_date = info.get('exDividendDate', None)
@@ -409,9 +419,13 @@ class QuantEngine:
             institutional_ownership = info.get('heldPercentInstitutions', None)
             beta = info.get('beta', None)
 
+            # [MATH-11] Safely handle scale consistency for Peter Lynch PEG
             peter_lynch_peg = None
             if trailing_pe and trailing_pe > 0 and earnings_growth and earnings_growth > 0:
-                peter_lynch_peg = trailing_pe / (earnings_growth * 100.0)
+                # If growth is represented as a decimal (0.15), scale it to 15.0 for the Peter Lynch formula.
+                # If already scaled (15.0), leave it as is.
+                eg_scaled = earnings_growth if earnings_growth >= 1.0 else (earnings_growth * 100.0)
+                peter_lynch_peg = trailing_pe / eg_scaled
 
             # ==========================================
             # PART 3: SCORING & SETUP TAGS
@@ -428,14 +442,18 @@ class QuantEngine:
                         breakdown.append(pattern["breakdown"])
                         score += pattern["score"]
 
-                if df['MACD_Line'].iloc[-1] > df['MACD_Signal'].iloc[-1] and df['MACD_Line'].iloc[-2] <= df['MACD_Signal'].iloc[-2]:
-                    # MACD Bullish Crossover in any zone
-                    tags.append({
-                        "name": "⚡ MACD Bullish Cross", 
-                        "tooltip": "The MACD momentum line just crossed positive over the signal line."
-                    })
-                    score += 10
-                    breakdown.append("+10: <abbr title='MACD Bullish Crossover'>MACD Bullish Crossover</abbr>")
+                # [BUG-03] Guard MACD Series access to ensure sufficient tail history exists
+                macd_line_clean = df['MACD_Line'].dropna()
+                macd_signal_clean = df['MACD_Signal'].dropna()
+                
+                if len(macd_line_clean) >= 2 and len(macd_signal_clean) >= 2:
+                    if macd_line_clean.iloc[-1] > macd_signal_clean.iloc[-1] and macd_line_clean.iloc[-2] <= macd_signal_clean.iloc[-2]:
+                        tags.append({
+                            "name": "⚡ MACD Bullish Cross", 
+                            "tooltip": "The MACD momentum line just crossed positive over the signal line."
+                        })
+                        # [MATH-09] Prevent score double counting against quant_engine.py screener
+                        breakdown.append("+0: <abbr title='MACD Bullish Crossover (Captured by Engine DB Flag)'>MACD Bullish Crossover</abbr>")
 
                 if is_tight and is_dry_volume and not is_fund:
                     tags.append({"name": "🔥 VCP Breakout", "tooltip": "Volatility Contraction Pattern."})
@@ -460,9 +478,10 @@ class QuantEngine:
                     score += 15
                     breakdown.append("+15: MAs Aligned (5 > 10 > 21)")
 
+                # [MATH-10] Rebalance to heavily prioritize structural multi-month trend
                 if trend_200d == "UP":
-                    score += 15
-                    breakdown.append("+15: 200D Trend UP (Institutional Backing)")
+                    score += 20
+                    breakdown.append("+20: 200D Trend UP (Institutional Backing)")
                 else:
                     breakdown.append("+0: 200D Trend DOWN (Lacking institutional backing)")
 
@@ -470,13 +489,13 @@ class QuantEngine:
                     score += 10
                     breakdown.append("+10: RSI Healthy (Room to run)")
 
-                # Exclude OBV from Mutual Funds logic to prevent artificial point boosts
+                # [MATH-10] Rebalance OBV weight to avoid overshadowing long-term trend lines
                 if is_fund: 
                     score += 0
                     breakdown.append("+0: OBV Ignored (Fund Exemption)")
                 elif obv_bullish:
-                    score += 20
-                    breakdown.append("+20: OBV Bullish")
+                    score += 10
+                    breakdown.append("+10: OBV Bullish")
                 else:
                     breakdown.append("+0: OBV Bearish")
 
@@ -492,12 +511,14 @@ class QuantEngine:
             else:
                 breakdown.append("+0: Technical indicators skipped (Insufficient Historical Data)")
 
-            score = max(0, min(score, 100))
+            # [MATH-08] Allow severe structural weakness to push score negative to trigger STRONG SELL
+            score = min(score, 100)
 
             if score >= 80: signal = "STRONG BUY"
             elif score >= 60: signal = "BULLISH / HOLD"
             elif score >= 40: signal = "NEUTRAL"
-            else: signal = "BEARISH / CAUTION"
+            elif score >= 10: signal = "BEARISH / CAUTION"
+            else: signal = "STRONG SELL"
 
             notes_html = "<strong>Algorithmic Breakdown:</strong><br><ul class='algo-breakdown-list'>"
             for item in breakdown:
