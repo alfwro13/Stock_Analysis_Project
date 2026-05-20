@@ -100,8 +100,8 @@ def calculate_market_regime() -> None:
         uk_turbulence = latest_ftse_vol
         
         # 4. Classify Market Regimes
-        us_regime_label = 'Crash' if (us_turbulence >= 30.0 or latest_vix >= 30.0) else \
-                          'Volatile' if (us_turbulence >= 20.0 or latest_vix >= 20.0) else 'Normal'
+        us_regime_label = 'Crash' if us_turbulence >= 30.0 else \
+                          'Volatile' if us_turbulence >= 20.0 else 'Normal'
                           
         uk_regime_label = 'Crash' if uk_turbulence >= 30.0 else \
                           'Volatile' if uk_turbulence >= 20.0 else 'Normal'
