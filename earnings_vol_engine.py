@@ -95,20 +95,21 @@ def get_historical_earnings_move(ticker_obj: yf.Ticker) -> Optional[float]:
         
     return None
 
-def get_implied_straddle_move(ticker_obj: yf.Ticker, underlying_price: float, target_date: datetime) -> Tuple[Optional[float], int]:
+def get_implied_straddle_move(ticker_obj: yf.Ticker, underlying_price: float, target_date: datetime) -> Tuple[Optional[float], int, Optional[str]]:
     """
     Finds the At-The-Money (ATM) Call and Put for the nearest expiration after the target date.
     Calculates the implied move % based on Straddle cost and records the combined options volume.
+    Returns: (implied_move_pct, volume, target_expiry_str)
     """
     try:
         options = ticker_obj.options
         if not options:
-            return None, 0
+            return None, 0, None
             
         # Find the first expiration date that occurs AFTER the earnings report
         valid_expiries = [opt for opt in options if datetime.strptime(opt, '%Y-%m-%d') >= target_date]
         if not valid_expiries:
-            return None, 0
+            return None, 0, None
             
         target_expiry = valid_expiries[0]
         chain = ticker_obj.option_chain(target_expiry)
@@ -117,7 +118,7 @@ def get_implied_straddle_move(ticker_obj: yf.Ticker, underlying_price: float, ta
         puts = chain.puts
         
         if calls.empty or puts.empty:
-            return None, 0
+            return None, 0, None
             
         # Locate the ATM Strike (closest mathematically to the current underlying price)
         atm_strike = calls.iloc[(calls['strike'] - underlying_price).abs().argsort()[:1]]['strike'].values[0]
@@ -125,14 +126,17 @@ def get_implied_straddle_move(ticker_obj: yf.Ticker, underlying_price: float, ta
         atm_call = calls[calls['strike'] == atm_strike].iloc[0]
         atm_put = puts[puts['strike'] == atm_strike].iloc[0]
         
-        # Prefer Mid-Price (Bid/Ask spread) if available, otherwise fallback to lastPrice
-        def get_price(opt_row):
+        # STRICT LIQUIDITY REQUIREMENT: Reject lastPrice fallbacks for untradable illiquid chains
+        def get_price(opt_row) -> Optional[float]:
             if opt_row['bid'] > 0 and opt_row['ask'] > 0:
                 return (opt_row['bid'] + opt_row['ask']) / 2.0
-            return opt_row['lastPrice']
+            return None
             
         call_price = get_price(atm_call)
         put_price = get_price(atm_put)
+        
+        if call_price is None or put_price is None:
+            return None, 0, None
         
         straddle_cost = call_price + put_price
         implied_move_pct = (straddle_cost / underlying_price) * 100.0
@@ -140,11 +144,11 @@ def get_implied_straddle_move(ticker_obj: yf.Ticker, underlying_price: float, ta
         # Aggregate liquidity indicator
         volume = int(atm_call.get('volume', 0)) + int(atm_put.get('volume', 0))
         
-        return implied_move_pct, volume
+        return implied_move_pct, volume, target_expiry
 
     except Exception as e:
         logger.debug(f"Error calculating implied straddle: {e}")
-        return None, 0
+        return None, 0, None
 
 def run_earnings_vol_scan(ticker_list: List[str]) -> None:
     """
@@ -163,7 +167,7 @@ def run_earnings_vol_scan(ticker_list: List[str]) -> None:
         conn = get_connection()
         cursor = conn.cursor()
         
-        # Pre-fetch existing earnings dates from the core tracker table to minimize redundant API hits
+        # Pre-fetch existing earnings dates from the core tracker table for initial high-level filtering
         placeholders = ','.join('?' for _ in ticker_list)
         cursor.execute(f"SELECT ticker, next_earnings_date FROM stock_signals WHERE ticker IN ({placeholders})", ticker_list)
         db_earnings_map = {row['ticker']: row['next_earnings_date'] for row in cursor.fetchall()}
@@ -173,46 +177,83 @@ def run_earnings_vol_scan(ticker_list: List[str]) -> None:
 
         for i, ticker in enumerate(ticker_list):
             try:
-                # 1. Evaluate Earnings Timeline
                 e_date_str = db_earnings_map.get(ticker)
                 if not e_date_str or e_date_str == 'Unknown':
                     continue
                     
                 try:
-                    earnings_date = datetime.strptime(e_date_str, '%Y-%m-%d')
+                    db_earnings_date = datetime.strptime(e_date_str, '%Y-%m-%d')
                 except ValueError:
                     continue
 
-                # Bypass if earnings are more than 14 days away or have already passed
+                # Broad DB-level check to prevent useless API calls
+                if not (today - timedelta(days=2) <= db_earnings_date <= cutoff_date + timedelta(days=5)):
+                    continue
+
+                ticker_obj = yf.Ticker(ticker)
+                
+                # 1. LIVE VALIDATION: Validate earnings date against a fresh yfinance API lookup
+                earnings_date = db_earnings_date
+                try:
+                    live_dates = ticker_obj.get_earnings_dates(limit=5)
+                    if live_dates is not None and not live_dates.empty:
+                        now_tz_naive = pd.Timestamp.now(tz='UTC').tz_localize(None)
+                        if live_dates.index.tz is not None:
+                            live_dates.index = live_dates.index.tz_convert('UTC').tz_localize(None)
+                            
+                        future_dates = live_dates.index[live_dates.index >= now_tz_naive]
+                        if len(future_dates) > 0:
+                            earnings_date = future_dates.min().to_pydatetime()
+                            e_date_str = earnings_date.strftime('%Y-%m-%d')
+                except Exception as e:
+                    logger.debug(f"Failed to fetch live earnings date for {ticker}, using DB fallback: {e}")
+
+                # Bypass if the validated live date falls outside our strict 14-day actionable window
                 if not (today <= earnings_date <= cutoff_date):
                     continue
                     
-                logger.info(f"Analyzing {ticker} (Earnings Date: {e_date_str})...")
+                logger.info(f"Analyzing {ticker} (Live Earnings Date: {e_date_str})...")
                 
-                ticker_obj = yf.Ticker(ticker)
-                hist = ticker_obj.history(period="5d")
+                # Fetch 1 month of history to calculate base Historical Volatility
+                hist = ticker_obj.history(period="1mo")
                 
-                if hist.empty:
-                    logger.warning(f"No underlying price data available for {ticker}. Skipping.")
+                if hist.empty or len(hist) < 20:
+                    logger.warning(f"Insufficient underlying price data available for {ticker}. Skipping.")
                     continue
                     
                 underlying_price = hist['Close'].iloc[-1]
                 
+                # Calculate Base Historical Volatility (HV) for isolation math
+                hist['Returns'] = np.log(hist['Close'] / hist['Close'].shift(1))
+                historical_hv = hist['Returns'].std() * np.sqrt(252)
+                
+                if pd.isna(historical_hv) or historical_hv == 0:
+                    continue
+                
                 # 2. Calculate Mathematical Vectors
                 hist_move_pct = get_historical_earnings_move(ticker_obj)
-                implied_move_pct, opt_volume = get_implied_straddle_move(ticker_obj, underlying_price, earnings_date)
+                implied_move_pct, opt_volume, target_expiry = get_implied_straddle_move(ticker_obj, underlying_price, earnings_date)
                 
-                # Require both metrics to calculate a valid edge
-                if hist_move_pct is None or implied_move_pct is None:
-                    logger.debug(f"Missing volatility parameters for {ticker}. Skipping edge calculation.")
+                if hist_move_pct is None or implied_move_pct is None or target_expiry is None:
+                    logger.debug(f"Missing volatility parameters or liquidity for {ticker}. Skipping edge calculation.")
                     continue
 
-                # 3. Calculate the Options Mispricing Edge 
-                # (Positive indicates options are mathematically underpriced relative to historical reality)
-                edge_score = hist_move_pct - implied_move_pct
+                # 3. ISOLATE EARNINGS MOVE: Strip out non-earnings volatility (theta decay)
+                target_expiry_date = datetime.strptime(target_expiry, '%Y-%m-%d')
+                days_to_expiry = (target_expiry_date - earnings_date).days
+                non_earnings_days = max(days_to_expiry - 1, 0)
+                
+                daily_hv = historical_hv / np.sqrt(252)
+                non_earnings_component = daily_hv * np.sqrt(non_earnings_days) * 100.0
+                
+                isolated_implied_move = max(implied_move_pct - non_earnings_component, 0.01) # Prevent negative implied moves
+
+                # Calculate True Options Mispricing Edge
+                edge_score = hist_move_pct - isolated_implied_move
                 last_updated = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-                # 4. Save to Database securely
+                # 4. Save to Database
+                # We store isolated_implied_move as implied_move_pct because it reflects the true expected event variance
                 cursor.execute('''
                     INSERT OR REPLACE INTO earnings_volatility 
                     (ticker, next_earnings_date, implied_move_pct, historical_avg_move_pct, edge_score, options_volume, last_updated)
@@ -220,7 +261,7 @@ def run_earnings_vol_scan(ticker_list: List[str]) -> None:
                 ''', (
                     ticker, 
                     e_date_str, 
-                    round(implied_move_pct, 2), 
+                    round(isolated_implied_move, 2), 
                     round(hist_move_pct, 2), 
                     round(edge_score, 2), 
                     opt_volume, 
@@ -228,7 +269,7 @@ def run_earnings_vol_scan(ticker_list: List[str]) -> None:
                 ))
                 conn.commit()
                 
-                logger.info(f"[{ticker}] Edge: {edge_score:.2f}% | Implied: {implied_move_pct:.2f}% | Hist: {hist_move_pct:.2f}%")
+                logger.info(f"[{ticker}] Edge: {edge_score:.2f}% | Isolated Implied: {isolated_implied_move:.2f}% (Raw: {implied_move_pct:.2f}%) | Hist: {hist_move_pct:.2f}%")
                 
             except Exception as e:
                 logger.error(f"Error analyzing {ticker}: {str(e)}")
