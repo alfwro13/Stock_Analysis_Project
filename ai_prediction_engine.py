@@ -14,7 +14,8 @@ from sklearn.ensemble import RandomForestClassifier, VotingClassifier
 from sklearn.metrics import accuracy_score, classification_report
 
 from config import BASE_DIR
-from database import get_connection
+# [DESIGN-04 FIXED] Import centralized notification helper
+from database import get_connection, log_notification
 from data_engine import DataEngine
 
 logger = logging.getLogger(__name__)
@@ -38,22 +39,6 @@ BLUE_CHIPS = [
     "DIS", "CSCO", "ACN", "ABT", "INTU", "QCOM", "IBM", "CAT", "VZ", "AMGN", 
     "TXN", "NOW", "PFE", "COP", "BA", "SPY", "QQQ", "DIA", "IWM"
 ]
-
-def log_notification(message_type: str, message_text: str) -> None:
-    """Helper function to log scan progress to the system notification center."""
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO system_notifications (message_type, message_text) VALUES (?, ?)",
-            (message_type, message_text)
-        )
-        conn.commit()
-    except Exception as e:
-        logger.error(f"Failed to log notification: {e}")
-    finally:
-        if 'conn' in locals():
-            conn.close()
 
 def get_target_tickers() -> List[str]:
     """
@@ -368,5 +353,5 @@ def update_daily_ml_predictions(tickers: List[str]) -> None:
     except Exception as e:
         logger.error(f"Fatal error during ML inference: {e}")
     finally:
-        if 'conn' in locals():
+        if 'conn' in locals() and conn:
             conn.close()

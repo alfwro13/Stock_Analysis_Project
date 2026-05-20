@@ -24,6 +24,27 @@ def get_connection() -> sqlite3.Connection:
     return conn
 
 
+def log_notification(message_type: str, message_text: str) -> None:
+    """
+    Centralized helper function to log scan progress to the system notification center.
+    [BUG-01 FIXED] Guards against NameError if get_connection() raises an exception.
+    """
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO system_notifications (message_type, message_text) VALUES (?, ?)",
+            (message_type, message_text)
+        )
+        conn.commit()
+    except Exception as e:
+        logger.error(f"Failed to log notification: {e}")
+    finally:
+        if conn:
+            conn.close()
+
+
 def init_db() -> None:
     """
     Initializes the master database schema for the Quantamental dashboard.
@@ -147,12 +168,14 @@ def init_db() -> None:
             )
         ''')
 
-        # New table for Quant Scan State / Resumability Tracking
+        # [DESIGN-12 FIXED] Proper Composite Primary Key for Scan State
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS quant_scan_states (
-                scan_date TEXT PRIMARY KEY,
+                scan_date TEXT,
+                scan_type TEXT,
                 last_processed_ticker TEXT,
-                status TEXT
+                status TEXT,
+                PRIMARY KEY (scan_date, scan_type)
             )
         ''')
 
@@ -283,6 +306,26 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
     Gracefully executes ALTER TABLE to apply schema updates without dropping data.
     Wraps individual ALTER statements in try/except blocks to ensure atomic migrations.
     """
+    # 0. Migrate quant_scan_states PK normalization [DESIGN-12]
+    try:
+        cursor.execute("PRAGMA table_info(quant_scan_states)")
+        existing_state_columns = [info['name'] for info in cursor.fetchall()]
+        if 'scan_type' not in existing_state_columns:
+            logger.info("[MIGRATION] Normalizing quant_scan_states schema (Recreating for Composite PK)...")
+            cursor.execute("DROP TABLE quant_scan_states")
+            cursor.execute('''
+                CREATE TABLE quant_scan_states (
+                    scan_date TEXT,
+                    scan_type TEXT,
+                    last_processed_ticker TEXT,
+                    status TEXT,
+                    PRIMARY KEY (scan_date, scan_type)
+                )
+            ''')
+            conn.commit()
+    except Exception as e:
+        logger.error(f"[MIGRATION ERROR] Failed on quant_scan_states recreation: {e}")
+
     # 1. Migrate stock_signals
     cursor.execute("PRAGMA table_info(stock_signals)")
     existing_stock_columns = [info['name'] for info in cursor.fetchall()]

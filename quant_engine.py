@@ -9,24 +9,10 @@ import pandas as pd
 import yfinance as yf
 import ta
 
-from database import get_connection
+# [DESIGN-04 FIXED] Import centralized notification helper
+from database import get_connection, log_notification
 
 logger = logging.getLogger(__name__)
-
-def log_notification(message_type: str, message_text: str) -> None:
-    """Helper function to log scan progress to the system notification center."""
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO system_notifications (message_type, message_text) VALUES (?, ?)",
-            (message_type, message_text)
-        )
-        conn.commit()
-    except Exception as e:
-        logger.error(f"Failed to log notification: {e}")
-    finally:
-        conn.close()
 
 def run_daily_quant_scan(ticker_list: List[str], scan_type: str = 'daily') -> None:
     """
@@ -40,8 +26,6 @@ def run_daily_quant_scan(ticker_list: List[str], scan_type: str = 'daily') -> No
         return
 
     today_str = datetime.now().strftime('%Y-%m-%d')
-    # Use a composite key for state tracking to prevent daily and universe scans from overriding each other
-    state_key = f"{today_str}_{scan_type}"
     
     conn = get_connection()
     cursor = conn.cursor()
@@ -52,9 +36,10 @@ def run_daily_quant_scan(ticker_list: List[str], scan_type: str = 'daily') -> No
         # ---------------------------------------------------------
         # 1. State Management & Resumability Check
         # ---------------------------------------------------------
+        # [DESIGN-12 FIXED] Utilizing proper composite primary keys for state engine tracking
         cursor.execute(
-            "SELECT last_processed_ticker, status FROM quant_scan_states WHERE scan_date = ?",
-            (state_key,)
+            "SELECT last_processed_ticker, status FROM quant_scan_states WHERE scan_date = ? AND scan_type = ?",
+            (today_str, scan_type)
         )
         state = cursor.fetchone()
 
@@ -76,10 +61,10 @@ def run_daily_quant_scan(ticker_list: List[str], scan_type: str = 'daily') -> No
                 logger.info(f"Resuming incomplete '{scan_type}' scan for {today_str}. Starting from {resume_ticker}.")
                 log_notification("Info", f"Resuming incomplete Quant Scan ({scan_type}) from {resume_ticker}.")
         else:
-            # Initialize new daily state using the composite state_key
+            # Initialize new daily state using the normalized schema
             cursor.execute(
-                "INSERT INTO quant_scan_states (scan_date, last_processed_ticker, status) VALUES (?, ?, ?)",
-                (state_key, "", "IN_PROGRESS")
+                "INSERT INTO quant_scan_states (scan_date, scan_type, last_processed_ticker, status) VALUES (?, ?, ?, ?)",
+                (today_str, scan_type, "", "IN_PROGRESS")
             )
             conn.commit()
 
@@ -138,7 +123,7 @@ def run_daily_quant_scan(ticker_list: List[str], scan_type: str = 'daily') -> No
                     vol_surge = bool(c_vol > (vol_sma_20.iloc[-1] * 1.5))
 
                 bullish_cross = False
-                # Explicit guards added for MACD variables to prevent TypeErrors in cross calculations
+                # [MATH-09 RESOLUTION] This strictly manages the DB True/False flag for the Screener without double-scoring
                 if c_macd is not None and c_signal is not None and len(macd_indicator.macd()) >= 2 and not pd.isna(macd_indicator.macd().iloc[-2]):
                     # Golden MACD Cross: MACD crosses ABOVE signal line
                     prev_macd = macd_indicator.macd().iloc[-2]
@@ -152,8 +137,8 @@ def run_daily_quant_scan(ticker_list: List[str], scan_type: str = 'daily') -> No
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (ticker, last_date, c_price, c_vol, c_rsi, c_macd, c_signal, c_hist, c_sma50, c_sma200, vol_surge, bullish_cross))
 
-                # Update State Engine using state_key
-                cursor.execute("UPDATE quant_scan_states SET last_processed_ticker = ? WHERE scan_date = ?", (ticker, state_key))
+                # Update State Engine
+                cursor.execute("UPDATE quant_scan_states SET last_processed_ticker = ? WHERE scan_date = ? AND scan_type = ?", (ticker, today_str, scan_type))
                 conn.commit()
 
             except Exception as e:
@@ -172,7 +157,7 @@ def run_daily_quant_scan(ticker_list: List[str], scan_type: str = 'daily') -> No
         # ---------------------------------------------------------
         # 3. Finalize State
         # ---------------------------------------------------------
-        cursor.execute("UPDATE quant_scan_states SET status = 'COMPLETED' WHERE scan_date = ?", (state_key,))
+        cursor.execute("UPDATE quant_scan_states SET status = 'COMPLETED' WHERE scan_date = ? AND scan_type = ?", (today_str, scan_type))
         conn.commit()
         
         logger.info(f"Quant scan '{scan_type}' for {today_str} successfully finished executing.")

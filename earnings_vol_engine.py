@@ -9,7 +9,8 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 
-from database import get_connection
+# [DESIGN-04 FIXED] Import centralized notification helper
+from database import get_connection, log_notification
 
 # Configure robust module-level logging
 logging.basicConfig(
@@ -17,21 +18,6 @@ logging.basicConfig(
     format='%(asctime)s - EARNINGS_VOL_ENGINE - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
-
-def log_notification(message_type: str, message_text: str) -> None:
-    """Helper function to log scan progress to the system notification center."""
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO system_notifications (message_type, message_text) VALUES (?, ?)",
-            (message_type, message_text)
-        )
-        conn.commit()
-    except Exception as e:
-        logger.error(f"Failed to log notification: {e}")
-    finally:
-        conn.close()
 
 def get_historical_earnings_move(ticker_obj: yf.Ticker) -> Optional[float]:
     """
