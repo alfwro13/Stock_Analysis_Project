@@ -206,8 +206,15 @@ def update_macro_indicators() -> None:
 
     if fred_api_key:
         logger.info("Fetching FRED Institutional Data (2-Year History)...")
-        # BAMLC0A0CM serves as our global proxy for Investment Grade corporate spread
-        fred_tickers = ['WM2NS', 'ICSA', 'BAMLH0A0HYM2', 'BAMLC0A0CM', 'T10Y2Y']
+        
+        # Why this approach: There is no direct UK corporate spread on FRED. The Euro High Yield
+        # OAS (BAMLHE00EHY2EY) is highly correlated with UK corporate credit stress and shares a 
+        # similar structural baseline. A blowout in Euro High Yield accurately reflects a localized 
+        # systemic liquidity drain impacting LSE-listed equities, without requiring a complete schema 
+        # rewrite of the existing >3.0% circuit breaker threshold logic.
+        # Alternative Option: Another option could be to use `GBPUSD=X` divergence + UK Gilt spread 
+        # as an intermarket proxy, but that would require heavier downstream cross-engine calculation.
+        fred_tickers = ['WM2NS', 'ICSA', 'BAMLH0A0HYM2', 'BAMLHE00EHY2EY', 'T10Y2Y']
         for ticker in fred_tickers:
             df = fetch_fred_api(session, ticker, start_dt, end_dt, fred_api_key)
             if not df.empty:
@@ -243,7 +250,7 @@ def update_macro_indicators() -> None:
             float(row['BAMLH0A0HYM2']) if 'BAMLH0A0HYM2' in row and pd.notna(row['BAMLH0A0HYM2']) else None,
             float(row['T10Y2Y']) if 'T10Y2Y' in row and pd.notna(row['T10Y2Y']) else None,
             float(row['LPMVWNM']) if 'LPMVWNM' in row and pd.notna(row['LPMVWNM']) else None,
-            float(row['BAMLC0A0CM']) if 'BAMLC0A0CM' in row and pd.notna(row['BAMLC0A0CM']) else None,
+            float(row['BAMLHE00EHY2EY']) if 'BAMLHE00EHY2EY' in row and pd.notna(row['BAMLHE00EHY2EY']) else None,
             float(row['D7G7']) if 'D7G7' in row and pd.notna(row['D7G7']) else None,
             float(row['BCJD']) if 'BCJD' in row and pd.notna(row['BCJD']) else None
         ))
