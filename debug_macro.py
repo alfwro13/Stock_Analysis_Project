@@ -6,9 +6,9 @@ import pandas as pd
 import requests
 
 def run_diagnostics():
-    print("="*60)
-    print(" 🔍 MACRO DATA DIAGNOSTICS")
-    print("="*60)
+    print("="*70)
+    print(" 🔍 MACRO DATA & AI PIPELINE DIAGNOSTICS")
+    print("="*70)
 
     # 1. Check Config for FRED API Key
     config_path = "config.json"
@@ -40,10 +40,10 @@ def run_diagnostics():
         print("\n⚠️ Skipping FRED API test because key is missing.")
         print("👉 You must get a free API key from https://fred.stlouisfed.org/docs/api/api_key.html and save it in the dashboard Settings.")
 
-    # 3. Check Database Contents
-    print("\n" + "="*60)
-    print(" 🗄️ DATABASE INSPECTION")
-    print("="*60)
+    # 3. Check Database Contents & AI Pipeline Readiness
+    print("\n" + "="*70)
+    print(" 🗄️ DATABASE & MODEL INSPECTION")
+    print("="*70)
     
     db_path = "data/analysis.db"
     if not os.path.exists(db_path):
@@ -52,16 +52,50 @@ def run_diagnostics():
 
     conn = sqlite3.connect(db_path)
     try:
-        df = pd.read_sql_query("SELECT * FROM macro_indicators", conn)
-        print(f"Total rows in macro_indicators table: {len(df)}\n")
-        
-        if not df.empty:
-            print("--- Non-Null Data Count Per Column ---")
-            print(df.notnull().sum().to_string())
-            print("\n--- Latest 3 Rows in Database ---")
-            print(df.tail(3).to_string())
+        # --- macro_indicators (Used for HMM Clustering) ---
+        print("\n[TABLE: macro_indicators] -> Used for HMM Training")
+        df_ind = pd.read_sql_query("SELECT * FROM macro_indicators", conn)
+        print(f"Total historical indicator rows: {len(df_ind)}")
+        if not df_ind.empty:
+            valid_hmm = df_ind.dropna(subset=['us_m2', 'us_jobless_claims', 'us_high_yield_spread', 'us_yield_curve'])
+            print(f"✅ Valid rows for HMM Training (needs > 50): {len(valid_hmm)}")
         else:
-            print("⚠️ The macro_indicators table is completely empty.")
+            print("⚠️ The macro_indicators table is empty.")
+
+        # --- market_regimes (HMM Output Surface) ---
+        print("\n[TABLE: market_regimes] -> HMM Output Tracker")
+        df_mr = pd.read_sql_query("SELECT date, us_turbulence, us_regime_label, ai_hmm_state FROM market_regimes ORDER BY date DESC LIMIT 3", conn)
+        if not df_mr.empty:
+            print("Latest 3 Regime States:")
+            print(df_mr.to_string(index=False))
+        else:
+            print("⚠️ market_regimes table is empty.")
+
+        # --- macro_calendar (RF and XGBoost Targets & Inferences) ---
+        print("\n[TABLE: macro_calendar] -> Event Volatility Engine")
+        df_cal = pd.read_sql_query("SELECT * FROM macro_calendar", conn)
+        print(f"Total events tracked: {len(df_cal)}")
+        
+        if not df_cal.empty:
+            passed_events = df_cal[df_cal['is_event_passed'] == 1]
+            upcoming_events = df_cal[df_cal['is_event_passed'] == 0]
+            
+            print(f"\n--- Ground Truth (Passed Events: {len(passed_events)}) ---")
+            valid_rf = passed_events.dropna(subset=['forecast_val', 'previous_val', 'actual_val'])
+            valid_xgb = passed_events.dropna(subset=['forecast_val', 'previous_val', 'post_event_spy_gap'])
+            print(f"✅ Valid rows for Random Forest Training (needs Actuals, >10): {len(valid_rf)}")
+            print(f"✅ Valid rows for XGBoost Training (needs SPY Gaps, >10): {len(valid_xgb)}")
+            
+            print(f"\n--- AI Inference (Upcoming Events: {len(upcoming_events)}) ---")
+            inferred = upcoming_events.dropna(subset=['ai_consensus_miss_prob', 'ai_volatility_warning'])
+            print(f"✅ Upcoming Events with AI Predictions successfully attached: {len(inferred)}")
+            
+            if not inferred.empty:
+                print("\nLatest AI Predicted Upcoming Events:")
+                display_cols = ['event_date', 'event_name', 'forecast_val', 'ai_consensus_miss_prob', 'ai_volatility_warning']
+                print(inferred[display_cols].head(5).to_string(index=False))
+        else:
+            print("⚠️ macro_calendar table is empty.")
             
     except Exception as e:
         print(f"❌ Database read error: {e}")
