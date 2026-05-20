@@ -140,8 +140,55 @@ class QuantEngine:
         with open(filepath, 'r') as f:
             return json.load(f)
 
-    def calculate_vcp_breakout(self, df: pd.DataFrame) -> Tuple[bool, bool]:
-        """Advanced Minervini VCP: Price contraction AND Volume dry-up."""
+    def calculate_vcp_breakout(self, df: pd.DataFrame) -> Tuple[bool, bool, bool]:
+        """
+        Institutional Minervini VCP — Evaluates all 5 structural criteria.
+
+        Returns:
+            is_vcp_base (bool): Criteria 1-4 met — valid base structure confirmed.
+            is_confirmed_breakout (bool): Criteria 1-5 met — price broke resistance on volume.
+            has_prior_uptrend (bool): Standalone flag for partial scoring in analyze_ticker.
+
+        Mathematical Definitions:
+            Prior Uptrend:     (52W_High - 52W_Low) / 52W_Low >= 0.30
+            Proximity to High: (52W_High - Current_Price) / 52W_High <= 0.15
+            Contraction:       W1_Range > W2_Range > W3_Range AND total_range_pct <= 10%
+            Volume Dry-Up:     3W_Avg_Vol < 10W_Avg_Weekly_Vol * 0.80
+            Breakout:          Close > Base_Resistance AND Daily_Vol > 50D_Vol_SMA * 1.50
+        """
+        # Require minimum 1 year of data to compute a valid 52-week window
+        if df is None or len(df) < 252:
+            return False, False, False
+
+        # ─────────────────────────────────────────────────────────────────
+        # CRITERION 1: Prior Uptrend — 30%+ advance from 52W Low to 52W High
+        # ─────────────────────────────────────────────────────────────────
+        # Measured over the full 252-day window using intraday High/Low extremes
+        # to capture the true prior advance, not just daily close-to-close.
+        high_52w = df['High'].rolling(window=252).max().iloc[-1]
+        low_52w = df['Low'].rolling(window=252).min().iloc[-1]
+
+        if pd.isna(high_52w) or pd.isna(low_52w) or low_52w <= 0:
+            return False, False, False
+
+        prior_advance = (high_52w - low_52w) / low_52w
+        has_prior_uptrend: bool = bool(prior_advance >= 0.30)
+
+        # ─────────────────────────────────────────────────────────────────
+        # CRITERION 2: Proximity to 52-Week High — Stock must be within 15%
+        # ─────────────────────────────────────────────────────────────────
+        # VCP bases form near the TOP of a prior advance. A stock 40% below its
+        # 52W high is in a bear market basing pattern — not a launch pad.
+        current_price = float(df['Close'].iloc[-1])
+        if pd.isna(current_price) or current_price <= 0:
+            return False, False, has_prior_uptrend
+
+        dist_from_52w_high: float = (high_52w - current_price) / high_52w
+        is_near_high: bool = bool(dist_from_52w_high <= 0.15)
+
+        # ─────────────────────────────────────────────────────────────────
+        # CRITERION 3: Sequential Range Contraction (3-Week Window)
+        # ─────────────────────────────────────────────────────────────────
         weekly_data = df.resample('W-FRI').agg({
             'Open': 'first',
             'High': 'max',
@@ -149,47 +196,75 @@ class QuantEngine:
             'Close': 'last',
             'Volume': 'sum'
         })
-        
+
         if len(weekly_data) < 4:
-            return False, False
-        
-        # [ISSUE 4.2 FIXED] Standardize completed weeks to prevent incomplete week volume drag
-        # If the last recorded day is not Friday (weekday 4), drop the last incomplete week
+            return False, False, has_prior_uptrend
+
+        # Drop the current incomplete week if today is not Friday (weekday == 4)
+        # This prevents partial-week data from corrupting the contraction measurement.
         if df.index[-1].weekday() < 4:
             completed_weeks = weekly_data.iloc[:-1]
         else:
             completed_weeks = weekly_data
-            
+
         if len(completed_weeks) < 3:
-            return False, False
-        
+            return False, False, has_prior_uptrend
+
         last_3_weeks = completed_weeks.iloc[-3:]
-        
-        # Calculate sequential variance using the High-Low range across the 3 weeks
-        w1_range = last_3_weeks.iloc[0]['High'] - last_3_weeks.iloc[0]['Low']
-        w2_range = last_3_weeks.iloc[1]['High'] - last_3_weeks.iloc[1]['Low']
-        w3_range = last_3_weeks.iloc[2]['High'] - last_3_weeks.iloc[2]['Low']
-        
-        # True VCP: Each week's range must be sequentially smaller than the prior
-        is_contracting = bool(w1_range > w2_range > w3_range)
-        
-        # Also check that total aggregate range is relatively tight
-        max_high = last_3_weeks['High'].max()
-        min_low = last_3_weeks['Low'].min()
+
+        w1_range = float(last_3_weeks.iloc[0]['High'] - last_3_weeks.iloc[0]['Low'])
+        w2_range = float(last_3_weeks.iloc[1]['High'] - last_3_weeks.iloc[1]['Low'])
+        w3_range = float(last_3_weeks.iloc[2]['High'] - last_3_weeks.iloc[2]['Low'])
+
+        # Strict sequential: every week must be smaller than the prior
+        is_contracting: bool = bool(w1_range > w2_range > w3_range > 0)
+
+        # Total aggregate range across the 3-week base must be ≤ 10% of the low
+        max_high = float(last_3_weeks['High'].max())
+        min_low = float(last_3_weeks['Low'].min())
         total_range_pct = (max_high - min_low) / min_low if min_low > 0 else 1.0
-        
-        is_tight = is_contracting and (total_range_pct <= 0.10)
-        
-        # Compare weekly volumes directly to weekly rolling averages on completed weeks only
-        weekly_vol_avg_50d = completed_weeks['Volume'].rolling(10).mean().iloc[-1]
-        
-        if pd.isna(weekly_vol_avg_50d):
-            is_dry_volume = False
-        else:
-            avg_vol_3w = last_3_weeks['Volume'].mean()
-            is_dry_volume = bool(avg_vol_3w < (weekly_vol_avg_50d * 0.8))
-        
-        return is_tight, is_dry_volume
+        is_tight: bool = is_contracting and (total_range_pct <= 0.10)
+
+        # ─────────────────────────────────────────────────────────────────
+        # CRITERION 4: Volume Dry-Up — Base volume below 10-Week average
+        # ─────────────────────────────────────────────────────────────────
+        weekly_vol_avg_10w = completed_weeks['Volume'].rolling(window=10).mean().iloc[-1]
+
+        is_dry_volume: bool = False
+        if not pd.isna(weekly_vol_avg_10w) and weekly_vol_avg_10w > 0:
+            avg_vol_3w = float(last_3_weeks['Volume'].mean())
+            is_dry_volume = bool(avg_vol_3w < (weekly_vol_avg_10w * 0.80))
+
+        # ─────────────────────────────────────────────────────────────────
+        # COMPOSITE: Valid VCP Base = All 4 structural criteria confirmed
+        # ─────────────────────────────────────────────────────────────────
+        is_vcp_base: bool = bool(
+            has_prior_uptrend and
+            is_near_high and
+            is_tight and
+            is_dry_volume
+        )
+
+        # ─────────────────────────────────────────────────────────────────
+        # CRITERION 5: Confirmed Breakout — Price + Volume Trigger (DAILY)
+        # ─────────────────────────────────────────────────────────────────
+        # A confirmed VCP breakout requires price to CLOSE above the highest
+        # High of the 3-week base (the "pivot point" / resistance) on DAILY
+        # volume that is ≥ 1.5× the 50-day average daily volume.
+        # This uses daily data intentionally — weekly volume is too coarse
+        # to capture the single-session institutional surge that marks a real breakout.
+        is_confirmed_breakout: bool = False
+        if is_vcp_base:
+            resistance_level = float(last_3_weeks['High'].max())
+            daily_vol_sma_50 = df['Volume'].rolling(window=50).mean().iloc[-1]
+            current_daily_vol = float(df['Volume'].iloc[-1])
+
+            if not pd.isna(daily_vol_sma_50) and daily_vol_sma_50 > 0:
+                price_broke_out = bool(current_price > resistance_level)
+                volume_confirmed = bool(current_daily_vol >= (daily_vol_sma_50 * 1.50))
+                is_confirmed_breakout = bool(price_broke_out and volume_confirmed)
+
+        return is_vcp_base, is_confirmed_breakout, has_prior_uptrend
 
     def detect_bearish_divergence(self, df: pd.DataFrame) -> bool:
         """Checks if price is making structurally higher highs while RSI makes lower highs."""
@@ -207,25 +282,27 @@ class QuantEngine:
         
         high_col = 'High' if 'High' in df.columns else 'Close'
         
-        # [ISSUE 1.3 FIXED] Find integer indices to create flexible 5-day rolling windows
+        # Find integer indices to create flexible rolling windows
         peak1_iloc = p1[high_col].argmax()
         peak2_iloc = p2[high_col].argmax() + 15
         
         price_peak1 = last_30[high_col].iloc[peak1_iloc]
         price_peak2 = last_30[high_col].iloc[peak2_iloc]
         
-        # Safely bind indices to a +/- 2 day rolling window around the peak
+        # Safely bind indices. 
+        # Left boundary looks back 2 days. 
+        # Right boundary is clamped to +1 (exclusive) to completely eliminate look-ahead bias.
         window1_start = max(0, peak1_iloc - 2)
-        window1_end = min(len(last_30), peak1_iloc + 3)
+        window1_end = min(len(last_30), peak1_iloc + 1)
         window2_start = max(0, peak2_iloc - 2)
-        window2_end = min(len(last_30), peak2_iloc + 3)
+        window2_end = min(len(last_30), peak2_iloc + 1)
         
-        # Extract the maximum RSI reading specifically within the localized 5-day windows
+        # Extract the maximum RSI reading specifically within the localized windows
         rsi_at_peak1 = last_30['RSI'].iloc[window1_start:window1_end].max()
         rsi_at_peak2 = last_30['RSI'].iloc[window2_start:window2_end].max()
         
-        # Divergence confirmed: Price is higher, RSI is lower, and the first RSI peak was overbought
-        if price_peak2 > price_peak1 and rsi_at_peak2 < rsi_at_peak1 and rsi_at_peak1 > 70.0:
+        # Divergence confirmed: Price is higher, RSI is lower, and the first RSI peak showed baseline bullish momentum
+        if price_peak2 > price_peak1 and rsi_at_peak2 < rsi_at_peak1 and rsi_at_peak1 > 55.0:
             return True
         return False
 
@@ -287,7 +364,7 @@ class QuantEngine:
             trend_50d = trend_200d = "N/A"
             rsi_val = stop_loss = None
             obv_bullish = False
-            is_tight = is_dry_volume = False
+            is_vcp_base = is_confirmed_breakout = has_prior_uptrend = False
             is_bearish_divergence = False
             is_market_leader = False
 
@@ -372,7 +449,7 @@ class QuantEngine:
                 df['MACD_Signal'] = macd.macd_signal()
                 df['MACD_Hist'] = macd.macd_diff()
 
-                is_tight, is_dry_volume = self.calculate_vcp_breakout(df)
+                is_vcp_base, is_confirmed_breakout, has_prior_uptrend = self.calculate_vcp_breakout(df)
                 is_bearish_divergence = self.detect_bearish_divergence(df)
 
                 if df_baseline is not None and not df_baseline.empty:
@@ -510,13 +587,51 @@ class QuantEngine:
                         # [MATH-09] Prevent score double counting against quant_engine.py screener
                         breakdown.append("+0: <abbr title='MACD Bullish Crossover (Captured by Engine DB Flag)'>MACD Bullish Crossover</abbr>")
 
-                if is_tight and is_dry_volume and not is_fund:
-                    tags.append({"name": "🔥 VCP Breakout", "tooltip": "Volatility Contraction Pattern."})
-                    score += 20
-                    breakdown.append("+20: Minervini VCP")
-                elif is_tight:
-                    score += 10
-                    breakdown.append("+10: 3-Weeks-Tight")
+                if not is_fund:
+                    if is_confirmed_breakout:
+                        # Highest conviction: all 5 Minervini criteria satisfied.
+                        # Prior uptrend ✓ | Near 52W high ✓ | Contracting base ✓
+                        # Volume dry-up ✓ | Breakout on institutional volume ✓
+                        tags.append({
+                            "name": "🔥 VCP Confirmed Breakout",
+                            "tooltip": (
+                                "All 5 Minervini VCP criteria satisfied: the stock had a 30%+ prior "
+                                "uptrend, is within 15% of its 52-week high, built a sequentially "
+                                "contracting 3-week base on drying volume, and today broke above base "
+                                "resistance on institutional volume (≥1.5× 50D average)."
+                            )
+                        })
+                        score += 25
+                        breakdown.append(
+                            "+25: <abbr title='Prior uptrend + near 52W high + contraction + vol dry-up "
+                            "+ confirmed breakout on elevated volume.'>Minervini VCP — Confirmed Breakout</abbr>"
+                        )
+
+                    elif is_vcp_base:
+                        # Valid base structure (criteria 1-4) but no breakout yet.
+                        # This is the actionable setup to WATCH, not yet a trade entry.
+                        tags.append({
+                            "name": "🌀 VCP Base Forming",
+                            "tooltip": (
+                                "Minervini VCP base structure confirmed: prior 30%+ uptrend, stock within "
+                                "15% of 52-week high, sequential weekly range contraction, and volume "
+                                "drying up. Awaiting a breakout above base resistance on elevated volume."
+                            )
+                        })
+                        score += 15
+                        breakdown.append(
+                            "+15: <abbr title='Base structure confirmed: uptrend + near high + contraction "
+                            "+ dry volume. Awaiting volume breakout.'>Minervini VCP — Base Setup (Pre-Breakout)</abbr>"
+                        )
+
+                    elif has_prior_uptrend:
+                        # Weakest positive: the stock has the foundation (prior advance)
+                        # but has not yet built a proper base. Partial credit only.
+                        score += 5
+                        breakdown.append(
+                            "+5: <abbr title='30%+ prior uptrend confirmed but base not yet formed.'>Prior "
+                            "Uptrend Foundation</abbr>"
+                        )
 
                 if is_market_leader:
                     tags.append({"name": "👑 Market Leader", "tooltip": "Strong >15% Relative Strength outperformance vs S&P 500 Baseline over 1-year."})
