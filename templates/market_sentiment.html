@@ -116,8 +116,16 @@
     <div class="regime-callout">
         <div class="regime-callout-title">🌍 Market Regime Context (Volatility)</div>
         <p class="regime-callout-text">
-            <strong>🇺🇸 US Classification:</strong> {{ regime_data.us_regime_label }} (Turbulence Index: {{ "%.2f"|format(regime_data.us_turbulence) }}) {% if regime_data.ai_hmm_state is not none %} | 🤖 HMM Hidden Macro State: {{ regime_data.ai_hmm_state }}{% endif %}<br>
-            <strong>🇬🇧 UK Classification:</strong> {{ regime_data.uk_regime_label }} (Turbulence Index: {{ "%.2f"|format(regime_data.uk_turbulence) }})
+            <strong>🇺🇸 US Classification:</strong> 
+            <abbr title="Regime state. Normal = Safe, Volatile = Choppy/Elevated Risk, Crash = Panic." style="text-decoration: underline dotted #666; cursor: help;">{{ regime_data.us_regime_label }}</abbr> 
+            (Turbulence Index: <abbr title="Blended metric of Realized and Implied Volatility. < 20 is Normal, 20-30 is Volatile, > 30 is Crash." style="text-decoration: underline dotted #666; cursor: help;">{{ "%.2f"|format(regime_data.us_turbulence) }}</abbr>) 
+            {% if regime_data.ai_hmm_state is not none %} | 
+            <abbr title="Time-Series AI structural cluster. 0: Expansion/Normal. 1: Transition/Choppy. 2: Contraction/Crisis." style="text-decoration: underline dotted #666; cursor: help;">🤖 HMM Hidden Macro State: {{ regime_data.ai_hmm_state }}</abbr>
+            {% endif %}<br>
+            
+            <strong>🇬🇧 UK Classification:</strong> 
+            <abbr title="Regime state. Normal = Safe, Volatile = Choppy/Elevated Risk, Crash = Panic." style="text-decoration: underline dotted #666; cursor: help;">{{ regime_data.uk_regime_label }}</abbr> 
+            (Turbulence Index: <abbr title="Blended metric of Realized Volatility. < 20 is Normal, 20-30 is Volatile, > 30 is Crash." style="text-decoration: underline dotted #666; cursor: help;">{{ "%.2f"|format(regime_data.uk_turbulence) }}</abbr>)
         </p>
         <p class="regime-callout-text">
             Market conditions are currently 
@@ -137,7 +145,7 @@
                 <span class="ue-date">[{{ evt.event_date }}]</span>
                 <span class="ue-name">
                     {% if evt.context %}
-                        <abbr title="{{ evt.context }}" style="text-decoration: underline dotted #666; cursor: help; color: #fff;">{{ evt.event_name }}</abbr>
+                        <abbr title="{{ evt.context }}" style="text-decoration: underline dotted #666; cursor: help;">{{ evt.event_name }}</abbr>
                     {% else %}
                         {{ evt.event_name }}
                     {% endif %}
@@ -148,7 +156,7 @@
                     <span style="color: #00ffcc;">{{ evt.insight }}</span>
                     {% endif %}
                     {% if evt.ai_consensus_miss_prob is not none %}
-                    <span style="color: #ffaa00; font-weight: bold;">| 🤖 Surprise Surprise: {{ "{:.0%}".format(evt.ai_consensus_miss_prob) }}</span>
+                    <span style="color: #ffaa00; font-weight: bold;">| 🤖 Surprise Prob: {{ "{:.1%}".format(evt.ai_consensus_miss_prob) }}</span>
                     {% endif %}
                 </span>
             </div>
@@ -335,6 +343,13 @@
                         {% endfor %}
                     </tbody>
                 </table>
+                <div class="sentiment-footer" style="padding: 15px 0 0 0; margin-top: 15px; border-top: 1px dashed #333;">
+                    <span class="sentiment-footer-title">How to read this data:</span>
+                    <div class="sentiment-footer-text">
+                        <strong>🤖 Surprise Prob:</strong> Our Random Forest model's calculated probability that the actual data release will significantly deviate from Wall Street's forecast.<br>
+                        <strong>💥 Stacked Vol Forecast:</strong> Our XGBoost AI's prediction of the absolute percentage move (Volatility Gap) the S&P 500 will make within 30 minutes of the event. A forecast > 2.0% triggers an automated AI Volatility Defense mechanism across the dashboard.
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -433,6 +448,13 @@
                         {% endfor %}
                     </tbody>
                 </table>
+                <div class="sentiment-footer" style="padding: 15px 0 0 0; margin-top: 15px; border-top: 1px dashed #333;">
+                    <span class="sentiment-footer-title">How to read this data:</span>
+                    <div class="sentiment-footer-text">
+                        <strong>🤖 Surprise Prob:</strong> Our Random Forest model's calculated probability that the actual data release will significantly deviate from Wall Street's forecast.<br>
+                        <strong>💥 Stacked Vol Forecast:</strong> Our XGBoost AI's prediction of the absolute percentage move (Volatility Gap) the S&P 500 will make within 30 minutes of the event. A forecast > 2.0% triggers an automated AI Volatility Defense mechanism across the dashboard.
+                    </div>
+                </div>
             </div>
 
         </div>
