@@ -9,7 +9,7 @@ from typing import Set, List
 
 from config import PORTFOLIO_PATH, WATCHLIST_PATH, HISTORICAL_DIR, INTRADAY_DIR, FUNDAMENTALS_DIR, load_config
 from gilt_engine import GiltDataService
-from network_engine import yahoo_connection_boundary
+from tools.network_engine import yahoo_connection_boundary
 
 # Configure robust module-level logging
 logging.basicConfig(

@@ -8,7 +8,7 @@ from datetime import datetime
 import yfinance as yf
 
 from database import get_connection
-from network_engine import yahoo_connection_boundary
+from tools.network_engine import yahoo_connection_boundary
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - PROFILE_ENGINE - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)

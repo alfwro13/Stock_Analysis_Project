@@ -40,7 +40,7 @@ from risk_engine import update_all_tail_risks
 from profile_engine import update_single_profile
 
 # Import the custom IPv6 adapter for the diagnostic endpoint
-from network_engine import IPv6SourceAddressAdapter
+from tools.network_engine import IPv6SourceAddressAdapter
 
 # Configure logger
 logger = logging.getLogger(__name__)
