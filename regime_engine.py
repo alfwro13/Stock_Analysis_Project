@@ -75,13 +75,20 @@ def calculate_market_regime() -> None:
             logger.error("Incomplete data received for core regime tickers.")
             return
 
-        # 2. Calculate US Realized Volatility (10-day EWMA to remove lag)
-        spy_log_returns = np.log(spy_data['Close'] / spy_data['Close'].shift(1))
-        spy_vol_ewma = spy_log_returns.ewm(span=10, adjust=False).std() * np.sqrt(252) * 100.0
+        # 2. Calculate Realized Volatility (RiskMetrics EWMA, Lambda = 0.94)
+        LAMBDA = 0.94
+        
+        # US Realized Volatility (SPY)
+        spy_log_returns = np.log(spy_data['Close'] / spy_data['Close'].shift(1)).dropna()
+        spy_returns_sq = spy_log_returns ** 2
+        spy_var_ewma = spy_returns_sq.ewm(alpha=(1 - LAMBDA), adjust=False).mean()
+        spy_vol_ewma = np.sqrt(spy_var_ewma) * np.sqrt(252) * 100.0
 
-        # Calculate UK Realized Volatility (10-day EWMA)
-        ftse_log_returns = np.log(ftse_data['Close'] / ftse_data['Close'].shift(1))
-        ftse_vol_ewma = ftse_log_returns.ewm(span=10, adjust=False).std() * np.sqrt(252) * 100.0
+        # UK Realized Volatility (FTSE)
+        ftse_log_returns = np.log(ftse_data['Close'] / ftse_data['Close'].shift(1)).dropna()
+        ftse_returns_sq = ftse_log_returns ** 2
+        ftse_var_ewma = ftse_returns_sq.ewm(alpha=(1 - LAMBDA), adjust=False).mean()
+        ftse_vol_ewma = np.sqrt(ftse_var_ewma) * np.sqrt(252) * 100.0
 
         # Extract latest metrics
         latest_date = spy_data.index[-1].strftime('%Y-%m-%d')
