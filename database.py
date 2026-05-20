@@ -34,7 +34,7 @@ def get_connection() -> sqlite3.Connection:
 def log_notification(message_type: str, message_text: str) -> None:
     """
     Centralized helper function to log scan progress to the system notification center.
-    [BUG-01 FIXED] Guards against NameError if get_connection() raises an exception.
+    Guards against NameError if get_connection() raises an exception.
     """
     conn = None
     try:
@@ -139,7 +139,7 @@ def init_db() -> None:
             )
         ''')
 
-        # New table for the Live Market Pulse Database Cache [BUG-05 FIXED]
+        # New table for the Live Market Pulse Database Cache
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS market_pulse_cache (
                 ticker TEXT PRIMARY KEY,
@@ -175,7 +175,7 @@ def init_db() -> None:
             )
         ''')
 
-        # [DESIGN-12 FIXED] Proper Composite Primary Key for Scan State
+        # Proper Composite Primary Key for Scan State
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS quant_scan_states (
                 scan_date TEXT,
@@ -313,7 +313,7 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
     Gracefully executes ALTER TABLE to apply schema updates without dropping data.
     Wraps individual ALTER statements in try/except blocks to ensure atomic migrations.
     """
-    # 0. Migrate quant_scan_states PK normalization [DESIGN-12]
+    # 0. Migrate quant_scan_states PK normalization
     try:
         cursor.execute("PRAGMA table_info(quant_scan_states)")
         existing_state_columns = [info['name'] for info in cursor.fetchall()]
@@ -333,7 +333,7 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
     except Exception as e:
         logger.error(f"[MIGRATION ERROR] Failed on quant_scan_states recreation: {e}")
 
-    # 0.5 Migrate market_pulse_cache from TEXT to REAL [BUG-05 FIXED]
+    # 0.5 Migrate market_pulse_cache from TEXT to REAL
     try:
         cursor.execute("PRAGMA table_info(market_pulse_cache)")
         cache_columns = cursor.fetchall()
@@ -440,7 +440,7 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
                 logger.error(f"[MIGRATION ERROR] Failed on market_universe: {e}")
                 continue
 
-    # 4. Migrate market_regimes (Dual-Region Refactor)
+    # 4. Migrate market_regimes (Dual-Region Refactor + Stacking UI Expansion)
     cursor.execute("PRAGMA table_info(market_regimes)")
     existing_regime_columns = [info['name'] for info in cursor.fetchall()]
 
@@ -451,7 +451,8 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
         'us_regime_label': 'TEXT',
         'ftse_volatility': 'REAL',
         'uk_turbulence': 'REAL',
-        'uk_regime_label': 'TEXT'
+        'uk_regime_label': 'TEXT',
+        'ai_hmm_state': 'INTEGER'  # Surface standalone HMM clustering to UI
     }
 
     for col_name, data_type in required_regime_columns.items():
@@ -483,7 +484,7 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
                 logger.error(f"[MIGRATION ERROR] Failed on macro_regimes: {e}")
                 continue
 
-    # 6. Migrate macro_calendar (PHASE 1 UPGRADES)
+    # 6. Migrate macro_calendar (Adding Stacking surprise probability field)
     cursor.execute("PRAGMA table_info(macro_calendar)")
     existing_calendar_columns = [info['name'] for info in cursor.fetchall()]
 
@@ -491,19 +492,20 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
         'event_date': 'TIMESTAMP', 'currency': 'TEXT', 'impact': 'TEXT',
         'event_name': 'TEXT', 'forecast_val': 'REAL', 'previous_val': 'REAL',
         'actual_val': 'REAL', 'post_event_spy_gap': 'REAL', 'ai_volatility_warning': 'REAL DEFAULT 0.0',
-        'is_event_passed': 'BOOLEAN DEFAULT 0', 'alert_dispatched': 'BOOLEAN DEFAULT 0'
+        'is_event_passed': 'BOOLEAN DEFAULT 0', 'alert_dispatched': 'BOOLEAN DEFAULT 0',
+        'ai_consensus_miss_prob': 'REAL'  # Surface standalone RF probability to UI
     }
 
     for col_name, data_type in required_calendar_columns.items():
         if col_name not in existing_calendar_columns:
             try:
-                logger.info(f"[MIGRATION] Adding Phase 1 ML column '{col_name}' to macro_calendar...")
+                logger.info(f"[MIGRATION] Adding column '{col_name}' to macro_calendar...")
                 cursor.execute(f"ALTER TABLE macro_calendar ADD COLUMN {col_name} {data_type}")
             except Exception as e:
                 logger.error(f"[MIGRATION ERROR] Failed on macro_calendar: {e}")
                 continue
 
-    # 7. Migrate macro_indicators (PHASE 1 UPGRADES)
+    # 7. Migrate macro_indicators
     cursor.execute("PRAGMA table_info(macro_indicators)")
     existing_indicator_columns = [info['name'] for info in cursor.fetchall()]
 

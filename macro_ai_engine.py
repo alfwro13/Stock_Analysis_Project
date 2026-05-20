@@ -116,66 +116,134 @@ class MacroAIEngine:
 
     def train_volatility_magnitude(self) -> None:
         """
-        Model 3: XGBoost Regressor.
-        Consumes Event Data + Historical VIX to predict the exact percentage magnitude 
-        of the SPY gap following a macroeconomic release.
+        Model 3: XGBoost Regressor with Model Stacking.
+        Consumes Event Data + Historical VIX + Upstream Stacking Features (HMM state and RF probability)
+        to predict the exact percentage magnitude of the SPY gap following a macroeconomic release.
         """
-        logger.info("Training Volatility Magnitude model (XGBoost)...")
+        logger.info("Training Volatility Magnitude model (XGBoost) with Model Stacking Architecture...")
         try:
             # Join the specific event dates with the market regime table to capture historical VIX context
             query = """
-                SELECT c.forecast_val, c.previous_val, c.post_event_spy_gap, r.vix_close 
+                SELECT c.event_id, c.event_date, c.forecast_val, c.previous_val, c.actual_val, c.post_event_spy_gap, r.vix_close 
                 FROM macro_calendar c
                 LEFT JOIN market_regimes r ON date(c.event_date) = r.date
                 WHERE c.is_event_passed = 1 AND c.post_event_spy_gap IS NOT NULL
             """
-            df = pd.read_sql_query(query, self.conn)
+            df_cal = pd.read_sql_query(query, self.conn)
             
-            df['forecast_num'] = df['forecast_val'].apply(self._extract_numeric)
-            df['previous_num'] = df['previous_val'].apply(self._extract_numeric)
+            if df_cal.empty:
+                logger.warning("No verified calendar rows found for XGBoost training. Skipping.")
+                return
+                
+            df_cal['forecast_num'] = df_cal['forecast_val'].apply(self._extract_numeric)
+            df_cal['previous_num'] = df_cal['previous_val'].apply(self._extract_numeric)
+            df_cal['vix_close'] = df_cal['vix_close'].fillna(20.0)
             
-            # If historical VIX isn't available for an old event, default to baseline normal (20.0)
-            df['vix_close'] = df['vix_close'].fillna(20.0)
+            df_cal = df_cal.dropna(subset=['forecast_num', 'previous_num', 'post_event_spy_gap'])
             
-            df = df.dropna(subset=['forecast_num', 'previous_num', 'post_event_spy_gap'])
-            
-            if len(df) < 10:
+            if len(df_cal) < 10:
                 logger.warning("Insufficient verified SPY gap data to train Volatility Magnitude model. Skipping.")
                 return
 
-            X = df[['forecast_num', 'previous_num', 'vix_close']].values
-            y = df['post_event_spy_gap'].values
+            # --- Stacking Feature 1: Compile historical HMM hidden state map ---
+            hmm_state_map = {}
+            if self.hmm_model is not None:
+                try:
+                    q_ind = "SELECT date, us_m2, us_jobless_claims, us_high_yield_spread, us_yield_curve FROM macro_indicators ORDER BY date ASC"
+                    df_ind = pd.read_sql_query(q_ind, self.conn)
+                    df_ind_clean = df_ind.dropna()
+                    if not df_ind_clean.empty:
+                        X_ind = self.scaler.transform(df_ind_clean[['us_m2', 'us_jobless_claims', 'us_high_yield_spread', 'us_yield_curve']])
+                        predicted_states = self.hmm_model.predict(X_ind)
+                        for d, s in zip(df_ind_clean['date'], predicted_states):
+                            hmm_state_map[d] = int(s)
+                except Exception as ex:
+                    logger.error(f"Failed to compile historical HMM feature states for stacking: {ex}")
+
+            # --- Stacking Feature 2: Assemble unified multidimensional feature matrix ---
+            X_list = []
+            y = df_cal['post_event_spy_gap'].values
             
-            # Tuning constraints for volatility (smooth learning rate, shallow depth)
+            for _, row in df_cal.iterrows():
+                f_num = row['forecast_num']
+                p_num = row['previous_num']
+                vix = row['vix_close']
+                
+                # Fetch HMM state for the specific event date (fallback to 0 if missing)
+                evt_date_str = pd.to_datetime(row['event_date']).strftime('%Y-%m-%d')
+                hmm_state = hmm_state_map.get(evt_date_str, 0)
+                
+                # Fetch RF consensus miss probability (fallback to 0.5 if model or inputs missing)
+                rf_prob = 0.5
+                if self.rf_model is not None:
+                    try:
+                        rf_prob = float(self.rf_model.predict_proba([[f_num, p_num]])[0][1])
+                    except Exception:
+                        pass
+                        
+                X_list.append([f_num, p_num, vix, hmm_state, rf_prob])
+                
+            X = np.array(X_list)
+            
+            # Tuning constraints for stacked volatility modeling (expanded max_depth to handle additional dimensions)
             self.xgb_model = xgb.XGBRegressor(
                 n_estimators=100, 
-                max_depth=3, 
+                max_depth=4, 
                 learning_rate=0.05, 
                 objective='reg:squarederror',
                 random_state=42
             )
             self.xgb_model.fit(X, y)
             
-            logger.info(f"Successfully trained XGBoost Volatility model on {len(X)} verified historical SPY gaps.")
+            logger.info(f"Successfully trained Stacking XGBoost Volatility model on {len(X)} historical events.")
         except Exception as e:
             logger.error(f"Failed to train Volatility Magnitude model: {e}")
 
     def run_macro_inference(self, target_date: str) -> None:
         """
         Runs live inference for upcoming events in the next 48 hours.
-        If the predicted SPY gap is extreme (> 2.0%), writes an AI warning 
-        to the macro_calendar SQLite table for downstream defense systems to intercept.
+        Leverages the HMM regime model and Random Forest surprise model as standalone predictors,
+        persists their independent insights to SQLite tables for the UI, and feeds them into
+        the final stacked XGBoost model for precision volatility forecasting.
         """
-        logger.info(f"Running Macro AI Inference for 48H window starting: {target_date}")
+        logger.info(f"Running Stacked Macro AI Inference for 48H window starting: {target_date}")
         try:
             cursor = self.conn.cursor()
             
-            # Fetch the most recent VIX closing value to act as the baseline volatility context
+            # 1. Fetch current VIX context
             cursor.execute("SELECT vix_close FROM market_regimes ORDER BY date DESC LIMIT 1")
             vix_row = cursor.fetchone()
             current_vix = float(vix_row['vix_close']) if vix_row and vix_row['vix_close'] else 20.0
 
-            # Fetch upcoming events
+            # 2. Compute current live HMM Hidden Macro State
+            current_hmm_state = 0
+            if self.hmm_model is not None:
+                try:
+                    cursor.execute("""
+                        SELECT us_m2, us_jobless_claims, us_high_yield_spread, us_yield_curve 
+                        FROM macro_indicators 
+                        ORDER BY date DESC LIMIT 1
+                    """)
+                    ind_row = cursor.fetchone()
+                    if ind_row:
+                        X_ind_live = self.scaler.transform([[
+                            float(ind_row['us_m2']),
+                            float(ind_row['us_jobless_claims']),
+                            float(ind_row['us_high_yield_spread']),
+                            float(ind_row['us_yield_curve'])
+                        ]])
+                        current_hmm_state = int(self.hmm_model.predict(X_ind_live)[0])
+                        
+                        # Surface the standalone HMM prediction to the UI via market_regimes table update
+                        cursor.execute("""
+                            UPDATE market_regimes 
+                            SET ai_hmm_state = ? 
+                            WHERE date = (SELECT MAX(date) FROM market_regimes)
+                        """, (current_hmm_state,))
+                except Exception as ex:
+                    logger.error(f"Failed to calculate current live HMM hidden macro regime state: {ex}")
+
+            # 3. Fetch upcoming events to forecast
             cursor.execute('''
                 SELECT event_id, forecast_val, previous_val FROM macro_calendar 
                 WHERE date(event_date) >= date(?) 
@@ -189,7 +257,7 @@ class MacroAIEngine:
                 return
                 
             if self.xgb_model is None:
-                logger.warning("XGBoost Volatility model is untrained. Awaiting more historical event data to accumulate. Bypassing inference.")
+                logger.warning("XGBoost Volatility model is untrained. Bypassing stacked inference.")
                 return
 
             updates_count = 0
@@ -197,43 +265,39 @@ class MacroAIEngine:
                 f_val = self._extract_numeric(event['forecast_val'])
                 p_val = self._extract_numeric(event['previous_val'])
 
-                # If the event lacks numerical forecasts (e.g., "OPEC Meetings" or Speeches), skip inference
                 if pd.isna(f_val) or pd.isna(p_val):
                     continue
 
-                # Run XGBoost Inference
-                X_infer = np.array([[f_val, p_val, current_vix]])
+                # Compute Standalone Surprise Probability using the Random Forest model
+                rf_consensus_miss_prob = 0.5
+                if self.rf_model is not None:
+                    try:
+                        rf_consensus_miss_prob = float(self.rf_model.predict_proba([[f_val, p_val]])[0][1])
+                    except Exception as ex:
+                        logger.debug(f"Failed to infer consensus miss probability for event {event['event_id']}: {ex}")
+
+                # Assemble the complete stacked feature vector matching training schema
+                X_infer = np.array([[f_val, p_val, current_vix, current_hmm_state, rf_consensus_miss_prob]])
                 predicted_gap = self.xgb_model.predict(X_infer)[0]
-                
-                # Enforce absolute floor to prevent negative volatility logic errors
                 predicted_gap = max(0.0, float(predicted_gap))
                 
-                # Update SQLite directly
-                cursor.execute(
-                    "UPDATE macro_calendar SET ai_volatility_warning = ? WHERE event_id = ?", 
-                    (predicted_gap, event['event_id'])
-                )
+                # Surface BOTH the final volatility warning AND the independent surprise probability to the database
+                cursor.execute("""
+                    UPDATE macro_calendar 
+                    SET ai_volatility_warning = ?, 
+                        ai_consensus_miss_prob = ? 
+                    WHERE event_id = ?
+                """, (predicted_gap, rf_consensus_miss_prob, event['event_id']))
                 updates_count += 1
                 
                 if predicted_gap > 2.0:
-                    logger.warning(f"🚨 SEVERE VOLATILITY PREDICTED: Event ID {event['event_id']} predicted to gap SPY by {predicted_gap:.2f}%")
-                else:
-                    logger.debug(f"Event ID {event['event_id']} gap predicted at normal threshold: {predicted_gap:.2f}%")
+                    logger.warning(f"🚨 SEVERE VOLATILITY PREDICTED: Event ID {event['event_id']} (Miss Prob: {rf_consensus_miss_prob:.2%}) predicted to gap SPY by {predicted_gap:.2f}%")
 
             self.conn.commit()
-            logger.info(f"Successfully processed {updates_count} events for AI Volatility Warnings.")
+            logger.info(f"Successfully processed {updates_count} events for Stacked AI Volatility and Surprise Warnings.")
 
         except Exception as e:
             self.conn.rollback()
-            logger.error(f"Failed to run macro inference: {e}")
+            logger.error(f"Failed to run stacked macro inference: {e}")
         finally:
             self.conn.close()
-
-if __name__ == "__main__":
-    engine = MacroAIEngine()
-    engine.train_regime_clustering()
-    engine.train_consensus_miss_probability()
-    engine.train_volatility_magnitude()
-    
-    scan_date = datetime.now().strftime('%Y-%m-%d')
-    engine.run_macro_inference(scan_date)

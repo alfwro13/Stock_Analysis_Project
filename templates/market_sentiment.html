@@ -116,7 +116,7 @@
     <div class="regime-callout">
         <div class="regime-callout-title">🌍 Market Regime Context (Volatility)</div>
         <p class="regime-callout-text">
-            <strong>🇺🇸 US Classification:</strong> {{ regime_data.us_regime_label }} (Turbulence Index: {{ "%.2f"|format(regime_data.us_turbulence) }})<br>
+            <strong>🇺🇸 US Classification:</strong> {{ regime_data.us_regime_label }} (Turbulence Index: {{ "%.2f"|format(regime_data.us_turbulence) }}) {% if regime_data.ai_hmm_state is not none %} | 🤖 HMM Hidden Macro State: {{ regime_data.ai_hmm_state }}{% endif %}<br>
             <strong>🇬🇧 UK Classification:</strong> {{ regime_data.uk_regime_label }} (Turbulence Index: {{ "%.2f"|format(regime_data.uk_turbulence) }})
         </p>
         <p class="regime-callout-text">
@@ -137,7 +137,7 @@
                 <span class="ue-date">[{{ evt.event_date }}]</span>
                 <span class="ue-name">
                     {% if evt.context %}
-                        <abbr title="{{ evt.context }}" style="text-decoration: underline dotted #666; cursor: help;">{{ evt.event_name }}</abbr>
+                        <abbr title="{{ evt.context }}" style="text-decoration: underline dotted #666; cursor: help; color: #fff;">{{ evt.event_name }}</abbr>
                     {% else %}
                         {{ evt.event_name }}
                     {% endif %}
@@ -146,6 +146,9 @@
                     <span>Est: <span style="color: #fff;">{{ evt.forecast_val }}</span> | Prev: <span style="color: #fff;">{{ evt.previous_val }}</span></span>
                     {% if evt.insight %}
                     <span style="color: #00ffcc;">{{ evt.insight }}</span>
+                    {% endif %}
+                    {% if evt.ai_consensus_miss_prob is not none %}
+                    <span style="color: #ffaa00; font-weight: bold;">| 🤖 Surprise Surprise: {{ "{:.0%}".format(evt.ai_consensus_miss_prob) }}</span>
                     {% endif %}
                 </span>
             </div>
@@ -319,7 +322,15 @@
                                 {{ row.forecast_val }}
                             </td>
                             <td>{{ row.previous_val }}</td>
-                            <td style="font-size: 13px; color: #00ffcc;">{{ row.insight }}</td>
+                            <td style="font-size: 13px; color: #00ffcc;">
+                                {{ row.insight }}
+                                {% if row.ai_consensus_miss_prob is not none %}
+                                    <br><span style="color: #ffaa00; font-size: 11px; font-weight: bold;">🤖 Surprise Prob: {{ "{:.1%}".format(row.ai_consensus_miss_prob) }}</span>
+                                {% endif %}
+                                {% if row.ai_volatility_warning is not none and row.ai_volatility_warning > 0 %}
+                                    <br><span style="color: #ff4d4d; font-size: 11px; font-weight: bold;">💥 Stacked Vol Forecast: {{ "{:,.2f}".format(row.ai_volatility_warning) }}%</span>
+                                {% endif %}
+                            </td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -409,7 +420,15 @@
                                 {{ row.forecast_val }}
                             </td>
                             <td>{{ row.previous_val }}</td>
-                            <td style="font-size: 13px; color: #00ffcc;">{{ row.insight }}</td>
+                            <td style="font-size: 13px; color: #00ffcc;">
+                                {{ row.insight }}
+                                {% if row.ai_consensus_miss_prob is not none %}
+                                    <br><span style="color: #ffaa00; font-size: 11px; font-weight: bold;">🤖 Surprise Prob: {{ "{:.1%}".format(row.ai_consensus_miss_prob) }}</span>
+                                {% endif %}
+                                {% if row.ai_volatility_warning is not none and row.ai_volatility_warning > 0 %}
+                                    <br><span style="color: #ff4d4d; font-size: 11px; font-weight: bold;">💥 Stacked Vol Forecast: {{ "{:,.2f}".format(row.ai_volatility_warning) }}%</span>
+                                {% endif %}
+                            </td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -424,7 +443,6 @@
     <script type="text/javascript" charset="utf8" src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.js"></script>
     <script>
         $(document).ready(function() {
-            // Initialize DataTables with deferred rendering for optimal performance
             $('#usCalendarTable').DataTable({
                 "deferRender": true,
                 "order": [[ 0, "asc" ]],
@@ -450,7 +468,6 @@
 
             if (!document.fullscreenElement && !document.mozFullScreenElement && 
                 !document.webkitFullscreenElement && !document.msFullscreenElement) {
-                // Enter fullscreen
                 if (elem.requestFullscreen) {
                     elem.requestFullscreen();
                 } else if (elem.msRequestFullscreen) {
@@ -462,7 +479,6 @@
                 }
                 elem.classList.add('is-fullscreen');
             } else {
-                // Exit fullscreen
                 if (document.exitFullscreen) {
                     document.exitFullscreen();
                 } else if (document.msExitFullscreen) {
