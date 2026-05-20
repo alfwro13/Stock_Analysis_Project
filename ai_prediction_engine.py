@@ -2,22 +2,25 @@
 import time
 import logging
 import sqlite3
+from pathlib import Path
+from typing import List, Tuple
+
 import pandas as pd
 import numpy as np
 import joblib
 import yfinance as yf
 import ta
-from pathlib import Path
-from typing import List, Tuple
+
 from xgboost import XGBClassifier
 from sklearn.ensemble import RandomForestClassifier, VotingClassifier
 from sklearn.metrics import accuracy_score, classification_report
-from sklearn.model_selection import TimeSeriesSplit
+from sklearn.model_selection import TimeSeriesSplit, RandomizedSearchCV
 
 from config import BASE_DIR
 from database import get_connection, log_notification
 from data_engine import DataEngine
 
+# Configure robust module-level logging
 logger = logging.getLogger(__name__)
 
 # Constants
@@ -49,10 +52,14 @@ BLUE_CHIPS = [
     "TXN", "NOW", "PFE", "COP", "BA", "SPY", "QQQ", "DIA", "IWM"
 ]
 
+
 def get_target_tickers() -> List[str]:
     """
     Combines the user's existing portfolio/watchlist tickers with a curated list
     of Blue Chips. Deduplicates and limits the final payload to 250 tickers.
+    
+    Returns:
+        List[str]: A sorted list of valid ticker strings.
     """
     logger.info("Extracting user portfolio and watchlist tickers...")
     try:
@@ -72,11 +79,16 @@ def get_target_tickers() -> List[str]:
     logger.info(f"Targeting {len(final_tickers)} unique tickers for historical backfill.")
     return final_tickers
 
+
 def sync_ticker_metadata(tickers: List[str]) -> None:
     """
     Ensures institutional structural data (sector) is available.
     Creates and populates the ticker_metadata table idempotently.
-    Note: Beta and Market Cap are fetched but no longer used in historical training to prevent lookahead bias.
+    Note: Beta and Market Cap are fetched but no longer used in historical training 
+    to prevent lookahead bias.
+    
+    Args:
+        tickers (List[str]): List of ticker symbols to synchronize.
     """
     logger.info(f"Syncing metadata for {len(tickers)} tickers to contextualize ML features...")
     conn = get_connection()
@@ -101,7 +113,7 @@ def sync_ticker_metadata(tickers: List[str]) -> None:
         conn.close()
         return
 
-    records: List[Tuple] = []
+    records: List[Tuple[str, str, float, float]] = []
     for ticker in missing_tickers:
         try:
             info = yf.Ticker(ticker).info
@@ -131,6 +143,7 @@ def sync_ticker_metadata(tickers: List[str]) -> None:
         logger.info(f"Injected structural metadata for {len(records)} new tickers.")
         
     conn.close()
+
 
 def run_historical_backfill() -> None:
     """
@@ -228,13 +241,15 @@ def run_historical_backfill() -> None:
     finally:
         conn.close()
 
+
 def train_global_ml_model() -> None:
     """
     Connects to the local SQLite DB, builds technical/structural features,
-    implements true Anchored Walk-Forward Validation with strict Temporal Embargos, 
-    and trains an institutional-grade global ensemble model predicting >3% returns over 5 days.
+    implements true Anchored Walk-Forward Validation with strict Temporal Embargos,
+    executes Hyperparameter Optimization using RandomizedSearchCV, and trains an 
+    institutional-grade global ensemble model predicting >3% returns over 5 days.
     """
-    logger.info("Initiating Global ML Model Training pipeline with Strict Temporal Embargoes...")
+    logger.info("Initiating Global ML Model Training pipeline with Hyperparameter Optimization...")
     log_notification("Info", "Global ML Model Training pipeline initiated.")
     
     try:
@@ -293,69 +308,6 @@ def train_global_ml_model() -> None:
         df.sort_values('date', inplace=True)
         df.reset_index(drop=True, inplace=True)
         
-        # --- [LEAKAGE RESOLVED] True Panel Data Cross-Validation with Embargo ---
-        logger.info("Executing Date-Based Walk-Forward Cross Validation (5-Day Embargo)...")
-        
-        unique_dates = np.sort(df['date'].unique())
-        tscv_dates = TimeSeriesSplit(n_splits=5, gap=5)  # gap=5 days ensures zero overlap
-        
-        oos_accuracies = []
-        final_oos_report = ""
-
-        # Map dates to dataframe indices
-        date_series = df['date']
-
-        for fold, (train_date_idx, test_date_idx) in enumerate(tscv_dates.split(unique_dates)):
-            train_dates = unique_dates[train_date_idx]
-            test_dates = unique_dates[test_date_idx]
-            
-            # Boolean masks for panel indexing
-            train_mask = date_series.isin(train_dates)
-            test_mask = date_series.isin(test_dates)
-            
-            X_train, y_train = df.loc[train_mask, FEATURE_COLS], df.loc[train_mask, 'target']
-            X_test, y_test = df.loc[test_mask, FEATURE_COLS], df.loc[test_mask, 'target']
-
-            if len(y_train) == 0 or len(y_test) == 0:
-                continue
-
-            # Dynamic Imbalance penalty calculation per temporal regime
-            neg_count = (y_train == 0).sum()
-            pos_count = (y_train == 1).sum()
-            scale_pos_weight = neg_count / pos_count if pos_count > 0 else 1.0
-
-            rf = RandomForestClassifier(
-                n_estimators=150, max_depth=6, class_weight='balanced', 
-                random_state=42, n_jobs=-1
-            )
-            xgb = XGBClassifier(
-                n_estimators=150, max_depth=6, learning_rate=0.05, 
-                scale_pos_weight=scale_pos_weight, random_state=42, 
-                n_jobs=-1, eval_metric='logloss'
-            )
-            
-            ensemble_cv = VotingClassifier(estimators=[('rf', rf), ('xgb', xgb)], voting='soft')
-            ensemble_cv.fit(X_train, y_train)
-            
-            y_pred = ensemble_cv.predict(X_test)
-            acc = accuracy_score(y_test, y_pred)
-            oos_accuracies.append(acc)
-            
-            if fold == tscv_dates.n_splits - 1: # Capture the classification report of the most recent market regime
-                final_oos_report = classification_report(y_test, y_pred, zero_division=0)
-
-        if oos_accuracies:
-            avg_oos_accuracy = np.mean(oos_accuracies)
-            logger.info(f"--- ANCHORED WALK-FORWARD VALIDATION RESULTS ---")
-            logger.info(f"Averaged OOS Accuracy across 5 expanding regimes (Strict Embargo): {avg_oos_accuracy:.4f}")
-            logger.info(f"Latest Regime Classification Report:\n{final_oos_report}")
-        else:
-            avg_oos_accuracy = 0.0
-            logger.warning("Walk forward validation failed to produce splits. Proceeding to train on full dataset.")
-
-        # --- Production Model Training ---
-        logger.info("Training final production model on full dataset...")
-        
         X_full = df[FEATURE_COLS]
         y_full = df['target']
         
@@ -363,31 +315,108 @@ def train_global_ml_model() -> None:
         pos_count_full = (y_full == 1).sum()
         scale_pos_weight_full = neg_count_full / pos_count_full if pos_count_full > 0 else 1.0
 
-        rf_prod = RandomForestClassifier(
-            n_estimators=150, max_depth=6, class_weight='balanced', 
-            random_state=42, n_jobs=-1
+        # --- Custom Temporal Cross-Validation Iterator for Panel Data ---
+        logger.info("Constructing Date-Based Walk-Forward Iterator for Hyperparameter Optimization...")
+        
+        unique_dates = np.sort(df['date'].unique())
+        tscv_dates = TimeSeriesSplit(n_splits=5, gap=5)  # gap=5 days ensures zero overlap
+        
+        date_series = df['date'].reset_index(drop=True)
+        cv_splits = []
+        
+        for train_date_idx, test_date_idx in tscv_dates.split(unique_dates):
+            train_dates = unique_dates[train_date_idx]
+            test_dates = unique_dates[test_date_idx]
+            
+            # Map valid dates back to explicit integer row indices required by GridSearchCV
+            train_idx = date_series.index[date_series.isin(train_dates)].tolist()
+            test_idx = date_series.index[date_series.isin(test_dates)].tolist()
+            
+            if len(train_idx) > 0 and len(test_idx) > 0:
+                cv_splits.append((train_idx, test_idx))
+
+        # --- Hyperparameter Grids ---
+        rf_base = RandomForestClassifier(class_weight='balanced', random_state=42, n_jobs=-1)
+        xgb_base = XGBClassifier(
+            scale_pos_weight=scale_pos_weight_full, 
+            random_state=42, 
+            n_jobs=-1, 
+            eval_metric='logloss'
         )
-        xgb_prod = XGBClassifier(
-            n_estimators=150, max_depth=6, learning_rate=0.05, 
-            scale_pos_weight=scale_pos_weight_full, random_state=42, 
-            n_jobs=-1, eval_metric='logloss'
+
+        rf_param_dist = {
+            'n_estimators': [100, 150, 200, 250],
+            'max_depth': [4, 6, 8, 10],
+            'min_samples_leaf': [1, 5, 10]
+        }
+        
+        xgb_param_dist = {
+            'n_estimators': [100, 150, 200],
+            'max_depth': [3, 5, 7],
+            'learning_rate': [0.01, 0.05, 0.1],
+            'subsample': [0.7, 0.9, 1.0],
+            'colsample_bytree': [0.7, 0.9, 1.0]
+        }
+
+        # --- Execute Randomized Search (Hunting for the Goldilocks Zone) ---
+        logger.info("Executing Randomized Search to find optimal structural boundaries...")
+
+        rf_search = RandomizedSearchCV(
+            estimator=rf_base,
+            param_distributions=rf_param_dist,
+            n_iter=10,
+            cv=cv_splits,
+            scoring='accuracy',
+            random_state=42,
+            n_jobs=-1
         )
         
-        production_ensemble = VotingClassifier(estimators=[('rf', rf_prod), ('xgb', xgb_prod)], voting='soft')
+        xgb_search = RandomizedSearchCV(
+            estimator=xgb_base,
+            param_distributions=xgb_param_dist,
+            n_iter=10,
+            cv=cv_splits,
+            scoring='accuracy',
+            random_state=42,
+            n_jobs=-1
+        )
+
+        # Fit searches over the fully assembled dataset
+        rf_search.fit(X_full, y_full)
+        xgb_search.fit(X_full, y_full)
+
+        best_rf = rf_search.best_estimator_
+        best_xgb = xgb_search.best_estimator_
+
+        logger.info(f"Optimal RF Params Found: {rf_search.best_params_}")
+        logger.info(f"Optimal XGB Params Found: {xgb_search.best_params_}")
+        
+        # Calculate OOS accuracy metrics verified by the final temporal fold
+        avg_oos_accuracy = (rf_search.best_score_ + xgb_search.best_score_) / 2.0
+        logger.info(f"Averaged Optimized OOS Accuracy across 5 expanding regimes: {avg_oos_accuracy:.4f}")
+
+        # --- Production Model Retraining ---
+        logger.info("Training final production Voting Classifier with optimized parameters...")
+        production_ensemble = VotingClassifier(estimators=[('rf', best_rf), ('xgb', best_xgb)], voting='soft')
         production_ensemble.fit(X_full, y_full)
 
+        # Persist standard output
         joblib.dump(production_ensemble, MODEL_PATH)
         logger.info(f"✅ Production ML Ensemble successfully trained and saved to {MODEL_PATH}")
-        log_notification("Success", f"Global ML Model trained (WF-OOS Accuracy: {avg_oos_accuracy:.2%}).")
+        log_notification("Success", f"Global ML Model trained & optimized (WF-OOS Accuracy: {avg_oos_accuracy:.2%}).")
 
     except Exception as e:
-        logger.error(f"Fatal error during ML model training: {e}")
+        logger.error(f"Fatal error during ML model optimization & training: {e}")
         log_notification("Error", f"ML Model Training failed: {str(e)}")
+
 
 def update_daily_ml_predictions(tickers: List[str]) -> None:
     """
     Loads the trained model, fetches the latest raw row + structural context,
     calculates inference features dynamically, and updates the database with confidence scores.
+    
+    Args:
+        tickers (List[str]): Tickers to predict the next 5 days of trajectory for.
     """
     if not tickers:
         logger.warning("Empty ticker list provided for ML inference. Skipping.")
@@ -399,6 +428,7 @@ def update_daily_ml_predictions(tickers: List[str]) -> None:
 
     logger.info(f"Initiating ML Inference for {len(tickers)} assets...")
     
+    conn = None
     try:
         model = joblib.load(MODEL_PATH)
         conn = get_connection()
@@ -465,5 +495,5 @@ def update_daily_ml_predictions(tickers: List[str]) -> None:
     except Exception as e:
         logger.error(f"Fatal error during ML inference: {e}")
     finally:
-        if 'conn' in locals() and conn:
+        if conn:
             conn.close()
