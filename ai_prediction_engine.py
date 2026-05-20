@@ -366,7 +366,7 @@ def train_global_ml_model() -> None:
             param_distributions=rf_param_dist,
             n_iter=10,
             cv=cv_splits,
-            scoring='accuracy',
+            scoring='average_precision',
             random_state=42,
             n_jobs=-1
         )
@@ -376,7 +376,7 @@ def train_global_ml_model() -> None:
             param_distributions=xgb_param_dist,
             n_iter=10,
             cv=cv_splits,
-            scoring='accuracy',
+            scoring='average_precision',
             random_state=42,
             n_jobs=-1
         )
