@@ -173,7 +173,12 @@ async def settings_page(request: Request):
 async def market_sentiment_page(request: Request):
     regime_data = get_latest_regime()
     if not regime_data:
-        regime_data = {"regime_label": "Unknown", "turbulence_index": 0.0}
+        regime_data = {
+            "us_regime_label": "Unknown", 
+            "us_turbulence": 0.0,
+            "uk_regime_label": "Unknown", 
+            "uk_turbulence": 0.0
+        }
         
     conn = get_connection()
     try:

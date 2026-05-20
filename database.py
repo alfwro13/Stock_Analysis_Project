@@ -207,8 +207,11 @@ def init_db() -> None:
                 date TEXT PRIMARY KEY,
                 vix_close REAL,
                 spy_volatility REAL,
-                turbulence_index REAL,
-                regime_label TEXT
+                us_turbulence REAL,
+                us_regime_label TEXT,
+                ftse_volatility REAL,
+                uk_turbulence REAL,
+                uk_regime_label TEXT
             )
         ''')
 
@@ -351,19 +354,24 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
                 logger.error(f"[MIGRATION ERROR] Failed on market_universe: {e}")
                 continue
 
-    # 4. Migrate market_regimes
+    # 4. Migrate market_regimes (Dual-Region Refactor)
     cursor.execute("PRAGMA table_info(market_regimes)")
     existing_regime_columns = [info['name'] for info in cursor.fetchall()]
 
     required_regime_columns = {
         'vix_close': 'REAL',
-        'spy_volatility': 'REAL'
+        'spy_volatility': 'REAL',
+        'us_turbulence': 'REAL',
+        'us_regime_label': 'TEXT',
+        'ftse_volatility': 'REAL',
+        'uk_turbulence': 'REAL',
+        'uk_regime_label': 'TEXT'
     }
 
     for col_name, data_type in required_regime_columns.items():
         if col_name not in existing_regime_columns:
             try:
-                logger.info(f"[MIGRATION] Patching market_regimes anomaly: '{col_name}'...")
+                logger.info(f"[MIGRATION] Expanding market_regimes schema: '{col_name}'...")
                 cursor.execute(f"ALTER TABLE market_regimes ADD COLUMN {col_name} {data_type}")
             except Exception as e:
                 logger.error(f"[MIGRATION ERROR] Failed on market_regimes: {e}")

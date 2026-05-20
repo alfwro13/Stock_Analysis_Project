@@ -114,9 +114,16 @@
     </div>
 
     <div class="regime-callout">
-        <div class="regime-callout-title">🌍 Market Regime Context</div>
-        <p class="regime-callout-text">Current Classification: <strong>{{ regime_data.regime_label }}</strong> (Turbulence Index: {{ "%.2f"|format(regime_data.turbulence_index) }})</p>
-        <p class="regime-callout-text">Market conditions are currently <strong>{{ 'highly turbulent' if regime_data.regime_label in ['Crash', 'Volatile'] else 'normal and stable' }}</strong>. Standard quantitative thresholds {{ 'are aggressively filtered for Flight to Safety' if regime_data.regime_label in ['Crash', 'Volatile'] else 'apply' }}.</p>
+        <div class="regime-callout-title">🌍 Market Regime Context (Volatility)</div>
+        <p class="regime-callout-text">
+            <strong>🇺🇸 US Classification:</strong> {{ regime_data.us_regime_label }} (Turbulence Index: {{ "%.2f"|format(regime_data.us_turbulence) }})<br>
+            <strong>🇬🇧 UK Classification:</strong> {{ regime_data.uk_regime_label }} (Turbulence Index: {{ "%.2f"|format(regime_data.uk_turbulence) }})
+        </p>
+        <p class="regime-callout-text">
+            Market conditions are currently 
+            <strong>{% if regime_data.us_regime_label in ['Crash', 'Volatile'] or regime_data.uk_regime_label in ['Crash', 'Volatile'] %}highly turbulent{% else %}normal and stable{% endif %}</strong>. 
+            Standard quantitative thresholds {% if regime_data.us_regime_label in ['Crash', 'Volatile'] or regime_data.uk_regime_label in ['Crash', 'Volatile'] %}are aggressively filtered for Flight to Safety{% else %}apply{% endif %}.
+        </p>
     </div>
 
     {% if urgent_events %}

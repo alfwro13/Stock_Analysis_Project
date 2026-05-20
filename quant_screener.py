@@ -279,10 +279,20 @@ def generate_markdown_briefing(target_date: str, data: List[Dict[str, Any]]) -> 
     """
     logger.info("Applying contextual screening rules and generating Markdown briefing...")
     
-    # 1. Fetch Market Regime Context (Volatility)
+    # 1. Fetch Market Regime Context (Volatility - Dual Region Support)
     regime_data = get_latest_regime()
-    regime_label = regime_data.get('regime_label', 'Normal') if regime_data else 'Normal'
-    turbulence_idx = regime_data.get('turbulence_index', 0.0) if regime_data else 0.0
+    us_regime = regime_data.get('us_regime_label', 'Normal') if regime_data else 'Normal'
+    uk_regime = regime_data.get('uk_regime_label', 'Normal') if regime_data else 'Normal'
+    us_turb = regime_data.get('us_turbulence', 0.0) if regime_data else 0.0
+    uk_turb = regime_data.get('uk_turbulence', 0.0) if regime_data else 0.0
+    
+    # Global Worst Case for Circuit Breaker logic
+    if us_regime == 'Crash' or uk_regime == 'Crash':
+        regime_label = 'Crash'
+    elif us_regime == 'Volatile' or uk_regime == 'Volatile':
+        regime_label = 'Volatile'
+    else:
+        regime_label = 'Normal'
 
     # Fetch Macro Regime Context (Systemic Yields)
     conn = get_connection()
@@ -312,7 +322,7 @@ def generate_markdown_briefing(target_date: str, data: List[Dict[str, Any]]) -> 
     # Fetch 48H Macro Events
     macro_events = fetch_upcoming_macro_events(target_date)
     
-    # 2. Execute Screens mapped by Regime
+    # 2. Execute Screens mapped by Global Worst-Case Regime
     raw_oversold = get_oversold_reversals(data, regime_label)
     raw_macd_crosses = get_macd_bullish_crosses(data, regime_label)
     raw_surges = get_momentum_surges(data, regime_label)
@@ -340,9 +350,8 @@ def generate_markdown_briefing(target_date: str, data: List[Dict[str, Any]]) -> 
     report += f"**Date:** {target_date}\n\n"
     
     report += "## 🌍 Market Regime Context\n"
-    report += f"**Volatility Classification:** {regime_label} *(Turbulence Index: {turbulence_idx:.2f})*\n"
-    report += f"**US Yield Threat:** {us_threat} *(Velocity: {us_vel:+.2f}%)*\n"
-    report += f"**UK Yield Threat:** {uk_threat} *(Velocity: {uk_vel:+.2f}%)*\n\n"
+    report += f"**US Volatility:** {us_regime} *(Turbulence: {us_turb:.2f})* | **UK Volatility:** {uk_regime} *(Turbulence: {uk_turb:.2f})*\n"
+    report += f"**US Yield Threat:** {us_threat} *(Velocity: {us_vel:+.2f}%)* | **UK Yield Threat:** {uk_threat} *(Velocity: {uk_vel:+.2f}%)*\n\n"
     
     if threat_level in ['RED', 'YELLOW']:
         report += "*⚠️ SYSTEMIC YIELD WARNING: Global cost of capital is surging. The quantitative screener has aggressively vetoed highly indebted and high P/E equities that show strong negative correlations to rising interest rates.*\n\n"
