@@ -6,7 +6,7 @@ import sqlite3
 from datetime import datetime, timedelta
 from config import (
     PORTFOLIO_PATH, WATCHLIST_PATH, HISTORICAL_DIR, 
-    INTRADAY_DIR, FUNDAMENTALS_DIR, DB_PATH
+    INTRADAY_DIR, FUNDAMENTALS_DIR
 )
 from database import get_connection
 
@@ -58,7 +58,7 @@ class MaintenanceEngine:
         """Deletes notification logs older than 30 days to prevent bloat."""
         print("[MAINTENANCE] Pruning Notification Database...")
         try:
-            conn = sqlite3.connect(DB_PATH)
+            conn = get_connection()
             cursor = conn.cursor()
             
             cutoff_date = (datetime.now() - timedelta(days=self.days_to_keep_logs)).strftime("%Y-%m-%d %H:%M:%S")
@@ -76,7 +76,7 @@ class MaintenanceEngine:
         """Cleans up extremely old records from the live market pulse cache table."""
         print("[MAINTENANCE] Pruning Market Pulse Cache...")
         try:
-            conn = sqlite3.connect(DB_PATH)
+            conn = get_connection()
             cursor = conn.cursor()
             # Delete records older than 24 hours (86400 seconds)
             cursor.execute("DELETE FROM market_pulse_cache WHERE last_updated <= ?", (time.time() - 86400,))
@@ -125,12 +125,17 @@ class MaintenanceEngine:
         """Runs the SQLite VACUUM command to defragment and optimize disk space."""
         print("[MAINTENANCE] Vacuuming SQLite Database...")
         try:
-            conn = sqlite3.connect(DB_PATH)
+            conn = get_connection()
+            # SQLite VACUUM requires an Exclusive Lock and cannot run inside an implicit transaction.
+            # Setting isolation_level to None forces Python into autocommit mode.
+            conn.isolation_level = None 
             conn.execute("VACUUM")
             conn.close()
             self.metrics["vacuum_success"] = True
             print("[MAINTENANCE] Database Vacuum Complete.")
         except Exception as e:
+            # Under heavy load, even a 20-second timeout might fail to acquire an Exclusive Lock.
+            # We catch it gracefully rather than crashing the maintenance thread.
             print(f"[MAINTENANCE] Error vacuuming database: {e}")
 
     def log_notification(self):
@@ -139,7 +144,7 @@ class MaintenanceEngine:
             conn = get_connection()
             cursor = conn.cursor()
             
-            vac_status = "Successful" if self.metrics["vacuum_success"] else "Failed"
+            vac_status = "Successful" if self.metrics["vacuum_success"] else "Failed (Locked or Busy)"
             msg = (
                 f"Automated System Maintenance completed.\n"
                 f"• Stale Logs Trimmed: {self.metrics['logs_deleted']}\n"

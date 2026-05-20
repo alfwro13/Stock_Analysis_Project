@@ -19,7 +19,14 @@ def get_connection() -> sqlite3.Connection:
     Creates and returns a connection to the local SQLite database.
     Using sqlite3.Row allows us to access columns by name (e.g., row['ticker']).
     """
-    conn = sqlite3.connect(DB_PATH)
+    # Added timeout=20.0 to gracefully handle background thread write collisions
+    conn = sqlite3.connect(DB_PATH, timeout=20.0)
+    
+    # Enable Write-Ahead Logging (WAL) to allow concurrent reads and writes
+    conn.execute('PRAGMA journal_mode=WAL;')
+    # Optimize synchronization for WAL mode for significant write performance gain
+    conn.execute('PRAGMA synchronous=NORMAL;')
+    
     conn.row_factory = sqlite3.Row
     return conn
 

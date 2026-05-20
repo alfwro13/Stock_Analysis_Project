@@ -1,12 +1,11 @@
 # clean_db.py
 import os
 import json
-import sqlite3
 from pathlib import Path
+from database import get_connection
 
 PORTFOLIO_PATH = Path("data/portfolio.json")
 WATCHLIST_PATH = Path("data/watchlist.json")
-DB_PATH = Path("data/analysis.db")
 ISIN_CACHE_PATH = Path("data/isin_ticker_cache.json")
 BLACKLIST_PATH = Path("data/freetrade_blacklist.json")
 
@@ -49,12 +48,13 @@ def sanitize_system_layers():
         except Exception as e:
             print(f" -> Error deleting blacklist tracker: {e}")
 
-    # 2. Connect to local relational database engine
-    if not DB_PATH.exists():
-        print(f"CRITICAL: Database not found at {DB_PATH}. Run freetrade_engine first.")
+    # 2. Connect to local relational database engine using our centralized WAL-enabled pool
+    try:
+        conn = get_connection()
+    except Exception as e:
+        print(f"CRITICAL: Failed to connect to database engine via get_connection(): {e}")
         return
-
-    conn = sqlite3.connect(str(DB_PATH))
+        
     cursor = conn.cursor()
     
     # 3. Aggressively purge any Freetrade records from market universe to clear structural faults
