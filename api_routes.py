@@ -82,9 +82,22 @@ def log_notification(message_type: str, message_text: str) -> None:
             conn.close()
 
 def bg_execute_quant_scan():
+    """
+    Executes the complete daily quant scan including Machine Learning 
+    inference and Tail Risk calculations for the active portfolio/watchlist.
+    """
     engine = DataEngine()
     tickers = engine.get_all_tickers()
-    run_daily_quant_scan(tickers)
+    
+    if tickers:
+        # 1. Execute Core Technicals & Screener Flags
+        run_daily_quant_scan(tickers)
+        
+        # 2. Execute Machine Learning (XGBoost/RF) Inference
+        update_daily_ml_predictions(tickers)
+        
+        # 3. Calculate Parametric Log-Return VaR & CVaR (Expected Shortfall)
+        update_all_tail_risks(tickers)
 
 def bg_execute_earnings_scan():
     engine = DataEngine()
