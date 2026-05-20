@@ -153,21 +153,38 @@ class QuantEngine:
         if len(weekly_data) < 4:
             return False, False
         
-        last_3_weeks = weekly_data.iloc[-4:-1]
+        # [MATH-03] Determine if the current week is complete (Friday is 4)
+        if df.index[-1].weekday() == 4:
+            last_3_weeks = weekly_data.iloc[-3:]
+        else:
+            last_3_weeks = weekly_data.iloc[-4:-1]
+            
+        if len(last_3_weeks) < 3:
+            return False, False
         
-        # Calculate variance using the High-Low range across the 3 weeks
+        # [MATH-01] Calculate sequential variance using the High-Low range across the 3 weeks
+        w1_range = last_3_weeks.iloc[0]['High'] - last_3_weeks.iloc[0]['Low']
+        w2_range = last_3_weeks.iloc[1]['High'] - last_3_weeks.iloc[1]['Low']
+        w3_range = last_3_weeks.iloc[2]['High'] - last_3_weeks.iloc[2]['Low']
+        
+        # True VCP: Each week's range must be sequentially smaller than the prior
+        is_contracting = bool(w1_range > w2_range > w3_range)
+        
+        # Also check that total aggregate range is relatively tight
         max_high = last_3_weeks['High'].max()
         min_low = last_3_weeks['Low'].min()
+        total_range_pct = (max_high - min_low) / min_low if min_low > 0 else 1.0
         
-        variance_pct = (max_high - min_low) / min_low if min_low > 0 else 1.0
-        is_tight = bool(variance_pct <= 0.025)
+        is_tight = is_contracting and (total_range_pct <= 0.10)
         
-        avg_vol_50d = df['Volume'].rolling(50).mean().iloc[-1]
-        if pd.isna(avg_vol_50d):
+        # [MATH-02] Compare weekly volumes directly to weekly rolling averages
+        weekly_vol_avg_50d = weekly_data['Volume'].rolling(10).mean().iloc[-1]
+        
+        if pd.isna(weekly_vol_avg_50d):
             is_dry_volume = False
         else:
-            avg_vol_3w = last_3_weeks['Volume'].mean() / 5.0 # Approx daily average over the 3 weeks
-            is_dry_volume = bool(avg_vol_3w < (avg_vol_50d * 0.8)) # Volume must be 20% below average
+            avg_vol_3w = last_3_weeks['Volume'].mean()
+            is_dry_volume = bool(avg_vol_3w < (weekly_vol_avg_50d * 0.8))
         
         return is_tight, is_dry_volume
 
@@ -181,14 +198,21 @@ class QuantEngine:
         p1 = last_30.iloc[:15]
         p2 = last_30.iloc[15:]
         
-        price_peak1 = p1['High'].max() if 'High' in p1.columns else p1['Close'].max()
-        price_peak2 = p2['High'].max() if 'High' in p2.columns else p2['Close'].max()
+        high_col = 'High' if 'High' in df.columns else 'Close'
         
-        rsi_peak1 = p1['RSI'].max()
-        rsi_peak2 = p2['RSI'].max()
+        # [MATH-04] Find the exact index of the price high in each half
+        price_peak1_idx = p1[high_col].idxmax()
+        price_peak2_idx = p2[high_col].idxmax()
+        
+        price_peak1 = p1.loc[price_peak1_idx, high_col]
+        price_peak2 = p2.loc[price_peak2_idx, high_col]
+        
+        # Extract RSI reading precisely at the index of the price peak
+        rsi_at_peak1 = p1.loc[price_peak1_idx, 'RSI']
+        rsi_at_peak2 = p2.loc[price_peak2_idx, 'RSI']
         
         # Divergence confirmed: Price is higher, RSI is lower, and the first RSI peak was overbought
-        if price_peak2 > price_peak1 and rsi_peak2 < rsi_peak1 and rsi_peak1 > 70.0:
+        if price_peak2 > price_peak1 and rsi_at_peak2 < rsi_at_peak1 and rsi_at_peak1 > 70.0:
             return True
         return False
 
@@ -296,7 +320,9 @@ class QuantEngine:
                 if 'High' in df.columns and 'Low' in df.columns:
                     df['ATR'] = ta.volatility.AverageTrueRange(high=df['High'], low=df['Low'], close=df['Close'], window=14).average_true_range()
                     atr_series_clean = df['ATR'].dropna()
-                    if not rsi_series_clean.empty and current_price is not None:
+                    
+                    # [MATH-05] Guard condition corrected to check the proper series
+                    if not atr_series_clean.empty and current_price is not None:
                         atr_val = atr_series_clean.iloc[-1]
                         if not pd.isna(atr_val):
                             if has_volatility_warning:
