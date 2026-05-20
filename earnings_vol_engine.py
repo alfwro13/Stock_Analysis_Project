@@ -61,13 +61,14 @@ def get_historical_earnings_move(ticker_obj: yf.Ticker) -> Optional[float]:
                 time_diffs = abs(hist_dates - target_date)
                 closest_idx = time_diffs.argmin()
                 
-                # Calculate the percentage gap using pre-earnings Close and post-earnings Open
+                # Calculate the percentage gap using pre-earnings Close and post-earnings Close
+                # [ISSUE-M09 FIXED] Shifted from post-open to post-close to capture the full session move
                 if closest_idx > 0 and closest_idx < len(hist):
                     pre_close = hist['Close'].iloc[closest_idx - 1]
-                    post_open = hist['Open'].iloc[closest_idx]
+                    post_close = hist['Close'].iloc[closest_idx]
                     
                     if pre_close > 0:
-                        pct_move = abs((post_open - pre_close) / pre_close) * 100.0
+                        pct_move = abs((post_close - pre_close) / pre_close) * 100.0
                         moves.append(pct_move)
             except Exception as e:
                 logger.debug(f"Could not calculate specific earnings event move: {e}")
@@ -124,7 +125,8 @@ def get_implied_straddle_move(ticker_obj: yf.Ticker, underlying_price: float, ta
         if call_price is None or put_price is None:
             return None, 0, None
         
-        straddle_cost = call_price + put_price
+        # [ISSUE-M10 FIXED] Apply practitioner correction factor (~0.84) to ATM straddle to account for positive gamma/intrinsic value
+        straddle_cost = (call_price + put_price) * 0.84
         implied_move_pct = (straddle_cost / underlying_price) * 100.0
         
         # Aggregate liquidity indicator
