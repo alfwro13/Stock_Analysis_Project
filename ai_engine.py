@@ -210,8 +210,8 @@ ATR Stop-Loss: {stock_data['atr_stop_loss']:,.2f} {stock_data['currency']}
 
 --- AI, RISK & SENTIMENT ---
 ML Confidence Score (>3% return in 5d): {ml_conf_str}
-Parametric VaR (95%): {var_str}
-Conditional VaR (95% Tail Risk): {cvar_str}
+Parametric Log-Return VaR (95%): {var_str}
+Conditional Log-Return CVaR (95% Tail Risk): {cvar_str}
 VADER Media Sentiment: {sentiment_str}
 
 --- FUNDAMENTALS & RISK ---

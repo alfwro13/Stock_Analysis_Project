@@ -132,14 +132,14 @@ def init_db() -> None:
             )
         ''')
 
-        # New table for the Live Market Pulse Database Cache
+        # New table for the Live Market Pulse Database Cache [BUG-05 FIXED]
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS market_pulse_cache (
                 ticker TEXT PRIMARY KEY,
                 name TEXT,
-                price TEXT,
-                change_pts TEXT,
-                change_pct TEXT,
+                price REAL,
+                change_pts REAL,
+                change_pct REAL,
                 is_positive BOOLEAN,
                 last_updated REAL
             )
@@ -325,6 +325,42 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
             conn.commit()
     except Exception as e:
         logger.error(f"[MIGRATION ERROR] Failed on quant_scan_states recreation: {e}")
+
+    # 0.5 Migrate market_pulse_cache from TEXT to REAL [BUG-05 FIXED]
+    try:
+        cursor.execute("PRAGMA table_info(market_pulse_cache)")
+        cache_columns = cursor.fetchall()
+        for col in cache_columns:
+            if col['name'] == 'price' and col['type'].upper() == 'TEXT':
+                logger.info("[MIGRATION] Rebuilding market_pulse_cache to strictly enforce REAL numeric types...")
+                
+                # 4-Step Table Rebuild Migration (Standard SQLite workaround for changing types)
+                cursor.execute("ALTER TABLE market_pulse_cache RENAME TO _legacy_market_pulse_cache")
+                cursor.execute('''
+                    CREATE TABLE market_pulse_cache (
+                        ticker TEXT PRIMARY KEY,
+                        name TEXT,
+                        price REAL,
+                        change_pts REAL,
+                        change_pct REAL,
+                        is_positive BOOLEAN,
+                        last_updated REAL
+                    )
+                ''')
+                cursor.execute('''
+                    INSERT INTO market_pulse_cache (ticker, name, price, change_pts, change_pct, is_positive, last_updated)
+                    SELECT ticker, name, 
+                           CAST(REPLACE(REPLACE(price, '$', ''), ',', '') AS REAL), 
+                           CAST(REPLACE(REPLACE(change_pts, '+', ''), ',', '') AS REAL), 
+                           CAST(REPLACE(REPLACE(change_pct, '%', ''), '+', '') AS REAL), 
+                           is_positive, last_updated
+                    FROM _legacy_market_pulse_cache
+                ''')
+                cursor.execute("DROP TABLE _legacy_market_pulse_cache")
+                conn.commit()
+                break
+    except Exception as e:
+        logger.error(f"[MIGRATION ERROR] Failed on market_pulse_cache numeric enforcement: {e}")
 
     # 1. Migrate stock_signals
     cursor.execute("PRAGMA table_info(stock_signals)")

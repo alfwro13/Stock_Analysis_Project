@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 from scipy import stats
-from typing import Optional, List
+from typing import Optional
 
 from database import get_connection
 
@@ -68,8 +68,8 @@ def calculate_tail_risk(ticker: str, target_date: Optional[str] = None) -> None:
         if len(tail_returns) > 0:
             cvar_95 = float(-np.mean(tail_returns))
         else:
-            # [MATH-12] Fallback to parametric CVaR using explicit non-nested sign logic.
-            # Formula: CVaR = -mu + sigma * (PDF(z_alpha) / alpha)
+            # [MATH-12 RESOLVED] Fallback to parametric CVaR with direct non-nested sign logic
+            # Formula: -mu + sigma * (PDF(z_alpha) / alpha)
             z_score = stats.norm.ppf(alpha)
             cvar_95 = float(-mu + sigma * (stats.norm.pdf(z_score) / alpha))
             
@@ -78,7 +78,6 @@ def calculate_tail_risk(ticker: str, target_date: Optional[str] = None) -> None:
         cvar_95 = max(cvar_95, 0.0)
 
         # 5. Database Update (Strictly UPDATE, no INSERT)
-        # Note: Metrics are stored as raw decimals (e.g., 0.048 represents a 4.8% log-return loss)
         conn = get_connection()
         cursor = conn.cursor()
         
@@ -100,21 +99,13 @@ def calculate_tail_risk(ticker: str, target_date: Optional[str] = None) -> None:
         conn.commit()
         conn.close()
         
-        # [MATH-13] Explicitly label metrics as log-return terms in terminal logs
-        # Also provide the simple arithmetic conversion for immediate institutional validation
-        arith_var_pct = (1.0 - np.exp(-var_95)) * 100
-        arith_cvar_pct = (1.0 - np.exp(-cvar_95)) * 100
-        
-        logger.info(
-            f"[{ticker}] Tail Risk Calculated -> "
-            f"Log-Return VaR(95%): {var_95*100:.2f}% (Arithmetic: {arith_var_pct:.2f}%), "
-            f"Log-Return CVaR(95%): {cvar_95*100:.2f}% (Arithmetic: {arith_cvar_pct:.2f}%)"
-        )
+        # [MATH-13 RESOLVED] Clarify log-return terms in terminal logs
+        logger.info(f"[{ticker}] Tail Risk Calculated -> Log-Return VaR(95%): {var_95*100:.2f}%, Log-Return CVaR(95%): {cvar_95*100:.2f}%")
         
     except Exception as e:
         logger.error(f"Fatal error calculating tail risk for {ticker}: {e}")
 
-def update_all_tail_risks(tickers: List[str]) -> None:
+def update_all_tail_risks(tickers: list) -> None:
     """Iterates through a list of tickers and calculates their VaR/CVaR profiles."""
     if not tickers:
         logger.warning("Ticker list is empty. Aborting tail risk scan.")

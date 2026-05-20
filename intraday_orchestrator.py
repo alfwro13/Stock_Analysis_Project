@@ -86,7 +86,7 @@ class IntradayOrchestrator:
         
         query = f"""
             SELECT s.ticker, s.company_name, s.currency, s.atr_stop_loss,
-                   q.ml_confidence_score, q.var_95, q.sentiment_score
+                   q.ml_confidence_score, q.var_95, q.cvar_95, q.sentiment_score
             FROM stock_signals s
             LEFT JOIN quant_signals q ON s.ticker = q.ticker 
                 AND q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = s.ticker)
@@ -102,6 +102,7 @@ class IntradayOrchestrator:
                 'atr_stop_loss': row['atr_stop_loss'],
                 'ml_confidence_score': row['ml_confidence_score'],
                 'var_95': row['var_95'],
+                'cvar_95': row['cvar_95'],
                 'sentiment_score': row['sentiment_score']
             }
         conn.close()
@@ -110,7 +111,7 @@ class IntradayOrchestrator:
     def log_notification(self, msg_type, msg_text):
         """Logs the alert to the local system notification center to prevent duplicate spam."""
         conn = get_connection()
-        cursor = conn.cursor()
+        cursor = conn.conn.cursor() if hasattr(conn, 'conn') else conn.cursor()
         cursor.execute(
             "INSERT INTO system_notifications (message_type, message_text) VALUES (?, ?)", 
             (msg_type, msg_text)
@@ -319,13 +320,14 @@ class IntradayOrchestrator:
             var = f"{(meta.get('var_95') * 100):.2f}%" if meta.get('var_95') is not None else "N/A"
             sent = f"{meta.get('sentiment_score'):.3f}" if meta.get('sentiment_score') is not None else "N/A"
 
+            # [MATH-13 RESOLVED] Clarified metric as Downside Log-Return VaR inside alert template
             msg = (
                 f"🚨 **INTRADAY CRASH ALERT: {ticker}** 🚨\n\n"
                 f"**Price:** {formatted_price}\n"
                 f"**Trigger:** {alert['reason']}\n\n"
                 f"📊 **Context:**\n"
                 f"• AI Confidence: {ml_conf}\n"
-                f"• Downside VaR: {var}\n"
+                f"• Downside Log-Return VaR: {var}\n"
                 f"• NLP Sentiment: {sent}\n\n"
                 f"🔗 [View Breakdown]({url})"
             )
@@ -345,6 +347,7 @@ class IntradayOrchestrator:
             for caution in alert.get('cautions', []):
                 cautions += f"⚠️ *{caution}*\n"
 
+            # [MATH-13 RESOLVED] Clarified metric as Downside Log-Return VaR inside alert template
             msg = (
                 f"🚀 **MOONSHOT ALERT: {ticker}** 🚀\n\n"
                 f"**Price:** {formatted_price}\n"
@@ -352,7 +355,7 @@ class IntradayOrchestrator:
                 f"{cautions}\n"
                 f"📊 **Context:**\n"
                 f"• AI Confidence: {ml_conf}\n"
-                f"• Downside VaR: {var}\n"
+                f"• Downside Log-Return VaR: {var}\n"
                 f"• NLP Sentiment: {sent}\n\n"
                 f"🔗 [View Breakdown]({url})"
             )

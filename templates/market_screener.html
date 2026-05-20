@@ -114,7 +114,7 @@
                     <th>Volume Surge</th>
                     <th>Golden Cross</th>
                     <th>ML Conf</th>
-                    <th>VaR (95%)</th>
+                    <th>Log VaR (95%)</th>
                     <th>Sentiment</th>
                     <th>Expense Ratio</th>
                     <th>Freetrade Link</th>
@@ -132,7 +132,7 @@
                 <li><strong style="color: #4da6ff;">50D <abbr title="Simple Moving Average">SMA</abbr>:</strong> The "Health Line" representing the 10-week price mean. Trading above it confirms a medium-term uptrend; falling below suggests a structural loss of strength.</li>
                 <li><strong style="color: #4da6ff;">200D <abbr title="Simple Moving Average">SMA</abbr>:</strong> The "Institutional Floor." Banks and funds use this as the ultimate line in the sand; breaking below it often marks the shift into a primary bear market.</li>
                 <li><strong style="color: #4da6ff;">ML Conf:</strong> Machine Learning Ensemble confidence score predicting a >3% return over the next 5 days. >75% is highly actionable.</li>
-                <li><strong style="color: #4da6ff;">VaR (95%):</strong> Parametric Value at Risk. The expected maximum percentage loss over a standard holding period with 95% confidence. <em>(Hover over for Conditional VaR / Expected Shortfall).</em></li>
+                <li><strong style="color: #4da6ff;">Log VaR (95%):</strong> Parametric Log-Return Value at Risk. The expected maximum percentage loss on a continuous log scale over a standard holding period with 95% confidence. <em>(Hover over for Log-Return Conditional VaR / Expected Shortfall).</em></li>
                 <li><strong style="color: #4da6ff;">Sentiment:</strong> VADER NLP compound score generated from the latest news headlines. Positive values indicate bullish media framing.</li>
             </ul>
         </div>
@@ -357,7 +357,7 @@
                             
                             if (type === 'display') {
                                 let cssClass = data > 0.05 ? 'metric-poor' : 'metric-neutral';
-                                let cvarText = row.cvar_95 !== null && row.cvar_95 !== undefined ? `Expected Shortfall (CVaR): ${(row.cvar_95 * 100).toFixed(2)}%` : 'CVaR: N/A';
+                                let cvarText = row.cvar_95 !== null && row.cvar_95 !== undefined ? `Log-Return Expected Shortfall (CVaR): ${(row.cvar_95 * 100).toFixed(2)}%` : 'CVaR: N/A';
                                 return `<abbr title="${cvarText}" style="text-decoration: underline dotted; cursor: help;"><span class="${cssClass}">${(data * 100).toFixed(2)}%</span></abbr>`;
                             }
                             return data;
