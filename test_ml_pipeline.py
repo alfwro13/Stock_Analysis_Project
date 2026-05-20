@@ -32,11 +32,9 @@ def verify_database_state() -> None:
     try:
         conn = sqlite3.connect(db_path)
         
-        # 1. Check if metadata table was created and populated (DESIGN-02)
         metadata_df = pd.read_sql_query("SELECT * FROM ticker_metadata LIMIT 5", conn)
         logger.info(f"--- Ticker Metadata Sample ---\n{metadata_df}")
         
-        # 2. Check if quant signals were updated with ML confidence scores
         inference_df = pd.read_sql_query("""
             SELECT ticker, date, close_price, ml_confidence_score 
             FROM quant_signals 
