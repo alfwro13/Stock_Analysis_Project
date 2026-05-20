@@ -485,7 +485,7 @@ class QuantEngine:
             # ==========================================
             # PART 3: SCORING & SETUP TAGS
             # ==========================================
-            score = 0
+            score = 40  # ISSUE-M03 FIXED: Establish Neutral Baseline at 40 (Not 0)
             breakdown = []
             tags = []
 
@@ -527,7 +527,8 @@ class QuantEngine:
                     score += 15
                     breakdown.append("+15: Price > 5D MA (Short-term Momentum)")
                 else:
-                    breakdown.append("+0: Price <= 5D MA (Bearish short-term momentum)")
+                    score -= 5
+                    breakdown.append("-5: Price <= 5D MA (Bearish short-term momentum)")
                 
                 if ma5 is not None and ma10 is not None and ma21 is not None and ma5 > ma10 and ma10 > ma21: 
                     score += 15
@@ -538,7 +539,8 @@ class QuantEngine:
                     score += 20
                     breakdown.append("+20: 200D Trend UP (Institutional Backing)")
                 else:
-                    breakdown.append("+0: 200D Trend DOWN (Lacking institutional backing)")
+                    score -= 10
+                    breakdown.append("-10: 200D Trend DOWN (Lacking institutional backing)")
 
                 if rsi_val is not None and 40.0 <= rsi_val <= 65.0: 
                     score += 10
@@ -552,7 +554,8 @@ class QuantEngine:
                     score += 10
                     breakdown.append("+10: OBV Bullish")
                 else:
-                    breakdown.append("+0: OBV Bearish")
+                    score -= 5
+                    breakdown.append("-5: OBV Bearish")
 
                 if is_bearish_divergence and not is_fund:
                     tags.append({"name": "🚨 Divergence Warning", "tooltip": "Price higher high, RSI lower high."})
@@ -566,8 +569,8 @@ class QuantEngine:
             else:
                 breakdown.append("+0: Technical indicators skipped (Insufficient Historical Data)")
 
-            # [MATH-08] Allow severe structural weakness to push score negative to trigger STRONG SELL
-            score = min(score, 100)
+            # [MATH-08 / ISSUE-M03] Safely clamp the final score between 0 and 100
+            score = max(0, min(score, 100))
 
             if score >= 80: signal = "STRONG BUY"
             elif score >= 60: signal = "BULLISH / HOLD"
