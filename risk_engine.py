@@ -45,33 +45,24 @@ def calculate_tail_risk(ticker: str, target_date: Optional[str] = None) -> None:
             logger.warning(f"Insufficient valid log returns to calculate tail risk for {ticker}.")
             return
 
-        # 3. Calculate Parametric VaR at 95% Confidence
-        alpha = 0.05  # 95% confidence level
-        mu = np.mean(log_returns)
-        sigma = np.std(log_returns)
-        
-        # ppf(0.05) gives the z-score for the 5th percentile (approx -1.645)
-        var_95_threshold = mu + sigma * stats.norm.ppf(alpha)
+        # 3. Calculate Historical Simulation VaR (Empirical) at 95% Confidence
+        # Financial returns are leptokurtic (fat tails). Using historical percentiles
+        # avoids the dangerous assumption of a normal distribution.
+        alpha = 0.05
+        empirical_var_95_threshold = np.percentile(log_returns, alpha * 100)
         
         # Express VaR as a positive float representing the percentage drop.
-        # Fallback to empirical historical VaR if the parametric curve returns a positive threshold.
-        if var_95_threshold < 0:
-            var_95 = float(-var_95_threshold)
-        else:
-            empirical_var_95 = -np.percentile(log_returns, 5)
-            var_95 = float(empirical_var_95) if empirical_var_95 > 0 else 0.0
+        var_95 = float(-empirical_var_95_threshold) if empirical_var_95_threshold < 0 else 0.0
         
-        # 4. Calculate CVaR (Expected Shortfall) at 95% Confidence
-        # First, attempt to calculate the empirical CVaR (average of returns worse than VaR)
-        tail_returns = log_returns[log_returns <= var_95_threshold]
+        # 4. Calculate Historical CVaR (Expected Shortfall) at 95% Confidence
+        # Calculates the average of all actual daily returns that were worse than the VaR threshold.
+        tail_returns = log_returns[log_returns <= empirical_var_95_threshold]
         
         if len(tail_returns) > 0:
             cvar_95 = float(-np.mean(tail_returns))
         else:
-            # [MATH-12 RESOLVED] Fallback to parametric CVaR with direct non-nested sign logic
-            # Formula: -mu + sigma * (PDF(z_alpha) / alpha)
-            z_score = stats.norm.ppf(alpha)
-            cvar_95 = float(-mu + sigma * (stats.norm.pdf(z_score) / alpha))
+            # Fallback if no returns fall exactly below the percentile (extremely rare)
+            cvar_95 = var_95
             
         # Prevent negative risk metrics in extreme outlier cases (e.g., asset only went straight up)
         var_95 = max(var_95, 0.0)
