@@ -8,6 +8,7 @@ from datetime import datetime
 import yfinance as yf
 
 from database import get_connection
+from network_engine import yahoo_connection_boundary
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - PROFILE_ENGINE - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -47,53 +48,54 @@ def update_single_profile(ticker: str) -> bool:
     conn = get_connection()
     cursor = conn.cursor()
     
-    try:
-        info = yf.Ticker(ticker).info
-        
-        # --- THE AUTOMATED BLACKLIST PURGE ---
-        # Softened check: Mutual Funds often have very small info dictionaries. 
-        # We only blacklist if we get absolutely no identifying information back from Yahoo.
-        has_identity = 'shortName' in info or 'longName' in info or 'symbol' in info or 'regularMarketPrice' in info
-        
-        if not info or not has_identity:
-            logger.warning(f"No valid payload for {ticker}. Permanently blacklisting and purging from database.")
-            blacklist.add(ticker)
-            save_blacklist(blacklist)
+    with yahoo_connection_boundary(f"Profile Audit: {ticker}") as session:
+        try:
+            info = yf.Ticker(ticker, session=session).info
             
-            # Ruthlessly delete the orphan from all tables
-            cursor.execute("DELETE FROM market_universe WHERE ticker = ?", (ticker,))
-            cursor.execute("DELETE FROM asset_profiles WHERE ticker = ?", (ticker,))
-            cursor.execute("DELETE FROM stock_signals WHERE ticker = ?", (ticker,))
-            cursor.execute("DELETE FROM quant_signals WHERE ticker = ?", (ticker,))
-            conn.commit()
-            return False
+            # --- THE AUTOMATED BLACKLIST PURGE ---
+            # Softened check: Mutual Funds often have very small info dictionaries. 
+            # We only blacklist if we get absolutely no identifying information back from Yahoo.
+            has_identity = 'shortName' in info or 'longName' in info or 'symbol' in info or 'regularMarketPrice' in info
             
-        company_name = info.get('shortName') or info.get('longName') or ticker
-        sector = info.get('sector', 'Unclassified')
-        industry = info.get('industry', 'Unclassified')
-        country = info.get('country', 'Unknown')
-        exchange = info.get('exchange', 'Unknown')
-        currency = info.get('currency', 'USD')
-        quote_type = info.get('quoteType', 'EQUITY')
-        summary = info.get('longBusinessSummary', 'No business summary available.')
-        last_verified = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            if not info or not has_identity:
+                logger.warning(f"No valid payload for {ticker}. Permanently blacklisting and purging from database.")
+                blacklist.add(ticker)
+                save_blacklist(blacklist)
+                
+                # Ruthlessly delete the orphan from all tables
+                cursor.execute("DELETE FROM market_universe WHERE ticker = ?", (ticker,))
+                cursor.execute("DELETE FROM asset_profiles WHERE ticker = ?", (ticker,))
+                cursor.execute("DELETE FROM stock_signals WHERE ticker = ?", (ticker,))
+                cursor.execute("DELETE FROM quant_signals WHERE ticker = ?", (ticker,))
+                conn.commit()
+                return False
+                
+            company_name = info.get('shortName') or info.get('longName') or ticker
+            sector = info.get('sector', 'Unclassified')
+            industry = info.get('industry', 'Unclassified')
+            country = info.get('country', 'Unknown')
+            exchange = info.get('exchange', 'Unknown')
+            currency = info.get('currency', 'USD')
+            quote_type = info.get('quoteType', 'EQUITY')
+            summary = info.get('longBusinessSummary', 'No business summary available.')
+            last_verified = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        company_name = company_name.replace(" - Common Stock", "").replace(" Common Stock", "").strip()
-        
-        cursor.execute('''
-            INSERT OR REPLACE INTO asset_profiles 
-            (ticker, company_name, sector, industry, country, exchange, currency, quote_type, business_summary, last_verified_date)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (ticker, company_name, sector, industry, country, exchange, currency, quote_type, summary, last_verified))
-        
-        conn.commit()
-        return True
-        
-    except Exception as e:
-        logger.error(f"Failed to fetch/save profile for {ticker}: {e}")
-        return False
-    finally:
-        conn.close()
+            company_name = company_name.replace(" - Common Stock", "").replace(" Common Stock", "").strip()
+            
+            cursor.execute('''
+                INSERT OR REPLACE INTO asset_profiles 
+                (ticker, company_name, sector, industry, country, exchange, currency, quote_type, business_summary, last_verified_date)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (ticker, company_name, sector, industry, country, exchange, currency, quote_type, summary, last_verified))
+            
+            conn.commit()
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to fetch/save profile for {ticker}: {e}")
+            return False
+        finally:
+            conn.close()
 
 def run_profile_audit(limit: int = 250):
     logger.info(f"Initiating Audit for Central Asset Profiles (Limit: {limit})...")
