@@ -1,4 +1,6 @@
 # tools/network_engine.py
+import time
+import random
 import logging
 from contextlib import contextmanager
 from curl_cffi import requests as cffi_requests
@@ -22,7 +24,7 @@ def _trigger_fallback_alert(ipv6_address: str, action_context: str, error_msg: s
     try:
         conn = get_connection()
         cursor = conn.cursor()
-        msg = f"IPv6 network fault on {ipv6_address} while accessing Yahoo Finance for '{action_context}'."
+        msg = f"Network fault or IP Ban on {ipv6_address} while accessing Yahoo Finance for '{action_context}'."
         cursor.execute(
             "INSERT INTO system_notifications (message_type, message_text) VALUES (?, ?)",
             ("Network Fault", msg)
@@ -34,10 +36,10 @@ def _trigger_fallback_alert(ipv6_address: str, action_context: str, error_msg: s
 
     # 2. Nextcloud Talk Alert
     alert_msg = (
-        f"🚨 **NETWORK FAULT: YAHOO FINANCE IPv6** 🚨\n\n"
-        f"The custom IPv6 socket binding (`{ipv6_address}`) failed while attempting to fetch data for `{action_context}`.\n"
-        f"**Error:** {error_msg}\n\n"
-        f"🔄 *System is automatically falling back to standard IPv4 routing to prevent pipeline crash.*"
+        f"🚨 **NETWORK FAULT / IP BAN: YAHOO FINANCE** 🚨\n\n"
+        f"The custom IPv6 socket (`{ipv6_address}`) failed or was rate-limited (HTTP 429) while fetching data for `{action_context}`.\n"
+        f"**Error Details:** {error_msg}\n\n"
+        f"🔄 *System is automatically dropping the IPv6 interface and hopping to standard IPv4 routing to rescue the pipeline.*"
     )
     
     # Fire and forget to Nextcloud
@@ -50,10 +52,9 @@ def _trigger_fallback_alert(ipv6_address: str, action_context: str, error_msg: s
 def create_failover_session(ipv6_address: str, action_context: str) -> cffi_requests.Session:
     """
     Builds a true curl_cffi Session to satisfy yfinance >= 1.x requirements,
-    while monkey-patching the request method to intercept binding faults.
+    while monkey-patching the request method to intercept binding faults AND HTTP 429s.
     Impersonates Chrome to bypass Yahoo TLS fingerprinting.
     """
-    # Instantiate pure session to pass strict yfinance type checks
     session = cffi_requests.Session(impersonate="chrome", interface=ipv6_address)
     session.fallback_triggered = False
     
@@ -61,24 +62,43 @@ def create_failover_session(ipv6_address: str, action_context: str) -> cffi_requ
     original_request = session.request
 
     def failover_request(method, url, **kwargs):
-        try:
-            return original_request(method, url, **kwargs)
-        except Exception as e:
-            # Capture curl_cffi.requests.errors.RequestsError and socket faults
-            if getattr(session, 'fallback_triggered', False):
-                # If we already fell back to standard routing and it still failed, raise normally
-                raise e
-            
-            logger.error(f"IPv6 Socket Error during '{action_context}': {e}")
-            _trigger_fallback_alert(ipv6_address, action_context, str(e))
-            
-            # Graceful Fallback: Drop the interface binding natively in libcurl
-            logger.info("Dropping custom IPv6 interface. Reverting to standard native OS routing (IPv4)...")
-            session.interface = None
-            session.fallback_triggered = True
-            
-            # Retry the exact same request seamlessly using the standard network route
-            return original_request(method, url, **kwargs)
+        max_retries = 3
+        base_delay = 2.0
+        
+        for attempt in range(max_retries + 1):
+            try:
+                response = original_request(method, url, **kwargs)
+                
+                # Intercept HTTP 429 (Too Many Requests) BEFORE yfinance sees it
+                if response.status_code == 429:
+                    if attempt < max_retries:
+                        # Exponential backoff (2s, 4s, 8s) + random jitter (0.5s to 1.5s)
+                        sleep_time = (base_delay ** attempt) + random.uniform(0.5, 1.5)
+                        logger.warning(f"[HTTP 429] Rate limited by Yahoo during '{action_context}'. Backing off for {sleep_time:.2f}s (Attempt {attempt + 1}/{max_retries}).")
+                        time.sleep(sleep_time)
+                        continue  # Retry the loop
+                    else:
+                        # We exhausted retries on IPv6. Raise an exception to trigger the IPv4 failover!
+                        raise Exception("HTTP 429 Max Retries Exceeded on IPv6 Interface.")
+                        
+                return response
+
+            except Exception as e:
+                # Capture curl_cffi.requests.errors.RequestsError, socket faults, and our 429 exception
+                if getattr(session, 'fallback_triggered', False):
+                    # If we already fell back to standard routing and it STILL failed, we are hard-banned or offline. Raise normally.
+                    raise e
+                
+                logger.error(f"Network/Socket Fault during '{action_context}': {e}")
+                _trigger_fallback_alert(ipv6_address, action_context, str(e))
+                
+                # Graceful Fallback: Drop the interface binding natively in libcurl
+                logger.info("Dropping custom IPv6 interface. Reverting to standard native OS routing (IPv4)...")
+                session.interface = None
+                session.fallback_triggered = True
+                
+                # Rescue the pipeline by executing the request over IPv4
+                return original_request(method, url, **kwargs)
 
     # Monkey-patch the request method to our self-healing wrapper
     session.request = failover_request
