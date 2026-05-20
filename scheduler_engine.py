@@ -38,7 +38,6 @@ logger = logging.getLogger(__name__)
 
 # --- Background Task Scheduler Setup ---
 scheduler = BackgroundScheduler()
-task_lock = threading.Lock()
 
 def log_sched_notification(msg_type: str, msg_text: str):
     try:
@@ -64,9 +63,6 @@ def run_maintenance_engine():
 
 def run_update_pipeline():
     """Executes the heavy data ingestion and mathematical quant modeling."""
-    if not task_lock.acquire(blocking=False):
-        logger.warning("System is currently busy. Skipping Update Analysis to prevent clash.")
-        return
     log_sched_notification("Scheduler", "Started Update Pipeline...")
     try:
         logger.info("Background update initiated.")
@@ -79,14 +75,9 @@ def run_update_pipeline():
         log_sched_notification("Success", "Update Pipeline completed successfully.")
     except Exception as e:
         log_sched_notification("Error", f"Update Pipeline failed: {e}")
-    finally:
-        task_lock.release()
 
 def run_ghostfolio_sync():
     """Executes the Ghostfolio API Sync to extract account holdings."""
-    if not task_lock.acquire(blocking=False):
-        logger.warning("System is currently busy. Skipping Ghostfolio Sync to prevent clash.")
-        return
     log_sched_notification("Scheduler", "Started Ghostfolio Sync...")
     try:
         sync_engine = GhostfolioSyncEngine()
@@ -94,14 +85,9 @@ def run_ghostfolio_sync():
         log_sched_notification("Success", "Ghostfolio Sync completed successfully.")
     except Exception as e:
         log_sched_notification("Error", f"Ghostfolio Sync failed: {e}")
-    finally:
-        task_lock.release()
 
 def run_freetrade_sync():
     """Executes the Freetrade Universe CSV Sync."""
-    if not task_lock.acquire(blocking=False):
-        logger.warning("System is currently busy. Skipping Freetrade Sync.")
-        return
     log_sched_notification("Scheduler", "Started Freetrade Sync...")
     try:
         logger.info("Freetrade sync initiated.")
@@ -111,14 +97,9 @@ def run_freetrade_sync():
     except Exception as e:
         logger.error(f"Freetrade Sync Failed: {e}")
         log_sched_notification("Error", f"Freetrade Sync failed: {e}")
-    finally:
-        task_lock.release()
 
 def run_sentiment_scan():
     """Executes the standalone NLP Sentiment pipeline."""
-    if not task_lock.acquire(blocking=False):
-        logger.warning("System is currently busy. Skipping Sentiment Scan.")
-        return
     log_sched_notification("Scheduler", "Started Sentiment Scan...")
     try:
         logger.info("Sentiment scan initiated.")
@@ -130,17 +111,12 @@ def run_sentiment_scan():
     except Exception as e:
         logger.error(f"Sentiment Scan Failed: {e}")
         log_sched_notification("Error", f"Sentiment Scan failed: {e}")
-    finally:
-        task_lock.release()
 
 def run_overnight_quant_scan():
     """
     Fetches the combined list of portfolio and watchlist tickers, 
     executes the resumable daily quant scan, and Tail Risk.
     """
-    if not task_lock.acquire(blocking=False):
-        logger.warning("System is currently busy. Skipping Overnight Quant Scan.")
-        return
     log_sched_notification("Scheduler", "Started Overnight Quant Scan...")
     try:
         logger.info("Overnight quant scan initiated.")
@@ -159,14 +135,9 @@ def run_overnight_quant_scan():
     except Exception as e:
         logger.error(f"Overnight Quant Scan Failed: {e}")
         log_sched_notification("Error", f"Overnight Quant Scan failed: {e}")
-    finally:
-        task_lock.release()
 
 def run_weekend_earnings_scan():
     """Executes the quantitative earnings volatility options scan."""
-    if not task_lock.acquire(blocking=False):
-        logger.warning("System is busy. Skipping Earnings Volatility Scan.")
-        return
     log_sched_notification("Scheduler", "Started Earnings Volatility Scan...")
     try:
         logger.info("Earnings volatility scan initiated.")
@@ -178,14 +149,9 @@ def run_weekend_earnings_scan():
     except Exception as e:
         logger.error(f"Earnings Volatility Scan Failed: {e}")
         log_sched_notification("Error", f"Earnings Volatility Scan failed: {e}")
-    finally:
-        task_lock.release()
 
 def run_morning_briefing_dispatch():
     """Executes the morning quant briefing dispatch."""
-    if not task_lock.acquire(blocking=False):
-        logger.warning("System is busy. Skipping Morning Briefing Dispatch.")
-        return
     log_sched_notification("Scheduler", "Started Morning Briefing Dispatch...")
     try:
         logger.info("Morning briefing dispatch initiated.")
@@ -195,14 +161,9 @@ def run_morning_briefing_dispatch():
     except Exception as e:
         logger.error(f"Morning Briefing Dispatch Failed: {e}")
         log_sched_notification("Error", f"Morning Briefing Dispatch failed: {e}")
-    finally:
-        task_lock.release()
 
 def run_weekend_universe_routine():
     """Executes the massive 4000+ Universe Download and Quant Scan."""
-    if not task_lock.acquire(blocking=False):
-        logger.warning("System is busy. Skipping Weekend Universe Routine.")
-        return
     log_sched_notification("Scheduler", "Started Weekend Universe Routine...")
     try:
         logger.info("Weekend universe routine initiated.")
@@ -226,14 +187,9 @@ def run_weekend_universe_routine():
     except Exception as e:
         logger.error(f"Weekend Universe Routine Failed: {e}")
         log_sched_notification("Error", f"Weekend Universe Routine failed: {e}")
-    finally:
-        task_lock.release()
 
 def run_weekend_profile_audit():
     """Executes the rolling metadata audit for 250 assets."""
-    if not task_lock.acquire(blocking=False):
-        logger.warning("System is busy. Skipping Profile Audit.")
-        return
     log_sched_notification("Scheduler", "Started Weekend Profile Audit...")
     try:
         logger.info("Weekend profile audit initiated.")
@@ -243,16 +199,11 @@ def run_weekend_profile_audit():
     except Exception as e:
         logger.error(f"Weekend Profile Audit Failed: {e}")
         log_sched_notification("Error", f"Weekend Profile Audit failed: {e}")
-    finally:
-        task_lock.release()
 
 # --- MODULAR ML PIPELINE RUNNERS ---
 
 def run_ml_backfill():
     """Executes the Historical Data Backfill for the Machine Learning pipeline."""
-    if not task_lock.acquire(blocking=False):
-        logger.warning("System is busy. Skipping ML Backfill.")
-        return
     log_sched_notification("Scheduler", "Started ML Historical Backfill...")
     try:
         logger.info("ML Historical Backfill initiated.")
@@ -262,14 +213,9 @@ def run_ml_backfill():
     except Exception as e:
         logger.error(f"ML Historical Backfill Failed: {e}")
         log_sched_notification("Error", f"ML Historical Backfill failed: {e}")
-    finally:
-        task_lock.release()
 
 def run_ml_training():
     """Executes the Global Machine Learning Walk-Forward Training cycle."""
-    if not task_lock.acquire(blocking=False):
-        logger.warning("System is busy. Skipping ML Training.")
-        return
     log_sched_notification("Scheduler", "Started ML Global Training...")
     try:
         logger.info("ML Global Training initiated.")
@@ -279,14 +225,9 @@ def run_ml_training():
     except Exception as e:
         logger.error(f"ML Global Training Failed: {e}")
         log_sched_notification("Error", f"ML Global Training failed: {e}")
-    finally:
-        task_lock.release()
 
 def run_ml_inference():
     """Executes the Daily Machine Learning Prediction Inference."""
-    if not task_lock.acquire(blocking=False):
-        logger.warning("System is busy. Skipping ML Inference.")
-        return
     log_sched_notification("Scheduler", "Started Daily ML Inference...")
     try:
         logger.info("Daily ML Inference initiated.")
@@ -301,14 +242,9 @@ def run_ml_inference():
     except Exception as e:
         logger.error(f"Daily ML Inference Failed: {e}")
         log_sched_notification("Error", f"Daily ML Inference failed: {e}")
-    finally:
-        task_lock.release()
 
 def run_macro_calendar_update():
     """Executes the daily Tier-1 Macro Calendar refresh."""
-    if not task_lock.acquire(blocking=False):
-        logger.warning("System is busy. Skipping Macro Calendar Update.")
-        return
     log_sched_notification("Scheduler", "Started Macro Calendar Update...")
     try:
         logger.info("Macro calendar update initiated.")
@@ -318,14 +254,9 @@ def run_macro_calendar_update():
     except Exception as e:
         logger.error(f"Macro Calendar Update Failed: {e}")
         log_sched_notification("Error", f"Macro Calendar Update failed: {e}")
-    finally:
-        task_lock.release()
 
 def run_macro_data_update():
     """Executes the weekly structural Macroeconomic Data sync (FRED/BoE)."""
-    if not task_lock.acquire(blocking=False):
-        logger.warning("System is busy. Skipping Macro Data Update.")
-        return
     log_sched_notification("Scheduler", "Started Macro Data Update...")
     try:
         logger.info("Macro data update initiated.")
@@ -335,8 +266,6 @@ def run_macro_data_update():
     except Exception as e:
         logger.error(f"Macro Data Update Failed: {e}")
         log_sched_notification("Error", f"Macro Data Update failed: {e}")
-    finally:
-        task_lock.release()
 
 def reload_scheduler():
     """Reads the latest config.json and updates APScheduler dynamically."""
