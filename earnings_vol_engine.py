@@ -153,34 +153,24 @@ def run_earnings_vol_scan(ticker_list: List[str]) -> None:
         conn = get_connection()
         cursor = conn.cursor()
         
-        # Pre-fetch existing earnings dates from the core tracker table for initial high-level filtering
-        placeholders = ','.join('?' for _ in ticker_list)
-        cursor.execute(f"SELECT ticker, next_earnings_date FROM stock_signals WHERE ticker IN ({placeholders})", ticker_list)
-        db_earnings_map = {row['ticker']: row['next_earnings_date'] for row in cursor.fetchall()}
-
         today = datetime.now()
         cutoff_date = today + timedelta(days=14)
 
         for i, ticker in enumerate(ticker_list):
             try:
-                e_date_str = db_earnings_map.get(ticker)
-                if not e_date_str or e_date_str == 'Unknown':
-                    continue
-                    
-                try:
-                    db_earnings_date = datetime.strptime(e_date_str, '%Y-%m-%d')
-                except ValueError:
-                    continue
-
-                # Broad DB-level check to prevent useless API calls
-                if not (today - timedelta(days=2) <= db_earnings_date <= cutoff_date + timedelta(days=5)):
-                    continue
-
                 ticker_obj = yf.Ticker(ticker)
+                earnings_date = None
+                e_date_str = None
                 
-                # 1. LIVE VALIDATION: Validate earnings date against a fresh yfinance API lookup
-                earnings_date = db_earnings_date
+                # 1. LIVE VALIDATION: Strictly fetch fresh earnings dates from the API, bypassing stale SQLite values
                 try:
+                    # Method 1: Check .info dictionary first (fastest)
+                    info = ticker_obj.info
+                    earnings_ts = info.get('earningsTimestamp')
+                    if earnings_ts:
+                        earnings_date = datetime.fromtimestamp(earnings_ts)
+                        
+                    # Method 2: Validate against get_earnings_dates calendar (most accurate)
                     live_dates = ticker_obj.get_earnings_dates(limit=5)
                     if live_dates is not None and not live_dates.empty:
                         now_tz_naive = pd.Timestamp.now(tz='UTC').tz_localize(None)
@@ -190,9 +180,14 @@ def run_earnings_vol_scan(ticker_list: List[str]) -> None:
                         future_dates = live_dates.index[live_dates.index >= now_tz_naive]
                         if len(future_dates) > 0:
                             earnings_date = future_dates.min().to_pydatetime()
-                            e_date_str = earnings_date.strftime('%Y-%m-%d')
+                            
+                    if earnings_date:
+                        e_date_str = earnings_date.strftime('%Y-%m-%d')
                 except Exception as e:
-                    logger.debug(f"Failed to fetch live earnings date for {ticker}, using DB fallback: {e}")
+                    logger.debug(f"Failed to fetch live earnings date for {ticker}: {e}")
+
+                if not earnings_date:
+                    continue
 
                 # Bypass if the validated live date falls outside our strict 14-day actionable window
                 if not (today <= earnings_date <= cutoff_date):

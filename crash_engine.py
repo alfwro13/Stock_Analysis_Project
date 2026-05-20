@@ -134,11 +134,20 @@ class CrashEngine:
         if df_combined.empty or len(df_combined) < self.sma_length:
             return None
 
-        # --- 1. NEW LOGIC: Daily Intraday Session Crash ---
-        # Look at yesterday's close vs today's live price
-        prev_close = df_combined['Close'].iloc[-2] if len(df_combined) >= 2 else current_price
+        # --- 1. NEW LOGIC: True Intraday Session Crash ---
+        # Accurately identify 'yesterday's close' regardless of data rollover states.
+        if len(df_combined) >= 2:
+            latest_dt = df_combined.index[-1]
+            # If the last recorded bar matches today, df_combined has appended live data -> use iloc[-2]
+            if latest_dt.date() == datetime.now().date():
+                prev_close = df_combined['Close'].iloc[-2]
+            else:
+                # df_combined is purely historical and hasn't appended today -> use iloc[-1]
+                prev_close = df_combined['Close'].iloc[-1]
+        else:
+            prev_close = current_price
+
         intraday_drop_pct = ((current_price - prev_close) / prev_close) * 100.0
-        
         is_session_crash = intraday_drop_pct <= -self.session_crash_threshold
 
         # --- 2. OLD LOGIC: Prolonged Trend Bleed ---

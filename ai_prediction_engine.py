@@ -12,9 +12,9 @@ from typing import List, Tuple
 from xgboost import XGBClassifier
 from sklearn.ensemble import RandomForestClassifier, VotingClassifier
 from sklearn.metrics import accuracy_score, classification_report
+from sklearn.model_selection import TimeSeriesSplit
 
 from config import BASE_DIR
-# [DESIGN-04 FIXED] Import centralized notification helper
 from database import get_connection, log_notification
 from data_engine import DataEngine
 
@@ -25,11 +25,20 @@ MODELS_DIR = BASE_DIR / "models"
 MODELS_DIR.mkdir(parents=True, exist_ok=True)
 MODEL_PATH = MODELS_DIR / "ml_ensemble.joblib"
 
-# The exact feature space expected by the model - Updated to normalize price bias
+# [DESIGN-02 FIXED] Added contextual features (sector_code, beta, mcap_log)
 FEATURE_COLS = [
     'rsi_14', 'macd_pct', 'macd_signal_pct', 'macd_hist_pct', 
-    'volume_surge', 'bullish_cross', 'dist_sma_50', 'dist_sma_200'
+    'volume_surge', 'bullish_cross', 'dist_sma_50', 'dist_sma_200',
+    'sector_code', 'beta', 'mcap_log'
 ]
+
+# Static mapping for GICS sectors to integer codes for the ML model
+SECTOR_MAP = {
+    "Technology": 1, "Healthcare": 2, "Financials": 3,
+    "Financial Services": 3, "Real Estate": 4, "Energy": 5, 
+    "Basic Materials": 6, "Consumer Cyclical": 7, "Industrials": 8, 
+    "Utilities": 9, "Consumer Defensive": 10, "Communication Services": 11
+}
 
 # Hardcoded list of High Quality Blue Chips to supplement the dataset
 BLUE_CHIPS = [
@@ -56,24 +65,85 @@ def get_target_tickers() -> List[str]:
     # Combine, deduplicate, and sort for determinism
     combined_set = set(user_tickers).union(set(BLUE_CHIPS))
     
-    # Filter out mutual funds (0P...) or known bad tickers if any slipped through
+    # Filter out mutual funds (0P...) or known bad tickers
     cleaned_list = [t for t in combined_set if t and not t.startswith("0P")]
-    
-    # Limit to maximum 250 tickers
     final_tickers = sorted(cleaned_list)[:250]
     
     logger.info(f"Targeting {len(final_tickers)} unique tickers for historical backfill.")
     return final_tickers
 
+def sync_ticker_metadata(tickers: List[str]) -> None:
+    """
+    [DESIGN-02] Ensures institutional structural data (sector, beta, mcap) is available
+    to prevent cross-ticker signal contamination during global model training.
+    Creates and populates the ticker_metadata table idempotently.
+    """
+    logger.info(f"Syncing metadata for {len(tickers)} tickers to contextualize ML features...")
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS ticker_metadata (
+            ticker TEXT PRIMARY KEY,
+            sector TEXT,
+            beta REAL,
+            market_cap REAL
+        )
+    """)
+
+    cursor.execute("SELECT ticker FROM ticker_metadata")
+    existing_tickers = {row[0] for row in cursor.fetchall()}
+    
+    missing_tickers = [t for t in tickers if t not in existing_tickers]
+    
+    if not missing_tickers:
+        logger.info("All ticker structural metadata is already up to date.")
+        conn.close()
+        return
+
+    records: List[Tuple] = []
+    for ticker in missing_tickers:
+        try:
+            info = yf.Ticker(ticker).info
+            sector = info.get('sector', 'Unknown')
+            beta = info.get('beta', 1.0)
+            mcap = info.get('marketCap', 0.0)
+            
+            records.append((
+                ticker, 
+                sector, 
+                float(beta) if beta else 1.0, 
+                float(mcap) if mcap else 0.0
+            ))
+        except Exception as e:
+            logger.warning(f"Failed to fetch metadata for {ticker}: {e}")
+            records.append((ticker, 'Unknown', 1.0, 0.0))
+        
+        # Rate limit protection for Yahoo Finance
+        time.sleep(0.1)
+
+    if records:
+        cursor.executemany("""
+            INSERT OR REPLACE INTO ticker_metadata (ticker, sector, beta, market_cap)
+            VALUES (?, ?, ?, ?)
+        """, records)
+        conn.commit()
+        logger.info(f"Injected structural metadata for {len(records)} new tickers.")
+        
+    conn.close()
+
 def run_historical_backfill() -> None:
     """
     Downloads 2 years of daily data per ticker, calculates vectorized 
-    technical indicators, and executes bulk INSERT OR IGNORE operations into SQLite.
+    technical indicators, synchronizes metadata, and executes bulk database insertions.
     """
     tickers = get_target_tickers()
     if not tickers:
         logger.warning("No tickers found to backfill. Aborting.")
         return
+
+    # Sync static metadata required for DESIGN-02 fixes before processing time-series
+    sync_ticker_metadata(tickers)
 
     log_notification("Info", f"ML Historical Backfill initiated for {len(tickers)} assets.")
     conn = get_connection()
@@ -112,7 +182,6 @@ def run_historical_backfill() -> None:
                 df['sma_200'] = ta.trend.SMAIndicator(close=df['Close'], window=200).sma_indicator()
                 df['vol_sma_20'] = df['Volume'].rolling(window=20).mean()
 
-                # Vectorize proxy logic for boolean triggers
                 df['volume_surge'] = (df['Volume'] > (df['vol_sma_20'] * 1.5)).astype(int)
                 df['bullish_cross'] = ((df['macd'] > df['macd_signal']) & (df['macd'].shift(1) <= df['macd_signal'].shift(1))).astype(int)
 
@@ -123,7 +192,6 @@ def run_historical_backfill() -> None:
                 records: List[Tuple] = []
                 for index, row in df.iterrows():
                     date_str = index.strftime('%Y-%m-%d')
-                    # Keep DB insertion RAW to match the schema
                     records.append((
                         ticker, date_str, float(row['Close']), int(row['Volume']),
                         float(row['rsi_14']), float(row['macd']), float(row['macd_signal']),
@@ -163,22 +231,24 @@ def run_historical_backfill() -> None:
 
 def train_global_ml_model() -> None:
     """
-    Connects to the local SQLite DB, builds technical features and targets,
-    implements Walk-Forward Validation, handles class imbalances, and trains 
-    a global ensemble model predicting >3% returns over 5 days.
+    Connects to the local SQLite DB, builds technical/structural features,
+    implements true Anchored Walk-Forward Validation, and trains an institutional-grade 
+    global ensemble model predicting >3% returns over 5 days.
     """
-    logger.info("Initiating Global ML Model Training pipeline with Walk-Forward Validation...")
+    logger.info("Initiating Global ML Model Training pipeline with Anchored Walk-Forward Validation...")
     log_notification("Info", "Global ML Model Training pipeline initiated.")
     
     try:
         conn = get_connection()
         
-        # 1. Fetch raw historical quantitative data (using RAW columns)
+        # [DESIGN-02] Joining structural metadata to provide context to the global model
         query = """
-            SELECT ticker, date, close_price, rsi_14, macd, macd_signal, macd_hist, 
-                   sma_50, sma_200, volume_surge, bullish_cross 
-            FROM quant_signals 
-            ORDER BY date ASC
+            SELECT qs.ticker, qs.date, qs.close_price, qs.rsi_14, qs.macd, qs.macd_signal, qs.macd_hist, 
+                   qs.sma_50, qs.sma_200, qs.volume_surge, qs.bullish_cross,
+                   tm.sector, tm.beta, tm.market_cap
+            FROM quant_signals qs
+            LEFT JOIN ticker_metadata tm ON qs.ticker = tm.ticker
+            ORDER BY qs.date ASC
         """
         df = pd.read_sql_query(query, conn)
         conn.close()
@@ -187,25 +257,27 @@ def train_global_ml_model() -> None:
             logger.warning("No quantitative data found in DB. Aborting ML training.")
             return
 
-        # 2. Feature Engineering
+        # Feature Engineering: Price Normalization & Structural Mapping
         logger.info(f"Extracting features from {len(df)} historical records...")
         df['dist_sma_50'] = (df['close_price'] - df['sma_50']) / df['sma_50']
         df['dist_sma_200'] = (df['close_price'] - df['sma_200']) / df['sma_200']
         
-        # CRITICAL-26: Price-normalize MACD mathematically in Pandas to prevent cross-ticker bias
         df['macd_pct'] = df['macd'] / df['close_price']
         df['macd_signal_pct'] = df['macd_signal'] / df['close_price']
         df['macd_hist_pct'] = df['macd_hist'] / df['close_price']
         
-        # Coerce boolean/int proxy columns to strict integers
         df['volume_surge'] = df['volume_surge'].fillna(0).astype(int)
         df['bullish_cross'] = df['bullish_cross'].fillna(0).astype(int)
+        
+        # Contextual Features
+        df['sector_code'] = df['sector'].map(SECTOR_MAP).fillna(0).astype(int)
+        df['beta'] = df['beta'].fillna(1.0)
+        df['mcap_log'] = np.log1p(df['market_cap'].fillna(0))
 
-        # Replace infinite division errors and drop missing data safely
         df.replace([np.inf, -np.inf], np.nan, inplace=True)
         df.dropna(subset=FEATURE_COLS, inplace=True)
 
-        # 3. Target Variable Creation (Shift -5 days per ticker)
+        # Target Variable Creation (Shift -5 days per ticker)
         df['future_close'] = df.groupby('ticker')['close_price'].shift(-5)
         df.dropna(subset=['future_close'], inplace=True)
         
@@ -217,63 +289,79 @@ def train_global_ml_model() -> None:
             log_notification("Error", f"Insufficient training samples ({len(df)}). Backfill required.")
             return
 
-        # --- 4. Walk-Forward Validation Split (Resolves Issue #25) ---
-        # Sort values strictly by date to prevent lookahead bias
+        # Sort values strictly by date to ensure temporal linearity
         df.sort_values('date', inplace=True)
+        df.reset_index(drop=True, inplace=True)
         
-        # 80/20 Temporal Split
-        split_idx = int(len(df) * 0.8)
-        train_df = df.iloc[:split_idx]
-        test_df = df.iloc[split_idx:]
-        
-        X_train = train_df[FEATURE_COLS]
-        y_train = train_df['target']
-        X_test = test_df[FEATURE_COLS]
-        y_test = test_df['target']
+        X = df[FEATURE_COLS]
+        y = df['target']
 
-        # HIGH-27: Handle Class Imbalance mathematically
-        neg_count = (y_train == 0).sum()
-        pos_count = (y_train == 1).sum()
-        scale_pos_weight = neg_count / pos_count if pos_count > 0 else 1.0
-        
-        logger.info(f"Training ensemble: Temporal Train {len(X_train)} | OOS Test {len(X_test)}")
-        logger.info(f"Class Distribution -> Neg: {neg_count}, Pos: {pos_count} (Ratio: {scale_pos_weight:.2f})")
+        # --- [DESIGN-01 FIXED] True Anchored Walk-Forward Validation ---
+        logger.info("Executing Walk-Forward Cross Validation (5 Expanding Windows)...")
+        tscv = TimeSeriesSplit(n_splits=5)
+        oos_accuracies = []
+        final_oos_report = ""
 
-        # 4. Train the Ensemble Model with dynamic penalties applied
-        rf = RandomForestClassifier(
-            n_estimators=150, 
-            max_depth=6, 
-            class_weight='balanced', # Imbalance handling
-            random_state=42, 
-            n_jobs=-1
+        for fold, (train_index, test_index) in enumerate(tscv.split(X)):
+            X_train, X_test = X.iloc[train_index], X.iloc[test_index]
+            y_train, y_test = y.iloc[train_index], y.iloc[test_index]
+
+            # Dynamic Imbalance penalty calculation per temporal regime
+            neg_count = (y_train == 0).sum()
+            pos_count = (y_train == 1).sum()
+            scale_pos_weight = neg_count / pos_count if pos_count > 0 else 1.0
+
+            rf = RandomForestClassifier(
+                n_estimators=150, max_depth=6, class_weight='balanced', 
+                random_state=42, n_jobs=-1
+            )
+            xgb = XGBClassifier(
+                n_estimators=150, max_depth=6, learning_rate=0.05, 
+                scale_pos_weight=scale_pos_weight, random_state=42, 
+                n_jobs=-1, eval_metric='logloss'
+            )
+            
+            ensemble_cv = VotingClassifier(estimators=[('rf', rf), ('xgb', xgb)], voting='soft')
+            ensemble_cv.fit(X_train, y_train)
+            
+            y_pred = ensemble_cv.predict(X_test)
+            acc = accuracy_score(y_test, y_pred)
+            oos_accuracies.append(acc)
+            
+            if fold == 4: # Capture the classification report of the most recent market regime
+                final_oos_report = classification_report(y_test, y_pred, zero_division=0)
+
+        avg_oos_accuracy = np.mean(oos_accuracies)
+        
+        logger.info(f"--- ANCHORED WALK-FORWARD VALIDATION RESULTS ---")
+        logger.info(f"Averaged OOS Accuracy across 5 expanding regimes: {avg_oos_accuracy:.4f}")
+        logger.info(f"Latest Regime Classification Report:\n{final_oos_report}")
+
+        # --- Production Model Training ---
+        # Now that we have validated the strategy's robustness, we train the final 
+        # production artefact on the ENTIRE dataset to prevent data starvation on the bleeding edge.
+        logger.info("Training final production model on full dataset...")
+        
+        neg_count_full = (y == 0).sum()
+        pos_count_full = (y == 1).sum()
+        scale_pos_weight_full = neg_count_full / pos_count_full if pos_count_full > 0 else 1.0
+
+        rf_prod = RandomForestClassifier(
+            n_estimators=150, max_depth=6, class_weight='balanced', 
+            random_state=42, n_jobs=-1
+        )
+        xgb_prod = XGBClassifier(
+            n_estimators=150, max_depth=6, learning_rate=0.05, 
+            scale_pos_weight=scale_pos_weight_full, random_state=42, 
+            n_jobs=-1, eval_metric='logloss'
         )
         
-        xgb = XGBClassifier(
-            n_estimators=150, 
-            max_depth=6, 
-            learning_rate=0.05, 
-            scale_pos_weight=scale_pos_weight, # Imbalance handling
-            random_state=42, 
-            n_jobs=-1, 
-            eval_metric='logloss'
-        )
+        production_ensemble = VotingClassifier(estimators=[('rf', rf_prod), ('xgb', xgb_prod)], voting='soft')
+        production_ensemble.fit(X, y)
 
-        ensemble = VotingClassifier(estimators=[('rf', rf), ('xgb', xgb)], voting='soft')
-        ensemble.fit(X_train, y_train)
-
-        # 5. Out of Sample (OOS) Validation and Logging
-        y_pred = ensemble.predict(X_test)
-        oos_accuracy = accuracy_score(y_test, y_pred)
-        oos_report = classification_report(y_test, y_pred, zero_division=0)
-        
-        logger.info(f"--- OUT OF SAMPLE (OOS) EVALUATION ---")
-        logger.info(f"OOS Accuracy: {oos_accuracy:.4f}")
-        logger.info(f"OOS Classification Report:\n{oos_report}")
-
-        # 6. Persist to Disk
-        joblib.dump(ensemble, MODEL_PATH)
-        logger.info(f"✅ ML Ensemble successfully trained and saved to {MODEL_PATH}")
-        log_notification("Success", f"Global ML Model trained (OOS Accuracy: {oos_accuracy:.2%}).")
+        joblib.dump(production_ensemble, MODEL_PATH)
+        logger.info(f"✅ Production ML Ensemble successfully trained and saved to {MODEL_PATH}")
+        log_notification("Success", f"Global ML Model trained (WF-OOS Accuracy: {avg_oos_accuracy:.2%}).")
 
     except Exception as e:
         logger.error(f"Fatal error during ML model training: {e}")
@@ -281,7 +369,7 @@ def train_global_ml_model() -> None:
 
 def update_daily_ml_predictions(tickers: List[str]) -> None:
     """
-    Loads the trained model, fetches the latest raw row for each ticker,
+    Loads the trained model, fetches the latest raw row + structural context,
     calculates inference features dynamically, and updates the database with confidence scores.
     """
     if not tickers:
@@ -298,14 +386,15 @@ def update_daily_ml_predictions(tickers: List[str]) -> None:
         model = joblib.load(MODEL_PATH)
         conn = get_connection()
         
-        # Fetch raw db columns
         placeholders = ','.join('?' for _ in tickers)
         query = f"""
-            SELECT ticker, date, close_price, rsi_14, macd, macd_signal, macd_hist, 
-                   sma_50, sma_200, volume_surge, bullish_cross 
-            FROM quant_signals 
-            WHERE ticker IN ({placeholders})
-            AND date = (SELECT MAX(date) FROM quant_signals qs WHERE qs.ticker = quant_signals.ticker)
+            SELECT qs.ticker, qs.date, qs.close_price, qs.rsi_14, qs.macd, qs.macd_signal, qs.macd_hist, 
+                   qs.sma_50, qs.sma_200, qs.volume_surge, qs.bullish_cross,
+                   tm.sector, tm.beta, tm.market_cap
+            FROM quant_signals qs
+            LEFT JOIN ticker_metadata tm ON qs.ticker = tm.ticker
+            WHERE qs.ticker IN ({placeholders})
+            AND qs.date = (SELECT MAX(date) FROM quant_signals sub WHERE sub.ticker = qs.ticker)
         """
         df = pd.read_sql_query(query, conn, params=tickers)
         
@@ -314,7 +403,7 @@ def update_daily_ml_predictions(tickers: List[str]) -> None:
             conn.close()
             return
 
-        # Feature Engineering: On-the-fly normalization 
+        # Feature Engineering: On-the-fly calculation and normalization 
         df['dist_sma_50'] = (df['close_price'] - df['sma_50']) / df['sma_50']
         df['dist_sma_200'] = (df['close_price'] - df['sma_200']) / df['sma_200']
         
@@ -324,6 +413,11 @@ def update_daily_ml_predictions(tickers: List[str]) -> None:
         
         df['volume_surge'] = df['volume_surge'].fillna(0).astype(int)
         df['bullish_cross'] = df['bullish_cross'].fillna(0).astype(int)
+        
+        # Inject structural mappings
+        df['sector_code'] = df['sector'].map(SECTOR_MAP).fillna(0).astype(int)
+        df['beta'] = df['beta'].fillna(1.0)
+        df['mcap_log'] = np.log1p(df['market_cap'].fillna(0))
         
         df.replace([np.inf, -np.inf], np.nan, inplace=True)
         

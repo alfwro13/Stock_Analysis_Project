@@ -21,20 +21,32 @@ def get_oversold_reversals(data: List[Dict[str, Any]], regime_label: str) -> Lis
     """
     Identifies assets that are heavily oversold but showing early momentum recovery.
     Logic: RSI < 30 AND MACD Histogram > 0
-    Regime Context: In 'Crash'/'Volatile', strict Flight to Safety requires Price > 200D SMA.
+    Regime Context: In 'Crash'/'Volatile', traditional RSI dips fail as stocks keep dropping. 
+    Instead of requiring Price > 200D SMA (which contradicts RSI < 30), we require defensive 
+    characteristics: low beta (<0.8) or defensive sectors.
     """
     results = []
+    defensive_sectors = ['Healthcare', 'Utilities', 'Consumer Defensive', 'Consumer Staples']
+    
     for row in data:
         rsi = row.get('rsi_14')
         macd_hist = row.get('macd_hist')
-        close_price = row.get('close_price', 0)
-        sma_200 = row.get('sma_200', 0)
+        sector = row.get('sector', 'Unknown')
         
         if rsi is not None and macd_hist is not None:
             if rsi < 30 and macd_hist > 0:
-                # Flight to Safety filter during turbulent regimes
                 if regime_label in ['Crash', 'Volatile']:
-                    if sma_200 is not None and close_price > sma_200:
+                    # Safely extract beta
+                    beta_raw = row.get('beta')
+                    try:
+                        beta = float(beta_raw) if beta_raw is not None else 1.0
+                    except ValueError:
+                        beta = 1.0
+                        
+                    is_defensive = sector in defensive_sectors
+                    is_low_beta = beta < 0.8
+                    
+                    if is_defensive or is_low_beta:
                         results.append(row)
                 else:
                     results.append(row)
@@ -191,7 +203,7 @@ def fetch_latest_signals(target_date: str) -> List[Dict[str, Any]]:
         
         # Parameterized query to prevent SQL injection, joining fundamentals
         cursor.execute('''
-            SELECT q.*, s.trailing_pe, s.debt_to_equity, s.yield_correlation, s.country, s.currency
+            SELECT q.*, s.trailing_pe, s.debt_to_equity, s.yield_correlation, s.country, s.currency, s.sector, s.beta
             FROM quant_signals q
             LEFT JOIN stock_signals s ON q.ticker = s.ticker
             WHERE q.date = ?
@@ -356,7 +368,7 @@ def generate_markdown_briefing(target_date: str, data: List[Dict[str, Any]]) -> 
     if threat_level in ['RED', 'YELLOW']:
         report += "*⚠️ SYSTEMIC YIELD WARNING: Global cost of capital is surging. The quantitative screener has aggressively vetoed highly indebted and high P/E equities that show strong negative correlations to rising interest rates.*\n\n"
     elif regime_label in ['Crash', 'Volatile']:
-        report += "*⚠️ VOLATILITY WARNING: Market is highly turbulent. The screener has filtered for 'Flight to Safety' setups above the 200-day moving average.*\n\n"
+        report += "*⚠️ VOLATILITY WARNING: Market is highly turbulent. The screener has filtered for defensive sectors and low beta 'Flight to Safety' setups.*\n\n"
     else:
         report += "*Market conditions are normal and stable. Standard quantitative thresholds apply.*\n\n"
         

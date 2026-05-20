@@ -281,7 +281,6 @@ class QuantEngine:
             is_tight = is_dry_volume = False
             is_bearish_divergence = False
             is_market_leader = False
-            rs_slope = 0.0
 
             if df is not None and len(df) >= 21:
                 current_price = df['Close'].iloc[-1]
@@ -323,16 +322,30 @@ class QuantEngine:
                 
                 if 'High' in df.columns and 'Low' in df.columns:
                     df['ATR'] = ta.volatility.AverageTrueRange(high=df['High'], low=df['Low'], close=df['Close'], window=14).average_true_range()
-                    atr_series_clean = df['ATR'].dropna()
+                    df['ATR_MA'] = df['ATR'].rolling(window=20).mean()
                     
-                    if not atr_series_clean.empty and current_price is not None:
+                    atr_series_clean = df['ATR'].dropna()
+                    atr_ma_clean = df['ATR_MA'].dropna()
+                    
+                    if not atr_series_clean.empty and not atr_ma_clean.empty and current_price is not None:
                         atr_val = atr_series_clean.iloc[-1]
-                        if not pd.isna(atr_val):
+                        atr_ma_val = atr_ma_clean.iloc[-1]
+                        
+                        if not pd.isna(atr_val) and atr_ma_val > 0:
+                            # Volatility Stability Ratio: 1.0 is stable, >1.2 is expanding volatility
+                            atr_stability = atr_val / atr_ma_val
+                            
+                            # Institutional Dynamic ATR Stop-Loss Multipier Logic
                             if has_volatility_warning:
-                                # Preemptive Defense Logic
-                                stop_loss = current_price - (1.0 * atr_val)
+                                multiplier = 1.5  # Tighten stop defensively for imminent severe macro shock
+                            elif atr_stability > 1.2:
+                                multiplier = 2.5  # Volatility expanding, widen stop to avoid noise whipsaws
+                            elif atr_stability < 0.8:
+                                multiplier = 1.8  # Volatility dying down, can afford slightly tighter stops
                             else:
-                                stop_loss = current_price - (2.0 * atr_val)
+                                multiplier = 2.0  # Standard conservative swing trading baseline
+                                
+                            stop_loss = current_price - (multiplier * atr_val)
 
                 if 'Volume' in df.columns and not df['Volume'].isna().all():
                     df['OBV'] = ta.volume.OnBalanceVolumeIndicator(close=df['Close'], volume=df['Volume']).on_balance_volume()
@@ -356,15 +369,22 @@ class QuantEngine:
                 if df_baseline is not None and not df_baseline.empty:
                     baseline_aligned = df_baseline['Close'].reindex(df.index, method='ffill')
                     df['RS_Line'] = df['Close'] / baseline_aligned
-                    if len(df['RS_Line'].dropna()) >= 60:
-                        y = df['RS_Line'].dropna().tail(60).values
-                        x = np.arange(len(y))
-                        slope, _ = np.polyfit(x, y, 1)
-                        # Normalize slope by the initial value to prevent price-bias
-                        rs_slope = slope / y[0] if y[0] != 0 else slope
+                    
+                    # William O'Neil Style 1-Year Relative Strength Check
+                    valid_rs = df['RS_Line'].dropna()
+                    if len(valid_rs) >= 252:
+                        rs_1y_ago = valid_rs.iloc[-252]
+                        rs_now = valid_rs.iloc[-1]
                         
-                        if rs_slope > 0 and df['RS_Line'].iloc[-1] >= (df['RS_Line'].tail(60).max() * 0.95):
-                            is_market_leader = True
+                        if rs_1y_ago > 0:
+                            rs_1y_return = (rs_now - rs_1y_ago) / rs_1y_ago
+                            
+                            # True market leaders mathematically outperform the broader market by >15% over a year
+                            # AND must be currently supported by their 200D SMA
+                            ma200_val = df['MA_200'].dropna().iloc[-1] if not df['MA_200'].dropna().empty else 0
+                            
+                            if rs_1y_return > 0.15 and current_price is not None and current_price > ma200_val:
+                                is_market_leader = True
             else:
                 logger.warning(f"[PARTIAL SKIP] Insufficient historical data for {ticker}. Proceeding with fundamental analysis only.")
                 current_price = info.get('navPrice') or info.get('regularMarketPrice') or info.get('previousClose')
@@ -463,10 +483,10 @@ class QuantEngine:
                     score += 10
                     breakdown.append("+10: 3-Weeks-Tight")
 
-                if is_market_leader and rs_slope > 0:
-                    tags.append({"name": "👑 Market Leader", "tooltip": "Relative Strength slope is sharply up."})
+                if is_market_leader:
+                    tags.append({"name": "👑 Market Leader", "tooltip": "Strong >15% Relative Strength outperformance vs S&P 500 Baseline over 1-year."})
                     score += 15
-                    breakdown.append("+15: Market Leader vs Benchmark")
+                    breakdown.append("+15: 1Y Market Leader vs Benchmark")
 
                 if ma5 is not None and current_price is not None and current_price > ma5: 
                     score += 15
@@ -506,7 +526,7 @@ class QuantEngine:
                 
                 # Append Macro AI Preemptive Defense Logic to Breakdown
                 if has_volatility_warning:
-                    breakdown.append("-0: 🛡️ Preemptive Defense Active: Stop-Loss tightened to 1x ATR due to imminent high-volatility macro event.")
+                    breakdown.append("-0: 🛡️ Preemptive Defense Active: Stop-Loss tightened defensively due to imminent high-volatility macro event.")
 
             else:
                 breakdown.append("+0: Technical indicators skipped (Insufficient Historical Data)")
@@ -526,7 +546,7 @@ class QuantEngine:
             notes_html += "</ul>"
             
             if stop_loss is not None:
-                notes_html += f"<strong>Risk Management:</strong> Mathematical <abbr title='Based on Average True Range.'>ATR Stop-Loss</abbr> is {stop_loss:,.2f} {currency}.<br><br>"
+                notes_html += f"<strong>Risk Management:</strong> Mathematical <abbr title='Based on Average True Range and dynamically scaled by Historical Stability.'>Dynamic ATR Stop-Loss</abbr> is {stop_loss:,.2f} {currency}.<br><br>"
             
             if not is_fund and rsi_val is not None and rsi_val > 70.0:
                 notes_html += "<strong><span class='risk-warning'>Warning:</span></strong> Stock is technically overbought (RSI > 70).<br>"

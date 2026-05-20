@@ -13,8 +13,9 @@ logger = logging.getLogger(__name__)
 
 def fetch_options_chain(ticker: str) -> Dict[str, Any]:
     """
-    Fetches the current underlying price and the nearest 2 options expiration 
-    chains (Calls and Puts) for a given ticker.
+    Fetches the current underlying price and the nearest options expiration 
+    chains (Calls and Puts) for a given ticker. Increased slice to 5 chains 
+    to properly capture high-liquidity standard monthly (3rd Friday) expirations.
     """
     logger.info(f"Fetching options chain for {ticker}...")
     try:
@@ -24,8 +25,8 @@ def fetch_options_chain(ticker: str) -> Dict[str, Any]:
         if not expirations:
             return {"error": f"No options data available for {ticker}."}
         
-        # Limit to the nearest 2 expiration dates for UI simplicity
-        target_exps = list(expirations[:2])
+        # Expanded to nearest 5 expirations to guarantee capturing standard Monthlies
+        target_exps = list(expirations[:5])
         
         chain_data = {}
         for exp in target_exps:
