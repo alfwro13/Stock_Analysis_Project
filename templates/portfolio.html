@@ -165,7 +165,7 @@
                 {% set cp = cached_pulse.get(item.ticker) %}
                 <td data-sort="{{ cp.price if cp else (item.current_price or 0) }}" id="price-{{ item.ticker }}" class="{% if cp and cp.is_stale %}stale-text{% endif %}">
                     {% if cp %}
-                        {{ cp.price }}
+                        {{ "{:,.2f}".format(cp.price|float) }}
                     {% elif item.current_price is not none %}
                         {{ "{:,.2f}".format(item.current_price) }}
                     {% else %}
@@ -176,7 +176,7 @@
                 <td data-sort="{{ cp.change_pct if cp else 0 }}" id="change-{{ item.ticker }}" class="{% if cp and cp.is_stale %}stale-text{% elif cp %}{% if cp.is_positive %}trend-up{% else %}trend-down{% endif %}{% endif %}">
                     {% if cp %}
                         {% set sign = '+' if cp.is_positive else '' %}
-                        {{ sign }}{{ cp.change_pct }}%
+                        {{ sign }}{{ "{:,.2f}".format(cp.change_pct|float) }}%
                     {% else %}
                         -
                     {% endif %}

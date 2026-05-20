@@ -124,9 +124,9 @@ def get_cached_pulse_from_db(asset_tickers: List[str], refresh_rate: int) -> Dic
             data_obj = {
                 "ticker": t,
                 "name": INDEX_TICKERS.get(t, t),
-                "price": "0.00",
-                "change_pts": "0.00",
-                "change_pct": "0.00",
+                "price": 0.0,
+                "change_pts": 0.0,
+                "change_pct": 0.0,
                 "is_positive": True,
                 "is_stale": True,
                 "sentiment_score": sentiment_scores.get(t, None)
@@ -178,7 +178,7 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
                             name = INDEX_TICKERS.get(ticker, ticker)
                             cursor.execute(
                                 "INSERT INTO market_pulse_cache (ticker, name, price, change_pts, change_pct, is_positive, last_updated) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                                (ticker, name, "0.00", "0.00", "0.00", 1, current_time)
+                                (ticker, name, 0.0, 0.0, 0.0, 1, current_time)
                             )
                         continue
                         
@@ -197,7 +197,7 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
                         name = INDEX_TICKERS.get(ticker, ticker)
                         cursor.execute(
                             "INSERT INTO market_pulse_cache (ticker, name, price, change_pts, change_pct, is_positive, last_updated) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                            (ticker, name, "0.00", "0.00", "0.00", 1, current_time)
+                            (ticker, name, 0.0, 0.0, 0.0, 1, current_time)
                         )
                     continue
 
@@ -214,16 +214,13 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
                 change_pct: float = (change_pts / prev_close) * 100.0 if not pd.isna(prev_close) and prev_close != 0 else 0.0
 
                 name: str = INDEX_TICKERS.get(ticker, ticker)
-                price_str: str = f"{current_price:,.2f}"
-                change_pts_str: str = f"{change_pts:,.2f}"
-                change_pct_str: str = f"{change_pct:,.2f}"
                 is_positive: int = int(change_pts >= 0)
                 
                 cursor.execute('''
                     INSERT OR REPLACE INTO market_pulse_cache 
                     (ticker, name, price, change_pts, change_pct, is_positive, last_updated)
                     VALUES (?, ?, ?, ?, ?, ?, ?)
-                ''', (ticker, name, price_str, change_pts_str, change_pct_str, is_positive, current_time))
+                ''', (ticker, name, current_price, change_pts, change_pct, is_positive, current_time))
                 
             except Exception as e:
                 print(f"[MARKET PULSE BACKGROUND] Error processing {ticker}: {e}")
@@ -265,16 +262,13 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
                     gilt_change_pct: float = (gilt_change_pts / gilt_prev_close) * 100.0 if gilt_prev_close != 0.0 else 0.0
                     
                     gilt_name: str = INDEX_TICKERS.get("UK10YG", "UK 10Y Gilt")
-                    gilt_price_str: str = f"{live_gilt_yield:,.2f}"
-                    gilt_change_pts_str: str = f"{gilt_change_pts:,.2f}"
-                    gilt_change_pct_str: str = f"{gilt_change_pct:,.2f}"
                     gilt_is_positive: int = int(gilt_change_pts >= 0)
                     
                     cursor.execute('''
                         INSERT OR REPLACE INTO market_pulse_cache 
                         (ticker, name, price, change_pts, change_pct, is_positive, last_updated)
                         VALUES (?, ?, ?, ?, ?, ?, ?)
-                    ''', ("UK10YG", gilt_name, gilt_price_str, gilt_change_pts_str, gilt_change_pct_str, gilt_is_positive, current_time))
+                    ''', ("UK10YG", gilt_name, live_gilt_yield, gilt_change_pts, gilt_change_pct, gilt_is_positive, current_time))
                 else:
                     # Enforce update boundary on scraper failure to avoid thread deadlock
                     cursor.execute("UPDATE market_pulse_cache SET last_updated = ? WHERE ticker = 'UK10YG'", (current_time,))

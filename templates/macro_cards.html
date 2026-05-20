@@ -120,12 +120,15 @@
                 sentBadgeHTML = `<div style="margin-top: 10px;"><span class="sent-badge ${sClass}">${sText} (${sScore.toFixed(3)})</span></div>`;
             }
             
+            const formattedPrice = Number(index.price).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            const formattedChange = Number(index.change_pct).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
             const cardHTML = `
                 <div class="macro-card ${cardClass} ${staleClass}">
                     <div class="macro-title ${staleText}">${index.name}</div>
-                    <div class="macro-price ${staleText}">${index.price}</div>
+                    <div class="macro-price ${staleText}">${formattedPrice}</div>
                     <div class="macro-change ${changeClass} ${staleText}">
-                        ${sign}${index.change_pct}%
+                        ${sign}${formattedChange}%
                     </div>
                     ${sentBadgeHTML}
                 </div>
@@ -140,9 +143,12 @@
             const changeEl = document.getElementById('change-' + asset.ticker);
             
             if (priceEl && changeEl) {
-                priceEl.innerText = asset.price;
+                const formattedPrice = Number(asset.price).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                const formattedChange = Number(asset.change_pct).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
+                priceEl.innerText = formattedPrice;
                 const sign = asset.is_positive ? '+' : '';
-                changeEl.innerText = `${sign}${asset.change_pct}%`;
+                changeEl.innerText = `${sign}${formattedChange}%`;
                 
                 if (asset.is_stale) {
                     changeEl.className = 'stale-text';
