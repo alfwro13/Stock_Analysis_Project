@@ -39,8 +39,8 @@ from ai_prediction_engine import train_global_ml_model, update_daily_ml_predicti
 from risk_engine import update_all_tail_risks
 from profile_engine import update_single_profile
 
-# Import the custom IPv6 adapter for the diagnostic endpoint
-from tools.network_engine import IPv6SourceAddressAdapter
+# Import curl_cffi for resilient IPv6 socket testing
+from curl_cffi import requests as cffi_requests
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -408,25 +408,21 @@ def test_insider_alert():
     if success: return JSONResponse(content={"status": "success", "message": msg})
     else: return JSONResponse(status_code=500, content={"status": "error", "message": msg})
 
-# --- NEW: IPv6 DIAGNOSTIC ENDPOINT ---
+# --- NEW: IPv6 DIAGNOSTIC ENDPOINT (cURL CFFI IMPLEMENTATION) ---
 @api_router.post("/settings/test-yahoo-ipv6")
 async def test_yahoo_ipv6(request: IPv6TestRequest):
     """
     Diagnostic endpoint to safely verify an IPv6 socket binding.
-    Executes a low-latency price fetch against Yahoo Finance edge nodes.
+    Executes a low-latency price fetch against Yahoo Finance edge nodes using curl_cffi.
     """
     ipv6_addr = request.ipv6_address.strip()
     if not ipv6_addr:
         return JSONResponse(status_code=400, content={"status": "error", "message": "IPv6 address cannot be empty."})
 
-    test_session = requests.Session()
+    test_session = cffi_requests.Session(impersonate="chrome", interface=ipv6_addr)
+    
     try:
         logger.info(f"Executing diagnostic IPv6 socket bind test for {ipv6_addr}...")
-        
-        # Mount the custom adapter forcing traffic out via the provided IPv6 interface
-        adapter = IPv6SourceAddressAdapter(source_address=ipv6_addr)
-        test_session.mount("https://", adapter)
-        test_session.mount("http://", adapter)
         
         # Override the session's request method to enforce a strict timeout
         # This prevents the test from hanging indefinitely if the route is blocked
@@ -453,31 +449,26 @@ async def test_yahoo_ipv6(request: IPv6TestRequest):
                 "message": "Connection established, but Yahoo Finance returned empty data. The API endpoint may be restricting responses."
             })
 
-    except requests.exceptions.Timeout:
-        logger.error(f"IPv6 Diagnostic Timeout: Route to {ipv6_addr} hangs.")
-        return JSONResponse(status_code=504, content={"status": "error", "message": "Connection timed out. The IPv6 address may be unroutable, blocked by your firewall, or lacks internet access."})
-    
-    except requests.exceptions.ConnectionError as e:
+    except Exception as e:
         error_str = str(e)
-        logger.error(f"IPv6 Diagnostic Connection Error: {error_str}")
+        logger.error(f"IPv6 Diagnostic Exception: {error_str}")
         
         # Intelligent exception parsing to return highly descriptive UI errors
-        if "Cannot assign requested address" in error_str:
+        if "Couldn't bind" in error_str or "bind failed" in error_str.lower() or "assign requested address" in error_str.lower():
             msg = f"Socket binding failed. The address '{ipv6_addr}' is not assigned to any physical or virtual local network interface on this server."
-        elif "Network is unreachable" in error_str:
+        elif "Network is unreachable" in error_str or "unreachable" in error_str.lower():
             msg = "Network unreachable. The socket bound successfully, but your server lacks an active IPv6 upstream internet gateway."
+        elif "Timeout" in error_str or "timeout" in error_str.lower():
+            return JSONResponse(status_code=504, content={"status": "error", "message": "Connection timed out. The IPv6 address may be unroutable, blocked by your firewall, or lacks internet access."})
         else:
             msg = f"Connection refused or failed during socket negotiation: {error_str}"
             
         return JSONResponse(status_code=502, content={"status": "error", "message": msg})
         
-    except Exception as e:
-        logger.error(f"IPv6 Diagnostic Critical Failure: {e}")
-        return JSONResponse(status_code=500, content={"status": "error", "message": f"An unexpected pipeline error occurred: {str(e)}"})
-        
     finally:
         test_session.close()
 
+# --- RESTORED ROUTES BELOW THIS LINE ---
 
 @api_router.post("/system/git-pull")
 async def git_pull_update():
