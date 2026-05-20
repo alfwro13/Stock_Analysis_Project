@@ -73,8 +73,9 @@ def test_finbert_nlp_scoring(news_data: List[Dict[str, Any]]) -> float:
                 logger.warning(f"Article {i+1} resulted in empty text string.")
                 continue
                 
-            # 3. Execute FinBERT Scoring (truncated to 512 chars)
-            result = analyzer(text_to_analyze[:512])[0]
+            # 3. Execute FinBERT Scoring (Proper Token Truncation)
+            # Allow up to 2000 chars to reach the tokenizer, then let the tokenizer strictly enforce the 512 token limit
+            result = analyzer(text_to_analyze[:2000], truncation=True, max_length=512)[0]
             label = result['label'].lower()
             prob = result['score']
             

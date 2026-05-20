@@ -607,8 +607,8 @@ def fetch_and_score_news(ticker: str, analyzer) -> float:
                 
             # FinBERT output is typically [{'label': 'positive', 'score': 0.85}]
             try:
-                # We truncate to 512 characters to avoid exceeding BERT's maximum token limit
-                result = analyzer(text_to_analyze[:512])[0]
+                # Proper Token Truncation logic implemented
+                result = analyzer(text_to_analyze[:2000], truncation=True, max_length=512)[0]
                 label = result['label'].lower()
                 prob = result['score']
                 
@@ -745,8 +745,8 @@ def run_central_bank_nlp_alert(event_name: str, currency: str) -> bool:
             if "rate" not in text_to_analyze.lower() and "inflation" not in text_to_analyze.lower() and target_entity.lower() not in text_to_analyze.lower():
                 continue
                 
-            # Score with FinBERT
-            result = analyzer(text_to_analyze[:512])[0]
+            # Score with FinBERT (Proper Token Truncation logic implemented)
+            result = analyzer(text_to_analyze[:2000], truncation=True, max_length=512)[0]
             label = result['label'].lower()
             prob = result['score']
             
