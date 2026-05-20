@@ -97,9 +97,27 @@
         
         data.forEach(index => {
             const isPos = index.is_positive;
-            const cardClass = isPos ? 'positive' : 'negative';
-            const changeClass = isPos ? 'positive' : 'negative';
+            let cardClass = '';
+            let changeClass = '';
             const sign = isPos ? '+' : '';
+            
+            // Core Logic for Macro Polarity (Bug 4 Fix)
+            const invertedTickers = ['^TYX', '^TNX', 'UK10YG', 'DX-Y.NYB'];
+            const isForex = index.ticker === 'GBPUSD=X';
+
+            if (invertedTickers.includes(index.ticker)) {
+                // Inverted polarity: Surging yields/dollar = Red (Danger), Dropping = Green (Safe)
+                cardClass = isPos ? 'negative' : 'positive';
+                changeClass = isPos ? 'negative' : 'positive';
+            } else if (isForex) {
+                // Neutral polarity for Forex
+                cardClass = 'chart-wrapper-accent-cyan';
+                changeClass = 'text-accent-cyan';
+            } else {
+                // Standard polarity for equities (Up = Green, Down = Red)
+                cardClass = isPos ? 'positive' : 'negative';
+                changeClass = isPos ? 'positive' : 'negative';
+            }
             
             // Assign transparent gray classes if the DB data is older than refresh rate
             const staleClass = index.is_stale ? 'stale-card' : '';

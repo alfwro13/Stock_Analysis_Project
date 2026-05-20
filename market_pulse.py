@@ -38,7 +38,7 @@ def get_all_cached_pulse() -> Dict[str, Dict[str, Any]]:
     conn.close()
     
     config_data = load_config()
-    refresh_rate: int = config_data.get("UI_PREFERENCES", {}).get("REFRESH_RATE", 60)
+    refresh_rate: int = int(config_data.get("UI_PREFERENCES", {}).get("REFRESH_RATE", 60))
     current_time: float = time.time()
     
     cache: Dict[str, Dict[str, Any]] = {}
@@ -109,7 +109,7 @@ def get_cached_pulse_from_db(asset_tickers: List[str], refresh_rate: int) -> Dic
     for t in all_tickers:
         if t in db_map:
             row = db_map[t]
-            is_stale: bool = (current_time - row['last_updated']) > refresh_rate
+            is_stale: bool = (current_time - row['last_updated']) > int(refresh_rate)
             data_obj: Dict[str, Any] = {
                 "ticker": t,
                 "name": row['name'],
@@ -161,9 +161,12 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
         df_live = pd.DataFrame()
         
         if tickers_to_fetch:
-            df_daily = yf.download(tickers_to_fetch, period="5d", interval="1d", group_by='ticker', progress=False)
-            df_live = yf.download(tickers_to_fetch, period="1d", interval="2m", prepost=True, group_by='ticker', progress=False)
-        
+            try:
+                df_daily = yf.download(tickers_to_fetch, period="5d", interval="1d", group_by='ticker', progress=False)
+                df_live = yf.download(tickers_to_fetch, period="1d", interval="2m", prepost=True, group_by='ticker', progress=False)
+            except Exception as e:
+                logger.error(f"YFinance batch download failed: {e}")
+                
         conn = get_connection()
         cursor = conn.cursor()
         current_time: float = time.time()
@@ -171,23 +174,25 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
         # 1. Ingest Standard Yahoo Finance Securities
         for ticker in tickers_to_fetch:
             try:
-                if isinstance(df_daily.columns, pd.MultiIndex):
-                    if ticker not in df_daily.columns.get_level_values(0) or ticker not in df_live.columns.get_level_values(0):
-                        cursor.execute("UPDATE market_pulse_cache SET last_updated = ? WHERE ticker = ?", (current_time, ticker))
-                        if cursor.rowcount == 0:
-                            name = INDEX_TICKERS.get(ticker, ticker)
-                            cursor.execute(
-                                "INSERT INTO market_pulse_cache (ticker, name, price, change_pts, change_pct, is_positive, last_updated) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                                (ticker, name, 0.0, 0.0, 0.0, 1, current_time)
-                            )
-                        continue
-                        
-                    t_daily = df_daily[ticker].copy()
-                    t_live = df_live[ticker].copy()
-                else:
-                    t_daily = df_daily.copy()
-                    t_live = df_live.copy()
-                    
+                t_daily = pd.DataFrame()
+                t_live = pd.DataFrame()
+
+                if not df_daily.empty:
+                    if isinstance(df_daily.columns, pd.MultiIndex):
+                        if ticker in df_daily.columns.get_level_values(0):
+                            t_daily = df_daily[ticker].copy()
+                    else:
+                        if len(tickers_to_fetch) == 1:
+                            t_daily = df_daily.copy()
+                            
+                if not df_live.empty:
+                    if isinstance(df_live.columns, pd.MultiIndex):
+                        if ticker in df_live.columns.get_level_values(0):
+                            t_live = df_live[ticker].copy()
+                    else:
+                        if len(tickers_to_fetch) == 1:
+                            t_live = df_live.copy()
+                            
                 t_daily.dropna(subset=['Close'], inplace=True)
                 t_live.dropna(subset=['Close'], inplace=True)
                 
@@ -223,7 +228,7 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
                 ''', (ticker, name, current_price, change_pts, change_pct, is_positive, current_time))
                 
             except Exception as e:
-                print(f"[MARKET PULSE BACKGROUND] Error processing {ticker}: {e}")
+                logger.error(f"[MARKET PULSE BACKGROUND] Error processing {ticker}: {e}")
                 
         # 2. Ingest Sovereign UK 10Y Gilt Exclusively via FT.com Scraper Engine
         if handle_gilt:
@@ -273,11 +278,11 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
                     # Enforce update boundary on scraper failure to avoid thread deadlock
                     cursor.execute("UPDATE market_pulse_cache SET last_updated = ? WHERE ticker = 'UK10YG'", (current_time,))
             except Exception as ex:
-                print(f"[MARKET PULSE BACKGROUND] FT Gilt pipeline execution failed: {ex}")
+                logger.error(f"[MARKET PULSE BACKGROUND] FT Gilt pipeline execution failed: {ex}")
                 
         conn.commit()
         conn.close()
     except Exception as e:
-        print(f"[MARKET PULSE BACKGROUND] Batch download failed: {e}")
+        logger.error(f"[MARKET PULSE BACKGROUND] Batch download failed: {e}")
     finally:
         _FETCHING = False

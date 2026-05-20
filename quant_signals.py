@@ -395,7 +395,24 @@ class QuantEngine:
             quote_type = info.get('quoteType', 'EQUITY')
             is_fund = bool(quote_type in ['ETF', 'MUTUALFUND'])
             
-            company_name = info.get('shortName') or info.get('longName') or ticker
+            # --- DATABASE FALLBACK FOR MUTUAL FUND NAMING ISSUES ---
+            company_name = info.get('shortName') or info.get('longName')
+            if not company_name:
+                try:
+                    cursor = self.conn.cursor()
+                    cursor.execute("SELECT company_name FROM asset_profiles WHERE ticker = ?", (ticker,))
+                    p_row = cursor.fetchone()
+                    if p_row and p_row['company_name'] and p_row['company_name'] != ticker:
+                        company_name = p_row['company_name']
+                    else:
+                        cursor.execute("SELECT company_name FROM market_universe WHERE ticker = ?", (ticker,))
+                        m_row = cursor.fetchone()
+                        if m_row and m_row['company_name'] and m_row['company_name'] != ticker:
+                            company_name = m_row['company_name']
+                except Exception as ex:
+                    logger.debug(f"Failed to fetch database fallback name for {ticker}: {ex}")
+            company_name = company_name or ticker
+            
             sector = info.get('category', info.get('sector', 'Fund')) if is_fund else info.get('sector', 'Unknown')
             
             fifty_two_week_low = info.get('fiftyTwoWeekLow', None)
