@@ -153,14 +153,17 @@ class QuantEngine:
         if len(weekly_data) < 4:
             return False, False
         
-        # Determine if the current week is complete (Friday is 4)
-        if df.index[-1].weekday() == 4:
-            last_3_weeks = weekly_data.iloc[-3:]
+        # [ISSUE 4.2 FIXED] Standardize completed weeks to prevent incomplete week volume drag
+        # If the last recorded day is not Friday (weekday 4), drop the last incomplete week
+        if df.index[-1].weekday() < 4:
+            completed_weeks = weekly_data.iloc[:-1]
         else:
-            last_3_weeks = weekly_data.iloc[-4:-1]
+            completed_weeks = weekly_data
             
-        if len(last_3_weeks) < 3:
+        if len(completed_weeks) < 3:
             return False, False
+        
+        last_3_weeks = completed_weeks.iloc[-3:]
         
         # Calculate sequential variance using the High-Low range across the 3 weeks
         w1_range = last_3_weeks.iloc[0]['High'] - last_3_weeks.iloc[0]['Low']
@@ -177,8 +180,8 @@ class QuantEngine:
         
         is_tight = is_contracting and (total_range_pct <= 0.10)
         
-        # Compare weekly volumes directly to weekly rolling averages
-        weekly_vol_avg_50d = weekly_data['Volume'].rolling(10).mean().iloc[-1]
+        # Compare weekly volumes directly to weekly rolling averages on completed weeks only
+        weekly_vol_avg_50d = completed_weeks['Volume'].rolling(10).mean().iloc[-1]
         
         if pd.isna(weekly_vol_avg_50d):
             is_dry_volume = False
@@ -457,12 +460,21 @@ class QuantEngine:
             beta = info.get('beta', None)
 
             # [MATH-11] Safely handle scale consistency for Peter Lynch PEG
+            # [ISSUE 1.1 FIXED] Include Dividend Yield in the Peter Lynch formulation
             peter_lynch_peg = None
             if trailing_pe and trailing_pe > 0 and earnings_growth and earnings_growth > 0:
-                # If growth is represented as a decimal (0.15), scale it to 15.0 for the Peter Lynch formula.
-                # If already scaled (15.0), leave it as is.
+                # Scale earnings growth
                 eg_scaled = earnings_growth if earnings_growth >= 1.0 else (earnings_growth * 100.0)
-                peter_lynch_peg = trailing_pe / eg_scaled
+                
+                # Scale dividend yield safely
+                div_yield_val = dividend_yield if dividend_yield is not None else 0.0
+                div_yield_scaled = div_yield_val if div_yield_val >= 1.0 else (div_yield_val * 100.0)
+                
+                total_growth_yield = eg_scaled + div_yield_scaled
+                
+                # Calculate True Peter Lynch PEG, guarding against negative denominators
+                if total_growth_yield > 0:
+                    peter_lynch_peg = trailing_pe / total_growth_yield
 
             # ==========================================
             # PART 3: SCORING & SETUP TAGS
