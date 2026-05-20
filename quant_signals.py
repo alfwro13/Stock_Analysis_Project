@@ -346,7 +346,7 @@ class QuantEngine:
                             
                             # Institutional Dynamic ATR Stop-Loss Multipier Logic
                             if has_volatility_warning:
-                                multiplier = 1.5  # Tighten stop defensively for imminent severe macro shock
+                                multiplier = 3.0  # Widen stop defensively to survive imminent macro shock whipsaws
                             elif atr_stability > 1.2:
                                 multiplier = 2.5  # Volatility expanding, widen stop to avoid noise whipsaws
                             elif atr_stability < 0.8:
