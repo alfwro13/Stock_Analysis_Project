@@ -137,6 +137,25 @@ class IntradayOrchestrator:
         conn.close()
         return result is not None
 
+    def _has_corporate_action_today(self, ticker: str) -> bool:
+        """
+        Queries Yahoo Finance for dividends or stock splits occurring today.
+        Used as a lazy circuit breaker to prevent false anomaly alerts.
+        """
+        try:
+            tk = yf.Ticker(ticker)
+            actions = tk.actions
+            if actions is not None and not actions.empty:
+                if actions.index.tz is not None:
+                    actions.index = actions.index.tz_localize(None)
+                
+                today_date = datetime.now().date()
+                if today_date in actions.index.date:
+                    return True
+        except Exception as e:
+            print(f"[ORCHESTRATOR] Failed to check corporate actions for {ticker}: {e}")
+        return False
+
     def run(self):
         print(f"\n--- [INTRADAY ORCHESTRATOR] Scan Initiated @ {datetime.now().strftime('%H:%M:%S')} ---")
         
@@ -279,6 +298,17 @@ class IntradayOrchestrator:
                 if df_hist.empty or len(df_hist) < 20:
                     continue
                     
+                # --- PRE-FLIGHT ANOMALY CHECK (CORPORATE ACTION CIRCUIT BREAKER) ---
+                # Compare the live price against the last known historical close.
+                # If there's a massive gap (>10%), lazily check for a split/dividend to avoid false alerts.
+                last_hist_close = df_hist['Close'].iloc[-1]
+                if last_hist_close > 0:
+                    raw_gap_pct = abs((current_price - last_hist_close) / last_hist_close) * 100.0
+                    if raw_gap_pct > 10.0:
+                        if self._has_corporate_action_today(ticker):
+                            print(f"[ORCHESTRATOR] 🛑 Corporate action detected for {ticker}. Suppressing execution to prevent false signals.")
+                            continue
+
                 # Strict Time-Series Stitching Normalization
                 latest_dt = df_intraday.index[-1]
                 latest_date_only = latest_dt.normalize()
