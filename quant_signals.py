@@ -207,16 +207,22 @@ class QuantEngine:
         
         high_col = 'High' if 'High' in df.columns else 'Close'
         
-        # Find the exact index of the price high in each half
-        price_peak1_idx = p1[high_col].idxmax()
-        price_peak2_idx = p2[high_col].idxmax()
+        # [ISSUE 1.3 FIXED] Find integer indices to create flexible 5-day rolling windows
+        peak1_iloc = p1[high_col].argmax()
+        peak2_iloc = p2[high_col].argmax() + 15
         
-        price_peak1 = p1.loc[price_peak1_idx, high_col]
-        price_peak2 = p2.loc[price_peak2_idx, high_col]
+        price_peak1 = last_30[high_col].iloc[peak1_iloc]
+        price_peak2 = last_30[high_col].iloc[peak2_iloc]
         
-        # Extract RSI reading precisely at the index of the price peak
-        rsi_at_peak1 = p1.loc[price_peak1_idx, 'RSI']
-        rsi_at_peak2 = p2.loc[price_peak2_idx, 'RSI']
+        # Safely bind indices to a +/- 2 day rolling window around the peak
+        window1_start = max(0, peak1_iloc - 2)
+        window1_end = min(len(last_30), peak1_iloc + 3)
+        window2_start = max(0, peak2_iloc - 2)
+        window2_end = min(len(last_30), peak2_iloc + 3)
+        
+        # Extract the maximum RSI reading specifically within the localized 5-day windows
+        rsi_at_peak1 = last_30['RSI'].iloc[window1_start:window1_end].max()
+        rsi_at_peak2 = last_30['RSI'].iloc[window2_start:window2_end].max()
         
         # Divergence confirmed: Price is higher, RSI is lower, and the first RSI peak was overbought
         if price_peak2 > price_peak1 and rsi_at_peak2 < rsi_at_peak1 and rsi_at_peak1 > 70.0:
