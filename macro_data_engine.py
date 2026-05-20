@@ -9,12 +9,10 @@ from datetime import datetime, timedelta
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from typing import Optional, List, Dict
-from config import load_config
+from config import load_config, DB_PATH
 
 # Configure module-level logging
 logger = logging.getLogger(__name__)
-
-DB_PATH = "data/analysis.db"
 
 # Standard headers to bypass WAF challenges
 HEADERS = {
@@ -30,8 +28,9 @@ ONS_TAXONOMY: Dict[str, str] = {
 
 def get_connection() -> sqlite3.Connection:
     """Returns a native SQLite connection."""
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    return sqlite3.connect(DB_PATH)
+    # Wrapping in str() strictly ensures compatibility if DB_PATH is a pathlib.Path object
+    os.makedirs(os.path.dirname(str(DB_PATH)), exist_ok=True)
+    return sqlite3.connect(str(DB_PATH))
 
 def setup_database() -> None:
     """Ensures the macro_indicators table is structured idempotently."""
