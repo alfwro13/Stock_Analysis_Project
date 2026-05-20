@@ -1,56 +1,111 @@
 # portfolio_service.py
 import yfinance as yf
+import time
+import threading
+import logging
+from typing import Dict
 from config import BASE_CURRENCY
 
+# --- Logging Setup ---
+logger = logging.getLogger(__name__)
+
 # --- Global Foreign Exchange (FX) Cache ---
-# Stores FX pairs (e.g., "USDGBP=X": 0.79) to prevent slow API calls on every page refresh
-fx_cache = {}
+# Stores FX pairs with timestamps to prevent slow API calls and stale data.
+# Format: {"USDGBP=X": {"rate": 0.79, "timestamp": 1684560000.0}}
+fx_cache: Dict[str, Dict[str, float]] = {}
+fx_lock = threading.Lock()
+FX_CACHE_TTL = 600  # 10 minutes in seconds
 
 def get_rate_to_base(stock_currency: str) -> float:
     """
     Converts Native to Base (e.g., USD -> GBP).
     Used heavily by the Global Portfolio Summary Math.
+    Implements a thread-safe, TTL-based caching mechanism.
     """
-    global fx_cache
-    exchange_rate = 1.0
-    
     if stock_currency == 'GBp' and BASE_CURRENCY == 'GBP':
-        exchange_rate = 0.01  # Special LSE Math
-    elif stock_currency and stock_currency not in [BASE_CURRENCY, 'GBp', 'GBP']:
-        pair = f"{stock_currency}{BASE_CURRENCY}=X"
-        if pair not in fx_cache:
-            try:
-                fx_data = yf.Ticker(pair).history(period="1d")
-                if not fx_data.empty:
-                    fx_cache[pair] = fx_data['Close'].iloc[-1]
-                else:
-                    fx_cache[pair] = 1.0
-            except Exception:
-                fx_cache[pair] = 1.0
-        exchange_rate = fx_cache[pair]
+        return 0.01  # Special LSE Math
         
-    return exchange_rate
+    if not stock_currency or stock_currency in [BASE_CURRENCY, 'GBp', 'GBP']:
+        return 1.0
+
+    pair = f"{stock_currency}{BASE_CURRENCY}=X"
+    current_time = time.time()
+
+    # Optimistic read without lock for performance
+    cached = fx_cache.get(pair)
+    if cached and (current_time - cached["timestamp"] < FX_CACHE_TTL):
+        return cached["rate"]
+
+    # Cache miss or stale data: acquire lock to fetch
+    with fx_lock:
+        # Double-check inside lock to prevent redundant API calls from queued threads
+        cached = fx_cache.get(pair)
+        if cached and (time.time() - cached["timestamp"] < FX_CACHE_TTL):
+            return cached["rate"]
+
+        try:
+            logger.info(f"Fetching fresh FX rate for {pair} from yfinance...")
+            fx_data = yf.Ticker(pair).history(period="1d")
+            if not fx_data.empty:
+                rate = float(fx_data['Close'].iloc[-1])
+            else:
+                logger.warning(f"Empty data returned for {pair}. Defaulting to 1.0.")
+                rate = 1.0
+        except Exception as e:
+            logger.error(f"Failed to fetch exchange rate for {pair}: {e}")
+            # Fallback to stale cache if API fails to prevent portfolio valuation collapse
+            if cached:
+                logger.warning(f"Using stale cache for {pair} due to API failure.")
+                rate = cached["rate"]
+            else:
+                rate = 1.0
+
+        # Update cache with the new rate and current timestamp
+        fx_cache[pair] = {"rate": rate, "timestamp": time.time()}
+        return rate
+
 
 def get_rate_from_base(stock_currency: str) -> float:
     """
     Converts Base to Native (e.g., GBP -> USD).
     Used to display individual Ghostfolio buys back in their native chart currencies.
+    Implements a thread-safe, TTL-based caching mechanism.
     """
-    global fx_cache
-    exchange_rate = 1.0
-    
-    if stock_currency and stock_currency not in [BASE_CURRENCY, 'GBp', 'GBP']:
-        pair = f"{BASE_CURRENCY}{stock_currency}=X"
-        if pair not in fx_cache:
-            try:
-                fx_data = yf.Ticker(pair).history(period="1d")
-                if not fx_data.empty:
-                    fx_cache[pair] = fx_data['Close'].iloc[-1]
-                else:
-                    fx_cache[pair] = 1.0
-            except Exception as e:
-                print(f"[WARNING] Could not fetch exchange rate for {pair}: {e}")
-                fx_cache[pair] = 1.0
-        exchange_rate = fx_cache[pair]
-        
-    return exchange_rate
+    if not stock_currency or stock_currency in [BASE_CURRENCY, 'GBp', 'GBP']:
+        return 1.0
+
+    pair = f"{BASE_CURRENCY}{stock_currency}=X"
+    current_time = time.time()
+
+    # Optimistic read without lock for performance
+    cached = fx_cache.get(pair)
+    if cached and (current_time - cached["timestamp"] < FX_CACHE_TTL):
+        return cached["rate"]
+
+    # Cache miss or stale data: acquire lock to fetch
+    with fx_lock:
+        # Double-check inside lock to prevent redundant API calls from queued threads
+        cached = fx_cache.get(pair)
+        if cached and (time.time() - cached["timestamp"] < FX_CACHE_TTL):
+            return cached["rate"]
+
+        try:
+            logger.info(f"Fetching fresh FX rate for {pair} from yfinance...")
+            fx_data = yf.Ticker(pair).history(period="1d")
+            if not fx_data.empty:
+                rate = float(fx_data['Close'].iloc[-1])
+            else:
+                logger.warning(f"Empty data returned for {pair}. Defaulting to 1.0.")
+                rate = 1.0
+        except Exception as e:
+            logger.error(f"Failed to fetch exchange rate for {pair}: {e}")
+            # Fallback to stale cache if API fails to prevent portfolio valuation collapse
+            if cached:
+                logger.warning(f"Using stale cache for {pair} due to API failure.")
+                rate = cached["rate"]
+            else:
+                rate = 1.0
+
+        # Update cache with the new rate and current timestamp
+        fx_cache[pair] = {"rate": rate, "timestamp": time.time()}
+        return rate

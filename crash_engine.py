@@ -2,10 +2,14 @@
 import pandas as pd
 import yfinance as yf
 import ta
+import logging
 from datetime import datetime, timedelta
 
+# Initialize module-level logger for production observability
+logger = logging.getLogger(__name__)
+
 class CrashEngine:
-    def __init__(self, config):
+    def __init__(self, config: dict):
         """Initializes the Crash Engine with dynamically loaded configurations."""
         self.config = config
         self.crash_cfg = self.config.get("NOTIFICATIONS", {}).get("CRASH_ALERTS", {})
@@ -27,8 +31,8 @@ class CrashEngine:
                 prev_close = spy['Close'].iloc[0]
                 curr_price = spy['Close'].iloc[1]
                 return ((curr_price - prev_close) / prev_close) * 100.0
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to fetch macroeconomic context (SPY): {e}")
         return 0.0
 
     def _generate_context_report(self, ticker: str, drop_pct: float, df_combined: pd.DataFrame, asset_meta: dict) -> str:
@@ -49,6 +53,9 @@ class CrashEngine:
             report.append(f"The broader market is slightly weak (S&P 500: {spy_drop:.2f}%), but {company_name} is significantly underperforming the baseline.")
 
         # 2. Volume Anomaly Check
+        # FIX: Pre-initialize to prevent NameError if yf.Ticker initialization fails.
+        live_ticker = None 
+        
         try:
             live_ticker = yf.Ticker(ticker)
             live_data = live_ticker.history(period="1mo")
@@ -67,8 +74,8 @@ class CrashEngine:
                         report.append(f"Selling pressure is severe. Intraday volume has already surged to {current_vol:,.0f}, which is massively above its recent average. This indicates heavy institutional distribution.")
                     else:
                         report.append("Interestingly, this price drop is occurring on relatively low/average volume, suggesting a lack of liquidity or an absence of buyers rather than aggressive institutional dumping.")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Volume anomaly check failed for {ticker}: {e}")
 
         # 3. Technical Damage Assessment
         latest_price = df_combined['Close'].iloc[-1]
@@ -76,50 +83,50 @@ class CrashEngine:
             sma50 = ta.trend.sma_indicator(df_combined['Close'], window=50).iloc[-1]
             if latest_price < sma50 and df_combined['Close'].iloc[-2] >= sma50:
                 report.append("Technical damage is notable: the stock just sliced violently through its 50-day moving average, a key institutional support level.")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Technical damage assessment failed for {ticker}: {e}")
 
         # 4. Catalyst Extraction (News Headlines)
         try:
-            news = live_ticker.news
-            if news:
-                report.append("\n**Potential Catalysts / Recent Headlines:**")
-                # Grab the top 3 most recent news articles
-                for item in news[:3]:
-                    # Handle new yfinance nested 'content' structure
-                    content = item.get('content', item)
-                    headline = content.get('title', '')
-                    
-                    publisher = content.get('publisher', '')
-                    if not publisher and isinstance(content.get('provider'), dict):
-                        publisher = content['provider'].get('displayName', '')
+            if live_ticker is not None:
+                news = live_ticker.news
+                if news:
+                    report.append("\n**Potential Catalysts / Recent Headlines:**")
+                    # Grab the top 3 most recent news articles
+                    for item in news[:3]:
+                        # Handle new yfinance nested 'content' structure
+                        content = item.get('content', item)
+                        headline = content.get('title', '')
                         
-                    # Extract publish time flexibly
-                    pub_time_raw = content.get('pubDate') or content.get('providerPublishTime') or item.get('providerPublishTime', 0)
-                    
-                    try:
-                        # Handle both string (ISO) and float (UNIX) timestamp formats
-                        if isinstance(pub_time_raw, str):
-                            import pandas as pd
-                            pub_time = pd.to_datetime(pub_time_raw).tz_localize(None)
-                        else:
-                            from datetime import datetime
-                            pub_time = datetime.fromtimestamp(float(pub_time_raw))
+                        publisher = content.get('publisher', '')
+                        if not publisher and isinstance(content.get('provider'), dict):
+                            publisher = content['provider'].get('displayName', '')
                             
-                        # Only include relevant news from the last 48 hours
-                        from datetime import timedelta
-                        if datetime.now() - pub_time < timedelta(days=2):
-                            report.append(f"- *{publisher}:* {headline}")
-                    except Exception:
-                        pass
-        except Exception:
+                        # Extract publish time flexibly
+                        pub_time_raw = content.get('pubDate') or content.get('providerPublishTime') or item.get('providerPublishTime', 0)
+                        
+                        try:
+                            # Handle both string (ISO) and float (UNIX) timestamp formats
+                            if isinstance(pub_time_raw, str):
+                                pub_time = pd.to_datetime(pub_time_raw).tz_localize(None)
+                            else:
+                                pub_time = datetime.fromtimestamp(float(pub_time_raw))
+                                
+                            # Only include relevant news from the last 48 hours
+                            if datetime.now() - pub_time < timedelta(days=2):
+                                report.append(f"- *{publisher}:* {headline}")
+                        except Exception as dt_e:
+                            logger.debug(f"Date parsing failed for news item on {ticker}: {dt_e}")
+            else:
+                report.append("\n**Catalysts:** Could not initialize ticker object to fetch live news.")
+        except Exception as e:
+            logger.warning(f"Catalyst extraction failed for {ticker}: {e}")
             report.append("\n**Catalysts:** No major breaking news headlines found on Yahoo Finance within the last 48 hours.")
 
         # Final string construction
         return "\n".join(report)
 
-
-    def evaluate(self, ticker, current_price, df_combined, asset_meta):
+    def evaluate(self, ticker: str, current_price: float, df_combined: pd.DataFrame, asset_meta: dict) -> dict | None:
         """
         Evaluates mathematical crash signatures, now prioritizing Session Crashes.
         Returns an alert dictionary if triggered, else None.
