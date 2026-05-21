@@ -562,6 +562,22 @@ async def mark_notifications_read():
     except Exception as e:
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
+@api_router.post("/notifications/purge")
+async def purge_all_notifications():
+    """
+    Purges all historical notifications from the SQLite database.
+    """
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM system_notifications")
+        conn.commit()
+        conn.close()
+        return JSONResponse(content={"status": "success", "message": "All notifications purged successfully."})
+    except Exception as e:
+        logger.error(f"Failed to purge notifications: {e}")
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
 @api_router.get("/ai-prompt/{ticker}")
 async def get_ai_prompt(ticker: str, mode: str = "Quantamental Deep-Dive"):
     try:

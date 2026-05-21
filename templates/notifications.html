@@ -20,8 +20,9 @@
             {% set active_page = 'notifications' %}
             {% include 'navbar.html' %}
         </div>
-        <div>
+        <div class="notification-actions">
             <button class="btn-read" onclick="markAllAsRead()">✓ Mark All as Read</button>
+            <button class="btn-danger" onclick="purgeAllNotifications()">🗑️ Purge All</button>
         </div>
     </div>
 
@@ -117,6 +118,46 @@
             } catch (error) {
                 alert("Network error occurred.");
                 btn.innerText = "✓ Mark All as Read";
+                btn.disabled = false;
+            }
+        }
+
+        async function purgeAllNotifications() {
+            if (!confirm("Are you sure you want to permanently delete all notifications? This action cannot be undone.")) {
+                return;
+            }
+
+            const btn = document.querySelector('.btn-danger');
+            const originalText = btn.innerText;
+            btn.disabled = true;
+            btn.innerText = "Processing...";
+
+            try {
+                const response = await fetch('/api/notifications/purge', { method: 'POST' });
+                
+                if (response.ok) {
+                    const list = document.querySelector('.notification-list');
+                    // Reset the DOM to the exact empty-state HTML to maintain layout integrity
+                    list.innerHTML = `
+                        <div class="notification-card" id="empty-state-msg">
+                            <div class="notification-body" style="text-align: center; color: #888;">
+                                No notifications generated yet. Wait for a background scan to complete.
+                            </div>
+                        </div>
+                    `;
+                    
+                    const badge = document.getElementById('nav-badge');
+                    if (badge) badge.style.display = 'none';
+                    
+                    btn.innerText = "✓ Purged";
+                } else {
+                    alert("Failed to purge notifications.");
+                    btn.innerText = originalText;
+                    btn.disabled = false;
+                }
+            } catch (error) {
+                alert("Network error occurred.");
+                btn.innerText = originalText;
                 btn.disabled = false;
             }
         }
