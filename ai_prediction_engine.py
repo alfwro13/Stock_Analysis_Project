@@ -54,14 +54,6 @@ CONTINUOUS_FEATURES = [
 ]
 
 
-def cross_sectional_zscore(series: pd.Series) -> pd.Series:
-    """Calculates Z-Score dynamically. Safe against 0 standard deviation."""
-    std = series.std()
-    if pd.isna(std) or std == 0:
-        return series - series.mean()
-    return (series - series.mean()) / std
-
-
 def get_target_tickers() -> List[str]:
     """
     Combines the user's existing portfolio/watchlist tickers with a dynamic, 
@@ -325,12 +317,17 @@ def train_global_ml_model() -> None:
 
         df.replace([np.inf, -np.inf], np.nan, inplace=True)
 
-        # --- CROSS-SECTIONAL Z-SCORING ---
-        # Forces the model to evaluate features relative to the rest of the market
-        # on that specific trading day, neutralizing Absolute Size / Mega-Cap bias.
-        logger.info("Applying cross-sectional Z-scoring to normalize features across liquidity regimes...")
+        # --- TIME-SERIES Z-SCORING ---
+        # Normalizes each stock against its own 252-day rolling history.
+        # This aligns the training space perfectly with single-stock SHAP inference.
+        logger.info("Applying 252-day rolling time-series Z-scoring to continuous features...")
         for col in CONTINUOUS_FEATURES:
-            df[f'{col}_z'] = df.groupby('date')[col].transform(cross_sectional_zscore)
+            df[f'{col}_z'] = df.groupby('ticker')[col].transform(
+                lambda s: (s - s.rolling(252, min_periods=60).mean()) / 
+                          s.rolling(252, min_periods=60).std()
+            )
+            # Fill NaNs for the initial 60 days or periods with zero variance
+            df[f'{col}_z'] = df[f'{col}_z'].fillna(0.0)
 
         df.dropna(subset=FEATURE_COLS, inplace=True)
 
@@ -495,97 +492,3 @@ def train_global_ml_model() -> None:
         log_notification("Error", f"ML Model Training failed: {str(e)}")
 
 
-def update_daily_ml_predictions(tickers: List[str]) -> None:
-    """
-    Loads the trained model, fetches the latest raw row + structural context,
-    calculates inference features dynamically, normalizes via cross-sectional z-score,
-    and updates the database with confidence scores.
-    
-    Args:
-        tickers (List[str]): Tickers to predict the next 5 days of trajectory for.
-    """
-    if not tickers:
-        logger.warning("Empty ticker list provided for ML inference. Skipping.")
-        return
-
-    if not MODEL_PATH.exists():
-        logger.warning(f"Model file {MODEL_PATH} not found. Awaiting weekend training cycle.")
-        return
-
-    logger.info(f"Initiating ML Inference for {len(tickers)} assets...")
-    
-    conn = None
-    try:
-        model = joblib.load(MODEL_PATH)
-        conn = get_connection()
-        
-        placeholders = ','.join('?' for _ in tickers)
-        query = f"""
-            SELECT qs.ticker, qs.date, qs.close_price, qs.volume, qs.rsi_14, qs.macd, qs.macd_signal, qs.macd_hist, 
-                   qs.sma_50, qs.sma_200, qs.volume_surge, qs.bullish_cross,
-                   tm.sector
-            FROM quant_signals qs
-            LEFT JOIN ticker_metadata tm ON qs.ticker = tm.ticker
-            WHERE qs.ticker IN ({placeholders})
-            AND qs.date = (SELECT MAX(date) FROM quant_signals sub WHERE sub.ticker = qs.ticker)
-        """
-        df = pd.read_sql_query(query, conn, params=tickers)
-        
-        if df.empty:
-            logger.warning("No recent data found to run inference on.")
-            conn.close()
-            return
-
-        # Feature Engineering: On-the-fly calculation and normalization 
-        df['dist_sma_50'] = (df['close_price'] - df['sma_50']) / df['sma_50']
-        df['dist_sma_200'] = (df['close_price'] - df['sma_200']) / df['sma_200']
-        
-        df['macd_pct'] = df['macd'] / df['close_price']
-        df['macd_signal_pct'] = df['macd_signal'] / df['close_price']
-        df['macd_hist_pct'] = df['macd_hist'] / df['close_price']
-        
-        df['volume_surge'] = df['volume_surge'].fillna(0).astype(int)
-        df['bullish_cross'] = df['bullish_cross'].fillna(0).astype(int)
-        
-        # Inject structural mappings
-        df['sector_code'] = df['sector'].map(SECTOR_MAP).fillna(0).astype(int)
-        
-        # Point-In-Time Proxy
-        df['dollar_vol_log'] = np.log1p(df['close_price'] * df['volume'])
-        
-        df.replace([np.inf, -np.inf], np.nan, inplace=True)
-
-        # --- CROSS-SECTIONAL Z-SCORING ---
-        # Ensures inference logic perfectly matches training distribution logic.
-        logger.info("Applying cross-sectional Z-scoring to inference batch...")
-        for col in CONTINUOUS_FEATURES:
-            df[f'{col}_z'] = df.groupby('date')[col].transform(cross_sectional_zscore)
-            
-        update_payloads = []
-        for _, row in df.iterrows():
-            if pd.isna(row[FEATURE_COLS]).any():
-                continue
-                
-            X_infer = pd.DataFrame([row[FEATURE_COLS]])
-            
-            prob = model.predict_proba(X_infer)[0][1]
-            ml_confidence_score = round(prob * 100.0, 2)
-            
-            update_payloads.append((ml_confidence_score, row['ticker'], row['date']))
-
-        if update_payloads:
-            cursor = conn.cursor()
-            update_query = """
-                UPDATE quant_signals 
-                SET ml_confidence_score = ? 
-                WHERE ticker = ? AND date = ?
-            """
-            cursor.executemany(update_query, update_payloads)
-            conn.commit()
-            logger.info(f"✅ Executed ML predictions for {len(update_payloads)} assets.")
-        
-    except Exception as e:
-        logger.error(f"Fatal error during ML inference: {e}")
-    finally:
-        if conn:
-            conn.close()

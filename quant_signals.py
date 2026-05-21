@@ -84,7 +84,7 @@ def _build_shap_feature_vector(
     ma200: Optional[float],
     bullish_cross: bool,
     volume_surge: bool,
-    sector: str
+    sector: str  # <--- ADD THIS
 ) -> Optional[np.ndarray]:
     """
     Constructs a single-row feature vector matching the training schema exactly.
