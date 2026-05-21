@@ -77,6 +77,8 @@ def init_db() -> None:
                 ma_5_day REAL,
                 ma_10_day REAL,
                 ma_21_day REAL,
+                ma_50_day REAL,
+                ma_200_day REAL,
                 trend_50d TEXT,
                 trend_200d TEXT,
                 rsi_14 REAL,
@@ -376,6 +378,7 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
     required_stock_columns = {
         'company_name': 'TEXT', 'sector': 'TEXT', 'currency': 'TEXT',
         'country': 'TEXT', 'quote_type': 'TEXT',
+        'ma_50_day': 'REAL', 'ma_200_day': 'REAL',
         'trend_50d': 'TEXT', 'trend_200d': 'TEXT',
         'fifty_two_week_low': 'REAL', 'fifty_two_week_high': 'REAL',
         'trailing_pe': 'REAL', 'forward_pe': 'REAL', 'peg_ratio': 'REAL',

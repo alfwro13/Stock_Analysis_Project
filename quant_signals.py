@@ -715,7 +715,7 @@ class QuantEngine:
             
             self.save_to_db(
                 ticker, company_name, sector, country, currency, quote_type,
-                current_price, ma5, ma10, ma21, trend_50d, trend_200d, rsi_val, stop_loss,
+                current_price, ma5, ma10, ma21, ma50, ma200, trend_50d, trend_200d, rsi_val, stop_loss,
                 fifty_two_week_low, fifty_two_week_high,
                 trailing_pe, forward_pe, peg_ratio, peter_lynch_peg, price_to_book,
                 profit_margin, roe, revenue_growth, debt_to_equity, current_ratio, operating_cash_flow,
@@ -729,7 +729,8 @@ class QuantEngine:
             logger.error(f"Failed to analyze {ticker}: {e}")
 
     def save_to_db(self, ticker: str, company_name: str, sector: str, country: str, currency: str, quote_type: str,
-                   price: Optional[float], ma5: Optional[float], ma10: Optional[float], ma21: Optional[float], 
+                   price: Optional[float], ma5: Optional[float], ma10: Optional[float], ma21: Optional[float],
+                   ma50: Optional[float], ma200: Optional[float],
                    trend_50d: str, trend_200d: str, rsi: Optional[float], stop_loss: Optional[float],
                    fifty_two_week_low: Optional[float], fifty_two_week_high: Optional[float],
                    trailing_pe: Optional[float], forward_pe: Optional[float], peg_ratio: Optional[float], 
@@ -763,11 +764,11 @@ class QuantEngine:
 
         cursor = self.conn.cursor()
         
-        # FIX EMBEDDED: 47 total mapping column dimensions with exactly 47 corresponding question mark nodes
+        # FIX EMBEDDED: 49 total mapping column dimensions with exactly 49 corresponding question mark nodes
         query = '''
             INSERT OR REPLACE INTO stock_signals (
                 ticker, last_updated, company_name, sector, country, currency, quote_type,
-                current_price, ma_5_day, ma_10_day, ma_21_day, trend_50d, trend_200d, rsi_14, atr_stop_loss,
+                current_price, ma_5_day, ma_10_day, ma_21_day, ma_50_day, ma_200_day, trend_50d, trend_200d, rsi_14, atr_stop_loss,
                 fifty_two_week_low, fifty_two_week_high,
                 trailing_pe, forward_pe, peg_ratio, peter_lynch_peg, price_to_book,
                 profit_margin, roe, revenue_growth, debt_to_equity, current_ratio, operating_cash_flow,
@@ -777,7 +778,7 @@ class QuantEngine:
                 composite_score, overall_signal, educational_notes, setup_tags
             ) VALUES (
                 ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                 ?, ?,
                 ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?, ?,
@@ -791,7 +792,7 @@ class QuantEngine:
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         values = (
             ticker, timestamp, company_name, sector, country, currency, quote_type,
-            _clean(price), _clean(ma5), _clean(ma10), _clean(ma21), trend_50d, trend_200d, _clean(rsi), _clean(stop_loss),
+            _clean(price), _clean(ma5), _clean(ma10), _clean(ma21), _clean(ma50), _clean(ma200), trend_50d, trend_200d, _clean(rsi), _clean(stop_loss),
             _clean(fifty_two_week_low), _clean(fifty_two_week_high),
             _clean(trailing_pe), _clean(forward_pe), _clean(peg_ratio), _clean(peter_lynch_peg), _clean(price_to_book),
             _clean(profit_margin), _clean(roe), _clean(revenue_growth), _clean(debt_to_equity), _clean(current_ratio), _clean(operating_cash_flow),
