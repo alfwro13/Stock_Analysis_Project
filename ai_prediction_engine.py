@@ -211,10 +211,22 @@ def run_historical_backfill() -> None:
                         int(row['volume_surge']), int(row['bullish_cross'])
                     ))
 
+                # Correct Upsert to prevent staleness and protect ML/Risk columns
                 query = """
-                    INSERT OR IGNORE INTO quant_signals 
+                    INSERT INTO quant_signals 
                     (ticker, date, close_price, volume, rsi_14, macd, macd_signal, macd_hist, sma_50, sma_200, volume_surge, bullish_cross)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(ticker, date) DO UPDATE SET
+                        close_price=excluded.close_price,
+                        volume=excluded.volume,
+                        rsi_14=excluded.rsi_14,
+                        macd=excluded.macd,
+                        macd_signal=excluded.macd_signal,
+                        macd_hist=excluded.macd_hist,
+                        sma_50=excluded.sma_50,
+                        sma_200=excluded.sma_200,
+                        volume_surge=excluded.volume_surge,
+                        bullish_cross=excluded.bullish_cross
                 """
                 cursor.executemany(query, records)
                 conn.commit()
@@ -232,8 +244,8 @@ def run_historical_backfill() -> None:
             if total_tickers >= 2 and processed == total_tickers // 2:
                 log_notification("Info", f"ML Historical Backfill is 50% complete ({processed}/{total_tickers}).")
 
-        logger.info(f"--- BACKFILL COMPLETE. Injected {total_inserted} new historical rows. ---")
-        log_notification("Success", f"ML Historical Backfill completed successfully. Injected {total_inserted:,} data points.")
+        logger.info(f"--- BACKFILL COMPLETE. Injected/Updated {total_inserted} historical rows. ---")
+        log_notification("Success", f"ML Historical Backfill completed successfully. Injected/Updated {total_inserted:,} data points.")
 
     except Exception as e:
         logger.error(f"Fatal error during historical backfill execution: {e}")
