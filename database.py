@@ -126,7 +126,9 @@ def init_db() -> None:
                 composite_score INTEGER,
                 overall_signal TEXT,
                 educational_notes TEXT,
-                setup_tags TEXT
+                setup_tags TEXT,
+                ml_confidence REAL,
+                score_method TEXT DEFAULT 'HARDCODED'
             )
         ''')
 
@@ -390,7 +392,8 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
         'dividend_yield': 'REAL', 'ex_dividend_date': 'TEXT', 'target_price': 'REAL',
         'analyst_rating': 'TEXT', 'next_earnings_date': 'TEXT',
         'short_interest': 'REAL', 'institutional_ownership': 'REAL', 'beta': 'REAL',
-        'yield_correlation': 'REAL', 'setup_tags': 'TEXT'
+        'yield_correlation': 'REAL', 'setup_tags': 'TEXT',
+        'ml_confidence': 'REAL', 'score_method': 'TEXT DEFAULT "HARDCODED"'
     }
 
     for col_name, data_type in required_stock_columns.items():
