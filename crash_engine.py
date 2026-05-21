@@ -21,16 +21,22 @@ class CrashEngine:
         self.sma_gap_percent = float(self.crash_cfg.get("SMA_GAP_PERCENT", 2.0))
         
         # New Circuit Breaker Threshold for instant Intraday Drops
-        self.session_crash_threshold = float(self.crash_cfg.get("SESSION_CRASH_THRESHOLD", self.crash_cfg.get("FLASH_CRASH_THRESHOLD", 3.0)))
+        self.session_crash_threshold = float(
+            self.crash_cfg.get("SESSION_CRASH_THRESHOLD", self.crash_cfg.get("FLASH_CRASH_THRESHOLD", 3.0))
+        )
 
     def _fetch_market_context(self) -> float:
         """Fetches S&P 500 intraday performance to gauge macroeconomic conditions."""
         try:
-            spy = yf.Ticker("SPY").history(period="2d")
+            # Expand to 5d to guarantee enough rows during long weekends or market holidays
+            spy = yf.Ticker("SPY").history(period="5d")
             if len(spy) >= 2:
-                prev_close = spy['Close'].iloc[0]
-                curr_price = spy['Close'].iloc[1]
-                return ((curr_price - prev_close) / prev_close) * 100.0
+                # Strictly reference the most recent two sessions
+                prev_close = float(spy['Close'].iloc[-2])
+                curr_price = float(spy['Close'].iloc[-1])
+                
+                if prev_close > 0:
+                    return ((curr_price - prev_close) / prev_close) * 100.0
         except Exception as e:
             logger.warning(f"Failed to fetch macroeconomic context (SPY): {e}")
         return 0.0
