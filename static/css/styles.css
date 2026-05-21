@@ -262,7 +262,6 @@ table.dataTable.display tbody tr.even > .sorting_1, table.dataTable.order-column
 .text-dividend { color: #b366ff; }
 .text-light { color: #e0e0e0; }
 .text-accent { color: #4da6ff; }
-.ticker-link { color: #4da6ff; font-weight: bold; }
 .controls-flex-end { align-items: flex-end; margin-bottom: 20px; }
 .form-group-no-margin { margin-bottom: 0; }
 .input-width-small { width: 120px; }
@@ -368,3 +367,19 @@ table.dataTable.display tbody tr.even > .sorting_1, table.dataTable.order-column
 .calendar-table-wrapper h3 { margin-top: 0; margin-bottom: 15px; color: #fff; }
 table.dataTable tbody tr { background-color: transparent !important; }
 table.dataTable tbody tr td { color: #ccc; }
+
+/* --- 20. Extracted Utility Classes --- */
+.page-subtitle { color: #aaaaaa; margin-top: 5px; font-size: 14px; }
+.summary-label { font-size: 14px; color: #aaa; }
+.summary-value { font-size: 18px; color: #fff; }
+.summary-value-large { font-size: 18px; }
+.ticker-link { color: #4da6ff; font-weight: bold; }
+.text-warning { color: #ffaa00; }
+.text-muted-small { font-size: 12px; color: #bbb; }
+.inline-block { display: inline-block; }
+.no-decoration-abbr { text-decoration: none; }
+.help-abbr { text-decoration: underline dotted; cursor: help; }
+.max-w-150 { max-width: 150px; }
+.text-danger { color: #ff4d4d; }
+.text-success { color: #00ff00; }
+.text-white { color: #fff; }
