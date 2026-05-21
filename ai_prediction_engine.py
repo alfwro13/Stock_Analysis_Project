@@ -359,25 +359,26 @@ def train_global_ml_model() -> None:
         scale_pos_weight_full = neg_count_full / pos_count_full if pos_count_full > 0 else 1.0
 
         # --- Strict Temporal Out-Of-Sample (OOS) Split for Panel Data ---
-        logger.info("Constructing Strict Temporal 80/20 Walk-Forward Split for Hyperparameter Optimization...")
+        logger.info("Constructing Strict 5-Fold Walk-Forward Splits for Hyperparameter Optimization...")
 
         unique_dates = np.sort(df['date'].unique())
         date_series = df['date'].reset_index(drop=True)
         
-        # Calculate the index for the 80% temporal cutoff
-        cutoff_idx = int(len(unique_dates) * 0.8)
-        
-        # Apply a strict 5-day embargo gap to prevent target leakage (since target is 5-day forward return)
-        train_dates = unique_dates[:cutoff_idx - 5]
-        test_dates = unique_dates[cutoff_idx:]
-        
-        # Map valid dates back to explicit integer row indices required by GridSearchCV
-        train_idx = date_series.index[date_series.isin(train_dates)].tolist()
-        test_idx = date_series.index[date_series.isin(test_dates)].tolist()
-        
         cv_splits = []
-        if len(train_idx) > 0 and len(test_idx) > 0:
-            cv_splits.append((train_idx, test_idx))
+        tscv = TimeSeriesSplit(n_splits=5)
+        
+        for train_date_idx, test_date_idx in tscv.split(unique_dates):
+            # Apply a strict 5-day embargo gap to prevent target leakage
+            if len(train_date_idx) > 5:
+                train_dates = set(unique_dates[train_date_idx[:-5]])
+                test_dates = set(unique_dates[test_date_idx])
+                
+                # Map valid dates back to explicit integer row indices required by GridSearchCV
+                train_idx = date_series.index[date_series.isin(train_dates)].tolist()
+                test_idx = date_series.index[date_series.isin(test_dates)].tolist()
+                
+                if train_idx and test_idx:
+                    cv_splits.append((train_idx, test_idx))
 
         # --- Hyperparameter Grids ---
         rf_base = RandomForestClassifier(class_weight='balanced', random_state=42, n_jobs=-1)
@@ -440,24 +441,24 @@ def train_global_ml_model() -> None:
         logger.info(f"Averaged Optimized OOS Accuracy across 5 expanding regimes: {avg_oos_accuracy:.4f}")
 
         # --- Production Model Retraining ---
-        logger.info("Training final production Voting Classifier with optimized parameters...")
-        production_ensemble = VotingClassifier(estimators=[('rf', best_rf), ('xgb', best_xgb)], voting='soft')
-        
-        logger.info("Applying Isotonic Probability Calibration to the ensemble...")
+        logger.info("Calibrating base estimators individually before assembling production Voting Classifier...")
         
         # [LEAKAGE RESOLVED] Enforce strict TimeSeriesSplit to prevent future data from 
         # leaking into the probability calibration folds. Gap=5 ensures zero overlap with shifted targets.
-        tscv = TimeSeriesSplit(n_splits=5, test_size=int(len(X_full) * 0.10), gap=5)
+        tscv_calib = TimeSeriesSplit(n_splits=5, test_size=int(len(X_full) * 0.10), gap=5)
         
-        calibrated_ensemble = CalibratedClassifierCV(
-            estimator=production_ensemble, 
-            method='isotonic', 
-            cv=tscv
+        calibrated_rf = CalibratedClassifierCV(estimator=best_rf, method='isotonic', cv=tscv_calib)
+        calibrated_xgb = CalibratedClassifierCV(estimator=best_xgb, method='isotonic', cv=tscv_calib)
+
+        production_ensemble = VotingClassifier(
+            estimators=[('rf', calibrated_rf), ('xgb', calibrated_xgb)], 
+            voting='soft'
         )
-        calibrated_ensemble.fit(X_full, y_full)
+        
+        production_ensemble.fit(X_full, y_full)
 
         # Persist standard output
-        joblib.dump(calibrated_ensemble, MODEL_PATH)
+        joblib.dump(production_ensemble, MODEL_PATH)
         logger.info(f"✅ Production ML Ensemble successfully trained and saved to {MODEL_PATH}")
         log_notification("Success", f"Global ML Model trained & optimized (WF-OOS Accuracy: {avg_oos_accuracy:.2%}).")
 
