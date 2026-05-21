@@ -527,7 +527,7 @@ class QuantEngine:
             operating_cash_flow = info.get('operatingCashflow', None)
             
             dividend_yield = info.get('dividendYield', None)
-            # [DESIGN-03] Robust heuristic: legitimate yields > 25% are virtually impossible, heavily implies pence misquote
+            #  Robust heuristic: legitimate yields > 25% are virtually impossible, heavily implies pence misquote
             if dividend_yield is not None and dividend_yield > 0.25 and currency in ['GBp', 'GBP']:
                 dividend_yield = dividend_yield / 100.0
 
@@ -542,16 +542,16 @@ class QuantEngine:
             institutional_ownership = info.get('heldPercentInstitutions', None)
             beta = info.get('beta', None)
 
-            # [MATH-11] Safely handle scale consistency for Peter Lynch PEG
-            # [ISSUE 1.1 FIXED] Include Dividend Yield in the Peter Lynch formulation
+            # Safely handle scale consistency for Peter Lynch PEG
+            # Include Dividend Yield in the Peter Lynch formulation
+            # yfinance always returns decimal; multiply unconditionally
             peter_lynch_peg = None
             if trailing_pe and trailing_pe > 0 and earnings_growth and earnings_growth > 0:
-                # Scale earnings growth
-                eg_scaled = earnings_growth if earnings_growth >= 1.0 else (earnings_growth * 100.0)
+                # Unconditionally scale decimal to percentage
+                eg_scaled = earnings_growth * 100.0
                 
-                # Scale dividend yield safely
                 div_yield_val = dividend_yield if dividend_yield is not None else 0.0
-                div_yield_scaled = div_yield_val if div_yield_val >= 1.0 else (div_yield_val * 100.0)
+                div_yield_scaled = div_yield_val * 100.0
                 
                 total_growth_yield = eg_scaled + div_yield_scaled
                 
