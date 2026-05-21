@@ -183,25 +183,6 @@
                     {% if item.ml_confidence_score is not none %}
                         {% set ml_class = 'metric-excellent' if item.ml_confidence_score > 75 else ('metric-poor' if item.ml_confidence_score < 40 else 'metric-neutral') %}
                         <span class="{{ ml_class }}">{{ "{:,.1f}".format(item.ml_confidence_score) }}%</span>
-                        
-                        {% set comp = -1 %}
-                        {% if item.composite_score is not none and item.composite_score != 'N/A' %}
-                            {% set comp = item.composite_score|int %}
-                        {% endif %}
-                        
-                        {% if comp >= 70 and item.ml_confidence_score < 40 %}
-                            <div style="display: inline-block;">
-                                <abbr title="High Quant Score but Low AI Confidence" style="text-decoration: none;">
-                                    <span class="setup-tag">⚠️ Divergence</span>
-                                </abbr>
-                            </div>
-                        {% elif comp < 40 and item.ml_confidence_score >= 70 %}
-                            <div style="display: inline-block;">
-                                <abbr title="Low Quant Score but High AI Confidence" style="text-decoration: none;">
-                                    <span class="setup-tag">🤖 AI Buy</span>
-                                </abbr>
-                            </div>
-                        {% endif %}
                     {% else %}
                         N/A
                     {% endif %}
@@ -246,6 +227,23 @@
                             </abbr>
                         </div>
                     {% endfor %}
+                    
+                    {% if item.ml_confidence_score is not none and item.composite_score is not none and item.composite_score != 'N/A' %}
+                        {% set comp = item.composite_score|int %}
+                        {% if comp >= 70 and item.ml_confidence_score < 40 %}
+                            <div style="display: inline-block;">
+                                <abbr title="High Quant Score but Low AI Confidence. Technicals are bullish but Machine Learning predicts a drop." style="text-decoration: none;">
+                                    <span class="setup-tag">⚠️ AI Disconnect</span>
+                                </abbr>
+                            </div>
+                        {% elif comp < 40 and item.ml_confidence_score >= 70 %}
+                            <div style="display: inline-block;">
+                                <abbr title="Low Quant Score but High AI Confidence. Technicals are bearish but Machine Learning predicts a surge." style="text-decoration: none;">
+                                    <span class="setup-tag">🤖 AI Buy</span>
+                                </abbr>
+                            </div>
+                        {% endif %}
+                    {% endif %}
                 </td>
                 <td class="{{ item.overall_signal | replace(' ', '-') | replace('/', '-') }}">{{ item.overall_signal }}</td>
             </tr>
