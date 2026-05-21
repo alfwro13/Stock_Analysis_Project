@@ -125,9 +125,13 @@ def get_implied_straddle_move(ticker_obj: yf.Ticker, underlying_price: float, ta
         if call_price is None or put_price is None:
             return None, 0, None
         
-        # [ISSUE-M10 FIXED] Apply practitioner correction factor (~0.84) to ATM straddle to account for positive gamma/intrinsic value
-        straddle_cost = (call_price + put_price) * 0.84
-        implied_move_pct = (straddle_cost / underlying_price) * 100.0
+        # Calculate days to expiry safely (minimum 1 day to prevent div/0 or zero-move errors)
+        target_expiry_date = datetime.strptime(target_expiry, '%Y-%m-%d')
+        days_to_expiry = max((target_expiry_date - datetime.now()).days, 1)
+        
+        # [MATH APPROXIMATION RESOLVED] Replace rule-of-thumb with Black-Scholes ATM straddle approximation
+        iv = float(atm_call.get('impliedVolatility', 0.0))
+        implied_move_pct = (iv * np.sqrt(days_to_expiry / 365.0) * np.sqrt(2 / np.pi)) * 100.0
         
         # Aggregate liquidity indicator
         volume = int(atm_call.get('volume', 0)) + int(atm_put.get('volume', 0))
