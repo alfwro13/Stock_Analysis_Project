@@ -16,7 +16,7 @@
                 </a>
                 <h1><abbr title="Combining Quantitative and Fundamental Analysis">uantamental</abbr> System Reference</h1>
             </div>
-            <p style="color: #aaaaaa; margin-top: 5px; font-size: 14px;">The mathematical blueprint behind your portfolio scores.</p>
+            <p class="page-subtitle">The mathematical blueprint behind your portfolio scores.</p>
             
             {% set active_page = 'glossary' %}
             {% include 'navbar.html' %}
@@ -92,7 +92,7 @@
                 <div class="term-box">
                     <span class="term-title">Overbought Warnings</span>
                     <p>Risk management alert for assets severely overextended.</p>
-                    <div class="rule" style="border-left-color: #ff4d4d;">TRIGGER: RSI > 70 AND MACD Histogram < 0</div>
+                    <div class="rule border-left-red">TRIGGER: RSI > 70 AND MACD Histogram < 0</div>
                 </div>
             </details>
 
@@ -135,7 +135,12 @@
                 <div class="term-box">
                     <span class="term-title">🔨 The Hammer (Bullish Rejection)</span>
                     <div class="candle-display">
-                        <div class="candle-group"><div class="candle"><div class="wick" style="height: 100%; top: 0;"></div><div class="body-green" style="height: 30%; top: 10%;"></div></div></div>
+                        <div class="candle-group">
+                            <div class="candle">
+                                <div class="wick h-100 t-0"></div>
+                                <div class="body-green h-30 t-10"></div>
+                            </div>
+                        </div>
                         <div class="candle-explanation">Sellers drove price down, but institutional buyers rejected the lows violently.</div>
                     </div>
                 </div>
@@ -143,8 +148,14 @@
                     <span class="term-title">🐂 Bullish Engulfing</span>
                     <div class="candle-display">
                         <div class="candle-group">
-                            <div class="candle"><div class="wick" style="height: 60%; top: 20%;"></div><div class="body-red" style="height: 40%; top: 30%;"></div></div>
-                            <div class="candle"><div class="wick" style="height: 100%; top: 0;"></div><div class="body-green" style="height: 80%; top: 10%;"></div></div>
+                            <div class="candle">
+                                <div class="wick h-60 t-20"></div>
+                                <div class="body-red h-40 t-30"></div>
+                            </div>
+                            <div class="candle">
+                                <div class="wick h-100 t-0"></div>
+                                <div class="body-green h-80 t-10"></div>
+                            </div>
                         </div>
                         <div class="candle-explanation">Current day's green body completely overwhelms the previous red body.</div>
                     </div>
@@ -198,13 +209,13 @@
                     <span class="term-title">FinBERT NLP Sentiment Engine</span>
                     <p>An institutional-grade Natural Language Processing model powered by HuggingFace's <code>ProsusAI/finbert</code>. It continuously ingests the latest financial news, truncates the text to fit strict BERT token limits, and processes Wall Street narratives to output a standardized sentiment score.</p>
                     <p>The raw float scores are mapped into five distinct emotional states: Euphoria, Bullish, Neutral, Bearish, and Extreme Fear.</p>
-                    <div class="rule" style="border-left-color: #ff4d4d;">
+                    <div class="rule border-left-red">
                         <strong>Architectural Note (The Yield Trap):</strong> Sovereign bond yields (e.g., US 30Y or UK Gilt) are strictly excluded from NLP scoring. NLP models natively interpret words like "surging" or "breaking out" as positive. However, surging risk-free yields are fundamentally toxic for equities. Excluding them prevents critical inverse-logic UI errors.
                     </div>
                 </div>
             </details>
 
-            <div id="noResults" style="display: none; text-align: center; padding: 50px; color: #888; border: 1px dashed #333; border-radius: 8px;">
+            <div id="noResults" class="glossary-empty-state">
                 <h3>No matching algorithmic terms found.</h3>
                 <p>Try searching for categories like "RSI", "MACD", or "VaR".</p>
             </div>
