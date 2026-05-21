@@ -189,7 +189,7 @@ def run_historical_backfill() -> None:
             logger.info(f"[{i+1}/{total_tickers}] Processing 2y historical data for {ticker}...")
             
             try:
-                df = yf.download(ticker, period="2y", interval="1d", progress=False, auto_adjust=True)
+                df = yf.download(ticker, period="2y", interval="1d", progress=False, auto_adjust=False)
                 
                 if df.empty:
                     continue
