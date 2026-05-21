@@ -808,7 +808,7 @@ class QuantEngine:
                     _clean(dividend_yield), ex_dividend_date, _clean(target_price), analyst_rating, next_earnings_date,
                     _clean(short_interest), _clean(institutional_ownership), _clean(beta), _clean(yield_correlation),
                     int(score), signal, notes, tags_json
-                ))
+                )
                 
                 cursor.execute(query, values)
                 conn.commit()
