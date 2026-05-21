@@ -414,7 +414,16 @@ def train_global_ml_model() -> None:
         production_ensemble = VotingClassifier(estimators=[('rf', best_rf), ('xgb', best_xgb)], voting='soft')
         
         logger.info("Applying Isotonic Probability Calibration to the ensemble...")
-        calibrated_ensemble = CalibratedClassifierCV(estimator=production_ensemble, method='isotonic', cv=5)
+        
+        # [LEAKAGE RESOLVED] Enforce strict TimeSeriesSplit to prevent future data from 
+        # leaking into the probability calibration folds. Gap=5 ensures zero overlap with shifted targets.
+        tscv = TimeSeriesSplit(n_splits=5, test_size=int(len(X_full) * 0.10), gap=5)
+        
+        calibrated_ensemble = CalibratedClassifierCV(
+            estimator=production_ensemble, 
+            method='isotonic', 
+            cv=tscv
+        )
         calibrated_ensemble.fit(X_full, y_full)
 
         # Persist standard output
