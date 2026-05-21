@@ -91,7 +91,8 @@ class DataEngine:
                             
                     df.dropna(subset=['Close'], inplace=True)
                     if not df.empty:
-                        df.index = df.index.tz_localize(None)
+                        # [ISSUE-B01 FIXED] Bulletproof timezone stripping
+                        df.index = df.index.tz_convert(None) if df.index.tz is not None else df.index
                         df.to_parquet(HISTORICAL_DIR / f"{name}.parquet", engine='pyarrow')
                         
             logger.info("All Market and Intermarket Baselines secured successfully.")
@@ -129,7 +130,8 @@ class DataEngine:
                         
                     df_ticker.dropna(subset=['Close', 'Volume'], inplace=True)
                     if not df_ticker.empty:
-                        df_ticker.index = df_ticker.index.tz_localize(None)
+                        # [ISSUE-B01 FIXED] Bulletproof timezone stripping
+                        df_ticker.index = df_ticker.index.tz_convert(None) if df_ticker.index.tz is not None else df_ticker.index
                         df_ticker.to_parquet(HISTORICAL_DIR / f"{ticker}.parquet", engine='pyarrow')
             except Exception as e:
                 logger.error(f"Fatal error during bulk historical download: {e}")
@@ -160,7 +162,8 @@ class DataEngine:
                         
                     df_ticker.dropna(subset=['Close'], inplace=True)
                     if not df_ticker.empty:
-                        df_ticker.index = df_ticker.index.tz_localize(None)
+                        # [ISSUE-B01 FIXED] Bulletproof timezone stripping
+                        df_ticker.index = df_ticker.index.tz_convert(None) if df_ticker.index.tz is not None else df_ticker.index
                         df_ticker.to_parquet(INTRADAY_DIR / f"{ticker}_intraday.parquet", engine='pyarrow')
             except Exception as e:
                 logger.error(f"Fatal error during bulk intraday download: {e}")
@@ -204,13 +207,15 @@ class DataEngine:
                 # 1. Fetch Macro Historical Data
                 df_daily = stock.history(period="2y")
                 if not df_daily.empty:
-                    df_daily.index = df_daily.index.tz_localize(None) 
+                    # [ISSUE-B01 FIXED] Bulletproof timezone stripping
+                    df_daily.index = df_daily.index.tz_convert(None) if df_daily.index.tz is not None else df_daily.index
                     df_daily.to_parquet(HISTORICAL_DIR / f"{ticker}.parquet", engine='pyarrow')
 
                 # 2. Fetch Intraday Data
                 df_intraday = stock.history(period="1d", interval="5m")
                 if not df_intraday.empty:
-                    df_intraday.index = df_intraday.index.tz_localize(None)
+                    # [ISSUE-B01 FIXED] Bulletproof timezone stripping
+                    df_intraday.index = df_intraday.index.tz_convert(None) if df_intraday.index.tz is not None else df_intraday.index
                     df_intraday.to_parquet(INTRADAY_DIR / f"{ticker}_intraday.parquet", engine='pyarrow')
 
                 # 3. Fetch Fundamental Data
