@@ -101,7 +101,7 @@
             let changeClass = '';
             const sign = isPos ? '+' : '';
             
-            // Core Logic for Macro Polarity (Bug 4 Fix)
+            // Core Logic for Macro Polarity
             const invertedTickers = ['^TYX', '^TNX', 'UK10YG', 'DX-Y.NYB'];
             const isForex = index.ticker === 'GBPUSD=X';
 
@@ -157,23 +157,45 @@
 
     function updateAssetPrices(assets) {
         assets.forEach(asset => {
-            const priceEl = document.getElementById('price-' + asset.ticker);
-            const changeEl = document.getElementById('change-' + asset.ticker);
-            
-            if (priceEl && changeEl) {
-                const formattedPrice = Number(asset.price).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-                const formattedChange = Number(asset.change_pct).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-
-                priceEl.innerText = formattedPrice;
-                const sign = asset.is_positive ? '+' : '';
-                changeEl.innerText = `${sign}${formattedChange}%`;
+            const row = document.querySelector(`.live-asset-row[data-ticker="${asset.ticker}"]`);
+            if (row) {
+                const currency = row.getAttribute('data-currency') || 'USD';
+                const priceEl = document.getElementById('price-' + asset.ticker);
+                const changeEl = document.getElementById('change-' + asset.ticker);
                 
-                if (asset.is_stale) {
-                    changeEl.className = 'stale-text';
-                    priceEl.className = 'stale-text';
-                } else {
-                    changeEl.className = asset.is_positive ? 'trend-up' : 'trend-down';
-                    priceEl.className = '';
+                if (priceEl && changeEl) {
+                    let symbol = '';
+                    let priceVal = Number(asset.price);
+                    let currSuffix = '';
+                    
+                    // Process Native Currency and Conversion
+                    if (currency === 'GBp') {
+                        symbol = '£';
+                        priceVal = priceVal / 100.0;
+                    } else if (currency === 'GBP') {
+                        symbol = '£';
+                    } else if (currency === 'EUR') {
+                        symbol = '€';
+                    } else if (currency === 'USD') {
+                        symbol = '$';
+                    } else {
+                        currSuffix = ' ' + currency;
+                    }
+
+                    const formattedPrice = symbol + priceVal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + currSuffix;
+                    const formattedChange = Number(asset.change_pct).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
+                    priceEl.innerText = formattedPrice;
+                    const sign = asset.is_positive ? '+' : '';
+                    changeEl.innerText = `${sign}${formattedChange}%`;
+                    
+                    if (asset.is_stale) {
+                        changeEl.className = 'stale-text';
+                        priceEl.className = 'stale-text';
+                    } else {
+                        changeEl.className = asset.is_positive ? 'trend-up' : 'trend-down';
+                        priceEl.className = '';
+                    }
                 }
             }
         });
