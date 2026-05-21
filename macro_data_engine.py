@@ -87,8 +87,14 @@ def fetch_fred_api(session: requests.Session, series_id: str, start_date: dateti
         df['value'] = pd.to_numeric(df['value'].replace('.', pd.NA), errors='coerce')
         df['date'] = pd.to_datetime(df['date'], errors='coerce')
         
-        df.dropna(subset=['date'], inplace=True)
-        df.set_index('date', inplace=True)
+        # [LOOKAHEAD BIAS RESOLVED] Apply realistic publication lag.
+        # Daily market metrics (Credit Spreads/Yield Curves) are instant. 
+        # Structural economic data (M2/Claims) lags by ~30 days.
+        lag_days = 0 if series_id in ['BAMLH0A0HYM2', 'BAMLHE00EHY2EY', 'T10Y2Y'] else 30
+        df['publication_date'] = df['date'] + pd.DateOffset(days=lag_days)
+        
+        df.dropna(subset=['publication_date'], inplace=True)
+        df.set_index('publication_date', inplace=True)
         df.rename(columns={'value': series_id}, inplace=True)
         
         return df[[series_id]]
@@ -122,8 +128,12 @@ def fetch_boe_data(session: requests.Session, series_code: str, start_date: date
             return pd.DataFrame()
             
         df['DATE'] = pd.to_datetime(df['DATE'], errors='coerce')
-        df.dropna(subset=['DATE'], inplace=True)
-        df.set_index('DATE', inplace=True)
+        
+        # [LOOKAHEAD BIAS RESOLVED] Apply a realistic 30-day publication lag for BoE M4 Supply
+        df['PUBLICATION_DATE'] = df['DATE'] + pd.DateOffset(days=30)
+        
+        df.dropna(subset=['PUBLICATION_DATE'], inplace=True)
+        df.set_index('PUBLICATION_DATE', inplace=True)
         
         # Defensive renaming mechanism
         df.rename(columns={col: series_code for col in df.columns if series_code in col}, inplace=True)
@@ -162,7 +172,8 @@ def fetch_ons_taxonomy_data(session: requests.Session, series_id: str, start_dat
             val = obs.get('value')
             if raw_date and val:
                 try:
-                    dt = pd.to_datetime(raw_date, format='%Y %b') + pd.offsets.MonthEnd(1)
+                    # [LOOKAHEAD BIAS RESOLVED] Shift to end of month + 30 day publication lag
+                    dt = pd.to_datetime(raw_date, format='%Y %b') + pd.offsets.MonthEnd(1) + pd.DateOffset(days=30)
                     if dt >= start_date:
                         records.append({'DATE': dt, series_id: float(val)})
                 except ValueError:
