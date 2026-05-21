@@ -116,7 +116,7 @@ def get_candlestick_patterns(prev2: pd.Series, prev1: pd.Series, curr: pd.Series
 
 class QuantEngine:
     def __init__(self) -> None:
-        self.conn = get_connection()
+        pass
 
     def close(self):
         """Safely closes the database connection."""
@@ -340,17 +340,21 @@ class QuantEngine:
             # --- MACRO AI PREEMPTIVE DEFENSE ---
             has_volatility_warning = False
             try:
-                cursor = self.conn.cursor()
-                cursor.execute('''
-                    SELECT COUNT(*) as cnt FROM macro_calendar 
-                    WHERE currency = ? 
-                    AND ai_volatility_warning > 2.0 
-                    AND date(event_date) >= date('now') 
-                    AND date(event_date) <= date('now', '+2 days')
-                ''', (currency,))
-                row = cursor.fetchone()
-                if row and row['cnt'] > 0:
-                    has_volatility_warning = True
+                conn = get_connection()
+                try:
+                    cursor = conn.cursor()
+                    cursor.execute('''
+                        SELECT COUNT(*) as cnt FROM macro_calendar 
+                        WHERE currency = ? 
+                        AND ai_volatility_warning > 2.0 
+                        AND date(event_date) >= date('now') 
+                        AND date(event_date) <= date('now', '+2 days')
+                    ''', (currency,))
+                    row = cursor.fetchone()
+                    if row and row['cnt'] > 0:
+                        has_volatility_warning = True
+                finally:
+                    conn.close()
             except Exception as e:
                 logger.error(f"Failed AI Macro defense check: {e}")
 
@@ -483,16 +487,20 @@ class QuantEngine:
             company_name = info.get('shortName') or info.get('longName')
             if not company_name:
                 try:
-                    cursor = self.conn.cursor()
-                    cursor.execute("SELECT company_name FROM asset_profiles WHERE ticker = ?", (ticker,))
-                    p_row = cursor.fetchone()
-                    if p_row and p_row['company_name'] and p_row['company_name'] != ticker:
-                        company_name = p_row['company_name']
-                    else:
-                        cursor.execute("SELECT company_name FROM market_universe WHERE ticker = ?", (ticker,))
-                        m_row = cursor.fetchone()
-                        if m_row and m_row['company_name'] and m_row['company_name'] != ticker:
-                            company_name = m_row['company_name']
+                    conn = get_connection()
+                    try:
+                        cursor = conn.cursor()
+                        cursor.execute("SELECT company_name FROM asset_profiles WHERE ticker = ?", (ticker,))
+                        p_row = cursor.fetchone()
+                        if p_row and p_row['company_name'] and p_row['company_name'] != ticker:
+                            company_name = p_row['company_name']
+                        else:
+                            cursor.execute("SELECT company_name FROM market_universe WHERE ticker = ?", (ticker,))
+                            m_row = cursor.fetchone()
+                            if m_row and m_row['company_name'] and m_row['company_name'] != ticker:
+                                company_name = m_row['company_name']
+                    finally:
+                        conn.close()
                 except Exception as ex:
                     logger.debug(f"Failed to fetch database fallback name for {ticker}: {ex}")
             company_name = company_name or ticker
@@ -760,60 +768,67 @@ class QuantEngine:
                 return None
             return v
 
-        cursor = self.conn.cursor()
-        
-        # FIX EMBEDDED: 49 total mapping column dimensions with exactly 49 corresponding question mark nodes
-        query = '''
-            INSERT OR REPLACE INTO stock_signals (
-                ticker, last_updated, company_name, sector, country, currency, quote_type,
-                current_price, ma_5_day, ma_10_day, ma_21_day, ma_50_day, ma_200_day, trend_50d, trend_200d, rsi_14, atr_stop_loss,
-                fifty_two_week_low, fifty_two_week_high,
-                trailing_pe, forward_pe, peg_ratio, peter_lynch_peg, price_to_book,
-                profit_margin, roe, revenue_growth, debt_to_equity, current_ratio, operating_cash_flow,
-                ytd_return, total_assets, nav_price, expense_ratio, top_holdings, sector_weightings,
-                dividend_yield, ex_dividend_date, target_price, analyst_rating, next_earnings_date,
-                short_interest, institutional_ownership, beta, yield_correlation,
-                composite_score, overall_signal, educational_notes, setup_tags
-            ) VALUES (
-                ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                ?, ?,
-                ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?,
-                ?, ?, ?, ?,
-                ?, ?, ?, ?
-            )
-        '''
-        
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        values = (
-            ticker, timestamp, company_name, sector, country, currency, quote_type,
-            _clean(price), _clean(ma5), _clean(ma10), _clean(ma21), _clean(ma50), _clean(ma200), trend_50d, trend_200d, _clean(rsi), _clean(stop_loss),
-            _clean(fifty_two_week_low), _clean(fifty_two_week_high),
-            _clean(trailing_pe), _clean(forward_pe), _clean(peg_ratio), _clean(peter_lynch_peg), _clean(price_to_book),
-            _clean(profit_margin), _clean(roe), _clean(revenue_growth), _clean(debt_to_equity), _clean(current_ratio), _clean(operating_cash_flow),
-            _clean(ytd_return), _clean(total_assets), _clean(nav_price), _clean(expense_ratio), top_holdings, sector_weightings,
-            _clean(dividend_yield), ex_dividend_date, _clean(target_price), analyst_rating, next_earnings_date,
-            _clean(short_interest), _clean(institutional_ownership), _clean(beta), _clean(yield_correlation),
-            _clean(score), signal, notes, tags_json
-        )
-        
-        cursor.execute(query, values)
-        self.conn.commit()
-        logger.info(f"[SUCCESS] Analyzed {ticker} | Signal: {signal} | Score: {score}/100")
+        try:
+            conn = get_connection()
+            try:
+                cursor = conn.cursor()
+                
+                query = '''
+                    INSERT OR REPLACE INTO stock_signals (
+                        ticker, last_updated, company_name, sector, country, currency, quote_type,
+                        current_price, ma_5_day, ma_10_day, ma_21_day, ma_50_day, ma_200_day, trend_50d, trend_200d, rsi_14, atr_stop_loss,
+                        fifty_two_week_low, fifty_two_week_high,
+                        trailing_pe, forward_pe, peg_ratio, peter_lynch_peg, price_to_book,
+                        profit_margin, roe, revenue_growth, debt_to_equity, current_ratio, operating_cash_flow,
+                        ytd_return, total_assets, nav_price, expense_ratio, top_holdings, sector_weightings,
+                        dividend_yield, ex_dividend_date, target_price, analyst_rating, next_earnings_date,
+                        short_interest, institutional_ownership, beta, yield_correlation,
+                        composite_score, overall_signal, educational_notes, setup_tags
+                    ) VALUES (
+                        ?, ?, ?, ?, ?, ?, ?,
+                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                        ?, ?,
+                        ?, ?, ?, ?, ?,
+                        ?, ?, ?, ?, ?, ?,
+                        ?, ?, ?, ?, ?, ?,
+                        ?, ?, ?, ?, ?,
+                        ?, ?, ?, ?,
+                        ?, ?, ?, ?
+                    )
+                '''
+                
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                values = (
+                    ticker, timestamp, company_name, sector, country, currency, quote_type,
+                    _clean(price), _clean(ma5), _clean(ma10), _clean(ma21), _clean(ma50), _clean(ma200), trend_50d, trend_200d, _clean(rsi), _clean(stop_loss),
+                    _clean(fifty_two_week_low), _clean(fifty_two_week_high),
+                    _clean(trailing_pe), _clean(forward_pe), _clean(peg_ratio), _clean(peter_lynch_peg), _clean(price_to_book),
+                    _clean(profit_margin), _clean(roe), _clean(revenue_growth), _clean(debt_to_equity), _clean(current_ratio), _clean(operating_cash_flow),
+                    _clean(ytd_return), _clean(total_assets), _clean(nav_price), _clean(expense_ratio), top_holdings, sector_weightings,
+                    _clean(dividend_yield), ex_dividend_date, _clean(target_price), analyst_rating, next_earnings_date,
+                    _clean(short_interest), _clean(institutional_ownership), _clean(beta), _clean(yield_correlation),
+                    _clean(score), signal, notes, tags_json
+                )
+                
+                cursor.execute(query, values)
+                conn.commit()
+                logger.info(f"[SUCCESS] Analyzed {ticker} | Signal: {signal} | Score: {score}/100")
+                
+            except Exception as e:
+                conn.rollback()
+                logger.error(f"Failed to execute insertion for {ticker}: {e}")
+            finally:
+                conn.close()
+        except Exception as conn_e:
+            logger.error(f"Failed to secure database connection for {ticker}: {conn_e}")
 
     def run_all(self) -> None:
         logger.info("Starting Institutional Quantamental Engine...")
-        try:
-            for filename in os.listdir(HISTORICAL_DIR):
-                if filename.endswith(".parquet") and "BASELINE" not in filename:
-                    ticker = filename.replace(".parquet", "")
-                    self.analyze_ticker(ticker)
-            logger.info("Analysis Complete. Master Database is fully updated.")
-        finally:
-            self.close()
+        for filename in os.listdir(HISTORICAL_DIR):
+            if filename.endswith(".parquet") and "BASELINE" not in filename:
+                ticker = filename.replace(".parquet", "")
+                self.analyze_ticker(ticker)
+        logger.info("Analysis Complete. Master Database is fully updated.")
 
 if __name__ == "__main__":
     engine = QuantEngine()
