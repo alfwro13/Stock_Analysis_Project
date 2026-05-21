@@ -684,14 +684,21 @@ class QuantEngine:
             else:
                 breakdown.append("+0: Technical indicators skipped (Insufficient Historical Data)")
 
-            # [MATH-08 / ISSUE-M03] Safely clamp the final score between 0 and 100
-            score = max(0, min(score, 100))
+            # Safely clamp the final score between -50 and 100 to allow structural weakness visibility
+            score = max(-50, min(score, 100))
 
-            if score >= 80: signal = "STRONG BUY"
-            elif score >= 60: signal = "BULLISH / HOLD"
-            elif score >= 40: signal = "NEUTRAL"
-            elif score >= 10: signal = "BEARISH / CAUTION"
-            else: signal = "STRONG SELL"
+            if score >= 80: 
+                signal = "STRONG BUY"
+            elif score >= 60: 
+                signal = "BULLISH / HOLD"
+            elif score >= 40: 
+                signal = "NEUTRAL"
+            elif score >= 10: 
+                signal = "BEARISH / CAUTION"
+            elif score >= -20: 
+                signal = "STRONG SELL"
+            else: 
+                signal = "TOXIC / AVOID"
 
             notes_html = "<strong>Algorithmic Breakdown:</strong><br><ul class='algo-breakdown-list'>"
             for item in breakdown:

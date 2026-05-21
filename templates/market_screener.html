@@ -331,7 +331,7 @@
                                     if (!isNaN(comp)) {
                                         if (comp >= 70 && data < 40) {
                                             html += ` <div style="display: inline-block;"><abbr title="High Quant Score but Low AI Confidence" style="text-decoration: none;"><span class="setup-tag">⚠️ Divergence</span></abbr></div>`;
-                                        } else if (comp >= 0 && comp < 40 && data >= 70) {
+                                        } else if (comp < 40 && data >= 70) {
                                             html += ` <div style="display: inline-block;"><abbr title="Low Quant Score but High AI Confidence" style="text-decoration: none;"><span class="setup-tag">🤖 AI Buy</span></abbr></div>`;
                                         }
                                     }
