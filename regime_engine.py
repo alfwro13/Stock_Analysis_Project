@@ -226,23 +226,7 @@ def calculate_systemic_macro_threat() -> None:
         conn = get_connection()
         try:
             cursor = conn.cursor()
-            
-            # Explicitly ensure table exists before insert
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS macro_regimes (
-                    date TEXT PRIMARY KEY,
-                    tyx_close REAL,
-                    tnx_close REAL,
-                    dxy_close REAL,
-                    uk_gilt_close REAL,
-                    gbpusd_close REAL,
-                    us_yield_velocity REAL,
-                    us_threat_level TEXT,
-                    uk_yield_velocity REAL,
-                    uk_threat_level TEXT
-                )
-            ''')
-            
+         
             cursor.execute('''
                 INSERT OR REPLACE INTO macro_regimes 
                 (date, tyx_close, tnx_close, dxy_close, uk_gilt_close, gbpusd_close, 
