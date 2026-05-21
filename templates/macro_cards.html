@@ -191,12 +191,15 @@
                 const sign = asset.is_positive ? '+' : '';
                 changeEl.innerText = `${sign}${formattedChange}%`;
                 
+                // RESTORED AND ENHANCED: Apply stale/fresh color coding
                 if (asset.is_stale) {
                     changeEl.className = 'stale-text';
                     priceEl.className = 'stale-text';
                 } else {
-                    changeEl.className = asset.is_positive ? 'trend-up' : 'trend-down';
-                    priceEl.className = '';
+                    const trendClass = asset.is_positive ? 'trend-up' : 'trend-down';
+                    changeEl.className = trendClass;
+                    // Apply the same green/red trend coloring to the price itself
+                    priceEl.className = trendClass;
                 }
             }
         });
