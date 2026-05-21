@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 def get_oversold_reversals(data: List[Dict[str, Any]], regime_label: str) -> List[Dict[str, Any]]:
     """
     Identifies assets that are heavily oversold but showing early momentum recovery.
-    Logic: RSI < 30 AND MACD Histogram > 0
+    Logic: RSI < 30 AND MACD Histogram > 0 AND Bullish Cross Confirmed today.
     Regime Context: In 'Crash'/'Volatile', traditional RSI dips fail as stocks keep dropping. 
     Instead of requiring Price > 200D SMA (which contradicts RSI < 30), we require defensive 
     characteristics: low beta (<0.8) or defensive sectors.
@@ -34,7 +34,8 @@ def get_oversold_reversals(data: List[Dict[str, Any]], regime_label: str) -> Lis
         sector = row.get('sector', 'Unknown')
         
         if rsi is not None and macd_hist is not None:
-            if rsi < 30 and macd_hist > 0:
+            # Require a confirmed bullish cross to prevent fading momentum traps
+            if rsi < 30 and macd_hist > 0 and row.get('bullish_cross') in (1, True):
                 if regime_label in ['Crash', 'Volatile']:
                     # Safely extract beta
                     beta_raw = row.get('beta')
