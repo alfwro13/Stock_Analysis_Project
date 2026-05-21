@@ -163,7 +163,7 @@
                 </td>
                 
                 {% set cp = cached_pulse.get(item.ticker) %}
-                <td data-sort="{{ cp.price if cp else (item.current_price or 0) }}" id="price-{{ item.ticker }}" class="{% if cp and cp.is_stale %}stale-text{% endif %}">
+                <td data-sort="{{ cp.price if cp else (item.current_price or 0) }}" id="price-{{ item.ticker }}" class="{% if cp and cp.is_stale %}stale-text{% elif cp %}{% if cp.is_positive %}trend-up{% else %}trend-down{% endif %}{% endif %}">
                     {% set display_price = cp.price|float if cp else (item.current_price if item.current_price is not none else none) %}
                     {% if display_price is not none %}
                         {% set sym = '£' if item.currency in ['GBP', 'GBp'] else ('€' if item.currency == 'EUR' else '$') %}
