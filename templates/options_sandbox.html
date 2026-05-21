@@ -9,7 +9,7 @@
 </head>
 <body class="body-settings">
 
-    <div class="header-container" style="max-width: 1400px; margin: 20px auto;">
+    <div class="header-container header-container-wide">
         <div>
             <div class="title-wrapper">
                 <a href="/" class="logo-link"><img src="/assets/logo_small.png" alt="Logo" class="logo-img"></a>
@@ -22,18 +22,18 @@
 
     <div class="sandbox-container">
         <div class="panel data-panel">
-            <div class="controls-container" style="margin-bottom: 20px;">
-                <input type="text" id="tickerInput" class="filter-input" placeholder="Enter Ticker (e.g., SPY, AAPL)" style="width: 200px;">
+            <div class="controls-container mb-20">
+                <input type="text" id="tickerInput" class="filter-input w-200" placeholder="Enter Ticker (e.g., SPY, AAPL)">
                 <button class="btn btn-update" onclick="fetchChain()">Fetch Chain</button>
-                <select id="expSelect" class="filter-select" style="display: none;" onchange="renderTables()"></select>
-                <span id="currentPriceDisplay" style="margin-left: auto; font-size: 18px; font-weight: bold; color: #00ffcc;"></span>
+                <select id="expSelect" class="filter-select d-none" onchange="renderTables()"></select>
+                <span id="currentPriceDisplay" class="price-display"></span>
             </div>
 
-            <div id="payoff-chart" style="width: 100%; height: 400px; background: #121212; border-radius: 5px; margin-bottom: 20px;"></div>
+            <div id="payoff-chart" class="chart-container-dark"></div>
 
-            <div style="display: flex; gap: 20px;">
-                <div style="flex: 1;">
-                    <h3 style="color: #00ffcc;">Calls</h3>
+            <div class="flex-gap-20">
+                <div class="flex-1">
+                    <h3 class="text-accent-cyan">Calls</h3>
                     <div class="chain-table-container">
                         <table class="chain-table" id="callsTable">
                             <thead><tr><th>Strike</th><th>Last</th><th>Bid</th><th>Ask</th><th>Add</th></tr></thead>
@@ -41,8 +41,8 @@
                         </table>
                     </div>
                 </div>
-                <div style="flex: 1;">
-                    <h3 style="color: #ff4d4d;">Puts</h3>
+                <div class="flex-1">
+                    <h3 class="text-danger">Puts</h3>
                     <div class="chain-table-container">
                         <table class="chain-table" id="putsTable">
                             <thead><tr><th>Strike</th><th>Last</th><th>Bid</th><th>Ask</th><th>Add</th></tr></thead>
@@ -54,19 +54,19 @@
         </div>
 
         <div class="panel strategy-panel">
-            <h2 style="margin-top: 0;">Strategy Builder</h2>
-            <p style="font-size: 13px; color: #aaa;">Add legs from the chain. Default calculation uses the Mid Price.</p>
+            <h2 class="mt-0">Strategy Builder</h2>
+            <p class="text-muted-small">Add legs from the chain. Default calculation uses the Mid Price.</p>
             
             <div id="strategyLegs"></div>
 
-            <button class="btn btn-save" style="margin-top: 20px; padding: 10px;" onclick="calculatePayoff()">投 Plot Payoff</button>
+            <button class="btn btn-save btn-save-sm" onclick="calculatePayoff()">投 Plot Payoff</button>
         </div>
     </div>
 
     <div class="manual-container">
 
         <div class="manual-section">
-            <h2 class="manual-header" style="color: #ffaa00;">識 Who is This Tool For?</h2>
+            <h2 class="manual-header text-warning">識 Who is This Tool For?</h2>
             <div class="manual-text">
                 <p>This sandbox is heavily aimed at <strong>short-term, swing, and event-driven trading</strong> (such as trading around upcoming Earnings Reports or Fed announcements). </p>
                 <p>Because these binary events rely heavily on immediate volatility spikes, the Python backend of this tool is specifically designed to only fetch the <strong>nearest upcoming expiration dates</strong>. Near-term options are the most mathematically sensitive to sudden price changes (Gamma) and volatility crushes (Vega), making them the ideal instruments for catching short-to-medium-term momentum shifts.</p>
@@ -78,19 +78,19 @@
             <div class="manual-text">
                 <p>At its core, a financial Option is a legally binding derivative contract. It gives the buyer the <strong>right, but not the obligation</strong>, to buy or sell an underlying asset (like a stock or ETF) at a strictly agreed-upon price, on or before a specific date. Because you are buying a "right" rather than the underlying stock itself, options offer tremendous leverage and capital efficiency.</p>
                 
-                <h3 style="color: #fff; margin-top: 20px;">The Two Types of Options</h3>
-                <ul style="padding-left: 20px; margin-bottom: 20px;">
-                    <li style="margin-bottom: 10px;"><strong>The Call Option (Bullish):</strong> Gives you the right to <em>buy</em> the stock at a specific price. You buy a Call when you expect the stock price to surge upward.</li>
+                <h3 class="text-white mt-20">The Two Types of Options</h3>
+                <ul class="pl-20 mb-20">
+                    <li class="mb-10"><strong>The Call Option (Bullish):</strong> Gives you the right to <em>buy</em> the stock at a specific price. You buy a Call when you expect the stock price to surge upward.</li>
                     <li><strong>The Put Option (Bearish):</strong> Gives you the right to <em>sell</em> the stock at a specific price. You buy a Put when you expect the stock price to crash (acting like an insurance policy).</li>
                 </ul>
 
-                <h3 style="color: #fff; margin-top: 20px;">The 4 Anatomy Parts of a Contract</h3>
+                <h3 class="text-white mt-20">The 4 Anatomy Parts of a Contract</h3>
                 <p>Every option traded in this sandbox relies on four required variables:</p>
-                <ul style="padding-left: 20px;">
-                    <li style="margin-bottom: 10px;"><strong>1. Underlying Asset:</strong> The specific stock the contract is tied to (e.g., AAPL, NVDA, SPY).</li>
-                    <li style="margin-bottom: 10px;"><strong>2. Strike Price:</strong> The agreed-upon target price. If you buy a Call with a $150 Strike, you lock in the right to buy the stock at exactly $150, even if the real market price moons to $300.</li>
-                    <li style="margin-bottom: 10px;"><strong>3. Expiration Date:</strong> Options are time-bound contracts. The expiration date is the exact day the contract ceases to exist. Because time is constantly running out, options suffer from "time decay" (Theta). If the stock doesn't reach your target before this ticking clock hits zero, the contract expires worthless.</li>
-                    <li style="margin-bottom: 10px;"><strong>4. Premium:</strong> The actual cash price you pay to purchase the contract. This represents the maximum possible risk/loss for an options buyer. <em>Note: In standard US equity markets, one contract always controls 100 shares. A $2.00 premium listed in the chain will actually cost $200 in real cash.</em></li>
+                <ul class="pl-20">
+                    <li class="mb-10"><strong>1. Underlying Asset:</strong> The specific stock the contract is tied to (e.g., AAPL, NVDA, SPY).</li>
+                    <li class="mb-10"><strong>2. Strike Price:</strong> The agreed-upon target price. If you buy a Call with a $150 Strike, you lock in the right to buy the stock at exactly $150, even if the real market price moons to $300.</li>
+                    <li class="mb-10"><strong>3. Expiration Date:</strong> Options are time-bound contracts. The expiration date is the exact day the contract ceases to exist. Because time is constantly running out, options suffer from "time decay" (Theta). If the stock doesn't reach your target before this ticking clock hits zero, the contract expires worthless.</li>
+                    <li class="mb-10"><strong>4. Premium:</strong> The actual cash price you pay to purchase the contract. This represents the maximum possible risk/loss for an options buyer. <em>Note: In standard US equity markets, one contract always controls 100 shares. A $2.00 premium listed in the chain will actually cost $200 in real cash.</em></li>
                 </ul>
             </div>
         </div>
@@ -98,12 +98,12 @@
         <div class="manual-section">
             <h2 class="manual-header">当 How to Use the Sandbox</h2>
             <div class="manual-text">
-                <ol style="padding-left: 20px;">
-                    <li style="margin-bottom: 10px;"><strong>Load the Chain:</strong> Enter a valid stock or ETF ticker (e.g., AAPL, SPY) and click "Fetch Chain" to retrieve live market data and the nearest options expirations.</li>
-                    <li style="margin-bottom: 10px;"><strong>Select Expiration Date:</strong> Use the dropdown menu to select the specific day your contract will expire.</li>
-                    <li style="margin-bottom: 10px;"><strong>Build Your Strategy:</strong> Click the <strong>"+"</strong> button next to any Call or Put to add it to your Strategy Builder panel. You can toggle between going <strong>Long (Buy)</strong> or <strong>Short (Sell)</strong>, and adjust your contract quantity.</li>
-                    <li style="margin-bottom: 10px;"><strong>Analyze the Payoff Chart:</strong> Click "Plot Payoff". 
-                        <ul style="margin-top: 5px;">
+                <ol class="pl-20">
+                    <li class="mb-10"><strong>Load the Chain:</strong> Enter a valid stock or ETF ticker (e.g., AAPL, SPY) and click "Fetch Chain" to retrieve live market data and the nearest options expirations.</li>
+                    <li class="mb-10"><strong>Select Expiration Date:</strong> Use the dropdown menu to select the specific day your contract will expire.</li>
+                    <li class="mb-10"><strong>Build Your Strategy:</strong> Click the <strong>"+"</strong> button next to any Call or Put to add it to your Strategy Builder panel. You can toggle between going <strong>Long (Buy)</strong> or <strong>Short (Sell)</strong>, and adjust your contract quantity.</li>
+                    <li class="mb-10"><strong>Analyze the Payoff Chart:</strong> Click "Plot Payoff". 
+                        <ul class="mt-5">
                             <li>The <strong>X-axis</strong> represents the Underlying Stock Price at Expiration.</li>
                             <li>The <strong>Y-axis</strong> represents your Net Profit/Loss (P&L) in dollars.</li>
                             <li>The <strong>Zero-line</strong> is your Breakeven point. Green areas indicate profit, while red areas indicate loss.</li>
@@ -232,7 +232,8 @@
                     opt.innerText = exp;
                     expSelect.appendChild(opt);
                 });
-                expSelect.style.display = 'inline-block';
+                expSelect.classList.remove('d-none');
+                expSelect.classList.add('d-inline-block');
                 
                 renderTables();
 
@@ -308,16 +309,17 @@
             strategyLegs.forEach(leg => {
                 const isLong = leg.position === 'long';
                 const tagClass = isLong ? 'leg-long' : 'leg-short';
+                const btnClass = isLong ? 'btn-add-long' : 'btn-add-short';
                 
                 container.innerHTML += `
                     <div class="leg-item ${tagClass}">
-                        <div style="flex: 1;">
-                            <button class="btn-add" style="background:${isLong ? '#00ff00' : '#ff4d4d'}; color:#121212; padding:2px 5px;" onclick="togglePosition(${leg.id})">${leg.position.toUpperCase()}</button>
-                            <span style="font-weight:bold; margin-left:10px;">${leg.strike} ${leg.type.toUpperCase()}</span>
+                        <div class="flex-1">
+                            <button class="btn-add ${btnClass}" onclick="togglePosition(${leg.id})">${leg.position.toUpperCase()}</button>
+                            <span class="leg-strike-text">${leg.strike} ${leg.type.toUpperCase()}</span>
                         </div>
-                        <div style="flex: 1;">
-                            <input type="number" value="${leg.quantity}" min="1" style="width:40px; background:#121212; color:#fff; border:1px solid #444;" onchange="updateQuantity(${leg.id}, this.value)">
-                            <span style="color:#aaa; font-size:12px; margin-left:5px;">@ $${leg.premium.toFixed(2)}</span>
+                        <div class="flex-1">
+                            <input type="number" value="${leg.quantity}" min="1" class="leg-qty-input" onchange="updateQuantity(${leg.id}, this.value)">
+                            <span class="leg-premium-text">@ $${leg.premium.toFixed(2)}</span>
                         </div>
                         <button class="btn-remove" onclick="removeLeg(${leg.id})">X</button>
                     </div>

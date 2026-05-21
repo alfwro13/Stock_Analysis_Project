@@ -383,3 +383,39 @@ table.dataTable tbody tr td { color: #ccc; }
 .text-danger { color: #ff4d4d; }
 .text-success { color: #00ff00; }
 .text-white { color: #fff; }
+
+/* --- 21. Extracted Utility Classes (Batch 2) --- */
+.report-container-wide { max-width: 1400px; }
+.text-neutral-bold { color: #cccccc; font-weight: bold; }
+.empty-table-msg { text-align: center; color: #888; padding: 20px; }
+.text-accent-cyan { color: #00ffcc; }
+.text-accent-blue { color: #4da6ff; }
+.border-top-blue { border-top-color: #4da6ff; }
+.border-top-warning { border-top-color: #ffaa00; }
+.border-top-purple { border-top-color: #b366ff; }
+.border-top-success { border-top-color: #00ff00; }
+.border-top-neutral { border-top-color: #888; }
+.border-left-success { border-left-color: #00ff00; }
+.border-left-danger { border-left-color: #ff4d4d; }
+.text-muted { color: #aaa; }
+.header-container-wide { max-width: 1400px; margin: 20px auto; }
+.mb-20 { margin-bottom: 20px; }
+.mb-10 { margin-bottom: 10px; }
+.mt-20 { margin-top: 20px; }
+.mt-10 { margin-top: 10px; }
+.mt-5 { margin-top: 5px; }
+.mt-0 { margin-top: 0; }
+.pl-20 { padding-left: 20px; }
+.w-200 { width: 200px; }
+.d-none { display: none; }
+.d-inline-block { display: inline-block; }
+.price-display { margin-left: auto; font-size: 18px; font-weight: bold; color: #00ffcc; }
+.chart-container-dark { width: 100%; height: 400px; background: #121212; border-radius: 5px; margin-bottom: 20px; }
+.flex-gap-20 { display: flex; gap: 20px; }
+.flex-1 { flex: 1; }
+.btn-save-sm { margin-top: 20px; padding: 10px; }
+.leg-qty-input { width: 40px; background: #121212; color: #fff; border: 1px solid #444; }
+.leg-premium-text { color: #aaa; font-size: 12px; margin-left: 5px; }
+.leg-strike-text { font-weight: bold; margin-left: 10px; }
+.btn-add-long { background: #00ff00; color: #121212; padding: 2px 5px; }
+.btn-add-short { background: #ff4d4d; color: #121212; padding: 2px 5px; }

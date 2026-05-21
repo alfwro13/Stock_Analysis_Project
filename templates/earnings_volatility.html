@@ -17,14 +17,14 @@
                 <h1><abbr title="Quantamental - a modern institutional strategy that combines Quantitative analysis with Fundamental analysis.">uantamental</abbr> Dashboard</h1>
             </div>
             
-            <p style="color: #aaaaaa; margin-top: 5px; font-size: 14px;">Options Mispricing & Volatility Arbitrage Scanner</p>
+            <p class="page-subtitle">Options Mispricing & Volatility Arbitrage Scanner</p>
             
             {% set active_page = 'earnings_volatility' %}
-                {% include 'navbar.html' %}
+            {% include 'navbar.html' %}
         </div>
     </div>
 
-    <div class="report-container" style="max-width: 1400px;">
+    <div class="report-container report-container-wide">
         <h2>Upcoming Earnings Volatility Edge</h2>
         <p>Quantitative options mispricing evaluation. A positive edge score indicates that the At-The-Money (ATM) Straddle implies a smaller move than historical averages (Options are mathematically underpriced).</p>
         
@@ -42,18 +42,18 @@
             <tbody>
                 {% for row in earnings_data %}
                 <tr>
-                    <td><a href="/stock/{{ row.ticker }}" style="color: #4da6ff; font-weight: bold;">{{ row.ticker }}</a></td>
+                    <td><a href="/stock/{{ row.ticker }}" class="ticker-link">{{ row.ticker }}</a></td>
                     <td>{{ row.next_earnings_date }}</td>
                     <td>{{ "{:,.2f}".format(row.implied_move_pct) }}%</td>
                     <td>{{ "{:,.2f}".format(row.historical_avg_move_pct) }}%</td>
-                    <td style="font-weight: bold; color: {% if row.edge_score > 0 %}#00ff00{% elif row.edge_score < 0 %}#ff4d4d{% else %}#cccccc{% endif %};">
+                    <td class="{% if row.edge_score > 0 %}text-success{% elif row.edge_score < 0 %}text-danger{% else %}text-neutral-bold{% endif %}">
                         {% if row.edge_score > 0 %}+{% endif %}{{ "{:,.2f}".format(row.edge_score) }}%
                     </td>
                     <td>{{ "{:,.0f}".format(row.options_volume) }}</td>
                 </tr>
                 {% else %}
                 <tr>
-                    <td colspan="6" style="text-align: center; color: #888; padding: 20px;">No upcoming earnings volatility data found. Ensure the background <code>weekend_earnings_vol_scan_job</code> has run successfully.</td>
+                    <td colspan="6" class="empty-table-msg">No upcoming earnings volatility data found. Ensure the background <code>weekend_earnings_vol_scan_job</code> has run successfully.</td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -62,21 +62,21 @@
 
     <div class="manual-container">
         <div class="manual-section">
-            <h2 class="manual-header" style="color: #00ffcc;">📖 How to Read This Report</h2>
+            <h2 class="manual-header text-accent-cyan">📖 How to Read This Report</h2>
             <div class="manual-text">
                 <p>Trading around earnings is one of the most volatile events in the stock market. Because earnings reports are binary events (a company either beats expectations or misses them), stocks often gap up or down violently. This scanner acts as an <strong>Arbitrage Engine</strong>—it compares what the options market <em>thinks</em> will happen against what has <em>historically</em> happened, looking for mathematical mispricings.</p>
             </div>
 
             <div class="guide-grid">
                 
-                <div class="guide-card" style="border-top-color: #4da6ff;">
-                    <h4 style="color: #4da6ff;">1. What are Options?</h4>
+                <div class="guide-card border-top-blue">
+                    <h4 class="text-accent-blue">1. What are Options?</h4>
                     <p>Options are financial derivative contracts that give you the right, but not the obligation, to buy (a <strong>Call</strong> option) or sell (a <strong>Put</strong> option) a stock at a specific price on a specific date. They are essentially bets on future price movement.</p>
                     <p>Right before an earnings report, options become incredibly expensive. This is because market makers know a massive price jump is coming, so they raise the "premiums" (the cost to buy the contract) to protect themselves. This inflation of price is called <strong>Implied Volatility (IV)</strong>.</p>
                 </div>
 
-                <div class="guide-card" style="border-top-color: #ffaa00;">
-                    <h4 style="color: #ffaa00;">2. The Implied Move</h4>
+                <div class="guide-card border-top-warning">
+                    <h4 class="text-warning">2. The Implied Move</h4>
                     <p>The Implied Move tells us exactly how big of a jump the options market is pricing in. Our engine calculates this by looking at the cost of buying an At-The-Money (ATM) Call <em>and</em> an ATM Put expiring right after the earnings date (a strategy known as a Straddle).</p>
                     <div class="setup">
                         Example:<br>
@@ -89,29 +89,29 @@
                     </div>
                 </div>
 
-                <div class="guide-card" style="border-top-color: #b366ff;">
-                    <h4 style="color: #b366ff;">3. Historical Avg Move</h4>
+                <div class="guide-card border-top-purple">
+                    <h4 class="text-accent-purple">3. Historical Avg Move</h4>
                     <p>While the Implied Move looks forward, the Historical Move looks backward to ground us in reality. The engine pulls the exact dates of the company's last 4 quarterly earnings reports (1 year of data).</p>
                     <p>It mathematically calculates the actual, real-world percentage gaps the stock made the day after those reports were released, and averages them together. This tells us how violently this specific stock <em>actually</em> reacts to its report card.</p>
                 </div>
 
-                <div class="guide-card" style="border-top-color: #00ff00;">
-                    <h4 style="color: #00ff00;">4. Edge Score (The Arbitrage)</h4>
+                <div class="guide-card border-top-success">
+                    <h4 class="text-success">4. Edge Score (The Arbitrage)</h4>
                     <p>The Edge Score is our mathematical advantage. It is calculated simply: <strong>Historical Move - Implied Move</strong>.</p>
-                    <div class="setup" style="border-left-color: #00ff00;">
+                    <div class="setup border-left-success">
                         <strong>Positive Edge (Green)</strong><br>
                         Implied: 5% | Historical: 10%<br>
                         Options are UNDERPRICED. The market expects a small move, but historically this stock explodes. Buying options here offers a statistical edge.
                     </div>
-                    <div class="setup" style="border-left-color: #ff4d4d; margin-top: 10px;">
+                    <div class="setup border-left-danger mt-10">
                         <strong>Negative Edge (Red)</strong><br>
                         Implied: 15% | Historical: 3%<br>
                         Options are OVERPRICED. The market expects chaos, but historically this stock barely moves. This is a setup for an "IV Crush"—selling options here offers an edge.
                     </div>
                 </div>
 
-                <div class="guide-card" style="border-top-color: #888;">
-                    <h4 style="color: #aaa;">5. Options Volume</h4>
+                <div class="guide-card border-top-neutral">
+                    <h4 class="text-muted">5. Options Volume</h4>
                     <p>This is the total number of Option contracts that have traded today for the specific strike prices we used in our calculation.</p>
                     <p><strong>Why it matters:</strong> If the volume is extremely low (e.g., under 100), the options are "illiquid." This means the Bid/Ask spread is incredibly wide, making the Implied Move calculation mathematically unreliable. Always look for high volume to ensure the Edge Score is based on trustworthy, highly traded market data.</p>
                 </div>
