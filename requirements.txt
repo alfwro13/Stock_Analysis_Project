@@ -22,3 +22,4 @@ html5lib
 transformers>=4.37.0
 torch>=2.0.0
 hmmlearn>=0.3.0
+shap>=0.45.0
