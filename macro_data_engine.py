@@ -1,6 +1,4 @@
 # macro_data_engine.py
-import os
-import sqlite3
 import logging
 import requests
 import io
@@ -9,7 +7,9 @@ from datetime import datetime, timedelta
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from typing import Optional, List, Dict
-from config import load_config, DB_PATH
+
+from config import load_config
+from database import get_connection
 
 # Configure module-level logging
 logger = logging.getLogger(__name__)
@@ -25,12 +25,6 @@ ONS_TAXONOMY: Dict[str, str] = {
     "D7G7": "/economy/inflationandpriceindices/timeseries/d7g7/mm23/data",
     "BCJD": "/employmentandlabourmarket/peoplenotinwork/outofworkbenefits/timeseries/bcjd/unem/data"
 }
-
-def get_connection() -> sqlite3.Connection:
-    """Returns a native SQLite connection."""
-    # Wrapping in str() strictly ensures compatibility if DB_PATH is a pathlib.Path object
-    os.makedirs(os.path.dirname(str(DB_PATH)), exist_ok=True)
-    return sqlite3.connect(str(DB_PATH))
 
 def setup_database() -> None:
     """Ensures the macro_indicators table is structured idempotently."""
