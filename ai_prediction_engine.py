@@ -15,6 +15,7 @@ from xgboost import XGBClassifier
 from sklearn.ensemble import RandomForestClassifier, VotingClassifier
 from sklearn.metrics import accuracy_score, classification_report
 from sklearn.model_selection import TimeSeriesSplit, RandomizedSearchCV
+from sklearn.calibration import CalibratedClassifierCV
 
 from config import BASE_DIR
 from database import get_connection, log_notification
@@ -298,7 +299,7 @@ def train_global_ml_model() -> None:
         # Contextual Features
         df['sector_code'] = df['sector'].map(SECTOR_MAP).fillna(0).astype(int)
         
-        # Point-In-Time Liquidity/Size Proxy (Dollar Volume)
+        # Point-In-Time Proxy
         df['dollar_vol_log'] = np.log1p(df['close_price'] * df['volume'])
 
         df.replace([np.inf, -np.inf], np.nan, inplace=True)
@@ -411,10 +412,13 @@ def train_global_ml_model() -> None:
         # --- Production Model Retraining ---
         logger.info("Training final production Voting Classifier with optimized parameters...")
         production_ensemble = VotingClassifier(estimators=[('rf', best_rf), ('xgb', best_xgb)], voting='soft')
-        production_ensemble.fit(X_full, y_full)
+        
+        logger.info("Applying Isotonic Probability Calibration to the ensemble...")
+        calibrated_ensemble = CalibratedClassifierCV(estimator=production_ensemble, method='isotonic', cv=5)
+        calibrated_ensemble.fit(X_full, y_full)
 
         # Persist standard output
-        joblib.dump(production_ensemble, MODEL_PATH)
+        joblib.dump(calibrated_ensemble, MODEL_PATH)
         logger.info(f"✅ Production ML Ensemble successfully trained and saved to {MODEL_PATH}")
         log_notification("Success", f"Global ML Model trained & optimized (WF-OOS Accuracy: {avg_oos_accuracy:.2%}).")
 
