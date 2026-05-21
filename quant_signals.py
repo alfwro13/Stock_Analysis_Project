@@ -393,14 +393,14 @@ class QuantEngine:
                 ma50 = valid_ma50.iloc[-1] if not valid_ma50.empty else None
                 ma200 = valid_ma200.iloc[-1] if not valid_ma200.empty else None
                 
-                # Bulletproof Trend Direction Checks using sanitized series lengths
-                if not valid_ma50.empty and len(valid_ma50) >= 10:
-                    trend_50d = "UP" if valid_ma50.iloc[-1] > valid_ma50.iloc[-10] else "DOWN"
+                # Trend Direction Checks using 21-bar (1-month) institutional slope baseline
+                if not valid_ma50.empty and len(valid_ma50) >= 21:
+                    trend_50d = "UP" if valid_ma50.iloc[-1] > valid_ma50.iloc[-21] else "DOWN"
                 else:
                     trend_50d = "DOWN"
 
-                if not valid_ma200.empty and len(valid_ma200) >= 20:
-                    trend_200d = "UP" if valid_ma200.iloc[-1] > valid_ma200.iloc[-20] else "DOWN"
+                if not valid_ma200.empty and len(valid_ma200) >= 21:
+                    trend_200d = "UP" if valid_ma200.iloc[-1] > valid_ma200.iloc[-21] else "DOWN"
                 else:
                     trend_200d = "DOWN"
 
@@ -807,8 +807,8 @@ class QuantEngine:
                     _clean(ytd_return), _clean(total_assets), _clean(nav_price), _clean(expense_ratio), top_holdings, sector_weightings,
                     _clean(dividend_yield), ex_dividend_date, _clean(target_price), analyst_rating, next_earnings_date,
                     _clean(short_interest), _clean(institutional_ownership), _clean(beta), _clean(yield_correlation),
-                    _clean(score), signal, notes, tags_json
-                )
+                    int(score), signal, notes, tags_json
+                ))
                 
                 cursor.execute(query, values)
                 conn.commit()
