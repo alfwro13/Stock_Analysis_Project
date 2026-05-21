@@ -21,19 +21,19 @@
                 <h1><abbr title="Quantamental - a modern institutional strategy that combines Quantitative analysis with Fundamental analysis.">uantamental</abbr> Dashboard</h1>
             </div>
             
-            <p style="color: #aaaaaa; margin-top: 5px; font-size: 14px;">Market Screener: Scanning 4,000+ US Equities & ETFs</p>
+            <p class="page-subtitle">Market Screener: Scanning 4,000+ US Equities & ETFs</p>
             
             {% set active_page = 'market_screener' %}
-                {% include 'navbar.html' %}
+            {% include 'navbar.html' %}
         </div>
     </div>
 
-    <div style="background-color: #1e1e1e; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); margin-top: 20px;">
+    <div class="bg-dark-panel">
 
-        <div class="controls-container" style="margin-bottom: 20px; flex-wrap: wrap; gap: 15px; align-items: flex-end; background-color: #1a2636; padding: 15px; border-radius: 8px; border-left: 4px solid #4da6ff;">
+        <div class="controls-container filter-panel">
             
-            <div class="form-group" style="margin-bottom: 0;">
-                <label style="color: #aaa; font-size: 13px; margin-bottom: 5px;">Asset Type</label>
+            <div class="form-group mb-0">
+                <label class="filter-label">Asset Type</label>
                 <select id="typeFilter" class="filter-select">
                     <option value="ALL">All Types</option>
                     <option value="EQUITY">Equities</option>
@@ -42,48 +42,48 @@
                 </select>
             </div>
 
-            <div class="form-group" style="margin-bottom: 0;">
-                <label style="color: #aaa; font-size: 13px; margin-bottom: 5px;">Exchange</label>
+            <div class="form-group mb-0">
+                <label class="filter-label">Exchange</label>
                 <select id="exchangeFilter" class="filter-select">
                     <option value="ALL">All Exchanges</option>
                 </select>
             </div>
 
-            <div class="form-group" style="margin-bottom: 0;">
-                <label style="color: #aaa; font-size: 13px; margin-bottom: 5px;">Sector</label>
+            <div class="form-group mb-0">
+                <label class="filter-label">Sector</label>
                 <select id="sectorFilter" class="filter-select">
                     <option value="ALL">All Sectors</option>
                 </select>
             </div>
 
-            <div class="form-group" style="margin-bottom: 0;">
-                <label style="color: #aaa; font-size: 13px; margin-bottom: 5px;">RSI (14)</label>
-                <div style="display: flex; gap: 5px;">
-                    <select id="rsiOp" class="filter-select" style="padding: 8px; width: 60px;">
+            <div class="form-group mb-0">
+                <label class="filter-label">RSI (14)</label>
+                <div class="flex-gap-5">
+                    <select id="rsiOp" class="filter-select filter-select-sm">
                         <option value="any">--</option>
                         <option value="gt">&gt;</option>
                         <option value="lt">&lt;</option>
                     </select>
-                    <input type="number" id="rsiVal" class="filter-input" style="width: 80px;" placeholder="Val">
+                    <input type="number" id="rsiVal" class="filter-input filter-input-sm" placeholder="Val">
                 </div>
             </div>
 
-            <div class="form-group" style="margin-bottom: 0;">
-                <label style="color: #aaa; font-size: 13px; margin-bottom: 5px;">MACD Hist</label>
-                <div style="display: flex; gap: 5px;">
-                    <select id="macdOp" class="filter-select" style="padding: 8px; width: 60px;">
+            <div class="form-group mb-0">
+                <label class="filter-label">MACD Hist</label>
+                <div class="flex-gap-5">
+                    <select id="macdOp" class="filter-select filter-select-sm">
                         <option value="any">--</option>
                         <option value="gt">&gt;</option>
                         <option value="lt">&lt;</option>
                     </select>
-                    <input type="number" id="macdVal" class="filter-input" style="width: 80px;" placeholder="Val">
+                    <input type="number" id="macdVal" class="filter-input filter-input-sm" placeholder="Val">
                 </div>
             </div>
 
-            <button id="clearFiltersBtn" class="btn btn-danger" style="padding: 9px 15px; margin-left: auto;">✖ Clear Filters</button>
+            <button id="clearFiltersBtn" class="btn btn-danger btn-clear-filters">✖ Clear Filters</button>
         </div>
 
-        <table id="screenerTable" class="display" style="width:100%">
+        <table id="screenerTable" class="display w-100">
             <thead>
                 <tr>
                     <th>Ticker</th>
@@ -110,17 +110,17 @@
             <tbody></tbody>
         </table>
 
-        <div style="margin-top: 15px; padding-top: 15px; border-top: 1px dashed #333; font-size: 13px; color: #aaa; line-height: 1.6;">
-            <strong style="color: #e0e0e0;">Key Metrics Explained:</strong>
-            <ul style="margin-top: 5px; padding-left: 20px; margin-bottom: 0;">
-                <li><strong style="color: #4da6ff;">Volume:</strong> Total shares traded today. High volume indicates "Smart Money" conviction, validating price action. Low volume moves are often "traps" lacking institutional backing.</li>
-                <li><strong style="color: #4da6ff;"><abbr title="Relative Strength Index">RSI</abbr> (14-Day):</strong> Oscillates 0-100. Values above 70 are "Overbought" (mean reversion risk); values below 30 are "Oversold" (potential accumulation zone).</li>
-                <li><strong style="color: #4da6ff;"><abbr title="Moving Average Convergence Divergence">MACD</abbr> Histogram:</strong> Measures momentum velocity. Expanding green bars confirm acceleration; red or shrinking bars signal momentum decay or a trend pivot.</li>
-                <li><strong style="color: #4da6ff;">50D <abbr title="Simple Moving Average">SMA</abbr>:</strong> The "Health Line" representing the 10-week price mean. Trading above it confirms a medium-term uptrend; falling below suggests a structural loss of strength.</li>
-                <li><strong style="color: #4da6ff;">200D <abbr title="Simple Moving Average">SMA</abbr>:</strong> The "Institutional Floor." Banks and funds use this as the ultimate line in the sand; breaking below it often marks the shift into a primary bear market.</li>
-                <li><strong style="color: #4da6ff;">ML Conf:</strong> Machine Learning Ensemble confidence score predicting a >3% return over the next 5 days. >75% is highly actionable.</li>
-                <li><strong style="color: #4da6ff;">Log VaR (95%):</strong> Parametric Log-Return Value at Risk. The expected maximum percentage loss on a continuous log scale over a standard holding period with 95% confidence. <em>(Hover over for Log-Return Conditional VaR / Expected Shortfall).</em></li>
-                <li><strong style="color: #4da6ff;">Sentiment:</strong> VADER NLP compound score generated from the latest news headlines. Positive values indicate bullish media framing.</li>
+        <div class="footer-notes">
+            <strong class="text-light">Key Metrics Explained:</strong>
+            <ul class="explanation-list">
+                <li><strong class="text-accent-blue">Volume:</strong> Total shares traded today. High volume indicates "Smart Money" conviction, validating price action. Low volume moves are often "traps" lacking institutional backing.</li>
+                <li><strong class="text-accent-blue"><abbr title="Relative Strength Index">RSI</abbr> (14-Day):</strong> Oscillates 0-100. Values above 70 are "Overbought" (mean reversion risk); values below 30 are "Oversold" (potential accumulation zone).</li>
+                <li><strong class="text-accent-blue"><abbr title="Moving Average Convergence Divergence">MACD</abbr> Histogram:</strong> Measures momentum velocity. Expanding green bars confirm acceleration; red or shrinking bars signal momentum decay or a trend pivot.</li>
+                <li><strong class="text-accent-blue">50D <abbr title="Simple Moving Average">SMA</abbr>:</strong> The "Health Line" representing the 10-week price mean. Trading above it confirms a medium-term uptrend; falling below suggests a structural loss of strength.</li>
+                <li><strong class="text-accent-blue">200D <abbr title="Simple Moving Average">SMA</abbr>:</strong> The "Institutional Floor." Banks and funds use this as the ultimate line in the sand; breaking below it often marks the shift into a primary bear market.</li>
+                <li><strong class="text-accent-blue">ML Conf:</strong> Machine Learning Ensemble confidence score predicting a >3% return over the next 5 days. >75% is highly actionable.</li>
+                <li><strong class="text-accent-blue">Log VaR (95%):</strong> Parametric Log-Return Value at Risk. The expected maximum percentage loss on a continuous log scale over a standard holding period with 95% confidence. <em>(Hover over for Log-Return Conditional VaR / Expected Shortfall).</em></li>
+                <li><strong class="text-accent-blue">Sentiment:</strong> VADER NLP compound score generated from the latest news headlines. Positive values indicate bullish media framing.</li>
             </ul>
         </div>
     </div>
@@ -159,12 +159,12 @@
                 if (reqAbove50d) filterLabels.push('Price > 50D SMA');
                 
                 const bannerHtml = `
-                    <div id="activeFiltersBanner" style="background-color: #1a2636; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #00ffcc; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">
+                    <div class="active-filters-banner" id="activeFiltersBanner">
                         <div>
-                            <strong style="color: #00ffcc;">Active Deep-Link Filters:</strong> 
-                            <span style="color: #e0e0e0; margin-left: 10px; font-weight: bold;">${filterLabels.join(' &nbsp;|&nbsp; ')}</span>
+                            <strong class="text-accent-cyan">Active Deep-Link Filters:</strong> 
+                            <span class="text-light ml-10 font-bold">${filterLabels.join(' &nbsp;|&nbsp; ')}</span>
                         </div>
-                        <button class="btn-remove" style="padding: 8px 15px; font-weight: bold; cursor: pointer; border: none;" onclick="window.location.href='/market-screener'">✖ Clear Filters</button>
+                        <button class="btn-remove btn-clear-filters" onclick="window.location.href='/market-screener'">✖ Clear Filters</button>
                     </div>
                 `;
                 $('#screenerTable').parent().prepend(bannerHtml);
@@ -270,7 +270,7 @@
                 },
                 
                 columns: [
-                    { data: 'ticker', render: function(data) { return '<a href="/stock/' + data + '" style="color: #4da6ff; font-weight: bold;">' + data + '</a>'; } },
+                    { data: 'ticker', render: function(data) { return '<a href="/stock/' + data + '" class="ticker-link">' + data + '</a>'; } },
                     { data: 'company_name', render: function(data) { return data || 'N/A'; } },
                     { data: 'subtitle', render: function(data) { return data || 'N/A'; } },
                     { data: 'sector', render: function(data) { return data || 'N/A'; } },
@@ -326,9 +326,9 @@
                                     let comp = parseInt(row.composite_score);
                                     if (!isNaN(comp)) {
                                         if (comp >= 70 && data < 40) {
-                                            html += ` <div style="display: inline-block;"><abbr title="High Quant Score but Low AI Confidence" style="text-decoration: none;"><span class="setup-tag">⚠️ Divergence</span></abbr></div>`;
+                                            html += ` <div class="d-inline-block"><abbr title="High Quant Score but Low AI Confidence" class="no-decoration-abbr"><span class="setup-tag">⚠️ Divergence</span></abbr></div>`;
                                         } else if (comp < 40 && data >= 70) {
-                                            html += ` <div style="display: inline-block;"><abbr title="Low Quant Score but High AI Confidence" style="text-decoration: none;"><span class="setup-tag">🤖 AI Buy</span></abbr></div>`;
+                                            html += ` <div class="d-inline-block"><abbr title="Low Quant Score but High AI Confidence" class="no-decoration-abbr"><span class="setup-tag">🤖 AI Buy</span></abbr></div>`;
                                         }
                                     }
                                 }
@@ -345,7 +345,7 @@
                             if (type === 'display') {
                                 let cssClass = data > 0.05 ? 'metric-poor' : 'metric-neutral';
                                 let cvarText = row.cvar_95 !== null && row.cvar_95 !== undefined ? `Log-Return Expected Shortfall (CVaR): ${(row.cvar_95 * 100).toFixed(2)}%` : 'CVaR: N/A';
-                                return `<abbr title="${cvarText}" style="text-decoration: underline dotted; cursor: help;"><span class="${cssClass}">${(data * 100).toFixed(2)}%</span></abbr>`;
+                                return `<abbr title="${cvarText}" class="help-abbr"><span class="${cssClass}">${(data * 100).toFixed(2)}%</span></abbr>`;
                             }
                             return data;
                         }
@@ -372,7 +372,7 @@
                         }
                     },
                     { data: 'expense_ratio', render: function(data) { return data ? data + '%' : 'N/A'; } },
-                    { data: 'freetrade_link', render: function(data) { return data && data !== 'N/A' ? '<a href="' + data + '" target="_blank" style="color: #b366ff;">KIID Document</a>' : 'N/A'; } }
+                    { data: 'freetrade_link', render: function(data) { return data && data !== 'N/A' ? '<a href="' + data + '" target="_blank" class="text-accent-purple">KIID Document</a>' : 'N/A'; } }
                 ]
             });
 

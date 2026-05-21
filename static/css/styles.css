@@ -419,3 +419,31 @@ table.dataTable tbody tr td { color: #ccc; }
 .leg-strike-text { font-weight: bold; margin-left: 10px; }
 .btn-add-long { background: #00ff00; color: #121212; padding: 2px 5px; }
 .btn-add-short { background: #ff4d4d; color: #121212; padding: 2px 5px; }
+
+/* --- 22. Extracted Utility Classes (Batch 3) --- */
+.text-help { text-decoration: underline dotted #666; cursor: help; }
+.font-monospace { font-family: monospace; }
+.font-bold { font-weight: bold; }
+.text-sm { font-size: 13px; }
+.text-xs { font-size: 11px; }
+.ml-10 { margin-left: 10px; }
+.mb-0 { margin-bottom: 0; }
+.flex-col { display: flex; flex-direction: column; }
+.flex-wrap { flex-wrap: wrap; }
+.flex-gap-5 { display: flex; gap: 5px; }
+
+/* Market Screener Panel & Filter Styles */
+.bg-dark-panel { background-color: #1e1e1e; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); margin-top: 20px; }
+.filter-panel { background-color: #1a2636; padding: 15px; border-radius: 8px; border-left: 4px solid #4da6ff; align-items: flex-end; }
+.filter-label { color: #aaa; font-size: 13px; margin-bottom: 5px; display: block; }
+.filter-select-sm { padding: 8px; width: 60px; }
+.filter-input-sm { width: 80px; }
+.btn-clear-filters { padding: 9px 15px; margin-left: auto; }
+.footer-notes { margin-top: 15px; padding-top: 15px; border-top: 1px dashed #333; font-size: 13px; color: #aaa; line-height: 1.6; }
+.active-filters-banner { background-color: #1a2636; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #00ffcc; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+
+/* Urgent Event Banner Dynamic Colors */
+.urgent-banner-title { margin-bottom: 15px; font-weight: bold; }
+.urgent-banner-title.red { color: #ff4d4d; }
+.urgent-banner-title.yellow { color: #ffaa00; }
+
