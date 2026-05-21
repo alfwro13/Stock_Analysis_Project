@@ -258,14 +258,17 @@ def update_macro_indicators() -> None:
     conn = get_connection()
     try:
         cursor = conn.cursor()
+        # Use INSERT OR IGNORE to prevent lookahead bias.
+        # This preserves the exact point-in-time (PIT) knowledge the system had on that day,
+        # preventing backward revisions or late-released monthly data from corrupting historical training rows.
         cursor.executemany('''
-            INSERT OR REPLACE INTO macro_indicators (
+            INSERT OR IGNORE INTO macro_indicators (
                 date, us_m2, us_jobless_claims, us_high_yield_spread, us_yield_curve,
                 uk_m4, uk_corporate_spread, uk_cpi_inflation, uk_claimant_count
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', records)
         conn.commit()
-        logger.info(f"Successfully bulk-upserted {cursor.rowcount} Macro Regime historical days for AI Training.")
+        logger.info(f"Successfully bulk-inserted up to {cursor.rowcount} new Macro Regime historical days (ignoring existing to preserve PIT).")
     except sqlite3.Error as e:
         logger.error(f"Database bulk insertion failed: {e}")
         conn.rollback()
