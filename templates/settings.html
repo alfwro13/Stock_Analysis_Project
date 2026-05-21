@@ -1294,6 +1294,43 @@
             }, 3000);
         }
 
+        async function fetchNetworkStatus() {
+            try {
+                const response = await fetch('/api/settings/network-status');
+                const data = await response.json();
+                const badge = document.getElementById('network-route-badge');
+                const details = document.getElementById('network-route-details');
+                
+                badge.innerText = data.route;
+                if (data.indicator === 'green') {
+                    badge.style.backgroundColor = 'rgba(0, 255, 0, 0.1)';
+                    badge.style.color = '#00ff00';
+                    badge.style.borderColor = '#00ff00';
+                } else if (data.indicator === 'yellow') {
+                    badge.style.backgroundColor = 'rgba(255, 170, 0, 0.1)';
+                    badge.style.color = '#ffaa00';
+                    badge.style.borderColor = '#ffaa00';
+                } else {
+                    badge.style.backgroundColor = 'rgba(255, 77, 77, 0.1)';
+                    badge.style.color = '#ff4d4d';
+                    badge.style.borderColor = '#ff4d4d';
+                }
+                details.innerText = data.message;
+            } catch (e) {
+                console.error("Failed to fetch network status", e);
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            initGlobalBrowserNotifications();
+            setInterval(pollGlobalSystemNotifications, 15000);
+            pollGlobalSystemNotifications(); 
+            
+            // Poll Network Status
+            fetchNetworkStatus();
+            setInterval(fetchNetworkStatus, 10000); // Update badge every 10s
+        });
+
         async function testYahooIPv6() {
             const btn = document.getElementById('testIpv6Btn');
             const statusBox = document.getElementById('test-ipv6-msg');
