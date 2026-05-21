@@ -46,6 +46,40 @@ _MACRO_HTML_CACHE: Dict[str, str] = {
     "ftse_gbp_html": ""
 }
 
+# --- GLOBAL THREAD-SAFE STORAGE AND STATE MATRIX ---
+_CACHE_LOCK = threading.Lock()
+_IS_REFRESHING = False
+_LAST_CACHE_TIME = 0.0
+
+_MACRO_HTML_CACHE: Dict[str, str] = {
+    "sentiment_html": "",
+    "vix_spy_html": "",
+    "yield_equity_html": "",
+    "uk_yield_equity_html": "",
+    "ftse_gbp_html": ""
+}
+
+# --- ML MODEL LAZY LOADING STATE ---
+_FINBERT_ANALYZER = None
+_MODEL_LOCK = threading.Lock()
+
+def _get_finbert_analyzer():
+    """
+    Thread-safe singleton for lazy-loading the FinBERT model.
+    Prevents multi-worker memory explosion and redundant initializations.
+    """
+    global _FINBERT_ANALYZER
+    if _FINBERT_ANALYZER is None:
+        with _MODEL_LOCK:
+            # Double-checked locking to prevent race conditions during initialization
+            if _FINBERT_ANALYZER is None:
+                logger.info("Loading FinBERT model into memory (Lazy Initialization)...")
+                try:
+                    _FINBERT_ANALYZER = pipeline("sentiment-analysis", model="ProsusAI/finbert")
+                except Exception as e:
+                    logger.error(f"Failed to allocate memory or initialize FinBERT pipeline: {e}")
+                    return None
+    return _FINBERT_ANALYZER
 
 # ==========================================================
 # 1. MACRO SENTIMENT (FEAR & GREED INDEX)
@@ -646,14 +680,12 @@ def update_all_sentiment(tickers: List[str]) -> None:
         logger.warning("Ticker list is empty. Aborting FinBERT sentiment scan.")
         return
 
-    logger.info(f"Initiating FinBERT NLP Sentiment Scan for {len(combined_tickers)} assets. Loading model into memory...")
+    logger.info(f"Initiating FinBERT NLP Sentiment Scan for {len(combined_tickers)} assets.")
     
-    # Initialize the HuggingFace pipeline with FinBERT
-    # Note: On first run, this will download the model weights (~400MB)
-    try:
-        analyzer = pipeline("sentiment-analysis", model="ProsusAI/finbert")
-    except Exception as e:
-        logger.error(f"Failed to initialize HuggingFace FinBERT pipeline: {e}")
+    # Instantiate or retrieve the cached singleton model
+    analyzer = _get_finbert_analyzer()
+    if not analyzer:
+        logger.error("FinBERT pipeline unavailable. Aborting scan.")
         return
     
     conn = get_connection()
@@ -707,11 +739,10 @@ def run_central_bank_nlp_alert(event_name: str, currency: str) -> bool:
     logger.info(f"Intercepting Central Bank Event for NLP Analysis: {event_name}")
     config = load_config()
     
-    # 1. Initialize FinBERT 
-    try:
-        analyzer = pipeline("sentiment-analysis", model="ProsusAI/finbert")
-    except Exception as e:
-        logger.error(f"Failed to load FinBERT for Central Bank NLP: {e}")
+    # 1. Initialize or retrieve the cached FinBERT singleton
+    analyzer = _get_finbert_analyzer()
+    if not analyzer:
+        logger.error("FinBERT pipeline unavailable. Aborting Central Bank NLP.")
         return False
 
     # 2. Determine target entity for proxy news scraping
