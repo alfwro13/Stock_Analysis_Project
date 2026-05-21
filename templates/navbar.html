@@ -65,7 +65,8 @@
                         const badge = document.getElementById('nav-badge');
                         if (badge) {
                             badge.innerText = parseInt(badge.innerText || '0') + notes.length;
-                            badge.style.display = 'inline-block';
+                            badge.classList.remove('d-none');
+                            badge.classList.add('d-inline-block');
                         }
                     }
                 } else if (globalLastNotificationId === null) {

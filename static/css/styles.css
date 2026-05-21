@@ -540,3 +540,12 @@ table.dataTable tbody tr td { color: #ccc; }
 .btn-green { background-color: #00ff00; color: #121212; }
 .btn-red { background-color: #ff4d4d; color: #121212; }
 .btn-cyan { background-color: #00ffcc; color: #121212; }
+
+/* --- Components & JS States) --- */
+.text-center { text-align: center; }
+.text-muted-dark { color: #888; }
+.mt-10 { margin-top: 10px; }
+
+/* Dynamic JS Pulse Dot States */
+.pulse-dot-live { background-color: #00ffcc !important; box-shadow: 0 0 5px #00ffcc !important; }
+.pulse-dot-stale { background-color: #aaa !important; box-shadow: 0 0 5px #aaa !important; }

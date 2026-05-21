@@ -56,12 +56,12 @@
                     pulseDot.classList.remove('offline');
                     if (anyStale) {
                         pulseText.innerText = "Loaded cached data. Fetching fresh data in background...";
-                        pulseDot.style.backgroundColor = "#aaa";
-                        pulseDot.style.boxShadow = "0 0 5px #aaa";
+                        pulseDot.classList.remove('pulse-dot-live');
+                        pulseDot.classList.add('pulse-dot-stale');
                     } else {
                         pulseText.innerText = "Live Market Pulse Active";
-                        pulseDot.style.backgroundColor = "#00ffcc";
-                        pulseDot.style.boxShadow = "0 0 5px #00ffcc";
+                        pulseDot.classList.remove('pulse-dot-stale');
+                        pulseDot.classList.add('pulse-dot-live');
                     }
                 }
                 {% endif %}
@@ -135,7 +135,7 @@
                 else if (sScore > -0.6) { sClass = 'sent-bearish'; sText = 'Bearish'; }
                 else { sClass = 'sent-fear'; sText = 'Extreme Fear'; }
                 
-                sentBadgeHTML = `<div style="margin-top: 10px;"><span class="sent-badge ${sClass}">${sText} (${sScore.toFixed(3)})</span></div>`;
+                sentBadgeHTML = `<div class="mt-10"><span class="sent-badge ${sClass}">${sText} (${sScore.toFixed(3)})</span></div>`;
             }
             
             const formattedPrice = Number(index.price).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
