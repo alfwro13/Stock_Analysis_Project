@@ -53,14 +53,16 @@ def get_rate_to_base(stock_currency: str) -> float:
                 rate = 1.0
         except Exception as e:
             logger.error(f"Failed to fetch exchange rate for {pair}: {e}")
-            # Fallback to stale cache if API fails to prevent portfolio valuation collapse
+            # Fallback to stale cache if API fails to prevent portfolio valuation collapse.
+            # Do NOT update the cache timestamp, allowing the system to retry on the next tick.
             if cached:
                 logger.warning(f"Using stale cache for {pair} due to API failure.")
-                rate = cached["rate"]
+                return cached["rate"]
             else:
-                rate = 1.0
+                logger.warning(f"No cache exists for {pair}. Returning 1.0 fallback without caching.")
+                return 1.0
 
-        # Update cache with the new rate and current timestamp
+        # Update cache with the new rate and current timestamp ONLY on successful fetch
         fx_cache[pair] = {"rate": rate, "timestamp": time.time()}
         return rate
 
@@ -99,13 +101,15 @@ def get_rate_from_base(stock_currency: str) -> float:
                 rate = 1.0
         except Exception as e:
             logger.error(f"Failed to fetch exchange rate for {pair}: {e}")
-            # Fallback to stale cache if API fails to prevent portfolio valuation collapse
+            # Fallback to stale cache if API fails to prevent portfolio valuation collapse.
+            # Do NOT update the cache timestamp, allowing the system to retry on the next tick.
             if cached:
                 logger.warning(f"Using stale cache for {pair} due to API failure.")
-                rate = cached["rate"]
+                return cached["rate"]
             else:
-                rate = 1.0
+                logger.warning(f"No cache exists for {pair}. Returning 1.0 fallback without caching.")
+                return 1.0
 
-        # Update cache with the new rate and current timestamp
+        # Update cache with the new rate and current timestamp ONLY on successful fetch
         fx_cache[pair] = {"rate": rate, "timestamp": time.time()}
         return rate
