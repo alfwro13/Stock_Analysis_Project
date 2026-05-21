@@ -443,12 +443,12 @@ def train_global_ml_model() -> None:
         # --- Production Model Retraining ---
         logger.info("Calibrating base estimators individually before assembling production Voting Classifier...")
         
-        # [LEAKAGE RESOLVED] Enforce strict TimeSeriesSplit to prevent future data from 
-        # leaking into the probability calibration folds. Gap=5 ensures zero overlap with shifted targets.
-        tscv_calib = TimeSeriesSplit(n_splits=5, test_size=int(len(X_full) * 0.10), gap=5)
+        # Reuse the date-blocked cv_splits to prevent future data from 
+        # leaking into the probability calibration folds. This enforces the 5-calendar-day 
+        # embargo across the panel data, eliminating cross-ticker row leakage.
         
-        calibrated_rf = CalibratedClassifierCV(estimator=best_rf, method='isotonic', cv=tscv_calib)
-        calibrated_xgb = CalibratedClassifierCV(estimator=best_xgb, method='isotonic', cv=tscv_calib)
+        calibrated_rf = CalibratedClassifierCV(estimator=best_rf, method='isotonic', cv=cv_splits)
+        calibrated_xgb = CalibratedClassifierCV(estimator=best_xgb, method='isotonic', cv=cv_splits)
 
         production_ensemble = VotingClassifier(
             estimators=[('rf', calibrated_rf), ('xgb', calibrated_xgb)], 
