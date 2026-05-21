@@ -38,7 +38,7 @@ from options_engine import fetch_options_chain, calculate_payoff_matrix
 from ai_prediction_engine import train_global_ml_model, update_daily_ml_predictions, run_historical_backfill
 from risk_engine import update_all_tail_risks
 from profile_engine import update_single_profile
-
+from tools.network_engine import GLOBAL_IPV6_STATUS
 # Import curl_cffi for resilient IPv6 socket testing
 from curl_cffi import requests as cffi_requests
 
@@ -468,6 +468,35 @@ async def test_yahoo_ipv6(request: IPv6TestRequest):
     finally:
         test_session.close()
 
+@api_router.get("/settings/network-status")
+async def get_network_status():
+    """Returns the current active route and health status for Yahoo Finance connections."""
+    config_data = load_config()
+    ipv6_addr = config_data.get("YAHOO_IPV6_ADDRESS", "").strip()
+    
+    if not ipv6_addr:
+        return JSONResponse(content={
+            "status": "success",
+            "route": "IPv4 (OS Default)",
+            "indicator": "green",
+            "message": "Using standard IPv4 routing. No custom IPv6 address is configured."
+        })
+        
+    if GLOBAL_IPV6_STATUS["is_failing"]:
+        fail_time_str = datetime.fromtimestamp(GLOBAL_IPV6_STATUS["last_fail_time"]).strftime('%Y-%m-%d %H:%M:%S')
+        return JSONResponse(content={
+            "status": "warning",
+            "route": "IPv4 (Failover Rescue Active)",
+            "indicator": "yellow",
+            "message": f"IPv6 routing failed at {fail_time_str}. Traffic is actively being rescued via IPv4 fallback. Last Error: {GLOBAL_IPV6_STATUS['last_error']}"
+        })
+        
+    return JSONResponse(content={
+        "status": "success",
+        "route": "IPv6 (Active)",
+        "indicator": "green",
+        "message": f"Successfully routing Yahoo Finance edge traffic exclusively through {ipv6_addr}."
+    })
 # --- RESTORED ROUTES BELOW THIS LINE ---
 
 @api_router.post("/system/git-pull")

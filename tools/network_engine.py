@@ -16,15 +16,21 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Global state to track IPv6 health for the UI Settings page
+GLOBAL_IPV6_STATUS = {
+    "is_failing": False,
+    "last_error": "",
+    "last_fail_time": 0.0
+}
 
 def _trigger_fallback_alert(ipv6_address: str, action_context: str, error_msg: str) -> None:
     config = load_config()
     
-    # 1. Database Persistence
+    # 1. Database Persistence (Fixed: Now includes exact error message)
     try:
         conn = get_connection()
         cursor = conn.cursor()
-        msg = f"Network fault or IP Ban on {ipv6_address} while accessing Yahoo Finance for '{action_context}'."
+        msg = f"Network fault or IP Ban on {ipv6_address} while accessing Yahoo Finance for '{action_context}'. Error Details: {error_msg}"
         cursor.execute(
             "INSERT INTO system_notifications (message_type, message_text) VALUES (?, ?)",
             ("Network Fault", msg)
@@ -55,6 +61,7 @@ def create_failover_session(ipv6_address: str, action_context: str) -> cffi_requ
     while monkey-patching the request method to intercept binding faults AND HTTP 429s.
     Impersonates Chrome to bypass Yahoo TLS fingerprinting.
     """
+    global GLOBAL_IPV6_STATUS
     session = cffi_requests.Session(impersonate="chrome", interface=ipv6_address)
     session.fallback_triggered = False
     
@@ -62,6 +69,7 @@ def create_failover_session(ipv6_address: str, action_context: str) -> cffi_requ
     original_request = session.request
 
     def failover_request(method, url, **kwargs):
+        global GLOBAL_IPV6_STATUS
         max_retries = 3
         base_delay = 2.0
         
@@ -79,8 +87,12 @@ def create_failover_session(ipv6_address: str, action_context: str) -> cffi_requ
                         continue  # Retry the loop
                     else:
                         # We exhausted retries on IPv6. Raise an exception to trigger the IPv4 failover!
-                        raise Exception("HTTP 429 Max Retries Exceeded on IPv6 Interface.")
+                        raise Exception(f"HTTP 429 Max Retries Exceeded on IPv6 Interface. URL: {url}")
                         
+                # If we succeed on IPv6, mark the global status as healthy
+                if not session.fallback_triggered:
+                    GLOBAL_IPV6_STATUS["is_failing"] = False
+                    
                 return response
 
             except Exception as e:
@@ -89,8 +101,14 @@ def create_failover_session(ipv6_address: str, action_context: str) -> cffi_requ
                     # If we already fell back to standard routing and it STILL failed, we are hard-banned or offline. Raise normally.
                     raise e
                 
-                logger.error(f"Network/Socket Fault during '{action_context}': {e}")
-                _trigger_fallback_alert(ipv6_address, action_context, str(e))
+                error_str = str(e)
+                logger.error(f"Network/Socket Fault during '{action_context}': {error_str}")
+                _trigger_fallback_alert(ipv6_address, action_context, error_str)
+                
+                # Update Global Status for UI Dashboard
+                GLOBAL_IPV6_STATUS["is_failing"] = True
+                GLOBAL_IPV6_STATUS["last_error"] = error_str
+                GLOBAL_IPV6_STATUS["last_fail_time"] = time.time()
                 
                 # Graceful Fallback: Drop the interface binding natively in libcurl
                 logger.info("Dropping custom IPv6 interface. Reverting to standard native OS routing (IPv4)...")
