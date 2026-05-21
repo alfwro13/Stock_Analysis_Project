@@ -21,10 +21,10 @@
                 <h1><abbr title="Quantamental - a modern institutional strategy that combines Quantitative analysis with Fundamental analysis.">uantamental</abbr> Dashboard</h1>
             </div>
             
-            <p style="color: #aaaaaa; margin-top: 5px; font-size: 14px;">Advanced Market Analytics & Screener Reports</p>
+            <p class="page-subtitle">Advanced Market Analytics & Screener Reports</p>
             
             {% set active_page = 'market_reports' %}
-                {% include 'navbar.html' %}
+            {% include 'navbar.html' %}
         </div>
     </div>
 
@@ -35,13 +35,13 @@
             <strong>When to use:</strong> Check this first before buying any stock to see if its "neighborhood" is doing well. <br>
             <strong>The Benefit:</strong> It helps you "swim with the tide." It is much easier to make money picking a stock in a sector where the Average <abbr title="Relative Strength Index">RSI</abbr> is rising and most stocks are above their <abbr title="50-day Simple Moving Average">50-day average</abbr>.</p>
         
-        <div class="controls-container" style="margin-bottom: 20px;">
+        <div class="controls-container mb-20">
             <select id="sectorExchangeFilter" class="filter-select">
                 <option value="ALL">All Exchanges</option>
             </select>
         </div>
 
-        <table id="sectorTable" class="display" style="width:100%">
+        <table id="sectorTable" class="display w-100">
             <thead>
                 <tr>
                     <th>Sector</th>
@@ -54,30 +54,30 @@
             <tbody></tbody>
         </table>
         
-        <div style="margin-top: 15px; padding-top: 15px; border-top: 1px dashed #333; font-size: 13px; color: #aaa; line-height: 1.6;">
-            <strong style="color: #e0e0e0;">Key Metrics Explained:</strong>
-            <ul style="margin-top: 5px; padding-left: 20px; margin-bottom: 0;">
-                <li><strong style="color: #4da6ff;">Average <abbr title="Relative Strength Index">RSI</abbr> (14):</strong> The Relative Strength Index measures <abbr title="The speed of price changes">momentum</abbr>. An average above 60 indicates the sector is running hot (bullish), while below 40 indicates heavy selling pressure (bearish).</li>
-                <li><strong style="color: #4da6ff;">Stocks > <abbr title="50-Day Simple Moving Average">50D SMA</abbr>:</strong> The 50-day Simple Moving Average is the institutional "health" line. If a high percentage of stocks in a sector are above this line, the sector is in a strong medium-term uptrend.</li>
-                <li><strong style="color: #4da6ff;">Bullish <abbr title="Moving Average Convergence Divergence">MACD</abbr> Crosses:</strong> Shows the percentage of stocks where short-term momentum has just mathematically crossed positive. A high number here indicates a sudden influx of buying pressure across the sector.</li>
+        <div class="footer-notes">
+            <strong class="text-light">Key Metrics Explained:</strong>
+            <ul class="explanation-list">
+                <li><strong class="text-accent-blue">Average <abbr title="Relative Strength Index">RSI</abbr> (14):</strong> The Relative Strength Index measures <abbr title="The speed of price changes">momentum</abbr>. An average above 60 indicates the sector is running hot (bullish), while below 40 indicates heavy selling pressure (bearish).</li>
+                <li><strong class="text-accent-blue">Stocks > <abbr title="50-Day Simple Moving Average">50D SMA</abbr>:</strong> The 50-day Simple Moving Average is the institutional "health" line. If a high percentage of stocks in a sector are above this line, the sector is in a strong medium-term uptrend.</li>
+                <li><strong class="text-accent-blue">Bullish <abbr title="Moving Average Convergence Divergence">MACD</abbr> Crosses:</strong> Shows the percentage of stocks where short-term momentum has just mathematically crossed positive. A high number here indicates a sudden influx of buying pressure across the sector.</li>
             </ul>
         </div>
     </div>
 
-    <div class="report-section" style="border-left-color: #00ffcc;">
-        <h2 style="color: #00ffcc;">Relative Strength Leaders</h2>
+    <div class="report-section section-accent-cyan">
+        <h2 class="text-accent-cyan">Relative Strength Leaders</h2>
         <p>The top 500 strongest <abbr title="The speed of price changes">momentum</abbr> stocks in the entire market (Above <abbr title="50-Day Simple Moving Average">50D SMA</abbr>, sorted by highest <abbr title="Relative Strength Index">RSI</abbr> and <abbr title="Moving Average Convergence Divergence">MACD</abbr> Histogram).</p>
         <p><strong>How to use:</strong> These are the "MVP" stocks—the top athletes currently outperforming the market. <br>
         <strong>When to use:</strong> Use this during a healthy market to find where professional investors are putting their money. <br>
         <strong>The Benefit:</strong> Momentum tends to persist. By owning leaders with high <abbr title="Relative Strength Index">RSI</abbr> and positive <abbr title="Moving Average Convergence Divergence Histogram">MACD Histograms</abbr>, you are holding the winners that often go up more than the average stock during bull runs.</p>
         
-        <div class="controls-container" style="margin-bottom: 20px;">
+        <div class="controls-container mb-20">
             <select id="leadersExchangeFilter" class="filter-select">
                 <option value="ALL">All Exchanges</option>
             </select>
         </div>
 
-        <table id="leadersTable" class="display" style="width:100%">
+        <table id="leadersTable" class="display w-100">
             <thead>
                 <tr>
                     <th>Ticker</th>
@@ -93,30 +93,30 @@
             <tbody></tbody>
         </table>
 
-        <div style="margin-top: 15px; padding-top: 15px; border-top: 1px dashed #333; font-size: 13px; color: #aaa; line-height: 1.6;">
-            <strong style="color: #e0e0e0;">Key Metrics Explained:</strong>
-            <ul style="margin-top: 5px; padding-left: 20px; margin-bottom: 0;">
-                <li><strong style="color: #4da6ff;"><abbr title="Relative Strength Index">RSI</abbr> (14):</strong> While an RSI above 70 is normally considered "overbought," true market leaders can sustain elevated RSI levels for long periods. A high RSI here simply confirms massive institutional buying pressure.</li>
-                <li><strong style="color: #4da6ff;"><abbr title="Moving Average Convergence Divergence Histogram">MACD Hist</abbr>:</strong> The Histogram measures the distance between the MACD line and its signal line. A positive and growing bar means upward price acceleration is increasing.</li>
+        <div class="footer-notes">
+            <strong class="text-light">Key Metrics Explained:</strong>
+            <ul class="explanation-list">
+                <li><strong class="text-accent-blue"><abbr title="Relative Strength Index">RSI</abbr> (14):</strong> While an RSI above 70 is normally considered "overbought," true market leaders can sustain elevated RSI levels for long periods. A high RSI here simply confirms massive institutional buying pressure.</li>
+                <li><strong class="text-accent-blue"><abbr title="Moving Average Convergence Divergence Histogram">MACD Hist</abbr>:</strong> The Histogram measures the distance between the MACD line and its signal line. A positive and growing bar means upward price acceleration is increasing.</li>
             </ul>
         </div>
     </div>
 
-    <div class="report-section" style="border-left-color: #ffaa00;">
-        <h2 style="color: #ffaa00;"><abbr title="A financial theory suggesting that prices eventually return to their long-term average.">Mean Reversion</abbr> Screener</h2>
+    <div class="report-section section-accent-warning">
+        <h2 class="text-warning"><abbr title="A financial theory suggesting that prices eventually return to their long-term average.">Mean Reversion</abbr> Screener</h2>
         <p>Find stocks fundamentally in a long-term uptrend (><abbr title="200-Day Simple Moving Average">200D SMA</abbr>) experiencing a severe short-term panic sell-off.</p>
         <p><strong>How to use:</strong> This is a "bargain hunter" tool. It finds stocks that are strong long-term (above their 200-day average) but have suddenly "snapped" like a rubber band due to short-term panic. <br>
            <strong>When to use:</strong> Use this when you want to buy a high-quality stock "on sale" during a temporary dip. 
            <strong>The Benefit:</strong> It prevents you from "chasing" high prices. Instead, it mathematically identifies a low-risk entry point where the price is likely to "snap back" to its normal level.</p>
-        <div class="controls-container" style="align-items: flex-end; margin-bottom: 20px;">
-            <div class="form-group" style="margin-bottom: 0;">
+        <div class="controls-container controls-flex-end">
+            <div class="form-group form-group-no-margin">
                 <label>Maximum <abbr title="Relative Strength Index">RSI</abbr> Threshold</label>
-                <input type="number" id="mrMaxRSI" class="filter-input" value="30" style="width: 120px;">
+                <input type="number" id="mrMaxRSI" class="filter-input input-width-small" value="30">
             </div>
             <button class="btn btn-update" onclick="loadMeanReversionData()">🔄 Run Query</button>
         </div>
 
-        <table id="mrTable" class="display" style="width:100%">
+        <table id="mrTable" class="display w-100">
             <thead>
                 <tr>
                     <th>Ticker</th>
@@ -132,12 +132,12 @@
             <tbody></tbody>
         </table>
 
-        <div style="margin-top: 15px; padding-top: 15px; border-top: 1px dashed #333; font-size: 13px; color: #aaa; line-height: 1.6;">
-            <strong style="color: #e0e0e0;">Key Metrics Explained:</strong>
-            <ul style="margin-top: 5px; padding-left: 20px; margin-bottom: 0;">
-                <li><strong style="color: #4da6ff;"><abbr title="200-Day Simple Moving Average">200D SMA</abbr>:</strong> The ultimate baseline for long-term institutional health. We only screen for stocks above this line to ensure we aren't catching a "falling knife" in a dying company.</li>
-                <li><strong style="color: #4da6ff;">Dist from 200D (%):</strong> Shows how far the stock has pulled back toward its long-term baseline. A smaller positive number means it is closer to major institutional support.</li>
-                <li><strong style="color: #4da6ff;">Maximum <abbr title="Relative Strength Index">RSI</abbr> Threshold:</strong> The RSI oscillates on a scale from 0 to 100. A value of 50 is perfectly neutral. A value of <strong>30 or below</strong> is mathematically "oversold." This means the asset has been dumped aggressively by sellers without a single break. By setting this threshold to 30, the screener strictly isolates stocks experiencing extreme, irrational short-term fear, which often precedes a sharp "snap back" (<abbr title="Mean Reversion">bounce</abbr>).</li>
+        <div class="footer-notes">
+            <strong class="text-light">Key Metrics Explained:</strong>
+            <ul class="explanation-list">
+                <li><strong class="text-accent-blue"><abbr title="200-Day Simple Moving Average">200D SMA</abbr>:</strong> The ultimate baseline for long-term institutional health. We only screen for stocks above this line to ensure we aren't catching a "falling knife" in a dying company.</li>
+                <li><strong class="text-accent-blue">Dist from 200D (%):</strong> Shows how far the stock has pulled back toward its long-term baseline. A smaller positive number means it is closer to major institutional support.</li>
+                <li><strong class="text-accent-blue">Maximum <abbr title="Relative Strength Index">RSI</abbr> Threshold:</strong> The RSI oscillates on a scale from 0 to 100. A value of 50 is perfectly neutral. A value of <strong>30 or below</strong> is mathematically "oversold." This means the asset has been dumped aggressively by sellers without a single break. By setting this threshold to 30, the screener strictly isolates stocks experiencing extreme, irrational short-term fear, which often precedes a sharp "snap back" (<abbr title="Mean Reversion">bounce</abbr>).</li>
             </ul>
         </div>
     </div>
@@ -234,8 +234,6 @@
                     });
 
                     // 2. Determine default value (URL param or Hardcoded Fallback)
-                    // Change 'NASDAQ' below to any specific exchange you want as the default,
-                    // or set it to 'ALL' to revert to standard behavior.
                     const defaultExchange = urlParams.get('exchange') || 'NASDAQ'; 
                     
                     // 3. Apply the default if it exists in the data
@@ -250,7 +248,7 @@
                         data: 'sector',
                         render: function(data) {
                             const encodedSector = encodeURIComponent(data);
-                            return `<a href="/market-screener?sector=${encodedSector}" style="color: #4da6ff; font-weight: bold;" title="View all ${data} stocks">${data}</a>`;
+                            return `<a href="/market-screener?sector=${encodedSector}" class="text-accent-bold" title="View all ${data} stocks">${data}</a>`;
                         }
                     },
                     // Exchange Column (Index 1) - Hidden from UI, used only for filtering
@@ -273,14 +271,14 @@
                         data: 'pct_above_50d', 
                         render: function(data, type, row) {
                             const encodedSector = encodeURIComponent(row.sector);
-                            return `<a href="/market-screener?sector=${encodedSector}&above_50d=true" style="color: #e0e0e0; text-decoration: underline dotted;" title="Filter Screener for ${row.sector} > 50D SMA">${data.toFixed(2)}%</a>`;
+                            return `<a href="/market-screener?sector=${encodedSector}&above_50d=true" class="text-light text-decoration-dotted" title="Filter Screener for ${row.sector} > 50D SMA">${data.toFixed(2)}%</a>`;
                         }
                     },
                     { 
                         data: 'pct_bullish_cross', 
                         render: function(data, type, row) {
                             const encodedSector = encodeURIComponent(row.sector);
-                            return `<a href="/market-screener?sector=${encodedSector}&bullish_cross=true" style="color: #e0e0e0; text-decoration: underline dotted;" title="Filter Screener for ${row.sector} Golden Crosses">${data.toFixed(2)}%</a>`;
+                            return `<a href="/market-screener?sector=${encodedSector}&bullish_cross=true" class="text-light text-decoration-dotted" title="Filter Screener for ${row.sector} Golden Crosses">${data.toFixed(2)}%</a>`;
                         }
                     }
                 ]
@@ -324,7 +322,7 @@
                 },
                 
                 columns: [
-                    { data: 'ticker', render: function(data) { return '<a href="/stock/' + data + '" style="color: #4da6ff; font-weight: bold;">' + data + '</a>'; } },
+                    { data: 'ticker', render: function(data) { return '<a href="/stock/' + data + '" class="ticker-link">' + data + '</a>'; } },
                     { data: 'company_name' },
                     { data: 'sector' },
                     { data: 'exchange', visible: false, defaultContent: 'US' }, // Hidden from UI but used for filtering
@@ -356,7 +354,7 @@
                 pageLength: 10,
                 order: [[5, 'asc']], // Sort by lowest RSI
                 columns: [
-                    { data: 'ticker', render: function(data) { return '<a href="/stock/' + data + '" style="color: #4da6ff; font-weight: bold;">' + data + '</a>'; } },
+                    { data: 'ticker', render: function(data) { return '<a href="/stock/' + data + '" class="ticker-link">' + data + '</a>'; } },
                     { data: 'company_name' },
                     { data: 'sector' },
                     { data: 'country', render: function(data) { return data || 'US'; } },
