@@ -32,9 +32,9 @@ def fetch_options_chain(ticker: str) -> Dict[str, Any]:
         for exp in target_exps:
             chain = tk.option_chain(exp)
             
-            # Clean and isolate relevant columns
-            calls = chain.calls[['strike', 'lastPrice', 'bid', 'ask', 'impliedVolatility']].fillna(0).to_dict('records')
-            puts = chain.puts[['strike', 'lastPrice', 'bid', 'ask', 'impliedVolatility']].fillna(0).to_dict('records')
+            # Clean and isolate relevant columns, now including critical liquidity metrics
+            calls = chain.calls[['strike', 'lastPrice', 'bid', 'ask', 'volume', 'openInterest', 'impliedVolatility']].fillna(0).to_dict('records')
+            puts = chain.puts[['strike', 'lastPrice', 'bid', 'ask', 'volume', 'openInterest', 'impliedVolatility']].fillna(0).to_dict('records')
             
             chain_data[exp] = {"calls": calls, "puts": puts}
             
