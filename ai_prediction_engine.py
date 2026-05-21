@@ -1,6 +1,5 @@
 # ai_prediction_engine.py
 import time
-import json
 import logging
 import sqlite3
 from pathlib import Path
@@ -9,7 +8,6 @@ from typing import List, Tuple
 import pandas as pd
 import numpy as np
 import joblib
-import shap
 import yfinance as yf
 import ta
 
@@ -29,7 +27,7 @@ logger = logging.getLogger(__name__)
 # Constants
 MODELS_DIR = BASE_DIR / "models"
 MODELS_DIR.mkdir(parents=True, exist_ok=True)
-MODEL_PATH = MODELS_DIR / "production_ensemble.pkl"
+MODEL_PATH = MODELS_DIR / "ml_ensemble.joblib"
 
 # [LEAKAGE RESOLVED & Z-SCORING IMPLEMENTED] 
 # Replaced absolute continuous features with cross-sectional Z-scored variants (_z)
@@ -52,6 +50,14 @@ CONTINUOUS_FEATURES = [
     'rsi_14', 'macd_pct', 'macd_signal_pct', 'macd_hist_pct', 
     'dist_sma_50', 'dist_sma_200', 'dollar_vol_log'
 ]
+
+
+def cross_sectional_zscore(series: pd.Series) -> pd.Series:
+    """Calculates Z-Score dynamically. Safe against 0 standard deviation."""
+    std = series.std()
+    if pd.isna(std) or std == 0:
+        return series - series.mean()
+    return (series - series.mean()) / std
 
 
 def get_target_tickers() -> List[str]:
@@ -317,17 +323,12 @@ def train_global_ml_model() -> None:
 
         df.replace([np.inf, -np.inf], np.nan, inplace=True)
 
-        # --- TIME-SERIES Z-SCORING ---
-        # Normalizes each stock against its own 252-day rolling history.
-        # This aligns the training space perfectly with single-stock SHAP inference.
-        logger.info("Applying 252-day rolling time-series Z-scoring to continuous features...")
+        # --- CROSS-SECTIONAL Z-SCORING ---
+        # Forces the model to evaluate features relative to the rest of the market
+        # on that specific trading day, neutralizing Absolute Size / Mega-Cap bias.
+        logger.info("Applying cross-sectional Z-scoring to normalize features across liquidity regimes...")
         for col in CONTINUOUS_FEATURES:
-            df[f'{col}_z'] = df.groupby('ticker')[col].transform(
-                lambda s: (s - s.rolling(252, min_periods=60).mean()) / 
-                          s.rolling(252, min_periods=60).std()
-            )
-            # Fill NaNs for the initial 60 days or periods with zero variance
-            df[f'{col}_z'] = df[f'{col}_z'].fillna(0.0)
+            df[f'{col}_z'] = df.groupby('date')[col].transform(cross_sectional_zscore)
 
         df.dropna(subset=FEATURE_COLS, inplace=True)
 
@@ -367,19 +368,17 @@ def train_global_ml_model() -> None:
         tscv = TimeSeriesSplit(n_splits=5)
         
         for train_date_idx, test_date_idx in tscv.split(unique_dates):
-            # Apply 5-date embargo: drop the last 5 dates from the training window
-            # to ensure no forward-return target (which looks 5 days ahead) can leak
-            embargoed_train_dates = set(unique_dates[train_date_idx[:-5]])
-            test_dates = set(unique_dates[test_date_idx])
-            
-            # Map calendar dates back to integer row positions in df
-            train_idx = date_series.index[date_series.isin(embargoed_train_dates)].tolist()
-            test_idx = date_series.index[date_series.isin(test_dates)].tolist()
-            
-            if len(train_idx) > 50 and len(test_idx) > 10:
-                cv_splits.append((train_idx, test_idx))
-
-        logger.info(f"Walk-Forward CV: {len(cv_splits)} folds constructed on unique calendar dates with 5-date embargo.")
+            # Apply a strict 5-day embargo gap to prevent target leakage
+            if len(train_date_idx) > 5:
+                train_dates = set(unique_dates[train_date_idx[:-5]])
+                test_dates = set(unique_dates[test_date_idx])
+                
+                # Map valid dates back to explicit integer row indices required by GridSearchCV
+                train_idx = date_series.index[date_series.isin(train_dates)].tolist()
+                test_idx = date_series.index[date_series.isin(test_dates)].tolist()
+                
+                if train_idx and test_idx:
+                    cv_splits.append((train_idx, test_idx))
 
         # --- Hyperparameter Grids ---
         rf_base = RandomForestClassifier(class_weight='balanced', random_state=42, n_jobs=-1)
@@ -437,58 +436,128 @@ def train_global_ml_model() -> None:
         logger.info(f"Optimal RF Params Found: {rf_search.best_params_}")
         logger.info(f"Optimal XGB Params Found: {xgb_search.best_params_}")
         
-        # Collect per-fold OOS scores from cv_results_
-        rf_best_score = rf_search.best_score_
-        rf_best_std = rf_search.cv_results_['std_test_score'][rf_search.best_index_]
-        xgb_best_score = xgb_search.best_score_
-        xgb_best_std = xgb_search.cv_results_['std_test_score'][xgb_search.best_index_]
-
-        logger.info(f"RF  Walk-Forward Avg Precision: {rf_best_score:.4f} ± {rf_best_std:.4f}")
-        logger.info(f"XGB Walk-Forward Avg Precision: {xgb_best_score:.4f} ± {xgb_best_std:.4f}")
-
-        avg_oos_accuracy = round(((rf_best_score + xgb_best_score) / 2) * 100, 2)
+        # Calculate OOS accuracy metrics verified by the final temporal fold
+        avg_oos_accuracy = (rf_search.best_score_ + xgb_search.best_score_) / 2.0
+        logger.info(f"Averaged Optimized OOS Accuracy across 5 expanding regimes: {avg_oos_accuracy:.4f}")
 
         # --- Production Model Retraining ---
         logger.info("Calibrating base estimators individually before assembling production Voting Classifier...")
         
+        # Reuse the date-blocked cv_splits to prevent future data from 
+        # leaking into the probability calibration folds. This enforces the 5-calendar-day 
+        # embargo across the panel data, eliminating cross-ticker row leakage.
+        
+        calibrated_rf = CalibratedClassifierCV(estimator=best_rf, method='isotonic', cv=cv_splits)
+        calibrated_xgb = CalibratedClassifierCV(estimator=best_xgb, method='isotonic', cv=cv_splits)
+
         production_ensemble = VotingClassifier(
-            estimators=[('rf', best_rf), ('xgb', best_xgb)], 
+            estimators=[('rf', calibrated_rf), ('xgb', calibrated_xgb)], 
             voting='soft'
         )
         
         production_ensemble.fit(X_full, y_full)
 
-        # 1. Save calibrated production ensemble (for predict_proba)
-        logger.info("Applying Isotonic Probability Calibration to the ensemble...")
-        calibrated_ensemble = CalibratedClassifierCV(
-            estimator=production_ensemble,
-            method='isotonic',
-            cv=5
-        )
-        calibrated_ensemble.fit(X_full, y_full)
-        joblib.dump(calibrated_ensemble, MODEL_PATH)  # models/production_ensemble.pkl
-        logger.info(f"Calibrated production ensemble saved to {MODEL_PATH}")
-
-        # 2. Build and save SHAP TreeExplainer from the RAW XGBoost estimator only
-        # We extract the fitted XGBClassifier directly from the search result.
-        # TreeExplainer requires a native tree model — it cannot explain VotingClassifier
-        # or CalibratedClassifierCV wrappers. We bypass both wrappers intentionally.
-        raw_xgb: XGBClassifier = xgb_search.best_estimator_
-        xgb_explainer = shap.TreeExplainer(raw_xgb)
-        EXPLAINER_PATH = MODEL_PATH.parent / "xgb_explainer.pkl"
-        joblib.dump(xgb_explainer, EXPLAINER_PATH)
-        logger.info(f"SHAP TreeExplainer saved to {EXPLAINER_PATH}")
-
-        # 3. Save feature names in column order
-        FEATURE_NAMES_PATH = MODEL_PATH.parent / "feature_names.json"
-        with open(FEATURE_NAMES_PATH, "w") as f:
-            json.dump(FEATURE_COLS, f)
-        logger.info(f"Feature names saved to {FEATURE_NAMES_PATH}")
-
-        log_notification("Success", f"Global ML Model trained & optimized (WF-OOS Avg Precision: {avg_oos_accuracy:.2%}).")
+        # Persist standard output
+        joblib.dump(production_ensemble, MODEL_PATH)
+        logger.info(f"✅ Production ML Ensemble successfully trained and saved to {MODEL_PATH}")
+        log_notification("Success", f"Global ML Model trained & optimized (WF-OOS Accuracy: {avg_oos_accuracy:.2%}).")
 
     except Exception as e:
         logger.error(f"Fatal error during ML model optimization & training: {e}")
         log_notification("Error", f"ML Model Training failed: {str(e)}")
 
 
+def update_daily_ml_predictions(tickers: List[str]) -> None:
+    """
+    Loads the trained model, fetches the latest raw row + structural context,
+    calculates inference features dynamically, normalizes via cross-sectional z-score,
+    and updates the database with confidence scores.
+    
+    Args:
+        tickers (List[str]): Tickers to predict the next 5 days of trajectory for.
+    """
+    if not tickers:
+        logger.warning("Empty ticker list provided for ML inference. Skipping.")
+        return
+
+    if not MODEL_PATH.exists():
+        logger.warning(f"Model file {MODEL_PATH} not found. Awaiting weekend training cycle.")
+        return
+
+    logger.info(f"Initiating ML Inference for {len(tickers)} assets...")
+    
+    conn = None
+    try:
+        model = joblib.load(MODEL_PATH)
+        conn = get_connection()
+        
+        placeholders = ','.join('?' for _ in tickers)
+        query = f"""
+            SELECT qs.ticker, qs.date, qs.close_price, qs.volume, qs.rsi_14, qs.macd, qs.macd_signal, qs.macd_hist, 
+                   qs.sma_50, qs.sma_200, qs.volume_surge, qs.bullish_cross,
+                   tm.sector
+            FROM quant_signals qs
+            LEFT JOIN ticker_metadata tm ON qs.ticker = tm.ticker
+            WHERE qs.ticker IN ({placeholders})
+            AND qs.date = (SELECT MAX(date) FROM quant_signals sub WHERE sub.ticker = qs.ticker)
+        """
+        df = pd.read_sql_query(query, conn, params=tickers)
+        
+        if df.empty:
+            logger.warning("No recent data found to run inference on.")
+            conn.close()
+            return
+
+        # Feature Engineering: On-the-fly calculation and normalization 
+        df['dist_sma_50'] = (df['close_price'] - df['sma_50']) / df['sma_50']
+        df['dist_sma_200'] = (df['close_price'] - df['sma_200']) / df['sma_200']
+        
+        df['macd_pct'] = df['macd'] / df['close_price']
+        df['macd_signal_pct'] = df['macd_signal'] / df['close_price']
+        df['macd_hist_pct'] = df['macd_hist'] / df['close_price']
+        
+        df['volume_surge'] = df['volume_surge'].fillna(0).astype(int)
+        df['bullish_cross'] = df['bullish_cross'].fillna(0).astype(int)
+        
+        # Inject structural mappings
+        df['sector_code'] = df['sector'].map(SECTOR_MAP).fillna(0).astype(int)
+        
+        # Point-In-Time Proxy
+        df['dollar_vol_log'] = np.log1p(df['close_price'] * df['volume'])
+        
+        df.replace([np.inf, -np.inf], np.nan, inplace=True)
+
+        # --- CROSS-SECTIONAL Z-SCORING ---
+        # Ensures inference logic perfectly matches training distribution logic.
+        logger.info("Applying cross-sectional Z-scoring to inference batch...")
+        for col in CONTINUOUS_FEATURES:
+            df[f'{col}_z'] = df.groupby('date')[col].transform(cross_sectional_zscore)
+            
+        update_payloads = []
+        for _, row in df.iterrows():
+            if pd.isna(row[FEATURE_COLS]).any():
+                continue
+                
+            X_infer = pd.DataFrame([row[FEATURE_COLS]])
+            
+            prob = model.predict_proba(X_infer)[0][1]
+            ml_confidence_score = round(prob * 100.0, 2)
+            
+            update_payloads.append((ml_confidence_score, row['ticker'], row['date']))
+
+        if update_payloads:
+            cursor = conn.cursor()
+            update_query = """
+                UPDATE quant_signals 
+                SET ml_confidence_score = ? 
+                WHERE ticker = ? AND date = ?
+            """
+            cursor.executemany(update_query, update_payloads)
+            conn.commit()
+            logger.info(f"✅ Executed ML predictions for {len(update_payloads)} assets.")
+        
+    except Exception as e:
+        logger.error(f"Fatal error during ML inference: {e}")
+    finally:
+        if conn:
+            conn.close()

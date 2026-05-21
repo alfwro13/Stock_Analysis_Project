@@ -1,11 +1,8 @@
 # quant_signals.py
 import os
 import json
-import joblib
-import shap
 import logging
 from datetime import datetime
-from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
 
 import numpy as np
@@ -17,151 +14,6 @@ from database import get_connection
 
 logger = logging.getLogger(__name__)
 
-# Resolve model paths relative to this file's location
-_MODEL_DIR = Path(__file__).parent / "models"
-_EXPLAINER_PATH = _MODEL_DIR / "xgb_explainer.pkl"
-_FEATURE_NAMES_PATH = _MODEL_DIR / "feature_names.json"
-_PRODUCTION_MODEL_PATH = _MODEL_DIR / "production_ensemble.pkl"
-
-# Module-level singletons — loaded once, reused across all tickers in a run
-_shap_explainer: Optional[shap.TreeExplainer] = None
-_shap_feature_names: Optional[list] = None
-_production_model = None
-
-def _load_shap_assets() -> Tuple[Optional[shap.TreeExplainer], Optional[list]]:
-    """
-    Lazily loads the SHAP TreeExplainer and feature name list.
-    Returns (None, None) gracefully if models have not been trained yet.
-    Falls back to hardcoded scoring if either asset is missing.
-    """
-    global _shap_explainer, _shap_feature_names
-
-    if _shap_explainer is not None and _shap_feature_names is not None:
-        return _shap_explainer, _shap_feature_names
-
-    try:
-        if not _EXPLAINER_PATH.exists() or not _FEATURE_NAMES_PATH.exists():
-            logger.warning(
-                "SHAP assets not found. Falling back to hardcoded scoring. "
-                "Run train_global_ml_model() to generate SHAP explainer."
-            )
-            return None, None
-
-        _shap_explainer = joblib.load(_EXPLAINER_PATH)
-        with open(_FEATURE_NAMES_PATH, "r") as f:
-            _shap_feature_names = json.load(f)
-
-        logger.info(f"SHAP assets loaded. Features: {len(_shap_feature_names)}")
-        return _shap_explainer, _shap_feature_names
-
-    except Exception as e:
-        logger.error(f"Failed to load SHAP assets: {e}")
-        return None, None
-
-def _load_production_model():
-    """Lazily loads the calibrated production ensemble for predict_proba."""
-    global _production_model
-    if _production_model is not None:
-        return _production_model
-    try:
-        if _PRODUCTION_MODEL_PATH.exists():
-            _production_model = joblib.load(_PRODUCTION_MODEL_PATH)
-            logger.info("Production ensemble loaded for live scoring.")
-        return _production_model
-    except Exception as e:
-        logger.error(f"Failed to load production model: {e}")
-        return None
-
-def _build_shap_feature_vector(
-    df: pd.DataFrame,
-    ticker: str,
-    feature_names: list,
-    rsi_val: Optional[float],
-    macd_val: Optional[float],
-    macd_signal_val: Optional[float],
-    macd_hist_val: Optional[float],
-    ma50: Optional[float],
-    ma200: Optional[float],
-    bullish_cross: bool,
-    volume_surge: bool,
-    sector: str  # <--- ADD THIS
-) -> Optional[np.ndarray]:
-    """
-    Constructs a single-row feature vector matching the training schema exactly.
-    Returns None if critical data is insufficient to build a valid vector.
-    All continuous features are z-scored using a rolling 252-day window to ensure
-    point-in-time stationarity — identical to the training pipeline.
-    """
-    try:
-        if df is None or len(df) < 60:
-            return None
-
-        close = df['Close']
-        volume = df['Volume']
-        current_close = float(close.iloc[-1])
-        current_volume = float(volume.iloc[-1])
-
-        # Z-score helper — uses trailing 252-day window (1 year) for stationarity
-        def z_score(series: pd.Series) -> float:
-            window = series.iloc[-252:] if len(series) >= 252 else series
-            mu, sigma = window.mean(), window.std()
-            if sigma == 0 or pd.isna(sigma):
-                return 0.0
-            return float((series.iloc[-1] - mu) / sigma)
-
-        rsi_z = z_score(df['RSI'].dropna()) if 'RSI' in df.columns else 0.0
-        
-        dist_sma_50_series = (close - df['MA_50']) / df['MA_50']
-        dist_sma_50_z = z_score(dist_sma_50_series.dropna())
-        
-        dist_sma_200_series = (close - df['MA_200']) / df['MA_200']
-        dist_sma_200_z = z_score(dist_sma_200_series.dropna())
-
-        macd_pct_series = df['MACD_Line'] / close
-        macd_pct_z = z_score(macd_pct_series.dropna())
-
-        macd_signal_pct_series = df['MACD_Signal'] / close
-        macd_signal_pct_z = z_score(macd_signal_pct_series.dropna())
-        
-        macd_hist_pct_series = df['MACD_Hist'] / close
-        macd_hist_pct_z = z_score(macd_hist_pct_series.dropna())
-        
-        dollar_vol_log_series = np.log1p(close * volume)
-        dollar_vol_log_z = z_score(dollar_vol_log_series.dropna())
-
-        SECTOR_MAP = {
-            "Technology": 1, "Healthcare": 2, "Financials": 3,
-            "Financial Services": 3, "Real Estate": 4, "Energy": 5, 
-            "Basic Materials": 6, "Consumer Cyclical": 7, "Industrials": 8, 
-            "Utilities": 9, "Consumer Defensive": 10, "Communication Services": 11
-        }
-        sector_code = SECTOR_MAP.get(sector, 0)
-
-        # Build dict keyed by training feature names
-        feature_map = {
-            'rsi_14_z': rsi_z,
-            'macd_pct_z': macd_pct_z,
-            'macd_signal_pct_z': macd_signal_pct_z,
-            'macd_hist_pct_z': macd_hist_pct_z,
-            'volume_surge': int(volume_surge),
-            'bullish_cross': int(bullish_cross),
-            'dist_sma_50_z': dist_sma_50_z,
-            'dist_sma_200_z': dist_sma_200_z,
-            'sector_code': float(sector_code),
-            'dollar_vol_log_z': dollar_vol_log_z
-        }
-
-        # Build array in the EXACT column order from feature_names.json
-        vector = np.array(
-            [feature_map.get(f, 0.0) for f in feature_names],
-            dtype=np.float32
-        ).reshape(1, -1)
-
-        return vector
-
-    except Exception as e:
-        logger.error(f"[{ticker}] Failed to build SHAP feature vector: {e}")
-        return None
 
 def get_candlestick_patterns(prev2: pd.Series, prev1: pd.Series, curr: pd.Series) -> List[Dict[str, Any]]:
     """
@@ -716,248 +568,145 @@ class QuantEngine:
             # ==========================================
             # PART 3: SCORING & SETUP TAGS
             # ==========================================
-            score = 40
+            score = 40  # ISSUE-M03 FIXED: Establish Neutral Baseline at 40 (Not 0)
             breakdown = []
             tags = []
-            score_method = "HARDCODED"
-            ml_prob = None
 
-            bullish_cross = False
-            volume_surge = False
             if df is not None and len(df) >= 21:
+                if not is_fund and len(df) >= 3 and 'Open' in df.columns:
+                    candlestick_patterns = get_candlestick_patterns(df.iloc[-3], df.iloc[-2], df.iloc[-1])
+                    for pattern in candlestick_patterns:
+                        tags.append({"name": pattern["name"], "tooltip": pattern["tooltip"]})
+                        breakdown.append(pattern["breakdown"])
+                        score += pattern["score"]
+
+                # [BUG-03] Guard MACD Series access to ensure sufficient tail history exists
                 macd_line_clean = df['MACD_Line'].dropna()
                 macd_signal_clean = df['MACD_Signal'].dropna()
+                
                 if len(macd_line_clean) >= 2 and len(macd_signal_clean) >= 2:
                     if macd_line_clean.iloc[-1] > macd_signal_clean.iloc[-1] and macd_line_clean.iloc[-2] <= macd_signal_clean.iloc[-2]:
-                        bullish_cross = True
-                
-                if 'Volume' in df.columns and len(df['Volume']) >= 20:
-                    vol_sma_20 = df['Volume'].rolling(window=20).mean().iloc[-1]
-                    if df['Volume'].iloc[-1] > vol_sma_20 * 1.5:
-                        volume_surge = True
+                        tags.append({
+                            "name": "⚡ MACD Bullish Cross", 
+                            "tooltip": "The MACD momentum line just crossed positive over the signal line."
+                        })
+                        # [MATH-09] Prevent score double counting against quant_engine.py screener
+                        breakdown.append("+0: <abbr title='MACD Bullish Crossover (Captured by Engine DB Flag)'>MACD Bullish Crossover</abbr>")
 
-            # ─────────────────────────────────────────────────────────────────────────
-            # DYNAMIC SHAP SCORING ENGINE
-            # ─────────────────────────────────────────────────────────────────────────
-            shap_explainer, shap_feature_names = _load_shap_assets()
-            production_model = _load_production_model()
-
-            SHAP_AVAILABLE = (
-                shap_explainer is not None and
-                shap_feature_names is not None and
-                production_model is not None
-            )
-
-            feature_vector = None
-            if SHAP_AVAILABLE:
-                macd_val = float(df['MACD_Line'].iloc[-1]) if df is not None and 'MACD_Line' in df.columns and not df['MACD_Line'].dropna().empty else None
-                macd_signal_val = float(df['MACD_Signal'].iloc[-1]) if df is not None and 'MACD_Signal' in df.columns and not df['MACD_Signal'].dropna().empty else None
-                macd_hist_val = float(df['MACD_Hist'].iloc[-1]) if df is not None and 'MACD_Hist' in df.columns and not df['MACD_Hist'].dropna().empty else None
-
-                feature_vector = _build_shap_feature_vector(
-                    df=df,
-                    ticker=ticker,
-                    feature_names=shap_feature_names,
-                    rsi_val=rsi_val,
-                    macd_val=macd_val,
-                    macd_signal_val=macd_signal_val,
-                    macd_hist_val=macd_hist_val,
-                    ma50=ma50,
-                    ma200=ma200,
-                    bullish_cross=bullish_cross,
-                    volume_surge=volume_surge,
-                    sector=sector
-                )
-
-            if SHAP_AVAILABLE and feature_vector is not None:
-                try:
-                    # 1. Get calibrated probability from the production ensemble
-                    ml_prob = float(production_model.predict_proba(feature_vector)[0][1])
-
-                    # 2. Compute per-feature SHAP values from the raw XGBoost explainer
-                    shap_vals = shap_explainer.shap_values(feature_vector)
-                    if isinstance(shap_vals, list):
-                        shap_vals = shap_vals[1]
-                    shap_vals = shap_vals[0]
-
-                    # 3. Scale SHAP values to a 0–100 score space
-                    SHAP_SCALE_FACTOR = 25.0
-                    score = 50.0
-
-                    HUMAN_LABEL_MAP = {
-                        'rsi_14_z': 'RSI Momentum',
-                        'dist_sma_50_z': 'Distance from 50D MA',
-                        'dist_sma_200_z': 'Distance from 200D MA',
-                        'macd_pct_z': 'MACD Signal Strength',
-                        'volume_ratio_z': 'Volume vs Average',
-                        'bullish_cross': 'MACD Bullish Cross',
-                        'volume_surge': 'Volume Surge',
-                        'dist_from_52w_high_z': 'Distance from 52W High',
-                        'dollar_volume_log_z': 'Liquidity (Dollar Volume)',
-                        'macd_signal_pct_z': 'MACD Signal',
-                        'macd_hist_pct_z': 'MACD Histogram',
-                        'sector_code': 'Sector Context'
-                    }
-
-                    shap_abs_sum = np.sum(np.abs(shap_vals))
-                    for i, feature_name in enumerate(shap_feature_names):
-                        raw_shap = float(shap_vals[i])
-                        if shap_abs_sum > 0:
-                            contribution = (raw_shap / shap_abs_sum) * SHAP_SCALE_FACTOR
-                        else:
-                            contribution = 0.0
-
-                        score += contribution
-
-                        if abs(contribution) >= 0.5:
-                            label = HUMAN_LABEL_MAP.get(feature_name, feature_name)
-                            direction = "↑" if contribution > 0 else "↓"
-                            breakdown.append(
-                                f"{contribution:+.1f}: {label} {direction} "
-                                f"<span class='shap-val' title='Raw SHAP: {raw_shap:.4f}'>(AI)</span>"
+                if not is_fund:
+                    if is_confirmed_breakout:
+                        # Highest conviction: all 5 Minervini criteria satisfied.
+                        # Prior uptrend ✓ | Near 52W high ✓ | Contracting base ✓
+                        # Volume dry-up ✓ | Breakout on institutional volume ✓
+                        tags.append({
+                            "name": "🔥 VCP Confirmed Breakout",
+                            "tooltip": (
+                                "All 5 Minervini VCP criteria satisfied: the stock had a 30%+ prior "
+                                "uptrend, is within 15% of its 52-week high, built a sequentially "
+                                "contracting 3-week base on drying volume, and today broke above base "
+                                "resistance on institutional volume (≥1.5× 50D average)."
                             )
+                        })
+                        score += 25
+                        breakdown.append(
+                            "+25: <abbr title='Prior uptrend + near 52W high + contraction + vol dry-up "
+                            "+ confirmed breakout on elevated volume.'>Minervini VCP — Confirmed Breakout</abbr>"
+                        )
 
-                    # 4. Append the calibrated ML confidence to breakdown for transparency
-                    breakdown.append(
-                        f"ML Edge Confidence: {ml_prob:.1%} "
-                        f"<span class='shap-tooltip' title='Calibrated probability from XGBoost + RF ensemble'>[?]</span>"
-                    )
-
-                    score_method = "SHAP"
-                    logger.info(f"[{ticker}] SHAP scoring applied. ML Prob: {ml_prob:.3f} | Score: {score:.1f}")
-
-                    if df is not None and len(df) >= 21:
-                        if not is_fund and len(df) >= 3 and 'Open' in df.columns:
-                            candlestick_patterns = get_candlestick_patterns(df.iloc[-3], df.iloc[-2], df.iloc[-1])
-                            for pattern in candlestick_patterns:
-                                tags.append({"name": pattern["name"], "tooltip": pattern["tooltip"]})
-
-                        if bullish_cross:
-                            tags.append({
-                                "name": "⚡ MACD Bullish Cross", 
-                                "tooltip": "The MACD momentum line just crossed positive over the signal line."
-                            })
-
-                        if not is_fund:
-                            if is_confirmed_breakout:
-                                tags.append({"name": "🔥 VCP Confirmed Breakout", "tooltip": "All 5 Minervini VCP criteria satisfied..."})
-                            elif is_vcp_base:
-                                tags.append({"name": "🌀 VCP Base Forming", "tooltip": "Minervini VCP base structure confirmed..."})
-
-                        if is_market_leader:
-                            tags.append({"name": "👑 Market Leader", "tooltip": "Strong >15% Relative Strength outperformance vs S&P 500 Baseline over 1-year."})
-
-                        if is_bearish_divergence and not is_fund:
-                            tags.append({"name": "🚨 Divergence Warning", "tooltip": "Price higher high, RSI lower high."})
-
-                except Exception as shap_e:
-                    logger.warning(f"[{ticker}] SHAP scoring failed, falling back to hardcoded: {shap_e}")
-                    SHAP_AVAILABLE = False
-
-            if not SHAP_AVAILABLE or feature_vector is None:
-                # ── HARDCODED FALLBACK ────────────────────────────────────────────
-                score = 40  # Neutral baseline
-                score_method = "HARDCODED"
-                breakdown = []
-                tags = []
-
-                if df is not None and len(df) >= 21:
-                    if not is_fund and len(df) >= 3 and 'Open' in df.columns:
-                        candlestick_patterns = get_candlestick_patterns(df.iloc[-3], df.iloc[-2], df.iloc[-1])
-                        for pattern in candlestick_patterns:
-                            tags.append({"name": pattern["name"], "tooltip": pattern["tooltip"]})
-                            breakdown.append(pattern["breakdown"])
-                            score += pattern["score"]
-
-                    macd_line_clean = df['MACD_Line'].dropna()
-                    macd_signal_clean = df['MACD_Signal'].dropna()
-                    if len(macd_line_clean) >= 2 and len(macd_signal_clean) >= 2:
-                        if macd_line_clean.iloc[-1] > macd_signal_clean.iloc[-1] and macd_line_clean.iloc[-2] <= macd_signal_clean.iloc[-2]:
-                            tags.append({
-                                "name": "⚡ MACD Bullish Cross", 
-                                "tooltip": "The MACD momentum line just crossed positive over the signal line."
-                            })
-                            breakdown.append("+0: <abbr title='MACD Bullish Crossover (Captured by Engine DB Flag)'>MACD Bullish Crossover</abbr>")
-
-                    if not is_fund:
-                        if is_confirmed_breakout:
-                            tags.append({"name": "🔥 VCP Confirmed Breakout", "tooltip": "All 5 Minervini VCP criteria satisfied..."})
-                            score += 25
-                            breakdown.append("+25: <abbr title='Prior uptrend + near 52W high + contraction + vol dry-up + confirmed breakout on elevated volume.'>Minervini VCP — Confirmed Breakout</abbr>")
-                        elif is_vcp_base:
-                            tags.append({"name": "🌀 VCP Base Forming", "tooltip": "Minervini VCP base structure confirmed..."})
-                            score += 15
-                            breakdown.append("+15: <abbr title='Base structure confirmed: uptrend + near high + contraction + dry volume. Awaiting volume breakout.'>Minervini VCP — Base Setup (Pre-Breakout)</abbr>")
-                        elif has_prior_uptrend:
-                            score += 5
-                            breakdown.append("+5: <abbr title='30%+ prior uptrend confirmed but base not yet formed.'>Prior Uptrend Foundation</abbr>")
-
-                    if is_market_leader:
-                        tags.append({"name": "👑 Market Leader", "tooltip": "Strong >15% Relative Strength outperformance vs S&P 500 Baseline over 1-year."})
+                    elif is_vcp_base:
+                        # Valid base structure (criteria 1-4) but no breakout yet.
+                        # This is the actionable setup to WATCH, not yet a trade entry.
+                        tags.append({
+                            "name": "🌀 VCP Base Forming",
+                            "tooltip": (
+                                "Minervini VCP base structure confirmed: prior 30%+ uptrend, stock within "
+                                "15% of 52-week high, sequential weekly range contraction, and volume "
+                                "drying up. Awaiting a breakout above base resistance on elevated volume."
+                            )
+                        })
                         score += 15
-                        breakdown.append("+15: 1Y Market Leader vs Benchmark")
+                        breakdown.append(
+                            "+15: <abbr title='Base structure confirmed: uptrend + near high + contraction "
+                            "+ dry volume. Awaiting volume breakout.'>Minervini VCP — Base Setup (Pre-Breakout)</abbr>"
+                        )
 
-                    if ma5 is not None and current_price is not None and current_price > ma5: 
-                        score += 15
-                        breakdown.append("+15: Price > 5D MA (Short-term Momentum)")
-                    else:
-                        score -= 5
-                        breakdown.append("-5: Price <= 5D MA (Bearish short-term momentum)")
-                    
-                    if ma5 is not None and ma10 is not None and ma21 is not None and ma5 > ma10 and ma10 > ma21: 
-                        score += 15
-                        breakdown.append("+15: MAs Aligned (5 > 10 > 21)")
+                    elif has_prior_uptrend:
+                        # Weakest positive: the stock has the foundation (prior advance)
+                        # but has not yet built a proper base. Partial credit only.
+                        score += 5
+                        breakdown.append(
+                            "+5: <abbr title='30%+ prior uptrend confirmed but base not yet formed.'>Prior "
+                            "Uptrend Foundation</abbr>"
+                        )
 
-                    if trend_200d == "UP":
-                        score += 20
-                        breakdown.append("+20: 200D Trend UP (Institutional Backing)")
-                    else:
-                        score -= 10
-                        breakdown.append("-10: 200D Trend DOWN (Lacking institutional backing)")
+                if is_market_leader:
+                    tags.append({"name": "👑 Market Leader", "tooltip": "Strong >15% Relative Strength outperformance vs S&P 500 Baseline over 1-year."})
+                    score += 15
+                    breakdown.append("+15: 1Y Market Leader vs Benchmark")
 
-                    if rsi_val is not None and 40.0 <= rsi_val <= 65.0: 
-                        score += 10
-                        breakdown.append("+10: RSI Healthy (Room to run)")
-
-                    if is_fund: 
-                        score += 0
-                        breakdown.append("+0: OBV Ignored (Fund Exemption)")
-                    elif obv_bullish:
-                        score += 10
-                        breakdown.append("+10: OBV Bullish")
-                    else:
-                        score -= 5
-                        breakdown.append("-5: OBV Bearish")
-
-                    if is_bearish_divergence and not is_fund:
-                        tags.append({"name": "🚨 Divergence Warning", "tooltip": "Price higher high, RSI lower high."})
-                        score -= 30
-                        breakdown.append("-30: Algorithmic Bearish Divergence")
-                    
-                    if has_volatility_warning:
-                        breakdown.append("-0: 🛡️ Preemptive Defense Active: Stop-Loss tightened defensively due to imminent high-volatility macro event.")
-
+                if ma5 is not None and current_price is not None and current_price > ma5: 
+                    score += 15
+                    breakdown.append("+15: Price > 5D MA (Short-term Momentum)")
                 else:
-                    breakdown.append("+0: Technical indicators skipped (Insufficient Historical Data)")
+                    score -= 5
+                    breakdown.append("-5: Price <= 5D MA (Bearish short-term momentum)")
+                
+                if ma5 is not None and ma10 is not None and ma21 is not None and ma5 > ma10 and ma10 > ma21: 
+                    score += 15
+                    breakdown.append("+15: MAs Aligned (5 > 10 > 21)")
 
-            # ── FINAL CLAMP ──────────────────────────────────────────────────────────
-            score = max(-50, min(round(score), 100))
+                # [MATH-10] Rebalance to heavily prioritize structural multi-month trend
+                if trend_200d == "UP":
+                    score += 20
+                    breakdown.append("+20: 200D Trend UP (Institutional Backing)")
+                else:
+                    score -= 10
+                    breakdown.append("-10: 200D Trend DOWN (Lacking institutional backing)")
 
-            # ── SIGNAL CLASSIFICATION ────────────────────────────────────────────────
-            if score >= 80:
-                signal = "STRONG BUY"
-            elif score >= 65:
-                signal = "BULLISH / HOLD"
-            elif score >= 45:
-                signal = "NEUTRAL"
-            elif score >= 25:
-                signal = "BEARISH / CAUTION"
-            elif score >= 0:
-                signal = "STRONG SELL"
+                if rsi_val is not None and 40.0 <= rsi_val <= 65.0: 
+                    score += 10
+                    breakdown.append("+10: RSI Healthy (Room to run)")
+
+                # [MATH-10] Rebalance OBV weight to avoid overshadowing long-term trend lines
+                if is_fund: 
+                    score += 0
+                    breakdown.append("+0: OBV Ignored (Fund Exemption)")
+                elif obv_bullish:
+                    score += 10
+                    breakdown.append("+10: OBV Bullish")
+                else:
+                    score -= 5
+                    breakdown.append("-5: OBV Bearish")
+
+                if is_bearish_divergence and not is_fund:
+                    tags.append({"name": "🚨 Divergence Warning", "tooltip": "Price higher high, RSI lower high."})
+                    score -= 30
+                    breakdown.append("-30: Algorithmic Bearish Divergence")
+                
+                # Append Macro AI Preemptive Defense Logic to Breakdown
+                if has_volatility_warning:
+                    breakdown.append("-0: 🛡️ Preemptive Defense Active: Stop-Loss tightened defensively due to imminent high-volatility macro event.")
+
             else:
+                breakdown.append("+0: Technical indicators skipped (Insufficient Historical Data)")
+
+            # Safely clamp the final score between -50 and 100 to allow structural weakness visibility
+            score = max(-50, min(score, 100))
+
+            if score >= 80: 
+                signal = "STRONG BUY"
+            elif score >= 60: 
+                signal = "BULLISH / HOLD"
+            elif score >= 40: 
+                signal = "NEUTRAL"
+            elif score >= 10: 
+                signal = "BEARISH / CAUTION"
+            elif score >= -20: 
+                signal = "STRONG SELL"
+            else: 
                 signal = "TOXIC / AVOID"
 
-            notes_html = f"<strong>Algorithmic Breakdown: [{score_method}]</strong><br><ul class='algo-breakdown-list'>"
+            notes_html = "<strong>Algorithmic Breakdown:</strong><br><ul class='algo-breakdown-list'>"
             for item in breakdown:
                 notes_html += f"<li>{item}</li>"
             notes_html += "</ul>"
@@ -979,7 +728,7 @@ class QuantEngine:
                 ytd_return, total_assets, nav_price, expense_ratio, top_holdings, sector_weightings,
                 dividend_yield, ex_dividend_date, target_price, analyst_rating, next_earnings_date,
                 short_interest, institutional_ownership, beta, yield_correlation,
-                score, signal, notes_html, tags_json, ml_prob, score_method
+                score, signal, notes_html, tags_json
             )
             
         except Exception as e:
@@ -999,8 +748,7 @@ class QuantEngine:
                    dividend_yield: Optional[float], ex_dividend_date: Optional[str], target_price: Optional[float], 
                    analyst_rating: str, next_earnings_date: str, short_interest: Optional[float], 
                    institutional_ownership: Optional[float], beta: Optional[float], yield_correlation: Optional[float],
-                   score: int, signal: str, notes: str, tags_json: str,
-                   ml_confidence: Optional[float], score_method: str) -> None:
+                   score: int, signal: str, notes: str, tags_json: str) -> None:
         
         # Internal cleaner to aggressively handle pandas NaNs, Inf, and String Variants
         def _clean(v: Any) -> Any:
@@ -1035,7 +783,7 @@ class QuantEngine:
                         ytd_return, total_assets, nav_price, expense_ratio, top_holdings, sector_weightings,
                         dividend_yield, ex_dividend_date, target_price, analyst_rating, next_earnings_date,
                         short_interest, institutional_ownership, beta, yield_correlation,
-                        composite_score, overall_signal, educational_notes, setup_tags, ml_confidence, score_method
+                        composite_score, overall_signal, educational_notes, setup_tags
                     ) VALUES (
                         ?, ?, ?, ?, ?, ?, ?,
                         ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
@@ -1045,7 +793,7 @@ class QuantEngine:
                         ?, ?, ?, ?, ?, ?,
                         ?, ?, ?, ?, ?,
                         ?, ?, ?, ?,
-                        ?, ?, ?, ?, ?, ?
+                        ?, ?, ?, ?
                     )
                 '''
                 
@@ -1059,7 +807,7 @@ class QuantEngine:
                     _clean(ytd_return), _clean(total_assets), _clean(nav_price), _clean(expense_ratio), top_holdings, sector_weightings,
                     _clean(dividend_yield), ex_dividend_date, _clean(target_price), analyst_rating, next_earnings_date,
                     _clean(short_interest), _clean(institutional_ownership), _clean(beta), _clean(yield_correlation),
-                    int(score), signal, notes, tags_json, _clean(ml_confidence), score_method
+                    int(score), signal, notes, tags_json
                 )
                 
                 cursor.execute(query, values)
