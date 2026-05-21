@@ -154,7 +154,7 @@
         </thead>
         <tbody>
             {% for item in portfolio %}
-            <tr class="live-asset-row" data-ticker="{{ item.ticker }}" data-signal="{{ item.overall_signal | upper }}" data-tags="{% for tag in item.setup_tags_list %}{{ tag.name }} {% endfor %}">
+            <tr class="live-asset-row" data-ticker="{{ item.ticker }}" data-currency="{{ item.currency }}" data-signal="{{ item.overall_signal | upper }}" data-tags="{% for tag in item.setup_tags_list %}{{ tag.name }} {% endfor %}">
                 <td data-sort="{{ item.ticker }}">
                     <a href="/stock/{{ item.ticker }}{% if embed %}?embed=true{% endif %}">{{ item.ticker }}</a>
                 </td>
@@ -164,10 +164,11 @@
                 
                 {% set cp = cached_pulse.get(item.ticker) %}
                 <td data-sort="{{ cp.price if cp else (item.current_price or 0) }}" id="price-{{ item.ticker }}" class="{% if cp and cp.is_stale %}stale-text{% endif %}">
-                    {% if cp %}
-                        {{ "{:,.2f}".format(cp.price|float) }}
-                    {% elif item.current_price is not none %}
-                        {{ "{:,.2f}".format(item.current_price) }}
+                    {% set display_price = cp.price|float if cp else (item.current_price if item.current_price is not none else none) %}
+                    {% if display_price is not none %}
+                        {% set sym = '£' if item.currency in ['GBP', 'GBp'] else ('€' if item.currency == 'EUR' else '$') %}
+                        {% set p_val = (display_price / 100.0) if item.currency == 'GBp' else display_price %}
+                        {{ sym }}{{ "{:,.2f}".format(p_val) }}{% if item.currency not in ['USD', 'GBP', 'GBp', 'EUR'] %} {{ item.currency }}{% endif %}
                     {% else %}
                         N/A
                     {% endif %}
