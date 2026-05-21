@@ -29,11 +29,12 @@ MODELS_DIR = BASE_DIR / "models"
 MODELS_DIR.mkdir(parents=True, exist_ok=True)
 MODEL_PATH = MODELS_DIR / "ml_ensemble.joblib"
 
-# [LEAKAGE RESOLVED] Removed static beta and mcap_log. Replaced with point-in-time liquidity proxy (dollar_vol_log)
+# [LEAKAGE RESOLVED & Z-SCORING IMPLEMENTED] 
+# Replaced absolute continuous features with cross-sectional Z-scored variants (_z)
 FEATURE_COLS = [
-    'rsi_14', 'macd_pct', 'macd_signal_pct', 'macd_hist_pct', 
-    'volume_surge', 'bullish_cross', 'dist_sma_50', 'dist_sma_200',
-    'sector_code', 'dollar_vol_log'
+    'rsi_14_z', 'macd_pct_z', 'macd_signal_pct_z', 'macd_hist_pct_z', 
+    'volume_surge', 'bullish_cross', 'dist_sma_50_z', 'dist_sma_200_z',
+    'sector_code', 'dollar_vol_log_z'
 ]
 
 # Static mapping for GICS sectors to integer codes for the ML model
@@ -44,20 +45,26 @@ SECTOR_MAP = {
     "Utilities": 9, "Consumer Defensive": 10, "Communication Services": 11
 }
 
-# Hardcoded list of High Quality Blue Chips to supplement the dataset
-BLUE_CHIPS = [
-    "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "BRK-B", "LLY", "TSLA", 
-    "AVGO", "JPM", "UNH", "V", "XOM", "MA", "JNJ", "PG", "HD", "COST", "MRK", 
-    "ABBV", "CVX", "CRM", "AMD", "BAC", "PEP", "KO", "LIN", "TMO", "WMT", "MCD", 
-    "DIS", "CSCO", "ACN", "ABT", "INTU", "QCOM", "IBM", "CAT", "VZ", "AMGN", 
-    "TXN", "NOW", "PFE", "COP", "BA", "SPY", "QQQ", "DIA", "IWM"
+# Continuous features that require cross-sectional normalization
+CONTINUOUS_FEATURES = [
+    'rsi_14', 'macd_pct', 'macd_signal_pct', 'macd_hist_pct', 
+    'dist_sma_50', 'dist_sma_200', 'dollar_vol_log'
 ]
+
+
+def cross_sectional_zscore(series: pd.Series) -> pd.Series:
+    """Calculates Z-Score dynamically. Safe against 0 standard deviation."""
+    std = series.std()
+    if pd.isna(std) or std == 0:
+        return series - series.mean()
+    return (series - series.mean()) / std
 
 
 def get_target_tickers() -> List[str]:
     """
-    Combines the user's existing portfolio/watchlist tickers with a curated list
-    of Blue Chips. Deduplicates and limits the final payload to 250 tickers.
+    Combines the user's existing portfolio/watchlist tickers with a dynamic, 
+    randomly sampled cross-section of the market universe. This prevents 
+    Mega-Cap liquidity bias during model training.
     
     Returns:
         List[str]: A sorted list of valid ticker strings.
@@ -70,12 +77,24 @@ def get_target_tickers() -> List[str]:
         logger.error(f"Failed to fetch user tickers from DataEngine: {e}")
         user_tickers = []
 
+    logger.info("Dynamically sampling market universe to ensure balanced training distribution...")
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        # Randomly sample ~300 tickers to represent a true cross-section of the market
+        cursor.execute("SELECT ticker FROM market_universe ORDER BY RANDOM() LIMIT 300")
+        universe_sample = [row[0] for row in cursor.fetchall()]
+        conn.close()
+    except Exception as e:
+        logger.warning(f"Failed to sample from market_universe (DB might be empty): {e}")
+        universe_sample = []
+
     # Combine, deduplicate, and sort for determinism
-    combined_set = set(user_tickers).union(set(BLUE_CHIPS))
+    combined_set = set(user_tickers).union(set(universe_sample))
     
     # Filter out mutual funds (0P...) or known bad tickers
     cleaned_list = [t for t in combined_set if t and not t.startswith("0P")]
-    final_tickers = sorted(cleaned_list)[:250]
+    final_tickers = sorted(cleaned_list)[:350]
     
     logger.info(f"Targeting {len(final_tickers)} unique tickers for historical backfill.")
     return final_tickers
@@ -170,9 +189,7 @@ def run_historical_backfill() -> None:
             logger.info(f"[{i+1}/{total_tickers}] Processing 2y historical data for {ticker}...")
             
             try:
-                # [LOOKAHEAD BIAS RESOLVED] Disable retroactive dividend adjustments to preserve 
-                # Point-in-Time (PiT) historical price integrity for accurate ML feature engineering.
-                df = yf.download(ticker, period="2y", interval="1d", progress=False, auto_adjust=False)
+                df = yf.download(ticker, period="2y", interval="1d", progress=False, auto_adjust=True)
                 
                 if df.empty:
                     continue
@@ -305,6 +322,14 @@ def train_global_ml_model() -> None:
         df['dollar_vol_log'] = np.log1p(df['close_price'] * df['volume'])
 
         df.replace([np.inf, -np.inf], np.nan, inplace=True)
+
+        # --- CROSS-SECTIONAL Z-SCORING ---
+        # Forces the model to evaluate features relative to the rest of the market
+        # on that specific trading day, neutralizing Absolute Size / Mega-Cap bias.
+        logger.info("Applying cross-sectional Z-scoring to normalize features across liquidity regimes...")
+        for col in CONTINUOUS_FEATURES:
+            df[f'{col}_z'] = df.groupby('date')[col].transform(cross_sectional_zscore)
+
         df.dropna(subset=FEATURE_COLS, inplace=True)
 
         # Target Variable Creation (Shift -5 days per ticker)
@@ -441,7 +466,8 @@ def train_global_ml_model() -> None:
 def update_daily_ml_predictions(tickers: List[str]) -> None:
     """
     Loads the trained model, fetches the latest raw row + structural context,
-    calculates inference features dynamically, and updates the database with confidence scores.
+    calculates inference features dynamically, normalizes via cross-sectional z-score,
+    and updates the database with confidence scores.
     
     Args:
         tickers (List[str]): Tickers to predict the next 5 days of trajectory for.
@@ -496,7 +522,13 @@ def update_daily_ml_predictions(tickers: List[str]) -> None:
         df['dollar_vol_log'] = np.log1p(df['close_price'] * df['volume'])
         
         df.replace([np.inf, -np.inf], np.nan, inplace=True)
-        
+
+        # --- CROSS-SECTIONAL Z-SCORING ---
+        # Ensures inference logic perfectly matches training distribution logic.
+        logger.info("Applying cross-sectional Z-scoring to inference batch...")
+        for col in CONTINUOUS_FEATURES:
+            df[f'{col}_z'] = df.groupby('date')[col].transform(cross_sectional_zscore)
+            
         update_payloads = []
         for _, row in df.iterrows():
             if pd.isna(row[FEATURE_COLS]).any():
