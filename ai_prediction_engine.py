@@ -332,12 +332,15 @@ def train_global_ml_model() -> None:
 
         df.dropna(subset=FEATURE_COLS, inplace=True)
 
-        # Target Variable Creation (Shift -5 days per ticker)
+        # [EXECUTION LEAKAGE RESOLVED] 
+        # Since 'open_price' is not in the schema, we use Close(T+1) as a realistic, 
+        # conservative execution proxy to prevent overnight gap leakage.
+        df['next_close'] = df.groupby('ticker')['close_price'].shift(-1)
         df['future_close'] = df.groupby('ticker')['close_price'].shift(-5)
-        df.dropna(subset=['future_close'], inplace=True)
+        df.dropna(subset=['next_close', 'future_close'], inplace=True)
         
-        # Classification Target: 1 if return > 3%, else 0
-        df['target'] = ((df['future_close'] - df['close_price']) / df['close_price'] > 0.03).astype(int)
+        # Classification Target: 1 if executable return > 3%, else 0
+        df['target'] = ((df['future_close'] - df['next_close']) / df['next_close'] > 0.03).astype(int)
 
         if len(df) < 1000:
             logger.warning(f"Insufficient training samples ({len(df)}). Need more historical data.")
