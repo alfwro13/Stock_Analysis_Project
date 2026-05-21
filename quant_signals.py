@@ -18,7 +18,8 @@ logger = logging.getLogger(__name__)
 def get_candlestick_patterns(prev2: pd.Series, prev1: pd.Series, curr: pd.Series) -> List[Dict[str, Any]]:
     """
     Algorithmic Candlestick Pattern Recognition (Hierarchical Engine).
-    Evaluates in order of mathematical priority to prevent overlapping bugs.
+    Evaluates all structural criteria independently to allow signal confluence 
+    (e.g., scoring both a Bullish Engulfing and a Hammer rejection on the same day).
     """
     patterns: List[Dict[str, Any]] = []
     
@@ -41,7 +42,7 @@ def get_candlestick_patterns(prev2: pd.Series, prev1: pd.Series, curr: pd.Series
     prev2_is_bearish = bool(prev2['Close'] < prev2['Open'])
     
     # ==========================================
-    # TIER 1: 3-CANDLE PATTERNS (Highest Priority)
+    # TIER 1: 3-CANDLE PATTERNS
     # ==========================================
     
     # 1. Morning Star (Bullish Reversal)
@@ -56,7 +57,6 @@ def get_candlestick_patterns(prev2: pd.Series, prev1: pd.Series, curr: pd.Series
                     "breakdown": "+20: <abbr title='3-Day Pattern: Heavy dump, followed by indecision, followed by violent recovery buying.'>Morning Star Reversal</abbr>",
                     "score": 20
                 })
-                return patterns 
 
     # ==========================================
     # TIER 2: 2-CANDLE PATTERNS
@@ -70,7 +70,6 @@ def get_candlestick_patterns(prev2: pd.Series, prev1: pd.Series, curr: pd.Series
             "breakdown": "+10: <abbr title='Buyers completely overwhelmed sellers. The current green body fully engulfed the previous red body.'>Bullish Engulfing Pattern</abbr>",
             "score": 10
         })
-        return patterns
         
     # 3. Bearish Engulfing
     if prev1_is_bullish and curr_is_bearish and (curr['Open'] >= prev1['Close']) and (curr['Close'] <= prev1['Open']):
@@ -80,10 +79,9 @@ def get_candlestick_patterns(prev2: pd.Series, prev1: pd.Series, curr: pd.Series
             "breakdown": "-15: <abbr title='Sellers took total control. The current red body fully engulfed the previous green body. Warning signal.'>Bearish Engulfing Pattern</abbr>",
             "score": -15
         })
-        return patterns
 
     # ==========================================
-    # TIER 3: 1-CANDLE PATTERNS (Lowest Priority)
+    # TIER 3: 1-CANDLE PATTERNS (Mutually Exclusive)
     # ==========================================
 
     # 4. Hammer / Dragonfly Doji (Bullish Rejection)
