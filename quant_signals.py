@@ -348,7 +348,7 @@ class QuantEngine:
                         WHERE currency = ? 
                         AND ai_volatility_warning > 2.0 
                         AND date(event_date) >= date('now') 
-                        AND date(event_date) <= date('now', '+2 days')
+                        AND date(event_date) <= date('now', '+1 day')
                     ''', (currency,))
                     row = cursor.fetchone()
                     if row and row['cnt'] > 0:
