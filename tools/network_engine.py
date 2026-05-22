@@ -2,6 +2,7 @@
 import time
 import random
 import logging
+import traceback
 from contextlib import contextmanager
 from curl_cffi import requests as cffi_requests
 
@@ -23,14 +24,22 @@ GLOBAL_IPV6_STATUS = {
     "last_fail_time": 0.0
 }
 
-def _trigger_fallback_alert(ipv6_address: str, action_context: str, error_msg: str) -> None:
+def _trigger_fallback_alert(ipv6_address: str, action_context: str, error_summary: str, detailed_trace: str) -> None:
+    """
+    Handles logging the network fault to SQLite and dispatching an alert to Nextcloud.
+    Separates the concise summary for chat from the heavy traceback for the database.
+    """
     config = load_config()
     
-    # 1. Database Persistence (Fixed: Now includes exact error message)
+    # 1. Database Persistence (Heavy Traceback Logging)
     try:
         conn = get_connection()
         cursor = conn.cursor()
-        msg = f"Network fault or IP Ban on {ipv6_address} while accessing Yahoo Finance for '{action_context}'. Error Details: {error_msg}"
+        msg = (
+            f"Critical Fault on {ipv6_address} while accessing Yahoo Finance for '{action_context}'.\n"
+            f"Summary: {error_summary}\n"
+            f"Details:\n{detailed_trace}"
+        )
         cursor.execute(
             "INSERT INTO system_notifications (message_type, message_text) VALUES (?, ?)",
             ("Network Fault", msg)
@@ -40,12 +49,13 @@ def _trigger_fallback_alert(ipv6_address: str, action_context: str, error_msg: s
     except Exception as db_e:
         logger.error(f"Failed to log network fault to SQLite: {db_e}")
 
-    # 2. Nextcloud Talk Alert
+    # 2. Nextcloud Talk Alert (Concise, Markdown formatted)
     alert_msg = (
-        f"🚨 **NETWORK FAULT / IP BAN: YAHOO FINANCE** 🚨\n\n"
-        f"The custom IPv6 socket (`{ipv6_address}`) failed or was rate-limited (HTTP 429) while fetching data for `{action_context}`.\n"
-        f"**Error Details:** {error_msg}\n\n"
-        f"🔄 *System is automatically dropping the IPv6 interface and hopping to standard IPv4 routing to rescue the pipeline.*"
+        f"🚨 **CRITICAL NETWORK FAULT: YAHOO FINANCE** 🚨\n\n"
+        f"The custom IPv6 socket (`{ipv6_address}`) experienced a hard failure while fetching data for `{action_context}`.\n"
+        f"**Error:** {error_summary}\n\n"
+        f"🔄 *System is dropping the IPv6 interface and hopping to standard IPv4 routing to rescue the pipeline.*\n\n"
+        f"*(Note: Full stack trace and URL details have been written to the SQLite system_notifications table for debugging.)*"
     )
     
     # Fire and forget to Nextcloud
@@ -80,13 +90,11 @@ def create_failover_session(ipv6_address: str, action_context: str) -> cffi_requ
                 # Intercept HTTP 429 (Too Many Requests) BEFORE yfinance sees it
                 if response.status_code == 429:
                     if attempt < max_retries:
-                        # Exponential backoff (2s, 4s, 8s) + random jitter (0.5s to 1.5s)
                         sleep_time = (base_delay ** attempt) + random.uniform(0.5, 1.5)
-                        logger.warning(f"[HTTP 429] Rate limited by Yahoo during '{action_context}'. Backing off for {sleep_time:.2f}s (Attempt {attempt + 1}/{max_retries}).")
+                        logger.warning(f"[HTTP 429] Rate limited by Yahoo on IPv6 '{ipv6_address}'. Backing off for {sleep_time:.2f}s (Attempt {attempt + 1}/{max_retries}).")
                         time.sleep(sleep_time)
-                        continue  # Retry the loop
+                        continue
                     else:
-                        # We exhausted retries on IPv6. Raise an exception to trigger the IPv4 failover!
                         raise Exception(f"HTTP 429 Max Retries Exceeded on IPv6 Interface. URL: {url}")
                         
                 # If we succeed on IPv6, mark the global status as healthy
@@ -96,26 +104,50 @@ def create_failover_session(ipv6_address: str, action_context: str) -> cffi_requ
                 return response
 
             except Exception as e:
-                # Capture curl_cffi.requests.errors.RequestsError, socket faults, and our 429 exception
+                error_str = str(e)
+                
+                # --- 1. STRICT IPv6 LAZY-LOAD RESCUE ---
+                if "Session is closed" in error_str:
+                    logger.warning(f"Detected lazy-load on closed session during '{action_context}'. Rescuing with a temporary IPv6 session ({ipv6_address}) for URL: {url}")
+                    with cffi_requests.Session(impersonate="chrome", interface=ipv6_address) as rescue_session:
+                        return rescue_session.request(method, url, **kwargs)
+                
+                # If we already fell back to standard routing and it STILL failed, we are completely offline or hard-banned.
                 if getattr(session, 'fallback_triggered', False):
-                    # If we already fell back to standard routing and it STILL failed, we are hard-banned or offline. Raise normally.
                     raise e
                 
-                error_str = str(e)
-                logger.error(f"Network/Socket Fault during '{action_context}': {error_str}")
-                _trigger_fallback_alert(ipv6_address, action_context, error_str)
+                # --- 2. TRANSIENT TIMEOUT HANDLING ---
+                # Do NOT drop the IPv6 interface for a simple timeout. Retry on IPv6.
+                is_transient = any(term in error_str.lower() for term in ["timeout", "connection reset", "code: 28"])
+                if is_transient and attempt < max_retries:
+                    sleep_time = (base_delay ** attempt) + random.uniform(0.5, 1.5)
+                    logger.warning(f"Transient network error on IPv6 '{ipv6_address}': {error_str}. Retrying in {sleep_time:.2f}s (Attempt {attempt + 1}/{max_retries}).")
+                    time.sleep(sleep_time)
+                    continue
+
+                # --- 3. HARD FAULT / IPv4 FAILOVER ---
+                # We only reach this point if it's a definitive binding error, or if retries are exhausted.
+                error_summary = f"{type(e).__name__}: {error_str}"
+                detailed_trace = (
+                    f"Target URL: {method} {url}\n"
+                    f"Attempt: {attempt + 1} of {max_retries + 1}\n"
+                    f"Stack Trace:\n{traceback.format_exc()}"
+                )
+                
+                logger.error(f"Critical IPv6 Fault during '{action_context}': {error_summary}\n{detailed_trace}")
+                _trigger_fallback_alert(ipv6_address, action_context, error_summary, detailed_trace)
                 
                 # Update Global Status for UI Dashboard
                 GLOBAL_IPV6_STATUS["is_failing"] = True
-                GLOBAL_IPV6_STATUS["last_error"] = error_str
+                GLOBAL_IPV6_STATUS["last_error"] = error_summary
                 GLOBAL_IPV6_STATUS["last_fail_time"] = time.time()
                 
                 # Graceful Fallback: Drop the interface binding natively in libcurl
-                logger.info("Dropping custom IPv6 interface. Reverting to standard native OS routing (IPv4)...")
+                logger.warning(f"Exhausted IPv6 recovery options. Dropping custom interface {ipv6_address} and reverting to OS default routing (IPv4)...")
                 session.interface = None
                 session.fallback_triggered = True
                 
-                # Rescue the pipeline by executing the request over IPv4
+                # Rescue the pipeline by executing the request over standard routing
                 return original_request(method, url, **kwargs)
 
     # Monkey-patch the request method to our self-healing wrapper
