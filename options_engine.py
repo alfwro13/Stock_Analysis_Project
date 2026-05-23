@@ -33,9 +33,15 @@ def fetch_options_chain(ticker: str) -> Dict[str, Any]:
             chain = tk.option_chain(exp)
             
             # Clean and isolate relevant columns, now including critical liquidity metrics
-            calls = chain.calls[['strike', 'lastPrice', 'bid', 'ask', 'volume', 'openInterest', 'impliedVolatility']].fillna(0).to_dict('records')
-            puts = chain.puts[['strike', 'lastPrice', 'bid', 'ask', 'volume', 'openInterest', 'impliedVolatility']].fillna(0).to_dict('records')
-            
+            # Fill numeric trading fields with 0, but preserve None for implied volatility
+            #  so the UI can display "N/A" rather than a misleading 0.00% figure.
+            numeric_cols = ['strike', 'lastPrice', 'bid', 'ask', 'volume', 'openInterest']
+            calls_df = chain.calls[numeric_cols + ['impliedVolatility']].copy()
+            puts_df  = chain.puts[numeric_cols  + ['impliedVolatility']].copy()
+            calls_df[numeric_cols] = calls_df[numeric_cols].fillna(0)
+            puts_df[numeric_cols]  = puts_df[numeric_cols].fillna(0)
+            calls = calls_df.where(calls_df.notna(), other=None).to_dict('records')
+            puts  = puts_df.where(puts_df.notna(),   other=None).to_dict('records')         
             chain_data[exp] = {"calls": calls, "puts": puts}
             
         # Fetch the latest underlying close price
