@@ -578,7 +578,10 @@ class QuantEngine:
             # Include Dividend Yield in the Peter Lynch formulation
             # yfinance always returns decimal; multiply unconditionally
             peter_lynch_peg = None
-            if trailing_pe and trailing_pe > 0 and earnings_growth and earnings_growth > 0:
+            # Prefer forward PE (less distorted by one-time charges) per Lynch's intent.
+            # Fall back to trailing PE only when forward is unavailable.
+            pe_for_lynch = forward_pe if (forward_pe and forward_pe > 0) else trailing_pe
+            if pe_for_lynch and pe_for_lynch > 0 and earnings_growth and earnings_growth > 0:          
                 # Unconditionally scale decimal to percentage
                 eg_scaled = earnings_growth * 100.0
                 
@@ -589,7 +592,7 @@ class QuantEngine:
                 
                 # Calculate True Peter Lynch PEG, guarding against negative denominators
                 if total_growth_yield > 0:
-                    peter_lynch_peg = trailing_pe / total_growth_yield
+                    peter_lynch_peg = pe_for_lynch / total_growth_yield
 
             # ==========================================
             # PART 3: SCORING & SETUP TAGS
