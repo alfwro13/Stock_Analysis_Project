@@ -224,7 +224,8 @@ class QuantEngine:
         # Total aggregate range across the 3-week base must be ≤ 10% of the low
         max_high = float(last_3_weeks['High'].max())
         min_low = float(last_3_weeks['Low'].min())
-        total_range_pct = (max_high - min_low) / min_low if min_low > 0 else 1.0
+        # Normalize range against current price (Minervini's published definition)
+        total_range_pct = (max_high - min_low) / current_price if current_price > 0 else 1.0
         is_tight: bool = is_contracting and (total_range_pct <= 0.10)
 
         # ─────────────────────────────────────────────────────────────────
@@ -572,7 +573,7 @@ class QuantEngine:
             # ==========================================
             # PART 3: SCORING & SETUP TAGS
             # ==========================================
-            score = 40  # ISSUE-M03 FIXED: Establish Neutral Baseline at 40 (Not 0)
+            score = 0
             breakdown = []
             tags = []
 
@@ -695,20 +696,17 @@ class QuantEngine:
                 breakdown.append("+0: Technical indicators skipped (Insufficient Historical Data)")
 
             # Safely clamp the final score between -50 and 100 to allow structural weakness visibility
-            score = max(-50, min(score, 100))
-
-            if score >= 80: 
-                signal = "STRONG BUY"
-            elif score >= 60: 
-                signal = "BULLISH / HOLD"
-            elif score >= 40: 
-                signal = "NEUTRAL"
-            elif score >= 10: 
-                signal = "BEARISH / CAUTION"
-            elif score >= -20: 
-                signal = "STRONG SELL"
-            else: 
-                signal = "TOXIC / AVOID"
+            score = max(-100, min(score, 100))
+            # Guard: stocks that never entered the technical block have score == 0
+            _has_tech = df is not None and len(df) >= 21
+            if not _has_tech:
+                signal = "INSUFFICIENT DATA"
+            elif score >= 40:  signal = "STRONG BUY"
+            elif score >= 20:  signal = "BULLISH / HOLD"
+            elif score >= 0:   signal = "NEUTRAL"
+            elif score >= -30: signal = "BEARISH / CAUTION"
+            elif score >= -60: signal = "STRONG SELL"
+            else:              signal = "TOXIC / AVOID"
 
             notes_html = "<strong>Algorithmic Breakdown:</strong><br><ul class='algo-breakdown-list'>"
             for item in breakdown:
