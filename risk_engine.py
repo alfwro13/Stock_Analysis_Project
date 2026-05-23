@@ -19,13 +19,14 @@ logger = logging.getLogger(__name__)
 
 def calculate_tail_risk(ticker: str, target_date: Optional[str] = None) -> None:
     """
-    Fetches 1 year of daily historical prices to calculate Parametric Value at Risk (VaR)
-    and Conditional Value at Risk (CVaR) at a 95% confidence interval.
-    Updates the existing row in the quant_signals SQLite table.
+    Fetches 2 years of daily historical prices to calculate Historical Simulation VaR
+    and Conditional Value at Risk (CVaR / Expected Shortfall) at a 95% confidence interval.
+    Historical Simulation is used in preference to Parametric VaR to avoid the dangerous
+    assumption of normally distributed returns (financial returns are leptokurtic).
     """
     try:
-        # 1. Fetch 1 year (approx 252 trading days) of historical data
-        df = yf.download(ticker, period="1y", interval="1d", progress=False, auto_adjust=True)
+        # 1. Fetch 2 years (approx 504 trading days) of historical data
+        df = yf.download(ticker, period="2y", interval="1d", progress=False, auto_adjust=True)
         
         if df.empty or len(df) < 50:
             logger.warning(f"Insufficient historical data to calculate tail risk for {ticker}.")

@@ -2,6 +2,7 @@
 import logging
 import requests
 import io
+import sqlite3
 import pandas as pd
 from datetime import datetime, timedelta
 from requests.adapters import HTTPAdapter

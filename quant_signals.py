@@ -163,8 +163,12 @@ class QuantEngine:
         # ─────────────────────────────────────────────────────────────────
         # Measured over the full 252-day window using intraday High/Low extremes
         # to capture the true prior advance, not just daily close-to-close.
-        high_52w = df['High'].rolling(window=252).max().iloc[-1]
-        low_52w = df['Low'].rolling(window=252).min().iloc[-1]
+        #high_52w = df['High'].rolling(window=252).max().iloc[-1]
+        #low_52w = df['Low'].rolling(window=252).min().iloc[-1]
+        cutoff_52w = df.index[-1] - pd.DateOffset(weeks=52)
+        df_52w     = df[df.index >= cutoff_52w]
+        high_52w   = df_52w['High'].max()
+        low_52w    = df_52w['Low'].min()
 
         if pd.isna(high_52w) or pd.isna(low_52w) or low_52w <= 0:
             return False, False, False
