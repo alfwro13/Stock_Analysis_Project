@@ -277,7 +277,7 @@ def _format_mobile_markdown_list(data: List[Dict[str, Any]]) -> str:
         
     return output
 
-def _extract_numeric(val_str: str) -> Optional[float]:
+def _extract_numeric(val_str: str) -> float:
     """Extracts the first number (including optional leading minus) from a string."""
     if not val_str:
         return None
