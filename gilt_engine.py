@@ -146,11 +146,17 @@ class GiltDataService:
             last_boe_date = df_boe.index[-2] if target_date in df_boe.index else df_boe.index[-1]
             gap_days = (target_date - last_boe_date).days
             
+            # Only pad weekend calendar days (Saturday=5, Sunday=6).
+            # Do NOT retroactively fill working-day gaps — BoE data simply hasn't been published.
             if gap_days > 1:
-                logger.info(f"Padded {gap_days - 1} reporting gap days between central bank data and live FT rates.")
-                for d in range(1, gap_days):
+                 weekend_fills = 0
+                 for d in range(1, gap_days):
                     fill_date = last_boe_date + pd.Timedelta(days=d)
-                    df_boe.loc[fill_date, "Close"] = live_yield
+                    if fill_date.weekday() >= 5:  # Saturday or Sunday only
+                        df_boe.loc[fill_date, "Close"] = live_yield
+                        weekend_fills += 1
+                    if weekend_fills:
+                        logger.info(f"Padded {weekend_fills} weekend days with live FT yield.")
 
         # Ensure index sorting and structure match engine specs
         df_boe.index = pd.to_datetime(df_boe.index)
