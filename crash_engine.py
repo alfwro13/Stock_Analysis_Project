@@ -141,15 +141,11 @@ class CrashEngine:
             return None
 
         # --- 1. NEW LOGIC: True Intraday Session Crash ---
-        # Accurately identify 'yesterday's close' regardless of data rollover states.
+        # df_combined is always purely historical OHLCV data loaded from Parquet.
+        # The live current_price is passed separately as a scalar.
+        # Therefore: prev_close is always the last row of df_combined (= yesterday's close).
         if len(df_combined) >= 2:
-            latest_dt = df_combined.index[-1]
-            # If the last recorded bar matches today, df_combined has appended live data -> use iloc[-2]
-            if latest_dt.date() == datetime.now().date():
-                prev_close = df_combined['Close'].iloc[-2]
-            else:
-                # df_combined is purely historical and hasn't appended today -> use iloc[-1]
-                prev_close = df_combined['Close'].iloc[-1]
+            prev_close = df_combined['Close'].iloc[-1]
         else:
             prev_close = current_price
 
