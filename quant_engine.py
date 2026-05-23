@@ -89,8 +89,8 @@ def run_daily_quant_scan(ticker_list: List[str], scan_type: str = 'daily') -> No
 
                 df.dropna(subset=['Close', 'Volume'], inplace=True)
                 
-                if len(df) < 50:
-                    logger.warning(f"Insufficient historical data for {ticker} (requires >= 50 days). Skipping.")
+                if len(df) < 200:
+                    logger.warning(f"Insufficient historical data for {ticker} (requires >= 200 days for SMA-200). Skipping.")
                     continue
 
                 # --- Technical Indicator Math (Vectorized via pandas & ta) ---
