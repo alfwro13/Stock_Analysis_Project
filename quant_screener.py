@@ -175,9 +175,10 @@ def filter_macro_vetoes(setups: List[Dict[str, Any]], threat_level: str) -> Tupl
         debt = row.get('debt_to_equity')
         corr = row.get('yield_correlation')
         
-        # Punitive evaluation for null correlation
+        # Neutral assumption for missing correlation data.
+        # A stock with no yield correlation history is unknown, not negatively correlated.
         if corr is None:
-            corr = -1.0
+            corr = 0.0
             
         is_high_multiple = (pe is not None and pe > 30) or (debt is not None and debt > 1.5)
         is_neg_corr = corr <= -0.3
