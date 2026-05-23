@@ -211,18 +211,21 @@ def calculate_systemic_macro_threat() -> None:
         
         # US Institutional Rule Classification
         # Velocity in bps, Absolute Level in Percentage Points
-        if us_velocity_bps >= 30.0 or curr_tnx >= 5.0:
+        # Calibrated to modern (post-2022) rate environment:
+        # RED:    Velocity >= 30 bps/3-days OR 10Y >= 4.75% (elevated historical level)
+        # YELLOW: Velocity >= 15 bps/3-days OR 10Y >= 4.25% (recent post-hike ceiling)
+        if us_velocity_bps >= 30.0 or curr_tnx >= 4.75:
             us_threat_level = "RED"
-        elif us_velocity_bps >= 15.0:
+        elif us_velocity_bps >= 15.0 or curr_tnx >= 4.25:
             us_threat_level = "YELLOW"
         else:
             us_threat_level = "GREEN"
 
         # UK Institutional Rule Classification
         # Calibrated absolute threshold to 6.0% reflecting historically higher Gilt risk premiums
-        if gilt_velocity_bps >= 30.0 or curr_gilt >= 6.0:
+        if gilt_velocity_bps >= 30.0 or curr_gilt >= 5.0:
             uk_threat_level = "RED"
-        elif gilt_velocity_bps >= 15.0:
+        elif gilt_velocity_bps >= 15.0 or curr_gilt >= 4.5:
             uk_threat_level = "YELLOW"
         else:
             uk_threat_level = "GREEN"
