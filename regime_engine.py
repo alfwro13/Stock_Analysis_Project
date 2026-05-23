@@ -176,9 +176,13 @@ def calculate_systemic_macro_threat() -> None:
             
         # Current and Past (3 trading days ago) values
         curr_tnx = float(tnx['Close'].iloc[-1])
-        past_tnx = float(tnx['Close'].iloc[-4])
+        # Use the row 3 trading days ago (iloc[-4] assumes 4 rows exist and no gaps).
+        # Date-based fallback: find the closest row at least 3 calendar days back.
+        target_past = tnx.index[-1] - pd.Timedelta(days=4)
+        tnx_past_rows = tnx[tnx.index <= target_past]
+        past_tnx = float(tnx_past_rows['Close'].iloc[-1]) if not tnx_past_rows.empty else curr_tnx
         
-        # FIX ISSUE-M02: Fetch and assign 30Y Treasury Data safely
+        # Fetch and assign 30Y Treasury Data safely
         curr_tyx = float(tyx['Close'].iloc[-1]) if not tyx.empty else curr_tnx
 
         curr_dxy = float(dxy['Close'].iloc[-1]) if not dxy.empty else 0.0
@@ -193,7 +197,10 @@ def calculate_systemic_macro_threat() -> None:
             gilt_df = gilt_df[gilt_df.index.dayofweek < 5]
             
             curr_gilt = float(gilt_df['Close'].iloc[-1]) if len(gilt_df) >= 1 else curr_tnx
-            past_gilt = float(gilt_df['Close'].iloc[-4]) if len(gilt_df) >= 4 else past_tnx
+            target_past_gilt = gilt_df.index[-1] - pd.Timedelta(days=4)
+            gilt_past_rows = gilt_df[gilt_df.index <= target_past_gilt]
+            past_gilt = float(gilt_past_rows['Close'].iloc[-1]) if not gilt_past_rows.empty else curr_tnx
+
         else:
             logger.warning("UK Gilt Baseline Parquet missing. Falling back to TNX equivalence.")
             curr_gilt, past_gilt = curr_tnx, past_tnx
