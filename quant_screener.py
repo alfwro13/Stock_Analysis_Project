@@ -277,14 +277,13 @@ def _format_mobile_markdown_list(data: List[Dict[str, Any]]) -> str:
         
     return output
 
-def _extract_numeric(val_str: str) -> float:
-    """Helper to extract a clean float from formatted strings (e.g., '5.0%', '-1.2K')."""
+def _extract_numeric(val_str: str) -> Optional[float]:
+    """Extracts the first number (including optional leading minus) from a string."""
     if not val_str:
         return None
     try:
-        # Strip everything except numbers, decimal points, and negative signs
-        cleaned = re.sub(r'[^\d\.\-]', '', str(val_str))
-        return float(cleaned) if cleaned else None
+        match = re.search(r'-?[\d]+\.?[\d]*', str(val_str))
+        return float(match.group()) if match else None
     except Exception:
         return None
 

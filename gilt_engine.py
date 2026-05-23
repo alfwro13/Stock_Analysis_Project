@@ -127,6 +127,13 @@ class GiltDataService:
 
         # 2. Extract current real-time close indicators from Financial Times
         live_yield = self.fetch_live_ft_yield()
+        # BoE IADB already contains today's yield by 4pm. Re-fetch with today's date
+        # as the start to get the latest available row without any scraping.
+        # Enable this if FT.com scraping fails or if you want to validate the live yield against BoE's published data.
+        # df_today = self.fetch_historical_boe(
+            # start_date=(datetime.now(timezone.utc) - timedelta(days=7)).strftime("%d/%b/%Y")
+        # )
+        # live_yield = float(df_today['Close'].iloc[-1]) if df_today is not None and not df_today.empty else None
         if live_yield is not None:
             today_dt = pd.Timestamp(datetime.now(timezone.utc).date())
             
