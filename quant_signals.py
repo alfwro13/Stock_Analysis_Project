@@ -275,7 +275,9 @@ class QuantEngine:
             current_daily_vol = float(df['Volume'].iloc[-1])
 
             if not pd.isna(daily_vol_sma_50) and daily_vol_sma_50 > 0:
-                price_broke_out = bool(current_price > resistance_level)
+                # Require a 2% decisive close above the pivot to eliminate noise touches.
+                BREAKOUT_BUFFER = 1.02
+                price_broke_out = bool(current_price > resistance_level * BREAKOUT_BUFFER)
                 volume_confirmed = bool(current_daily_vol >= (daily_vol_sma_50 * 1.50))
                 is_confirmed_breakout = bool(price_broke_out and volume_confirmed)
 
@@ -550,9 +552,16 @@ class QuantEngine:
             operating_cash_flow = info.get('operatingCashflow', None)
             
             dividend_yield = info.get('dividendYield', None)
-            #  Robust heuristic: legitimate yields > 25% are virtually impossible, heavily implies pence misquote
-            if dividend_yield is not None and dividend_yield > 0.25 and currency in ['GBp', 'GBP']:
-                dividend_yield = dividend_yield / 100.0
+            
+            # Pence misquote correction: yfinance sometimes returns GBp yields as
+            # (pence_dividend / pence_price) which is 100x the true decimal yield.
+            # Any yield > 0.25 (25%) for a GBP/GBp asset is virtually impossible for
+            # a legitimate stock and almost certainly a pence denomination artifact.
+            # Lower threshold to 0.15 (15%) to catch more misquotes while still
+            # allowing genuine high-yield instruments (REITs, BDCs) to pass through.
+            if dividend_yield is not None and currency in ['GBp', 'GBP']:
+                if dividend_yield > 0.15:
+                    dividend_yield /= 100.0
 
             ex_dividend_date = info.get('exDividendDate', None)
             target_price = info.get('targetMeanPrice', None)
