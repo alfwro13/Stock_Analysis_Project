@@ -40,9 +40,10 @@ FEATURE_COLS = [
 # Static mapping for GICS sectors to integer codes for the ML model
 SECTOR_MAP = {
     "Technology": 1, "Healthcare": 2, "Financials": 3,
-    "Financial Services": 3, "Real Estate": 4, "Energy": 5, 
-    "Basic Materials": 6, "Consumer Cyclical": 7, "Industrials": 8, 
-    "Utilities": 9, "Consumer Defensive": 10, "Communication Services": 11
+    "Financial Services": 3, "Real Estate": 4, "Energy": 5,
+    "Basic Materials": 6, "Consumer Cyclical": 7, "Industrials": 8,
+    "Utilities": 9, "Consumer Defensive": 10, "Communication Services": 11,
+    "Unknown": 99  # Explicit unknown code — distinct from any real sector
 }
 
 # Continuous features that require cross-sectional normalization
@@ -199,7 +200,7 @@ def run_historical_backfill() -> None:
 
                 df.dropna(subset=['Close', 'Volume'], inplace=True)
                 
-                if len(df) < 200:
+                if len(df) < 252:  # Require 1 full trading year for a stable SMA-200
                     continue
 
                 # Vector-calculate technical indicators via 'ta' library
@@ -316,7 +317,7 @@ def train_global_ml_model() -> None:
         df['bullish_cross'] = df['bullish_cross'].fillna(0).astype(int)
         
         # Contextual Features
-        df['sector_code'] = df['sector'].map(SECTOR_MAP).fillna(0).astype(int)
+        df['sector_code'] = df['sector'].map(SECTOR_MAP).fillna(99).astype(int)
         
         # Point-In-Time Proxy
         df['dollar_vol_log'] = np.log1p(df['close_price'] * df['volume'])
