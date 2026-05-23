@@ -57,6 +57,18 @@ def get_candlestick_patterns(prev2: pd.Series, prev1: pd.Series, curr: pd.Series
                     "breakdown": "+20: <abbr title='3-Day Pattern: Heavy dump, followed by indecision, followed by violent recovery buying.'>Morning Star Reversal</abbr>",
                     "score": 20
                 })
+    # 2. Evening Star (Bearish Reversal) — symmetric counterpart to Morning Star
+    # Day 1: Strong Bullish. Day 2: Indecision/Gap up. Day 3: Strong Bearish pushing below 50% of Day 1.
+    prev2_midpoint_bull = (prev2['Open'] + prev2['Close']) / 2.0
+    if prev2_is_bullish and prev2_body > (prev2['High'] - prev2['Low']) * 0.5:
+        if prev1_body <= (prev1_range * 0.3):
+            if curr_is_bearish and curr['Close'] < prev2_midpoint_bull:
+                patterns.append({
+                    "name": "🌇 Evening Star",
+                    "tooltip": "A highly reliable 3-day topping pattern. Strong buying (Day 1) was met with indecision (Day 2), followed by aggressive institutional selling (Day 3) that erased the majority of the prior rally.",
+                    "breakdown": "-20: <abbr title='3-Day Pattern: Heavy rally, followed by indecision, followed by violent selling.'>Evening Star Reversal</abbr>",
+                    "score": -20
+                })
 
     # ==========================================
     # TIER 2: 2-CANDLE PATTERNS
@@ -68,7 +80,7 @@ def get_candlestick_patterns(prev2: pd.Series, prev1: pd.Series, curr: pd.Series
             "name": "🐂 Bullish Engulfing",
             "tooltip": "Buyers completely overwhelmed sellers. The current green body fully engulfed the previous red body. Signals a potential reversal to the upside.",
             "breakdown": "+10: <abbr title='Buyers completely overwhelmed sellers. The current green body fully engulfed the previous red body.'>Bullish Engulfing Pattern</abbr>",
-            "score": 10
+            "score": 15
         })
         
     # 3. Bearish Engulfing
@@ -90,7 +102,7 @@ def get_candlestick_patterns(prev2: pd.Series, prev1: pd.Series, curr: pd.Series
             "name": "🔨 Hammer Rejection",
             "tooltip": "Sellers tried to crash the price intraday, but institutional buyers violently rejected it and bought the dip. Indicates strong underlying support.",
             "breakdown": "+5: <abbr title='Sellers tried to crash the price intraday, but institutional buyers violently rejected it. Indicates strong support.'>Bullish Hammer Candlestick</abbr>",
-            "score": 5
+            "score": 10
         })
         
     # 5. Shooting Star / Gravestone Doji (Bearish Rejection)
