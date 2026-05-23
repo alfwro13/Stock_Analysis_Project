@@ -133,8 +133,9 @@ def get_implied_straddle_move(ticker_obj: yf.Ticker, underlying_price: float, ta
         iv = float(atm_call.get('impliedVolatility', 0.0))
         implied_move_pct = (iv * np.sqrt(days_to_expiry / 365.0) * np.sqrt(2 / np.pi)) * 100.0
         
-        # Aggregate liquidity indicator
-        volume = int(atm_call.get('volume', 0)) + int(atm_put.get('volume', 0))
+        # Use Open Interest as the liquidity proxy — unlike volume, OI persists
+        # between sessions and is not 0 outside market hours.
+        volume = int(atm_call.get('openInterest', 0)) + int(atm_put.get('openInterest', 0))
         
         return implied_move_pct, volume, target_expiry
 
