@@ -46,19 +46,6 @@ _MACRO_HTML_CACHE: Dict[str, str] = {
     "ftse_gbp_html": ""
 }
 
-# --- GLOBAL THREAD-SAFE STORAGE AND STATE MATRIX ---
-_CACHE_LOCK = threading.Lock()
-_IS_REFRESHING = False
-_LAST_CACHE_TIME = 0.0
-
-_MACRO_HTML_CACHE: Dict[str, str] = {
-    "sentiment_html": "",
-    "vix_spy_html": "",
-    "yield_equity_html": "",
-    "uk_yield_equity_html": "",
-    "ftse_gbp_html": ""
-}
-
 # --- ML MODEL LAZY LOADING STATE ---
 _FINBERT_ANALYZER = None
 _MODEL_LOCK = threading.Lock()
