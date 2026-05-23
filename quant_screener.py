@@ -34,8 +34,10 @@ def get_oversold_reversals(data: List[Dict[str, Any]], regime_label: str) -> Lis
         sector = row.get('sector', 'Unknown')
         
         if rsi is not None and macd_hist is not None:
-            # Require a confirmed bullish cross to prevent fading momentum traps
-            if rsi < 30 and macd_hist > 0 and row.get('bullish_cross') in (1, True):
+            # RSI < 30 = deeply oversold. Positive MACD histogram = momentum recovering.
+            # Bullish cross is a bonus tag but not required — the cross typically lags
+            # RSI recovery by several sessions, making both conditions near-impossible to satisfy together.
+            if rsi < 30 and macd_hist > 0:
                 if regime_label in ['Crash', 'Volatile']:
                     # Safely extract beta
                     beta_raw = row.get('beta')
