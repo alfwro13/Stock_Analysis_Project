@@ -88,7 +88,7 @@ def get_momentum_surges(data: List[Dict[str, Any]], regime_label: str) -> List[D
         sma_200 = row.get('sma_200', 0)
         
         if vol_surge in (1, True) and rsi is not None:
-            if 50 < rsi < 70:
+            if 50 <= rsi <= 70:
                 if regime_label in ['Crash', 'Volatile']:
                     if sma_200 is not None and close_price > sma_200:
                         results.append(row)

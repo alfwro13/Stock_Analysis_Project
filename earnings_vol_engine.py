@@ -52,7 +52,7 @@ def get_historical_earnings_move(ticker_obj: yf.Ticker) -> Optional[float]:
                 if len(hist) < 2:
                     continue
                     
-                # BULLETPROOF FIX: Convert everything to pure, timezone-naive normalized dates (00:00:00)
+                # Convert everything to pure, timezone-naive normalized dates (00:00:00)
                 # This completely destroys the [s] vs [us] resolution conflict crashing Pandas
                 hist_dates = pd.to_datetime(hist.index).tz_localize(None).normalize()
                 target_date = pd.to_datetime(e_date).tz_localize(None).normalize()
@@ -61,15 +61,15 @@ def get_historical_earnings_move(ticker_obj: yf.Ticker) -> Optional[float]:
                 time_diffs = abs(hist_dates - target_date)
                 closest_idx = time_diffs.argmin()
                 
-                # Calculate the percentage gap using pre-earnings Close and post-earnings Close
-                # [ISSUE-M09 FIXED] Shifted from post-open to post-close to capture the full session move
-                if closest_idx > 0 and closest_idx < len(hist):
-                    pre_close = hist['Close'].iloc[closest_idx - 1]
-                    post_close = hist['Close'].iloc[closest_idx]
-                    
+                # Use a 2-session window: close before earnings day vs close after.
+                # This captures the full reaction regardless of AMC/BMO timing.
+                if closest_idx > 0 and (closest_idx + 1) < len(hist):
+                    pre_close  = hist['Close'].iloc[closest_idx - 1]
+                    post_close = hist['Close'].iloc[closest_idx + 1]
                     if pre_close > 0:
-                        pct_move = abs((post_close - pre_close) / pre_close) * 100.0
-                        moves.append(pct_move)
+                        move_pct = abs((post_close - pre_close) / pre_close) * 100.0
+                        moves.append(move_pct)
+                
             except Exception as e:
                 logger.debug(f"Could not calculate specific earnings event move: {e}")
                 continue
