@@ -668,9 +668,13 @@ class QuantEngine:
                     score -= 5
                     breakdown.append("-5: Price <= 5D MA (Bearish short-term momentum)")
                 
-                if ma5 is not None and ma10 is not None and ma21 is not None and ma5 > ma10 and ma10 > ma21: 
-                    score += 15
-                    breakdown.append("+15: MAs Aligned (5 > 10 > 21)")
+                if ma5 is not None and ma10 is not None and ma21 is not None:
+                    if ma5 > ma10 and ma10 > ma21:
+                        score += 15
+                        breakdown.append("+15: MAs Fully Aligned (5 > 10 > 21)")
+                    elif ma5 > ma10:
+                        score += 7
+                        breakdown.append("+7: MAs Partially Aligned (5 > 10, short-term momentum only)")
 
                 # [MATH-10] Rebalance to heavily prioritize structural multi-month trend
                 if trend_200d == "UP":
