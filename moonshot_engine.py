@@ -35,7 +35,7 @@ class MoonshotEngine:
         price_spike_pct = ((current_price - past_price) / past_price) * 100.0
 
         # Calculation B: SMA Gap (Running too hot)
-        sma_series = ta.trend.sma_indicator(df_combined['Close'], window=self.sma_length)
+        sma_series = ta.trend.SMAIndicator(close=df_combined['Close'], window=self.sma_length).sma_indicator()
         latest_sma = sma_series.iloc[-1]
         above_sma_pct = ((current_price - latest_sma) / latest_sma) * 100.0 if latest_sma else 0.0
 

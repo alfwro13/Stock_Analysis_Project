@@ -86,7 +86,7 @@ class CrashEngine:
         # 3. Technical Damage Assessment
         latest_price = df_combined['Close'].iloc[-1]
         try:
-            sma50 = ta.trend.sma_indicator(df_combined['Close'], window=50).iloc[-1]
+            sma50 = ta.trend.SMAIndicator(close=df_combined['Close'], window=50).sma_indicator().iloc[-1]
             if latest_price < sma50 and df_combined['Close'].iloc[-2] >= sma50:
                 report.append("Technical damage is notable: the stock just sliced violently through its 50-day moving average, a key institutional support level.")
         except Exception as e:
@@ -164,7 +164,7 @@ class CrashEngine:
         past_price = df_combined['Close'].iloc[lookback_idx]
         price_drop_pct = ((current_price - past_price) / past_price) * 100.0
 
-        sma_series = ta.trend.sma_indicator(df_combined['Close'], window=self.sma_length)
+        sma_series = ta.trend.SMAIndicator(close=df_combined['Close'], window=self.sma_length).sma_indicator()
         latest_sma = sma_series.iloc[-1]
         below_sma_pct = ((latest_sma - current_price) / latest_sma) * 100.0 if latest_sma else 0.0
 
