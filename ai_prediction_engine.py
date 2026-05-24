@@ -21,59 +21,72 @@ from config import BASE_DIR
 from database import get_connection, log_notification
 from data_engine import DataEngine
 
-# Configure robust module-level logging
 logger = logging.getLogger(__name__)
 
-# Constants
 MODELS_DIR = BASE_DIR / "models"
 MODELS_DIR.mkdir(parents=True, exist_ok=True)
-MODEL_PATH        = MODELS_DIR / "ml_ensemble.joblib"
+MODEL_PATH         = MODELS_DIR / "ml_ensemble.joblib"
 FEATURE_STATS_PATH = MODELS_DIR / "feature_stats.joblib"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# FEATURE REGISTRY
+# FEATURE REGISTRY  (16 features, up from 14)
 #
 # MOMENTUM FACTORS (Jegadeesh & Titman, 1993):
-#   mom_1m          — 21-day return. Short-term trend.
-#   mom_3m          — 63-day return. Intermediate momentum.
-#   mom_6m          — 126-day return. Medium-term momentum.
+#   mom_1m          — 21-day return.
+#   mom_3m          — 63-day return.
+#   mom_6m          — 126-day return.
 #   mom_12m_skip1m  — 252-day return minus 21-day return.
-#                     The "skip-1-month" construction avoids the well-documented
-#                     short-term mean-reversal effect: raw 12M momentum is
-#                     contaminated by the last month's return which tends to
-#                     reverse. Stripping it out produces a cleaner signal.
+#                     Skipping the last month removes the short-term reversal
+#                     contamination identified by Jegadeesh & Titman.
 #
-# All momentum features are stored in quant_signals during backfill (computed
-# from the full 504-day yfinance download) and read directly at training and
-# inference — no historical lookback is required at inference time.
+# VOLATILITY REGIME FEATURES:
+#   atr_pct         — 14-day Average True Range divided by close price.
+#                     Normalises ATR to be comparable across price levels.
+#                     Captures the current noise envelope of the stock:
+#                     a stock with ATR 2% needs a much larger move to be
+#                     "significant" than one with ATR 0.5%.
+#                     A high atr_pct in the same cross-section as a positive
+#                     momentum signal is the hallmark of a breakout setup.
+#                     A high atr_pct with negative momentum signals a panic
+#                     sell — not a buying opportunity.
+#
+#   hist_vol_20     — 20-day rolling standard deviation of log returns,
+#                     annualised (× √252). Provides a longer-horizon view of
+#                     realised volatility vs the single-day ATR.
+#                     Together, atr_pct and hist_vol_20 give the model a
+#                     two-speed volatility picture: short (14-day ATR) and
+#                     medium (20-day HV).
+#
+# Both volatility features are stored in quant_signals during backfill
+# (computed from the full OHLCV download before dropna) and read directly
+# at training and inference — no lookback required at query time.
 # ─────────────────────────────────────────────────────────────────────────────
 
 FEATURE_COLS = [
-    # --- Existing technical features ---
+    # Technical
     'rsi_14_z', 'macd_pct_z', 'macd_signal_pct_z', 'macd_hist_pct_z',
     'volume_surge', 'bullish_cross', 'dist_sma_50_z', 'dist_sma_200_z',
     'sector_code', 'dollar_vol_log_z',
-    # --- Momentum factors ---
+    # Momentum
     'mom_1m_z', 'mom_3m_z', 'mom_6m_z', 'mom_12m_skip1m_z',
+    # Volatility regime
+    'atr_pct_z', 'hist_vol_20_z',
 ]
 
-# Static mapping for GICS sectors to integer codes for the ML model
 SECTOR_MAP = {
     "Technology": 1, "Healthcare": 2, "Financials": 3,
     "Financial Services": 3, "Real Estate": 4, "Energy": 5,
     "Basic Materials": 6, "Consumer Cyclical": 7, "Industrials": 8,
     "Utilities": 9, "Consumer Defensive": 10, "Communication Services": 11,
     "Broad Market ETF": 12, "ETF": 12, "Futures": 13,
-    "Unknown": 99  # Explicit unknown code — distinct from any real sector
+    "Unknown": 99
 }
 
-# Continuous features that require cross-sectional normalization.
-# All _z columns in FEATURE_COLS are derived from these.
 CONTINUOUS_FEATURES = [
     'rsi_14', 'macd_pct', 'macd_signal_pct', 'macd_hist_pct',
     'dist_sma_50', 'dist_sma_200', 'dollar_vol_log',
-    # Momentum factors
     'mom_1m', 'mom_3m', 'mom_6m', 'mom_12m_skip1m',
+    'atr_pct', 'hist_vol_20',
 ]
 
 
@@ -87,36 +100,31 @@ def cross_sectional_zscore(series: pd.Series) -> pd.Series:
 
 def _migrate_quant_signals_schema(cursor: sqlite3.Cursor) -> None:
     """
-    Idempotent schema migration: adds the 4 momentum columns to quant_signals
-    if they do not already exist. SQLite raises OperationalError when you try to
-    ADD a column that is already present — we catch and ignore that specific error.
-
-    Called once at the start of run_historical_backfill() so the schema is
-    always up to date before any data is written.
+    Idempotent schema migration. Adds momentum and volatility columns to
+    quant_signals if they do not already exist. Safe to run on every backfill.
     """
-    momentum_columns = [
-        ("mom_1m",          "REAL"),
-        ("mom_3m",          "REAL"),
-        ("mom_6m",          "REAL"),
-        ("mom_12m_skip1m",  "REAL"),
+    new_columns = [
+        ("mom_1m",         "REAL"),
+        ("mom_3m",         "REAL"),
+        ("mom_6m",         "REAL"),
+        ("mom_12m_skip1m", "REAL"),
+        ("atr_pct",        "REAL"),
+        ("hist_vol_20",    "REAL"),
     ]
-    for col_name, col_type in momentum_columns:
+    for col_name, col_type in new_columns:
         try:
-            cursor.execute(f"ALTER TABLE quant_signals ADD COLUMN {col_name} {col_type}")
+            cursor.execute(
+                f"ALTER TABLE quant_signals ADD COLUMN {col_name} {col_type}"
+            )
             logger.info(f"Schema migration: added column '{col_name}' to quant_signals.")
         except sqlite3.OperationalError:
-            # Column already exists — safe to ignore
-            pass
+            pass  # Column already exists
 
 
 def get_target_tickers() -> List[str]:
     """
-    Combines the user's existing portfolio/watchlist tickers with a dynamic,
-    randomly sampled cross-section of the market universe. This prevents
-    Mega-Cap liquidity bias during model training.
-
-    Returns:
-        List[str]: A sorted list of valid ticker strings.
+    Combines user portfolio/watchlist tickers with a randomly sampled
+    cross-section of the market universe to prevent Mega-Cap bias.
     """
     logger.info("Extracting user portfolio and watchlist tickers...")
     try:
@@ -134,11 +142,11 @@ def get_target_tickers() -> List[str]:
         universe_sample = [row[0] for row in cursor.fetchall()]
         conn.close()
     except Exception as e:
-        logger.warning(f"Failed to sample from market_universe (DB might be empty): {e}")
+        logger.warning(f"Failed to sample from market_universe: {e}")
         universe_sample = []
 
-    combined_set = set(user_tickers).union(set(universe_sample))
-    cleaned_list = [t for t in combined_set if t and not t.startswith("0P")]
+    combined_set  = set(user_tickers).union(set(universe_sample))
+    cleaned_list  = [t for t in combined_set if t and not t.startswith("0P")]
     final_tickers = sorted(cleaned_list)[:350]
 
     logger.info(f"Targeting {len(final_tickers)} unique tickers for historical backfill.")
@@ -147,22 +155,16 @@ def get_target_tickers() -> List[str]:
 
 def sync_ticker_metadata(tickers: List[str]) -> None:
     """
-    Ensures institutional structural data (sector) is available.
-    Creates and populates the ticker_metadata table idempotently.
-
-    Args:
-        tickers (List[str]): List of ticker symbols to synchronize.
+    Ensures institutional structural data (sector) is available in
+    ticker_metadata. Idempotent — only fetches missing tickers.
     """
-    logger.info(f"Syncing metadata for {len(tickers)} tickers to contextualize ML features...")
+    logger.info(f"Syncing metadata for {len(tickers)} tickers...")
     conn   = get_connection()
     cursor = conn.cursor()
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS ticker_metadata (
-            ticker     TEXT PRIMARY KEY,
-            sector     TEXT,
-            beta       REAL,
-            market_cap REAL
+            ticker TEXT PRIMARY KEY, sector TEXT, beta REAL, market_cap REAL
         )
     """)
 
@@ -171,7 +173,7 @@ def sync_ticker_metadata(tickers: List[str]) -> None:
     missing_tickers  = [t for t in tickers if t not in existing_tickers]
 
     if not missing_tickers:
-        logger.info("All ticker structural metadata is already up to date.")
+        logger.info("All ticker metadata is already up to date.")
         conn.close()
         return
 
@@ -183,8 +185,7 @@ def sync_ticker_metadata(tickers: List[str]) -> None:
             beta   = info.get('beta', 1.0)
             mcap   = info.get('marketCap', 0.0)
             records.append((
-                ticker,
-                sector,
+                ticker, sector,
                 float(beta) if beta else 1.0,
                 float(mcap) if mcap else 0.0
             ))
@@ -199,7 +200,7 @@ def sync_ticker_metadata(tickers: List[str]) -> None:
             VALUES (?, ?, ?, ?)
         """, records)
         conn.commit()
-        logger.info(f"Injected structural metadata for {len(records)} new tickers.")
+        logger.info(f"Injected metadata for {len(records)} new tickers.")
 
     conn.close()
 
@@ -207,22 +208,20 @@ def sync_ticker_metadata(tickers: List[str]) -> None:
 def run_historical_backfill() -> None:
     """
     Downloads 2 years of daily OHLCV data per ticker, computes all technical
-    indicators AND momentum factors, runs the schema migration to add momentum
-    columns, and upserts everything into quant_signals.
+    indicators, momentum factors, AND volatility regime features, then upserts
+    everything into quant_signals.
 
-    MOMENTUM COMPUTATION STRATEGY:
-    Momentum requires up to 252-day lookbacks. The yfinance download provides
-    ~504 trading days of data. Momentum is therefore computed HERE from the full
-    downloaded history BEFORE the dropna() call that would otherwise discard the
-    warmup rows needed for the lookback. The computed values are then stored
-    directly in the DB so training and inference can read them without needing
-    historical lookback at query time.
+    VOLATILITY COMPUTATION STRATEGY:
+    ATR requires High and Low prices which are available in the yfinance
+    download but not stored in quant_signals. Both atr_pct and hist_vol_20
+    are computed HERE from raw OHLCV before dropna() and stored as columns,
+    so training and inference can read them directly without OHLCV access.
 
-    Row count impact:
-        - Without momentum: ~304 rows/ticker (after SMA-200 warmup of 200 days)
-        - With mom_12m_skip1m: ~252 rows/ticker (after 252-day warmup)
-        - Total training rows: ~88,000 (vs ~103,000 previously)
-        This is an acceptable reduction for a meaningful feature improvement.
+    atr_pct   = AverageTrueRange(14) / Close          [noise envelope]
+    hist_vol_20 = rolling(20).std(log_returns) * √252  [annualised realised vol]
+
+    Row count: momentum's 252-day warmup remains the binding constraint.
+    Adding 14-day ATR and 20-day HV introduces no additional row loss.
     """
     tickers = get_target_tickers()
     if not tickers:
@@ -231,7 +230,6 @@ def run_historical_backfill() -> None:
 
     sync_ticker_metadata(tickers)
 
-    # Run schema migration before writing any data
     conn   = get_connection()
     cursor = conn.cursor()
     _migrate_quant_signals_schema(cursor)
@@ -258,48 +256,74 @@ def run_historical_backfill() -> None:
                 if isinstance(df.columns, pd.MultiIndex):
                     df.columns = df.columns.get_level_values(0)
 
-                df.dropna(subset=['Close', 'Volume'], inplace=True)
+                df.dropna(subset=['Close', 'Volume', 'High', 'Low'], inplace=True)
 
                 if len(df) < 252:
-                    logger.warning(f"Skipping {ticker}: insufficient data ({len(df)} rows < 252).")
+                    logger.warning(
+                        f"Skipping {ticker}: insufficient data ({len(df)} rows < 252)."
+                    )
                     continue
 
                 # ── Technical Indicators ──────────────────────────────────────
-                df['rsi_14']     = ta.momentum.RSIIndicator(close=df['Close'], window=14).rsi()
-                macd_ind         = ta.trend.MACD(close=df['Close'])
-                df['macd']       = macd_ind.macd()
-                df['macd_signal']= macd_ind.macd_signal()
-                df['macd_hist']  = macd_ind.macd_diff()
-                df['sma_50']     = ta.trend.SMAIndicator(close=df['Close'], window=50).sma_indicator()
-                df['sma_200']    = ta.trend.SMAIndicator(close=df['Close'], window=200).sma_indicator()
-                df['vol_sma_20'] = df['Volume'].rolling(window=20).mean()
-                df['volume_surge']  = (df['Volume'] > (df['vol_sma_20'] * 1.5)).astype(int)
+                df['rsi_14']      = ta.momentum.RSIIndicator(
+                    close=df['Close'], window=14
+                ).rsi()
+
+                macd_ind          = ta.trend.MACD(close=df['Close'])
+                df['macd']        = macd_ind.macd()
+                df['macd_signal'] = macd_ind.macd_signal()
+                df['macd_hist']   = macd_ind.macd_diff()
+
+                df['sma_50']      = ta.trend.SMAIndicator(
+                    close=df['Close'], window=50
+                ).sma_indicator()
+                df['sma_200']     = ta.trend.SMAIndicator(
+                    close=df['Close'], window=200
+                ).sma_indicator()
+                df['vol_sma_20']  = df['Volume'].rolling(window=20).mean()
+
+                df['volume_surge']  = (
+                    df['Volume'] > (df['vol_sma_20'] * 1.5)
+                ).astype(int)
                 df['bullish_cross'] = (
                     (df['macd'] > df['macd_signal']) &
                     (df['macd'].shift(1) <= df['macd_signal'].shift(1))
                 ).astype(int)
 
                 # ── Momentum Factors ──────────────────────────────────────────
-                # Computed from the full downloaded history BEFORE dropna() so
-                # the 252-day lookback has sufficient data to produce valid values.
-                #
-                # mom_12m_skip1m: 12-month return minus the most recent 1-month
-                # return. Skipping the last month removes the short-term reversal
-                # contamination identified by Jegadeesh & Titman (1993).
                 df['mom_1m']  = df['Close'].pct_change(21)
                 df['mom_3m']  = df['Close'].pct_change(63)
                 df['mom_6m']  = df['Close'].pct_change(126)
                 df['mom_12m'] = df['Close'].pct_change(252)
                 df['mom_12m_skip1m'] = df['mom_12m'] - df['mom_1m']
-
-                # Drop the temporary 12M column — only the skip-1M variant is stored
                 df.drop(columns=['mom_12m'], inplace=True)
 
+                # ── Volatility Regime Features ────────────────────────────────
+                # atr_pct: 14-day ATR normalised by close price.
+                # High ATR = wide noise envelope. The model uses this to
+                # distinguish a clean breakout (high momentum + moderate ATR)
+                # from a panic move (high momentum + extreme ATR) which is far
+                # less likely to continue in the signal direction.
+                df['atr_raw'] = ta.volatility.AverageTrueRange(
+                    high=df['High'],
+                    low=df['Low'],
+                    close=df['Close'],
+                    window=14
+                ).average_true_range()
+                df['atr_pct'] = df['atr_raw'] / df['Close']
+                df.drop(columns=['atr_raw'], inplace=True)
+
+                # hist_vol_20: 20-day annualised realised volatility from
+                # log returns. Complements ATR with a medium-horizon view.
+                # Using log returns (vs simple returns) is standard for
+                # volatility estimation as they are additive and better
+                # approximate the normal distribution in the tails.
+                log_returns       = np.log(df['Close'] / df['Close'].shift(1))
+                df['hist_vol_20'] = log_returns.rolling(window=20).std() * np.sqrt(252)
+
                 # ── Unified dropna ────────────────────────────────────────────
-                # Drops rows where ANY feature is NaN. Momentum requires 252 days
-                # so this is the binding constraint — approximately the first 252
-                # rows per ticker are discarded, leaving ~252 valid rows per ticker
-                # from a 504-day download.
+                # 252-day momentum remains the binding warmup constraint.
+                # atr_pct (14-day) and hist_vol_20 (20-day) add no extra loss.
                 df.dropna(inplace=True)
                 if df.empty:
                     continue
@@ -324,29 +348,34 @@ def run_historical_backfill() -> None:
                         float(row['mom_3m']),
                         float(row['mom_6m']),
                         float(row['mom_12m_skip1m']),
+                        float(row['atr_pct']),
+                        float(row['hist_vol_20']),
                     ))
 
                 upsert_query = """
                     INSERT INTO quant_signals
                     (ticker, date, close_price, volume, rsi_14, macd, macd_signal,
                      macd_hist, sma_50, sma_200, volume_surge, bullish_cross,
-                     mom_1m, mom_3m, mom_6m, mom_12m_skip1m)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     mom_1m, mom_3m, mom_6m, mom_12m_skip1m,
+                     atr_pct, hist_vol_20)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(ticker, date) DO UPDATE SET
-                        close_price      = excluded.close_price,
-                        volume           = excluded.volume,
-                        rsi_14           = excluded.rsi_14,
-                        macd             = excluded.macd,
-                        macd_signal      = excluded.macd_signal,
-                        macd_hist        = excluded.macd_hist,
-                        sma_50           = excluded.sma_50,
-                        sma_200          = excluded.sma_200,
-                        volume_surge     = excluded.volume_surge,
-                        bullish_cross    = excluded.bullish_cross,
-                        mom_1m           = excluded.mom_1m,
-                        mom_3m           = excluded.mom_3m,
-                        mom_6m           = excluded.mom_6m,
-                        mom_12m_skip1m   = excluded.mom_12m_skip1m
+                        close_price     = excluded.close_price,
+                        volume          = excluded.volume,
+                        rsi_14          = excluded.rsi_14,
+                        macd            = excluded.macd,
+                        macd_signal     = excluded.macd_signal,
+                        macd_hist       = excluded.macd_hist,
+                        sma_50          = excluded.sma_50,
+                        sma_200         = excluded.sma_200,
+                        volume_surge    = excluded.volume_surge,
+                        bullish_cross   = excluded.bullish_cross,
+                        mom_1m          = excluded.mom_1m,
+                        mom_3m          = excluded.mom_3m,
+                        mom_6m          = excluded.mom_6m,
+                        mom_12m_skip1m  = excluded.mom_12m_skip1m,
+                        atr_pct         = excluded.atr_pct,
+                        hist_vol_20     = excluded.hist_vol_20
                 """
                 cursor.executemany(upsert_query, records)
                 conn.commit()
@@ -365,14 +394,16 @@ def run_historical_backfill() -> None:
                     f"ML Historical Backfill is 50% complete ({processed}/{total_tickers})."
                 )
 
-        logger.info(f"--- BACKFILL COMPLETE. Injected/Updated {total_inserted} historical rows. ---")
+        logger.info(
+            f"--- BACKFILL COMPLETE. Injected/Updated {total_inserted} historical rows. ---"
+        )
         log_notification(
             "Success",
-            f"ML Historical Backfill completed. Injected/Updated {total_inserted:,} data points."
+            f"ML Backfill completed. Injected/Updated {total_inserted:,} data points."
         )
 
     except Exception as e:
-        logger.error(f"Fatal error during historical backfill execution: {e}")
+        logger.error(f"Fatal error during historical backfill: {e}")
         log_notification("Error", f"ML Historical Backfill failed: {str(e)}")
     finally:
         conn.close()
@@ -380,16 +411,15 @@ def run_historical_backfill() -> None:
 
 def train_global_ml_model() -> None:
     """
-    Connects to the local SQLite DB, builds technical/structural/momentum features,
-    implements Anchored Walk-Forward Validation with strict Temporal Embargos,
-    executes Hyperparameter Optimization via RandomizedSearchCV, and trains an
-    ensemble model predicting >3% returns over 5 trading days.
+    Builds a 16-feature ensemble model predicting >3% returns over 5 trading
+    days using Anchored Walk-Forward Validation with Temporal Embargos.
 
-    FEATURE SET (14 features, up from 10):
-        Existing: rsi_14, macd_pct, macd_signal_pct, macd_hist_pct,
-                  volume_surge, bullish_cross, dist_sma_50, dist_sma_200,
-                  sector_code, dollar_vol_log
-        New:      mom_1m, mom_3m, mom_6m, mom_12m_skip1m
+    FEATURE SET (16 features):
+        Technical:  rsi_14, macd_pct, macd_signal_pct, macd_hist_pct,
+                    volume_surge, bullish_cross, dist_sma_50, dist_sma_200,
+                    sector_code, dollar_vol_log
+        Momentum:   mom_1m, mom_3m, mom_6m, mom_12m_skip1m
+        Volatility: atr_pct, hist_vol_20
     """
     logger.info("Initiating Global ML Model Training pipeline with Hyperparameter Optimization...")
     log_notification("Info", "Global ML Model Training pipeline initiated.")
@@ -397,24 +427,26 @@ def train_global_ml_model() -> None:
     try:
         conn = get_connection()
 
-        # Momentum columns are now stored in quant_signals — no computation needed here
         query = """
             SELECT qs.ticker, qs.date, qs.close_price, qs.volume,
                    qs.rsi_14, qs.macd, qs.macd_signal, qs.macd_hist,
                    qs.sma_50, qs.sma_200, qs.volume_surge, qs.bullish_cross,
                    qs.mom_1m, qs.mom_3m, qs.mom_6m, qs.mom_12m_skip1m,
+                   qs.atr_pct, qs.hist_vol_20,
                    tm.sector
             FROM quant_signals qs
             LEFT JOIN ticker_metadata tm ON qs.ticker = tm.ticker
-            WHERE qs.mom_1m IS NOT NULL
-              AND qs.mom_12m_skip1m IS NOT NULL
+            WHERE qs.mom_1m          IS NOT NULL
+              AND qs.mom_12m_skip1m  IS NOT NULL
+              AND qs.atr_pct         IS NOT NULL
+              AND qs.hist_vol_20     IS NOT NULL
             ORDER BY qs.date ASC
         """
         df = pd.read_sql_query(query, conn)
         conn.close()
 
         if df.empty:
-            logger.warning("No quantitative data found in DB. Aborting ML training.")
+            logger.warning("No data found in DB. Aborting ML training.")
             return
 
         logger.info(f"Extracting features from {len(df)} historical records...")
@@ -433,12 +465,12 @@ def train_global_ml_model() -> None:
         df['sector_code']    = df['sector'].map(SECTOR_MAP).fillna(99).astype(int)
         df['dollar_vol_log'] = np.log1p(df['close_price'] * df['volume'])
 
-        # Momentum columns are already in df from the SQL query — no recomputation needed
+        # atr_pct, hist_vol_20, and all momentum columns already in df from SQL
 
         df.replace([np.inf, -np.inf], np.nan, inplace=True)
 
-        # ── Save training population statistics (BUG-03 fix artefact) ─────────
-        logger.info("Computing and saving training population statistics for inference-time normalization...")
+        # ── Save training population statistics ───────────────────────────────
+        logger.info("Computing and saving training population statistics...")
         feature_stats: Dict[str, Dict[str, float]] = {}
         for col in CONTINUOUS_FEATURES:
             col_data = df[col].dropna()
@@ -448,14 +480,13 @@ def train_global_ml_model() -> None:
             }
             logger.info(
                 f"  Feature '{col}': mean={feature_stats[col]['mean']:.4f}, "
-                f"std={feature_stats[col]['std']:.4f} "
-                f"(n={len(col_data):,})"
+                f"std={feature_stats[col]['std']:.4f}  (n={len(col_data):,})"
             )
         joblib.dump(feature_stats, FEATURE_STATS_PATH)
         logger.info(f"✅ Feature statistics saved to {FEATURE_STATS_PATH}")
 
         # ── Cross-sectional Z-scoring ─────────────────────────────────────────
-        logger.info("Applying cross-sectional Z-scoring to normalize features across liquidity regimes...")
+        logger.info("Applying cross-sectional Z-scoring to normalize features...")
         for col in CONTINUOUS_FEATURES:
             df[f'{col}_z'] = df.groupby('date')[col].transform(cross_sectional_zscore)
 
@@ -471,8 +502,7 @@ def train_global_ml_model() -> None:
         ).astype(int)
 
         if len(df) < 1000:
-            logger.warning(f"Insufficient training samples ({len(df)}). Need more historical data.")
-            log_notification("Error", f"Insufficient training samples ({len(df)}). Backfill required.")
+            logger.warning(f"Insufficient training samples ({len(df)}).")
             return
 
         pos = (df['target'] == 1).sum()
@@ -490,10 +520,12 @@ def train_global_ml_model() -> None:
 
         neg_count_full        = (y_full == 0).sum()
         pos_count_full        = (y_full == 1).sum()
-        scale_pos_weight_full = neg_count_full / pos_count_full if pos_count_full > 0 else 1.0
+        scale_pos_weight_full = (
+            neg_count_full / pos_count_full if pos_count_full > 0 else 1.0
+        )
 
         # ── Walk-Forward CV Splits ────────────────────────────────────────────
-        logger.info("Constructing Strict 5-Fold Walk-Forward Splits for Hyperparameter Optimization...")
+        logger.info("Constructing Strict 5-Fold Walk-Forward Splits...")
 
         unique_dates = np.sort(df['date'].unique())
         date_series  = df['date'].reset_index(drop=True)
@@ -505,10 +537,8 @@ def train_global_ml_model() -> None:
             if len(train_date_idx) > 5:
                 train_dates = set(unique_dates[train_date_idx[:-5]])
                 test_dates  = set(unique_dates[test_date_idx])
-
-                train_idx = date_series.index[date_series.isin(train_dates)].tolist()
-                test_idx  = date_series.index[date_series.isin(test_dates)].tolist()
-
+                train_idx   = date_series.index[date_series.isin(train_dates)].tolist()
+                test_idx    = date_series.index[date_series.isin(test_dates)].tolist()
                 if train_idx and test_idx:
                     cv_splits.append((train_idx, test_idx))
 
@@ -558,15 +588,19 @@ def train_global_ml_model() -> None:
 
         avg_oos_pr_auc = (rf_search.best_score_ + xgb_search.best_score_) / 2.0
         logger.info(
-            f"Averaged Optimized OOS Avg-Precision (PR-AUC) across 5 expanding regimes: "
-            f"{avg_oos_pr_auc:.4f}  (random baseline = {pos_count_full / len(y_full):.4f})"
+            f"Averaged Optimized OOS Avg-Precision (PR-AUC): {avg_oos_pr_auc:.4f}  "
+            f"(random baseline = {pos_count_full / len(y_full):.4f})"
         )
 
         # ── Production Ensemble Assembly ──────────────────────────────────────
-        logger.info("Calibrating base estimators individually before assembling production Voting Classifier...")
+        logger.info("Calibrating base estimators and assembling production Voting Classifier...")
 
-        calibrated_rf  = CalibratedClassifierCV(estimator=best_rf,  method='isotonic', cv=cv_splits)
-        calibrated_xgb = CalibratedClassifierCV(estimator=best_xgb, method='isotonic', cv=cv_splits)
+        calibrated_rf  = CalibratedClassifierCV(
+            estimator=best_rf,  method='isotonic', cv=cv_splits
+        )
+        calibrated_xgb = CalibratedClassifierCV(
+            estimator=best_xgb, method='isotonic', cv=cv_splits
+        )
 
         production_ensemble = VotingClassifier(
             estimators=[('rf', calibrated_rf), ('xgb', calibrated_xgb)],
@@ -575,39 +609,36 @@ def train_global_ml_model() -> None:
         production_ensemble.fit(X_full, y_full)
 
         joblib.dump(production_ensemble, MODEL_PATH)
-        logger.info(f"✅ Production ML Ensemble successfully trained and saved to {MODEL_PATH}")
+        logger.info(f"✅ Production ML Ensemble saved to {MODEL_PATH}")
         log_notification(
             "Success",
-            f"Global ML Model trained & optimized (WF PR-AUC: {avg_oos_pr_auc:.2%}, "
+            f"ML Model trained (PR-AUC: {avg_oos_pr_auc:.2%}, "
             f"baseline: {pos_count_full/len(y_full):.2%})."
         )
 
     except Exception as e:
-        logger.error(f"Fatal error during ML model optimization & training: {e}")
+        logger.error(f"Fatal error during ML training: {e}")
         log_notification("Error", f"ML Model Training failed: {str(e)}")
 
 
 def update_daily_ml_predictions(tickers: List[str]) -> None:
     """
-    Loads the trained model, fetches the latest row for ALL tickers in the DB,
-    computes cross-sectional z-scores across the full population (replicating
-    training methodology exactly), then writes confidence scores back for the
-    requested ticker subset.
+    Fetches the latest row for ALL tickers in the DB, computes cross-sectional
+    z-scores across the full population, then writes confidence scores back for
+    the requested ticker subset.
 
-    Momentum features (mom_1m, mom_3m, mom_6m, mom_12m_skip1m) are read
-    directly from the stored latest row — no historical lookback required.
+    Volatility and momentum features are read directly from stored DB values —
+    no OHLCV lookback required at inference time.
 
     Args:
-        tickers: Tickers whose ml_confidence_score should be updated in the DB.
-                 Z-scores are computed across ALL tickers at the latest date
-                 regardless of this list, to ensure a valid cross-sectional population.
+        tickers: Tickers whose ml_confidence_score should be updated.
     """
     if not tickers:
-        logger.warning("Empty ticker list provided for ML inference. Skipping.")
+        logger.warning("Empty ticker list. Skipping inference.")
         return
 
     if not MODEL_PATH.exists():
-        logger.warning(f"Model file {MODEL_PATH} not found. Awaiting weekend training cycle.")
+        logger.warning(f"Model not found at {MODEL_PATH}. Awaiting training cycle.")
         return
 
     logger.info(f"Initiating ML Inference for {len(tickers)} assets...")
@@ -617,26 +648,35 @@ def update_daily_ml_predictions(tickers: List[str]) -> None:
         model = joblib.load(MODEL_PATH)
         conn  = get_connection()
 
-        # Fetch ALL tickers at the latest available date.
-        # This gives the cross-sectional z-score a full population (~300+ tickers)
-        # matching the training methodology. The tickers parameter only governs
-        # which rows are written back to the DB.
+        # Fetch ALL tickers at the latest date that has complete feature data.
+        # Cross-sectional z-scores computed across this full population mirror
+        # the training methodology exactly.
         query = """
             SELECT qs.ticker, qs.date, qs.close_price, qs.volume,
                    qs.rsi_14, qs.macd, qs.macd_signal, qs.macd_hist,
                    qs.sma_50, qs.sma_200, qs.volume_surge, qs.bullish_cross,
                    qs.mom_1m, qs.mom_3m, qs.mom_6m, qs.mom_12m_skip1m,
+                   qs.atr_pct, qs.hist_vol_20,
                    tm.sector
             FROM quant_signals qs
             LEFT JOIN ticker_metadata tm ON qs.ticker = tm.ticker
-            WHERE qs.date = (SELECT MAX(date) FROM quant_signals WHERE mom_1m IS NOT NULL)
-                AND qs.mom_1m IS NOT NULL
-                AND qs.mom_12m_skip1m IS NOT NULL
+            WHERE qs.date = (
+                SELECT MAX(date) FROM quant_signals
+                WHERE mom_1m IS NOT NULL
+                  AND atr_pct IS NOT NULL
+                  AND hist_vol_20 IS NOT NULL
+            )
+              AND qs.mom_1m      IS NOT NULL
+              AND qs.atr_pct     IS NOT NULL
+              AND qs.hist_vol_20 IS NOT NULL
         """
         df = pd.read_sql_query(query, conn)
 
         if df.empty:
-            logger.warning("No recent data with momentum features found. Re-run backfill first.")
+            logger.warning(
+                "No data with complete volatility features found. "
+                "Re-run backfill first."
+            )
             conn.close()
             return
 
@@ -645,7 +685,7 @@ def update_daily_ml_predictions(tickers: List[str]) -> None:
             f"(date: {df['date'].iloc[0]})."
         )
 
-        # ── Feature Engineering ───────────────────────────────────────────────
+        # ── Feature Engineering (mirrors training pipeline exactly) ───────────
         df['dist_sma_50']  = (df['close_price'] - df['sma_50'])  / df['sma_50']
         df['dist_sma_200'] = (df['close_price'] - df['sma_200']) / df['sma_200']
 
@@ -659,19 +699,16 @@ def update_daily_ml_predictions(tickers: List[str]) -> None:
         df['sector_code']    = df['sector'].map(SECTOR_MAP).fillna(99).astype(int)
         df['dollar_vol_log'] = np.log1p(df['close_price'] * df['volume'])
 
-        # Momentum columns are already in df from SQL — no recomputation needed
-
         df.replace([np.inf, -np.inf], np.nan, inplace=True)
 
-        # ── Cross-sectional Z-scoring across full population ──────────────────
+        # ── Cross-sectional Z-scoring ─────────────────────────────────────────
         logger.info(
-            f"Applying cross-sectional Z-scoring across {len(df)} tickers "
-            f"(replicates training methodology)..."
+            f"Applying cross-sectional Z-scoring across {len(df)} tickers..."
         )
         for col in CONTINUOUS_FEATURES:
             df[f'{col}_z'] = df.groupby('date')[col].transform(cross_sectional_zscore)
 
-        # ── Score only the requested tickers ─────────────────────────────────
+        # ── Score only requested tickers ──────────────────────────────────────
         target_set      = set(tickers)
         update_payloads = []
 
@@ -698,8 +735,8 @@ def update_daily_ml_predictions(tickers: List[str]) -> None:
             logger.info(f"✅ Executed ML predictions for {len(update_payloads)} assets.")
         else:
             logger.warning(
-                "No valid payloads generated. Ensure tickers have been backfilled "
-                "with momentum data before running inference."
+                "No valid payloads generated. Ensure tickers have been "
+                "backfilled with volatility data before running inference."
             )
 
     except Exception as e:
