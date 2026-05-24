@@ -4,11 +4,7 @@ from config import DB_PATH
 conn = sqlite3.connect(DB_PATH)
 cursor = conn.cursor()
 
-# 1. Wipe the entire quant_signals table (all historical feature rows)
 cursor.execute("DELETE FROM quant_signals;")
-
-# 2. Reset ML inference columns in stock_signals so no stale
-#    confidence scores survive from the old unadjusted model
 cursor.execute("""
     UPDATE stock_signals
     SET ml_confidence = NULL,
@@ -16,9 +12,14 @@ cursor.execute("""
     WHERE ml_confidence IS NOT NULL;
 """)
 
-# 3. Reclaim the disk space SQLite would otherwise keep reserved
-cursor.execute("VACUUM;")
-
+# Commit and close the transaction BEFORE calling VACUUM.
+# SQLite requires VACUUM to run in autocommit mode (no open transaction).
 conn.commit()
 conn.close()
-print("Done. quant_signals cleared, stock_signals ML columns reset.")
+
+# Re-open a fresh connection with no active transaction, then VACUUM.
+conn = sqlite3.connect(DB_PATH, isolation_level=None)
+conn.execute("VACUUM;")
+conn.close()
+
+print("Done. quant_signals cleared, stock_signals ML columns reset, disk space reclaimed.")
