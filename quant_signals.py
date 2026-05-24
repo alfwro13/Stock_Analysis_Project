@@ -37,6 +37,7 @@ def get_candlestick_patterns(prev2: pd.Series, prev1: pd.Series, curr: pd.Series
     prev1_range = max(prev1['High'] - prev1['Low'], 0.001)
     prev1_is_bearish = bool(prev1['Close'] < prev1['Open'])
     prev1_is_bullish = bool(prev1['Close'] > prev1['Open'])
+    prev2_is_bullish = bool(prev2['Close'] > prev2['Open'])
     
     prev2_body = abs(prev2['Open'] - prev2['Close'])
     prev2_is_bearish = bool(prev2['Close'] < prev2['Open'])
