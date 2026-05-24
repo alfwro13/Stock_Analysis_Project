@@ -439,7 +439,7 @@ def train_global_ml_model() -> None:
         
         # Calculate OOS accuracy metrics verified by the final temporal fold
         avg_oos_accuracy = (rf_search.best_score_ + xgb_search.best_score_) / 2.0
-        logger.info(f"Averaged Optimized OOS Accuracy across 5 expanding regimes: {avg_oos_accuracy:.4f}")
+        logger.info(f"Averaged Optimized OOS Avg-Precision (PR-AUC) across 5 expanding regimes: {avg_oos_accuracy:.4f}")
 
         # --- Production Model Retraining ---
         logger.info("Calibrating base estimators individually before assembling production Voting Classifier...")
@@ -521,7 +521,7 @@ def update_daily_ml_predictions(tickers: List[str]) -> None:
         df['bullish_cross'] = df['bullish_cross'].fillna(0).astype(int)
         
         # Inject structural mappings
-        df['sector_code'] = df['sector'].map(SECTOR_MAP).fillna(0).astype(int)
+        df['sector_code'] = df['sector'].map(SECTOR_MAP).fillna(99).astype(int)
         
         # Point-In-Time Proxy
         df['dollar_vol_log'] = np.log1p(df['close_price'] * df['volume'])
