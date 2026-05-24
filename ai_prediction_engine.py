@@ -642,8 +642,12 @@ def train_global_ml_model() -> None:
         df.dropna(subset=FEATURE_COLS, inplace=True)
 
         # ── Target Construction ───────────────────────────────────────────────
+        # AFTER — 10-day horizon
+        # Signal-to-noise improves at 10 days vs 5 days: technical momentum
+        # has more time to play out before mean-reversion noise dominates.
+        # Entry proxy remains close[T+1]. Exit moves to close[T+10].
         df['next_close']   = df.groupby('ticker')['close_price'].shift(-1)
-        df['future_close'] = df.groupby('ticker')['close_price'].shift(-5)
+        df['future_close'] = df.groupby('ticker')['close_price'].shift(-10)
         df.dropna(subset=['next_close', 'future_close'], inplace=True)
 
         df['target'] = (
