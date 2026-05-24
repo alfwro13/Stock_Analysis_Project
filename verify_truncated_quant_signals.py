@@ -1,20 +1,18 @@
 import sqlite3
+import pandas as pd
 from config import DB_PATH
 
 conn = sqlite3.connect(DB_PATH)
-cursor = conn.cursor()
-
-# Pull the earliest rows for NVDA — pre-split on adjusted series
-# should show prices ~$100 range, NOT ~$800-900 (unadjusted pre-split price)
-cursor.execute("""
-    SELECT date, close_price, sma_50, sma_200
+df = pd.read_sql_query("""
+    SELECT date,
+           close_price,
+           LAG(close_price, -5) OVER (PARTITION BY ticker ORDER BY date) AS future_close,
+           LAG(close_price, -1) OVER (PARTITION BY ticker ORDER BY date) AS next_close
     FROM quant_signals
-    WHERE ticker = 'NVDA'
-    ORDER BY date ASC
-    LIMIT 5;
-""")
-
-for row in cursor.fetchall():
-    print(row)
-
+    WHERE close_price IS NOT NULL
+""", conn)
 conn.close()
+
+df = df.dropna()
+df['target'] = ((df['future_close'] - df['next_close']) / df['next_close'] > 0.03).astype(int)
+print(df['target'].value_counts(normalize=True).round(3))
