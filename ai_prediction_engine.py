@@ -135,12 +135,13 @@ FUNDAMENTAL_FEATURES = [
 # Winsorization bounds per fundamental feature.
 # (lower_bound, upper_bound) — None means no bound on that side.
 FUNDAMENTAL_BOUNDS: Dict[str, Tuple[Optional[float], Optional[float]]] = {
-    'trailing_pe':    (0.0,  100.0),   # Negative PE → NaN first, then cap at 100
-    'price_to_book':  (0.0,  20.0),
-    'profit_margin':  (-1.0, 1.0),
-    'roe':            (-1.0, 2.0),
-    'revenue_growth': (-1.0, 3.0),
-    'debt_to_equity': (0.0,  500.0),
+    'trailing_pe':    (0.0,   300.0),   # raised: p95=265, was clipping 15%
+    'price_to_book':  (-20.0, 80.0),    # raised cap: p95=65, was clipping 27%
+                                         # floor lowered: negative P/B is valid data
+    'profit_margin':  (-1.0,  1.0),     # correct — no change
+    'roe':            (-1.0,  1.5),     # correct — no change
+    'revenue_growth': (-1.0,  5.0),     # raised: p95=2.04, minor headroom added
+    'debt_to_equity': (0.0,   500.0),   # correct — no change
 }
 
 
