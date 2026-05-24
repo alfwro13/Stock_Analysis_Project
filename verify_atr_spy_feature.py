@@ -30,17 +30,24 @@ top10 = pd.read_sql_query("""
            qs.ml_confidence_score,
            qs.rsi_14,
            qs.mom_3m, qs.mom_6m,
-           qs.atr_pct, qs.hist_vol_20,
+           qs.rel_strength_5d, qs.rel_strength_20d,
+           qs.atr_pct,
            tm.sector
     FROM quant_signals qs
     LEFT JOIN ticker_metadata tm ON qs.ticker = tm.ticker
     WHERE qs.ml_confidence_score IS NOT NULL
       AND qs.date = (
           SELECT MAX(date) FROM quant_signals
-          WHERE atr_pct IS NOT NULL
+          WHERE rel_strength_5d IS NOT NULL
       )
     ORDER BY qs.ml_confidence_score DESC
     LIMIT 10
 """, conn)
 conn.close()
 print(top10.to_string(index=False))
+
+print("\n=== PROGRESS SCORECARD ===")
+print(f"Count scored:  {len(df)}")
+print(f"Mean:          {df['ml_confidence_score'].mean():.2f}")
+print(f"Std:           {df['ml_confidence_score'].std():.2f}")
+print(f"Max:           {df['ml_confidence_score'].max():.2f}")
