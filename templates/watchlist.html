@@ -181,7 +181,7 @@
 
                 <td data-sort="{{ item.ml_confidence_score if item.ml_confidence_score is not none else -999 }}">
                     {% if item.ml_confidence_score is not none %}
-                        {% set ml_class = 'metric-excellent' if item.ml_confidence_score > 75 else ('metric-poor' if item.ml_confidence_score < 40 else 'metric-neutral') %}
+                        {% set ml_class = 'metric-excellent' if item.ml_confidence_score > 40 else ('metric-poor' if item.ml_confidence_score < 20 else 'metric-neutral') %}
                         <span class="{{ ml_class }}">{{ "{:,.1f}".format(item.ml_confidence_score) }}%</span>
                     {% else %}
                         N/A
