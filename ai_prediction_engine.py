@@ -63,6 +63,7 @@ SECTOR_MAP = {
     "Financial Services": 3, "Real Estate": 4, "Energy": 5,
     "Basic Materials": 6, "Consumer Cyclical": 7, "Industrials": 8,
     "Utilities": 9, "Consumer Defensive": 10, "Communication Services": 11,
+    "Broad Market ETF": 12, "ETF": 12, "Futures": 13,
     "Unknown": 99  # Explicit unknown code — distinct from any real sector
 }
 
