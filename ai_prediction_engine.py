@@ -29,45 +29,63 @@ MODEL_PATH         = MODELS_DIR / "ml_ensemble.joblib"
 FEATURE_STATS_PATH = MODELS_DIR / "feature_stats.joblib"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# FEATURE REGISTRY  (18 features, up from 16)
+# FEATURE REGISTRY  (24 features, up from 18)
 #
 # TECHNICAL FEATURES (10):
 #   rsi_14, macd_pct, macd_signal_pct, macd_hist_pct, volume_surge,
 #   bullish_cross, dist_sma_50, dist_sma_200, sector_code, dollar_vol_log
 #
 # MOMENTUM FACTORS (4) — Jegadeesh & Titman (1993):
-#   mom_1m          — 21-day return.
-#   mom_3m          — 63-day return.
-#   mom_6m          — 126-day return.
-#   mom_12m_skip1m  — 252-day return minus 21-day return.
-#                     Skip-1-month removes short-term reversal contamination.
+#   mom_1m, mom_3m, mom_6m, mom_12m_skip1m
 #
-# VOLATILITY REGIME FEATURES (2):
-#   atr_pct         — 14-day ATR / close price. Noise envelope normalised
-#                     to price level. Distinguishes clean breakouts from
-#                     volatile panic moves.
-#   hist_vol_20     — 20-day rolling std of log returns × √252.
-#                     Medium-horizon realised volatility view.
+# VOLATILITY REGIME (2):
+#   atr_pct, hist_vol_20
 #
 # RELATIVE STRENGTH VS SPY (2):
-#   rel_strength_5d  — 5-day stock return minus 5-day SPY return.
-#   rel_strength_20d — 20-day stock return minus 20-day SPY return.
+#   rel_strength_5d, rel_strength_20d
 #
-#   Rationale: A stock with RSI 65 and positive momentum looks very different
-#   depending on whether the whole market is at RSI 65 (neutral) or RSI 40
-#   (genuinely strong). Relative strength strips out the market beta component
-#   and isolates idiosyncratic price leadership. A positive rel_strength_20d
-#   combined with positive cross-sectional momentum is the hallmark of a true
-#   market leader — not just a stock being carried by the tide.
+# FUNDAMENTAL FACTORS (6) — Fama-French value/quality/growth:
+#   trailing_pe     — Valuation. Fama-French HML value factor proxy.
+#                     Negative PE (loss-making) → NaN → median-imputed.
+#                     Capped at 100 to prevent growth-stock outliers
+#                     dominating the cross-sectional z-score.
 #
-#   Benchmark: SPY (S&P 500 ETF) is used as a universal benchmark for both
-#   US and UK stocks. Global equity markets are ~85% correlated at daily
-#   frequency, making SPY a reasonable proxy. A per-asset benchmark (SPY for
-#   US, ISF.L for UK) would be marginally more accurate but requires benchmark
-#   detection logic. Documented as a known approximation for UK names.
+#   price_to_book   — Value factor. Low P/B = deep value.
+#                     Capped at 20 (covers Amazon/tech at peak multiples).
 #
-#   Warmup: pct_change(20) requires 20 days — well below the 252-day momentum
-#   constraint. No additional row loss from these features.
+#   profit_margin   — Quality factor. Already a ratio [-1, 1].
+#                     Negative margin = the company is burning cash.
+#
+#   roe             — Quality factor (Fama-French QMJ). Return on Equity.
+#                     Capped at 2.0 to handle asset-light businesses with
+#                     very high ROE (e.g. NVIDIA at 120% ROE → clipped to 2.0).
+#
+#   revenue_growth  — Growth factor. YoY revenue change as a decimal.
+#                     Capped at 3.0 (300%) to remove post-merger spikes.
+#
+#   debt_to_equity  — Leverage/risk factor. Yahoo Finance returns this as
+#                     a percentage (100 = 1.0x D/E ratio). Capped at 500
+#                     (= 5.0x D/E) to handle financial stocks and REITs
+#                     whose leverage is structural not distress-driven.
+#
+# KNOWN LIMITATION — POINT-IN-TIME BIAS:
+#   stock_signals stores only the most recent fundamental snapshot (ticker
+#   is the PRIMARY KEY). When this snapshot is joined to historical
+#   quant_signals rows during training, it applies today's fundamentals
+#   to rows from 18 months ago — mild lookahead bias.
+#   Acceptable for a hobbyist project where fundamentals change slowly
+#   (margins, ROE) or the signal direction is stable (high-PE stocks tend
+#   to remain high-PE within a 2-year window). Documented here for
+#   transparency. A production system would store time-stamped fundamental
+#   snapshots and join on the closest prior date.
+#
+# NULL HANDLING — CROSS-SECTIONAL MEDIAN IMPUTATION:
+#   ETFs, futures, and stocks without reported fundamentals return NULL
+#   from yfinance. Rather than dropping these tickers entirely (which would
+#   bias the universe toward pure equities), NULLs are filled with the
+#   cross-sectional median for that date before z-scoring. These stocks
+#   receive a neutral z-score of ~0.0 — they are neither rewarded nor
+#   penalised for absent fundamentals.
 # ─────────────────────────────────────────────────────────────────────────────
 
 FEATURE_COLS = [
@@ -81,6 +99,9 @@ FEATURE_COLS = [
     'atr_pct_z', 'hist_vol_20_z',
     # Relative strength vs SPY
     'rel_strength_5d_z', 'rel_strength_20d_z',
+    # Fundamental factors
+    'trailing_pe_z', 'price_to_book_z', 'profit_margin_z',
+    'roe_z', 'revenue_growth_z', 'debt_to_equity_z',
 ]
 
 SECTOR_MAP = {
@@ -92,13 +113,35 @@ SECTOR_MAP = {
     "Unknown": 99
 }
 
+# All continuous features that receive cross-sectional z-scoring.
+# Fundamental features are included here — winsorization is applied
+# before z-scoring in the feature engineering block.
 CONTINUOUS_FEATURES = [
     'rsi_14', 'macd_pct', 'macd_signal_pct', 'macd_hist_pct',
     'dist_sma_50', 'dist_sma_200', 'dollar_vol_log',
     'mom_1m', 'mom_3m', 'mom_6m', 'mom_12m_skip1m',
     'atr_pct', 'hist_vol_20',
     'rel_strength_5d', 'rel_strength_20d',
+    'trailing_pe', 'price_to_book', 'profit_margin',
+    'roe', 'revenue_growth', 'debt_to_equity',
 ]
+
+# Fundamental features requiring winsorization + median imputation
+FUNDAMENTAL_FEATURES = [
+    'trailing_pe', 'price_to_book', 'profit_margin',
+    'roe', 'revenue_growth', 'debt_to_equity',
+]
+
+# Winsorization bounds per fundamental feature.
+# (lower_bound, upper_bound) — None means no bound on that side.
+FUNDAMENTAL_BOUNDS: Dict[str, Tuple[Optional[float], Optional[float]]] = {
+    'trailing_pe':    (0.0,  100.0),   # Negative PE → NaN first, then cap at 100
+    'price_to_book':  (0.0,  20.0),
+    'profit_margin':  (-1.0, 1.0),
+    'roe':            (-1.0, 2.0),
+    'revenue_growth': (-1.0, 3.0),
+    'debt_to_equity': (0.0,  500.0),
+}
 
 
 def cross_sectional_zscore(series: pd.Series) -> pd.Series:
@@ -109,10 +152,54 @@ def cross_sectional_zscore(series: pd.Series) -> pd.Series:
     return (series - series.mean()) / std
 
 
+def _winsorize_and_impute_fundamentals(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Applies per-feature winsorization and cross-sectional median imputation
+    to the fundamental feature columns.
+
+    Winsorization: clips values to [lower, upper] bounds defined in
+    FUNDAMENTAL_BOUNDS. For trailing_pe, negative values are set to NaN
+    before clipping because a negative PE (loss-making company) is a
+    qualitatively different state from a cheap company — it should not be
+    treated as "very low PE" and should receive the neutral median instead.
+
+    Imputation: fills NaN values (including original NULLs from ETFs/futures
+    and the negative-PE NaNs just created) with the cross-sectional median
+    for that date. This gives non-equity assets a neutral fundamental profile
+    rather than dropping them from the universe.
+
+    Args:
+        df: DataFrame containing raw fundamental columns and a 'date' column.
+
+    Returns:
+        DataFrame with fundamentals winsorized and NULLs imputed.
+    """
+    # trailing_pe: negative values are loss-making companies, not cheap stocks
+    if 'trailing_pe' in df.columns:
+        df['trailing_pe'] = df['trailing_pe'].where(df['trailing_pe'] > 0)
+
+    for col, (lo, hi) in FUNDAMENTAL_BOUNDS.items():
+        if col not in df.columns:
+            continue
+        df[col] = df[col].clip(lower=lo, upper=hi)
+
+    # Cross-sectional median imputation per date
+    for col in FUNDAMENTAL_FEATURES:
+        if col not in df.columns:
+            continue
+        null_count = df[col].isna().sum()
+        if null_count > 0:
+            df[col] = df.groupby('date')[col].transform(
+                lambda x: x.fillna(x.median())
+            )
+
+    return df
+
+
 def _migrate_quant_signals_schema(cursor: sqlite3.Cursor) -> None:
     """
-    Idempotent schema migration. Adds all feature columns to quant_signals
-    if they do not already exist. Safe to run on every backfill.
+    Idempotent schema migration. Adds all computed feature columns to
+    quant_signals if they do not already exist. Safe to run on every backfill.
     """
     new_columns = [
         ("mom_1m",           "REAL"),
@@ -136,28 +223,27 @@ def _migrate_quant_signals_schema(cursor: sqlite3.Cursor) -> None:
 
 def _download_spy_benchmark(period: str = "2y") -> Optional[pd.DataFrame]:
     """
-    Downloads SPY OHLCV data for use as a market benchmark in relative
-    strength calculations. Called once before the main ticker loop.
-
-    Returns a DataFrame with DatetimeIndex and a 'Close' column, or None
-    if the download fails (in which case relative strength features will
-    be skipped gracefully for all tickers).
+    Downloads SPY OHLCV data for relative strength calculations.
+    Called once before the main ticker loop. Returns None on failure.
     """
     try:
         spy = yf.download('SPY', period=period, interval='1d',
                           progress=False, auto_adjust=True)
         if spy.empty:
-            logger.warning("SPY benchmark download returned empty. Relative strength features will be skipped.")
+            logger.warning("SPY download returned empty. Relative strength will be skipped.")
             return None
         if isinstance(spy.columns, pd.MultiIndex):
             spy.columns = spy.columns.get_level_values(0)
         spy = spy[['Close']].copy()
         spy['spy_ret_5d']  = spy['Close'].pct_change(5)
         spy['spy_ret_20d'] = spy['Close'].pct_change(20)
-        logger.info(f"SPY benchmark downloaded: {len(spy)} rows ({spy.index[0].date()} to {spy.index[-1].date()})")
+        logger.info(
+            f"SPY benchmark downloaded: {len(spy)} rows "
+            f"({spy.index[0].date()} to {spy.index[-1].date()})"
+        )
         return spy
     except Exception as e:
-        logger.warning(f"SPY benchmark download failed: {e}. Relative strength features will be skipped.")
+        logger.warning(f"SPY download failed: {e}. Relative strength will be skipped.")
         return None
 
 
@@ -247,17 +333,13 @@ def sync_ticker_metadata(tickers: List[str]) -> None:
 
 def run_historical_backfill() -> None:
     """
-    Downloads 2 years of daily OHLCV data per ticker, computes all features
-    (technical, momentum, volatility, relative strength), and upserts into
+    Downloads 2 years of daily OHLCV data per ticker, computes all technical,
+    momentum, volatility and relative strength features, and upserts into
     quant_signals.
 
-    RELATIVE STRENGTH STRATEGY:
-    SPY is downloaded once before the main ticker loop and stored as a
-    date-indexed Series of 5-day and 20-day returns. For each ticker, SPY
-    returns are aligned to the ticker's date index via reindex(). Date
-    mismatches (UK bank holidays vs US, ticker-specific halts) produce NaN
-    which are removed by the unified dropna() call. No additional row loss
-    beyond the existing 252-day momentum warmup constraint.
+    NOTE: Fundamental features (trailing_pe, roe, etc.) are NOT stored in
+    quant_signals. They are joined from stock_signals at training and inference
+    time. No backfill changes are required for improvement #4.
     """
     tickers = get_target_tickers()
     if not tickers:
@@ -271,7 +353,6 @@ def run_historical_backfill() -> None:
     _migrate_quant_signals_schema(cursor)
     conn.commit()
 
-    # Download SPY benchmark once before the main loop
     spy_df = _download_spy_benchmark(period="2y")
 
     log_notification("Info", f"ML Historical Backfill initiated for {len(tickers)} assets.")
@@ -307,20 +388,17 @@ def run_historical_backfill() -> None:
                 df['rsi_14']      = ta.momentum.RSIIndicator(
                     close=df['Close'], window=14
                 ).rsi()
-
                 macd_ind          = ta.trend.MACD(close=df['Close'])
                 df['macd']        = macd_ind.macd()
                 df['macd_signal'] = macd_ind.macd_signal()
                 df['macd_hist']   = macd_ind.macd_diff()
-
-                df['sma_50']     = ta.trend.SMAIndicator(
+                df['sma_50']      = ta.trend.SMAIndicator(
                     close=df['Close'], window=50
                 ).sma_indicator()
-                df['sma_200']    = ta.trend.SMAIndicator(
+                df['sma_200']     = ta.trend.SMAIndicator(
                     close=df['Close'], window=200
                 ).sma_indicator()
-                df['vol_sma_20'] = df['Volume'].rolling(window=20).mean()
-
+                df['vol_sma_20']  = df['Volume'].rolling(window=20).mean()
                 df['volume_surge']  = (
                     df['Volume'] > (df['vol_sma_20'] * 1.5)
                 ).astype(int)
@@ -337,37 +415,30 @@ def run_historical_backfill() -> None:
                 df['mom_12m_skip1m'] = df['mom_12m'] - df['mom_1m']
                 df.drop(columns=['mom_12m'], inplace=True)
 
-                # ── Volatility Regime Features ────────────────────────────────
+                # ── Volatility Regime ─────────────────────────────────────────
                 df['atr_raw'] = ta.volatility.AverageTrueRange(
-                    high=df['High'], low=df['Low'], close=df['Close'], window=14
+                    high=df['High'], low=df['Low'],
+                    close=df['Close'], window=14
                 ).average_true_range()
                 df['atr_pct'] = df['atr_raw'] / df['Close']
                 df.drop(columns=['atr_raw'], inplace=True)
-
                 log_returns       = np.log(df['Close'] / df['Close'].shift(1))
                 df['hist_vol_20'] = log_returns.rolling(window=20).std() * np.sqrt(252)
 
                 # ── Relative Strength vs SPY ──────────────────────────────────
-                # Compute ticker returns, then subtract aligned SPY returns.
-                # reindex() aligns SPY dates to the ticker's date index —
-                # any dates in SPY not present in the ticker (or vice versa)
-                # produce NaN and are dropped by the unified dropna() below.
                 if spy_df is not None:
                     ticker_ret_5d  = df['Close'].pct_change(5)
                     ticker_ret_20d = df['Close'].pct_change(20)
-
-                    spy_ret_5d_aligned  = spy_df['spy_ret_5d'].reindex(df.index)
-                    spy_ret_20d_aligned = spy_df['spy_ret_20d'].reindex(df.index)
-
-                    df['rel_strength_5d']  = ticker_ret_5d  - spy_ret_5d_aligned
-                    df['rel_strength_20d'] = ticker_ret_20d - spy_ret_20d_aligned
+                    df['rel_strength_5d']  = (
+                        ticker_ret_5d  - spy_df['spy_ret_5d'].reindex(df.index)
+                    )
+                    df['rel_strength_20d'] = (
+                        ticker_ret_20d - spy_df['spy_ret_20d'].reindex(df.index)
+                    )
                 else:
-                    # SPY unavailable — store NULL so training SQL WHERE filter
-                    # excludes these rows rather than silently training on zeros
                     df['rel_strength_5d']  = np.nan
                     df['rel_strength_20d'] = np.nan
 
-                # ── Unified dropna ────────────────────────────────────────────
                 df.dropna(inplace=True)
                 if df.empty:
                     continue
@@ -403,8 +474,7 @@ def run_historical_backfill() -> None:
                     (ticker, date, close_price, volume, rsi_14, macd, macd_signal,
                      macd_hist, sma_50, sma_200, volume_surge, bullish_cross,
                      mom_1m, mom_3m, mom_6m, mom_12m_skip1m,
-                     atr_pct, hist_vol_20,
-                     rel_strength_5d, rel_strength_20d)
+                     atr_pct, hist_vol_20, rel_strength_5d, rel_strength_20d)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(ticker, date) DO UPDATE SET
                         close_price      = excluded.close_price,
@@ -460,16 +530,22 @@ def run_historical_backfill() -> None:
 
 def train_global_ml_model() -> None:
     """
-    Builds an 18-feature ensemble model predicting >3% returns over 5 trading
+    Builds a 24-feature ensemble model predicting >3% returns over 5 trading
     days using Anchored Walk-Forward Validation with Temporal Embargos.
 
-    FEATURE SET (18 features):
+    FEATURE SET (24 features):
         Technical:         rsi_14, macd_pct, macd_signal_pct, macd_hist_pct,
                            volume_surge, bullish_cross, dist_sma_50, dist_sma_200,
                            sector_code, dollar_vol_log
         Momentum:          mom_1m, mom_3m, mom_6m, mom_12m_skip1m
         Volatility:        atr_pct, hist_vol_20
         Relative Strength: rel_strength_5d, rel_strength_20d
+        Fundamentals:      trailing_pe, price_to_book, profit_margin,
+                           roe, revenue_growth, debt_to_equity
+
+    Fundamentals are joined from stock_signals (one row per ticker, latest
+    snapshot). This introduces mild point-in-time lookahead bias which is
+    documented and accepted for a hobbyist project.
     """
     logger.info("Initiating Global ML Model Training pipeline with Hyperparameter Optimization...")
     log_notification("Info", "Global ML Model Training pipeline initiated.")
@@ -477,6 +553,10 @@ def train_global_ml_model() -> None:
     try:
         conn = get_connection()
 
+        # LEFT JOIN stock_signals to pull fundamental snapshot per ticker.
+        # stock_signals has ticker as PRIMARY KEY (one row per ticker).
+        # Rows for tickers with no stock_signals entry get NULL fundamentals
+        # which are handled by _winsorize_and_impute_fundamentals().
         query = """
             SELECT qs.ticker, qs.date, qs.close_price, qs.volume,
                    qs.rsi_14, qs.macd, qs.macd_signal, qs.macd_hist,
@@ -484,8 +564,11 @@ def train_global_ml_model() -> None:
                    qs.mom_1m, qs.mom_3m, qs.mom_6m, qs.mom_12m_skip1m,
                    qs.atr_pct, qs.hist_vol_20,
                    qs.rel_strength_5d, qs.rel_strength_20d,
+                   ss.trailing_pe, ss.price_to_book, ss.profit_margin,
+                   ss.roe, ss.revenue_growth, ss.debt_to_equity,
                    tm.sector
             FROM quant_signals qs
+            LEFT JOIN stock_signals  ss ON qs.ticker = ss.ticker
             LEFT JOIN ticker_metadata tm ON qs.ticker = tm.ticker
             WHERE qs.mom_1m           IS NOT NULL
               AND qs.mom_12m_skip1m   IS NOT NULL
@@ -518,7 +601,20 @@ def train_global_ml_model() -> None:
         df['sector_code']    = df['sector'].map(SECTOR_MAP).fillna(99).astype(int)
         df['dollar_vol_log'] = np.log1p(df['close_price'] * df['volume'])
 
-        # All stored features already in df from SQL
+        # ── Fundamental preprocessing ─────────────────────────────────────────
+        # Winsorize then impute NULLs with cross-sectional median per date.
+        # Must happen BEFORE z-scoring so outliers don't compress valid signals.
+        logger.info("Winsorizing and imputing fundamental features...")
+        df = _winsorize_and_impute_fundamentals(df)
+
+        # Log null counts after imputation for diagnostics
+        for col in FUNDAMENTAL_FEATURES:
+            remaining_nulls = df[col].isna().sum()
+            if remaining_nulls > 0:
+                logger.warning(
+                    f"  {col}: {remaining_nulls} NULLs remain after imputation "
+                    f"(dates with zero equity coverage — will be dropped by dropna)."
+                )
 
         df.replace([np.inf, -np.inf], np.nan, inplace=True)
 
@@ -677,11 +773,13 @@ def train_global_ml_model() -> None:
 def update_daily_ml_predictions(tickers: List[str]) -> None:
     """
     Fetches the latest row for ALL tickers in the DB with complete feature
-    data, computes cross-sectional z-scores across the full population, then
-    writes confidence scores back for the requested ticker subset.
+    data, applies fundamental preprocessing, computes cross-sectional
+    z-scores across the full population, then writes confidence scores back
+    for the requested ticker subset.
 
-    Relative strength, volatility, and momentum features are read directly
-    from stored DB values — no OHLCV or SPY lookback required at inference.
+    Fundamental features are joined from stock_signals (latest snapshot per
+    ticker) — identical join to training, consistent with the known
+    point-in-time bias documented in train_global_ml_model().
 
     Args:
         tickers: Tickers whose ml_confidence_score should be updated.
@@ -701,9 +799,6 @@ def update_daily_ml_predictions(tickers: List[str]) -> None:
         model = joblib.load(MODEL_PATH)
         conn  = get_connection()
 
-        # Fetch ALL tickers at the latest date with complete feature data.
-        # Z-scores are computed across this full population to replicate
-        # the training cross-sectional methodology exactly.
         query = """
             SELECT qs.ticker, qs.date, qs.close_price, qs.volume,
                    qs.rsi_14, qs.macd, qs.macd_signal, qs.macd_hist,
@@ -711,8 +806,11 @@ def update_daily_ml_predictions(tickers: List[str]) -> None:
                    qs.mom_1m, qs.mom_3m, qs.mom_6m, qs.mom_12m_skip1m,
                    qs.atr_pct, qs.hist_vol_20,
                    qs.rel_strength_5d, qs.rel_strength_20d,
+                   ss.trailing_pe, ss.price_to_book, ss.profit_margin,
+                   ss.roe, ss.revenue_growth, ss.debt_to_equity,
                    tm.sector
             FROM quant_signals qs
+            LEFT JOIN stock_signals   ss ON qs.ticker = ss.ticker
             LEFT JOIN ticker_metadata tm ON qs.ticker = tm.ticker
             WHERE qs.date = (
                 SELECT MAX(date) FROM quant_signals
@@ -729,9 +827,7 @@ def update_daily_ml_predictions(tickers: List[str]) -> None:
         df = pd.read_sql_query(query, conn)
 
         if df.empty:
-            logger.warning(
-                "No data with complete feature set found. Re-run backfill first."
-            )
+            logger.warning("No data with complete feature set found. Re-run backfill first.")
             conn.close()
             return
 
@@ -740,7 +836,7 @@ def update_daily_ml_predictions(tickers: List[str]) -> None:
             f"(date: {df['date'].iloc[0]})."
         )
 
-        # ── Feature Engineering (mirrors training pipeline exactly) ───────────
+        # ── Feature Engineering ───────────────────────────────────────────────
         df['dist_sma_50']  = (df['close_price'] - df['sma_50'])  / df['sma_50']
         df['dist_sma_200'] = (df['close_price'] - df['sma_200']) / df['sma_200']
 
@@ -754,9 +850,12 @@ def update_daily_ml_predictions(tickers: List[str]) -> None:
         df['sector_code']    = df['sector'].map(SECTOR_MAP).fillna(99).astype(int)
         df['dollar_vol_log'] = np.log1p(df['close_price'] * df['volume'])
 
+        # Fundamental preprocessing — identical to training pipeline
+        df = _winsorize_and_impute_fundamentals(df)
+
         df.replace([np.inf, -np.inf], np.nan, inplace=True)
 
-        # ── Cross-sectional Z-scoring across full population ──────────────────
+        # ── Cross-sectional Z-scoring ─────────────────────────────────────────
         logger.info(
             f"Applying cross-sectional Z-scoring across {len(df)} tickers..."
         )
@@ -790,8 +889,8 @@ def update_daily_ml_predictions(tickers: List[str]) -> None:
             logger.info(f"✅ Executed ML predictions for {len(update_payloads)} assets.")
         else:
             logger.warning(
-                "No valid payloads generated. Ensure tickers have been "
-                "backfilled with relative strength data before running inference."
+                "No valid payloads generated. Ensure stock_signals is populated "
+                "by running the daily quant scan before ML inference."
             )
 
     except Exception as e:
