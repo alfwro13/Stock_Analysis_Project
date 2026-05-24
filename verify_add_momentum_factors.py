@@ -1,0 +1,57 @@
+import sqlite3
+import pandas as pd
+from config import DB_PATH
+
+conn = sqlite3.connect(DB_PATH)
+
+df = pd.read_sql_query("""
+    SELECT ml_confidence_score
+    FROM quant_signals
+    WHERE ml_confidence_score IS NOT NULL
+""", conn)
+conn.close()
+
+print("=== DISTRIBUTION SUMMARY ===")
+print(df['ml_confidence_score'].describe().round(2))
+
+print("\n=== SCORE BANDS ===")
+bands = pd.cut(
+    df['ml_confidence_score'],
+    bins=[0, 25, 35, 45, 55, 65, 100],
+    labels=['0-25 (Bearish)', '25-35 (Cautious)', '35-45 (Neutral)',
+            '45-55 (Bullish)', '55-65 (Strong)', '65-100 (High Conviction)']
+)
+print(bands.value_counts().sort_index())
+
+print("\n=== TOP 10 HIGHEST CONVICTION SETUPS TODAY ===")
+conn = sqlite3.connect(DB_PATH)
+top10 = pd.read_sql_query("""
+    SELECT qs.ticker, qs.date, qs.close_price,
+           qs.ml_confidence_score,
+           qs.rsi_14,
+           qs.mom_1m, qs.mom_3m, qs.mom_6m, qs.mom_12m_skip1m,
+           tm.sector
+    FROM quant_signals qs
+    LEFT JOIN ticker_metadata tm ON qs.ticker = tm.ticker
+    WHERE qs.ml_confidence_score IS NOT NULL
+      AND qs.date = (SELECT MAX(date) FROM quant_signals WHERE mom_1m IS NOT NULL)
+    ORDER BY qs.ml_confidence_score DESC
+    LIMIT 10
+""", conn)
+conn.close()
+print(top10.to_string(index=False))
+
+print("\n=== BOTTOM 5 (WEAKEST SETUPS) ===")
+conn = sqlite3.connect(DB_PATH)
+bot5 = pd.read_sql_query("""
+    SELECT qs.ticker, qs.ml_confidence_score, qs.rsi_14,
+           qs.mom_1m, qs.mom_12m_skip1m, tm.sector
+    FROM quant_signals qs
+    LEFT JOIN ticker_metadata tm ON qs.ticker = tm.ticker
+    WHERE qs.ml_confidence_score IS NOT NULL
+      AND qs.date = (SELECT MAX(date) FROM quant_signals WHERE mom_1m IS NOT NULL)
+    ORDER BY qs.ml_confidence_score ASC
+    LIMIT 5
+""", conn)
+conn.close()
+print(bot5.to_string(index=False))
