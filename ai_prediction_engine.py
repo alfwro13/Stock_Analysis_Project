@@ -545,17 +545,21 @@ def train_global_ml_model() -> None:
 
 def update_daily_ml_predictions(tickers: List[str]) -> None:
     """
-    Loads the trained model, fetches the latest raw row + structural context,
-    calculates inference features dynamically, normalizes using saved training
-    population statistics, and updates the database with confidence scores.
+    Loads the trained model, fetches the latest row for ALL tickers in the
+    database, computes cross-sectional z-scores across the full population
+    (replicating training methodology exactly), then writes confidence scores
+    back for the requested ticker subset.
 
-    [BUG-03 FIX] Replaced cross-sectional z-scoring on the inference batch with
-    fixed normalization using training population means and stds loaded from
-    FEATURE_STATS_PATH. This ensures inference features are on the same statistical
-    scale as training features regardless of batch size.
+    [BUG-03 FIX - CORRECT APPROACH] The training pipeline computes z-scores
+    per date across hundreds of tickers. The correct inference equivalent is
+    to fetch ALL tickers sharing the latest date and z-score across that full
+    population — not across a 3-10 ticker batch, and not against global
+    historical means (which introduces market-regime bias).
 
     Args:
-        tickers (List[str]): Tickers to predict the next 5 days of trajectory for.
+        tickers (List[str]): Tickers whose ml_confidence_score should be updated.
+                             Z-scores are computed across ALL tickers in the DB
+                             regardless of this list, to ensure a valid population.
     """
     if not tickers:
         logger.warning("Empty ticker list provided for ML inference. Skipping.")
@@ -565,38 +569,37 @@ def update_daily_ml_predictions(tickers: List[str]) -> None:
         logger.warning(f"Model file {MODEL_PATH} not found. Awaiting weekend training cycle.")
         return
 
-    if not FEATURE_STATS_PATH.exists():
-        logger.warning(
-            f"Feature statistics file {FEATURE_STATS_PATH} not found. "
-            "Re-run train_global_ml_model() to generate it."
-        )
-        return
-
     logger.info(f"Initiating ML Inference for {len(tickers)} assets...")
 
     conn = None
     try:
-        model         = joblib.load(MODEL_PATH)
-        feature_stats = joblib.load(FEATURE_STATS_PATH)
+        model = joblib.load(MODEL_PATH)
+        conn  = get_connection()
 
-        conn = get_connection()
-
-        placeholders = ','.join('?' for _ in tickers)
-        query = f"""
-            SELECT qs.ticker, qs.date, qs.close_price, qs.volume, qs.rsi_14, qs.macd, qs.macd_signal, qs.macd_hist,
+        # --- Fetch ALL tickers at the latest available date ---
+        # This replicates the training cross-section: z-scores are computed
+        # across all tickers on a given day, not just the requested subset.
+        # The tickers parameter only governs which rows are written back.
+        query = """
+            SELECT qs.ticker, qs.date, qs.close_price, qs.volume,
+                   qs.rsi_14, qs.macd, qs.macd_signal, qs.macd_hist,
                    qs.sma_50, qs.sma_200, qs.volume_surge, qs.bullish_cross,
                    tm.sector
             FROM quant_signals qs
             LEFT JOIN ticker_metadata tm ON qs.ticker = tm.ticker
-            WHERE qs.ticker IN ({placeholders})
-            AND qs.date = (SELECT MAX(date) FROM quant_signals sub WHERE sub.ticker = qs.ticker)
+            WHERE qs.date = (SELECT MAX(date) FROM quant_signals)
         """
-        df = pd.read_sql_query(query, conn, params=tickers)
+        df = pd.read_sql_query(query, conn)
 
         if df.empty:
             logger.warning("No recent data found to run inference on.")
             conn.close()
             return
+
+        logger.info(
+            f"Loaded {len(df)} tickers for cross-sectional normalization "
+            f"(date: {df['date'].iloc[0]})."
+        )
 
         # Feature Engineering: identical pipeline as training
         df['dist_sma_50']  = (df['close_price'] - df['sma_50'])  / df['sma_50']
@@ -614,20 +617,30 @@ def update_daily_ml_predictions(tickers: List[str]) -> None:
 
         df.replace([np.inf, -np.inf], np.nan, inplace=True)
 
-        # --- [BUG-03 FIX] FIXED NORMALIZATION USING TRAINING POPULATION STATS ---
-        # Do NOT recompute z-scores on the inference batch. Apply saved training
-        # means and stds so every feature is on the same scale the model was trained on.
-        logger.info("Applying fixed normalization using training population statistics...")
-        df = apply_fixed_zscore(df, feature_stats)
+        # --- Cross-sectional z-scoring across the full population ---
+        # All tickers share the same date here, so groupby('date') produces
+        # a single group containing the full inference population — exactly
+        # matching the training methodology.
+        logger.info(
+            f"Applying cross-sectional Z-scoring across {len(df)} tickers "
+            f"(replicates training methodology)..."
+        )
+        for col in CONTINUOUS_FEATURES:
+            df[f'{col}_z'] = df.groupby('date')[col].transform(cross_sectional_zscore)
 
+        # --- Score only the requested tickers ---
+        target_set = set(tickers)
         update_payloads = []
+
         for _, row in df.iterrows():
+            if row['ticker'] not in target_set:
+                continue
             if pd.isna(row[FEATURE_COLS]).any():
                 continue
 
             X_infer = pd.DataFrame([row[FEATURE_COLS]])
 
-            prob               = model.predict_proba(X_infer)[0][1]
+            prob                = model.predict_proba(X_infer)[0][1]
             ml_confidence_score = round(prob * 100.0, 2)
 
             update_payloads.append((ml_confidence_score, row['ticker'], row['date']))
@@ -642,6 +655,8 @@ def update_daily_ml_predictions(tickers: List[str]) -> None:
             cursor.executemany(update_query, update_payloads)
             conn.commit()
             logger.info(f"✅ Executed ML predictions for {len(update_payloads)} assets.")
+        else:
+            logger.warning("No valid payloads generated. Check that tickers exist in quant_signals for the latest date.")
 
     except Exception as e:
         logger.error(f"Fatal error during ML inference: {e}")
