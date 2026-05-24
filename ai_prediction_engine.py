@@ -3,7 +3,7 @@ import time
 import logging
 import sqlite3
 from pathlib import Path
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Optional
 
 import pandas as pd
 import numpy as np
@@ -29,37 +29,45 @@ MODEL_PATH         = MODELS_DIR / "ml_ensemble.joblib"
 FEATURE_STATS_PATH = MODELS_DIR / "feature_stats.joblib"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# FEATURE REGISTRY  (16 features, up from 14)
+# FEATURE REGISTRY  (18 features, up from 16)
 #
-# MOMENTUM FACTORS (Jegadeesh & Titman, 1993):
+# TECHNICAL FEATURES (10):
+#   rsi_14, macd_pct, macd_signal_pct, macd_hist_pct, volume_surge,
+#   bullish_cross, dist_sma_50, dist_sma_200, sector_code, dollar_vol_log
+#
+# MOMENTUM FACTORS (4) — Jegadeesh & Titman (1993):
 #   mom_1m          — 21-day return.
 #   mom_3m          — 63-day return.
 #   mom_6m          — 126-day return.
 #   mom_12m_skip1m  — 252-day return minus 21-day return.
-#                     Skipping the last month removes the short-term reversal
-#                     contamination identified by Jegadeesh & Titman.
+#                     Skip-1-month removes short-term reversal contamination.
 #
-# VOLATILITY REGIME FEATURES:
-#   atr_pct         — 14-day Average True Range divided by close price.
-#                     Normalises ATR to be comparable across price levels.
-#                     Captures the current noise envelope of the stock:
-#                     a stock with ATR 2% needs a much larger move to be
-#                     "significant" than one with ATR 0.5%.
-#                     A high atr_pct in the same cross-section as a positive
-#                     momentum signal is the hallmark of a breakout setup.
-#                     A high atr_pct with negative momentum signals a panic
-#                     sell — not a buying opportunity.
+# VOLATILITY REGIME FEATURES (2):
+#   atr_pct         — 14-day ATR / close price. Noise envelope normalised
+#                     to price level. Distinguishes clean breakouts from
+#                     volatile panic moves.
+#   hist_vol_20     — 20-day rolling std of log returns × √252.
+#                     Medium-horizon realised volatility view.
 #
-#   hist_vol_20     — 20-day rolling standard deviation of log returns,
-#                     annualised (× √252). Provides a longer-horizon view of
-#                     realised volatility vs the single-day ATR.
-#                     Together, atr_pct and hist_vol_20 give the model a
-#                     two-speed volatility picture: short (14-day ATR) and
-#                     medium (20-day HV).
+# RELATIVE STRENGTH VS SPY (2):
+#   rel_strength_5d  — 5-day stock return minus 5-day SPY return.
+#   rel_strength_20d — 20-day stock return minus 20-day SPY return.
 #
-# Both volatility features are stored in quant_signals during backfill
-# (computed from the full OHLCV download before dropna) and read directly
-# at training and inference — no lookback required at query time.
+#   Rationale: A stock with RSI 65 and positive momentum looks very different
+#   depending on whether the whole market is at RSI 65 (neutral) or RSI 40
+#   (genuinely strong). Relative strength strips out the market beta component
+#   and isolates idiosyncratic price leadership. A positive rel_strength_20d
+#   combined with positive cross-sectional momentum is the hallmark of a true
+#   market leader — not just a stock being carried by the tide.
+#
+#   Benchmark: SPY (S&P 500 ETF) is used as a universal benchmark for both
+#   US and UK stocks. Global equity markets are ~85% correlated at daily
+#   frequency, making SPY a reasonable proxy. A per-asset benchmark (SPY for
+#   US, ISF.L for UK) would be marginally more accurate but requires benchmark
+#   detection logic. Documented as a known approximation for UK names.
+#
+#   Warmup: pct_change(20) requires 20 days — well below the 252-day momentum
+#   constraint. No additional row loss from these features.
 # ─────────────────────────────────────────────────────────────────────────────
 
 FEATURE_COLS = [
@@ -71,6 +79,8 @@ FEATURE_COLS = [
     'mom_1m_z', 'mom_3m_z', 'mom_6m_z', 'mom_12m_skip1m_z',
     # Volatility regime
     'atr_pct_z', 'hist_vol_20_z',
+    # Relative strength vs SPY
+    'rel_strength_5d_z', 'rel_strength_20d_z',
 ]
 
 SECTOR_MAP = {
@@ -87,6 +97,7 @@ CONTINUOUS_FEATURES = [
     'dist_sma_50', 'dist_sma_200', 'dollar_vol_log',
     'mom_1m', 'mom_3m', 'mom_6m', 'mom_12m_skip1m',
     'atr_pct', 'hist_vol_20',
+    'rel_strength_5d', 'rel_strength_20d',
 ]
 
 
@@ -100,16 +111,18 @@ def cross_sectional_zscore(series: pd.Series) -> pd.Series:
 
 def _migrate_quant_signals_schema(cursor: sqlite3.Cursor) -> None:
     """
-    Idempotent schema migration. Adds momentum and volatility columns to
-    quant_signals if they do not already exist. Safe to run on every backfill.
+    Idempotent schema migration. Adds all feature columns to quant_signals
+    if they do not already exist. Safe to run on every backfill.
     """
     new_columns = [
-        ("mom_1m",         "REAL"),
-        ("mom_3m",         "REAL"),
-        ("mom_6m",         "REAL"),
-        ("mom_12m_skip1m", "REAL"),
-        ("atr_pct",        "REAL"),
-        ("hist_vol_20",    "REAL"),
+        ("mom_1m",           "REAL"),
+        ("mom_3m",           "REAL"),
+        ("mom_6m",           "REAL"),
+        ("mom_12m_skip1m",   "REAL"),
+        ("atr_pct",          "REAL"),
+        ("hist_vol_20",      "REAL"),
+        ("rel_strength_5d",  "REAL"),
+        ("rel_strength_20d", "REAL"),
     ]
     for col_name, col_type in new_columns:
         try:
@@ -119,6 +132,33 @@ def _migrate_quant_signals_schema(cursor: sqlite3.Cursor) -> None:
             logger.info(f"Schema migration: added column '{col_name}' to quant_signals.")
         except sqlite3.OperationalError:
             pass  # Column already exists
+
+
+def _download_spy_benchmark(period: str = "2y") -> Optional[pd.DataFrame]:
+    """
+    Downloads SPY OHLCV data for use as a market benchmark in relative
+    strength calculations. Called once before the main ticker loop.
+
+    Returns a DataFrame with DatetimeIndex and a 'Close' column, or None
+    if the download fails (in which case relative strength features will
+    be skipped gracefully for all tickers).
+    """
+    try:
+        spy = yf.download('SPY', period=period, interval='1d',
+                          progress=False, auto_adjust=True)
+        if spy.empty:
+            logger.warning("SPY benchmark download returned empty. Relative strength features will be skipped.")
+            return None
+        if isinstance(spy.columns, pd.MultiIndex):
+            spy.columns = spy.columns.get_level_values(0)
+        spy = spy[['Close']].copy()
+        spy['spy_ret_5d']  = spy['Close'].pct_change(5)
+        spy['spy_ret_20d'] = spy['Close'].pct_change(20)
+        logger.info(f"SPY benchmark downloaded: {len(spy)} rows ({spy.index[0].date()} to {spy.index[-1].date()})")
+        return spy
+    except Exception as e:
+        logger.warning(f"SPY benchmark download failed: {e}. Relative strength features will be skipped.")
+        return None
 
 
 def get_target_tickers() -> List[str]:
@@ -155,8 +195,8 @@ def get_target_tickers() -> List[str]:
 
 def sync_ticker_metadata(tickers: List[str]) -> None:
     """
-    Ensures institutional structural data (sector) is available in
-    ticker_metadata. Idempotent — only fetches missing tickers.
+    Ensures sector metadata is available in ticker_metadata.
+    Idempotent — only fetches missing tickers.
     """
     logger.info(f"Syncing metadata for {len(tickers)} tickers...")
     conn   = get_connection()
@@ -207,21 +247,17 @@ def sync_ticker_metadata(tickers: List[str]) -> None:
 
 def run_historical_backfill() -> None:
     """
-    Downloads 2 years of daily OHLCV data per ticker, computes all technical
-    indicators, momentum factors, AND volatility regime features, then upserts
-    everything into quant_signals.
+    Downloads 2 years of daily OHLCV data per ticker, computes all features
+    (technical, momentum, volatility, relative strength), and upserts into
+    quant_signals.
 
-    VOLATILITY COMPUTATION STRATEGY:
-    ATR requires High and Low prices which are available in the yfinance
-    download but not stored in quant_signals. Both atr_pct and hist_vol_20
-    are computed HERE from raw OHLCV before dropna() and stored as columns,
-    so training and inference can read them directly without OHLCV access.
-
-    atr_pct   = AverageTrueRange(14) / Close          [noise envelope]
-    hist_vol_20 = rolling(20).std(log_returns) * √252  [annualised realised vol]
-
-    Row count: momentum's 252-day warmup remains the binding constraint.
-    Adding 14-day ATR and 20-day HV introduces no additional row loss.
+    RELATIVE STRENGTH STRATEGY:
+    SPY is downloaded once before the main ticker loop and stored as a
+    date-indexed Series of 5-day and 20-day returns. For each ticker, SPY
+    returns are aligned to the ticker's date index via reindex(). Date
+    mismatches (UK bank holidays vs US, ticker-specific halts) produce NaN
+    which are removed by the unified dropna() call. No additional row loss
+    beyond the existing 252-day momentum warmup constraint.
     """
     tickers = get_target_tickers()
     if not tickers:
@@ -234,6 +270,9 @@ def run_historical_backfill() -> None:
     cursor = conn.cursor()
     _migrate_quant_signals_schema(cursor)
     conn.commit()
+
+    # Download SPY benchmark once before the main loop
+    spy_df = _download_spy_benchmark(period="2y")
 
     log_notification("Info", f"ML Historical Backfill initiated for {len(tickers)} assets.")
 
@@ -274,13 +313,13 @@ def run_historical_backfill() -> None:
                 df['macd_signal'] = macd_ind.macd_signal()
                 df['macd_hist']   = macd_ind.macd_diff()
 
-                df['sma_50']      = ta.trend.SMAIndicator(
+                df['sma_50']     = ta.trend.SMAIndicator(
                     close=df['Close'], window=50
                 ).sma_indicator()
-                df['sma_200']     = ta.trend.SMAIndicator(
+                df['sma_200']    = ta.trend.SMAIndicator(
                     close=df['Close'], window=200
                 ).sma_indicator()
-                df['vol_sma_20']  = df['Volume'].rolling(window=20).mean()
+                df['vol_sma_20'] = df['Volume'].rolling(window=20).mean()
 
                 df['volume_surge']  = (
                     df['Volume'] > (df['vol_sma_20'] * 1.5)
@@ -299,31 +338,36 @@ def run_historical_backfill() -> None:
                 df.drop(columns=['mom_12m'], inplace=True)
 
                 # ── Volatility Regime Features ────────────────────────────────
-                # atr_pct: 14-day ATR normalised by close price.
-                # High ATR = wide noise envelope. The model uses this to
-                # distinguish a clean breakout (high momentum + moderate ATR)
-                # from a panic move (high momentum + extreme ATR) which is far
-                # less likely to continue in the signal direction.
                 df['atr_raw'] = ta.volatility.AverageTrueRange(
-                    high=df['High'],
-                    low=df['Low'],
-                    close=df['Close'],
-                    window=14
+                    high=df['High'], low=df['Low'], close=df['Close'], window=14
                 ).average_true_range()
                 df['atr_pct'] = df['atr_raw'] / df['Close']
                 df.drop(columns=['atr_raw'], inplace=True)
 
-                # hist_vol_20: 20-day annualised realised volatility from
-                # log returns. Complements ATR with a medium-horizon view.
-                # Using log returns (vs simple returns) is standard for
-                # volatility estimation as they are additive and better
-                # approximate the normal distribution in the tails.
                 log_returns       = np.log(df['Close'] / df['Close'].shift(1))
                 df['hist_vol_20'] = log_returns.rolling(window=20).std() * np.sqrt(252)
 
+                # ── Relative Strength vs SPY ──────────────────────────────────
+                # Compute ticker returns, then subtract aligned SPY returns.
+                # reindex() aligns SPY dates to the ticker's date index —
+                # any dates in SPY not present in the ticker (or vice versa)
+                # produce NaN and are dropped by the unified dropna() below.
+                if spy_df is not None:
+                    ticker_ret_5d  = df['Close'].pct_change(5)
+                    ticker_ret_20d = df['Close'].pct_change(20)
+
+                    spy_ret_5d_aligned  = spy_df['spy_ret_5d'].reindex(df.index)
+                    spy_ret_20d_aligned = spy_df['spy_ret_20d'].reindex(df.index)
+
+                    df['rel_strength_5d']  = ticker_ret_5d  - spy_ret_5d_aligned
+                    df['rel_strength_20d'] = ticker_ret_20d - spy_ret_20d_aligned
+                else:
+                    # SPY unavailable — store NULL so training SQL WHERE filter
+                    # excludes these rows rather than silently training on zeros
+                    df['rel_strength_5d']  = np.nan
+                    df['rel_strength_20d'] = np.nan
+
                 # ── Unified dropna ────────────────────────────────────────────
-                # 252-day momentum remains the binding warmup constraint.
-                # atr_pct (14-day) and hist_vol_20 (20-day) add no extra loss.
                 df.dropna(inplace=True)
                 if df.empty:
                     continue
@@ -350,6 +394,8 @@ def run_historical_backfill() -> None:
                         float(row['mom_12m_skip1m']),
                         float(row['atr_pct']),
                         float(row['hist_vol_20']),
+                        float(row['rel_strength_5d']),
+                        float(row['rel_strength_20d']),
                     ))
 
                 upsert_query = """
@@ -357,25 +403,28 @@ def run_historical_backfill() -> None:
                     (ticker, date, close_price, volume, rsi_14, macd, macd_signal,
                      macd_hist, sma_50, sma_200, volume_surge, bullish_cross,
                      mom_1m, mom_3m, mom_6m, mom_12m_skip1m,
-                     atr_pct, hist_vol_20)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     atr_pct, hist_vol_20,
+                     rel_strength_5d, rel_strength_20d)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(ticker, date) DO UPDATE SET
-                        close_price     = excluded.close_price,
-                        volume          = excluded.volume,
-                        rsi_14          = excluded.rsi_14,
-                        macd            = excluded.macd,
-                        macd_signal     = excluded.macd_signal,
-                        macd_hist       = excluded.macd_hist,
-                        sma_50          = excluded.sma_50,
-                        sma_200         = excluded.sma_200,
-                        volume_surge    = excluded.volume_surge,
-                        bullish_cross   = excluded.bullish_cross,
-                        mom_1m          = excluded.mom_1m,
-                        mom_3m          = excluded.mom_3m,
-                        mom_6m          = excluded.mom_6m,
-                        mom_12m_skip1m  = excluded.mom_12m_skip1m,
-                        atr_pct         = excluded.atr_pct,
-                        hist_vol_20     = excluded.hist_vol_20
+                        close_price      = excluded.close_price,
+                        volume           = excluded.volume,
+                        rsi_14           = excluded.rsi_14,
+                        macd             = excluded.macd,
+                        macd_signal      = excluded.macd_signal,
+                        macd_hist        = excluded.macd_hist,
+                        sma_50           = excluded.sma_50,
+                        sma_200          = excluded.sma_200,
+                        volume_surge     = excluded.volume_surge,
+                        bullish_cross    = excluded.bullish_cross,
+                        mom_1m           = excluded.mom_1m,
+                        mom_3m           = excluded.mom_3m,
+                        mom_6m           = excluded.mom_6m,
+                        mom_12m_skip1m   = excluded.mom_12m_skip1m,
+                        atr_pct          = excluded.atr_pct,
+                        hist_vol_20      = excluded.hist_vol_20,
+                        rel_strength_5d  = excluded.rel_strength_5d,
+                        rel_strength_20d = excluded.rel_strength_20d
                 """
                 cursor.executemany(upsert_query, records)
                 conn.commit()
@@ -411,15 +460,16 @@ def run_historical_backfill() -> None:
 
 def train_global_ml_model() -> None:
     """
-    Builds a 16-feature ensemble model predicting >3% returns over 5 trading
+    Builds an 18-feature ensemble model predicting >3% returns over 5 trading
     days using Anchored Walk-Forward Validation with Temporal Embargos.
 
-    FEATURE SET (16 features):
-        Technical:  rsi_14, macd_pct, macd_signal_pct, macd_hist_pct,
-                    volume_surge, bullish_cross, dist_sma_50, dist_sma_200,
-                    sector_code, dollar_vol_log
-        Momentum:   mom_1m, mom_3m, mom_6m, mom_12m_skip1m
-        Volatility: atr_pct, hist_vol_20
+    FEATURE SET (18 features):
+        Technical:         rsi_14, macd_pct, macd_signal_pct, macd_hist_pct,
+                           volume_surge, bullish_cross, dist_sma_50, dist_sma_200,
+                           sector_code, dollar_vol_log
+        Momentum:          mom_1m, mom_3m, mom_6m, mom_12m_skip1m
+        Volatility:        atr_pct, hist_vol_20
+        Relative Strength: rel_strength_5d, rel_strength_20d
     """
     logger.info("Initiating Global ML Model Training pipeline with Hyperparameter Optimization...")
     log_notification("Info", "Global ML Model Training pipeline initiated.")
@@ -433,13 +483,16 @@ def train_global_ml_model() -> None:
                    qs.sma_50, qs.sma_200, qs.volume_surge, qs.bullish_cross,
                    qs.mom_1m, qs.mom_3m, qs.mom_6m, qs.mom_12m_skip1m,
                    qs.atr_pct, qs.hist_vol_20,
+                   qs.rel_strength_5d, qs.rel_strength_20d,
                    tm.sector
             FROM quant_signals qs
             LEFT JOIN ticker_metadata tm ON qs.ticker = tm.ticker
-            WHERE qs.mom_1m          IS NOT NULL
-              AND qs.mom_12m_skip1m  IS NOT NULL
-              AND qs.atr_pct         IS NOT NULL
-              AND qs.hist_vol_20     IS NOT NULL
+            WHERE qs.mom_1m           IS NOT NULL
+              AND qs.mom_12m_skip1m   IS NOT NULL
+              AND qs.atr_pct          IS NOT NULL
+              AND qs.hist_vol_20      IS NOT NULL
+              AND qs.rel_strength_5d  IS NOT NULL
+              AND qs.rel_strength_20d IS NOT NULL
             ORDER BY qs.date ASC
         """
         df = pd.read_sql_query(query, conn)
@@ -465,7 +518,7 @@ def train_global_ml_model() -> None:
         df['sector_code']    = df['sector'].map(SECTOR_MAP).fillna(99).astype(int)
         df['dollar_vol_log'] = np.log1p(df['close_price'] * df['volume'])
 
-        # atr_pct, hist_vol_20, and all momentum columns already in df from SQL
+        # All stored features already in df from SQL
 
         df.replace([np.inf, -np.inf], np.nan, inplace=True)
 
@@ -623,12 +676,12 @@ def train_global_ml_model() -> None:
 
 def update_daily_ml_predictions(tickers: List[str]) -> None:
     """
-    Fetches the latest row for ALL tickers in the DB, computes cross-sectional
-    z-scores across the full population, then writes confidence scores back for
-    the requested ticker subset.
+    Fetches the latest row for ALL tickers in the DB with complete feature
+    data, computes cross-sectional z-scores across the full population, then
+    writes confidence scores back for the requested ticker subset.
 
-    Volatility and momentum features are read directly from stored DB values —
-    no OHLCV lookback required at inference time.
+    Relative strength, volatility, and momentum features are read directly
+    from stored DB values — no OHLCV or SPY lookback required at inference.
 
     Args:
         tickers: Tickers whose ml_confidence_score should be updated.
@@ -648,34 +701,36 @@ def update_daily_ml_predictions(tickers: List[str]) -> None:
         model = joblib.load(MODEL_PATH)
         conn  = get_connection()
 
-        # Fetch ALL tickers at the latest date that has complete feature data.
-        # Cross-sectional z-scores computed across this full population mirror
-        # the training methodology exactly.
+        # Fetch ALL tickers at the latest date with complete feature data.
+        # Z-scores are computed across this full population to replicate
+        # the training cross-sectional methodology exactly.
         query = """
             SELECT qs.ticker, qs.date, qs.close_price, qs.volume,
                    qs.rsi_14, qs.macd, qs.macd_signal, qs.macd_hist,
                    qs.sma_50, qs.sma_200, qs.volume_surge, qs.bullish_cross,
                    qs.mom_1m, qs.mom_3m, qs.mom_6m, qs.mom_12m_skip1m,
                    qs.atr_pct, qs.hist_vol_20,
+                   qs.rel_strength_5d, qs.rel_strength_20d,
                    tm.sector
             FROM quant_signals qs
             LEFT JOIN ticker_metadata tm ON qs.ticker = tm.ticker
             WHERE qs.date = (
                 SELECT MAX(date) FROM quant_signals
-                WHERE mom_1m IS NOT NULL
-                  AND atr_pct IS NOT NULL
-                  AND hist_vol_20 IS NOT NULL
+                WHERE mom_1m           IS NOT NULL
+                  AND atr_pct          IS NOT NULL
+                  AND rel_strength_5d  IS NOT NULL
+                  AND rel_strength_20d IS NOT NULL
             )
-              AND qs.mom_1m      IS NOT NULL
-              AND qs.atr_pct     IS NOT NULL
-              AND qs.hist_vol_20 IS NOT NULL
+              AND qs.mom_1m           IS NOT NULL
+              AND qs.atr_pct          IS NOT NULL
+              AND qs.rel_strength_5d  IS NOT NULL
+              AND qs.rel_strength_20d IS NOT NULL
         """
         df = pd.read_sql_query(query, conn)
 
         if df.empty:
             logger.warning(
-                "No data with complete volatility features found. "
-                "Re-run backfill first."
+                "No data with complete feature set found. Re-run backfill first."
             )
             conn.close()
             return
@@ -701,7 +756,7 @@ def update_daily_ml_predictions(tickers: List[str]) -> None:
 
         df.replace([np.inf, -np.inf], np.nan, inplace=True)
 
-        # ── Cross-sectional Z-scoring ─────────────────────────────────────────
+        # ── Cross-sectional Z-scoring across full population ──────────────────
         logger.info(
             f"Applying cross-sectional Z-scoring across {len(df)} tickers..."
         )
@@ -736,7 +791,7 @@ def update_daily_ml_predictions(tickers: List[str]) -> None:
         else:
             logger.warning(
                 "No valid payloads generated. Ensure tickers have been "
-                "backfilled with volatility data before running inference."
+                "backfilled with relative strength data before running inference."
             )
 
     except Exception as e:
