@@ -67,12 +67,12 @@
                         <h2 class="m-0 border-none p-0">Your Position (Global Aggregation)</h2>
                         <div class="flex-gap-40 font-16 mt-15 mb-20">
                             <div><span class="text-muted">Shares Owned:</span> <strong>{{ portfolio_math.global.shares }}</strong></div>
-                            <div><span class="text-muted">Avg VWAP Cost:</span> <strong>{{ "{:,.2f}".format(portfolio_math.global.buy_price) }} {{ stock.currency }}</strong></div>
-                            <div><span class="text-muted">Current Value:</span> <strong>{{ "{:,.2f}".format(portfolio_math.global.current_value) }} {{ stock.currency }}</strong></div>
+                            <div><span class="text-muted">Avg VWAP Cost:</span> <strong>{{ display_price(portfolio_math.global.buy_price, stock.currency) }}</strong></div>
+                            <div><span class="text-muted">Current Value:</span> <strong>{{ display_price(portfolio_math.global.current_value, stock.currency) }}</strong></div>
                             <div>
                                 <span class="text-muted"><abbr title="Theoretical P&L if you sold right now.">Unrealized P&L:</abbr></span> 
                                 <strong class="{% if portfolio_math.global.pnl > 0 %}success-text{% else %}warning-text{% endif %}">
-                                    {{ "{:,.2f}".format(portfolio_math.global.pnl) }} {{ stock.currency }} ({{ portfolio_math.global.pnl_pct|round(2) }}%)
+                                    {% if portfolio_math.global.pnl > 0 %}+{% endif %}{{ display_price(portfolio_math.global.pnl, stock.currency) }} ({{ portfolio_math.global.pnl_pct|round(2) }}%)
                                 </strong>
                             </div>
                         </div>
@@ -83,12 +83,12 @@
                             <div class="sub-account-row">
                                 <div class="sub-account-name">{{ acc.name }}</div>
                                 <div><span class="text-muted">Shares:</span> {{ acc.shares }}</div>
-                                <div><span class="text-muted">Cost Basis:</span> {{ "{:,.2f}".format(acc.buy_price) }} {{ stock.currency }}</div>
-                                <div><span class="text-muted">Value:</span> {{ "{:,.2f}".format(acc.current_value) }} {{ stock.currency }}</div>
+                                <div><span class="text-muted">Cost Basis:</span> {{ display_price(acc.buy_price, stock.currency) }}</div>
+                                <div><span class="text-muted">Value:</span> {{ display_price(acc.current_value, stock.currency) }}</div>
                                 <div>
                                     <span class="text-muted">P&L:</span> 
                                     <span class="{% if acc.pnl > 0 %}success-text{% else %}warning-text{% endif %}">
-                                        {{ "{:,.2f}".format(acc.pnl) }} {{ stock.currency }} ({{ acc.pnl_pct|round(2) }}%)
+                                        {% if acc.pnl > 0 %}+{% endif %}{{ display_price(acc.pnl, stock.currency) }} ({{ acc.pnl_pct|round(2) }}%)
                                     </span>
                                 </div>
                             </div>
@@ -117,17 +117,17 @@
                         </div>
 
                         {% set cp = cached_pulse.get(stock.ticker) %}
-                        <div class="live-asset-row font-18 mt-15 mb-15" data-ticker="{{ stock.ticker }}">
+                        <div class="live-asset-row font-18 mt-15 mb-15" data-ticker="{{ stock.ticker }}" data-currency="{{ stock.currency }}">
                             <strong>Current Price:</strong> 
                             <span id="price-{{ stock.ticker }}">
                                 {% if cp %}
-                                    {{ cp.price }}
+                                    {{ display_price(cp.price, stock.currency) }}
                                 {% elif stock.current_price is not none %}
-                                    {{ "{:,.2f}".format(stock.current_price) }}
+                                    {{ display_price(stock.current_price, stock.currency) }}
                                 {% else %}
                                     N/A
                                 {% endif %}
-                            </span> {{ stock.currency }}
+                            </span>
                             
                             <span id="change-{{ stock.ticker }}" class="ml-15 font-bold-16">
                                 {% if cp %}
