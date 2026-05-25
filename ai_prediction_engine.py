@@ -688,8 +688,8 @@ def train_global_ml_model() -> None:
         tscv = TimeSeriesSplit(n_splits=5)
 
         for train_date_idx, test_date_idx in tscv.split(unique_dates):
-            if len(train_date_idx) > 5:
-                train_dates = set(unique_dates[train_date_idx[:-5]])
+            if len(train_date_idx) > 10:
+                train_dates = set(unique_dates[train_date_idx[:-10]])
                 test_dates  = set(unique_dates[test_date_idx])
                 train_idx   = date_series.index[date_series.isin(train_dates)].tolist()
                 test_idx    = date_series.index[date_series.isin(test_dates)].tolist()
