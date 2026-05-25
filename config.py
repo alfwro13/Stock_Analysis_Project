@@ -55,6 +55,11 @@ DEFAULT_CONFIG = {
         "REFRESH_RATE": 60,
         "FREETRADE_ONLY_MODE": False
     },
+    "POSITION_SIZING": {
+        "ACCOUNT_VALUE": 500,
+        "RISK_PCT": 1.0,
+        "STOP_MULTIPLE": 2.0
+    },
     "FREETRADE_MAPPINGS": {
         "US_MICS": ["XNAS", "XNYS", "ARCX", "BATS", "PINK"],
         "EXCHANGES": {
@@ -183,7 +188,7 @@ def load_config() -> dict:
             
             # Safely merge nested dictionaries without deleting missing keys
             for key, val in data.items():
-                if key in ["NOTIFICATIONS", "SCHEDULING", "GHOSTFOLIO_ACCOUNTS", "UI_PREFERENCES", "FREETRADE_MAPPINGS"] and isinstance(val, dict):
+                if key in ["NOTIFICATIONS", "SCHEDULING", "GHOSTFOLIO_ACCOUNTS", "UI_PREFERENCES", "FREETRADE_MAPPINGS", "POSITION_SIZING"] and isinstance(val, dict):
                     for sub_key, sub_val in val.items():
                         if sub_key in merged_config[key]:
                             if isinstance(sub_val, dict) and isinstance(merged_config[key][sub_key], dict):

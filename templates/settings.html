@@ -712,35 +712,35 @@
             </div>
         </details>
 
-        <div class="settings-panel"></div>
-            <h4 class="settings-panel-header text-blue">📐 Position Sizing Defaults</h4>
-            <p class="settings-desc-sm">
+        <details class="settings-card">
+            <summary>📐 Position Sizing Defaults</summary>
+            <p class="settings-desc">
                 Defaults used across watchlist, portfolio, and stock detail pages for
                 risk-parity position sizing. Each trade is sized so that an adverse move
                 equal to <em>Stop Multiple</em> ATR units would lose exactly
                 <em>Risk per Trade %</em> of your account.
             </p>
-            <div class="flex-gap-15 mb-10">
+            <div class="form-group">
                 <div class="form-group flex-1">
                     <label>Account Value ({{ config.BASE_CURRENCY | default("GBP") }})</label>
                     <input type="number" id="POSITION_SIZING_ACCOUNT_VALUE"
                         value="{{ config.POSITION_SIZING.ACCOUNT_VALUE | default(10000) }}"
                         min="0" step="100">
                 </div>
-                <div class="form-group flex-1">
+                <div class="form-group">
                     <label>Risk per Trade (%)</label>
                     <input type="number" id="POSITION_SIZING_RISK_PCT"
                         value="{{ config.POSITION_SIZING.RISK_PCT | default(1.0) }}"
                         min="0.1" max="5" step="0.1">
                 </div>
-                <div class="form-group flex-1">
+                <div class="form-group">
                     <label>Stop Multiple (× ATR)</label>
                     <input type="number" id="POSITION_SIZING_STOP_MULTIPLE"
                         value="{{ config.POSITION_SIZING.STOP_MULTIPLE | default(2.0) }}"
                         min="1" max="5" step="0.5">
                 </div>
             </div>
-        </div>
+        </details>
 
         <details class="settings-card">
             <summary>🌐 Advanced Network & Socket Binding</summary>
