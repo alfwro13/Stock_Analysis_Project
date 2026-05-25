@@ -517,8 +517,6 @@ async def watchlist_page(request: Request, embed: bool = False):
         LEFT JOIN market_universe m ON s.ticker = m.ticker
     """)
     db_rows = cursor.fetchall()
-
-    position_sizing_context = _build_position_sizing_context(config_data, db_rows)
     
     cursor.execute("SELECT * FROM macro_regimes ORDER BY date DESC LIMIT 1")
     macro_row = cursor.fetchone()
@@ -547,7 +545,8 @@ async def watchlist_page(request: Request, embed: bool = False):
 
     config_data = load_config()
     freetrade_only = config_data.get("UI_PREFERENCES", {}).get("FREETRADE_ONLY_MODE", False)
-            
+    position_sizing_context = _build_position_sizing_context(config_data, db_rows)
+
     return templates.TemplateResponse(
         request=request, name="watchlist.html", 
         context={
