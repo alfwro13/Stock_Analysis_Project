@@ -13,7 +13,8 @@ import ta
 
 from xgboost import XGBClassifier
 from sklearn.ensemble import RandomForestClassifier, VotingClassifier
-from sklearn.metrics import accuracy_score, classification_report
+from sklearn.metrics import accuracy_score, classification_report, average_precision_score
+from sklearn.base import clone
 from sklearn.model_selection import TimeSeriesSplit, RandomizedSearchCV
 from sklearn.calibration import CalibratedClassifierCV
 
@@ -672,36 +673,81 @@ def train_global_ml_model() -> None:
         X_full = df[FEATURE_COLS]
         y_full = df['target']
 
-        neg_count_full        = (y_full == 0).sum()
-        pos_count_full        = (y_full == 1).sum()
-        scale_pos_weight_full = (
-            neg_count_full / pos_count_full if pos_count_full > 0 else 1.0
-        )
-
-        # ── Walk-Forward CV Splits ────────────────────────────────────────────
-        logger.info("Constructing Strict 5-Fold Walk-Forward Splits...")
-
+        # ── Three-Way Temporal Split ──────────────────────────────────────────
+        # Fixes BUG-04: calibration data leakage.
+        #
+        # The old approach used the same cv_splits for both hyperparameter
+        # search and calibration. The hyperparameters were selected to maximise
+        # PR-AUC on those exact folds, so the calibration was fitting isotonic
+        # regression on optimistically biased out-of-fold predictions.
+        #
+        # The correct approach uses three non-overlapping temporal regions:
+        #   Train  (60%): hyperparameter search via walk-forward CV
+        #   Calib  (20%): isotonic calibration — never seen during tuning
+        #   Test   (20%): true OOS evaluation — never touched during training
+        #
+        # The production model is then refitted on Train + Calib (80%) with
+        # the best hyperparameters found on Train only, and calibrated again
+        # on Calib only. The Test set is used solely for honest reporting.
         unique_dates = np.sort(df['date'].unique())
         date_series  = df['date'].reset_index(drop=True)
+        n_dates      = len(unique_dates)
 
-        cv_splits = []
-        tscv = TimeSeriesSplit(n_splits=5)
+        train_end = int(n_dates * 0.60)
+        calib_end = int(n_dates * 0.80)
 
-        for train_date_idx, test_date_idx in tscv.split(unique_dates):
-            if len(train_date_idx) > 10:
-                train_dates = set(unique_dates[train_date_idx[:-10]])
-                test_dates  = set(unique_dates[test_date_idx])
-                train_idx   = date_series.index[date_series.isin(train_dates)].tolist()
-                test_idx    = date_series.index[date_series.isin(test_dates)].tolist()
-                if train_idx and test_idx:
-                    cv_splits.append((train_idx, test_idx))
+        train_dates = set(unique_dates[:train_end])
+        calib_dates = set(unique_dates[train_end:calib_end])
+        test_dates  = set(unique_dates[calib_end:])
 
-        # ── Hyperparameter Grids ──────────────────────────────────────────────
+        train_idx = date_series.index[date_series.isin(train_dates)].tolist()
+        calib_idx = date_series.index[date_series.isin(calib_dates)].tolist()
+        test_idx  = date_series.index[date_series.isin(test_dates)].tolist()
+
+        X_train = X_full.iloc[train_idx]
+        y_train = y_full.iloc[train_idx]
+        X_calib = X_full.iloc[calib_idx]
+        y_calib = y_full.iloc[calib_idx]
+        X_test  = X_full.iloc[test_idx]
+        y_test  = y_full.iloc[test_idx]
+
+        logger.info(
+            f"Temporal split — Train: {len(X_train):,} rows "
+            f"({unique_dates[0]} → {unique_dates[train_end-1]})  |  "
+            f"Calib: {len(X_calib):,} rows  |  "
+            f"Test: {len(X_test):,} rows ({unique_dates[calib_end]} → {unique_dates[-1]})"
+        )
+
+        # scale_pos_weight derived from train set only to prevent test leakage
+        neg_count_train        = (y_train == 0).sum()
+        pos_count_train        = (y_train == 1).sum()
+        scale_pos_weight_train = (
+            neg_count_train / pos_count_train if pos_count_train > 0 else 1.0
+        )
+        pos_count_full = (y_full == 1).sum()
+
+        # ── Walk-Forward CV Splits (Train region only) ────────────────────────
+        logger.info("Constructing Strict 5-Fold Walk-Forward Splits on training region...")
+
+        train_unique_dates = np.sort(df.iloc[train_idx]['date'].unique())
+        train_date_series  = df.iloc[train_idx]['date'].reset_index(drop=True)
+
+        cv_splits_train = []
+        for tr_date_idx, te_date_idx in TimeSeriesSplit(n_splits=5).split(train_unique_dates):
+            if len(tr_date_idx) > 10:
+                tr_dates = set(train_unique_dates[tr_date_idx[:-10]])
+                te_dates = set(train_unique_dates[te_date_idx])
+                tr_idx   = train_date_series.index[train_date_series.isin(tr_dates)].tolist()
+                te_idx   = train_date_series.index[train_date_series.isin(te_dates)].tolist()
+                if tr_idx and te_idx:
+                    cv_splits_train.append((tr_idx, te_idx))
+
+        # ── Hyperparameter Search (Train region only) ─────────────────────────
         rf_base = RandomForestClassifier(
             class_weight='balanced', random_state=42, n_jobs=-1
         )
         xgb_base = XGBClassifier(
-            scale_pos_weight=scale_pos_weight_full,
+            scale_pos_weight=scale_pos_weight_train,
             random_state=42, n_jobs=-1, eval_metric='logloss'
         )
 
@@ -718,21 +764,21 @@ def train_global_ml_model() -> None:
             'colsample_bytree': [0.7, 0.9, 1.0]
         }
 
-        logger.info("Executing Randomized Search to find optimal structural boundaries...")
+        logger.info("Executing Randomized Search on training region only...")
 
         rf_search = RandomizedSearchCV(
             estimator=rf_base, param_distributions=rf_param_dist,
-            n_iter=10, cv=cv_splits, scoring='average_precision',
+            n_iter=10, cv=cv_splits_train, scoring='average_precision',
             random_state=42, n_jobs=-1
         )
         xgb_search = RandomizedSearchCV(
             estimator=xgb_base, param_distributions=xgb_param_dist,
-            n_iter=10, cv=cv_splits, scoring='average_precision',
+            n_iter=10, cv=cv_splits_train, scoring='average_precision',
             random_state=42, n_jobs=-1
         )
 
-        rf_search.fit(X_full, y_full)
-        xgb_search.fit(X_full, y_full)
+        rf_search.fit(X_train, y_train)
+        xgb_search.fit(X_train, y_train)
 
         best_rf  = rf_search.best_estimator_
         best_xgb = xgb_search.best_estimator_
@@ -740,27 +786,76 @@ def train_global_ml_model() -> None:
         logger.info(f"Optimal RF Params Found:  {rf_search.best_params_}")
         logger.info(f"Optimal XGB Params Found: {xgb_search.best_params_}")
 
-        avg_oos_pr_auc = (rf_search.best_score_ + xgb_search.best_score_) / 2.0
-        logger.info(
-            f"Averaged Optimized OOS Avg-Precision (PR-AUC): {avg_oos_pr_auc:.4f}  "
-            f"(random baseline = {pos_count_full / len(y_full):.4f})"
-        )
+        # CV score on train region only — informational, not the headline metric
+        train_cv_pr_auc = (rf_search.best_score_ + xgb_search.best_score_) / 2.0
+        logger.info(f"Train-region CV Avg-Precision: {train_cv_pr_auc:.4f}")
 
-        # ── Production Ensemble Assembly ──────────────────────────────────────
-        logger.info("Calibrating base estimators and assembling production Voting Classifier...")
+        # ── Calibration on held-out Calib region ─────────────────────────────
+        # cv='prefit' tells sklearn the estimator is already fitted.
+        # Isotonic regression is fitted on Calib predictions only —
+        # these rows were never seen during hyperparameter search.
+        logger.info("Calibrating on held-out calibration region (never seen during tuning)...")
 
         calibrated_rf  = CalibratedClassifierCV(
-            estimator=best_rf,  method='isotonic', cv=cv_splits
+            estimator=best_rf,  method='isotonic', cv='prefit'
         )
         calibrated_xgb = CalibratedClassifierCV(
-            estimator=best_xgb, method='isotonic', cv=cv_splits
+            estimator=best_xgb, method='isotonic', cv='prefit'
+        )
+        calibrated_rf.fit(X_calib,  y_calib)
+        calibrated_xgb.fit(X_calib, y_calib)
+
+        # ── True OOS Evaluation on Test region ───────────────────────────────
+        # Test region was never touched during training or calibration.
+        # This is the only honest PR-AUC number.
+        ensemble_probs_test = (
+            calibrated_rf.predict_proba(X_test)[:, 1] +
+            calibrated_xgb.predict_proba(X_test)[:, 1]
+        ) / 2.0
+        true_oos_pr_auc  = average_precision_score(y_test, ensemble_probs_test)
+        true_oos_baseline = float(y_test.mean())
+        logger.info(
+            f"✅ True OOS PR-AUC (clean holdout): {true_oos_pr_auc:.4f}  "
+            f"(random baseline = {true_oos_baseline:.4f})"
         )
 
+        # ── Production Model: refit on Train + Calib (80% of data) ───────────
+        # Best hyperparameters are fixed. We now refit on more data (Train +
+        # Calib) to give the production model as much signal as possible,
+        # then recalibrate on Calib again (cv='prefit').
+        logger.info("Refitting production model on Train + Calib region (80% of data)...")
+
+        X_prod = pd.concat([X_train, X_calib])
+        y_prod = pd.concat([y_train, y_calib])
+
+        final_rf  = clone(best_rf).fit(X_prod, y_prod)
+        final_xgb = clone(best_xgb).fit(X_prod, y_prod)
+
+        final_calibrated_rf  = CalibratedClassifierCV(
+            estimator=final_rf,  method='isotonic', cv='prefit'
+        )
+        final_calibrated_xgb = CalibratedClassifierCV(
+            estimator=final_xgb, method='isotonic', cv='prefit'
+        )
+        final_calibrated_rf.fit(X_calib,  y_calib)
+        final_calibrated_xgb.fit(X_calib, y_calib)
+
         production_ensemble = VotingClassifier(
-            estimators=[('rf', calibrated_rf), ('xgb', calibrated_xgb)],
+            estimators=[('rf', final_calibrated_rf), ('xgb', final_calibrated_xgb)],
             voting='soft'
         )
-        production_ensemble.fit(X_full, y_full)
+        # Estimators are already fitted — manually mark VotingClassifier as fitted
+        production_ensemble.estimators_       = [final_calibrated_rf, final_calibrated_xgb]
+        production_ensemble.classes_          = np.array([0, 1])
+        production_ensemble.n_features_in_    = X_prod.shape[1]
+
+        joblib.dump(production_ensemble, MODEL_PATH)
+        logger.info(f"✅ Production ML Ensemble saved to {MODEL_PATH}")
+        log_notification(
+            "Success",
+            f"ML Model trained — True OOS PR-AUC: {true_oos_pr_auc:.2%}  "
+            f"(baseline: {true_oos_baseline:.2%})."
+        )
 
         joblib.dump(production_ensemble, MODEL_PATH)
         logger.info(f"✅ Production ML Ensemble saved to {MODEL_PATH}")
