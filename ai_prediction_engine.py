@@ -862,8 +862,8 @@ def train_global_ml_model() -> None:
         logger.info(f"✅ Production ML Ensemble saved to {MODEL_PATH}")
         log_notification(
             "Success",
-            f"ML Model trained (PR-AUC: {avg_oos_pr_auc:.2%}, "
-            f"baseline: {pos_count_full/len(y_full):.2%})."
+            f"ML Model trained — True OOS PR-AUC: {true_oos_pr_auc:.2%}  "
+            f"(baseline: {true_oos_baseline:.2%})."
         )
 
     except Exception as e:
