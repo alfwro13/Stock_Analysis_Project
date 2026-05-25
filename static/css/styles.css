@@ -549,3 +549,125 @@ table.dataTable tbody tr td { color: #ccc; }
 /* Dynamic JS Pulse Dot States */
 .pulse-dot-live { background-color: #00ffcc !important; box-shadow: 0 0 5px #00ffcc !important; }
 .pulse-dot-stale { background-color: #aaa !important; box-shadow: 0 0 5px #aaa !important; }
+
+/* ──────────────────────────────────────────────────────────
+   Position Sizing — Stock Detail Panel
+   ────────────────────────────────────────────────────────── */
+.ps-panel {
+    background: rgba(20, 30, 45, 0.65);
+    border: 1px solid rgba(100, 150, 200, 0.25);
+    border-radius: 8px;
+    padding: 20px;
+    margin: 25px 0;
+}
+
+.ps-panel h2 {
+    margin-bottom: 6px !important;
+}
+
+.ps-subtitle {
+    color: #889;
+    font-size: 13px;
+    margin: 4px 0 18px;
+    font-style: italic;
+}
+
+.ps-inputs {
+    display: flex;
+    gap: 18px;
+    flex-wrap: wrap;
+    margin-bottom: 18px;
+    padding-bottom: 16px;
+    border-bottom: 1px dashed rgba(255, 255, 255, 0.08);
+}
+
+.ps-input-group {
+    flex: 1 1 180px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.ps-input-group label {
+    font-size: 12px;
+    color: #aab;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.ps-input-group input[type="number"] {
+    padding: 7px 10px;
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 4px;
+    color: #e8ecf0;
+    font-size: 14px;
+    font-family: inherit;
+}
+
+.ps-input-group input[type="number"]:focus {
+    border-color: rgba(100, 180, 255, 0.5);
+    outline: none;
+}
+
+.ps-results {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.ps-result-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 4px 0;
+    font-size: 14px;
+}
+
+.ps-label {
+    color: #99a;
+}
+
+.ps-value {
+    color: #e8ecf0;
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    font-weight: 500;
+}
+
+.ps-divider {
+    border: none;
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+    margin: 8px 0;
+}
+
+.ps-headline {
+    padding: 6px 0;
+}
+
+.ps-headline .ps-label {
+    color: #ccd;
+    font-weight: 600;
+    font-size: 15px;
+}
+
+.ps-shares {
+    font-size: 17px;
+    font-weight: 700;
+    color: #6cbf6c;
+    letter-spacing: 0.3px;
+}
+
+/* ──────────────────────────────────────────────────────────
+   Position Sizing — Table Cells (Watchlist / Portfolio)
+   ────────────────────────────────────────────────────────── */
+.ps-cell, .ps-cell-shares {
+    text-align: right;
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    font-size: 13px;
+    color: #cce0ff;
+}
+
+.ps-cell-shares {
+    font-weight: 600;
+    color: #b8d8b8;
+}
