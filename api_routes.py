@@ -656,7 +656,13 @@ async def get_screener_data():
             q.date, q.close_price, 
             q.volume, q.rsi_14, q.macd_hist, q.sma_50, q.sma_200, 
             q.volume_surge, q.bullish_cross,
-            q.ml_confidence_score, q.sentiment_score, q.var_95, q.cvar_95,
+            q.ml_confidence_score, q.var_95, q.cvar_95,
+                (SELECT qs2.sentiment_score
+                FROM quant_signals qs2
+                WHERE qs2.ticker = q.ticker
+                AND qs2.sentiment_score IS NOT NULL
+                ORDER BY qs2.date DESC
+                LIMIT 1) as sentiment_score,
             s.composite_score,
             m.is_freetrade, m.freetrade_subtitle, m.freetrade_url, COALESCE(p.quote_type, s.quote_type, 'EQUITY') as quote_type
         FROM quant_signals q

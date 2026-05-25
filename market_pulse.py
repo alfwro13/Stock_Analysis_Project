@@ -86,10 +86,15 @@ def get_cached_pulse_from_db(asset_tickers: List[str], refresh_rate: int) -> Dic
         
         # 2. Fetch Latest Sentiment Output
         query = f"""
-            SELECT ticker, sentiment_score 
-            FROM quant_signals 
-            WHERE ticker IN ({placeholders}) 
-            AND date = (SELECT MAX(date) FROM quant_signals qs WHERE qs.ticker = quant_signals.ticker)
+            SELECT ticker, sentiment_score
+            FROM quant_signals
+            WHERE ticker IN ({placeholders})
+            AND sentiment_score IS NOT NULL
+            AND date = (
+                SELECT MAX(date) FROM quant_signals qs
+                WHERE qs.ticker = quant_signals.ticker
+                    AND qs.sentiment_score IS NOT NULL
+            )
         """
         cursor.execute(query, all_tickers)
         sentiment_rows = cursor.fetchall()
