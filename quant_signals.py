@@ -743,7 +743,10 @@ class QuantEngine:
             notes_html += "</ul>"
             
             if stop_loss is not None:
-                notes_html += f"<strong>Risk Management:</strong> Mathematical <abbr title='Based on Average True Range and dynamically scaled by Historical Stability.'>Dynamic ATR Stop-Loss</abbr> is {stop_loss:,.2f} {currency}.<br><br>"
+                # Normalise Pence to Pounds purely for the UI note
+                disp_stop = stop_loss / 100.0 if currency == 'GBp' else stop_loss
+                disp_curr = 'GBP' if currency == 'GBp' else currency
+                notes_html += f"<strong>Risk Management:</strong> Mathematical <abbr title='Based on Average True Range and dynamically scaled by Historical Stability.'>Dynamic ATR Stop-Loss</abbr> is {disp_stop:,.2f} {disp_curr}.<br><br>"
             
             if not is_fund and rsi_val is not None and rsi_val > 70.0:
                 notes_html += "<strong><span class='risk-warning'>Warning:</span></strong> Stock is technically overbought (RSI > 70).<br>"
