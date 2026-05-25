@@ -186,63 +186,68 @@
                 </div>
                 
                 {# ───────── Position Sizing Panel (Risk-Parity) ───────── #}
-                <div id="position-sizing-panel" class="ps-panel" data-currency="{{ stock.currency }}">
-                    <h2 class="m-0 border-none p-0">📐 Position Sizing (Risk Parity)</h2>
-                    <p class="ps-subtitle">
-                        Equalises monetary risk across trades regardless of volatility.
-                        A more volatile stock will receive a smaller capital allocation.
-                    </p>
+                <details id="position-sizing-panel" class="ps-panel" data-currency="{{ stock.currency }}" style="padding: 0;">
+                    <summary class="profile-summary" style="padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255, 255, 255, 0.05);">
+                        <h2 class="m-0 border-none p-0" style="font-size: 18px; color: #fff;">📐 Position Sizing (Risk Parity)</h2>
+                        <span class="profile-hint" style="color: #4da6ff;">(Click to expand)</span>
+                    </summary>
+                    <div style="padding: 20px; padding-top: 15px;">
+                        <p class="ps-subtitle" style="margin-top: 0;">
+                            Equalises monetary risk across trades regardless of volatility.
+                            A more volatile stock will receive a smaller capital allocation.
+                        </p>
 
-                    <div class="ps-inputs">
-                        <div class="ps-input-group">
-                            <label for="ps-account-value">Account Size ({{ position_sizing.base_currency }})</label>
-                            <input type="number" id="ps-account-value"
-                                value="{{ position_sizing.config.ACCOUNT_VALUE }}" min="0" step="100">
+                        <div class="ps-inputs">
+                            <div class="ps-input-group">
+                                <label for="ps-account-value">Account Size ({{ position_sizing.base_currency }})</label>
+                                <input type="number" id="ps-account-value"
+                                    value="{{ position_sizing.config.ACCOUNT_VALUE }}" min="0" step="100">
+                            </div>
+                            <div class="ps-input-group">
+                                <label for="ps-risk-pct">Risk per Trade (%)</label>
+                                <input type="number" id="ps-risk-pct"
+                                    value="{{ position_sizing.config.RISK_PCT }}" min="0.1" max="5" step="0.1">
+                            </div>
+                            <div class="ps-input-group">
+                                <label for="ps-stop-multiple">Stop Multiple (× ATR)</label>
+                                <input type="number" id="ps-stop-multiple"
+                                    value="{{ position_sizing.config.STOP_MULTIPLE }}" min="1" max="5" step="0.5">
+                            </div>
                         </div>
-                        <div class="ps-input-group">
-                            <label for="ps-risk-pct">Risk per Trade (%)</label>
-                            <input type="number" id="ps-risk-pct"
-                                value="{{ position_sizing.config.RISK_PCT }}" min="0.1" max="5" step="0.1">
-                        </div>
-                        <div class="ps-input-group">
-                            <label for="ps-stop-multiple">Stop Multiple (× ATR)</label>
-                            <input type="number" id="ps-stop-multiple"
-                                value="{{ position_sizing.config.STOP_MULTIPLE }}" min="1" max="5" step="0.5">
+
+                        <div class="ps-results">
+                            <div class="ps-result-row">
+                                <span class="ps-label">Current price:</span>
+                                <span class="ps-value" id="ps-current-price">—</span>
+                            </div>
+                            <div class="ps-result-row">
+                                <span class="ps-label">ATR (14):</span>
+                                <span class="ps-value" id="ps-atr">—</span>
+                            </div>
+                            <div class="ps-result-row">
+                                <span class="ps-label">Stop loss at:</span>
+                                <span class="ps-value" id="ps-stop-loss">—</span>
+                            </div>
+                            <div class="ps-result-row">
+                                <span class="ps-label">Risk per share:</span>
+                                <span class="ps-value" id="ps-risk-per-share">—</span>
+                            </div>
+                            <hr class="ps-divider">
+                            <div class="ps-result-row ps-headline">
+                                <span class="ps-label">Recommended:</span>
+                                <span class="ps-value ps-shares" id="ps-shares">—</span>
+                            </div>
+                            <div class="ps-result-row">
+                                <span class="ps-label">Position value:</span>
+                                <span class="ps-value" id="ps-position-value">—</span>
+                            </div>
+                            <div class="ps-result-row">
+                                <span class="ps-label">At risk:</span>
+                                <span class="ps-value" id="ps-at-risk">—</span>
+                            </div>
                         </div>
                     </div>
-
-                    <div class="ps-results">
-                        <div class="ps-result-row">
-                            <span class="ps-label">Current price:</span>
-                            <span class="ps-value" id="ps-current-price">—</span>
-                        </div>
-                        <div class="ps-result-row">
-                            <span class="ps-label">ATR (14):</span>
-                            <span class="ps-value" id="ps-atr">—</span>
-                        </div>
-                        <div class="ps-result-row">
-                            <span class="ps-label">Stop loss at:</span>
-                            <span class="ps-value" id="ps-stop-loss">—</span>
-                        </div>
-                        <div class="ps-result-row">
-                            <span class="ps-label">Risk per share:</span>
-                            <span class="ps-value" id="ps-risk-per-share">—</span>
-                        </div>
-                        <hr class="ps-divider">
-                        <div class="ps-result-row ps-headline">
-                            <span class="ps-label">Recommended:</span>
-                            <span class="ps-value ps-shares" id="ps-shares">—</span>
-                        </div>
-                        <div class="ps-result-row">
-                            <span class="ps-label">Position value:</span>
-                            <span class="ps-value" id="ps-position-value">—</span>
-                        </div>
-                        <div class="ps-result-row">
-                            <span class="ps-label">At risk:</span>
-                            <span class="ps-value" id="ps-at-risk">—</span>
-                        </div>
-                    </div>
-                </div>
+                </details>
 
                 <script>
                     // Position sizing globals
