@@ -846,9 +846,9 @@ def train_global_ml_model() -> None:
             voting='soft'
         )
         # Estimators are already fitted — manually mark VotingClassifier as fitted
-        production_ensemble.estimators_       = [final_calibrated_rf, final_calibrated_xgb]
-        production_ensemble.classes_          = np.array([0, 1])
-        production_ensemble.n_features_in_    = X_prod.shape[1]
+        production_ensemble.estimators_ = [final_calibrated_rf, final_calibrated_xgb]
+        production_ensemble.classes_    = np.array([0, 1])
+        # n_features_in_ is auto-derived from estimators_ in sklearn 1.6+
 
         joblib.dump(production_ensemble, MODEL_PATH)
         logger.info(f"✅ Production ML Ensemble saved to {MODEL_PATH}")
