@@ -6,11 +6,12 @@ def record_baseline():
     print(f"Connecting to database at {DB_PATH}...")
     conn = sqlite3.connect(DB_PATH)
     
+    # Changed ml_confidence_score to ml_confidence to match your stock_signals schema
     query = """
-    SELECT ticker, ml_confidence_score, composite_score, overall_signal
+    SELECT ticker, ml_confidence, composite_score, overall_signal
     FROM stock_signals
-    WHERE ml_confidence_score IS NOT NULL
-    ORDER BY ml_confidence_score DESC
+    WHERE ml_confidence IS NOT NULL
+    ORDER BY ml_confidence DESC
     LIMIT 30;
     """
     
