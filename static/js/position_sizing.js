@@ -61,8 +61,14 @@ window.PositionSizing = (function () {
         };
     }
 
-    function formatCurrency(amount, currencyCode, locale) {
+function formatCurrency(amount, currencyCode, locale) {
         if (amount == null || isNaN(amount)) return "—";
+        
+        if (currencyCode === "GBp") {
+            amount = amount / 100.0;
+            currencyCode = "GBP";
+        }
+        
         if (!locale) {
             // Sensible locale defaults based on currency
             locale = ({

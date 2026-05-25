@@ -278,8 +278,14 @@
                             const priceEl = document.getElementById("price-" + ticker);
                             if (priceEl) {
                                 const txt = priceEl.textContent.replace(/[^0-9.\-]/g, "");
-                                const val = parseFloat(txt);
-                                if (!isNaN(val) && val > 0) return val;
+                                let val = parseFloat(txt);
+                                if (!isNaN(val) && val > 0) {
+                                    // Convert formatted GBP back to native Pence for the math engine
+                                    if (nativeCurrency === 'GBp') {
+                                        val = val * 100.0;
+                                    }
+                                    return val;
+                                }
                             }
                             return {{ stock.current_price | default(0) }} || null;
                         }
