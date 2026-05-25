@@ -102,15 +102,16 @@ def calculate_market_regime() -> None:
 
         # 3. Calculate Independent Composite Turbulence Indices
         # US: 70% Implied (Forward) / 30% EWMA Realized (Fast-Backward)
-        us_turbulence = (latest_vix * 0.7) + (latest_spy_vol * 0.3)
+        #us_turbulence = (latest_vix * 0.7) + (latest_spy_vol * 0.3)
+        us_turbulence = latest_spy_vol   # Pure EWMA — comparable to UK
         # UK: 100% EWMA Realized (due to lack of robust UK implied vol data on YF)
         uk_turbulence = latest_ftse_vol
         
         # 4. Classify Market Regimes
-        us_regime_label = 'Crash' if us_turbulence >= 30.0 else \
+        us_regime_label = 'Crash' if us_turbulence >= 35.0 else \
                           'Volatile' if us_turbulence >= 20.0 else 'Normal'
                           
-        uk_regime_label = 'Crash' if uk_turbulence >= 30.0 else \
+        uk_regime_label = 'Crash' if uk_turbulence >= 35.0 else \
                           'Volatile' if uk_turbulence >= 20.0 else 'Normal'
 
         # 5. Persist to Database (Strict Context Handling)
