@@ -385,7 +385,7 @@ class IntradayOrchestrator:
                 f"{cautions}\n"
                 f"📊 **Context:**\n"
                 f"• AI Confidence: {ml_conf}\n"
-                f"• Downside Log-Return VaR: {var}\n"
+                f"• Value at Risk (95%): {var}\n"
                 f"• NLP Sentiment: {sent}\n\n"
                 f"🔗 [View Breakdown]({url})"
             )

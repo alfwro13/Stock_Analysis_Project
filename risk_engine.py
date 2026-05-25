@@ -50,19 +50,18 @@ def calculate_tail_risk(ticker: str, target_date: Optional[str] = None) -> None:
         # Financial returns are leptokurtic (fat tails). Using historical percentiles
         # avoids the dangerous assumption of a normal distribution.
         alpha = 0.05
-        empirical_var_95_threshold = np.percentile(log_returns, alpha * 100)
-        
+        empirical_var_95_threshold = np.percentile(log_returns, alpha * 100)        
         # Express VaR as a positive float representing the percentage drop.
-        var_95 = float(-empirical_var_95_threshold) if empirical_var_95_threshold < 0 else 0.0
+        var_95 = float(1 - np.exp(empirical_var_95_threshold)) if empirical_var_95_threshold < 0 else 0.0
         
         # 4. Calculate Historical CVaR (Expected Shortfall) at 95% Confidence
         # Calculates the average of all actual daily returns that were worse than the VaR threshold.
         tail_returns = log_returns[log_returns <= empirical_var_95_threshold]
         
         if len(tail_returns) > 0:
-            cvar_95 = float(-np.mean(tail_returns))
+            # Convert average tail log-return to simple loss magnitude
+            cvar_95 = float(1 - np.exp(np.mean(tail_returns)))
         else:
-            # Fallback if no returns fall exactly below the percentile (extremely rare)
             cvar_95 = var_95
             
         # Prevent negative risk metrics in extreme outlier cases (e.g., asset only went straight up)
