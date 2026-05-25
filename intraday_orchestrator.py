@@ -119,23 +119,46 @@ class IntradayOrchestrator:
         conn.commit()
         conn.close()
 
-    def is_alert_suppressed(self, msg_type, ticker):
-        """Checks if we already triggered this specific alert type for this stock today."""
+    def is_alert_suppressed(self, msg_type, ticker, current_price=None):
+        """
+        Checks if we already triggered this specific alert type for this stock today.
+        If current_price is provided, it parses the SQLite log and allows re-triggering 
+        if the price has moved > 2.0% since the last alert, enabling continuous parabolic alerts.
+        """
         conn = get_connection()
         cursor = conn.cursor()
         
         today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
         
         cursor.execute('''
-            SELECT 1 FROM system_notifications 
+            SELECT message_text FROM system_notifications 
             WHERE message_type = ? 
             AND message_text LIKE ? 
             AND timestamp >= ?
+            ORDER BY timestamp DESC LIMIT 1
         ''', (msg_type, f"%{ticker}%", today_start))
         
         result = cursor.fetchone()
         conn.close()
-        return result is not None
+        
+        if result is None:
+            return False # No alert today, safe to fire
+            
+        if current_price is not None:
+            msg_text = result['message_text']
+            # Regex to catch both "**Price:** $150.00" and "**Current Yield:** 4.250%"
+            match = re.search(r'\*\*(?:Price|Current Yield):\*\*\s*[^\d]*([\d,]+\.?\d*)', msg_text)
+            if match:
+                try:
+                    last_price = float(match.group(1).replace(',', ''))
+                    price_diff = abs((current_price - last_price) / last_price) * 100.0
+                    # Override suppression if price shifted structurally since the last alert
+                    if price_diff >= 2.0:
+                        return False 
+                except Exception:
+                    pass
+                    
+        return True # Suppress if we already alerted and price hasn't moved significantly
 
     def _has_corporate_action_today(self, ticker: str) -> bool:
         """
@@ -216,6 +239,17 @@ class IntradayOrchestrator:
                 m_df.dropna(subset=['Close'], inplace=True)
                 if len(m_df) < 5: 
                     continue
+
+                # --- STALENESS / MARKET CLOSED CIRCUIT BREAKER ---
+                # If the last tick is older than 90 mins (5400s), the market is closed or halted.
+                latest_dt_aware = m_df.index[-1]
+                if latest_dt_aware.tz is not None:
+                    time_diff = (pd.Timestamp.now(tz='UTC') - latest_dt_aware.tz_convert('UTC')).total_seconds()
+                else:
+                    time_diff = (pd.Timestamp.now() - latest_dt_aware).total_seconds()
+                    
+                if time_diff > 5400:
+                    continue # Bypass stale data
                 
                 m_open = float(m_df['Close'].iloc[0])
                 m_curr = float(m_df['Close'].iloc[-1])
@@ -224,7 +258,7 @@ class IntradayOrchestrator:
                     m_spike = ((m_curr - m_open) / m_open) * 100.0
                     
                     # If yield spikes more than 1.5% intraday, it's a systemic shock
-                    if m_spike >= 1.5 and not self.is_alert_suppressed("Macro", m_ticker):
+                    if m_spike >= 1.5 and not self.is_alert_suppressed("Macro", m_ticker, m_curr):
                         name = "US 30Y Treasury" if m_ticker == "^TYX" else "UK 10Y Gilt"
                         msg = (
                             f"🚨 **SYSTEMIC MACRO ALERT: {name} SURGING** 🚨\n\n"
@@ -283,6 +317,20 @@ class IntradayOrchestrator:
                 if df_intraday.empty:
                     continue
 
+                # --- STALENESS / MARKET CLOSED CIRCUIT BREAKER ---
+                # Completely bypass evaluation if restarting the app over the weekend/holiday
+                latest_dt_aware = df_intraday.index[-1]
+                if latest_dt_aware.tz is not None:
+                    time_diff = (pd.Timestamp.now(tz='UTC') - latest_dt_aware.tz_convert('UTC')).total_seconds()
+                else:
+                    time_diff = (pd.Timestamp.now() - latest_dt_aware).total_seconds()
+                    
+                if time_diff > 5400: # 90 minutes
+                    # Market is closed, or asset is halted. Save the parquet but skip alert evaluation.
+                    df_intraday.index = df_intraday.index.tz_localize(None)
+                    df_intraday.to_parquet(INTRADAY_DIR / f"{ticker}_intraday.parquet", engine='pyarrow')
+                    continue
+
                 # Save Intraday Parquet for the Web Dashboard to keep it live
                 df_intraday.index = df_intraday.index.tz_localize(None)
                 df_intraday.to_parquet(INTRADAY_DIR / f"{ticker}_intraday.parquet", engine='pyarrow')
@@ -326,14 +374,14 @@ class IntradayOrchestrator:
                 
                 # --- EVALUATE CRASH ENGINE ---
                 if crash_enabled:
-                    if not self.is_alert_suppressed("Crash", ticker):
+                    if not self.is_alert_suppressed("Crash", ticker, current_price):
                         crash_alert = self.crash_engine.evaluate(ticker, current_price, df_combined, asset_meta)
                         if crash_alert:
                             crash_alerts_to_send.append((ticker, crash_alert, currency, asset_meta))
                 
                 # --- EVALUATE MOONSHOT ENGINE ---
                 if moonshot_enabled:
-                    if not self.is_alert_suppressed("Moonshot", ticker):
+                    if not self.is_alert_suppressed("Moonshot", ticker, current_price):
                         moonshot_alert = self.moonshot_engine.evaluate(ticker, current_price, df_combined, asset_meta, df_hist)
                         if moonshot_alert:
                             moonshot_alerts_to_send.append((ticker, moonshot_alert, currency, asset_meta))
@@ -350,7 +398,6 @@ class IntradayOrchestrator:
             var = f"{(meta.get('var_95') * 100):.2f}%" if meta.get('var_95') is not None else "N/A"
             sent = f"{meta.get('sentiment_score'):.3f}" if meta.get('sentiment_score') is not None else "N/A"
 
-            # [MATH-13 RESOLVED] Clarified metric as Downside Log-Return VaR inside alert template
             msg = (
                 f"🚨 **INTRADAY CRASH ALERT: {ticker}** 🚨\n\n"
                 f"**Price:** {formatted_price}\n"
@@ -377,7 +424,6 @@ class IntradayOrchestrator:
             for caution in alert.get('cautions', []):
                 cautions += f"⚠️ *{caution}*\n"
 
-            # [MATH-13 RESOLVED] Clarified metric as Downside Log-Return VaR inside alert template
             msg = (
                 f"🚀 **MOONSHOT ALERT: {ticker}** 🚀\n\n"
                 f"**Price:** {formatted_price}\n"
