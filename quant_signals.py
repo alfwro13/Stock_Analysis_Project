@@ -80,7 +80,7 @@ def get_candlestick_patterns(prev2: pd.Series, prev1: pd.Series, curr: pd.Series
         patterns.append({
             "name": "🐂 Bullish Engulfing",
             "tooltip": "Buyers completely overwhelmed sellers. The current green body fully engulfed the previous red body. Signals a potential reversal to the upside.",
-            "breakdown": "+10: <abbr title='Buyers completely overwhelmed sellers. The current green body fully engulfed the previous red body.'>Bullish Engulfing Pattern</abbr>",
+            "breakdown": "+15: <abbr title='Buyers completely overwhelmed sellers. The current green body fully engulfed the previous red body.'>Bullish Engulfing Pattern</abbr>",
             "score": 15
         })
         
@@ -102,7 +102,7 @@ def get_candlestick_patterns(prev2: pd.Series, prev1: pd.Series, curr: pd.Series
         patterns.append({
             "name": "🔨 Hammer Rejection",
             "tooltip": "Sellers tried to crash the price intraday, but institutional buyers violently rejected it and bought the dip. Indicates strong underlying support.",
-            "breakdown": "+5: <abbr title='Sellers tried to crash the price intraday, but institutional buyers violently rejected it. Indicates strong support.'>Bullish Hammer Candlestick</abbr>",
+            "breakdown": "+10: <abbr title='Sellers tried to crash the price intraday, but institutional buyers violently rejected it. Indicates strong support.'>Bullish Hammer Candlestick</abbr>",
             "score": 10
         })
         
