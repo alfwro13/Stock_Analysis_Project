@@ -396,9 +396,7 @@ async def portfolio_page(request: Request, account_id: str = "all", embed: bool 
         AND q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = s.ticker)
     """)
     db_rows = cursor.fetchall()
-
-    position_sizing_context = _build_position_sizing_context(config_data, db_rows)
-    
+  
     cursor.execute("SELECT * FROM macro_regimes ORDER BY date DESC LIMIT 1")
     macro_row = cursor.fetchone()
     macro_regime = dict(macro_row) if macro_row else None
@@ -411,7 +409,7 @@ async def portfolio_page(request: Request, account_id: str = "all", embed: bool 
     config_data = load_config()
     active_accounts = config_data.get("GHOSTFOLIO_ACCOUNTS", {}).get("active", [])
     discovered_accounts = config_data.get("GHOSTFOLIO_ACCOUNTS", {}).get("discovered", [])
-    
+    position_sizing_context = _build_position_sizing_context(config_data, db_rows)
     account_options = [{"id": "all", "name": "Global (All Accounts)"}]
     for acc in discovered_accounts:
         if acc["id"] in active_accounts:
