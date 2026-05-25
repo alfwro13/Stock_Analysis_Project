@@ -659,7 +659,8 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
     cursor = conn.cursor()
     cursor.execute('''
         SELECT s.*, p.business_summary,
-               q.ml_confidence_score, q.var_95, q.cvar_95, q.sentiment_score
+               q.ml_confidence_score, q.var_95, q.cvar_95, q.sentiment_score,
+               q.atr_pct
         FROM stock_signals s
         LEFT JOIN asset_profiles p ON s.ticker = p.ticker
         LEFT JOIN quant_signals q ON s.ticker = q.ticker
