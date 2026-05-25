@@ -15,6 +15,7 @@ from xgboost import XGBClassifier
 from sklearn.ensemble import RandomForestClassifier, VotingClassifier
 from sklearn.metrics import accuracy_score, classification_report, average_precision_score
 from sklearn.base import clone
+from sklearn.frozen import FrozenEstimator
 from sklearn.model_selection import TimeSeriesSplit, RandomizedSearchCV
 from sklearn.calibration import CalibratedClassifierCV
 
@@ -797,10 +798,10 @@ def train_global_ml_model() -> None:
         logger.info("Calibrating on held-out calibration region (never seen during tuning)...")
 
         calibrated_rf  = CalibratedClassifierCV(
-            estimator=best_rf,  method='isotonic', cv='prefit'
+            estimator=FrozenEstimator(best_rf),  method='isotonic'
         )
         calibrated_xgb = CalibratedClassifierCV(
-            estimator=best_xgb, method='isotonic', cv='prefit'
+            estimator=FrozenEstimator(best_xgb), method='isotonic'
         )
         calibrated_rf.fit(X_calib,  y_calib)
         calibrated_xgb.fit(X_calib, y_calib)
@@ -832,10 +833,10 @@ def train_global_ml_model() -> None:
         final_xgb = clone(best_xgb).fit(X_prod, y_prod)
 
         final_calibrated_rf  = CalibratedClassifierCV(
-            estimator=final_rf,  method='isotonic', cv='prefit'
+            estimator=FrozenEstimator(final_rf),  method='isotonic'
         )
         final_calibrated_xgb = CalibratedClassifierCV(
-            estimator=final_xgb, method='isotonic', cv='prefit'
+            estimator=FrozenEstimator(final_xgb), method='isotonic'
         )
         final_calibrated_rf.fit(X_calib,  y_calib)
         final_calibrated_xgb.fit(X_calib, y_calib)
