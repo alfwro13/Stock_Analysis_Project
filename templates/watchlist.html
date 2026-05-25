@@ -9,9 +9,16 @@
     <link rel="stylesheet" href="https://cdn.datatables.net/1.13.7/css/jquery.dataTables.min.css">
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
+    <script src="/static/js/position_sizing.js"></script>
 </head>
 <body class="body-watchlist">
-    
+
+    <script>
+        window.POSITION_SIZING_CONFIG = {{ position_sizing.config | tojson }};
+        window.BASE_CURRENCY = "{{ position_sizing.base_currency }}";
+        window.FX_RATES = {{ position_sizing.fx_rates | tojson }};
+    </script>
+
     {% if not embed %}
     <div class="header-container">
         <div>
@@ -123,6 +130,8 @@
                 <th><abbr title="Standard PEG Ratio">PEG</abbr></th>
                 <th><abbr title="Peter Lynch Fair Value">PL PEG</abbr></th>
                 <th>Stop-Loss</th>
+                <th><abbr title="Suggested position value in your base currency, sized to risk the configured % of your account">Pos. Size</abbr></th>
+                <th><abbr title="Whole share count corresponding to the suggested position">Shares</abbr></th>
                 <th>RSI</th>
                 <th>ML Conf</th>
                 <th>VaR (95%)</th>
@@ -186,6 +195,17 @@
                         {% set atr_val = (item.atr_stop_loss / 100.0) if item.currency == 'GBp' else item.atr_stop_loss %}
                         {{ "{:,.2f}".format(atr_val) }}
                     {% else %}N/A{% endif %}
+                </td>
+                <td class="ps-cell" 
+                    data-sort="0"
+                    data-entry-price="{{ item.current_price or 0 }}"
+                    data-atr-pct="{{ item.atr_pct if item.atr_pct is not none else '' }}"
+                    data-currency="{{ item.currency or 'USD' }}">
+                    —
+                </td>
+                <td class="ps-cell-shares" 
+                    data-sort="0">
+                    —
                 </td>
                 <td data-sort="{{ item.rsi_14 if item.rsi_14 is not none else -999 }}">{% if item.rsi_14 is not none %}{{ "{:,.1f}".format(item.rsi_14) }}{% else %}N/A{% endif %}</td>
 
@@ -260,6 +280,41 @@
             {% endfor %}
         </tbody>
     </table>
+
+    <script>
+        // Render position sizing cells after DOM is ready and DataTable has rendered
+        function renderPositionSizing() {
+            document.querySelectorAll(".ps-cell").forEach(function(cell) {
+                const entryPrice = parseFloat(cell.dataset.entryPrice);
+                const atrPctRaw  = cell.dataset.atrPct;
+                const atrPct     = atrPctRaw === "" ? null : parseFloat(atrPctRaw);
+                const currency   = cell.dataset.currency || "USD";
+                
+                const result = window.PositionSizing.calculateForRow(entryPrice, atrPct, currency);
+                
+                if (result.positionValue != null && result.shares != null && result.shares > 0) {
+                    cell.textContent = window.PositionSizing.formatCurrency(
+                        result.positionValue, window.BASE_CURRENCY
+                    );
+                    cell.setAttribute("data-sort", result.positionValue);
+                    
+                    const sharesCell = cell.nextElementSibling;
+                    if (sharesCell && sharesCell.classList.contains("ps-cell-shares")) {
+                        sharesCell.textContent = result.shares.toLocaleString();
+                        sharesCell.setAttribute("data-sort", result.shares);
+                    }
+                } else {
+                    cell.textContent = "—";
+                    const sharesCell = cell.nextElementSibling;
+                    if (sharesCell && sharesCell.classList.contains("ps-cell-shares")) {
+                        sharesCell.textContent = "—";
+                    }
+                }
+            });
+        }
+        
+        document.addEventListener("DOMContentLoaded", renderPositionSizing);
+    </script>
 
     <script>
         $(document).ready(function() {

@@ -9,6 +9,8 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from position_sizing import get_position_sizing_config
+
 from config import load_config, PORTFOLIO_PATH, WATCHLIST_PATH, HISTORICAL_DIR, INTRADAY_DIR, BASE_CURRENCY
 from database import get_connection
 from regime_engine import get_latest_regime
@@ -55,6 +57,45 @@ def get_unread_count() -> int:
         return count
     except Exception:
         return 0
+
+def _build_position_sizing_context(config_data: dict, db_rows) -> dict:
+    """
+    Builds a context dict for client-side position sizing.
+    Walks unique currencies in the result set, fetches FX rates once,
+    returns a JSON-serializable structure for embedding in templates.
+    """
+    from portfolio_service import get_rate_to_base
+    
+    base_currency = config_data.get("BASE_CURRENCY", "GBP")
+    
+    # Find all unique currencies in the result set
+    currencies = set()
+    for row in db_rows:
+        try:
+            cur = row["currency"] if "currency" in row.keys() else None
+        except Exception:
+            cur = None
+        if cur:
+            currencies.add(cur)
+    currencies.add(base_currency)
+    
+    # Fetch FX rates (native → base) for each currency seen
+    fx_rates = {}
+    for cur in currencies:
+        try:
+            rate = get_rate_to_base(cur)
+            if rate is not None and rate > 0:
+                fx_rates[cur] = float(rate)
+        except Exception:
+            pass
+    # Always provide a 1.0 entry for the base currency itself
+    fx_rates[base_currency] = 1.0
+    
+    return {
+        "config":   get_position_sizing_config(config_data),
+        "fx_rates": fx_rates,
+        "base_currency": base_currency,
+    }
 
 
 # --- COMPREHENSIVE MACRO GLOSSARY & POLARITY MAPPING ---
@@ -347,12 +388,16 @@ async def portfolio_page(request: Request, account_id: str = "all", embed: bool 
                q.ml_confidence_score, 
                q.var_95, 
                q.cvar_95, 
-               q.sentiment_score
+               q.sentiment_score,
+               q.atr_pct,
+               q.close_price as quant_close_price
         FROM stock_signals s
         LEFT JOIN quant_signals q ON s.ticker = q.ticker 
         AND q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = s.ticker)
     """)
     db_rows = cursor.fetchall()
+
+    position_sizing_context = _build_position_sizing_context(config_data, db_rows)
     
     cursor.execute("SELECT * FROM macro_regimes ORDER BY date DESC LIMIT 1")
     macro_row = cursor.fetchone()
@@ -448,7 +493,8 @@ async def portfolio_page(request: Request, account_id: str = "all", embed: bool 
             "summary_math": formatted_summary,
             "config": config_data,
             "cached_pulse": get_all_cached_pulse(),
-            "macro_regime": macro_regime
+            "macro_regime": macro_regime,
+            "position_sizing": position_sizing_context
         }
     )
 
@@ -464,6 +510,8 @@ async def watchlist_page(request: Request, embed: bool = False):
                q.var_95, 
                q.cvar_95, 
                q.sentiment_score,
+               q.atr_pct,
+               q.close_price as quant_close_price,
                m.is_freetrade
         FROM stock_signals s
         LEFT JOIN quant_signals q ON s.ticker = q.ticker 
@@ -471,6 +519,8 @@ async def watchlist_page(request: Request, embed: bool = False):
         LEFT JOIN market_universe m ON s.ticker = m.ticker
     """)
     db_rows = cursor.fetchall()
+
+    position_sizing_context = _build_position_sizing_context(config_data, db_rows)
     
     cursor.execute("SELECT * FROM macro_regimes ORDER BY date DESC LIMIT 1")
     macro_row = cursor.fetchone()
@@ -510,7 +560,8 @@ async def watchlist_page(request: Request, embed: bool = False):
             "config": config_data,
             "cached_pulse": get_all_cached_pulse(),
             "macro_regime": macro_regime,
-            "freetrade_only": freetrade_only
+            "freetrade_only": freetrade_only,
+            "position_sizing": position_sizing_context
         }
     )
 
@@ -878,7 +929,12 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
         )
     except Exception:
         intraday_html = "<p style='color:#888; font-style:italic;'>Intraday data unavailable.</p>"
-        
+    
+    config_data = load_config()
+    # Build minimal context — single ticker
+    fake_rows = [{"currency": stock_data.get("currency", "USD")}]
+    position_sizing_context = _build_position_sizing_context(config_data, fake_rows)
+
     return templates.TemplateResponse(
         request=request, name="stock_detail.html", 
         context={
@@ -897,6 +953,7 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
             "cached_pulse": get_all_cached_pulse(),
             "is_in_watchlist": is_in_watchlist,
             "data_status": data_status,
-            "last_updated_str": last_updated_str
+            "last_updated_str": last_updated_str,
+            "position_sizing": position_sizing_context
         }
     )
