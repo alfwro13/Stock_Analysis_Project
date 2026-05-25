@@ -215,35 +215,48 @@
                             </div>
                         </div>
 
-                        <div class="ps-results">
-                            <div class="ps-result-row">
-                                <span class="ps-label">Current price:</span>
-                                <span class="ps-value" id="ps-current-price">—</span>
+                        <div class="ps-split-grid">
+                            <div class="ps-results">
+                                <div class="ps-result-row">
+                                    <span class="ps-label">Current price:</span>
+                                    <span class="ps-value" id="ps-current-price">—</span>
+                                </div>
+                                <div class="ps-result-row">
+                                    <span class="ps-label">
+                                        <abbr title="Average True Range over the last 14 trading days (almost 3 weeks). It measures the average daily price swing to calculate a safe, volatility-adjusted stop-loss." class="help-abbr">ATR (14):</abbr>
+                                    </span>
+                                    <span class="ps-value" id="ps-atr">—</span>
+                                </div>
+                                <div class="ps-result-row">
+                                    <span class="ps-label">Stop loss at:</span>
+                                    <span class="ps-value" id="ps-stop-loss">—</span>
+                                </div>
+                                <div class="ps-result-row">
+                                    <span class="ps-label">Risk per share:</span>
+                                    <span class="ps-value" id="ps-risk-per-share">—</span>
+                                </div>
+                                <hr class="ps-divider">
+                                <div class="ps-result-row ps-headline">
+                                    <span class="ps-label">Recommended:</span>
+                                    <span class="ps-value ps-shares" id="ps-shares">—</span>
+                                </div>
+                                <div class="ps-result-row">
+                                    <span class="ps-label">Position value:</span>
+                                    <span class="ps-value" id="ps-position-value">—</span>
+                                </div>
+                                <div class="ps-result-row">
+                                    <span class="ps-label">At risk:</span>
+                                    <span class="ps-value" id="ps-at-risk">—</span>
+                                </div>
                             </div>
-                            <div class="ps-result-row">
-                                <span class="ps-label">ATR (14):</span>
-                                <span class="ps-value" id="ps-atr">—</span>
-                            </div>
-                            <div class="ps-result-row">
-                                <span class="ps-label">Stop loss at:</span>
-                                <span class="ps-value" id="ps-stop-loss">—</span>
-                            </div>
-                            <div class="ps-result-row">
-                                <span class="ps-label">Risk per share:</span>
-                                <span class="ps-value" id="ps-risk-per-share">—</span>
-                            </div>
-                            <hr class="ps-divider">
-                            <div class="ps-result-row ps-headline">
-                                <span class="ps-label">Recommended:</span>
-                                <span class="ps-value ps-shares" id="ps-shares">—</span>
-                            </div>
-                            <div class="ps-result-row">
-                                <span class="ps-label">Position value:</span>
-                                <span class="ps-value" id="ps-position-value">—</span>
-                            </div>
-                            <div class="ps-result-row">
-                                <span class="ps-label">At risk:</span>
-                                <span class="ps-value" id="ps-at-risk">—</span>
+                            
+                            <div class="ps-explanation">
+                                <h4 class="text-accent-cyan m-0 mb-10">📖 How it Works</h4>
+                                <p>This tool uses risk-parity to calculate exactly how many shares you should buy so you never lose more than your strict risk budget.</p>
+                                <p>First, it calculates your maximum allowed loss in cash based on your settings (e.g., risking 1% of a £10,000 account = £100 max loss).</p>
+                                <p>Next, it looks at the stock's recent volatility envelope to place a mathematically safe stop-loss tailored to this specific asset's normal daily price swings.</p>
+                                <p>It then divides your total cash risk budget by the risk-per-share (the distance from your entry price down to the stop-loss).</p>
+                                <p>The final result is an institutional position size that dynamically shrinks your share count for highly volatile stocks, and expands it for slow-moving, stable ones.</p>
                             </div>
                         </div>
                     </div>

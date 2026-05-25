@@ -671,3 +671,38 @@ table.dataTable tbody tr td { color: #ccc; }
     font-weight: 600;
     color: #b8d8b8;
 }
+
+/* ──────────────────────────────────────────────────────────
+   Position Sizing — Split Grid & Explanation
+   ────────────────────────────────────────────────────────── */
+.ps-split-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 25px;
+    align-items: stretch;
+}
+
+.ps-explanation {
+    background: rgba(0, 0, 0, 0.25);
+    padding: 16px;
+    border-radius: 6px;
+    border-left: 3px solid #00ffcc;
+    font-size: 13px;
+    color: #ccc;
+    line-height: 1.5;
+}
+
+.ps-explanation p {
+    margin-top: 0;
+    margin-bottom: 10px;
+}
+
+.ps-explanation p:last-child {
+    margin-bottom: 0;
+}
+
+@media (max-width: 768px) {
+    .ps-split-grid {
+        grid-template-columns: 1fr;
+    }
+}
