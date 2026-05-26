@@ -208,8 +208,16 @@ def create_us_inflation_chart(df_spy: pd.DataFrame, df_cpi: pd.DataFrame) -> str
 def create_uk_inflation_chart(df_ftse: pd.DataFrame, df_cpi: pd.DataFrame) -> str:
     """
     Renders UK Price Stability chart: CPI YoY % (orange, secondary axis) vs FTSE 100 (cyan, primary axis).
-    The raw ONS D7G7 series is ALREADY an annualized percentage rate, so no transformation is needed.
-    Reference lines plotted at 2% (BoE target) and 5% (danger zone).
+
+    Input contract:
+        df_cpi['value'] contains the ONS D7G7 series, which IS ALREADY the CPI Annual Rate (YoY %).
+        It is NOT a raw index level. A typical value is ~2.3 (meaning 2.3% YoY inflation).
+
+    Transformation:
+        Do NOT apply pct_change — that would compute YoY of YoY and produce garbage.
+        Just resample to month-start to collapse the daily forward-fill into a clean monthly line.
+
+    Reference lines: 2% (BoE target) and 5% (danger zone).
     """
     fig = make_subplots(specs=[[{"secondary_y": True}]])
 
@@ -223,14 +231,14 @@ def create_uk_inflation_chart(df_ftse: pd.DataFrame, df_cpi: pd.DataFrame) -> st
         )
 
     if not df_cpi.empty and 'value' in df_cpi.columns:
-        df_cpi_local = df_cpi.copy()
-        df_cpi_local['yoy'] = df_cpi_local['value']
-        df_cpi_local = df_cpi_local.dropna(subset=['yoy'])
+        df_cpi_local = df_cpi.copy().sort_index()
+        # D7G7 is already the YoY % annual rate. Resample only to collapse the daily forward-fill.
+        monthly_series = df_cpi_local['value'].resample('MS').first().dropna()
 
-        if not df_cpi_local.empty:
+        if not monthly_series.empty:
             fig.add_trace(
                 go.Scatter(
-                    x=df_cpi_local.index, y=df_cpi_local['yoy'], name="UK CPI YoY %",
+                    x=monthly_series.index, y=monthly_series.values, name="UK CPI YoY %",
                     line=dict(color="#ff8800", width=2, dash='dot'), connectgaps=True
                 ),
                 secondary_y=True
@@ -255,7 +263,7 @@ def create_uk_inflation_chart(df_ftse: pd.DataFrame, df_cpi: pd.DataFrame) -> st
     )
     fig.update_yaxes(title_text="FTSE 100 Index", secondary_y=False, showgrid=False)
     fig.update_yaxes(title_text="CPI YoY (%)", secondary_y=True, showgrid=False)
-    return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})alse})
+    return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
 
 
 def create_us_liquidity_chart(df_spy: pd.DataFrame, df_m2: pd.DataFrame) -> str:
