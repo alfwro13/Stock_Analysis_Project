@@ -942,9 +942,12 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
                 "s1": (P * 2) - prev_day['High'], 
                 "s2": P - (prev_day['High'] - prev_day['Low'])
             }
+    except FileNotFoundError:
+        df_macro = pd.DataFrame()
+        macro_html = "<div style='display:flex;flex-direction:column;align-items:center;justify-content:center;height:180px;gap:10px;color:#888;'><span style='font-size:2rem;'>📭</span><span style='font-weight:600;'>No historical data yet</span><span style='font-size:0.85rem;'>Press <strong>Refresh</strong> above to fetch price history for this asset.</span></div>"
     except Exception as e:
         df_macro = pd.DataFrame()
-        macro_html = f"<p style='color:#888; font-style:italic;'>Historical Chart Data Unavailable for this asset. Error: {e}</p>"
+        macro_html = f"<div style='display:flex;flex-direction:column;align-items:center;justify-content:center;height:180px;gap:8px;color:#888;'><span style='font-size:2rem;'>⚠️</span><span style='font-weight:600;'>Chart unavailable</span><span style='font-size:0.85rem;'>{type(e).__name__}: {e}</span></div>"
 
     live_pattern_name = live_pattern_tooltip = live_pattern_score = None
     try:
@@ -970,8 +973,10 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
             live_pattern_tooltip=live_pattern_tooltip,
             live_pattern_score=live_pattern_score
         )
+    except FileNotFoundError:
+        intraday_html = "<div style='display:flex;flex-direction:column;align-items:center;justify-content:center;height:120px;gap:10px;color:#888;'><span style='font-size:1.8rem;'>📭</span><span style='font-weight:600;'>No intraday data yet</span><span style='font-size:0.85rem;'>Press <strong>Refresh</strong> above to fetch today's intraday data.</span></div>"
     except Exception:
-        intraday_html = "<p style='color:#888; font-style:italic;'>Intraday data unavailable.</p>"
+        intraday_html = "<div style='display:flex;flex-direction:column;align-items:center;justify-content:center;height:120px;gap:8px;color:#888;'><span style='font-size:1.8rem;'>⚠️</span><span style='font-weight:600;'>Intraday data unavailable</span></div>"
     
     config_data = load_config()
     # Build minimal context — single ticker
