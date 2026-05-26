@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from datetime import datetime
 import yfinance as yf
-
+from config import load_config
 from database import get_connection
 from tools.network_engine import yahoo_connection_boundary
 
@@ -103,21 +103,43 @@ def run_profile_audit(limit: int = 250):
     cursor = conn.cursor()
 
     try:
-        cursor.execute("""
-            WITH AllTickers AS (
-                SELECT ticker FROM market_universe
-                UNION
-                SELECT ticker FROM stock_signals
-                UNION
-                SELECT ticker FROM quant_signals
-            )
-            SELECT a.ticker 
-            FROM AllTickers a
-            LEFT JOIN asset_profiles p ON a.ticker = p.ticker
-            WHERE p.ticker IS NULL 
-               OR p.last_verified_date < date('now', '-90 days')
-            LIMIT ?
-        """, (limit,))
+        config_data = load_config()
+        freetrade_only = config_data.get("UI_PREFERENCES", {}).get("FREETRADE_ONLY_MODE", False)
+
+        if freetrade_only:
+            # THE FIREWALL: Only audit active portfolio/watchlist assets OR tradable index constituents
+            cursor.execute("""
+                WITH AllTickers AS (
+                    SELECT ticker FROM market_universe WHERE is_index = 1 AND is_freetrade = 1
+                    UNION
+                    SELECT ticker FROM stock_signals
+                    UNION
+                    SELECT ticker FROM quant_signals
+                )
+                SELECT a.ticker 
+                FROM AllTickers a
+                LEFT JOIN asset_profiles p ON a.ticker = p.ticker
+                WHERE p.ticker IS NULL 
+                   OR p.last_verified_date < date('now', '-90 days')
+                LIMIT ?
+            """, (limit,))
+        else:
+            # LEGACY MODE: Audit everything
+            cursor.execute("""
+                WITH AllTickers AS (
+                    SELECT ticker FROM market_universe
+                    UNION
+                    SELECT ticker FROM stock_signals
+                    UNION
+                    SELECT ticker FROM quant_signals
+                )
+                SELECT a.ticker 
+                FROM AllTickers a
+                LEFT JOIN asset_profiles p ON a.ticker = p.ticker
+                WHERE p.ticker IS NULL 
+                   OR p.last_verified_date < date('now', '-90 days')
+                LIMIT ?
+            """, (limit,))
         
         rows = cursor.fetchall()
         tickers_to_update = [row['ticker'] for row in rows]

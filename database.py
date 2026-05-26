@@ -3,8 +3,7 @@ import sqlite3
 import logging
 from typing import List, Optional
 
-# Assuming DB_PATH is exported from a sibling config.py file
-from config import DB_PATH
+from config import DB_PATH, load_config
 
 # Configure robust module-level logging
 logging.basicConfig(
@@ -556,12 +555,22 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
 def get_universe_tickers() -> List[str]:
     """
     Connects to the SQLite DB and extracts all tracked universe tickers.
-    If the universe is empty, returns an empty list.
+    Enforces the Freetrade Firewall if enabled in UI settings.
     """
     try:
+        config_data = load_config()
+        freetrade_only = config_data.get("UI_PREFERENCES", {}).get("FREETRADE_ONLY_MODE", False)
+
         conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT ticker FROM market_universe")
+        
+        if freetrade_only:
+            # FIREWALL: Only process assets you can actually trade
+            cursor.execute("SELECT ticker FROM market_universe WHERE is_freetrade = 1")
+        else:
+            # LEGACY: Process everything
+            cursor.execute("SELECT ticker FROM market_universe")
+            
         tickers = [row['ticker'] for row in cursor.fetchall()]
         conn.close()
         return tickers
