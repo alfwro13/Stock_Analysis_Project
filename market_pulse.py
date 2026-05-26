@@ -17,6 +17,7 @@ INDEX_TICKERS: Dict[str, str] = {
     "^FTSE": "UK FTSE 100",
     "^FTMC": "UK FTSE 250",
     "GBPUSD=X": "GBP/USD",
+    "BZ=F": "Brent Crude",
     "UK10YG": "UK 10Y Gilt",
     "^GSPC": "US S&P 500",
     "^NDX": "US Nasdaq 100",
