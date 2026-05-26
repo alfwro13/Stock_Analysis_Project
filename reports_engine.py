@@ -172,7 +172,13 @@ def get_dividend_harvest_setups(min_yield: float = 0.02, min_score: int = 50) ->
     """
     Fetches high-yield dividend stocks, filtering out potential 'Yield Traps' 
     using a minimum quantitative score. Parses YF Unix timestamps dynamically.
-    (Note: Retains ETFs and Mutual funds as these are highly valid for dividend income).
+    
+    ARCHITECTURAL NOTE ON SQL JOINS: 
+    Unlike the momentum-based reports which use an INNER JOIN to restrict results 
+    strictly to the standard equity screener universe, this function deliberately 
+    uses a LEFT JOIN on `market_universe`. This ensures that obscure high-yield 
+    ETFs, Mutual Funds, or international OTC assets synced directly from the user's 
+    Ghostfolio portfolio are not dropped from the income report.
     """
     logger.info(f"Generating Dividend Harvest Report (Min Yield: {min_yield}, Min Score: {min_score})...")
     conn = None
