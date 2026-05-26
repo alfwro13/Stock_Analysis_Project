@@ -422,6 +422,7 @@
                     { data: 'dividend_yield', render: function(data) { return `<span class="positive-val">${(data * 100).toFixed(2)}%</span>`; } },
                     { data: 'ex_dividend_date' },
                     { data: 'composite_score', render: function(data) {
+                        if (data == null) return '-';
                         let cssClass = data >= 70 ? 'positive-val' : (data < 40 ? 'negative-val' : '');
                         return `<span class="${cssClass}">${data}</span>`;
                     } },
