@@ -615,13 +615,20 @@ class QuantEngine:
                 macd_signal_clean = df['MACD_Signal'].dropna()
                 
                 if len(macd_line_clean) >= 2 and len(macd_signal_clean) >= 2:
+                    # Enforce zero-line filter for bottom-fishing & align UI string
                     if macd_line_clean.iloc[-1] > macd_signal_clean.iloc[-1] and macd_line_clean.iloc[-2] <= macd_signal_clean.iloc[-2]:
-                        tags.append({
-                            "name": "⚡ MACD Bullish Cross", 
-                            "tooltip": "The MACD momentum line just crossed positive over the signal line."
-                        })
-                        # [MATH-09] Prevent score double counting against quant_engine.py screener
-                        breakdown.append("+0: <abbr title='MACD Bullish Crossover (Captured by Engine DB Flag)'>MACD Bullish Crossover</abbr>")
+                        if macd_line_clean.iloc[-1] < 0:
+                            tags.append({
+                                "name": "⚡ MACD Reversal",
+                                "tooltip": "The MACD momentum line just crossed positive over the signal line while below the zero line (Oversold Bottom-Fishing)."
+                            })
+                            breakdown.append("+0: <abbr title='MACD Reversal Below Zero (Captured by Engine DB Flag)'>MACD Reversal</abbr>")
+                        else:
+                            tags.append({
+                                "name": "⚡ MACD Bullish Cross",
+                                "tooltip": "The MACD momentum line just crossed positive over the signal line while above the zero line (Trend Continuation)."
+                            })
+                            breakdown.append("+0: <abbr title='MACD Bullish Cross Above Zero (Captured by Engine DB Flag)'>MACD Bullish Cross</abbr>")
 
                 if not is_fund:
                     if is_confirmed_breakout:
