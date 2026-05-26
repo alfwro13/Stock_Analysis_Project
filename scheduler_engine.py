@@ -25,6 +25,8 @@ from ai_prediction_engine import train_global_ml_model, update_daily_ml_predicti
 from risk_engine import update_all_tail_risks
 from freetrade_engine import sync_freetrade_universe
 
+from universe_fundamentals_engine import run_universe_fundamentals_sync
+
 # Import new Macro Engines
 from macro_calendar_engine import update_macro_calendar
 from macro_data_engine import update_macro_indicators
@@ -220,6 +222,18 @@ def run_fundamentals_profiler():
     except Exception as e:
         logger.error(f"Fundamentals Profiler Failed: {e}")
         log_sched_notification("Error", f"Fundamentals Profiler failed: {e}")
+
+def run_universe_fundamentals_sync_job():
+    """Fetches fundamental financial data for all FTSE100/S&P500 index stocks."""
+    log_sched_notification("Scheduler", "Started Universe Fundamentals Sync...")
+    try:
+        config = load_config()
+        batch_size = config.get("SCHEDULING", {}).get("UNIVERSE_FUNDAMENTALS", {}).get("BATCH_SIZE", 50)
+        run_universe_fundamentals_sync(batch_size=int(batch_size))
+        log_sched_notification("Success", "Universe Fundamentals Sync completed successfully.")
+    except Exception as e:
+        logger.error(f"Universe Fundamentals Sync Failed: {e}")
+        log_sched_notification("Error", f"Universe Fundamentals Sync failed: {e}")
 
 # --- MODULAR ML PIPELINE RUNNERS ---
 
@@ -644,6 +658,23 @@ def reload_scheduler():
             logger.info(f"Fundamentals Profiler scheduled for {profiler_days} at {profiler_time}")
         except Exception as e:
             logger.error(f"Failed to schedule Fundamentals Profiler: {e}")
+
+    # 17. Universe Fundamentals Sync
+    uni_fund_cfg = scheduling.get("UNIVERSE_FUNDAMENTALS", {})
+    if uni_fund_cfg.get("ENABLED", False):
+        uni_fund_days_list = uni_fund_cfg.get("DAYS", ["sat"])
+        uni_fund_days = ",".join(uni_fund_days_list) if uni_fund_days_list else "sat"
+        uni_fund_time = uni_fund_cfg.get("TIME", "06:00")
+        try:
+            hour, minute = map(int, uni_fund_time.split(':'))
+            scheduler.add_job(
+                run_universe_fundamentals_sync_job,
+                CronTrigger(day_of_week=uni_fund_days, hour=hour, minute=minute),
+                id='universe_fundamentals_job'
+            )
+            logger.info(f"Universe Fundamentals Sync scheduled for {uni_fund_days} at {uni_fund_time}")
+        except Exception as e:
+            logger.error(f"Failed to schedule Universe Fundamentals Sync: {e}")
 
 
 def start_scheduler():

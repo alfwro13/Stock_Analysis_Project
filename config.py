@@ -80,6 +80,12 @@ DEFAULT_CONFIG = {
             "TIME": "05:00",
             "BATCH_SIZE": 250
         },
+        "UNIVERSE_FUNDAMENTALS": {
+            "ENABLED": False,
+            "DAYS": ["sat"],
+            "TIME": "06:00",
+            "BATCH_SIZE": 50
+        },
         "GHOSTFOLIO_SYNC": {
             "ENABLED": False,
             "FREQUENCY": "mon-fri",

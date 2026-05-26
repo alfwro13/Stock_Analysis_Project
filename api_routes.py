@@ -20,7 +20,7 @@ from pydantic import BaseModel
 
 from config import load_config, SECRETS_PATH, DATA_DIR, BASE_DIR
 from database import get_connection, get_universe_tickers
-from scheduler_engine import run_update_pipeline, run_ghostfolio_sync, run_freetrade_sync, reload_scheduler, run_sentiment_scan, run_index_scraper, run_fundamentals_profiler
+from scheduler_engine import run_update_pipeline, run_ghostfolio_sync, run_freetrade_sync, reload_scheduler, run_sentiment_scan, run_index_scraper, run_fundamentals_profiler, run_universe_fundamentals_sync_job
 from ghostfolio_sync import GhostfolioSyncEngine
 from market_pulse import get_cached_pulse_from_db, fetch_and_save_pulse
 from sentiment_engine import run_nextcloud_alert, update_all_sentiment
@@ -291,8 +291,16 @@ async def trigger_sync_indices_endpoint(background_tasks: BackgroundTasks):
 async def trigger_sync_profiler_endpoint(background_tasks: BackgroundTasks):
     background_tasks.add_task(run_fundamentals_profiler)
     return JSONResponse(content={
-        "status": "success", 
+        "status": "success",
         "message": "Fundamentals Profiler initiated in the background. Check System Notifications for progress."
+    })
+
+@api_router.post("/universe/sync-fundamentals")
+async def trigger_universe_fundamentals_endpoint(background_tasks: BackgroundTasks):
+    background_tasks.add_task(run_universe_fundamentals_sync_job)
+    return JSONResponse(content={
+        "status": "success",
+        "message": "Universe Fundamentals Sync initiated in the background. Fetching financial data for all FTSE100/S&P500 index stocks. Check System Notifications for progress."
     })
 
 @api_router.post("/trigger-universe-quant-scan")
