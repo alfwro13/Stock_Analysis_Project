@@ -152,6 +152,112 @@ def create_macro_chart(df, df_baseline, ticker):
 
     return fig.to_html(full_html=False, include_plotlyjs='cdn', config=clean_config)
 
+def create_us_inflation_chart(df_spy: pd.DataFrame, df_cpi: pd.DataFrame) -> str:
+    """
+    Renders US Price Stability chart: CPI YoY % (orange, secondary axis) vs S&P 500 (cyan, primary axis).
+    Computes YoY inflation from the raw CPIAUCSL level index using a 12-period (monthly) percent change.
+    Reference lines plotted at 2% (Fed target) and 5% (danger zone).
+    """
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+
+    if not df_spy.empty and 'Close' in df_spy.columns:
+        fig.add_trace(
+            go.Scatter(
+                x=df_spy.index, y=df_spy['Close'], name="S&P 500",
+                line=dict(color="#00ffcc", width=2), connectgaps=True
+            ),
+            secondary_y=False
+        )
+
+    if not df_cpi.empty and 'value' in df_cpi.columns:
+        df_cpi_local = df_cpi.copy()
+        df_cpi_local['yoy'] = df_cpi_local['value'].pct_change(periods=12) * 100.0
+        df_cpi_local = df_cpi_local.dropna(subset=['yoy'])
+
+        if not df_cpi_local.empty:
+            fig.add_trace(
+                go.Scatter(
+                    x=df_cpi_local.index, y=df_cpi_local['yoy'], name="US CPI YoY %",
+                    line=dict(color="#ff8800", width=2, dash='dot'), connectgaps=True
+                ),
+                secondary_y=True
+            )
+
+    fig.add_hline(
+        y=2.0, secondary_y=True, line_dash="dash", line_color="#00ff00",
+        annotation_text="Target (2.0%)", annotation_position="bottom right",
+        annotation_font_color="#00ff00"
+    )
+    fig.add_hline(
+        y=5.0, secondary_y=True, line_dash="dash", line_color="#ff4d4d",
+        annotation_text="Danger Zone (>5.0%)", annotation_position="top right",
+        annotation_font_color="#ff4d4d"
+    )
+
+    fig.update_layout(
+        title=dict(text="US Price Stability: CPI YoY vs S&P 500", x=0.5, xanchor='center'),
+        template="plotly_dark", height=350,
+        margin=dict(l=20, r=20, t=50, b=20), hovermode="x unified",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+    )
+    fig.update_yaxes(title_text="S&P 500 Index", secondary_y=False, showgrid=False)
+    fig.update_yaxes(title_text="CPI YoY (%)", secondary_y=True, showgrid=False)
+    return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
+
+
+def create_uk_inflation_chart(df_ftse: pd.DataFrame, df_cpi: pd.DataFrame) -> str:
+    """
+    Renders UK Price Stability chart: CPI YoY % (orange, secondary axis) vs FTSE 100 (cyan, primary axis).
+    Computes YoY inflation from the raw ONS D7G7 level index using a 12-period (monthly) percent change.
+    Reference lines plotted at 2% (BoE target) and 5% (danger zone).
+    """
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+
+    if not df_ftse.empty and 'Close' in df_ftse.columns:
+        fig.add_trace(
+            go.Scatter(
+                x=df_ftse.index, y=df_ftse['Close'], name="FTSE 100",
+                line=dict(color="#00ffff", width=2), connectgaps=True
+            ),
+            secondary_y=False
+        )
+
+    if not df_cpi.empty and 'value' in df_cpi.columns:
+        df_cpi_local = df_cpi.copy()
+        df_cpi_local['yoy'] = df_cpi_local['value'].pct_change(periods=12) * 100.0
+        df_cpi_local = df_cpi_local.dropna(subset=['yoy'])
+
+        if not df_cpi_local.empty:
+            fig.add_trace(
+                go.Scatter(
+                    x=df_cpi_local.index, y=df_cpi_local['yoy'], name="UK CPI YoY %",
+                    line=dict(color="#ff8800", width=2, dash='dot'), connectgaps=True
+                ),
+                secondary_y=True
+            )
+
+    fig.add_hline(
+        y=2.0, secondary_y=True, line_dash="dash", line_color="#00ff00",
+        annotation_text="Target (2.0%)", annotation_position="bottom right",
+        annotation_font_color="#00ff00"
+    )
+    fig.add_hline(
+        y=5.0, secondary_y=True, line_dash="dash", line_color="#ff4d4d",
+        annotation_text="Danger Zone (>5.0%)", annotation_position="top right",
+        annotation_font_color="#ff4d4d"
+    )
+
+    fig.update_layout(
+        title=dict(text="UK Price Stability: CPI YoY vs FTSE 100", x=0.5, xanchor='center'),
+        template="plotly_dark", height=350,
+        margin=dict(l=20, r=20, t=50, b=20), hovermode="x unified",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+    )
+    fig.update_yaxes(title_text="FTSE 100 Index", secondary_y=False, showgrid=False)
+    fig.update_yaxes(title_text="CPI YoY (%)", secondary_y=True, showgrid=False)
+    return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
+
+
 def create_us_liquidity_chart(df_spy: pd.DataFrame, df_m2: pd.DataFrame) -> str:
     fig = make_subplots(specs=[[{"secondary_y": True}]])
     if not df_spy.empty and 'Close' in df_spy.columns:
@@ -162,7 +268,7 @@ def create_us_liquidity_chart(df_spy: pd.DataFrame, df_m2: pd.DataFrame) -> str:
     fig.update_layout(
         title=dict(text="US Liquidity: S&P 500 vs M2 Money Supply", x=0.5, xanchor='center'),
         template="plotly_dark", height=350,
-        margin=dict(l=20, r=20, t=50, b=20), hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5)
+        margin=dict(l=20, r=20, t=50, b=20), hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
     fig.update_yaxes(title_text="S&P 500 Index", secondary_y=False, showgrid=False)
     fig.update_yaxes(title_text="M2 Supply (Trillions)", secondary_y=True, showgrid=False)
@@ -193,7 +299,7 @@ def create_uk_liquidity_chart(df_ftse: pd.DataFrame, df_m4: pd.DataFrame) -> str
     fig.update_layout(
         title=dict(text="UK Liquidity: FTSE 100 vs M4 Money Supply", x=0.5, xanchor='center'),
         template="plotly_dark", height=350,
-        margin=dict(l=20, r=20, t=50, b=20), hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5)
+        margin=dict(l=20, r=20, t=50, b=20), hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
     fig.update_yaxes(title_text="FTSE 100 Index", secondary_y=False, showgrid=False)
     fig.update_yaxes(title_text="M4 Supply (Billions)", secondary_y=True, showgrid=False)
@@ -248,7 +354,8 @@ def create_yield_curve_chart(df_curve: pd.DataFrame) -> str:
         template="plotly_dark",
         height=350,
         margin=dict(l=20, r=20, t=50, b=20),
-        hovermode="x unified"
+        hovermode="x unified",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
     fig.update_yaxes(title_text="Spread (%)", showgrid=True, gridcolor="#333333")
 

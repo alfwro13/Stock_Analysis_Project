@@ -200,6 +200,19 @@
             </div>
 
             <div class="sentiment-module module-default">
+                <div id="us-inflation-wrapper" class="chart-wrapper">
+                    <button class="fullscreen-btn" onclick="toggleFullscreen('us-inflation-wrapper')">⛶ Fullscreen</button>
+                    {{ us_inflation_html | safe }}
+                </div>
+                <div class="sentiment-footer">
+                    <span class="sentiment-footer-title">US Inflation (CPI YoY) Explained:</span>
+                    <div class="sentiment-footer-text">
+                        Inflation is the rate at which everything around you is becoming more expensive. The Federal Reserve targets 2% as the healthy "sweet spot". When CPI spikes above 5%, the Fed panics and aggressively raises interest rates to cool the economy — which historically crushes the stock market. A falling CPI line is rocket fuel for risk assets.
+                    </div>
+                </div>
+            </div>
+
+            <div class="sentiment-module module-default">
                 <div id="us-credit-wrapper" class="chart-wrapper">
                     <button class="fullscreen-btn" onclick="toggleFullscreen('us-credit-wrapper')">⛶ Fullscreen</button>
                     {{ us_credit_html | safe }}
@@ -300,6 +313,19 @@
                     <span class="sentiment-footer-title">UK Liquidity (M4) Explained:</span>
                     <div class="sentiment-footer-text">
                         M4 represents the total cash flowing through the UK economy. A growing money supply acts as a safety net, supporting business expansion and stock market rallies. A contracting money supply pulls that safety net away, making it very hard for the market to grow.
+                    </div>
+                </div>
+            </div>
+
+            <div class="sentiment-module module-default">
+                <div id="uk-inflation-wrapper" class="chart-wrapper">
+                    <button class="fullscreen-btn" onclick="toggleFullscreen('uk-inflation-wrapper')">⛶ Fullscreen</button>
+                    {{ uk_inflation_html | safe }}
+                </div>
+                <div class="sentiment-footer">
+                    <span class="sentiment-footer-title">UK Inflation (CPI YoY) Explained:</span>
+                    <div class="sentiment-footer-text">
+                        CPI tracks the average rise in UK consumer prices — from groceries to energy bills. The Bank of England's mandate is to keep this at 2%. When inflation breaks above 5%, the BoE is forced to hike rates aggressively, increasing borrowing costs for UK households and businesses, which acts as a major drag on the FTSE 100. Falling inflation gives the BoE room to cut rates and fuel equity rallies.
                     </div>
                 </div>
             </div>

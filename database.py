@@ -518,7 +518,8 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
     required_indicator_columns = {
         'us_m2': 'REAL', 'us_jobless_claims': 'REAL', 'us_high_yield_spread': 'REAL',
         'us_yield_curve': 'REAL', 'uk_m4': 'REAL', 'uk_corporate_spread': 'REAL',
-        'uk_cpi_inflation': 'REAL', 'uk_claimant_count': 'REAL'
+        'uk_cpi_inflation': 'REAL', 'uk_claimant_count': 'REAL',
+        'us_cpi_inflation': 'REAL'
     }
 
     for col_name, data_type in required_indicator_columns.items():

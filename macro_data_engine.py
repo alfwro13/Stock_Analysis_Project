@@ -41,7 +41,8 @@ def setup_database() -> None:
             uk_m4 REAL,
             uk_corporate_spread REAL,
             uk_cpi_inflation REAL,
-            uk_claimant_count REAL
+            uk_claimant_count REAL,
+            us_cpi_inflation REAL
         )
     ''')
     conn.commit()
@@ -220,7 +221,7 @@ def update_macro_indicators() -> None:
         # rewrite of the existing >3.0% circuit breaker threshold logic.
         # Alternative Option: Another option could be to use `GBPUSD=X` divergence + UK Gilt spread 
         # as an intermarket proxy, but that would require heavier downstream cross-engine calculation.
-        fred_tickers = ['WM2NS', 'ICSA', 'BAMLH0A0HYM2', 'BAMLHE00EHY2EY', 'T10Y2Y']
+        fred_tickers = ['WM2NS', 'ICSA', 'BAMLH0A0HYM2', 'BAMLHE00EHY2EY', 'T10Y2Y', 'CPIAUCSL']
         for ticker in fred_tickers:
             df = fetch_fred_api(session, ticker, start_dt, end_dt, fred_api_key)
             if not df.empty:
@@ -258,7 +259,8 @@ def update_macro_indicators() -> None:
             float(row['LPMVWNM']) if 'LPMVWNM' in row and pd.notna(row['LPMVWNM']) else None,
             float(row['BAMLHE00EHY2EY']) if 'BAMLHE00EHY2EY' in row and pd.notna(row['BAMLHE00EHY2EY']) else None,
             float(row['D7G7']) if 'D7G7' in row and pd.notna(row['D7G7']) else None,
-            float(row['BCJD']) if 'BCJD' in row and pd.notna(row['BCJD']) else None
+            float(row['BCJD']) if 'BCJD' in row and pd.notna(row['BCJD']) else None,
+            float(row['CPIAUCSL']) if 'CPIAUCSL' in row and pd.notna(row['CPIAUCSL']) else None
         ))
     
     conn = get_connection()
@@ -270,8 +272,9 @@ def update_macro_indicators() -> None:
         cursor.executemany('''
             INSERT OR IGNORE INTO macro_indicators (
                 date, us_m2, us_jobless_claims, us_high_yield_spread, us_yield_curve,
-                uk_m4, uk_corporate_spread, uk_cpi_inflation, uk_claimant_count
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                uk_m4, uk_corporate_spread, uk_cpi_inflation, uk_claimant_count,
+                us_cpi_inflation
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', records)
         conn.commit()
         logger.info(f"Successfully bulk-inserted up to {cursor.rowcount} new Macro Regime historical days (ignoring existing to preserve PIT).")
