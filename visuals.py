@@ -155,7 +155,7 @@ def create_macro_chart(df, df_baseline, ticker):
 def create_us_inflation_chart(df_spy: pd.DataFrame, df_cpi: pd.DataFrame) -> str:
     """
     Renders US Price Stability chart: CPI YoY % (orange, secondary axis) vs S&P 500 (cyan, primary axis).
-    Computes YoY inflation from the raw CPIAUCSL level index using a 12-period (monthly) percent change.
+    Computes YoY inflation from the raw CPIAUCSL level index using a 252-period (trading year) percent change.
     Reference lines plotted at 2% (Fed target) and 5% (danger zone).
     """
     fig = make_subplots(specs=[[{"secondary_y": True}]])
@@ -171,7 +171,7 @@ def create_us_inflation_chart(df_spy: pd.DataFrame, df_cpi: pd.DataFrame) -> str
 
     if not df_cpi.empty and 'value' in df_cpi.columns:
         df_cpi_local = df_cpi.copy()
-        df_cpi_local['yoy'] = df_cpi_local['value'].pct_change(periods=12) * 100.0
+        df_cpi_local['yoy'] = df_cpi_local['value'].pct_change(periods=252) * 100.0
         df_cpi_local = df_cpi_local.dropna(subset=['yoy'])
 
         if not df_cpi_local.empty:
@@ -208,7 +208,7 @@ def create_us_inflation_chart(df_spy: pd.DataFrame, df_cpi: pd.DataFrame) -> str
 def create_uk_inflation_chart(df_ftse: pd.DataFrame, df_cpi: pd.DataFrame) -> str:
     """
     Renders UK Price Stability chart: CPI YoY % (orange, secondary axis) vs FTSE 100 (cyan, primary axis).
-    Computes YoY inflation from the raw ONS D7G7 level index using a 12-period (monthly) percent change.
+    The raw ONS D7G7 series is ALREADY an annualized percentage rate, so no transformation is needed.
     Reference lines plotted at 2% (BoE target) and 5% (danger zone).
     """
     fig = make_subplots(specs=[[{"secondary_y": True}]])
@@ -224,7 +224,7 @@ def create_uk_inflation_chart(df_ftse: pd.DataFrame, df_cpi: pd.DataFrame) -> st
 
     if not df_cpi.empty and 'value' in df_cpi.columns:
         df_cpi_local = df_cpi.copy()
-        df_cpi_local['yoy'] = df_cpi_local['value'].pct_change(periods=12) * 100.0
+        df_cpi_local['yoy'] = df_cpi_local['value']
         df_cpi_local = df_cpi_local.dropna(subset=['yoy'])
 
         if not df_cpi_local.empty:
@@ -255,7 +255,7 @@ def create_uk_inflation_chart(df_ftse: pd.DataFrame, df_cpi: pd.DataFrame) -> st
     )
     fig.update_yaxes(title_text="FTSE 100 Index", secondary_y=False, showgrid=False)
     fig.update_yaxes(title_text="CPI YoY (%)", secondary_y=True, showgrid=False)
-    return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
+    return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})alse})
 
 
 def create_us_liquidity_chart(df_spy: pd.DataFrame, df_m2: pd.DataFrame) -> str:
