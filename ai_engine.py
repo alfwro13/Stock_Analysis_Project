@@ -189,9 +189,13 @@ class AIPromptEngine:
 SYSTEM METADATA & SCORING LOGIC
 =========================================================
 Current System Date: {current_date_str}
-The Quantamental System scores assets from 0 to 100.
-- Scores >= 80 dictate a STRONG BUY.
-- Scores < 40 dictate BEARISH / CAUTION.
+The Quantamental System scores assets from -100 to 100.
+- Scores >= 40: STRONG BUY
+- Scores >= 20: BULLISH / HOLD
+- Scores >= 0:  NEUTRAL
+- Scores >= -30: BEARISH / CAUTION
+- Scores >= -60: STRONG SELL
+- Scores < -60: TOXIC / AVOID
 The score is a weighted aggregation of Moving Average alignment (5D/10D/21D/50D/200D), RSI momentum, On-Balance Volume (OBV), and MACD Reversals. It overlays Mark Minervini's Volatility Contraction Pattern (VCP) and hierarchical candlestick recognition.
 
 =========================================================
