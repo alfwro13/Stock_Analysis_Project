@@ -25,7 +25,7 @@ def run_waterfall_diagnostics():
     # 3. Individual Filter Pass Rates
     filters = {
         "ROE > 15%": "roe > 0.15",
-        "Debt/Equity < 1.0": "debt_to_equity < 1.0",
+        "Debt/Equity < 100": "debt_to_equity < 100",
         "Profit Margin > 10%": "profit_margin > 0.10",
         "Revenue Growth > 5%": "revenue_growth > 0.05",
         "Current Ratio > 1.5": "current_ratio > 1.5",

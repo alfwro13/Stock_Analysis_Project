@@ -274,36 +274,36 @@ def get_quality_compounders() -> List[Dict[str, Any]]:
         cursor = conn.cursor()
 
         query = """
-        WITH latest AS (
-            SELECT ticker, MAX(date) AS max_date
-            FROM quant_signals
-            GROUP BY ticker
+        WITH latest_price AS (
+            SELECT q.ticker, q.close_price
+            FROM quant_signals q
+            INNER JOIN (SELECT ticker, MAX(date) AS max_date FROM quant_signals GROUP BY ticker) l
+                ON q.ticker = l.ticker AND q.date = l.max_date
         )
         SELECT
-            q.ticker,
-            COALESCE(p.company_name, m.company_name, q.ticker) as company_name,
+            s.ticker,
+            COALESCE(p.company_name, m.company_name, s.ticker) as company_name,
             COALESCE(p.sector, s.sector, m.sector, 'Unclassified') as sector,
             COALESCE(p.country, m.country, 'US') as country,
             CASE
                 WHEN UPPER(COALESCE(m.exchange, p.exchange)) = 'NMS' THEN 'NASDAQ'
                 WHEN UPPER(COALESCE(m.exchange, p.exchange)) = 'NYQ' THEN 'NYSE/AMEX'
                 WHEN COALESCE(m.exchange, p.exchange) IS NOT NULL THEN UPPER(COALESCE(m.exchange, p.exchange))
-                WHEN UPPER(q.ticker) LIKE '%.L' THEN 'LSE'
+                WHEN UPPER(s.ticker) LIKE '%.L' THEN 'LSE'
                 ELSE 'US'
             END as exchange,
             COALESCE(p.currency, s.currency, 'USD') as currency,
-            q.close_price,
+            lp.close_price,
             ROUND(s.roe * 100.0, 2) as roe_pct,
             ROUND(s.profit_margin * 100.0, 2) as margin_pct,
             ROUND(s.debt_to_equity, 2) as debt_to_equity,
             ROUND(s.trailing_pe, 2) as trailing_pe,
             s.composite_score
-        FROM quant_signals q
-        INNER JOIN latest l ON q.ticker = l.ticker AND q.date = l.max_date
-        INNER JOIN market_universe m ON q.ticker = m.ticker
-        LEFT JOIN asset_profiles p ON q.ticker = p.ticker
-        LEFT JOIN stock_signals s ON q.ticker = s.ticker
-        WHERE COALESCE(p.quote_type, s.quote_type, 'EQUITY') = 'EQUITY'
+        FROM stock_signals s
+        LEFT JOIN market_universe m ON s.ticker = m.ticker
+        LEFT JOIN asset_profiles p ON s.ticker = p.ticker
+        LEFT JOIN latest_price lp ON s.ticker = lp.ticker
+        WHERE s.quote_type = 'EQUITY'
           AND s.roe > 0.15
           AND s.debt_to_equity < 100
           AND s.profit_margin > 0.10
