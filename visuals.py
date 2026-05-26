@@ -193,15 +193,19 @@ def create_us_inflation_chart(df_spy: pd.DataFrame, df_cpi: pd.DataFrame) -> str
                 secondary_y=True
             )
 
-    fig.add_hline(
-        y=2.0, secondary_y=True, line_dash="dash", line_color="#00ff00",
-        annotation_text="Target (2.0%)", annotation_position="bottom right",
-        annotation_font_color="#00ff00"
+    # Explicitly anchor annotations to the secondary Y-axis (y2) to prevent chart collision
+    fig.add_hline(y=2.0, secondary_y=True, line_dash="dash", line_color="#00ff00")
+    fig.add_annotation(
+        x=0.99, y=2.0, xref="paper", yref="y2",
+        text="Target (2.0%)", showarrow=False,
+        font=dict(color="#00ff00"), xanchor="right", yanchor="bottom"
     )
-    fig.add_hline(
-        y=5.0, secondary_y=True, line_dash="dash", line_color="#ff4d4d",
-        annotation_text="Danger Zone (>5.0%)", annotation_position="top right",
-        annotation_font_color="#ff4d4d"
+
+    fig.add_hline(y=5.0, secondary_y=True, line_dash="dash", line_color="#ff4d4d")
+    fig.add_annotation(
+        x=0.99, y=5.0, xref="paper", yref="y2",
+        text="Danger Zone (>5.0%)", showarrow=False,
+        font=dict(color="#ff4d4d"), xanchor="right", yanchor="bottom"
     )
 
     fig.update_layout(
