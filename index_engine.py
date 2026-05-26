@@ -43,7 +43,7 @@ INDEX_REGISTRY: Dict[str, Dict] = {
 def fetch_index_constituents(index_key: str) -> List[Dict[str, str]]:
     """
     Natively scrapes Wikipedia for index constituents using pandas.
-    Employs a custom User-Agent to prevent 403 Forbidden blocks.
+    Employs fuzzy column matching to survive Wikipedia's frequent header changes.
     """
     if index_key not in INDEX_REGISTRY:
         logger.error(f"Index '{index_key}' is not defined in the Registry.")
@@ -53,15 +53,12 @@ def fetch_index_constituents(index_key: str) -> List[Dict[str, str]]:
     logger.info(f"Fetching constituents for {index_key} from {config['url']}...")
 
     try:
-        # Wikipedia explicitly requires a descriptive User-Agent
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
         }
         response = requests.get(config["url"], headers=headers, timeout=15)
         response.raise_for_status()
 
-        # Parse HTML tables matching our specific keyword
-        # Wrapped in StringIO to prevent Pandas FutureWarnings from dumping raw HTML to console
         tables = pd.read_html(StringIO(response.text), match=config["match_text"])
         if not tables:
             logger.error(f"No valid HTML tables found for {index_key} matching '{config['match_text']}'.")
@@ -69,25 +66,32 @@ def fetch_index_constituents(index_key: str) -> List[Dict[str, str]]:
 
         df = tables[0]
         
-        # Verify required columns exist
-        required_cols = [config["col_ticker"], config["col_company"], config["col_sector"]]
-        for col in required_cols:
-            if col not in df.columns:
-                logger.error(f"Required column '{col}' missing from scraped table for {index_key}.")
+        # --- FUZZY COLUMN MATCHING ---
+        # Map our expected config columns to the actual Wikipedia columns (case-insensitive subset match)
+        col_map = {}
+        target_cols = [config["col_ticker"], config["col_company"], config["col_sector"]]
+        
+        for target in target_cols:
+            target_lower = target.lower()
+            matched_col = next((c for c in df.columns if target_lower in str(c).lower()), None)
+            
+            if not matched_col:
+                logger.error(f"Required column '{target}' missing from scraped table for {index_key}. Available columns: {list(df.columns)}")
                 return []
+            col_map[target] = matched_col
 
         formatter: Callable = config["ticker_formatter"]
         
         records = []
         for _, row in df.iterrows():
-            ticker = formatter(row[config["col_ticker"]])
+            ticker = formatter(row[col_map[config["col_ticker"]]])
             if not ticker or pd.isna(ticker):
                 continue
                 
             records.append({
                 "ticker": ticker,
-                "company_name": str(row[config["col_company"]]),
-                "sector": str(row[config["col_sector"]]),
+                "company_name": str(row[col_map[config["col_company"]]]),
+                "sector": str(row[col_map[config["col_sector"]]]),
                 "index_membership": index_key
             })
 
