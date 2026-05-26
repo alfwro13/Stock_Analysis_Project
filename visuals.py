@@ -155,7 +155,7 @@ def create_macro_chart(df, df_baseline, ticker):
 def create_us_inflation_chart(df_spy: pd.DataFrame, df_cpi: pd.DataFrame) -> str:
     """
     Renders US Price Stability chart: CPI YoY % (orange, secondary axis) vs S&P 500 (cyan, primary axis).
-    The raw CPIAUCSL series is now fetched from FRED with units=pc1 (Annualized YoY %), preserving 2 years of data.
+    The raw CPIAUCSL series is fetched from FRED with units=pc1 (Annualized YoY %), preserving 2 years of data.
     Reference lines plotted at 2% (Fed target) and 5% (danger zone).
     """
     fig = make_subplots(specs=[[{"secondary_y": True}]])
@@ -171,7 +171,7 @@ def create_us_inflation_chart(df_spy: pd.DataFrame, df_cpi: pd.DataFrame) -> str
 
     if not df_cpi.empty and 'value' in df_cpi.columns:
         df_cpi_local = df_cpi.copy().sort_index()
-        # Data is already YoY %. Resample to MS to strip daily forward-fill noise.
+        # Data is already YoY % from FRED. Resample to MS to strip daily forward-fill noise.
         monthly_series = df_cpi_local['value'].resample('MS').first().dropna()
 
         if not monthly_series.empty:
@@ -183,15 +183,19 @@ def create_us_inflation_chart(df_spy: pd.DataFrame, df_cpi: pd.DataFrame) -> str
                 secondary_y=True
             )
 
-    fig.add_hline(
-        y=2.0, secondary_y=True, line_dash="dash", line_color="#00ff00",
-        annotation_text="Target (2.0%)", annotation_position="top left",
-        annotation_font_color="#00ff00"
+    # Explicitly anchor annotations to the secondary Y-axis (y2) to prevent chart collision
+    fig.add_hline(y=2.0, secondary_y=True, line_dash="dash", line_color="#00ff00")
+    fig.add_annotation(
+        x=0.99, y=2.0, xref="paper", yref="y2",
+        text="Target (2.0%)", showarrow=False,
+        font=dict(color="#00ff00"), xanchor="right", yanchor="bottom"
     )
-    fig.add_hline(
-        y=5.0, secondary_y=True, line_dash="dash", line_color="#ff4d4d",
-        annotation_text="Danger Zone (>5.0%)", annotation_position="top left",
-        annotation_font_color="#ff4d4d"
+
+    fig.add_hline(y=5.0, secondary_y=True, line_dash="dash", line_color="#ff4d4d")
+    fig.add_annotation(
+        x=0.99, y=5.0, xref="paper", yref="y2",
+        text="Danger Zone (>5.0%)", showarrow=False,
+        font=dict(color="#ff4d4d"), xanchor="right", yanchor="bottom"
     )
 
     fig.update_layout(
@@ -236,15 +240,19 @@ def create_uk_inflation_chart(df_ftse: pd.DataFrame, df_cpi: pd.DataFrame) -> st
                 secondary_y=True
             )
 
-    fig.add_hline(
-        y=2.0, secondary_y=True, line_dash="dash", line_color="#00ff00",
-        annotation_text="Target (2.0%)", annotation_position="top left",
-        annotation_font_color="#00ff00"
+    # Explicitly anchor annotations to the secondary Y-axis (y2) to prevent chart collision
+    fig.add_hline(y=2.0, secondary_y=True, line_dash="dash", line_color="#00ff00")
+    fig.add_annotation(
+        x=0.99, y=2.0, xref="paper", yref="y2",
+        text="Target (2.0%)", showarrow=False,
+        font=dict(color="#00ff00"), xanchor="right", yanchor="bottom"
     )
-    fig.add_hline(
-        y=5.0, secondary_y=True, line_dash="dash", line_color="#ff4d4d",
-        annotation_text="Danger Zone (>5.0%)", annotation_position="top left",
-        annotation_font_color="#ff4d4d"
+
+    fig.add_hline(y=5.0, secondary_y=True, line_dash="dash", line_color="#ff4d4d")
+    fig.add_annotation(
+        x=0.99, y=5.0, xref="paper", yref="y2",
+        text="Danger Zone (>5.0%)", showarrow=False,
+        font=dict(color="#ff4d4d"), xanchor="right", yanchor="bottom"
     )
 
     fig.update_layout(
