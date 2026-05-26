@@ -160,29 +160,33 @@ def _clean(v):
     return v
 
 
-def _get_universe_tickers() -> list:
-    """Return all is_index=1 tickers from market_universe."""
+def _get_pending_tickers(batch_size: int) -> list:
+    """
+    Return up to batch_size index tickers that still need a fundamentals fetch:
+      - not yet in stock_signals at all, OR
+      - already there with score_method = 'UNIVERSE_FUNDAMENTALS' but last_updated > 30 days ago.
+    Tickers with a full technical analysis (score_method IS NULL or != 'UNIVERSE_FUNDAMENTALS')
+    are always excluded so we never overwrite richer data.
+    """
     conn = get_connection()
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT ticker FROM market_universe WHERE is_index = 1 ORDER BY ticker")
+        cursor.execute("""
+            SELECT m.ticker
+            FROM market_universe m
+            LEFT JOIN stock_signals s ON m.ticker = s.ticker
+            WHERE m.is_index = 1
+              AND (
+                  s.ticker IS NULL
+                  OR (
+                      s.score_method = 'UNIVERSE_FUNDAMENTALS'
+                      AND s.last_updated < date('now', '-30 days')
+                  )
+              )
+            ORDER BY m.ticker
+            LIMIT ?
+        """, (batch_size,))
         return [r['ticker'] for r in cursor.fetchall()]
-    finally:
-        conn.close()
-
-
-def _already_has_full_analysis(ticker: str) -> bool:
-    """True if this ticker already has a full technical+fundamental analysis in stock_signals."""
-    conn = get_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT score_method FROM stock_signals WHERE ticker = ?", (ticker,))
-        row = cursor.fetchone()
-        if row is None:
-            return False
-        method = row['score_method']
-        # score_method is NULL for legacy full-analysis rows written before this column existed
-        return method != 'UNIVERSE_FUNDAMENTALS'
     finally:
         conn.close()
 
@@ -284,29 +288,23 @@ def _upsert_fundamentals(ticker: str, info: dict) -> None:
 def run_universe_fundamentals_sync(batch_size: int = 50) -> None:
     """
     Fetches fundamental financial data (ROE, margins, D/E, etc.) from Yahoo Finance
-    for all FTSE100 and S&P500 index stocks in market_universe and writes them to
-    stock_signals so that the Quality Compounders and other fundamental reports
-    can evaluate the full index universe, not just personally tracked stocks.
-
-    Skips any ticker that already has a full technical+fundamental analysis
-    (written by quant_signals.py / QuantEngine) to avoid overwriting richer data.
+    for up to batch_size FTSE100/S&P500 index stocks that are missing or stale (>30 days).
+    Designed to be run repeatedly until all index stocks are covered — each run advances
+    the queue by batch_size. Tickers with a full technical analysis are never overwritten.
     """
-    tickers = _get_universe_tickers()
+    tickers = _get_pending_tickers(batch_size)
     if not tickers:
-        logger.warning("No index tickers found in market_universe.")
+        log_notification("Info", "Universe Fundamentals Sync: all index stocks are already up to date.")
+        logger.info("Universe Fundamentals Sync: nothing pending.")
         return
 
     total = len(tickers)
-    log_notification("Info", f"Universe Fundamentals Sync started for {total} index stocks.")
-    logger.info(f"Universe Fundamentals Sync: {total} index stocks to process.")
+    log_notification("Info", f"Universe Fundamentals Sync started — processing {total} pending stocks (batch size: {batch_size}).")
+    logger.info(f"Universe Fundamentals Sync: {total} stocks to process this batch.")
 
-    processed = skipped = errors = 0
+    processed = errors = 0
 
     for i, ticker in enumerate(tickers):
-        if _already_has_full_analysis(ticker):
-            skipped += 1
-            continue
-
         try:
             info = _fetch_info(ticker)
             if not info:
@@ -316,12 +314,12 @@ def run_universe_fundamentals_sync(batch_size: int = 50) -> None:
 
             _upsert_fundamentals(ticker, info)
             processed += 1
-            logger.info(f"[{i+1}/{total}] {ticker} — score written.")
+            logger.info(f"[{i+1}/{total}] {ticker} — written.")
 
             # Progress notification every 25%
             if total >= 4 and processed % max(1, total // 4) == 0:
-                pct = int(((i + 1) / total) * 100)
-                log_notification("Info", f"Universe Fundamentals Sync: {pct}% ({i+1}/{total} processed).")
+                pct = int((processed / total) * 100)
+                log_notification("Info", f"Universe Fundamentals Sync: {pct}% ({processed}/{total} written).")
 
             # Polite rate limiting — yfinance is not a paid API
             time.sleep(0.4)
@@ -332,7 +330,7 @@ def run_universe_fundamentals_sync(batch_size: int = 50) -> None:
 
     log_notification(
         "Success",
-        f"Universe Fundamentals Sync complete. "
-        f"Written: {processed} | Skipped (full analysis exists): {skipped} | Errors: {errors}."
+        f"Universe Fundamentals Sync batch complete. "
+        f"Written: {processed} | Errors: {errors}."
     )
-    logger.info(f"Universe Fundamentals Sync complete — written={processed}, skipped={skipped}, errors={errors}.")
+    logger.info(f"Universe Fundamentals Sync batch done — written={processed}, errors={errors}.")
