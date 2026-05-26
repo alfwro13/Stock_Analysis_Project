@@ -61,7 +61,8 @@ def fetch_index_constituents(index_key: str) -> List[Dict[str, str]]:
         response.raise_for_status()
 
         # Parse HTML tables matching our specific keyword
-        tables = pd.read_html(response.text, match=config["match_text"])
+        # Wrapped in StringIO to prevent Pandas FutureWarnings from dumping raw HTML to console
+        tables = pd.read_html(StringIO(response.text), match=config["match_text"])
         if not tables:
             logger.error(f"No valid HTML tables found for {index_key} matching '{config['match_text']}'.")
             return []
