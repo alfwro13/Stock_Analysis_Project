@@ -213,6 +213,8 @@ def init_db() -> None:
                 country TEXT,
                 exchange TEXT,
                 is_freetrade BOOLEAN DEFAULT 0,
+                is_index BOOLEAN DEFAULT 0,
+                index_membership TEXT,
                 freetrade_subtitle TEXT,
                 freetrade_url TEXT,
                 last_updated TEXT
@@ -433,6 +435,8 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
         'country': 'TEXT',
         'exchange': 'TEXT',
         'is_freetrade': 'BOOLEAN DEFAULT 0',
+        'is_index': 'BOOLEAN DEFAULT 0',
+        'index_membership': 'TEXT',
         'freetrade_subtitle': 'TEXT',
         'freetrade_url': 'TEXT',
         'quote_type': 'TEXT'
