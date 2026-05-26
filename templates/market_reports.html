@@ -113,7 +113,11 @@
                 <label>Maximum <abbr title="Relative Strength Index">RSI</abbr> Threshold</label>
                 <input type="number" id="mrMaxRSI" class="filter-input input-width-small" value="{{ config.get('REPORTS_DEFAULTS', {}).get('MR_MAX_RSI', 30) }}">
             </div>
-            <button class="btn btn-update" onclick="loadMeanReversionData(this)">🔄 Run Query</button>
+            <div class="form-group form-group-no-margin ml-15">
+                <label>Min Distance Above <abbr title="200-Day Simple Moving Average">200D SMA</abbr> (%)</label>
+                <input type="number" id="mrMinSmaDistance" class="filter-input input-width-small" value="0" min="0" step="1">
+            </div>
+            <button class="btn btn-update ml-15" onclick="loadMeanReversionData(this)">🔄 Run Query</button>
         </div>
 
         <table id="mrTable" class="display w-100">
@@ -446,9 +450,10 @@
 
         function loadMeanReversionData(btn) {
             const maxRsi = document.getElementById('mrMaxRSI').value || 30;
+            const minSmaDistance = parseFloat(document.getElementById('mrMinSmaDistance').value) || 0;
             mrActiveBtn = btn || null;
             setButtonLoading(mrActiveBtn, true);
-            mrDataTable.ajax.url(`/api/reports/mean-reversion?max_rsi=${maxRsi}`).load(function() {
+            mrDataTable.ajax.url(`/api/reports/mean-reversion?max_rsi=${maxRsi}&min_sma_distance=${minSmaDistance}`).load(function() {
                 setButtonLoading(mrActiveBtn, false);
                 mrActiveBtn = null;
             });
