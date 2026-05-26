@@ -32,32 +32,23 @@
             </div>
         </details>
 
+
         <details class="settings-card">
-            <summary>🌐 Freetrade Universe Integration</summary>
-            <p class="settings-desc">Manage the synchronization and visibility of the Freetrade broker universe.</p>
-            
+            <summary>🌍 Market Universe Pipeline</summary>
+            <p class="settings-desc">Manage all data ingestion sources, Freetrade filtering, Wikipedia index scraping, and fundamental downloading.</p>
+
             <div class="settings-panel border-left-cyan">
-                <div class="checkbox-group mb-0">
+                <h4 class="settings-panel-header text-cyan">🌐 Freetrade Broker Integration</h4>
+                <div class="checkbox-group mb-10">
                     <input type="checkbox" id="FREETRADE_ONLY_MODE" {% if config.UI_PREFERENCES.FREETRADE_ONLY_MODE %}checked{% endif %}>
-                    <label for="FREETRADE_ONLY_MODE" class="text-cyan font-bold">Enable Freetrade Filter (Hides unsupported assets from screeners)</label>
+                    <label for="FREETRADE_ONLY_MODE" class="text-cyan font-bold">Enable Freetrade Firewall (Restricts analysis/scanning to tradable assets)</label>
                 </div>
-            </div>
-
-            <div class="settings-panel">
-                <h4 class="settings-panel-header text-blue">Manual Data Import</h4>
-                <p class="settings-desc-sm mb-10">Fetches the latest official CSV directly from Freetrade's published Google Sheet, maps European tickers to Yahoo Finance standard formats via ISIN, and updates the local database.</p>
-                <button type="button" id="ftSyncBtn" class="btn btn-update" onclick="triggerFreetradeSync()">⬇️ Sync Freetrade Universe</button>
-                <div id="ft-sync-status-msg"></div>
-            </div>
-
-            <div class="settings-panel-md border-left-purple">
-                <h4 class="settings-panel-header text-purple">Automated Sync Scheduler</h4>
-                <div class="checkbox-group">
+                <div class="checkbox-group mb-10">
                     <input type="checkbox" id="FREETRADE_SYNC_ENABLED" {% if config.SCHEDULING.FREETRADE_SYNC.ENABLED %}checked{% endif %}>
-                    <label for="FREETRADE_SYNC_ENABLED">Enable automated background sync</label>
+                    <label for="FREETRADE_SYNC_ENABLED">Auto-sync Freetrade Google Sheet</label>
                 </div>
-                <div class="flex-gap-15 mb-10">
-                    <div class="form-group flex-1">
+                <div class="flex-gap-15 align-end">
+                    <div class="form-group flex-1 mb-0">
                         <label>Frequency</label>
                         <select id="FREETRADE_SYNC_FREQ">
                             <option value="mon-fri" {% if config.SCHEDULING.FREETRADE_SYNC.FREQUENCY == 'mon-fri' %}selected{% endif %}>Mon-Fri</option>
@@ -65,27 +56,122 @@
                             <option value="*" {% if config.SCHEDULING.FREETRADE_SYNC.FREQUENCY == '*' %}selected{% endif %}>Every Day</option>
                         </select>
                     </div>
-                    <div class="form-group flex-1">
+                    <div class="form-group flex-1 mb-0">
                         <label>Execution Time</label>
                         <input type="time" id="FREETRADE_SYNC_TIME" value="{{ config.SCHEDULING.FREETRADE_SYNC.TIME }}">
                     </div>
+                    <button type="button" id="ftSyncBtn" class="btn-test mt-0 btn-cyan" onclick="triggerFreetradeSync()">⬇️ Run Sync Now</button>
+                </div>
+                <div id="ft-sync-status-msg" class="mt-10"></div>
+            </div>
+
+            {% set sync_indices = config.SCHEDULING.SYNC_INDICES if config.SCHEDULING.SYNC_INDICES else {} %}
+            {% set active_indices = sync_indices.INDICES if sync_indices.INDICES else ['SP500', 'FTSE100'] %}
+            {% set index_days = sync_indices.DAYS if sync_indices.DAYS else ['sat'] %}
+
+            <div class="settings-panel border-left-purple">
+                <h4 class="settings-panel-header text-purple">📈 Index Constituents Scraper</h4>
+                <p class="settings-desc-sm">Scrapes Wikipedia natively for index members and tags them for foundational profiling.</p>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="SYNC_INDICES_ENABLED" {% if sync_indices.ENABLED %}checked{% endif %}>
+                    <label for="SYNC_INDICES_ENABLED">Auto-scrape Index Constituents</label>
+                </div>
+                
+                <div class="flex-gap-15 mb-15">
+                    <label><input type="checkbox" class="index-target" value="SP500" {% if 'SP500' in active_indices %}checked{% endif %}> S&P 500</label>
+                    <label><input type="checkbox" class="index-target" value="FTSE100" {% if 'FTSE100' in active_indices %}checked{% endif %}> FTSE 100</label>
+                </div>
+
+                <div class="flex-gap-15 mb-15 flex-wrap">
+                    <label><input type="checkbox" class="index-day" value="mon" {% if 'mon' in index_days %}checked{% endif %}> Mon</label>
+                    <label><input type="checkbox" class="index-day" value="tue" {% if 'tue' in index_days %}checked{% endif %}> Tue</label>
+                    <label><input type="checkbox" class="index-day" value="wed" {% if 'wed' in index_days %}checked{% endif %}> Wed</label>
+                    <label><input type="checkbox" class="index-day" value="thu" {% if 'thu' in index_days %}checked{% endif %}> Thu</label>
+                    <label><input type="checkbox" class="index-day" value="fri" {% if 'fri' in index_days %}checked{% endif %}> Fri</label>
+                    <label><input type="checkbox" class="index-day" value="sat" {% if 'sat' in index_days %}checked{% endif %}> Sat</label>
+                    <label><input type="checkbox" class="index-day" value="sun" {% if 'sun' in index_days %}checked{% endif %}> Sun</label>
+                </div>
+
+                <div class="flex-gap-15 align-end">
+                    <div class="form-group mb-0">
+                        <label>Execution Time</label>
+                        <input type="time" id="SYNC_INDICES_TIME" value="{{ sync_indices.TIME | default('03:00') }}">
+                    </div>
+                    <button type="button" class="btn-test mt-0 btn-purple" onclick="triggerIndexScrape()">⬇️ Run Scrape Now</button>
+                </div>
+            </div>
+
+            {% set u_engine = config.SCHEDULING.UNIVERSE_ENGINE if config.SCHEDULING.UNIVERSE_ENGINE else {} %}
+            {% set u_days = u_engine.DAYS if u_engine.DAYS else ['sat'] %}
+
+            <div class="settings-panel border-left-orange">
+                <h4 class="settings-panel-header text-orange">📁 Legacy File Sideloading & Nasdaq Sync</h4>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="UNIVERSE_ENGINE_ENABLED" {% if u_engine.ENABLED %}checked{% endif %}>
+                    <label for="UNIVERSE_ENGINE_ENABLED">Auto-sync Nasdaq FTP Universe</label>
+                </div>
+
+                <div class="flex-gap-15 mb-15 flex-wrap">
+                    <label><input type="checkbox" class="universe-day" value="mon" {% if 'mon' in u_days %}checked{% endif %}> Mon</label>
+                    <label><input type="checkbox" class="universe-day" value="tue" {% if 'tue' in u_days %}checked{% endif %}> Tue</label>
+                    <label><input type="checkbox" class="universe-day" value="wed" {% if 'wed' in u_days %}checked{% endif %}> Wed</label>
+                    <label><input type="checkbox" class="universe-day" value="thu" {% if 'thu' in u_days %}checked{% endif %}> Thu</label>
+                    <label><input type="checkbox" class="universe-day" value="fri" {% if 'fri' in u_days %}checked{% endif %}> Fri</label>
+                    <label><input type="checkbox" class="universe-day" value="sat" {% if 'sat' in u_days %}checked{% endif %}> Sat</label>
+                    <label><input type="checkbox" class="universe-day" value="sun" {% if 'sun' in u_days %}checked{% endif %}> Sun</label>
+                </div>
+
+                <div class="flex-gap-15 align-end mb-15">
+                    <div class="form-group mb-0 flex-1">
+                        <label>Execution Time</label>
+                        <input type="time" id="UNIVERSE_ENGINE_TIME" value="{{ u_engine.TIME | default('04:00') }}">
+                    </div>
+                    <button type="button" class="btn-test mt-0 text-orange flex-1" onclick="triggerUniverseUpdate()">⬇️ Run Nasdaq Sync</button>
+                </div>
+
+                <div class="form-group mb-0">
+                    <label class="text-muted">Manual Local File Import</label>
+                    <button type="button" class="btn-test mt-5" onclick="scanImportDirectory()">🔍 Scan Server Directory</button>
+                    <div id="csvSelectContainer" class="flex-gap-15 mt-10 d-none">
+                        <select id="serverCsvSelect" class="filter-select flex-2"></select>
+                        <button type="button" id="importBtn" class="btn-update flex-1" onclick="importServerCSV()">📥 Import Selected</button>
+                    </div>
+                </div>
+                <div id="upload-status-msg" class="status-msg-sm"></div>
+            </div>
+
+            {% set profiler = config.SCHEDULING.PROFILER_ENGINE if config.SCHEDULING.PROFILER_ENGINE else {} %}
+            {% set p_days = profiler.DAYS if profiler.DAYS else ['sun'] %}
+            
+            <div class="settings-panel border-left-green">
+                <h4 class="settings-panel-header text-green">📊 Fundamentals Data Profiler</h4>
+                <p class="settings-desc-sm">Downloads heavy fundamental data (PE, EPS, Sector) for the active universe via Yahoo Finance.</p>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="PROFILER_ENGINE_ENABLED" {% if profiler.ENABLED %}checked{% endif %}>
+                    <label for="PROFILER_ENGINE_ENABLED">Auto-download Fundamental Profiles</label>
+                </div>
+
+                <div class="flex-gap-15 mb-15 flex-wrap">
+                    <label><input type="checkbox" class="profiler-day" value="mon" {% if 'mon' in p_days %}checked{% endif %}> Mon</label>
+                    <label><input type="checkbox" class="profiler-day" value="tue" {% if 'tue' in p_days %}checked{% endif %}> Tue</label>
+                    <label><input type="checkbox" class="profiler-day" value="wed" {% if 'wed' in p_days %}checked{% endif %}> Wed</label>
+                    <label><input type="checkbox" class="profiler-day" value="thu" {% if 'thu' in p_days %}checked{% endif %}> Thu</label>
+                    <label><input type="checkbox" class="profiler-day" value="fri" {% if 'fri' in p_days %}checked{% endif %}> Fri</label>
+                    <label><input type="checkbox" class="profiler-day" value="sat" {% if 'sat' in p_days %}checked{% endif %}> Sat</label>
+                    <label><input type="checkbox" class="profiler-day" value="sun" {% if 'sun' in p_days %}checked{% endif %}> Sun</label>
+                </div>
+
+                <div class="flex-gap-15 align-end">
+                    <div class="form-group mb-0">
+                        <label>Execution Time</label>
+                        <input type="time" id="PROFILER_ENGINE_TIME" value="{{ profiler.TIME | default('05:00') }}">
+                    </div>
+                    <button type="button" class="btn-test mt-0 btn-green" onclick="triggerFundamentalsProfiler()">▶️ Run Profiler Now</button>
+                    <button type="button" class="btn-test mt-0 text-purple" onclick="triggerUniverseQuantScan()">▶️ Run Full Quant Scan</button>
                 </div>
             </div>
         </details>
 
-        <details class="settings-card">
-            <summary>🌍 Market Universe Sideloading</summary>
-            <p class="settings-desc">Securely load custom CSV files representing different market universes (e.g., LSE, TSX) from the server's imports directory to expand the reach of the quantitative screener beyond the standard US Nasdaq baseline.</p>
-            <p class="settings-desc text-orange font-bold">Note: Sideloaded assets will remain invisible in the Market Screener until they have been mathematically scanned. The system will automatically initiate a background quant scan for these specific tickers immediately upon successful import.</p>
-            <div class="form-group mb-15">
-                <button type="button" class="btn-test" onclick="scanImportDirectory()">🔍 Scan Server Directory</button>
-                <div id="csvSelectContainer" class="flex-gap-15 mt-15 d-none">
-                    <select id="serverCsvSelect" class="filter-select flex-2"></select>
-                    <button type="button" id="importBtn" class="btn-update flex-1" onclick="importServerCSV()">📥 Import Selected</button>
-                </div>
-            </div>
-            <div id="upload-status-msg" class="status-msg-sm"></div>
-        </details>
 
         <details class="settings-card">
             <summary>🖥️ Live UI Updates & Notifications</summary>
@@ -459,32 +545,7 @@
                 </div>
             </div>
 
-            {% set u_engine = config.SCHEDULING.UNIVERSE_ENGINE if config.SCHEDULING.UNIVERSE_ENGINE else {} %}
-            {% set u_days = u_engine.DAYS if u_engine.DAYS else ['sat'] %}
-            
-            <div class="settings-panel border-left-purple">
-                <h4 class="settings-panel-header text-purple">🌍 Market Universe (Weekend Routine)</h4>
-                <p class="settings-desc-sm">Downloads the 4,000+ US equity ticker list from Nasdaq and runs a complete massive quant scan. This process can take over an hour and is best run over the weekend.</p>
-                
-                <div class="flex-gap-15 mb-15 flex-wrap">
-                    <label><input type="checkbox" class="universe-day" value="mon" {% if 'mon' in u_days %}checked{% endif %}> Mon</label>
-                    <label><input type="checkbox" class="universe-day" value="tue" {% if 'tue' in u_days %}checked{% endif %}> Tue</label>
-                    <label><input type="checkbox" class="universe-day" value="wed" {% if 'wed' in u_days %}checked{% endif %}> Wed</label>
-                    <label><input type="checkbox" class="universe-day" value="thu" {% if 'thu' in u_days %}checked{% endif %}> Thu</label>
-                    <label><input type="checkbox" class="universe-day" value="fri" {% if 'fri' in u_days %}checked{% endif %}> Fri</label>
-                    <label><input type="checkbox" class="universe-day" value="sat" {% if 'sat' in u_days %}checked{% endif %}> Sat</label>
-                    <label><input type="checkbox" class="universe-day" value="sun" {% if 'sun' in u_days %}checked{% endif %}> Sun</label>
-                </div>
-                
-                <div class="flex-gap-15 align-end flex-wrap">
-                    <div class="form-group mb-0">
-                        <label>Execution Time</label>
-                        <input type="time" id="UNIVERSE_ENGINE_TIME" value="{{ u_engine.TIME | default('02:00') }}">
-                    </div>
-                    <button type="button" class="btn-test mt-0 btn-purple" onclick="triggerUniverseUpdate()">⬇️ Update Ticker List</button>
-                    <button type="button" class="btn-test mt-0 text-purple" onclick="triggerUniverseQuantScan()">▶️ Run Full Quant Scan</button>
-                </div>
-            </div>
+         
 
             {% set e_engine = config.SCHEDULING.EARNINGS_ENGINE if config.SCHEDULING.EARNINGS_ENGINE else {} %}
             {% set e_days = e_engine.DAYS if e_engine.DAYS else ['sat'] %}
@@ -1181,6 +1242,24 @@
             }
         }
 
+        async function triggerIndexScrape() {
+            try {
+                await fetch('/api/universe/sync-indices', { method: 'POST' });
+                alert("Index Constituent scraping initiated in background. Check notifications for updates.");
+            } catch (error) {
+                alert("Failed to initiate Scraper. Network or server error.");
+            }
+        }
+
+        async function triggerFundamentalsProfiler() {
+            try {
+                await fetch('/api/universe/sync-profiler', { method: 'POST' });
+                alert("Fundamentals Profiler initiated in background. Check notifications for updates.");
+            } catch (error) {
+                alert("Failed to initiate Profiler. Network or server error.");
+            }
+        }
+
         async function triggerEarningsScan() {
             try {
                 await fetch('/api/trigger-earnings-scan', { method: 'POST' });
@@ -1389,6 +1468,9 @@
             const mlBackfillDays = Array.from(document.querySelectorAll('.ml-backfill-day:checked')).map(cb => cb.value);
             const mlTrainingDays = Array.from(document.querySelectorAll('.ml-training-day:checked')).map(cb => cb.value);
             const mlInferenceDays = Array.from(document.querySelectorAll('.ml-inference-day:checked')).map(cb => cb.value);
+            const indexDays = Array.from(document.querySelectorAll('.index-day:checked')).map(cb => cb.value);
+            const profilerDays = Array.from(document.querySelectorAll('.profiler-day:checked')).map(cb => cb.value);
+            const activeIndices = Array.from(document.querySelectorAll('.index-target:checked')).map(cb => cb.value);
             
             const payload = {
                 "SERVER_URL": document.getElementById('SERVER_URL').value,
@@ -1481,7 +1563,19 @@
                         "DAYS": dispatchDays,
                         "TIME": document.getElementById('DISPATCHER_TIME').value
                     },
+                    "SYNC_INDICES": {
+                        "ENABLED": document.getElementById('SYNC_INDICES_ENABLED').checked,
+                        "INDICES": activeIndices,
+                        "DAYS": indexDays,
+                        "TIME": document.getElementById('SYNC_INDICES_TIME').value
+                    },
+                    "PROFILER_ENGINE": {
+                        "ENABLED": document.getElementById('PROFILER_ENGINE_ENABLED').checked,
+                        "DAYS": profilerDays,
+                        "TIME": document.getElementById('PROFILER_ENGINE_TIME').value
+                    },
                     "UNIVERSE_ENGINE": {
+                        "ENABLED": document.getElementById('UNIVERSE_ENGINE_ENABLED').checked,
                         "DAYS": universeDays,
                         "TIME": document.getElementById('UNIVERSE_ENGINE_TIME').value
                     },

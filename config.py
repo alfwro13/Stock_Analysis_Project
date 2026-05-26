@@ -68,6 +68,17 @@ DEFAULT_CONFIG = {
         }
     },
     "SCHEDULING": {
+        "SYNC_INDICES": {
+            "ENABLED": False,
+            "INDICES": ["SP500", "FTSE100"],
+            "DAYS": ["sat"],
+            "TIME": "03:00"
+        },
+        "PROFILER_ENGINE": {
+            "ENABLED": False,
+            "DAYS": ["sun"],
+            "TIME": "05:00"
+        },
         "GHOSTFOLIO_SYNC": {
             "ENABLED": False,
             "FREQUENCY": "mon-fri",
@@ -119,7 +130,6 @@ DEFAULT_CONFIG = {
             "DATA_DAY": "sat",
             "DATA_TIME": "05:00"
         },
-        # --- NEW MODULAR ML PIPELINE SCHEDULING ---
         "ML_BACKFILL": {
             "ENABLED": False,
             "DAYS": ["sat"],
