@@ -706,3 +706,45 @@ table.dataTable tbody tr td { color: #ccc; }
         grid-template-columns: 1fr;
     }
 }
+
+/* ============================================================
+   FUNDAMENTALS PROFILER — QUEUE BREAKDOWN TILES
+   Displays Eligible / Profiled / Stale / Pending counts on the
+   Market Universe Pipeline section of the Settings page.
+   ============================================================ */
+.profiler-breakdown {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.profiler-tile {
+    background: #252525;
+    border: 1px solid #333;
+    border-radius: 6px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+}
+
+.profiler-tile-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #888;
+}
+
+.profiler-tile-value {
+    font-size: 22px;
+    font-weight: 600;
+    color: #e0e0e0;
+    font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 720px) {
+    .profiler-breakdown {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}

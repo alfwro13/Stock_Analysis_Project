@@ -147,10 +147,25 @@
                 <h4 class="settings-panel-header text-green">📊 Fundamentals Data Profiler</h4>
                 <p class="settings-desc-sm">Downloads heavy fundamental data (PE, EPS, Sector) for the active universe via Yahoo Finance.</p>
                 
-                <div class="flex-gap-10 mb-15 flex-center-wrap">
-                    <strong class="text-muted">Pending Profiles in Queue:</strong>
-                    <span id="profiler-pending-badge" class="setup-tag text-muted border-none">Calculating...</span>
+                <div class="profiler-breakdown mb-15">
+                    <div class="profiler-tile">
+                        <span class="profiler-tile-label">Eligible</span>
+                        <span class="profiler-tile-value" id="profiler-eligible-badge">…</span>
+                    </div>
+                    <div class="profiler-tile">
+                        <span class="profiler-tile-label">Profiled</span>
+                        <span class="profiler-tile-value text-green" id="profiler-profiled-badge">…</span>
+                    </div>
+                    <div class="profiler-tile">
+                        <span class="profiler-tile-label">Stale (&gt;90d)</span>
+                        <span class="profiler-tile-value" id="profiler-stale-badge">…</span>
+                    </div>
+                    <div class="profiler-tile">
+                        <span class="profiler-tile-label">Pending Now</span>
+                        <span class="profiler-tile-value" id="profiler-pending-badge">…</span>
+                    </div>
                 </div>
+                <p class="settings-desc-sm" id="profiler-status-hint">Calculating queue state…</p>
                 <div class="checkbox-group mb-10">
                     <input type="checkbox" id="PROFILER_ENGINE_ENABLED" {% if profiler.ENABLED %}checked{% endif %}>
                     <label for="PROFILER_ENGINE_ENABLED">Auto-download Fundamental Profiles</label>
@@ -966,16 +981,6 @@
 
             try { 
                 const response = await fetch('/api/trigger-freetrade-sync', { method: 'POST' }); 
-                if (response.ok) {
-                    const htmlContent = `
-                        <span class="text-cyan font-16 font-bold">✅ Sync initiated successfully!</span><br><br>
-                        <span class="text-light">The engine is actively pulling the CSV and resolving ISINs in the background. You will receive a notification when it finishes.</span><br><br>
-                        <span class="text-danger font-bold">⚠️ IMPORTANT NEXT STEPS:</span><br>
-                        <span class="text-muted">Once the sync notification arrives, the new assets are still "dormant". To activate them:<br>
-                        1. Open your terminal and run <code>python profile_engine.py</code>.<br>
-                        2. Go to 'Background Automation Schedulers' below and click <strong>▶️ Run Full Quant Scan</strong> under the Market Universe routine.</span>
-                    `;
-                    setBoxStatus('ft-sync-status-msg', 'info', htmlContent);
                 } else {
                     setStatus('ft-sync-status-msg', 'error', "Failed to initiate sync. Server returned an error.");
                 }
@@ -1458,23 +1463,58 @@
         }
 
         async function fetchProfilerQueueStatus() {
+            const eligibleEl = document.getElementById('profiler-eligible-badge');
+            const profiledEl = document.getElementById('profiler-profiled-badge');
+            const staleEl    = document.getElementById('profiler-stale-badge');
+            const pendingEl  = document.getElementById('profiler-pending-badge');
+            const hintEl     = document.getElementById('profiler-status-hint');
+
             try {
                 const response = await fetch('/api/universe/profiler-status');
                 const data = await response.json();
-                const badge = document.getElementById('profiler-pending-badge');
-                
-                if (response.ok) {
-                    badge.innerText = data.pending_count.toLocaleString();
-                    if (data.pending_count > 0) {
-                        badge.classList.add('text-orange');
-                        badge.classList.remove('text-green', 'text-muted');
-                    } else {
-                        badge.classList.add('text-green');
-                        badge.classList.remove('text-orange', 'text-muted');
-                    }
+
+                if (!response.ok || data.status !== 'success') {
+                    hintEl.innerText = "Failed to fetch profiler queue status.";
+                    return;
                 }
+
+                const b = data.breakdown || {};
+                const eligible = b.eligible_count || 0;
+                const profiled = b.profiled_count || 0;
+                const stale    = b.stale_count    || 0;
+                const pending  = b.pending_count  || 0;
+                const firewall = b.firewall_active === 1;
+
+                eligibleEl.innerText = eligible.toLocaleString();
+                profiledEl.innerText = profiled.toLocaleString();
+                staleEl.innerText    = stale.toLocaleString();
+                pendingEl.innerText  = pending.toLocaleString();
+
+                // Colour-code Pending Now: orange if work to do, green if quiet
+                pendingEl.classList.remove('text-orange', 'text-green', 'text-muted');
+                pendingEl.classList.add(pending > 0 ? 'text-orange' : 'text-green');
+
+                // Colour-code Stale: orange if any, muted if zero
+                staleEl.classList.remove('text-orange', 'text-muted');
+                staleEl.classList.add(stale > 0 ? 'text-orange' : 'text-muted');
+
+                // Generate an institutional-grade explanation string
+                const scopeStr = firewall
+                    ? "Freetrade Firewall is ON (only index ∩ tradable assets are in scope)"
+                    : "Freetrade Firewall is OFF (full market universe in scope)";
+
+                let explanation;
+                if (eligible === 0) {
+                    explanation = `${scopeStr}. No eligible tickers — check Freetrade Sync and Index Scraper.`;
+                } else if (pending === 0) {
+                    explanation = `${scopeStr}. All ${eligible.toLocaleString()} eligible tickers are profiled and fresh (TTL: 90 days). No work for the profiler.`;
+                } else {
+                    explanation = `${scopeStr}. ${pending.toLocaleString()} of ${eligible.toLocaleString()} eligible tickers need a profile (missing or stale).`;
+                }
+                hintEl.innerText = explanation;
             } catch (e) {
                 console.error("Failed to fetch profiler status", e);
+                hintEl.innerText = "Failed to fetch profiler queue status.";
             }
         }
 
