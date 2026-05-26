@@ -35,7 +35,7 @@ def get_sector_trends() -> List[Dict[str, Any]]:
                 WHEN UPPER(q.ticker) LIKE '%.L' THEN 'LSE'
                 ELSE 'US'
             END as exchange,
-            COALESCE(p.sector, s.sector, 'Unclassified') as sector,
+            COALESCE(p.sector, s.sector, m.sector, 'Unclassified') as sector,
             COUNT(q.ticker) as total_stocks,
             ROUND(AVG(q.rsi_14), 2) as avg_rsi,
             ROUND(SUM(CASE WHEN q.close_price > q.sma_50 THEN 1 ELSE 0 END) * 100.0 / COUNT(q.ticker), 2) as pct_above_50d,
@@ -78,7 +78,7 @@ def get_mean_reversion_setups(max_rsi: float = 30.0, min_sma_distance: float = 0
             q.ticker,
             COALESCE(p.company_name, m.company_name, q.ticker) as company_name,
             COALESCE(m.country, p.country, 'US') as country,
-            COALESCE(p.sector, s.sector, 'Unclassified') as sector,
+            COALESCE(p.sector, s.sector, m.sector, 'Unclassified') as sector,
             COALESCE(p.currency, s.currency, 'USD') as currency,
             q.close_price,
             ROUND(q.rsi_14, 2) as rsi_14,
@@ -122,7 +122,7 @@ def get_leaders_laggards() -> List[Dict[str, Any]]:
             q.ticker,
             COALESCE(p.company_name, m.company_name, q.ticker) as company_name,
             COALESCE(m.country, p.country, 'US') as country,
-            COALESCE(p.sector, s.sector, 'Unclassified') as sector,
+            COALESCE(p.sector, s.sector, m.sector, 'Unclassified') as sector,
             CASE
                 WHEN UPPER(COALESCE(m.exchange, p.exchange)) = 'NMS' THEN 'NASDAQ'
                 WHEN UPPER(COALESCE(m.exchange, p.exchange)) = 'NYQ' THEN 'NYSE/AMEX'
