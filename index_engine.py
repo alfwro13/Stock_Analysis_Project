@@ -33,7 +33,7 @@ INDEX_REGISTRY: Dict[str, Dict] = {
         "match_text": "Ticker",
         "col_ticker": "Ticker",
         "col_company": "Company",
-        "col_sector": "Sector",
+        "col_sector": "FTSE industry classification benchmark sector", # Updated Wikipedia Header
         # LSE tickers require the '.L' suffix for Yahoo Finance
         "ticker_formatter": lambda t: str(t).strip().replace('.', '-') + ".L"
     }
