@@ -11,6 +11,6 @@ conn.close()
 print("Triggering background Macro Pipeline rebuild...")
 try:
     requests.post("http://127.0.0.1:8090/api/macro/run-pipeline", timeout=5)
-    print("Rebuild initiated! Please wait ~30 seconds for the FRED/BoE data to download, then refresh your browser.")
+    print("Rebuild initiated! Please wait ~30 seconds for the FRED/BoE data to download.")
 except Exception as e:
     print(f"Failed to trigger API. Is the server running? Error: {e}")

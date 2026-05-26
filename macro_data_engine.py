@@ -89,10 +89,9 @@ def fetch_fred_api(session: requests.Session, series_id: str, start_date: dateti
         df['value'] = pd.to_numeric(df['value'].replace('.', pd.NA), errors='coerce')
         df['date'] = pd.to_datetime(df['date'], errors='coerce')
         
-        # [LOOKAHEAD BIAS RESOLVED] Apply realistic publication lag.
         # Daily market metrics (Credit Spreads/Yield Curves) are instant. 
         # Structural economic data (M2/Claims) lags by ~30 days.
-        lag_days = 0 if series_id in ['BAMLH0A0HYM2', 'BAMLHE00EHY2EY', 'T10Y2Y'] else 30
+        lag_days = 0 if series_id in ['BAMLH0A0HYM2', 'BAMLHE00EHYIOAS', 'T10Y2Y'] else 30
         df['publication_date'] = df['date'] + pd.DateOffset(days=lag_days)
         
         df.dropna(subset=['publication_date'], inplace=True)
@@ -221,7 +220,7 @@ def update_macro_indicators() -> None:
         # rewrite of the existing >3.0% circuit breaker threshold logic.
         # Alternative Option: Another option could be to use `GBPUSD=X` divergence + UK Gilt spread 
         # as an intermarket proxy, but that would require heavier downstream cross-engine calculation.
-        fred_tickers = ['WM2NS', 'ICSA', 'BAMLH0A0HYM2', 'BAMLHE00EHY2EY', 'T10Y2Y', 'CPIAUCSL']
+        fred_tickers = ['WM2NS', 'ICSA', 'BAMLH0A0HYM2', 'BAMLHE00EHYIOAS', 'T10Y2Y', 'CPIAUCSL']
         for ticker in fred_tickers:
             df = fetch_fred_api(session, ticker, start_dt, end_dt, fred_api_key)
             if not df.empty:
@@ -257,7 +256,7 @@ def update_macro_indicators() -> None:
             float(row['BAMLH0A0HYM2']) if 'BAMLH0A0HYM2' in row and pd.notna(row['BAMLH0A0HYM2']) else None,
             float(row['T10Y2Y']) if 'T10Y2Y' in row and pd.notna(row['T10Y2Y']) else None,
             float(row['LPMVWNM']) if 'LPMVWNM' in row and pd.notna(row['LPMVWNM']) else None,
-            float(row['BAMLHE00EHY2EY']) if 'BAMLHE00EHY2EY' in row and pd.notna(row['BAMLHE00EHY2EY']) else None,
+            float(row['BAMLHE00EHYIOAS']) if 'BAMLHE00EHYIOAS' in row and pd.notna(row['BAMLHE00EHYIOAS']) else None,
             float(row['D7G7']) if 'D7G7' in row and pd.notna(row['D7G7']) else None,
             float(row['BCJD']) if 'BCJD' in row and pd.notna(row['BCJD']) else None,
             float(row['CPIAUCSL']) if 'CPIAUCSL' in row and pd.notna(row['CPIAUCSL']) else None
