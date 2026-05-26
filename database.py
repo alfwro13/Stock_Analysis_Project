@@ -532,6 +532,16 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
                 logger.error(f"[MIGRATION ERROR] Failed on macro_indicators: {e}")
                 continue
 
+    # 8. Ensure covering index on quant_signals for efficient latest-date lookups
+    try:
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_qs_ticker_date
+            ON quant_signals(ticker, date)
+        """)
+        logger.info("[MIGRATION] Verified index idx_qs_ticker_date on quant_signals(ticker, date).")
+    except Exception as e:
+        logger.error(f"[MIGRATION ERROR] Failed to create idx_qs_ticker_date: {e}")
+
     try:
         conn.commit()
     except Exception as e:

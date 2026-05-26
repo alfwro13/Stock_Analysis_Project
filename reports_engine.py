@@ -27,6 +27,11 @@ def get_sector_trends() -> List[Dict[str, Any]]:
         # Uses positional grouping (GROUP BY 1, 2) to avoid SQLite 'ambiguous column'
         # errors when grouping by our generated 'exchange' alias.
         query = """
+        WITH latest AS (
+            SELECT ticker, MAX(date) AS max_date
+            FROM quant_signals
+            GROUP BY ticker
+        )
         SELECT
             CASE
                 WHEN UPPER(COALESCE(m.exchange, p.exchange)) = 'NMS' THEN 'NASDAQ'
@@ -41,11 +46,11 @@ def get_sector_trends() -> List[Dict[str, Any]]:
             ROUND(SUM(CASE WHEN q.close_price > q.sma_50 THEN 1 ELSE 0 END) * 100.0 / COUNT(q.ticker), 2) as pct_above_50d,
             ROUND(SUM(CASE WHEN q.bullish_cross = 1 THEN 1 ELSE 0 END) * 100.0 / COUNT(q.ticker), 2) as pct_bullish_cross
         FROM quant_signals q
+        INNER JOIN latest l ON q.ticker = l.ticker AND q.date = l.max_date
         INNER JOIN market_universe m ON q.ticker = m.ticker
         LEFT JOIN asset_profiles p ON q.ticker = p.ticker
         LEFT JOIN stock_signals s ON q.ticker = s.ticker
-        WHERE q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = q.ticker)
-          AND COALESCE(p.sector, s.sector, 'Unclassified') != 'None'
+        WHERE COALESCE(p.sector, s.sector, 'Unclassified') != 'None'
           AND COALESCE(p.sector, s.sector, 'Unclassified') != ''
           AND COALESCE(p.quote_type, s.quote_type, 'EQUITY') = 'EQUITY'
         GROUP BY 1, 2
@@ -74,6 +79,11 @@ def get_mean_reversion_setups(max_rsi: float = 30.0, min_sma_distance: float = 0
         cursor = conn.cursor()
 
         query = """
+        WITH latest AS (
+            SELECT ticker, MAX(date) AS max_date
+            FROM quant_signals
+            GROUP BY ticker
+        )
         SELECT
             q.ticker,
             COALESCE(p.company_name, m.company_name, q.ticker) as company_name,
@@ -85,11 +95,11 @@ def get_mean_reversion_setups(max_rsi: float = 30.0, min_sma_distance: float = 0
             ROUND(q.sma_200, 2) as sma_200,
             ROUND(((q.close_price - q.sma_200) / q.sma_200) * 100.0, 2) as distance_from_200d_pct
         FROM quant_signals q
+        INNER JOIN latest l ON q.ticker = l.ticker AND q.date = l.max_date
         INNER JOIN market_universe m ON q.ticker = m.ticker
         LEFT JOIN asset_profiles p ON q.ticker = p.ticker
         LEFT JOIN stock_signals s ON q.ticker = s.ticker
-        WHERE q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = q.ticker)
-          AND q.rsi_14 <= ?
+        WHERE q.rsi_14 <= ?
           AND q.close_price > q.sma_200
           AND COALESCE(p.quote_type, s.quote_type, 'EQUITY') = 'EQUITY'
         ORDER BY q.rsi_14 ASC
@@ -118,6 +128,11 @@ def get_leaders_laggards() -> List[Dict[str, Any]]:
         cursor = conn.cursor()
 
         query = """
+        WITH latest AS (
+            SELECT ticker, MAX(date) AS max_date
+            FROM quant_signals
+            GROUP BY ticker
+        )
         SELECT
             q.ticker,
             COALESCE(p.company_name, m.company_name, q.ticker) as company_name,
@@ -136,11 +151,11 @@ def get_leaders_laggards() -> List[Dict[str, Any]]:
             ROUND(q.macd_hist, 3) as macd_hist,
             q.volume_surge
         FROM quant_signals q
+        INNER JOIN latest l ON q.ticker = l.ticker AND q.date = l.max_date
         INNER JOIN market_universe m ON q.ticker = m.ticker
         LEFT JOIN asset_profiles p ON q.ticker = p.ticker
         LEFT JOIN stock_signals s ON q.ticker = s.ticker
-        WHERE q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = q.ticker)
-          AND q.close_price > q.sma_50
+        WHERE q.close_price > q.sma_50
           AND q.rsi_14 IS NOT NULL
           AND COALESCE(p.quote_type, s.quote_type, 'EQUITY') = 'EQUITY'
         ORDER BY q.rsi_14 DESC, q.macd_hist DESC
@@ -170,6 +185,11 @@ def get_dividend_harvest_setups(min_yield: float = 0.02, min_score: int = 50) ->
         cursor = conn.cursor()
 
         query = """
+        WITH latest AS (
+            SELECT ticker, MAX(date) AS max_date
+            FROM quant_signals
+            GROUP BY ticker
+        )
         SELECT
             q.ticker,
             COALESCE(p.company_name, m.company_name, q.ticker) as company_name,
@@ -189,11 +209,11 @@ def get_dividend_harvest_setups(min_yield: float = 0.02, min_score: int = 50) ->
             s.composite_score,
             q.ml_confidence_score
         FROM quant_signals q
+        INNER JOIN latest l ON q.ticker = l.ticker AND q.date = l.max_date
         LEFT JOIN market_universe m ON q.ticker = m.ticker
         LEFT JOIN asset_profiles p ON q.ticker = p.ticker
         LEFT JOIN stock_signals s ON q.ticker = s.ticker
-        WHERE q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = q.ticker)
-          AND s.dividend_yield >= ?
+        WHERE s.dividend_yield >= ?
           AND s.composite_score >= ?
           AND s.ex_dividend_date IS NOT NULL
           AND s.ex_dividend_date != 'Unknown'
