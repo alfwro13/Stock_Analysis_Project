@@ -979,12 +979,14 @@
             
             setBoxStatus('ft-sync-status-msg', 'warning', "⏳ Sync initiated in the background. Resolving ISINs...");
 
-            try { 
-                const response = await fetch('/api/trigger-freetrade-sync', { method: 'POST' }); 
+            try {
+                const response = await fetch('/api/trigger-freetrade-sync', { method: 'POST' });
+                if (response.ok) {
+                    setBoxStatus('ft-sync-status-msg', 'success', "✅ Sync initiated successfully.");
                 } else {
                     setStatus('ft-sync-status-msg', 'error', "Failed to initiate sync. Server returned an error.");
                 }
-            } catch (e) { 
+            } catch (e) {
                 setStatus('ft-sync-status-msg', 'error', "Failed to initiate sync. Check your network or server logs.");
             }
             
