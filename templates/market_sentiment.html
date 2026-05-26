@@ -27,14 +27,14 @@
         <p class="regime-callout-text">
             <strong>🇺🇸 US Classification:</strong> 
             <abbr title="Regime state. Normal = Safe, Volatile = Choppy/Elevated Risk, Crash = Panic." class="text-help">{{ regime_data.us_regime_label }}</abbr> 
-            (Turbulence Index: <abbr title="Blended metric of Realized and Implied Volatility. < 20 is Normal, 20-30 is Volatile, > 35 is Crash." class="text-help">{{ "%.2f"|format(regime_data.us_turbulence) }}</abbr>) 
+            (Turbulence Index: <abbr title="EWMA Realized Volatility metric. < 20 is Normal, 20-30 is Volatile, > 30 is Crash." class="text-help">{{ "%.2f"|format(regime_data.us_turbulence) }}</abbr>) 
             {% if regime_data.ai_hmm_state is not none %} | 
             <abbr title="Time-Series AI structural cluster. 0: Expansion/Normal. 1: Transition/Choppy. 2: Contraction/Crisis." class="text-help">🤖 HMM Hidden Macro State: {{ regime_data.ai_hmm_state }}</abbr>
             {% endif %}<br>
             
             <strong>🇬🇧 UK Classification:</strong> 
             <abbr title="Regime state. Normal = Safe, Volatile = Choppy/Elevated Risk, Crash = Panic." class="text-help">{{ regime_data.uk_regime_label }}</abbr> 
-            (Turbulence Index: <abbr title="Blended metric of Realized Volatility. < 20 is Normal, 20-30 is Volatile, > 35 is Crash." class="text-help">{{ "%.2f"|format(regime_data.uk_turbulence) }}</abbr>)
+            (Turbulence Index: <abbr title="EWMA Realized Volatility metric. < 20 is Normal, 20-30 is Volatile, > 30 is Crash." class="text-help">{{ "%.2f"|format(regime_data.uk_turbulence) }}</abbr>)
         </p>
         <p class="regime-callout-text">
             Market conditions are currently 

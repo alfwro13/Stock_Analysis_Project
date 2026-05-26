@@ -102,7 +102,6 @@ def calculate_market_regime() -> None:
 
         # 3. Calculate Independent Composite Turbulence Indices
         # US: 70% Implied (Forward) / 30% EWMA Realized (Fast-Backward)
-        #us_turbulence = (latest_vix * 0.7) + (latest_spy_vol * 0.3)
         us_turbulence = latest_spy_vol   # Pure EWMA — comparable to UK
         # UK: 100% EWMA Realized (due to lack of robust UK implied vol data on YF)
         uk_turbulence = latest_ftse_vol

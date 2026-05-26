@@ -140,12 +140,10 @@ class CrashEngine:
         if df_combined.empty or len(df_combined) < self.sma_length:
             return None
 
-        # --- 1. NEW LOGIC: True Intraday Session Crash ---
-        # df_combined is always purely historical OHLCV data loaded from Parquet.
-        # The live current_price is passed separately as a scalar.
-        # Therefore: prev_close is always the last row of df_combined (= yesterday's close).
+        # The orchestrator appends the live current_price as the final row of df_combined (iloc[-1]).
+        # To calculate the true intraday drop, we must reference the prior session's close (iloc[-2]).
         if len(df_combined) >= 2:
-            prev_close = df_combined['Close'].iloc[-1]
+            prev_close = df_combined['Close'].iloc[-2]
         else:
             prev_close = current_price
 
