@@ -36,7 +36,7 @@ from reports_engine import get_sector_trends, get_mean_reversion_setups, get_lea
 from options_engine import fetch_options_chain, calculate_payoff_matrix
 from ai_prediction_engine import train_global_ml_model, update_daily_ml_predictions, run_historical_backfill
 from risk_engine import update_all_tail_risks
-from profile_engine import update_single_profile
+from profile_engine import update_single_profile, count_pending_profiles
 from tools.network_engine import GLOBAL_IPV6_STATUS
 # Import curl_cffi for resilient IPv6 socket testing
 from curl_cffi import requests as cffi_requests
@@ -259,6 +259,14 @@ async def trigger_universe_update_endpoint(background_tasks: BackgroundTasks):
         "status": "success", 
         "message": "Market Universe update initiated in the background. Check System Notifications for progress."
     })
+
+@api_router.get("/universe/profiler-status")
+async def get_profiler_status():
+    try:
+        count = count_pending_profiles()
+        return JSONResponse(content={"status": "success", "pending_count": count})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 @api_router.post("/universe/sync-indices")
 async def trigger_sync_indices_endpoint(background_tasks: BackgroundTasks):

@@ -41,7 +41,7 @@
                 <h4 class="settings-panel-header text-cyan">🌐 Freetrade Broker Integration</h4>
                 <div class="checkbox-group mb-10">
                     <input type="checkbox" id="FREETRADE_ONLY_MODE" {% if config.UI_PREFERENCES.FREETRADE_ONLY_MODE %}checked{% endif %}>
-                    <label for="FREETRADE_ONLY_MODE" class="text-cyan font-bold">Enable Freetrade Firewall (Restricts analysis/scanning to tradable assets)</label>
+                    <label for="FREETRADE_ONLY_MODE" class="text-cyan font-bold">Enable Freetrade Filter (Restricts analysis/scanning to tradable assets)</label>
                 </div>
                 <div class="checkbox-group mb-10">
                     <input type="checkbox" id="FREETRADE_SYNC_ENABLED" {% if config.SCHEDULING.FREETRADE_SYNC.ENABLED %}checked{% endif %}>
@@ -146,6 +146,11 @@
             <div class="settings-panel border-left-green">
                 <h4 class="settings-panel-header text-green">📊 Fundamentals Data Profiler</h4>
                 <p class="settings-desc-sm">Downloads heavy fundamental data (PE, EPS, Sector) for the active universe via Yahoo Finance.</p>
+                
+                <div class="flex-gap-10 mb-15 flex-center-wrap">
+                    <strong class="text-muted">Pending Profiles in Queue:</strong>
+                    <span id="profiler-pending-badge" class="setup-tag text-muted border-none">Calculating...</span>
+                </div>
                 <div class="checkbox-group mb-10">
                     <input type="checkbox" id="PROFILER_ENGINE_ENABLED" {% if profiler.ENABLED %}checked{% endif %}>
                     <label for="PROFILER_ENGINE_ENABLED">Auto-download Fundamental Profiles</label>
@@ -161,10 +166,14 @@
                     <label><input type="checkbox" class="profiler-day" value="sun" {% if 'sun' in p_days %}checked{% endif %}> Sun</label>
                 </div>
 
-                <div class="flex-gap-15 align-end">
+                <div class="flex-gap-15 align-end flex-wrap">
                     <div class="form-group mb-0">
                         <label>Execution Time</label>
                         <input type="time" id="PROFILER_ENGINE_TIME" value="{{ profiler.TIME | default('05:00') }}">
+                    </div>
+                    <div class="form-group mb-0">
+                        <label>Batch Size (Max per run)</label>
+                        <input type="number" id="PROFILER_BATCH_SIZE" value="{{ profiler.BATCH_SIZE | default(250) }}" min="10" max="5000" step="10">
                     </div>
                     <button type="button" class="btn-test mt-0 btn-green" onclick="triggerFundamentalsProfiler()">▶️ Run Profiler Now</button>
                     <button type="button" class="btn-test mt-0 text-purple" onclick="triggerUniverseQuantScan()">▶️ Run Full Quant Scan</button>
@@ -1444,6 +1453,31 @@
             }, 3000);
         }
 
+        async function fetchProfilerQueueStatus() {
+            try {
+                const response = await fetch('/api/universe/profiler-status');
+                const data = await response.json();
+                const badge = document.getElementById('profiler-pending-badge');
+                
+                if (response.ok) {
+                    badge.innerText = data.pending_count.toLocaleString();
+                    if (data.pending_count > 0) {
+                        badge.classList.add('text-orange');
+                        badge.classList.remove('text-green', 'text-muted');
+                    } else {
+                        badge.classList.add('text-green');
+                        badge.classList.remove('text-orange', 'text-muted');
+                    }
+                }
+            } catch (e) {
+                console.error("Failed to fetch profiler status", e);
+            }
+        }
+
+        // ADD THIS TO YOUR EXISTING DOMContentLoaded Event Listener:
+        // fetchProfilerQueueStatus();
+        // setInterval(fetchProfilerQueueStatus, 30000); // Refresh every 30 seconds
+
         async function saveSettings(silent = false) {
             const btn = document.querySelector('.btn-save');
             
@@ -1572,7 +1606,8 @@
                     "PROFILER_ENGINE": {
                         "ENABLED": document.getElementById('PROFILER_ENGINE_ENABLED').checked,
                         "DAYS": profilerDays,
-                        "TIME": document.getElementById('PROFILER_ENGINE_TIME').value
+                        "TIME": document.getElementById('PROFILER_ENGINE_TIME').value,
+                        "BATCH_SIZE": parseInt(document.getElementById('PROFILER_BATCH_SIZE').value) || 250
                     },
                     "UNIVERSE_ENGINE": {
                         "ENABLED": document.getElementById('UNIVERSE_ENGINE_ENABLED').checked,

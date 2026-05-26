@@ -77,7 +77,8 @@ DEFAULT_CONFIG = {
         "PROFILER_ENGINE": {
             "ENABLED": False,
             "DAYS": ["sun"],
-            "TIME": "05:00"
+            "TIME": "05:00",
+            "BATCH_SIZE": 250
         },
         "GHOSTFOLIO_SYNC": {
             "ENABLED": False,

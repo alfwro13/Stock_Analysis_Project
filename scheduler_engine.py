@@ -208,8 +208,13 @@ def run_fundamentals_profiler():
     try:
         logger.info("Fundamentals profiler initiated.")
         from profile_engine import run_profile_audit
-        # Elevated limit to rapidly cycle through newly scraped indices
-        run_profile_audit(limit=4000)
+        
+        # Read the dynamic batch size from config
+        config = load_config()
+        batch_size = config.get("SCHEDULING", {}).get("PROFILER_ENGINE", {}).get("BATCH_SIZE", 250)
+        
+        run_profile_audit(limit=int(batch_size))
+        
         logger.info("Fundamentals profiler complete.")
         log_sched_notification("Success", "Fundamentals Profiler completed successfully.")
     except Exception as e:

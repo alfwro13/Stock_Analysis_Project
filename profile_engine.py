@@ -171,6 +171,55 @@ def run_profile_audit(limit: int = 250):
             
     logger.info(f"Asset Profile Audit complete. Updated {updated_count} static metadata records.")
 
+def count_pending_profiles() -> int:
+    """
+    Counts how many assets currently lack profiles or have stale data (>90 days).
+    Respects the Freetrade Firewall UI setting.
+    """
+    config_data = load_config()
+    freetrade_only = config_data.get("UI_PREFERENCES", {}).get("FREETRADE_ONLY_MODE", False)
+    
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        if freetrade_only:
+            cursor.execute("""
+                WITH AllTickers AS (
+                    SELECT ticker FROM market_universe WHERE is_index = 1 AND is_freetrade = 1
+                    UNION
+                    SELECT ticker FROM stock_signals
+                    UNION
+                    SELECT ticker FROM quant_signals
+                )
+                SELECT COUNT(a.ticker) as pending_count 
+                FROM AllTickers a
+                LEFT JOIN asset_profiles p ON a.ticker = p.ticker
+                WHERE p.ticker IS NULL 
+                   OR p.last_verified_date < date('now', '-90 days')
+            """)
+        else:
+            cursor.execute("""
+                WITH AllTickers AS (
+                    SELECT ticker FROM market_universe
+                    UNION
+                    SELECT ticker FROM stock_signals
+                    UNION
+                    SELECT ticker FROM quant_signals
+                )
+                SELECT COUNT(a.ticker) as pending_count 
+                FROM AllTickers a
+                LEFT JOIN asset_profiles p ON a.ticker = p.ticker
+                WHERE p.ticker IS NULL 
+                   OR p.last_verified_date < date('now', '-90 days')
+            """)
+        result = cursor.fetchone()
+        return int(result['pending_count']) if result else 0
+    except Exception as e:
+        logger.error(f"Error counting pending profiles: {e}")
+        return 0
+    finally:
+        conn.close()
+
 if __name__ == "__main__":
     print("WARNING: Running initial massive data harvest. This will take ~1 to 1.5 hours to respect rate limits.")
     run_profile_audit(limit=5000)
