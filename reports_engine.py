@@ -46,8 +46,8 @@ def get_sector_trends() -> List[Dict[str, Any]]:
         INNER JOIN market_universe m ON q.ticker = m.ticker
         LEFT JOIN asset_profiles p ON q.ticker = p.ticker
         LEFT JOIN stock_signals s ON q.ticker = s.ticker
-        WHERE COALESCE(p.sector, s.sector, 'Unclassified') != 'None'
-          AND COALESCE(p.sector, s.sector, 'Unclassified') != ''
+        WHERE COALESCE(p.sector, s.sector, m.sector, 'Unclassified') != 'None'
+          AND COALESCE(p.sector, s.sector, m.sector, 'Unclassified') != ''
           AND COALESCE(p.quote_type, s.quote_type, 'EQUITY') = 'EQUITY'
         GROUP BY 1, 2
         ORDER BY 1 ASC, 4 DESC
@@ -221,6 +221,8 @@ def get_dividend_harvest_setups(min_yield: float = 0.02, min_score: int = 50) ->
           AND s.ex_dividend_date IS NOT NULL
           AND s.ex_dividend_date != 'Unknown'
           AND s.ex_dividend_date != ''
+        ORDER BY s.composite_score DESC
+        LIMIT 500
         """
 
         cursor.execute(query, (min_yield, min_score))
