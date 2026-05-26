@@ -731,7 +731,7 @@ class QuantEngine:
             else:
                 breakdown.append("+0: Technical indicators skipped (Insufficient Historical Data)")
 
-            # Safely clamp the final score between -50 and 100 to allow structural weakness visibility
+            # Safely clamp the final score between -100 and 100 to allow structural weakness visibility
             score = max(-100, min(score, 100))
             # Guard: stocks that never entered the technical block have score == 0
             _has_tech = df is not None and len(df) >= 21
