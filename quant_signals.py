@@ -453,7 +453,7 @@ class QuantEngine:
                             else:
                                 multiplier = 2.0  # Standard conservative swing trading baseline
                                 
-                            stop_loss = current_price - (multiplier * atr_val)
+                            stop_loss = max(current_price - (multiplier * atr_val), 0.01)
 
                 if 'Volume' in df.columns and not df['Volume'].isna().all():
                     df['OBV'] = ta.volume.OnBalanceVolumeIndicator(close=df['Close'], volume=df['Volume']).on_balance_volume()
