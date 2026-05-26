@@ -28,6 +28,41 @@
         </div>
     </div>
 
+    <div class="report-section border-left-success">
+        <h2 class="text-success">💎 Quality Compounders</h2>
+        <p>The "Buy and Hold" Screener. High capital efficiency, strong margins, and low debt trading at reasonable valuations.</p>
+        <p><strong>How to use:</strong> These are structurally resilient businesses with proven pricing power and low leverage. <br>
+           <strong>When to use:</strong> Use this to build the core foundational pillars of your long-term portfolio. <br>
+           <strong>The Benefit:</strong> Filters out both value traps (dying companies) and euphoria traps (overpriced momentum), surfacing only high-quality compounders with a Quant Score >= 60.</p>
+
+        <table id="qualityTable" class="display w-100">
+            <thead>
+                <tr>
+                    <th>Ticker</th>
+                    <th>Company Name</th>
+                    <th>Sector</th>
+                    <th>Close Price</th>
+                    <th><abbr title="Return on Equity (>15%)">ROE</abbr></th>
+                    <th><abbr title="Profit Margin (>10%)">Margin</abbr></th>
+                    <th><abbr title="Debt to Equity Ratio (<1.0)">Debt/Eq</abbr></th>
+                    <th><abbr title="Trailing P/E (10 to 35)">P/E</abbr></th>
+                    <th><abbr title="System Quant Score (>=60)">Quant Score</abbr></th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+
+        <div class="footer-notes">
+            <strong class="text-light">Key Metrics Explained:</strong>
+            <ul class="explanation-list">
+                <li><strong class="text-accent-blue">ROE (>15%):</strong> Return on Equity. The ultimate measure of capital efficiency and management competence.</li>
+                <li><strong class="text-accent-blue">Margin (>10%):</strong> Indicates a strong "Moat" and pricing power, allowing the business to survive inflation.</li>
+                <li><strong class="text-accent-blue">Debt/Eq (<1.0):</strong> Ensures the company is not overly leveraged, protecting it from surging interest rates.</li>
+                <li><strong class="text-accent-blue">P/E (10-35):</strong> Excludes dying "value traps" (P/E < 10) and dangerously overvalued euphoria stocks (P/E > 35).</li>
+            </ul>
+        </div>
+    </div>
+
     <div class="report-section">
         <h2>Sector Trends & <abbr title="The rate of acceleration of a security's price or volume.">Momentum</abbr></h2>
         <p>A macro view of overall market health aggregated by sector, sorted by average <abbr title="Relative Strength Index (RSI) measures the speed and magnitude of recent price changes.">relative strength</abbr>.</p>
@@ -362,6 +397,34 @@
                     },
                     { data: 'rsi_14', render: function(data) { return `<span class="positive-val">${data.toFixed(2)}</span>`; } },
                     { data: 'macd_hist', render: function(data) { return `<span class="positive-val">${data.toFixed(3)}</span>`; } }
+                ]
+            });
+
+            // Quality Compounders Table
+            var qualityTable = $('#qualityTable').DataTable({
+                ajax: {
+                    url: '/api/reports/quality-compounders',
+                    error: function() { showTableError('#qualityTable', 9); }
+                },
+                deferRender: true,
+                pageLength: 10,
+                order: [[8, 'desc'], [4, 'desc']], // Sort by Quant Score, then ROE
+
+                columns: [
+                    { data: 'ticker', render: function(data) { return '<a href="/stock/' + data + '" class="ticker-link">' + data + '</a>'; } },
+                    { data: 'company_name' },
+                    { data: 'sector' },
+                    {
+                        data: 'close_price',
+                        render: function(data, type, row) {
+                            return type === 'display' ? formatCurrency(data, row.currency) : data;
+                        }
+                    },
+                    { data: 'roe_pct', render: function(data) { return `<span class="positive-val">${data.toFixed(2)}%</span>`; } },
+                    { data: 'margin_pct', render: function(data) { return `<span class="positive-val">${data.toFixed(2)}%</span>`; } },
+                    { data: 'debt_to_equity', render: function(data) { return data.toFixed(2); } },
+                    { data: 'trailing_pe', render: function(data) { return data.toFixed(2); } },
+                    { data: 'composite_score', render: function(data) { return `<span class="positive-val">${data}</span>`; } }
                 ]
             });
 

@@ -259,3 +259,68 @@ def get_dividend_harvest_setups(min_yield: float = 0.02, min_score: int = 50) ->
     finally:
         if conn:
             conn.close()
+
+def get_quality_compounders() -> List[Dict[str, Any]]:
+    """
+    Identifies 'buy and hold' quality compounders.
+    Filters for high capital efficiency, strong margins, low debt, 
+    consistent growth, and reasonable valuations.
+    """
+    logger.info("Generating Quality Compounders Report...")
+    conn = None
+    try:
+        conn = get_connection()
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        query = """
+        WITH latest AS (
+            SELECT ticker, MAX(date) AS max_date
+            FROM quant_signals
+            GROUP BY ticker
+        )
+        SELECT
+            q.ticker,
+            COALESCE(p.company_name, m.company_name, q.ticker) as company_name,
+            COALESCE(p.sector, s.sector, m.sector, 'Unclassified') as sector,
+            COALESCE(p.country, m.country, 'US') as country,
+            CASE
+                WHEN UPPER(COALESCE(m.exchange, p.exchange)) = 'NMS' THEN 'NASDAQ'
+                WHEN UPPER(COALESCE(m.exchange, p.exchange)) = 'NYQ' THEN 'NYSE/AMEX'
+                WHEN COALESCE(m.exchange, p.exchange) IS NOT NULL THEN UPPER(COALESCE(m.exchange, p.exchange))
+                WHEN UPPER(q.ticker) LIKE '%.L' THEN 'LSE'
+                ELSE 'US'
+            END as exchange,
+            COALESCE(p.currency, s.currency, 'USD') as currency,
+            q.close_price,
+            ROUND(s.roe * 100.0, 2) as roe_pct,
+            ROUND(s.profit_margin * 100.0, 2) as margin_pct,
+            ROUND(s.debt_to_equity, 2) as debt_to_equity,
+            ROUND(s.trailing_pe, 2) as trailing_pe,
+            s.composite_score
+        FROM quant_signals q
+        INNER JOIN latest l ON q.ticker = l.ticker AND q.date = l.max_date
+        INNER JOIN market_universe m ON q.ticker = m.ticker
+        LEFT JOIN asset_profiles p ON q.ticker = p.ticker
+        LEFT JOIN stock_signals s ON q.ticker = s.ticker
+        WHERE COALESCE(p.quote_type, s.quote_type, 'EQUITY') = 'EQUITY'
+          AND s.roe > 0.15
+          AND s.debt_to_equity < 1.0
+          AND s.profit_margin > 0.10
+          AND s.revenue_growth > 0.05
+          AND s.current_ratio > 1.5
+          AND s.composite_score >= 60
+          AND s.trailing_pe BETWEEN 10 AND 35
+        ORDER BY s.composite_score DESC, s.roe DESC
+        LIMIT 500
+        """
+        cursor.execute(query)
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
+    except Exception as e:
+        logger.error(f"Failed to generate Quality Compounders: {e}")
+        return []
+    finally:
+        if conn:
+            conn.close()
