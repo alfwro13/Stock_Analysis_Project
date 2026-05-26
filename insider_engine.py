@@ -184,8 +184,9 @@ def run_insider_alert():
                 # Evaluate Quantamental Alignment Conditions
                 # Condition 1: High System Score (Strong Momentum & Volume)
                 is_bullish_trend = score is not None and score >= 60
-                # Condition 2: Deep Value / Oversold (Price < Stop Loss floor)
-                is_buying_dip = curr_price is not None and atr_stop is not None and (0 < curr_price < atr_stop)
+                
+                # Condition 2: Institutional Dip Buy (Price retreating to, but holding above, the ATR floor)
+                is_buying_dip = curr_price is not None and atr_stop is not None and (atr_stop < curr_price <= atr_stop * 1.15)
 
                 # 6. Dispatch Alerts
                 for idx, row in major_buys.iterrows():
@@ -202,7 +203,7 @@ def run_insider_alert():
                         if is_bullish_trend:
                             alignment_banner += f"\n✅ **System Score:** {score}/100 (Strong Bullish Trend)"
                         if is_buying_dip:
-                            alignment_banner += f"\n📉 **Deep Value:** Price (${curr_price:.2f}) is below ATR Stop-Loss floor (${atr_stop:.2f}). Insider is buying the mathematical dip!"
+                            alignment_banner += f"\n📉 **Institutional Pullback:** Price (${curr_price:.2f}) is pulling back to, but securely holding, the ATR Support Floor (${atr_stop:.2f}). Insider is defending the trend!"
                     
                     msg = (
                         f"🚨 **INSIDER BUYING DETECTED** 🚨\n"
