@@ -17,7 +17,7 @@ The engine acts as an arbitrage scanner. It compares **what the options market e
 The engine scans your tracked assets for upcoming earnings within the next 14 days. For those assets, it calculates:
 
 * **Implied Move (The Market's Expectation):** The engine finds the closest At-The-Money (ATM) Call and Put options expiring immediately after the earnings date. It adds their prices together (an ATM Straddle) and divides by the current stock price. *Example: "The options market is pricing in a 6.50% move."*
-* **Historical Avg Move (The Reality):** The engine fetches the exact dates of the last 4 quarterly earnings reports, looks at the historical daily chart, and calculates the average absolute percentage gap (Close-to-Close) that occurred. *Example: "Historically, this stock moves an average of 9.20% on earnings days."*
+* **Historical Avg Move (The Reality):** The engine fetches the exact dates of the last 4 quarterly earnings reports, looks at the historical daily chart, and calculates the average absolute percentage move over a 2-trading-day window (the close before the report to the close after). This captures the full reaction regardless of AMC/BMO timing. *Example: "Historically, this stock moves an average of 9.20% across its 2-day earnings window."*
 * **Edge Score:** The mathematical difference between the Historical Move and the Implied Move. 
 
 **How to Interpret the Edge Score:**

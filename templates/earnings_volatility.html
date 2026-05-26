@@ -92,7 +92,7 @@
                 <div class="guide-card border-top-purple">
                     <h4 class="text-accent-purple">3. Historical Avg Move</h4>
                     <p>While the Implied Move looks forward, the Historical Move looks backward to ground us in reality. The engine pulls the exact dates of the company's last 4 quarterly earnings reports (1 year of data).</p>
-                    <p>It mathematically calculates the actual, real-world percentage gaps the stock made the day after those reports were released, and averages them together. This tells us how violently this specific stock <em>actually</em> reacts to its report card.</p>
+                    <p>It mathematically calculates the actual, real-world percentage moves the stock made over a <strong>2-trading-day window</strong> surrounding those reports (from the close before the report to the close after), and averages them together. This 2-session window ensures we capture the full price reaction regardless of whether the report was issued Before-Market-Open or After-Market-Close.</p>
                 </div>
 
                 <div class="guide-card border-top-success">
