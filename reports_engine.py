@@ -305,7 +305,7 @@ def get_quality_compounders() -> List[Dict[str, Any]]:
         LEFT JOIN stock_signals s ON q.ticker = s.ticker
         WHERE COALESCE(p.quote_type, s.quote_type, 'EQUITY') = 'EQUITY'
           AND s.roe > 0.15
-          AND s.debt_to_equity < 1.0
+          AND s.debt_to_equity < 100
           AND s.profit_margin > 0.10
           AND s.revenue_growth > 0.05
           AND s.current_ratio > 1.5
