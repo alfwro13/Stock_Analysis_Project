@@ -155,7 +155,7 @@ def create_macro_chart(df, df_baseline, ticker):
 def create_us_inflation_chart(df_spy: pd.DataFrame, df_cpi: pd.DataFrame) -> str:
     """
     Renders US Price Stability chart: CPI YoY % (orange, secondary axis) vs S&P 500 (cyan, primary axis).
-    Computes YoY inflation from the raw CPIAUCSL level index using a 252-period (trading year) percent change.
+    Computes YoY inflation from the raw CPIAUCSL level index using a 12-month percent change.
     Reference lines plotted at 2% (Fed target) and 5% (danger zone).
     """
     fig = make_subplots(specs=[[{"secondary_y": True}]])
@@ -170,27 +170,31 @@ def create_us_inflation_chart(df_spy: pd.DataFrame, df_cpi: pd.DataFrame) -> str
         )
 
     if not df_cpi.empty and 'value' in df_cpi.columns:
-        df_cpi_local = df_cpi.copy()
-        df_cpi_local['yoy'] = df_cpi_local['value'].pct_change(periods=252) * 100.0
-        df_cpi_local = df_cpi_local.dropna(subset=['yoy'])
+        df_cpi_local = df_cpi.copy().sort_index()
+        
+        # Resample to month-start to strip daily noise, then calculate YoY on the 12 months
+        monthly_series = df_cpi_local['value'].resample('MS').first().dropna()
+        monthly_series = monthly_series.pct_change(periods=12) * 100.0
+        monthly_series = monthly_series.dropna()
 
-        if not df_cpi_local.empty:
+        if not monthly_series.empty:
             fig.add_trace(
                 go.Scatter(
-                    x=df_cpi_local.index, y=df_cpi_local['yoy'], name="US CPI YoY %",
+                    x=monthly_series.index, y=monthly_series.values, name="US CPI YoY %",
                     line=dict(color="#ff8800", width=2, dash='dot'), connectgaps=True
                 ),
                 secondary_y=True
             )
 
+    # Shifted annotations to top left to prevent x-axis collision
     fig.add_hline(
         y=2.0, secondary_y=True, line_dash="dash", line_color="#00ff00",
-        annotation_text="Target (2.0%)", annotation_position="bottom right",
+        annotation_text="Target (2.0%)", annotation_position="top left",
         annotation_font_color="#00ff00"
     )
     fig.add_hline(
         y=5.0, secondary_y=True, line_dash="dash", line_color="#ff4d4d",
-        annotation_text="Danger Zone (>5.0%)", annotation_position="top right",
+        annotation_text="Danger Zone (>5.0%)", annotation_position="top left",
         annotation_font_color="#ff4d4d"
     )
 
@@ -208,16 +212,8 @@ def create_us_inflation_chart(df_spy: pd.DataFrame, df_cpi: pd.DataFrame) -> str
 def create_uk_inflation_chart(df_ftse: pd.DataFrame, df_cpi: pd.DataFrame) -> str:
     """
     Renders UK Price Stability chart: CPI YoY % (orange, secondary axis) vs FTSE 100 (cyan, primary axis).
-
-    Input contract:
-        df_cpi['value'] contains the ONS D7G7 series, which IS ALREADY the CPI Annual Rate (YoY %).
-        It is NOT a raw index level. A typical value is ~2.3 (meaning 2.3% YoY inflation).
-
-    Transformation:
-        Do NOT apply pct_change — that would compute YoY of YoY and produce garbage.
-        Just resample to month-start to collapse the daily forward-fill into a clean monthly line.
-
-    Reference lines: 2% (BoE target) and 5% (danger zone).
+    The raw ONS D7G7 series is ALREADY an annualized percentage rate, so no transformation is needed.
+    Reference lines plotted at 2% (BoE target) and 5% (danger zone).
     """
     fig = make_subplots(specs=[[{"secondary_y": True}]])
 
@@ -232,7 +228,7 @@ def create_uk_inflation_chart(df_ftse: pd.DataFrame, df_cpi: pd.DataFrame) -> st
 
     if not df_cpi.empty and 'value' in df_cpi.columns:
         df_cpi_local = df_cpi.copy().sort_index()
-        # D7G7 is already the YoY % annual rate. Resample only to collapse the daily forward-fill.
+        # D7G7 is already YoY %. Resample to strip daily forward-fill blockiness.
         monthly_series = df_cpi_local['value'].resample('MS').first().dropna()
 
         if not monthly_series.empty:
@@ -246,12 +242,12 @@ def create_uk_inflation_chart(df_ftse: pd.DataFrame, df_cpi: pd.DataFrame) -> st
 
     fig.add_hline(
         y=2.0, secondary_y=True, line_dash="dash", line_color="#00ff00",
-        annotation_text="Target (2.0%)", annotation_position="bottom right",
+        annotation_text="Target (2.0%)", annotation_position="top left",
         annotation_font_color="#00ff00"
     )
     fig.add_hline(
         y=5.0, secondary_y=True, line_dash="dash", line_color="#ff4d4d",
-        annotation_text="Danger Zone (>5.0%)", annotation_position="top right",
+        annotation_text="Danger Zone (>5.0%)", annotation_position="top left",
         annotation_font_color="#ff4d4d"
     )
 
