@@ -188,17 +188,33 @@ def run_weekend_universe_routine():
         logger.error(f"Weekend Universe Routine Failed: {e}")
         log_sched_notification("Error", f"Weekend Universe Routine failed: {e}")
 
-def run_weekend_profile_audit():
-    """Executes the rolling metadata audit for 250 assets."""
-    log_sched_notification("Scheduler", "Started Weekend Profile Audit...")
+def run_index_scraper():
+    """Executes the Wikipedia index constituent scraper."""
+    log_sched_notification("Scheduler", "Started Index Constituents Scraper...")
     try:
-        logger.info("Weekend profile audit initiated.")
-        run_profile_audit(limit=250)
-        logger.info("Weekend profile audit complete.")
-        log_sched_notification("Success", "Weekend Profile Audit completed successfully.")
+        logger.info("Index scraper initiated.")
+        # Delayed import to avoid circular dependencies before Phase 4 is built
+        from index_engine import sync_all_indices
+        sync_all_indices()
+        logger.info("Index scraper complete.")
+        log_sched_notification("Success", "Index Constituents Scraper completed successfully.")
     except Exception as e:
-        logger.error(f"Weekend Profile Audit Failed: {e}")
-        log_sched_notification("Error", f"Weekend Profile Audit failed: {e}")
+        logger.error(f"Index Scraper Failed: {e}")
+        log_sched_notification("Error", f"Index Scraper failed: {e}")
+
+def run_fundamentals_profiler():
+    """Executes the heavy rolling metadata audit to download fundamentals (PE, EPS, Sector)."""
+    log_sched_notification("Scheduler", "Started Fundamentals Profiler...")
+    try:
+        logger.info("Fundamentals profiler initiated.")
+        from profile_engine import run_profile_audit
+        # Elevated limit to rapidly cycle through newly scraped indices
+        run_profile_audit(limit=4000)
+        logger.info("Fundamentals profiler complete.")
+        log_sched_notification("Success", "Fundamentals Profiler completed successfully.")
+    except Exception as e:
+        logger.error(f"Fundamentals Profiler Failed: {e}")
+        log_sched_notification("Error", f"Fundamentals Profiler failed: {e}")
 
 # --- MODULAR ML PIPELINE RUNNERS ---
 
@@ -495,15 +511,6 @@ def reload_scheduler():
         )
         logger.info(f"Weekend Universe Routine scheduled for {uni_days} at {uni_time}")
         
-        # 11. Profile Rolling Audit (Staggered 1 hour after the universe routine)
-        audit_hour = (hour + 1) % 24
-        scheduler.add_job(
-            run_weekend_profile_audit,
-            CronTrigger(day_of_week=uni_days, hour=audit_hour, minute=minute),
-            id='profile_audit_job'
-        )
-        logger.info(f"Weekend Profile Audit scheduled for {uni_days} at {audit_hour:02d}:{minute:02d}")
-        
     except Exception as e:
         logger.error(f"Failed to schedule Weekend Universe Routine: {e}")
 
@@ -598,6 +605,41 @@ def reload_scheduler():
             logger.info(f"Macro Data Update scheduled for {data_day} at {data_time}")
         except Exception as e:
             logger.error(f"Failed to schedule Macro Engine Jobs: {e}")
+
+    # 15. Index Constituents Scraper
+    sync_indices_cfg = scheduling.get("SYNC_INDICES", {})
+    if sync_indices_cfg.get("ENABLED", False):
+        index_days_list = sync_indices_cfg.get("DAYS", ["sat"])
+        index_days = ",".join(index_days_list) if index_days_list else "sat"
+        index_time = sync_indices_cfg.get("TIME", "03:00")
+        try:
+            hour, minute = map(int, index_time.split(':'))
+            scheduler.add_job(
+                run_index_scraper,
+                CronTrigger(day_of_week=index_days, hour=hour, minute=minute),
+                id='index_scraper_job'
+            )
+            logger.info(f"Index Scraper scheduled for {index_days} at {index_time}")
+        except Exception as e:
+            logger.error(f"Failed to schedule Index Scraper: {e}")
+
+    # 16. Fundamentals Profiler Engine
+    profiler_cfg = scheduling.get("PROFILER_ENGINE", {})
+    if profiler_cfg.get("ENABLED", False):
+        profiler_days_list = profiler_cfg.get("DAYS", ["sun"])
+        profiler_days = ",".join(profiler_days_list) if profiler_days_list else "sun"
+        profiler_time = profiler_cfg.get("TIME", "05:00")
+        try:
+            hour, minute = map(int, profiler_time.split(':'))
+            scheduler.add_job(
+                run_fundamentals_profiler,
+                CronTrigger(day_of_week=profiler_days, hour=hour, minute=minute),
+                id='fundamentals_profiler_job'
+            )
+            logger.info(f"Fundamentals Profiler scheduled for {profiler_days} at {profiler_time}")
+        except Exception as e:
+            logger.error(f"Failed to schedule Fundamentals Profiler: {e}")
+
 
 def start_scheduler():
     scheduler.start()
