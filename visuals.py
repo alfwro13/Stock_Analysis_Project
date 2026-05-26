@@ -155,8 +155,16 @@ def create_macro_chart(df, df_baseline, ticker):
 def create_us_inflation_chart(df_spy: pd.DataFrame, df_cpi: pd.DataFrame) -> str:
     """
     Renders US Price Stability chart: CPI YoY % (orange, secondary axis) vs S&P 500 (cyan, primary axis).
-    The raw CPIAUCSL series is fetched from FRED with units=pc1 (Annualized YoY %), preserving 2 years of data.
-    Reference lines plotted at 2% (Fed target) and 5% (danger zone).
+
+    Input contract:
+        df_cpi['value'] contains the RAW CPIAUCSL index level (e.g. ~316 in 2025), forward-filled daily.
+
+    Transformation:
+        1. Resample to month-start frequency, taking the first valid observation per month.
+           This collapses the daily forward-fill back to the underlying monthly cadence.
+        2. Apply pct_change(periods=12) to compute true 12-month (year-over-year) change.
+
+    Reference lines: 2% (Fed target) and 5% (danger zone).
     """
     fig = make_subplots(specs=[[{"secondary_y": True}]])
 
@@ -171,31 +179,29 @@ def create_us_inflation_chart(df_spy: pd.DataFrame, df_cpi: pd.DataFrame) -> str
 
     if not df_cpi.empty and 'value' in df_cpi.columns:
         df_cpi_local = df_cpi.copy().sort_index()
-        # Data is already YoY % from FRED. Resample to MS to strip daily forward-fill noise.
+        # Collapse daily forward-fill back to true monthly frequency
         monthly_series = df_cpi_local['value'].resample('MS').first().dropna()
+        # True 12-month YoY % change
+        yoy_series = (monthly_series.pct_change(periods=12) * 100.0).dropna()
 
-        if not monthly_series.empty:
+        if not yoy_series.empty:
             fig.add_trace(
                 go.Scatter(
-                    x=monthly_series.index, y=monthly_series.values, name="US CPI YoY %",
+                    x=yoy_series.index, y=yoy_series.values, name="US CPI YoY %",
                     line=dict(color="#ff8800", width=2, dash='dot'), connectgaps=True
                 ),
                 secondary_y=True
             )
 
-    # Explicitly anchor annotations to the secondary Y-axis (y2) to prevent chart collision
-    fig.add_hline(y=2.0, secondary_y=True, line_dash="dash", line_color="#00ff00")
-    fig.add_annotation(
-        x=0.99, y=2.0, xref="paper", yref="y2",
-        text="Target (2.0%)", showarrow=False,
-        font=dict(color="#00ff00"), xanchor="right", yanchor="bottom"
+    fig.add_hline(
+        y=2.0, secondary_y=True, line_dash="dash", line_color="#00ff00",
+        annotation_text="Target (2.0%)", annotation_position="bottom right",
+        annotation_font_color="#00ff00"
     )
-
-    fig.add_hline(y=5.0, secondary_y=True, line_dash="dash", line_color="#ff4d4d")
-    fig.add_annotation(
-        x=0.99, y=5.0, xref="paper", yref="y2",
-        text="Danger Zone (>5.0%)", showarrow=False,
-        font=dict(color="#ff4d4d"), xanchor="right", yanchor="bottom"
+    fig.add_hline(
+        y=5.0, secondary_y=True, line_dash="dash", line_color="#ff4d4d",
+        annotation_text="Danger Zone (>5.0%)", annotation_position="top right",
+        annotation_font_color="#ff4d4d"
     )
 
     fig.update_layout(
