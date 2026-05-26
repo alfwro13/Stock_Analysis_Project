@@ -434,7 +434,8 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
         'exchange': 'TEXT',
         'is_freetrade': 'BOOLEAN DEFAULT 0',
         'freetrade_subtitle': 'TEXT',
-        'freetrade_url': 'TEXT'
+        'freetrade_url': 'TEXT',
+        'quote_type': 'TEXT'
     }
 
     for col_name, data_type in required_universe_columns.items():

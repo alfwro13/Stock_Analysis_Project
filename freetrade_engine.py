@@ -176,7 +176,8 @@ def sync_freetrade_universe(target_mic: Optional[str] = None, limit: Optional[in
             if mic in ft_config.get("US_MICS", []):
                 ui_exchange = "US Equities"
             
-            records.append((resolved_ticker, row.get('Title', 'Unknown'), row.get('Subtitle', ''), row.get('KIID URL'), ui_exchange))
+            quote_type = "MUTUALFUND" if mic == "MUTUAL_FUND_EXCHANGE" else "EQUITY"
+            records.append((resolved_ticker, row.get('Title', 'Unknown'), row.get('Subtitle', ''), row.get('KIID URL'), ui_exchange, quote_type))
             processed_count += 1
             
             if processed_count % 50 == 0:
@@ -204,13 +205,14 @@ def sync_freetrade_universe(target_mic: Optional[str] = None, limit: Optional[in
                 logger.info("Running in Safe Mode (No purge). Upserting records...")
             
             upsert_query = """
-                INSERT INTO market_universe (ticker, company_name, freetrade_subtitle, is_freetrade, freetrade_url, exchange)
-                VALUES (?, ?, ?, 1, ?, ?)
+                INSERT INTO market_universe (ticker, company_name, freetrade_subtitle, is_freetrade, freetrade_url, exchange, quote_type)
+                VALUES (?, ?, ?, 1, ?, ?, ?)
                 ON CONFLICT(ticker) DO UPDATE SET
                     is_freetrade = 1,
                     freetrade_subtitle = excluded.freetrade_subtitle,
                     freetrade_url = excluded.freetrade_url,
                     exchange = excluded.exchange,
+                    quote_type = excluded.quote_type,
                     company_name = COALESCE(market_universe.company_name, excluded.company_name)
             """
             cursor.executemany(upsert_query, records)

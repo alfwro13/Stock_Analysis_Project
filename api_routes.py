@@ -664,7 +664,7 @@ async def get_screener_data():
                 ORDER BY qs2.date DESC
                 LIMIT 1) as sentiment_score,
             s.composite_score,
-            m.is_freetrade, m.freetrade_subtitle, m.freetrade_url, COALESCE(p.quote_type, s.quote_type, 'EQUITY') as quote_type
+            m.is_freetrade, m.freetrade_subtitle, m.freetrade_url, COALESCE(p.quote_type, s.quote_type, m.quote_type, 'EQUITY') as quote_type
         FROM quant_signals q
         INNER JOIN market_universe m ON q.ticker = m.ticker
         LEFT JOIN asset_profiles p ON q.ticker = p.ticker
