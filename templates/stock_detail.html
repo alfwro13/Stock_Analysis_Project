@@ -402,10 +402,10 @@
                         <div class="data-card card-risk">
                             <h3>Quantitative Risk & AI</h3>
                             <div class="data-row">
-                                <span class="data-label"><abbr title="Machine Learning Ensemble confidence score predicting a >3% return over the next 5 days.">ML Confidence:</abbr></span>
+                                <span class="data-label"><abbr title="Machine Learning Ensemble confidence score predicting a >3% return over the next 10 days.">ML Confidence:</abbr></span>
                                 <span class="data-value">
                                     {% if stock.ml_confidence_score is not none %}
-                                        {% set ml_class = 'metric-excellent' if stock.ml_confidence_score > 75 else ('metric-poor' if stock.ml_confidence_score < 40 else 'metric-neutral') %}
+                                        {% set ml_class = 'metric-excellent' if stock.ml_confidence_score >= 40 else ('metric-poor' if stock.ml_confidence_score < 20 else 'metric-neutral') %}
                                         <span class="{{ ml_class }}">{{ "{:,.1f}".format(stock.ml_confidence_score) }}%</span>
                                     {% else %}N/A{% endif %}
                                 </span>
@@ -519,10 +519,10 @@
                         <div class="data-card card-risk">
                             <h3>Quantitative Risk & AI</h3>
                             <div class="data-row">
-                                <span class="data-label"><abbr title="Machine Learning Ensemble confidence score predicting a >3% return over the next 5 days.">ML Confidence:</abbr></span>
+                                <span class="data-label"><abbr title="Machine Learning Ensemble confidence score predicting a >3% return over the next 10 days.">ML Confidence:</abbr></span>
                                 <span class="data-value">
                                     {% if stock.ml_confidence_score is not none %}
-                                        {% set ml_class = 'metric-excellent' if stock.ml_confidence_score > 40 else ('metric-poor' if stock.ml_confidence_score < 20 else 'metric-neutral') %}
+                                        {% set ml_class = 'metric-excellent' if stock.ml_confidence_score >= 40 else ('metric-poor' if stock.ml_confidence_score < 20 else 'metric-neutral') %}
                                         <span class="{{ ml_class }}">{{ "{:,.1f}".format(stock.ml_confidence_score) }}%</span>
                                     {% else %}N/A{% endif %}
                                 </span>

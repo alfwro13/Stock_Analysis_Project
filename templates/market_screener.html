@@ -118,7 +118,7 @@
                 <li><strong class="text-accent-blue"><abbr title="Moving Average Convergence Divergence">MACD</abbr> Histogram:</strong> Measures momentum velocity. Expanding green bars confirm acceleration; red or shrinking bars signal momentum decay or a trend pivot.</li>
                 <li><strong class="text-accent-blue">50D <abbr title="Simple Moving Average">SMA</abbr>:</strong> The "Health Line" representing the 10-week price mean. Trading above it confirms a medium-term uptrend; falling below suggests a structural loss of strength.</li>
                 <li><strong class="text-accent-blue">200D <abbr title="Simple Moving Average">SMA</abbr>:</strong> The "Institutional Floor." Banks and funds use this as the ultimate line in the sand; breaking below it often marks the shift into a primary bear market.</li>
-                <li><strong class="text-accent-blue">ML Conf:</strong> Machine Learning Ensemble confidence score predicting a >3% return over the next 5 days. >75% is highly actionable.</li>
+                <li><strong class="text-accent-blue">ML Conf:</strong> Machine Learning Ensemble confidence score predicting a >3% return over the next 10 days. >40% is highly actionable.</li>
                 <li><strong class="text-accent-blue">VaR (95%):</strong> Historical Simulation Value at Risk. The expected maximum percentage loss over a standard holding period with 95% confidence. <em>(Hover over for Conditional VaR / Expected Shortfall).</em></li>
                 <li><strong class="text-accent-blue">Sentiment:</strong> VADER NLP compound score generated from the latest news headlines. Positive values indicate bullish media framing.</li>
             </ul>
@@ -319,15 +319,15 @@
                             if (data === null || data === undefined) return 'N/A';
                             
                             if (type === 'display') {
-                                let cssClass = data > 75 ? 'metric-excellent' : (data < 40 ? 'metric-poor' : 'metric-neutral');
+                                let cssClass = data >= 40 ? 'metric-excellent' : (data < 20 ? 'metric-poor' : 'metric-neutral');
                                 let html = `<span class="${cssClass}">${data.toFixed(1)}%</span>`;
                                 
                                 if (row.composite_score !== undefined && row.composite_score !== null && row.composite_score !== 'N/A') {
                                     let comp = parseInt(row.composite_score);
                                     if (!isNaN(comp)) {
-                                        if (comp >= 70 && data < 40) {
+                                        if (comp >= 70 && data < 20) {
                                             html += ` <div class="d-inline-block"><abbr title="High Quant Score but Low AI Confidence" class="no-decoration-abbr"><span class="setup-tag">⚠️ Divergence</span></abbr></div>`;
-                                        } else if (comp < 40 && data >= 70) {
+                                        } else if (comp < 40 && data >= 40) {
                                             html += ` <div class="d-inline-block"><abbr title="Low Quant Score but High AI Confidence" class="no-decoration-abbr"><span class="setup-tag">🤖 AI Buy</span></abbr></div>`;
                                         }
                                     }
@@ -337,7 +337,7 @@
                             return data;
                         }
                     },
-                    {
+                                        {
                         data: 'var_95',
                         render: function(data, type, row) {
                             if (data === null || data === undefined) return 'N/A';
