@@ -232,9 +232,10 @@ def run_earnings_vol_scan(ticker_list: List[str]) -> None:
                 non_earnings_days = max(days_to_expiry - 1, 0)
                 
                 daily_hv = historical_hv / np.sqrt(252)
-                non_earnings_component = daily_hv * np.sqrt(non_earnings_days) * 100.0
-                
-                isolated_implied_move = max(implied_move_pct - non_earnings_component, 0.01) # Prevent negative implied moves
+                total_implied_pct = implied_move_pct / 100.0
+                non_earn_pct = daily_hv * np.sqrt(non_earnings_days)
+                isolated_variance = max(total_implied_pct**2 - non_earn_pct**2, 0)
+                isolated_implied_move = np.sqrt(isolated_variance) * 100.0 if isolated_variance > 0 else 0.01
 
                 # Calculate True Options Mispricing Edge
                 edge_score = hist_move_pct - isolated_implied_move
