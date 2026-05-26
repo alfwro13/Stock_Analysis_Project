@@ -1406,6 +1406,10 @@
             // Poll Network Status
             fetchNetworkStatus();
             setInterval(fetchNetworkStatus, 10000); // Update badge every 10s
+
+            // NEW: Poll Profiler Queue Status
+            fetchProfilerQueueStatus();
+            setInterval(fetchProfilerQueueStatus, 30000); // Refresh every 30 seconds
         });
 
         async function testYahooIPv6() {
@@ -1473,10 +1477,6 @@
                 console.error("Failed to fetch profiler status", e);
             }
         }
-
-        // ADD THIS TO YOUR EXISTING DOMContentLoaded Event Listener:
-        // fetchProfilerQueueStatus();
-        // setInterval(fetchProfilerQueueStatus, 30000); // Refresh every 30 seconds
 
         async function saveSettings(silent = false) {
             const btn = document.querySelector('.btn-save');
