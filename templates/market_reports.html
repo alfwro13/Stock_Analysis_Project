@@ -113,7 +113,7 @@
                 <label>Maximum <abbr title="Relative Strength Index">RSI</abbr> Threshold</label>
                 <input type="number" id="mrMaxRSI" class="filter-input input-width-small" value="30">
             </div>
-            <button class="btn btn-update" onclick="loadMeanReversionData()">🔄 Run Query</button>
+            <button class="btn btn-update" onclick="loadMeanReversionData(this)">🔄 Run Query</button>
         </div>
 
         <table id="mrTable" class="display w-100">
@@ -144,7 +144,7 @@
 
     <div class="report-section report-section-dividend">
         <h2 class="text-dividend">💰 Dividend Harvest (Income Screener)</h2>
-        <p>Identifies high-yield assets approaching their ex-dividend date. Filters out "Yield Traps" by strictly requiring a Quantamental System Score of 50 or higher. This scans only the Portfolio and Watchlist tickers.</p>
+        <p>Identifies high-yield assets approaching their ex-dividend date. Filters out "Yield Traps" by strictly requiring a Quantamental System Score of 50 or higher.</p>
         
         <div class="controls-container controls-flex-end">
             <div class="form-group form-group-no-margin">
@@ -155,7 +155,7 @@
                 <label>Minimum Quant Score</label>
                 <input type="number" id="divMinScore" class="filter-input input-width-small" value="50">
             </div>
-            <button class="btn btn-update ml-15" onclick="loadDividendData()">🔄 Run Query</button>
+            <button class="btn btn-update ml-15" onclick="loadDividendData(this)">🔄 Run Query</button>
         </div>
 
         <table id="dividendTable" class="display w-100">
@@ -187,6 +187,11 @@
     <script>
         let mrDataTable;
         let divDataTable;
+        let mrActiveBtn = null;
+        let divActiveBtn = null;
+
+        // Suppress DataTables' default error alert so we can show inline messages instead
+        $.fn.dataTable.ext.errMode = 'none';
 
         function formatCurrency(value, currencyCode) {
             if (value === null || value === undefined) return 'N/A';
@@ -204,8 +209,20 @@
             } else if (currencyCode && currencyCode !== 'USD') {
                 return num.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' ' + currencyCode;
             }
-            
+
             return symbol + num.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        }
+
+        function setButtonLoading(btn, isLoading) {
+            if (!btn) return;
+            btn.disabled = isLoading;
+            btn.textContent = isLoading ? '⏳ Loading…' : '🔄 Run Query';
+        }
+
+        function showTableError(tableSelector, colSpan) {
+            $(tableSelector + ' tbody').html(
+                '<tr><td colspan="' + colSpan + '" style="text-align:center;padding:20px;color:#ff6b6b;">⚠️ Failed to load data. Please refresh the page or try again.</td></tr>'
+            );
         }
 
         $(document).ready(function() {
@@ -213,19 +230,22 @@
 
             // Sector Table
             var sectorTable = $('#sectorTable').DataTable({
-                ajax: '/api/reports/sectors',
+                ajax: {
+                    url: '/api/reports/sectors',
+                    error: function() { showTableError('#sectorTable', 6); }
+                },
                 deferRender: true,
                 paging: false,
                 info: false,
                 searching: true, // Required for filtering to work
                 dom: 't', // Only show the table body (hides the default DataTables search box)
                 order: [[3, 'desc']], // Sort by Avg RSI descending
-                
+
                 // Dynamic Dropdown Population & Default Selection
                 initComplete: function () {
-                    var column = this.api().column(1); 
+                    var column = this.api().column(1);
                     var select = $('#sectorExchangeFilter');
-                    
+
                     // 1. Populate dropdown
                     column.data().unique().sort().each( function ( d, j ) {
                         if(d && d !== 'N/A') {
@@ -234,17 +254,17 @@
                     });
 
                     // 2. Determine default value (URL param or Hardcoded Fallback)
-                    const defaultExchange = urlParams.get('exchange') || 'NASDAQ'; 
-                    
+                    const defaultExchange = urlParams.get('exchange') || 'NASDAQ';
+
                     // 3. Apply the default if it exists in the data
                     if (defaultExchange !== 'ALL' && select.find('option[value="' + defaultExchange + '"]').length > 0) {
                         select.val(defaultExchange);
                         column.search('^' + defaultExchange + '$', true, false).draw();
                     }
                 },
-                
+
                 columns: [
-                    { 
+                    {
                         data: 'sector',
                         render: function(data) {
                             const encodedSector = encodeURIComponent(data);
@@ -252,13 +272,13 @@
                         }
                     },
                     // Exchange Column (Index 1) - Hidden from UI, used only for filtering
-                    { 
-                        data: 'exchange', 
-                        visible: false, 
+                    {
+                        data: 'exchange',
+                        visible: false,
                         defaultContent: 'US'
                     },
                     { data: 'total_stocks' },
-                    { 
+                    {
                         data: 'avg_rsi',
                         render: function(data) {
                             let cssClass = '';
@@ -267,15 +287,15 @@
                             return `<span class="${cssClass}">${data.toFixed(2)}</span>`;
                         }
                     },
-                    { 
-                        data: 'pct_above_50d', 
+                    {
+                        data: 'pct_above_50d',
                         render: function(data, type, row) {
                             const encodedSector = encodeURIComponent(row.sector);
                             return `<a href="/market-screener?sector=${encodedSector}&above_50d=true" class="text-light text-decoration-dotted" title="Filter Screener for ${row.sector} > 50D SMA">${data.toFixed(2)}%</a>`;
                         }
                     },
-                    { 
-                        data: 'pct_bullish_cross', 
+                    {
+                        data: 'pct_bullish_cross',
                         render: function(data, type, row) {
                             const encodedSector = encodeURIComponent(row.sector);
                             return `<a href="/market-screener?sector=${encodedSector}&bullish_cross=true" class="text-light text-decoration-dotted" title="Filter Screener for ${row.sector} Golden Crosses">${data.toFixed(2)}%</a>`;
@@ -287,24 +307,27 @@
             // Bind the Exchange Filter to Sector Table Column 1 (Manual Override)
             $('#sectorExchangeFilter').on('change', function() {
                 var val = $(this).val();
-                if(val === 'ALL') { 
-                    sectorTable.column(1).search('').draw(); 
-                } else { 
-                    sectorTable.column(1).search('^' + val + '$', true, false).draw(); 
+                if(val === 'ALL') {
+                    sectorTable.column(1).search('').draw();
+                } else {
+                    sectorTable.column(1).search('^' + val + '$', true, false).draw();
                 }
             });
 
             // Leaders Table
             var leadersTable = $('#leadersTable').DataTable({
-                ajax: '/api/reports/leaders',
+                ajax: {
+                    url: '/api/reports/leaders',
+                    error: function() { showTableError('#leadersTable', 8); }
+                },
                 deferRender: true,
                 pageLength: 10,
                 order: [[6, 'desc']], // Sort by RSI (Index 6)
-                
+
                 initComplete: function () {
                     var column = this.api().column(3); // Exchange column is Index 3
                     var select = $('#leadersExchangeFilter');
-                    
+
                     // Populate dropdown with unique exchanges
                     column.data().unique().sort().each( function ( d, j ) {
                         if(d && d !== 'N/A') {
@@ -313,25 +336,25 @@
                     });
 
                     // Default to NASDAQ
-                    const defaultExchange = urlParams.get('exchange') || 'NASDAQ'; 
-                    
+                    const defaultExchange = urlParams.get('exchange') || 'NASDAQ';
+
                     if (defaultExchange !== 'ALL' && select.find('option[value="' + defaultExchange + '"]').length > 0) {
                         select.val(defaultExchange);
                         column.search('^' + defaultExchange + '$', true, false).draw();
                     }
                 },
-                
+
                 columns: [
                     { data: 'ticker', render: function(data) { return '<a href="/stock/' + data + '" class="ticker-link">' + data + '</a>'; } },
                     { data: 'company_name' },
                     { data: 'sector' },
                     { data: 'exchange', visible: false, defaultContent: 'US' }, // Hidden from UI but used for filtering
                     { data: 'country', render: function(data) { return data || 'US'; } },
-                    { 
-                        data: 'close_price', 
-                        render: function(data, type, row) { 
+                    {
+                        data: 'close_price',
+                        render: function(data, type, row) {
                             return type === 'display' ? formatCurrency(data, row.currency) : data;
-                        } 
+                        }
                     },
                     { data: 'rsi_14', render: function(data) { return `<span class="positive-val">${data.toFixed(2)}</span>`; } },
                     { data: 'macd_hist', render: function(data) { return `<span class="positive-val">${data.toFixed(3)}</span>`; } }
@@ -341,10 +364,10 @@
             // Bind the Dropdown Filter to the hidden Exchange column
             $('#leadersExchangeFilter').on('change', function() {
                 var val = $(this).val();
-                if(val === 'ALL') { 
-                    leadersTable.column(3).search('').draw(); 
-                } else { 
-                    leadersTable.column(3).search('^' + val + '$', true, false).draw(); 
+                if(val === 'ALL') {
+                    leadersTable.column(3).search('').draw();
+                } else {
+                    leadersTable.column(3).search('^' + val + '$', true, false).draw();
                 }
             });
 
@@ -358,21 +381,27 @@
                     { data: 'company_name' },
                     { data: 'sector' },
                     { data: 'country', render: function(data) { return data || 'US'; } },
-                    { 
-                        data: 'close_price', 
-                        render: function(data, type, row) { 
+                    {
+                        data: 'close_price',
+                        render: function(data, type, row) {
                             return type === 'display' ? formatCurrency(data, row.currency) : data;
-                        } 
+                        }
                     },
                     { data: 'rsi_14', render: function(data) { return `<span class="negative-val">${data.toFixed(2)}</span>`; } },
-                    { 
-                        data: 'sma_200', 
-                        render: function(data, type, row) { 
+                    {
+                        data: 'sma_200',
+                        render: function(data, type, row) {
                             return type === 'display' ? formatCurrency(data, row.currency) : data;
-                        } 
+                        }
                     },
                     { data: 'distance_from_200d_pct', render: function(data) { return `<span class="positive-val">+${data.toFixed(2)}%</span>`; } }
                 ]
+            });
+
+            $('#mrTable').on('error.dt', function() {
+                showTableError('#mrTable', 8);
+                setButtonLoading(mrActiveBtn, false);
+                mrActiveBtn = null;
             });
 
             // Dividend Harvest Table Initialization
@@ -384,17 +413,17 @@
                     { data: 'ticker', render: function(data) { return '<a href="/stock/' + data + '" class="ticker-link">' + data + '</a>'; } },
                     { data: 'company_name' },
                     { data: 'sector' },
-                    { 
-                        data: 'close_price', 
-                        render: function(data, type, row) { 
+                    {
+                        data: 'close_price',
+                        render: function(data, type, row) {
                             return type === 'display' ? formatCurrency(data, row.currency) : data;
-                        } 
+                        }
                     },
                     { data: 'dividend_yield', render: function(data) { return `<span class="positive-val">${(data * 100).toFixed(2)}%</span>`; } },
                     { data: 'ex_dividend_date' },
-                    { data: 'composite_score', render: function(data) { 
+                    { data: 'composite_score', render: function(data) {
                         let cssClass = data >= 70 ? 'positive-val' : (data < 40 ? 'negative-val' : '');
-                        return `<span class="${cssClass}">${data}</span>`; 
+                        return `<span class="${cssClass}">${data}</span>`;
                     } },
                     { data: 'ml_confidence_score', render: function(data) {
                         if (data == null) return '-';
@@ -402,23 +431,38 @@
                     } }
                 ]
             });
-            
+
+            $('#dividendTable').on('error.dt', function() {
+                showTableError('#dividendTable', 8);
+                setButtonLoading(divActiveBtn, false);
+                divActiveBtn = null;
+            });
+
             // Initial load of Mean Reversion & Dividend data
             loadMeanReversionData();
             loadDividendData();
         });
 
-        function loadMeanReversionData() {
+        function loadMeanReversionData(btn) {
             const maxRsi = document.getElementById('mrMaxRSI').value || 30;
-            mrDataTable.ajax.url(`/api/reports/mean-reversion?max_rsi=${maxRsi}`).load();
+            mrActiveBtn = btn || null;
+            setButtonLoading(mrActiveBtn, true);
+            mrDataTable.ajax.url(`/api/reports/mean-reversion?max_rsi=${maxRsi}`).load(function() {
+                setButtonLoading(mrActiveBtn, false);
+                mrActiveBtn = null;
+            });
         }
 
-        function loadDividendData() {
+        function loadDividendData(btn) {
             const minYieldInput = parseFloat(document.getElementById('divMinYield').value) || 2.0;
             const minYield = minYieldInput / 100.0; // Convert frontend percentage to backend decimal
             const minScore = parseInt(document.getElementById('divMinScore').value) || 50;
-            
-            divDataTable.ajax.url(`/api/reports/dividends?min_yield=${minYield}&min_score=${minScore}`).load();
+            divActiveBtn = btn || null;
+            setButtonLoading(divActiveBtn, true);
+            divDataTable.ajax.url(`/api/reports/dividends?min_yield=${minYield}&min_score=${minScore}`).load(function() {
+                setButtonLoading(divActiveBtn, false);
+                divActiveBtn = null;
+            });
         }
     </script>
 </body>
