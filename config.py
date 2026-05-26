@@ -136,6 +136,11 @@ DEFAULT_CONFIG = {
             "TIME": "01:30"
         }
     },
+    "REPORTS_DEFAULTS": {
+        "MR_MAX_RSI": 30,
+        "DIV_MIN_YIELD": 2.0,
+        "DIV_MIN_SCORE": 50
+    },
     "NOTIFICATIONS": {
         "MARKET_SENTIMENT": {
             "ENABLED": False,
@@ -224,3 +229,4 @@ CONVERSATION_TOKEN = current_config.get("CONVERSATION_TOKEN", "")
 UI_PREFERENCES = current_config.get("UI_PREFERENCES", {})
 NOTIFICATIONS = current_config.get("NOTIFICATIONS", {})
 SCHEDULING = current_config.get("SCHEDULING", {})
+REPORTS_DEFAULTS = current_config.get("REPORTS_DEFAULTS", DEFAULT_CONFIG["REPORTS_DEFAULTS"])
