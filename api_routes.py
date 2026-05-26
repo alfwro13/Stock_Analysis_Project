@@ -14,7 +14,7 @@ from datetime import datetime
 from typing import List, Optional
 from pathlib import Path
 
-from fastapi import APIRouter, Request, BackgroundTasks, HTTPException
+from fastapi import APIRouter, Request, BackgroundTasks, HTTPException, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -690,7 +690,10 @@ async def api_reports_sectors():
     return JSONResponse(content={"data": data})
 
 @api_router.get("/reports/mean-reversion")
-async def api_reports_mean_reversion(max_rsi: float = 30.0, min_sma_distance: float = 0.0):
+async def api_reports_mean_reversion(
+    max_rsi: float = Query(default=30.0, ge=0.0, le=100.0),
+    min_sma_distance: float = Query(default=0.0, ge=0.0),
+):
     data = get_mean_reversion_setups(max_rsi=max_rsi, min_sma_distance=min_sma_distance)
     return JSONResponse(content={"data": data})
 
@@ -700,6 +703,9 @@ async def api_reports_leaders():
     return JSONResponse(content={"data": data})
 
 @api_router.get("/reports/dividends")
-async def api_reports_dividends(min_yield: float = 0.02, min_score: int = 50):
+async def api_reports_dividends(
+    min_yield: float = Query(default=0.02, ge=0.0, le=1.0),
+    min_score: int   = Query(default=50,   ge=0,   le=100),
+):
     data = get_dividend_harvest_setups(min_yield=min_yield, min_score=min_score)
     return JSONResponse(content={"data": data})

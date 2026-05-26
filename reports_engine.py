@@ -5,11 +5,6 @@ from datetime import datetime
 from typing import List, Dict, Any
 from database import get_connection
 
-# Configure module-level logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - REPORTS_ENGINE - %(levelname)s - %(message)s'
-)
 logger = logging.getLogger(__name__)
 
 def get_sector_trends() -> List[Dict[str, Any]]:
@@ -44,7 +39,8 @@ def get_sector_trends() -> List[Dict[str, Any]]:
             COUNT(q.ticker) as total_stocks,
             ROUND(AVG(q.rsi_14), 2) as avg_rsi,
             ROUND(SUM(CASE WHEN q.close_price > q.sma_50 THEN 1 ELSE 0 END) * 100.0 / COUNT(q.ticker), 2) as pct_above_50d,
-            ROUND(SUM(CASE WHEN q.bullish_cross = 1 THEN 1 ELSE 0 END) * 100.0 / COUNT(q.ticker), 2) as pct_bullish_cross
+            ROUND(SUM(CASE WHEN q.bullish_cross = 1 THEN 1 ELSE 0 END) * 100.0 /
+                  NULLIF(SUM(CASE WHEN q.bullish_cross IS NOT NULL THEN 1 ELSE 0 END), 0), 2) as pct_bullish_cross
         FROM quant_signals q
         INNER JOIN latest l ON q.ticker = l.ticker AND q.date = l.max_date
         INNER JOIN market_universe m ON q.ticker = m.ticker
@@ -103,6 +99,7 @@ def get_mean_reversion_setups(max_rsi: float = 30.0, min_sma_distance: float = 0
           AND q.close_price > q.sma_200
           AND COALESCE(p.quote_type, s.quote_type, 'EQUITY') = 'EQUITY'
         ORDER BY q.rsi_14 ASC
+        LIMIT 500
         """
         cursor.execute(query, (max_rsi,))
         rows = cursor.fetchall()
