@@ -199,8 +199,10 @@ def sync_freetrade_universe(target_mic: Optional[str] = None, limit: Optional[in
         
         try:
             if not target_mic and not limit:
-                logger.info("Executing Bulk SQLite Purge & Upsert...")
-                cursor.execute("DELETE FROM market_universe WHERE is_freetrade = 1")
+                logger.info("Executing Bulk Freetrade Flag Reset & Upsert...")
+                # THE FIX: Safely toggle the flag to 0 instead of deleting the row. 
+                # This protects the Wikipedia is_index flags from being wiped out!
+                cursor.execute("UPDATE market_universe SET is_freetrade = 0 WHERE is_freetrade = 1")
             else:
                 logger.info("Running in Safe Mode (No purge). Upserting records...")
             
