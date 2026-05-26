@@ -396,15 +396,23 @@ async def portfolio_page(request: Request, account_id: str = "all", embed: bool 
     cursor = conn.cursor()
     
     cursor.execute("""
-        SELECT s.*, 
-               q.ml_confidence_score, 
-               q.var_95, 
-               q.cvar_95, 
+        SELECT s.*,
+               q.ml_confidence_score,
+               q.var_95,
+               q.cvar_95,
                q.sentiment_score,
                q.atr_pct,
-               q.close_price as quant_close_price
+               q.close_price as quant_close_price,
+               COALESCE(
+                   NULLIF(ap.company_name, s.ticker),
+                   NULLIF(mu.company_name, s.ticker),
+                   s.company_name,
+                   s.ticker
+               ) as resolved_company_name
         FROM stock_signals s
-        LEFT JOIN quant_signals q ON s.ticker = q.ticker 
+        LEFT JOIN asset_profiles ap ON s.ticker = ap.ticker
+        LEFT JOIN market_universe mu ON s.ticker = mu.ticker
+        LEFT JOIN quant_signals q ON s.ticker = q.ticker
         AND q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = s.ticker)
     """)
     db_rows = cursor.fetchall()
@@ -446,14 +454,21 @@ async def portfolio_page(request: Request, account_id: str = "all", embed: bool 
     for row in db_rows:
         row_dict = dict(row)
         if row_dict['ticker'] in portfolio_tickers:
+            # Resolve best available display name — mutual funds often have no shortName
+            # from yfinance; fall back through asset_profiles → market_universe
+            row_dict['company_name'] = (
+                row_dict.get('resolved_company_name')
+                or row_dict.get('company_name')
+                or row_dict['ticker']
+            )
             if row_dict.get('setup_tags'):
-                try: 
+                try:
                     row_dict['setup_tags_list'] = json.loads(row_dict['setup_tags'])
-                except Exception: 
+                except Exception:
                     row_dict['setup_tags_list'] = []
             else:
                 row_dict['setup_tags_list'] = []
-            
+
             portfolio_data.append(row_dict)
             
             asset = next((d for d in portfolio_json.values() if d.get("ticker") == row_dict['ticker']), None)
@@ -672,19 +687,37 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
     cursor.execute('''
         SELECT s.*, p.business_summary,
                q.ml_confidence_score, q.var_95, q.cvar_95, q.sentiment_score,
-               q.atr_pct
+               q.atr_pct,
+               COALESCE(
+                   NULLIF(p.company_name, s.ticker),
+                   NULLIF(mu.company_name, s.ticker),
+                   s.company_name,
+                   s.ticker
+               ) as resolved_company_name
         FROM stock_signals s
         LEFT JOIN asset_profiles p ON s.ticker = p.ticker
+        LEFT JOIN market_universe mu ON s.ticker = mu.ticker
         LEFT JOIN quant_signals q ON s.ticker = q.ticker
             AND q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = s.ticker)
         WHERE s.ticker = ?
     ''', (ticker,))
     stock_data = cursor.fetchone()
     
-    if stock_data: 
+    if stock_data:
         stock_data = dict(stock_data)
-        if stock_data.get("company_name"):
-            stock_data["company_name"] = stock_data["company_name"].replace(" - Common Stock", "").replace(" Common Stock", "").strip()
+        # Resolve best available display name — mutual funds often have no shortName
+        # from yfinance; fall back through asset_profiles → market_universe
+        stock_data['company_name'] = (
+            stock_data.get('resolved_company_name')
+            or stock_data.get('company_name')
+            or ticker
+        )
+        stock_data['company_name'] = (
+            stock_data['company_name']
+            .replace(" - Common Stock", "")
+            .replace(" Common Stock", "")
+            .strip()
+        )
     else:
         cursor.execute('''
             SELECT q.*, 
