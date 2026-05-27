@@ -17,7 +17,7 @@
     <a href="/market-reports" class="{% if active_page == 'market_reports' %}active{% endif %}">📈 Market Reports</a>
     <a href="/settings" class="{% if active_page == 'settings' %}active{% endif %}">⚙️ Settings</a>
     <a href="/glossary" class="{% if active_page == 'glossary' %}active{% endif %}">📚 Glossary</a>
-    <a href="/notifications" class="{% if active_page == 'notifications' %}active{% endif %}">🔔 Notifications {% if unread_count > 0 %}<span class="badge" id="nav-badge">{{ unread_count }}</span>{% endif %}</a>
+    <a href="/notifications" class="{% if active_page == 'notifications' %}active{% endif %}">🔔 Notifications {% if unread_count | default(0) > 0 %}<span class="badge" id="nav-badge">{{ unread_count }}</span>{% endif %}</a>
 </div>
 
 <script>

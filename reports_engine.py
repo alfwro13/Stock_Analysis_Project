@@ -324,3 +324,82 @@ def get_quality_compounders() -> List[Dict[str, Any]]:
     finally:
         if conn:
             conn.close()
+
+def get_garp_tenbaggers() -> List[Dict[str, Any]]:
+    """
+    GARP "Peter Lynch Tenbaggers" — Growth-At-Reasonable-Price screener.
+
+    Filter criteria (all hard gates, applied server-side):
+      - peter_lynch_peg in (0, 1.0]   (yield-adjusted PEG, Lynch's fair-value line)
+      - revenue_growth > 15% YoY
+      - roe > 10%
+      - forward_pe between 10 and 40
+      - market_cap > $500M             (excludes micro-cap pump-and-dumps)
+      - quote_type = EQUITY
+      - is_index = 1                   (universe scope — market_cap is universe-only data)
+
+    ML confidence is NOT a server-side gate — returned as a nullable column for
+    client-side filtering. NULL displays as "—" in the UI.
+
+    Sort: peter_lynch_peg ASC (cheapest growth first), ml_confidence_score DESC tiebreak.
+    """
+    logger.info("Generating GARP Tenbaggers Report...")
+    conn = None
+    try:
+        conn = get_connection()
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        query = """
+        WITH latest_quant AS (
+            SELECT q.ticker, q.close_price, q.ml_confidence_score
+            FROM quant_signals q
+            INNER JOIN (SELECT ticker, MAX(date) AS max_date FROM quant_signals GROUP BY ticker) l
+                ON q.ticker = l.ticker AND q.date = l.max_date
+        )
+        SELECT
+            s.ticker,
+            COALESCE(p.company_name, m.company_name, s.ticker) as company_name,
+            COALESCE(p.sector, s.sector, m.sector, 'Unclassified') as sector,
+            COALESCE(p.country, m.country, 'US') as country,
+            CASE
+                WHEN UPPER(COALESCE(m.exchange, p.exchange)) = 'NMS' THEN 'NASDAQ'
+                WHEN UPPER(COALESCE(m.exchange, p.exchange)) = 'NYQ' THEN 'NYSE/AMEX'
+                WHEN COALESCE(m.exchange, p.exchange) IS NOT NULL THEN UPPER(COALESCE(m.exchange, p.exchange))
+                WHEN UPPER(s.ticker) LIKE '%.L' THEN 'LSE'
+                ELSE 'US'
+            END as exchange,
+            COALESCE(p.currency, s.currency, 'USD') as currency,
+            lq.close_price,
+            ROUND(s.peter_lynch_peg, 3) as peter_lynch_peg,
+            ROUND(s.revenue_growth * 100.0, 2) as revenue_growth_pct,
+            ROUND(s.roe * 100.0, 2) as roe_pct,
+            ROUND(s.forward_pe, 2) as forward_pe,
+            tm.market_cap,
+            ROUND(lq.ml_confidence_score, 1) as ml_confidence_score
+        FROM stock_signals s
+        INNER JOIN market_universe m ON s.ticker = m.ticker
+        LEFT JOIN asset_profiles p ON s.ticker = p.ticker
+        LEFT JOIN latest_quant lq ON s.ticker = lq.ticker
+        LEFT JOIN ticker_metadata tm ON s.ticker = tm.ticker
+        WHERE m.is_index = 1
+          AND COALESCE(p.quote_type, s.quote_type, 'EQUITY') = 'EQUITY'
+          AND s.peter_lynch_peg > 0
+          AND s.peter_lynch_peg <= 1.0
+          AND s.revenue_growth > 0.15
+          AND s.roe > 0.10
+          AND s.forward_pe BETWEEN 10 AND 40
+          AND COALESCE(tm.market_cap, 0) > 500000000
+        ORDER BY s.peter_lynch_peg ASC, lq.ml_confidence_score DESC
+        LIMIT 500
+        """
+        cursor.execute(query)
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
+    except Exception as e:
+        logger.error(f"Failed to generate GARP Tenbaggers: {e}")
+        return []
+    finally:
+        if conn:
+            conn.close()

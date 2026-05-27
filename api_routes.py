@@ -32,7 +32,7 @@ from quant_signals import QuantEngine
 from quant_engine import run_daily_quant_scan
 from earnings_vol_engine import run_earnings_vol_scan
 from universe_engine import update_market_universe
-from reports_engine import get_sector_trends, get_mean_reversion_setups, get_leaders_laggards, get_dividend_harvest_setups, get_quality_compounders
+from reports_engine import get_sector_trends, get_mean_reversion_setups, get_leaders_laggards, get_dividend_harvest_setups, get_quality_compounders, get_garp_tenbaggers
 from options_engine import fetch_options_chain, calculate_payoff_matrix
 from ai_prediction_engine import train_global_ml_model, update_daily_ml_predictions, run_historical_backfill
 from risk_engine import update_all_tail_risks
@@ -750,6 +750,11 @@ async def get_screener_data():
 @api_router.get("/reports/quality-compounders")
 async def api_reports_quality_compounders():
     data = get_quality_compounders()
+    return JSONResponse(content={"data": data})
+
+@api_router.get("/reports/garp-tenbaggers")
+async def api_reports_garp_tenbaggers():
+    data = get_garp_tenbaggers()
     return JSONResponse(content={"data": data})
 
 @api_router.get("/reports/sectors")
