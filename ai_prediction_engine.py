@@ -334,17 +334,26 @@ def sync_ticker_metadata(tickers: List[str]) -> None:
     conn.close()
 
 
-def run_historical_backfill() -> None:
+def run_historical_backfill(tickers: Optional[List[str]] = None) -> None:
     """
     Downloads 2 years of daily OHLCV data per ticker, computes all technical,
     momentum, volatility and relative strength features, and upserts into
     quant_signals.
 
+    Args:
+        tickers: Optional explicit ticker list. When None (legacy behaviour),
+            falls back to get_target_tickers() which mixes portfolio/watchlist
+            with a random universe sample. When provided (e.g. from the
+            UNIVERSE_DEEP_SYNC orchestrator), processes exactly that list so
+            the ML model's required momentum features are populated for the
+            explicit target set.
+
     NOTE: Fundamental features (trailing_pe, roe, etc.) are NOT stored in
     quant_signals. They are joined from stock_signals at training and inference
     time. No backfill changes are required for improvement #4.
     """
-    tickers = get_target_tickers()
+    if tickers is None:
+        tickers = get_target_tickers()
     if not tickers:
         logger.warning("No tickers found to backfill. Aborting.")
         return

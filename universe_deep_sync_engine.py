@@ -114,10 +114,11 @@ def run_universe_deep_sync() -> None:
     )
 
     stage_status: dict = {
-        "fundamentals": "PENDING",
-        "metadata":     "PENDING",
-        "technicals":   "PENDING",
-        "ml_inference": "PENDING",
+        "fundamentals":       "PENDING",
+        "metadata":           "PENDING",
+        "technicals":         "PENDING",
+        "momentum_backfill":  "PENDING",
+        "ml_inference":       "PENDING",
     }
 
     # ─────────────────────────────────────────────────────────────────────
@@ -159,40 +160,61 @@ def run_universe_deep_sync() -> None:
             f"Universe Deep Sync — Stage 2 (Metadata) failed: {e}"
         )
 
+# ─────────────────────────────────────────────────────────────────────
+    # STAGE 3 of 5 — TECHNICALS (writes basic quant_signals columns)
     # ─────────────────────────────────────────────────────────────────────
-    # STAGE 3 of 4 — TECHNICALS (writes quant_signals technicals columns)
-    # ─────────────────────────────────────────────────────────────────────
-    logger.info("[Stage 3/4] Technicals quant scan starting...")
+    logger.info("[Stage 3/5] Technicals quant scan starting...")
     try:
         from quant_engine import run_daily_quant_scan
         # Distinct scan_type isolates this pipeline's resumability state
         # from the daily portfolio/watchlist scan (which uses 'daily').
         run_daily_quant_scan(target_tickers, scan_type='universe_deep_sync')
         stage_status["technicals"] = "OK"
-        logger.info("[Stage 3/4] Technicals scan completed.")
+        logger.info("[Stage 3/5] Technicals scan completed.")
     except Exception as e:
         stage_status["technicals"] = f"FAILED ({type(e).__name__})"
-        logger.error(f"[Stage 3/4] Technicals stage FAILED: {e}", exc_info=True)
+        logger.error(f"[Stage 3/5] Technicals stage FAILED: {e}", exc_info=True)
         log_notification(
             "Error",
             f"Universe Deep Sync — Stage 3 (Technicals) failed: {e}"
         )
 
     # ─────────────────────────────────────────────────────────────────────
-    # STAGE 4 of 4 — ML INFERENCE (writes quant_signals.ml_confidence_score)
+    # STAGE 4 of 5 — MOMENTUM/VOL/RS BACKFILL (writes the 8 ML-required features:
+    #   mom_1m, mom_3m, mom_6m, mom_12m_skip1m, atr_pct, hist_vol_20,
+    #   rel_strength_5d, rel_strength_20d)
+    # Without this stage, Stage 5 (ML inference) silently skips every universe
+    # ticker because the model's 24-feature input set is incomplete.
     # ─────────────────────────────────────────────────────────────────────
-    logger.info("[Stage 4/4] ML inference starting...")
+    logger.info("[Stage 4/5] Momentum/Vol/RS backfill starting...")
+    try:
+        from ai_prediction_engine import run_historical_backfill
+        run_historical_backfill(tickers=target_tickers)
+        stage_status["momentum_backfill"] = "OK"
+        logger.info("[Stage 4/5] Momentum backfill completed.")
+    except Exception as e:
+        stage_status["momentum_backfill"] = f"FAILED ({type(e).__name__})"
+        logger.error(f"[Stage 4/5] Momentum backfill stage FAILED: {e}", exc_info=True)
+        log_notification(
+            "Error",
+            f"Universe Deep Sync — Stage 4 (Momentum Backfill) failed: {e}"
+        )
+
+    # ─────────────────────────────────────────────────────────────────────
+    # STAGE 5 of 5 — ML INFERENCE (writes quant_signals.ml_confidence_score)
+    # ─────────────────────────────────────────────────────────────────────
+    logger.info("[Stage 5/5] ML inference starting...")
     try:
         from ai_prediction_engine import update_daily_ml_predictions
         update_daily_ml_predictions(target_tickers)
         stage_status["ml_inference"] = "OK"
-        logger.info("[Stage 4/4] ML inference completed.")
+        logger.info("[Stage 5/5] ML inference completed.")
     except Exception as e:
         stage_status["ml_inference"] = f"FAILED ({type(e).__name__})"
-        logger.error(f"[Stage 4/4] ML inference stage FAILED: {e}", exc_info=True)
+        logger.error(f"[Stage 5/5] ML inference stage FAILED: {e}", exc_info=True)
         log_notification(
             "Error",
-            f"Universe Deep Sync — Stage 4 (ML Inference) failed: {e}"
+            f"Universe Deep Sync — Stage 5 (ML Inference) failed: {e}"
         )
 
     # ─────────────────────────────────────────────────────────────────────
