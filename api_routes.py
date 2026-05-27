@@ -20,7 +20,7 @@ from pydantic import BaseModel
 
 from config import load_config, SECRETS_PATH, DATA_DIR, BASE_DIR
 from database import get_connection, get_universe_tickers
-from scheduler_engine import run_update_pipeline, run_ghostfolio_sync, run_freetrade_sync, reload_scheduler, run_sentiment_scan, run_index_scraper, run_fundamentals_profiler, run_universe_fundamentals_sync_job
+from scheduler_engine import run_update_pipeline, run_ghostfolio_sync, run_freetrade_sync, reload_scheduler, run_sentiment_scan, run_index_scraper, run_fundamentals_profiler, run_universe_fundamentals_sync_job, run_universe_deep_sync_job
 from ghostfolio_sync import GhostfolioSyncEngine
 from market_pulse import get_cached_pulse_from_db, fetch_and_save_pulse
 from sentiment_engine import run_nextcloud_alert, update_all_sentiment
@@ -301,6 +301,27 @@ async def trigger_universe_fundamentals_endpoint(background_tasks: BackgroundTas
     return JSONResponse(content={
         "status": "success",
         "message": "Universe Fundamentals Sync initiated in the background. Fetching financial data for all FTSE100/S&P500 index stocks. Check System Notifications for progress."
+    })
+
+@api_router.post("/universe/deep-sync")
+async def trigger_universe_deep_sync_endpoint(background_tasks: BackgroundTasks):
+    """
+    Manually trigger the unified Universe Deep Sync pipeline.
+
+    Sequences: fundamentals → metadata → technicals → ML inference for the
+    full index universe (FTSE100 + S&P500), respecting UI_PREFERENCES.
+    FREETRADE_ONLY_MODE for the Freetrade firewall. Returns immediately
+    while the pipeline runs in the background (≈30–45 minutes).
+    """
+    background_tasks.add_task(run_universe_deep_sync_job)
+    return JSONResponse(content={
+        "status": "success",
+        "message": (
+            "Universe Deep Sync Pipeline initiated in the background. "
+            "Sequencing fundamentals → metadata → technicals → ML inference "
+            "for the full index universe. Estimated runtime: 30–45 minutes. "
+            "Check System Notifications for progress."
+        )
     })
 
 @api_router.post("/trigger-universe-quant-scan")
