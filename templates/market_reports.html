@@ -63,6 +63,51 @@
         </div>
     </div>
 
+    <div class="report-section border-left-cyan">
+        <h2 class="text-cyan">🚀 GARP — Peter Lynch Tenbaggers</h2>
+        <p>Growth At a Reasonable Price. Cheap-relative-to-growth equities from the FTSE100 + S&amp;P500 universe that pass Peter Lynch's yield-adjusted PEG threshold.</p>
+        <p><strong>How to use:</strong> Stocks here combine genuine growth (revenue +15%, profitable, growing earnings) with a valuation cheap enough to compound multi-bagger upside. <br>
+           <strong>When to use:</strong> Ideal for monthly trading-account top-ups when you want growth exposure without paying euphoria multiples. <br>
+           <strong>The Benefit:</strong> Lynch's PEG &lt;= 1.0 ensures you are not overpaying for the growth. The $500M market-cap floor excludes micro-cap pump-and-dumps. The ML confidence column (when populated) adds a quantitative second opinion.</p>
+
+        <div class="controls-container mb-20">
+            <div class="form-group form-group-no-margin">
+                <label>Min <abbr title="Machine-learning confidence score from the global model. NULL when not yet scored — set to 0 to include all candidates.">ML Confidence</abbr> (%)</label>
+                <input type="number" id="garpMinMl" class="filter-input input-width-small" min="0" max="100" step="5" value="0">
+            </div>
+        </div>
+
+        <table id="garpTable" class="display w-100">
+            <thead>
+                <tr>
+                    <th>Ticker</th>
+                    <th>Company Name</th>
+                    <th>Sector</th>
+                    <th>Close Price</th>
+                    <th><abbr title="Peter Lynch PEG (yield-adjusted). Pass: 0 < PEG <= 1.0">PEG (Lynch)</abbr></th>
+                    <th><abbr title="Year-over-year revenue growth (> 15%)">Rev Growth</abbr></th>
+                    <th><abbr title="Return on Equity (> 10%)">ROE</abbr></th>
+                    <th><abbr title="Forward P/E (10 to 40)">Fwd P/E</abbr></th>
+                    <th><abbr title="Market capitalisation (> $500M)">Market Cap</abbr></th>
+                    <th><abbr title="ML confidence score. Shows — when not yet scored.">ML</abbr></th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+
+        <div class="footer-notes">
+            <strong class="text-light">Key Metrics Explained:</strong>
+            <ul class="explanation-list">
+                <li><strong class="text-accent-blue">PEG (Lynch) &lt;= 1.0:</strong> Yield-adjusted Peter Lynch PEG = Forward P/E / (Earnings Growth% + Dividend Yield%). A stock is considered fair value at PEG &lt;= 1.0 — anything above means you are overpaying for the growth.</li>
+                <li><strong class="text-accent-blue">Rev Growth &gt; 15%:</strong> Year-over-year revenue growth filters out stagnant compounders so this report stays focused on genuine growth stories.</li>
+                <li><strong class="text-accent-blue">ROE &gt; 10%:</strong> Looser than the Quality Compounders' 15% threshold because GARP rewards growth re-investment, which temporarily depresses near-term ROE.</li>
+                <li><strong class="text-accent-blue">Fwd P/E 10–40:</strong> Floor 10 excludes deep-value traps; ceiling 40 excludes hyper-growth bubbles.</li>
+                <li><strong class="text-accent-blue">Market Cap &gt; $500M:</strong> Excludes micro-caps where liquidity and manipulation risk dominate.</li>
+                <li><strong class="text-accent-blue">ML Confidence:</strong> Optional corroboration. Currently NULL across the universe — set Min ML to 0 to show all candidates. As ML coverage fills in, dial the threshold up to filter.</li>
+            </ul>
+        </div>
+    </div>
+
     <div class="report-section">
         <h2>Sector Trends & <abbr title="The rate of acceleration of a security's price or volume.">Momentum</abbr></h2>
         <p>A macro view of overall market health aggregated by sector, sorted by average <abbr title="Relative Strength Index (RSI) measures the speed and magnitude of recent price changes.">relative strength</abbr>.</p>
@@ -426,6 +471,70 @@
                     { data: 'trailing_pe', render: function(data) { return data.toFixed(2); } },
                     { data: 'composite_score', render: function(data) { return `<span class="positive-val">${data}</span>`; } }
                 ]
+            });
+
+            // GARP Tenbaggers Table
+            var garpTable = $('#garpTable').DataTable({
+                ajax: {
+                    url: '/api/reports/garp-tenbaggers',
+                    error: function() { showTableError('#garpTable', 10); }
+                },
+                deferRender: true,
+                pageLength: 10,
+                order: [[4, 'asc']], // Sort by PEG ascending (cheapest growth first)
+                columns: [
+                    { data: 'ticker', render: function(data) { return '<a href="/stock/' + data + '" class="ticker-link">' + data + '</a>'; } },
+                    { data: 'company_name' },
+                    { data: 'sector' },
+                    {
+                        data: 'close_price',
+                        render: function(data, type, row) {
+                            return type === 'display' ? formatCurrency(data, row.currency) : data;
+                        }
+                    },
+                    { data: 'peter_lynch_peg', render: function(data) {
+                        if (data == null) return '—';
+                        return `<span class="positive-val">${data.toFixed(3)}</span>`;
+                    } },
+                    { data: 'revenue_growth_pct', render: function(data) {
+                        if (data == null) return '—';
+                        return `<span class="positive-val">${data.toFixed(1)}%</span>`;
+                    } },
+                    { data: 'roe_pct', render: function(data) {
+                        if (data == null) return '—';
+                        return `<span class="positive-val">${data.toFixed(1)}%</span>`;
+                    } },
+                    { data: 'forward_pe', render: function(data) {
+                        if (data == null) return '—';
+                        return data.toFixed(2);
+                    } },
+                    { data: 'market_cap', render: function(data, type) {
+                        if (data == null) return '—';
+                        if (type === 'sort' || type === 'type') return data;
+                        if (data >= 1e12) return `$${(data / 1e12).toFixed(2)}T`;
+                        if (data >= 1e9)  return `$${(data / 1e9).toFixed(2)}B`;
+                        return `$${(data / 1e6).toFixed(0)}M`;
+                    } },
+                    { data: 'ml_confidence_score', render: function(data) {
+                        if (data == null) return '<span class="text-muted">—</span>';
+                        let cssClass = data >= 60 ? 'positive-val' : (data < 30 ? 'negative-val' : '');
+                        return `<span class="${cssClass}">${data.toFixed(1)}%</span>`;
+                    } }
+                ]
+            });
+
+            // Client-side ML threshold filter for GARP table
+            $.fn.dataTable.ext.search.push(function(settings, data, dataIndex, rowData) {
+                if (settings.nTable.id !== 'garpTable') return true;  // only affect garpTable
+                var threshold = parseFloat($('#garpMinMl').val());
+                if (isNaN(threshold) || threshold <= 0) return true;  // 0 or empty = show all
+                var ml = rowData.ml_confidence_score;
+                if (ml == null) return false;  // threshold > 0 excludes nulls
+                return ml >= threshold;
+            });
+
+            $('#garpMinMl').on('input change', function() {
+                garpTable.draw();
             });
 
             // Bind the Dropdown Filter to the hidden Exchange column
