@@ -104,6 +104,10 @@ def run_daily_quant_scan(ticker_list: List[str], scan_type: str = 'daily') -> No
                 
                 # Replaced 'ta' call with raw pandas rolling mean for reliability
                 vol_sma_20 = volume_s.rolling(window=20).mean()
+                
+                # Calculate ATR and ATR Percentage for Position Sizing
+                atr_series = ta.volatility.AverageTrueRange(high=df['High'], low=df['Low'], close=df['Close'], window=14).average_true_range()
+                atr_pct_series = atr_series / df['Close']
 
                 # Extract latest localized date and metrics
                 last_date = df.index[-1].strftime('%Y-%m-%d')
@@ -116,6 +120,7 @@ def run_daily_quant_scan(ticker_list: List[str], scan_type: str = 'daily') -> No
                 c_hist = float(macd_indicator.macd_diff().iloc[-1]) if not pd.isna(macd_indicator.macd_diff().iloc[-1]) else None
                 c_sma50 = float(sma_50.iloc[-1]) if not pd.isna(sma_50.iloc[-1]) else None
                 c_sma200 = float(sma_200.iloc[-1]) if not pd.isna(sma_200.iloc[-1]) else None
+                c_atr_pct = float(atr_pct_series.iloc[-1]) if not pd.isna(atr_pct_series.iloc[-1]) else None
 
                 # Logic Triggers
                 vol_surge = False
@@ -133,8 +138,8 @@ def run_daily_quant_scan(ticker_list: List[str], scan_type: str = 'daily') -> No
                 # --- Database Write (Safe Upsert) ---
                 cursor.execute('''
                     INSERT INTO quant_signals 
-                    (ticker, date, close_price, volume, rsi_14, macd, macd_signal, macd_hist, sma_50, sma_200, volume_surge, bullish_cross)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (ticker, date, close_price, volume, rsi_14, macd, macd_signal, macd_hist, sma_50, sma_200, volume_surge, bullish_cross, atr_pct)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(ticker, date) DO UPDATE SET
                         close_price=excluded.close_price,
                         volume=excluded.volume,
@@ -145,8 +150,9 @@ def run_daily_quant_scan(ticker_list: List[str], scan_type: str = 'daily') -> No
                         sma_50=excluded.sma_50,
                         sma_200=excluded.sma_200,
                         volume_surge=excluded.volume_surge,
-                        bullish_cross=excluded.bullish_cross
-                ''', (ticker, last_date, c_price, c_vol, c_rsi, c_macd, c_signal, c_hist, c_sma50, c_sma200, vol_surge, bullish_cross))
+                        bullish_cross=excluded.bullish_cross,
+                        atr_pct=excluded.atr_pct
+                ''', (ticker, last_date, c_price, c_vol, c_rsi, c_macd, c_signal, c_hist, c_sma50, c_sma200, vol_surge, bullish_cross, c_atr_pct))
 
                 # Update State Engine
                 cursor.execute("UPDATE quant_scan_states SET last_processed_ticker = ? WHERE scan_date = ? AND scan_type = ?", (ticker, today_str, scan_type))

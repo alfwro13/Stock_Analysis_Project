@@ -287,11 +287,11 @@
                                     return val;
                                 }
                             }
-                            return {{ stock.current_price | default(0) }} || null;
+                            return {{ stock.current_price | tojson }} || null;
                         }
 
                         // ATR percentage — passed from server as a stock attribute
-                        const atrPct = {{ stock.atr_pct | default('null') }};
+                        const atrPct = {{ stock.atr_pct | tojson }};
 
                         function recalc() {
                             const accountValue  = parseFloat(document.getElementById("ps-account-value").value);
