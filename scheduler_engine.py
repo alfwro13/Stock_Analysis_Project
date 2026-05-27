@@ -26,6 +26,7 @@ from risk_engine import update_all_tail_risks
 from freetrade_engine import sync_freetrade_universe
 
 from universe_fundamentals_engine import run_universe_fundamentals_sync
+from universe_deep_sync_engine import run_universe_deep_sync
 
 # Import new Macro Engines
 from macro_calendar_engine import update_macro_calendar
@@ -234,6 +235,25 @@ def run_universe_fundamentals_sync_job():
     except Exception as e:
         logger.error(f"Universe Fundamentals Sync Failed: {e}")
         log_sched_notification("Error", f"Universe Fundamentals Sync failed: {e}")
+
+
+def run_universe_deep_sync_job():
+    """
+    Scheduler wrapper executing the unified Universe Deep Sync pipeline.
+
+    The orchestrator (universe_deep_sync_engine.run_universe_deep_sync) emits
+    its own rich per-stage notifications. This wrapper adds the standard
+    scheduler envelope (Started / Success / Error) for consistency with the
+    other _job functions in this module.
+    """
+    log_sched_notification("Scheduler", "Started Universe Deep Sync Pipeline...")
+    try:
+        run_universe_deep_sync()
+        log_sched_notification("Success", "Universe Deep Sync Pipeline job completed.")
+    except Exception as e:
+        logger.error(f"Universe Deep Sync Pipeline Failed: {e}")
+        log_sched_notification("Error", f"Universe Deep Sync Pipeline failed: {e}")
+
 
 # --- MODULAR ML PIPELINE RUNNERS ---
 
@@ -659,22 +679,25 @@ def reload_scheduler():
         except Exception as e:
             logger.error(f"Failed to schedule Fundamentals Profiler: {e}")
 
-    # 17. Universe Fundamentals Sync
-    uni_fund_cfg = scheduling.get("UNIVERSE_FUNDAMENTALS", {})
-    if uni_fund_cfg.get("ENABLED", False):
-        uni_fund_days_list = uni_fund_cfg.get("DAYS", ["sat"])
-        uni_fund_days = ",".join(uni_fund_days_list) if uni_fund_days_list else "sat"
-        uni_fund_time = uni_fund_cfg.get("TIME", "06:00")
+    # 17. Universe Deep Sync Pipeline (replaces legacy UNIVERSE_FUNDAMENTALS).
+    # Sequences fundamentals -> metadata -> technicals -> ML inference for the
+    # full index universe (FTSE100 + S&P500). Required for the GARP, Quality
+    # Compounders, and other market-wide reports.
+    uds_cfg = scheduling.get("UNIVERSE_DEEP_SYNC", {})
+    if uds_cfg.get("ENABLED", False):
+        uds_days_list = uds_cfg.get("DAYS", ["sun"])
+        uds_days = ",".join(uds_days_list) if uds_days_list else "sun"
+        uds_time = uds_cfg.get("TIME", "02:00")
         try:
-            hour, minute = map(int, uni_fund_time.split(':'))
+            hour, minute = map(int, uds_time.split(':'))
             scheduler.add_job(
-                run_universe_fundamentals_sync_job,
-                CronTrigger(day_of_week=uni_fund_days, hour=hour, minute=minute),
-                id='universe_fundamentals_job'
+                run_universe_deep_sync_job,
+                CronTrigger(day_of_week=uds_days, hour=hour, minute=minute),
+                id='universe_deep_sync_job'
             )
-            logger.info(f"Universe Fundamentals Sync scheduled for {uni_fund_days} at {uni_fund_time}")
+            logger.info(f"Universe Deep Sync Pipeline scheduled for {uds_days} at {uds_time}")
         except Exception as e:
-            logger.error(f"Failed to schedule Universe Fundamentals Sync: {e}")
+            logger.error(f"Failed to schedule Universe Deep Sync Pipeline: {e}")
 
 
 def start_scheduler():
