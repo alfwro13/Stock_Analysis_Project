@@ -9,6 +9,7 @@ import yfinance as yf
 
 from config import FUNDAMENTALS_DIR
 from database import get_connection, log_notification
+from fundamentals_helpers import calculate_peter_lynch_peg
 
 logger = logging.getLogger(__name__)
 
@@ -160,32 +161,38 @@ def _clean(v):
     return v
 
 
-def _get_pending_tickers(batch_size: int) -> list:
+def _get_pending_tickers(batch_size: int, freetrade_firewall: bool = False) -> list:
     """
-    Return up to batch_size index tickers that still need a fundamentals fetch:
-      - not yet in stock_signals at all, OR
-      - already there with score_method = 'UNIVERSE_FUNDAMENTALS' but last_updated > 30 days ago.
-    Tickers with a full technical analysis (score_method IS NULL or != 'UNIVERSE_FUNDAMENTALS')
-    are always excluded so we never overwrite richer data.
+    Return up to batch_size index tickers eligible for the weekly fundamentals refresh.
+
+    Selection rules:
+      - is_index = 1 defines the universe scope (FTSE100 + S&P500 + future indexes).
+      - When freetrade_firewall is True, additionally require is_freetrade = 1 so
+        yfinance calls are not spent on assets that cannot actually be traded.
+      - Tickers whose score_method is NOT 'UNIVERSE_FUNDAMENTALS' (i.e. they have
+        a full HARDCODED technical analysis from the portfolio/watchlist pipeline)
+        are excluded so the deeper data is never overwritten.
+      - Staleness filtering was removed in Step 1.2 — the new UNIVERSE_DEEP_SYNC
+        weekly schedule refreshes every eligible ticker on every run by design.
     """
     conn = get_connection()
     try:
         cursor = conn.cursor()
-        cursor.execute("""
+        firewall_clause = "AND m.is_freetrade = 1" if freetrade_firewall else ""
+        query = f"""
             SELECT m.ticker
             FROM market_universe m
             LEFT JOIN stock_signals s ON m.ticker = s.ticker
             WHERE m.is_index = 1
+              {firewall_clause}
               AND (
                   s.ticker IS NULL
-                  OR (
-                      s.score_method = 'UNIVERSE_FUNDAMENTALS'
-                      AND s.last_updated < date('now', '-30 days')
-                  )
+                  OR s.score_method = 'UNIVERSE_FUNDAMENTALS'
               )
             ORDER BY m.ticker
             LIMIT ?
-        """, (batch_size,))
+        """
+        cursor.execute(query, (batch_size,))
         return [r['ticker'] for r in cursor.fetchall()]
     finally:
         conn.close()
@@ -210,6 +217,7 @@ def _upsert_fundamentals(ticker: str, info: dict) -> None:
     profit_margin  = info.get('profitMargins')
     roe            = info.get('returnOnEquity')
     revenue_growth = info.get('revenueGrowth')
+    earnings_growth = info.get('earningsGrowth')
     debt_to_equity = info.get('debtToEquity')
     current_ratio  = info.get('currentRatio')
     operating_cash_flow = info.get('operatingCashflow')
@@ -238,6 +246,16 @@ def _upsert_fundamentals(ticker: str, info: dict) -> None:
     earnings_ts = info.get('earningsTimestamp')
     next_earnings_date = datetime.fromtimestamp(earnings_ts).strftime('%Y-%m-%d') if earnings_ts else 'Unknown'
 
+    # Compute canonical Peter Lynch PEG using the shared helper. Must happen
+    # AFTER the pence misquote correction above so dividend_yield is already
+    # in true decimal form (e.g. 0.045 == 4.5%).
+    peter_lynch_peg = calculate_peter_lynch_peg(
+        forward_pe=forward_pe,
+        trailing_pe=trailing_pe,
+        earnings_growth=earnings_growth,
+        dividend_yield=dividend_yield,
+    )
+
     score, signal, notes_html = _compute_fundamental_score(info)
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -249,7 +267,7 @@ def _upsert_fundamentals(ticker: str, info: dict) -> None:
                 ticker, last_updated, company_name, sector, country, currency, quote_type,
                 current_price,
                 fifty_two_week_low, fifty_two_week_high,
-                trailing_pe, forward_pe, peg_ratio, price_to_book,
+                trailing_pe, forward_pe, peg_ratio, peter_lynch_peg, price_to_book,
                 profit_margin, roe, revenue_growth, debt_to_equity, current_ratio,
                 operating_cash_flow, dividend_yield, ex_dividend_date,
                 target_price, analyst_rating, next_earnings_date,
@@ -260,7 +278,7 @@ def _upsert_fundamentals(ticker: str, info: dict) -> None:
                 ?, ?, ?, ?, ?, ?, ?,
                 ?,
                 ?, ?,
-                ?, ?, ?, ?,
+                ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?,
                 ?, ?, ?,
                 ?, ?, ?,
@@ -272,7 +290,7 @@ def _upsert_fundamentals(ticker: str, info: dict) -> None:
             ticker, timestamp, company_name, sector, country, currency, quote_type,
             _clean(current_price),
             _clean(fifty_two_week_low), _clean(fifty_two_week_high),
-            _clean(trailing_pe), _clean(forward_pe), _clean(peg_ratio), _clean(price_to_book),
+            _clean(trailing_pe), _clean(forward_pe), _clean(peg_ratio), _clean(peter_lynch_peg), _clean(price_to_book),
             _clean(profit_margin), _clean(roe), _clean(revenue_growth), _clean(debt_to_equity), _clean(current_ratio),
             _clean(operating_cash_flow), _clean(dividend_yield), ex_dividend_date,
             _clean(target_price), analyst_rating, next_earnings_date,
@@ -285,14 +303,22 @@ def _upsert_fundamentals(ticker: str, info: dict) -> None:
         conn.close()
 
 
-def run_universe_fundamentals_sync(batch_size: int = 50) -> None:
+def run_universe_fundamentals_sync(batch_size: int = 50, freetrade_firewall: bool = False) -> None:
     """
-    Fetches fundamental financial data (ROE, margins, D/E, etc.) from Yahoo Finance
-    for up to batch_size FTSE100/S&P500 index stocks that are missing or stale (>30 days).
-    Designed to be run repeatedly until all index stocks are covered — each run advances
-    the queue by batch_size. Tickers with a full technical analysis are never overwritten.
+    Fetches fundamental financial data (ROE, margins, D/E, peter_lynch_peg, etc.)
+    from Yahoo Finance for up to batch_size index-universe stocks eligible for refresh.
+
+    Args:
+        batch_size: Maximum tickers processed per call.
+        freetrade_firewall: When True, restricts the universe to is_freetrade = 1
+            tickers (avoids spending yfinance calls on untradable assets).
+            Caller should pass the FREETRADE_ONLY_MODE config flag here.
+
+    Callable both standalone (legacy schedule) and from the unified
+    UNIVERSE_DEEP_SYNC pipeline orchestrator (Step 1.3). Tickers with a full
+    HARDCODED technical analysis are never overwritten.
     """
-    tickers = _get_pending_tickers(batch_size)
+    tickers = _get_pending_tickers(batch_size, freetrade_firewall=freetrade_firewall)
     if not tickers:
         log_notification("Info", "Universe Fundamentals Sync: all index stocks are already up to date.")
         logger.info("Universe Fundamentals Sync: nothing pending.")
