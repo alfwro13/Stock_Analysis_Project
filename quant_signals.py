@@ -11,6 +11,7 @@ import ta
 
 from config import HISTORICAL_DIR, FUNDAMENTALS_DIR
 from database import get_connection
+from fundamentals_helpers import calculate_peter_lynch_peg
 
 logger = logging.getLogger(__name__)
 
@@ -575,25 +576,14 @@ class QuantEngine:
             institutional_ownership = info.get('heldPercentInstitutions', None)
             beta = info.get('beta', None)
 
-            # Safely handle scale consistency for Peter Lynch PEG
-            # Include Dividend Yield in the Peter Lynch formulation
-            # yfinance always returns decimal; multiply unconditionally
-            peter_lynch_peg = None
-            # Prefer forward PE (less distorted by one-time charges) per Lynch's intent.
-            # Fall back to trailing PE only when forward is unavailable.
-            pe_for_lynch = forward_pe if (forward_pe and forward_pe > 0) else trailing_pe
-            if pe_for_lynch and pe_for_lynch > 0 and earnings_growth and earnings_growth > 0:          
-                # Unconditionally scale decimal to percentage
-                eg_scaled = earnings_growth * 100.0
-                
-                div_yield_val = dividend_yield if dividend_yield is not None else 0.0
-                div_yield_scaled = div_yield_val * 100.0
-                
-                total_growth_yield = eg_scaled + div_yield_scaled
-                
-                # Calculate True Peter Lynch PEG, guarding against negative denominators
-                if total_growth_yield > 0:
-                    peter_lynch_peg = pe_for_lynch / total_growth_yield
+            # Compute canonical Peter Lynch PEG via shared helper to ensure
+            # identical math across portfolio/watchlist + universe pipelines.
+            peter_lynch_peg = calculate_peter_lynch_peg(
+                forward_pe=forward_pe,
+                trailing_pe=trailing_pe,
+                earnings_growth=earnings_growth,
+                dividend_yield=dividend_yield,
+            )
 
             # ==========================================
             # PART 3: SCORING & SETUP TAGS
