@@ -174,6 +174,14 @@ def init_db() -> None:
                 sentiment_score REAL,
                 var_95 REAL,
                 cvar_95 REAL,
+                mom_1m REAL,
+                mom_3m REAL,
+                mom_6m REAL,
+                mom_12m_skip1m REAL,
+                atr_pct REAL,
+                hist_vol_20 REAL,
+                rel_strength_5d REAL,
+                rel_strength_20d REAL,
                 PRIMARY KEY (ticker, date)
             )
         ''')
@@ -414,7 +422,15 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
         'ml_confidence_score': 'REAL',
         'sentiment_score': 'REAL',
         'var_95': 'REAL',
-        'cvar_95': 'REAL'
+        'cvar_95': 'REAL',
+        'mom_1m': 'REAL',
+        'mom_3m': 'REAL',
+        'mom_6m': 'REAL',
+        'mom_12m_skip1m': 'REAL',
+        'atr_pct': 'REAL',
+        'hist_vol_20': 'REAL',
+        'rel_strength_5d': 'REAL',
+        'rel_strength_20d': 'REAL'
     }
 
     for col_name, data_type in required_quant_columns.items():

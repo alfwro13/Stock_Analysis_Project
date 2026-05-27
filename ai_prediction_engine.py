@@ -975,7 +975,7 @@ def update_daily_ml_predictions(tickers: List[str]) -> None:
 
             X_infer             = pd.DataFrame([row[FEATURE_COLS]])
             prob                = model.predict_proba(X_infer)[0][1]
-            ml_confidence_score = round(prob * 100.0, 2)
+            ml_confidence_score = float(round(prob * 100.0, 2))
 
             update_payloads.append((ml_confidence_score, row['ticker'], row['date']))
 
