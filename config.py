@@ -30,6 +30,11 @@ FUNDAMENTALS_DIR.mkdir(parents=True, exist_ok=True)
 PORT = 8090
 BASE_CURRENCY = "GBP"
 
+# Schedule keys that existed in previous releases and should be silently
+# stripped from any existing config.json on load. Maintained as a module
+# constant so it's easy to find and extend as the app evolves.
+DEPRECATED_SCHEDULE_KEYS: set = {"UNIVERSE_FUNDAMENTALS"}
+
 # Base Schema for Application Configuration
 DEFAULT_CONFIG = {
     "SERVER_URL": "http://localhost",
@@ -80,11 +85,10 @@ DEFAULT_CONFIG = {
             "TIME": "05:00",
             "BATCH_SIZE": 250
         },
-        "UNIVERSE_FUNDAMENTALS": {
+        "UNIVERSE_DEEP_SYNC": {
             "ENABLED": False,
-            "DAYS": ["sat"],
-            "TIME": "06:00",
-            "BATCH_SIZE": 50
+            "DAYS": ["sun"],
+            "TIME": "02:00"
         },
         "GHOSTFOLIO_SYNC": {
             "ENABLED": False,
@@ -212,6 +216,11 @@ def load_config() -> dict:
             for key, val in data.items():
                 if key in ["NOTIFICATIONS", "SCHEDULING", "GHOSTFOLIO_ACCOUNTS", "UI_PREFERENCES", "FREETRADE_MAPPINGS", "POSITION_SIZING"] and isinstance(val, dict):
                     for sub_key, sub_val in val.items():
+                        # Strip deprecated schedule keys (e.g. legacy UNIVERSE_FUNDAMENTALS
+                        # superseded by UNIVERSE_DEEP_SYNC). Tolerates their presence in
+                        # existing config.json files without crashing.
+                        if key == "SCHEDULING" and sub_key in DEPRECATED_SCHEDULE_KEYS:
+                            continue
                         if sub_key in merged_config[key]:
                             if isinstance(sub_val, dict) and isinstance(merged_config[key][sub_key], dict):
                                 merged_config[key][sub_key].update(sub_val)
@@ -221,7 +230,7 @@ def load_config() -> dict:
                             merged_config[key][sub_key] = sub_val
                 else:
                     merged_config[key] = val
-                    
+
             return merged_config
     except Exception as e:
         print(f"[ERROR] Failed to read config.json: {e}. Using defaults.")
