@@ -122,21 +122,20 @@ class IntradayOrchestrator:
     def is_alert_suppressed(self, msg_type, ticker, current_price=None):
         """
         Checks if we already triggered this specific alert type for this stock today.
-        If current_price is provided, it parses the SQLite log and allows re-triggering 
-        if the price has moved > 2.0% since the last alert, enabling continuous parabolic alerts.
+        Enforces a strict 2-hour time cooldown to prevent alert spam, and respects
+        a configurable re-trigger percentage threshold.
         """
         conn = get_connection()
         cursor = conn.cursor()
         
-        today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
-        
+        # Use native SQLite date('now') to avoid Python/UTC timezone offset bugs
         cursor.execute('''
-            SELECT message_text FROM system_notifications 
+            SELECT message_text, timestamp FROM system_notifications 
             WHERE message_type = ? 
             AND message_text LIKE ? 
-            AND timestamp >= ?
+            AND date(timestamp) = date('now')
             ORDER BY timestamp DESC LIMIT 1
-        ''', (msg_type, f"%{ticker}%", today_start))
+        ''', (msg_type, f"%{ticker}%"))
         
         result = cursor.fetchone()
         conn.close()
@@ -144,21 +143,36 @@ class IntradayOrchestrator:
         if result is None:
             return False # No alert today, safe to fire
             
+        # Dynamically fetch the retrigger threshold. 
+        # Default to 0.0 (Strict 'One-and-Done' daily limit per ticker)
+        retrigger_pct = float(self.config.get("NOTIFICATIONS", {}).get("CRASH_ALERTS", {}).get("RETRIGGER_PERCENT", 0.0))
+        
+        # If retriggering is disabled (0.0), always suppress further alerts today
+        if retrigger_pct <= 0.0:
+            return True
+            
         if current_price is not None:
             msg_text = result['message_text']
+            last_timestamp = datetime.strptime(result['timestamp'], "%Y-%m-%d %H:%M:%S")
+            
+            # HARD COOLDOWN: Enforce a mandatory 2-hour (7200s) silence between alerts for the same ticker
+            if (datetime.utcnow() - last_timestamp).total_seconds() < 7200:
+                return True
+
             # Regex to catch both "**Price:** $150.00" and "**Current Yield:** 4.250%"
             match = re.search(r'\*\*(?:Price|Current Yield):\*\*\s*[^\d]*([\d,]+\.?\d*)', msg_text)
             if match:
                 try:
                     last_price = float(match.group(1).replace(',', ''))
                     price_diff = abs((current_price - last_price) / last_price) * 100.0
-                    # Override suppression if price shifted structurally since the last alert
-                    if price_diff >= 2.0:
+                    
+                    # Override suppression ONLY if price shifted structurally beyond user threshold
+                    if price_diff >= retrigger_pct:
                         return False 
                 except Exception:
                     pass
                     
-        return True # Suppress if we already alerted and price hasn't moved significantly
+        return True # Suppress if we already alerted and conditions aren't met
 
     def _has_corporate_action_today(self, ticker: str) -> bool:
         """
@@ -409,7 +423,7 @@ class IntradayOrchestrator:
                 f"🔗 [View Breakdown]({url})"
             )
             send_text_message(msg, self.config)
-            self.log_notification("Crash", f"Intraday Alert triggered for {ticker}. Reason: {alert['reason']}")
+            self.log_notification("Crash", f"**Price:** {formatted_price} | Intraday Alert triggered for {ticker}. Reason: {alert['reason']}")
             time.sleep(1) # Prevent Nextcloud rate-limiting
 
         for ticker, alert, currency, meta in moonshot_alerts_to_send:
@@ -436,8 +450,8 @@ class IntradayOrchestrator:
                 f"🔗 [View Breakdown]({url})"
             )
             send_text_message(msg, self.config)
-            self.log_notification("Moonshot", f"Moonshot triggered for {ticker}. Reason: {alert['reason']}")
-            time.sleep(1)
+            self.log_notification("Moonshot", f"**Price:** {formatted_price} | Moonshot triggered for {ticker}. Reason: {alert['reason']}")
+            time.sleep(1) # Prevent Nextcloud rate-limiting
 
         print(f"[ORCHESTRATOR] Scan complete. Dispatched {len(crash_alerts_to_send)} crashes and {len(moonshot_alerts_to_send)} moonshots.")
 
