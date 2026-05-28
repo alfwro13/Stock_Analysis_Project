@@ -10,11 +10,6 @@ from typing import Optional
 
 from database import get_connection
 
-# Configure robust module-level logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - RISK_ENGINE - %(levelname)s - %(message)s'
-)
 logger = logging.getLogger(__name__)
 
 def calculate_tail_risk(ticker: str, target_date: Optional[str] = None) -> None:

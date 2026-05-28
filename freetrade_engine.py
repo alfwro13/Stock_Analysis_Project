@@ -12,11 +12,6 @@ from typing import Optional, Dict, Any, Tuple
 from database import get_connection
 from config import load_config
 
-# Configure robust module-level logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - FREETRADE_ENGINE - %(levelname)s - %(message)s'
-)
 logger = logging.getLogger(__name__)
 
 # Constants

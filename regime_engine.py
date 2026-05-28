@@ -10,11 +10,6 @@ import yfinance as yf
 from database import get_connection
 from config import HISTORICAL_DIR
 
-# Configure robust module-level logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - REGIME_ENGINE - %(levelname)s - %(message)s'
-)
 logger = logging.getLogger(__name__)
 
 def initialize_regime_table() -> None:

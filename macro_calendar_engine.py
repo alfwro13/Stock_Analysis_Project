@@ -9,11 +9,6 @@ import yfinance as yf
 from typing import Optional, List, Tuple
 from datetime import datetime, timedelta
 
-# Configure module-level logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - MACRO_CALENDAR - %(levelname)s - %(message)s'
-)
 logger = logging.getLogger(__name__)
 
 DB_PATH = "data/analysis.db"

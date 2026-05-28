@@ -8,11 +8,6 @@ from typing import List, Dict, Any, Tuple
 from database import get_connection
 from regime_engine import get_latest_regime
 
-# Configure robust module-level logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - QUANT_SCREENER - %(levelname)s - %(message)s'
-)
 logger = logging.getLogger(__name__)
 
 # --- Expert System: Rule-Based Screens with Regime Context ---

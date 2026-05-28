@@ -28,11 +28,6 @@ from universe_deep_sync_engine import run_universe_deep_sync
 from macro_calendar_engine import update_macro_calendar
 from macro_data_engine import update_macro_indicators
 
-# Configure robust module-level logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - SCHEDULER_ENGINE - %(levelname)s - %(message)s'
-)
 logger = logging.getLogger(__name__)
 
 # --- Background Task Scheduler Setup ---

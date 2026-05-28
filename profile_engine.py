@@ -11,7 +11,6 @@ from database import get_connection
 from tools.network_engine import yahoo_connection_boundary
 from typing import Optional, List, Dict
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - PROFILE_ENGINE - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 BLACKLIST_PATH = Path("data/freetrade_blacklist.json")

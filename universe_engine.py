@@ -7,11 +7,6 @@ from datetime import datetime
 
 from database import get_connection
 
-# Configure robust module-level logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - UNIVERSE_ENGINE - %(levelname)s - %(message)s'
-)
 logger = logging.getLogger(__name__)
 
 def log_notification(message_type: str, message_text: str) -> None:

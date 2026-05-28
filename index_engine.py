@@ -9,11 +9,6 @@ from typing import List, Dict, Optional, Callable
 from config import load_config
 from database import get_connection, log_notification
 
-# Configure robust module-level logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - INDEX_ENGINE - %(levelname)s - %(message)s'
-)
 logger = logging.getLogger(__name__)
 
 # --- REGISTRY PATTERN FOR EXTENSIBILITY ---

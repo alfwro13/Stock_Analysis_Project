@@ -15,11 +15,6 @@ from sklearn.preprocessing import StandardScaler
 
 from database import get_connection
 
-# Configure robust module-level logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - MACRO_AI_ENGINE - %(levelname)s - %(message)s'
-)
 logger = logging.getLogger(__name__)
 
 

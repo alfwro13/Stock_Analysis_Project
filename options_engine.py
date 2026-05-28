@@ -4,11 +4,6 @@ import numpy as np
 import yfinance as yf
 from typing import List, Dict, Any
 
-# Configure robust module-level logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - OPTIONS_ENGINE - %(levelname)s - %(message)s'
-)
 logger = logging.getLogger(__name__)
 
 def fetch_options_chain(ticker: str) -> Dict[str, Any]:

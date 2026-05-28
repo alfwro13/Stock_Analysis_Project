@@ -15,12 +15,6 @@ from config import load_config
 from quant_screener import fetch_latest_signals, generate_markdown_briefing
 from nextcloud_talk import upload_file_webdav, share_file_to_talk, send_text_message
 
-# Configure robust module-level logging
-# Note: If imported after another module sets basicConfig, this format may inherit the previous module's config.
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - REPORT_DISPATCHER - %(levelname)s - %(message)s'
-)
 logger = logging.getLogger(__name__)
 
 

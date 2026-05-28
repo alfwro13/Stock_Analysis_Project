@@ -10,11 +10,6 @@ from database import get_connection
 from config import load_config
 from nextcloud_talk import send_text_message
 
-# Configure robust module-level logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - NETWORK_ENGINE - %(levelname)s - %(message)s'
-)
 logger = logging.getLogger(__name__)
 
 # Global state to track IPv6 health for the UI Settings page

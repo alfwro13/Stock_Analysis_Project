@@ -12,11 +12,6 @@ import yfinance as yf
 # [DESIGN-04 FIXED] Import centralized notification helper
 from database import get_connection, log_notification
 
-# Configure robust module-level logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - EARNINGS_VOL_ENGINE - %(levelname)s - %(message)s'
-)
 logger = logging.getLogger(__name__)
 
 def get_historical_earnings_move(ticker_obj: yf.Ticker) -> Optional[float]:
