@@ -89,6 +89,16 @@ def _make_flat_df(prices: list) -> pd.DataFrame:
     return pd.DataFrame({"Close": prices}, index=dates)
 
 
+def _make_all_nan_df() -> pd.DataFrame:
+    """Structurally valid DataFrame whose Close column is all-NaN.
+
+    Passes the 'if not df.empty' and MultiIndex checks, but yields an empty
+    DataFrame after dropna(subset=['Close']), triggering the last_updated=0 path.
+    """
+    dates = pd.date_range(end=pd.Timestamp.today().normalize(), periods=2, freq="D")
+    return pd.DataFrame({"Close": [float("nan"), float("nan")]}, index=dates)
+
+
 def _make_multi_df(ticker_prices: Dict[str, list]) -> pd.DataFrame:
     """Multi-ticker MultiIndex DataFrame as yfinance returns for >1 ticker."""
     frames = {}
@@ -387,14 +397,16 @@ class TestFetchAndSavePulse(_PulseTestBase):
     def test_empty_data_stamps_last_updated_zero_on_existing_row(self):
         _seed_pulse(self._db_path, [("^FTSE", "UK FTSE 100", 8000.0, 0.0, 0.0, 1, time.time())])
         import market_pulse
-        with self._no_yf():
+        nan_df = _make_all_nan_df()
+        with patch("market_pulse.yf.download", return_value=nan_df):
             market_pulse.fetch_and_save_pulse(["^FTSE"])
         row = _read_pulse(self._db_path, "^FTSE")
         self.assertEqual(row["last_updated"], 0)
 
     def test_empty_data_inserts_new_row_with_last_updated_zero(self):
         import market_pulse
-        with self._no_yf():
+        nan_df = _make_all_nan_df()
+        with patch("market_pulse.yf.download", return_value=nan_df):
             market_pulse.fetch_and_save_pulse(["^FTSE"])
         row = _read_pulse(self._db_path, "^FTSE")
         self.assertIsNotNone(row)
@@ -418,7 +430,8 @@ class TestFetchAndSavePulse(_PulseTestBase):
 
         row = _read_pulse(self._db_path, "^FTSE")
         self.assertAlmostEqual(row["price"], 105.0)
-        self.assertAlmostEqual(row["change_pts"], 105.0 - 104.0, places=4)
+        # daily[-1] date == live date, so prev_close = daily.iloc[-2] = 102.0
+        self.assertAlmostEqual(row["change_pts"], 105.0 - 102.0, places=4)
         self.assertGreater(row["last_updated"], 0)
 
     def test_successful_fetch_sets_is_positive(self):
