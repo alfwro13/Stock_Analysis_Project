@@ -1,5 +1,6 @@
 # api_routes.py
 import os
+import shutil
 import io
 import glob
 import json
@@ -558,42 +559,61 @@ async def get_network_status():
 async def get_system_metrics():
     """Returns a comprehensive diagnostic payload of system hardware, DB, and ML states."""
     import shutil
+    import joblib
     try:
-        # 1. Hardware Metrics (Linux focused as per architecture)
-        cpu_load = os.getloadavg() if hasattr(os, 'getloadavg') else (0.0, 0.0, 0.0)
-        total, used, free = shutil.disk_usage(BASE_DIR)
-        
-        # 2. Database Row Counts
         conn = get_connection()
+        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
-        def get_count(table: str) -> int:
+        # 1. Universe & Data Coverage
+        def get_cnt(query: str) -> int:
             try:
-                cursor.execute(f"SELECT COUNT(*) FROM {table}")
-                return cursor.fetchone()[0]
+                cursor.execute(query)
+                row = cursor.fetchone()
+                return int(row[0]) if row else 0
             except Exception:
                 return 0
-                
-        table_counts = {
-            "quant_signals": get_count("quant_signals"),
-            "stock_signals": get_count("stock_signals"),
-            "market_universe": get_count("market_universe"),
-            "asset_profiles": get_count("asset_profiles")
+
+        total_universe = get_cnt("SELECT COUNT(*) FROM market_universe")
+        total_index = get_cnt("SELECT COUNT(*) FROM market_universe WHERE is_index = 1")
+        total_ft = get_cnt("SELECT COUNT(*) FROM market_universe WHERE is_freetrade = 1")
+        total_sp500 = get_cnt("SELECT COUNT(*) FROM market_universe WHERE is_index = 1 AND index_membership LIKE '%SP500%'")
+        total_ftse = get_cnt("SELECT COUNT(*) FROM market_universe WHERE is_index = 1 AND index_membership LIKE '%FTSE100%'")
+        
+        # Table Coverage (Index Tickers)
+        coverage = {
+            "stock_signals": get_cnt("SELECT COUNT(DISTINCT m.ticker) FROM market_universe m INNER JOIN stock_signals t ON m.ticker = t.ticker WHERE m.is_index = 1"),
+            "quant_signals": get_cnt("SELECT COUNT(DISTINCT m.ticker) FROM market_universe m INNER JOIN quant_signals t ON m.ticker = t.ticker WHERE m.is_index = 1"),
+            "ticker_metadata": get_cnt("SELECT COUNT(DISTINCT m.ticker) FROM market_universe m INNER JOIN ticker_metadata t ON m.ticker = t.ticker WHERE m.is_index = 1"),
+            "asset_profiles": get_cnt("SELECT COUNT(DISTINCT m.ticker) FROM market_universe m INNER JOIN asset_profiles t ON m.ticker = t.ticker WHERE m.is_index = 1")
         }
-        conn.close()
-
-        # 3. File Storage Stats
-        def get_dir_stats(path: Path) -> dict:
-            if not path.exists():
-                return {"size_mb": 0.0, "files": 0}
-            files = list(path.glob("*.parquet")) + list(path.glob("*.json"))
-            size_mb = sum(f.stat().st_size for f in files if f.is_file()) / (1024 * 1024)
-            return {"size_mb": round(size_mb, 2), "files": len(files)}
-
-        db_path = DATA_DIR / "analysis.db"
-        db_size_mb = round(os.path.getsize(db_path) / (1024 * 1024), 2) if db_path.exists() else 0.0
-
-        # 4. ML Models State
+        
+        # Local JSON Trackers
+        def get_json_len(path_obj: Path, list_key: str = None) -> int:
+            if not path_obj.exists(): return 0
+            try:
+                with open(path_obj, 'r') as f:
+                    data = json.load(f)
+                    if isinstance(data, dict) and list_key:
+                        return len(data.get(list_key, []))
+                    elif isinstance(data, dict):
+                        return len(data.keys())
+                    elif isinstance(data, list):
+                        return len(data)
+            except Exception:
+                return 0
+            return 0
+            
+        blacklist_path = DATA_DIR / "freetrade_blacklist.json"
+        json_trackers = {
+            "portfolio": get_json_len(PORTFOLIO_PATH),
+            "watchlist": get_json_len(WATCHLIST_PATH, "watchlist"),
+            "blacklist": get_json_len(blacklist_path)
+        }
+        
+        fundamentals_files = len(list(FUNDAMENTALS_DIR.glob("*.json"))) if FUNDAMENTALS_DIR.exists() else 0
+        
+        # 2. Machine Learning Artifacts
         models_dir = BASE_DIR / "models"
         ml_model_path = models_dir / "ml_ensemble.joblib"
         feat_stats_path = models_dir / "feature_stats.joblib"
@@ -604,27 +624,66 @@ async def get_system_metrics():
             mtime = datetime.fromtimestamp(path.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')
             size_mb = round(path.stat().st_size / (1024 * 1024), 2)
             return {"exists": True, "mtime": mtime, "size_mb": size_mb}
-
+            
+        ensemble_stats = get_file_stats(ml_model_path)
+        
+        feature_count = 0
+        if feat_stats_path.exists():
+            try:
+                f_stats = joblib.load(feat_stats_path)
+                feature_count = len(f_stats.keys()) if isinstance(f_stats, dict) else 0
+            except Exception:
+                pass
+        
+        hmm_states = get_cnt("SELECT COUNT(*) FROM market_regimes WHERE ai_hmm_state IS NOT NULL")
+        rf_states = get_cnt("SELECT COUNT(*) FROM macro_calendar WHERE ai_consensus_miss_prob IS NOT NULL")
+        
+        # 3. Infrastructure & Storage
+        cpu_load = os.getloadavg() if hasattr(os, 'getloadavg') else (0.0, 0.0, 0.0)
+        total_disk, used_disk, free_disk = shutil.disk_usage(BASE_DIR)
+        
+        def get_dir_size(path: Path):
+            if not path.exists(): return 0.0, 0
+            files = list(path.glob("*.*"))
+            size_mb = sum(f.stat().st_size for f in files if f.is_file()) / (1024 * 1024)
+            return round(size_mb, 2), len(files)
+            
+        hist_size, hist_cnt = get_dir_size(HISTORICAL_DIR)
+        intra_size, intra_cnt = get_dir_size(INTRADAY_DIR)
+        db_size = round(os.path.getsize(DB_PATH) / (1024 * 1024), 2) if DB_PATH.exists() else 0.0
+        
+        # 4. State & Ledger Health
+        macro_ind_cnt = get_cnt("SELECT COUNT(*) FROM macro_indicators")
+        macro_cal_cnt = get_cnt("SELECT COUNT(*) FROM macro_calendar")
+        pending_notes = get_cnt("SELECT COUNT(*) FROM system_notifications WHERE status = 'pending'")
+        sent_notes = get_cnt("SELECT COUNT(*) FROM system_notifications WHERE status = 'sent'")
+        
+        conn.close()
+        
         return JSONResponse(content={
             "status": "success",
-            "hardware": {
-                "cpu_load_1m": round(cpu_load[0], 2),
-                "disk_used_gb": round(used / (1024**3), 2),
-                "disk_total_gb": round(total / (1024**3), 2),
-                "disk_pct": round((used / total) * 100, 1)
+            "universe": {
+                "total": total_universe, "index": total_index, "freetrade": total_ft,
+                "sp500": total_sp500, "ftse": total_ftse,
+                "coverage": coverage, "json_trackers": json_trackers,
+                "fundamentals_files": fundamentals_files
             },
-            "database": {
-                "size_mb": db_size_mb,
-                "counts": table_counts
+            "ml": {
+                "ensemble": ensemble_stats, "feature_count": feature_count,
+                "macro_hmm_outputs": hmm_states, "macro_rf_outputs": rf_states
             },
-            "storage": {
-                "historical": get_dir_stats(DATA_DIR / "historical"),
-                "intraday": get_dir_stats(DATA_DIR / "intraday"),
-                "fundamentals": get_dir_stats(DATA_DIR / "fundamentals")
+            "infra": {
+                "cpu": [round(c, 2) for c in cpu_load],
+                "disk_used_gb": round(used_disk / (1024**3), 2),
+                "disk_total_gb": round(total_disk / (1024**3), 2),
+                "disk_pct": round((used_disk / total_disk) * 100, 1),
+                "db_size_mb": db_size,
+                "hist_size_mb": hist_size, "hist_cnt": hist_cnt,
+                "intra_size_mb": intra_size, "intra_cnt": intra_cnt
             },
-            "models": {
-                "ensemble": get_file_stats(ml_model_path),
-                "features": get_file_stats(feat_stats_path)
+            "state": {
+                "macro_ind": macro_ind_cnt, "macro_cal": macro_cal_cnt,
+                "notes_pending": pending_notes, "notes_sent": sent_notes
             }
         })
     except Exception as e:

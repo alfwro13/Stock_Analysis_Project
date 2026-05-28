@@ -954,92 +954,116 @@
     </div>
 
     <details class="settings-card" id="diagnostics-panel" ontoggle="handleDiagnosticsToggle(this)">
-            <summary>🩺 System Metrics, Storage & Job Scheduler</summary>
+            <summary>🩺 System Diagnostics, Storage & Master Scheduler</summary>
             
-            <h4 class="settings-panel-header text-blue mt-10">🖥️ Infrastructure & Storage Footprint</h4>
-            <div id="metrics-loading" class="status-msg-sm msg-cyan">⏳ Querying system hardware and storage files...</div>
+            <div id="metrics-loading" class="status-msg-sm msg-cyan mt-10">⏳ Querying system databases and storage matrices...</div>
             <div id="metrics-content" class="d-none">
-                <div class="metrics-grid">
-                    <div class="metric-box border-left-cyan">
-                        <span class="metric-box-title">System Disk Usage</span>
-                        <span class="metric-box-val" id="met-disk-val">-- GB</span>
-                        <span class="metric-box-sub" id="met-disk-sub">--% Used</span>
+                
+                <div class="diag-grid mt-20">
+                    <div>
+                        <h4 class="settings-panel-header text-blue mb-10">🌍 Asset Universe & Data Coverage</h4>
+                        <table class="diag-table">
+                            <thead><tr><th>Metric</th><th>Value</th><th>Context</th></tr></thead>
+                            <tbody>
+                                <tr><td>Total Tickers Tracked</td><td class="val-col" id="diag-univ-total">--</td><td class="sub-val-col">market_universe</td></tr>
+                                <tr><td>Index Scope (SP500/FTSE100)</td><td class="val-col" id="diag-univ-idx">--</td><td class="sub-val-col" id="diag-univ-idx-sub">--</td></tr>
+                                <tr><td>Freetrade Tradable</td><td class="val-col" id="diag-univ-ft">--</td><td class="sub-val-col">is_freetrade=1</td></tr>
+                                <tr><td>Stock Signals Coverage</td><td class="val-col" id="diag-cov-ss">--</td><td class="sub-val-col" id="diag-cov-ss-pct">--%</td></tr>
+                                <tr><td>Quant Signals Coverage</td><td class="val-col" id="diag-cov-qs">--</td><td class="sub-val-col" id="diag-cov-qs-pct">--%</td></tr>
+                                <tr><td>Asset Profiles Coverage</td><td class="val-col" id="diag-cov-ap">--</td><td class="sub-val-col" id="diag-cov-ap-pct">--%</td></tr>
+                            </tbody>
+                        </table>
                     </div>
-                    <div class="metric-box border-left-purple">
-                        <span class="metric-box-title">CPU Load (1m avg)</span>
-                        <span class="metric-box-val" id="met-cpu-val">--</span>
-                        <span class="metric-box-sub">Native Linux Core Load</span>
-                    </div>
-                    <div class="metric-box border-left-orange">
-                        <span class="metric-box-title">SQLite Database</span>
-                        <span class="metric-box-val" id="met-db-val">-- MB</span>
-                        <span class="metric-box-sub" id="met-db-sub">-- Signal Rows</span>
-                    </div>
-                    <div class="metric-box border-left-green">
-                        <span class="metric-box-title">Time-Series Parquets</span>
-                        <span class="metric-box-val" id="met-ts-val">-- MB</span>
-                        <span class="metric-box-sub" id="met-ts-sub">-- Total Files</span>
+                    <div>
+                        <h4 class="settings-panel-header text-magenta mb-10">🤖 ML Artifacts & System Ledgers</h4>
+                        <table class="diag-table">
+                            <thead><tr><th>Metric</th><th>State / Count</th><th>Context</th></tr></thead>
+                            <tbody>
+                                <tr><td>Micro-Equities Ensemble</td><td class="val-col" id="diag-ml-state">--</td><td class="sub-val-col" id="diag-ml-sub">--</td></tr>
+                                <tr><td>Vector Feature Dimensions</td><td class="val-col" id="diag-ml-feat">--</td><td class="sub-val-col">feature_stats.joblib</td></tr>
+                                <tr><td>Macro HMM State Outputs</td><td class="val-col" id="diag-mac-hmm">--</td><td class="sub-val-col">Rows logged</td></tr>
+                                <tr><td>Macro RF Surprise Outputs</td><td class="val-col" id="diag-mac-rf">--</td><td class="sub-val-col">Rows logged</td></tr>
+                                <tr><td>Macro Indicators (FRED/BoE)</td><td class="val-col" id="diag-mac-ind">--</td><td class="sub-val-col">Structural rows</td></tr>
+                                <tr><td>Notification Ledger</td><td class="val-col" id="diag-notes-sent">--</td><td class="sub-val-col" id="diag-notes-pending">--</td></tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
 
-                <h4 class="settings-panel-header text-magenta mt-20">🤖 Machine Learning Artifacts</h4>
-                <div class="metrics-grid">
-                    <div class="metric-box border-left-magenta">
-                        <span class="metric-box-title">Global Voting Ensemble</span>
-                        <span class="metric-box-val" id="met-ml-val">-- MB</span>
-                        <span class="metric-box-sub" id="met-ml-sub">Last Trained: --</span>
+                <div class="diag-grid">
+                    <div>
+                        <h4 class="settings-panel-header text-orange mb-10">🗄️ Storage & JSON Caches</h4>
+                        <table class="diag-table">
+                            <thead><tr><th>Storage Domain</th><th>Size / Items</th><th>Count</th></tr></thead>
+                            <tbody>
+                                <tr><td>SQLite Relational DB</td><td class="val-col" id="diag-db-size">--</td><td class="sub-val-col">analysis.db</td></tr>
+                                <tr><td>Historical Parquets</td><td class="val-col" id="diag-hist-size">--</td><td class="sub-val-col" id="diag-hist-cnt">--</td></tr>
+                                <tr><td>Intraday Parquets</td><td class="val-col" id="diag-intra-size">--</td><td class="sub-val-col" id="diag-intra-cnt">--</td></tr>
+                                <tr><td>Fundamental JSONs</td><td class="val-col">N/A</td><td class="sub-val-col" id="diag-fund-cnt">--</td></tr>
+                                <tr><td>Portfolio Cache</td><td class="val-col">portfolio.json</td><td class="sub-val-col" id="diag-json-port">--</td></tr>
+                                <tr><td>Watchlist Cache</td><td class="val-col">watchlist.json</td><td class="sub-val-col" id="diag-json-watch">--</td></tr>
+                                <tr><td>Freetrade Blacklist</td><td class="val-col">freetrade_blacklist.json</td><td class="sub-val-col" id="diag-json-bl">--</td></tr>
+                            </tbody>
+                        </table>
                     </div>
-                    <div class="metric-box border-left-magenta">
-                        <span class="metric-box-title">Macro AI Pipeline</span>
-                        <span class="metric-box-val text-green">{% if config.SCHEDULING.MACRO_ENGINE.INITIALIZED %}Initialized{% else %}<span class="text-danger">Awaiting Setup</span>{% endif %}</span>
-                        <span class="metric-box-sub">HMM & XGBoost Subsystems</span>
+                    <div>
+                        <h4 class="settings-panel-header text-green mb-10">🖥️ Server Infrastructure</h4>
+                        <table class="diag-table">
+                            <thead><tr><th>Hardware Metric</th><th>Status</th><th>Utilization</th></tr></thead>
+                            <tbody>
+                                <tr><td>CPU Load (1m, 5m, 15m)</td><td class="val-col" id="diag-cpu">--</td><td class="sub-val-col">Native Linux</td></tr>
+                                <tr><td>Total Disk Capacity</td><td class="val-col" id="diag-disk-tot">--</td><td class="sub-val-col">Host Partition</td></tr>
+                                <tr><td>Disk Used</td><td class="val-col" id="diag-disk-used">--</td><td class="sub-val-col" id="diag-disk-pct">--</td></tr>
+                                <tr><td>IPv4/IPv6 Routing</td><td class="val-col text-accent-cyan" id="diag-route-stat">See Above</td><td class="sub-val-col">network_engine.py</td></tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
+
+                <h4 class="settings-panel-header text-cyan mt-30">⏱️ Master APScheduler Matrix</h4>
+                <p class="settings-desc-sm mb-15">Overview of all background threads currently registered with the APScheduler engine.</p>
+                <table class="scheduler-table">
+                    <thead>
+                        <tr>
+                            <th>Job Engine</th>
+                            <th>State</th>
+                            <th>Frequency / Days</th>
+                            <th>Execution Target</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for job_name, job_cfg in config.SCHEDULING.items() %}
+                        <tr>
+                            <td class="font-bold">{{ job_name | replace('_', ' ') | title }}</td>
+                            <td>
+                                {% if job_cfg.ENABLED %}
+                                    <span class="status-pill status-enabled">ACTIVE</span>
+                                {% else %}
+                                    <span class="status-pill status-disabled">DISABLED</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if job_cfg.DAYS %}{{ job_cfg.DAYS | join(', ') | upper }}
+                                {% elif job_cfg.FREQUENCY %}{{ job_cfg.FREQUENCY | upper }}
+                                {% elif job_cfg.DAY_OF_WEEK %}{{ job_cfg.DAY_OF_WEEK | upper }}
+                                {% else %}—{% endif %}
+                            </td>
+                            <td class="font-monospace">
+                                {% if job_cfg.INTERVAL_HOURS and job_cfg.INTERVAL_HOURS > 0 %}
+                                    Every {{ job_cfg.INTERVAL_HOURS }} Hour(s)
+                                {% elif job_cfg.INTERVAL_MINUTES and job_cfg.INTERVAL_MINUTES > 0 %}
+                                    Every {{ job_cfg.INTERVAL_MINUTES }} Min(s) ({{ job_cfg.START_TIME }} - {{ job_cfg.END_TIME }})
+                                {% elif job_cfg.TIME %}
+                                    {{ job_cfg.TIME }}
+                                {% elif job_cfg.DATA_TIME %}
+                                    Data: {{ job_cfg.DATA_TIME }} / Cal: {{ job_cfg.CALENDAR_TIME }}
+                                {% else %}—{% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
             </div>
-
-            <h4 class="settings-panel-header text-cyan mt-30">⏱️ Master APScheduler Matrix</h4>
-            <p class="settings-desc-sm mb-15">Overview of all configured background threads currently registered with the APScheduler engine.</p>
-            <table class="scheduler-table">
-                <thead>
-                    <tr>
-                        <th>Job Engine</th>
-                        <th>State</th>
-                        <th>Frequency / Days</th>
-                        <th>Execution Target</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for job_name, job_cfg in config.SCHEDULING.items() %}
-                    <tr>
-                        <td class="font-bold">{{ job_name | replace('_', ' ') | title }}</td>
-                        <td>
-                            {% if job_cfg.ENABLED %}
-                                <span class="status-pill status-enabled">ACTIVE</span>
-                            {% else %}
-                                <span class="status-pill status-disabled">DISABLED</span>
-                            {% endif %}
-                        </td>
-                        <td>
-                            {% if job_cfg.DAYS %}{{ job_cfg.DAYS | join(', ') | upper }}
-                            {% elif job_cfg.FREQUENCY %}{{ job_cfg.FREQUENCY | upper }}
-                            {% elif job_cfg.DAY_OF_WEEK %}{{ job_cfg.DAY_OF_WEEK | upper }}
-                            {% else %}—{% endif %}
-                        </td>
-                        <td class="font-monospace">
-                            {% if job_cfg.INTERVAL_HOURS and job_cfg.INTERVAL_HOURS > 0 %}
-                                Every {{ job_cfg.INTERVAL_HOURS }} Hour(s)
-                            {% elif job_cfg.INTERVAL_MINUTES and job_cfg.INTERVAL_MINUTES > 0 %}
-                                Every {{ job_cfg.INTERVAL_MINUTES }} Min(s) ({{ job_cfg.START_TIME }} - {{ job_cfg.END_TIME }})
-                            {% elif job_cfg.TIME %}
-                                {{ job_cfg.TIME }}
-                            {% elif job_cfg.DATA_TIME %}
-                                Data: {{ job_cfg.DATA_TIME }} / Cal: {{ job_cfg.CALENDAR_TIME }}
-                            {% else %}—{% endif %}
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
         </details>
 
     <script type="application/json" id="discoveredAccountsData">
@@ -1674,41 +1698,68 @@
                 const data = await response.json();
                 
                 if (response.ok && data.status === 'success') {
-                    // Hardware
-                    document.getElementById('met-disk-val').innerText = `${data.hardware.disk_used_gb} / ${data.hardware.disk_total_gb} GB`;
-                    document.getElementById('met-disk-sub').innerText = `${data.hardware.disk_pct}% Partition Used`;
-                    document.getElementById('met-cpu-val').innerText = data.hardware.cpu_load_1m;
+                    const fmt = (num) => num.toLocaleString();
+                    const pct = (num, denom) => denom > 0 ? ((num / denom) * 100).toFixed(1) + '%' : '0.0%';
 
-                    // Database
-                    document.getElementById('met-db-val').innerText = `${data.database.size_mb} MB`;
-                    document.getElementById('met-db-sub').innerText = `${(data.database.counts.quant_signals).toLocaleString()} Quant Rows`;
+                    // 1. Universe & Coverage
+                    document.getElementById('diag-univ-total').innerText = fmt(data.universe.total);
+                    document.getElementById('diag-univ-idx').innerText = fmt(data.universe.index);
+                    document.getElementById('diag-univ-idx-sub').innerText = `SP: ${data.universe.sp500} / FTSE: ${data.universe.ftse}`;
+                    document.getElementById('diag-univ-ft').innerText = fmt(data.universe.freetrade);
+                    
+                    const idxBase = data.universe.index;
+                    document.getElementById('diag-cov-ss').innerText = fmt(data.universe.coverage.stock_signals);
+                    document.getElementById('diag-cov-ss-pct').innerText = pct(data.universe.coverage.stock_signals, idxBase);
+                    document.getElementById('diag-cov-qs').innerText = fmt(data.universe.coverage.quant_signals);
+                    document.getElementById('diag-cov-qs-pct').innerText = pct(data.universe.coverage.quant_signals, idxBase);
+                    document.getElementById('diag-cov-ap').innerText = fmt(data.universe.coverage.asset_profiles);
+                    document.getElementById('diag-cov-ap-pct').innerText = pct(data.universe.coverage.asset_profiles, idxBase);
 
-                    // Time-Series Storage
-                    const totalTsSize = data.storage.historical.size_mb + data.storage.intraday.size_mb;
-                    const totalTsFiles = data.storage.historical.files + data.storage.intraday.files;
-                    document.getElementById('met-ts-val').innerText = `${totalTsSize.toFixed(2)} MB`;
-                    document.getElementById('met-ts-sub').innerText = `${totalTsFiles.toLocaleString()} Parquet Files`;
-
-                    // ML Models
-                    if (data.models.ensemble.exists) {
-                        document.getElementById('met-ml-val').innerText = `${data.models.ensemble.size_mb} MB`;
-                        document.getElementById('met-ml-sub').innerText = `Trained: ${data.models.ensemble.mtime}`;
+                    // 2. ML Artifacts
+                    if (data.ml.ensemble.exists) {
+                        document.getElementById('diag-ml-state').innerText = `${data.ml.ensemble.size_mb} MB`;
+                        document.getElementById('diag-ml-sub').innerText = `${data.ml.ensemble.mtime}`;
                     } else {
-                        document.getElementById('met-ml-val').innerText = `Missing`;
-                        document.getElementById('met-ml-val').classList.add('text-danger');
-                        document.getElementById('met-ml-sub').innerText = `Awaiting Walk-Forward Training`;
+                        document.getElementById('diag-ml-state').innerText = "Missing";
+                        document.getElementById('diag-ml-state').style.color = "#ff4d4d";
+                        document.getElementById('diag-ml-sub').innerText = "Awaiting Training";
                     }
+                    document.getElementById('diag-ml-feat').innerText = `${data.ml.feature_count} Dimensions`;
+                    document.getElementById('diag-mac-hmm').innerText = fmt(data.ml.macro_hmm_outputs);
+                    document.getElementById('diag-mac-rf').innerText = fmt(data.ml.macro_rf_outputs);
+                    document.getElementById('diag-mac-ind').innerText = fmt(data.state.macro_ind);
+                    
+                    document.getElementById('diag-notes-sent').innerText = `${fmt(data.state.notes_sent)} Sent`;
+                    document.getElementById('diag-notes-pending').innerText = `${fmt(data.state.notes_pending)} Pending`;
+                    if (data.state.notes_pending > 0) document.getElementById('diag-notes-pending').style.color = "#ffaa00";
 
-                    // Swap visibility
+                    // 3. Storage & JSON
+                    document.getElementById('diag-db-size').innerText = `${data.infra.db_size_mb} MB`;
+                    document.getElementById('diag-hist-size').innerText = `${data.infra.hist_size_mb} MB`;
+                    document.getElementById('diag-hist-cnt').innerText = `${fmt(data.infra.hist_cnt)} Files`;
+                    document.getElementById('diag-intra-size').innerText = `${data.infra.intra_size_mb} MB`;
+                    document.getElementById('diag-intra-cnt').innerText = `${fmt(data.infra.intra_cnt)} Files`;
+                    
+                    document.getElementById('diag-fund-cnt').innerText = `${fmt(data.universe.fundamentals_files)} Files`;
+                    document.getElementById('diag-json-port').innerText = `${fmt(data.universe.json_trackers.portfolio)} Items`;
+                    document.getElementById('diag-json-watch').innerText = `${fmt(data.universe.json_trackers.watchlist)} Items`;
+                    document.getElementById('diag-json-bl').innerText = `${fmt(data.universe.json_trackers.blacklist)} Items`;
+
+                    // 4. Infrastructure
+                    document.getElementById('diag-cpu').innerText = data.infra.cpu.join(', ');
+                    document.getElementById('diag-disk-tot').innerText = `${data.infra.disk_total_gb} GB`;
+                    document.getElementById('diag-disk-used').innerText = `${data.infra.disk_used_gb} GB`;
+                    document.getElementById('diag-disk-pct').innerText = `${data.infra.disk_pct}% Used`;
+
                     document.getElementById('metrics-loading').classList.add('d-none');
                     document.getElementById('metrics-content').classList.remove('d-none');
                     metricsLoaded = true;
                 } else {
-                    document.getElementById('metrics-loading').innerText = "❌ Failed to load metrics.";
+                    document.getElementById('metrics-loading').innerText = "❌ Failed to load diagnostics.";
                     document.getElementById('metrics-loading').classList.replace('msg-cyan', 'msg-error');
                 }
             } catch (error) {
-                document.getElementById('metrics-loading').innerText = "❌ Network error fetching metrics.";
+                document.getElementById('metrics-loading').innerText = "❌ Network error fetching diagnostics.";
                 document.getElementById('metrics-loading').classList.replace('msg-cyan', 'msg-error');
             }
         }

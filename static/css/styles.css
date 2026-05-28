@@ -1,6 +1,4 @@
-/* ==========================================================================
- QUANTAMENTAL DASHBOARD - INTEGRATED PRODUCTION STYLESHEET
- ========================================================================== */
+/* ────────────────────────────────────────────────────────────────────────── QUANTAMENTAL DASHBOARD - INTEGRATED PRODUCTION STYLESHEET ────────────────────────────────────────────────────────────────────────── */
 /* --- AI, Sentiment, and Risk Metrics --- */
 .metric-excellent { color: #4caf50; font-weight: bold; }
 .metric-poor { color: #f44336; font-weight: bold; }
@@ -425,7 +423,6 @@ table.dataTable tbody tr td { color: #ccc; }
 .flex-col { display: flex; flex-direction: column; }
 .flex-wrap { flex-wrap: wrap; }
 .flex-gap-5 { display: flex; gap: 5px; }
-
 /* Market Screener Panel & Filter Styles */
 .bg-dark-panel { background-color: #1e1e1e; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); margin-top: 20px; }
 .filter-panel { background-color: #1a2636; padding: 15px; border-radius: 8px; border-left: 4px solid #4da6ff; align-items: flex-end; }
@@ -435,12 +432,10 @@ table.dataTable tbody tr td { color: #ccc; }
 .btn-clear-filters { padding: 9px 15px; margin-left: auto; }
 .footer-notes { margin-top: 15px; padding-top: 15px; border-top: 1px dashed #333; font-size: 13px; color: #aaa; line-height: 1.6; }
 .active-filters-banner { background-color: #1a2636; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #00ffcc; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
-
 /* Urgent Event Banner Dynamic Colors */
 .urgent-banner-title { margin-bottom: 15px; font-weight: bold; }
 .urgent-banner-title.red { color: #ff4d4d; }
 .urgent-banner-title.yellow { color: #ffaa00; }
-
 .flex-center-wrap { display: flex; align-items: center; flex-wrap: wrap; }
 .w-100-box { width: 100%; box-sizing: border-box; }
 .p-0 { padding: 0; }
@@ -485,7 +480,6 @@ table.dataTable tbody tr td { color: #ccc; }
 .section-accent-cyan { border-left-color: #00ffcc; }
 .section-accent-warning { border-left-color: #ffaa00; }
 .text-decoration-dotted { text-decoration: underline dotted; }
-
 /* --- Settings & Glossary --- */
 .settings-desc { font-size: 13px; color: #aaa; margin-top: 0; margin-bottom: 15px; }
 .settings-desc-sm { font-size: 13px; color: #aaa; margin-top: 0; }
@@ -526,7 +520,6 @@ table.dataTable tbody tr td { color: #ccc; }
 .t-10 { top: 10%; }
 .t-20 { top: 20%; }
 .t-30 { top: 30%; }
-
 /* JavaScript Dynamic Status Styling Classes */
 .msg-success { color: #00ff00; }
 .msg-error { color: #ff4d4d; }
@@ -540,268 +533,63 @@ table.dataTable tbody tr td { color: #ccc; }
 .btn-green { background-color: #00ff00; color: #121212; }
 .btn-red { background-color: #ff4d4d; color: #121212; }
 .btn-cyan { background-color: #00ffcc; color: #121212; }
-
 /* --- Components & JS States) --- */
 .text-center { text-align: center; }
 .text-muted-dark { color: #888; }
 .mt-10 { margin-top: 10px; }
-
 /* Dynamic JS Pulse Dot States */
 .pulse-dot-live { background-color: #00ffcc !important; box-shadow: 0 0 5px #00ffcc !important; }
 .pulse-dot-stale { background-color: #aaa !important; box-shadow: 0 0 5px #aaa !important; }
-
-/* ──────────────────────────────────────────────────────────
-   Position Sizing — Stock Detail Panel
-   ────────────────────────────────────────────────────────── */
-.ps-panel {
-    background: rgba(20, 30, 45, 0.65);
-    border: 1px solid rgba(100, 150, 200, 0.25);
-    border-radius: 8px;
-    padding: 20px;
-    margin: 25px 0;
-}
-
-.ps-panel h2 {
-    margin-bottom: 6px !important;
-}
-
-.ps-subtitle {
-    color: #889;
-    font-size: 13px;
-    margin: 4px 0 18px;
-    font-style: italic;
-}
-
-.ps-inputs {
-    display: flex;
-    gap: 18px;
-    flex-wrap: wrap;
-    margin-bottom: 18px;
-    padding-bottom: 16px;
-    border-bottom: 1px dashed rgba(255, 255, 255, 0.08);
-}
-
-.ps-input-group {
-    flex: 1 1 180px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.ps-input-group label {
-    font-size: 12px;
-    color: #aab;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.ps-input-group input[type="number"] {
-    padding: 7px 10px;
-    background: rgba(0, 0, 0, 0.35);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 4px;
-    color: #e8ecf0;
-    font-size: 14px;
-    font-family: inherit;
-}
-
-.ps-input-group input[type="number"]:focus {
-    border-color: rgba(100, 180, 255, 0.5);
-    outline: none;
-}
-
-.ps-results {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-
-.ps-result-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    padding: 4px 0;
-    font-size: 14px;
-}
-
-.ps-label {
-    color: #99a;
-}
-
-.ps-value {
-    color: #e8ecf0;
-    font-family: ui-monospace, "SF Mono", Consolas, monospace;
-    font-weight: 500;
-}
-
-.ps-divider {
-    border: none;
-    border-top: 1px solid rgba(255, 255, 255, 0.12);
-    margin: 8px 0;
-}
-
-.ps-headline {
-    padding: 6px 0;
-}
-
-.ps-headline .ps-label {
-    color: #ccd;
-    font-weight: 600;
-    font-size: 15px;
-}
-
-.ps-shares {
-    font-size: 17px;
-    font-weight: 700;
-    color: #6cbf6c;
-    letter-spacing: 0.3px;
-}
-
-/* ──────────────────────────────────────────────────────────
-   Position Sizing — Table Cells (Watchlist / Portfolio)
-   ────────────────────────────────────────────────────────── */
-.ps-cell, .ps-cell-shares {
-    text-align: right;
-    font-family: ui-monospace, "SF Mono", Consolas, monospace;
-    font-size: 13px;
-    color: #cce0ff;
-}
-
-.ps-cell-shares {
-    font-weight: 600;
-    color: #b8d8b8;
-}
-
-/* ──────────────────────────────────────────────────────────
-   Position Sizing — Split Grid & Explanation
-   ────────────────────────────────────────────────────────── */
-.ps-split-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 25px;
-    align-items: stretch;
-}
-
-.ps-explanation {
-    background: rgba(0, 0, 0, 0.25);
-    padding: 16px;
-    border-radius: 6px;
-    border-left: 3px solid #00ffcc;
-    font-size: 13px;
-    color: #ccc;
-    line-height: 1.5;
-}
-
-.ps-explanation p {
-    margin-top: 0;
-    margin-bottom: 10px;
-}
-
-.ps-explanation p:last-child {
-    margin-bottom: 0;
-}
-
+/* ─────────── Position Sizing — Stock Detail Panel ─────────── */
+.ps-panel { background: rgba(20, 30, 45, 0.65); border: 1px solid rgba(100, 150, 200, 0.25); border-radius: 8px; padding: 20px; margin: 25px 0; }
+.ps-panel h2 { margin-bottom: 6px !important; }
+.ps-subtitle { color: #889; font-size: 13px; margin: 4px 0 18px; font-style: italic; }
+.ps-inputs { display: flex; gap: 18px; flex-wrap: wrap; margin-bottom: 18px; padding-bottom: 16px; border-bottom: 1px dashed rgba(255, 255, 255, 0.08); }
+.ps-input-group { flex: 1 1 180px; display: flex; flex-direction: column; gap: 4px; }
+.ps-input-group label { font-size: 12px; color: #aab; text-transform: uppercase; letter-spacing: 0.5px; }
+.ps-input-group input[type="number"] { padding: 7px 10px; background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 4px; color: #e8ecf0; font-size: 14px; font-family: inherit; }
+.ps-input-group input[type="number"]:focus { border-color: rgba(100, 180, 255, 0.5); outline: none; }
+.ps-results { display: flex; flex-direction: column; gap: 6px; }
+.ps-result-row { display: flex; justify-content: space-between; align-items: baseline; padding: 4px 0; font-size: 14px; }
+.ps-label { color: #99a; }
+.ps-value { color: #e8ecf0; font-family: ui-monospace, "SF Mono", Consolas, monospace; font-weight: 500; }
+.ps-divider { border: none; border-top: 1px solid rgba(255, 255, 255, 0.12); margin: 8px 0; }
+.ps-headline { padding: 6px 0; }
+.ps-headline .ps-label { color: #ccd; font-weight: 600; font-size: 15px; }
+.ps-shares { font-size: 17px; font-weight: 700; color: #6cbf6c; letter-spacing: 0.3px; }
+/* ─────────── Position Sizing — Table Cells (Watchlist / Portfolio) ─────────── */
+.ps-cell, .ps-cell-shares { text-align: right; font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 13px; color: #cce0ff; }
+.ps-cell-shares { font-weight: 600; color: #b8d8b8; }
+/* ─────────── Position Sizing — Split Grid & Explanation ─────────── */
+.ps-split-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 25px; align-items: stretch; }
+.ps-explanation { background: rgba(0, 0, 0, 0.25); padding: 16px; border-radius: 6px; border-left: 3px solid #00ffcc; font-size: 13px; color: #ccc; line-height: 1.5; }
+.ps-explanation p { margin-top: 0; margin-bottom: 10px; }
+.ps-explanation p:last-child { margin-bottom: 0; }
 @media (max-width: 768px) {
-    .ps-split-grid {
-        grid-template-columns: 1fr;
-    }
+  .ps-split-grid { grid-template-columns: 1fr; }
 }
-
-/* ============================================================
-   FUNDAMENTALS PROFILER — QUEUE BREAKDOWN TILES
-   Displays Eligible / Profiled / Stale / Pending counts on the
-   Market Universe Pipeline section of the Settings page.
-   ============================================================ */
-.profiler-breakdown {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 10px;
-}
-
-.profiler-tile {
-    background: #252525;
-    border: 1px solid #333;
-    border-radius: 6px;
-    padding: 10px 12px;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 4px;
-}
-
-.profiler-tile-label {
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    color: #888;
-}
-
-.profiler-tile-value {
-    font-size: 22px;
-    font-weight: 600;
-    color: #e0e0e0;
-    font-variant-numeric: tabular-nums;
-}
-
+/* ────────── FUNDAMENTALS PROFILER — QUEUE BREAKDOWN TILES Displays Eligible / Profiled / Stale / Pending counts on the Market Universe Pipeline section of the Settings page. ─────────────── */
+.profiler-breakdown { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.profiler-tile { background: #252525; border: 1px solid #333; border-radius: 6px; padding: 10px 12px; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.profiler-tile-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #888; }
+.profiler-tile-value { font-size: 22px; font-weight: 600; color: #e0e0e0; font-variant-numeric: tabular-nums; }
 @media (max-width: 720px) {
-    .profiler-breakdown {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
+  .profiler-breakdown { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
-
-/* ──────────────────────────────────────────────────────────
-   System Metrics & Diagnostics Panel
-   ────────────────────────────────────────────────────────── */
-.metrics-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 15px;
-    margin-bottom: 25px;
+/* ─────────── System Diagnostics Tables ─────────── */
+.diag-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 25px; margin-bottom: 25px; }
+@media (max-width: 1100px) {
+  .diag-grid { grid-template-columns: 1fr; }
 }
-.metric-box {
-    background-color: #1a2636;
-    border: 1px solid #333;
-    border-radius: 6px;
-    padding: 15px;
-    border-left: 3px solid #4da6ff;
-    display: flex;
-    flex-direction: column;
-}
-.metric-box-title {
-    font-size: 11px;
-    color: #889;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin-bottom: 8px;
-}
-.metric-box-val {
-    font-size: 20px;
-    font-weight: 600;
-    color: #e0e0e0;
-    font-variant-numeric: tabular-nums;
-    margin-bottom: 5px;
-}
-.metric-box-sub {
-    font-size: 12px;
-    color: #aaa;
-}
-.scheduler-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 13px;
-    background-color: #1a1a1a;
-    border-radius: 6px;
-    overflow: hidden;
-}
-.scheduler-table th, .scheduler-table td {
-    padding: 10px 15px;
-    text-align: left;
-    border-bottom: 1px solid #333;
-}
-.scheduler-table th {
-    background-color: #2c2c2c;
-    color: #4da6ff;
-}
+.diag-table { width: 100%; border-collapse: collapse; font-size: 13px; background-color: #1a1a1a; border-radius: 6px; overflow: hidden; }
+.diag-table th, .diag-table td { padding: 8px 15px; text-align: left; border-bottom: 1px solid #333; }
+.diag-table th { background-color: #2c2c2c; color: #889; text-transform: uppercase; letter-spacing: 0.5px; font-size: 11px; }
+.diag-table tr:last-child td { border-bottom: none; }
+.diag-table td.val-col { font-family: ui-monospace, "SF Mono", Consolas, monospace; color: #00ffcc; font-weight: bold; text-align: right; white-space: nowrap; }
+.diag-table td.sub-val-col { font-family: ui-monospace, "SF Mono", Consolas, monospace; color: #aaa; text-align: right; white-space: nowrap; }
+.scheduler-table { width: 100%; border-collapse: collapse; font-size: 13px; background-color: #1a1a1a; border-radius: 6px; overflow: hidden; }
+.scheduler-table th, .scheduler-table td { padding: 10px 15px; text-align: left; border-bottom: 1px solid #333; }
+.scheduler-table th { background-color: #2c2c2c; color: #4da6ff; }
 .status-pill { padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: bold; }
 .status-enabled { background-color: rgba(0, 255, 0, 0.1); color: #00ff00; border: 1px solid #00ff00; }
 .status-disabled { background-color: rgba(255, 77, 77, 0.1); color: #ff4d4d; border: 1px solid #ff4d4d; }
