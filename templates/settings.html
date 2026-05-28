@@ -953,6 +953,95 @@
         <div id="git-status-msg"></div>
     </div>
 
+    <details class="settings-card" id="diagnostics-panel" ontoggle="handleDiagnosticsToggle(this)">
+            <summary>🩺 System Metrics, Storage & Job Scheduler</summary>
+            
+            <h4 class="settings-panel-header text-blue mt-10">🖥️ Infrastructure & Storage Footprint</h4>
+            <div id="metrics-loading" class="status-msg-sm msg-cyan">⏳ Querying system hardware and storage files...</div>
+            <div id="metrics-content" class="d-none">
+                <div class="metrics-grid">
+                    <div class="metric-box border-left-cyan">
+                        <span class="metric-box-title">System Disk Usage</span>
+                        <span class="metric-box-val" id="met-disk-val">-- GB</span>
+                        <span class="metric-box-sub" id="met-disk-sub">--% Used</span>
+                    </div>
+                    <div class="metric-box border-left-purple">
+                        <span class="metric-box-title">CPU Load (1m avg)</span>
+                        <span class="metric-box-val" id="met-cpu-val">--</span>
+                        <span class="metric-box-sub">Native Linux Core Load</span>
+                    </div>
+                    <div class="metric-box border-left-orange">
+                        <span class="metric-box-title">SQLite Database</span>
+                        <span class="metric-box-val" id="met-db-val">-- MB</span>
+                        <span class="metric-box-sub" id="met-db-sub">-- Signal Rows</span>
+                    </div>
+                    <div class="metric-box border-left-green">
+                        <span class="metric-box-title">Time-Series Parquets</span>
+                        <span class="metric-box-val" id="met-ts-val">-- MB</span>
+                        <span class="metric-box-sub" id="met-ts-sub">-- Total Files</span>
+                    </div>
+                </div>
+
+                <h4 class="settings-panel-header text-magenta mt-20">🤖 Machine Learning Artifacts</h4>
+                <div class="metrics-grid">
+                    <div class="metric-box border-left-magenta">
+                        <span class="metric-box-title">Global Voting Ensemble</span>
+                        <span class="metric-box-val" id="met-ml-val">-- MB</span>
+                        <span class="metric-box-sub" id="met-ml-sub">Last Trained: --</span>
+                    </div>
+                    <div class="metric-box border-left-magenta">
+                        <span class="metric-box-title">Macro AI Pipeline</span>
+                        <span class="metric-box-val text-green">{% if config.SCHEDULING.MACRO_ENGINE.INITIALIZED %}Initialized{% else %}<span class="text-danger">Awaiting Setup</span>{% endif %}</span>
+                        <span class="metric-box-sub">HMM & XGBoost Subsystems</span>
+                    </div>
+                </div>
+            </div>
+
+            <h4 class="settings-panel-header text-cyan mt-30">⏱️ Master APScheduler Matrix</h4>
+            <p class="settings-desc-sm mb-15">Overview of all configured background threads currently registered with the APScheduler engine.</p>
+            <table class="scheduler-table">
+                <thead>
+                    <tr>
+                        <th>Job Engine</th>
+                        <th>State</th>
+                        <th>Frequency / Days</th>
+                        <th>Execution Target</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for job_name, job_cfg in config.SCHEDULING.items() %}
+                    <tr>
+                        <td class="font-bold">{{ job_name | replace('_', ' ') | title }}</td>
+                        <td>
+                            {% if job_cfg.ENABLED %}
+                                <span class="status-pill status-enabled">ACTIVE</span>
+                            {% else %}
+                                <span class="status-pill status-disabled">DISABLED</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if job_cfg.DAYS %}{{ job_cfg.DAYS | join(', ') | upper }}
+                            {% elif job_cfg.FREQUENCY %}{{ job_cfg.FREQUENCY | upper }}
+                            {% elif job_cfg.DAY_OF_WEEK %}{{ job_cfg.DAY_OF_WEEK | upper }}
+                            {% else %}—{% endif %}
+                        </td>
+                        <td class="font-monospace">
+                            {% if job_cfg.INTERVAL_HOURS and job_cfg.INTERVAL_HOURS > 0 %}
+                                Every {{ job_cfg.INTERVAL_HOURS }} Hour(s)
+                            {% elif job_cfg.INTERVAL_MINUTES and job_cfg.INTERVAL_MINUTES > 0 %}
+                                Every {{ job_cfg.INTERVAL_MINUTES }} Min(s) ({{ job_cfg.START_TIME }} - {{ job_cfg.END_TIME }})
+                            {% elif job_cfg.TIME %}
+                                {{ job_cfg.TIME }}
+                            {% elif job_cfg.DATA_TIME %}
+                                Data: {{ job_cfg.DATA_TIME }} / Cal: {{ job_cfg.CALENDAR_TIME }}
+                            {% else %}—{% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </details>
+
     <script type="application/json" id="discoveredAccountsData">
         {{ config.GHOSTFOLIO_ACCOUNTS.discovered | tojson | safe }}
     </script>
@@ -1568,6 +1657,59 @@
             } catch (e) {
                 console.error("Failed to fetch profiler status", e);
                 hintEl.innerText = "Failed to fetch profiler queue status.";
+            }
+        }
+
+        let metricsLoaded = false;
+
+        function handleDiagnosticsToggle(detailsElement) {
+            if (detailsElement.open && !metricsLoaded) {
+                fetchSystemMetrics();
+            }
+        }
+
+        async function fetchSystemMetrics() {
+            try {
+                const response = await fetch('/api/system/metrics');
+                const data = await response.json();
+                
+                if (response.ok && data.status === 'success') {
+                    // Hardware
+                    document.getElementById('met-disk-val').innerText = `${data.hardware.disk_used_gb} / ${data.hardware.disk_total_gb} GB`;
+                    document.getElementById('met-disk-sub').innerText = `${data.hardware.disk_pct}% Partition Used`;
+                    document.getElementById('met-cpu-val').innerText = data.hardware.cpu_load_1m;
+
+                    // Database
+                    document.getElementById('met-db-val').innerText = `${data.database.size_mb} MB`;
+                    document.getElementById('met-db-sub').innerText = `${(data.database.counts.quant_signals).toLocaleString()} Quant Rows`;
+
+                    // Time-Series Storage
+                    const totalTsSize = data.storage.historical.size_mb + data.storage.intraday.size_mb;
+                    const totalTsFiles = data.storage.historical.files + data.storage.intraday.files;
+                    document.getElementById('met-ts-val').innerText = `${totalTsSize.toFixed(2)} MB`;
+                    document.getElementById('met-ts-sub').innerText = `${totalTsFiles.toLocaleString()} Parquet Files`;
+
+                    // ML Models
+                    if (data.models.ensemble.exists) {
+                        document.getElementById('met-ml-val').innerText = `${data.models.ensemble.size_mb} MB`;
+                        document.getElementById('met-ml-sub').innerText = `Trained: ${data.models.ensemble.mtime}`;
+                    } else {
+                        document.getElementById('met-ml-val').innerText = `Missing`;
+                        document.getElementById('met-ml-val').classList.add('text-danger');
+                        document.getElementById('met-ml-sub').innerText = `Awaiting Walk-Forward Training`;
+                    }
+
+                    // Swap visibility
+                    document.getElementById('metrics-loading').classList.add('d-none');
+                    document.getElementById('metrics-content').classList.remove('d-none');
+                    metricsLoaded = true;
+                } else {
+                    document.getElementById('metrics-loading').innerText = "❌ Failed to load metrics.";
+                    document.getElementById('metrics-loading').classList.replace('msg-cyan', 'msg-error');
+                }
+            } catch (error) {
+                document.getElementById('metrics-loading').innerText = "❌ Network error fetching metrics.";
+                document.getElementById('metrics-loading').classList.replace('msg-cyan', 'msg-error');
             }
         }
 

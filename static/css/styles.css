@@ -748,3 +748,60 @@ table.dataTable tbody tr td { color: #ccc; }
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 }
+
+/* ──────────────────────────────────────────────────────────
+   System Metrics & Diagnostics Panel
+   ────────────────────────────────────────────────────────── */
+.metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 15px;
+    margin-bottom: 25px;
+}
+.metric-box {
+    background-color: #1a2636;
+    border: 1px solid #333;
+    border-radius: 6px;
+    padding: 15px;
+    border-left: 3px solid #4da6ff;
+    display: flex;
+    flex-direction: column;
+}
+.metric-box-title {
+    font-size: 11px;
+    color: #889;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+}
+.metric-box-val {
+    font-size: 20px;
+    font-weight: 600;
+    color: #e0e0e0;
+    font-variant-numeric: tabular-nums;
+    margin-bottom: 5px;
+}
+.metric-box-sub {
+    font-size: 12px;
+    color: #aaa;
+}
+.scheduler-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    background-color: #1a1a1a;
+    border-radius: 6px;
+    overflow: hidden;
+}
+.scheduler-table th, .scheduler-table td {
+    padding: 10px 15px;
+    text-align: left;
+    border-bottom: 1px solid #333;
+}
+.scheduler-table th {
+    background-color: #2c2c2c;
+    color: #4da6ff;
+}
+.status-pill { padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: bold; }
+.status-enabled { background-color: rgba(0, 255, 0, 0.1); color: #00ff00; border: 1px solid #00ff00; }
+.status-disabled { background-color: rgba(255, 77, 77, 0.1); color: #ff4d4d; border: 1px solid #ff4d4d; }

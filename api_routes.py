@@ -554,6 +554,83 @@ async def get_network_status():
     })
 # --- RESTORED ROUTES BELOW THIS LINE ---
 
+@api_router.get("/system/metrics")
+async def get_system_metrics():
+    """Returns a comprehensive diagnostic payload of system hardware, DB, and ML states."""
+    import shutil
+    try:
+        # 1. Hardware Metrics (Linux focused as per architecture)
+        cpu_load = os.getloadavg() if hasattr(os, 'getloadavg') else (0.0, 0.0, 0.0)
+        total, used, free = shutil.disk_usage(BASE_DIR)
+        
+        # 2. Database Row Counts
+        conn = get_connection()
+        cursor = conn.cursor()
+        
+        def get_count(table: str) -> int:
+            try:
+                cursor.execute(f"SELECT COUNT(*) FROM {table}")
+                return cursor.fetchone()[0]
+            except Exception:
+                return 0
+                
+        table_counts = {
+            "quant_signals": get_count("quant_signals"),
+            "stock_signals": get_count("stock_signals"),
+            "market_universe": get_count("market_universe"),
+            "asset_profiles": get_count("asset_profiles")
+        }
+        conn.close()
+
+        # 3. File Storage Stats
+        def get_dir_stats(path: Path) -> dict:
+            if not path.exists():
+                return {"size_mb": 0.0, "files": 0}
+            files = list(path.glob("*.parquet")) + list(path.glob("*.json"))
+            size_mb = sum(f.stat().st_size for f in files if f.is_file()) / (1024 * 1024)
+            return {"size_mb": round(size_mb, 2), "files": len(files)}
+
+        db_path = DATA_DIR / "analysis.db"
+        db_size_mb = round(os.path.getsize(db_path) / (1024 * 1024), 2) if db_path.exists() else 0.0
+
+        # 4. ML Models State
+        models_dir = BASE_DIR / "models"
+        ml_model_path = models_dir / "ml_ensemble.joblib"
+        feat_stats_path = models_dir / "feature_stats.joblib"
+        
+        def get_file_stats(path: Path) -> dict:
+            if not path.exists():
+                return {"exists": False, "mtime": "Not Found", "size_mb": 0.0}
+            mtime = datetime.fromtimestamp(path.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')
+            size_mb = round(path.stat().st_size / (1024 * 1024), 2)
+            return {"exists": True, "mtime": mtime, "size_mb": size_mb}
+
+        return JSONResponse(content={
+            "status": "success",
+            "hardware": {
+                "cpu_load_1m": round(cpu_load[0], 2),
+                "disk_used_gb": round(used / (1024**3), 2),
+                "disk_total_gb": round(total / (1024**3), 2),
+                "disk_pct": round((used / total) * 100, 1)
+            },
+            "database": {
+                "size_mb": db_size_mb,
+                "counts": table_counts
+            },
+            "storage": {
+                "historical": get_dir_stats(DATA_DIR / "historical"),
+                "intraday": get_dir_stats(DATA_DIR / "intraday"),
+                "fundamentals": get_dir_stats(DATA_DIR / "fundamentals")
+            },
+            "models": {
+                "ensemble": get_file_stats(ml_model_path),
+                "features": get_file_stats(feat_stats_path)
+            }
+        })
+    except Exception as e:
+        logger.error(f"Failed to fetch system metrics: {e}")
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
 @api_router.post("/system/git-pull")
 async def git_pull_update():
     try:
