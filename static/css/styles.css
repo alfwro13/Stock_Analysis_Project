@@ -593,3 +593,11 @@ table.dataTable tbody tr td { color: #ccc; }
 .status-pill { padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: bold; }
 .status-enabled { background-color: rgba(0, 255, 0, 0.1); color: #00ff00; border: 1px solid #00ff00; }
 .status-disabled { background-color: rgba(255, 77, 77, 0.1); color: #ff4d4d; border: 1px solid #ff4d4d; }
+/* ─────────── Market Reports — Jump List & Back to Top ─────────── */
+.report-jump-list { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 8px 12px; font-size: 0.78rem; color: #8a9bb0; border-top: 1px solid rgba(255,255,255,0.06); margin-top: 8px; }
+.report-jump-list .jump-label { color: #5a6a7a; text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.7rem; margin-right: 4px; }
+.report-jump-list a { color: #6b8fa8; text-decoration: none; transition: color 0.15s; }
+.report-jump-list a:hover { color: #a0bfd4; }
+.report-jump-list .jump-sep { color: #3a4a5a; }
+.back-to-top { font-size: 0.7rem; color: #4a5a6a; text-decoration: none; margin-left: 10px; font-weight: normal; vertical-align: middle; letter-spacing: 0.02em; transition: color 0.15s; }
+.back-to-top:hover { color: #7a9ab0; }

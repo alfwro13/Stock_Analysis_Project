@@ -10,7 +10,7 @@
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
 </head>
-<body class="body-watchlist">
+<body id="top" class="body-watchlist">
 
     <div class="header-container">
         <div>
@@ -25,11 +25,25 @@
             
             {% set active_page = 'market_reports' %}
             {% include 'navbar.html' %}
+            <div class="report-jump-list">
+                <span class="jump-label">Jump to:</span>
+                <a href="#quality-compounders">Quality Compounders</a>
+                <span class="jump-sep">·</span>
+                <a href="#garp-tenbaggers">GARP Tenbaggers</a>
+                <span class="jump-sep">·</span>
+                <a href="#sector-trends">Sector Trends</a>
+                <span class="jump-sep">·</span>
+                <a href="#relative-strength-leaders">Relative Strength Leaders</a>
+                <span class="jump-sep">·</span>
+                <a href="#mean-reversion">Mean Reversion</a>
+                <span class="jump-sep">·</span>
+                <a href="#dividend-harvest">Dividend Harvest</a>
+            </div>
         </div>
     </div>
 
-    <div class="report-section border-left-success">
-        <h2 class="text-success">💎 Quality Compounders</h2>
+    <div id="quality-compounders" class="report-section border-left-success">
+        <h2 class="text-success">💎 Quality Compounders<a href="#top" class="back-to-top">↑ top</a></h2>
         <p>The "Buy and Hold" Screener. High capital efficiency, strong margins, and low debt trading at reasonable valuations.</p>
         <p><strong>How to use:</strong> These are structurally resilient businesses with proven pricing power and low leverage. <br>
            <strong>When to use:</strong> Use this to build the core foundational pillars of your long-term portfolio. <br>
@@ -63,8 +77,8 @@
         </div>
     </div>
 
-    <div class="report-section border-left-cyan">
-        <h2 class="text-cyan">🚀 GARP — Peter Lynch Tenbaggers</h2>
+    <div id="garp-tenbaggers" class="report-section border-left-cyan">
+        <h2 class="text-cyan">🚀 GARP — Peter Lynch Tenbaggers<a href="#top" class="back-to-top">↑ top</a></h2>
         <p>Growth At a Reasonable Price. Cheap-relative-to-growth equities from the FTSE100 + S&amp;P500 universe that pass Peter Lynch's yield-adjusted PEG threshold.</p>
         <p><strong>How to use:</strong> Stocks here combine genuine growth (revenue +15%, profitable, growing earnings) with a valuation cheap enough to compound multi-bagger upside. <br>
            <strong>When to use:</strong> Ideal for monthly trading-account top-ups when you want growth exposure without paying euphoria multiples. <br>
@@ -108,8 +122,8 @@
         </div>
     </div>
 
-    <div class="report-section">
-        <h2>Sector Trends & <abbr title="The rate of acceleration of a security's price or volume.">Momentum</abbr></h2>
+    <div id="sector-trends" class="report-section">
+        <h2>Sector Trends & <abbr title="The rate of acceleration of a security's price or volume.">Momentum</abbr><a href="#top" class="back-to-top">↑ top</a></h2>
         <p>A macro view of overall market health aggregated by sector, sorted by average <abbr title="Relative Strength Index (RSI) measures the speed and magnitude of recent price changes.">relative strength</abbr>.</p>
         <p><strong>How to use:</strong> Think of this as a "weather report" for the market. Instead of looking at one stock, we look at groups like Tech or Energy. <br>
             <strong>When to use:</strong> Check this first before buying any stock to see if its "neighborhood" is doing well. <br>
@@ -144,8 +158,8 @@
         </div>
     </div>
 
-    <div class="report-section section-accent-cyan">
-        <h2 class="text-accent-cyan">Relative Strength Leaders</h2>
+    <div id="relative-strength-leaders" class="report-section section-accent-cyan">
+        <h2 class="text-accent-cyan">Relative Strength Leaders<a href="#top" class="back-to-top">↑ top</a></h2>
         <p>The top 500 strongest <abbr title="The speed of price changes">momentum</abbr> stocks in the entire market (Above <abbr title="50-Day Simple Moving Average">50D SMA</abbr>, sorted by highest <abbr title="Relative Strength Index">RSI</abbr> and <abbr title="Moving Average Convergence Divergence">MACD</abbr> Histogram).</p>
         <p><strong>How to use:</strong> These are the "MVP" stocks—the top athletes currently outperforming the market. <br>
         <strong>When to use:</strong> Use this during a healthy market to find where professional investors are putting their money. <br>
@@ -182,8 +196,8 @@
         </div>
     </div>
 
-    <div class="report-section section-accent-warning">
-        <h2 class="text-warning"><abbr title="A financial theory suggesting that prices eventually return to their long-term average.">Mean Reversion</abbr> Screener</h2>
+    <div id="mean-reversion" class="report-section section-accent-warning">
+        <h2 class="text-warning"><abbr title="A financial theory suggesting that prices eventually return to their long-term average.">Mean Reversion</abbr> Screener<a href="#top" class="back-to-top">↑ top</a></h2>
         <p>Find stocks fundamentally in a long-term uptrend (><abbr title="200-Day Simple Moving Average">200D SMA</abbr>) experiencing a severe short-term panic sell-off.</p>
         <p><strong>How to use:</strong> This is a "bargain hunter" tool. It finds stocks that are strong long-term (above their 200-day average) but have suddenly "snapped" like a rubber band due to short-term panic. <br>
            <strong>When to use:</strong> Use this when you want to buy a high-quality stock "on sale" during a temporary dip. 
@@ -226,8 +240,8 @@
         </div>
     </div>
 
-    <div class="report-section report-section-dividend">
-        <h2 class="text-dividend">💰 Dividend Harvest (Income Screener)</h2>
+    <div id="dividend-harvest" class="report-section report-section-dividend">
+        <h2 class="text-dividend">💰 Dividend Harvest (Income Screener)<a href="#top" class="back-to-top">↑ top</a></h2>
         <p>Identifies high-yield assets approaching their ex-dividend date. Filters out "Yield Traps" by strictly requiring a Quantamental System Score of 50 or higher.</p>
         
         <div class="controls-container controls-flex-end">
