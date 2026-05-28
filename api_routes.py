@@ -958,9 +958,15 @@ async def api_options_chain(ticker: str = Path(..., pattern=r"^[A-Z0-9.\-\^=]{1,
 
 @api_router.post("/options/payoff")
 async def api_options_payoff(req: PayoffRequest):
-    legs_dict = [leg.model_dump() for leg in req.legs]
-    matrix = calculate_payoff_matrix(legs_dict, req.current_price)
-    return JSONResponse(content=matrix)
+    try:
+        legs_dict = [leg.model_dump() for leg in req.legs]
+        matrix = calculate_payoff_matrix(legs_dict, req.current_price)
+        return JSONResponse(content=matrix)
+    except (ValueError, ZeroDivisionError) as e:
+        return JSONResponse(status_code=422, content={"status": "error", "message": str(e)})
+    except Exception as e:
+        logger.exception("Payoff matrix calculation failed")
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 @api_router.get("/screener-data")
 async def get_screener_data():
