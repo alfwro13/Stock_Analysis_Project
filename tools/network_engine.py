@@ -66,6 +66,55 @@ def _trigger_fallback_alert(ipv6_address: str, action_context: str, error_summar
         logger.error(f"Failed to dispatch Nextcloud alert for network fault: {nc_e}")
 
 
+def _patch_session_with_retries(
+    session: cffi_requests.Session,
+    action_context: str,
+    timeout: int = 30,
+    max_retries: int = 3,
+) -> None:
+    """
+    Monkey-patches session.request with a timeout default, HTTP 429 backoff,
+    and transient-error retry loop. Applied to the standard (non-IPv6) path so
+    it gets the same resilience as the IPv6 failover session.
+    """
+    original_request = session.request
+    base_delay = 2.0
+
+    def wrapped_request(method, url, **kwargs):
+        kwargs.setdefault("timeout", timeout)
+        for attempt in range(max_retries + 1):
+            try:
+                response = original_request(method, url, **kwargs)
+                if response.status_code == 429:
+                    if attempt < max_retries:
+                        sleep_time = (5 * (2 ** attempt)) + random.uniform(0.5, 1.5)
+                        logger.warning(
+                            f"[HTTP 429] Rate limited by Yahoo during '{action_context}'. "
+                            f"Backing off for {sleep_time:.2f}s (Attempt {attempt + 1}/{max_retries})."
+                        )
+                        time.sleep(sleep_time)
+                        continue
+                    raise Exception(f"HTTP 429 Max Retries Exceeded. URL: {url}")
+                return response
+            except Exception as e:
+                error_str = str(e)
+                is_transient = any(
+                    term in error_str.lower()
+                    for term in ["timeout", "connection reset", "code: 28"]
+                )
+                if is_transient and attempt < max_retries:
+                    sleep_time = (base_delay ** attempt) + random.uniform(0.5, 1.5)
+                    logger.warning(
+                        f"Transient network error during '{action_context}': {error_str}. "
+                        f"Retrying in {sleep_time:.2f}s (Attempt {attempt + 1}/{max_retries})."
+                    )
+                    time.sleep(sleep_time)
+                    continue
+                raise
+
+    session.request = wrapped_request
+
+
 def create_failover_session(ipv6_address: str, action_context: str, config: dict) -> cffi_requests.Session:
     """
     Builds a true curl_cffi Session to satisfy yfinance >= 1.x requirements,
@@ -178,8 +227,8 @@ def yahoo_connection_boundary(action_context: str):
     ipv6_addr = config.get("YAHOO_IPV6_ADDRESS", "").strip()
 
     if not ipv6_addr:
-        # Bypass custom socket binding if no IPv6 is configured in the UI
         session = cffi_requests.Session(impersonate="chrome")
+        _patch_session_with_retries(session, action_context)
         try:
             yield session
         finally:
