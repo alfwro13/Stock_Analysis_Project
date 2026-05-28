@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s -X POST http://localhost:8090/api/reports/quality-on-sale)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('status:', d.get\\('detail','ok'\\)\\)\")",
+      "Bash(python3 -c ' *)"
+    ]
+  }
+}

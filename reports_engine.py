@@ -325,6 +325,85 @@ def get_quality_compounders() -> List[Dict[str, Any]]:
         if conn:
             conn.close()
 
+def get_quality_on_sale() -> List[Dict[str, Any]]:
+    """
+    "Quality on Sale" — 52-Week Low Bargains.
+    Surfaces high-quality businesses the market has thrown out with the bathwater.
+    Distinct from Mean Reversion (RSI-based, short-term panic) — this is structural
+    value: good fundamentals at multi-month price lows.
+
+    Filter criteria:
+      - close_price <= fifty_two_week_low * 1.15  (within 15% of 52-week low)
+      - roe > 10%                                  (still a quality business)
+      - debt_to_equity < 150                       (< 1.5x ratio; yfinance stores as %)
+      - profit_margin > 5%
+      - trailing_pe between 0 and 25               (profitable, not overvalued)
+      - composite_score >= 50
+      - quote_type = EQUITY
+    """
+    logger.info("Generating Quality on Sale Report...")
+    conn = None
+    try:
+        conn = get_connection()
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        query = """
+        WITH latest_price AS (
+            SELECT q.ticker, q.close_price
+            FROM quant_signals q
+            INNER JOIN (SELECT ticker, MAX(date) AS max_date FROM quant_signals GROUP BY ticker) l
+                ON q.ticker = l.ticker AND q.date = l.max_date
+        )
+        SELECT
+            s.ticker,
+            COALESCE(p.company_name, m.company_name, s.ticker) as company_name,
+            COALESCE(p.sector, s.sector, m.sector, 'Unclassified') as sector,
+            COALESCE(p.country, m.country, 'US') as country,
+            CASE
+                WHEN UPPER(COALESCE(m.exchange, p.exchange)) = 'NMS' THEN 'NASDAQ'
+                WHEN UPPER(COALESCE(m.exchange, p.exchange)) = 'NYQ' THEN 'NYSE/AMEX'
+                WHEN COALESCE(m.exchange, p.exchange) IS NOT NULL THEN UPPER(COALESCE(m.exchange, p.exchange))
+                WHEN UPPER(s.ticker) LIKE '%.L' THEN 'LSE'
+                ELSE 'US'
+            END as exchange,
+            COALESCE(p.currency, s.currency, 'USD') as currency,
+            lp.close_price,
+            ROUND(s.fifty_two_week_low, 4) as fifty_two_week_low,
+            ROUND((lp.close_price / s.fifty_two_week_low - 1.0) * 100.0, 2) as pct_above_52w_low,
+            ROUND(s.roe * 100.0, 2) as roe_pct,
+            ROUND(s.debt_to_equity, 2) as debt_to_equity,
+            ROUND(s.profit_margin * 100.0, 2) as margin_pct,
+            ROUND(s.trailing_pe, 2) as trailing_pe,
+            s.composite_score
+        FROM stock_signals s
+        LEFT JOIN market_universe m ON s.ticker = m.ticker
+        LEFT JOIN asset_profiles p ON s.ticker = p.ticker
+        INNER JOIN latest_price lp ON s.ticker = lp.ticker
+        WHERE s.quote_type = 'EQUITY'
+          AND s.fifty_two_week_low IS NOT NULL AND s.fifty_two_week_low > 0
+          AND lp.close_price > 0
+          AND lp.close_price <= s.fifty_two_week_low * 1.15
+          AND s.roe > 0.10
+          AND (s.debt_to_equity IS NULL OR s.debt_to_equity < 150)
+          AND s.profit_margin > 0.05
+          AND s.trailing_pe > 0 AND s.trailing_pe < 25
+          AND s.composite_score >= 50
+        ORDER BY s.composite_score DESC, pct_above_52w_low ASC
+        LIMIT 500
+        """
+        cursor.execute(query)
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
+    except Exception as e:
+        logger.error(f"Failed to generate Quality on Sale: {e}")
+        return []
+    finally:
+        if conn:
+            conn.close()
+
+
 def get_garp_tenbaggers() -> List[Dict[str, Any]]:
     """
     GARP "Peter Lynch Tenbaggers" — Growth-At-Reasonable-Price screener.

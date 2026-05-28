@@ -46,7 +46,7 @@ from quant_signals import QuantEngine
 from quant_engine import run_daily_quant_scan
 from earnings_vol_engine import run_earnings_vol_scan
 from universe_engine import update_market_universe
-from reports_engine import get_sector_trends, get_mean_reversion_setups, get_leaders_laggards, get_dividend_harvest_setups, get_quality_compounders, get_garp_tenbaggers
+from reports_engine import get_sector_trends, get_mean_reversion_setups, get_leaders_laggards, get_dividend_harvest_setups, get_quality_compounders, get_garp_tenbaggers, get_quality_on_sale
 from options_engine import fetch_options_chain, calculate_payoff_matrix
 from ai_prediction_engine import train_global_ml_model, update_daily_ml_predictions, run_historical_backfill
 from risk_engine import update_all_tail_risks
@@ -1034,6 +1034,15 @@ async def api_reports_quality_compounders():
         return JSONResponse(content={"data": data})
     except Exception as e:
         logger.exception("quality-compounders report failed")
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+@api_router.get("/reports/quality-on-sale")
+async def api_reports_quality_on_sale():
+    try:
+        data = get_quality_on_sale()
+        return JSONResponse(content={"data": data})
+    except Exception as e:
+        logger.exception("quality-on-sale report failed")
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 @api_router.get("/reports/garp-tenbaggers")

@@ -31,6 +31,8 @@
                 <span class="jump-sep">·</span>
                 <a href="#garp-tenbaggers">GARP Tenbaggers</a>
                 <span class="jump-sep">·</span>
+                <a href="#quality-on-sale">Quality on Sale</a>
+                <span class="jump-sep">·</span>
                 <a href="#sector-trends">Sector Trends</a>
                 <span class="jump-sep">·</span>
                 <a href="#relative-strength-leaders">Relative Strength Leaders</a>
@@ -184,6 +186,75 @@
                     A score of 75% means the model is 75% confident this stock will outperform based on patterns it has learned.
                     <br>
                     <em>Currently most stocks show "—" because ML scoring is still being rolled out across the full universe.</em> Set the Min ML filter to 0 to include all candidates regardless of ML score. As coverage expands, raising this threshold adds a powerful quantitative second opinion on top of Lynch's fundamental screen.
+                </li>
+            </ul>
+        </div>
+    </div>
+
+    <div id="quality-on-sale" class="report-section section-accent-warning">
+        <h2 class="text-warning">💎 Quality on Sale — 52-Week Low Bargains<a href="#top" class="back-to-top">↑ top</a></h2>
+        <p>The "Structural Value" Screener. High-quality businesses the market has thrown out with the bathwater — price near a 52-week low, but fundamentals still intact.</p>
+        <p><strong>How to use:</strong> Different from Mean Reversion (which hunts RSI-based panic dips). This report finds companies that have spent months falling — yet remain profitable, low-debt, and high-return on equity. <br>
+           <strong>When to use:</strong> Use this to systematically deploy idle cash during corrections. The filter combination separates a falling knife from a genuine bargain. <br>
+           <strong>The Benefit:</strong> Long-term investors make their money buying quality businesses when the market is fearful. This report surfaces those moments automatically.</p>
+
+        <table id="qosTable" class="display w-100">
+            <thead>
+                <tr>
+                    <th>Ticker</th>
+                    <th>Company Name</th>
+                    <th>Sector</th>
+                    <th>Close Price</th>
+                    <th><abbr title="How far the current price is above the 52-week low (lower = closer to the floor)">% Above 52w Low</abbr></th>
+                    <th><abbr title="Return on Equity (>10%) — proof the business is still capital-efficient">ROE</abbr></th>
+                    <th><abbr title="Debt to Equity ratio (<1.5x) — low financial risk">Debt/Eq</abbr></th>
+                    <th><abbr title="Profit Margin (>5%) — still generating real profit">Margin</abbr></th>
+                    <th><abbr title="Trailing P/E (<25) — not overvalued">P/E</abbr></th>
+                    <th><abbr title="System Quant Score (>=50)">Quant Score</abbr></th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+
+        <div class="footer-notes">
+            <strong class="text-light">Key Metrics Explained:</strong>
+            <ul class="explanation-list">
+                <li>
+                    <strong class="text-accent-blue">% Above 52-Week Low:</strong>
+                    This tells you how close the current price is to the stock's lowest point over the past year.
+                    A value of 2% means the stock is only 2% above its annual floor — it is sitting right on the mat.
+                    A value of 14% means it has drifted slightly higher but is still near the bottom of its annual range.
+                    <em>The lower this number, the more "on sale" the stock currently is relative to its recent history. We cap at 15% to keep only the most beaten-down candidates.</em>
+                </li>
+                <li>
+                    <strong class="text-accent-blue">ROE — Return on Equity (&gt;10%):</strong>
+                    A falling stock price does not always mean a failing business. ROE tells you whether the underlying company is still efficiently converting shareholder capital into profit.
+                    We require &gt;10% to confirm the business has not deteriorated — we want a temporarily unloved stock, not a structurally broken one.
+                    <em>This is the core "quality" gate. A company with ROE &lt;10% is likely falling for a fundamental reason, not a temporary one.</em>
+                </li>
+                <li>
+                    <strong class="text-accent-blue">Debt/Equity — Debt to Equity Ratio (&lt;1.5x):</strong>
+                    When a stock is falling, you want to be confident the company can survive the downturn without being crushed by debt obligations.
+                    A ratio below 1.5x means the company's debt is manageable relative to its own equity base.
+                    <em>High-debt companies near 52-week lows are especially dangerous — a revenue shortfall can trigger a debt spiral. This filter screens them out.</em>
+                </li>
+                <li>
+                    <strong class="text-accent-blue">Profit Margin (&gt;5%):</strong>
+                    The stock may be out of favour, but is the company still actually making money?
+                    A margin above 5% confirms the business is generating real profit — it is not a zombie company kept alive by accounting adjustments.
+                    <em>Thin or negative margins near a 52-week low are a classic "falling knife" profile. We require &gt;5% to filter these out.</em>
+                </li>
+                <li>
+                    <strong class="text-accent-blue">Trailing P/E (&lt;25):</strong>
+                    Even near a 52-week low, some stocks are still overvalued relative to their earnings.
+                    A P/E below 25 ensures we are buying at a price that reflects the earnings reality, not lingering optimism from a prior bull run.
+                    <em>A quality company at a 52-week low with a P/E under 25 is one of the most reliable long-term entry setups in fundamental investing.</em>
+                </li>
+                <li>
+                    <strong class="text-accent-blue">Quant Score (&ge;50):</strong>
+                    Our composite score blends fundamentals, momentum, and mean-reversion signals into a single 0–100 grade.
+                    A score of 50 is the minimum "passing grade" — the system has not identified any serious structural red flags across the full picture.
+                    <em>This acts as a final cross-check: a stock can pass all four fundamental gates above yet still fail the quant score if there is hidden weakness in its technicals or data quality.</em>
                 </li>
             </ul>
         </div>
@@ -664,6 +735,78 @@
                     garpTable.column(2).search('').draw();
                 } else {
                     garpTable.column(2).search('^' + val + '$', true, false).draw();
+                }
+            });
+
+            // Quality on Sale Table
+            var qosTable = $('#qosTable').DataTable({
+                ajax: {
+                    url: '/api/reports/quality-on-sale',
+                    error: function() { showTableError('#qosTable', 10); }
+                },
+                deferRender: true,
+                pageLength: 10,
+                order: [[9, 'desc'], [4, 'asc']], // Sort by Quant Score desc, then closest to 52w low
+
+                initComplete: function() {
+                    var column = this.api().column(2);
+                    var select = $('<select id="qosSectorFilter" class="filter-select" style="margin-right:8px;"><option value="ALL">All Sectors</option></select>');
+                    column.data().unique().sort().each(function(d) {
+                        if (d && d !== 'N/A') {
+                            select.append('<option value="' + d + '">' + d + '</option>');
+                        }
+                    });
+                    $('#qosTable_wrapper .dataTables_filter').prepend(select);
+                },
+
+                columns: [
+                    { data: 'ticker', render: function(data) { return '<a href="/stock/' + data + '" class="ticker-link">' + data + '</a>'; } },
+                    { data: 'company_name' },
+                    { data: 'sector' },
+                    {
+                        data: 'close_price',
+                        render: function(data, type, row) {
+                            return type === 'display' ? formatCurrency(data, row.currency) : data;
+                        }
+                    },
+                    {
+                        data: 'pct_above_52w_low',
+                        render: function(data) {
+                            if (data == null) return '—';
+                            let cssClass = data <= 5 ? 'negative-val' : (data <= 10 ? 'text-warning' : '');
+                            return `<span class="${cssClass}">+${data.toFixed(1)}%</span>`;
+                        }
+                    },
+                    { data: 'roe_pct', render: function(data) {
+                        if (data == null) return '—';
+                        return `<span class="positive-val">${data.toFixed(1)}%</span>`;
+                    } },
+                    { data: 'debt_to_equity', render: function(data) {
+                        if (data == null) return '—';
+                        return (data / 100).toFixed(2) + 'x';
+                    } },
+                    { data: 'margin_pct', render: function(data) {
+                        if (data == null) return '—';
+                        return `<span class="positive-val">${data.toFixed(1)}%</span>`;
+                    } },
+                    { data: 'trailing_pe', render: function(data) {
+                        if (data == null) return '—';
+                        return data.toFixed(1);
+                    } },
+                    { data: 'composite_score', render: function(data) {
+                        if (data == null) return '—';
+                        let cssClass = data >= 70 ? 'positive-val' : (data < 40 ? 'negative-val' : '');
+                        return `<span class="${cssClass}">${data}</span>`;
+                    } }
+                ]
+            });
+
+            $(document).on('change', '#qosSectorFilter', function() {
+                var val = $(this).val();
+                if (val === 'ALL') {
+                    qosTable.column(2).search('').draw();
+                } else {
+                    qosTable.column(2).search('^' + val + '$', true, false).draw();
                 }
             });
 
