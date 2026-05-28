@@ -49,12 +49,6 @@
            <strong>When to use:</strong> Use this to build the core foundational pillars of your long-term portfolio. <br>
            <strong>The Benefit:</strong> Filters out both value traps (dying companies) and euphoria traps (overpriced momentum), surfacing only high-quality compounders with a Quant Score >= 60.</p>
 
-        <div class="controls-container mb-20">
-            <select id="qualitySectorFilter" class="filter-select">
-                <option value="ALL">All Sectors</option>
-            </select>
-        </div>
-
         <table id="qualityTable" class="display w-100">
             <thead>
                 <tr>
@@ -476,13 +470,14 @@
                 order: [[8, 'desc'], [4, 'desc']], // Sort by Quant Score, then ROE
 
                 initComplete: function() {
-                    var column = this.api().column(2); // Sector column
-                    var select = $('#qualitySectorFilter');
+                    var column = this.api().column(2);
+                    var select = $('<select id="qualitySectorFilter" class="filter-select" style="margin-right:8px;"><option value="ALL">All Sectors</option></select>');
                     column.data().unique().sort().each(function(d) {
                         if (d && d !== 'N/A') {
                             select.append('<option value="' + d + '">' + d + '</option>');
                         }
                     });
+                    $('#qualityTable_wrapper .dataTables_filter').prepend(select);
                 },
 
                 columns: [
@@ -503,7 +498,7 @@
                 ]
             });
 
-            $('#qualitySectorFilter').on('change', function() {
+            $(document).on('change', '#qualitySectorFilter', function() {
                 var val = $(this).val();
                 if (val === 'ALL') {
                     qualityTable.column(2).search('').draw();
