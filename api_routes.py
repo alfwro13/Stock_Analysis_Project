@@ -3,8 +3,6 @@ import asyncio
 import os
 import shutil
 import sqlite3
-import io
-import glob
 import json
 import time
 import signal
@@ -1036,36 +1034,60 @@ async def get_screener_data():
 
 @api_router.get("/reports/quality-compounders")
 async def api_reports_quality_compounders():
-    data = get_quality_compounders()
-    return JSONResponse(content={"data": data})
+    try:
+        data = get_quality_compounders()
+        return JSONResponse(content={"data": data})
+    except Exception as e:
+        logger.exception("quality-compounders report failed")
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 @api_router.get("/reports/garp-tenbaggers")
 async def api_reports_garp_tenbaggers():
-    data = get_garp_tenbaggers()
-    return JSONResponse(content={"data": data})
+    try:
+        data = get_garp_tenbaggers()
+        return JSONResponse(content={"data": data})
+    except Exception as e:
+        logger.exception("garp-tenbaggers report failed")
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 @api_router.get("/reports/sectors")
 async def api_reports_sectors():
-    data = get_sector_trends()
-    return JSONResponse(content={"data": data})
+    try:
+        data = get_sector_trends()
+        return JSONResponse(content={"data": data})
+    except Exception as e:
+        logger.exception("sectors report failed")
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 @api_router.get("/reports/mean-reversion")
 async def api_reports_mean_reversion(
     max_rsi: float = Query(default=30.0, ge=0.0, le=100.0),
     min_sma_distance: float = Query(default=0.0, ge=0.0),
 ):
-    data = get_mean_reversion_setups(max_rsi=max_rsi, min_sma_distance=min_sma_distance)
-    return JSONResponse(content={"data": data})
+    try:
+        data = get_mean_reversion_setups(max_rsi=max_rsi, min_sma_distance=min_sma_distance)
+        return JSONResponse(content={"data": data})
+    except Exception as e:
+        logger.exception("mean-reversion report failed")
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 @api_router.get("/reports/leaders")
 async def api_reports_leaders():
-    data = get_leaders_laggards()
-    return JSONResponse(content={"data": data})
+    try:
+        data = get_leaders_laggards()
+        return JSONResponse(content={"data": data})
+    except Exception as e:
+        logger.exception("leaders report failed")
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 @api_router.get("/reports/dividends")
 async def api_reports_dividends(
     min_yield: float = Query(default=0.02, ge=0.0, le=1.0),
     min_score: int   = Query(default=50,   ge=0,   le=100),
 ):
-    data = get_dividend_harvest_setups(min_yield=min_yield, min_score=min_score)
-    return JSONResponse(content={"data": data})
+    try:
+        data = get_dividend_harvest_setups(min_yield=min_yield, min_score=min_score)
+        return JSONResponse(content={"data": data})
+    except Exception as e:
+        logger.exception("dividends report failed")
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
