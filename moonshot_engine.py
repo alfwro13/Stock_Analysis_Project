@@ -23,19 +23,23 @@ class MoonshotEngine:
         Evaluates the mathematical moonshot signatures.
         Returns an alert dictionary if triggered, else None.
         """
-        if df_combined.empty or len(df_combined) < 20:  # Need at least 20 for Bollinger Bands
+        # Exclude the live intraday tick from indicator calculations — it is a partially-formed
+        # bar mid-session and skews RSI/Bollinger on volatile open days.
+        df_settled = df_combined.iloc[:-1]
+
+        if df_settled.empty or len(df_settled) < 20:  # Need at least 20 settled bars for Bollinger Bands
             return None
 
         # Calculation A: Percentage Spike
         lookback_idx = -(self.spike_days + 1)
-        if abs(lookback_idx) > len(df_combined):
+        if abs(lookback_idx) > len(df_settled):
             lookback_idx = 0
-            
-        past_price = df_combined['Close'].iloc[lookback_idx]
+
+        past_price = df_settled['Close'].iloc[lookback_idx]
         price_spike_pct = ((current_price - past_price) / past_price) * 100.0
 
         # Calculation B: SMA Gap (Running too hot)
-        sma_series = ta.trend.SMAIndicator(close=df_combined['Close'], window=self.sma_length).sma_indicator()
+        sma_series = ta.trend.SMAIndicator(close=df_settled['Close'], window=self.sma_length).sma_indicator()
         latest_sma = sma_series.iloc[-1]
         above_sma_pct = ((current_price - latest_sma) / latest_sma) * 100.0 if latest_sma else 0.0
 
@@ -54,13 +58,13 @@ class MoonshotEngine:
             caution_notes = []
             
             # RSI Overbought Check
-            rsi_series = ta.momentum.rsi(df_combined['Close'], window=14)
+            rsi_series = ta.momentum.rsi(df_settled['Close'], window=14)
             latest_rsi = rsi_series.iloc[-1]
             if latest_rsi > 70:
                 caution_notes.append(f"RSI is severely overbought ({latest_rsi:.1f}). Mean-reversion risk is high.")
-            
+
             # Bollinger Band Extent Check
-            bb_indicator = ta.volatility.BollingerBands(df_combined['Close'], window=20, window_dev=2)
+            bb_indicator = ta.volatility.BollingerBands(df_settled['Close'], window=20, window_dev=2)
             bb_high = bb_indicator.bollinger_hband().iloc[-1]
             if current_price >= bb_high:
                 caution_notes.append("Price has pierced the Upper Bollinger Band (Statistically over-extended).")

@@ -89,10 +89,13 @@ class CrashEngine:
             logger.warning(f"Volume anomaly check failed for {ticker}: {e}")
 
         # 3. Technical Damage Assessment
+        # Use settled bars only for the SMA; compare current live price against it.
+        df_settled = df_combined.iloc[:-1]
         latest_price = df_combined['Close'].iloc[-1]
+        prev_settled_close = df_settled['Close'].iloc[-1]
         try:
-            sma50 = ta.trend.SMAIndicator(close=df_combined['Close'], window=50).sma_indicator().iloc[-1]
-            if latest_price < sma50 and df_combined['Close'].iloc[-2] >= sma50:
+            sma50 = ta.trend.SMAIndicator(close=df_settled['Close'], window=50).sma_indicator().iloc[-1]
+            if latest_price < sma50 and prev_settled_close >= sma50:
                 report.append("Technical damage is notable: the stock just sliced violently through its 50-day moving average, a key institutional support level.")
         except Exception as e:
             logger.warning(f"Technical damage assessment failed for {ticker}: {e}")
@@ -142,28 +145,29 @@ class CrashEngine:
         Evaluates mathematical crash signatures, now prioritizing Session Crashes.
         Returns an alert dictionary if triggered, else None.
         """
-        if df_combined.empty or len(df_combined) < self.sma_length:
+        # Exclude the live intraday tick from indicator calculations — it is a partially-formed
+        # bar mid-session and skews trend signals on volatile open days.
+        df_settled = df_combined.iloc[:-1]
+
+        if df_settled.empty or len(df_settled) < self.sma_length:
             return None
 
         # The orchestrator appends the live current_price as the final row of df_combined (iloc[-1]).
-        # To calculate the true intraday drop, we must reference the prior session's close (iloc[-2]).
-        if len(df_combined) >= 2:
-            prev_close = df_combined['Close'].iloc[-2]
-        else:
-            prev_close = current_price
+        # The prior session's close is the last settled row.
+        prev_close = df_settled['Close'].iloc[-1]
 
         intraday_drop_pct = ((current_price - prev_close) / prev_close) * 100.0
         is_session_crash = intraday_drop_pct <= -self.session_crash_threshold
 
         # --- 2. OLD LOGIC: Prolonged Trend Bleed ---
         lookback_idx = -(self.drop_days + 1)
-        if abs(lookback_idx) > len(df_combined):
+        if abs(lookback_idx) > len(df_settled):
             lookback_idx = 0
-            
-        past_price = df_combined['Close'].iloc[lookback_idx]
+
+        past_price = df_settled['Close'].iloc[lookback_idx]
         price_drop_pct = ((current_price - past_price) / past_price) * 100.0
 
-        sma_series = ta.trend.SMAIndicator(close=df_combined['Close'], window=self.sma_length).sma_indicator()
+        sma_series = ta.trend.SMAIndicator(close=df_settled['Close'], window=self.sma_length).sma_indicator()
         latest_sma = sma_series.iloc[-1]
         below_sma_pct = ((latest_sma - current_price) / latest_sma) * 100.0 if latest_sma else 0.0
 
@@ -172,7 +176,15 @@ class CrashEngine:
         
         # --- 3. Quantamental ATR Floor ---
         atr_stop = asset_meta.get('atr_stop_loss')
-        is_below_atr = atr_stop is not None and (0 < current_price < atr_stop)
+        atr_last_updated = asset_meta.get('atr_last_updated')
+        atr_is_fresh = False
+        if atr_last_updated is not None:
+            try:
+                updated_dt = pd.to_datetime(atr_last_updated)
+                atr_is_fresh = (pd.Timestamp.now() - updated_dt) <= pd.Timedelta(days=3)
+            except Exception:
+                pass
+        is_below_atr = atr_stop is not None and atr_is_fresh and (0 < current_price < atr_stop)
 
         # Execution Logic: If Session Crash OR (X-Drop AND Y-Gap) OR (Broke Mathematical ATR)
         if is_session_crash or (is_dropping_fast and is_breaking_sma) or is_below_atr:

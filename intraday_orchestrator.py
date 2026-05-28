@@ -85,7 +85,7 @@ class IntradayOrchestrator:
         placeholders = ','.join('?' for _ in tickers)
         
         query = f"""
-            SELECT s.ticker, s.company_name, s.currency, s.atr_stop_loss,
+            SELECT s.ticker, s.company_name, s.currency, s.atr_stop_loss, s.last_updated,
                    q.ml_confidence_score, q.var_95, q.cvar_95, q.sentiment_score
             FROM stock_signals s
             LEFT JOIN quant_signals q ON s.ticker = q.ticker 
@@ -100,6 +100,7 @@ class IntradayOrchestrator:
                 'company_name': row['company_name'],
                 'currency': row['currency'],
                 'atr_stop_loss': row['atr_stop_loss'],
+                'atr_last_updated': row['last_updated'],
                 'ml_confidence_score': row['ml_confidence_score'],
                 'var_95': row['var_95'],
                 'cvar_95': row['cvar_95'],
