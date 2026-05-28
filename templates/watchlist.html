@@ -116,6 +116,23 @@
             <option value="👑 Market Leader">👑 Market Leaders</option>
             <option value="🚨 Divergence Warning">🚨 Divergence Warnings</option>
         </select>
+        <select id="candleFilter" class="filter-select">
+            <option value="ALL">All Candle Patterns</option>
+            <option value="🌅 Morning Star">🌅 Morning Star</option>
+            <option value="🌇 Evening Star">🌇 Evening Star</option>
+            <option value="🐂 Bullish Engulfing">🐂 Bullish Engulfing</option>
+            <option value="🐻 Bearish Engulfing">🐻 Bearish Engulfing</option>
+            <option value="🔨 Hammer Rejection">🔨 Hammer Rejection</option>
+            <option value="🌠 Shooting Star">🌠 Shooting Star</option>
+            <option value="⚖️ Doji">⚖️ Doji</option>
+        </select>
+        <select id="scoreFilter" class="filter-select">
+            <option value="ALL">All Scores</option>
+            <option value="75">75+ (Strong)</option>
+            <option value="60">60–74 (Good)</option>
+            <option value="40">40–59 (Neutral)</option>
+            <option value="0">Below 40 (Weak)</option>
+        </select>
     </div>
 
     <table id="dataTable" class="display">
@@ -339,11 +356,40 @@
                 else { table.column(19).search('^' + val + '$', true, false).draw(); }
             });
 
-            // Setups & Tags is column 18
+            // Setups & Tags is column 18 — tag and candle filters share this column
             $('#tagFilter').on('change', function() {
+                $('#candleFilter').val('ALL');
                 var val = $(this).val();
                 if(val === 'ALL') { table.column(18).search('').draw(); }
                 else { table.column(18).search(val).draw(); }
+            });
+
+            // Candlestick patterns are also in column 18
+            $('#candleFilter').on('change', function() {
+                $('#tagFilter').val('ALL');
+                var val = $(this).val();
+                if(val === 'ALL') { table.column(18).search('').draw(); }
+                else { table.column(18).search(val, false, false).draw(); }
+            });
+
+            // Score range filter on column 17
+            var scoreMin = null, scoreMax = null;
+            $.fn.dataTable.ext.search.push(function(settings, data) {
+                if (settings.nTable.id !== 'dataTable') return true;
+                if (scoreMin === null) return true;
+                var score = parseFloat(data[17]);
+                if (isNaN(score)) return false;
+                return score >= scoreMin && (scoreMax === null || score <= scoreMax);
+            });
+
+            $('#scoreFilter').on('change', function() {
+                var val = $(this).val();
+                if (val === 'ALL')  { scoreMin = null; scoreMax = null; }
+                else if (val === '75') { scoreMin = 75;  scoreMax = null; }
+                else if (val === '60') { scoreMin = 60;  scoreMax = 74;   }
+                else if (val === '40') { scoreMin = 40;  scoreMax = 59;   }
+                else if (val === '0')  { scoreMin = 0;   scoreMax = 39;   }
+                table.draw();
             });
         });
     </script>
