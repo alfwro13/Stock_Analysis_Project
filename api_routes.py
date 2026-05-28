@@ -515,12 +515,12 @@ async def execute_restart():
 @api_router.post("/update")
 async def trigger_update(background_tasks: BackgroundTasks):
     background_tasks.add_task(run_update_pipeline)
-    return {"status": "success"}
+    return JSONResponse(content={"status": "success"})
 
 @api_router.post("/sync-ghostfolio")
 async def trigger_ghostfolio_sync(background_tasks: BackgroundTasks):
     background_tasks.add_task(run_ghostfolio_sync)
-    return {"status": "success"}
+    return JSONResponse(content={"status": "success"})
 
 @api_router.post("/trigger-freetrade-sync")
 async def trigger_freetrade_sync_endpoint(background_tasks: BackgroundTasks):
