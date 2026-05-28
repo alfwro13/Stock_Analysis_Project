@@ -56,6 +56,10 @@ from profile_engine import count_pending_profiles, get_profiler_queue_breakdown,
 from tools.network_engine import GLOBAL_IPV6_STATUS
 # Import curl_cffi for resilient IPv6 socket testing
 from curl_cffi import requests as cffi_requests
+from seed_macro_calendar import seed_calendar
+from macro_calendar_engine import update_macro_calendar
+from macro_data_engine import update_macro_indicators
+from macro_ai_engine import MacroAIEngine
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -255,11 +259,6 @@ def bg_execute_ml_inference():
 def bg_init_macro_pipeline():
     """Executes full Macro AI initialization: Seeding -> Calendar Sync -> Data Sync -> Training -> Inference."""
     try:
-        from seed_macro_calendar import seed_calendar
-        from macro_calendar_engine import update_macro_calendar
-        from macro_data_engine import update_macro_indicators
-        from macro_ai_engine import MacroAIEngine
-        
         logger.info("Starting Macro AI Initialization Sequence...")
         
         seed_calendar()
@@ -297,10 +296,6 @@ def bg_init_macro_pipeline():
 def bg_run_macro_pipeline():
     """Executes standard Macro AI run: Calendar Sync -> Data Sync -> Inference."""
     try:
-        from macro_calendar_engine import update_macro_calendar
-        from macro_data_engine import update_macro_indicators
-        from macro_ai_engine import MacroAIEngine
-        
         logger.info("Starting Macro AI Run Sequence...")
         
         update_macro_calendar()
