@@ -12,11 +12,9 @@ from config import PORTFOLIO_PATH, WATCHLIST_PATH, HISTORICAL_DIR, INTRADAY_DIR,
 from gilt_engine import GiltDataService
 from tools.network_engine import yahoo_connection_boundary
 
+from utils import normalize_ticker  # noqa: F401 — re-exported for callers
+
 logger = logging.getLogger(__name__)
-
-
-def normalize_ticker(ticker: str) -> str:
-    return str(ticker).strip().upper()
 
 
 class DataEngine:

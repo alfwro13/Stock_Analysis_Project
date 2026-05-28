@@ -1,10 +1,15 @@
 # test_market_pulse.py
+import sys
+from pathlib import Path
+
+# Ensure project root is importable when this file is run from debug_scripts/
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 import sqlite3
 import tempfile
 import threading
 import time
 import unittest
-from pathlib import Path
 from typing import Any, Dict
 from unittest.mock import MagicMock, patch
 
@@ -201,13 +206,14 @@ class TestGetAllCachedPulse(_PulseTestBase):
         for key in ("ticker", "name", "price", "change_pts", "change_pct", "is_positive", "is_stale"):
             self.assertIn(key, row, msg=f"missing key: {key}")
 
-    def test_connection_closed_on_db_error(self):
+    def test_connection_closed_and_empty_returned_on_db_error(self):
         mock_conn = MagicMock()
         mock_conn.cursor.return_value.execute.side_effect = sqlite3.OperationalError("boom")
         with patch("market_pulse.get_connection", return_value=mock_conn):
             from market_pulse import get_all_cached_pulse
-            with self.assertRaises(sqlite3.OperationalError):
-                get_all_cached_pulse()
+            with self.assertLogs("market_pulse", level="ERROR"):
+                result = get_all_cached_pulse()
+        self.assertEqual(result, {})
         mock_conn.close.assert_called_once()
 
 
@@ -325,13 +331,14 @@ class TestGetCachedPulseFromDb(_PulseTestBase):
                             "is_positive", "is_stale", "sentiment_score"):
                     self.assertIn(key, row, msg=f"[{bucket}] missing key: {key}")
 
-    def test_connection_closed_on_db_error(self):
+    def test_connection_closed_and_empty_returned_on_db_error(self):
         mock_conn = MagicMock()
         mock_conn.cursor.return_value.execute.side_effect = sqlite3.OperationalError("boom")
         with patch("market_pulse.get_connection", return_value=mock_conn):
             from market_pulse import get_cached_pulse_from_db
-            with self.assertRaises(sqlite3.OperationalError):
-                get_cached_pulse_from_db(["AAPL"], 60)
+            with self.assertLogs("market_pulse", level="ERROR"):
+                result = get_cached_pulse_from_db(["AAPL"], 60)
+        self.assertEqual(result, {"indexes": [], "assets": []})
         mock_conn.close.assert_called_once()
 
 

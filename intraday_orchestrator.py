@@ -8,7 +8,7 @@ import yfinance as yf
 import pandas as pd
 from datetime import datetime
 from config import load_config, PORTFOLIO_PATH, INTRADAY_DIR, HISTORICAL_DIR, PORT, SERVER_URL
-from data_engine import normalize_ticker
+from utils import normalize_ticker
 from database import get_connection
 from crash_engine import CrashEngine
 from moonshot_engine import MoonshotEngine

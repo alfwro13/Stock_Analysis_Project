@@ -40,7 +40,8 @@ from sentiment_engine import run_nextcloud_alert, update_all_sentiment
 from earnings_engine import run_earnings_alert
 from insider_engine import run_insider_alert
 from ai_engine import AIPromptEngine
-from data_engine import DataEngine, normalize_ticker
+from data_engine import DataEngine
+from utils import normalize_ticker
 from quant_signals import QuantEngine
 from quant_engine import run_daily_quant_scan
 from earnings_vol_engine import run_earnings_vol_scan

@@ -22,7 +22,7 @@ from sentiment_engine import (
     get_ftse_gbp_html
 )
 from market_pulse import get_all_cached_pulse
-from data_engine import normalize_ticker
+from utils import normalize_ticker
 from visuals import (
     create_macro_chart,
     create_intraday_chart,

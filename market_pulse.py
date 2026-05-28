@@ -8,7 +8,7 @@ import yfinance as yf
 
 from config import load_config, HISTORICAL_DIR
 from database import get_connection
-from data_engine import normalize_ticker
+from utils import normalize_ticker
 from gilt_engine import GiltDataService
 
 # Configure robust module-level logging
@@ -40,6 +40,9 @@ def get_all_cached_pulse() -> Dict[str, Dict[str, Any]]:
         cursor = conn.cursor()
         cursor.execute("SELECT ticker, name, price, change_pts, change_pct, is_positive, last_updated FROM market_pulse_cache")
         rows = cursor.fetchall()
+    except Exception as e:
+        logger.error(f"[MARKET PULSE] Failed to read pulse cache: {e}")
+        return {}
     finally:
         conn.close()
 
@@ -114,6 +117,9 @@ def get_cached_pulse_from_db(asset_tickers: List[str], refresh_rate: int) -> Dic
 
             for s_row in sentiment_rows:
                 sentiment_scores[s_row['ticker']] = s_row['sentiment_score']
+    except Exception as e:
+        logger.error(f"[MARKET PULSE] Failed to read pulse from DB: {e}")
+        return {"indexes": [], "assets": []}
     finally:
         conn.close()
 
@@ -214,8 +220,29 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
                 t_live.dropna(subset=['Close'], inplace=True)
                 
                 if t_daily.empty or t_live.empty:
-                    cursor.execute("UPDATE market_pulse_cache SET last_updated = 0 WHERE ticker = ?", (ticker,))
-                    if cursor.rowcount == 0:
+                    # Distinguish a transient empty feed (nights/weekends/holidays) for an
+                    # already-populated ticker from a ticker that has never resolved. Stamping
+                    # last_updated=0 unconditionally pins is_stale=True forever, keeping the
+                    # ticker permanently in the /market-pulse needs_fetch set and locking the
+                    # frontend into FAST_POLL mode — a sustained refetch storm.
+                    cursor.execute("SELECT price FROM market_pulse_cache WHERE ticker = ?", (ticker,))
+                    existing = cursor.fetchone()
+
+                    if existing is not None and existing['price']:
+                        # Established ticker, transient empty feed: retain last-known price and
+                        # mark fresh so we stop hammering yfinance for data that isn't printing.
+                        cursor.execute(
+                            "UPDATE market_pulse_cache SET last_updated = ? WHERE ticker = ?",
+                            (current_time, ticker)
+                        )
+                    elif existing is not None:
+                        # Row exists but never carried a real price: keep it stale to retry.
+                        cursor.execute(
+                            "UPDATE market_pulse_cache SET last_updated = 0 WHERE ticker = ?",
+                            (ticker,)
+                        )
+                    else:
+                        # Brand-new ticker that failed its first fetch: seed a stale placeholder.
                         name = INDEX_TICKERS.get(ticker, ticker)
                         cursor.execute(
                             "INSERT INTO market_pulse_cache (ticker, name, price, change_pts, change_pct, is_positive, last_updated) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -289,7 +316,15 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
                         VALUES (?, ?, ?, ?, ?, ?, ?)
                     ''', ("UK10YG", gilt_name, live_gilt_yield, gilt_change_pts, gilt_change_pct, gilt_is_positive, current_time))
                 else:
-                    cursor.execute("UPDATE market_pulse_cache SET last_updated = 0 WHERE ticker = 'UK10YG'")
+                    cursor.execute("SELECT price FROM market_pulse_cache WHERE ticker = 'UK10YG'")
+                    existing_gilt = cursor.fetchone()
+                    if existing_gilt is not None and existing_gilt['price']:
+                        cursor.execute(
+                            "UPDATE market_pulse_cache SET last_updated = ? WHERE ticker = 'UK10YG'",
+                            (current_time,)
+                        )
+                    else:
+                        cursor.execute("UPDATE market_pulse_cache SET last_updated = 0 WHERE ticker = 'UK10YG'")
             except Exception as ex:
                 logger.error(f"[MARKET PULSE BACKGROUND] FT Gilt pipeline execution failed: {ex}")
                 
