@@ -1,4 +1,5 @@
 # api_routes.py
+import asyncio
 import os
 import shutil
 import sqlite3
@@ -361,6 +362,7 @@ async def list_importable_csvs():
 async def import_server_csv(request: ImportRequest, background_tasks: BackgroundTasks):
     if not request.filename.endswith('.csv'):
         return JSONResponse(status_code=400, content={"status": "error", "message": "Invalid file type. Only .csv files are supported."})
+    conn = None
     try:
         file_path = IMPORT_DIR / request.filename
         if not file_path.exists():
@@ -389,21 +391,22 @@ async def import_server_csv(request: ImportRequest, background_tasks: Background
         conn = get_connection()
         cursor = conn.cursor()
         cursor.executemany('''
-            INSERT OR REPLACE INTO market_universe 
+            INSERT OR REPLACE INTO market_universe
             (ticker, company_name, sector, industry, country, exchange, last_updated)
             VALUES (?, ?, ?, ?, ?, ?, ?)
         ''', records)
         conn.commit()
-        conn.close()
-        
         background_tasks.add_task(bg_execute_universe_quant_scan_subset, [r[0] for r in records])
         return JSONResponse(content={
-            "status": "success", 
+            "status": "success",
             "message": f"Successfully sideloaded {len(records)} assets from '{request.filename}' into the local Market Universe."
         })
     except Exception as e:
         logger.error(f"Fatal error executing CSV parser for {request.filename}: {e}")
         return JSONResponse(status_code=500, content={"status": "error", "message": f"Fatal error executing CSV parser: {str(e)}"})
+    finally:
+        if conn:
+            conn.close()
 
 def execute_restart():
     time.sleep(2)
@@ -460,20 +463,23 @@ async def api_market_pulse_get(background_tasks: BackgroundTasks):
     return JSONResponse(content={"status": "success", "data": pulse_data.get("indexes", [])})
 
 @api_router.post("/test-sentiment-alert")
-def test_sentiment_alert():
-    success, msg = run_nextcloud_alert()
+async def test_sentiment_alert():
+    loop = asyncio.get_event_loop()
+    success, msg = await loop.run_in_executor(None, run_nextcloud_alert)
     if success: return JSONResponse(content={"status": "success", "message": msg})
     else: return JSONResponse(status_code=500, content={"status": "error", "message": msg})
 
 @api_router.post("/test-earnings-alert")
-def test_earnings_alert():
-    success, msg = run_earnings_alert()
+async def test_earnings_alert():
+    loop = asyncio.get_event_loop()
+    success, msg = await loop.run_in_executor(None, run_earnings_alert)
     if success: return JSONResponse(content={"status": "success", "message": msg})
     else: return JSONResponse(status_code=500, content={"status": "error", "message": msg})
 
 @api_router.post("/test-insider-alert")
-def test_insider_alert():
-    success, msg = run_insider_alert()
+async def test_insider_alert():
+    loop = asyncio.get_event_loop()
+    success, msg = await loop.run_in_executor(None, run_insider_alert)
     if success: return JSONResponse(content={"status": "success", "message": msg})
     else: return JSONResponse(status_code=500, content={"status": "error", "message": msg})
 
@@ -573,6 +579,7 @@ async def get_system_metrics():
     """Returns a comprehensive diagnostic payload of system hardware, DB, and ML states."""
     import shutil
     import joblib
+    conn = None
     try:
         conn = get_connection()
         conn.row_factory = sqlite3.Row
@@ -671,8 +678,6 @@ async def get_system_metrics():
         pending_notes = get_cnt("SELECT COUNT(*) FROM system_notifications WHERE status = 'pending'")
         sent_notes = get_cnt("SELECT COUNT(*) FROM system_notifications WHERE status = 'sent'")
         
-        conn.close()
-        
         return JSONResponse(content={
             "status": "success",
             "universe": {
@@ -702,6 +707,9 @@ async def get_system_metrics():
     except Exception as e:
         logger.error(f"Failed to fetch system metrics: {e}")
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+    finally:
+        if conn:
+            conn.close()
 
 @api_router.post("/system/git-pull")
 async def git_pull_update():
@@ -732,55 +740,64 @@ async def save_settings(request: Request):
 
 @api_router.get("/notifications/latest")
 async def get_latest_notifications(last_id: int = 0):
+    conn = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT id, message_type, message_text, timestamp FROM system_notifications WHERE id > ? ORDER BY id ASC", 
+            "SELECT id, message_type, message_text, timestamp FROM system_notifications WHERE id > ? ORDER BY id ASC",
             (last_id,)
         )
         rows = cursor.fetchall()
-        conn.close()
         notifications = [
             {
-                "id": row["id"], 
-                "type": row["message_type"], 
-                "text": row["message_text"], 
+                "id": row["id"],
+                "type": row["message_type"],
+                "text": row["message_text"],
                 "timestamp": row["timestamp"]
-            } 
+            }
             for row in rows
         ]
         return JSONResponse(content={"status": "success", "notifications": notifications})
     except Exception as e:
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+    finally:
+        if conn:
+            conn.close()
 
 @api_router.post("/notifications/mark-read")
 async def mark_notifications_read():
+    conn = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute("UPDATE system_notifications SET is_read = 1 WHERE is_read = 0")
         conn.commit()
-        conn.close()
         return JSONResponse(content={"status": "success", "message": "All notifications marked as read."})
     except Exception as e:
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+    finally:
+        if conn:
+            conn.close()
 
 @api_router.post("/notifications/purge")
 async def purge_all_notifications():
     """
     Purges all historical notifications from the SQLite database.
     """
+    conn = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute("DELETE FROM system_notifications")
         conn.commit()
-        conn.close()
         return JSONResponse(content={"status": "success", "message": "All notifications purged successfully."})
     except Exception as e:
         logger.error(f"Failed to purge notifications: {e}")
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+    finally:
+        if conn:
+            conn.close()
 
 @api_router.get("/ai-prompt/{ticker}")
 async def get_ai_prompt(ticker: str, mode: str = "Quantamental Deep-Dive"):
@@ -796,33 +813,41 @@ async def get_ai_prompt(ticker: str, mode: str = "Quantamental Deep-Dive"):
 
 @api_router.post("/watchlist/add")
 async def api_watchlist_add(req: TickerRequest):
+    loop = asyncio.get_event_loop()
     engine = GhostfolioSyncEngine()
-    if engine.add_to_watchlist(req.ticker):
-        engine.sync_watchlist()
+    added = await loop.run_in_executor(None, engine.add_to_watchlist, req.ticker)
+    if added:
+        await loop.run_in_executor(None, engine.sync_watchlist)
         return JSONResponse(content={"status": "success"})
     return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to add to Ghostfolio."})
 
 @api_router.post("/watchlist/remove")
 async def api_watchlist_remove(req: TickerRequest):
+    loop = asyncio.get_event_loop()
     engine = GhostfolioSyncEngine()
-    if engine.remove_from_watchlist(req.ticker):
-        engine.sync_watchlist()
+    removed = await loop.run_in_executor(None, engine.remove_from_watchlist, req.ticker)
+    if removed:
+        await loop.run_in_executor(None, engine.sync_watchlist)
         return JSONResponse(content={"status": "success"})
     return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to remove from Ghostfolio."})
 
 @api_router.post("/data/refresh-single")
 async def api_data_refresh_single(req: TickerRequest):
-    update_single_profile(req.ticker)
-    data_engine = DataEngine()
-    quant_engine = QuantEngine()
-    if data_engine.fetch_and_save_data(req.ticker):
+    try:
+        update_single_profile(req.ticker)
+        data_engine = DataEngine()
+        quant_engine = QuantEngine()
+        if not data_engine.fetch_and_save_data(req.ticker):
+            return JSONResponse(status_code=500, content={"status": "error", "message": "Data fetch failed."})
         quant_engine.analyze_ticker(req.ticker)
         target_list = [req.ticker]
         update_daily_ml_predictions(target_list)
         update_all_tail_risks(target_list)
         update_all_sentiment(target_list)
         return JSONResponse(content={"status": "success"})
-    return JSONResponse(status_code=500, content={"status": "error", "message": "Data fetch failed."})
+    except Exception as e:
+        logger.exception("refresh-single failed for %s", req.ticker)
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 @api_router.get("/options/chain/{ticker}")
 async def api_options_chain(ticker: str):
@@ -839,10 +864,11 @@ async def api_options_payoff(req: PayoffRequest):
 
 @api_router.get("/screener-data")
 async def get_screener_data():
+    conn = None
     try:
         config_data = load_config()
         freetrade_only = config_data.get("UI_PREFERENCES", {}).get("FREETRADE_ONLY_MODE", False)
-        
+
         conn = get_connection()
         cursor = conn.cursor()
         query = """
@@ -881,13 +907,14 @@ async def get_screener_data():
             
         cursor.execute(query)
         rows = cursor.fetchall()
-        conn.close()
-        
         data = [dict(row) for row in rows]
         return JSONResponse(content={"data": data})
     except Exception as e:
         logger.error(f"Failed to fetch screener data: {e}")
         return JSONResponse(status_code=500, content={"error": str(e), "data": []})
+    finally:
+        if conn:
+            conn.close()
 
 @api_router.get("/reports/quality-compounders")
 async def api_reports_quality_compounders():
