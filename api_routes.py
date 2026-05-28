@@ -1,6 +1,7 @@
 # api_routes.py
 import os
 import shutil
+import sqlite3
 import io
 import glob
 import json
@@ -19,7 +20,17 @@ from fastapi import APIRouter, Request, BackgroundTasks, HTTPException, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from config import load_config, SECRETS_PATH, DATA_DIR, BASE_DIR
+from config import (
+    load_config, 
+    SECRETS_PATH, 
+    DATA_DIR, 
+    BASE_DIR,
+    PORTFOLIO_PATH, 
+    WATCHLIST_PATH, 
+    FUNDAMENTALS_DIR, 
+    HISTORICAL_DIR, 
+    INTRADAY_DIR
+)
 from database import get_connection, get_universe_tickers
 from scheduler_engine import run_update_pipeline, run_ghostfolio_sync, run_freetrade_sync, reload_scheduler, run_sentiment_scan, run_index_scraper, run_fundamentals_profiler, run_universe_deep_sync_job
 from ghostfolio_sync import GhostfolioSyncEngine
