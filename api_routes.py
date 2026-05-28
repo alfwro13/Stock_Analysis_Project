@@ -50,7 +50,7 @@ from reports_engine import get_sector_trends, get_mean_reversion_setups, get_lea
 from options_engine import fetch_options_chain, calculate_payoff_matrix
 from ai_prediction_engine import train_global_ml_model, update_daily_ml_predictions, run_historical_backfill
 from risk_engine import update_all_tail_risks
-from profile_engine import count_pending_profiles, get_profiler_queue_breakdown, update_single_profile
+from profile_engine import get_profiler_queue_breakdown, update_single_profile
 from tools.network_engine import GLOBAL_IPV6_STATUS
 # Import curl_cffi for resilient IPv6 socket testing
 from curl_cffi import requests as cffi_requests
