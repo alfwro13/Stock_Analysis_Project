@@ -40,8 +40,9 @@ class MoonshotEngine:
         above_sma_pct = ((current_price - latest_sma) / latest_sma) * 100.0 if latest_sma else 0.0
 
         # Calculation C: 52-Week High Check
-        recent_52w = df_hist.tail(252) # Approx 1 trading year
-        fifty_two_wk_high = recent_52w['High'].max() if 'High' in recent_52w else recent_52w['Close'].max()
+        cutoff_52w = df_hist.index[-1] - pd.DateOffset(weeks=52)
+        recent_52w = df_hist[df_hist.index >= cutoff_52w]
+        fifty_two_wk_high = recent_52w['Close'].max()
         is_ath = current_price >= fifty_two_wk_high
 
         # Phase 3: Evaluate Core Trigger Conditions
@@ -72,6 +73,9 @@ class MoonshotEngine:
                 reasons.append(f"Surged +{price_spike_pct:.2f}% in {self.spike_days}d")
             if is_gapping_sma:
                 reasons.append(f"Gapped +{above_sma_pct:.2f}% above {self.sma_length}d SMA")
+
+            if not reasons:
+                return None
 
             return {
                 'price': current_price,

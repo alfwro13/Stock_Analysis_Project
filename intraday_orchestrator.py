@@ -111,7 +111,7 @@ class IntradayOrchestrator:
     def log_notification(self, msg_type, msg_text):
         """Logs the alert to the local system notification center to prevent duplicate spam."""
         conn = get_connection()
-        cursor = conn.conn.cursor() if hasattr(conn, 'conn') else conn.cursor()
+        cursor = conn.cursor()
         cursor.execute(
             "INSERT INTO system_notifications (message_type, message_text) VALUES (?, ?)", 
             (msg_type, msg_text)
@@ -223,8 +223,10 @@ class IntradayOrchestrator:
 
         metadata = self.get_asset_metadata(tickers)
         
-        # Add system yield benchmarks for macro shock detection
-        macro_tickers = ["^TYX"]
+        # Add system yield benchmarks and SPY for macro shock detection
+        # SPY is fetched here once so crash_engine never needs its own per-crash HTTP call
+        macro_tickers = ["^TYX", "SPY"]
+        spy_change_pct: float | None = None
         download_list = list(set(tickers + macro_tickers))
         
         print(f"[ORCHESTRATOR] Performing bulk YF 5m fetch for {len(download_list)} assets & macro benchmarks...")
@@ -270,7 +272,11 @@ class IntradayOrchestrator:
                 
                 if m_open > 0:
                     m_spike = ((m_curr - m_open) / m_open) * 100.0
-                    
+
+                    if m_ticker == "SPY":
+                        spy_change_pct = m_spike
+                        continue
+
                     # If yield spikes more than 1.5% intraday, it's a systemic shock
                     if m_spike >= 1.5 and not self.is_alert_suppressed("Macro", m_ticker, m_curr):
                         name = "US 30Y Treasury" if m_ticker == "^TYX" else "UK 10Y Gilt"
@@ -303,10 +309,12 @@ class IntradayOrchestrator:
 
             if ai_warning_row and ai_warning_row['max_warning'] and float(ai_warning_row['max_warning']) > 2.0:
                 print(f"[ORCHESTRATOR] 🛡️ AI Volatility Defense Active: Tightening Flash Crash Threshold to 1.5%")
-                self.crash_engine.flash_crash_threshold = 1.5
+                self.crash_engine.session_crash_threshold = 1.5
         except Exception as e:
             print(f"[ORCHESTRATOR] Failed to query AI Macro Defense status: {e}")
 
+        # Inject pre-fetched SPY change so crash_engine never makes its own per-crash HTTP call
+        self.crash_engine.spy_change_pct = spy_change_pct
 
         crash_alerts_to_send = []
         moonshot_alerts_to_send = []
@@ -389,7 +397,7 @@ class IntradayOrchestrator:
                 # --- EVALUATE CRASH ENGINE ---
                 if crash_enabled:
                     if not self.is_alert_suppressed("Crash", ticker, current_price):
-                        crash_alert = self.crash_engine.evaluate(ticker, current_price, df_combined, asset_meta)
+                        crash_alert = self.crash_engine.evaluate(ticker, current_price, df_combined, asset_meta, df_hist)
                         if crash_alert:
                             crash_alerts_to_send.append((ticker, crash_alert, currency, asset_meta))
                 

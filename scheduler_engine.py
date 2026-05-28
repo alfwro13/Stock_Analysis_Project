@@ -4,7 +4,6 @@ import logging
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
-
 from config import load_config
 from sentiment_engine import run_nextcloud_alert, update_all_sentiment
 from earnings_engine import run_earnings_alert
@@ -24,10 +23,7 @@ from regime_engine import calculate_market_regime
 from ai_prediction_engine import train_global_ml_model, update_daily_ml_predictions, run_historical_backfill
 from risk_engine import update_all_tail_risks
 from freetrade_engine import sync_freetrade_universe
-
-from universe_fundamentals_engine import run_universe_fundamentals_sync
 from universe_deep_sync_engine import run_universe_deep_sync
-
 # Import new Macro Engines
 from macro_calendar_engine import update_macro_calendar
 from macro_data_engine import update_macro_indicators
@@ -223,19 +219,6 @@ def run_fundamentals_profiler():
     except Exception as e:
         logger.error(f"Fundamentals Profiler Failed: {e}")
         log_sched_notification("Error", f"Fundamentals Profiler failed: {e}")
-
-def run_universe_fundamentals_sync_job():
-    """Fetches fundamental financial data for all FTSE100/S&P500 index stocks."""
-    log_sched_notification("Scheduler", "Started Universe Fundamentals Sync...")
-    try:
-        config = load_config()
-        batch_size = config.get("SCHEDULING", {}).get("UNIVERSE_FUNDAMENTALS", {}).get("BATCH_SIZE", 50)
-        run_universe_fundamentals_sync(batch_size=int(batch_size))
-        log_sched_notification("Success", "Universe Fundamentals Sync completed successfully.")
-    except Exception as e:
-        logger.error(f"Universe Fundamentals Sync Failed: {e}")
-        log_sched_notification("Error", f"Universe Fundamentals Sync failed: {e}")
-
 
 def run_universe_deep_sync_job():
     """

@@ -25,32 +25,33 @@ class CrashEngine:
             self.crash_cfg.get("SESSION_CRASH_THRESHOLD", self.crash_cfg.get("FLASH_CRASH_THRESHOLD", 3.0))
         )
 
+        # Injected by the orchestrator once per run to avoid a per-crash SPY HTTP call
+        self.spy_change_pct: float | None = None
+
     def _fetch_market_context(self) -> float:
-        """Fetches S&P 500 intraday performance to gauge macroeconomic conditions."""
+        """Fallback: fetches S&P 500 intraday performance using 5m bars, consistent with the system time-base."""
         try:
-            # Expand to 5d to guarantee enough rows during long weekends or market holidays
-            spy = yf.Ticker("SPY").history(period="5d")
+            spy = yf.Ticker("SPY").history(period="1d", interval="5m")
             if len(spy) >= 2:
-                # Strictly reference the most recent two sessions
-                prev_close = float(spy['Close'].iloc[-2])
+                session_open = float(spy['Close'].iloc[0])
                 curr_price = float(spy['Close'].iloc[-1])
-                
-                if prev_close > 0:
-                    return ((curr_price - prev_close) / prev_close) * 100.0
+                if session_open > 0:
+                    return ((curr_price - session_open) / session_open) * 100.0
         except Exception as e:
             logger.warning(f"Failed to fetch macroeconomic context (SPY): {e}")
         return 0.0
 
-    def _generate_context_report(self, ticker: str, drop_pct: float, df_combined: pd.DataFrame, asset_meta: dict) -> str:
+    def _generate_context_report(self, ticker: str, drop_pct: float, df_combined: pd.DataFrame, asset_meta: dict, df_hist: pd.DataFrame | None = None) -> str:
         """
-        Fetches live news, volume anomalies, and macro context to construct a 
+        Fetches live news, volume anomalies, and macro context to construct a
         5-10 sentence analytical conclusion of why the crash is happening.
         """
         report = []
         company_name = asset_meta.get('company_name', ticker)
-        
+
         # 1. Macro Context (Systematic vs Idiosyncratic)
-        spy_drop = self._fetch_market_context()
+        # Use pre-fetched SPY value injected by the orchestrator; fall back to live fetch only if unavailable
+        spy_drop = self.spy_change_pct if self.spy_change_pct is not None else self._fetch_market_context()
         if spy_drop <= -1.5:
             report.append(f"The broader market is currently experiencing a heavy sell-off (S&P 500: {spy_drop:.2f}%). The weakness in {company_name} is likely being amplified by macro-economic panic rather than purely isolated company issues.")
         elif spy_drop >= 0:
@@ -59,12 +60,16 @@ class CrashEngine:
             report.append(f"The broader market is slightly weak (S&P 500: {spy_drop:.2f}%), but {company_name} is significantly underperforming the baseline.")
 
         # 2. Volume Anomaly Check
-        # FIX: Pre-initialize to prevent NameError if yf.Ticker initialization fails.
-        live_ticker = None 
-        
+        # Use df_hist (already loaded by orchestrator) to avoid a per-crash HTTP call.
+        # Fall back to a live yfinance fetch only when df_hist is unavailable.
+        live_ticker = None
+
         try:
-            live_ticker = yf.Ticker(ticker)
-            live_data = live_ticker.history(period="1mo")
+            vol_data = df_hist if df_hist is not None and not df_hist.empty else None
+            if vol_data is None:
+                live_ticker = yf.Ticker(ticker)
+                vol_data = live_ticker.history(period="1mo")
+            live_data = vol_data
             if not live_data.empty and 'Volume' in live_data.columns:
                 current_vol = live_data['Volume'].iloc[-1]
                 valid_vol = live_data['Volume'].dropna()
@@ -132,7 +137,7 @@ class CrashEngine:
         # Final string construction
         return "\n".join(report)
 
-    def evaluate(self, ticker: str, current_price: float, df_combined: pd.DataFrame, asset_meta: dict) -> dict | None:
+    def evaluate(self, ticker: str, current_price: float, df_combined: pd.DataFrame, asset_meta: dict, df_hist: pd.DataFrame | None = None) -> dict | None:
         """
         Evaluates mathematical crash signatures, now prioritizing Session Crashes.
         Returns an alert dictionary if triggered, else None.
@@ -178,7 +183,7 @@ class CrashEngine:
             if is_session_crash:
                 reason.append(f"SESSION CRASH / GAP DOWN: Dropped {abs(intraday_drop_pct):.2f}% today.")
                 # Run the heavy Context Analyzer only when a crash actually occurs
-                context_report = self._generate_context_report(ticker, intraday_drop_pct, df_combined, asset_meta)
+                context_report = self._generate_context_report(ticker, intraday_drop_pct, df_combined, asset_meta, df_hist)
             
             if is_dropping_fast and not is_session_crash:
                 reason.append(f"Multi-Day Bleed: Dropped {abs(price_drop_pct):.2f}% in {self.drop_days}d")
