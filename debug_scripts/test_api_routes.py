@@ -30,7 +30,7 @@ sys.path.insert(0, ".")
 parser = argparse.ArgumentParser()
 parser.add_argument("--base-url", default="http://localhost:8090", help="Base URL of running server")
 args = parser.parse_args()
-BASE = args.base_url.rstrip("/")
+BASE = args.base_url.rstrip("/") + "/api"
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -184,7 +184,7 @@ INVALID_TICKERS = [
     ("A" * 21,         "too long (21 chars)"),
     ("aapl",           "lowercase letters"),
     ("AAPL!",          "illegal character !"),
-    ("",               "empty string"),
+    ("AAPL SPACE",     "space in ticker"),
 ]
 
 for ticker, reason in INVALID_TICKERS:
