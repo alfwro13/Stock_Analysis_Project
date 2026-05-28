@@ -89,6 +89,110 @@ class PulseRequest(BaseModel):
 class IPv6TestRequest(BaseModel):
     ipv6_address: str
 
+class GhostfolioAccountsConfig(BaseModel):
+    discovered: Optional[List[str]] = None
+    active: Optional[List[str]] = None
+
+class UIPreferencesConfig(BaseModel):
+    LIVE_PORTFOLIO: Optional[bool] = None
+    LIVE_WATCHLIST: Optional[bool] = None
+    LIVE_DETAILS: Optional[bool] = None
+    REFRESH_RATE: Optional[int] = None
+    FREETRADE_ONLY_MODE: Optional[bool] = None
+
+class PositionSizingConfig(BaseModel):
+    ACCOUNT_VALUE: Optional[float] = None
+    RISK_PCT: Optional[float] = None
+    STOP_MULTIPLE: Optional[float] = None
+
+class ScheduleItemConfig(BaseModel):
+    ENABLED: Optional[bool] = None
+    DAYS: Optional[List[str]] = None
+    TIME: Optional[str] = None
+    INDICES: Optional[List[str]] = None
+    BATCH_SIZE: Optional[int] = None
+    FREQUENCY: Optional[str] = None
+    INTERVAL_HOURS: Optional[int] = None
+    START_TIME: Optional[str] = None
+    END_TIME: Optional[str] = None
+    INTERVAL_MINUTES: Optional[int] = None
+    FLASH_CRASH_THRESHOLD: Optional[float] = None
+    INITIALIZED: Optional[bool] = None
+    CALENDAR_TIME: Optional[str] = None
+    DATA_DAY: Optional[str] = None
+    DATA_TIME: Optional[str] = None
+    DAY_OF_WEEK: Optional[str] = None
+
+class SchedulingConfig(BaseModel):
+    SYNC_INDICES: Optional[ScheduleItemConfig] = None
+    PROFILER_ENGINE: Optional[ScheduleItemConfig] = None
+    UNIVERSE_DEEP_SYNC: Optional[ScheduleItemConfig] = None
+    GHOSTFOLIO_SYNC: Optional[ScheduleItemConfig] = None
+    QUANT_ANALYSIS: Optional[ScheduleItemConfig] = None
+    SENTIMENT_ENGINE: Optional[ScheduleItemConfig] = None
+    CRASH_ALERTS: Optional[ScheduleItemConfig] = None
+    MOONSHOT_ALERTS: Optional[ScheduleItemConfig] = None
+    MAINTENANCE: Optional[ScheduleItemConfig] = None
+    FREETRADE_SYNC: Optional[ScheduleItemConfig] = None
+    MACRO_ENGINE: Optional[ScheduleItemConfig] = None
+    ML_BACKFILL: Optional[ScheduleItemConfig] = None
+    ML_TRAINING: Optional[ScheduleItemConfig] = None
+    ML_INFERENCE: Optional[ScheduleItemConfig] = None
+
+class ReportsDefaultsConfig(BaseModel):
+    MR_MAX_RSI: Optional[int] = None
+    DIV_MIN_YIELD: Optional[float] = None
+    DIV_MIN_SCORE: Optional[int] = None
+
+class NotificationItemConfig(BaseModel):
+    ENABLED: Optional[bool] = None
+    TIME: Optional[str] = None
+    FREQUENCY: Optional[str] = None
+    DAYS_AHEAD: Optional[int] = None
+    ALERT_TYPE: Optional[str] = None
+    ENABLED_PORTFOLIO: Optional[bool] = None
+    ENABLED_WATCHLIST: Optional[bool] = None
+    MIN_VALUE: Optional[float] = None
+    DAYS_BACK: Optional[int] = None
+    DROP_PERCENT: Optional[float] = None
+    DROP_DAYS: Optional[int] = None
+    SMA_LENGTH: Optional[int] = None
+    SMA_GAP_PERCENT: Optional[float] = None
+    SPIKE_PERCENT: Optional[float] = None
+    SPIKE_DAYS: Optional[int] = None
+
+class NotificationsConfig(BaseModel):
+    MARKET_SENTIMENT: Optional[NotificationItemConfig] = None
+    EARNINGS_ALERTS: Optional[NotificationItemConfig] = None
+    INSIDER_TRADING: Optional[NotificationItemConfig] = None
+    CRASH_ALERTS: Optional[NotificationItemConfig] = None
+    MOONSHOT_ALERTS: Optional[NotificationItemConfig] = None
+
+class FreetradeMappingsConfig(BaseModel):
+    US_MICS: Optional[List[str]] = None
+    EXCHANGES: Optional[dict] = None
+
+class SettingsConfig(BaseModel):
+    SERVER_URL: Optional[str] = None
+    GHOSTFOLIO_URL: Optional[str] = None
+    API_TOKEN: Optional[str] = None
+    FRED_API_KEY: Optional[str] = None
+    YAHOO_IPV6_ADDRESS: Optional[str] = None
+    PORT: Optional[int] = None
+    BASE_CURRENCY: Optional[str] = None
+    IGNORED_TICKERS: Optional[List[str]] = None
+    GHOSTFOLIO_ACCOUNTS: Optional[GhostfolioAccountsConfig] = None
+    NEXTCLOUD_URL: Optional[str] = None
+    BOT_USERNAME: Optional[str] = None
+    APP_PASSWORD: Optional[str] = None
+    CONVERSATION_TOKEN: Optional[str] = None
+    UI_PREFERENCES: Optional[UIPreferencesConfig] = None
+    POSITION_SIZING: Optional[PositionSizingConfig] = None
+    FREETRADE_MAPPINGS: Optional[FreetradeMappingsConfig] = None
+    SCHEDULING: Optional[SchedulingConfig] = None
+    REPORTS_DEFAULTS: Optional[ReportsDefaultsConfig] = None
+    NOTIFICATIONS: Optional[NotificationsConfig] = None
+
 
 def log_notification(message_type: str, message_text: str) -> None:
     try:
@@ -727,11 +831,10 @@ async def restart_system(background_tasks: BackgroundTasks):
     return JSONResponse(content={"status": "success", "message": "Restart signal sent. The dashboard will be back online in ~5-10 seconds."})
 
 @api_router.post("/settings")
-async def save_settings(request: Request):
+async def save_settings(config: SettingsConfig):
     try:
-        new_config = await request.json()
         with open(SECRETS_PATH, 'w') as f:
-            json.dump(new_config, f, indent=4)
+            json.dump(config.model_dump(exclude_none=True), f, indent=4)
         reload_scheduler()
         return JSONResponse(content={"status": "success", "message": "Settings saved successfully."})
     except Exception as e:
