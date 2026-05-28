@@ -674,8 +674,8 @@ async def get_system_metrics():
         # 4. State & Ledger Health
         macro_ind_cnt = get_cnt("SELECT COUNT(*) FROM macro_indicators")
         macro_cal_cnt = get_cnt("SELECT COUNT(*) FROM macro_calendar")
-        pending_notes = get_cnt("SELECT COUNT(*) FROM system_notifications WHERE status = 'pending'")
-        sent_notes = get_cnt("SELECT COUNT(*) FROM system_notifications WHERE status = 'sent'")
+        pending_notes = get_cnt("SELECT COUNT(*) FROM system_notifications WHERE is_read = 0")
+        sent_notes = get_cnt("SELECT COUNT(*) FROM system_notifications WHERE is_read = 1")
         
         return JSONResponse(content={
             "status": "success",
