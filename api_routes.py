@@ -25,6 +25,7 @@ from config import (
     SECRETS_PATH, 
     DATA_DIR, 
     BASE_DIR,
+    DB_PATH,
     PORTFOLIO_PATH, 
     WATCHLIST_PATH, 
     FUNDAMENTALS_DIR, 
