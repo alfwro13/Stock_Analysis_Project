@@ -16,7 +16,7 @@ from datetime import datetime
 from typing import List, Optional
 from pathlib import Path
 
-from fastapi import APIRouter, Request, BackgroundTasks, HTTPException, Query, Path
+from fastapi import APIRouter, Request, BackgroundTasks, HTTPException, Query, Path as PathParam
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -898,7 +898,7 @@ async def purge_all_notifications():
             conn.close()
 
 @api_router.get("/ai-prompt/{ticker}")
-async def get_ai_prompt(ticker: str = Path(..., pattern=r"^[A-Z0-9.\-\^=]{1,20}$"), mode: str = "Quantamental Deep-Dive"):
+async def get_ai_prompt(ticker: str = PathParam(..., pattern=r"^[A-Z0-9.\-\^=]{1,20}$"), mode: str = "Quantamental Deep-Dive"):
     try:
         ticker = normalize_ticker(ticker)
         engine = AIPromptEngine()
@@ -948,7 +948,7 @@ async def api_data_refresh_single(req: TickerRequest):
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 @api_router.get("/options/chain/{ticker}")
-async def api_options_chain(ticker: str = Path(..., pattern=r"^[A-Z0-9.\-\^=]{1,20}$")):
+async def api_options_chain(ticker: str = PathParam(..., pattern=r"^[A-Z0-9.\-\^=]{1,20}$")):
     data = fetch_options_chain(ticker)
     if "error" in data:
         return JSONResponse(status_code=400, content=data)
