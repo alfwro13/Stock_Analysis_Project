@@ -27,13 +27,11 @@ def _update_ipv6_status(failing: bool, error: str = "", fail_time: float = 0.0) 
         GLOBAL_IPV6_STATUS["last_error"] = error
         GLOBAL_IPV6_STATUS["last_fail_time"] = fail_time
 
-def _trigger_fallback_alert(ipv6_address: str, action_context: str, error_summary: str, detailed_trace: str) -> None:
+def _trigger_fallback_alert(ipv6_address: str, action_context: str, error_summary: str, detailed_trace: str, config: dict) -> None:
     """
     Handles logging the network fault to SQLite and dispatching an alert to Nextcloud.
     Separates the concise summary for chat from the heavy traceback for the database.
     """
-    config = load_config()
-    
     # 1. Database Persistence (Heavy Traceback Logging)
     try:
         conn = get_connection()
@@ -68,7 +66,7 @@ def _trigger_fallback_alert(ipv6_address: str, action_context: str, error_summar
         logger.error(f"Failed to dispatch Nextcloud alert for network fault: {nc_e}")
 
 
-def create_failover_session(ipv6_address: str, action_context: str) -> cffi_requests.Session:
+def create_failover_session(ipv6_address: str, action_context: str, config: dict) -> cffi_requests.Session:
     """
     Builds a true curl_cffi Session to satisfy yfinance >= 1.x requirements,
     while monkey-patching the request method to intercept binding faults AND HTTP 429s.
@@ -140,7 +138,7 @@ def create_failover_session(ipv6_address: str, action_context: str) -> cffi_requ
                 )
                 
                 logger.error(f"Critical IPv6 Fault during '{action_context}': {error_summary}\n{detailed_trace}")
-                _trigger_fallback_alert(ipv6_address, action_context, error_summary, detailed_trace)
+                _trigger_fallback_alert(ipv6_address, action_context, error_summary, detailed_trace, config)
                 
                 # Update Global Status for UI Dashboard
                 _update_ipv6_status(failing=True, error=error_summary, fail_time=time.time())
@@ -185,7 +183,7 @@ def yahoo_connection_boundary(action_context: str):
         return
 
     # Initialize the self-healing patched session
-    session = create_failover_session(ipv6_addr, action_context)
+    session = create_failover_session(ipv6_addr, action_context, config)
     try:
         yield session
     finally:
