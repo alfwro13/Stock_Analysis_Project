@@ -9,6 +9,7 @@ import json
 import time
 import signal
 import subprocess
+import joblib
 import pandas as pd
 import logging
 import requests
@@ -577,8 +578,6 @@ async def get_network_status():
 @api_router.get("/system/metrics")
 async def get_system_metrics():
     """Returns a comprehensive diagnostic payload of system hardware, DB, and ML states."""
-    import shutil
-    import joblib
     conn = None
     try:
         conn = get_connection()
