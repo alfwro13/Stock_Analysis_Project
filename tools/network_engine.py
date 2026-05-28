@@ -145,17 +145,19 @@ def create_failover_session(ipv6_address: str, action_context: str, config: dict
                 # Update Global Status for UI Dashboard
                 _update_ipv6_status(failing=True, error=error_summary, fail_time=time.time())
                 
-                # Graceful Fallback: Drop the interface binding natively in libcurl
+                # Graceful Fallback: Build a fresh unbound session — mutating
+                # session.interface on a live curl_cffi session is not documented
+                # behaviour and may be silently ignored by libcurl at the socket layer.
                 logger.warning(f"Exhausted IPv6 recovery options. Dropping custom interface {ipv6_address} and reverting to OS default routing (IPv4)...")
-                session.interface = None
                 session.fallback_triggered = True
-                
-                # Rescue the pipeline by executing the request over standard routing
+                fallback_session = cffi_requests.Session(impersonate="chrome")
                 try:
-                    return original_request(method, url, **kwargs)
+                    return fallback_session.request(method, url, **kwargs)
                 except Exception as fallback_exc:
                     logger.error(f"[TOTAL FAILURE] IPv4 fallback also failed for '{action_context}': {fallback_exc}")
                     raise fallback_exc
+                finally:
+                    fallback_session.close()
 
     # Monkey-patch the request method to our self-healing wrapper
     session.request = failover_request
