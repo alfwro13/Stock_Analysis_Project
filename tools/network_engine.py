@@ -143,7 +143,11 @@ def create_failover_session(ipv6_address: str, action_context: str) -> cffi_requ
                 session.fallback_triggered = True
                 
                 # Rescue the pipeline by executing the request over standard routing
-                return original_request(method, url, **kwargs)
+                try:
+                    return original_request(method, url, **kwargs)
+                except Exception as fallback_exc:
+                    logger.error(f"[TOTAL FAILURE] IPv4 fallback also failed for '{action_context}': {fallback_exc}")
+                    raise fallback_exc
 
     # Monkey-patch the request method to our self-healing wrapper
     session.request = failover_request
