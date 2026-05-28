@@ -1,15 +1,19 @@
 # crash_engine.py
+from __future__ import annotations
+
+from datetime import datetime, timedelta, timezone
+from typing import Any
+import logging
+
 import pandas as pd
 import yfinance as yf
 import ta
-import logging
-from datetime import datetime, timedelta
 
 # Initialize module-level logger for production observability
 logger = logging.getLogger(__name__)
 
 class CrashEngine:
-    def __init__(self, config: dict):
+    def __init__(self, config: dict[str, Any]) -> None:
         """Initializes the Crash Engine with dynamically loaded configurations."""
         self.config = config
         self.crash_cfg = self.config.get("NOTIFICATIONS", {}).get("CRASH_ALERTS", {})
@@ -41,7 +45,14 @@ class CrashEngine:
             logger.warning(f"Failed to fetch macroeconomic context (SPY): {e}")
         return 0.0
 
-    def _generate_context_report(self, ticker: str, drop_pct: float, df_combined: pd.DataFrame, asset_meta: dict, df_hist: pd.DataFrame | None = None) -> str:
+    def _generate_context_report(
+        self,
+        ticker: str,
+        drop_pct: float,
+        df_combined: pd.DataFrame,
+        asset_meta: dict[str, Any],
+        df_hist: pd.DataFrame | None = None,
+    ) -> str:
         """
         Fetches live news, volume anomalies, and macro context to construct a
         5-10 sentence analytical conclusion of why the crash is happening.
@@ -105,32 +116,43 @@ class CrashEngine:
             if live_ticker is not None:
                 news = live_ticker.news
                 if news:
-                    report.append("\n**Potential Catalysts / Recent Headlines:**")
-                    # Grab the top 3 most recent news articles
-                    for item in news[:3]:
-                        # Handle new yfinance nested 'content' structure
+                    # Parse every item into (pub_time, publisher, headline), drop unparseable ones,
+                    # then sort newest-first and slice — fixes the bug where news[:3] could be all
+                    # stale items while breaking news sits at position 4+.
+                    parsed: list[tuple[datetime, str, str]] = []
+                    for item in news:
                         content = item.get('content', item)
                         headline = content.get('title', '')
-                        
                         publisher = content.get('publisher', '')
                         if not publisher and isinstance(content.get('provider'), dict):
                             publisher = content['provider'].get('displayName', '')
-                            
-                        # Extract publish time flexibly
-                        pub_time_raw = content.get('pubDate') or content.get('providerPublishTime') or item.get('providerPublishTime', 0)
-                        
+                        pub_time_raw = (
+                            content.get('pubDate')
+                            or content.get('providerPublishTime')
+                            or item.get('providerPublishTime', 0)
+                        )
                         try:
-                            # Handle both string (ISO) and float (UNIX) timestamp formats
                             if isinstance(pub_time_raw, str):
-                                pub_time = pd.to_datetime(pub_time_raw).tz_localize(None)
+                                # ISO strings from yfinance are UTC; parse with utc=True then strip tz
+                                pub_time = pd.to_datetime(pub_time_raw, utc=True).tz_convert(None)
                             else:
-                                pub_time = datetime.fromtimestamp(float(pub_time_raw))
-                                
-                            # Only include relevant news from the last 48 hours
-                            if datetime.now() - pub_time < timedelta(days=2):
-                                report.append(f"- *{publisher}:* {headline}")
+                                # UNIX timestamps are always UTC seconds since epoch
+                                pub_time = datetime.fromtimestamp(float(pub_time_raw), tz=timezone.utc).replace(tzinfo=None)
+                            parsed.append((pub_time, publisher, headline))
                         except Exception as dt_e:
                             logger.debug(f"Date parsing failed for news item on {ticker}: {dt_e}")
+
+                    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=2)
+                    recent = sorted(
+                        (entry for entry in parsed if entry[0] >= cutoff),
+                        key=lambda x: x[0],
+                        reverse=True,
+                    )[:3]
+
+                    if recent:
+                        report.append("\n**Potential Catalysts / Recent Headlines:**")
+                        for pub_time, publisher, headline in recent:
+                            report.append(f"- *{publisher}:* {headline}")
             else:
                 report.append("\n**Catalysts:** Could not initialize ticker object to fetch live news.")
         except Exception as e:
@@ -140,7 +162,15 @@ class CrashEngine:
         # Final string construction
         return "\n".join(report)
 
-    def evaluate(self, ticker: str, current_price: float, df_combined: pd.DataFrame, asset_meta: dict, df_hist: pd.DataFrame | None = None) -> dict | None:
+    def evaluate(
+        self,
+        ticker: str,
+        current_price: float,
+        df_combined: pd.DataFrame,
+        asset_meta: dict[str, Any],
+        df_hist: pd.DataFrame | None = None,
+        session_open: float | None = None,
+    ) -> dict[str, Any] | None:
         """
         Evaluates mathematical crash signatures, now prioritizing Session Crashes.
         Returns an alert dictionary if triggered, else None.
@@ -156,8 +186,28 @@ class CrashEngine:
         # The prior session's close is the last settled row.
         prev_close = df_settled['Close'].iloc[-1]
 
+        # Beta-normalise all thresholds: high-beta stocks require a larger move to qualify;
+        # low-beta stocks trip on smaller moves. Clamp to [0.5, 2.0] to cap outlier sensitivity.
+        raw_beta = asset_meta.get('beta')
+        beta = max(0.5, min(2.0, float(raw_beta))) if raw_beta is not None else 1.0
+        adj_session_threshold = self.session_crash_threshold * beta
+        adj_drop_percent      = self.drop_percent            * beta
+        adj_sma_gap_percent   = self.sma_gap_percent         * beta
+
         intraday_drop_pct = ((current_price - prev_close) / prev_close) * 100.0
-        is_session_crash = intraday_drop_pct <= -self.session_crash_threshold
+
+        # When the session open is available, distinguish two phenomena:
+        #   Gap & Crash    — opened down AND is still falling below the open → real crash
+        #   Gap & Recovery — opened down BUT price has since climbed above the open → bullish
+        # Without session_open we fall back to the raw prev_close comparison.
+        since_open_pct: float | None = None
+        gap_pct: float | None = None
+        if session_open is not None and session_open > 0:
+            gap_pct = ((session_open - prev_close) / prev_close) * 100.0
+            since_open_pct = ((current_price - session_open) / session_open) * 100.0
+            is_session_crash = intraday_drop_pct <= -adj_session_threshold and since_open_pct <= 0
+        else:
+            is_session_crash = intraday_drop_pct <= -adj_session_threshold
 
         # --- 2. OLD LOGIC: Prolonged Trend Bleed ---
         lookback_idx = -(self.drop_days + 1)
@@ -171,8 +221,8 @@ class CrashEngine:
         latest_sma = sma_series.iloc[-1]
         below_sma_pct = ((latest_sma - current_price) / latest_sma) * 100.0 if latest_sma else 0.0
 
-        is_dropping_fast = price_drop_pct <= -self.drop_percent
-        is_breaking_sma = below_sma_pct >= self.sma_gap_percent
+        is_dropping_fast = price_drop_pct <= -adj_drop_percent
+        is_breaking_sma = below_sma_pct >= adj_sma_gap_percent
         
         # --- 3. Quantamental ATR Floor ---
         atr_stop = asset_meta.get('atr_stop_loss')
@@ -193,7 +243,14 @@ class CrashEngine:
             
             # Prioritize the Session Crash reporting
             if is_session_crash:
-                reason.append(f"SESSION CRASH / GAP DOWN: Dropped {abs(intraday_drop_pct):.2f}% today.")
+                if gap_pct is not None and since_open_pct is not None:
+                    reason.append(
+                        f"SESSION CRASH: Gapped {abs(gap_pct):.2f}% at open and "
+                        f"continuing lower ({abs(since_open_pct):.2f}% since open, "
+                        f"{abs(intraday_drop_pct):.2f}% vs. prev close)."
+                    )
+                else:
+                    reason.append(f"SESSION CRASH / GAP DOWN: Dropped {abs(intraday_drop_pct):.2f}% today.")
                 # Run the heavy Context Analyzer only when a crash actually occurs
                 context_report = self._generate_context_report(ticker, intraday_drop_pct, df_combined, asset_meta, df_hist)
             

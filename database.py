@@ -138,9 +138,15 @@ def init_db() -> None:
                 timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 message_type TEXT,
                 message_text TEXT,
-                is_read BOOLEAN DEFAULT 0
+                is_read BOOLEAN DEFAULT 0,
+                status TEXT NOT NULL DEFAULT 'sent'
             )
         ''')
+        # Migration: add status column to existing databases that predate this schema change
+        try:
+            cursor.execute("ALTER TABLE system_notifications ADD COLUMN status TEXT NOT NULL DEFAULT 'sent'")
+        except Exception:
+            pass  # Column already exists
 
         # New table for the Live Market Pulse Database Cache
         cursor.execute('''

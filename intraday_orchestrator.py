@@ -85,7 +85,7 @@ class IntradayOrchestrator:
         placeholders = ','.join('?' for _ in tickers)
         
         query = f"""
-            SELECT s.ticker, s.company_name, s.currency, s.atr_stop_loss, s.last_updated,
+            SELECT s.ticker, s.company_name, s.currency, s.atr_stop_loss, s.last_updated, s.beta,
                    q.ml_confidence_score, q.var_95, q.cvar_95, q.sentiment_score
             FROM stock_signals s
             LEFT JOIN quant_signals q ON s.ticker = q.ticker 
@@ -101,6 +101,7 @@ class IntradayOrchestrator:
                 'currency': row['currency'],
                 'atr_stop_loss': row['atr_stop_loss'],
                 'atr_last_updated': row['last_updated'],
+                'beta': row['beta'],
                 'ml_confidence_score': row['ml_confidence_score'],
                 'var_95': row['var_95'],
                 'cvar_95': row['cvar_95'],
@@ -109,16 +110,46 @@ class IntradayOrchestrator:
         conn.close()
         return metadata
 
-    def log_notification(self, msg_type, msg_text):
-        """Logs the alert to the local system notification center to prevent duplicate spam."""
+    def log_notification_pending(self, msg_type: str, msg_text: str) -> int:
+        """Phase 1 of 2-phase commit: writes a 'pending' row BEFORE dispatching.
+        Returns the row id so the caller can mark it 'sent' after successful dispatch."""
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO system_notifications (message_type, message_text) VALUES (?, ?)", 
+            "INSERT INTO system_notifications (message_type, message_text, status) VALUES (?, ?, 'pending')",
             (msg_type, msg_text)
+        )
+        notification_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        return notification_id
+
+    def mark_notification_sent(self, notification_id: int) -> None:
+        """Phase 2 of 2-phase commit: promotes a 'pending' row to 'sent' after dispatch succeeds."""
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE system_notifications SET status = 'sent' WHERE id = ?",
+            (notification_id,)
         )
         conn.commit()
         conn.close()
+
+    def _retire_stale_pending_notifications(self) -> None:
+        """Deletes 'pending' rows older than 10 minutes at the start of each run.
+        These are rows written before a crash that never reached mark_notification_sent().
+        Deleting them allows the alert to re-fire on the next scan if still valid."""
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "DELETE FROM system_notifications WHERE status = 'pending' "
+            "AND timestamp < datetime('now', '-10 minutes')"
+        )
+        deleted = cursor.rowcount
+        conn.commit()
+        conn.close()
+        if deleted:
+            print(f"[ORCHESTRATOR] Retired {deleted} stale pending notification(s) from a previous crashed run.")
 
     def is_alert_suppressed(self, msg_type, ticker, current_price=None):
         """
@@ -129,12 +160,14 @@ class IntradayOrchestrator:
         conn = get_connection()
         cursor = conn.cursor()
         
-        # Use native SQLite date('now') to avoid Python/UTC timezone offset bugs
+        # Both 'pending' and 'sent' count as already dispatched — a pending row means
+        # send was in-flight when a previous run crashed; we still suppress to avoid duplicates.
         cursor.execute('''
-            SELECT message_text, timestamp FROM system_notifications 
-            WHERE message_type = ? 
-            AND message_text LIKE ? 
+            SELECT message_text, timestamp FROM system_notifications
+            WHERE message_type = ?
+            AND message_text LIKE ?
             AND date(timestamp) = date('now')
+            AND status IN ('pending', 'sent')
             ORDER BY timestamp DESC LIMIT 1
         ''', (msg_type, f"%{ticker}%"))
         
@@ -195,6 +228,7 @@ class IntradayOrchestrator:
         return False
 
     def run(self):
+        self._retire_stale_pending_notifications()
         print(f"\n--- [INTRADAY ORCHESTRATOR] Scan Initiated @ {datetime.now().strftime('%H:%M:%S')} ---")
         
         # Check active bounds
@@ -289,8 +323,9 @@ class IntradayOrchestrator:
                             f"Expect immediate severe valuation compression across high-multiple and tech equities. "
                             f"Risk-Off environment detected."
                         )
+                        nid = self.log_notification_pending("Macro", f"Systemic Yield Surge detected on {m_ticker} (+{m_spike:.2f}%)")
                         send_text_message(msg, self.config)
-                        self.log_notification("Macro", f"Systemic Yield Surge detected on {m_ticker} (+{m_spike:.2f}%)")
+                        self.mark_notification_sent(nid)
             except Exception as e:
                 print(f"[ORCHESTRATOR] Macro eval failed for {m_ticker}: {e}")
 
@@ -359,6 +394,7 @@ class IntradayOrchestrator:
                 df_intraday.to_parquet(INTRADAY_DIR / f"{ticker}_intraday.parquet", engine='pyarrow')
                 
                 current_price = float(df_intraday['Close'].iloc[-1])
+                session_open = float(df_intraday['Open'].iloc[0]) if 'Open' in df_intraday.columns else None
                 
                 # Load Historical Data for stitching and math
                 hist_path = HISTORICAL_DIR / f"{ticker}.parquet"
@@ -398,14 +434,15 @@ class IntradayOrchestrator:
                 # --- EVALUATE CRASH ENGINE ---
                 if crash_enabled:
                     if not self.is_alert_suppressed("Crash", ticker, current_price):
-                        crash_alert = self.crash_engine.evaluate(ticker, current_price, df_combined, asset_meta, df_hist)
+                        crash_alert = self.crash_engine.evaluate(ticker, current_price, df_combined, asset_meta, df_hist, session_open)
                         if crash_alert:
                             crash_alerts_to_send.append((ticker, crash_alert, currency, asset_meta))
                 
                 # --- EVALUATE MOONSHOT ENGINE ---
                 if moonshot_enabled:
                     if not self.is_alert_suppressed("Moonshot", ticker, current_price):
-                        moonshot_alert = self.moonshot_engine.evaluate(ticker, current_price, df_combined, asset_meta, df_hist)
+                        current_volume = float(df_intraday['Volume'].sum()) if 'Volume' in df_intraday.columns else None
+                        moonshot_alert = self.moonshot_engine.evaluate(ticker, current_price, df_combined, asset_meta, df_hist, current_volume)
                         if moonshot_alert:
                             moonshot_alerts_to_send.append((ticker, moonshot_alert, currency, asset_meta))
 
@@ -431,8 +468,9 @@ class IntradayOrchestrator:
                 f"• NLP Sentiment: {sent}\n\n"
                 f"🔗 [View Breakdown]({url})"
             )
+            nid = self.log_notification_pending("Crash", f"**Price:** {formatted_price} | Intraday Alert triggered for {ticker}. Reason: {alert['reason']}")
             send_text_message(msg, self.config)
-            self.log_notification("Crash", f"**Price:** {formatted_price} | Intraday Alert triggered for {ticker}. Reason: {alert['reason']}")
+            self.mark_notification_sent(nid)
             time.sleep(1) # Prevent Nextcloud rate-limiting
 
         for ticker, alert, currency, meta in moonshot_alerts_to_send:
@@ -458,8 +496,9 @@ class IntradayOrchestrator:
                 f"• NLP Sentiment: {sent}\n\n"
                 f"🔗 [View Breakdown]({url})"
             )
+            nid = self.log_notification_pending("Moonshot", f"**Price:** {formatted_price} | Moonshot triggered for {ticker}. Reason: {alert['reason']}")
             send_text_message(msg, self.config)
-            self.log_notification("Moonshot", f"**Price:** {formatted_price} | Moonshot triggered for {ticker}. Reason: {alert['reason']}")
+            self.mark_notification_sent(nid)
             time.sleep(1) # Prevent Nextcloud rate-limiting
 
         print(f"[ORCHESTRATOR] Scan complete. Dispatched {len(crash_alerts_to_send)} crashes and {len(moonshot_alerts_to_send)} moonshots.")
