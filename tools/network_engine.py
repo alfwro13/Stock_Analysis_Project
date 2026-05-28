@@ -104,9 +104,10 @@ def create_failover_session(ipv6_address: str, action_context: str) -> cffi_requ
                 
                 # --- 1. STRICT IPv6 LAZY-LOAD RESCUE ---
                 if "Session is closed" in error_str:
-                    logger.warning(f"Detected lazy-load on closed session during '{action_context}'. Rescuing with a temporary IPv6 session ({ipv6_address}) for URL: {url}")
-                    with cffi_requests.Session(impersonate="chrome", interface=ipv6_address) as rescue_session:
-                        return rescue_session.request(method, url, **kwargs)
+                    logger.warning(f"Closed session detected. Rebuilding IPv6 session for '{action_context}' ({ipv6_address})...")
+                    session = cffi_requests.Session(impersonate="chrome", interface=ipv6_address)
+                    original_request = session.request
+                    continue
                 
                 # If we already fell back to standard routing and it STILL failed, we are completely offline or hard-banned.
                 if getattr(session, 'fallback_triggered', False):
