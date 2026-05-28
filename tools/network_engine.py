@@ -85,7 +85,8 @@ def create_failover_session(ipv6_address: str, action_context: str) -> cffi_requ
                 # Intercept HTTP 429 (Too Many Requests) BEFORE yfinance sees it
                 if response.status_code == 429:
                     if attempt < max_retries:
-                        sleep_time = (base_delay ** attempt) + random.uniform(0.5, 1.5)
+                        # 429-specific backoff: 5s, 10s, 20s — longer than transient errors
+                        sleep_time = (5 * (2 ** attempt)) + random.uniform(0.5, 1.5)
                         logger.warning(f"[HTTP 429] Rate limited by Yahoo on IPv6 '{ipv6_address}'. Backing off for {sleep_time:.2f}s (Attempt {attempt + 1}/{max_retries}).")
                         time.sleep(sleep_time)
                         continue
