@@ -409,8 +409,8 @@ async def import_server_csv(request: ImportRequest, background_tasks: Background
         if conn:
             conn.close()
 
-def execute_restart():
-    time.sleep(2)
+async def execute_restart():
+    await asyncio.sleep(2)
     os.kill(os.getpid(), signal.SIGTERM)
 
 @api_router.post("/update")
