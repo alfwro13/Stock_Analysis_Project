@@ -73,6 +73,7 @@ def create_failover_session(ipv6_address: str, action_context: str, config: dict
     Impersonates Chrome to bypass Yahoo TLS fingerprinting.
     """
     global GLOBAL_IPV6_STATUS
+    _update_ipv6_status(failing=False)
     session = cffi_requests.Session(impersonate="chrome", interface=ipv6_address)
     session.fallback_triggered = False
     
