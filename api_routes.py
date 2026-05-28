@@ -784,6 +784,7 @@ async def purge_all_notifications():
 @api_router.get("/ai-prompt/{ticker}")
 async def get_ai_prompt(ticker: str, mode: str = "Quantamental Deep-Dive"):
     try:
+        ticker = ticker.strip().upper()
         engine = AIPromptEngine()
         prompt = engine.generate_prompt(ticker, mode)
         if not prompt:

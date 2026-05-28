@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 import yfinance as yf
 import pandas as pd
-from typing import Set, List, Dict, Any, Optional
+from typing import Set, List, Dict, Any
 
 from config import PORTFOLIO_PATH, WATCHLIST_PATH, HISTORICAL_DIR, INTRADAY_DIR, FUNDAMENTALS_DIR, load_config
 from gilt_engine import GiltDataService
@@ -55,6 +55,8 @@ class DataEngine:
             return False
 
         present = [c for c in dropna_subset if c in df.columns]
+        if not present:
+            return False
         df.dropna(subset=present, inplace=True)
         if df.empty:
             return False
@@ -93,10 +95,12 @@ class DataEngine:
                 if ticker:
                     tickers.add(str(ticker).strip().upper())
                 
-        # Strip out ignored tickers
+        # Strip out ignored tickers (normalized to match the uppercased ticker set)
         config_data = load_config()
-        ignored_tickers = config_data.get("IGNORED_TICKERS", [])
-        
+        ignored_tickers = {
+            str(t).strip().upper() for t in config_data.get("IGNORED_TICKERS", [])
+        }
+
         valid_tickers = [t for t in tickers if t not in ignored_tickers]
         return sorted(valid_tickers)
 

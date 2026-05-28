@@ -678,6 +678,7 @@ async def market_reports_page(request: Request):
 
 @page_router.get("/stock/{ticker}", response_class=HTMLResponse)
 async def stock_detail(request: Request, ticker: str, embed: bool = False):
+    ticker = ticker.strip().upper()
     watchlist_json = get_json_data(WATCHLIST_PATH)
     watchlist_tickers = watchlist_json.get("watchlist", [])
     is_in_watchlist = ticker in watchlist_tickers

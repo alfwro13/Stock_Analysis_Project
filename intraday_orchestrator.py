@@ -71,7 +71,7 @@ class IntradayOrchestrator:
         try:
             with open(PORTFOLIO_PATH, 'r') as f:
                 data = json.load(f)
-                return [v['ticker'] for v in data.values() if 'ticker' in v]
+                return [str(v['ticker']).strip().upper() for v in data.values() if 'ticker' in v]
         except Exception:
             return []
 
