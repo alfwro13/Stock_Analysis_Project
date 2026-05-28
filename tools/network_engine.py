@@ -82,6 +82,7 @@ def create_failover_session(ipv6_address: str, action_context: str, config: dict
 
     def failover_request(method, url, **kwargs):
         global GLOBAL_IPV6_STATUS
+        kwargs.setdefault("timeout", 30)
         max_retries = 3
         base_delay = 2.0
         
