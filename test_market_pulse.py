@@ -342,8 +342,13 @@ class TestGetCachedPulseFromDb(_PulseTestBase):
 class TestFetchAndSavePulse(_PulseTestBase):
 
     def _no_yf(self):
-        """Patch yfinance to return empty DataFrames (no network)."""
-        return patch("market_pulse.yf.download", return_value=pd.DataFrame())
+        """Patch yfinance to return structurally valid all-NaN DataFrames (no network).
+
+        Using _make_all_nan_df() rather than pd.DataFrame() means the per-ticker loop
+        reaches the proper empty-after-dropna branch instead of raising a KeyError on
+        the missing Close column, which would produce spurious [ERROR] log output.
+        """
+        return patch("market_pulse.yf.download", return_value=_make_all_nan_df())
 
     def _gilt_mock(self, live_yield=None):
         m = MagicMock()
@@ -372,7 +377,8 @@ class TestFetchAndSavePulse(_PulseTestBase):
         import market_pulse
         with patch("market_pulse.get_connection", side_effect=RuntimeError("db down")):
             with self._no_yf():
-                market_pulse.fetch_and_save_pulse(["^FTSE"])
+                with self.assertLogs("market_pulse", level="ERROR"):
+                    market_pulse.fetch_and_save_pulse(["^FTSE"])
         self.assertFalse(market_pulse._FETCH_LOCK.locked())
 
     # --- UK10YG routing ---
@@ -383,7 +389,7 @@ class TestFetchAndSavePulse(_PulseTestBase):
 
         def fake_download(tickers, **kwargs):
             captured.append(list(tickers))
-            return pd.DataFrame()
+            return _make_all_nan_df()
 
         with patch("market_pulse.yf.download", side_effect=fake_download):
             with self._gilt_mock(live_yield=4.5):
@@ -528,7 +534,8 @@ class TestFetchAndSavePulse(_PulseTestBase):
 
         with patch("market_pulse.get_connection", return_value=mock_conn):
             with self._no_yf():
-                market_pulse.fetch_and_save_pulse(["^FTSE"])
+                with self.assertLogs("market_pulse", level="ERROR"):
+                    market_pulse.fetch_and_save_pulse(["^FTSE"])
 
         mock_conn.close.assert_called_once()
 
