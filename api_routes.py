@@ -871,11 +871,22 @@ async def get_screener_data():
         conn = get_connection()
         cursor = conn.cursor()
         query = """
-        SELECT 
-            q.ticker, 
-            COALESCE(p.company_name, s.company_name, m.company_name, q.ticker) as company_name, 
-            COALESCE(p.sector, s.sector, 'Unclassified') as sector, 
-            CASE 
+        WITH latest_quant AS (
+            SELECT ticker, MAX(date) AS max_date
+            FROM quant_signals
+            GROUP BY ticker
+        ),
+        latest_sentiment AS (
+            SELECT ticker, MAX(date) AS max_date
+            FROM quant_signals
+            WHERE sentiment_score IS NOT NULL
+            GROUP BY ticker
+        )
+        SELECT
+            q.ticker,
+            COALESCE(p.company_name, s.company_name, m.company_name, q.ticker) as company_name,
+            COALESCE(p.sector, s.sector, 'Unclassified') as sector,
+            CASE
                 WHEN UPPER(COALESCE(m.exchange, p.exchange)) = 'NMS' THEN 'NASDAQ'
                 WHEN UPPER(COALESCE(m.exchange, p.exchange)) = 'NYQ' THEN 'NYSE/AMEX'
                 WHEN COALESCE(m.exchange, p.exchange) IS NOT NULL THEN UPPER(COALESCE(m.exchange, p.exchange))
@@ -883,23 +894,24 @@ async def get_screener_data():
                 ELSE 'US'
             END as exchange,
             COALESCE(p.currency, s.currency, 'USD') as currency,
-            q.date, q.close_price, 
-            q.volume, q.rsi_14, q.macd_hist, q.sma_50, q.sma_200, 
+            q.date, q.close_price,
+            q.volume, q.rsi_14, q.macd_hist, q.sma_50, q.sma_200,
             q.volume_surge, q.bullish_cross,
             q.ml_confidence_score, q.var_95, q.cvar_95, q.atr_pct,
-                (SELECT qs2.sentiment_score
-                FROM quant_signals qs2
-                WHERE qs2.ticker = q.ticker
-                AND qs2.sentiment_score IS NOT NULL
-                ORDER BY qs2.date DESC
-                LIMIT 1) as sentiment_score,
+            qs_sent.sentiment_score,
             s.composite_score,
-            m.is_freetrade, m.freetrade_subtitle, m.freetrade_url, COALESCE(p.quote_type, s.quote_type, m.quote_type, 'EQUITY') as quote_type
+            m.is_freetrade, m.freetrade_subtitle, m.freetrade_url,
+            COALESCE(p.quote_type, s.quote_type, m.quote_type, 'EQUITY') as quote_type
         FROM quant_signals q
+        INNER JOIN latest_quant lq ON q.ticker = lq.ticker AND q.date = lq.max_date
         INNER JOIN market_universe m ON q.ticker = m.ticker
         LEFT JOIN asset_profiles p ON q.ticker = p.ticker
         LEFT JOIN stock_signals s ON q.ticker = s.ticker
-        WHERE q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = q.ticker)
+        LEFT JOIN latest_sentiment ls ON q.ticker = ls.ticker
+        LEFT JOIN quant_signals qs_sent
+            ON qs_sent.ticker = ls.ticker
+            AND qs_sent.date = ls.max_date
+            AND qs_sent.sentiment_score IS NOT NULL
         """
         if freetrade_only:
             query += " AND m.is_freetrade = 1"
