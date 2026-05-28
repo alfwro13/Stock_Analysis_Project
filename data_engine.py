@@ -14,6 +14,11 @@ from tools.network_engine import yahoo_connection_boundary
 
 logger = logging.getLogger(__name__)
 
+
+def normalize_ticker(ticker: str) -> str:
+    return str(ticker).strip().upper()
+
+
 class DataEngine:
     def __init__(self) -> None:
         self.portfolio: Dict[str, Any] = self._load_json(PORTFOLIO_PATH)
@@ -87,19 +92,17 @@ class DataEngine:
         # Parse Portfolio (defensive against malformed non-dict entries)
         for _asset_key, asset_data in self.portfolio.items():
             if isinstance(asset_data, dict) and asset_data.get("ticker"):
-                tickers.add(str(asset_data["ticker"]).strip().upper())
+                tickers.add(normalize_ticker(asset_data["ticker"]))
 
         # Parse Watchlist
         if isinstance(self.watchlist.get("watchlist"), list):
             for ticker in self.watchlist["watchlist"]:
                 if ticker:
-                    tickers.add(str(ticker).strip().upper())
-                
+                    tickers.add(normalize_ticker(ticker))
+
         # Strip out ignored tickers (normalized to match the uppercased ticker set)
         config_data = load_config()
-        ignored_tickers = {
-            str(t).strip().upper() for t in config_data.get("IGNORED_TICKERS", [])
-        }
+        ignored_tickers = {normalize_ticker(t) for t in config_data.get("IGNORED_TICKERS", [])}
 
         valid_tickers = [t for t in tickers if t not in ignored_tickers]
         return sorted(valid_tickers)

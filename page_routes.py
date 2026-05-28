@@ -22,6 +22,7 @@ from sentiment_engine import (
     get_ftse_gbp_html
 )
 from market_pulse import get_all_cached_pulse
+from data_engine import normalize_ticker
 from visuals import (
     create_macro_chart,
     create_intraday_chart,
@@ -678,7 +679,7 @@ async def market_reports_page(request: Request):
 
 @page_router.get("/stock/{ticker}", response_class=HTMLResponse)
 async def stock_detail(request: Request, ticker: str, embed: bool = False):
-    ticker = ticker.strip().upper()
+    ticker = normalize_ticker(ticker)
     watchlist_json = get_json_data(WATCHLIST_PATH)
     watchlist_tickers = watchlist_json.get("watchlist", [])
     is_in_watchlist = ticker in watchlist_tickers

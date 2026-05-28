@@ -1,12 +1,15 @@
 # market_pulse.py
 import time
 import logging
+import threading
 from typing import List, Dict, Any
 import pandas as pd
 import yfinance as yf
 
-from config import load_config
+from config import load_config, HISTORICAL_DIR
 from database import get_connection
+from data_engine import normalize_ticker
+from gilt_engine import GiltDataService
 
 # Configure robust module-level logging
 logger = logging.getLogger(__name__)
@@ -26,18 +29,20 @@ INDEX_TICKERS: Dict[str, str] = {
     "DX-Y.NYB": "US Dollar Index"
 }
 
-# Thread safety flag to prevent duplicate background fetch spawns
-_FETCHING: bool = False
+# Non-blocking lock prevents duplicate concurrent fetches without a check-then-set race.
+_FETCH_LOCK = threading.Lock()
 
 
 def get_all_cached_pulse() -> Dict[str, Dict[str, Any]]:
     """Returns all pulse data from DB for Jinja template pre-rendering."""
     conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM market_pulse_cache")
-    rows = cursor.fetchall()
-    conn.close()
-    
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT ticker, name, price, change_pts, change_pct, is_positive, last_updated FROM market_pulse_cache")
+        rows = cursor.fetchall()
+    finally:
+        conn.close()
+
     config_data = load_config()
     refresh_rate: int = int(config_data.get("UI_PREFERENCES", {}).get("REFRESH_RATE", 60))
     current_time: float = time.time()
@@ -65,51 +70,58 @@ def get_cached_pulse_from_db(asset_tickers: List[str], refresh_rate: int) -> Dic
     """
     if asset_tickers is None:
         asset_tickers = []
-        
+
+    asset_tickers = [normalize_ticker(t) for t in asset_tickers]
+
     config_data = load_config()
-    ignored_tickers: List[str] = config_data.get("IGNORED_TICKERS", [])
-        
-    requested_assets: List[str] = [t for t in asset_tickers if t not in INDEX_TICKERS and t not in ignored_tickers]
+    ignored_tickers = {normalize_ticker(t) for t in config_data.get("IGNORED_TICKERS", [])}
+
+    seen: set = set(INDEX_TICKERS.keys())
+    requested_assets: List[str] = []
+    for t in asset_tickers:
+        if t not in seen and t not in ignored_tickers:
+            seen.add(t)
+            requested_assets.append(t)
     all_tickers: List[str] = list(INDEX_TICKERS.keys()) + requested_assets
     
     conn = get_connection()
-    cursor = conn.cursor()
-    
-    rows = []
+    rows: List[Any] = []
     sentiment_scores: Dict[str, float] = {}
-    
-    if all_tickers:
-        placeholders = ','.join('?' for _ in all_tickers)
-        
-        # 1. Fetch Market Pulse baseline
-        cursor.execute(f"SELECT * FROM market_pulse_cache WHERE ticker IN ({placeholders})", all_tickers)
-        rows = cursor.fetchall()
-        
-        # 2. Fetch Latest Sentiment Output
-        query = f"""
-            SELECT ticker, sentiment_score
-            FROM quant_signals
-            WHERE ticker IN ({placeholders})
-            AND sentiment_score IS NOT NULL
-            AND date = (
-                SELECT MAX(date) FROM quant_signals qs
-                WHERE qs.ticker = quant_signals.ticker
-                    AND qs.sentiment_score IS NOT NULL
-            )
-        """
-        cursor.execute(query, all_tickers)
-        sentiment_rows = cursor.fetchall()
-        
-        for s_row in sentiment_rows:
-            sentiment_scores[s_row['ticker']] = s_row['sentiment_score']
-            
-    conn.close()
+    try:
+        cursor = conn.cursor()
+
+        if all_tickers:
+            placeholders = ','.join('?' for _ in all_tickers)
+
+            # 1. Fetch Market Pulse baseline
+            cursor.execute(f"SELECT ticker, name, price, change_pts, change_pct, is_positive, last_updated FROM market_pulse_cache WHERE ticker IN ({placeholders})", all_tickers)
+            rows = cursor.fetchall()
+
+            # 2. Fetch Latest Sentiment Output
+            query = f"""
+                SELECT ticker, sentiment_score
+                FROM quant_signals
+                WHERE ticker IN ({placeholders})
+                AND sentiment_score IS NOT NULL
+                AND date = (
+                    SELECT MAX(date) FROM quant_signals qs
+                    WHERE qs.ticker = quant_signals.ticker
+                        AND qs.sentiment_score IS NOT NULL
+                )
+            """
+            cursor.execute(query, all_tickers)
+            sentiment_rows = cursor.fetchall()
+
+            for s_row in sentiment_rows:
+                sentiment_scores[s_row['ticker']] = s_row['sentiment_score']
+    finally:
+        conn.close()
 
     results: Dict[str, List[Dict[str, Any]]] = {"indexes": [], "assets": []}
     current_time: float = time.time()
     
     # Map database rows for O(1) lookup
-    db_map = {row['ticker']: row for row in rows}
+    db_map: Dict[str, Any] = {row['ticker']: row for row in rows}
 
     # Iterate through our strictly ordered all_tickers list
     for t in all_tickers:
@@ -151,11 +163,10 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
     Background Task: Connects to Yahoo Finance to fetch raw ticks and saves them to the DB.
     Intercepts and evaluates UK10YG exclusively via the official FT.com engine scraper.
     """
-    global _FETCHING
-    if _FETCHING:
+    if not _FETCH_LOCK.acquire(blocking=False):
         return
-    _FETCHING = True
-    
+
+    conn = None
     try:
         # Separate the custom Financial Times target from the yfinance payload list
         handle_gilt: bool = False
@@ -180,8 +191,8 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
         # 1. Ingest Standard Yahoo Finance Securities
         for ticker in tickers_to_fetch:
             try:
-                t_daily = pd.DataFrame()
-                t_live = pd.DataFrame()
+                t_daily: pd.DataFrame = pd.DataFrame()
+                t_live: pd.DataFrame = pd.DataFrame()
 
                 if not df_daily.empty:
                     if isinstance(df_daily.columns, pd.MultiIndex):
@@ -203,12 +214,12 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
                 t_live.dropna(subset=['Close'], inplace=True)
                 
                 if t_daily.empty or t_live.empty:
-                    cursor.execute("UPDATE market_pulse_cache SET last_updated = ? WHERE ticker = ?", (current_time, ticker))
+                    cursor.execute("UPDATE market_pulse_cache SET last_updated = 0 WHERE ticker = ?", (ticker,))
                     if cursor.rowcount == 0:
                         name = INDEX_TICKERS.get(ticker, ticker)
                         cursor.execute(
                             "INSERT INTO market_pulse_cache (ticker, name, price, change_pts, change_pct, is_positive, last_updated) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                            (ticker, name, 0.0, 0.0, 0.0, 1, current_time)
+                            (ticker, name, 0.0, 0.0, 0.0, 1, 0)
                         )
                     continue
 
@@ -239,9 +250,6 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
         # 2. Ingest Sovereign UK 10Y Gilt Exclusively via FT.com Scraper Engine
         if handle_gilt:
             try:
-                from gilt_engine import GiltDataService
-                from config import HISTORICAL_DIR
-                
                 gilt_service = GiltDataService()
                 live_gilt_yield = gilt_service.fetch_live_ft_yield()
                 parquet_path = HISTORICAL_DIR / "UK_GILT_BASELINE.parquet"
@@ -281,14 +289,14 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
                         VALUES (?, ?, ?, ?, ?, ?, ?)
                     ''', ("UK10YG", gilt_name, live_gilt_yield, gilt_change_pts, gilt_change_pct, gilt_is_positive, current_time))
                 else:
-                    # Enforce update boundary on scraper failure to avoid thread deadlock
-                    cursor.execute("UPDATE market_pulse_cache SET last_updated = ? WHERE ticker = 'UK10YG'", (current_time,))
+                    cursor.execute("UPDATE market_pulse_cache SET last_updated = 0 WHERE ticker = 'UK10YG'")
             except Exception as ex:
                 logger.error(f"[MARKET PULSE BACKGROUND] FT Gilt pipeline execution failed: {ex}")
                 
         conn.commit()
-        conn.close()
     except Exception as e:
         logger.error(f"[MARKET PULSE BACKGROUND] Batch download failed: {e}")
     finally:
-        _FETCHING = False
+        if conn:
+            conn.close()
+        _FETCH_LOCK.release()

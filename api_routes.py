@@ -40,7 +40,7 @@ from sentiment_engine import run_nextcloud_alert, update_all_sentiment
 from earnings_engine import run_earnings_alert
 from insider_engine import run_insider_alert
 from ai_engine import AIPromptEngine
-from data_engine import DataEngine
+from data_engine import DataEngine, normalize_ticker
 from quant_signals import QuantEngine
 from quant_engine import run_daily_quant_scan
 from earnings_vol_engine import run_earnings_vol_scan
@@ -784,7 +784,7 @@ async def purge_all_notifications():
 @api_router.get("/ai-prompt/{ticker}")
 async def get_ai_prompt(ticker: str, mode: str = "Quantamental Deep-Dive"):
     try:
-        ticker = ticker.strip().upper()
+        ticker = normalize_ticker(ticker)
         engine = AIPromptEngine()
         prompt = engine.generate_prompt(ticker, mode)
         if not prompt:
