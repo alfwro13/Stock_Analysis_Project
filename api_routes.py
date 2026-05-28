@@ -532,15 +532,18 @@ async def trigger_freetrade_sync_endpoint(background_tasks: BackgroundTasks):
 
 @api_router.post("/ghostfolio/discover")
 async def trigger_discovery():
-    engine = GhostfolioSyncEngine()
-    if not engine.authenticate():
-        return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to authenticate with Ghostfolio."})
-    accounts = engine.discover_accounts()
-    if accounts:
-        reload_scheduler()
-        return JSONResponse(content={"status": "success", "message": f"Successfully discovered {len(accounts)} active accounts."})
-    else:
+    try:
+        engine = GhostfolioSyncEngine()
+        if not engine.authenticate():
+            return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to authenticate with Ghostfolio."})
+        accounts = engine.discover_accounts()
+        if accounts:
+            reload_scheduler()
+            return JSONResponse(content={"status": "success", "message": f"Successfully discovered {len(accounts)} active accounts."})
         return JSONResponse(status_code=500, content={"status": "error", "message": "No accounts discovered or network error occurred."})
+    except Exception as e:
+        logger.exception("Ghostfolio account discovery failed")
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 @api_router.post("/market-pulse")
 async def api_market_pulse(request: PulseRequest, background_tasks: BackgroundTasks):
@@ -947,7 +950,7 @@ async def api_data_refresh_single(req: TickerRequest):
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 @api_router.get("/options/chain/{ticker}")
-async def api_options_chain(ticker: str):
+async def api_options_chain(ticker: str = Path(..., pattern=r"^[A-Z0-9.\-\^=]{1,20}$")):
     data = fetch_options_chain(ticker)
     if "error" in data:
         return JSONResponse(status_code=400, content=data)
