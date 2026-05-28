@@ -623,11 +623,26 @@ def upsert_quant_signal(
         cursor = conn.cursor()
 
         query = '''
-            INSERT OR REPLACE INTO quant_signals (
-                ticker, date, close_price, volume, rsi_14, macd, macd_signal, macd_hist, 
+            INSERT INTO quant_signals (
+                ticker, date, close_price, volume, rsi_14, macd, macd_signal, macd_hist,
                 sma_50, sma_200, volume_surge, bullish_cross,
                 ml_confidence_score, sentiment_score, var_95, cvar_95
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(ticker, date) DO UPDATE SET
+                close_price       = excluded.close_price,
+                volume            = excluded.volume,
+                rsi_14            = excluded.rsi_14,
+                macd              = excluded.macd,
+                macd_signal       = excluded.macd_signal,
+                macd_hist         = excluded.macd_hist,
+                sma_50            = excluded.sma_50,
+                sma_200           = excluded.sma_200,
+                volume_surge      = excluded.volume_surge,
+                bullish_cross     = excluded.bullish_cross,
+                ml_confidence_score = COALESCE(excluded.ml_confidence_score, quant_signals.ml_confidence_score),
+                sentiment_score   = COALESCE(excluded.sentiment_score, quant_signals.sentiment_score),
+                var_95            = COALESCE(excluded.var_95, quant_signals.var_95),
+                cvar_95           = COALESCE(excluded.cvar_95, quant_signals.cvar_95)
         '''
 
         cursor.execute(query, (

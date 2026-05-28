@@ -398,10 +398,18 @@ async def portfolio_page(request: Request, account_id: str = "all", embed: bool 
     
     cursor.execute("""
         SELECT s.*,
-               q.ml_confidence_score,
-               q.var_95,
-               q.cvar_95,
-               q.sentiment_score,
+               (SELECT ml_confidence_score FROM quant_signals
+                WHERE ticker = s.ticker AND ml_confidence_score IS NOT NULL
+                ORDER BY date DESC LIMIT 1) AS ml_confidence_score,
+               (SELECT var_95 FROM quant_signals
+                WHERE ticker = s.ticker AND var_95 IS NOT NULL
+                ORDER BY date DESC LIMIT 1) AS var_95,
+               (SELECT cvar_95 FROM quant_signals
+                WHERE ticker = s.ticker AND cvar_95 IS NOT NULL
+                ORDER BY date DESC LIMIT 1) AS cvar_95,
+               (SELECT sentiment_score FROM quant_signals
+                WHERE ticker = s.ticker AND sentiment_score IS NOT NULL
+                ORDER BY date DESC LIMIT 1) AS sentiment_score,
                q.atr_pct,
                q.close_price as quant_close_price,
                COALESCE(
@@ -531,16 +539,24 @@ async def watchlist_page(request: Request, embed: bool = False):
     cursor = conn.cursor()
     
     cursor.execute("""
-        SELECT s.*, 
-               q.ml_confidence_score, 
-               q.var_95, 
-               q.cvar_95, 
-               q.sentiment_score,
+        SELECT s.*,
+               (SELECT ml_confidence_score FROM quant_signals
+                WHERE ticker = s.ticker AND ml_confidence_score IS NOT NULL
+                ORDER BY date DESC LIMIT 1) AS ml_confidence_score,
+               (SELECT var_95 FROM quant_signals
+                WHERE ticker = s.ticker AND var_95 IS NOT NULL
+                ORDER BY date DESC LIMIT 1) AS var_95,
+               (SELECT cvar_95 FROM quant_signals
+                WHERE ticker = s.ticker AND cvar_95 IS NOT NULL
+                ORDER BY date DESC LIMIT 1) AS cvar_95,
+               (SELECT sentiment_score FROM quant_signals
+                WHERE ticker = s.ticker AND sentiment_score IS NOT NULL
+                ORDER BY date DESC LIMIT 1) AS sentiment_score,
                q.atr_pct,
                q.close_price as quant_close_price,
                m.is_freetrade
         FROM stock_signals s
-        LEFT JOIN quant_signals q ON s.ticker = q.ticker 
+        LEFT JOIN quant_signals q ON s.ticker = q.ticker
         AND q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = s.ticker)
         LEFT JOIN market_universe m ON s.ticker = m.ticker
     """)
@@ -688,7 +704,18 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
     cursor = conn.cursor()
     cursor.execute('''
         SELECT s.*, p.business_summary,
-               q.ml_confidence_score, q.var_95, q.cvar_95, q.sentiment_score,
+               (SELECT ml_confidence_score FROM quant_signals
+                WHERE ticker = s.ticker AND ml_confidence_score IS NOT NULL
+                ORDER BY date DESC LIMIT 1) AS ml_confidence_score,
+               (SELECT var_95 FROM quant_signals
+                WHERE ticker = s.ticker AND var_95 IS NOT NULL
+                ORDER BY date DESC LIMIT 1) AS var_95,
+               (SELECT cvar_95 FROM quant_signals
+                WHERE ticker = s.ticker AND cvar_95 IS NOT NULL
+                ORDER BY date DESC LIMIT 1) AS cvar_95,
+               (SELECT sentiment_score FROM quant_signals
+                WHERE ticker = s.ticker AND sentiment_score IS NOT NULL
+                ORDER BY date DESC LIMIT 1) AS sentiment_score,
                q.atr_pct,
                COALESCE(
                    NULLIF(p.company_name, s.ticker),
