@@ -118,13 +118,6 @@
            <strong>When to use:</strong> Ideal for monthly trading-account top-ups when you want growth exposure without paying euphoria multiples. <br>
            <strong>The Benefit:</strong> Lynch's PEG &lt;= 1.0 ensures you are not overpaying for the growth. The $500M market-cap floor excludes micro-cap pump-and-dumps. The ML confidence column (when populated) adds a quantitative second opinion.</p>
 
-        <div class="controls-container mb-20">
-            <div class="form-group form-group-no-margin">
-                <label>Min <abbr title="Machine-learning confidence score from the global model. NULL when not yet scored — set to 0 to include all candidates.">ML Confidence</abbr> (%)</label>
-                <input type="number" id="garpMinMl" class="filter-input input-width-small" min="0" max="100" step="5" value="0">
-            </div>
-        </div>
-
         <table id="garpTable" class="display w-100">
             <thead>
                 <tr>
@@ -146,12 +139,52 @@
         <div class="footer-notes">
             <strong class="text-light">Key Metrics Explained:</strong>
             <ul class="explanation-list">
-                <li><strong class="text-accent-blue">PEG (Lynch) &lt;= 1.0:</strong> Yield-adjusted Peter Lynch PEG = Forward P/E / (Earnings Growth% + Dividend Yield%). A stock is considered fair value at PEG &lt;= 1.0 — anything above means you are overpaying for the growth.</li>
-                <li><strong class="text-accent-blue">Rev Growth &gt; 15%:</strong> Year-over-year revenue growth filters out stagnant compounders so this report stays focused on genuine growth stories.</li>
-                <li><strong class="text-accent-blue">ROE &gt; 10%:</strong> Looser than the Quality Compounders' 15% threshold because GARP rewards growth re-investment, which temporarily depresses near-term ROE.</li>
-                <li><strong class="text-accent-blue">Fwd P/E 10–40:</strong> Floor 10 excludes deep-value traps; ceiling 40 excludes hyper-growth bubbles.</li>
-                <li><strong class="text-accent-blue">Market Cap &gt; $500M:</strong> Excludes micro-caps where liquidity and manipulation risk dominate.</li>
-                <li><strong class="text-accent-blue">ML Confidence:</strong> Optional corroboration. Currently NULL across the universe — set Min ML to 0 to show all candidates. As ML coverage fills in, dial the threshold up to filter.</li>
+                <li>
+                    <strong class="text-accent-blue">PEG Ratio — Peter Lynch's "Fair Value" Test (&le;1.0):</strong>
+                    The PEG ratio answers a simple question: <em>are you paying a fair price for the growth you are getting?</em>
+                    It is calculated as: <strong>Forward P/E &divide; (Earnings Growth % + Dividend Yield %)</strong>.
+                    <br>
+                    A PEG of 1.0 means the stock's price perfectly reflects its growth rate — you are paying exactly what the growth is worth.
+                    A PEG of 0.5 means you are getting £1 of growth for only 50p — a potential bargain.
+                    A PEG of 2.0 means you are paying double what the growth is worth — you are funding someone else's optimism.
+                    <br>
+                    <em>Peter Lynch, the legendary Fidelity fund manager who turned $18M into $14 billion, considered PEG &le;1.0 the single most reliable signal of an undervalued growth stock. This screener applies his exact methodology.</em>
+                </li>
+                <li>
+                    <strong class="text-accent-blue">Revenue Growth (&gt;15% year-on-year):</strong>
+                    Revenue is the total money flowing into the business before any costs are deducted — it is the raw proof that customers are buying more of what the company sells.
+                    A 15% growth rate means the business is 15% bigger than it was a year ago.
+                    <br>
+                    <em>Why does this matter for tenbaggers?</em> A stock that doubles in price typically needs its revenues and earnings to grow substantially to justify that price. Stagnant or slow-growing revenue kills multi-bagger potential.
+                    <em>This threshold filters out companies whose earnings grow only because of cost-cutting or accounting adjustments — we want genuine top-line expansion.</em>
+                </li>
+                <li>
+                    <strong class="text-accent-blue">ROE — Return on Equity (&gt;10%):</strong>
+                    How efficiently is the business turning your invested capital into profit? (See the Quality Compounders section for a full explanation.)
+                    <br>
+                    <em>This threshold is deliberately looser than the 15% used in Quality Compounders.</em> Fast-growing businesses often reinvest heavily back into themselves — hiring staff, building infrastructure, entering new markets — which temporarily reduces ROE. We accept &gt;10% here to allow genuine growth companies that are spending today to earn more tomorrow.
+                </li>
+                <li>
+                    <strong class="text-accent-blue">Forward P/E — Price to Future Earnings (10–40):</strong>
+                    Forward P/E uses next year's <em>expected</em> earnings rather than last year's actual earnings, giving a more forward-looking valuation.
+                    <br>
+                    The floor of 10 removes value traps — companies so cheap the market has given up on their future.
+                    The ceiling of 40 is wider than Quality Compounders' 35 because genuine high-growth businesses legitimately command a premium. <em>But even the best growth story is not worth an infinite price — a cap of 40 keeps you anchored to reality.</em>
+                </li>
+                <li>
+                    <strong class="text-accent-blue">Market Cap — Company Size (&gt;$500M):</strong>
+                    Market capitalisation is the total value the stock market places on the entire company (share price &times; total shares outstanding).
+                    A $500M floor means we only look at companies worth at least half a billion dollars.
+                    <br>
+                    <em>Why exclude smaller companies?</em> Micro-cap and small-cap stocks can be illiquid — there may not be enough buyers when you want to sell. They are also disproportionately targeted by "pump and dump" schemes and are harder to research reliably. The $500M floor keeps us in the range where institutional investors operate, which provides better price discovery and exit liquidity.
+                </li>
+                <li>
+                    <strong class="text-accent-blue">ML Confidence — Machine Learning Score (optional):</strong>
+                    This is a second opinion from our quantitative model, which was trained on historical data to predict whether a stock matching GARP criteria actually outperforms the market over the following 12 months.
+                    A score of 75% means the model is 75% confident this stock will outperform based on patterns it has learned.
+                    <br>
+                    <em>Currently most stocks show "—" because ML scoring is still being rolled out across the full universe.</em> Set the Min ML filter to 0 to include all candidates regardless of ML score. As coverage expands, raising this threshold adds a powerful quantitative second opinion on top of Lynch's fundamental screen.
+                </li>
             </ul>
         </div>
     </div>
@@ -550,6 +583,26 @@
                 deferRender: true,
                 pageLength: 10,
                 order: [[4, 'asc']], // Sort by PEG ascending (cheapest growth first)
+
+                initComplete: function() {
+                    var api = this.api();
+                    var filterBar = $('<span style="margin-right:12px;display:inline-flex;align-items:center;gap:8px;"></span>');
+
+                    // Sector dropdown
+                    var sectorSelect = $('<select id="garpSectorFilter" class="filter-select"><option value="ALL">All Sectors</option></select>');
+                    api.column(2).data().unique().sort().each(function(d) {
+                        if (d && d !== 'N/A') sectorSelect.append('<option value="' + d + '">' + d + '</option>');
+                    });
+
+                    // ML Confidence input
+                    var mlWrapper = $('<span style="display:inline-flex;align-items:center;gap:4px;font-size:0.8rem;color:#aaa;white-space:nowrap;"></span>');
+                    mlWrapper.append('<label for="garpMinMl" style="cursor:default;">Min ML %</label>');
+                    mlWrapper.append('<input type="number" id="garpMinMl" class="filter-input input-width-small" min="0" max="100" step="5" value="0">');
+
+                    filterBar.append(sectorSelect).append(mlWrapper);
+                    $('#garpTable_wrapper .dataTables_filter').prepend(filterBar);
+                },
+
                 columns: [
                     { data: 'ticker', render: function(data) { return '<a href="/stock/' + data + '" class="ticker-link">' + data + '</a>'; } },
                     { data: 'company_name' },
@@ -593,16 +646,25 @@
 
             // Client-side ML threshold filter for GARP table
             $.fn.dataTable.ext.search.push(function(settings, data, dataIndex, rowData) {
-                if (settings.nTable.id !== 'garpTable') return true;  // only affect garpTable
+                if (settings.nTable.id !== 'garpTable') return true;
                 var threshold = parseFloat($('#garpMinMl').val());
-                if (isNaN(threshold) || threshold <= 0) return true;  // 0 or empty = show all
+                if (isNaN(threshold) || threshold <= 0) return true;
                 var ml = rowData.ml_confidence_score;
-                if (ml == null) return false;  // threshold > 0 excludes nulls
+                if (ml == null) return false;
                 return ml >= threshold;
             });
 
-            $('#garpMinMl').on('input change', function() {
+            $(document).on('input change', '#garpMinMl', function() {
                 garpTable.draw();
+            });
+
+            $(document).on('change', '#garpSectorFilter', function() {
+                var val = $(this).val();
+                if (val === 'ALL') {
+                    garpTable.column(2).search('').draw();
+                } else {
+                    garpTable.column(2).search('^' + val + '$', true, false).draw();
+                }
             });
 
             // Bind the Dropdown Filter to the hidden Exchange column
