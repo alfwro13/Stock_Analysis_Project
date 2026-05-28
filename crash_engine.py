@@ -32,6 +32,11 @@ class CrashEngine:
         # Injected by the orchestrator once per run to avoid a per-crash SPY HTTP call
         self.spy_change_pct: float | None = None
 
+        # Hard ceiling applied AFTER beta scaling when the AI Volatility Defense is active.
+        # Kept separate from session_crash_threshold so beta scaling cannot widen it back out —
+        # the whole point of the AI override is to protect high-beta names on macro shock days.
+        self.ai_threshold_cap: float | None = None
+
     def _fetch_market_context(self) -> float:
         """Fallback: fetches S&P 500 intraday performance using 5m bars, consistent with the system time-base."""
         try:
@@ -191,6 +196,10 @@ class CrashEngine:
         raw_beta = asset_meta.get('beta')
         beta = max(0.5, min(2.0, float(raw_beta))) if raw_beta is not None else 1.0
         adj_session_threshold = self.session_crash_threshold * beta
+        # Apply the AI Volatility Defense cap AFTER beta scaling so that high-beta names
+        # cannot have the override silently widened back out by their own volatility multiplier.
+        if self.ai_threshold_cap is not None:
+            adj_session_threshold = min(adj_session_threshold, self.ai_threshold_cap)
         adj_drop_percent      = self.drop_percent            * beta
         adj_sma_gap_percent   = self.sma_gap_percent         * beta
 

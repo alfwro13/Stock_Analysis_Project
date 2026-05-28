@@ -44,7 +44,10 @@ class MoonshotEngine:
         # bar mid-session and skews RSI/Bollinger on volatile open days.
         df_settled = df_combined.iloc[:-1]
 
-        if df_settled.empty or len(df_settled) < 20:  # Need at least 20 settled bars for Bollinger Bands
+        # Guard on df_hist length (stable baseline) rather than df_settled, which loses one row
+        # on same-day re-runs due to the orchestrator's overwrite stitching path. Requiring 21
+        # historical rows guarantees df_settled always has >= 20 bars for Bollinger regardless.
+        if len(df_hist) < 21:
             return None
 
         # Percentage Spike
@@ -61,6 +64,11 @@ class MoonshotEngine:
         above_sma_pct = ((current_price - latest_sma) / latest_sma) * 100.0 if latest_sma else 0.0
 
         # 52-Week High Check
+        # NOTE — intentional semantic: this is a 52-week CLOSING high, not an intraday high.
+        # Using Close keeps the comparison homogeneous (live close vs historical close) and avoids
+        # false ATH triggers where a stock briefly pierces its intraday high on the open then fades.
+        # Trade-off: a stock can trade above its true intraday 52w high during a session without
+        # firing is_ath — it only fires once a closing price confirms the breakout.
         cutoff_52w = df_hist.index[-1] - pd.DateOffset(weeks=52)
         recent_52w = df_hist[df_hist.index >= cutoff_52w]
         fifty_two_wk_high = recent_52w['Close'].max()

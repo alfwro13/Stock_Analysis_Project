@@ -160,14 +160,16 @@ class IntradayOrchestrator:
         conn = get_connection()
         cursor = conn.cursor()
         
-        # Both 'pending' and 'sent' count as already dispatched — a pending row means
-        # send was in-flight when a previous run crashed; we still suppress to avoid duplicates.
+        # Only 'sent' rows suppress — a 'pending' row means dispatch failed and the alert
+        # should retry on the next scan. _retire_stale_pending_notifications() will clean it up
+        # before this query runs, so there is no race: pending rows are invisible here and
+        # retired rows are gone, leaving only confirmed dispatches as the suppression signal.
         cursor.execute('''
             SELECT message_text, timestamp FROM system_notifications
             WHERE message_type = ?
             AND message_text LIKE ?
             AND date(timestamp) = date('now')
-            AND status IN ('pending', 'sent')
+            AND status = 'sent'
             ORDER BY timestamp DESC LIMIT 1
         ''', (msg_type, f"%{ticker}%"))
         
@@ -345,9 +347,15 @@ class IntradayOrchestrator:
 
             if ai_warning_row and ai_warning_row['max_warning'] and float(ai_warning_row['max_warning']) > 2.0:
                 print(f"[ORCHESTRATOR] 🛡️ AI Volatility Defense Active: Tightening Flash Crash Threshold to 1.5%")
-                self.crash_engine.session_crash_threshold = 1.5
+                # Set a post-beta cap, NOT session_crash_threshold directly — mutating the base
+                # threshold lets beta scaling widen it back out for high-beta names, defeating
+                # the override. The cap is applied after beta multiplication inside evaluate().
+                self.crash_engine.ai_threshold_cap = 1.5
+            else:
+                self.crash_engine.ai_threshold_cap = None
         except Exception as e:
             print(f"[ORCHESTRATOR] Failed to query AI Macro Defense status: {e}")
+            self.crash_engine.ai_threshold_cap = None
 
         # Inject pre-fetched SPY change so crash_engine never makes its own per-crash HTTP call
         self.crash_engine.spy_change_pct = spy_change_pct
