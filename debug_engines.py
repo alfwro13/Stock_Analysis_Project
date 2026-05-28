@@ -297,9 +297,11 @@ def test_bug12_beta_sensitivity():
 
     # Moonshot: +8% spike, base spike_percent=5%
     # beta=0.5 → adj=2.5% → should fire; beta=2.0 → adj=10% → should NOT fire
+    # Data: decline from 130→100 so the 52w closing high (130) is well above spike_price (108),
+    # keeping is_ath=False and isolating the spike/SMA-gap beta path under test.
     df_hist_moon = make_daily_prices(n=60, base=100.0, noise=0.1, seed=10)
-    df_hist_moon["Close"] = np.linspace(90, 100, len(df_hist_moon))
-    spike_price = 108.0
+    df_hist_moon["Close"] = np.linspace(130, 100, len(df_hist_moon))
+    spike_price = 108.0  # 8% above last close (100), but below 52w high of 130 → is_ath=False
     df_combined_moon = make_df_combined(df_hist_moon, spike_price)
 
     result_moon_low  = moon_engine.evaluate("MOON_LOW",  spike_price, df_combined_moon, meta_low_beta,  df_hist_moon)
