@@ -565,22 +565,19 @@ async def api_market_pulse_get(background_tasks: BackgroundTasks):
 
 @api_router.post("/test-sentiment-alert")
 async def test_sentiment_alert():
-    loop = asyncio.get_event_loop()
-    success, msg = await loop.run_in_executor(None, run_nextcloud_alert)
+    success, msg = await asyncio.to_thread(run_nextcloud_alert)
     if success: return JSONResponse(content={"status": "success", "message": msg})
     else: return JSONResponse(status_code=500, content={"status": "error", "message": msg})
 
 @api_router.post("/test-earnings-alert")
 async def test_earnings_alert():
-    loop = asyncio.get_event_loop()
-    success, msg = await loop.run_in_executor(None, run_earnings_alert)
+    success, msg = await asyncio.to_thread(run_earnings_alert)
     if success: return JSONResponse(content={"status": "success", "message": msg})
     else: return JSONResponse(status_code=500, content={"status": "error", "message": msg})
 
 @api_router.post("/test-insider-alert")
 async def test_insider_alert():
-    loop = asyncio.get_event_loop()
-    success, msg = await loop.run_in_executor(None, run_insider_alert)
+    success, msg = await asyncio.to_thread(run_insider_alert)
     if success: return JSONResponse(content={"status": "success", "message": msg})
     else: return JSONResponse(status_code=500, content={"status": "error", "message": msg})
 
@@ -911,21 +908,19 @@ async def get_ai_prompt(ticker: str = PathParam(..., pattern=r"^[A-Z0-9.\-\^=]{1
 
 @api_router.post("/watchlist/add")
 async def api_watchlist_add(req: TickerRequest):
-    loop = asyncio.get_event_loop()
     engine = GhostfolioSyncEngine()
-    added = await loop.run_in_executor(None, engine.add_to_watchlist, req.ticker)
+    added = await asyncio.to_thread(engine.add_to_watchlist, req.ticker)
     if added:
-        await loop.run_in_executor(None, engine.sync_watchlist)
+        await asyncio.to_thread(engine.sync_watchlist)
         return JSONResponse(content={"status": "success"})
     return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to add to Ghostfolio."})
 
 @api_router.post("/watchlist/remove")
 async def api_watchlist_remove(req: TickerRequest):
-    loop = asyncio.get_event_loop()
     engine = GhostfolioSyncEngine()
-    removed = await loop.run_in_executor(None, engine.remove_from_watchlist, req.ticker)
+    removed = await asyncio.to_thread(engine.remove_from_watchlist, req.ticker)
     if removed:
-        await loop.run_in_executor(None, engine.sync_watchlist)
+        await asyncio.to_thread(engine.sync_watchlist)
         return JSONResponse(content={"status": "success"})
     return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to remove from Ghostfolio."})
 
