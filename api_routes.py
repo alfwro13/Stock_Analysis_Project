@@ -713,7 +713,7 @@ async def get_system_metrics():
 @api_router.post("/system/git-pull")
 async def git_pull_update():
     try:
-        result = subprocess.run(["git", "pull"], capture_output=True, text=True, timeout=15)
+        result = subprocess.run(["git", "pull"], capture_output=True, text=True, timeout=15, cwd=str(BASE_DIR))
         if result.returncode == 0:
             return JSONResponse(content={"status": "success", "message": f"Update successful. Please restart the service if required.\n\n{result.stdout}"})
         else:
