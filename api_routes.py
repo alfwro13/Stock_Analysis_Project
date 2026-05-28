@@ -239,7 +239,7 @@ def bg_execute_earnings_scan():
 def bg_execute_universe_quant_scan():
     tickers = get_universe_tickers()
     if not tickers:
-        print("[WARNING] Universe is empty. Please trigger a Universe Update first.")
+        logger.warning("Universe is empty. Please trigger a Universe Update first.")
         return
     run_daily_quant_scan(tickers, scan_type='universe')
 
