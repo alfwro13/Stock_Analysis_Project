@@ -3,6 +3,7 @@ import time
 import random
 import logging
 import traceback
+import threading
 from contextlib import contextmanager
 from curl_cffi import requests as cffi_requests
 
@@ -18,6 +19,13 @@ GLOBAL_IPV6_STATUS = {
     "last_error": "",
     "last_fail_time": 0.0
 }
+_ipv6_status_lock = threading.Lock()
+
+def _update_ipv6_status(failing: bool, error: str = "", fail_time: float = 0.0) -> None:
+    with _ipv6_status_lock:
+        GLOBAL_IPV6_STATUS["is_failing"] = failing
+        GLOBAL_IPV6_STATUS["last_error"] = error
+        GLOBAL_IPV6_STATUS["last_fail_time"] = fail_time
 
 def _trigger_fallback_alert(ipv6_address: str, action_context: str, error_summary: str, detailed_trace: str) -> None:
     """
@@ -95,7 +103,7 @@ def create_failover_session(ipv6_address: str, action_context: str) -> cffi_requ
                         
                 # If we succeed on IPv6, mark the global status as healthy
                 if not session.fallback_triggered:
-                    GLOBAL_IPV6_STATUS["is_failing"] = False
+                    _update_ipv6_status(failing=False)
                     
                 return response
 
@@ -135,9 +143,7 @@ def create_failover_session(ipv6_address: str, action_context: str) -> cffi_requ
                 _trigger_fallback_alert(ipv6_address, action_context, error_summary, detailed_trace)
                 
                 # Update Global Status for UI Dashboard
-                GLOBAL_IPV6_STATUS["is_failing"] = True
-                GLOBAL_IPV6_STATUS["last_error"] = error_summary
-                GLOBAL_IPV6_STATUS["last_fail_time"] = time.time()
+                _update_ipv6_status(failing=True, error=error_summary, fail_time=time.time())
                 
                 # Graceful Fallback: Drop the interface binding natively in libcurl
                 logger.warning(f"Exhausted IPv6 recovery options. Dropping custom interface {ipv6_address} and reverting to OS default routing (IPv4)...")
