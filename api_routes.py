@@ -18,7 +18,7 @@ from datetime import datetime
 from typing import List, Optional
 from pathlib import Path
 
-from fastapi import APIRouter, Request, BackgroundTasks, HTTPException, Query
+from fastapi import APIRouter, Request, BackgroundTasks, HTTPException, Query, Path
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -897,7 +897,7 @@ async def purge_all_notifications():
             conn.close()
 
 @api_router.get("/ai-prompt/{ticker}")
-async def get_ai_prompt(ticker: str, mode: str = "Quantamental Deep-Dive"):
+async def get_ai_prompt(ticker: str = Path(..., pattern=r"^[A-Z0-9.\-\^=]{1,20}$"), mode: str = "Quantamental Deep-Dive"):
     try:
         ticker = normalize_ticker(ticker)
         engine = AIPromptEngine()
