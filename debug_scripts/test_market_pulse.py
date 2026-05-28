@@ -407,8 +407,21 @@ class TestFetchAndSavePulse(_PulseTestBase):
 
     # --- empty yfinance data writes last_updated = 0 ---
 
-    def test_empty_data_stamps_last_updated_zero_on_existing_row(self):
+    def test_empty_data_established_ticker_marks_fresh(self):
+        # Row with a real price = known symbol, transient empty feed.
+        # Should stamp current_time so is_stale flips False and the poller backs off.
         _seed_pulse(self._db_path, [("^FTSE", "UK FTSE 100", 8000.0, 0.0, 0.0, 1, time.time())])
+        import market_pulse
+        nan_df = _make_all_nan_df()
+        with patch("market_pulse.yf.download", return_value=nan_df):
+            market_pulse.fetch_and_save_pulse(["^FTSE"])
+        row = _read_pulse(self._db_path, "^FTSE")
+        self.assertGreater(row["last_updated"], 0)
+
+    def test_empty_data_unresolved_ticker_stays_stale(self):
+        # Row exists but price=0 = symbol never resolved. Keep last_updated=0 so
+        # the poller retries on the next cycle.
+        _seed_pulse(self._db_path, [("^FTSE", "UK FTSE 100", 0.0, 0.0, 0.0, 1, 0)])
         import market_pulse
         nan_df = _make_all_nan_df()
         with patch("market_pulse.yf.download", return_value=nan_df):
@@ -483,8 +496,20 @@ class TestFetchAndSavePulse(_PulseTestBase):
         self.assertAlmostEqual(row["price"], 4.25)
         self.assertGreater(row["last_updated"], 0)
 
-    def test_gilt_failure_stamps_last_updated_zero(self):
+    def test_gilt_failure_established_yield_marks_fresh(self):
+        # Gilt row with a real price = known yield, transient scrape failure.
+        # Should stamp current_time so the UI keeps showing last-known yield.
         _seed_pulse(self._db_path, [("UK10YG", "UK 10Y Gilt", 4.1, 0.0, 0.0, 1, time.time())])
+        import market_pulse
+        with self._no_yf(), self._gilt_mock(live_yield=None):
+            with patch("market_pulse.HISTORICAL_DIR", Path(tempfile.mkdtemp())):
+                market_pulse.fetch_and_save_pulse(["UK10YG"])
+        row = _read_pulse(self._db_path, "UK10YG")
+        self.assertGreater(row["last_updated"], 0)
+
+    def test_gilt_failure_unresolved_stays_stale(self):
+        # Gilt row with price=0 = never scraped a real yield. Keep last_updated=0.
+        _seed_pulse(self._db_path, [("UK10YG", "UK 10Y Gilt", 0.0, 0.0, 0.0, 1, 0)])
         import market_pulse
         with self._no_yf(), self._gilt_mock(live_yield=None):
             with patch("market_pulse.HISTORICAL_DIR", Path(tempfile.mkdtemp())):
