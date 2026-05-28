@@ -353,18 +353,18 @@
                 table.search(this.value).draw();
             });
 
-            // Map Custom Signal Dropdown (Updated index to 17 due to new column)
+            // Signal is column 19
             $('#signalFilter').on('change', function() {
                 var val = $(this).val();
-                if(val === 'ALL') { table.column(17).search('').draw(); } 
-                else { table.column(17).search('^' + val + '$', true, false).draw(); }
+                if(val === 'ALL') { table.column(19).search('').draw(); }
+                else { table.column(19).search('^' + val + '$', true, false).draw(); }
             });
 
-            // Map Custom Tags Dropdown (Updated index to 16 due to new column)
+            // Setups & Tags is column 18
             $('#tagFilter').on('change', function() {
                 var val = $(this).val();
-                if(val === 'ALL') { table.column(16).search('').draw(); } 
-                else { table.column(16).search(val).draw(); }
+                if(val === 'ALL') { table.column(18).search('').draw(); }
+                else { table.column(18).search(val).draw(); }
             });
         });
     </script>
