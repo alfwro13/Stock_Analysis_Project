@@ -288,12 +288,14 @@ def _train_and_evaluate(
                 cv_splits_train.append((tr_idx_cv, te_idx_cv))
 
     # ── Hyperparameter search (identical grid to production) ──────────────
+    # n_jobs=1: loky parallel backend fails on Python 3.14 in this environment.
+    # Single-threaded is slower but reliable for a diagnostic script.
     rf_base = RandomForestClassifier(
-        class_weight='balanced', random_state=seed, n_jobs=-1
+        class_weight='balanced', random_state=seed, n_jobs=1
     )
     xgb_base = XGBClassifier(
         scale_pos_weight=scale_pos_weight_train,
-        random_state=seed, n_jobs=-1, eval_metric='logloss',
+        random_state=seed, n_jobs=1, eval_metric='logloss',
     )
 
     rf_param_dist: Dict[str, List[Any]] = {
@@ -314,12 +316,12 @@ def _train_and_evaluate(
     rf_search = RandomizedSearchCV(
         estimator=rf_base, param_distributions=rf_param_dist,
         n_iter=10, cv=cv_splits_train, scoring='average_precision',
-        random_state=seed, n_jobs=-1,
+        random_state=seed, n_jobs=1,
     )
     xgb_search = RandomizedSearchCV(
         estimator=xgb_base, param_distributions=xgb_param_dist,
         n_iter=10, cv=cv_splits_train, scoring='average_precision',
-        random_state=seed, n_jobs=-1,
+        random_state=seed, n_jobs=1,
     )
 
     rf_search.fit(X_train, y_train)
