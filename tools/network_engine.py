@@ -159,7 +159,7 @@ def create_failover_session(ipv6_address: str, action_context: str, config: dict
                         raise Exception(f"HTTP 429 Max Retries Exceeded on IPv6 Interface. URL: {url}")
                         
                 # If we succeed on IPv6, mark the global status as healthy
-                if not session.fallback_triggered:
+                if not getattr(session, 'fallback_triggered', False):
                     _update_ipv6_status(failing=False)
                     
                 return response
