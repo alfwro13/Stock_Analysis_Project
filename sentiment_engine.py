@@ -9,7 +9,7 @@ import pandas as pd
 import requests
 from fake_useragent import UserAgent
 from datetime import datetime, timedelta
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 
 import yfinance as yf
 import plotly.graph_objects as go
@@ -24,6 +24,11 @@ import matplotlib.pyplot as plt
 from transformers import pipeline
 
 from nextcloud_talk import upload_file_webdav, share_file_to_talk, send_text_message
+from constants import (
+    NLP_FINBERT_MAX_TOKENS, NLP_TEXT_TRUNCATE_CHARS,
+    NLP_NEWS_FETCH_LIMIT, NLP_CB_NEWS_FETCH_LIMIT, NLP_CB_TONE_THRESHOLD,
+    SENTIMENT_CHART_FIGSIZE, SENTIMENT_CHART_DPI,
+)
 from config import (
     NEXTCLOUD_URL, BOT_USERNAME, APP_PASSWORD, CONVERSATION_TOKEN,
     load_config, HISTORICAL_DIR
@@ -37,6 +42,7 @@ logger = logging.getLogger(__name__)
 _CACHE_LOCK = threading.Lock()
 _IS_REFRESHING = False
 _LAST_CACHE_TIME = 0.0
+_UA = UserAgent()
 
 _MACRO_HTML_CACHE: Dict[str, str] = {
     "sentiment_html": "",
@@ -50,7 +56,7 @@ _MACRO_HTML_CACHE: Dict[str, str] = {
 _FINBERT_ANALYZER = None
 _MODEL_LOCK = threading.Lock()
 
-def _get_finbert_analyzer():
+def _get_finbert_analyzer() -> Optional[Any]:
     """
     Thread-safe singleton for lazy-loading the FinBERT model.
     Prevents multi-worker memory explosion and redundant initializations.
@@ -68,14 +74,26 @@ def _get_finbert_analyzer():
                     return None
     return _FINBERT_ANALYZER
 
+
+def _score_text(analyzer, text: str) -> float:
+    """Run FinBERT on a single text and return a signed compound score [-1, 1]."""
+    result = analyzer(text[:NLP_TEXT_TRUNCATE_CHARS], truncation=True, max_length=NLP_FINBERT_MAX_TOKENS)[0]
+    label = result['label'].lower()
+    prob = result['score']
+    if label == 'positive':
+        return prob
+    if label == 'negative':
+        return -prob
+    return 0.0
+
+
 # ==========================================================
 # 1. MACRO SENTIMENT (FEAR & GREED INDEX)
 # ==========================================================
 
 def fetch_fear_greed_data(start_date_str: str) -> pd.DataFrame:
     base_url = "https://production.dataviz.cnn.io/index/fearandgreed/graphdata/"
-    ua = UserAgent()
-    headers = {'User-Agent': ua.random}
+    headers = {'User-Agent': _UA.random}
     try:
         r = requests.get(base_url + start_date_str, headers=headers, timeout=15)
         r.raise_for_status()
@@ -93,9 +111,13 @@ def fetch_fear_greed_data(start_date_str: str) -> pd.DataFrame:
 
 
 def fetch_stock_data(ticker: str, start_date: str) -> pd.DataFrame:
-    stock_df = yf.download(
-        tickers=ticker, start=start_date, progress=False, auto_adjust=True
-    )
+    try:
+        stock_df = yf.download(
+            tickers=ticker, start=start_date, progress=False, auto_adjust=True
+        )
+    except Exception as e:
+        logger.warning(f"yf.download failed for {ticker}: {e}")
+        return pd.DataFrame()
     if stock_df.empty:
         return pd.DataFrame()
     if isinstance(stock_df.columns, pd.MultiIndex):
@@ -513,8 +535,9 @@ def _async_chart_cruncher_worker() -> None:
 # 5. NEXTCLOUD ALERTS & MICRO SENTIMENT (FINBERT NLP)
 # ==========================================================
 
-def run_nextcloud_alert() -> tuple:
+def run_nextcloud_alert() -> Tuple[bool, str]:
     logger.info("Starting Market Sentiment Pipeline...")
+    local_path = None
     try:
         merged_df = get_sentiment_data()
         if merged_df is None:
@@ -526,7 +549,7 @@ def run_nextcloud_alert() -> tuple:
         remote_path = f"StockAlerts/{file_name}"
 
         try:
-            fig, ax1 = plt.subplots(figsize=(12, 6))
+            fig, ax1 = plt.subplots(figsize=SENTIMENT_CHART_FIGSIZE)
             color = 'tab:blue'
             ax1.set_xlabel('Date')
             ax1.set_ylabel('S&P 500 Adjusted Close Price', color=color)
@@ -556,7 +579,7 @@ def run_nextcloud_alert() -> tuple:
             lines_2, labels_2 = ax2.get_legend_handles_labels()
             ax1.legend(lines_1 + lines_2, labels_1 + labels_2, loc='upper left')
             
-            plt.savefig(local_path, dpi=300, bbox_inches='tight')
+            plt.savefig(local_path, dpi=SENTIMENT_CHART_DPI, bbox_inches='tight')
             plt.close(fig)
         except Exception as e:
             return False, f"Matplotlib Render Error: {str(e)}"
@@ -592,11 +615,11 @@ def run_nextcloud_alert() -> tuple:
     except Exception as e:
         return False, f"Unexpected System Error: {str(e)}"
     finally:
-        if os.path.exists(local_path):
+        if local_path and os.path.exists(local_path):
             os.remove(local_path)
 
 
-def fetch_and_score_news(ticker: str, analyzer) -> float:
+def fetch_and_score_news(ticker: str, analyzer: Any) -> float:
     """
     Fetches the latest 15 news headlines for a ticker via Yahoo Finance.
     Scores the text utilizing FinBERT NLP and returns the normalized compound average.
@@ -609,7 +632,7 @@ def fetch_and_score_news(ticker: str, analyzer) -> float:
             return 0.0
             
         scores = []
-        for item in news[:15]:
+        for item in news[:NLP_NEWS_FETCH_LIMIT]:
             # Defensively un-nest the Yahoo Finance payload
             content = item.get('content', item)
             
@@ -627,21 +650,8 @@ def fetch_and_score_news(ticker: str, analyzer) -> float:
             if not text_to_analyze.strip(". "):
                 continue
                 
-            # FinBERT output is typically [{'label': 'positive', 'score': 0.85}]
             try:
-                # Proper Token Truncation logic implemented
-                result = analyzer(text_to_analyze[:2000], truncation=True, max_length=512)[0]
-                label = result['label'].lower()
-                prob = result['score']
-                
-                if label == 'positive':
-                    compound = prob
-                elif label == 'negative':
-                    compound = -prob
-                else:
-                    compound = 0.0
-                    
-                scores.append(compound)
+                scores.append(_score_text(analyzer, text_to_analyze))
             except Exception as e:
                 logger.debug(f"FinBERT failed to score string for {ticker}: {e}")
                 continue
@@ -652,7 +662,7 @@ def fetch_and_score_news(ticker: str, analyzer) -> float:
         return sum(scores) / len(scores)
         
     except Exception as e:
-        logger.debug(f"Failed to fetch/score news for {ticker}: {e}")
+        logger.warning(f"Failed to fetch/score news for {ticker}: {e}")
         return 0.0
 
 
@@ -677,36 +687,40 @@ def update_all_sentiment(tickers: List[str]) -> None:
         return
     
     conn = get_connection()
-    cursor = conn.cursor()
+    try:
+        cursor = conn.cursor()
 
-    for i, ticker in enumerate(combined_tickers):
-        try:
-            score = fetch_and_score_news(ticker, analyzer)
-            
-            cursor.execute("""
-                UPDATE quant_signals 
-                SET sentiment_score = ? 
-                WHERE ticker = ? AND date = (SELECT MAX(date) FROM quant_signals WHERE ticker = ?)
-            """, (score, ticker, ticker))
-            
-            # INSERT macro tickers / new assets if the UPDATE didn't hit any existing rows
-            if cursor.rowcount == 0:
-                today_str = datetime.now().strftime('%Y-%m-%d')
+        for i, ticker in enumerate(combined_tickers):
+            try:
+                score = fetch_and_score_news(ticker, analyzer)
+
                 cursor.execute("""
-                    INSERT INTO quant_signals (ticker, date, sentiment_score)
-                    VALUES (?, ?, ?)
-                """, (ticker, today_str, score))
-            
-            conn.commit()
-            logger.info(f"[{ticker}] Processed Sentiment: {score:+.3f}")
-            
-        except Exception as e:
-            logger.error(f"Failed to process sentiment for {ticker}: {e}")
-            conn.rollback()
-        finally:
-            time.sleep(random.uniform(0.5, 1.5))
-            
-    conn.close()
+                    UPDATE quant_signals
+                    SET sentiment_score = ?
+                    WHERE ticker = ? AND date = (SELECT MAX(date) FROM quant_signals WHERE ticker = ?)
+                """, (score, ticker, ticker))
+
+                # Upsert macro tickers / new assets if the UPDATE matched no existing rows
+                if cursor.rowcount == 0:
+                    today_str = datetime.now().strftime('%Y-%m-%d')
+                    cursor.execute("""
+                        INSERT INTO quant_signals (ticker, date, sentiment_score)
+                        VALUES (?, ?, ?)
+                        ON CONFLICT(ticker, date) DO UPDATE SET
+                            sentiment_score = excluded.sentiment_score
+                    """, (ticker, today_str, score))
+
+                conn.commit()
+                logger.info(f"[{ticker}] Processed Sentiment: {score:+.3f}")
+
+            except Exception as e:
+                logger.error(f"Failed to process sentiment for {ticker}: {e}")
+                conn.rollback()
+            finally:
+                time.sleep(random.uniform(0.5, 1.5))
+    finally:
+        conn.close()
+
     logger.info("FinBERT NLP Analysis completed successfully.")
 
 
@@ -749,7 +763,7 @@ def run_central_bank_nlp_alert(event_name: str, currency: str) -> bool:
         scores = []
         parsed_headlines = []
         
-        for item in news[:20]:
+        for item in news[:NLP_CB_NEWS_FETCH_LIMIT]:
             content = item.get('content', item)
             title = content.get('title', '')
             summary = content.get('summary', '')
@@ -759,19 +773,7 @@ def run_central_bank_nlp_alert(event_name: str, currency: str) -> bool:
             if "rate" not in text_to_analyze.lower() and "inflation" not in text_to_analyze.lower() and target_entity.lower() not in text_to_analyze.lower():
                 continue
                 
-            # Score with FinBERT (Proper Token Truncation logic implemented)
-            result = analyzer(text_to_analyze[:2000], truncation=True, max_length=512)[0]
-            label = result['label'].lower()
-            prob = result['score']
-            
-            if label == 'positive':
-                compound = prob
-            elif label == 'negative':
-                compound = -prob
-            else:
-                compound = 0.0
-                
-            scores.append(compound)
+            scores.append(_score_text(analyzer, text_to_analyze))
             parsed_headlines.append(title)
             
         if not scores:
@@ -783,10 +785,10 @@ def run_central_bank_nlp_alert(event_name: str, currency: str) -> bool:
         # 4. Map General Sentiment to Monetary Policy Tone
         # FinBERT scores "Yields surging" as Negative (- score) because it hurts stocks. Negative = Hawkish.
         # FinBERT scores "Rate cuts" as Positive (+ score) because it helps stocks. Positive = Dovish.
-        if avg_score < -0.15:
+        if avg_score < -NLP_CB_TONE_THRESHOLD:
             tone = "🦅 HAWKISH (Restrictive)"
             equity_impact = "Bearish for Equities"
-        elif avg_score > 0.15:
+        elif avg_score > NLP_CB_TONE_THRESHOLD:
             tone = "🕊️ DOVISH (Accommodative)"
             equity_impact = "Bullish for Equities"
         else:

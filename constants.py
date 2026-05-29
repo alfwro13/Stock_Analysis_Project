@@ -62,3 +62,14 @@ MACRO_CV_N_SPLITS          = 3     # TimeSeriesSplit folds for supervised CV
 # Inference thresholds
 MACRO_VIX_DEFAULT          = 20.0  # VIX fallback when market_regimes has no data
 MACRO_SEVERE_VOL_THRESHOLD = 2.0   # predicted SPY gap % that triggers a warning log
+
+# ── FinBERT / NLP sentiment ────────────────────────────────────────────────────
+NLP_FINBERT_MAX_TOKENS     = 512   # HuggingFace token limit for ProsusAI/finbert
+NLP_TEXT_TRUNCATE_CHARS    = 5000  # perf guard only — tokeniser truncation=True handles semantic cut
+NLP_NEWS_FETCH_LIMIT       = 15    # headlines scored per ticker in the routine scan
+NLP_CB_NEWS_FETCH_LIMIT    = 20    # headlines scored for central bank NLP alerts
+NLP_CB_TONE_THRESHOLD      = 0.15  # |score| above which tone is hawkish/dovish vs neutral
+
+# ── Sentiment chart rendering ─────────────────────────────────────────────────
+SENTIMENT_CHART_FIGSIZE    = (12, 6)  # matplotlib figure size for Nextcloud alert chart
+SENTIMENT_CHART_DPI        = 300      # export resolution for Nextcloud alert chart
