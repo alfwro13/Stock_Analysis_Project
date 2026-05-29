@@ -1,8 +1,12 @@
 # test_ml_pipeline.py
+import sys
 import logging
 import sqlite3
 import pandas as pd
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 from config import BASE_DIR
 from ai_prediction_engine import (
     run_historical_backfill,
