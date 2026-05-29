@@ -129,6 +129,28 @@
     </div>
     {% endif %}
 
+    {% if cb_nlp_latest %}
+    <div class="risk-summary-row {{ cb_nlp_latest.css_class }}" style="padding: 18px 20px; border-radius: 8px; margin-bottom: 25px;">
+        <div class="risk-summary-flex" style="align-items: center; gap: 30px;">
+            <div>
+                <h3 class="risk-summary-header {{ cb_nlp_latest.header_class }}" style="margin-bottom: 4px;">
+                    🏛️ Latest Central Bank NLP — {{ cb_nlp_latest.event_name }}
+                    <span style="font-size: 12px; font-weight: normal; color: #888; margin-left: 10px;">{{ cb_nlp_latest.timestamp }}</span>
+                </h3>
+                <p class="risk-summary-text">
+                    <strong>Tone:</strong> <span class="risk-summary-header {{ cb_nlp_latest.header_class }}">{{ cb_nlp_latest.tone }}</span>
+                    &nbsp;&nbsp;|&nbsp;&nbsp;
+                    <strong>Equity Impact:</strong> {{ cb_nlp_latest.equity_impact }}
+                    &nbsp;&nbsp;|&nbsp;&nbsp;
+                    <strong>FinBERT Score:</strong> <span class="font-monospace">{{ cb_nlp_latest.score }}</span>
+                    &nbsp;&nbsp;|&nbsp;&nbsp;
+                    <strong>Currency:</strong> {{ cb_nlp_latest.currency }}
+                </p>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     <div class="sentiment-split-grid">
         
         <div class="sentiment-column">

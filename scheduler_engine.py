@@ -5,7 +5,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from config import load_config
-from sentiment_engine import run_nextcloud_alert, update_all_sentiment
+from sentiment_engine import run_nextcloud_alert, update_all_sentiment, run_central_bank_nlp_alert
 from earnings_engine import run_earnings_alert
 from insider_engine import run_insider_alert
 from intraday_orchestrator import IntradayOrchestrator
@@ -287,6 +287,41 @@ def run_macro_calendar_update():
     except Exception as e:
         logger.error(f"Macro Calendar Update Failed: {e}")
         log_sched_notification("Error", f"Macro Calendar Update failed: {e}")
+
+def run_central_bank_nlp_check():
+    """Polls for today's passed central bank events and dispatches FinBERT NLP alerts."""
+    CB_EVENTS = {
+        'Fed Interest Rate Decision', 'FOMC Meeting Minutes',
+        'BoE Official Bank Rate', 'BOE Gov Bailey Speaks'
+    }
+    placeholders = ','.join('?' * len(CB_EVENTS))
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        rows = cursor.execute(
+            f"""SELECT event_id, event_name, currency FROM macro_calendar
+                WHERE DATE(event_date) = DATE('now')
+                AND event_date <= datetime('now')
+                AND alert_dispatched = 0
+                AND event_name IN ({placeholders})""",
+            tuple(CB_EVENTS)
+        ).fetchall()
+        conn.close()
+
+        for event_id, event_name, currency in rows:
+            success = run_central_bank_nlp_alert(event_name, currency)
+            if success:
+                conn = get_connection()
+                conn.execute(
+                    "UPDATE macro_calendar SET alert_dispatched = 1 WHERE event_id = ?",
+                    (event_id,)
+                )
+                conn.commit()
+                conn.close()
+                log_sched_notification("Macro NLP", f"Central Bank NLP dispatched for: {event_name}")
+    except Exception as e:
+        logger.error(f"Central Bank NLP check failed: {e}")
+
 
 def run_macro_data_update():
     """Executes the weekly structural Macroeconomic Data sync (FRED/BoE)."""
@@ -603,7 +638,7 @@ def reload_scheduler():
         calendar_time = macro_cfg.get("CALENDAR_TIME", "04:00")
         data_day = macro_cfg.get("DATA_DAY", "sat")
         data_time = macro_cfg.get("DATA_TIME", "05:00")
-        
+
         try:
             cal_hour, cal_minute = map(int, calendar_time.split(':'))
             scheduler.add_job(
@@ -612,7 +647,7 @@ def reload_scheduler():
                 id='macro_calendar_job'
             )
             logger.info(f"Macro Calendar Update scheduled daily at {calendar_time}")
-            
+
             data_hour, data_minute = map(int, data_time.split(':'))
             scheduler.add_job(
                 run_macro_data_update,
@@ -622,6 +657,25 @@ def reload_scheduler():
             logger.info(f"Macro Data Update scheduled for {data_day} at {data_time}")
         except Exception as e:
             logger.error(f"Failed to schedule Macro Engine Jobs: {e}")
+
+    # 14b. Central Bank NLP Alert (polls for same-day FOMC/BoE events post-announcement)
+    cb_nlp_cfg = scheduling.get("CB_NLP_ALERT", {})
+    if cb_nlp_cfg.get("ENABLED", True):
+        cb_freq = cb_nlp_cfg.get("FREQUENCY", "mon-fri")
+        cb_start = cb_nlp_cfg.get("START_TIME", "12:00")
+        cb_end = cb_nlp_cfg.get("END_TIME", "21:00")
+        cb_interval = int(cb_nlp_cfg.get("INTERVAL_MINUTES", 30))
+        try:
+            cb_start_h, _ = map(int, cb_start.split(':'))
+            cb_end_h, _ = map(int, cb_end.split(':'))
+            scheduler.add_job(
+                run_central_bank_nlp_check,
+                CronTrigger(day_of_week=cb_freq, hour=f"{cb_start_h}-{cb_end_h}", minute=f"*/{cb_interval}"),
+                id='cb_nlp_alert_job'
+            )
+            logger.info(f"Central Bank NLP Alert polling scheduled {cb_freq} {cb_start}-{cb_end} UTC every {cb_interval}m")
+        except Exception as e:
+            logger.error(f"Failed to schedule Central Bank NLP Alert: {e}")
 
     # 15. Index Constituents Scraper
     sync_indices_cfg = scheduling.get("SYNC_INDICES", {})

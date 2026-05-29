@@ -505,7 +505,8 @@ def _async_chart_cruncher_worker() -> None:
     except Exception as ex:
         logger.error(f"Background visual cruncher encountered a processing error: {ex}")
     finally:
-        _IS_REFRESHING = False
+        with _CACHE_LOCK:
+            _IS_REFRESHING = False
 
 
 # ==========================================================
@@ -678,13 +679,6 @@ def update_all_sentiment(tickers: List[str]) -> None:
     conn = get_connection()
     cursor = conn.cursor()
 
-    try:
-        cursor.execute("ALTER TABLE quant_signals ADD COLUMN sentiment_score REAL")
-        conn.commit()
-        logger.info("Database Schema Migrated: Added 'sentiment_score' to quant_signals.")
-    except Exception:
-        pass # Column already exists
-
     for i, ticker in enumerate(combined_tickers):
         try:
             score = fetch_and_score_news(ticker, analyzer)
@@ -716,10 +710,12 @@ def update_all_sentiment(tickers: List[str]) -> None:
     logger.info("FinBERT NLP Analysis completed successfully.")
 
 
+# Triggered by run_central_bank_nlp_check() in scheduler_engine.py, which polls
+# macro_calendar every 30 min (mon-fri 12:00-21:00 UTC) for same-day CB events.
 def run_central_bank_nlp_alert(event_name: str, currency: str) -> bool:
     """
     Specifically targets Tier-1 Central Bank events (FOMC, BoE).
-    Parses immediate media reactions to determine if the monetary policy tone 
+    Parses immediate media reactions to determine if the monetary policy tone
     is mathematically 'Hawkish' (Bearish for equities) or 'Dovish' (Bullish for equities).
     Dispatches a specialized alert to Nextcloud Talk.
     """

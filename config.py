@@ -141,6 +141,13 @@ DEFAULT_CONFIG = {
             "DATA_DAY": "sat",
             "DATA_TIME": "05:00"
         },
+        "CB_NLP_ALERT": {
+            "ENABLED": True,
+            "FREQUENCY": "mon-fri",
+            "START_TIME": "12:00",
+            "END_TIME": "21:00",
+            "INTERVAL_MINUTES": 30
+        },
         "ML_BACKFILL": {
             "ENABLED": False,
             "DAYS": ["sat"],

@@ -214,6 +214,38 @@ async def settings_page(request: Request):
     )
 
 
+def _parse_cb_nlp_message(msg_text: str, timestamp: str) -> dict | None:
+    """Extract structured fields from a stored Macro NLP notification message."""
+    try:
+        result: dict = {"timestamp": timestamp}
+        for line in msg_text.split('\n'):
+            if '**Event:**' in line:
+                part = line.split('**Event:** ', 1)[1]
+                result['event_name'] = part.split(' (')[0].strip()
+                result['currency'] = part.split('(')[1].rstrip(')').strip()
+            elif '**Calculated Tone:**' in line:
+                result['tone'] = line.split('**Calculated Tone:** ', 1)[1].strip()
+            elif '**Expected Equity Impact:**' in line:
+                result['equity_impact'] = line.split('**Expected Equity Impact:** ', 1)[1].strip()
+            elif '**Analyzed FinBERT Score:**' in line:
+                result['score'] = line.split('**Analyzed FinBERT Score:** ', 1)[1].strip()
+        if 'tone' not in result:
+            return None
+        tone_upper = result['tone'].upper()
+        if 'HAWKISH' in tone_upper:
+            result['css_class'] = 'risk-summary-red'
+            result['header_class'] = 'red'
+        elif 'DOVISH' in tone_upper:
+            result['css_class'] = 'risk-summary-green'
+            result['header_class'] = 'green'
+        else:
+            result['css_class'] = 'risk-summary-yellow'
+            result['header_class'] = 'yellow'
+        return result
+    except Exception:
+        return None
+
+
 @page_router.get("/market-sentiment", response_class=HTMLResponse)
 async def market_sentiment_page(request: Request):
     regime_data = get_latest_regime()
@@ -263,6 +295,15 @@ async def market_sentiment_page(request: Request):
             ORDER BY event_date ASC
         """, (now_str, horizon_7d))
         uk_events = enrich_macro_events([dict(row) for row in cursor.fetchall()])
+
+        # Fetch latest Central Bank NLP dispatch
+        cb_nlp_latest = None
+        cb_row = cursor.execute(
+            "SELECT message_text, timestamp FROM system_notifications "
+            "WHERE message_type = 'Macro NLP' ORDER BY timestamp DESC LIMIT 1"
+        ).fetchone()
+        if cb_row:
+            cb_nlp_latest = _parse_cb_nlp_message(cb_row["message_text"], cb_row["timestamp"])
 
         # Process Historical DataFrame Indicators
         try:
@@ -321,6 +362,7 @@ async def market_sentiment_page(request: Request):
         yield_curve_html = "<p>Data unavailable.</p>"
         us_inflation_html = "<p>Data unavailable.</p>"
         uk_inflation_html = "<p>Data unavailable.</p>"
+        cb_nlp_latest = None
     finally:
         conn.close()
         
@@ -345,6 +387,7 @@ async def market_sentiment_page(request: Request):
             "urgent_events": urgent_events,
             "us_events": us_events,
             "uk_events": uk_events,
+            "cb_nlp_latest": cb_nlp_latest,
             "unread_count": get_unread_count(),
             "config": load_config()
         }
