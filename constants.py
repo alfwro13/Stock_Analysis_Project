@@ -36,3 +36,29 @@ FRESHNESS_MODEL_WARN_DAYS   = 7   # model file older than this → amber
 FRESHNESS_MODEL_STALE_DAYS  = 14  # model file older than this → red
 FRESHNESS_PRICES_WARN_DAYS  = 3   # price data older than this → amber (covers normal weekends)
 FRESHNESS_PRICES_STALE_DAYS = 5   # price data older than this → red
+
+# ── Macro AI engine ────────────────────────────────────────────────────────────
+# Training data minimums
+MACRO_HMM_MIN_TRAIN_ROWS   = 50    # macro_indicators rows required to fit HMM
+MACRO_CAL_MIN_TRAIN_ROWS   = 10    # macro_calendar rows required for RF and XGBoost
+
+# HMM architecture
+MACRO_HMM_N_STATES         = 3     # hidden states: 0=expansion, 1=choppy, 2=recession
+MACRO_HMM_N_ITER           = 100   # EM iterations for GaussianHMM.fit()
+MACRO_HMM_HOLDOUT_FRAC     = 0.8   # train fraction for held-out log-likelihood scoring
+
+# Random Forest hyperparameters (consensus miss probability)
+MACRO_RF_N_ESTIMATORS      = 100
+MACRO_RF_MAX_DEPTH         = 4
+
+# XGBoost hyperparameters (volatility magnitude)
+MACRO_XGB_N_ESTIMATORS     = 100
+MACRO_XGB_MAX_DEPTH        = 4
+MACRO_XGB_LEARNING_RATE    = 0.05
+
+# Cross-validation
+MACRO_CV_N_SPLITS          = 3     # TimeSeriesSplit folds for supervised CV
+
+# Inference thresholds
+MACRO_VIX_DEFAULT          = 20.0  # VIX fallback when market_regimes has no data
+MACRO_SEVERE_VOL_THRESHOLD = 2.0   # predicted SPY gap % that triggers a warning log
