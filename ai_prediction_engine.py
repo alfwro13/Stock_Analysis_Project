@@ -110,9 +110,23 @@ FEATURE_COLS = [
     'atr_pct_z', 'hist_vol_20_z',
     # Relative strength vs SPY
     'rel_strength_5d_z', 'rel_strength_20d_z',
-    # Fundamental factors
-    'trailing_pe_z', 'price_to_book_z', 'profit_margin_z',
-    'roe_z', 'revenue_growth_z', 'debt_to_equity_z',
+    #
+    # FUNDAMENTAL FACTORS REMOVED — 2026-05-29 (audit item 2a)
+    # A/B diagnostic (debug_scripts/ab_fundamentals_diagnostic.py) ran 5 seeds
+    # comparing 24-feature vs 18-feature model on 250k rows / 1,060 tickers:
+    #
+    #   WITH    fundamentals (24 feats): mean PR-AUC 0.4015  lift +0.0746
+    #   WITHOUT fundamentals (18 feats): mean PR-AUC 0.4047  lift +0.0778
+    #   Delta: −0.0032 ± 0.0043  SNR 0.7×  (18-feat arm won all 5 seeds)
+    #
+    # Delta is statistically indistinguishable from zero (noise > signal).
+    # The 18-feature model never scored lower across any seed.
+    # Removing them closes the documented point-in-time lookahead bias
+    # (stock_signals stores only the latest snapshot; joining it to
+    # historical rows applies today's fundamentals to 18-month-old data).
+    #
+    # 'trailing_pe_z', 'price_to_book_z', 'profit_margin_z',
+    # 'roe_z', 'revenue_growth_z', 'debt_to_equity_z',
 ]
 
 SECTOR_MAP = {
