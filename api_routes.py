@@ -13,7 +13,7 @@ import logging
 import requests
 import yfinance as yf
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, List, Optional
 from pathlib import Path
 
 from fastapi import APIRouter, Request, BackgroundTasks, HTTPException, Query, Path as PathParam
@@ -92,7 +92,7 @@ class IPv6TestRequest(BaseModel):
     ipv6_address: str
 
 class GhostfolioAccountsConfig(BaseModel):
-    discovered: Optional[List[str]] = None
+    discovered: Optional[List[Any]] = None
     active: Optional[List[str]] = None
 
 class UIPreferencesConfig(BaseModel):
@@ -140,6 +140,10 @@ class SchedulingConfig(BaseModel):
     ML_BACKFILL: Optional[ScheduleItemConfig] = None
     ML_TRAINING: Optional[ScheduleItemConfig] = None
     ML_INFERENCE: Optional[ScheduleItemConfig] = None
+    QUANT_ENGINE: Optional[ScheduleItemConfig] = None
+    EARNINGS_ENGINE: Optional[ScheduleItemConfig] = None
+    DISPATCHER: Optional[ScheduleItemConfig] = None
+    UNIVERSE_ENGINE: Optional[ScheduleItemConfig] = None
 
 class ReportsDefaultsConfig(BaseModel):
     MR_MAX_RSI: Optional[int] = None

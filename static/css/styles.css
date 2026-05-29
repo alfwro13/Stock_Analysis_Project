@@ -592,6 +592,7 @@ table.dataTable tbody tr td { color: #ccc; }
 .scheduler-table th { background-color: #2c2c2c; color: #4da6ff; }
 .status-pill { padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: bold; }
 .status-enabled { background-color: rgba(0, 255, 0, 0.1); color: #00ff00; border: 1px solid #00ff00; }
+.status-scheduled { background-color: rgba(0, 200, 255, 0.1); color: #00c8ff; border: 1px solid #00c8ff; }
 .status-disabled { background-color: rgba(255, 77, 77, 0.1); color: #ff4d4d; border: 1px solid #ff4d4d; }
 /* ─────────── Market Reports — Jump List & Back to Top ─────────── */
 .report-jump-list { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 8px 12px; font-size: 0.78rem; color: #8a9bb0; border-top: 1px solid rgba(255,255,255,0.06); margin-top: 8px; }

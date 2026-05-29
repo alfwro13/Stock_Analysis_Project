@@ -1038,6 +1038,8 @@
                             <td>
                                 {% if job_cfg.ENABLED %}
                                     <span class="status-pill status-enabled">ACTIVE</span>
+                                {% elif job_cfg.ENABLED is undefined and job_cfg.DAYS %}
+                                    <span class="status-pill status-enabled">SCHEDULED</span>
                                 {% else %}
                                     <span class="status-pill status-disabled">DISABLED</span>
                                 {% endif %}
@@ -1978,7 +1980,8 @@
                     if (response.ok) {
                         setStatus('status-msg', 'success', "Settings saved. Background schedulers restarted dynamically.");
                     } else {
-                        setStatus('status-msg', 'error', result.message);
+                        const errMsg = result.message || (result.detail ? (Array.isArray(result.detail) ? result.detail.map(d => d.loc.join('.') + ': ' + d.msg).join('; ') : result.detail) : 'Unknown error');
+                        setStatus('status-msg', 'error', errMsg);
                     }
                 }
             } catch (error) {
