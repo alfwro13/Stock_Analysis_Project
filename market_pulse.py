@@ -218,31 +218,22 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
                             
                 t_daily.dropna(subset=['Close'], inplace=True)
                 t_live.dropna(subset=['Close'], inplace=True)
-                
-                if t_daily.empty or t_live.empty:
-                    # Distinguish a transient empty feed (nights/weekends/holidays) for an
-                    # already-populated ticker from a ticker that has never resolved. Stamping
-                    # last_updated=0 unconditionally pins is_stale=True forever, keeping the
-                    # ticker permanently in the /market-pulse needs_fetch set and locking the
-                    # frontend into FAST_POLL mode — a sustained refetch storm.
+
+                if t_daily.empty:
+                    # No daily data at all — transient outage or genuinely invalid ticker.
                     cursor.execute("SELECT price FROM market_pulse_cache WHERE ticker = ?", (ticker,))
                     existing = cursor.fetchone()
-
                     if existing is not None and existing['price']:
-                        # Established ticker, transient empty feed: retain last-known price and
-                        # mark fresh so we stop hammering yfinance for data that isn't printing.
                         cursor.execute(
                             "UPDATE market_pulse_cache SET last_updated = ? WHERE ticker = ?",
                             (current_time, ticker)
                         )
                     elif existing is not None:
-                        # Row exists but never carried a real price: keep it stale to retry.
                         cursor.execute(
                             "UPDATE market_pulse_cache SET last_updated = 0 WHERE ticker = ?",
                             (ticker,)
                         )
                     else:
-                        # Brand-new ticker that failed its first fetch: seed a stale placeholder.
                         name = INDEX_TICKERS.get(ticker, ticker)
                         cursor.execute(
                             "INSERT INTO market_pulse_cache (ticker, name, price, change_pts, change_pct, is_positive, last_updated) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -250,14 +241,19 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
                         )
                     continue
 
-                current_price: float = float(t_live['Close'].iloc[-1])
-                last_daily_date = t_daily.index[-1].date()
-                live_date = t_live.index[-1].date()
-                
-                if last_daily_date >= live_date and len(t_daily) >= 2:
-                    prev_close: float = float(t_daily['Close'].iloc[-2])
+                if t_live.empty:
+                    # Daily-priced instrument (e.g. mutual fund): no intraday ticks exist.
+                    # Use the most recent daily close as the current price.
+                    current_price = float(t_daily['Close'].iloc[-1])
+                    prev_close = float(t_daily['Close'].iloc[-2]) if len(t_daily) >= 2 else current_price
                 else:
-                    prev_close = float(t_daily['Close'].iloc[-1])
+                    current_price = float(t_live['Close'].iloc[-1])
+                    last_daily_date = t_daily.index[-1].date()
+                    live_date = t_live.index[-1].date()
+                    if last_daily_date >= live_date and len(t_daily) >= 2:
+                        prev_close = float(t_daily['Close'].iloc[-2])
+                    else:
+                        prev_close = float(t_daily['Close'].iloc[-1])
                     
                 change_pts: float = current_price - prev_close
                 change_pct: float = (change_pts / prev_close) * 100.0 if not pd.isna(prev_close) and prev_close != 0 else 0.0
