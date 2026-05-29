@@ -5,7 +5,7 @@ import time
 import logging
 import requests
 import pandas as pd
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from typing import Optional
 
 from config import HISTORICAL_DIR
@@ -43,6 +43,7 @@ class GiltDataService:
                 wait = 2 ** attempt
                 logger.warning(f"Request to {url} failed (attempt {attempt + 1}/{retries}): {e}. Retrying in {wait}s.")
                 time.sleep(wait)
+        raise RuntimeError(f"_get_with_retry exhausted {retries} attempts for {url}")
 
     def fetch_historical_boe(self, start_date: str = "01/Jan/2020") -> Optional[pd.DataFrame]:
         """Queries the Bank of England IADB endpoint to fetch true historical spot data."""
