@@ -21,15 +21,16 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from config import (
-    load_config, 
-    SECRETS_PATH, 
-    DATA_DIR, 
+    load_config,
+    update_config_atomic,
+    SECRETS_PATH,
+    DATA_DIR,
     BASE_DIR,
     DB_PATH,
-    PORTFOLIO_PATH, 
-    WATCHLIST_PATH, 
-    FUNDAMENTALS_DIR, 
-    HISTORICAL_DIR, 
+    PORTFOLIO_PATH,
+    WATCHLIST_PATH,
+    FUNDAMENTALS_DIR,
+    HISTORICAL_DIR,
     INTRADAY_DIR
 )
 from database import get_connection, get_universe_tickers
@@ -276,19 +277,7 @@ def bg_init_macro_pipeline():
         ai_engine.run_macro_inference(scan_date)
         
         # Update config.json to mark initialization as complete
-        if SECRETS_PATH.exists():
-            with open(SECRETS_PATH, 'r') as f:
-                config_data = json.load(f)
-                
-            if "SCHEDULING" not in config_data:
-                config_data["SCHEDULING"] = {}
-            if "MACRO_ENGINE" not in config_data["SCHEDULING"]:
-                config_data["SCHEDULING"]["MACRO_ENGINE"] = {}
-                
-            config_data["SCHEDULING"]["MACRO_ENGINE"]["INITIALIZED"] = True
-            
-            with open(SECRETS_PATH, 'w') as f:
-                json.dump(config_data, f, indent=4)
+        update_config_atomic({"SCHEDULING": {"MACRO_ENGINE": {"INITIALIZED": True}}})
         
         log_notification("Success", "Macro AI Pipeline successfully initialized and trained.")
     except Exception as e:
@@ -830,8 +819,8 @@ async def restart_system(background_tasks: BackgroundTasks):
 @api_router.post("/settings")
 async def save_settings(config: SettingsConfig):
     try:
-        with open(SECRETS_PATH, 'w') as f:
-            json.dump(config.model_dump(exclude_none=True), f, indent=4)
+        incoming_data = config.model_dump(exclude_none=True)
+        update_config_atomic(incoming_data)
         reload_scheduler()
         return JSONResponse(content={"status": "success", "message": "Settings saved successfully."})
     except Exception as e:

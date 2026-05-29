@@ -256,3 +256,32 @@ UI_PREFERENCES = current_config.get("UI_PREFERENCES", {})
 NOTIFICATIONS = current_config.get("NOTIFICATIONS", {})
 SCHEDULING = current_config.get("SCHEDULING", {})
 REPORTS_DEFAULTS = current_config.get("REPORTS_DEFAULTS", DEFAULT_CONFIG["REPORTS_DEFAULTS"])
+
+
+def update_config_atomic(new_data: dict) -> None:
+    """Atomically merges new_data into config.json using a temp file swap (os.replace)."""
+    tmp_path = SECRETS_PATH.with_suffix('.tmp')
+    try:
+        current = load_config()
+
+        def deep_merge(d, u):
+            for k, v in u.items():
+                if k in d and isinstance(d[k], dict) and isinstance(v, dict):
+                    deep_merge(d[k], v)
+                else:
+                    d[k] = v
+            return d
+
+        merged = deep_merge(current, new_data)
+
+        with open(tmp_path, 'w') as f:
+            json.dump(merged, f, indent=4)
+            f.flush()
+            os.fsync(f.fileno())
+
+        os.replace(tmp_path, SECRETS_PATH)
+
+    except Exception as e:
+        print(f"[ERROR] Atomic config write failed: {e}")
+        if tmp_path.exists():
+            tmp_path.unlink()

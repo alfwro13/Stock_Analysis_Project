@@ -6,10 +6,12 @@ from slugify import slugify
 from typing import Dict, Any
 
 from config import (
-    GHOSTFOLIO_URL, 
-    GHOSTFOLIO_TOKEN, 
-    PORTFOLIO_PATH, 
-    WATCHLIST_PATH, 
+    load_config,
+    update_config_atomic,
+    GHOSTFOLIO_URL,
+    GHOSTFOLIO_TOKEN,
+    PORTFOLIO_PATH,
+    WATCHLIST_PATH,
     SECRETS_PATH,
     GHOSTFOLIO_ACCOUNTS
 )
@@ -81,30 +83,25 @@ class GhostfolioSyncEngine:
             
             # --- Safely Update config.json ---
             try:
-                with open(SECRETS_PATH, 'r') as f:
-                    config_data = json.load(f)
-                    
-                if "GHOSTFOLIO_ACCOUNTS" not in config_data:
-                    config_data["GHOSTFOLIO_ACCOUNTS"] = {"discovered": [], "active": []}
-                    
-                config_data["GHOSTFOLIO_ACCOUNTS"]["discovered"] = discovered_accounts
-                
+                current_cfg = load_config()
+                current_active = current_cfg.get("GHOSTFOLIO_ACCOUNTS", {}).get("active", [])
+
                 # Auto-whitelist all discovered accounts if the active list is totally empty
                 # This ensures a seamless transition for legacy users without breaking their dashboards
-                if not config_data["GHOSTFOLIO_ACCOUNTS"].get("active"):
-                    config_data["GHOSTFOLIO_ACCOUNTS"]["active"] = [acc["id"] for acc in discovered_accounts]
+                if not current_active:
+                    current_active = [acc["id"] for acc in discovered_accounts]
                     print("[SYNC] First-time discovery detected. Auto-activating all accounts.")
-                
-                with open(SECRETS_PATH, 'w') as f:
-                    json.dump(config_data, f, indent=4)
-                    
+
+                updated_accounts = {"discovered": discovered_accounts, "active": current_active}
+                update_config_atomic({"GHOSTFOLIO_ACCOUNTS": updated_accounts})
+
                 # Update runtime state
-                self.active_account_ids = config_data["GHOSTFOLIO_ACCOUNTS"]["active"]
+                self.active_account_ids = current_active
                 self.discovered_accounts = discovered_accounts
-                
+
                 print(f"[SUCCESS] Discovered {len(discovered_accounts)} accounts. {len(self.active_account_ids)} are set to Active.")
                 return discovered_accounts
-                
+
             except Exception as e:
                 print(f"[ERROR] Failed to update config.json with discovered accounts: {e}")
                 self.active_account_ids = GHOSTFOLIO_ACCOUNTS.get("active", [])
