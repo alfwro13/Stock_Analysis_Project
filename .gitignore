@@ -2,6 +2,7 @@
 __pycache__/
 reports/
 models/
+.claude/
 
 # Ignore data folder and all its contents
 data/
