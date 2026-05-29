@@ -22,6 +22,7 @@ from sklearn.calibration import CalibratedClassifierCV
 from config import BASE_DIR
 from database import get_connection, log_notification
 from data_engine import DataEngine
+from constants import PREDICTION_HORIZON_DAYS, PREDICTION_RETURN_THRESHOLD
 
 logger = logging.getLogger(__name__)
 
@@ -542,7 +543,7 @@ def run_historical_backfill(tickers: Optional[List[str]] = None) -> None:
 
 def train_global_ml_model() -> None:
     """
-    Builds a 24-feature ensemble model predicting >3% returns over 5 trading
+    Builds a 24-feature ensemble model predicting >3% returns over 10 trading
     days using Anchored Walk-Forward Validation with Temporal Embargos.
 
     FEATURE SET (24 features):
@@ -659,11 +660,11 @@ def train_global_ml_model() -> None:
         # has more time to play out before mean-reversion noise dominates.
         # Entry proxy remains close[T+1]. Exit moves to close[T+10].
         df['next_close']   = df.groupby('ticker')['close_price'].shift(-1)
-        df['future_close'] = df.groupby('ticker')['close_price'].shift(-10)
+        df['future_close'] = df.groupby('ticker')['close_price'].shift(-PREDICTION_HORIZON_DAYS)
         df.dropna(subset=['next_close', 'future_close'], inplace=True)
 
         df['target'] = (
-            (df['future_close'] - df['next_close']) / df['next_close'] > 0.03
+            (df['future_close'] - df['next_close']) / df['next_close'] > PREDICTION_RETURN_THRESHOLD
         ).astype(int)
 
         if len(df) < 1000:

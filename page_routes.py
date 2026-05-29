@@ -37,6 +37,7 @@ from visuals import (
 from portfolio_service import get_rate_to_base, get_rate_from_base
 from quant_signals import get_candlestick_patterns
 from quant_screener import fetch_latest_signals, generate_markdown_briefing
+from constants import PREDICTION_HORIZON_DAYS, PREDICTION_RETURN_THRESHOLD
 
 page_router = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -382,7 +383,11 @@ async def glossary(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="glossary.html",
-        context={"unread_count": get_unread_count()}
+        context={
+            "unread_count": get_unread_count(),
+            "prediction_horizon": PREDICTION_HORIZON_DAYS,
+            "prediction_threshold_pct": int(PREDICTION_RETURN_THRESHOLD * 100),
+        }
     )
 
 
@@ -672,11 +677,13 @@ async def quant_screener_page(request: Request):
 @page_router.get("/market-screener", response_class=HTMLResponse)
 async def market_screener_page(request: Request):
     return templates.TemplateResponse(
-        request=request, 
-        name="market_screener.html", 
+        request=request,
+        name="market_screener.html",
         context={
             "unread_count": get_unread_count(),
-            "config": load_config()
+            "config": load_config(),
+            "prediction_horizon": PREDICTION_HORIZON_DAYS,
+            "prediction_threshold_pct": int(PREDICTION_RETURN_THRESHOLD * 100),
         }
     )
 
