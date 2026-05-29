@@ -8,7 +8,7 @@ import logging
 from typing import Dict, Optional
 import yfinance as yf
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timezone
 from config import load_config, PORTFOLIO_PATH, INTRADAY_DIR, HISTORICAL_DIR, PORT, SERVER_URL
 from utils import normalize_ticker
 from database import get_connection
@@ -196,7 +196,11 @@ class IntradayOrchestrator:
         """
         settings = self._dedup_settings(engine)
         fingerprint = self._condition_fingerprint(reason)
-        today = datetime.utcnow().strftime("%Y-%m-%d")
+        # state_date is always UTC so the daily rollover is consistent regardless
+        # of the server's local timezone. Session bounds in run() use local time
+        # deliberately (market hours are exchange-local); the disagreement window
+        # is only between midnight UTC and midnight local, i.e. outside trading hours.
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
         conn = None
         try:
@@ -252,13 +256,18 @@ class IntradayOrchestrator:
 
             # Case 4b: cooldown elapsed AND material deterioration.
             try:
-                last_fired = datetime.strptime(row["last_fired_utc"], "%Y-%m-%d %H:%M:%S")
+                # Parse the stored UTC string and attach tzinfo so it can be
+                # subtracted from the aware datetime.now(timezone.utc) without
+                # raising TypeError (aware - naive is an error in Python).
+                last_fired = datetime.strptime(
+                    row["last_fired_utc"], "%Y-%m-%d %H:%M:%S"
+                ).replace(tzinfo=timezone.utc)
             except (TypeError, ValueError):
                 last_fired = None
 
             cooldown_ok = (
                 last_fired is not None
-                and (datetime.utcnow() - last_fired).total_seconds()
+                and (datetime.now(timezone.utc) - last_fired).total_seconds()
                 >= settings["cooldown_minutes"] * 60.0
             )
             if cooldown_ok and worsened_pct >= settings["retrigger_percent"]:
@@ -288,8 +297,9 @@ class IntradayOrchestrator:
         (engine, ticker) primary key.
         """
         fingerprint = self._condition_fingerprint(reason)
-        now_utc = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-        today = datetime.utcnow().strftime("%Y-%m-%d")
+        _now = datetime.now(timezone.utc)
+        now_utc = _now.strftime("%Y-%m-%d %H:%M:%S")
+        today = _now.strftime("%Y-%m-%d")
 
         conn = None
         try:
@@ -315,6 +325,23 @@ class IntradayOrchestrator:
         finally:
             if conn:
                 conn.close()
+
+    @staticmethod
+    def _seconds_since(ts: pd.Timestamp) -> float:
+        """Returns elapsed seconds between ts and now, always in UTC.
+
+        Uses .tzinfo (the correct scalar attribute) rather than .tz, which is a
+        DatetimeIndex-level property and can raise AttributeError on a plain
+        Timestamp in some pandas versions. Naive timestamps are treated as UTC
+        rather than local time, which matches how yfinance writes its index after
+        tz_localize(None) strips the zone — comparing a naive local now() against
+        a stripped-UTC timestamp would be wrong by the UTC offset (up to ±1 h in
+        the UK under BST).
+        """
+        now_utc = pd.Timestamp.now(tz="UTC")
+        if ts.tzinfo is not None:
+            return (now_utc - ts.tz_convert("UTC")).total_seconds()
+        return (now_utc - ts.tz_localize("UTC")).total_seconds()
 
     def _prune_alert_state(self) -> None:
         """Deletes alert_state rows older than 7 days to keep the table bounded.
@@ -420,14 +447,8 @@ class IntradayOrchestrator:
 
                 # --- STALENESS / MARKET CLOSED CIRCUIT BREAKER ---
                 # If the last tick is older than 90 mins (5400s), the market is closed or halted.
-                latest_dt_aware = m_df.index[-1]
-                if latest_dt_aware.tz is not None:
-                    time_diff = (pd.Timestamp.now(tz='UTC') - latest_dt_aware.tz_convert('UTC')).total_seconds()
-                else:
-                    time_diff = (pd.Timestamp.now() - latest_dt_aware).total_seconds()
-                    
-                if time_diff > 5400:
-                    continue # Bypass stale data
+                if self._seconds_since(m_df.index[-1]) > 5400:
+                    continue  # Bypass stale data
                 
                 m_open = float(m_df['Close'].iloc[0])
                 m_curr = float(m_df['Close'].iloc[-1])
@@ -520,13 +541,7 @@ class IntradayOrchestrator:
 
                 # --- STALENESS / MARKET CLOSED CIRCUIT BREAKER ---
                 # Completely bypass evaluation if restarting the app over the weekend/holiday
-                latest_dt_aware = df_intraday.index[-1]
-                if latest_dt_aware.tz is not None:
-                    time_diff = (pd.Timestamp.now(tz='UTC') - latest_dt_aware.tz_convert('UTC')).total_seconds()
-                else:
-                    time_diff = (pd.Timestamp.now() - latest_dt_aware).total_seconds()
-                    
-                if time_diff > 5400: # 90 minutes
+                if self._seconds_since(df_intraday.index[-1]) > 5400:  # 90 minutes
                     # Market is closed, or asset is halted. Save the parquet but skip alert evaluation.
                     df_intraday.index = df_intraday.index.tz_localize(None)
                     df_intraday.to_parquet(INTRADAY_DIR / f"{ticker}_intraday.parquet", engine='pyarrow')
