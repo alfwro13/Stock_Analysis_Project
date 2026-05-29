@@ -1,6 +1,7 @@
 # gilt_engine.py
 import io
 import re
+import time
 import logging
 import requests
 import pandas as pd
@@ -28,6 +29,21 @@ class GiltDataService:
         }
         self.parquet_path = HISTORICAL_DIR / "UK_GILT_BASELINE.parquet"
 
+    def _get_with_retry(self, url: str, *, params=None, timeout: int, retries: int = 3) -> requests.Response:
+        """GET with exponential backoff (1 s, 2 s, 4 s). Raises on final failure.
+        No finally block: requests manages its own connection pool; there is no resource to release manually."""
+        for attempt in range(retries):
+            try:
+                response = requests.get(url, params=params, headers=self.headers, timeout=timeout)
+                response.raise_for_status()
+                return response
+            except requests.RequestException as e:
+                if attempt == retries - 1:
+                    raise
+                wait = 2 ** attempt
+                logger.warning(f"Request to {url} failed (attempt {attempt + 1}/{retries}): {e}. Retrying in {wait}s.")
+                time.sleep(wait)
+
     def fetch_historical_boe(self, start_date: str = "01/Jan/2020") -> Optional[pd.DataFrame]:
         """Queries the Bank of England IADB endpoint to fetch true historical spot data."""
         current_date_str = datetime.now(timezone.utc).strftime("%d/%b/%Y")
@@ -42,20 +58,23 @@ class GiltDataService:
         }
         try:
             logger.info(f"Querying Bank of England historical archive: {start_date} -> {current_date_str}")
-            response = requests.get(self.boe_url, params=payload, headers=self.headers, timeout=15)
-            response.raise_for_status()
+            response = self._get_with_retry(self.boe_url, params=payload, timeout=15)
             
             df = pd.read_csv(io.BytesIO(response.content))
-            if df.empty or "DATE" not in df.columns:
-                logger.warning("Bank of England IADB returned an empty dataset matrix.")
+            if df.empty or "DATE" not in df.columns or "IUDMNPY" not in df.columns:
+                logger.warning("Bank of England IADB returned an empty or malformed dataset.")
                 return None
-            
+
             # Vectorized structural cleaning
             df["DATE"] = pd.to_datetime(df["DATE"], errors="coerce")
             df = df.dropna(subset=["DATE"])
             df["IUDMNPY"] = pd.to_numeric(df["IUDMNPY"], errors="coerce")
             df = df.dropna(subset=["IUDMNPY"])
-            
+
+            if df.empty:
+                logger.warning("Bank of England IADB dataset contained no usable rows after cleaning.")
+                return None
+
             # Rename to match standard Quant Engine layout
             df = df.rename(columns={"DATE": "Date", "IUDMNPY": "Close"})
             return df[["Date", "Close"]]
@@ -68,8 +87,7 @@ class GiltDataService:
         payload = {"s": "UK10YG"}
         try:
             logger.info(f"Scraping live session snapshot via FT.com: {self.ft_url}?s=UK10YG")
-            response = requests.get(self.ft_url, params=payload, headers=self.headers, timeout=12)
-            response.raise_for_status()
+            response = self._get_with_retry(self.ft_url, params=payload, timeout=12)
             html_content = response.text
             
             # Pattern 1: Target standard modern FT UI data structures
@@ -103,8 +121,10 @@ class GiltDataService:
             price_match = re.search(r'class="mod-ui-data-list__value[^"]*">\s*([\d\.]+)', html_content)
             if price_match:
                 yield_val = float(price_match.group(1))
-                logger.info(f"Fallback UI extractor executed. Isolated Live Yield: {yield_val}%")
-                return yield_val
+                if 0.0 < yield_val < 25.0:
+                    logger.info(f"Fallback UI extractor executed. Isolated Live Yield: {yield_val}%")
+                    return yield_val
+                logger.warning(f"Fallback UI extractor rejected out-of-range value: {yield_val}")
 
             logger.warning("Financial Times content layout has shifted. Yield token missed.")
             return None
@@ -146,24 +166,33 @@ class GiltDataService:
             else:
                 target_date = today_dt
                 
+            # Capture the latest published BoE date before the live insert so the
+            # gap calculation is always against the true last BoE row, regardless of
+            # whether the insert appends a new row or overwrites an existing one.
+            last_boe_date = df_boe.index.max()
+
             # Insert the current live streaming tick
             df_boe.loc[target_date, "Close"] = live_yield
-            
+
             # 3. Check and resolve processing latency gaps between BoE and FT
-            last_boe_date = df_boe.index[-2] if target_date in df_boe.index else df_boe.index[-1]
             gap_days = (target_date - last_boe_date).days
-            
+            if gap_days < 0:
+                logger.warning(
+                    f"BoE index is ahead of target date ({last_boe_date.date()} > {target_date.date()}); "
+                    "skipping weekend fill — check timezone or BoE publication lead."
+                )
+
             # Only pad weekend calendar days (Saturday=5, Sunday=6).
             # Do NOT retroactively fill working-day gaps — BoE data simply hasn't been published.
             if gap_days > 1:
-                 weekend_fills = 0
-                 for d in range(1, gap_days):
+                weekend_fills = 0
+                for d in range(1, gap_days):
                     fill_date = last_boe_date + pd.Timedelta(days=d)
                     if fill_date.weekday() >= 5:  # Saturday or Sunday only
                         df_boe.loc[fill_date, "Close"] = live_yield
                         weekend_fills += 1
-                    if weekend_fills:
-                        logger.info(f"Padded {weekend_fills} weekend days with live FT yield.")
+                if weekend_fills:
+                    logger.info(f"Padded {weekend_fills} weekend days with live FT yield.")
 
         # Ensure index sorting and structure match engine specs
         df_boe.index = pd.to_datetime(df_boe.index)
