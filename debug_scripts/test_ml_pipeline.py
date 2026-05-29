@@ -14,6 +14,7 @@ Usage:
 
 import argparse
 import json
+import multiprocessing.resource_tracker as _mrt
 import re
 import sqlite3
 import sys
@@ -23,6 +24,24 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 import pandas as pd
+
+# ── Suppress spurious ResourceTracker noise on Python 3.13 ───────────────────
+# joblib/scikit-learn spawn worker processes that each register their own
+# ResourceTracker background process.  When the workers exit, the tracker's
+# background process is already gone; Python 3.13's ResourceTracker.__del__
+# then raises ChildProcessError in _stop_locked and prints the full traceback
+# as "Exception ignored in: __del__".  Patching _stop to swallow that specific
+# error eliminates the noise without affecting any real resource cleanup.
+_orig_rt_stop = _mrt.ResourceTracker._stop
+
+def _silent_rt_stop(self) -> None:
+    try:
+        _orig_rt_stop(self)
+    except (ChildProcessError, OSError):
+        pass
+
+_mrt.ResourceTracker._stop = _silent_rt_stop
+# ─────────────────────────────────────────────────────────────────────────────
 
 # ── Make project root importable regardless of CWD ───────────────────────────
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
