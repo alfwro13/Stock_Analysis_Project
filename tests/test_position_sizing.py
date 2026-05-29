@@ -17,6 +17,11 @@ Discrepancy note — spec arithmetic:
     denominator (line 112 of position_sizing.py), so no xfail is needed.
 """
 
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from typing import Optional
 
 import pytest
@@ -163,3 +168,8 @@ class TestNullAndEdgeCases:
             account_value=10_000.0, entry_price=100.0, atr_pct=None,
         )
         assert set(result.keys()) == expected_keys
+
+
+if __name__ == "__main__":
+    import pytest
+    raise SystemExit(pytest.main([__file__, "-v"]))

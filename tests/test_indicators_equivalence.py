@@ -6,7 +6,14 @@ canonical indicators.py function is numerically identical to the old inline
 expression, evaluated on the same sample DataFrame.
 
 Run with:  python -m pytest tests/test_indicators_equivalence.py -v
+       or: python tests/test_indicators_equivalence.py
 """
+import sys
+from pathlib import Path
+
+# Make the project root importable when the file is run directly
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -124,3 +131,8 @@ def test_squeeze_on_series_is_noop(df):
         compute_rsi(df["Close"]),
         check_names=False,
     )
+
+
+if __name__ == "__main__":
+    import pytest
+    raise SystemExit(pytest.main([__file__, "-v"]))

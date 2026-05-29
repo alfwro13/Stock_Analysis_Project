@@ -9,6 +9,11 @@ GRID_STEP ≈ 0.12 for current_price=100.  Zero-crossing assertions use a
 tolerance of 2 × GRID_STEP so they don't depend on exact grid alignment.
 """
 
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from typing import List, Optional, Dict
 
 import numpy as np
@@ -195,3 +200,8 @@ class TestLongStraddle:
         put_r  = calculate_payoff_matrix([self.LEGS[1]], CURRENT_PRICE)
         combined = np.array(call_r["payoffs"]) + np.array(put_r["payoffs"])
         np.testing.assert_allclose(_payoffs(self.result), combined, atol=1e-9)
+
+
+if __name__ == "__main__":
+    import pytest
+    raise SystemExit(pytest.main([__file__, "-v"]))

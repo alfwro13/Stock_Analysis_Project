@@ -21,6 +21,11 @@ Documented formula (risk_engine.py lines 44–64):
     cvar_95   = max(1 - exp(mean(tail)), 0.0)   if tail non-empty else var_95
 """
 
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from typing import Tuple
 from unittest.mock import MagicMock, patch
 
@@ -186,3 +191,8 @@ class TestCalculateTailRiskIntegration:
 
         calculate_tail_risk("SPY")
         mock_cursor.execute.assert_not_called()
+
+
+if __name__ == "__main__":
+    import pytest
+    raise SystemExit(pytest.main([__file__, "-v"]))
