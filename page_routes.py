@@ -37,10 +37,11 @@ from visuals import (
 from portfolio_service import get_rate_to_base, get_rate_from_base
 from quant_signals import get_candlestick_patterns
 from quant_screener import fetch_latest_signals, generate_markdown_briefing
-from constants import PREDICTION_HORIZON_DAYS, PREDICTION_RETURN_THRESHOLD
+from constants import PREDICTION_HORIZON_DAYS, PREDICTION_RETURN_THRESHOLD, CSS_VERSION
 
 page_router = APIRouter()
 templates = Jinja2Templates(directory="templates")
+templates.env.globals["css_version"] = CSS_VERSION
 
 
 def get_json_data(filepath: str) -> Dict[str, Any]:

@@ -63,6 +63,9 @@ MACRO_CV_N_SPLITS          = 3     # TimeSeriesSplit folds for supervised CV
 MACRO_VIX_DEFAULT          = 20.0  # VIX fallback when market_regimes has no data
 MACRO_SEVERE_VOL_THRESHOLD = 2.0   # predicted SPY gap % that triggers a warning log
 
+# ── Static asset versioning ───────────────────────────────────────────────────
+CSS_VERSION = "2.0"  # bump this whenever styles.css changes to bust browser caches
+
 # ── FinBERT / NLP sentiment ────────────────────────────────────────────────────
 NLP_FINBERT_MAX_TOKENS     = 512   # HuggingFace token limit for ProsusAI/finbert
 NLP_TEXT_TRUNCATE_CHARS    = 5000  # perf guard only — tokeniser truncation=True handles semantic cut

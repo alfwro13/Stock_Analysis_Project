@@ -130,6 +130,14 @@ def create_failover_session(ipv6_address: str, action_context: str, config: dict
     original_request = session.request
 
     def failover_request(method, url, **kwargs):
+        # IMPORTANT: `nonlocal` is mandatory here.
+        # Lines below reassign `session` and `original_request` inside this closure
+        # (the "Session is closed" rescue at the bottom of the except block).
+        # Without `nonlocal`, Python marks them as local variables throughout the
+        # entire function body — causing UnboundLocalError on the very first read
+        # (line `response = original_request(...)`) before any assignment runs.
+        # This has broken the session twice; do NOT remove these declarations.
+        nonlocal session, original_request
         global GLOBAL_IPV6_STATUS
         kwargs.setdefault("timeout", 30)
         max_retries = 3

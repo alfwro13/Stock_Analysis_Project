@@ -1,4 +1,5 @@
 /* ────────────────────────────────────────────────────────────────────────── QUANTAMENTAL DASHBOARD - INTEGRATED PRODUCTION STYLESHEET ────────────────────────────────────────────────────────────────────────── */
+/* CACHE BUSTING: When updating this file, bump CSS_VERSION in constants.py so all templates serve the new version. */
 /* --- AI, Sentiment, and Risk Metrics --- */
 .metric-excellent { color: #4caf50; font-weight: bold; }
 .metric-poor { color: #f44336; font-weight: bold; }
