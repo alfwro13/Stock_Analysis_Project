@@ -7,6 +7,12 @@ from typing import List, Dict, Any, Tuple
 
 from database import get_connection
 from regime_engine import get_latest_regime
+from constants import (
+    RSI_OVERSOLD, RSI_OVERBOUGHT, RSI_OVERBOUGHT_STRESSED,
+    RSI_MOMENTUM_MIN,
+    ML_CONFIDENCE_THRESHOLD,
+    DEFENSIVE_SECTORS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +27,7 @@ def get_oversold_reversals(data: List[Dict[str, Any]], regime_label: str) -> Lis
     characteristics: low beta (<0.8) or defensive sectors.
     """
     results = []
-    defensive_sectors = ['Healthcare', 'Utilities', 'Consumer Defensive', 'Consumer Staples']
+    defensive_sectors = DEFENSIVE_SECTORS
     
     for row in data:
         rsi = row.get('rsi_14')
@@ -32,7 +38,7 @@ def get_oversold_reversals(data: List[Dict[str, Any]], regime_label: str) -> Lis
             # RSI < 30 = deeply oversold. Positive MACD histogram = momentum recovering.
             # Bullish cross is a bonus tag but not required — the cross typically lags
             # RSI recovery by several sessions, making both conditions near-impossible to satisfy together.
-            if rsi < 30 and macd_hist > 0:
+            if rsi < RSI_OVERSOLD and macd_hist > 0:
                 if regime_label in ['Crash', 'Volatile']:
                     # Safely extract beta
                     beta_raw = row.get('beta')
@@ -83,7 +89,7 @@ def get_momentum_surges(data: List[Dict[str, Any]], regime_label: str) -> List[D
         sma_200 = row.get('sma_200', 0)
         
         if vol_surge in (1, True) and rsi is not None:
-            if 50 <= rsi <= 70:
+            if RSI_MOMENTUM_MIN <= rsi <= RSI_OVERBOUGHT:
                 if regime_label in ['Crash', 'Volatile']:
                     if sma_200 is not None and close_price > sma_200:
                         results.append(row)
@@ -97,7 +103,7 @@ def get_overbought_warnings(data: List[Dict[str, Any]], regime_label: str) -> Li
     Logic: RSI > 70 AND MACD Histogram < 0 (Tightened to > 65 in Crash Regimes).
     """
     results = []
-    rsi_threshold = 65 if regime_label in ['Crash', 'Volatile'] else 70
+    rsi_threshold = RSI_OVERBOUGHT_STRESSED if regime_label in ['Crash', 'Volatile'] else RSI_OVERBOUGHT
     
     for row in data:
         rsi = row.get('rsi_14')
@@ -117,7 +123,7 @@ def filter_ai_vetoes(setups: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]]
     vetoed = []
     for row in setups:
         ml_conf = row.get('ml_confidence_score')
-        if ml_conf is None or ml_conf < 40.0:
+        if ml_conf is None or ml_conf < ML_CONFIDENCE_THRESHOLD:
             vetoed.append(row)
         else:
             approved.append(row)

@@ -9,6 +9,7 @@ import yfinance as yf
 
 from database import get_connection
 from config import HISTORICAL_DIR
+from constants import REGIME_CRASH_VOL, REGIME_VOLATILE_VOL
 
 logger = logging.getLogger(__name__)
 
@@ -102,11 +103,11 @@ def calculate_market_regime() -> None:
         uk_turbulence = latest_ftse_vol
         
         # 4. Classify Market Regimes
-        us_regime_label = 'Crash' if us_turbulence >= 35.0 else \
-                          'Volatile' if us_turbulence >= 20.0 else 'Normal'
-                          
-        uk_regime_label = 'Crash' if uk_turbulence >= 35.0 else \
-                          'Volatile' if uk_turbulence >= 20.0 else 'Normal'
+        us_regime_label = 'Crash' if us_turbulence >= REGIME_CRASH_VOL else \
+                          'Volatile' if us_turbulence >= REGIME_VOLATILE_VOL else 'Normal'
+
+        uk_regime_label = 'Crash' if uk_turbulence >= REGIME_CRASH_VOL else \
+                          'Volatile' if uk_turbulence >= REGIME_VOLATILE_VOL else 'Normal'
 
         # 5. Persist to Database (Strict Context Handling)
         conn = get_connection()
