@@ -286,7 +286,7 @@ class MacroAIEngine:
                 updates_count += 1
                 
                 if predicted_gap > 2.0:
-                    logger.warning(f"🚨 SEVERE VOLATILITY PREDICTED: Event ID {event['event_id']} (Miss Prob: {rf_consensus_miss_prob:.2%}) predicted to gap SPY by {predicted_gap:.2f}%")
+                    logger.warning(f"🚨 SEVERE VOLATILITY PREDICTED: Event ID {event['event_id']} (Miss Prob: {rf_consensus_miss_prob:.2%}) — Absolute Volatility Shock Magnitude: ±{predicted_gap:.2f}% (direction unknown)")
 
             self.conn.commit()
             logger.info(f"Successfully processed {updates_count} events for Stacked AI Volatility and Surprise Warnings.")
