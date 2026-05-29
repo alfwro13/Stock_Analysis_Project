@@ -143,6 +143,23 @@ def init_db() -> None:
         except Exception:
             pass  # Column already exists
 
+        # Alert deduplication ledger — single source of truth for intraday suppression.
+        # Keyed by (engine, ticker); one row per active condition, updated in-place on fire.
+        # Decoupled from system_notifications so display logic and dedup logic never interfere.
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS alert_state (
+                engine TEXT NOT NULL,
+                ticker TEXT NOT NULL,
+                fingerprint TEXT,
+                last_price REAL,
+                last_fired_utc TEXT,
+                armed INTEGER NOT NULL DEFAULT 1,
+                fire_count INTEGER NOT NULL DEFAULT 0,
+                state_date TEXT,
+                PRIMARY KEY (engine, ticker)
+            )
+        ''')
+
         # New table for the Live Market Pulse Database Cache
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS market_pulse_cache (

@@ -193,13 +193,19 @@ DEFAULT_CONFIG = {
             "DROP_PERCENT": 5.0,
             "DROP_DAYS": 3,
             "SMA_LENGTH": 10,
-            "SMA_GAP_PERCENT": 2.0
+            "SMA_GAP_PERCENT": 2.0,
+            "COOLDOWN_MINUTES": 120,
+            "RETRIGGER_PERCENT": 2.0,
+            "REARM_PERCENT": 3.0
         },
         "MOONSHOT_ALERTS": {
             "SPIKE_PERCENT": 5.0,
             "SPIKE_DAYS": 3,
             "SMA_LENGTH": 10,
-            "SMA_GAP_PERCENT": 3.0
+            "SMA_GAP_PERCENT": 3.0,
+            "COOLDOWN_MINUTES": 120,
+            "RETRIGGER_PERCENT": 2.0,
+            "REARM_PERCENT": 3.0
         }
     }
 }

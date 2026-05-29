@@ -56,6 +56,7 @@ def _columns(table: str) -> set:
 EXPECTED_TABLES = [
     "stock_signals",
     "system_notifications",
+    "alert_state",
     "market_pulse_cache",
     "quant_signals",
     "quant_scan_states",
@@ -104,6 +105,48 @@ def test_system_notifications_has_required_columns():
     required = {"id", "message_type", "message_text", "is_read", "status", "timestamp"}
     missing = required - cols
     assert not missing, f"system_notifications missing columns: {missing}"
+
+
+@pytest.mark.db
+def test_alert_state_has_required_columns():
+    """alert_state dedup ledger must have all columns the gate logic reads/writes."""
+    cols = _columns("alert_state")
+    required = {"engine", "ticker", "fingerprint", "last_price", "last_fired_utc",
+                "armed", "fire_count", "state_date"}
+    missing = required - cols
+    assert not missing, f"alert_state missing columns: {missing}"
+
+
+@pytest.mark.db
+def test_alert_state_primary_key_is_engine_ticker():
+    """INSERT OR REPLACE on (engine, ticker) must behave as an upsert, not a duplicate."""
+    conn = _conn()
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO alert_state "
+            "(engine, ticker, fingerprint, last_price, last_fired_utc, armed, fire_count, state_date) "
+            "VALUES ('Crash', 'PK_TEST', 'abc', 100.0, '2024-01-01 10:00:00', 0, 1, '2024-01-01')"
+        )
+        conn.commit()
+        conn.execute(
+            "INSERT OR REPLACE INTO alert_state "
+            "(engine, ticker, fingerprint, last_price, last_fired_utc, armed, fire_count, state_date) "
+            "VALUES ('Crash', 'PK_TEST', 'abc', 95.0, '2024-01-01 12:00:00', 0, 2, '2024-01-01')"
+        )
+        conn.commit()
+        rows = conn.execute(
+            "SELECT COUNT(*) AS cnt FROM alert_state WHERE engine='Crash' AND ticker='PK_TEST'"
+        ).fetchone()
+        assert rows["cnt"] == 1, "Upsert created a duplicate row instead of replacing"
+        row = conn.execute(
+            "SELECT last_price, fire_count FROM alert_state WHERE engine='Crash' AND ticker='PK_TEST'"
+        ).fetchone()
+        assert row["last_price"] == 95.0
+        assert row["fire_count"] == 2
+    finally:
+        conn.execute("DELETE FROM alert_state WHERE ticker='PK_TEST'")
+        conn.commit()
+        conn.close()
 
 
 @pytest.mark.db

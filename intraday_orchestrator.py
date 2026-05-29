@@ -1,9 +1,11 @@
 # intraday_orchestrator.py
+import hashlib
 import os
 import re
 import time
 import json
 import logging
+from typing import Dict, Optional
 import yfinance as yf
 import pandas as pd
 from datetime import datetime
@@ -13,6 +15,8 @@ from database import get_connection
 from crash_engine import CrashEngine
 from moonshot_engine import MoonshotEngine
 from nextcloud_talk import send_text_message
+
+logger = logging.getLogger(__name__)
 
 def format_currency(price, currency_code):
     """
@@ -111,105 +115,194 @@ class IntradayOrchestrator:
         conn.close()
         return metadata
 
-    def log_notification_pending(self, msg_type: str, msg_text: str) -> int:
-        """Phase 1 of 2-phase commit: writes a 'pending' row BEFORE dispatching.
-        Returns the row id so the caller can mark it 'sent' after successful dispatch."""
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO system_notifications (message_type, message_text, status) VALUES (?, ?, 'pending')",
-            (msg_type, msg_text)
-        )
-        notification_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
-        return notification_id
+    def log_notification_feed(self, msg_type: str, msg_text: str) -> None:
+        """Writes a row to the user-facing notification feed (display only).
 
-    def mark_notification_sent(self, notification_id: int) -> None:
-        """Phase 2 of 2-phase commit: promotes a 'pending' row to 'sent' after dispatch succeeds."""
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE system_notifications SET status = 'sent' WHERE id = ?",
-            (notification_id,)
-        )
-        conn.commit()
-        conn.close()
-
-    def _retire_stale_pending_notifications(self) -> None:
-        """Deletes 'pending' rows older than 10 minutes at the start of each run.
-        These are rows written before a crash that never reached mark_notification_sent().
-        Deleting them allows the alert to re-fire on the next scan if still valid."""
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "DELETE FROM system_notifications WHERE status = 'pending' "
-            "AND timestamp < datetime('now', '-10 minutes')"
-        )
-        deleted = cursor.rowcount
-        conn.commit()
-        conn.close()
-        if deleted:
-            print(f"[ORCHESTRATOR] Retired {deleted} stale pending notification(s) from a previous crashed run.")
-
-    def is_alert_suppressed(self, msg_type, ticker, current_price=None):
+        Fire-and-forget — has NO bearing on alert suppression. Deduplication is
+        governed exclusively by the alert_state ledger via _evaluate_alert_gate() /
+        record_alert_fired(). A slow or failed feed write can never cause an alert
+        to re-fire, and vice versa.
         """
-        Checks if we already triggered this specific alert type for this stock today.
-        Enforces a strict 2-hour time cooldown to prevent alert spam, and respects
-        a configurable re-trigger percentage threshold.
+        conn = None
+        try:
+            conn = get_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO system_notifications (message_type, message_text, status) "
+                "VALUES (?, ?, 'sent')",
+                (msg_type, msg_text)
+            )
+            conn.commit()
+        except Exception as e:
+            logger.error(f"Failed to write notification feed row for {msg_type}: {e}")
+        finally:
+            if conn:
+                conn.close()
+
+    @staticmethod
+    def _condition_fingerprint(reason: str) -> str:
+        """Derives a stable identifier for the class of condition that fired.
+
+        Strips digits/punctuation and hashes the leading descriptive phrase so
+        that fluctuating prices in the reason string don't change the fingerprint.
+        Two alerts with the same fingerprint are the same ongoing event; a changed
+        fingerprint means a genuinely different trigger.
         """
-        conn = get_connection()
-        cursor = conn.cursor()
-        
-        # Only 'sent' rows suppress — a 'pending' row means dispatch failed and the alert
-        # should retry on the next scan. _retire_stale_pending_notifications() will clean it up
-        # before this query runs, so there is no race: pending rows are invisible here and
-        # retired rows are gone, leaving only confirmed dispatches as the suppression signal.
-        cursor.execute('''
-            SELECT message_text, timestamp FROM system_notifications
-            WHERE message_type = ?
-            AND message_text LIKE ?
-            AND date(timestamp) = date('now')
-            AND status = 'sent'
-            ORDER BY timestamp DESC LIMIT 1
-        ''', (msg_type, f"%{ticker}%"))
-        
-        result = cursor.fetchone()
-        conn.close()
-        
-        if result is None:
-            return False # No alert today, safe to fire
-            
-        # Dynamically fetch the retrigger threshold. 
-        # Default to 0.0 (Strict 'One-and-Done' daily limit per ticker)
-        retrigger_pct = float(self.config.get("NOTIFICATIONS", {}).get("CRASH_ALERTS", {}).get("RETRIGGER_PERCENT", 0.0))
-        
-        # If retriggering is disabled (0.0), always suppress further alerts today
-        if retrigger_pct <= 0.0:
+        if not reason:
+            return "generic"
+        tokens = re.findall(r"[A-Za-z]+", reason.upper())
+        descriptor = " ".join(tokens[:6])
+        return hashlib.sha1(descriptor.encode("utf-8")).hexdigest()[:16]
+
+    def _dedup_settings(self, engine: str) -> Dict[str, float]:
+        """Pulls the per-engine dedup knobs with safe fallbacks."""
+        key = "CRASH_ALERTS" if engine == "Crash" else "MOONSHOT_ALERTS"
+        block = self.config.get("NOTIFICATIONS", {}).get(key, {})
+        return {
+            "cooldown_minutes": float(block.get("COOLDOWN_MINUTES", 120.0)),
+            "retrigger_percent": float(block.get("RETRIGGER_PERCENT", 2.0)),
+            "rearm_percent": float(block.get("REARM_PERCENT", 3.0)),
+        }
+
+    def _evaluate_alert_gate(
+        self,
+        engine: str,
+        ticker: str,
+        current_price: Optional[float],
+        reason: str,
+    ) -> bool:
+        """Single, deterministic suppression decision. Returns True if the alert
+        should be SUPPRESSED, False if it is cleared to fire.
+
+        Logic (edge-triggered with hysteresis):
+          1. No prior state today -> FIRE.
+          2. Different condition fingerprint -> FIRE (new event class).
+          3. Same condition, currently armed -> FIRE (first fire of this event).
+          4. Same condition, suppressed:
+               a. Price recovered >= REARM_PERCENT -> re-arm and SUPPRESS this scan.
+               b. Cooldown elapsed AND price worsened >= RETRIGGER_PERCENT -> FIRE.
+               c. Otherwise -> SUPPRESS.
+
+        record_alert_fired() must be called by the dispatch loop only after a
+        confirmed send, so a failed send leaves us armed and the alert retries.
+        """
+        settings = self._dedup_settings(engine)
+        fingerprint = self._condition_fingerprint(reason)
+        today = datetime.utcnow().strftime("%Y-%m-%d")
+
+        conn = None
+        try:
+            conn = get_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT fingerprint, last_price, last_fired_utc, armed, state_date "
+                "FROM alert_state WHERE engine = ? AND ticker = ?",
+                (engine, ticker),
+            )
+            row = cursor.fetchone()
+
+            # Case 1: nothing on record for today.
+            if row is None or row["state_date"] != today:
+                return False  # fire
+
+            # Case 2: a different condition class -> treat as a new event.
+            if row["fingerprint"] != fingerprint:
+                return False  # fire
+
+            # Case 3: same condition and currently armed -> fire.
+            if int(row["armed"]) == 1:
+                return False  # fire
+
+            # Case 4: same condition, suppressed. Need price to make decisions.
+            last_price = row["last_price"]
+            if current_price is None or last_price in (None, 0):
+                return True  # can't compare; stay safe and suppress
+
+            pct_change = (current_price - last_price) / last_price * 100.0
+            if engine == "Crash":
+                worsened_pct = -pct_change
+                recovered_pct = pct_change
+            else:  # Moonshot
+                worsened_pct = pct_change
+                recovered_pct = -pct_change
+
+            # Case 4a: hysteresis re-arm. Event has materially reversed; re-arm so a
+            # future breach is a fresh alert, but stay silent now.
+            if recovered_pct >= settings["rearm_percent"]:
+                cursor.execute(
+                    "UPDATE alert_state SET armed = 1 WHERE engine = ? AND ticker = ?",
+                    (engine, ticker),
+                )
+                conn.commit()
+                return True  # suppress this scan; re-armed for next genuine breach
+
+            # Case 4b: cooldown elapsed AND material deterioration.
+            try:
+                last_fired = datetime.strptime(row["last_fired_utc"], "%Y-%m-%d %H:%M:%S")
+            except (TypeError, ValueError):
+                last_fired = None
+
+            cooldown_ok = (
+                last_fired is not None
+                and (datetime.utcnow() - last_fired).total_seconds()
+                >= settings["cooldown_minutes"] * 60.0
+            )
+            if cooldown_ok and worsened_pct >= settings["retrigger_percent"]:
+                return False  # fire: enough time passed AND it materially worsened
+
+            # Case 4c: still inside suppression window.
             return True
-            
-        if current_price is not None:
-            msg_text = result['message_text']
-            last_timestamp = datetime.strptime(result['timestamp'], "%Y-%m-%d %H:%M:%S")
-            
-            # HARD COOLDOWN: Enforce a mandatory 2-hour (7200s) silence between alerts for the same ticker
-            if (datetime.utcnow() - last_timestamp).total_seconds() < 7200:
-                return True
 
-            # Regex to catch both "**Price:** $150.00" and "**Current Yield:** 4.250%"
-            match = re.search(r'\*\*(?:Price|Current Yield):\*\*\s*[^\d]*([\d,]+\.?\d*)', msg_text)
-            if match:
-                try:
-                    last_price = float(match.group(1).replace(',', ''))
-                    price_diff = abs((current_price - last_price) / last_price) * 100.0
-                    
-                    # Override suppression ONLY if price shifted structurally beyond user threshold
-                    if price_diff >= retrigger_pct:
-                        return False 
-                except Exception:
-                    pass
-                    
-        return True # Suppress if we already alerted and conditions aren't met
+        except Exception as e:
+            logger.error(f"Alert gate evaluation failed for {engine}/{ticker}: {e}")
+            return True  # fail safe: suppress rather than risk spamming
+        finally:
+            if conn:
+                conn.close()
+
+    def record_alert_fired(
+        self,
+        engine: str,
+        ticker: str,
+        current_price: Optional[float],
+        reason: str,
+    ) -> None:
+        """Commits suppression state AFTER a successful dispatch.
+
+        Sets armed=0 (now in cooldown), stamps the price/time/fingerprint, and
+        bumps the daily fire counter. Idempotent via INSERT OR REPLACE on the
+        (engine, ticker) primary key.
+        """
+        fingerprint = self._condition_fingerprint(reason)
+        now_utc = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+        today = datetime.utcnow().strftime("%Y-%m-%d")
+
+        conn = None
+        try:
+            conn = get_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT fire_count, state_date FROM alert_state WHERE engine = ? AND ticker = ?",
+                (engine, ticker),
+            )
+            existing = cursor.fetchone()
+            if existing is not None and existing["state_date"] == today:
+                fire_count = int(existing["fire_count"]) + 1
+            else:
+                fire_count = 1
+
+            cursor.execute(
+                "INSERT OR REPLACE INTO alert_state "
+                "(engine, ticker, fingerprint, last_price, last_fired_utc, armed, fire_count, state_date) "
+                "VALUES (?, ?, ?, ?, ?, 0, ?, ?)",
+                (engine, ticker, fingerprint, current_price, now_utc, fire_count, today),
+            )
+            conn.commit()
+        except Exception as e:
+            logger.error(f"Failed to record alert state for {engine}/{ticker}: {e}")
+        finally:
+            if conn:
+                conn.close()
 
     def _has_corporate_action_today(self, ticker: str) -> bool:
         """
@@ -231,7 +324,6 @@ class IntradayOrchestrator:
         return False
 
     def run(self):
-        self._retire_stale_pending_notifications()
         print(f"\n--- [INTRADAY ORCHESTRATOR] Scan Initiated @ {datetime.now().strftime('%H:%M:%S')} ---")
         
         # Check active bounds
@@ -316,7 +408,10 @@ class IntradayOrchestrator:
                         continue
 
                     # If yield spikes more than 1.5% intraday, it's a systemic shock
-                    if m_spike >= 1.5 and not self.is_alert_suppressed("Macro", m_ticker, m_curr):
+                    reason_macro = f"YIELD SURGE {m_ticker}"
+                    if m_spike >= 1.5 and not self._evaluate_alert_gate(
+                        "Macro", m_ticker, m_curr, reason_macro
+                    ):
                         name = "US 30Y Treasury" if m_ticker == "^TYX" else "UK 10Y Gilt"
                         msg = (
                             f"🚨 **SYSTEMIC MACRO ALERT: {name} SURGING** 🚨\n\n"
@@ -326,9 +421,16 @@ class IntradayOrchestrator:
                             f"Expect immediate severe valuation compression across high-multiple and tech equities. "
                             f"Risk-Off environment detected."
                         )
-                        nid = self.log_notification_pending("Macro", f"Systemic Yield Surge detected on {m_ticker} (+{m_spike:.2f}%)")
-                        send_text_message(msg, self.config)
-                        self.mark_notification_sent(nid)
+                        try:
+                            send_text_message(msg, self.config)
+                        except Exception as e:
+                            logger.error(f"Macro alert dispatch failed for {m_ticker}: {e}")
+                            continue
+                        self.record_alert_fired("Macro", m_ticker, m_curr, reason_macro)
+                        self.log_notification_feed(
+                            "Macro",
+                            f"Systemic Yield Surge detected on {m_ticker} (+{m_spike:.2f}%)"
+                        )
             except Exception as e:
                 print(f"[ORCHESTRATOR] Macro eval failed for {m_ticker}: {e}")
 
@@ -441,19 +543,30 @@ class IntradayOrchestrator:
                 currency = asset_meta.get('currency', 'USD')
                 
                 # --- EVALUATE CRASH ENGINE ---
+                # evaluate() runs first so we have the reason string for fingerprinting.
+                # The gate check is cheap; evaluate() returns None when no condition is met.
                 if crash_enabled:
-                    if not self.is_alert_suppressed("Crash", ticker, current_price):
-                        crash_alert = self.crash_engine.evaluate(ticker, current_price, df_combined, asset_meta, df_hist, session_open)
-                        if crash_alert:
-                            crash_alerts_to_send.append((ticker, crash_alert, currency, asset_meta))
-                
+                    crash_alert = self.crash_engine.evaluate(
+                        ticker, current_price, df_combined, asset_meta, df_hist, session_open
+                    )
+                    if crash_alert and not self._evaluate_alert_gate(
+                        "Crash", ticker, current_price, crash_alert.get("reason", "")
+                    ):
+                        crash_alerts_to_send.append((ticker, crash_alert, currency, asset_meta))
+
                 # --- EVALUATE MOONSHOT ENGINE ---
                 if moonshot_enabled:
-                    if not self.is_alert_suppressed("Moonshot", ticker, current_price):
-                        current_volume = float(df_intraday['Volume'].sum()) if 'Volume' in df_intraday.columns else None
-                        moonshot_alert = self.moonshot_engine.evaluate(ticker, current_price, df_combined, asset_meta, df_hist, current_volume)
-                        if moonshot_alert:
-                            moonshot_alerts_to_send.append((ticker, moonshot_alert, currency, asset_meta))
+                    current_volume = (
+                        float(df_intraday['Volume'].sum())
+                        if 'Volume' in df_intraday.columns else None
+                    )
+                    moonshot_alert = self.moonshot_engine.evaluate(
+                        ticker, current_price, df_combined, asset_meta, df_hist, current_volume
+                    )
+                    if moonshot_alert and not self._evaluate_alert_gate(
+                        "Moonshot", ticker, current_price, moonshot_alert.get("reason", "")
+                    ):
+                        moonshot_alerts_to_send.append((ticker, moonshot_alert, currency, asset_meta))
 
             except Exception as e:
                 print(f"[ORCHESTRATOR] Error processing {ticker}: {e}")
@@ -477,10 +590,18 @@ class IntradayOrchestrator:
                 f"• NLP Sentiment: {sent}\n\n"
                 f"🔗 [View Breakdown]({url})"
             )
-            nid = self.log_notification_pending("Crash", f"**Price:** {formatted_price} | Intraday Alert triggered for {ticker}. Reason: {alert['reason']}")
-            send_text_message(msg, self.config)
-            self.mark_notification_sent(nid)
-            time.sleep(1) # Prevent Nextcloud rate-limiting
+            try:
+                send_text_message(msg, self.config)
+            except Exception as e:
+                logger.error(f"Crash alert dispatch failed for {ticker}: {e}")
+                continue
+            self.record_alert_fired("Crash", ticker, alert['price'], alert['reason'])
+            self.log_notification_feed(
+                "Crash",
+                f"**Price:** {formatted_price} | Intraday Alert triggered for {ticker}. "
+                f"Reason: {alert['reason']}"
+            )
+            time.sleep(1)  # Prevent Nextcloud rate-limiting
 
         for ticker, alert, currency, meta in moonshot_alerts_to_send:
             formatted_price = format_currency(alert['price'], currency)
@@ -505,10 +626,18 @@ class IntradayOrchestrator:
                 f"• NLP Sentiment: {sent}\n\n"
                 f"🔗 [View Breakdown]({url})"
             )
-            nid = self.log_notification_pending("Moonshot", f"**Price:** {formatted_price} | Moonshot triggered for {ticker}. Reason: {alert['reason']}")
-            send_text_message(msg, self.config)
-            self.mark_notification_sent(nid)
-            time.sleep(1) # Prevent Nextcloud rate-limiting
+            try:
+                send_text_message(msg, self.config)
+            except Exception as e:
+                logger.error(f"Moonshot alert dispatch failed for {ticker}: {e}")
+                continue
+            self.record_alert_fired("Moonshot", ticker, alert['price'], alert['reason'])
+            self.log_notification_feed(
+                "Moonshot",
+                f"**Price:** {formatted_price} | Moonshot triggered for {ticker}. "
+                f"Reason: {alert['reason']}"
+            )
+            time.sleep(1)  # Prevent Nextcloud rate-limiting
 
         print(f"[ORCHESTRATOR] Scan complete. Dispatched {len(crash_alerts_to_send)} crashes and {len(moonshot_alerts_to_send)} moonshots.")
 
