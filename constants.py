@@ -30,3 +30,9 @@ ML_CONFIDENCE_THRESHOLD = 40.0
 
 # ── Defensive sectors (used in stressed-regime filters) ───────────────────────
 DEFENSIVE_SECTORS = ['Healthcare', 'Utilities', 'Consumer Defensive', 'Consumer Staples']
+
+# ── Data freshness thresholds (UI staleness badge) ────────────────────────────
+FRESHNESS_MODEL_WARN_DAYS   = 7   # model file older than this → amber
+FRESHNESS_MODEL_STALE_DAYS  = 14  # model file older than this → red
+FRESHNESS_PRICES_WARN_DAYS  = 3   # price data older than this → amber (covers normal weekends)
+FRESHNESS_PRICES_STALE_DAYS = 5   # price data older than this → red

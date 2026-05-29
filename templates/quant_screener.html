@@ -21,6 +21,10 @@
             
             <p class="page-subtitle">Signals Generated For: <strong>{{ target_date }}</strong></p>
             
+            <div id="freshness-badge" class="freshness-badge">
+                <span class="freshness-warn">Loading…</span>
+            </div>
+
             <div class="nav-links">
                 <a href="/portfolio">💼 Portfolio</a>
                 <a href="/watchlist">👀 Watchlist</a>
@@ -41,7 +45,24 @@
     </div>
 
     <script>
-        document.addEventListener("DOMContentLoaded", function() {
+        document.addEventListener("DOMContentLoaded", async function() {
+            try {
+                const el = document.getElementById('freshness-badge');
+                if (el) {
+                    const resp = await fetch('/api/freshness');
+                    if (resp.ok) {
+                        const d = await resp.json();
+                        const modelLabel  = d.model_date
+                            ? `Model: ${d.model_date} (${d.model_days_ago}d ago)`
+                            : 'Model: not trained';
+                        const pricesLabel = d.prices_date ? `Prices: ${d.prices_date}` : 'Prices: no data';
+                        el.innerHTML =
+                            `<span class="${d.model_state}">${modelLabel}</span>` +
+                            `<span class="${d.prices_state}">${pricesLabel}</span>`;
+                    } else { el.style.display = 'none'; }
+                }
+            } catch (e) { /* fail silently */ }
+
             // Securely extract the JSON-escaped markdown payload from the backend
             const rawMarkdown = {{ markdown_content | tojson | safe }};
             

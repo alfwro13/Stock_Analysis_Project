@@ -1088,3 +1088,54 @@ async def api_reports_dividends(
     except Exception as e:
         logger.exception("dividends report failed")
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+
+@api_router.get("/freshness")
+async def get_data_freshness():
+    """Returns model-file age and price-data age, with pre-computed CSS state classes."""
+    from constants import (
+        FRESHNESS_MODEL_WARN_DAYS, FRESHNESS_MODEL_STALE_DAYS,
+        FRESHNESS_PRICES_WARN_DAYS, FRESHNESS_PRICES_STALE_DAYS,
+    )
+    today = datetime.now().date()
+
+    def _state(days_ago: int, warn: int, stale: int) -> str:
+        if days_ago >= stale: return "freshness-stale"
+        if days_ago >= warn:  return "freshness-warn"
+        return "freshness-fresh"
+
+    # Model file staleness
+    model_path = BASE_DIR / "models" / "ml_ensemble.joblib"
+    if model_path.exists():
+        mtime        = datetime.fromtimestamp(model_path.stat().st_mtime).date()
+        model_days   = (today - mtime).days
+        model_date   = mtime.strftime('%Y-%m-%d')
+        model_state  = _state(model_days, FRESHNESS_MODEL_WARN_DAYS, FRESHNESS_MODEL_STALE_DAYS)
+    else:
+        model_days, model_date, model_state = None, None, "freshness-stale"
+
+    # Price data freshness (latest row in quant_signals)
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT MAX(date) AS max_date FROM quant_signals")
+        row = cursor.fetchone()
+    finally:
+        conn.close()
+
+    if row and row["max_date"]:
+        prices_d     = datetime.strptime(row["max_date"], "%Y-%m-%d").date()
+        prices_days  = (today - prices_d).days
+        prices_date  = row["max_date"]
+        prices_state = _state(prices_days, FRESHNESS_PRICES_WARN_DAYS, FRESHNESS_PRICES_STALE_DAYS)
+    else:
+        prices_days, prices_date, prices_state = None, None, "freshness-stale"
+
+    return JSONResponse(content={
+        "model_date":    model_date,
+        "model_days_ago": model_days,
+        "model_state":   model_state,
+        "prices_date":   prices_date,
+        "prices_days_ago": prices_days,
+        "prices_state":  prices_state,
+    })

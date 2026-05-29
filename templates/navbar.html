@@ -1,3 +1,7 @@
+<div id="freshness-badge" class="freshness-badge">
+    <span class="freshness-warn">Loading…</span>
+</div>
+
 <div class="nav-links">
     {% if active_page == 'portfolio' %}
     <select class="context-selector" id="accountContextSelector" onchange="switchAccountContext()">
@@ -78,8 +82,26 @@
         }
     }
 
+    async function loadFreshnessBadge() {
+        try {
+            const el = document.getElementById('freshness-badge');
+            if (!el) return;
+            const resp = await fetch('/api/freshness');
+            if (!resp.ok) { el.style.display = 'none'; return; }
+            const d = await resp.json();
+            const modelLabel  = d.model_date
+                ? `Model: ${d.model_date} (${d.model_days_ago}d ago)`
+                : 'Model: not trained';
+            const pricesLabel = d.prices_date ? `Prices: ${d.prices_date}` : 'Prices: no data';
+            el.innerHTML =
+                `<span class="${d.model_state}">${modelLabel}</span>` +
+                `<span class="${d.prices_state}">${pricesLabel}</span>`;
+        } catch (e) { /* fail silently — badge is non-critical */ }
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
         initGlobalBrowserNotifications();
+        loadFreshnessBadge();
         // Poll for new alerts exactly every 15 seconds in the background
         setInterval(pollGlobalSystemNotifications, 15000);
         pollGlobalSystemNotifications(); // Run once immediately on load
