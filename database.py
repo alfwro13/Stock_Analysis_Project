@@ -183,6 +183,8 @@ def init_db() -> None:
                 hist_vol_20 REAL,
                 rel_strength_5d REAL,
                 rel_strength_20d REAL,
+                composite_score INTEGER,
+                overall_signal TEXT,
                 PRIMARY KEY (ticker, date)
             )
         ''')
@@ -431,7 +433,9 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
         'atr_pct': 'REAL',
         'hist_vol_20': 'REAL',
         'rel_strength_5d': 'REAL',
-        'rel_strength_20d': 'REAL'
+        'rel_strength_20d': 'REAL',
+        'composite_score': 'INTEGER',
+        'overall_signal': 'TEXT',
     }
 
     for col_name, data_type in required_quant_columns.items():

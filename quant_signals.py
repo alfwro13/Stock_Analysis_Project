@@ -846,6 +846,16 @@ class QuantEngine:
                 )
                 
                 cursor.execute(query, values)
+
+                # Stamp the composite score onto the latest quant_signals row so
+                # it is part of the time series and available for future backtesting.
+                cursor.execute('''
+                    UPDATE quant_signals
+                    SET composite_score = ?, overall_signal = ?
+                    WHERE ticker = ?
+                      AND date = (SELECT MAX(date) FROM quant_signals WHERE ticker = ?)
+                ''', (int(score), signal, ticker, ticker))
+
                 conn.commit()
                 logger.info(f"[SUCCESS] Analyzed {ticker} | Signal: {signal} | Score: {score}/100")
                 
