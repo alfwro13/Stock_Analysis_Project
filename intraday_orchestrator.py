@@ -152,11 +152,19 @@ class IntradayOrchestrator:
             return "generic"
         tokens = re.findall(r"[A-Za-z]+", reason.upper())
         descriptor = " ".join(tokens[:6])
+        # 6 tokens verified sufficient: every distinct trigger from CrashEngine /
+        # MoonshotEngine diverges within the first 3–4 alphabetic words, so there
+        # is no collision risk with the current reason-string vocabulary.
         return hashlib.sha1(descriptor.encode("utf-8")).hexdigest()[:16]
 
     def _dedup_settings(self, engine: str) -> Dict[str, float]:
         """Pulls the per-engine dedup knobs with safe fallbacks."""
-        key = "CRASH_ALERTS" if engine == "Crash" else "MOONSHOT_ALERTS"
+        if engine == "Crash":
+            key = "CRASH_ALERTS"
+        elif engine == "Moonshot":
+            key = "MOONSHOT_ALERTS"
+        else:  # Macro and any future engines
+            key = "MACRO_ALERTS"
         block = self.config.get("NOTIFICATIONS", {}).get(key, {})
         return {
             "cooldown_minutes": float(block.get("COOLDOWN_MINUTES", 120.0)),
@@ -220,9 +228,15 @@ class IntradayOrchestrator:
 
             pct_change = (current_price - last_price) / last_price * 100.0
             if engine == "Crash":
+                # Crash: price falling further is worsening; rising back is recovery.
                 worsened_pct = -pct_change
                 recovered_pct = pct_change
-            else:  # Moonshot
+            elif engine == "Moonshot":
+                # Moonshot: price rising further is worsening; falling back is recovery.
+                worsened_pct = pct_change
+                recovered_pct = -pct_change
+            else:
+                # Macro (yield surge): yield rising further is worsening; falling back is recovery.
                 worsened_pct = pct_change
                 recovered_pct = -pct_change
 
@@ -282,24 +296,41 @@ class IntradayOrchestrator:
             conn = get_connection()
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT fire_count, state_date FROM alert_state WHERE engine = ? AND ticker = ?",
-                (engine, ticker),
-            )
-            existing = cursor.fetchone()
-            if existing is not None and existing["state_date"] == today:
-                fire_count = int(existing["fire_count"]) + 1
-            else:
-                fire_count = 1
-
-            cursor.execute(
-                "INSERT OR REPLACE INTO alert_state "
+                "INSERT INTO alert_state "
                 "(engine, ticker, fingerprint, last_price, last_fired_utc, armed, fire_count, state_date) "
-                "VALUES (?, ?, ?, ?, ?, 0, ?, ?)",
-                (engine, ticker, fingerprint, current_price, now_utc, fire_count, today),
+                "VALUES (?, ?, ?, ?, ?, 0, 1, ?) "
+                "ON CONFLICT(engine, ticker) DO UPDATE SET "
+                "  fingerprint=excluded.fingerprint, "
+                "  last_price=excluded.last_price, "
+                "  last_fired_utc=excluded.last_fired_utc, "
+                "  armed=0, "
+                "  fire_count=CASE WHEN alert_state.state_date=excluded.state_date "
+                "             THEN alert_state.fire_count+1 ELSE 1 END, "
+                "  state_date=excluded.state_date",
+                (engine, ticker, fingerprint, current_price, now_utc, today),
             )
             conn.commit()
         except Exception as e:
             logger.error(f"Failed to record alert state for {engine}/{ticker}: {e}")
+        finally:
+            if conn:
+                conn.close()
+
+    def _prune_alert_state(self) -> None:
+        """Deletes alert_state rows older than 7 days to keep the table bounded.
+        Active tickers reset daily via state_date comparison so they are unaffected;
+        only rows for delisted or removed tickers accumulate and need clearing."""
+        conn = None
+        try:
+            conn = get_connection()
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM alert_state WHERE state_date < date('now', '-7 days')")
+            pruned = cursor.rowcount
+            conn.commit()
+            if pruned:
+                print(f"[ORCHESTRATOR] Pruned {pruned} stale alert_state row(s) older than 7 days.")
+        except Exception as e:
+            logger.error(f"Failed to prune alert_state: {e}")
         finally:
             if conn:
                 conn.close()
@@ -324,6 +355,7 @@ class IntradayOrchestrator:
         return False
 
     def run(self):
+        self._prune_alert_state()
         print(f"\n--- [INTRADAY ORCHESTRATOR] Scan Initiated @ {datetime.now().strftime('%H:%M:%S')} ---")
         
         # Check active bounds

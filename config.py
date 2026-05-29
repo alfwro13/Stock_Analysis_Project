@@ -206,6 +206,11 @@ DEFAULT_CONFIG = {
             "COOLDOWN_MINUTES": 120,
             "RETRIGGER_PERCENT": 2.0,
             "REARM_PERCENT": 3.0
+        },
+        "MACRO_ALERTS": {
+            "COOLDOWN_MINUTES": 120,
+            "RETRIGGER_PERCENT": 2.0,
+            "REARM_PERCENT": 3.0
         }
     }
 }

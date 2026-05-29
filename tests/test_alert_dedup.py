@@ -47,6 +47,11 @@ TEST_CONFIG = {
             "RETRIGGER_PERCENT": 2.0,
             "REARM_PERCENT": 3.0,
         },
+        "MACRO_ALERTS": {
+            "COOLDOWN_MINUTES": 120.0,
+            "RETRIGGER_PERCENT": 2.0,
+            "REARM_PERCENT": 3.0,
+        },
     }
 }
 
@@ -152,10 +157,17 @@ class TestDedupSettings:
         assert s["retrigger_percent"] == 2.0
         assert s["rearm_percent"] == 3.0
 
-    def test_unknown_engine_falls_back_to_moonshot_block(self, orch):
-        # "Macro" is not "Crash", so the else branch uses MOONSHOT_ALERTS
+    def test_macro_reads_dedicated_macro_alerts_block(self, orch):
+        # Macro must use MACRO_ALERTS, not silently inherit MOONSHOT_ALERTS.
+        orch.config = {
+            "NOTIFICATIONS": {
+                "MACRO_ALERTS": {"COOLDOWN_MINUTES": 240.0, "RETRIGGER_PERCENT": 1.5, "REARM_PERCENT": 2.0},
+                "MOONSHOT_ALERTS": {"COOLDOWN_MINUTES": 999.0},  # must NOT be used
+            }
+        }
         s = orch._dedup_settings("Macro")
-        assert s["cooldown_minutes"] == 120.0
+        assert s["cooldown_minutes"] == 240.0
+        assert s["retrigger_percent"] == 1.5
 
     def test_missing_key_uses_safe_fallback(self, orch):
         orch.config = {"NOTIFICATIONS": {"CRASH_ALERTS": {}}}
@@ -359,3 +371,80 @@ class TestLogNotificationFeed:
         orch.log_notification_feed("Crash", f"Test message {self.MSG_MARKER}")
         result = orch._evaluate_alert_gate("Crash", TEST_TICKER, 100.0, CRASH_REASON)
         assert result is False  # still fires; feed write has no bearing on gate
+
+
+# ── N2: alert_state pruning ───────────────────────────────────────────────────
+
+class TestPruneAlertState:
+    OLD_TICKER = "_PRUNE_OLD"
+    RECENT_TICKER = "_PRUNE_RECENT"
+
+    def teardown_method(self):
+        conn = _conn()
+        for t in (self.OLD_TICKER, self.RECENT_TICKER, TEST_TICKER):
+            conn.execute("DELETE FROM alert_state WHERE ticker = ?", (t,))
+        conn.commit()
+        conn.close()
+
+    def test_deletes_rows_older_than_7_days(self, orch):
+        eight_days_ago = (datetime.utcnow() - timedelta(days=8)).strftime("%Y-%m-%d")
+        _seed_alert_state("Crash", self.OLD_TICKER, "abc", 100.0,
+                          eight_days_ago + " 10:00:00", 0, eight_days_ago)
+        orch._prune_alert_state()
+        assert _read_alert_state("Crash", self.OLD_TICKER) is None
+
+    def test_retains_rows_within_7_days(self, orch):
+        three_days_ago = (datetime.utcnow() - timedelta(days=3)).strftime("%Y-%m-%d")
+        _seed_alert_state("Crash", self.RECENT_TICKER, "abc", 100.0,
+                          three_days_ago + " 10:00:00", 0, three_days_ago)
+        orch._prune_alert_state()
+        assert _read_alert_state("Crash", self.RECENT_TICKER) is not None
+
+    def test_retains_todays_rows(self, orch):
+        _seed_alert_state("Crash", TEST_TICKER, "abc", 100.0, TODAY + " 10:00:00", 0, TODAY)
+        orch._prune_alert_state()
+        assert _read_alert_state("Crash", TEST_TICKER) is not None
+
+    def test_prune_on_empty_table_does_not_raise(self, orch):
+        orch._prune_alert_state()  # must not throw
+
+
+# ── N3: Macro engine uses dedicated config and explicit direction ──────────────
+
+class TestMacroEngine:
+    MACRO_REASON = "YIELD SURGE ^TYX"
+
+    def teardown_method(self):
+        _clear_alert_state()
+
+    def test_macro_gate_fires_on_no_prior_state(self, orch):
+        assert orch._evaluate_alert_gate("Macro", TEST_TICKER, 4.5, self.MACRO_REASON) is False
+
+    def test_macro_rising_yield_counts_as_worsened(self, orch):
+        """Macro: yield rising further past cooldown+retrigger fires (worsening = higher yield)."""
+        fp = orch._condition_fingerprint(self.MACRO_REASON)
+        old_ts = (datetime.utcnow() - timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S")
+        _seed_alert_state("Macro", TEST_TICKER, fp, 4.5, old_ts, 0, TODAY)
+        # 4.5 → 4.62 = +2.67% rise in yield, exceeds RETRIGGER 2.0%
+        assert orch._evaluate_alert_gate("Macro", TEST_TICKER, 4.62, self.MACRO_REASON) is False
+
+    def test_macro_falling_yield_triggers_rearm(self, orch):
+        """Macro: yield falling back >= REARM_PERCENT suppresses and re-arms."""
+        fp = orch._condition_fingerprint(self.MACRO_REASON)
+        _seed_alert_state("Macro", TEST_TICKER, fp, 4.5, TODAY + " 10:00:00", 0, TODAY)
+        # 4.5 → 4.36 = -3.1% fall, exceeds REARM 3.0% → re-arm
+        result = orch._evaluate_alert_gate("Macro", TEST_TICKER, 4.36, self.MACRO_REASON)
+        assert result is True
+        row = _read_alert_state("Macro", TEST_TICKER)
+        assert row["armed"] == 1
+
+    def test_macro_uses_macro_alerts_config_not_moonshot(self, orch):
+        """Macro cooldown must come from MACRO_ALERTS, not MOONSHOT_ALERTS."""
+        orch.config = {
+            "NOTIFICATIONS": {
+                "MACRO_ALERTS": {"COOLDOWN_MINUTES": 240.0, "RETRIGGER_PERCENT": 1.5, "REARM_PERCENT": 2.0},
+                "MOONSHOT_ALERTS": {"COOLDOWN_MINUTES": 999.0},
+            }
+        }
+        s = orch._dedup_settings("Macro")
+        assert s["cooldown_minutes"] == 240.0, "Macro is reading MOONSHOT_ALERTS instead of MACRO_ALERTS"
