@@ -216,8 +216,10 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
                         if len(tickers_to_fetch) == 1:
                             t_live = df_live.copy()
                             
-                t_daily.dropna(subset=['Close'], inplace=True)
-                t_live.dropna(subset=['Close'], inplace=True)
+                if not t_daily.empty:
+                    t_daily.dropna(subset=['Close'], inplace=True)
+                if not t_live.empty:
+                    t_live.dropna(subset=['Close'], inplace=True)
 
                 if t_daily.empty:
                     # No daily data at all — transient outage or genuinely invalid ticker.
