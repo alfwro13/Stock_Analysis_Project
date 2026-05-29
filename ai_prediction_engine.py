@@ -9,7 +9,15 @@ import pandas as pd
 import numpy as np
 import joblib
 import yfinance as yf
-import ta
+from indicators import (
+    compute_rsi,
+    compute_macd,
+    compute_smas,
+    compute_atr,
+    compute_volume_sma,
+    compute_volume_surge,
+    compute_bullish_cross,
+)
 
 from xgboost import XGBClassifier
 from sklearn.ensemble import RandomForestClassifier, VotingClassifier
@@ -398,27 +406,14 @@ def run_historical_backfill(tickers: Optional[List[str]] = None) -> None:
                     continue
 
                 # ── Technical Indicators ──────────────────────────────────────
-                df['rsi_14']      = ta.momentum.RSIIndicator(
-                    close=df['Close'], window=14
-                ).rsi()
-                macd_ind          = ta.trend.MACD(close=df['Close'])
-                df['macd']        = macd_ind.macd()
-                df['macd_signal'] = macd_ind.macd_signal()
-                df['macd_hist']   = macd_ind.macd_diff()
-                df['sma_50']      = ta.trend.SMAIndicator(
-                    close=df['Close'], window=50
-                ).sma_indicator()
-                df['sma_200']     = ta.trend.SMAIndicator(
-                    close=df['Close'], window=200
-                ).sma_indicator()
-                df['vol_sma_20']  = df['Volume'].rolling(window=20).mean()
-                df['volume_surge']  = (
-                    df['Volume'] > (df['vol_sma_20'] * 1.5)
-                ).astype(int)
-                df['bullish_cross'] = (
-                    (df['macd'] > df['macd_signal']) &
-                    (df['macd'].shift(1) <= df['macd_signal'].shift(1))
-                ).astype(int)
+                df['rsi_14'] = compute_rsi(df['Close'])
+                df['macd'], df['macd_signal'], df['macd_hist'] = compute_macd(df['Close'])
+                _smas = compute_smas(df['Close'], [50, 200])
+                df['sma_50']  = _smas[50]
+                df['sma_200'] = _smas[200]
+                df['vol_sma_20']    = compute_volume_sma(df['Volume'])
+                df['volume_surge']  = compute_volume_surge(df['Volume'], df['vol_sma_20'])
+                df['bullish_cross'] = compute_bullish_cross(df['macd'], df['macd_signal'])
 
                 # ── Momentum Factors ──────────────────────────────────────────
                 df['mom_1m']  = df['Close'].pct_change(21)
@@ -429,10 +424,7 @@ def run_historical_backfill(tickers: Optional[List[str]] = None) -> None:
                 df.drop(columns=['mom_12m'], inplace=True)
 
                 # ── Volatility Regime ─────────────────────────────────────────
-                df['atr_raw'] = ta.volatility.AverageTrueRange(
-                    high=df['High'], low=df['Low'],
-                    close=df['Close'], window=14
-                ).average_true_range()
+                df['atr_raw'] = compute_atr(df['High'], df['Low'], df['Close'])
                 df['atr_pct'] = df['atr_raw'] / df['Close']
                 df.drop(columns=['atr_raw'], inplace=True)
                 log_returns       = np.log(df['Close'] / df['Close'].shift(1))

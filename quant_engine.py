@@ -7,7 +7,15 @@ from typing import List
 
 import pandas as pd
 import yfinance as yf
-import ta
+from indicators import (
+    compute_rsi,
+    compute_macd,
+    compute_smas,
+    compute_atr,
+    compute_volume_sma,
+    compute_volume_surge,
+    compute_bullish_cross,
+)
 
 # [DESIGN-04 FIXED] Import centralized notification helper
 from database import get_connection, log_notification
@@ -93,47 +101,36 @@ def run_daily_quant_scan(ticker_list: List[str], scan_type: str = 'daily') -> No
                     logger.warning(f"Insufficient historical data for {ticker} (requires >= 200 days for SMA-200). Skipping.")
                     continue
 
-                # --- Technical Indicator Math (Vectorized via pandas & ta) ---
+                # --- Technical Indicator Math (Vectorized via indicators.py) ---
                 close_s = df['Close'].squeeze()
                 volume_s = df['Volume'].squeeze()
 
-                rsi_series = ta.momentum.RSIIndicator(close=close_s, window=14).rsi()
-                macd_indicator = ta.trend.MACD(close=close_s)
-                sma_50 = ta.trend.SMAIndicator(close=close_s, window=50).sma_indicator()
-                sma_200 = ta.trend.SMAIndicator(close=close_s, window=200).sma_indicator()
-                
-                # Replaced 'ta' call with raw pandas rolling mean for reliability
-                vol_sma_20 = volume_s.rolling(window=20).mean()
-                
-                # Calculate ATR and ATR Percentage for Position Sizing
-                atr_series = ta.volatility.AverageTrueRange(high=df['High'], low=df['Low'], close=df['Close'], window=14).average_true_range()
-                atr_pct_series = atr_series / df['Close']
+                rsi_series                  = compute_rsi(close_s)
+                macd_series, signal_series, hist_series = compute_macd(close_s)
+                smas                        = compute_smas(close_s, [50, 200])
+                sma_50                      = smas[50]
+                sma_200                     = smas[200]
+                vol_sma_20                  = compute_volume_sma(volume_s)
+                atr_series                  = compute_atr(df['High'], df['Low'], df['Close'])
+                atr_pct_series              = atr_series / df['Close']
 
                 # Extract latest localized date and metrics
                 last_date = df.index[-1].strftime('%Y-%m-%d')
                 c_price = float(close_s.iloc[-1])
                 c_vol = int(volume_s.iloc[-1])
-                
-                c_rsi = float(rsi_series.iloc[-1]) if not pd.isna(rsi_series.iloc[-1]) else None
-                c_macd = float(macd_indicator.macd().iloc[-1]) if not pd.isna(macd_indicator.macd().iloc[-1]) else None
-                c_signal = float(macd_indicator.macd_signal().iloc[-1]) if not pd.isna(macd_indicator.macd_signal().iloc[-1]) else None
-                c_hist = float(macd_indicator.macd_diff().iloc[-1]) if not pd.isna(macd_indicator.macd_diff().iloc[-1]) else None
-                c_sma50 = float(sma_50.iloc[-1]) if not pd.isna(sma_50.iloc[-1]) else None
-                c_sma200 = float(sma_200.iloc[-1]) if not pd.isna(sma_200.iloc[-1]) else None
+
+                c_rsi    = float(rsi_series.iloc[-1])    if not pd.isna(rsi_series.iloc[-1])    else None
+                c_macd   = float(macd_series.iloc[-1])   if not pd.isna(macd_series.iloc[-1])   else None
+                c_signal = float(signal_series.iloc[-1]) if not pd.isna(signal_series.iloc[-1]) else None
+                c_hist   = float(hist_series.iloc[-1])   if not pd.isna(hist_series.iloc[-1])   else None
+                c_sma50  = float(sma_50.iloc[-1])        if not pd.isna(sma_50.iloc[-1])        else None
+                c_sma200 = float(sma_200.iloc[-1])       if not pd.isna(sma_200.iloc[-1])       else None
                 c_atr_pct = float(atr_pct_series.iloc[-1]) if not pd.isna(atr_pct_series.iloc[-1]) else None
 
                 # Logic Triggers
-                vol_surge = False
-                if not pd.isna(vol_sma_20.iloc[-1]):
-                    vol_surge = bool(c_vol > (vol_sma_20.iloc[-1] * 1.5))
-
-                bullish_cross = False
-                # [MATH-09 RESOLUTION] This strictly manages the DB True/False flag for the Screener without double-scoring
-                if c_macd is not None and c_signal is not None and len(macd_indicator.macd()) >= 2 and not pd.isna(macd_indicator.macd().iloc[-2]):
-                    # Golden MACD Cross: MACD crosses ABOVE signal line
-                    prev_macd = macd_indicator.macd().iloc[-2]
-                    prev_sig = macd_indicator.macd_signal().iloc[-2]
-                    bullish_cross = bool((c_macd > c_signal) and (prev_macd <= prev_sig))
+                # [MATH-09 RESOLUTION] Scalar bool for the DB True/False flag — NaN inputs safely yield False
+                vol_surge     = bool(compute_volume_surge(volume_s, vol_sma_20).iloc[-1])
+                bullish_cross = bool(compute_bullish_cross(macd_series, signal_series).iloc[-1])
 
                 # --- Database Write (Safe Upsert) ---
                 cursor.execute('''

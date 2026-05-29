@@ -3,7 +3,14 @@ import logging
 from typing import List, Tuple
 import pandas as pd
 import yfinance as yf
-import ta
+from indicators import (
+    compute_rsi,
+    compute_macd,
+    compute_smas,
+    compute_volume_sma,
+    compute_volume_surge,
+    compute_bullish_cross,
+)
 
 from database import get_connection
 from data_engine import DataEngine
@@ -86,21 +93,17 @@ def process_and_insert() -> None:
                     logger.warning(f"Insufficient historical data for {ticker} (requires >= 200 days). Skipping.")
                     continue
 
-                # 2. Vector-calculate technical indicators via 'ta' library
-                df['rsi_14'] = ta.momentum.RSIIndicator(close=df['Close'], window=14).rsi()
-                
-                macd_indicator = ta.trend.MACD(close=df['Close'])
-                df['macd'] = macd_indicator.macd()
-                df['macd_signal'] = macd_indicator.macd_signal()
-                df['macd_hist'] = macd_indicator.macd_diff()
-                
-                df['sma_50'] = ta.trend.SMAIndicator(close=df['Close'], window=50).sma_indicator()
-                df['sma_200'] = ta.trend.SMAIndicator(close=df['Close'], window=200).sma_indicator()
-                df['vol_sma_20'] = ta.trend.SMAIndicator(close=df['Volume'], window=20).sma_indicator()
+                # 2. Vector-calculate technical indicators via indicators.py
+                df['rsi_14'] = compute_rsi(df['Close'])
+                df['macd'], df['macd_signal'], df['macd_hist'] = compute_macd(df['Close'])
+                _smas = compute_smas(df['Close'], [50, 200])
+                df['sma_50']  = _smas[50]
+                df['sma_200'] = _smas[200]
+                df['vol_sma_20']    = compute_volume_sma(df['Volume'])
 
                 # 3. Vectorize the proxy logic for boolean triggers
-                df['volume_surge'] = (df['Volume'] > (df['vol_sma_20'] * 1.5)).astype(int)
-                df['bullish_cross'] = ((df['macd'] > df['macd_signal']) & (df['macd'].shift(1) <= df['macd_signal'].shift(1))).astype(int)
+                df['volume_surge']  = compute_volume_surge(df['Volume'], df['vol_sma_20'])
+                df['bullish_cross'] = compute_bullish_cross(df['macd'], df['macd_signal'])
 
                 # Remove the initial rows (approx 200 days) that contain NaN values due to the 200-day SMA calculation
                 df.dropna(inplace=True)
