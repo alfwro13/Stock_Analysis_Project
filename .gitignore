@@ -11,3 +11,4 @@ data/
 # Ignore specific files
 to_do*.txt
 config.json
+ml_pipeline_results.json 
