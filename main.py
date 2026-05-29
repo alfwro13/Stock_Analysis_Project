@@ -12,6 +12,7 @@ from scheduler_engine import start_scheduler, shutdown_scheduler, reload_schedul
 # Modular Route Imports
 from api_routes import api_router
 from page_routes import page_router
+from data_engine import run_yfinance_smoke_test
 
 # Configure robust module-level logging centrally for the entire application
 logging.basicConfig(
@@ -25,6 +26,7 @@ async def lifespan(app: FastAPI):
     """Lifecycle manager for the FastAPI application."""
     logger.info("Initializing application lifecycle...")
     init_db()
+    run_yfinance_smoke_test()
     start_scheduler()
     reload_scheduler()
     yield

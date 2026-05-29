@@ -276,6 +276,50 @@ class DataEngine:
         
         logger.info("Massive data pipeline ingestion completed successfully.")
 
+_EXPECTED_YFINANCE_COLUMNS = {"Open", "High", "Low", "Close", "Volume"}
+
+def run_yfinance_smoke_test() -> bool:
+    """
+    Fetches a 5-day SPY slice on startup and verifies yfinance's column schema
+    hasn't silently changed. Writes to the notifications table on failure so the
+    problem is visible in the UI, not just in server logs.
+    Returns True if healthy, False if the schema is broken or the fetch fails.
+    """
+    from database import log_notification
+    try:
+        df = yf.Ticker("SPY").history(period="5d")
+
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+
+        missing = _EXPECTED_YFINANCE_COLUMNS - set(df.columns)
+
+        if df.empty or missing:
+            problem = "empty response" if df.empty else f"missing columns: {missing}"
+            msg = (
+                f"yfinance schema check FAILED ({problem}). "
+                "Price data may be silently corrupt — check yfinance/pandas versions."
+            )
+            logger.error(msg)
+            log_notification("Error", msg)
+            return False
+
+        logger.info(
+            f"yfinance schema OK — SPY {len(df)} rows, "
+            f"columns: {sorted(df.columns.tolist())}"
+        )
+        return True
+
+    except Exception as exc:
+        msg = (
+            f"yfinance smoke test raised an exception: {exc}. "
+            "Data pipeline may be broken — check network and yfinance version."
+        )
+        logger.error(msg)
+        log_notification("Error", msg)
+        return False
+
+
 if __name__ == "__main__":
     # Test block to execute the massive data pipeline directly
     engine = DataEngine()
