@@ -39,7 +39,7 @@ You must have **Python 3.10 or higher** installed on your system.
 
 Clone the repository and install the required dependencies using a virtual environment:
 ```bash
-git clone [https://github.com/alfwro13/Stock_Analysis_Project.git](https://github.com/alfwro13/Stock_Analysis_Project.git)  
+git clone https://github.com/alfwro13/Stock_Analysis_Project.git
 cd Stock_Analysis_Project  
 python3 -m venv venv  
 source venv/bin/activate  
