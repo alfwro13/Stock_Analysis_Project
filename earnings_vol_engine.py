@@ -120,13 +120,9 @@ def get_implied_straddle_move(ticker_obj: yf.Ticker, underlying_price: float, ta
         if call_price is None or put_price is None:
             return None, 0, None
         
-        # Calculate days to expiry safely (minimum 1 day to prevent div/0 or zero-move errors)
-        target_expiry_date = datetime.strptime(target_expiry, '%Y-%m-%d')
-        days_to_expiry = max((target_expiry_date - datetime.now()).days, 1)
-        
-        # [MATH APPROXIMATION RESOLVED] Replace rule-of-thumb with Black-Scholes ATM straddle approximation
-        iv = float(atm_call.get('impliedVolatility', 0.0))
-        implied_move_pct = (iv * np.sqrt(days_to_expiry / 365.0) * np.sqrt(2 / np.pi)) * 100.0
+        # Implied move = straddle cost / underlying — the market's literal priced-in move.
+        # call_price and put_price are already validated for liquidity above; no IV needed.
+        implied_move_pct = (call_price + put_price) / underlying_price * 100.0
         
         # Use Open Interest as the liquidity proxy — unlike volume, OI persists
         # between sessions and is not 0 outside market hours.
@@ -222,8 +218,10 @@ def run_earnings_vol_scan(ticker_list: List[str]) -> None:
                     continue
 
                 # 3. ISOLATE EARNINGS MOVE: Strip out non-earnings volatility (theta decay)
+                # days_to_expiry measured from now — the same window the straddle price covers.
+                # Subtracting diffusion over (days_to_expiry - 1) days isolates the earnings jump.
                 target_expiry_date = datetime.strptime(target_expiry, '%Y-%m-%d')
-                days_to_expiry = (target_expiry_date - earnings_date).days
+                days_to_expiry = max((target_expiry_date - datetime.now()).days, 1)
                 non_earnings_days = max(days_to_expiry - 1, 0)
                 
                 daily_hv = historical_hv / np.sqrt(252)

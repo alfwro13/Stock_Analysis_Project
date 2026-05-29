@@ -543,8 +543,9 @@ def run_historical_backfill(tickers: Optional[List[str]] = None) -> None:
 
 def train_global_ml_model() -> None:
     """
-    Builds a 24-feature ensemble model predicting >3% returns over 10 trading
-    days using Anchored Walk-Forward Validation with Temporal Embargos.
+    Builds a 24-feature ensemble model predicting returns exceeding
+    PREDICTION_RETURN_THRESHOLD over PREDICTION_HORIZON_DAYS trading days,
+    using Anchored Walk-Forward Validation with Temporal Embargos.
 
     FEATURE SET (24 features):
         Technical:         rsi_14, macd_pct, macd_signal_pct, macd_hist_pct,
@@ -747,8 +748,8 @@ def train_global_ml_model() -> None:
 
         cv_splits_train = []
         for tr_date_idx, te_date_idx in TimeSeriesSplit(n_splits=5).split(train_unique_dates):
-            if len(tr_date_idx) > 10:
-                tr_dates = set(train_unique_dates[tr_date_idx[:-10]])
+            if len(tr_date_idx) > PREDICTION_HORIZON_DAYS:
+                tr_dates = set(train_unique_dates[tr_date_idx[:-PREDICTION_HORIZON_DAYS]])
                 te_dates = set(train_unique_dates[te_date_idx])
                 tr_idx   = train_date_series.index[train_date_series.isin(tr_dates)].tolist()
                 te_idx   = train_date_series.index[train_date_series.isin(te_dates)].tolist()
