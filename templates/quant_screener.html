@@ -21,10 +21,6 @@
             
             <p class="page-subtitle">Signals Generated For: <strong>{{ target_date }}</strong></p>
             
-            <div id="freshness-badge" class="freshness-badge">
-                <span class="freshness-warn">Loading…</span>
-            </div>
-
             <div class="nav-links">
                 <a href="/portfolio">💼 Portfolio</a>
                 <a href="/watchlist">👀 Watchlist</a>
@@ -47,8 +43,13 @@
     <script>
         document.addEventListener("DOMContentLoaded", async function() {
             try {
-                const el = document.getElementById('freshness-badge');
-                if (el) {
+                const container = document.querySelector('.header-container');
+                if (container) {
+                    const el = document.createElement('div');
+                    el.id = 'freshness-badge';
+                    el.className = 'freshness-badge';
+                    el.innerHTML = '<span class="freshness-warn">Loading…</span>';
+                    container.appendChild(el);
                     const resp = await fetch('/api/freshness');
                     if (resp.ok) {
                         const d = await resp.json();

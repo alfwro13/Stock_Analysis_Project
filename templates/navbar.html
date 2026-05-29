@@ -1,7 +1,3 @@
-<div id="freshness-badge" class="freshness-badge">
-    <span class="freshness-warn">Loading…</span>
-</div>
-
 <div class="nav-links">
     {% if active_page == 'portfolio' %}
     <select class="context-selector" id="accountContextSelector" onchange="switchAccountContext()">
@@ -84,8 +80,16 @@
 
     async function loadFreshnessBadge() {
         try {
-            const el = document.getElementById('freshness-badge');
-            if (!el) return;
+            const container = document.querySelector('.header-container');
+            if (!container) return;
+            // Create badge as a second flex child so justify-content:space-between
+            // pushes it to the right naturally — no absolute positioning needed.
+            const el = document.createElement('div');
+            el.id = 'freshness-badge';
+            el.className = 'freshness-badge';
+            el.innerHTML = '<span class="freshness-warn">Loading…</span>';
+            container.appendChild(el);
+
             const resp = await fetch('/api/freshness');
             if (!resp.ok) { el.style.display = 'none'; return; }
             const d = await resp.json();

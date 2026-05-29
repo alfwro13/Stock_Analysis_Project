@@ -31,7 +31,7 @@ abbr { text-decoration: underline dotted #666; text-underline-offset: 3px; curso
 .detail-split-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; width: 100%; box-sizing: border-box; align-items: start; margin-top: 20px; }
 .detail-right-column { position: sticky; top: 90px; height: max-content; }
 /* --- 3. Header & Navigation --- */
-.header-container { position: relative; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; padding-bottom: 20px; margin-bottom: 30px; }
+.header-container { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; padding-bottom: 20px; margin-bottom: 30px; }
 .title-wrapper { display: flex; align-items: center; }
 .logo-link { display: inline-block; margin-right: -8px; border: none; }
 .logo-img { height: 45px; vertical-align: middle; transition: transform 0.2s; }
@@ -41,7 +41,7 @@ abbr { text-decoration: underline dotted #666; text-underline-offset: 3px; curso
 .nav-links a.active { color: #00ffcc; text-decoration: underline; }
 .nav-links a:hover { text-decoration: underline; }
 .badge { background-color: #ff4d4d; color: white; padding: 2px 6px; border-radius: 10px; font-size: 12px; vertical-align: super; font-weight: bold; }
-.freshness-badge { position: absolute; top: 15px; right: 20px; text-align: right; font-size: 12px; line-height: 1.9; }
+.freshness-badge { text-align: right; font-size: 12px; line-height: 1.9; align-self: flex-start; padding-top: 8px; white-space: nowrap; }
 .freshness-badge span { display: block; }
 .freshness-fresh { color: #00cc88; }
 .freshness-warn  { color: #ffaa33; }
