@@ -123,7 +123,7 @@ class DataEngine:
             with yahoo_connection_boundary("Market Baselines") as session:
                 df_bulk = yf.download(
                     baseline_tickers, period="2y", interval="1d",
-                    group_by='ticker', auto_adjust=True, progress=False, session=session
+                    group_by='ticker', auto_adjust=True, progress=False, threads=False, session=session
                 )
 
                 if df_bulk.empty:
@@ -152,8 +152,8 @@ class DataEngine:
         with yahoo_connection_boundary("Bulk Historical Download") as session:
             try:
                 df_bulk = yf.download(
-                    tickers, period="2y", interval="1d", 
-                    group_by='ticker', auto_adjust=True, progress=False, session=session
+                    tickers, period="2y", interval="1d",
+                    group_by='ticker', auto_adjust=True, progress=False, threads=False, session=session
                 )
                 
                 if df_bulk.empty:
@@ -178,8 +178,8 @@ class DataEngine:
         with yahoo_connection_boundary("Bulk Intraday Download") as session:
             try:
                 df_bulk = yf.download(
-                    tickers, period="1d", interval="5m", 
-                    group_by='ticker', auto_adjust=True, progress=False, session=session
+                    tickers, period="1d", interval="5m",
+                    group_by='ticker', auto_adjust=True, progress=False, threads=False, session=session
                 )
                 
                 if df_bulk.empty:
