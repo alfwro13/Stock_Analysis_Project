@@ -3,7 +3,7 @@ import time
 import logging
 import sqlite3
 from pathlib import Path
-from typing import List, Tuple, Dict, Optional
+from typing import List, Tuple, Dict, Optional, Any
 
 import pandas as pd
 import numpy as np
@@ -633,18 +633,25 @@ def train_global_ml_model() -> None:
         df.replace([np.inf, -np.inf], np.nan, inplace=True)
 
         # ── Save training population statistics ───────────────────────────────
+        # Consumed by the inference coverage guard (Change A) and the
+        # train-vs-serve drift diagnostic (Change B) in update_daily_ml_predictions.
         logger.info("Computing and saving training population statistics...")
-        feature_stats: Dict[str, Dict[str, float]] = {}
+        train_universe_size = int(df.groupby('date')['ticker'].size().median())
+        feature_stats: Dict[str, Any] = {
+            '_meta': {'train_universe_size': train_universe_size},
+            'features': {},
+        }
         for col in CONTINUOUS_FEATURES:
             col_data = df[col].dropna()
-            feature_stats[col] = {
+            feature_stats['features'][col] = {
                 'mean': float(col_data.mean()),
                 'std':  float(col_data.std())
             }
             logger.info(
-                f"  Feature '{col}': mean={feature_stats[col]['mean']:.4f}, "
-                f"std={feature_stats[col]['std']:.4f}  (n={len(col_data):,})"
+                f"  Feature '{col}': mean={feature_stats['features'][col]['mean']:.4f}, "
+                f"std={feature_stats['features'][col]['std']:.4f}  (n={len(col_data):,})"
             )
+        logger.info(f"  Training universe size (median tickers/date): {train_universe_size:,}")
         joblib.dump(feature_stats, FEATURE_STATS_PATH)
         logger.info(f"✅ Feature statistics saved to {FEATURE_STATS_PATH}")
 
@@ -891,6 +898,24 @@ def update_daily_ml_predictions(tickers: List[str]) -> None:
     z-scores across the full population, then writes confidence scores back
     for the requested ticker subset.
 
+    Design notes:
+    - Z-scoring is intentionally **per-date cross-sectional**: each feature is
+      normalised relative to every other ticker on that same date, matching
+      exactly how the model was trained.  Do NOT replace with fixed/global
+      scaling parameters — that would break the model's design.
+    - The **full stored universe** for the latest date is the normalisation
+      population at both train time and serve time.  The SQL query fetches all
+      tickers unconditionally; the `tickers` argument is never used to narrow
+      the cross-section.
+    - The `tickers` argument filters **writes only** — only the requested
+      tickers receive an updated ml_confidence_score in the database.
+    - A coverage guard refuses to score when the universe for the latest date
+      is too small for reliable z-scores (e.g. after a partial scan that left
+      only a handful of rows).
+    - A drift diagnostic compares today's raw feature distributions against the
+      saved training statistics and logs a warning when divergence is large.
+      It never alters any predictions.
+
     Fundamental features are joined from stock_signals (latest snapshot per
     ticker) — identical join to training, consistent with the known
     point-in-time bias documented in train_global_ml_model().
@@ -945,9 +970,45 @@ def update_daily_ml_predictions(tickers: List[str]) -> None:
             conn.close()
             return
 
+        # ── Load saved stats (shared by Change A and Change B) ────────────────
+        saved_stats: Optional[Dict[str, Any]] = None
+        try:
+            if FEATURE_STATS_PATH.exists():
+                saved_stats = joblib.load(FEATURE_STATS_PATH)
+        except Exception as _e:
+            logger.info(
+                f"Could not load feature_stats.joblib ({_e}); "
+                "coverage/drift checks will use fallbacks."
+            )
+
+        # ── Change A: Universe-coverage guard ─────────────────────────────────
+        # Refuse to score when the cross-section is too thin for reliable
+        # z-scores.  Threshold = 25% of the training median tickers/date,
+        # with an absolute floor of 30.
+        n_universe: int = df['ticker'].nunique()
+        train_universe_size: Optional[int] = (
+            saved_stats.get('_meta', {}).get('train_universe_size')
+            if saved_stats is not None else None
+        )
+        coverage_threshold: int = (
+            max(30, int(0.25 * train_universe_size))
+            if train_universe_size is not None else 30
+        )
+        if n_universe < coverage_threshold:
+            msg = (
+                f"Inference universe too small for reliable z-scoring: "
+                f"{n_universe} tickers present, threshold {coverage_threshold} "
+                f"(25 %% of training universe {train_universe_size}). "
+                "Skipping inference — run a full quant scan first."
+            )
+            logger.error(msg)
+            log_notification("Error", msg)
+            conn.close()
+            return
+
         logger.info(
-            f"Loaded {len(df)} tickers for cross-sectional normalization "
-            f"(date: {df['date'].iloc[0]})."
+            f"Loaded {len(df)} rows for cross-sectional normalisation "
+            f"({n_universe} unique tickers, date: {df['date'].iloc[0]})."
         )
 
         # ── Feature Engineering ───────────────────────────────────────────────
@@ -975,6 +1036,37 @@ def update_daily_ml_predictions(tickers: List[str]) -> None:
         )
         for col in CONTINUOUS_FEATURES:
             df[f'{col}_z'] = df.groupby('date')[col].transform(cross_sectional_zscore)
+
+        # ── Change B: Train-vs-serve feature drift diagnostic ─────────────────
+        # Compares today's raw (pre-z-score) feature means against the pooled
+        # training statistics saved in feature_stats.joblib.  Emits a single
+        # WARNING listing all drifted features; never alters any predictions.
+        try:
+            if saved_stats is not None:
+                train_feature_stats: Dict[str, Dict[str, float]] = (
+                    saved_stats.get('features', {})
+                )
+                drifted: List[str] = []
+                for col in CONTINUOUS_FEATURES:
+                    if col not in train_feature_stats or col not in df.columns:
+                        continue
+                    today_mean: float = float(df[col].mean())
+                    train_mean: float = train_feature_stats[col]['mean']
+                    train_std:  float = train_feature_stats[col]['std']
+                    if abs(today_mean - train_mean) / (train_std + 1e-9) > 1.0:
+                        drifted.append(col)
+                if drifted:
+                    logger.warning(
+                        f"Feature drift vs training distribution detected in "
+                        f"{len(drifted)} feature(s): {drifted}. "
+                        "Predictions may be less reliable today."
+                    )
+            else:
+                logger.info(
+                    "Feature drift check skipped — feature_stats.joblib not found."
+                )
+        except Exception as _drift_e:
+            logger.info(f"Feature drift check skipped due to error: {_drift_e}")
 
         # ── Score only requested tickers ──────────────────────────────────────
         target_set      = set(tickers)
