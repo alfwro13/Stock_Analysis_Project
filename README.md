@@ -9,7 +9,7 @@ Please note that this is a hobby project not an investment platform.
 ## **✨ Core Features**
 
 * **Ensemble Machine Learning Prediction Engine:** Utilizes a soft-voting classifier (XGBoost + Random Forest) trained on historical vectorized features to calculate the probability (0-100%) of an asset returning >3% over the next 10 trading days (entry at T+1 close, exit at T+10 close).
-* **Institutional Tail-Risk Management:** Dynamically calculates Parametric Value at Risk (VaR) and Conditional VaR (Expected Shortfall) at a 95% confidence interval to quantify extreme downside exposure.
+* **Institutional Tail-Risk Management:** Dynamically calculates 1-day Historical-Simulation Value at Risk (VaR) and Conditional VaR (Expected Shortfall) at a 95% confidence interval to quantify extreme downside exposure.
 * **Zero-LLM Market Sentiment Pulse:** Leverages VADER Natural Language Processing (NLP) to read and score live news headlines, quantifying media narratives on a strict -1.0 (Panic) to +1.0 (Euphoria) scale.
 * **Turbulence-Aware Macro Regimes:** Actively monitors the S&P 500's historical volatility alongside implied volatility (VIX) to classify the market as Normal, Volatile, or Crash—dynamically altering the quant screener to prioritize 'Flight to Safety' setups during turbulence.
 * **Auto-Syncing Portfolio (Multi-Account):** Integrates directly with Ghostfolio via API to automatically pull your live holdings. Now supports opt-in account discovery, allowing you to selectively sync specific accounts and calculate accurate global VWAP Cost Basis and Unrealized P&L across different currencies.  
