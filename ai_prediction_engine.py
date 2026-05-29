@@ -707,8 +707,11 @@ def train_global_ml_model() -> None:
         train_end = int(n_dates * 0.60)
         calib_end = int(n_dates * 0.80)
 
-        train_dates = set(unique_dates[:train_end])
-        calib_dates = set(unique_dates[train_end:calib_end])
+        # Purge the last PREDICTION_HORIZON_DAYS dates from each partition so
+        # their forward labels cannot bleed into the next region — same embargo
+        # concept applied to the outer split that already exists inside CV folds.
+        train_dates = set(unique_dates[:train_end - PREDICTION_HORIZON_DAYS])
+        calib_dates = set(unique_dates[train_end:calib_end - PREDICTION_HORIZON_DAYS])
         test_dates  = set(unique_dates[calib_end:])
 
         train_idx = date_series.index[date_series.isin(train_dates)].tolist()
@@ -724,8 +727,9 @@ def train_global_ml_model() -> None:
 
         logger.info(
             f"Temporal split — Train: {len(X_train):,} rows "
-            f"({unique_dates[0]} → {unique_dates[train_end-1]})  |  "
-            f"Calib: {len(X_calib):,} rows  |  "
+            f"({unique_dates[0]} → {unique_dates[train_end - PREDICTION_HORIZON_DAYS - 1]})  |  "
+            f"Calib: {len(X_calib):,} rows "
+            f"({unique_dates[train_end]} → {unique_dates[calib_end - PREDICTION_HORIZON_DAYS - 1]})  |  "
             f"Test: {len(X_test):,} rows ({unique_dates[calib_end]} → {unique_dates[-1]})"
         )
 
@@ -735,8 +739,6 @@ def train_global_ml_model() -> None:
         scale_pos_weight_train = (
             neg_count_train / pos_count_train if pos_count_train > 0 else 1.0
         )
-        pos_count_full = (y_full == 1).sum()
-
         # ── Walk-Forward CV Splits (Train region only) ────────────────────────
         logger.info("Constructing Strict 5-Fold Walk-Forward Splits on training region...")
 
