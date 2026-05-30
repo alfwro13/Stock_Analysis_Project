@@ -16,14 +16,15 @@
                 </a>
                 <h1>System Notifications</h1>
             </div>
-            
+
             {% set active_page = 'notifications' %}
             {% include 'navbar.html' %}
         </div>
-        <div class="notification-actions">
-            <button class="btn-read" onclick="markAllAsRead()">✓ Mark All as Read</button>
-            <button class="btn-danger" onclick="purgeAllNotifications()">🗑️ Purge All</button>
-        </div>
+    </div>
+
+    <div class="notification-actions-bar">
+        <button class="btn-read" onclick="markAllAsRead()">✓ Mark All as Read</button>
+        <button class="btn-danger" onclick="purgeAllNotifications()">🗑️ Purge All</button>
     </div>
 
     <div class="notification-list">
