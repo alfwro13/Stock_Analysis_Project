@@ -23,7 +23,9 @@ abbr { text-decoration: underline dotted #666; text-underline-offset: 3px; curso
 .container { max-width: 1400px; margin: auto; padding: 0 20px; }
 .container-fluid { width: 100%; max-width: none; margin: auto; padding: 0 30px; box-sizing: border-box; }
 .body-glossary { max-width: 1400px; margin: auto; }
-.body-notifications { max-width: 1400px; margin: auto; }
+.body-notifications { margin: 0; padding: 0; }
+.body-notifications .header-container { padding-left: 40px; padding-right: 40px; }
+.body-notifications .notification-list { max-width: 1400px; margin: 0 auto; padding: 0 20px 40px; }
 .body-portfolio, .body-watchlist, .body-detail, .body-screener, .body-sentiment { margin: 0; padding: 20px; }
 .body-detail { padding-bottom: 50px; }
 .body-settings { max-width: 900px; margin: auto; }
