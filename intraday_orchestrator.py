@@ -1,5 +1,6 @@
 # intraday_orchestrator.py
 import hashlib
+import ipaddress
 import os
 import re
 import time
@@ -7,6 +8,7 @@ import json
 import logging
 import sqlite3
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
 import yfinance as yf
 import pandas as pd
 from datetime import datetime, timezone
@@ -19,11 +21,21 @@ from nextcloud_talk import send_text_message
 
 logger = logging.getLogger(__name__)
 
+# ── Intraday orchestrator thresholds ──────────────────────────────────────────
+_STALE_SECONDS        = 5400   # 90 min: market closed / asset halted circuit breaker
+_CORP_ACTION_GAP_PCT  = 10.0   # price gap % that triggers a corporate action lookup
+_MACRO_YIELD_SURGE_PCT = 1.5   # intraday yield spike % that fires a systemic macro alert
+_AI_DEFENSE_THRESHOLD = 2.0    # predicted SPY gap % that activates AI Volatility Defense
+_AI_DEFENSE_CAP       = 1.5    # flash-crash threshold cap (%) applied when defense is active
+
+
 def format_currency(price: float, currency_code: Optional[str]) -> str:
     """
     Formats price with correct symbol, scaling GBp to GBP dynamically.
     Fails over to the 3-letter currency code if symbol mapping is unavailable.
     """
+    if price is None:
+        return "N/A"
     if not currency_code:
         currency_code = 'USD'  # Fallback
         
@@ -49,11 +61,19 @@ def build_stock_url(server_url: str, port: int, ticker: str) -> str:
     If it's an IP address or localhost, it appends the port automatically.
     """
     base = str(server_url).rstrip('/')
-    # Regex to check if the base URL is localhost or an IPv4 address
-    is_ip_or_local = bool(re.search(r'localhost|\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}', base))
-    # Check if a port is already explicitly defined in the base URL string
-    has_port = bool(re.search(r':\d+$', base))
-    
+    parsed = urlparse(base if "://" in base else f"http://{base}")
+    hostname = parsed.hostname or ""
+
+    is_ip_or_local = hostname == "localhost"
+    if not is_ip_or_local:
+        try:
+            ipaddress.ip_address(hostname)
+            is_ip_or_local = True
+        except ValueError:
+            pass
+
+    has_port = parsed.port is not None
+
     if is_ip_or_local and not has_port:
         return f"{base}:{port}/stock/{ticker}"
     return f"{base}/stock/{ticker}"
@@ -156,7 +176,7 @@ class IntradayOrchestrator:
         # 6 tokens verified sufficient: every distinct trigger from CrashEngine /
         # MoonshotEngine diverges within the first 3–4 alphabetic words, so there
         # is no collision risk with the current reason-string vocabulary.
-        return hashlib.sha1(descriptor.encode("utf-8")).hexdigest()[:16]
+        return hashlib.sha1(descriptor.encode("utf-8"), usedforsecurity=False).hexdigest()[:16]
 
     def _dedup_settings(self, engine: str) -> Dict[str, float]:
         """Pulls the per-engine dedup knobs with safe fallbacks."""
@@ -429,7 +449,7 @@ class IntradayOrchestrator:
         # SPY is fetched here once so crash_engine never needs its own per-crash HTTP call
         macro_tickers = ["^TYX", "SPY"]
         spy_change_pct: Optional[float] = None
-        download_list = list(set(tickers + macro_tickers))
+        download_list = sorted(set(tickers + macro_tickers))
         
         logger.info("Performing bulk YF 5m fetch for %d assets & macro benchmarks.", len(download_list))
         try:
@@ -467,8 +487,7 @@ class IntradayOrchestrator:
                     continue
 
                 # --- STALENESS / MARKET CLOSED CIRCUIT BREAKER ---
-                # If the last tick is older than 90 mins (5400s), the market is closed or halted.
-                if self._seconds_since(m_df.index[-1]) > 5400:
+                if self._seconds_since(m_df.index[-1]) > _STALE_SECONDS:
                     continue  # Bypass stale data
                 
                 m_open = float(m_df['Close'].iloc[0])
@@ -483,7 +502,7 @@ class IntradayOrchestrator:
 
                     # If yield spikes more than 1.5% intraday, it's a systemic shock
                     reason_macro = f"YIELD SURGE {m_ticker}"
-                    if m_spike >= 1.5 and not self._evaluate_alert_gate(
+                    if m_spike >= _MACRO_YIELD_SURGE_PCT and not self._evaluate_alert_gate(
                         "Macro", m_ticker, m_curr, reason_macro, conn
                     ):
                         name = "US 30Y Treasury" if m_ticker == "^TYX" else "UK 10Y Gilt"
@@ -521,12 +540,12 @@ class IntradayOrchestrator:
             ''')
             ai_warning_row = cursor.fetchone()
 
-            if ai_warning_row and ai_warning_row['max_warning'] and float(ai_warning_row['max_warning']) > 2.0:
-                logger.info("AI Volatility Defense active: tightening flash crash threshold to 1.5%%.")
+            if ai_warning_row and ai_warning_row['max_warning'] is not None and float(ai_warning_row['max_warning']) > _AI_DEFENSE_THRESHOLD:
+                logger.info("AI Volatility Defense active: tightening flash crash threshold to %.1f%%.", _AI_DEFENSE_CAP)
                 # Set a post-beta cap, NOT session_crash_threshold directly — mutating the base
                 # threshold lets beta scaling widen it back out for high-beta names, defeating
                 # the override. The cap is applied after beta multiplication inside evaluate().
-                self.crash_engine.ai_threshold_cap = 1.5
+                self.crash_engine.ai_threshold_cap = _AI_DEFENSE_CAP
             else:
                 self.crash_engine.ai_threshold_cap = None
         except Exception:
@@ -555,13 +574,14 @@ class IntradayOrchestrator:
                         continue
                     df_intraday = df_bulk.copy()
 
-                df_intraday.dropna(subset=['Close'], inplace=True)
+                if 'Close' in df_intraday.columns:
+                    df_intraday.dropna(subset=['Close'], inplace=True)
                 if len(df_intraday) < 2:
                     continue
 
                 # --- STALENESS / MARKET CLOSED CIRCUIT BREAKER ---
                 # Completely bypass evaluation if restarting the app over the weekend/holiday
-                if self._seconds_since(df_intraday.index[-1]) > 5400:  # 90 minutes
+                if self._seconds_since(df_intraday.index[-1]) > _STALE_SECONDS:
                     # Market is closed, or asset is halted. Save the parquet but skip alert evaluation.
                     df_intraday.index = df_intraday.index.tz_localize(None)
                     df_intraday.to_parquet(INTRADAY_DIR / f"{ticker}_intraday.parquet", engine='pyarrow')
@@ -589,7 +609,7 @@ class IntradayOrchestrator:
                 last_hist_close = df_hist['Close'].iloc[-1]
                 if last_hist_close > 0:
                     raw_gap_pct = abs((current_price - last_hist_close) / last_hist_close) * 100.0
-                    if raw_gap_pct > 10.0:
+                    if raw_gap_pct > _CORP_ACTION_GAP_PCT:
                         if self._has_corporate_action_today(ticker):
                             logger.info("Corporate action detected for %s; suppressing alert evaluation.", ticker)
                             continue
@@ -711,5 +731,9 @@ class IntradayOrchestrator:
         logger.info("Scan complete. Dispatched %d crashes and %d moonshots.", len(crash_alerts_to_send), len(moonshot_alerts_to_send))
 
 if __name__ == "__main__":
-    engine = IntradayOrchestrator()
-    engine.run()
+    try:
+        engine = IntradayOrchestrator()
+        engine.run()
+    except Exception:
+        logger.critical("Orchestrator failed to start.", exc_info=True)
+        raise
