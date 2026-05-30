@@ -22,14 +22,20 @@ abbr { text-decoration: underline dotted #666; text-underline-offset: 3px; curso
 /* --- 2. Layout & Containers --- */
 .container { max-width: 1400px; margin: auto; padding: 0 20px; }
 .container-fluid { width: 100%; max-width: none; margin: auto; padding: 0 30px; box-sizing: border-box; }
-.body-glossary { max-width: 1400px; margin: auto; }
+.body-glossary { margin: 0; padding: 0; }
+.body-glossary .header-container { padding-left: 40px; padding-right: 40px; }
+.body-glossary .glossary-search-container { padding-left: 40px; padding-right: 40px; }
+.body-glossary .glossary-wrapper { max-width: 1400px; margin: 20px auto; padding: 0 20px; }
 .body-notifications { margin: 0; padding: 0; }
 .body-notifications .header-container { padding-left: 40px; padding-right: 40px; }
 .body-notifications .notification-actions-bar { max-width: 1400px; margin: 0 auto; padding: 0 20px 20px; display: flex; justify-content: flex-end; gap: 15px; }
 .body-notifications .notification-list { max-width: 1400px; margin: 0 auto; padding: 0 20px 40px; }
 .body-portfolio, .body-watchlist, .body-detail, .body-screener, .body-sentiment { margin: 0; padding: 20px; }
 .body-detail { padding-bottom: 50px; }
-.body-settings { max-width: 900px; margin: auto; }
+.body-settings { margin: 0; padding: 0; }
+.body-settings .header-container { padding-left: 40px; padding-right: 40px; }
+.body-settings .header-container-wide { max-width: none; margin: 0; }
+#settingsForm { max-width: 900px; margin: 0 auto; padding: 0 20px; }
 .sentiment-split-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; width: 100%; box-sizing: border-box; margin-bottom: 30px; }
 /* Grid Layout for Detail View (Fluid Full-Screen) */
 .detail-split-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; width: 100%; box-sizing: border-box; align-items: start; margin-top: 20px; }
