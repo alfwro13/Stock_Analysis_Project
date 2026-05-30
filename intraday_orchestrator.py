@@ -5,7 +5,7 @@ import re
 import time
 import json
 import logging
-from typing import Dict, Optional
+from typing import Any, Dict, List, Optional
 import yfinance as yf
 import pandas as pd
 from datetime import datetime, timezone
@@ -18,7 +18,7 @@ from nextcloud_talk import send_text_message
 
 logger = logging.getLogger(__name__)
 
-def format_currency(price, currency_code):
+def format_currency(price: float, currency_code: Optional[str]) -> str:
     """
     Formats price with correct symbol, scaling GBp to GBP dynamically.
     Fails over to the 3-letter currency code if symbol mapping is unavailable.
@@ -42,7 +42,7 @@ def format_currency(price, currency_code):
     else:
         return f"{price:,.2f} {currency_code}"
 
-def build_stock_url(server_url, port, ticker):
+def build_stock_url(server_url: str, port: int, ticker: str) -> str:
     """
     Intelligently constructs the URL. If the server is a domain/proxy, it drops the port.
     If it's an IP address or localhost, it appends the port automatically.
@@ -63,13 +63,13 @@ class IntradayOrchestrator:
     Centralized monitor that batches network and disk I/O operations, 
     feeding raw context into the mathematical quant engines.
     """
-    def __init__(self):
+    def __init__(self) -> None:
         self.config = load_config()
         # Instantiate engines with config so they don't reload it internally
         self.crash_engine = CrashEngine(self.config)
         self.moonshot_engine = MoonshotEngine(self.config)
 
-    def get_portfolio_tickers(self):
+    def get_portfolio_tickers(self) -> List[str]:
         """Safely extracts all unique tickers currently held in the portfolio."""
         if not os.path.exists(PORTFOLIO_PATH):
             return []
@@ -78,9 +78,10 @@ class IntradayOrchestrator:
                 data = json.load(f)
                 return [normalize_ticker(v['ticker']) for v in data.values() if 'ticker' in v]
         except Exception:
+            logger.error("Failed to load portfolio from %s", PORTFOLIO_PATH, exc_info=True)
             return []
 
-    def get_asset_metadata(self, tickers):
+    def get_asset_metadata(self, tickers: List[str]) -> Dict[str, Dict[str, Any]]:
         """Fetches currency, ATR stop loss, company name, ML, and Risk metrics in a single bulk SQLite query."""
         if not tickers:
             return {}
@@ -355,7 +356,7 @@ class IntradayOrchestrator:
             pruned = cursor.rowcount
             conn.commit()
             if pruned:
-                print(f"[ORCHESTRATOR] Pruned {pruned} stale alert_state row(s) older than 7 days.")
+                logger.info("Pruned %d stale alert_state row(s) older than 7 days.", pruned)
         except Exception as e:
             logger.error(f"Failed to prune alert_state: {e}")
         finally:
@@ -373,17 +374,17 @@ class IntradayOrchestrator:
             if actions is not None and not actions.empty:
                 if actions.index.tz is not None:
                     actions.index = actions.index.tz_localize(None)
-                
-                today_date = datetime.now().date()
-                if today_date in actions.index.date:
+
+                today_date = datetime.now(timezone.utc).date()
+                if today_date in set(actions.index.date.tolist()):
                     return True
-        except Exception as e:
-            print(f"[ORCHESTRATOR] Failed to check corporate actions for {ticker}: {e}")
+        except Exception:
+            logger.error("Failed to check corporate actions for %s", ticker, exc_info=True)
         return False
 
-    def run(self):
+    def run(self) -> None:
         self._prune_alert_state()
-        print(f"\n--- [INTRADAY ORCHESTRATOR] Scan Initiated @ {datetime.now().strftime('%H:%M:%S')} ---")
+        logger.info("Scan initiated.")
         
         # Check active bounds
         sched_cfg = self.config.get("SCHEDULING", {}).get("CRASH_ALERTS", {})
@@ -395,10 +396,11 @@ class IntradayOrchestrator:
             start_time = datetime.strptime(start_str, "%H:%M").time()
             end_time = datetime.strptime(end_str, "%H:%M").time()
             if not (start_time <= now <= end_time):
-                print(f"[ORCHESTRATOR] Outside active bounds ({start_str}-{end_str}). Aborted.")
+                logger.info("Outside active bounds (%s-%s). Aborted.", start_str, end_str)
                 return
-        except Exception:
-            pass
+        except (ValueError, TypeError) as e:
+            logger.error("Invalid schedule time config (%s-%s): %s", start_str, end_str, e)
+            return
 
         tickers = self.get_portfolio_tickers()
         ignored = self.config.get("IGNORED_TICKERS", [])
@@ -407,7 +409,7 @@ class IntradayOrchestrator:
         tickers = [t for t in tickers if t not in ignored and not t.startswith('0P')]
         
         if not tickers:
-            print("[ORCHESTRATOR] No valid portfolio items found for intraday scan.")
+            logger.warning("No valid portfolio items found for intraday scan.")
             return
 
         metadata = self.get_asset_metadata(tickers)
@@ -415,18 +417,18 @@ class IntradayOrchestrator:
         # Add system yield benchmarks and SPY for macro shock detection
         # SPY is fetched here once so crash_engine never needs its own per-crash HTTP call
         macro_tickers = ["^TYX", "SPY"]
-        spy_change_pct: float | None = None
+        spy_change_pct: Optional[float] = None
         download_list = list(set(tickers + macro_tickers))
         
-        print(f"[ORCHESTRATOR] Performing bulk YF 5m fetch for {len(download_list)} assets & macro benchmarks...")
+        logger.info("Performing bulk YF 5m fetch for %d assets & macro benchmarks.", len(download_list))
         try:
             df_bulk = yf.download(download_list, period="1d", interval="5m", group_by='ticker', auto_adjust=True, progress=False)
-        except Exception as e:
-            print(f"[ORCHESTRATOR] Bulk download failed: {e}")
+        except Exception:
+            logger.error("Bulk download failed.", exc_info=True)
             return
 
         if df_bulk.empty:
-            print("[ORCHESTRATOR] Bulk download returned empty DataFrame.")
+            logger.warning("Bulk download returned empty DataFrame.")
             return
 
         # --- MACRO FLASH SURGE DETECTION ---
@@ -439,7 +441,15 @@ class IntradayOrchestrator:
                 else:
                     if 'Close' not in df_bulk.columns:
                         continue
-                    m_df = df_bulk.copy() if len(download_list) == 1 else pd.DataFrame()
+                    if len(download_list) == 1:
+                        m_df = df_bulk.copy()
+                    else:
+                        logger.warning(
+                            "Flat columns from bulk fetch with %d tickers requested; "
+                            "cannot map macro ticker %s reliably. Skipping macro eval.",
+                            len(download_list), m_ticker,
+                        )
+                        continue
                     
                 m_df.dropna(subset=['Close'], inplace=True)
                 if len(m_df) < 5: 
@@ -484,8 +494,8 @@ class IntradayOrchestrator:
                             "Macro",
                             f"Systemic Yield Surge detected on {m_ticker} (+{m_spike:.2f}%)"
                         )
-            except Exception as e:
-                print(f"[ORCHESTRATOR] Macro eval failed for {m_ticker}: {e}")
+            except Exception:
+                logger.error("Macro eval failed for %s", m_ticker, exc_info=True)
 
         # --- PHASE 4: AI MACRO DEFENSE OVERRIDE ---
         # Dynamically tighten the crash threshold if the XGBoost AI model predicts an imminent > 2.0% SPY gap today.
@@ -502,15 +512,15 @@ class IntradayOrchestrator:
             conn.close()
 
             if ai_warning_row and ai_warning_row['max_warning'] and float(ai_warning_row['max_warning']) > 2.0:
-                print(f"[ORCHESTRATOR] 🛡️ AI Volatility Defense Active: Tightening Flash Crash Threshold to 1.5%")
+                logger.info("AI Volatility Defense active: tightening flash crash threshold to 1.5%%.")
                 # Set a post-beta cap, NOT session_crash_threshold directly — mutating the base
                 # threshold lets beta scaling widen it back out for high-beta names, defeating
                 # the override. The cap is applied after beta multiplication inside evaluate().
                 self.crash_engine.ai_threshold_cap = 1.5
             else:
                 self.crash_engine.ai_threshold_cap = None
-        except Exception as e:
-            print(f"[ORCHESTRATOR] Failed to query AI Macro Defense status: {e}")
+        except Exception:
+            logger.error("Failed to query AI Macro Defense status.", exc_info=True)
             self.crash_engine.ai_threshold_cap = None
 
         # Inject pre-fetched SPY change so crash_engine never makes its own per-crash HTTP call
@@ -536,7 +546,7 @@ class IntradayOrchestrator:
                     df_intraday = df_bulk.copy()
 
                 df_intraday.dropna(subset=['Close'], inplace=True)
-                if df_intraday.empty:
+                if len(df_intraday) < 2:
                     continue
 
                 # --- STALENESS / MARKET CLOSED CIRCUIT BREAKER ---
@@ -571,7 +581,7 @@ class IntradayOrchestrator:
                     raw_gap_pct = abs((current_price - last_hist_close) / last_hist_close) * 100.0
                     if raw_gap_pct > 10.0:
                         if self._has_corporate_action_today(ticker):
-                            print(f"[ORCHESTRATOR] 🛑 Corporate action detected for {ticker}. Suppressing execution to prevent false signals.")
+                            logger.info("Corporate action detected for %s; suppressing alert evaluation.", ticker)
                             continue
 
                 # Strict Time-Series Stitching Normalization
@@ -615,8 +625,8 @@ class IntradayOrchestrator:
                     ):
                         moonshot_alerts_to_send.append((ticker, moonshot_alert, currency, asset_meta))
 
-            except Exception as e:
-                print(f"[ORCHESTRATOR] Error processing {ticker}: {e}")
+            except Exception:
+                logger.error("Error processing %s", ticker, exc_info=True)
 
         # --- BATCH DISPATCH ALERTS (One Message Per Ticker) ---
         for ticker, alert, currency, meta in crash_alerts_to_send:
@@ -686,7 +696,7 @@ class IntradayOrchestrator:
             )
             time.sleep(1)  # Prevent Nextcloud rate-limiting
 
-        print(f"[ORCHESTRATOR] Scan complete. Dispatched {len(crash_alerts_to_send)} crashes and {len(moonshot_alerts_to_send)} moonshots.")
+        logger.info("Scan complete. Dispatched %d crashes and %d moonshots.", len(crash_alerts_to_send), len(moonshot_alerts_to_send))
 
 if __name__ == "__main__":
     engine = IntradayOrchestrator()

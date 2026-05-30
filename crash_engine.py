@@ -179,6 +179,11 @@ class CrashEngine:
         """
         Evaluates mathematical crash signatures, now prioritizing Session Crashes.
         Returns an alert dictionary if triggered, else None.
+
+        df_combined contract: must contain a 'Close' column only — the orchestrator
+        builds it from df_hist[['Close']] plus the live tick. Do NOT add OHLCV reads
+        here without also updating the stitching logic in intraday_orchestrator.py.
+        df_hist is passed separately for any full-OHLCV calculations.
         """
         # Exclude the live intraday tick from indicator calculations — it is a partially-formed
         # bar mid-session and skews trend signals on volatile open days.

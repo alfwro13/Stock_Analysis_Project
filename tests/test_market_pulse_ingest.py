@@ -69,9 +69,20 @@ def _clear_cache(*tickers):
     conn.close()
 
 
+def _last_bday() -> pd.Timestamp:
+    """Returns today at midnight if it is a weekday, or rolls back to Friday if weekend.
+
+    pd.bdate_range(end=<weekend-date>, periods=N) silently returns N-1 dates in
+    current pandas — the non-business end date is excluded. Rolling end to the most
+    recent business day keeps the index length exactly equal to len(prices) regardless
+    of whether the test runs on a weekday or weekend.
+    """
+    return pd.offsets.BusinessDay().rollback(pd.Timestamp.now().normalize())
+
+
 def _flat_daily_df(prices: list) -> pd.DataFrame:
     """Non-MultiIndex daily DataFrame (single-ticker download path)."""
-    dates = pd.bdate_range(end=pd.Timestamp.now().normalize(), periods=len(prices))
+    dates = pd.bdate_range(end=_last_bday(), periods=len(prices))
     return pd.DataFrame(
         {"Close": prices, "High": [p * 1.01 for p in prices],
          "Low": [p * 0.99 for p in prices], "Open": prices, "Volume": [0] * len(prices)},
@@ -81,11 +92,14 @@ def _flat_daily_df(prices: list) -> pd.DataFrame:
 
 def _flat_live_df(price: float) -> pd.DataFrame:
     """Non-MultiIndex 2m live DataFrame (single-ticker download path)."""
-    now = pd.Timestamp.now()
+    # Anchor to the same business-day reference as _flat_daily_df so the
+    # last_daily_date >= live_date comparison in market_pulse.py is always True,
+    # matching the intraday path that the tests are designed to exercise.
+    ref = _last_bday() + pd.Timedelta(hours=12)
     return pd.DataFrame(
         {"Close": [price], "High": [price * 1.005], "Low": [price * 0.995],
          "Open": [price], "Volume": [1000]},
-        index=[now],
+        index=[ref],
     )
 
 
