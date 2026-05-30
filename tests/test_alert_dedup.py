@@ -13,6 +13,9 @@ All tests use the session-level temp DB created by conftest.py (init_db() has
 already run, so alert_state exists). Engine instances are mocked to avoid any
 network calls; load_config is patched to a controlled dict so knob values are
 deterministic across environments.
+
+The db_conn fixture provides a single SQLite connection per test that is passed
+to the methods that now require an explicit connection (M2 refactor).
 """
 
 import sys
@@ -91,7 +94,7 @@ def _clear_alert_state():
     conn.close()
 
 
-# ── fixture ───────────────────────────────────────────────────────────────────
+# ── fixtures ──────────────────────────────────────────────────────────────────
 
 @pytest.fixture
 def orch():
@@ -110,6 +113,19 @@ def orch():
         o = IntradayOrchestrator()
         yield o
     _clear_alert_state()
+
+
+@pytest.fixture
+def db_conn():
+    """Provides a real SQLite connection for the duration of one test.
+
+    Methods that previously opened their own connection now accept an explicit
+    conn so the entire scan shares one connection (M2 refactor). Tests use this
+    fixture to satisfy that requirement; the connection is closed after each test.
+    """
+    conn = _conn()
+    yield conn
+    conn.close()
 
 
 # ── _condition_fingerprint ────────────────────────────────────────────────────
@@ -187,112 +203,112 @@ OTHER_REASON = "FLASH CRASH exceeded ATR threshold"
 class TestEvaluateAlertGateCrash:
     """All gate branches for the Crash engine."""
 
-    def test_case1_no_prior_state_fires(self, orch):
+    def test_case1_no_prior_state_fires(self, orch, db_conn):
         """Case 1: no row exists → gate clears the alert."""
-        assert orch._evaluate_alert_gate("Crash", TEST_TICKER, 100.0, CRASH_REASON) is False
+        assert orch._evaluate_alert_gate("Crash", TEST_TICKER, 100.0, CRASH_REASON, db_conn) is False
 
-    def test_case1b_stale_row_from_yesterday_fires(self, orch):
+    def test_case1b_stale_row_from_yesterday_fires(self, orch, db_conn):
         """Case 1b: row exists but belongs to a prior trading day → treat as new day."""
         fp = orch._condition_fingerprint(CRASH_REASON)
         _seed_alert_state("Crash", TEST_TICKER, fp, 100.0, YESTERDAY + " 10:00:00", 0, YESTERDAY)
-        assert orch._evaluate_alert_gate("Crash", TEST_TICKER, 100.0, CRASH_REASON) is False
+        assert orch._evaluate_alert_gate("Crash", TEST_TICKER, 100.0, CRASH_REASON, db_conn) is False
 
-    def test_case2_different_fingerprint_fires(self, orch):
+    def test_case2_different_fingerprint_fires(self, orch, db_conn):
         """Case 2: a different condition class fires even if still in cooldown."""
         # Seed a suppressed row for CRASH_REASON
         fp = orch._condition_fingerprint(CRASH_REASON)
         _seed_alert_state("Crash", TEST_TICKER, fp, 100.0, TODAY + " 10:00:00", 0, TODAY)
         # Ask the gate about a completely different reason
-        assert orch._evaluate_alert_gate("Crash", TEST_TICKER, 100.0, OTHER_REASON) is False
+        assert orch._evaluate_alert_gate("Crash", TEST_TICKER, 100.0, OTHER_REASON, db_conn) is False
 
-    def test_case3_same_fingerprint_armed_fires(self, orch):
+    def test_case3_same_fingerprint_armed_fires(self, orch, db_conn):
         """Case 3: same fingerprint but armed=1 → fires (first fire of a new event)."""
         fp = orch._condition_fingerprint(CRASH_REASON)
         _seed_alert_state("Crash", TEST_TICKER, fp, 100.0, TODAY + " 10:00:00", 1, TODAY)
-        assert orch._evaluate_alert_gate("Crash", TEST_TICKER, 100.0, CRASH_REASON) is False
+        assert orch._evaluate_alert_gate("Crash", TEST_TICKER, 100.0, CRASH_REASON, db_conn) is False
 
-    def test_case4a_recovery_suppresses_and_rearms(self, orch):
+    def test_case4a_recovery_suppresses_and_rearms(self, orch, db_conn):
         """Case 4a: price recovered >= REARM_PERCENT (3%) → suppress + flip armed=1."""
         fp = orch._condition_fingerprint(CRASH_REASON)
         _seed_alert_state("Crash", TEST_TICKER, fp, 100.0, TODAY + " 10:00:00", 0, TODAY)
         # 100 → 103.5 = +3.5% recovery for Crash (price rose back), exceeds REARM 3.0%
-        result = orch._evaluate_alert_gate("Crash", TEST_TICKER, 103.5, CRASH_REASON)
+        result = orch._evaluate_alert_gate("Crash", TEST_TICKER, 103.5, CRASH_REASON, db_conn)
         assert result is True  # suppressed this scan
         row = _read_alert_state("Crash", TEST_TICKER)
         assert row["armed"] == 1  # re-armed for next genuine breach
 
-    def test_case4a_borderline_recovery_just_below_rearm_stays_suppressed(self, orch):
+    def test_case4a_borderline_recovery_just_below_rearm_stays_suppressed(self, orch, db_conn):
         """Case 4a boundary: 2.9% recovery < REARM 3.0% → stays in case 4b/4c, not re-armed."""
         fp = orch._condition_fingerprint(CRASH_REASON)
         recent_ts = (datetime.utcnow() - timedelta(minutes=30)).strftime("%Y-%m-%d %H:%M:%S")
         _seed_alert_state("Crash", TEST_TICKER, fp, 100.0, recent_ts, 0, TODAY)
         # +2.9% recovery, just below REARM threshold — does NOT re-arm
-        result = orch._evaluate_alert_gate("Crash", TEST_TICKER, 102.9, CRASH_REASON)
+        result = orch._evaluate_alert_gate("Crash", TEST_TICKER, 102.9, CRASH_REASON, db_conn)
         assert result is True
         row = _read_alert_state("Crash", TEST_TICKER)
         assert row["armed"] == 0  # still suppressed, not re-armed
 
-    def test_case4b_cooldown_elapsed_and_worsened_fires(self, orch):
+    def test_case4b_cooldown_elapsed_and_worsened_fires(self, orch, db_conn):
         """Case 4b: cooldown elapsed AND price fell further >= RETRIGGER (2%) → fires."""
         fp = orch._condition_fingerprint(CRASH_REASON)
         old_ts = (datetime.utcnow() - timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S")
         _seed_alert_state("Crash", TEST_TICKER, fp, 100.0, old_ts, 0, TODAY)
         # 100 → 97 = -3.0% for Crash (worsened), exceeds RETRIGGER 2.0%
-        assert orch._evaluate_alert_gate("Crash", TEST_TICKER, 97.0, CRASH_REASON) is False
+        assert orch._evaluate_alert_gate("Crash", TEST_TICKER, 97.0, CRASH_REASON, db_conn) is False
 
-    def test_case4b_worsened_but_cooldown_not_elapsed_suppresses(self, orch):
+    def test_case4b_worsened_but_cooldown_not_elapsed_suppresses(self, orch, db_conn):
         """Case 4c: price worsened enough but cooldown hasn't elapsed → still suppressed."""
         fp = orch._condition_fingerprint(CRASH_REASON)
         recent_ts = (datetime.utcnow() - timedelta(minutes=30)).strftime("%Y-%m-%d %H:%M:%S")
         _seed_alert_state("Crash", TEST_TICKER, fp, 100.0, recent_ts, 0, TODAY)
         # Price fell 5% — clearly worsened — but only 30 min elapsed (< 120 min cooldown)
-        assert orch._evaluate_alert_gate("Crash", TEST_TICKER, 95.0, CRASH_REASON) is True
+        assert orch._evaluate_alert_gate("Crash", TEST_TICKER, 95.0, CRASH_REASON, db_conn) is True
 
-    def test_case4c_cooldown_elapsed_but_insufficient_deterioration_suppresses(self, orch):
+    def test_case4c_cooldown_elapsed_but_insufficient_deterioration_suppresses(self, orch, db_conn):
         """Case 4c: cooldown elapsed but price only moved 1% (< RETRIGGER 2%) → suppressed."""
         fp = orch._condition_fingerprint(CRASH_REASON)
         old_ts = (datetime.utcnow() - timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S")
         _seed_alert_state("Crash", TEST_TICKER, fp, 100.0, old_ts, 0, TODAY)
         # 100 → 99 = only 1% worse, less than RETRIGGER 2.0%
-        assert orch._evaluate_alert_gate("Crash", TEST_TICKER, 99.0, CRASH_REASON) is True
+        assert orch._evaluate_alert_gate("Crash", TEST_TICKER, 99.0, CRASH_REASON, db_conn) is True
 
-    def test_no_price_with_suppressed_state_stays_suppressed(self, orch):
+    def test_no_price_with_suppressed_state_stays_suppressed(self, orch, db_conn):
         """Case 4 fallback: current_price=None when suppressed → suppress (safe side)."""
         fp = orch._condition_fingerprint(CRASH_REASON)
         _seed_alert_state("Crash", TEST_TICKER, fp, 100.0, TODAY + " 10:00:00", 0, TODAY)
-        assert orch._evaluate_alert_gate("Crash", TEST_TICKER, None, CRASH_REASON) is True
+        assert orch._evaluate_alert_gate("Crash", TEST_TICKER, None, CRASH_REASON, db_conn) is True
 
 
 class TestEvaluateAlertGateMoonshot:
     """Directional logic is mirrored for Moonshot: 'worsened' means price rose further."""
 
-    def test_moonshot_worsened_is_price_rising(self, orch):
+    def test_moonshot_worsened_is_price_rising(self, orch, db_conn):
         """Moonshot: price rising further past cooldown+retrigger threshold fires."""
         fp = orch._condition_fingerprint(MOON_REASON)
         old_ts = (datetime.utcnow() - timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S")
         _seed_alert_state("Moonshot", TEST_TICKER, fp, 100.0, old_ts, 0, TODAY)
         # 100 → 103 = +3.0% further spike, exceeds RETRIGGER 2.0%
-        assert orch._evaluate_alert_gate("Moonshot", TEST_TICKER, 103.0, MOON_REASON) is False
+        assert orch._evaluate_alert_gate("Moonshot", TEST_TICKER, 103.0, MOON_REASON, db_conn) is False
 
-    def test_moonshot_recovered_is_price_falling(self, orch):
+    def test_moonshot_recovered_is_price_falling(self, orch, db_conn):
         """Moonshot: price falling back >= REARM_PERCENT → suppress + re-arm."""
         fp = orch._condition_fingerprint(MOON_REASON)
         _seed_alert_state("Moonshot", TEST_TICKER, fp, 100.0, TODAY + " 10:00:00", 0, TODAY)
         # 100 → 96.5 = -3.5% fall-back for Moonshot, exceeds REARM 3.0%
-        result = orch._evaluate_alert_gate("Moonshot", TEST_TICKER, 96.5, MOON_REASON)
+        result = orch._evaluate_alert_gate("Moonshot", TEST_TICKER, 96.5, MOON_REASON, db_conn)
         assert result is True
         row = _read_alert_state("Moonshot", TEST_TICKER)
         assert row["armed"] == 1
 
-    def test_moonshot_no_prior_state_fires(self, orch):
-        assert orch._evaluate_alert_gate("Moonshot", TEST_TICKER, 150.0, MOON_REASON) is False
+    def test_moonshot_no_prior_state_fires(self, orch, db_conn):
+        assert orch._evaluate_alert_gate("Moonshot", TEST_TICKER, 150.0, MOON_REASON, db_conn) is False
 
 
 # ── record_alert_fired ────────────────────────────────────────────────────────
 
 class TestRecordAlertFired:
-    def test_creates_row_on_first_fire(self, orch):
-        orch.record_alert_fired("Crash", TEST_TICKER, 100.0, CRASH_REASON)
+    def test_creates_row_on_first_fire(self, orch, db_conn):
+        orch.record_alert_fired("Crash", TEST_TICKER, 100.0, CRASH_REASON, db_conn)
         row = _read_alert_state("Crash", TEST_TICKER)
         assert row is not None
         assert row["armed"] == 0
@@ -300,38 +316,38 @@ class TestRecordAlertFired:
         assert row["last_price"] == 100.0
         assert row["state_date"] == TODAY
 
-    def test_fingerprint_stored_matches_reason(self, orch):
-        orch.record_alert_fired("Crash", TEST_TICKER, 100.0, CRASH_REASON)
+    def test_fingerprint_stored_matches_reason(self, orch, db_conn):
+        orch.record_alert_fired("Crash", TEST_TICKER, 100.0, CRASH_REASON, db_conn)
         row = _read_alert_state("Crash", TEST_TICKER)
         assert row["fingerprint"] == orch._condition_fingerprint(CRASH_REASON)
 
-    def test_increments_fire_count_on_same_day(self, orch):
-        orch.record_alert_fired("Crash", TEST_TICKER, 100.0, CRASH_REASON)
-        orch.record_alert_fired("Crash", TEST_TICKER, 97.0, CRASH_REASON)
+    def test_increments_fire_count_on_same_day(self, orch, db_conn):
+        orch.record_alert_fired("Crash", TEST_TICKER, 100.0, CRASH_REASON, db_conn)
+        orch.record_alert_fired("Crash", TEST_TICKER, 97.0, CRASH_REASON, db_conn)
         row = _read_alert_state("Crash", TEST_TICKER)
         assert row["fire_count"] == 2
         assert row["last_price"] == 97.0
 
-    def test_resets_fire_count_on_new_trading_day(self, orch):
+    def test_resets_fire_count_on_new_trading_day(self, orch, db_conn):
         fp = orch._condition_fingerprint(CRASH_REASON)
         _seed_alert_state("Crash", TEST_TICKER, fp, 100.0, YESTERDAY + " 10:00:00", 0, YESTERDAY, fire_count=5)
-        orch.record_alert_fired("Crash", TEST_TICKER, 95.0, CRASH_REASON)
+        orch.record_alert_fired("Crash", TEST_TICKER, 95.0, CRASH_REASON, db_conn)
         row = _read_alert_state("Crash", TEST_TICKER)
         assert row["fire_count"] == 1
         assert row["state_date"] == TODAY
 
-    def test_last_fired_utc_is_recent(self, orch):
+    def test_last_fired_utc_is_recent(self, orch, db_conn):
         before = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-        orch.record_alert_fired("Crash", TEST_TICKER, 100.0, CRASH_REASON)
+        orch.record_alert_fired("Crash", TEST_TICKER, 100.0, CRASH_REASON, db_conn)
         after = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
         row = _read_alert_state("Crash", TEST_TICKER)
         assert before <= row["last_fired_utc"] <= after
 
-    def test_gate_suppresses_after_record(self, orch):
+    def test_gate_suppresses_after_record(self, orch, db_conn):
         """End-to-end: fire → record → gate returns suppressed on next scan."""
-        orch.record_alert_fired("Crash", TEST_TICKER, 100.0, CRASH_REASON)
+        orch.record_alert_fired("Crash", TEST_TICKER, 100.0, CRASH_REASON, db_conn)
         # Same price, same reason, immediately after → must be suppressed
-        result = orch._evaluate_alert_gate("Crash", TEST_TICKER, 100.0, CRASH_REASON)
+        result = orch._evaluate_alert_gate("Crash", TEST_TICKER, 100.0, CRASH_REASON, db_conn)
         assert result is True
 
 
@@ -349,8 +365,8 @@ class TestLogNotificationFeed:
         conn.commit()
         conn.close()
 
-    def test_writes_row_with_status_sent(self, orch):
-        orch.log_notification_feed("Crash", f"Test message {self.MSG_MARKER}")
+    def test_writes_row_with_status_sent(self, orch, db_conn):
+        orch.log_notification_feed("Crash", f"Test message {self.MSG_MARKER}", db_conn)
         conn = _conn()
         row = conn.execute(
             "SELECT status FROM system_notifications WHERE message_text LIKE ? LIMIT 1",
@@ -360,16 +376,16 @@ class TestLogNotificationFeed:
         assert row is not None
         assert row["status"] == "sent"
 
-    def test_does_not_affect_alert_state(self, orch):
+    def test_does_not_affect_alert_state(self, orch, db_conn):
         """Feed writes must be completely decoupled from the suppression ledger."""
-        orch.log_notification_feed("Crash", f"Test message {self.MSG_MARKER}")
+        orch.log_notification_feed("Crash", f"Test message {self.MSG_MARKER}", db_conn)
         row = _read_alert_state("Crash", TEST_TICKER)
         assert row is None  # alert_state untouched
 
-    def test_gate_still_fires_after_feed_write(self, orch):
+    def test_gate_still_fires_after_feed_write(self, orch, db_conn):
         """Writing to the feed must not suppress subsequent alerts."""
-        orch.log_notification_feed("Crash", f"Test message {self.MSG_MARKER}")
-        result = orch._evaluate_alert_gate("Crash", TEST_TICKER, 100.0, CRASH_REASON)
+        orch.log_notification_feed("Crash", f"Test message {self.MSG_MARKER}", db_conn)
+        result = orch._evaluate_alert_gate("Crash", TEST_TICKER, 100.0, CRASH_REASON, db_conn)
         assert result is False  # still fires; feed write has no bearing on gate
 
 
@@ -386,27 +402,27 @@ class TestPruneAlertState:
         conn.commit()
         conn.close()
 
-    def test_deletes_rows_older_than_7_days(self, orch):
+    def test_deletes_rows_older_than_7_days(self, orch, db_conn):
         eight_days_ago = (datetime.utcnow() - timedelta(days=8)).strftime("%Y-%m-%d")
         _seed_alert_state("Crash", self.OLD_TICKER, "abc", 100.0,
                           eight_days_ago + " 10:00:00", 0, eight_days_ago)
-        orch._prune_alert_state()
+        orch._prune_alert_state(db_conn)
         assert _read_alert_state("Crash", self.OLD_TICKER) is None
 
-    def test_retains_rows_within_7_days(self, orch):
+    def test_retains_rows_within_7_days(self, orch, db_conn):
         three_days_ago = (datetime.utcnow() - timedelta(days=3)).strftime("%Y-%m-%d")
         _seed_alert_state("Crash", self.RECENT_TICKER, "abc", 100.0,
                           three_days_ago + " 10:00:00", 0, three_days_ago)
-        orch._prune_alert_state()
+        orch._prune_alert_state(db_conn)
         assert _read_alert_state("Crash", self.RECENT_TICKER) is not None
 
-    def test_retains_todays_rows(self, orch):
+    def test_retains_todays_rows(self, orch, db_conn):
         _seed_alert_state("Crash", TEST_TICKER, "abc", 100.0, TODAY + " 10:00:00", 0, TODAY)
-        orch._prune_alert_state()
+        orch._prune_alert_state(db_conn)
         assert _read_alert_state("Crash", TEST_TICKER) is not None
 
-    def test_prune_on_empty_table_does_not_raise(self, orch):
-        orch._prune_alert_state()  # must not throw
+    def test_prune_on_empty_table_does_not_raise(self, orch, db_conn):
+        orch._prune_alert_state(db_conn)  # must not throw
 
 
 # ── N3: Macro engine uses dedicated config and explicit direction ──────────────
@@ -417,23 +433,23 @@ class TestMacroEngine:
     def teardown_method(self):
         _clear_alert_state()
 
-    def test_macro_gate_fires_on_no_prior_state(self, orch):
-        assert orch._evaluate_alert_gate("Macro", TEST_TICKER, 4.5, self.MACRO_REASON) is False
+    def test_macro_gate_fires_on_no_prior_state(self, orch, db_conn):
+        assert orch._evaluate_alert_gate("Macro", TEST_TICKER, 4.5, self.MACRO_REASON, db_conn) is False
 
-    def test_macro_rising_yield_counts_as_worsened(self, orch):
+    def test_macro_rising_yield_counts_as_worsened(self, orch, db_conn):
         """Macro: yield rising further past cooldown+retrigger fires (worsening = higher yield)."""
         fp = orch._condition_fingerprint(self.MACRO_REASON)
         old_ts = (datetime.utcnow() - timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S")
         _seed_alert_state("Macro", TEST_TICKER, fp, 4.5, old_ts, 0, TODAY)
         # 4.5 → 4.62 = +2.67% rise in yield, exceeds RETRIGGER 2.0%
-        assert orch._evaluate_alert_gate("Macro", TEST_TICKER, 4.62, self.MACRO_REASON) is False
+        assert orch._evaluate_alert_gate("Macro", TEST_TICKER, 4.62, self.MACRO_REASON, db_conn) is False
 
-    def test_macro_falling_yield_triggers_rearm(self, orch):
+    def test_macro_falling_yield_triggers_rearm(self, orch, db_conn):
         """Macro: yield falling back >= REARM_PERCENT suppresses and re-arms."""
         fp = orch._condition_fingerprint(self.MACRO_REASON)
         _seed_alert_state("Macro", TEST_TICKER, fp, 4.5, TODAY + " 10:00:00", 0, TODAY)
         # 4.5 → 4.36 = -3.1% fall, exceeds REARM 3.0% → re-arm
-        result = orch._evaluate_alert_gate("Macro", TEST_TICKER, 4.36, self.MACRO_REASON)
+        result = orch._evaluate_alert_gate("Macro", TEST_TICKER, 4.36, self.MACRO_REASON, db_conn)
         assert result is True
         row = _read_alert_state("Macro", TEST_TICKER)
         assert row["armed"] == 1

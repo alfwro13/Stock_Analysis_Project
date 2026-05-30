@@ -5,6 +5,7 @@ import re
 import time
 import json
 import logging
+import sqlite3
 from typing import Any, Dict, List, Optional
 import yfinance as yf
 import pandas as pd
@@ -68,6 +69,8 @@ class IntradayOrchestrator:
         # Instantiate engines with config so they don't reload it internally
         self.crash_engine = CrashEngine(self.config)
         self.moonshot_engine = MoonshotEngine(self.config)
+        # Keyed (ticker, date-str) so each ticker is fetched at most once per calendar day.
+        self._corp_action_cache: Dict[tuple, bool] = {}
 
     def get_portfolio_tickers(self) -> List[str]:
         """Safely extracts all unique tickers currently held in the portfolio."""
@@ -116,17 +119,17 @@ class IntradayOrchestrator:
         conn.close()
         return metadata
 
-    def log_notification_feed(self, msg_type: str, msg_text: str) -> None:
+    def log_notification_feed(self, msg_type: str, msg_text: str, conn: sqlite3.Connection) -> None:
         """Writes a row to the user-facing notification feed (display only).
 
         Fire-and-forget — has NO bearing on alert suppression. Deduplication is
         governed exclusively by the alert_state ledger via _evaluate_alert_gate() /
         record_alert_fired(). A slow or failed feed write can never cause an alert
         to re-fire, and vice versa.
+
+        conn is the run()-scoped connection; this method does not open or close it.
         """
-        conn = None
         try:
-            conn = get_connection()
             cursor = conn.cursor()
             cursor.execute(
                 "INSERT INTO system_notifications (message_type, message_text, status) "
@@ -136,9 +139,6 @@ class IntradayOrchestrator:
             conn.commit()
         except Exception as e:
             logger.error(f"Failed to write notification feed row for {msg_type}: {e}")
-        finally:
-            if conn:
-                conn.close()
 
     @staticmethod
     def _condition_fingerprint(reason: str) -> str:
@@ -179,6 +179,7 @@ class IntradayOrchestrator:
         ticker: str,
         current_price: Optional[float],
         reason: str,
+        conn: sqlite3.Connection,
     ) -> bool:
         """Single, deterministic suppression decision. Returns True if the alert
         should be SUPPRESSED, False if it is cleared to fire.
@@ -203,9 +204,7 @@ class IntradayOrchestrator:
         # is only between midnight UTC and midnight local, i.e. outside trading hours.
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
-        conn = None
         try:
-            conn = get_connection()
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT fingerprint, last_price, last_fired_utc, armed, state_date "
@@ -280,9 +279,6 @@ class IntradayOrchestrator:
         except Exception as e:
             logger.error(f"Alert gate evaluation failed for {engine}/{ticker}: {e}")
             return True  # fail safe: suppress rather than risk spamming
-        finally:
-            if conn:
-                conn.close()
 
     def record_alert_fired(
         self,
@@ -290,21 +286,22 @@ class IntradayOrchestrator:
         ticker: str,
         current_price: Optional[float],
         reason: str,
+        conn: sqlite3.Connection,
     ) -> None:
         """Commits suppression state AFTER a successful dispatch.
 
         Sets armed=0 (now in cooldown), stamps the price/time/fingerprint, and
         bumps the daily fire counter. Idempotent via INSERT OR REPLACE on the
         (engine, ticker) primary key.
+
+        conn is the run()-scoped connection; this method does not open or close it.
         """
         fingerprint = self._condition_fingerprint(reason)
         _now = datetime.now(timezone.utc)
         now_utc = _now.strftime("%Y-%m-%d %H:%M:%S")
         today = _now.strftime("%Y-%m-%d")
 
-        conn = None
         try:
-            conn = get_connection()
             cursor = conn.cursor()
             cursor.execute(
                 "INSERT INTO alert_state "
@@ -323,9 +320,6 @@ class IntradayOrchestrator:
             conn.commit()
         except Exception as e:
             logger.error(f"Failed to record alert state for {engine}/{ticker}: {e}")
-        finally:
-            if conn:
-                conn.close()
 
     @staticmethod
     def _seconds_since(ts: pd.Timestamp) -> float:
@@ -344,13 +338,14 @@ class IntradayOrchestrator:
             return (now_utc - ts.tz_convert("UTC")).total_seconds()
         return (now_utc - ts.tz_localize("UTC")).total_seconds()
 
-    def _prune_alert_state(self) -> None:
+    def _prune_alert_state(self, conn: sqlite3.Connection) -> None:
         """Deletes alert_state rows older than 7 days to keep the table bounded.
         Active tickers reset daily via state_date comparison so they are unaffected;
-        only rows for delisted or removed tickers accumulate and need clearing."""
-        conn = None
+        only rows for delisted or removed tickers accumulate and need clearing.
+
+        conn is the run()-scoped connection; this method does not open or close it.
+        """
         try:
-            conn = get_connection()
             cursor = conn.cursor()
             cursor.execute("DELETE FROM alert_state WHERE state_date < date('now', '-7 days')")
             pruned = cursor.rowcount
@@ -359,15 +354,21 @@ class IntradayOrchestrator:
                 logger.info("Pruned %d stale alert_state row(s) older than 7 days.", pruned)
         except Exception as e:
             logger.error(f"Failed to prune alert_state: {e}")
-        finally:
-            if conn:
-                conn.close()
 
     def _has_corporate_action_today(self, ticker: str) -> bool:
         """
         Queries Yahoo Finance for dividends or stock splits occurring today.
         Used as a lazy circuit breaker to prevent false anomaly alerts.
+
+        Results are memoized for the calendar day — corporate actions don't change
+        intraday, so re-fetching on every 5-minute scan is pure wasted I/O.
         """
+        today_date = datetime.now(timezone.utc).date()
+        cache_key = (ticker, today_date.isoformat())
+        if cache_key in self._corp_action_cache:
+            return self._corp_action_cache[cache_key]
+
+        result = False
         try:
             tk = yf.Ticker(ticker)
             actions = tk.actions
@@ -375,15 +376,25 @@ class IntradayOrchestrator:
                 if actions.index.tz is not None:
                     actions.index = actions.index.tz_localize(None)
 
-                today_date = datetime.now(timezone.utc).date()
                 if today_date in set(actions.index.date.tolist()):
-                    return True
+                    result = True
         except Exception:
             logger.error("Failed to check corporate actions for %s", ticker, exc_info=True)
-        return False
+
+        self._corp_action_cache[cache_key] = result
+        return result
 
     def run(self) -> None:
-        self._prune_alert_state()
+        # One connection for the entire scan. Opened here (not in __init__) so it is
+        # always on the correct thread when APScheduler dispatches to a worker.
+        conn = get_connection()
+        try:
+            self._run(conn)
+        finally:
+            conn.close()
+
+    def _run(self, conn: sqlite3.Connection) -> None:
+        self._prune_alert_state(conn)
         logger.info("Scan initiated.")
         
         # Check active bounds
@@ -473,7 +484,7 @@ class IntradayOrchestrator:
                     # If yield spikes more than 1.5% intraday, it's a systemic shock
                     reason_macro = f"YIELD SURGE {m_ticker}"
                     if m_spike >= 1.5 and not self._evaluate_alert_gate(
-                        "Macro", m_ticker, m_curr, reason_macro
+                        "Macro", m_ticker, m_curr, reason_macro, conn
                     ):
                         name = "US 30Y Treasury" if m_ticker == "^TYX" else "UK 10Y Gilt"
                         msg = (
@@ -489,10 +500,11 @@ class IntradayOrchestrator:
                         except Exception as e:
                             logger.error(f"Macro alert dispatch failed for {m_ticker}: {e}")
                             continue
-                        self.record_alert_fired("Macro", m_ticker, m_curr, reason_macro)
+                        self.record_alert_fired("Macro", m_ticker, m_curr, reason_macro, conn)
                         self.log_notification_feed(
                             "Macro",
-                            f"Systemic Yield Surge detected on {m_ticker} (+{m_spike:.2f}%)"
+                            f"Systemic Yield Surge detected on {m_ticker} (+{m_spike:.2f}%)",
+                            conn,
                         )
             except Exception:
                 logger.error("Macro eval failed for %s", m_ticker, exc_info=True)
@@ -500,16 +512,14 @@ class IntradayOrchestrator:
         # --- PHASE 4: AI MACRO DEFENSE OVERRIDE ---
         # Dynamically tighten the crash threshold if the XGBoost AI model predicts an imminent > 2.0% SPY gap today.
         try:
-            conn = get_connection()
             cursor = conn.cursor()
             cursor.execute('''
-                SELECT MAX(ai_volatility_warning) as max_warning 
-                FROM macro_calendar 
-                WHERE date(event_date) = date('now') 
+                SELECT MAX(ai_volatility_warning) as max_warning
+                FROM macro_calendar
+                WHERE date(event_date) = date('now')
                 AND is_event_passed = 0
             ''')
             ai_warning_row = cursor.fetchone()
-            conn.close()
 
             if ai_warning_row and ai_warning_row['max_warning'] and float(ai_warning_row['max_warning']) > 2.0:
                 logger.info("AI Volatility Defense active: tightening flash crash threshold to 1.5%%.")
@@ -607,7 +617,7 @@ class IntradayOrchestrator:
                         ticker, current_price, df_combined, asset_meta, df_hist, session_open
                     )
                     if crash_alert and not self._evaluate_alert_gate(
-                        "Crash", ticker, current_price, crash_alert.get("reason", "")
+                        "Crash", ticker, current_price, crash_alert.get("reason", ""), conn
                     ):
                         crash_alerts_to_send.append((ticker, crash_alert, currency, asset_meta))
 
@@ -621,7 +631,7 @@ class IntradayOrchestrator:
                         ticker, current_price, df_combined, asset_meta, df_hist, current_volume
                     )
                     if moonshot_alert and not self._evaluate_alert_gate(
-                        "Moonshot", ticker, current_price, moonshot_alert.get("reason", "")
+                        "Moonshot", ticker, current_price, moonshot_alert.get("reason", ""), conn
                     ):
                         moonshot_alerts_to_send.append((ticker, moonshot_alert, currency, asset_meta))
 
@@ -652,11 +662,12 @@ class IntradayOrchestrator:
             except Exception as e:
                 logger.error(f"Crash alert dispatch failed for {ticker}: {e}")
                 continue
-            self.record_alert_fired("Crash", ticker, alert['price'], alert['reason'])
+            self.record_alert_fired("Crash", ticker, alert['price'], alert['reason'], conn)
             self.log_notification_feed(
                 "Crash",
                 f"**Price:** {formatted_price} | Intraday Alert triggered for {ticker}. "
-                f"Reason: {alert['reason']}"
+                f"Reason: {alert['reason']}",
+                conn,
             )
             time.sleep(1)  # Prevent Nextcloud rate-limiting
 
@@ -688,11 +699,12 @@ class IntradayOrchestrator:
             except Exception as e:
                 logger.error(f"Moonshot alert dispatch failed for {ticker}: {e}")
                 continue
-            self.record_alert_fired("Moonshot", ticker, alert['price'], alert['reason'])
+            self.record_alert_fired("Moonshot", ticker, alert['price'], alert['reason'], conn)
             self.log_notification_feed(
                 "Moonshot",
                 f"**Price:** {formatted_price} | Moonshot triggered for {ticker}. "
-                f"Reason: {alert['reason']}"
+                f"Reason: {alert['reason']}",
+                conn,
             )
             time.sleep(1)  # Prevent Nextcloud rate-limiting
 
