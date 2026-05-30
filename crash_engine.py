@@ -201,6 +201,9 @@ class CrashEngine:
         # The orchestrator appends the live current_price as the final row of df_combined (iloc[-1]).
         # The prior session's close is the last settled row.
         prev_close = df_settled['Close'].iloc[-1]
+        if not prev_close:
+            logger.debug("Non-positive prev_close for %s; skipping.", ticker)
+            return None
 
         # Beta-normalise all thresholds: high-beta stocks require a larger move to qualify;
         # low-beta stocks trip on smaller moves. Clamp to [0.5, 2.0] to cap outlier sensitivity.
@@ -238,6 +241,9 @@ class CrashEngine:
             return None
 
         past_price = df_settled['Close'].iloc[lookback_idx]
+        if not past_price:
+            logger.debug("Non-positive past_price for %s; skipping.", ticker)
+            return None
         price_drop_pct = ((current_price - past_price) / past_price) * 100.0
 
         sma_series = ta.trend.SMAIndicator(close=df_settled['Close'], window=self.sma_length).sma_indicator()
@@ -267,8 +273,9 @@ class CrashEngine:
             # Prioritize the Session Crash reporting
             if is_session_crash:
                 if gap_pct is not None and since_open_pct is not None:
+                    gap_dir = "up" if gap_pct >= 0 else "down"
                     reason.append(
-                        f"SESSION CRASH: Gapped {abs(gap_pct):.2f}% at open and "
+                        f"SESSION CRASH: Gapped {gap_dir} {abs(gap_pct):.2f}% at open and "
                         f"continuing lower ({abs(since_open_pct):.2f}% since open, "
                         f"{abs(intraday_drop_pct):.2f}% vs. prev close)."
                     )

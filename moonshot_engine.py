@@ -77,6 +77,9 @@ class MoonshotEngine:
             return None
 
         past_price = df_settled['Close'].iloc[lookback_idx]
+        if not past_price:
+            logger.debug("Non-positive past_price for %s; skipping.", ticker)
+            return None
         price_spike_pct = ((current_price - past_price) / past_price) * 100.0
 
         # SMA Gap (Running too hot)

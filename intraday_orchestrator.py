@@ -268,8 +268,8 @@ class IntradayOrchestrator:
             # future breach is a fresh alert, but stay silent now.
             if recovered_pct >= settings["rearm_percent"]:
                 cursor.execute(
-                    "UPDATE alert_state SET armed = 1 WHERE engine = ? AND ticker = ?",
-                    (engine, ticker),
+                    "UPDATE alert_state SET armed = 1, state_date = ? WHERE engine = ? AND ticker = ?",
+                    (today, engine, ticker),
                 )
                 conn.commit()
                 return True  # suppress this scan; re-armed for next genuine breach
@@ -611,6 +611,13 @@ class IntradayOrchestrator:
                     continue
 
                 df_hist = pd.read_parquet(hist_path)
+                # Drop trailing NaN closes before any length or value check.
+                # A NaN last-close passes the > 0 corp-action gate (NaN > 0 is False,
+                # so the lookup is skipped) but propagates into df_combined, where it
+                # becomes prev_close in the crash engine and poisons every pct comparison
+                # with NaN — the crash is then silently missed because NaN <= threshold
+                # evaluates to False rather than raising.
+                df_hist = df_hist[df_hist['Close'].notna()]
                 if df_hist.empty or len(df_hist) < 20:
                     continue
 
@@ -640,6 +647,7 @@ class IntradayOrchestrator:
                 else:
                     new_row = pd.DataFrame({'Close': [current_price]}, index=[latest_dt])
                     df_combined = pd.concat([df_hist[['Close']], new_row])
+                    df_combined.sort_index(inplace=True)
 
                 asset_meta = metadata.get(ticker, {})
                 currency = asset_meta.get('currency', 'USD')
@@ -680,6 +688,9 @@ class IntradayOrchestrator:
             formatted_price = format_currency(alert['price'], currency)
             url = build_stock_url(SERVER_URL, PORT, ticker)
             
+            # ml_confidence_score is stored 0–100 (ai_prediction_engine multiplies prob by 100).
+            # var_95 / cvar_95 are stored as fractions 0–1 (risk_engine: 1 - exp(log_return));
+            # multiply by 100 here to render as a human-readable percentage.
             ml_conf = f"{meta.get('ml_confidence_score'):.1f}%" if meta.get('ml_confidence_score') is not None else "N/A"
             var = f"{(meta.get('var_95') * 100):.2f}%" if meta.get('var_95') is not None else "N/A"
             sent = f"{meta.get('sentiment_score'):.3f}" if meta.get('sentiment_score') is not None else "N/A"
@@ -712,6 +723,9 @@ class IntradayOrchestrator:
             formatted_price = format_currency(alert['price'], currency)
             url = build_stock_url(SERVER_URL, PORT, ticker)
             
+            # ml_confidence_score is stored 0–100 (ai_prediction_engine multiplies prob by 100).
+            # var_95 / cvar_95 are stored as fractions 0–1 (risk_engine: 1 - exp(log_return));
+            # multiply by 100 here to render as a human-readable percentage.
             ml_conf = f"{meta.get('ml_confidence_score'):.1f}%" if meta.get('ml_confidence_score') is not None else "N/A"
             var = f"{(meta.get('var_95') * 100):.2f}%" if meta.get('var_95') is not None else "N/A"
             sent = f"{meta.get('sentiment_score'):.3f}" if meta.get('sentiment_score') is not None else "N/A"
