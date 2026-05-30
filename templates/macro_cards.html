@@ -143,14 +143,16 @@
             const formattedChange = Number(index.change_pct).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 
             const cardHTML = `
-                <div class="macro-card ${cardClass} ${staleClass}">
-                    <div class="macro-title ${staleText}">${index.name}</div>
-                    <div class="macro-price ${staleText}">${formattedPrice}</div>
-                    <div class="macro-change ${changeClass} ${staleText}">
-                        ${sign}${formattedChange}%
+                <a href="/stock/${encodeURIComponent(index.ticker)}" class="macro-card-link">
+                    <div class="macro-card ${cardClass} ${staleClass}">
+                        <div class="macro-title ${staleText}">${index.name}</div>
+                        <div class="macro-price ${staleText}">${formattedPrice}</div>
+                        <div class="macro-change ${changeClass} ${staleText}">
+                            ${sign}${formattedChange}%
+                        </div>
+                        ${sentBadgeHTML}
                     </div>
-                    ${sentBadgeHTML}
-                </div>
+                </a>
             `;
             container.innerHTML += cardHTML;
         });
