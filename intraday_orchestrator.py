@@ -27,6 +27,13 @@ _CORP_ACTION_GAP_PCT  = 10.0   # price gap % that triggers a corporate action lo
 _MACRO_YIELD_SURGE_PCT = 1.5   # intraday yield spike % that fires a systemic macro alert
 _AI_DEFENSE_THRESHOLD = 2.0    # predicted SPY gap % that activates AI Volatility Defense
 _AI_DEFENSE_CAP       = 1.5    # flash-crash threshold cap (%) applied when defense is active
+# Delay between consecutive Nextcloud Talk sends. A full second is conservative; if
+# Nextcloud's actual rate limit is looser, reduce this. Note: _run() is synchronous on
+# an APScheduler worker thread — N alerts × this delay = N seconds of blocked execution,
+# during which the DB connection is held and the next scan may queue. With a large
+# portfolio under a macro-crash morning, consider batching alerts into a digest message
+# instead of N sequential sends.
+_DISPATCH_SLEEP_SECONDS = 1
 
 
 def format_currency(price: float, currency_code: Optional[str]) -> str:
@@ -404,6 +411,39 @@ class IntradayOrchestrator:
         self._corp_action_cache[cache_key] = result
         return result
 
+    def _dispatch_alerts(
+        self,
+        engine: str,
+        alert_tuples: list,
+        conn: sqlite3.Connection,
+        msg_builder,   # (ticker, formatted_price, alert, ml_conf, var, sent, url) -> str
+        feed_builder,  # (ticker, formatted_price, alert) -> str
+    ) -> None:
+        """Send, record, and feed-log each alert in alert_tuples for the given engine.
+
+        Centralises the shared dispatch sequence (format → send → record → feed → sleep)
+        so that per-engine divergences (emoji, cautions block, VaR label) live only in
+        the msg_builder/feed_builder callables passed by the caller.
+        """
+        for ticker, alert, currency, meta in alert_tuples:
+            formatted_price = format_currency(alert['price'], currency)
+            url = build_stock_url(SERVER_URL, PORT, ticker)
+            # ml_confidence_score is stored 0–100 (ai_prediction_engine multiplies prob by 100).
+            # var_95 / cvar_95 are stored as fractions 0–1 (risk_engine: 1 - exp(log_return));
+            # multiply by 100 here to render as a human-readable percentage.
+            ml_conf = f"{meta.get('ml_confidence_score'):.1f}%" if meta.get('ml_confidence_score') is not None else "N/A"
+            var = f"{(meta.get('var_95') * 100):.2f}%" if meta.get('var_95') is not None else "N/A"
+            sent = f"{meta.get('sentiment_score'):.3f}" if meta.get('sentiment_score') is not None else "N/A"
+            msg = msg_builder(ticker, formatted_price, alert, ml_conf, var, sent, url)
+            try:
+                send_text_message(msg, self.config)
+            except Exception as e:
+                logger.error(f"{engine} alert dispatch failed for {ticker}: {e}")
+                continue
+            self.record_alert_fired(engine, ticker, alert['price'], alert['reason'], conn)
+            self.log_notification_feed(engine, feed_builder(ticker, formatted_price, alert), conn)
+            time.sleep(_DISPATCH_SLEEP_SECONDS)
+
     def run(self) -> None:
         # One connection for the entire scan. Opened here (not in __init__) so it is
         # always on the correct thread when APScheduler dispatches to a worker.
@@ -684,80 +724,43 @@ class IntradayOrchestrator:
                 logger.error("Error processing %s", ticker, exc_info=True)
 
         # --- BATCH DISPATCH ALERTS (One Message Per Ticker) ---
-        for ticker, alert, currency, meta in crash_alerts_to_send:
-            formatted_price = format_currency(alert['price'], currency)
-            url = build_stock_url(SERVER_URL, PORT, ticker)
-            
-            # ml_confidence_score is stored 0–100 (ai_prediction_engine multiplies prob by 100).
-            # var_95 / cvar_95 are stored as fractions 0–1 (risk_engine: 1 - exp(log_return));
-            # multiply by 100 here to render as a human-readable percentage.
-            ml_conf = f"{meta.get('ml_confidence_score'):.1f}%" if meta.get('ml_confidence_score') is not None else "N/A"
-            var = f"{(meta.get('var_95') * 100):.2f}%" if meta.get('var_95') is not None else "N/A"
-            sent = f"{meta.get('sentiment_score'):.3f}" if meta.get('sentiment_score') is not None else "N/A"
-
-            msg = (
-                f"🚨 **INTRADAY CRASH ALERT: {ticker}** 🚨\n\n"
-                f"**Price:** {formatted_price}\n"
-                f"**Trigger:** {alert['reason']}\n\n"
+        self._dispatch_alerts(
+            "Crash",
+            crash_alerts_to_send,
+            conn,
+            lambda t, p, a, ml, v, s, u: (
+                f"🚨 **INTRADAY CRASH ALERT: {t}** 🚨\n\n"
+                f"**Price:** {p}\n"
+                f"**Trigger:** {a['reason']}\n\n"
                 f"📊 **Context:**\n"
-                f"• AI Confidence: {ml_conf}\n"
-                f"• Downside Log-Return VaR: {var}\n"
-                f"• NLP Sentiment: {sent}\n\n"
-                f"🔗 [View Breakdown]({url})"
-            )
-            try:
-                send_text_message(msg, self.config)
-            except Exception as e:
-                logger.error(f"Crash alert dispatch failed for {ticker}: {e}")
-                continue
-            self.record_alert_fired("Crash", ticker, alert['price'], alert['reason'], conn)
-            self.log_notification_feed(
-                "Crash",
-                f"**Price:** {formatted_price} | Intraday Alert triggered for {ticker}. "
-                f"Reason: {alert['reason']}",
-                conn,
-            )
-            time.sleep(1)  # Prevent Nextcloud rate-limiting
-
-        for ticker, alert, currency, meta in moonshot_alerts_to_send:
-            formatted_price = format_currency(alert['price'], currency)
-            url = build_stock_url(SERVER_URL, PORT, ticker)
-            
-            # ml_confidence_score is stored 0–100 (ai_prediction_engine multiplies prob by 100).
-            # var_95 / cvar_95 are stored as fractions 0–1 (risk_engine: 1 - exp(log_return));
-            # multiply by 100 here to render as a human-readable percentage.
-            ml_conf = f"{meta.get('ml_confidence_score'):.1f}%" if meta.get('ml_confidence_score') is not None else "N/A"
-            var = f"{(meta.get('var_95') * 100):.2f}%" if meta.get('var_95') is not None else "N/A"
-            sent = f"{meta.get('sentiment_score'):.3f}" if meta.get('sentiment_score') is not None else "N/A"
-
-            cautions = ""
-            for caution in alert.get('cautions', []):
-                cautions += f"⚠️ *{caution}*\n"
-
-            msg = (
-                f"🚀 **MOONSHOT ALERT: {ticker}** 🚀\n\n"
-                f"**Price:** {formatted_price}\n"
-                f"**Trigger:** {alert['reason']}\n\n"
-                f"{cautions}\n"
-                f"📊 **Context:**\n"
-                f"• AI Confidence: {ml_conf}\n"
-                f"• Value at Risk (95%): {var}\n"
-                f"• NLP Sentiment: {sent}\n\n"
-                f"🔗 [View Breakdown]({url})"
-            )
-            try:
-                send_text_message(msg, self.config)
-            except Exception as e:
-                logger.error(f"Moonshot alert dispatch failed for {ticker}: {e}")
-                continue
-            self.record_alert_fired("Moonshot", ticker, alert['price'], alert['reason'], conn)
-            self.log_notification_feed(
-                "Moonshot",
-                f"**Price:** {formatted_price} | Moonshot triggered for {ticker}. "
-                f"Reason: {alert['reason']}",
-                conn,
-            )
-            time.sleep(1)  # Prevent Nextcloud rate-limiting
+                f"• AI Confidence: {ml}\n"
+                f"• Downside Log-Return VaR: {v}\n"
+                f"• NLP Sentiment: {s}\n\n"
+                f"🔗 [View Breakdown]({u})"
+            ),
+            lambda t, p, a: (
+                f"**Price:** {p} | Intraday Alert triggered for {t}. Reason: {a['reason']}"
+            ),
+        )
+        self._dispatch_alerts(
+            "Moonshot",
+            moonshot_alerts_to_send,
+            conn,
+            lambda t, p, a, ml, v, s, u: (
+                f"🚀 **MOONSHOT ALERT: {t}** 🚀\n\n"
+                f"**Price:** {p}\n"
+                f"**Trigger:** {a['reason']}\n\n"
+                + "".join(f"⚠️ *{c}*\n" for c in a.get('cautions', []))
+                + f"\n📊 **Context:**\n"
+                f"• AI Confidence: {ml}\n"
+                f"• Value at Risk (95%): {v}\n"
+                f"• NLP Sentiment: {s}\n\n"
+                f"🔗 [View Breakdown]({u})"
+            ),
+            lambda t, p, a: (
+                f"**Price:** {p} | Moonshot triggered for {t}. Reason: {a['reason']}"
+            ),
+        )
 
         logger.info("Scan complete. Dispatched %d crashes and %d moonshots.", len(crash_alerts_to_send), len(moonshot_alerts_to_send))
 
