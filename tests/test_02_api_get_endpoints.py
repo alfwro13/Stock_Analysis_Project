@@ -88,6 +88,8 @@ def test_get_system_metrics_returns_200(client):
     assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
     body = _json(resp)
     assert isinstance(body, dict), "System metrics response must be a JSON object"
+    assert "scheduler_last_runs" in body, "Missing 'scheduler_last_runs' key in system metrics"
+    assert isinstance(body["scheduler_last_runs"], dict), "'scheduler_last_runs' must be a dict"
 
 
 # ── Network / Settings ────────────────────────────────────────────────────────

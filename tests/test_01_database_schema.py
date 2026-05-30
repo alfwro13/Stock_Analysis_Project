@@ -186,6 +186,15 @@ def test_macro_regimes_has_required_columns():
     assert not missing, f"macro_regimes missing columns: {missing}"
 
 
+@pytest.mark.db
+def test_scheduler_run_log_has_required_columns():
+    """scheduler_run_log must have job_id (PK) and last_run columns."""
+    cols = _columns("scheduler_run_log")
+    required = {"job_id", "last_run"}
+    missing = required - cols
+    assert not missing, f"scheduler_run_log missing columns: {missing}"
+
+
 # ── Read / Write round-trips ──────────────────────────────────────────────────
 
 @pytest.mark.db
@@ -254,6 +263,37 @@ def test_quant_scan_states_composite_pk():
         assert row["status"] == "updated", "Composite PK upsert did not update the existing row"
     finally:
         conn.execute("DELETE FROM quant_scan_states WHERE scan_date='2024-01-01'")
+        conn.commit()
+        conn.close()
+
+
+@pytest.mark.db
+def test_scheduler_run_log_upsert():
+    """INSERT … ON CONFLICT(job_id) must upsert, not duplicate."""
+    conn = _conn()
+    try:
+        conn.execute(
+            "INSERT INTO scheduler_run_log (job_id, last_run) VALUES (?, ?)"
+            " ON CONFLICT(job_id) DO UPDATE SET last_run = excluded.last_run",
+            ("test_job", "2024-01-01 01:00"),
+        )
+        conn.commit()
+        conn.execute(
+            "INSERT INTO scheduler_run_log (job_id, last_run) VALUES (?, ?)"
+            " ON CONFLICT(job_id) DO UPDATE SET last_run = excluded.last_run",
+            ("test_job", "2024-01-02 02:00"),
+        )
+        conn.commit()
+        rows = conn.execute(
+            "SELECT COUNT(*) AS cnt FROM scheduler_run_log WHERE job_id = 'test_job'"
+        ).fetchone()
+        assert rows["cnt"] == 1, "Upsert created a duplicate row"
+        row = conn.execute(
+            "SELECT last_run FROM scheduler_run_log WHERE job_id = 'test_job'"
+        ).fetchone()
+        assert row["last_run"] == "2024-01-02 02:00", "last_run was not updated by upsert"
+    finally:
+        conn.execute("DELETE FROM scheduler_run_log WHERE job_id = 'test_job'")
         conn.commit()
         conn.close()
 
