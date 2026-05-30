@@ -88,31 +88,36 @@ class MaintenanceEngine:
             print(f"[MAINTENANCE] Error pruning pulse cache: {e}")
 
     def garbage_collect_files(self):
-        """Scans directories and deletes files belonging to untracked tickers."""
+        """Scans directories and deletes files belonging to untracked tickers older than 30 days."""
         print("[MAINTENANCE] Running File Garbage Collection...")
         active_tickers = self._get_active_tickers()
-        
+
         if not active_tickers:
             print("[MAINTENANCE] No active tickers found. Aborting file deletion for safety.")
             return
 
+        cutoff_time = time.time() - (self.days_to_keep_logs * 86400)
         directories = [HISTORICAL_DIR, INTRADAY_DIR, FUNDAMENTALS_DIR]
-        
+
         for directory in directories:
             if not os.path.exists(directory):
                 continue
-                
+
             for filename in os.listdir(directory):
                 if filename in self.protected_files:
                     continue
-                    
+
                 # Extract ticker from filename (e.g., 'AAPL_intraday.parquet' -> 'AAPL')
                 base_name = filename.split('.')[0]
                 ticker = base_name.replace('_intraday', '')
-                
+
                 if ticker not in active_tickers:
                     filepath = os.path.join(directory, filename)
                     try:
+                        file_mtime = os.path.getmtime(filepath)
+                        if file_mtime > cutoff_time:
+                            print(f"  -> Skipping {filename} (less than 30 days old)")
+                            continue
                         os.remove(filepath)
                         self.metrics["files_deleted"] += 1
                         print(f"  -> Deleted orphaned file: {filename}")
