@@ -134,7 +134,7 @@
                                 {% if cp %}
                                     {% set sign = '+' if cp.is_positive else '' %}
                                     <span class="{% if cp.is_positive %}trend-up{% else %}trend-down{% endif %}">
-                                        {{ sign }}{{ cp.change_pct }}%
+                                        {{ sign }}{{ cp.change_pct|round(2) }}%
                                     </span>
                                 {% else %}
                                     -
