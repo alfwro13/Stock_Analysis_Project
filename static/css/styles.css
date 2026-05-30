@@ -35,7 +35,9 @@ abbr { text-decoration: underline dotted #666; text-underline-offset: 3px; curso
 .body-settings { margin: 0; padding: 0; }
 .body-settings .header-container { padding-left: 40px; padding-right: 40px; }
 .body-settings .header-container-wide { max-width: none; margin: 0; }
-#settingsForm { max-width: 900px; margin: 0 auto; padding: 0 20px; }
+.settings-split-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; max-width: 1400px; margin: 0 auto; padding: 0 20px; align-items: start; }
+.settings-col { display: flex; flex-direction: column; }
+.settings-save-row { max-width: 1400px; margin: 10px auto 40px; padding: 0 20px; }
 .sentiment-split-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; width: 100%; box-sizing: border-box; margin-bottom: 30px; }
 /* Grid Layout for Detail View (Fluid Full-Screen) */
 .detail-split-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; width: 100%; box-sizing: border-box; align-items: start; margin-top: 20px; }
@@ -304,6 +306,7 @@ table.dataTable.display tbody tr.even > .sorting_1, table.dataTable.order-column
   .glossary-wrapper { grid-template-columns: 1fr; }
   .glossary-sidebar { display: none; }
   .sentiment-split-grid { grid-template-columns: 1fr; }
+  .settings-split-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 768px) {
   .chart-wrapper { touch-action: pan-y !important; padding: 5px; }

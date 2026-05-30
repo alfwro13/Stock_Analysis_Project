@@ -423,7 +423,7 @@ class IntradayOrchestrator:
         end_str = sched_cfg.get("END_TIME", "16:00")
         
         try:
-            now = datetime.now().time()
+            now = datetime.now(timezone.utc).time()
             start_time = datetime.strptime(start_str, "%H:%M").time()
             end_time = datetime.strptime(end_str, "%H:%M").time()
             if not (start_time <= now <= end_time):
@@ -440,7 +440,7 @@ class IntradayOrchestrator:
         # breakout as "low volume" regardless of actual participation.
         _to_min = lambda t: t.hour * 60 + t.minute
         _session_total = _to_min(end_time) - _to_min(start_time)
-        _elapsed = max(0, _to_min(datetime.now().time()) - _to_min(start_time))
+        _elapsed = max(0, _to_min(datetime.now(timezone.utc).time()) - _to_min(start_time))
         session_elapsed_frac = max(0.01, min(1.0, _elapsed / _session_total)) if _session_total > 0 else 1.0
 
         tickers = self.get_portfolio_tickers()
@@ -597,22 +597,27 @@ class IntradayOrchestrator:
                     df_intraday.to_parquet(INTRADAY_DIR / f"{ticker}_intraday.parquet", engine='pyarrow')
                     continue
 
-                # Save Intraday Parquet for the Web Dashboard to keep it live
+                # Strip timezone before any index arithmetic; parquet write is deferred
+                # until after history validation so a short/corrupt intraday frame cannot
+                # overwrite a good dashboard parquet.
                 df_intraday.index = df_intraday.index.tz_localize(None)
-                df_intraday.to_parquet(INTRADAY_DIR / f"{ticker}_intraday.parquet", engine='pyarrow')
-                
+
                 current_price = float(df_intraday['Close'].iloc[-1])
                 session_open = float(df_intraday['Open'].iloc[0]) if 'Open' in df_intraday.columns else None
-                
+
                 # Load Historical Data for stitching and math
                 hist_path = HISTORICAL_DIR / f"{ticker}.parquet"
                 if not hist_path.exists():
                     continue
-                    
+
                 df_hist = pd.read_parquet(hist_path)
                 if df_hist.empty or len(df_hist) < 20:
                     continue
-                    
+
+                # Save Intraday Parquet for the Web Dashboard — written here, after history
+                # validation, so only frames with sufficient context reach the dashboard.
+                df_intraday.to_parquet(INTRADAY_DIR / f"{ticker}_intraday.parquet", engine='pyarrow')
+
                 # --- PRE-FLIGHT ANOMALY CHECK (CORPORATE ACTION CIRCUIT BREAKER) ---
                 # Compare the live price against the last known historical close.
                 # If there's a massive gap (>10%), lazily check for a split/dividend to avoid false alerts.
