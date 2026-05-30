@@ -7,6 +7,8 @@ import logging
 import pandas as pd
 import ta
 
+from utils import clamp_beta
+
 logger = logging.getLogger(__name__)
 
 class MoonshotEngine:
@@ -26,6 +28,11 @@ class MoonshotEngine:
         self.sma_gap_percent = float(self.moon_cfg.get("SMA_GAP_PERCENT", 3.0))
         # Minervini/O'Neil: institutional breakouts require volume >= this multiple of 50d avg
         self.volume_confirmation_ratio = float(self.moon_cfg.get("VOLUME_CONFIRMATION_RATIO", 1.5))
+        # Minimum % above the 52-week closing high required for is_ath to fire.
+        # A 0% margin triggers on any day a stock is flat at its prior high, producing
+        # false moonshots with zero momentum. 0.25% filters that noise while still
+        # catching genuine breakouts on the same 5-minute scan they happen.
+        self.ath_margin_pct = float(self.moon_cfg.get("ATH_MARGIN_PCT", 0.25))
 
     def evaluate(
         self,
@@ -44,6 +51,11 @@ class MoonshotEngine:
         builds it from df_hist[['Close']] plus the live tick. Do NOT add OHLCV reads
         here without also updating the stitching logic in intraday_orchestrator.py.
         df_hist is passed separately for any full-OHLCV calculations.
+
+        current_volume contract: must be a PROJECTED full-day volume estimate, not raw
+        cumulative intraday volume. The orchestrator divides the cumulative sum by the
+        fraction of session elapsed before passing it here, so the comparison against
+        the 50-day daily average is apples-to-apples.
         """
         # Exclude the live intraday tick from indicator calculations — it is a partially-formed
         # bar mid-session and skews RSI/Bollinger on volatile open days.
@@ -58,7 +70,11 @@ class MoonshotEngine:
         # Percentage Spike
         lookback_idx = -(self.spike_days + 1)
         if abs(lookback_idx) > len(df_settled):
-            lookback_idx = 0
+            logger.debug(
+                "Insufficient history for %s: need %d settled bars, have %d. Skipping spike check.",
+                ticker, self.spike_days + 1, len(df_settled),
+            )
+            return None
 
         past_price = df_settled['Close'].iloc[lookback_idx]
         price_spike_pct = ((current_price - past_price) / past_price) * 100.0
@@ -77,13 +93,13 @@ class MoonshotEngine:
         cutoff_52w = df_hist.index[-1] - pd.DateOffset(weeks=52)
         recent_52w = df_hist[df_hist.index >= cutoff_52w]
         fifty_two_wk_high = recent_52w['Close'].max()
-        is_ath = current_price >= fifty_two_wk_high
+        breakout_margin = 1.0 + (self.ath_margin_pct / 100.0)
+        is_ath = current_price >= fifty_two_wk_high * breakout_margin
 
         # Evaluate Core Trigger Conditions
         # Beta-normalise thresholds: high-beta stocks are naturally more volatile so require a
         # proportionally larger move to qualify; low-beta stocks trip on smaller moves.
-        raw_beta = asset_meta.get('beta')
-        beta = max(0.5, min(2.0, float(raw_beta))) if raw_beta is not None else 1.0
+        beta = clamp_beta(asset_meta.get('beta'))
         adj_spike_pct  = self.spike_percent  * beta
         adj_sma_gap    = self.sma_gap_percent * beta
 

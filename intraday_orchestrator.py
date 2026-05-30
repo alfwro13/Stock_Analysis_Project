@@ -433,6 +433,16 @@ class IntradayOrchestrator:
             logger.error("Invalid schedule time config (%s-%s): %s", start_str, end_str, e)
             return
 
+        # Fraction of the trading session elapsed — used to project intraday cumulative
+        # volume to a full-day estimate before passing it to the Moonshot volume check.
+        # Without this, partial-day volume is compared to a 50-day full-day average,
+        # producing a systematically understated ratio that flags nearly every morning
+        # breakout as "low volume" regardless of actual participation.
+        _to_min = lambda t: t.hour * 60 + t.minute
+        _session_total = _to_min(end_time) - _to_min(start_time)
+        _elapsed = max(0, _to_min(datetime.now().time()) - _to_min(start_time))
+        session_elapsed_frac = max(0.01, min(1.0, _elapsed / _session_total)) if _session_total > 0 else 1.0
+
         tickers = self.get_portfolio_tickers()
         ignored = self.config.get("IGNORED_TICKERS", [])
         
@@ -643,12 +653,14 @@ class IntradayOrchestrator:
 
                 # --- EVALUATE MOONSHOT ENGINE ---
                 if moonshot_enabled:
-                    current_volume = (
-                        float(df_intraday['Volume'].sum())
-                        if 'Volume' in df_intraday.columns else None
-                    )
+                    if 'Volume' in df_intraday.columns:
+                        # Project cumulative intraday volume to a full-day equivalent so
+                        # it is comparable to the 50-day daily average in the engine.
+                        projected_volume = float(df_intraday['Volume'].sum()) / session_elapsed_frac
+                    else:
+                        projected_volume = None
                     moonshot_alert = self.moonshot_engine.evaluate(
-                        ticker, current_price, df_combined, asset_meta, df_hist, current_volume
+                        ticker, current_price, df_combined, asset_meta, df_hist, projected_volume
                     )
                     if moonshot_alert and not self._evaluate_alert_gate(
                         "Moonshot", ticker, current_price, moonshot_alert.get("reason", ""), conn

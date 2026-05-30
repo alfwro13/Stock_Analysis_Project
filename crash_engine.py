@@ -9,6 +9,8 @@ import pandas as pd
 import yfinance as yf
 import ta
 
+from utils import clamp_beta
+
 # Initialize module-level logger for production observability
 logger = logging.getLogger(__name__)
 
@@ -67,7 +69,15 @@ class CrashEngine:
 
         # 1. Macro Context (Systematic vs Idiosyncratic)
         # Use pre-fetched SPY value injected by the orchestrator; fall back to live fetch only if unavailable
-        spy_drop = self.spy_change_pct if self.spy_change_pct is not None else self._fetch_market_context()
+        if self.spy_change_pct is not None:
+            spy_drop = self.spy_change_pct
+        else:
+            logger.warning(
+                "spy_change_pct not injected for %s — falling back to live SPY fetch. "
+                "This is expected only outside the orchestrator (tests, ad-hoc scripts).",
+                ticker,
+            )
+            spy_drop = self._fetch_market_context()
         if spy_drop <= -1.5:
             report.append(f"The broader market is currently experiencing a heavy sell-off (S&P 500: {spy_drop:.2f}%). The weakness in {company_name} is likely being amplified by macro-economic panic rather than purely isolated company issues.")
         elif spy_drop >= 0:
@@ -78,24 +88,20 @@ class CrashEngine:
         # 2. Volume Anomaly Check
         # Use df_hist (already loaded by orchestrator) to avoid a per-crash HTTP call.
         # Fall back to a live yfinance fetch only when df_hist is unavailable.
-        live_ticker = None
-
         try:
             vol_data = df_hist if df_hist is not None and not df_hist.empty else None
             if vol_data is None:
-                live_ticker = yf.Ticker(ticker)
-                vol_data = live_ticker.history(period="1mo")
-            live_data = vol_data
-            if not live_data.empty and 'Volume' in live_data.columns:
-                current_vol = live_data['Volume'].iloc[-1]
-                valid_vol = live_data['Volume'].dropna()
-                
+                vol_data = yf.Ticker(ticker).history(period="1mo")
+            if not vol_data.empty and 'Volume' in vol_data.columns:
+                current_vol = vol_data['Volume'].iloc[-1]
+                valid_vol = vol_data['Volume'].dropna()
+
                 # Safely calculate rolling mean avoiding NaN for assets with < 20 days history
                 if len(valid_vol) >= 20:
                     avg_vol = valid_vol.rolling(20).mean().iloc[-2]
                 else:
                     avg_vol = valid_vol.mean()
-                    
+
                 if not pd.isna(avg_vol) and avg_vol > 0:
                     if current_vol > (avg_vol * 1.5):
                         report.append(f"Selling pressure is severe. Intraday volume has already surged to {current_vol:,.0f}, which is massively above its recent average. This indicates heavy institutional distribution.")
@@ -117,49 +123,49 @@ class CrashEngine:
             logger.warning(f"Technical damage assessment failed for {ticker}: {e}")
 
         # 4. Catalyst Extraction (News Headlines)
+        # News is never derivable from df_hist — always requires a live yfinance call.
+        # This is acceptable: _generate_context_report only executes for confirmed crash
+        # alerts (not in the main scan loop), so one HTTP call per fired alert is correct.
         try:
-            if live_ticker is not None:
-                news = live_ticker.news
-                if news:
-                    # Parse every item into (pub_time, publisher, headline), drop unparseable ones,
-                    # then sort newest-first and slice — fixes the bug where news[:3] could be all
-                    # stale items while breaking news sits at position 4+.
-                    parsed: list[tuple[datetime, str, str]] = []
-                    for item in news:
-                        content = item.get('content', item)
-                        headline = content.get('title', '')
-                        publisher = content.get('publisher', '')
-                        if not publisher and isinstance(content.get('provider'), dict):
-                            publisher = content['provider'].get('displayName', '')
-                        pub_time_raw = (
-                            content.get('pubDate')
-                            or content.get('providerPublishTime')
-                            or item.get('providerPublishTime', 0)
-                        )
-                        try:
-                            if isinstance(pub_time_raw, str):
-                                # ISO strings from yfinance are UTC; parse with utc=True then strip tz
-                                pub_time = pd.to_datetime(pub_time_raw, utc=True).tz_convert(None)
-                            else:
-                                # UNIX timestamps are always UTC seconds since epoch
-                                pub_time = datetime.fromtimestamp(float(pub_time_raw), tz=timezone.utc).replace(tzinfo=None)
-                            parsed.append((pub_time, publisher, headline))
-                        except Exception as dt_e:
-                            logger.debug(f"Date parsing failed for news item on {ticker}: {dt_e}")
+            news = yf.Ticker(ticker).news
+            if news:
+                # Parse every item into (pub_time, publisher, headline), drop unparseable ones,
+                # then sort newest-first and slice — fixes the bug where news[:3] could be all
+                # stale items while breaking news sits at position 4+.
+                parsed: list[tuple[datetime, str, str]] = []
+                for item in news:
+                    content = item.get('content', item)
+                    headline = content.get('title', '')
+                    publisher = content.get('publisher', '')
+                    if not publisher and isinstance(content.get('provider'), dict):
+                        publisher = content['provider'].get('displayName', '')
+                    pub_time_raw = (
+                        content.get('pubDate')
+                        or content.get('providerPublishTime')
+                        or item.get('providerPublishTime', 0)
+                    )
+                    try:
+                        if isinstance(pub_time_raw, str):
+                            # ISO strings from yfinance are UTC; parse with utc=True then strip tz
+                            pub_time = pd.to_datetime(pub_time_raw, utc=True).tz_convert(None)
+                        else:
+                            # UNIX timestamps are always UTC seconds since epoch
+                            pub_time = datetime.fromtimestamp(float(pub_time_raw), tz=timezone.utc).replace(tzinfo=None)
+                        parsed.append((pub_time, publisher, headline))
+                    except Exception as dt_e:
+                        logger.debug(f"Date parsing failed for news item on {ticker}: {dt_e}")
 
-                    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=2)
-                    recent = sorted(
-                        (entry for entry in parsed if entry[0] >= cutoff),
-                        key=lambda x: x[0],
-                        reverse=True,
-                    )[:3]
+                cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=2)
+                recent = sorted(
+                    (entry for entry in parsed if entry[0] >= cutoff),
+                    key=lambda x: x[0],
+                    reverse=True,
+                )[:3]
 
-                    if recent:
-                        report.append("\n**Potential Catalysts / Recent Headlines:**")
-                        for pub_time, publisher, headline in recent:
-                            report.append(f"- *{publisher}:* {headline}")
-            else:
-                report.append("\n**Catalysts:** Could not initialize ticker object to fetch live news.")
+                if recent:
+                    report.append("\n**Potential Catalysts / Recent Headlines:**")
+                    for pub_time, publisher, headline in recent:
+                        report.append(f"- *{publisher}:* {headline}")
         except Exception as e:
             logger.warning(f"Catalyst extraction failed for {ticker}: {e}")
             report.append("\n**Catalysts:** No major breaking news headlines found on Yahoo Finance within the last 48 hours.")
@@ -198,8 +204,7 @@ class CrashEngine:
 
         # Beta-normalise all thresholds: high-beta stocks require a larger move to qualify;
         # low-beta stocks trip on smaller moves. Clamp to [0.5, 2.0] to cap outlier sensitivity.
-        raw_beta = asset_meta.get('beta')
-        beta = max(0.5, min(2.0, float(raw_beta))) if raw_beta is not None else 1.0
+        beta = clamp_beta(asset_meta.get('beta'))
         adj_session_threshold = self.session_crash_threshold * beta
         # Apply the AI Volatility Defense cap AFTER beta scaling so that high-beta names
         # cannot have the override silently widened back out by their own volatility multiplier.
@@ -226,7 +231,11 @@ class CrashEngine:
         # --- 2. OLD LOGIC: Prolonged Trend Bleed ---
         lookback_idx = -(self.drop_days + 1)
         if abs(lookback_idx) > len(df_settled):
-            lookback_idx = 0
+            logger.debug(
+                "Insufficient history for %s: need %d settled bars, have %d. Skipping trend-bleed check.",
+                ticker, self.drop_days + 1, len(df_settled),
+            )
+            return None
 
         past_price = df_settled['Close'].iloc[lookback_idx]
         price_drop_pct = ((current_price - past_price) / past_price) * 100.0
