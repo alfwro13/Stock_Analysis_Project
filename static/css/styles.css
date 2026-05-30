@@ -35,8 +35,8 @@ abbr { text-decoration: underline dotted #666; text-underline-offset: 3px; curso
 .body-settings { margin: 0; padding: 0; }
 .body-settings .header-container { padding-left: 40px; padding-right: 40px; }
 .body-settings .header-container-wide { max-width: none; margin: 0; }
-.body-settings .settings-search-container { max-width: 1400px; margin: 0 auto; padding-left: 20px; padding-right: 20px; box-sizing: border-box; }
-.settings-split-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; max-width: 1400px; margin: 0 auto; padding: 0 20px; align-items: start; }
+.body-settings .settings-search-container { max-width: none; margin: 0; padding-left: 20px; padding-right: 20px; box-sizing: border-box; }
+.settings-split-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; max-width: none; margin: 0; padding: 0 20px; align-items: start; }
 .settings-col { display: flex; flex-direction: column; }
 .settings-save-row { max-width: 1400px; margin: 10px auto 40px; padding: 0 20px; }
 .sentiment-split-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; width: 100%; box-sizing: border-box; margin-bottom: 30px; }
