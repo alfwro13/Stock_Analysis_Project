@@ -327,6 +327,13 @@ def init_db() -> None:
             )
         ''')
 
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS scheduler_run_log (
+                job_id TEXT PRIMARY KEY,
+                last_run TEXT NOT NULL
+            )
+        ''')
+
         conn.commit()
 
         # Run the dynamic migration script to inject any missing columns safely

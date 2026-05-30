@@ -954,6 +954,7 @@
                                 <th>State</th>
                                 <th>Frequency / Days</th>
                                 <th>Execution Target</th>
+                                <th>Last Run</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -986,6 +987,7 @@
                                         Data: {{ job_cfg.DATA_TIME }} / Cal: {{ job_cfg.CALENDAR_TIME }}
                                     {% else %}—{% endif %}
                                 </td>
+                                <td class="text-muted font-monospace" data-sched-key="{{ job_name }}">—</td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -1773,6 +1775,21 @@
                     document.getElementById('diag-disk-tot').innerText = `${data.infra.disk_total_gb} GB`;
                     document.getElementById('diag-disk-used').innerText = `${data.infra.disk_used_gb} GB`;
                     document.getElementById('diag-disk-pct').innerText = `${data.infra.disk_pct}% Used`;
+
+                    // 5. Scheduler Last Run
+                    if (data.scheduler_last_runs) {
+                        document.querySelectorAll('[data-sched-key]').forEach(td => {
+                            const key = td.getAttribute('data-sched-key');
+                            const val = data.scheduler_last_runs[key];
+                            if (val && val !== 'Never') {
+                                td.innerText = val;
+                                td.style.color = '';
+                            } else {
+                                td.innerText = 'Never';
+                                td.style.color = '#666';
+                            }
+                        });
+                    }
 
                     document.getElementById('metrics-loading').classList.add('d-none');
                     document.getElementById('metrics-content').classList.remove('d-none');

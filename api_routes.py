@@ -34,7 +34,7 @@ from config import (
     INTRADAY_DIR
 )
 from database import get_connection, get_universe_tickers
-from scheduler_engine import run_update_pipeline, run_ghostfolio_sync, run_freetrade_sync, reload_scheduler, run_sentiment_scan, run_index_scraper, run_fundamentals_profiler, run_universe_deep_sync_job
+from scheduler_engine import run_update_pipeline, run_ghostfolio_sync, run_freetrade_sync, reload_scheduler, run_sentiment_scan, run_index_scraper, run_fundamentals_profiler, run_universe_deep_sync_job, get_all_job_last_runs
 from ghostfolio_sync import GhostfolioSyncEngine
 from market_pulse import get_cached_pulse_from_db, fetch_and_save_pulse
 from sentiment_engine import run_nextcloud_alert, update_all_sentiment
@@ -766,7 +766,34 @@ async def get_system_metrics():
         macro_cal_cnt = get_cnt("SELECT COUNT(*) FROM macro_calendar")
         pending_notes = get_cnt("SELECT COUNT(*) FROM system_notifications WHERE is_read = 0")
         sent_notes = get_cnt("SELECT COUNT(*) FROM system_notifications WHERE is_read = 1")
-        
+
+        # 5. Scheduler Last Run Times (keyed by SCHEDULING config key)
+        job_last_runs = get_all_job_last_runs()
+        config_key_to_job = {
+            "GHOSTFOLIO_SYNC":    "ghostfolio_sync_job",
+            "QUANT_ANALYSIS":     "quant_analysis_job",
+            "SENTIMENT_ENGINE":   "sentiment_scan_job",
+            "CRASH_ALERTS":       "intraday_orchestrator_job",
+            "MOONSHOT_ALERTS":    "intraday_orchestrator_job",
+            "MAINTENANCE":        "maintenance_job",
+            "QUANT_ENGINE":       "overnight_quant_scan_job",
+            "EARNINGS_ENGINE":    "weekend_earnings_vol_scan_job",
+            "DISPATCHER":         "morning_briefing_dispatch_job",
+            "UNIVERSE_ENGINE":    "universe_routine_job",
+            "ML_BACKFILL":        "ml_backfill_job",
+            "ML_TRAINING":        "ml_training_job",
+            "ML_INFERENCE":       "ml_inference_job",
+            "FREETRADE_SYNC":     "freetrade_sync_job",
+            "MACRO_ENGINE":       "macro_calendar_job",
+            "SYNC_INDICES":       "index_scraper_job",
+            "PROFILER_ENGINE":    "fundamentals_profiler_job",
+            "UNIVERSE_DEEP_SYNC": "universe_deep_sync_job",
+        }
+        scheduler_last_runs = {
+            cfg_key: job_last_runs.get(job_id, "Never")
+            for cfg_key, job_id in config_key_to_job.items()
+        }
+
         return JSONResponse(content={
             "status": "success",
             "universe": {
@@ -791,7 +818,8 @@ async def get_system_metrics():
             "state": {
                 "macro_ind": macro_ind_cnt, "macro_cal": macro_cal_cnt,
                 "notes_pending": pending_notes, "notes_sent": sent_notes
-            }
+            },
+            "scheduler_last_runs": scheduler_last_runs
         })
     except Exception as e:
         logger.error(f"Failed to fetch system metrics: {e}")

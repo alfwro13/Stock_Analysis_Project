@@ -43,17 +43,52 @@ def log_sched_notification(msg_type: str, msg_text: str):
     except Exception as e:
         logger.error(f"Failed to log notification: {e}")
 
+def record_job_run(job_id: str):
+    from datetime import datetime
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO scheduler_run_log (job_id, last_run) VALUES (?, ?) "
+            "ON CONFLICT(job_id) DO UPDATE SET last_run = excluded.last_run",
+            (job_id, datetime.now().strftime('%Y-%m-%d %H:%M'))
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"Failed to record job run for {job_id}: {e}")
+
+def get_all_job_last_runs() -> dict:
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT job_id, last_run FROM scheduler_run_log")
+        rows = cursor.fetchall()
+        conn.close()
+        return {row[0]: row[1] for row in rows}
+    except Exception:
+        return {}
+
 def trigger_sentiment_report():
     """Triggered by the scheduler to run the Nextcloud Market Sentiment alert."""
-    run_nextcloud_alert()
+    try:
+        run_nextcloud_alert()
+    finally:
+        record_job_run('market_sentiment_job')
 
 def run_intraday_orchestrator():
     """Executes the unified high-frequency intraday scan (Crash + Moonshot)."""
-    IntradayOrchestrator().run()
+    try:
+        IntradayOrchestrator().run()
+    finally:
+        record_job_run('intraday_orchestrator_job')
 
 def run_maintenance_engine():
     """Executes the background database and file system maintenance."""
-    MaintenanceEngine().run()
+    try:
+        MaintenanceEngine().run()
+    finally:
+        record_job_run('maintenance_job')
 
 def run_update_pipeline():
     """Executes the heavy data ingestion and mathematical quant modeling."""
@@ -69,6 +104,8 @@ def run_update_pipeline():
         log_sched_notification("Success", "Update Pipeline completed successfully.")
     except Exception as e:
         log_sched_notification("Error", f"Update Pipeline failed: {e}")
+    finally:
+        record_job_run('quant_analysis_job')
 
 def run_ghostfolio_sync():
     """Executes the Ghostfolio API Sync to extract account holdings."""
@@ -79,6 +116,8 @@ def run_ghostfolio_sync():
         log_sched_notification("Success", "Ghostfolio Sync completed successfully.")
     except Exception as e:
         log_sched_notification("Error", f"Ghostfolio Sync failed: {e}")
+    finally:
+        record_job_run('ghostfolio_sync_job')
 
 def run_freetrade_sync():
     """Executes the Freetrade Universe CSV Sync."""
@@ -91,6 +130,8 @@ def run_freetrade_sync():
     except Exception as e:
         logger.error(f"Freetrade Sync Failed: {e}")
         log_sched_notification("Error", f"Freetrade Sync failed: {e}")
+    finally:
+        record_job_run('freetrade_sync_job')
 
 def run_sentiment_scan():
     """Executes the standalone NLP Sentiment pipeline."""
@@ -105,30 +146,34 @@ def run_sentiment_scan():
     except Exception as e:
         logger.error(f"Sentiment Scan Failed: {e}")
         log_sched_notification("Error", f"Sentiment Scan failed: {e}")
+    finally:
+        record_job_run('sentiment_scan_job')
 
 def run_overnight_quant_scan():
     """
-    Fetches the combined list of portfolio and watchlist tickers, 
+    Fetches the combined list of portfolio and watchlist tickers,
     executes the resumable daily quant scan, and Tail Risk.
     """
     log_sched_notification("Scheduler", "Started Overnight Quant Scan...")
     try:
         logger.info("Overnight quant scan initiated.")
         engine = DataEngine()
-        all_tickers = engine.get_all_tickers() 
-        
+        all_tickers = engine.get_all_tickers()
+
         # 1. Execute Technical Analysis Pipeline
         run_daily_quant_scan(all_tickers)
-        
+
         # 2. Execute Tail Risk calculations
         logger.info("Overnight tail risk computation initiated.")
         update_all_tail_risks(all_tickers)
-        
+
         logger.info("Overnight quant scan complete.")
         log_sched_notification("Success", "Overnight Quant Scan completed successfully.")
     except Exception as e:
         logger.error(f"Overnight Quant Scan Failed: {e}")
         log_sched_notification("Error", f"Overnight Quant Scan failed: {e}")
+    finally:
+        record_job_run('overnight_quant_scan_job')
 
 def run_weekend_earnings_scan():
     """Executes the quantitative earnings volatility options scan."""
@@ -136,13 +181,15 @@ def run_weekend_earnings_scan():
     try:
         logger.info("Earnings volatility scan initiated.")
         engine = DataEngine()
-        all_tickers = engine.get_all_tickers() 
+        all_tickers = engine.get_all_tickers()
         run_earnings_vol_scan(all_tickers)
         logger.info("Earnings volatility scan complete.")
         log_sched_notification("Success", "Earnings Volatility Scan completed successfully.")
     except Exception as e:
         logger.error(f"Earnings Volatility Scan Failed: {e}")
         log_sched_notification("Error", f"Earnings Volatility Scan failed: {e}")
+    finally:
+        record_job_run('weekend_earnings_vol_scan_job')
 
 def run_morning_briefing_dispatch():
     """Executes the morning quant briefing dispatch."""
@@ -155,6 +202,8 @@ def run_morning_briefing_dispatch():
     except Exception as e:
         logger.error(f"Morning Briefing Dispatch Failed: {e}")
         log_sched_notification("Error", f"Morning Briefing Dispatch failed: {e}")
+    finally:
+        record_job_run('morning_briefing_dispatch_job')
 
 def run_weekend_universe_routine():
     """Executes the massive 4000+ Universe Download and Quant Scan."""
@@ -163,7 +212,7 @@ def run_weekend_universe_routine():
         logger.info("Weekend universe routine initiated.")
         # 1. Update the Ticker List from the FTP server
         update_market_universe()
-        
+
         # 2. Extract the fresh list and run the massive quant scan
         all_tickers = get_universe_tickers()
         if all_tickers:
@@ -175,12 +224,14 @@ def run_weekend_universe_routine():
             update_all_sentiment(all_tickers)
         else:
             logger.warning("Universe is empty, skipping quant scan.")
-            
+
         logger.info("Weekend universe routine complete.")
         log_sched_notification("Success", "Weekend Universe Routine completed successfully.")
     except Exception as e:
         logger.error(f"Weekend Universe Routine Failed: {e}")
         log_sched_notification("Error", f"Weekend Universe Routine failed: {e}")
+    finally:
+        record_job_run('universe_routine_job')
 
 def run_index_scraper():
     """Executes the Wikipedia index constituent scraper."""
@@ -195,6 +246,8 @@ def run_index_scraper():
     except Exception as e:
         logger.error(f"Index Scraper Failed: {e}")
         log_sched_notification("Error", f"Index Scraper failed: {e}")
+    finally:
+        record_job_run('index_scraper_job')
 
 def run_fundamentals_profiler():
     """Executes the heavy rolling metadata audit to download fundamentals (PE, EPS, Sector)."""
@@ -202,18 +255,20 @@ def run_fundamentals_profiler():
     try:
         logger.info("Fundamentals profiler initiated.")
         from profile_engine import run_profile_audit
-        
+
         # Read the dynamic batch size from config
         config = load_config()
         batch_size = config.get("SCHEDULING", {}).get("PROFILER_ENGINE", {}).get("BATCH_SIZE", 250)
-        
+
         run_profile_audit(limit=int(batch_size))
-        
+
         logger.info("Fundamentals profiler complete.")
         log_sched_notification("Success", "Fundamentals Profiler completed successfully.")
     except Exception as e:
         logger.error(f"Fundamentals Profiler Failed: {e}")
         log_sched_notification("Error", f"Fundamentals Profiler failed: {e}")
+    finally:
+        record_job_run('fundamentals_profiler_job')
 
 def run_universe_deep_sync_job():
     """
@@ -231,6 +286,8 @@ def run_universe_deep_sync_job():
     except Exception as e:
         logger.error(f"Universe Deep Sync Pipeline Failed: {e}")
         log_sched_notification("Error", f"Universe Deep Sync Pipeline failed: {e}")
+    finally:
+        record_job_run('universe_deep_sync_job')
 
 
 # --- MODULAR ML PIPELINE RUNNERS ---
@@ -246,6 +303,8 @@ def run_ml_backfill():
     except Exception as e:
         logger.error(f"ML Historical Backfill Failed: {e}")
         log_sched_notification("Error", f"ML Historical Backfill failed: {e}")
+    finally:
+        record_job_run('ml_backfill_job')
 
 def run_ml_training():
     """Executes the Global Machine Learning Walk-Forward Training cycle."""
@@ -258,6 +317,8 @@ def run_ml_training():
     except Exception as e:
         logger.error(f"ML Global Training Failed: {e}")
         log_sched_notification("Error", f"ML Global Training failed: {e}")
+    finally:
+        record_job_run('ml_training_job')
 
 def run_ml_inference():
     """Executes the Daily Machine Learning Prediction Inference."""
@@ -275,6 +336,8 @@ def run_ml_inference():
     except Exception as e:
         logger.error(f"Daily ML Inference Failed: {e}")
         log_sched_notification("Error", f"Daily ML Inference failed: {e}")
+    finally:
+        record_job_run('ml_inference_job')
 
 def run_macro_calendar_update():
     """Executes the daily Tier-1 Macro Calendar refresh."""
@@ -287,6 +350,8 @@ def run_macro_calendar_update():
     except Exception as e:
         logger.error(f"Macro Calendar Update Failed: {e}")
         log_sched_notification("Error", f"Macro Calendar Update failed: {e}")
+    finally:
+        record_job_run('macro_calendar_job')
 
 def run_central_bank_nlp_check():
     """Polls for today's passed central bank events and dispatches FinBERT NLP alerts."""
@@ -321,6 +386,8 @@ def run_central_bank_nlp_check():
                 log_sched_notification("Macro NLP", f"Central Bank NLP dispatched for: {event_name}")
     except Exception as e:
         logger.error(f"Central Bank NLP check failed: {e}")
+    finally:
+        record_job_run('cb_nlp_alert_job')
 
 
 def run_macro_data_update():
@@ -334,6 +401,8 @@ def run_macro_data_update():
     except Exception as e:
         logger.error(f"Macro Data Update Failed: {e}")
         log_sched_notification("Error", f"Macro Data Update failed: {e}")
+    finally:
+        record_job_run('macro_data_job')
 
 def reload_scheduler():
     """Reads the latest config.json and updates APScheduler dynamically."""

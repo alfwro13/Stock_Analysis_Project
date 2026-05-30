@@ -65,6 +65,7 @@ EXPECTED_TABLES = [
     "asset_profiles",
     "market_regimes",
     "macro_regimes",
+    "scheduler_run_log",
 ]
 
 
