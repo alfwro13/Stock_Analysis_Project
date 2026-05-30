@@ -21,6 +21,15 @@
         </div>
     </div>
 
+    <div class="glossary-search-container settings-search-container">
+        <input type="text" id="settingsSearch" class="glossary-search-bar" placeholder="🔍 Search settings, schedulers, or configuration options..." autocomplete="off">
+    </div>
+
+    <div id="noSettingsResults" class="glossary-empty-state" style="display:none; max-width:1400px; margin:0 auto; padding:0 20px;">
+        <h3>No matching settings found.</h3>
+        <p>Try searching for "Freetrade", "scheduler", or "Ghostfolio".</p>
+    </div>
+
     <div class="settings-split-grid">
 
         <div class="settings-col">
@@ -2010,6 +2019,33 @@
                 }, 5000);
             }
         }
+
+        // Settings search
+        (function() {
+            const searchInput = document.getElementById('settingsSearch');
+            const cards = document.querySelectorAll('details.settings-card');
+            const noResults = document.getElementById('noSettingsResults');
+
+            searchInput.addEventListener('input', function() {
+                const query = this.value.toLowerCase().trim();
+                let found = 0;
+
+                cards.forEach(card => {
+                    const matches = query === '' || card.innerText.toLowerCase().includes(query);
+                    card.style.display = matches ? '' : 'none';
+                    if (matches) {
+                        found++;
+                        if (query !== '' && !card.hasAttribute('ontoggle')) {
+                            card.setAttribute('open', '');
+                        }
+                    } else if (query !== '') {
+                        card.removeAttribute('open');
+                    }
+                });
+
+                noResults.style.display = (found === 0 && query !== '') ? 'block' : 'none';
+            });
+        })();
     </script>
 </body>
 </html>
