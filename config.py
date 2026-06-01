@@ -3,6 +3,9 @@ import os
 import json
 import copy
 from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Dynamically resolve the absolute path to the directory containing this file
 BASE_DIR = Path(__file__).resolve().parent
@@ -29,6 +32,9 @@ FUNDAMENTALS_DIR.mkdir(parents=True, exist_ok=True)
 # Application Default Variables
 PORT = 8090
 BASE_CURRENCY = "GBP"
+
+# Keys that must never be written back to config.json — sourced from .env only
+SENSITIVE_KEYS: set = {"API_TOKEN", "APP_PASSWORD", "NEXTCLOUD_URL", "BOT_USERNAME", "CONVERSATION_TOKEN", "GHOSTFOLIO_URL", "FRED_API_KEY"}
 
 # Schedule keys that existed in previous releases and should be silently
 # stripped from any existing config.json on load. Maintained as a module
@@ -257,19 +263,22 @@ def load_config() -> dict:
 # Load variables immediately on import
 current_config = load_config()
 
+# Sensitive values: env vars take precedence over anything in config.json
 SERVER_URL = current_config.get("SERVER_URL", "http://localhost")
-GHOSTFOLIO_URL = current_config.get("GHOSTFOLIO_URL", "")
-GHOSTFOLIO_TOKEN = current_config.get("API_TOKEN", "")
-FRED_API_KEY = current_config.get("FRED_API_KEY", "")
+GHOSTFOLIO_URL = os.environ.get("GHOSTFOLIO_URL") or current_config.get("GHOSTFOLIO_URL", "")
+GHOSTFOLIO_TOKEN = os.environ.get("GHOSTFOLIO_TOKEN") or current_config.get("API_TOKEN", "")
+FRED_API_KEY = os.environ.get("FRED_API_KEY") or current_config.get("FRED_API_KEY", "")
+NEXTCLOUD_URL = os.environ.get("NEXTCLOUD_URL") or current_config.get("NEXTCLOUD_URL", "")
+BOT_USERNAME = os.environ.get("NEXTCLOUD_BOT_USERNAME") or current_config.get("BOT_USERNAME", "")
+APP_PASSWORD = os.environ.get("NEXTCLOUD_APP_PASSWORD") or current_config.get("APP_PASSWORD", "")
+CONVERSATION_TOKEN = os.environ.get("NEXTCLOUD_CONVERSATION_TOKEN") or current_config.get("CONVERSATION_TOKEN", "")
+APP_SECRET_KEY = os.environ.get("APP_SECRET_KEY", "")
+
 YAHOO_IPV6_ADDRESS = current_config.get("YAHOO_IPV6_ADDRESS", "")
 GHOSTFOLIO_ACCOUNTS = current_config.get("GHOSTFOLIO_ACCOUNTS", {"discovered": [], "active": []})
 PORT = current_config.get("PORT", 8090)
 BASE_CURRENCY = current_config.get("BASE_CURRENCY", "GBP")
 IGNORED_TICKERS = current_config.get("IGNORED_TICKERS", [])
-NEXTCLOUD_URL = current_config.get("NEXTCLOUD_URL", "")
-BOT_USERNAME = current_config.get("BOT_USERNAME", "")
-APP_PASSWORD = current_config.get("APP_PASSWORD", "")
-CONVERSATION_TOKEN = current_config.get("CONVERSATION_TOKEN", "")
 UI_PREFERENCES = current_config.get("UI_PREFERENCES", {})
 NOTIFICATIONS = current_config.get("NOTIFICATIONS", {})
 SCHEDULING = current_config.get("SCHEDULING", {})
@@ -278,6 +287,8 @@ REPORTS_DEFAULTS = current_config.get("REPORTS_DEFAULTS", DEFAULT_CONFIG["REPORT
 
 def update_config_atomic(new_data: dict) -> None:
     """Atomically merges new_data into config.json using a temp file swap (os.replace)."""
+    # Strip sensitive keys — they live in .env, not config.json
+    new_data = {k: v for k, v in new_data.items() if k not in SENSITIVE_KEYS}
     tmp_path = SECRETS_PATH.with_suffix('.tmp')
     try:
         current = load_config()
