@@ -861,7 +861,7 @@ async def get_latest_notifications(last_id: int = 0):
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT id, message_type, message_text, timestamp FROM system_notifications WHERE id > ? ORDER BY id ASC",
+            "SELECT id, message_type, message_text, timestamp FROM system_notifications WHERE id > ? AND is_read = 0 ORDER BY id ASC",
             (last_id,)
         )
         rows = cursor.fetchall()

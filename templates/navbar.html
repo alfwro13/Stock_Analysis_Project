@@ -43,21 +43,26 @@
                 const notes = result.notifications;
                 if (notes.length > 0) {
                     if (globalLastNotificationId === null) {
-                        // First load: Baseline to the highest ID to prevent spamming old alerts
+                        // First load: Baseline to the highest unread ID to prevent spamming old alerts
                         globalLastNotificationId = notes[notes.length - 1].id;
                     } else {
-                        // Subsequent polls: Trigger native desktop notifications
-                        notes.forEach(note => {
-                            const notification = new Notification(`🚨 Quantamental: ${note.type} Alert`, {
-                                body: note.text.substring(0, 120) + (note.text.length > 120 ? '...' : ''),
+                        // Subsequent polls: Trigger native desktop notifications for new unread alerts
+                        if (notes.length > 5) {
+                            const n = new Notification('🚨 Quantamental: Multiple Alerts', {
+                                body: `You have ${notes.length} new notifications. Visit the Notifications page to review them.`,
                                 icon: '/assets/logo_small.png'
                             });
-                            
-                            notification.onclick = function() {
-                                window.open("/notifications", "_blank");
-                                notification.close();
-                            };
-                            
+                            n.onclick = function() { window.open("/notifications", "_blank"); n.close(); };
+                        } else {
+                            notes.forEach(note => {
+                                const n = new Notification(`🚨 Quantamental: ${note.type} Alert`, {
+                                    body: note.text.substring(0, 120) + (note.text.length > 120 ? '...' : ''),
+                                    icon: '/assets/logo_small.png'
+                                });
+                                n.onclick = function() { window.open("/notifications", "_blank"); n.close(); };
+                            });
+                        }
+                        notes.forEach(note => {
                             globalLastNotificationId = Math.max(globalLastNotificationId, note.id);
                         });
                         
