@@ -1086,6 +1086,13 @@
                 <summary>👤 User Account</summary>
 
                 <div class="settings-panel mt-20">
+                    <h4 class="settings-panel-header text-blue">Logged in as</h4>
+                    <p class="settings-desc" style="font-size:1rem; color: var(--text-primary, #fff);">
+                        <strong>{{ dashboard_username }}</strong>
+                    </p>
+                </div>
+
+                <div class="settings-panel mt-20">
                     <h4 class="settings-panel-header text-blue">Change Password</h4>
                     <p class="settings-desc">Update your dashboard login password. You will remain logged in after saving.</p>
 
@@ -1103,6 +1110,28 @@
                     </div>
                     <button type="button" class="btn-test mt-0" onclick="changePassword()">🔑 Update Password</button>
                     <div id="ua-pw-msg"></div>
+                </div>
+
+                <div class="settings-panel mt-20">
+                    <h4 class="settings-panel-header text-blue">API Key</h4>
+                    <p class="settings-desc">Use this key to access the API from scripts or external tools via the <code>X-API-Key</code> header. Generating a new key immediately invalidates the old one.</p>
+
+                    <div class="form-group">
+                        <label>Current API key</label>
+                        <div style="display:flex; gap:0.5rem; align-items:center;">
+                            <input type="password" id="ua_api_key" value="{{ api_key }}" readonly
+                                   style="flex:1; font-family:monospace; font-size:0.85rem;">
+                            <button type="button" class="btn-test mt-0" style="white-space:nowrap;"
+                                    onclick="toggleApiKeyVisibility()">👁 Show</button>
+                        </div>
+                        {% if not api_key %}
+                        <p class="settings-desc" style="margin-top:0.4rem; color: var(--text-warning, #f59e0b);">
+                            No API key set — generate one below to enable script access.
+                        </p>
+                        {% endif %}
+                    </div>
+                    <button type="button" class="btn-test mt-0" onclick="generateApiKey()">🔄 Generate New API Key</button>
+                    <div id="ua-apikey-msg"></div>
                 </div>
 
                 <div class="settings-panel mt-20">
@@ -1272,6 +1301,33 @@
             
             btn.disabled = false;
             btn.innerText = "📥 Import Selected";
+        }
+
+        function toggleApiKeyVisibility() {
+            const input = document.getElementById('ua_api_key');
+            const btn = event.currentTarget;
+            if (input.type === 'password') {
+                input.type = 'text';
+                btn.textContent = '🙈 Hide';
+            } else {
+                input.type = 'password';
+                btn.textContent = '👁 Show';
+            }
+        }
+
+        async function generateApiKey() {
+            if (!confirm('Generate a new API key? The current key will stop working immediately.')) return;
+            setStatus('ua-apikey-msg', 'info', 'Generating…');
+            const res = await fetch('/api/generate-api-key', { method: 'POST' });
+            const data = await res.json().catch(() => ({}));
+            if (res.ok) {
+                const input = document.getElementById('ua_api_key');
+                input.value = data.api_key;
+                input.type = 'text';
+                setStatus('ua-apikey-msg', 'success', 'New API key generated and saved.');
+            } else {
+                setStatus('ua-apikey-msg', 'error', data.detail || 'Failed to generate key.');
+            }
         }
 
         async function changePassword() {

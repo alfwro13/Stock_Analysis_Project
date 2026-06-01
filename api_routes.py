@@ -89,6 +89,17 @@ async def login(body: LoginRequest, response: Response):
     return {"status": "ok"}
 
 
+@api_router.post("/generate-api-key")
+async def generate_api_key():
+    import secrets as _secrets
+    from dotenv import set_key
+    from config import BASE_DIR
+    new_key = _secrets.token_hex(32)
+    set_key(str(BASE_DIR / ".env"), "API_KEY", new_key)
+    os.environ["API_KEY"] = new_key
+    return {"api_key": new_key}
+
+
 class ChangePasswordRequest(BaseModel):
     current_password: str
     new_password: str
