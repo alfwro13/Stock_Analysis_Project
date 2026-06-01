@@ -226,7 +226,6 @@ def enrich_macro_events(events_list: List[Dict[str, Any]]) -> List[Dict[str, Any
 async def settings_page(request: Request):
     import os
     config_data = load_config()
-    api_key = os.environ.get("API_KEY", "")
     return templates.TemplateResponse(
         request=request,
         name="settings.html",
@@ -234,7 +233,8 @@ async def settings_page(request: Request):
             "config": config_data,
             "unread_count": get_unread_count(),
             "dashboard_username": os.environ.get("DASHBOARD_USERNAME", "admin"),
-            "api_key": api_key,
+            "api_key": os.environ.get("API_KEY", ""),
+            "confirm_token": os.environ.get("ADMIN_CONFIRM_TOKEN", ""),
         }
     )
 

@@ -12,6 +12,7 @@ BASE_DIR = Path(__file__).resolve().parent
 
 # Auto-provision default dashboard credentials into .env if not already set
 def _provision_default_credentials():
+    import secrets as _secrets
     env_path = BASE_DIR / ".env"
     changed = False
     for key, default in [("DASHBOARD_USERNAME", "admin"), ("DASHBOARD_PASSWORD", "changeme")]:
@@ -20,6 +21,12 @@ def _provision_default_credentials():
             set_key(str(env_path), key, default)
             os.environ[key] = default
             changed = True
+    if not os.environ.get("ADMIN_CONFIRM_TOKEN"):
+        from dotenv import set_key
+        token = _secrets.token_hex(16)
+        set_key(str(env_path), "ADMIN_CONFIRM_TOKEN", token)
+        os.environ["ADMIN_CONFIRM_TOKEN"] = token
+        changed = True
     if changed:
         print("[INFO] Default dashboard credentials written to .env. Login: admin / changeme")
 

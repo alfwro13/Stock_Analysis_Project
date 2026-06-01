@@ -16,7 +16,7 @@ from datetime import datetime
 from typing import Any, List, Optional
 from pathlib import Path
 
-from fastapi import APIRouter, Request, BackgroundTasks, HTTPException, Query, Path as PathParam, Response
+from fastapi import APIRouter, Request, BackgroundTasks, HTTPException, Query, Path as PathParam, Response, Depends, Header
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -64,6 +64,13 @@ from macro_ai_engine import MacroAIEngine
 logger = logging.getLogger(__name__)
 
 api_router = APIRouter(prefix="/api")
+
+
+def require_confirm_token(x_confirm_token: str = Header(..., alias="X-Confirm-Token")):
+    import secrets as _secrets
+    expected = os.environ.get("ADMIN_CONFIRM_TOKEN", "")
+    if not expected or not _secrets.compare_digest(x_confirm_token.encode(), expected.encode()):
+        raise HTTPException(status_code=403, detail="Invalid or missing confirmation token.")
 
 
 class LoginRequest(BaseModel):
@@ -891,7 +898,7 @@ async def get_system_metrics():
         if conn:
             conn.close()
 
-@api_router.post("/system/git-pull")
+@api_router.post("/system/git-pull", dependencies=[Depends(require_confirm_token)])
 async def git_pull_update():
     try:
         result = subprocess.run(["git", "pull"], capture_output=True, text=True, timeout=15, cwd=str(BASE_DIR))
@@ -902,12 +909,12 @@ async def git_pull_update():
     except Exception as e:
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
-@api_router.post("/system/restart")
+@api_router.post("/system/restart", dependencies=[Depends(require_confirm_token)])
 async def restart_system(background_tasks: BackgroundTasks):
     background_tasks.add_task(execute_restart)
     return JSONResponse(content={"status": "success", "message": "Restart signal sent. The dashboard will be back online in ~5-10 seconds."})
 
-@api_router.post("/settings")
+@api_router.post("/settings", dependencies=[Depends(require_confirm_token)])
 async def save_settings(config: SettingsConfig):
     try:
         incoming_data = config.model_dump(exclude_none=True)

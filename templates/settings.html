@@ -1159,6 +1159,7 @@
     </script>
 
     <script>
+        const CONFIRM_TOKEN = "{{ confirm_token }}";
         const accountsDataNode = document.getElementById('discoveredAccountsData').textContent;
         let currentDiscoveredAccounts = JSON.parse(accountsDataNode);
         const macroInitState = JSON.parse(document.getElementById('macroInitState').textContent);
@@ -1441,7 +1442,7 @@
             setStatus('git-status-msg', 'warning', "Sending restart signal...");
 
             try {
-                const response = await fetch('/api/system/restart', { method: 'POST' });
+                const response = await fetch('/api/system/restart', { method: 'POST', headers: { 'X-Confirm-Token': CONFIRM_TOKEN } });
                 const result = await response.json();
                 
                 if (response.ok) {
@@ -1496,7 +1497,7 @@
             document.getElementById('git-status-msg').innerText = "";
 
             try {
-                const response = await fetch('/api/system/git-pull', { method: 'POST' });
+                const response = await fetch('/api/system/git-pull', { method: 'POST', headers: { 'X-Confirm-Token': CONFIRM_TOKEN } });
                 const result = await response.json();
                 
                 if (response.ok) {
@@ -2120,7 +2121,7 @@
             try {
                 const response = await fetch('/api/settings', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', 'X-Confirm-Token': CONFIRM_TOKEN },
                     body: JSON.stringify(payload)
                 });
                 
