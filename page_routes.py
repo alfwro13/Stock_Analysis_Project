@@ -46,7 +46,7 @@ templates.env.globals["css_version"] = CSS_VERSION
 
 @page_router.get("/change-password", response_class=HTMLResponse)
 async def change_password_page(request: Request):
-    return templates.TemplateResponse("change_password.html", {"request": request})
+    return templates.TemplateResponse(request=request, name="change_password.html")
 
 
 def get_json_data(filepath: str) -> Dict[str, Any]:
