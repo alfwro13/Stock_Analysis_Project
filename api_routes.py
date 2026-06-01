@@ -65,6 +65,35 @@ logger = logging.getLogger(__name__)
 
 api_router = APIRouter(prefix="/api")
 
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+    confirm_password: str
+
+
+@api_router.post("/change-password")
+async def change_password(body: ChangePasswordRequest):
+    import secrets as _secrets
+    from dotenv import set_key
+    from config import BASE_DIR
+
+    current = os.environ.get("DASHBOARD_PASSWORD", "")
+    if not _secrets.compare_digest(body.current_password.encode(), current.encode()):
+        raise HTTPException(status_code=400, detail="Current password is incorrect.")
+    if body.new_password != body.confirm_password:
+        raise HTTPException(status_code=400, detail="Passwords do not match.")
+    if len(body.new_password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters.")
+    if body.new_password == "changeme":
+        raise HTTPException(status_code=400, detail="Please choose a different password.")
+
+    env_path = str(BASE_DIR / ".env")
+    set_key(env_path, "DASHBOARD_PASSWORD", body.new_password)
+    os.environ["DASHBOARD_PASSWORD"] = body.new_password
+    return {"status": "ok"}
+
+
 # --- RESOLVE CORRECT IMPORT DIRECTORY ---
 IMPORT_DIR = BASE_DIR / "tools" / "data" / "imports"
 

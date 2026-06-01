@@ -1,5 +1,7 @@
 """
-One-time migration: reads secrets from the old config.json and writes .env
+One-time migration: reads secrets from the old config.json, writes .env,
+then scrubs the sensitive keys from config.json.
+
 Run this on the production server BEFORE pulling the updated code.
 
 Usage:
@@ -13,6 +15,10 @@ BASE_DIR = pathlib.Path(__file__).resolve().parent
 CONFIG_PATH = BASE_DIR / "config.json"
 ENV_PATH = BASE_DIR / ".env"
 
+# Keys to move out of config.json and into .env
+SENSITIVE_KEYS = {"API_TOKEN", "APP_PASSWORD", "NEXTCLOUD_URL", "BOT_USERNAME",
+                  "CONVERSATION_TOKEN", "GHOSTFOLIO_URL", "FRED_API_KEY"}
+
 if not CONFIG_PATH.exists():
     print("[ERROR] config.json not found. Nothing to migrate.")
     exit(1)
@@ -24,6 +30,7 @@ if ENV_PATH.exists():
 
 cfg = json.loads(CONFIG_PATH.read_text())
 
+# --- Step 1: write .env ---
 lines = [
     "# Migrated from config.json — do not commit this file",
     f"GHOSTFOLIO_TOKEN={cfg.get('API_TOKEN', '')}",
@@ -35,15 +42,20 @@ lines = [
     f"FRED_API_KEY={cfg.get('FRED_API_KEY', '')}",
     f"APP_SECRET_KEY={secrets.token_hex(32)}",
     "",
-    "# Dashboard login (HTTP Basic Auth)",
-    "DASHBOARD_USERNAME=andre",
-    "DASHBOARD_PASSWORD=changeme",
+    "# Dashboard login — auto-provisioned on first startup if absent (default: admin / changeme)",
     "# API key for script/curl access (leave empty to disable)",
     "API_KEY=",
 ]
-
 ENV_PATH.write_text("\n".join(lines) + "\n")
 print(f"[OK] .env written to {ENV_PATH}")
+
+# --- Step 2: scrub sensitive keys from config.json ---
+scrubbed = {k: ("" if k in SENSITIVE_KEYS else v) for k, v in cfg.items()}
+tmp_path = CONFIG_PATH.with_suffix(".tmp")
+tmp_path.write_text(json.dumps(scrubbed, indent=4))
+tmp_path.replace(CONFIG_PATH)
+print(f"[OK] Sensitive keys removed from {CONFIG_PATH}")
+
 print()
 print("Next steps:")
 print("  1. git pull  (get the updated config.py / requirements.txt)")

@@ -10,6 +10,21 @@ load_dotenv()
 # Dynamically resolve the absolute path to the directory containing this file
 BASE_DIR = Path(__file__).resolve().parent
 
+# Auto-provision default dashboard credentials into .env if not already set
+def _provision_default_credentials():
+    env_path = BASE_DIR / ".env"
+    changed = False
+    for key, default in [("DASHBOARD_USERNAME", "admin"), ("DASHBOARD_PASSWORD", "changeme")]:
+        if not os.environ.get(key):
+            from dotenv import set_key
+            set_key(str(env_path), key, default)
+            os.environ[key] = default
+            changed = True
+    if changed:
+        print("[INFO] Default dashboard credentials written to .env. Login: admin / changeme")
+
+_provision_default_credentials()
+
 # Define core directories
 DATA_DIR = BASE_DIR / "data"
 

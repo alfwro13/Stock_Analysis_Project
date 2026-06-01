@@ -1,7 +1,9 @@
 # main.py
 import logging
+import os
 import uvicorn
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, Request
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 
@@ -36,6 +38,15 @@ async def lifespan(app: FastAPI):
 
 # Initialize Fast & Scalable Application
 app = FastAPI(title="Quantamental Dashboard", lifespan=lifespan, dependencies=[Depends(require_auth)])
+
+CHANGE_PASSWORD_PATHS = {"/change-password", "/api/change-password"}
+
+@app.middleware("http")
+async def force_password_change(request: Request, call_next):
+    if request.url.path not in CHANGE_PASSWORD_PATHS:
+        if os.environ.get("DASHBOARD_PASSWORD") == "changeme":
+            return RedirectResponse("/change-password")
+    return await call_next(request)
 
 # Mount Static Directories
 app.mount("/assets", StaticFiles(directory="assets"), name="assets")
