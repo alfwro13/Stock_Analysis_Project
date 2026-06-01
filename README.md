@@ -155,6 +155,103 @@ Once deployed as a service, you can manage the dashboard via the Web UI Settings
 * **Restart after manual code updates:** `sudo systemctl restart stock_analysis_project  `
 * **View live server logs:** `sudo journalctl -u stock_analysis_project -f`
 
+## **🔒 Nginx Reverse Proxy & Security Headers**
+
+For production deployments it is strongly recommended to place the dashboard behind an Nginx reverse proxy. This adds HTTPS termination, security headers, and clickjacking protection.
+
+### **1. Basic Nginx Site Configuration**
+
+Create a new site config (e.g. `/etc/nginx/sites-available/quantamental`):
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name your.domain.com;
+
+    ssl_certificate     /etc/ssl/certs/your_cert.pem;
+    ssl_certificate_key /etc/ssl/private/your_key.pem;
+
+    # --- Security Headers ---
+
+    # Prevent search engines from indexing the dashboard
+    add_header X-Robots-Tag none;
+
+    # Force HTTPS for 2 years (only add once SSL is confirmed working)
+    add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload";
+
+    # Control which sites can embed the dashboard in an iframe.
+    # List every trusted origin explicitly — 'self' allows the app to embed itself,
+    # the two Home Assistant origins allow the HA dashboard iframe card.
+    # See the Home Assistant section below if you need to add more origins.
+    add_header Content-Security-Policy "frame-ancestors 'self' http://192.168.1.x:8123 https://ha.domain.com;";
+
+    # Prevent MIME-type sniffing attacks
+    add_header X-Content-Type-Options nosniff;
+
+    # Legacy XSS filter (belt-and-braces for older browsers)
+    add_header X-XSS-Protection "1; mode=block";
+
+    # Prevent the dashboard URL leaking in Referer headers on outbound links
+    add_header Referrer-Policy "no-referrer";
+
+    # --- Proxy to the FastAPI app ---
+    location / {
+        proxy_pass         http://127.0.0.1:8090;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+    }
+}
+
+# Redirect plain HTTP to HTTPS
+server {
+    listen 80;
+    server_name your.domain.com;
+    return 301 https://$host$request_uri;
+}
+```
+
+Enable the site and reload Nginx:
+```bash
+sudo ln -s /etc/nginx/sites-available/quantamental /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+### **2. Home Assistant iframe Embedding**
+
+The `frame-ancestors` directive controls which external sites are permitted to embed the dashboard in an `<iframe>`. Without it, any website could embed your dashboard (clickjacking risk).
+
+List every origin that needs to embed the app — both origins for Home Assistant if it is accessible via local IP **and** an external HTTPS domain:
+
+```nginx
+add_header Content-Security-Policy "frame-ancestors 'self' http://192.168.1.x:8123 https://ha.domain.com;";
+```
+
+If Home Assistant is also reachable via a local hostname, add that too:
+
+```nginx
+add_header Content-Security-Policy "frame-ancestors 'self' http://192.168.1.x:8123 https://ha.domain.com http://homeassistant.local:8123;";
+```
+
+> **Note:** `X-Frame-Options` is a legacy header that does not support multiple origins and is superseded by `frame-ancestors`. Do not use both — if `frame-ancestors` is present, browsers ignore `X-Frame-Options`.
+
+### **3. Self-Signed Certificate (LAN only)**
+
+If the dashboard is only accessible on your local network and you do not have a public domain, you can generate a self-signed certificate:
+
+```bash
+sudo openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
+  -keyout /etc/ssl/private/quantamental.key \
+  -out /etc/ssl/certs/quantamental.crt \
+  -subj "/CN=quantamental.local"
+```
+
+Use these paths in the `ssl_certificate` / `ssl_certificate_key` directives above. Your browser will show a warning on first visit — add a permanent exception to dismiss it.
+
+---
+
 ## **📚 Built-in Glossary**
 
 Not a quantitative expert? The dashboard includes a built-in educational glossary page and interactive HTML tooltips that explain exactly what metrics like MACD Reversals, Relative Strength vs S&P 500, Bullish Engulfing patterns, and Peter Lynch PEG mean in plain English.
