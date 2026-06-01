@@ -18,6 +18,10 @@ from pathlib import Path
 
 from fastapi import APIRouter, Request, BackgroundTasks, HTTPException, Query, Path as PathParam, Response, Depends, Header
 from fastapi.responses import JSONResponse
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+limiter = Limiter(key_func=get_remote_address)
 from pydantic import BaseModel
 
 from config import (
@@ -80,7 +84,8 @@ class LoginRequest(BaseModel):
 
 
 @api_router.post("/login")
-async def login(body: LoginRequest, response: Response):
+@limiter.limit("10/minute")
+async def login(request: Request, body: LoginRequest, response: Response):
     import secrets as _secrets
     valid_user = _secrets.compare_digest(
         body.username.encode(), os.environ.get("DASHBOARD_USERNAME", "").encode()
@@ -372,7 +377,8 @@ def bg_run_macro_pipeline():
         log_notification("Error", f"Macro AI Pipeline execution failed: {e}")
 
 @api_router.post("/macro/init-pipeline")
-async def trigger_macro_init_endpoint(background_tasks: BackgroundTasks):
+@limiter.limit("2/minute")
+async def trigger_macro_init_endpoint(request: Request, background_tasks: BackgroundTasks):
     background_tasks.add_task(bg_init_macro_pipeline)
     return JSONResponse(content={
         "status": "success", 
@@ -380,7 +386,8 @@ async def trigger_macro_init_endpoint(background_tasks: BackgroundTasks):
     })
 
 @api_router.post("/macro/run-pipeline")
-async def trigger_macro_run_endpoint(background_tasks: BackgroundTasks):
+@limiter.limit("2/minute")
+async def trigger_macro_run_endpoint(request: Request, background_tasks: BackgroundTasks):
     background_tasks.add_task(bg_run_macro_pipeline)
     return JSONResponse(content={
         "status": "success", 
@@ -389,7 +396,8 @@ async def trigger_macro_run_endpoint(background_tasks: BackgroundTasks):
 
 # --- MODULAR ML ENDPOINTS ---
 @api_router.post("/ml/trigger-backfill")
-async def trigger_ml_backfill_endpoint(background_tasks: BackgroundTasks):
+@limiter.limit("2/minute")
+async def trigger_ml_backfill_endpoint(request: Request, background_tasks: BackgroundTasks):
     background_tasks.add_task(run_historical_backfill)
     return JSONResponse(content={
         "status": "success", 
@@ -397,7 +405,8 @@ async def trigger_ml_backfill_endpoint(background_tasks: BackgroundTasks):
     })
 
 @api_router.post("/ml/trigger-training")
-async def trigger_ml_training_endpoint(background_tasks: BackgroundTasks):
+@limiter.limit("2/minute")
+async def trigger_ml_training_endpoint(request: Request, background_tasks: BackgroundTasks):
     background_tasks.add_task(train_global_ml_model)
     return JSONResponse(content={
         "status": "success", 
@@ -405,7 +414,8 @@ async def trigger_ml_training_endpoint(background_tasks: BackgroundTasks):
     })
 
 @api_router.post("/ml/trigger-inference")
-async def trigger_ml_inference_endpoint(background_tasks: BackgroundTasks):
+@limiter.limit("2/minute")
+async def trigger_ml_inference_endpoint(request: Request, background_tasks: BackgroundTasks):
     background_tasks.add_task(bg_execute_ml_inference)
     return JSONResponse(content={
         "status": "success", 
@@ -413,7 +423,8 @@ async def trigger_ml_inference_endpoint(background_tasks: BackgroundTasks):
     })
 
 @api_router.post("/trigger-quant-scan")
-async def trigger_quant_scan_endpoint(background_tasks: BackgroundTasks):
+@limiter.limit("10/minute")
+async def trigger_quant_scan_endpoint(request: Request, background_tasks: BackgroundTasks):
     background_tasks.add_task(bg_execute_quant_scan)
     return JSONResponse(content={
         "status": "success", 
@@ -421,7 +432,8 @@ async def trigger_quant_scan_endpoint(background_tasks: BackgroundTasks):
     })
 
 @api_router.post("/trigger-earnings-scan")
-async def trigger_earnings_scan_endpoint(background_tasks: BackgroundTasks):
+@limiter.limit("10/minute")
+async def trigger_earnings_scan_endpoint(request: Request, background_tasks: BackgroundTasks):
     background_tasks.add_task(bg_execute_earnings_scan)
     return JSONResponse(content={
         "status": "success", 
@@ -429,7 +441,8 @@ async def trigger_earnings_scan_endpoint(background_tasks: BackgroundTasks):
     })
 
 @api_router.post("/trigger-universe-update")
-async def trigger_universe_update_endpoint(background_tasks: BackgroundTasks):
+@limiter.limit("10/minute")
+async def trigger_universe_update_endpoint(request: Request, background_tasks: BackgroundTasks):
     background_tasks.add_task(update_market_universe)
     return JSONResponse(content={
         "status": "success", 
@@ -456,7 +469,8 @@ async def get_profiler_status():
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 @api_router.post("/universe/sync-indices")
-async def trigger_sync_indices_endpoint(background_tasks: BackgroundTasks):
+@limiter.limit("10/minute")
+async def trigger_sync_indices_endpoint(request: Request, background_tasks: BackgroundTasks):
     background_tasks.add_task(run_index_scraper)
     return JSONResponse(content={
         "status": "success", 
@@ -464,7 +478,8 @@ async def trigger_sync_indices_endpoint(background_tasks: BackgroundTasks):
     })
 
 @api_router.post("/universe/sync-profiler")
-async def trigger_sync_profiler_endpoint(background_tasks: BackgroundTasks):
+@limiter.limit("2/minute")
+async def trigger_sync_profiler_endpoint(request: Request, background_tasks: BackgroundTasks):
     background_tasks.add_task(run_fundamentals_profiler)
     return JSONResponse(content={
         "status": "success",
@@ -472,7 +487,8 @@ async def trigger_sync_profiler_endpoint(background_tasks: BackgroundTasks):
     })
 
 @api_router.post("/universe/deep-sync")
-async def trigger_universe_deep_sync_endpoint(background_tasks: BackgroundTasks):
+@limiter.limit("2/minute")
+async def trigger_universe_deep_sync_endpoint(request: Request, background_tasks: BackgroundTasks):
     """
     Manually trigger the unified Universe Deep Sync pipeline.
 
@@ -493,7 +509,8 @@ async def trigger_universe_deep_sync_endpoint(background_tasks: BackgroundTasks)
     })
 
 @api_router.post("/trigger-universe-quant-scan")
-async def trigger_universe_quant_scan_endpoint(background_tasks: BackgroundTasks):
+@limiter.limit("2/minute")
+async def trigger_universe_quant_scan_endpoint(request: Request, background_tasks: BackgroundTasks):
     background_tasks.add_task(bg_execute_universe_quant_scan)
     return JSONResponse(content={
         "status": "success", 
@@ -501,7 +518,8 @@ async def trigger_universe_quant_scan_endpoint(background_tasks: BackgroundTasks
     })
 
 @api_router.post("/trigger-sentiment-scan")
-async def trigger_sentiment_scan_endpoint(background_tasks: BackgroundTasks):
+@limiter.limit("10/minute")
+async def trigger_sentiment_scan_endpoint(request: Request, background_tasks: BackgroundTasks):
     background_tasks.add_task(run_sentiment_scan)
     return JSONResponse(content={
         "status": "success", 
@@ -574,17 +592,20 @@ async def execute_restart():
     os.kill(os.getpid(), signal.SIGTERM)
 
 @api_router.post("/update")
-async def trigger_update(background_tasks: BackgroundTasks):
+@limiter.limit("10/minute")
+async def trigger_update(request: Request, background_tasks: BackgroundTasks):
     background_tasks.add_task(run_update_pipeline)
     return JSONResponse(content={"status": "success"})
 
 @api_router.post("/sync-ghostfolio")
-async def trigger_ghostfolio_sync(background_tasks: BackgroundTasks):
+@limiter.limit("10/minute")
+async def trigger_ghostfolio_sync(request: Request, background_tasks: BackgroundTasks):
     background_tasks.add_task(run_ghostfolio_sync)
     return JSONResponse(content={"status": "success"})
 
 @api_router.post("/trigger-freetrade-sync")
-async def trigger_freetrade_sync_endpoint(background_tasks: BackgroundTasks):
+@limiter.limit("10/minute")
+async def trigger_freetrade_sync_endpoint(request: Request, background_tasks: BackgroundTasks):
     background_tasks.add_task(run_freetrade_sync)
     return JSONResponse(content={
         "status": "success",

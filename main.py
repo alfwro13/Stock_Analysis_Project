@@ -7,8 +7,13 @@ from fastapi.responses import RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
+
 from config import PORT, SERVER_URL
 from auth import COOKIE_NAME, verify_session_token
+from api_routes import limiter
 from database import init_db
 from scheduler_engine import start_scheduler, shutdown_scheduler, reload_scheduler
 
@@ -36,6 +41,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Quantamental Dashboard", lifespan=lifespan)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 # Paths that never require a session
 _EXEMPT = {"/login", "/api/login"}
