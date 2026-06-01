@@ -1082,6 +1082,37 @@
                 </div>
             </details>
 
+            <details class="settings-card">
+                <summary>👤 User Account</summary>
+
+                <div class="settings-panel mt-20">
+                    <h4 class="settings-panel-header text-blue">Change Password</h4>
+                    <p class="settings-desc">Update your dashboard login password. You will remain logged in after saving.</p>
+
+                    <div class="form-group">
+                        <label>Current password</label>
+                        <input type="password" id="ua_current_password" autocomplete="current-password">
+                    </div>
+                    <div class="form-group">
+                        <label>New password</label>
+                        <input type="password" id="ua_new_password" autocomplete="new-password">
+                    </div>
+                    <div class="form-group">
+                        <label>Confirm new password</label>
+                        <input type="password" id="ua_confirm_password" autocomplete="new-password">
+                    </div>
+                    <button type="button" class="btn-test mt-0" onclick="changePassword()">🔑 Update Password</button>
+                    <div id="ua-pw-msg"></div>
+                </div>
+
+                <div class="settings-panel mt-20">
+                    <h4 class="settings-panel-header text-blue">Session</h4>
+                    <p class="settings-desc">Sign out of the dashboard on this device.</p>
+                    <a href="/logout" class="btn-test mt-0" style="display:inline-block; text-decoration:none;">🚪 Log Out</a>
+                </div>
+
+            </details>
+
         </div>
 
     </div>
@@ -1241,6 +1272,31 @@
             
             btn.disabled = false;
             btn.innerText = "📥 Import Selected";
+        }
+
+        async function changePassword() {
+            const current  = document.getElementById('ua_current_password').value;
+            const newPw    = document.getElementById('ua_new_password').value;
+            const confirm  = document.getElementById('ua_confirm_password').value;
+            const msgEl    = document.getElementById('ua-pw-msg');
+
+            setStatus('ua-pw-msg', 'info', 'Updating…');
+
+            const res = await fetch('/api/change-password', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ current_password: current, new_password: newPw, confirm_password: confirm }),
+            });
+
+            const data = await res.json().catch(() => ({}));
+            if (res.ok) {
+                setStatus('ua-pw-msg', 'success', 'Password updated successfully.');
+                document.getElementById('ua_current_password').value = '';
+                document.getElementById('ua_new_password').value = '';
+                document.getElementById('ua_confirm_password').value = '';
+            } else {
+                setStatus('ua-pw-msg', 'error', data.detail || 'Failed to update password.');
+            }
         }
 
         async function discoverGhostfolioAccounts() {
