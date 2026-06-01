@@ -16,12 +16,29 @@ patched out:
   - shutdown_scheduler       (teardown hook)
 """
 
+import os
 import sys
 import tempfile
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 import pytest
+
+# ── Auth bypass for tests ─────────────────────────────────────────────────────
+#    The auth middleware accepts requests with a valid X-API-Key header.
+#    Setting API_KEY here (before main.py loads) lets the TestClient pass all
+#    auth checks without a session cookie, which also avoids CSRF validation
+#    (the CSRF middleware only fires when the "session" cookie is present).
+_TEST_API_KEY = "test-api-key-do-not-use-in-production"
+os.environ["API_KEY"] = _TEST_API_KEY
+
+_TEST_CONFIRM_TOKEN = "test-confirm-token-do-not-use-in-production"
+os.environ["ADMIN_CONFIRM_TOKEN"] = _TEST_CONFIRM_TOKEN
+
+_TEST_USERNAME = "testadmin"
+_TEST_PASSWORD = "TestPassword123"
+os.environ.setdefault("DASHBOARD_USERNAME", _TEST_USERNAME)
+os.environ.setdefault("DASHBOARD_PASSWORD", _TEST_PASSWORD)
 
 # ── 1. Make the project root importable ──────────────────────────────────────
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -62,5 +79,44 @@ def client():
         patch("main.shutdown_scheduler"),
     ):
         import main as _main_module
-        with TestClient(_main_module.app, raise_server_exceptions=False) as c:
+        with TestClient(
+            _main_module.app,
+            raise_server_exceptions=False,
+            headers={"X-API-Key": _TEST_API_KEY},
+        ) as c:
             yield c
+
+
+@pytest.fixture(scope="session")
+def confirm_token():
+    """Returns the ADMIN_CONFIRM_TOKEN used in tests, for endpoints that require it."""
+    return _TEST_CONFIRM_TOKEN
+
+
+@pytest.fixture(scope="session")
+def raw_client():
+    """
+    Session-scoped unauthenticated client — no X-API-Key, redirects NOT followed.
+    Use for auth middleware tests and other tests where you need to see 302s.
+    Do NOT use for tests that trigger a server-set session cookie; those should
+    create their own client via _fresh_client() to avoid cookie-jar contamination.
+    """
+    with (
+        patch("main.run_yfinance_smoke_test"),
+        patch("main.start_scheduler"),
+        patch("main.reload_scheduler"),
+        patch("main.shutdown_scheduler"),
+    ):
+        import main as _main_module
+        with TestClient(_main_module.app, raise_server_exceptions=False, follow_redirects=False) as c:
+            yield c
+
+
+@pytest.fixture(scope="session")
+def test_username():
+    return _TEST_USERNAME
+
+
+@pytest.fixture(scope="session")
+def test_password():
+    return _TEST_PASSWORD

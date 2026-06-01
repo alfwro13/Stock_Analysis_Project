@@ -116,7 +116,7 @@ def test_trigger_endpoint_returns_success(client, endpoint, label):
 # ── Settings ──────────────────────────────────────────────────────────────────
 
 @pytest.mark.api
-def test_post_settings_with_valid_payload(client):
+def test_post_settings_with_valid_payload(client, confirm_token):
     """POST /api/settings with a valid partial payload must return status=success."""
     payload = {
         "UI_PREFERENCES": {
@@ -127,14 +127,14 @@ def test_post_settings_with_valid_payload(client):
             "FREETRADE_ONLY_MODE": False,
         }
     }
-    resp = client.post("/api/settings", json=payload)
+    resp = client.post("/api/settings", json=payload, headers={"X-Confirm-Token": confirm_token})
     assert resp.status_code == 200, f"Expected 200, got {resp.status_code}\n{resp.text}"
     data = _json(resp)
     assert data.get("status") == "success", f"Expected success, got: {data}"
 
 
 @pytest.mark.api
-def test_post_settings_with_position_sizing(client):
+def test_post_settings_with_position_sizing(client, confirm_token):
     """POST /api/settings with position sizing values must return status=success."""
     payload = {
         "POSITION_SIZING": {
@@ -143,7 +143,7 @@ def test_post_settings_with_position_sizing(client):
             "STOP_MULTIPLE": 2.0,
         }
     }
-    resp = client.post("/api/settings", json=payload)
+    resp = client.post("/api/settings", json=payload, headers={"X-Confirm-Token": confirm_token})
     assert resp.status_code == 200
     data = _json(resp)
     assert data.get("status") == "success"
