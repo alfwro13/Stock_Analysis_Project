@@ -22,7 +22,7 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 limiter = Limiter(key_func=get_remote_address)
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel
 
 from config import (
     load_config,
@@ -146,15 +146,6 @@ IMPORT_DIR = BASE_DIR / "tools" / "data" / "imports"
 # --- SHARED PYDANTIC SCHEMAS ---
 class TickerRequest(BaseModel):
     ticker: str
-
-    @field_validator('ticker')
-    @classmethod
-    def validate_ticker(cls, v: str) -> str:
-        from utils import TICKER_RE
-        v = v.strip().upper()
-        if not TICKER_RE.match(v):
-            raise ValueError(f"Invalid ticker symbol: '{v}'")
-        return v
 
 class OptionLeg(BaseModel):
     type: str

@@ -5,7 +5,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 from typing import Dict, Any, List
 
-from fastapi import APIRouter, Request, Path as PathParam
+from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
@@ -769,7 +769,7 @@ async def market_reports_page(request: Request):
 
 
 @page_router.get("/stock/{ticker}", response_class=HTMLResponse)
-async def stock_detail(request: Request, ticker: str = PathParam(..., pattern=r"^[A-Za-z0-9.\-\^=]{1,20}$"), embed: bool = False):
+async def stock_detail(request: Request, ticker: str, embed: bool = False):
     ticker = normalize_ticker(ticker)
     watchlist_json = get_json_data(WATCHLIST_PATH)
     watchlist_tickers = watchlist_json.get("watchlist", [])
