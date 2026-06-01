@@ -1,11 +1,12 @@
 # main.py
 import logging
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 
 from config import PORT, SERVER_URL
+from auth import require_auth
 from database import init_db
 from scheduler_engine import start_scheduler, shutdown_scheduler, reload_scheduler
 
@@ -34,7 +35,7 @@ async def lifespan(app: FastAPI):
     logger.info("Application lifecycle terminated safely.")
 
 # Initialize Fast & Scalable Application
-app = FastAPI(title="Quantamental Dashboard", lifespan=lifespan)
+app = FastAPI(title="Quantamental Dashboard", lifespan=lifespan, dependencies=[Depends(require_auth)])
 
 # Mount Static Directories
 app.mount("/assets", StaticFiles(directory="assets"), name="assets")

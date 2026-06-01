@@ -34,6 +34,12 @@ lines = [
     f"NEXTCLOUD_CONVERSATION_TOKEN={cfg.get('CONVERSATION_TOKEN', '')}",
     f"FRED_API_KEY={cfg.get('FRED_API_KEY', '')}",
     f"APP_SECRET_KEY={secrets.token_hex(32)}",
+    "",
+    "# Dashboard login (HTTP Basic Auth)",
+    "DASHBOARD_USERNAME=andre",
+    "DASHBOARD_PASSWORD=changeme",
+    "# API key for script/curl access (leave empty to disable)",
+    "API_KEY=",
 ]
 
 ENV_PATH.write_text("\n".join(lines) + "\n")
