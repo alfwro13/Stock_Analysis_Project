@@ -255,19 +255,17 @@ class FreetradeMappingsConfig(BaseModel):
     EXCHANGES: Optional[dict] = None
 
 class SettingsConfig(BaseModel):
+    # Sensitive credentials are managed via .env and must never be written via this endpoint.
+    # Keys: API_TOKEN, APP_PASSWORD, BOT_USERNAME, CONVERSATION_TOKEN,
+    #       NEXTCLOUD_URL, GHOSTFOLIO_URL, FRED_API_KEY
+    model_config = {"extra": "forbid"}
+
     SERVER_URL: Optional[str] = None
-    GHOSTFOLIO_URL: Optional[str] = None
-    API_TOKEN: Optional[str] = None
-    FRED_API_KEY: Optional[str] = None
     YAHOO_IPV6_ADDRESS: Optional[str] = None
     PORT: Optional[int] = None
     BASE_CURRENCY: Optional[str] = None
     IGNORED_TICKERS: Optional[List[str]] = None
     GHOSTFOLIO_ACCOUNTS: Optional[GhostfolioAccountsConfig] = None
-    NEXTCLOUD_URL: Optional[str] = None
-    BOT_USERNAME: Optional[str] = None
-    APP_PASSWORD: Optional[str] = None
-    CONVERSATION_TOKEN: Optional[str] = None
     UI_PREFERENCES: Optional[UIPreferencesConfig] = None
     POSITION_SIZING: Optional[PositionSizingConfig] = None
     FREETRADE_MAPPINGS: Optional[FreetradeMappingsConfig] = None

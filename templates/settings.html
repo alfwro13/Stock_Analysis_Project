@@ -764,7 +764,8 @@
                     <p class="settings-desc">The Federal Reserve Economic Data (FRED) API is required to fetch structural macroeconomic indicators like M2 Money Supply and High Yield Spreads. Get a free API key at <a href="https://fred.stlouisfed.org/docs/api/api_key.html" target="_blank" class="text-cyan">fred.stlouisfed.org</a>.</p>
                     <div class="form-group mb-25">
                         <label>FRED API Key</label>
-                        <input type="password" id="FRED_API_KEY" value="{{ config.FRED_API_KEY | default('') }}">
+                        <input type="password" id="FRED_API_KEY" value="{{ config.FRED_API_KEY | default('') }}" readonly style="opacity:0.6; cursor:not-allowed;">
+                        <p class="settings-desc" style="margin-top:0.3rem;">Managed via <code>.env</code> — edit the file directly to change this value.</p>
                     </div>
 
                     {% set macro_sched = config.SCHEDULING.MACRO_ENGINE if config.SCHEDULING.MACRO_ENGINE else {} %}
@@ -1026,34 +1027,35 @@
 
             <details class="settings-card">
                 <summary>☁️ Nextcloud Talk Webhooks</summary>
+                <p class="settings-desc">These credentials are managed via <code>.env</code> and are read-only here. Edit the file directly to change them.</p>
                 <div class="form-group">
                     <label>Nextcloud Server URL</label>
-                    <input type="text" id="NEXTCLOUD_URL" value="{{ config.NEXTCLOUD_URL }}">
+                    <input type="text" id="NEXTCLOUD_URL" value="{{ config.NEXTCLOUD_URL }}" readonly style="opacity:0.6; cursor:not-allowed;">
                 </div>
                 <div class="form-group">
                     <label>Bot Username</label>
-                    <input type="text" id="BOT_USERNAME" value="{{ config.BOT_USERNAME }}">
+                    <input type="text" id="BOT_USERNAME" value="{{ config.BOT_USERNAME }}" readonly style="opacity:0.6; cursor:not-allowed;">
                 </div>
                 <div class="form-group">
                     <label>App Password</label>
-                    <input type="password" id="APP_PASSWORD" value="{{ config.APP_PASSWORD }}">
+                    <input type="password" id="APP_PASSWORD" value="{{ config.APP_PASSWORD }}" readonly style="opacity:0.6; cursor:not-allowed;">
                 </div>
                 <div class="form-group">
                     <label>Talk Conversation Token</label>
-                    <input type="text" id="CONVERSATION_TOKEN" value="{{ config.CONVERSATION_TOKEN }}">
+                    <input type="text" id="CONVERSATION_TOKEN" value="{{ config.CONVERSATION_TOKEN }}" readonly style="opacity:0.6; cursor:not-allowed;">
                 </div>
             </details>
 
             <details class="settings-card">
                 <summary>👻 Ghostfolio Integration API</summary>
-                
+                <p class="settings-desc">These credentials are managed via <code>.env</code> and are read-only here. Edit the file directly to change them.</p>
                 <div class="form-group">
                     <label>Ghostfolio Server URL</label>
-                    <input type="text" id="GHOSTFOLIO_URL" value="{{ config.GHOSTFOLIO_URL }}">
+                    <input type="text" id="GHOSTFOLIO_URL" value="{{ config.GHOSTFOLIO_URL }}" readonly style="opacity:0.6; cursor:not-allowed;">
                 </div>
                 <div class="form-group">
                     <label>Security API Token</label>
-                    <input type="password" id="API_TOKEN" value="{{ config.API_TOKEN }}">
+                    <input type="password" id="API_TOKEN" value="{{ config.API_TOKEN }}" readonly style="opacity:0.6; cursor:not-allowed;">
                 </div>
 
                 <div class="settings-panel mt-20">
@@ -1952,17 +1954,10 @@
                 "BASE_CURRENCY": document.getElementById('BASE_CURRENCY').value,
                 "IGNORED_TICKERS": document.getElementById('IGNORED_TICKERS').value.split(',').map(s => s.trim()).filter(Boolean),
                 "YAHOO_IPV6_ADDRESS": document.getElementById('YAHOO_IPV6_ADDRESS').value.trim(),
-                "GHOSTFOLIO_URL": document.getElementById('GHOSTFOLIO_URL').value,
-                "API_TOKEN": document.getElementById('API_TOKEN').value,
-                "FRED_API_KEY": document.getElementById('FRED_API_KEY').value,
                 "GHOSTFOLIO_ACCOUNTS": {
-                    "discovered": currentDiscoveredAccounts, 
+                    "discovered": currentDiscoveredAccounts,
                     "active": activeAccounts
                 },
-                "NEXTCLOUD_URL": document.getElementById('NEXTCLOUD_URL').value,
-                "BOT_USERNAME": document.getElementById('BOT_USERNAME').value,
-                "APP_PASSWORD": document.getElementById('APP_PASSWORD').value,
-                "CONVERSATION_TOKEN": document.getElementById('CONVERSATION_TOKEN').value,
                 "UI_PREFERENCES": {
                     "LIVE_PORTFOLIO": document.getElementById('LIVE_PORTFOLIO').checked,
                     "LIVE_WATCHLIST": document.getElementById('LIVE_WATCHLIST').checked,
