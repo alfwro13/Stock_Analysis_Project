@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
+from starlette_csrf import CSRFMiddleware
 
 from config import PORT, SERVER_URL
 from auth import COOKIE_NAME, verify_session_token
@@ -44,6 +45,13 @@ app = FastAPI(title="Quantamental Dashboard", lifespan=lifespan)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
+app.add_middleware(
+    CSRFMiddleware,
+    secret=os.environ.get("APP_SECRET_KEY", "fallback-insecure"),
+    sensitive_cookies={"session"},   # only enforce when a session cookie is present
+    cookie_httponly=False,           # JS must be able to read it
+    cookie_samesite="lax",
+)
 
 # Paths that never require a session
 _EXEMPT = {"/login", "/api/login"}
