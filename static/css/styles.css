@@ -29,6 +29,10 @@ abbr { text-decoration: underline dotted #666; text-underline-offset: 3px; curso
 .body-notifications { margin: 0; padding: 0; }
 .body-notifications .header-container { padding-left: 40px; padding-right: 40px; }
 .body-notifications .notification-actions-bar { max-width: 1400px; margin: 0 auto; padding: 0 20px 20px; display: flex; justify-content: flex-end; gap: 15px; }
+.body-notifications .notification-filter-bar { max-width: 1400px; margin: 0 auto; padding: 0 20px 16px; display: flex; flex-wrap: wrap; gap: 8px; }
+.filter-btn { background-color: #2a2a2a; color: #aaa; border: 1px solid #444; border-radius: 20px; padding: 5px 14px; font-size: 13px; font-weight: 600; cursor: pointer; transition: background-color 0.2s, color 0.2s, border-color 0.2s; }
+.filter-btn:hover { background-color: #3a3a3a; color: #fff; border-color: #666; }
+.filter-btn.active { background-color: #4da6ff; color: #121212; border-color: #4da6ff; }
 .body-notifications .notification-list { max-width: 1400px; margin: 0 auto; padding: 0 20px 40px; }
 .body-portfolio, .body-watchlist, .body-detail, .body-screener, .body-sentiment { margin: 0; padding: 20px; }
 .body-detail { padding-bottom: 50px; }

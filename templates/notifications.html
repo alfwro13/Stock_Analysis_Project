@@ -27,10 +27,21 @@
         <button class="btn-danger" onclick="purgeAllNotifications()">🗑️ Purge All</button>
     </div>
 
+    <div class="notification-filter-bar">
+        <button class="filter-btn active" data-filter="all" onclick="setFilter(this)">All</button>
+        <button class="filter-btn" data-filter="Crash" onclick="setFilter(this)">Crash</button>
+        <button class="filter-btn" data-filter="Moonshot" onclick="setFilter(this)">Moonshot</button>
+        <button class="filter-btn" data-filter="Scheduler" onclick="setFilter(this)">Scheduler</button>
+        <button class="filter-btn" data-filter="Success" onclick="setFilter(this)">Success</button>
+        <button class="filter-btn" data-filter="Error" onclick="setFilter(this)">Error</button>
+        <button class="filter-btn" data-filter="Warning" onclick="setFilter(this)">Warning</button>
+        <button class="filter-btn" data-filter="Info" onclick="setFilter(this)">Info</button>
+    </div>
+
     <div class="notification-list">
         {% if notifications %}
             {% for note in notifications %}
-            <div class="notification-card {% if not note.is_read %}unread{% endif %}">
+            <div class="notification-card {% if not note.is_read %}unread{% endif %}" data-type="{{ note.message_type }}">
                 <div class="notification-header">
                     <span class="notification-type">{{ note.message_type }} Alert</span>
                     <span>{{ note.timestamp }}</span>
@@ -50,18 +61,29 @@
     <script>
         // Store the highest ID generated on initial render so we only fetch exactly what's new.
         let lastNotificationId = {% if notifications %}{{ notifications[0].id }}{% else %}0{% endif %};
+        let activeFilter = 'all';
+
+        function setFilter(btn) {
+            activeFilter = btn.dataset.filter;
+            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            document.querySelectorAll('.notification-list .notification-card').forEach(card => {
+                const type = card.dataset.type || '';
+                card.style.display = (activeFilter === 'all' || type === activeFilter) ? '' : 'none';
+            });
+        }
 
         // Delta Auto-Refresh Polling Engine
         setInterval(async () => {
             try {
                 const response = await fetch(`/api/notifications/latest?last_id=${lastNotificationId}`);
                 const result = await response.json();
-                
+
                 if (response.ok && result.status === 'success') {
                     const notes = result.notifications;
                     if (notes.length > 0) {
                         const list = document.querySelector('.notification-list');
-                        
+
                         // Clear out the empty state message dynamically if it exists
                         const emptyMsg = document.getElementById('empty-state-msg');
                         if (emptyMsg) emptyMsg.remove();
@@ -69,6 +91,10 @@
                         notes.forEach(note => {
                             const card = document.createElement('div');
                             card.className = 'notification-card unread';
+                            card.dataset.type = note.type;
+                            if (activeFilter !== 'all' && note.type !== activeFilter) {
+                                card.style.display = 'none';
+                            }
                             card.innerHTML = `
                                 <div class="notification-header">
                                     <span class="notification-type">${note.type} Alert</span>
@@ -77,7 +103,7 @@
                                 <div class="notification-body">${note.text}</div>
                             `;
                             list.prepend(card);
-                            
+
                             // Advance the marker to the newest ID
                             lastNotificationId = Math.max(lastNotificationId, note.id);
                         });
