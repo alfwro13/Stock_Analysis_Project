@@ -1,32 +1,30 @@
-# main.py
 import logging
 import os
+import secrets
 import uvicorn
-from fastapi import FastAPI, Depends, Request
-from fastapi.responses import RedirectResponse
+from fastapi import FastAPI, Request
+from fastapi.responses import RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 
 from config import PORT, SERVER_URL
-from auth import require_auth
+from auth import COOKIE_NAME, verify_session_token
 from database import init_db
 from scheduler_engine import start_scheduler, shutdown_scheduler, reload_scheduler
 
-# Modular Route Imports
 from api_routes import api_router
 from page_routes import page_router
 from data_engine import run_yfinance_smoke_test
 
-# Configure robust module-level logging centrally for the entire application
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Lifecycle manager for the FastAPI application."""
     logger.info("Initializing application lifecycle...")
     init_db()
     run_yfinance_smoke_test()
@@ -36,17 +34,45 @@ async def lifespan(app: FastAPI):
     shutdown_scheduler()
     logger.info("Application lifecycle terminated safely.")
 
-# Initialize Fast & Scalable Application
-app = FastAPI(title="Quantamental Dashboard", lifespan=lifespan, dependencies=[Depends(require_auth)])
 
-CHANGE_PASSWORD_PATHS = {"/change-password", "/api/change-password"}
+app = FastAPI(title="Quantamental Dashboard", lifespan=lifespan)
+
+# Paths that never require a session
+_EXEMPT = {"/login", "/api/login"}
+_EXEMPT_PREFIXES = ("/static/", "/assets/")
+
+# Paths accessible with a valid session even when password is still default
+_CHANGE_PW_PATHS = {"/change-password", "/api/change-password"}
+
 
 @app.middleware("http")
-async def force_password_change(request: Request, call_next):
-    if request.url.path not in CHANGE_PASSWORD_PATHS:
-        if os.environ.get("DASHBOARD_PASSWORD") == "changeme":
-            return RedirectResponse("/change-password")
+async def auth_middleware(request: Request, call_next):
+    path = request.url.path
+
+    # Static files and login routes are always public
+    if path in _EXEMPT or any(path.startswith(p) for p in _EXEMPT_PREFIXES):
+        return await call_next(request)
+
+    # API key authentication (for scripts / curl)
+    api_key = request.headers.get("X-API-Key", "")
+    if api_key:
+        expected = os.environ.get("API_KEY", "")
+        if expected and secrets.compare_digest(api_key.encode(), expected.encode()):
+            return await call_next(request)
+        return JSONResponse({"detail": "Invalid API key"}, status_code=401)
+
+    # Session cookie authentication
+    token = request.cookies.get(COOKIE_NAME, "")
+    if not token or not verify_session_token(token):
+        next_path = request.url.path
+        return RedirectResponse(f"/login?next={next_path}", status_code=302)
+
+    # Force password change on first login
+    if path not in _CHANGE_PW_PATHS and os.environ.get("DASHBOARD_PASSWORD") == "changeme":
+        return RedirectResponse("/change-password", status_code=302)
+
     return await call_next(request)
+
 
 # Mount Static Directories
 app.mount("/assets", StaticFiles(directory="assets"), name="assets")

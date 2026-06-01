@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="color-scheme" content="dark">
+    <title>Quantamental - Login</title>
+    <link rel="stylesheet" href="/static/css/styles.css?v={{ css_version }}">
+    <style>
+        body { display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
+        .login-card {
+            width: 100%;
+            max-width: 380px;
+            padding: 2.5rem 2rem;
+            background: var(--card-bg, #1e1e2e);
+            border-radius: 14px;
+            border: 1px solid var(--border-color, #333);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+        }
+        .login-logo {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 1.75rem;
+        }
+        .login-logo img { width: 36px; height: 36px; }
+        .login-logo span { font-size: 1.2rem; font-weight: 600; letter-spacing: 0.01em; }
+        .login-field { display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 1rem; }
+        .login-field label { font-size: 0.82rem; color: var(--text-muted, #aaa); }
+        .login-field input {
+            padding: 0.6rem 0.8rem;
+            border-radius: 7px;
+            border: 1px solid var(--border-color, #444);
+            background: var(--input-bg, #111);
+            color: inherit;
+            font-size: 0.97rem;
+            transition: border-color 0.15s;
+        }
+        .login-field input:focus { outline: none; border-color: #4f8ef7; }
+        .remember-row {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 1.4rem;
+            font-size: 0.87rem;
+            color: var(--text-muted, #aaa);
+            cursor: pointer;
+        }
+        .remember-row input[type=checkbox] { width: 15px; height: 15px; cursor: pointer; accent-color: #4f8ef7; }
+        .login-btn {
+            width: 100%;
+            padding: 0.7rem;
+            border-radius: 7px;
+            border: none;
+            background: #4f8ef7;
+            color: #fff;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        .login-btn:hover { background: #3a75d4; }
+        .login-btn:disabled { background: #2a4a7f; cursor: not-allowed; }
+        .login-error {
+            margin-top: 1rem;
+            padding: 0.55rem 0.8rem;
+            border-radius: 6px;
+            background: #3d1a1a;
+            color: #f87171;
+            font-size: 0.88rem;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-card">
+        <div class="login-logo">
+            <img src="/assets/logo_small.png" alt="Logo">
+            <span>Quantamental</span>
+        </div>
+
+        <form id="loginForm" autocomplete="on">
+            <div class="login-field">
+                <label for="username">Username</label>
+                <input type="text" id="username" name="username" autocomplete="username" autofocus required>
+            </div>
+            <div class="login-field">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" autocomplete="current-password" required>
+            </div>
+            <label class="remember-row">
+                <input type="checkbox" id="remember_me" name="remember_me">
+                Remember me for 30 days
+            </label>
+            <button type="submit" class="login-btn" id="loginBtn">Sign in</button>
+        </form>
+
+        <div id="loginError" class="login-error"></div>
+    </div>
+
+    <script>
+        const form = document.getElementById('loginForm');
+        const btn  = document.getElementById('loginBtn');
+        const err  = document.getElementById('loginError');
+        const params = new URLSearchParams(window.location.search);
+        const nextUrl = params.get('next') || '/';
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            err.style.display = 'none';
+            btn.disabled = true;
+            btn.textContent = 'Signing in…';
+
+            const body = {
+                username:    document.getElementById('username').value,
+                password:    document.getElementById('password').value,
+                remember_me: document.getElementById('remember_me').checked,
+            };
+
+            const res = await fetch('/api/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+
+            if (res.ok) {
+                window.location.href = nextUrl;
+            } else {
+                const data = await res.json().catch(() => ({}));
+                err.textContent = data.detail || 'Login failed.';
+                err.style.display = 'block';
+                btn.disabled = false;
+                btn.textContent = 'Sign in';
+            }
+        });
+    </script>
+</body>
+</html>

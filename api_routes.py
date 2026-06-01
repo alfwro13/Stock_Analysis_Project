@@ -16,7 +16,7 @@ from datetime import datetime
 from typing import Any, List, Optional
 from pathlib import Path
 
-from fastapi import APIRouter, Request, BackgroundTasks, HTTPException, Query, Path as PathParam
+from fastapi import APIRouter, Request, BackgroundTasks, HTTPException, Query, Path as PathParam, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -64,6 +64,29 @@ from macro_ai_engine import MacroAIEngine
 logger = logging.getLogger(__name__)
 
 api_router = APIRouter(prefix="/api")
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+    remember_me: bool = False
+
+
+@api_router.post("/login")
+async def login(body: LoginRequest, response: Response):
+    import secrets as _secrets
+    valid_user = _secrets.compare_digest(
+        body.username.encode(), os.environ.get("DASHBOARD_USERNAME", "").encode()
+    )
+    valid_pass = _secrets.compare_digest(
+        body.password.encode(), os.environ.get("DASHBOARD_PASSWORD", "").encode()
+    )
+    if not (valid_user and valid_pass):
+        raise HTTPException(status_code=401, detail="Invalid username or password.")
+    from auth import create_session_token, cookie_kwargs
+    token = create_session_token(body.username, body.remember_me)
+    response.set_cookie(value=token, **cookie_kwargs(body.remember_me))
+    return {"status": "ok"}
 
 
 class ChangePasswordRequest(BaseModel):

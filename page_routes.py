@@ -44,6 +44,18 @@ templates = Jinja2Templates(directory="templates")
 templates.env.globals["css_version"] = CSS_VERSION
 
 
+@page_router.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request):
+    return templates.TemplateResponse(request=request, name="login.html")
+
+
+@page_router.get("/logout")
+async def logout():
+    response = RedirectResponse("/login", status_code=302)
+    response.delete_cookie("session")
+    return response
+
+
 @page_router.get("/change-password", response_class=HTMLResponse)
 async def change_password_page(request: Request):
     return templates.TemplateResponse(request=request, name="change_password.html")
