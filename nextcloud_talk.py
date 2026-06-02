@@ -82,10 +82,13 @@ def share_file_to_talk(remote_path, conversation_token, nextcloud_url, bot_usern
 
 def send_text_message(message_text: str, config_data: dict) -> bool:
     """Sends a direct text payload to Nextcloud Talk using dynamic configurations."""
-    url = config_data.get("NEXTCLOUD_URL", "")
-    token = config_data.get("CONVERSATION_TOKEN", "")
-    user = config_data.get("BOT_USERNAME", "")
-    pwd = config_data.get("APP_PASSWORD", "")
+    # Env vars take precedence — credentials are sensitive and are never written to
+    # config.json, only to .env / os.environ. config_data (from load_config()) is
+    # kept as a fallback for callers that resolve credentials themselves.
+    url = os.environ.get("NEXTCLOUD_URL") or config_data.get("NEXTCLOUD_URL", "")
+    token = os.environ.get("NEXTCLOUD_CONVERSATION_TOKEN") or config_data.get("CONVERSATION_TOKEN", "")
+    user = os.environ.get("NEXTCLOUD_BOT_USERNAME") or config_data.get("BOT_USERNAME", "")
+    pwd = os.environ.get("NEXTCLOUD_APP_PASSWORD") or config_data.get("APP_PASSWORD", "")
     
     if not all([url, token, user, pwd]):
         return False

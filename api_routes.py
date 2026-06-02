@@ -167,16 +167,14 @@ async def save_nextcloud_settings(body: SaveNextcloudSettingsRequest):
 @api_router.post("/test-nextcloud-message")
 async def test_nextcloud_message():
     from nextcloud_talk import send_text_message
-    from config import load_config
-    cfg = load_config()
-    url = cfg.get("NEXTCLOUD_URL", "")
-    token = cfg.get("CONVERSATION_TOKEN", "")
-    user = cfg.get("BOT_USERNAME", "")
-    pwd = cfg.get("APP_PASSWORD", "")
+    url = os.environ.get("NEXTCLOUD_URL", "")
+    token = os.environ.get("NEXTCLOUD_CONVERSATION_TOKEN", "")
+    user = os.environ.get("NEXTCLOUD_BOT_USERNAME", "")
+    pwd = os.environ.get("NEXTCLOUD_APP_PASSWORD", "")
     if not all([url, token, user, pwd]):
-        missing = [k for k, v in {"NEXTCLOUD_URL": url, "CONVERSATION_TOKEN": token, "BOT_USERNAME": user, "APP_PASSWORD": pwd}.items() if not v]
+        missing = [k for k, v in {"NEXTCLOUD_URL": url, "NEXTCLOUD_CONVERSATION_TOKEN": token, "NEXTCLOUD_BOT_USERNAME": user, "NEXTCLOUD_APP_PASSWORD": pwd}.items() if not v]
         return JSONResponse(status_code=400, content={"status": "error", "message": f"Missing credentials: {', '.join(missing)}"})
-    ok = send_text_message("✅ Quantamental test message — Nextcloud Talk integration is working correctly.", cfg)
+    ok = send_text_message("✅ Quantamental test message — Nextcloud Talk integration is working correctly.", {})
     if ok:
         return JSONResponse(content={"status": "success", "message": "Test message sent successfully."})
     return JSONResponse(status_code=500, content={"status": "error", "message": "Send failed. Check server logs for the HTTP error detail."})
