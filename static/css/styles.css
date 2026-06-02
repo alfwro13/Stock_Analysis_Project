@@ -170,7 +170,7 @@ details.settings-card[open] > summary { border-bottom: 1px solid #333; margin-bo
 .sidebar-link:hover { color: #00ffcc; text-decoration: none; }
 .sidebar-link:last-child { border-bottom: none; }
 .glossary-search-container { position: sticky; top: 0; z-index: 1100; background-color: #121212; padding: 20px 0; margin-bottom: 10px; }
-.glossary-search-bar { width: 100%; padding: 15px 20px; font-size: 18px; border-radius: 30px; border: 2px solid #333; background-color: #1e1e1e; color: #fff; box-shadow: 0 4px 15px rgba(0,0,0,0.5); outline: none; transition: border-color 0.3s, box-shadow 0.3s; }
+.glossary-search-bar { width: 100%; box-sizing: border-box; padding: 15px 20px; font-size: 18px; border-radius: 30px; border: 2px solid #333; background-color: #1e1e1e; color: #fff; box-shadow: 0 4px 15px rgba(0,0,0,0.5); outline: none; transition: border-color 0.3s, box-shadow 0.3s; }
 .glossary-search-bar:focus { border-color: #00ffcc; box-shadow: 0 0 15px rgba(0, 255, 204, 0.3); }
 .term-box { background-color: #2c2c2c; padding: 20px; border-radius: 8px; margin-bottom: 20px; border-left: 4px transparent solid; transition: border-color 0.3s; }
 .term-box.search-match { border-left-color: #00ffcc; background-color: #1a2636; }
