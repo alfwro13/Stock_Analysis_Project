@@ -313,35 +313,56 @@
                         </div>
                     </div>
 
-                    <div class="settings-panel-sm border-left-cyan">
-                        <h4 class="settings-panel-header text-cyan">📰 NLP Market Sentiment Engine</h4>
-                        <p class="settings-desc-sm">Fetches financial news and runs FinBERT NLP sentiment analysis independently of the core quant scan.</p>
-                        <div class="checkbox-group">
-                            <input type="checkbox" id="SENTIMENT_ENGINE_ENABLED" {% if config.SCHEDULING.SENTIMENT_ENGINE.ENABLED %}checked{% endif %}>
-                            <label for="SENTIMENT_ENGINE_ENABLED">Enable automated news sentiment scraping</label>
+                    {% set q_engine = config.SCHEDULING.QUANT_ENGINE if config.SCHEDULING.QUANT_ENGINE else {} %}
+                    {% set q_days = q_engine.DAYS if q_engine.DAYS else ['mon', 'tue', 'wed', 'thu', 'fri'] %}
+
+                    <div class="settings-panel border-left-cyan">
+                        <h4 class="settings-panel-header text-cyan">📊 Daily Quant Screener (Portfolio & Watchlist)</h4>
+                        <p class="settings-desc-sm">Runs the fast overnight quantitative data aggregation and scanning for your active assets.</p>
+
+                        <div class="flex-gap-15 mb-15 flex-wrap">
+                            <label><input type="checkbox" class="quant-day" value="mon" {% if 'mon' in q_days %}checked{% endif %}> Mon</label>
+                            <label><input type="checkbox" class="quant-day" value="tue" {% if 'tue' in q_days %}checked{% endif %}> Tue</label>
+                            <label><input type="checkbox" class="quant-day" value="wed" {% if 'wed' in q_days %}checked{% endif %}> Wed</label>
+                            <label><input type="checkbox" class="quant-day" value="thu" {% if 'thu' in q_days %}checked{% endif %}> Thu</label>
+                            <label><input type="checkbox" class="quant-day" value="fri" {% if 'fri' in q_days %}checked{% endif %}> Fri</label>
+                            <label><input type="checkbox" class="quant-day" value="sat" {% if 'sat' in q_days %}checked{% endif %}> Sat</label>
+                            <label><input type="checkbox" class="quant-day" value="sun" {% if 'sun' in q_days %}checked{% endif %}> Sun</label>
                         </div>
-                        <div class="flex-gap-15 mb-10">
-                            <div class="form-group flex-1">
-                                <label>Active Days</label>
-                                <select id="SENTIMENT_ENGINE_FREQ">
-                                    <option value="mon-fri" {% if config.SCHEDULING.SENTIMENT_ENGINE.FREQUENCY == 'mon-fri' %}selected{% endif %}>Mon-Fri</option>
-                                    <option value="*" {% if config.SCHEDULING.SENTIMENT_ENGINE.FREQUENCY == '*' %}selected{% endif %}>Every Day</option>
-                                </select>
+
+                        <div class="flex-gap-15 align-end">
+                            <div class="form-group mb-0">
+                                <label>Execution Time</label>
+                                <input type="time" id="QUANT_ENGINE_TIME" value="{{ q_engine.TIME | default('01:00') }}">
                             </div>
-                            <div class="form-group flex-1">
-                                <label>Start Time</label>
-                                <input type="time" id="SENTIMENT_ENGINE_START" value="{{ config.SCHEDULING.SENTIMENT_ENGINE.START_TIME | default('09:30') }}">
-                            </div>
-                            <div class="form-group flex-1">
-                                <label>End Time</label>
-                                <input type="time" id="SENTIMENT_ENGINE_END" value="{{ config.SCHEDULING.SENTIMENT_ENGINE.END_TIME | default('16:00') }}">
-                            </div>
-                            <div class="form-group flex-1">
-                                <label>Interval (Hours)</label>
-                                <input type="number" id="SENTIMENT_ENGINE_INTERVAL" value="{{ config.SCHEDULING.SENTIMENT_ENGINE.INTERVAL_HOURS | default(4) }}" min="1">
-                            </div>
+                            <button type="button" class="btn-test mt-0" onclick="triggerQuantScan()">▶️ Run Daily Scan Now</button>
                         </div>
-                        <button type="button" class="btn-test mt-0 btn-cyan" onclick="triggerSentimentScan()">▶️ Run Sentiment Scan Now</button>
+                    </div>
+
+                    {% set e_engine = config.SCHEDULING.EARNINGS_ENGINE if config.SCHEDULING.EARNINGS_ENGINE else {} %}
+                    {% set e_days = e_engine.DAYS if e_engine.DAYS else ['sat'] %}
+
+                    <div class="settings-panel border-left-orange">
+                        <h4 class="settings-panel-header text-orange">📅 Earnings Volatility Engine</h4>
+                        <p class="settings-desc-sm">Calculates options mispricing and mathematical edge for upcoming earnings events.</p>
+
+                        <div class="flex-gap-15 mb-15 flex-wrap">
+                            <label><input type="checkbox" class="earn-day" value="mon" {% if 'mon' in e_days %}checked{% endif %}> Mon</label>
+                            <label><input type="checkbox" class="earn-day" value="tue" {% if 'tue' in e_days %}checked{% endif %}> Tue</label>
+                            <label><input type="checkbox" class="earn-day" value="wed" {% if 'wed' in e_days %}checked{% endif %}> Wed</label>
+                            <label><input type="checkbox" class="earn-day" value="thu" {% if 'thu' in e_days %}checked{% endif %}> Thu</label>
+                            <label><input type="checkbox" class="earn-day" value="fri" {% if 'fri' in e_days %}checked{% endif %}> Fri</label>
+                            <label><input type="checkbox" class="earn-day" value="sat" {% if 'sat' in e_days %}checked{% endif %}> Sat</label>
+                            <label><input type="checkbox" class="earn-day" value="sun" {% if 'sun' in e_days %}checked{% endif %}> Sun</label>
+                        </div>
+
+                        <div class="flex-gap-15 align-end">
+                            <div class="form-group mb-0">
+                                <label>Execution Time</label>
+                                <input type="time" id="EARNINGS_ENGINE_TIME" value="{{ e_engine.TIME | default('10:00') }}">
+                            </div>
+                            <button type="button" class="btn-test mt-0" onclick="triggerEarningsScan()">▶️ Run Now</button>
+                        </div>
                     </div>
 
                 </details>
@@ -481,7 +502,7 @@
                 </details>
 
                 <details class="settings-card">
-                    <summary>📊 Automated Reports & Logic Thresholds</summary>
+                    <summary>📊 Alerts and Reports</summary>
 
                     <div class="settings-panel">
                         <h4 class="settings-panel-header text-blue">📅 Portfolio Earnings Alerts</h4>
@@ -571,72 +592,14 @@
                         <button type="button" class="btn-test" onclick="testSentimentAlert()">🧪 Run Test Alert Now</button>
                         <div id="test-status-msg"></div>
                     </div>
-                </details>
 
-                <details class="settings-card">
-                    <summary>🔬 Quantitative Engines (Background Jobs)</summary>
-                    
-                    {% set q_engine = config.SCHEDULING.QUANT_ENGINE if config.SCHEDULING.QUANT_ENGINE else {} %}
-                    {% set q_days = q_engine.DAYS if q_engine.DAYS else ['mon', 'tue', 'wed', 'thu', 'fri'] %}
-                    
-                    <div class="settings-panel border-left-cyan">
-                        <h4 class="settings-panel-header text-cyan">📊 Daily Quant Screener (Portfolio & Watchlist)</h4>
-                        <p class="settings-desc-sm">Runs the fast overnight quantitative data aggregation and scanning for your active assets.</p>
-                        
-                        <div class="flex-gap-15 mb-15 flex-wrap">
-                            <label><input type="checkbox" class="quant-day" value="mon" {% if 'mon' in q_days %}checked{% endif %}> Mon</label>
-                            <label><input type="checkbox" class="quant-day" value="tue" {% if 'tue' in q_days %}checked{% endif %}> Tue</label>
-                            <label><input type="checkbox" class="quant-day" value="wed" {% if 'wed' in q_days %}checked{% endif %}> Wed</label>
-                            <label><input type="checkbox" class="quant-day" value="thu" {% if 'thu' in q_days %}checked{% endif %}> Thu</label>
-                            <label><input type="checkbox" class="quant-day" value="fri" {% if 'fri' in q_days %}checked{% endif %}> Fri</label>
-                            <label><input type="checkbox" class="quant-day" value="sat" {% if 'sat' in q_days %}checked{% endif %}> Sat</label>
-                            <label><input type="checkbox" class="quant-day" value="sun" {% if 'sun' in q_days %}checked{% endif %}> Sun</label>
-                        </div>
-                        
-                        <div class="flex-gap-15 align-end">
-                            <div class="form-group mb-0">
-                                <label>Execution Time</label>
-                                <input type="time" id="QUANT_ENGINE_TIME" value="{{ q_engine.TIME | default('01:00') }}">
-                            </div>
-                            <button type="button" class="btn-test mt-0" onclick="triggerQuantScan()">▶️ Run Daily Scan Now</button>
-                        </div>
-                    </div>
-
-                
-
-                    {% set e_engine = config.SCHEDULING.EARNINGS_ENGINE if config.SCHEDULING.EARNINGS_ENGINE else {} %}
-                    {% set e_days = e_engine.DAYS if e_engine.DAYS else ['sat'] %}
-
-                    <div class="settings-panel border-left-orange">
-                        <h4 class="settings-panel-header text-orange">📅 Earnings Volatility Engine</h4>
-                        <p class="settings-desc-sm">Calculates options mispricing and mathematical edge for upcoming earnings events.</p>
-                        
-                        <div class="flex-gap-15 mb-15 flex-wrap">
-                            <label><input type="checkbox" class="earn-day" value="mon" {% if 'mon' in e_days %}checked{% endif %}> Mon</label>
-                            <label><input type="checkbox" class="earn-day" value="tue" {% if 'tue' in e_days %}checked{% endif %}> Tue</label>
-                            <label><input type="checkbox" class="earn-day" value="wed" {% if 'wed' in e_days %}checked{% endif %}> Wed</label>
-                            <label><input type="checkbox" class="earn-day" value="thu" {% if 'thu' in e_days %}checked{% endif %}> Thu</label>
-                            <label><input type="checkbox" class="earn-day" value="fri" {% if 'fri' in e_days %}checked{% endif %}> Fri</label>
-                            <label><input type="checkbox" class="earn-day" value="sat" {% if 'sat' in e_days %}checked{% endif %}> Sat</label>
-                            <label><input type="checkbox" class="earn-day" value="sun" {% if 'sun' in e_days %}checked{% endif %}> Sun</label>
-                        </div>
-                        
-                        <div class="flex-gap-15 align-end">
-                            <div class="form-group mb-0">
-                                <label>Execution Time</label>
-                                <input type="time" id="EARNINGS_ENGINE_TIME" value="{{ e_engine.TIME | default('10:00') }}">
-                            </div>
-                            <button type="button" class="btn-test mt-0" onclick="triggerEarningsScan()">▶️ Run Now</button>
-                        </div>
-                    </div>
-                    
                     {% set d_engine = config.SCHEDULING.DISPATCHER if config.SCHEDULING.DISPATCHER else {} %}
                     {% set d_days = d_engine.DAYS if d_engine.DAYS else ['mon', 'tue', 'wed', 'thu', 'fri'] %}
-                    
+
                     <div class="settings-panel border-left-pink">
                         <h4 class="settings-panel-header text-pink">📨 Morning Briefing Push Notification</h4>
                         <p class="settings-desc-sm">Automatically dispatches the overnight Quant Screener Markdown report directly to Nextcloud Talk.</p>
-                        
+
                         <div class="checkbox-group">
                             <input type="checkbox" id="DISPATCHER_ENABLED" {% if d_engine.ENABLED %}checked{% endif %}>
                             <label for="DISPATCHER_ENABLED">Enable Nextcloud Talk Dispatch</label>
@@ -651,7 +614,7 @@
                             <label><input type="checkbox" class="dispatch-day" value="sat" {% if 'sat' in d_days %}checked{% endif %}> Sat</label>
                             <label><input type="checkbox" class="dispatch-day" value="sun" {% if 'sun' in d_days %}checked{% endif %}> Sun</label>
                         </div>
-                        
+
                         <div class="flex-gap-15 align-end">
                             <div class="form-group mb-0">
                                 <label>Execution Time</label>
@@ -756,6 +719,37 @@
                             <button type="button" class="btn-test mt-0 btn-cyan" onclick="triggerMLInference()">▶️ Run Inference Now</button>
                         </div>
                     </div>
+
+                    <div class="settings-panel-sm border-left-cyan">
+                        <h4 class="settings-panel-header text-cyan">📰 NLP Market Sentiment Engine</h4>
+                        <p class="settings-desc-sm">Fetches financial news and runs FinBERT NLP sentiment analysis independently of the core quant scan.</p>
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="SENTIMENT_ENGINE_ENABLED" {% if config.SCHEDULING.SENTIMENT_ENGINE.ENABLED %}checked{% endif %}>
+                            <label for="SENTIMENT_ENGINE_ENABLED">Enable automated news sentiment scraping</label>
+                        </div>
+                        <div class="flex-gap-15 mb-10">
+                            <div class="form-group flex-1">
+                                <label>Active Days</label>
+                                <select id="SENTIMENT_ENGINE_FREQ">
+                                    <option value="mon-fri" {% if config.SCHEDULING.SENTIMENT_ENGINE.FREQUENCY == 'mon-fri' %}selected{% endif %}>Mon-Fri</option>
+                                    <option value="*" {% if config.SCHEDULING.SENTIMENT_ENGINE.FREQUENCY == '*' %}selected{% endif %}>Every Day</option>
+                                </select>
+                            </div>
+                            <div class="form-group flex-1">
+                                <label>Start Time</label>
+                                <input type="time" id="SENTIMENT_ENGINE_START" value="{{ config.SCHEDULING.SENTIMENT_ENGINE.START_TIME | default('09:30') }}">
+                            </div>
+                            <div class="form-group flex-1">
+                                <label>End Time</label>
+                                <input type="time" id="SENTIMENT_ENGINE_END" value="{{ config.SCHEDULING.SENTIMENT_ENGINE.END_TIME | default('16:00') }}">
+                            </div>
+                            <div class="form-group flex-1">
+                                <label>Interval (Hours)</label>
+                                <input type="number" id="SENTIMENT_ENGINE_INTERVAL" value="{{ config.SCHEDULING.SENTIMENT_ENGINE.INTERVAL_HOURS | default(4) }}" min="1">
+                            </div>
+                        </div>
+                        <button type="button" class="btn-test mt-0 btn-cyan" onclick="triggerSentimentScan()">▶️ Run Sentiment Scan Now</button>
+                    </div>
                 </details>
                 
                 <details class="settings-card">
@@ -839,27 +833,6 @@
                                 value="{{ config.POSITION_SIZING.STOP_MULTIPLE | default(2.0) }}"
                                 min="1" max="5" step="0.5">
                         </div>
-                    </div>
-                </details>
-
-                <details class="settings-card">
-                    <summary>🌐 Advanced Network & Socket Binding</summary>
-                    <p class="settings-desc">Configure low-level routing overrides. If you specify an IPv6 address here, the system will explicitly bind all Yahoo Finance edge traffic to this socket to bypass restrictive IPv4 rate limits.</p>
-                    
-                    <div class="settings-panel border-left-cyan">
-                        <div class="flex-gap-10 mb-15 flex-center-wrap">
-                            <strong class="text-muted">Current Active Route:</strong>
-                            <span id="network-route-badge" class="setup-tag text-muted border-none">Checking...</span>
-                        </div>
-                        <div id="network-route-details" class="text-muted-desc mb-20">Waiting for status...</div>
-
-                        <div class="form-group mb-10">
-                            <label>Yahoo Finance IPv6 Binding Address (Leave blank for OS Default)</label>
-                            <input type="text" id="YAHOO_IPV6_ADDRESS" value="{{ config.YAHOO_IPV6_ADDRESS | default('') }}" placeholder="e.g., 2001:db8:1234:5678::1">
-                        </div>
-                        
-                        <button type="button" class="btn-test mt-10 btn-cyan" id="testIpv6Btn" onclick="testYahooIPv6()">🧪 Test IPv6 Connection</button>
-                        <div id="test-ipv6-msg" class="status-msg-sm d-none"></div>
                     </div>
                 </details>
 
@@ -1046,6 +1019,27 @@
                 <div class="form-group">
                     <label>Ignored Tickers (Comma separated, e.g. GBP, USD, 0P00018XAR.L)</label>
                     <input type="text" id="IGNORED_TICKERS" value="{{ config.IGNORED_TICKERS | join(', ') if config.IGNORED_TICKERS else '' }}">
+                </div>
+            </details>
+
+            <details class="settings-card">
+                <summary>🌐 Advanced Network & Socket Binding</summary>
+                <p class="settings-desc">Configure low-level routing overrides. If you specify an IPv6 address here, the system will explicitly bind all Yahoo Finance edge traffic to this socket to bypass restrictive IPv4 rate limits.</p>
+
+                <div class="settings-panel border-left-cyan">
+                    <div class="flex-gap-10 mb-15 flex-center-wrap">
+                        <strong class="text-muted">Current Active Route:</strong>
+                        <span id="network-route-badge" class="setup-tag text-muted border-none">Checking...</span>
+                    </div>
+                    <div id="network-route-details" class="text-muted-desc mb-20">Waiting for status...</div>
+
+                    <div class="form-group mb-10">
+                        <label>Yahoo Finance IPv6 Binding Address (Leave blank for OS Default)</label>
+                        <input type="text" id="YAHOO_IPV6_ADDRESS" value="{{ config.YAHOO_IPV6_ADDRESS | default('') }}" placeholder="e.g., 2001:db8:1234:5678::1">
+                    </div>
+
+                    <button type="button" class="btn-test mt-10 btn-cyan" id="testIpv6Btn" onclick="testYahooIPv6()">🧪 Test IPv6 Connection</button>
+                    <div id="test-ipv6-msg" class="status-msg-sm d-none"></div>
                 </div>
             </details>
 
