@@ -1050,7 +1050,10 @@
                     <label>Talk Conversation Token</label>
                     <input type="text" id="CONVERSATION_TOKEN" value="{{ nextcloud_conversation_token }}" placeholder="ch2dtvqn">
                 </div>
-                <button type="button" class="btn-test mt-0" onclick="saveNextcloudSettings()">💾 Save Nextcloud Settings</button>
+                <div class="flex-gap-15 mt-0">
+                    <button type="button" class="btn-test" onclick="saveNextcloudSettings()">💾 Save Nextcloud Settings</button>
+                    <button type="button" class="btn-test btn-cyan" onclick="testNextcloudMessage()">🧪 Send Test Message</button>
+                </div>
                 <div id="nc-status-msg"></div>
             </details>
 
@@ -2333,6 +2336,27 @@
             } finally {
                 btn.disabled = false;
                 btn.innerText = '💾 Save Nextcloud Settings';
+            }
+        }
+
+        async function testNextcloudMessage() {
+            const btn = document.querySelector('button[onclick="testNextcloudMessage()"]');
+            btn.disabled = true;
+            btn.innerText = '⏳ Sending…';
+            setStatus('nc-status-msg', 'info', 'Sending test message…');
+            try {
+                const res = await fetch('/api/test-nextcloud-message', { method: 'POST' });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok) {
+                    setStatus('nc-status-msg', 'success', data.message || 'Test message sent successfully.');
+                } else {
+                    setStatus('nc-status-msg', 'error', data.message || 'Send failed.');
+                }
+            } catch (e) {
+                setStatus('nc-status-msg', 'error', 'Network error while sending test.');
+            } finally {
+                btn.disabled = false;
+                btn.innerText = '🧪 Send Test Message';
             }
         }
 

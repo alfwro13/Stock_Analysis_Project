@@ -146,7 +146,7 @@ class IntradayOrchestrator:
         conn.close()
         return metadata
 
-    def log_notification_feed(self, msg_type: str, msg_text: str, conn: sqlite3.Connection) -> None:
+    def log_notification_feed(self, msg_type: str, msg_text: str, conn: sqlite3.Connection, status: str = "sent") -> None:
         """Writes a row to the user-facing notification feed (display only).
 
         Fire-and-forget — has NO bearing on alert suppression. Deduplication is
@@ -160,8 +160,8 @@ class IntradayOrchestrator:
             cursor = conn.cursor()
             cursor.execute(
                 "INSERT INTO system_notifications (message_type, message_text, status) "
-                "VALUES (?, ?, 'sent')",
-                (msg_type, msg_text)
+                "VALUES (?, ?, ?)",
+                (msg_type, msg_text, status)
             )
             conn.commit()
         except Exception as e:
@@ -436,9 +436,14 @@ class IntradayOrchestrator:
             sent = f"{meta.get('sentiment_score'):.3f}" if meta.get('sentiment_score') is not None else "N/A"
             msg = msg_builder(ticker, formatted_price, alert, ml_conf, var, sent, url)
             try:
-                send_text_message(msg, self.config)
+                ok = send_text_message(msg, self.config)
             except Exception as e:
                 logger.error(f"{engine} alert dispatch failed for {ticker}: {e}")
+                self.log_notification_feed(engine, feed_builder(ticker, formatted_price, alert), conn, status="failed")
+                continue
+            if not ok:
+                logger.error("%s alert Nextcloud send returned False for %s — credentials missing or network error. Alert will retry next scan.", engine, ticker)
+                self.log_notification_feed(engine, feed_builder(ticker, formatted_price, alert), conn, status="failed")
                 continue
             self.record_alert_fired(engine, ticker, alert['price'], alert['reason'], conn)
             self.log_notification_feed(engine, feed_builder(ticker, formatted_price, alert), conn)
@@ -565,9 +570,14 @@ class IntradayOrchestrator:
                             f"Risk-Off environment detected."
                         )
                         try:
-                            send_text_message(msg, self.config)
+                            ok = send_text_message(msg, self.config)
                         except Exception as e:
                             logger.error(f"Macro alert dispatch failed for {m_ticker}: {e}")
+                            self.log_notification_feed("Macro", f"Systemic Yield Surge detected on {m_ticker} (+{m_spike:.2f}%)", conn, status="failed")
+                            continue
+                        if not ok:
+                            logger.error("Macro alert Nextcloud send returned False for %s — credentials missing or network error.", m_ticker)
+                            self.log_notification_feed("Macro", f"Systemic Yield Surge detected on {m_ticker} (+{m_spike:.2f}%)", conn, status="failed")
                             continue
                         self.record_alert_fired("Macro", m_ticker, m_curr, reason_macro, conn)
                         self.log_notification_feed(

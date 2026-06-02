@@ -1,6 +1,9 @@
 # nextcloud_talk.py
+import logging
 import os
 import requests
+
+logger = logging.getLogger(__name__)
 
 def __noop_logger(*args, **kwargs):
     """A logger that does nothing."""
@@ -106,5 +109,5 @@ def send_text_message(message_text: str, config_data: dict) -> bool:
         response.raise_for_status()
         return True
     except Exception as e:
-        print(f"[ERROR] Failed to send Nextcloud text message: {e}")
+        logger.error("Failed to send Nextcloud text message: %s", e)
         return False

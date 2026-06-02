@@ -44,7 +44,12 @@
             <div class="notification-card {% if not note.is_read %}unread{% endif %}" data-type="{{ note.message_type }}">
                 <div class="notification-header">
                     <span class="notification-type">{{ note.message_type }} Alert</span>
-                    <span>{{ note.timestamp }}</span>
+                    <div style="display:flex;gap:10px;align-items:center;">
+                        {% if note.status == 'failed' %}
+                        <span style="color:#e74c3c;font-size:0.75rem;font-weight:600;">⚠ Nextcloud send failed</span>
+                        {% endif %}
+                        <span>{{ note.timestamp }}</span>
+                    </div>
                 </div>
                 <div class="notification-body">{{ note.message_text }}</div>
             </div>
