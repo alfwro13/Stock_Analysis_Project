@@ -14,8 +14,9 @@ Covers the three invariants of the unauthenticated RSS feed at /rss/alerts.xml:
      X-API-Key header.  A future middleware change must not silently break this.
 """
 
-import sys
+import copy
 import sqlite3
+import sys
 import xml.etree.ElementTree as ET
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -27,14 +28,29 @@ from fastapi.testclient import TestClient
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import config as _cfg_module
 import database as _db_module
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
+def _rss_config(enabled: bool) -> dict:
+    """Return a config dict with RSS_FEED.ENABLED set to the given value."""
+    cfg = copy.deepcopy(_cfg_module.DEFAULT_CONFIG)
+    cfg["NOTIFICATIONS"]["RSS_FEED"]["ENABLED"] = enabled
+    return cfg
+
+
+@contextmanager
+def _rss_enabled(enabled: bool):
+    """Context manager that patches page_routes.load_config for the duration."""
+    with patch("page_routes.load_config", return_value=_rss_config(enabled)):
+        yield
+
+
 @contextmanager
 def _fresh_client():
-    """Yield a brand-new TestClient with no credentials and redirects not followed."""
+    """Yield a brand-new unauthenticated TestClient (no X-API-Key, redirects not followed)."""
     with (
         patch("main.run_yfinance_smoke_test"),
         patch("main.start_scheduler"),
@@ -53,32 +69,24 @@ def _seed_alerts(conn: sqlite3.Connection) -> None:
         "INSERT INTO system_notifications (message_type, message_text, timestamp, is_read, status) "
         "VALUES (?, ?, ?, 0, 'sent')",
         [
-            ("Crash",    f"**Price:** £100.00 | Intraday Alert triggered for AAPL. Reason: SESSION CRASH", ts),
-            ("Moonshot", f"**Price:** £200.00 | Intraday Alert triggered for TSLA. Reason: Breached 52-Week High", ts),
+            ("Crash",    "**Price:** £100.00 | Intraday Alert triggered for AAPL. Reason: SESSION CRASH", ts),
+            ("Moonshot", "**Price:** £200.00 | Intraday Alert triggered for TSLA. Reason: Breached 52-Week High", ts),
         ],
     )
     conn.commit()
 
 
-def _set_rss_enabled(enabled: bool) -> None:
-    """Toggle NOTIFICATIONS.RSS_FEED.ENABLED in the live config module."""
-    import config as _cfg
-    _cfg.current_config.setdefault("NOTIFICATIONS", {}).setdefault("RSS_FEED", {})["ENABLED"] = enabled
-
-
 # ── tests ─────────────────────────────────────────────────────────────────────
 
-@pytest.mark.rss
 def test_rss_feed_disabled_returns_404(client):
     """Feed must return 404 when RSS_FEED.ENABLED is False (the default)."""
-    _set_rss_enabled(False)
-    resp = client.get("/rss/alerts.xml")
+    with _rss_enabled(False):
+        resp = client.get("/rss/alerts.xml")
     assert resp.status_code == 404, (
         f"Expected 404 when feed is disabled, got {resp.status_code}"
     )
 
 
-@pytest.mark.rss
 def test_rss_feed_enabled_returns_valid_xml(client):
     """Feed returns 200 with well-formed RSS 2.0 XML when enabled."""
     conn = _db_module.get_connection()
@@ -87,60 +95,51 @@ def test_rss_feed_enabled_returns_valid_xml(client):
     finally:
         conn.close()
 
-    _set_rss_enabled(True)
-    try:
+    with _rss_enabled(True):
         resp = client.get("/rss/alerts.xml")
-        assert resp.status_code == 200, f"Expected 200, got {resp.status_code}\n{resp.text[:500]}"
-        assert "application/rss+xml" in resp.headers.get("content-type", ""), (
-            f"Expected application/rss+xml Content-Type, got {resp.headers.get('content-type')}"
-        )
 
-        # Must parse as valid XML
-        try:
-            root = ET.fromstring(resp.text)
-        except ET.ParseError as exc:
-            raise AssertionError(f"Feed body is not valid XML: {exc}\n{resp.text[:500]}") from exc
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}\n{resp.text[:500]}"
+    assert "application/rss+xml" in resp.headers.get("content-type", ""), (
+        f"Unexpected Content-Type: {resp.headers.get('content-type')}"
+    )
 
-        assert root.tag == "rss", f"Root element should be <rss>, got <{root.tag}>"
-        assert root.get("version") == "2.0", "RSS version attribute should be 2.0"
-
-        channel = root.find("channel")
-        assert channel is not None, "<channel> element is missing"
-        assert channel.find("title") is not None, "<title> is missing from <channel>"
-        assert channel.find("description") is not None, "<description> is missing from <channel>"
-
-        items = channel.findall("item")
-        assert len(items) >= 2, f"Expected at least 2 <item> elements, found {len(items)}"
-
-        for item in items:
-            assert item.find("title") is not None, "<item> is missing <title>"
-            assert item.find("description") is not None, "<item> is missing <description>"
-            assert item.find("pubDate") is not None, "<item> is missing <pubDate>"
-            assert item.find("guid") is not None, "<item> is missing <guid>"
-    finally:
-        _set_rss_enabled(False)
-
-
-@pytest.mark.rss
-def test_rss_feed_accessible_without_auth():
-    """Feed must be reachable with no session cookie and no X-API-Key header."""
-    _set_rss_enabled(True)
     try:
-        with _fresh_client() as anon:
+        root = ET.fromstring(resp.text)
+    except ET.ParseError as exc:
+        raise AssertionError(f"Feed body is not valid XML: {exc}\n{resp.text[:500]}") from exc
+
+    assert root.tag == "rss", f"Root element should be <rss>, got <{root.tag}>"
+    assert root.get("version") == "2.0", "RSS version attribute should be 2.0"
+
+    channel = root.find("channel")
+    assert channel is not None, "<channel> element is missing"
+    assert channel.find("title") is not None, "<title> missing from <channel>"
+    assert channel.find("description") is not None, "<description> missing from <channel>"
+
+    items = channel.findall("item")
+    assert len(items) >= 2, f"Expected at least 2 <item> elements, found {len(items)}"
+    for item in items:
+        assert item.find("title") is not None, "<item> is missing <title>"
+        assert item.find("description") is not None, "<item> is missing <description>"
+        assert item.find("pubDate") is not None, "<item> is missing <pubDate>"
+        assert item.find("guid") is not None, "<item> is missing <guid>"
+
+
+def test_rss_feed_accessible_without_auth():
+    """Feed must be reachable with no session cookie and no X-API-Key.
+    A future middleware change must not silently gate this endpoint."""
+    with _fresh_client() as anon:
+        with _rss_enabled(True):
             resp = anon.get("/rss/alerts.xml")
-            # 200 (enabled) or 404 (disabled) are both fine here — what must NOT happen
-            # is a 401 or a 302 redirect to /login.
-            assert resp.status_code not in (401, 302), (
-                f"Feed should never require authentication, got {resp.status_code}. "
-                "Check _EXEMPT_PREFIXES in main.py."
-            )
-    finally:
-        _set_rss_enabled(False)
+    # 200 or 404 are acceptable — 401 and 302-to-login are not.
+    assert resp.status_code not in (401, 302), (
+        f"Feed should never require authentication, got {resp.status_code}. "
+        "Check _EXEMPT_PREFIXES in main.py."
+    )
 
 
-@pytest.mark.rss
 def test_rss_feed_excludes_non_alert_notification_types(client):
-    """Feed must only contain Crash and Moonshot items, not Scheduler/Info/etc."""
+    """Feed must only include Crash/Moonshot items, not Scheduler/Info/etc."""
     conn = _db_module.get_connection()
     try:
         ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
@@ -153,17 +152,14 @@ def test_rss_feed_excludes_non_alert_notification_types(client):
     finally:
         conn.close()
 
-    _set_rss_enabled(True)
-    try:
+    with _rss_enabled(True):
         resp = client.get("/rss/alerts.xml")
-        assert resp.status_code == 200
 
-        root = ET.fromstring(resp.text)
-        channel = root.find("channel")
-        for item in channel.findall("item"):
-            title = item.find("title").text or ""
-            assert "Scheduler" not in title, (
-                f"Non-alert item leaked into RSS feed: {title!r}"
-            )
-    finally:
-        _set_rss_enabled(False)
+    assert resp.status_code == 200
+    root = ET.fromstring(resp.text)
+    channel = root.find("channel")
+    for item in channel.findall("item"):
+        title = item.find("title").text or ""
+        assert "Scheduler" not in title, (
+            f"Non-alert item leaked into RSS feed: {title!r}"
+        )
