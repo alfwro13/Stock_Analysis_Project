@@ -164,6 +164,78 @@ async def save_nextcloud_settings(body: SaveNextcloudSettingsRequest):
     return {"status": "ok"}
 
 
+class SaveGhostfolioSettingsRequest(BaseModel):
+    GHOSTFOLIO_URL: str
+    GHOSTFOLIO_TOKEN: str
+
+
+@api_router.post("/save-ghostfolio-settings", dependencies=[Depends(require_confirm_token)])
+async def save_ghostfolio_settings(body: SaveGhostfolioSettingsRequest):
+    from dotenv import set_key
+    from config import BASE_DIR
+    env_path = str(BASE_DIR / ".env")
+    set_key(env_path, "GHOSTFOLIO_URL", body.GHOSTFOLIO_URL)
+    set_key(env_path, "GHOSTFOLIO_TOKEN", body.GHOSTFOLIO_TOKEN)
+    os.environ["GHOSTFOLIO_URL"] = body.GHOSTFOLIO_URL
+    os.environ["GHOSTFOLIO_TOKEN"] = body.GHOSTFOLIO_TOKEN
+    return {"status": "ok"}
+
+
+class SaveFredApiKeyRequest(BaseModel):
+    FRED_API_KEY: str
+
+
+@api_router.post("/save-fred-api-key", dependencies=[Depends(require_confirm_token)])
+async def save_fred_api_key(body: SaveFredApiKeyRequest):
+    from dotenv import set_key
+    from config import BASE_DIR
+    env_path = str(BASE_DIR / ".env")
+    set_key(env_path, "FRED_API_KEY", body.FRED_API_KEY)
+    os.environ["FRED_API_KEY"] = body.FRED_API_KEY
+    return {"status": "ok"}
+
+
+class ChangeUsernameRequest(BaseModel):
+    new_username: str
+
+
+@api_router.post("/change-username", dependencies=[Depends(require_confirm_token)])
+async def change_username(body: ChangeUsernameRequest):
+    from dotenv import set_key
+    from config import BASE_DIR
+    username = body.new_username.strip()
+    if not username:
+        raise HTTPException(status_code=400, detail="Username cannot be empty.")
+    env_path = str(BASE_DIR / ".env")
+    set_key(env_path, "DASHBOARD_USERNAME", username)
+    os.environ["DASHBOARD_USERNAME"] = username
+    return {"status": "ok"}
+
+
+@api_router.post("/rotate-app-secret", dependencies=[Depends(require_confirm_token)])
+async def rotate_app_secret():
+    import secrets as _secrets
+    from dotenv import set_key
+    from config import BASE_DIR
+    new_secret = _secrets.token_hex(32)
+    env_path = str(BASE_DIR / ".env")
+    set_key(env_path, "APP_SECRET_KEY", new_secret)
+    os.environ["APP_SECRET_KEY"] = new_secret
+    return {"status": "ok"}
+
+
+@api_router.post("/rotate-confirm-token", dependencies=[Depends(require_confirm_token)])
+async def rotate_confirm_token():
+    import secrets as _secrets
+    from dotenv import set_key
+    from config import BASE_DIR
+    new_token = _secrets.token_hex(16)
+    env_path = str(BASE_DIR / ".env")
+    set_key(env_path, "ADMIN_CONFIRM_TOKEN", new_token)
+    os.environ["ADMIN_CONFIRM_TOKEN"] = new_token
+    return {"status": "ok", "new_token": new_token}
+
+
 # --- RESOLVE CORRECT IMPORT DIRECTORY ---
 IMPORT_DIR = BASE_DIR / "tools" / "data" / "imports"
 

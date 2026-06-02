@@ -239,6 +239,9 @@ async def settings_page(request: Request):
             "nextcloud_bot_username": os.environ.get("NEXTCLOUD_BOT_USERNAME", ""),
             "nextcloud_app_password": os.environ.get("NEXTCLOUD_APP_PASSWORD", ""),
             "nextcloud_conversation_token": os.environ.get("NEXTCLOUD_CONVERSATION_TOKEN", ""),
+            "ghostfolio_url": os.environ.get("GHOSTFOLIO_URL", ""),
+            "ghostfolio_token": os.environ.get("GHOSTFOLIO_TOKEN", ""),
+            "fred_api_key": os.environ.get("FRED_API_KEY", ""),
         }
     )
 

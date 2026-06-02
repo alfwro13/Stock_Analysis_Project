@@ -764,9 +764,10 @@
                     <p class="settings-desc">The Federal Reserve Economic Data (FRED) API is required to fetch structural macroeconomic indicators like M2 Money Supply and High Yield Spreads. Get a free API key at <a href="https://fred.stlouisfed.org/docs/api/api_key.html" target="_blank" class="text-cyan">fred.stlouisfed.org</a>.</p>
                     <div class="form-group mb-25">
                         <label>FRED API Key</label>
-                        <input type="password" id="FRED_API_KEY" value="{{ config.FRED_API_KEY | default('') }}" readonly style="opacity:0.6; cursor:not-allowed;">
-                        <p class="settings-desc" style="margin-top:0.3rem;">Managed via <code>.env</code> — edit the file directly to change this value.</p>
+                        <input type="password" id="FRED_API_KEY" value="{{ fred_api_key }}" autocomplete="new-password" placeholder="Enter your FRED API key">
                     </div>
+                    <button type="button" class="btn-test mt-0" onclick="saveFredApiKey()">💾 Save FRED API Key</button>
+                    <div id="fred-status-msg"></div>
 
                     {% set macro_sched = config.SCHEDULING.MACRO_ENGINE if config.SCHEDULING.MACRO_ENGINE else {} %}
                     
@@ -1050,15 +1051,17 @@
 
             <details class="settings-card">
                 <summary>👻 Ghostfolio Integration API</summary>
-                <p class="settings-desc">These credentials are managed via <code>.env</code> and are read-only here. Edit the file directly to change them.</p>
+                <p class="settings-desc">Credentials are stored in <code>.env</code> and applied at runtime. Changes take effect immediately without a restart.</p>
                 <div class="form-group">
                     <label>Ghostfolio Server URL</label>
-                    <input type="text" id="GHOSTFOLIO_URL" value="{{ config.GHOSTFOLIO_URL }}" readonly style="opacity:0.6; cursor:not-allowed;">
+                    <input type="text" id="GHOSTFOLIO_URL" value="{{ ghostfolio_url }}" placeholder="http://192.168.1.x:3333">
                 </div>
                 <div class="form-group">
                     <label>Security API Token</label>
-                    <input type="password" id="API_TOKEN" value="{{ config.API_TOKEN }}" readonly style="opacity:0.6; cursor:not-allowed;">
+                    <input type="password" id="API_TOKEN" value="{{ ghostfolio_token }}" autocomplete="new-password">
                 </div>
+                <button type="button" class="btn-test mt-0" onclick="saveGhostfolioSettings()">💾 Save Ghostfolio Credentials</button>
+                <div id="ghostfolio-creds-msg"></div>
 
                 <div class="settings-panel mt-20">
                     <h4 class="settings-panel-header text-blue">Opt-In Account Syncing</h4>
@@ -1092,8 +1095,19 @@
                 <div class="settings-panel mt-20">
                     <h4 class="settings-panel-header text-blue">Logged in as</h4>
                     <p class="settings-desc" style="font-size:1rem; color: var(--text-primary, #fff);">
-                        <strong>{{ dashboard_username }}</strong>
+                        <strong id="ua-username-display">{{ dashboard_username }}</strong>
                     </p>
+                </div>
+
+                <div class="settings-panel mt-20">
+                    <h4 class="settings-panel-header text-blue">Change Username</h4>
+                    <p class="settings-desc">Update your dashboard login username.</p>
+                    <div class="form-group">
+                        <label>New username</label>
+                        <input type="text" id="ua_new_username" autocomplete="username" placeholder="{{ dashboard_username }}">
+                    </div>
+                    <button type="button" class="btn-test mt-0" onclick="changeUsername()">👤 Update Username</button>
+                    <div id="ua-username-msg"></div>
                 </div>
 
                 <div class="settings-panel mt-20">
@@ -1139,6 +1153,20 @@
                 </div>
 
                 <div class="settings-panel mt-20">
+                    <h4 class="settings-panel-header text-blue">App Secret Key</h4>
+                    <p class="settings-desc">Used to sign session tokens. Rotating immediately invalidates all active sessions — every user will be logged out.</p>
+                    <button type="button" class="btn-test mt-0" onclick="rotateAppSecret()">🔄 Rotate App Secret</button>
+                    <div id="ua-secret-msg"></div>
+                </div>
+
+                <div class="settings-panel mt-20">
+                    <h4 class="settings-panel-header text-blue">Settings Confirm Token</h4>
+                    <p class="settings-desc">Internal token that authorises settings saves. Rotating generates a new random token and updates <code>.env</code> immediately.</p>
+                    <button type="button" class="btn-test mt-0" onclick="rotateConfirmToken()">🔄 Rotate Confirm Token</button>
+                    <div id="ua-confirmtoken-msg"></div>
+                </div>
+
+                <div class="settings-panel mt-20">
                     <h4 class="settings-panel-header text-blue">Session</h4>
                     <p class="settings-desc">Sign out of the dashboard on this device.</p>
                     <a href="/logout" class="btn-test mt-0" style="display:inline-block; text-decoration:none;">🚪 Log Out</a>
@@ -1163,7 +1191,7 @@
     </script>
 
     <script>
-        const CONFIRM_TOKEN = "{{ confirm_token }}";
+        let CONFIRM_TOKEN = "{{ confirm_token }}";
         const accountsDataNode = document.getElementById('discoveredAccountsData').textContent;
         let currentDiscoveredAccounts = JSON.parse(accountsDataNode);
         const macroInitState = JSON.parse(document.getElementById('macroInitState').textContent);
@@ -2144,6 +2172,129 @@
                     btn.innerText = "💾 Save & Apply System Settings"; 
                     document.getElementById('status-msg').innerText = "";
                 }, 5000);
+            }
+        }
+
+        async function saveGhostfolioSettings() {
+            const btn = document.querySelector('button[onclick="saveGhostfolioSettings()"]');
+            btn.disabled = true;
+            btn.innerText = '⏳ Saving…';
+            setStatus('ghostfolio-creds-msg', 'info', 'Saving…');
+            try {
+                const res = await fetch('/api/save-ghostfolio-settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-Confirm-Token': CONFIRM_TOKEN },
+                    body: JSON.stringify({
+                        GHOSTFOLIO_URL: document.getElementById('GHOSTFOLIO_URL').value.trim(),
+                        GHOSTFOLIO_TOKEN: document.getElementById('API_TOKEN').value.trim(),
+                    }),
+                });
+                const data = await res.json().catch(() => ({}));
+                setStatus('ghostfolio-creds-msg', res.ok ? 'success' : 'error',
+                    res.ok ? 'Ghostfolio credentials saved.' : (data.detail || 'Failed to save.'));
+            } catch (e) {
+                setStatus('ghostfolio-creds-msg', 'error', 'Network error while saving.');
+            } finally {
+                btn.disabled = false;
+                btn.innerText = '💾 Save Ghostfolio Credentials';
+            }
+        }
+
+        async function saveFredApiKey() {
+            const btn = document.querySelector('button[onclick="saveFredApiKey()"]');
+            btn.disabled = true;
+            btn.innerText = '⏳ Saving…';
+            setStatus('fred-status-msg', 'info', 'Saving…');
+            try {
+                const res = await fetch('/api/save-fred-api-key', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-Confirm-Token': CONFIRM_TOKEN },
+                    body: JSON.stringify({ FRED_API_KEY: document.getElementById('FRED_API_KEY').value.trim() }),
+                });
+                const data = await res.json().catch(() => ({}));
+                setStatus('fred-status-msg', res.ok ? 'success' : 'error',
+                    res.ok ? 'FRED API key saved.' : (data.detail || 'Failed to save.'));
+            } catch (e) {
+                setStatus('fred-status-msg', 'error', 'Network error while saving.');
+            } finally {
+                btn.disabled = false;
+                btn.innerText = '💾 Save FRED API Key';
+            }
+        }
+
+        async function changeUsername() {
+            const btn = document.querySelector('button[onclick="changeUsername()"]');
+            btn.disabled = true;
+            btn.innerText = '⏳ Saving…';
+            setStatus('ua-username-msg', 'info', 'Updating…');
+            try {
+                const res = await fetch('/api/change-username', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-Confirm-Token': CONFIRM_TOKEN },
+                    body: JSON.stringify({ new_username: document.getElementById('ua_new_username').value }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok) {
+                    const newName = document.getElementById('ua_new_username').value.trim();
+                    document.getElementById('ua-username-display').innerText = newName;
+                    document.getElementById('ua_new_username').value = '';
+                    setStatus('ua-username-msg', 'success', 'Username updated.');
+                } else {
+                    setStatus('ua-username-msg', 'error', data.detail || 'Failed to update username.');
+                }
+            } catch (e) {
+                setStatus('ua-username-msg', 'error', 'Network error while saving.');
+            } finally {
+                btn.disabled = false;
+                btn.innerText = '👤 Update Username';
+            }
+        }
+
+        async function rotateAppSecret() {
+            if (!confirm('Rotating the app secret will log out ALL active sessions immediately. Continue?')) return;
+            const btn = document.querySelector('button[onclick="rotateAppSecret()"]');
+            btn.disabled = true;
+            btn.innerText = '⏳ Rotating…';
+            setStatus('ua-secret-msg', 'info', 'Rotating…');
+            try {
+                const res = await fetch('/api/rotate-app-secret', {
+                    method: 'POST',
+                    headers: { 'X-Confirm-Token': CONFIRM_TOKEN },
+                });
+                const data = await res.json().catch(() => ({}));
+                setStatus('ua-secret-msg', res.ok ? 'success' : 'error',
+                    res.ok ? 'App secret rotated. All sessions have been invalidated.' : (data.detail || 'Failed to rotate.'));
+            } catch (e) {
+                setStatus('ua-secret-msg', 'error', 'Network error while rotating.');
+            } finally {
+                btn.disabled = false;
+                btn.innerText = '🔄 Rotate App Secret';
+            }
+        }
+
+        async function rotateConfirmToken() {
+            if (!confirm('Rotating the confirm token will update CONFIRM_TOKEN on this page. Continue?')) return;
+            const btn = document.querySelector('button[onclick="rotateConfirmToken()"]');
+            btn.disabled = true;
+            btn.innerText = '⏳ Rotating…';
+            setStatus('ua-confirmtoken-msg', 'info', 'Rotating…');
+            try {
+                const res = await fetch('/api/rotate-confirm-token', {
+                    method: 'POST',
+                    headers: { 'X-Confirm-Token': CONFIRM_TOKEN },
+                });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok) {
+                    if (data.new_token) CONFIRM_TOKEN = data.new_token;
+                    setStatus('ua-confirmtoken-msg', 'success', 'Confirm token rotated and updated in-page.');
+                } else {
+                    setStatus('ua-confirmtoken-msg', 'error', data.detail || 'Failed to rotate.');
+                }
+            } catch (e) {
+                setStatus('ua-confirmtoken-msg', 'error', 'Network error while rotating.');
+            } finally {
+                btn.disabled = false;
+                btn.innerText = '🔄 Rotate Confirm Token';
             }
         }
 
