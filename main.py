@@ -55,7 +55,7 @@ app.add_middleware(
 
 # Paths that never require a session
 _EXEMPT = {"/login", "/api/login"}
-_EXEMPT_PREFIXES = ("/static/", "/assets/")
+_EXEMPT_PREFIXES = ("/static/", "/assets/", "/rss/")
 
 # Paths accessible with a valid session even when password is still default
 _CHANGE_PW_PATHS = {"/change-password", "/api/change-password"}

@@ -483,6 +483,23 @@
                             </div>
                         </div>
                     </div>
+
+                    <div class="settings-panel border-left-blue">
+                        <h4 class="settings-panel-header text-blue">📡 RSS Feed</h4>
+                        <p class="settings-desc-sm">Subscribe to crash and moonshot alerts via RSS. The feed is unauthenticated and publicly accessible — share the URL with any RSS reader.</p>
+                        <div class="checkbox-group mb-10">
+                            <input type="checkbox" id="RSS_FEED_ENABLED" {% if config.NOTIFICATIONS.RSS_FEED.ENABLED %}checked{% endif %}>
+                            <label for="RSS_FEED_ENABLED">Enable RSS feed for crash &amp; moonshot alerts</label>
+                        </div>
+                        <div class="form-group">
+                            <label>Feed URL</label>
+                            <div class="flex-gap-10">
+                                <input type="text" id="RSS_FEED_URL" value="{{ config.SERVER_URL }}:{{ config.PORT }}/rss/alerts.xml" readonly style="flex: 1; background: #1a1a1a; cursor: default;">
+                                <button type="button" class="btn-secondary" onclick="copyRssFeedUrl()" style="white-space: nowrap;">Copy URL</button>
+                            </div>
+                            <p class="text-muted-desc">Add this URL to any RSS reader (e.g. Nextcloud News, Feedly, Miniflux). When disabled, the feed returns 404.</p>
+                        </div>
+                    </div>
                 </details>
 
                 <details class="settings-card">
@@ -1215,6 +1232,16 @@
             el.style.display = 'block';
             el.innerHTML = htmlMsg;
             el.className = 'status-msg-sm ' + (type === 'success' ? 'box-success' : type === 'error' ? 'box-error' : type === 'warning' ? 'box-warning' : 'box-info');
+        }
+
+        function copyRssFeedUrl() {
+            const url = document.getElementById('RSS_FEED_URL').value;
+            navigator.clipboard.writeText(url).then(() => {
+                const btn = document.querySelector('button[onclick="copyRssFeedUrl()"]');
+                const orig = btn.innerText;
+                btn.innerText = 'Copied!';
+                setTimeout(() => { btn.innerText = orig; }, 1500);
+            });
         }
 
         function requestBrowserNotificationPermission() {
@@ -2147,6 +2174,9 @@
                         "SPIKE_DAYS": parseInt(document.getElementById('MOONSHOT_SPIKE_DAYS').value),
                         "SMA_LENGTH": parseInt(document.getElementById('MOONSHOT_SMA_LENGTH').value),
                         "SMA_GAP_PERCENT": parseFloat(document.getElementById('MOONSHOT_SMA_GAP_PERCENT').value)
+                    },
+                    "RSS_FEED": {
+                        "ENABLED": document.getElementById('RSS_FEED_ENABLED').checked
                     }
                 }
             };

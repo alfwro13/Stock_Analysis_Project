@@ -1,12 +1,16 @@
 # page_routes.py
+import email.utils
+import ipaddress
 import json
 import re
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from html import escape as html_escape
 from typing import Dict, Any, List
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from position_sizing import get_position_sizing_config
@@ -1118,3 +1122,89 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
             "position_sizing": position_sizing_context
         }
     )
+
+
+def _build_rss_base_url(server_url: str, port: int) -> str:
+    """Build base URL for RSS feed, appending port only for IP/localhost."""
+    base = str(server_url).rstrip('/')
+    parsed = urlparse(base if "://" in base else f"http://{base}")
+    hostname = parsed.hostname or ""
+    is_local = hostname == "localhost"
+    if not is_local:
+        try:
+            ipaddress.ip_address(hostname)
+            is_local = True
+        except ValueError:
+            pass
+    if is_local and parsed.port is None:
+        return f"{base}:{port}"
+    return base
+
+
+@page_router.get("/rss/alerts.xml")
+async def rss_alerts_feed():
+    cfg = load_config()
+    if not cfg.get("NOTIFICATIONS", {}).get("RSS_FEED", {}).get("ENABLED", False):
+        return Response(status_code=404)
+
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id, message_type, message_text, timestamp FROM system_notifications "
+            "WHERE message_type IN ('Crash', 'Moonshot') ORDER BY id DESC LIMIT 50"
+        )
+        rows = cursor.fetchall()
+    finally:
+        if conn:
+            conn.close()
+
+    base_url = _build_rss_base_url(
+        cfg.get("SERVER_URL", "http://localhost"),
+        cfg.get("PORT", 8090)
+    )
+    now_str = email.utils.formatdate(usegmt=True)
+
+    items = []
+    for row in rows:
+        try:
+            dt = datetime.strptime(row["timestamp"][:19], "%Y-%m-%d %H:%M:%S")
+            pub_date = dt.replace(tzinfo=timezone.utc).strftime("%a, %d %b %Y %H:%M:%S +0000")
+        except Exception:
+            pub_date = now_str
+
+        msg_type = row["message_type"]
+        msg_text = row["message_text"] or ""
+
+        m = re.search(r"triggered for ([A-Z0-9.\-\^=]+)\.", msg_text)
+        ticker = m.group(1) if m else "Unknown"
+
+        title = html_escape(f"{msg_type} Alert — {ticker}")
+        desc = html_escape(msg_text.replace("**", ""))
+        link = html_escape(f"{base_url}/stock/{ticker}")
+
+        items.append(
+            f"    <item>\n"
+            f"      <title>{title}</title>\n"
+            f"      <description>{desc}</description>\n"
+            f"      <link>{link}</link>\n"
+            f"      <pubDate>{pub_date}</pubDate>\n"
+            f"      <guid isPermaLink=\"false\">alert-{row['id']}</guid>\n"
+            f"    </item>"
+        )
+
+    feed_xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<rss version="2.0">\n'
+        '  <channel>\n'
+        '    <title>Quantamental Dashboard &#8212; Crash &amp; Moonshot Alerts</title>\n'
+        f'    <link>{html_escape(base_url)}</link>\n'
+        '    <description>Real-time intraday crash and moonshot alerts from your portfolio scanner</description>\n'
+        f'    <lastBuildDate>{now_str}</lastBuildDate>\n'
+        + ("\n".join(items) + "\n" if items else "")
+        + '  </channel>\n'
+        '</rss>'
+    )
+
+    return Response(content=feed_xml, media_type="application/rss+xml")

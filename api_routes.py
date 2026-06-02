@@ -361,6 +361,7 @@ class NotificationsConfig(BaseModel):
     INSIDER_TRADING: Optional[NotificationItemConfig] = None
     CRASH_ALERTS: Optional[NotificationItemConfig] = None
     MOONSHOT_ALERTS: Optional[NotificationItemConfig] = None
+    RSS_FEED: Optional[NotificationItemConfig] = None
 
 class FreetradeMappingsConfig(BaseModel):
     US_MICS: Optional[List[str]] = None
