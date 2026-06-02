@@ -140,6 +140,30 @@ async def change_password(body: ChangePasswordRequest):
     return {"status": "ok"}
 
 
+class SaveNextcloudSettingsRequest(BaseModel):
+    NEXTCLOUD_URL: str
+    BOT_USERNAME: str
+    APP_PASSWORD: str
+    CONVERSATION_TOKEN: str
+
+
+@api_router.post("/save-nextcloud-settings", dependencies=[Depends(require_confirm_token)])
+async def save_nextcloud_settings(body: SaveNextcloudSettingsRequest):
+    from dotenv import set_key
+    from config import BASE_DIR
+    env_path = str(BASE_DIR / ".env")
+    mapping = {
+        "NEXTCLOUD_URL": body.NEXTCLOUD_URL,
+        "NEXTCLOUD_BOT_USERNAME": body.BOT_USERNAME,
+        "NEXTCLOUD_APP_PASSWORD": body.APP_PASSWORD,
+        "NEXTCLOUD_CONVERSATION_TOKEN": body.CONVERSATION_TOKEN,
+    }
+    for key, value in mapping.items():
+        set_key(env_path, key, value)
+        os.environ[key] = value
+    return {"status": "ok"}
+
+
 # --- RESOLVE CORRECT IMPORT DIRECTORY ---
 IMPORT_DIR = BASE_DIR / "tools" / "data" / "imports"
 

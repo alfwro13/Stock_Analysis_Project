@@ -1027,23 +1027,25 @@
 
             <details class="settings-card">
                 <summary>☁️ Nextcloud Talk Webhooks</summary>
-                <p class="settings-desc">These credentials are managed via <code>.env</code> and are read-only here. Edit the file directly to change them.</p>
+                <p class="settings-desc">Credentials are stored in <code>.env</code> and applied at runtime. Changes take effect immediately without a restart.</p>
                 <div class="form-group">
                     <label>Nextcloud Server URL</label>
-                    <input type="text" id="NEXTCLOUD_URL" value="{{ config.NEXTCLOUD_URL }}" readonly style="opacity:0.6; cursor:not-allowed;">
+                    <input type="text" id="NEXTCLOUD_URL" value="{{ nextcloud_url }}" placeholder="https://your.nextcloud.example">
                 </div>
                 <div class="form-group">
                     <label>Bot Username</label>
-                    <input type="text" id="BOT_USERNAME" value="{{ config.BOT_USERNAME }}" readonly style="opacity:0.6; cursor:not-allowed;">
+                    <input type="text" id="BOT_USERNAME" value="{{ nextcloud_bot_username }}" placeholder="notify.bot">
                 </div>
                 <div class="form-group">
                     <label>App Password</label>
-                    <input type="password" id="APP_PASSWORD" value="{{ config.APP_PASSWORD }}" readonly style="opacity:0.6; cursor:not-allowed;">
+                    <input type="password" id="APP_PASSWORD" value="{{ nextcloud_app_password }}" autocomplete="new-password">
                 </div>
                 <div class="form-group">
                     <label>Talk Conversation Token</label>
-                    <input type="text" id="CONVERSATION_TOKEN" value="{{ config.CONVERSATION_TOKEN }}" readonly style="opacity:0.6; cursor:not-allowed;">
+                    <input type="text" id="CONVERSATION_TOKEN" value="{{ nextcloud_conversation_token }}" placeholder="ch2dtvqn">
                 </div>
+                <button type="button" class="btn-test mt-0" onclick="saveNextcloudSettings()">💾 Save Nextcloud Settings</button>
+                <div id="nc-status-msg"></div>
             </details>
 
             <details class="settings-card">
@@ -2142,6 +2144,39 @@
                     btn.innerText = "💾 Save & Apply System Settings"; 
                     document.getElementById('status-msg').innerText = "";
                 }, 5000);
+            }
+        }
+
+        async function saveNextcloudSettings() {
+            const btn = document.querySelector('button[onclick="saveNextcloudSettings()"]');
+            btn.disabled = true;
+            btn.innerText = '⏳ Saving…';
+            setStatus('nc-status-msg', 'info', 'Saving…');
+
+            const payload = {
+                NEXTCLOUD_URL: document.getElementById('NEXTCLOUD_URL').value.trim(),
+                BOT_USERNAME: document.getElementById('BOT_USERNAME').value.trim(),
+                APP_PASSWORD: document.getElementById('APP_PASSWORD').value,
+                CONVERSATION_TOKEN: document.getElementById('CONVERSATION_TOKEN').value.trim(),
+            };
+
+            try {
+                const res = await fetch('/api/save-nextcloud-settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-Confirm-Token': CONFIRM_TOKEN },
+                    body: JSON.stringify(payload),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok) {
+                    setStatus('nc-status-msg', 'success', 'Nextcloud settings saved to .env.');
+                } else {
+                    setStatus('nc-status-msg', 'error', data.detail || 'Failed to save.');
+                }
+            } catch (e) {
+                setStatus('nc-status-msg', 'error', 'Network error while saving.');
+            } finally {
+                btn.disabled = false;
+                btn.innerText = '💾 Save Nextcloud Settings';
             }
         }
 
