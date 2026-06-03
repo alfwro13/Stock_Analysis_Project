@@ -807,10 +807,6 @@ def assemble_xray_report(account_id: str) -> Dict:
             "weighted_dividend_yield": weighted_div_yield,
             "projected_annual_income": projected_annual_income,
         },
-        "correlation_matrix": (
-            {"tickers": corr_tickers, "matrix": corr_matrix}
-            if len(corr_tickers) >= 2 else None
-        ),
         "tooltips": XRAY_TOOLTIPS,
         "data_warnings": data_warnings,
     }

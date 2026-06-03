@@ -499,18 +499,7 @@
                 + '<div id="xray-c-concentration" class="xray-chart-el"></div>'
                 + '</div>';
 
-            // ── Row 4: Correlation heatmap ────────────────────────────────────────
-            if (data.correlation_matrix && data.correlation_matrix.tickers && data.correlation_matrix.tickers.length >= 2) {
-                var cv = rm.avg_pairwise_correlation, cc = '';
-                if (cv !== null && cv !== undefined) cc = cv > 0.6 ? 'xray-val-red' : cv > 0.4 ? 'xray-val-amber' : 'xray-val-green';
-                html += '<div class="xray-section"><h3 class="xray-section-title">Correlation Matrix ' + _tip(tips.avg_correlation) + '</h3>';
-                if (cv !== null && cv !== undefined) {
-                    html += '<div class="xray-corr-score">Diversification Score (avg pairwise correlation): <span class="' + cc + '">' + _num(cv,2) + '</span></div>';
-                }
-                html += '<div id="xray-c-correlation" class="xray-chart-el"></div></div>';
-            }
-
-            // ── Row 5: Income & P&L ───────────────────────────────────────────────
+            // ── Row 4: Income & P&L ───────────────────────────────────────────────
             html += '<div class="xray-section"><h3 class="xray-section-title">Income &amp; Unrealised P&amp;L</h3>'
                 + '<div class="xray-row-2col">'
                 + '<div class="xray-income-cards">'
@@ -542,9 +531,6 @@
             _plotDonut('xray-c-sector', sectorData, 'Sectors');
             _plotDonut('xray-c-geo', data.geographic_allocation, 'Regions');
             _plotConcentration('xray-c-concentration', data.holdings, conc);
-            if (data.correlation_matrix && data.correlation_matrix.tickers.length >= 2) {
-                _plotCorrelation('xray-c-correlation', data.correlation_matrix);
-            }
             _plotPnL('xray-c-pnl', data.holdings, sym);
         }
 
@@ -592,32 +578,6 @@
                     { type:'line', x0:10, x1:10, y0:0, y1:1, yref:'paper', line:{color:'#ffaa00',width:1,dash:'dot'} },
                     { type:'line', x0:20, x1:20, y0:0, y1:1, yref:'paper', line:{color:'#ff4d4d',width:1,dash:'dot'} }
                 ]
-            }), _PC);
-        }
-
-        function _plotCorrelation(elId, corrData) {
-            var tickers = corrData.tickers;
-            var matrix  = corrData.matrix;
-            var n       = tickers.length;
-            var textTpl = n <= 12 ? '%{text}' : '';
-            var textMat = matrix.map(function(row){
-                return row.map(function(v){return v !== null ? v.toFixed(2) : '';});
-            });
-            Plotly.newPlot(elId, [{
-                type: 'heatmap',
-                z: matrix, x: tickers, y: tickers,
-                colorscale: [[0,'#4da6ff'],[0.5,'#2a2a2a'],[1,'#ff4d4d']],
-                zmin: -1, zmax: 1,
-                text: textMat, texttemplate: textTpl,
-                textfont: { size: 11 },
-                hovertemplate: '<b>%{y} vs %{x}</b>: %{z:.2f}<extra></extra>',
-                showscale: true,
-                colorbar: { tickfont:{color:'#aaa',size:10}, title:{text:'ρ',font:{color:'#aaa',size:12}} }
-            }], _baseLayout({
-                height: Math.max(320, n * 38 + 100),
-                margin: { t: 20, r: 80, b: 80, l: 80 },
-                xaxis: { color:'#aaa', side:'bottom', tickangle:-45, automargin:true },
-                yaxis: { color:'#aaa', autorange:'reversed', automargin:true }
             }), _PC);
         }
 
