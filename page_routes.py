@@ -563,28 +563,31 @@ async def portfolio_page(request: Request, account_id: str = "all", embed: bool 
                 row_dict['setup_tags_list'] = []
 
             portfolio_data.append(row_dict)
-            
-            asset = next((d for d in portfolio_json.values() if d.get("ticker") == row_dict['ticker']), None)
-            if asset and row_dict['current_price']:
-                shares = 0
-                buy_price_base = 0 
-                
-                if account_id == "all":
-                    shares = asset.get('global_shares', 0)
-                    buy_price_base = asset.get('global_buy_price', 0)
-                else:
-                    for acc in asset.get('accounts', []):
-                        if acc['id'] == account_id:
-                            shares = acc.get('shares', 0)
-                            buy_price_base = acc.get('buy_price', 0)
-                            break
-                            
-                cost_in_base = shares * buy_price_base
-                exchange_rate = get_rate_to_base(row_dict['currency'])
-                val_in_base = (shares * row_dict['current_price']) * exchange_rate
-                
-                summary_math["value"] += val_in_base
-                summary_math["cost"] += cost_in_base
+
+    portfolio_data.sort(key=lambda x: x['ticker'])
+
+    for row_dict in portfolio_data:
+        asset = next((d for d in portfolio_json.values() if d.get("ticker") == row_dict['ticker']), None)
+        if asset and row_dict['current_price']:
+            shares = 0
+            buy_price_base = 0
+
+            if account_id == "all":
+                shares = asset.get('global_shares', 0)
+                buy_price_base = asset.get('global_buy_price', 0)
+            else:
+                for acc in asset.get('accounts', []):
+                    if acc['id'] == account_id:
+                        shares = acc.get('shares', 0)
+                        buy_price_base = acc.get('buy_price', 0)
+                        break
+
+            cost_in_base = shares * buy_price_base
+            exchange_rate = get_rate_to_base(row_dict['currency'])
+            val_in_base = (shares * row_dict['current_price']) * exchange_rate
+
+            summary_math["value"] += val_in_base
+            summary_math["cost"] += cost_in_base
 
     if summary_math["cost"] > 0:
         summary_math["pnl"] = summary_math["value"] - summary_math["cost"]
@@ -670,6 +673,8 @@ async def watchlist_page(request: Request, embed: bool = False):
             else:
                 row_dict['setup_tags_list'] = []
             watchlist_data.append(row_dict)
+
+    watchlist_data.sort(key=lambda x: x['ticker'])
 
     config_data = load_config()
     freetrade_only = config_data.get("UI_PREFERENCES", {}).get("FREETRADE_ONLY_MODE", False)
