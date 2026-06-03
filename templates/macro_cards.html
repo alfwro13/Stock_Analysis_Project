@@ -143,7 +143,7 @@
             const formattedChange = Number(index.change_pct).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 
             const cardHTML = `
-                <a href="/stock/${encodeURIComponent(index.ticker)}" class="macro-card-link">
+                <a href="/index/${encodeURIComponent(index.ticker)}" class="macro-card-link">
                     <div class="macro-card ${cardClass} ${staleClass}">
                         <div class="macro-title ${staleText}">${index.name}</div>
                         <div class="macro-price ${staleText}">${formattedPrice}</div>

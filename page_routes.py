@@ -25,7 +25,7 @@ from sentiment_engine import (
     get_uk_yield_equity_html,
     get_ftse_gbp_html
 )
-from market_pulse import get_all_cached_pulse
+from market_pulse import get_all_cached_pulse, INDEX_TICKERS
 from utils import normalize_ticker
 from visuals import (
     create_macro_chart,
@@ -123,6 +123,36 @@ def _build_position_sizing_context(config_data: dict, db_rows) -> dict:
         "base_currency": base_currency,
     }
 
+
+INDEX_PARQUET_MAP: Dict[str, str] = {
+    "^GSPC":    "SP500_BASELINE.parquet",
+    "^FTSE":    "FTSE_BASELINE.parquet",
+    "^TNX":     "TNX_BASELINE.parquet",
+    "^TYX":     "TYX_BASELINE.parquet",
+    "DX-Y.NYB": "DXY_BASELINE.parquet",
+    "GBPUSD=X": "GBPUSD_BASELINE.parquet",
+    "UK10YG":   "UK_GILT_BASELINE.parquet",
+}
+
+_INDEX_QUANT_DEFAULTS: Dict[str, Any] = dict.fromkeys([
+    "rsi_14", "macd", "macd_signal", "macd_hist", "sma_50", "sma_200",
+    "mom_1m", "mom_3m", "mom_6m", "mom_12m_skip1m", "hist_vol_20", "atr_pct",
+    "var_95", "cvar_95", "sentiment_score", "volume", "volume_surge",
+    "composite_score", "close_price", "date",
+])
+
+INDEX_CONTEXT_BLURBS: Dict[str, str] = {
+    "^FTSE":    "The FTSE 100 tracks the 100 largest companies on the London Stock Exchange. Heavily weighted to mining, energy, and banks; often moves inversely to GBP strength.",
+    "^FTMC":    "The FTSE 250 tracks mid-cap UK companies (ranks 101–350 on LSE). More domestically driven than the FTSE 100 — a purer barometer of UK economic health.",
+    "GBPUSD=X": "GBP/USD exchange rate. Weakness boosts FTSE 100 exporters' translated earnings; strength signals UK economic confidence and tighter BoE policy expectations.",
+    "BZ=F":     "Brent Crude Oil futures — the global benchmark for oil pricing. Elevated prices raise input costs across the economy and pressure rate-sensitive equities.",
+    "UK10YG":   "The UK 10-Year Gilt Yield reflects sovereign borrowing costs and BoE monetary policy expectations. Rising yields compress equity multiples and increase corporate financing costs.",
+    "^GSPC":    "The S&P 500 tracks 500 large-cap US equities — the primary benchmark for US equity market health and the foundation of most global asset allocation frameworks.",
+    "^NDX":     "The Nasdaq 100 tracks the 100 largest non-financial companies on Nasdaq. Tech-heavy and highly sensitive to real interest rate expectations and liquidity conditions.",
+    "^TYX":     "The US 30-Year Treasury Yield gauges long-term US borrowing costs and inflation expectations. Directly impacts mortgage rates and long-duration equity discount rates.",
+    "^TNX":     "The US 10-Year Treasury Yield is the global risk-free rate benchmark. Rising yields tighten financial conditions, compress equity multiples, and strengthen the US Dollar.",
+    "DX-Y.NYB": "The US Dollar Index (DXY) measures USD strength vs a basket of major currencies. A rising DXY tightens global dollar liquidity and pressures commodities and EM assets.",
+}
 
 # --- COMPREHENSIVE MACRO GLOSSARY & POLARITY MAPPING ---
 EVENT_GLOSSARY = {
@@ -880,9 +910,95 @@ async def score_history_page(request: Request, filter: str = "all"):
     )
 
 
+@page_router.get("/index/{ticker}", response_class=HTMLResponse)
+async def index_detail(request: Request, ticker: str):
+    ticker = normalize_ticker(ticker)
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "SELECT ticker, name, price, change_pts, change_pct, is_positive FROM market_pulse_cache WHERE ticker = ?",
+        (ticker,)
+    )
+    pulse_row = cursor.fetchone()
+    pulse = dict(pulse_row) if pulse_row else {
+        "price": None, "change_pts": None, "change_pct": None,
+        "is_positive": None, "name": INDEX_TICKERS.get(ticker, ticker),
+    }
+
+    cursor.execute("""
+        SELECT rsi_14, macd, macd_signal, macd_hist,
+               sma_50, sma_200, mom_1m, mom_3m, mom_6m, mom_12m_skip1m,
+               hist_vol_20, atr_pct, var_95, cvar_95,
+               sentiment_score, volume, volume_surge, composite_score, close_price, date
+        FROM quant_signals
+        WHERE ticker = ?
+        ORDER BY date DESC LIMIT 1
+    """, (ticker,))
+    q_row = cursor.fetchone()
+    quant = {**_INDEX_QUANT_DEFAULTS, **(dict(q_row) if q_row else {})}
+
+    cursor.execute("SELECT currency FROM asset_profiles WHERE ticker = ?", (ticker,))
+    ap = cursor.fetchone()
+    currency = ap["currency"] if ap else "USD"
+    conn.close()
+
+    price_action = None
+    parquet_name = INDEX_PARQUET_MAP.get(ticker)
+    try:
+        df_macro = pd.read_parquet(HISTORICAL_DIR / parquet_name) if parquet_name else pd.DataFrame()
+        if df_macro.empty:
+            raise FileNotFoundError
+        macro_html = create_macro_chart(df_macro, None, ticker)
+        last_day = df_macro.iloc[-1]
+        prev_day = df_macro.iloc[-2] if len(df_macro) > 1 else last_day
+        last_21 = df_macro.tail(21)
+        P = (prev_day['High'] + prev_day['Low'] + prev_day['Close']) / 3
+        price_action = {
+            "day_low": last_day['Low'], "day_high": last_day['High'],
+            "month_low": last_21['Low'].min(), "month_high": last_21['High'].max(),
+            "s1": (P * 2) - prev_day['High'],
+            "s2": P - (prev_day['High'] - prev_day['Low']),
+        }
+    except FileNotFoundError:
+        macro_html = "<div style='display:flex;flex-direction:column;align-items:center;justify-content:center;height:180px;gap:10px;color:#888;'><span style='font-size:2rem;'>📭</span><span style='font-weight:600;'>No historical data yet</span></div>"
+    except Exception as e:
+        macro_html = f"<div style='display:flex;flex-direction:column;align-items:center;justify-content:center;height:180px;gap:8px;color:#888;'><span style='font-size:2rem;'>⚠️</span><span style='font-weight:600;'>Chart unavailable</span><span style='font-size:0.85rem;'>{type(e).__name__}: {e}</span></div>"
+
+    try:
+        df_intraday = pd.read_parquet(INTRADAY_DIR / f"{ticker}_intraday.parquet")
+        s1 = price_action['s1'] if price_action else None
+        s2 = price_action['s2'] if price_action else None
+        intraday_html = create_intraday_chart(df_intraday, ticker, s1=s1, s2=s2)
+    except FileNotFoundError:
+        intraday_html = "<div style='display:flex;flex-direction:column;align-items:center;justify-content:center;height:120px;gap:10px;color:#888;'><span style='font-size:1.8rem;'>📭</span><span style='font-weight:600;'>No intraday data yet</span></div>"
+    except Exception:
+        intraday_html = "<div style='display:flex;flex-direction:column;align-items:center;justify-content:center;height:120px;gap:8px;color:#888;'><span style='font-size:1.8rem;'>⚠️</span><span style='font-weight:600;'>Intraday data unavailable</span></div>"
+
+    return templates.TemplateResponse(
+        request=request, name="index_detail.html",
+        context={
+            "ticker":        ticker,
+            "display_name":  INDEX_TICKERS.get(ticker, ticker),
+            "pulse":         pulse,
+            "quant":         quant,
+            "currency":      currency,
+            "context_blurb": INDEX_CONTEXT_BLURBS.get(ticker, ""),
+            "macro_html":    macro_html,
+            "intraday_html": intraday_html,
+            "price_action":  price_action,
+            "unread_count":  get_unread_count(),
+            "config":        load_config(),
+            "css_version":   CSS_VERSION,
+        }
+    )
+
+
 @page_router.get("/stock/{ticker}", response_class=HTMLResponse)
 async def stock_detail(request: Request, ticker: str, embed: bool = False):
     ticker = normalize_ticker(ticker)
+    if ticker in INDEX_TICKERS:
+        return RedirectResponse(f"/index/{ticker}", status_code=302)
     watchlist_json = get_json_data(WATCHLIST_PATH)
     watchlist_tickers = watchlist_json.get("watchlist", [])
     is_in_watchlist = ticker in watchlist_tickers
