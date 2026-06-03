@@ -953,8 +953,27 @@
                                 <td class="text-muted font-monospace" data-sched-key="{{ job_name }}">—</td>
                             </tr>
                             {% endfor %}
+                            <tr>
+                                <td class="font-bold">Portfolio X-ray Risk Cache</td>
+                                <td><span class="status-pill status-scheduled">ALWAYS ON</span></td>
+                                <td>MON-FRI</td>
+                                <td class="font-monospace">19:00</td>
+                                <td class="text-muted font-monospace" data-sched-key="xray_risk_cache_job">—</td>
+                            </tr>
                         </tbody>
                     </table>
+
+                    <div class="settings-panel border-left-cyan">
+                        <h4 class="settings-panel-header text-cyan">&#128302; Portfolio X-ray Risk Cache</h4>
+                        <p class="settings-desc-sm">Pre-computes portfolio beta, annualised volatility, pairwise correlation matrix, and dividend yields for the X-ray report. Always scheduled — no toggle required. Fetches 1-year trailing returns from Yahoo Finance for all portfolio tickers plus the SWDA.L benchmark.</p>
+                        <div class="flex-gap-15 align-end">
+                            <div class="form-group mb-0">
+                                <label>Schedule</label>
+                                <input type="text" value="Mon–Fri at 19:00 (after market close)" disabled style="background:#1a1a1a;color:#888;border-color:#333;cursor:default;min-width:280px;">
+                            </div>
+                            <button type="button" class="btn-test mt-0 btn-cyan" onclick="triggerXrayRiskCache()">&#9654;&#65039; Run Now</button>
+                        </div>
+                    </div>
 
                     <div class="settings-panel-md border-left-orange mt-20">
                         <h4 class="settings-panel-header text-orange">🧹 Database & File Maintenance</h4>
@@ -1638,6 +1657,19 @@
                     btn.innerText = "▶️ Run Sync Now";
                 }
             }, 3000);
+        }
+
+        async function triggerXrayRiskCache() {
+            const btn = document.querySelector('button[onclick="triggerXrayRiskCache()"]');
+            if (btn) { btn.disabled = true; btn.textContent = '⏳ Queued…'; }
+            try {
+                await fetch('/api/xray/trigger', { method: 'POST' });
+                alert("X-ray Risk Cache job queued in background.\nThis fetches 1-year returns from Yahoo Finance and may take 30–60 seconds.\nCheck System Notifications for completion.");
+            } catch (error) {
+                alert("Failed to queue X-ray Risk Cache job. Network or server error.");
+            } finally {
+                if (btn) { btn.disabled = false; btn.innerHTML = '&#9654;&#65039; Run Now'; }
+            }
         }
 
         async function triggerEarningsScan() {
