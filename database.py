@@ -371,6 +371,18 @@ def init_db() -> None:
             )
         ''')
 
+        # Weighted daily portfolio return series used for historical VaR/CVaR,
+        # tracking error, Sharpe, and skewness/kurtosis.  One row per benchmark.
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS xray_portfolio_returns_cache (
+                benchmark TEXT PRIMARY KEY,
+                last_updated TEXT NOT NULL,
+                dates_json TEXT NOT NULL,
+                returns_json TEXT NOT NULL,
+                benchmark_returns_json TEXT NOT NULL
+            )
+        ''')
+
         # Score history — one row per (ticker, trading_date); upserted on every scan run.
         # Accumulates over time so a forward-returns analysis can be run after 6+ months.
         cursor.execute('''

@@ -34,6 +34,15 @@ LOOKBACK_DAYS = 252            # 1-year trailing window
 AMBER_THRESHOLD = 0.10         # position weight colouring
 RED_THRESHOLD = 0.20
 
+# ISO 4217 currency codes Ghostfolio uses as cash-holding symbols.
+# Module-level so any future cash-detection caller can reuse the same set.
+_CURRENCY_SYMBOLS: frozenset = frozenset({
+    "AED", "AUD", "BRL", "CAD", "CHF", "CNY", "CZK", "DKK", "EUR",
+    "GBP", "GBX", "GBp", "HKD", "HUF", "IDR", "ILS", "INR", "JPY",
+    "KRW", "MXN", "MYR", "NOK", "NZD", "PHP", "PLN", "RON", "RUB",
+    "SAR", "SEK", "SGD", "THB", "TRY", "TWD", "USD", "ZAR",
+})
+
 # Centralised glossary — single source of truth for all X-ray tooltips.
 # Serialised into the API response so the frontend never hard-codes definitions.
 XRAY_TOOLTIPS: Dict[str, str] = {
@@ -96,6 +105,45 @@ XRAY_TOOLTIPS: Dict[str, str] = {
         f"a globally-diversified equity benchmark. "
         f"It is always fetched independently from Yahoo Finance — never assumed to be in your portfolio."
     ),
+    "historical_var": (
+        "Historical VaR (95%, 1-day): the worst 5th-percentile daily loss observed in the "
+        "trailing year, computed directly from the weighted portfolio return series — no "
+        "normality assumption. More robust than parametric VaR for fat-tailed distributions."
+    ),
+    "cvar": (
+        "CVaR / Expected Shortfall (95%, 1-day): the average loss on days that exceed the "
+        "historical VaR threshold — i.e. the expected damage in a truly bad scenario. "
+        "Always worse than VaR; a more complete tail-risk measure."
+    ),
+    "tracking_error": (
+        f"Tracking Error (annualised): the standard deviation of the difference between your "
+        f"portfolio's daily returns and those of {BENCHMARK_SYMBOL}. "
+        "Low = portfolio moves similarly to the benchmark; High = significant active bets."
+    ),
+    "sharpe_ratio": (
+        "Sharpe Ratio: (portfolio 1-year return − risk-free rate) ÷ annualised volatility. "
+        "Measures return per unit of total risk. Above 1 = good; above 2 = excellent."
+    ),
+    "calmar_ratio": (
+        "Calmar Ratio: (portfolio 1-year return) ÷ |max drawdown|. "
+        "Measures return per unit of drawdown risk. Higher = better risk-adjusted compounding."
+    ),
+    "skewness": (
+        "Return Skewness: asymmetry of the daily return distribution. "
+        "Negative skew = more frequent small gains but rare large losses (crash-prone). "
+        "Positive skew = right tail — occasional large gains."
+    ),
+    "fx_exposure": (
+        "FX / Currency Exposure: percentage of invested capital denominated in each currency. "
+        "USD-denominated holdings move with GBP/USD; FX swings add a hidden return driver. "
+        "Only the direct holding currency is shown — not the look-through of ETF constituents."
+    ),
+    "marginal_risk_contribution": (
+        "Marginal Risk Contribution: each holding's proportional contribution to total portfolio "
+        "volatility, accounting for correlations. "
+        "A 5% holding in a high-corr, high-vol stock can contribute 15%+ of portfolio risk. "
+        "Contributions sum to portfolio annualised volatility."
+    ),
 }
 
 
@@ -109,22 +157,23 @@ class GhostfolioXRayClient:
     def __init__(self) -> None:
         self.url: str = GHOSTFOLIO_URL.rstrip("/")
         self.token: str = GHOSTFOLIO_TOKEN
-        self.headers: Dict[str, str] = {}
         self.is_configured: bool = bool(self.url and self.token)
+        self._session: requests.Session = requests.Session()
+        self._session.verify = False
 
     def authenticate(self) -> bool:
         try:
-            resp = requests.post(
+            resp = self._session.post(
                 f"{self.url}/api/v1/auth/anonymous",
                 json={"accessToken": self.token},
-                verify=False, timeout=10,
+                timeout=10,
             )
             resp.raise_for_status()
             bearer = resp.json().get("authToken")
             if not bearer:
                 logger.error("Ghostfolio X-ray auth: no authToken in response.")
                 return False
-            self.headers = {"Authorization": f"Bearer {bearer}"}
+            self._session.headers.update({"Authorization": f"Bearer {bearer}"})
             return True
         except Exception as e:
             logger.error(f"Ghostfolio X-ray auth failed: {e}")
@@ -145,21 +194,12 @@ class GhostfolioXRayClient:
             f"?accounts={accounts_param}&range=max&withMarkets=true&withSummary=true"
         )
         try:
-            resp = requests.get(url, headers=self.headers, verify=False, timeout=30)
+            resp = self._session.get(url, timeout=30)
             resp.raise_for_status()
             raw_holdings: Dict = resp.json().get("holdings", {})
         except Exception as e:
             logger.error(f"Ghostfolio portfolio/details failed: {e}")
             return [], 0.0
-
-        # ISO 4217 currency codes that Ghostfolio uses as cash-holding symbols.
-        # Used as a secondary cash filter when assetProfile is absent.
-        _CURRENCY_SYMBOLS: frozenset = frozenset({
-            "AED", "AUD", "BRL", "CAD", "CHF", "CNY", "CZK", "DKK", "EUR",
-            "GBP", "GBX", "GBp", "HKD", "HUF", "IDR", "ILS", "INR", "JPY",
-            "KRW", "MXN", "MYR", "NOK", "NZD", "PHP", "PLN", "RON", "RUB",
-            "SAR", "SEK", "SGD", "THB", "TRY", "TWD", "USD", "ZAR",
-        })
 
         holdings: List[Dict] = []
         for symbol, h in raw_holdings.items():
@@ -227,7 +267,7 @@ class GhostfolioXRayClient:
                 f"?range=max&accounts={accounts_param}"
             )
             try:
-                resp = requests.get(url, headers=self.headers, verify=False, timeout=30)
+                resp = self._session.get(url, timeout=30)
                 if resp.status_code != 200:
                     continue
                 chart = resp.json().get("chart", [])
@@ -247,7 +287,7 @@ class GhostfolioXRayClient:
         encoded_sym = quote(symbol, safe="")
         url = f"{self.url}/api/v1/portfolio/holding/{data_source}/{encoded_sym}"
         try:
-            resp = requests.get(url, headers=self.headers, verify=False, timeout=10)
+            resp = self._session.get(url, timeout=10)
             resp.raise_for_status()
             data = resp.json()
             return {
@@ -283,7 +323,11 @@ class XRayRiskComputer:
             if raw.empty:
                 return pd.DataFrame()
             if isinstance(raw.columns, pd.MultiIndex):
-                prices = raw["Close"]
+                # raw["Close"] returns a Series when there's only one ticker in some
+                # yfinance versions; wrap in DataFrame to guarantee consistent shape.
+                prices = pd.DataFrame(raw["Close"])
+                if len(prices.columns) == 1 and prices.columns[0] != symbols[0]:
+                    prices = prices.rename(columns={prices.columns[0]: symbols[0]})
             else:
                 # Single ticker — yfinance returns flat columns
                 prices = raw[["Close"]].rename(columns={"Close": symbols[0]})
@@ -373,7 +417,7 @@ class XRayRiskComputer:
             # Correlation matrix for all portfolio tickers with available returns
             available = [s for s in portfolio_symbols if s in returns_df.columns]
             if len(available) >= 2:
-                corr_df = returns_df[available].dropna(how="all").corr()
+                corr_df = returns_df[available].dropna(how="any").corr()
                 conn.execute(
                     """INSERT OR REPLACE INTO xray_correlation_matrix
                        (benchmark, last_updated, tickers_json, matrix_json)
@@ -394,6 +438,72 @@ class XRayRiskComputer:
 
         except Exception as e:
             logger.error(f"X-ray risk cache write failed: {e}")
+            if conn:
+                conn.rollback()
+            return False
+        finally:
+            if conn:
+                conn.close()
+
+
+    def compute_and_cache_portfolio_returns(self, holdings_with_weights: List[Dict]) -> bool:
+        """
+        Computes the weighted daily portfolio return series and stores it alongside
+        the benchmark (SWDA.L) returns in xray_portfolio_returns_cache.
+
+        Called from run_xray_precompute with live Ghostfolio holdings (which have
+        weights).  Never called on page load.
+        """
+        weighted = [(h["symbol"], h.get("weight", 0.0)) for h in holdings_with_weights
+                    if h.get("symbol") and h.get("weight", 0.0) > 0]
+        if not weighted:
+            return False
+
+        symbols = [s for s, _ in weighted]
+        all_symbols = list(set(symbols + [BENCHMARK_SYMBOL]))
+        returns_df = self._fetch_returns(all_symbols)
+        if returns_df.empty:
+            return False
+
+        # Drop the pct_change first row (all-NaN) and align all tickers to common dates
+        clean = returns_df.dropna(how="any")
+        if len(clean) < 30:
+            logger.warning("X-ray portfolio returns: fewer than 30 aligned trading days.")
+            return False
+
+        # Weighted portfolio daily return
+        weight_series = pd.Series(
+            {sym: w for sym, w in weighted if sym in clean.columns}
+        )
+        if weight_series.empty:
+            return False
+        weight_series /= weight_series.sum()  # re-normalise to 1.0
+        available_cols = [s for s in weight_series.index if s in clean.columns]
+        port_rets = (clean[available_cols] * weight_series[available_cols]).sum(axis=1)
+
+        bench_rets = clean[BENCHMARK_SYMBOL] if BENCHMARK_SYMBOL in clean.columns else None
+
+        today = datetime.date.today().isoformat()
+        conn = None
+        try:
+            conn = get_connection()
+            conn.execute(
+                """INSERT OR REPLACE INTO xray_portfolio_returns_cache
+                   (benchmark, last_updated, dates_json, returns_json, benchmark_returns_json)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (
+                    BENCHMARK_SYMBOL,
+                    today,
+                    json.dumps(port_rets.index.strftime("%Y-%m-%d").tolist()),
+                    json.dumps(port_rets.tolist()),
+                    json.dumps(bench_rets.tolist() if bench_rets is not None else []),
+                ),
+            )
+            conn.commit()
+            logger.info(f"X-ray portfolio returns cache updated: {len(port_rets)} trading days.")
+            return True
+        except Exception as e:
+            logger.error(f"X-ray portfolio returns cache write failed: {e}")
             if conn:
                 conn.rollback()
             return False
@@ -466,7 +576,7 @@ def run_xray_precompute() -> bool:
 
     risk_ok = XRayRiskComputer().compute_and_cache(holdings)
 
-    # Dividend cache — requires a live Ghostfolio call; treat failure as non-fatal
+    # Dividend + portfolio returns caches — require live Ghostfolio; treat as non-fatal
     try:
         client = GhostfolioXRayClient()
         if client.is_configured and client.authenticate():
@@ -476,8 +586,9 @@ def run_xray_precompute() -> bool:
                 live_holdings, _ = client.get_holdings(active_ids)
                 if live_holdings:
                     cache_xray_dividends(live_holdings, client)
+                    XRayRiskComputer().compute_and_cache_portfolio_returns(live_holdings)
     except Exception as e:
-        logger.warning(f"X-ray dividend cache step failed (non-fatal): {e}")
+        logger.warning(f"X-ray dividend/returns cache step failed (non-fatal): {e}")
 
     logger.info(f"X-ray pre-compute finished. Risk cache: {'OK' if risk_ok else 'FAILED'}.")
     return risk_ok
@@ -577,10 +688,11 @@ def assemble_xray_report(account_id: str) -> Dict:
         key=lambda x: x["weight"], reverse=True,
     )
 
-    # --- Instrument type allocation -----------------------------------------------
+    # --- Instrument type allocation (cache itype on h for reuse in payload) ------
     instrument_map: Dict[str, float] = {}
     for h in holdings:
         itype = _get_instrument_type(h["asset_class"], h["asset_sub_class"])
+        h["_instrument_type"] = itype  # cached so holdings_payload doesn't recompute
         instrument_map[itype] = instrument_map.get(itype, 0.0) + h["weight"]
     asset_class_allocation = sorted(
         [{"name": k, "weight": round(v, 4)} for k, v in instrument_map.items()],
@@ -606,15 +718,19 @@ def assemble_xray_report(account_id: str) -> Dict:
     corr_matrix: List[List[float]] = []
     cache_date: Optional[str] = None
     div_cache: Dict[str, Dict] = {}
+    port_rets_series: Optional[List[float]] = None
+    bench_rets_series: Optional[List[float]] = None
 
     conn = None
     try:
         conn = get_connection()
 
+        portfolio_symbols = [h["symbol"] for h in holdings_sorted]
+        placeholders = ",".join("?" * len(portfolio_symbols))
         rows = conn.execute(
-            "SELECT ticker, beta, annualized_vol, last_updated "
-            "FROM xray_risk_cache WHERE benchmark = ?",
-            (BENCHMARK_SYMBOL,),
+            f"SELECT ticker, beta, annualized_vol, last_updated "
+            f"FROM xray_risk_cache WHERE benchmark = ? AND ticker IN ({placeholders})",
+            [BENCHMARK_SYMBOL] + portfolio_symbols,
         ).fetchall()
         dates = []
         for row in rows:
@@ -647,6 +763,18 @@ def assemble_xray_report(account_id: str) -> Dict:
             }
             for row in div_rows
         }
+
+        port_ret_row = conn.execute(
+            "SELECT returns_json, benchmark_returns_json "
+            "FROM xray_portfolio_returns_cache WHERE benchmark = ?",
+            (BENCHMARK_SYMBOL,),
+        ).fetchone()
+        if port_ret_row:
+            port_rets_series = json.loads(port_ret_row["returns_json"])
+            bench_rets_series = json.loads(port_ret_row["benchmark_returns_json"])
+    except Exception as e:
+        logger.error(f"X-ray DB read failed: {e}")
+        raise
     finally:
         if conn:
             conn.close()
@@ -661,6 +789,9 @@ def assemble_xray_report(account_id: str) -> Dict:
         h["dividend_yield_pct"] = dc.get("yield_pct", 0.0)
         h["dividend_income"] = dc.get("income", 0.0)
 
+    # --- Data warnings (initialised early so risk blocks can append to it) ------
+    data_warnings: List[str] = []
+
     # --- Portfolio-level risk metrics from cached per-ticker data + live weights --
     portfolio_beta: Optional[float] = None
     portfolio_vol: Optional[float] = None
@@ -669,14 +800,16 @@ def assemble_xray_report(account_id: str) -> Dict:
 
     beta_pairs = [(h["weight"], h["beta"]) for h in holdings_sorted if h.get("beta") is not None]
     if beta_pairs:
-        portfolio_beta = round(sum(w * b for w, b in beta_pairs), 3)
+        covered_weight = sum(w for w, _ in beta_pairs)
+        portfolio_beta = round(sum(w * b for w, b in beta_pairs) / covered_weight, 3)
 
     # Portfolio vol = sqrt(w^T * Sigma * w), Sigma_ij = vol_i * vol_j * rho_ij (daily)
+    holdings_by_symbol: Dict[str, Dict] = {h["symbol"]: h for h in holdings_sorted}
     if len(corr_tickers) >= 2 and corr_matrix:
         w_list: List[float] = []
         dv_list: List[float] = []
         for sym in corr_tickers:
-            h_match = next((h for h in holdings_sorted if h["symbol"] == sym), None)
+            h_match = holdings_by_symbol.get(sym)
             w = h_match["weight"] if h_match else 0.0
             ann_vol = (risk_cache.get(sym) or {}).get("vol") or 0.0
             w_list.append(w)
@@ -694,12 +827,27 @@ def assemble_xray_report(account_id: str) -> Dict:
                 portfolio_vol = round(float(port_daily_vol * np.sqrt(252)), 4)
                 # VaR = daily_vol * z_0.95 * portfolio_value (parametric, absolute loss)
                 var_95_1d = round(float(port_daily_vol * 1.6449 * total_value), 2)
+            else:
+                logger.warning(
+                    "Portfolio variance <= 0 (non-PSD correlation matrix). "
+                    "vol and parametric VaR will be None. "
+                    "Cause: pairwise returns had unequal overlapping periods."
+                )
+                data_warnings.append(
+                    "Could not compute portfolio volatility or VaR: the cached correlation "
+                    "matrix is non-positive-semidefinite (returns data has unequal overlapping "
+                    "periods across holdings). Re-run the risk cache job to refresh."
+                )
 
-        n = len(corr_matrix)
-        if n >= 2:
+        # avg_pairwise_corr: only include tickers that are in current holdings
+        current_syms = {h["symbol"] for h in holdings_sorted}
+        active_indices = [
+            i for i, t in enumerate(corr_tickers) if t in current_syms
+        ]
+        if len(active_indices) >= 2:
             off_diag = [
                 corr_matrix[i][j]
-                for i in range(n) for j in range(n)
+                for i in active_indices for j in active_indices
                 if i != j and corr_matrix[i][j] is not None
             ]
             if off_diag:
@@ -724,8 +872,81 @@ def assemble_xray_report(account_id: str) -> Dict:
         sum(h.get("dividend_income") or 0 for h in holdings_sorted), 2
     )
 
-    # --- Data warnings -----------------------------------------------------------
-    data_warnings: List[str] = []
+    # --- FX / currency exposure --------------------------------------------------
+    fx_map: Dict[str, float] = {}
+    for h in holdings_sorted:
+        ccy = (h.get("currency") or "").upper() or "UNKNOWN"
+        fx_map[ccy] = fx_map.get(ccy, 0.0) + h["weight"]
+    fx_exposure = sorted(
+        [{"currency": k, "weight": round(v, 4)} for k, v in fx_map.items()],
+        key=lambda x: x["weight"], reverse=True,
+    )
+
+    # --- Marginal Risk Contribution (MRC) per holding ----------------------------
+    # MRC_i = (Sigma_daily · w)_i * w_i / sigma_p_daily * sqrt(252)
+    # Euler decomposition: sum(MRC_i) = portfolio annualised vol exactly.
+    if portfolio_vol is not None and len(corr_tickers) >= 2 and corr_matrix:
+        sigma_daily_full = np.outer(dv_arr, dv_arr) * np.array(corr_matrix)
+        marginal_contrib_daily = sigma_daily_full @ w_arr
+        port_daily_vol_val = portfolio_vol / np.sqrt(252)
+        for i, sym in enumerate(corr_tickers):
+            h_match = holdings_by_symbol.get(sym)
+            if h_match is not None and port_daily_vol_val > 0:
+                mrc_ann = float(
+                    marginal_contrib_daily[i] * w_arr[i] / port_daily_vol_val * np.sqrt(252)
+                )
+                h_match["marginal_risk_contribution"] = round(mrc_ann, 4)
+    # Set None for any holding not in corr_tickers
+    for h in holdings_sorted:
+        h.setdefault("marginal_risk_contribution", None)
+
+    # --- Stats from portfolio returns series (historical VaR, Sharpe, etc.) -----
+    historical_var_95_1d: Optional[float] = None
+    cvar_95_1d: Optional[float] = None
+    tracking_error: Optional[float] = None
+    sharpe_ratio: Optional[float] = None
+    calmar_ratio: Optional[float] = None
+    skewness: Optional[float] = None
+    excess_kurtosis: Optional[float] = None
+
+    if port_rets_series and len(port_rets_series) >= 30:
+        try:
+            import scipy.stats as _stats
+            pr = np.array(port_rets_series)
+
+            # Historical VaR & CVaR (95%)
+            var_threshold = float(np.percentile(pr, 5))
+            historical_var_95_1d = round(abs(var_threshold) * total_value, 2)
+            tail = pr[pr <= var_threshold]
+            if len(tail) > 0:
+                cvar_95_1d = round(abs(float(tail.mean())) * total_value, 2)
+
+            # Skewness and excess kurtosis
+            skewness = round(float(_stats.skew(pr)), 3)
+            excess_kurtosis = round(float(_stats.kurtosis(pr)), 3)  # Fisher = excess
+
+            # 1-year annualised return from compounded daily returns
+            ann_return = float((1 + pr).prod() ** (252 / len(pr)) - 1)
+
+            # Tracking error vs benchmark
+            if bench_rets_series and len(bench_rets_series) == len(port_rets_series):
+                br = np.array(bench_rets_series)
+                active_rets = pr - br
+                tracking_error = round(float(active_rets.std() * np.sqrt(252)), 4)
+
+            # Sharpe ratio — risk-free rate from config, default 4.5%
+            rf_rate: float = float(config.get("RISK_FREE_RATE", 0.045))
+            if portfolio_vol and portfolio_vol > 0:
+                sharpe_ratio = round((ann_return - rf_rate) / portfolio_vol, 3)
+
+            # Calmar ratio
+            if max_drawdown and max_drawdown < 0:
+                calmar_ratio = round(ann_return / abs(max_drawdown), 3)
+
+        except Exception as e:
+            logger.warning(f"Portfolio return stats computation failed: {e}")
+
+    # --- Data warnings (continued) -----------------------------------------------
     if not risk_cache:
         data_warnings.append(
             "Risk metrics (beta, volatility, correlation) are not yet available. "
@@ -762,7 +983,7 @@ def assemble_xray_report(account_id: str) -> Dict:
             "value": round(h["value"], 2),
             "asset_class": h["asset_class"],
             "asset_sub_class": h["asset_sub_class"],
-            "instrument_type": _get_instrument_type(h["asset_class"], h["asset_sub_class"]),
+            "instrument_type": h.get("_instrument_type") or _get_instrument_type(h["asset_class"], h["asset_sub_class"]),
             "currency": h["currency"],
             "gross_perf": round(h["gross_perf"], 2),
             "gross_perf_pct": round(h["gross_perf_pct"] * 100, 2),
@@ -772,6 +993,7 @@ def assemble_xray_report(account_id: str) -> Dict:
             "vol": round(h["vol"], 4) if h.get("vol") is not None else None,
             "dividend_yield_pct": h.get("dividend_yield_pct", 0.0),
             "dividend_income": h.get("dividend_income", 0.0),
+            "marginal_risk_contribution": h.get("marginal_risk_contribution"),
         }
         for h in holdings_sorted
     ]
@@ -798,7 +1020,14 @@ def assemble_xray_report(account_id: str) -> Dict:
             "annualized_vol": portfolio_vol,
             "max_drawdown": max_drawdown,
             "var_95_1d": var_95_1d,
+            "historical_var_95_1d": historical_var_95_1d,
+            "cvar_95_1d": cvar_95_1d,
             "avg_pairwise_correlation": avg_pairwise_corr,
+            "tracking_error": tracking_error,
+            "sharpe_ratio": sharpe_ratio,
+            "calmar_ratio": calmar_ratio,
+            "skewness": skewness,
+            "excess_kurtosis": excess_kurtosis,
             "benchmark": BENCHMARK_SYMBOL,
             "lookback_days": LOOKBACK_DAYS,
             "cache_date": cache_date,
@@ -806,6 +1035,11 @@ def assemble_xray_report(account_id: str) -> Dict:
         "income": {
             "weighted_dividend_yield": weighted_div_yield,
             "projected_annual_income": projected_annual_income,
+        },
+        "fx_exposure": fx_exposure,
+        "correlation_matrix": {
+            "tickers": corr_tickers,
+            "matrix": corr_matrix,
         },
         "tooltips": XRAY_TOOLTIPS,
         "data_warnings": data_warnings,
