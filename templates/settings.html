@@ -1525,18 +1525,38 @@
             try {
                 const response = await fetch('/api/system/restart', { method: 'POST', headers: { 'X-Confirm-Token': CONFIRM_TOKEN } });
                 const result = await response.json();
-                
+
                 if (response.ok) {
-                    let countdown = 10;
-                    
-                    const interval = setInterval(() => {
-                        setStatus('git-status-msg', 'success', `Signal sent. Linux is restarting the service... Auto-refreshing in ${countdown}s`);
-                        countdown--;
-                        if (countdown < 0) {
-                            clearInterval(interval);
-                            window.location.reload(); 
+                    setStatus('git-status-msg', 'success', "Signal sent. Waiting for service to come back up...");
+
+                    // Wait briefly for the process to actually die before polling
+                    await new Promise(resolve => setTimeout(resolve, 3000));
+
+                    const maxWait = 60000;
+                    const pollInterval = 2000;
+                    const started = Date.now();
+
+                    const poll = setInterval(async () => {
+                        const elapsed = Math.round((Date.now() - started) / 1000);
+                        setStatus('git-status-msg', 'success', `Waiting for service to come back up... (${elapsed}s)`);
+
+                        try {
+                            const check = await fetch('/api/confirm-token', { method: 'GET' });
+                            if (check.ok || check.status === 401 || check.status === 403) {
+                                // Server is responding — reload
+                                clearInterval(poll);
+                                window.location.reload();
+                            }
+                        } catch (_) {
+                            // Still down — keep polling
                         }
-                    }, 1000);
+
+                        if (Date.now() - started > maxWait) {
+                            clearInterval(poll);
+                            setStatus('git-status-msg', 'error', "Service is taking longer than expected. Please refresh manually.");
+                            btn.disabled = false;
+                        }
+                    }, pollInterval);
 
                 } else {
                     setStatus('git-status-msg', 'error', result.message);
