@@ -775,11 +775,29 @@ async def market_screener_page(request: Request):
 @page_router.get("/market-reports", response_class=HTMLResponse)
 async def market_reports_page(request: Request):
     return templates.TemplateResponse(
-        request=request, 
-        name="market_reports.html", 
+        request=request,
+        name="market_reports.html",
         context={
             "unread_count": get_unread_count(),
             "config": load_config()
+        }
+    )
+
+
+@page_router.get("/score-history", response_class=HTMLResponse)
+async def score_history_page(request: Request, filter: str = "all"):
+    from score_analysis import get_score_analysis
+    valid_filters = {"all", "portfolio", "watchlist"}
+    active_filter = filter if filter in valid_filters else "all"
+    data = get_score_analysis(active_filter)
+    return templates.TemplateResponse(
+        request=request,
+        name="score_history.html",
+        context={
+            "data": data,
+            "active_filter": active_filter,
+            "unread_count": get_unread_count(),
+            "config": load_config(),
         }
     )
 

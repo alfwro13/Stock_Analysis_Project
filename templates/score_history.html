@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="color-scheme" content="dark">
+    <title>Quantamental - Score History</title>
+    <link rel="stylesheet" href="/static/css/styles.css?v={{ css_version }}">
+    <style>
+        .filter-tabs { display: flex; gap: 8px; margin-bottom: 24px; flex-wrap: wrap; }
+        .filter-tab { padding: 6px 16px; border: 1px solid #444; border-radius: 16px; text-decoration: none; color: #aaa; font-size: 13px; transition: all 0.2s; }
+        .filter-tab:hover { border-color: #00ffcc; color: #00ffcc; }
+        .filter-tab.active { border-color: #00ffcc; color: #00ffcc; background: rgba(0,255,204,0.08); font-weight: bold; }
+        .availability-banner { background: #141425; border: 1px solid #333; border-left: 4px solid #00ffcc; border-radius: 8px; padding: 16px 20px; margin-bottom: 28px; line-height: 1.6; }
+        .availability-banner.no-data { border-left-color: #ffaa00; }
+        .horizon-chips { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+        .horizon-chip { font-size: 12px; padding: 4px 12px; border-radius: 12px; border: 1px solid #444; color: #aaa; }
+        .horizon-chip.ready { border-color: #00ff00; color: #00ff00; }
+        .horizon-chip.pending { border-color: #ffaa00; color: #ffaa00; }
+        .summary-section { margin-bottom: 36px; }
+        .return-positive { color: #00ff00; font-weight: bold; }
+        .return-negative { color: #ff4d4d; font-weight: bold; }
+        .return-pending { color: #555; font-size: 12px; }
+        .score-pill { display: inline-block; padding: 2px 9px; border-radius: 10px; font-size: 12px; font-weight: bold; background: #222; color: #ccc; }
+    </style>
+</head>
+<body class="body-watchlist">
+
+    <div class="header-container">
+        <div>
+            <div class="title-wrapper">
+                <a href="https://github.com/alfwro13/Stock_Analysis_Project" target="_blank" class="logo-link">
+                    <img src="/assets/logo_small.png" alt="Quantamental Logo" class="logo-img">
+                </a>
+                <h1><abbr title="Quantamental - a modern institutional strategy that combines Quantitative analysis with Fundamental analysis.">uantamental</abbr> Dashboard</h1>
+            </div>
+            <p class="page-subtitle">Score History &amp; Forward Returns</p>
+            {% set active_page = 'score_history' %}
+            {% include 'navbar.html' %}
+        </div>
+    </div>
+
+    <div class="report-container report-container-wide">
+
+        <div class="filter-tabs">
+            <a href="/score-history?filter=all"       class="filter-tab {% if active_filter == 'all' %}active{% endif %}">&#127760; All Tickers</a>
+            <a href="/score-history?filter=portfolio" class="filter-tab {% if active_filter == 'portfolio' %}active{% endif %}">&#128188; My Portfolio</a>
+            <a href="/score-history?filter=watchlist" class="filter-tab {% if active_filter == 'watchlist' %}active{% endif %}">&#128064; My Watchlist</a>
+        </div>
+
+        {% if not data.earliest_date %}
+        <div class="availability-banner no-data">
+            <strong>&#9203; Gathering data &mdash; no score events recorded yet.</strong><br>
+            <span class="text-muted">Score events are logged automatically on every scan run. Data will start appearing after the next daily scan completes.</span>
+        </div>
+        {% else %}
+        <div class="availability-banner">
+            <strong>&#128197; Tracking since {{ data.earliest_date }}</strong> &mdash; {{ "{:,}".format(data.total_events) }} score event{{ 's' if data.total_events != 1 }} recorded.
+            <div class="horizon-chips">
+                {% for key, h in data.horizons.items() %}
+                    {% if h.ready %}
+                    <span class="horizon-chip ready" title="Enough time has passed to compute {{ key|upper }} forward returns">&#10003; {{ key|upper }} returns available</span>
+                    {% else %}
+                    <span class="horizon-chip pending" title="First {{ key|upper }} returns calculable on {{ h.available_from }}">&#9203; {{ key|upper }} returns from {{ h.available_from }}</span>
+                    {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        {% if data.summary %}
+        <div class="summary-section">
+            <h2>Signal Performance Summary</h2>
+            <p class="text-muted-desc">Average forward returns per signal bucket. Only events with resolved forward prices are included in the average &mdash; pending cells are excluded. Meaningful statistics require a minimum of 6 months of accumulated data.</p>
+            <table id="summaryTable">
+                <thead>
+                    <tr>
+                        <th>Signal</th>
+                        <th>Events</th>
+                        <th>Avg 3M Return</th>
+                        <th>Avg 6M Return</th>
+                        <th>Avg 12M Return</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in data.summary %}
+                    <tr>
+                        <td><span class="{{ row.signal | replace(' ', '-') | replace('/', '-') }}">{{ row.signal }}</span></td>
+                        <td>{{ row.count }}</td>
+                        <td>
+                            {% if row.avg_3m is not none %}
+                                <span class="{% if row.avg_3m > 0 %}return-positive{% else %}return-negative{% endif %}">{% if row.avg_3m > 0 %}+{% endif %}{{ row.avg_3m }}%</span>
+                                <span class="text-muted-small">&nbsp;(n={{ row.n_3m }})</span>
+                            {% else %}
+                                <span class="return-pending" title="Available from {{ data.horizons['3m'].available_from }}">&#8212; pending</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if row.avg_6m is not none %}
+                                <span class="{% if row.avg_6m > 0 %}return-positive{% else %}return-negative{% endif %}">{% if row.avg_6m > 0 %}+{% endif %}{{ row.avg_6m }}%</span>
+                                <span class="text-muted-small">&nbsp;(n={{ row.n_6m }})</span>
+                            {% else %}
+                                <span class="return-pending" title="Available from {{ data.horizons['6m'].available_from }}">&#8212; pending</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if row.avg_12m is not none %}
+                                <span class="{% if row.avg_12m > 0 %}return-positive{% else %}return-negative{% endif %}">{% if row.avg_12m > 0 %}+{% endif %}{{ row.avg_12m }}%</span>
+                                <span class="text-muted-small">&nbsp;(n={{ row.n_12m }})</span>
+                            {% else %}
+                                <span class="return-pending" title="Available from {{ data.horizons['12m'].available_from }}">&#8212; pending</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
+        <h2>Score Events
+            {% if data.total_events > 500 %}
+            <span class="text-muted-small">(showing 500 most recent of {{ "{:,}".format(data.total_events) }})</span>
+            {% endif %}
+        </h2>
+
+        <table id="dataTable">
+            <thead>
+                <tr>
+                    <th onclick="sortTable('dataTable', 0)">Ticker &#8597;</th>
+                    <th onclick="sortTable('dataTable', 1)">Date &#8597;</th>
+                    <th onclick="sortTable('dataTable', 2)">Score &#8597;</th>
+                    <th>Signal</th>
+                    <th onclick="sortTable('dataTable', 4)">Entry Price &#8597;</th>
+                    <th onclick="sortTable('dataTable', 5)" title="Return ~90 days after entry">3M Return &#8597;</th>
+                    <th onclick="sortTable('dataTable', 6)" title="Return ~180 days after entry">6M Return &#8597;</th>
+                    <th onclick="sortTable('dataTable', 7)" title="Return ~365 days after entry">12M Return &#8597;</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for ev in data.events %}
+                <tr>
+                    <td><a href="/stock/{{ ev.ticker }}" class="ticker-link">{{ ev.ticker }}</a></td>
+                    <td>{{ ev.date }}</td>
+                    <td><span class="score-pill">{{ ev.score }}</span></td>
+                    <td><span class="{{ ev.signal | replace(' ', '-') | replace('/', '-') }}">{{ ev.signal }}</span></td>
+                    <td>{% if ev.close_price %}{{ "{:,.2f}".format(ev.close_price) }}{% else %}&mdash;{% endif %}</td>
+                    <td>
+                        {% if ev.return_3m is not none %}
+                            <span class="{% if ev.return_3m > 0 %}return-positive{% else %}return-negative{% endif %}">{% if ev.return_3m > 0 %}+{% endif %}{{ ev.return_3m }}%</span>
+                        {% else %}
+                            <span class="return-pending" title="Will resolve ~{{ data.horizons['3m'].available_from }}">&#8212;</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if ev.return_6m is not none %}
+                            <span class="{% if ev.return_6m > 0 %}return-positive{% else %}return-negative{% endif %}">{% if ev.return_6m > 0 %}+{% endif %}{{ ev.return_6m }}%</span>
+                        {% else %}
+                            <span class="return-pending" title="Will resolve ~{{ data.horizons['6m'].available_from }}">&#8212;</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if ev.return_12m is not none %}
+                            <span class="{% if ev.return_12m > 0 %}return-positive{% else %}return-negative{% endif %}">{% if ev.return_12m > 0 %}+{% endif %}{{ ev.return_12m }}%</span>
+                        {% else %}
+                            <span class="return-pending" title="Will resolve ~{{ data.horizons['12m'].available_from }}">&#8212;</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="8" class="empty-table-msg">
+                        No score events recorded yet{% if active_filter != 'all' %} for this filter{% endif %}. Wait for the next scan run.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+    </div>
+
+    <script>
+    function sortTable(tableId, col) {
+        const table = document.getElementById(tableId);
+        const tbody = table.querySelector('tbody');
+        const rows = Array.from(tbody.querySelectorAll('tr'));
+        const asc = table.dataset.sortCol == col && table.dataset.sortDir === 'asc';
+        table.dataset.sortCol = col;
+        table.dataset.sortDir = asc ? 'desc' : 'asc';
+        rows.sort((a, b) => {
+            const av = a.cells[col]?.textContent.trim().replace(/[+%,—]/g, '') || '';
+            const bv = b.cells[col]?.textContent.trim().replace(/[+%,—]/g, '') || '';
+            const an = parseFloat(av), bn = parseFloat(bv);
+            if (!isNaN(an) && !isNaN(bn)) return asc ? bn - an : an - bn;
+            return asc ? bv.localeCompare(av) : av.localeCompare(bv);
+        });
+        rows.forEach(r => tbody.appendChild(r));
+    }
+    </script>
+
+</body>
+</html>
