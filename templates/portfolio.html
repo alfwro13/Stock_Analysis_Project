@@ -425,12 +425,15 @@
         // ── Render helpers ────────────────────────────────────────────────────────
         function _tip(text) {
             if (!text) return '';
-            return '<span class="xray-tooltip" title="' + text.replace(/"/g, '&quot;') + '"></span>';
+            return '<abbr title="' + text.replace(/"/g, '&quot;') + '" class="no-decoration-abbr"> &#9432;</abbr>';
         }
 
         function _card(label, value, tipText, colorClass) {
+            var labelHtml = tipText
+                ? '<abbr title="' + tipText.replace(/"/g, '&quot;') + '">' + label + '</abbr>'
+                : label;
             return '<div class="xray-metric-card">'
-                + '<div class="xray-metric-label">' + label + _tip(tipText) + '</div>'
+                + '<div class="xray-metric-label">' + labelHtml + '</div>'
                 + '<div class="xray-metric-value' + (colorClass ? ' ' + colorClass : '') + '">' + value + '</div>'
                 + '</div>';
         }
