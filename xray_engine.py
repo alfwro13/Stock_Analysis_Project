@@ -780,6 +780,7 @@ def assemble_xray_report(account_id: str) -> Dict:
         "account_id": account_id,
         "generated_at": datetime.datetime.now().isoformat(),
         "portfolio_total_value": round(total_value, 2),
+        "portfolio_total_investment": round(sum(h["investment"] for h in holdings_sorted), 2),
         "base_currency": base_currency,
         "holdings": holdings_payload,
         "concentration": {

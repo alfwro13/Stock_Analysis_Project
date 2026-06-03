@@ -47,15 +47,15 @@
     <div class="summary-row">
         <div class="summary-label">
             Total Investment:<br>
-            <strong class="summary-value">{{ summary_math.cost }}</strong>
+            <strong id="summary-cost-val" class="summary-value">{{ summary_math.cost }}</strong>
         </div>
         <div class="summary-label">
             Market Value:<br>
-            <strong class="summary-value">{{ summary_math.value }}</strong>
+            <strong id="summary-mv-val" class="summary-value">{{ summary_math.value }}</strong>
         </div>
         <div class="summary-label">
             Unrealized P&L:<br>
-            <strong class="summary-value-large {% if summary_math.is_positive %}pnl-positive{% else %}pnl-negative{% endif %}">
+            <strong id="summary-pnl-val" class="summary-value-large {% if summary_math.is_positive %}pnl-positive{% else %}pnl-negative{% endif %}">
                 {{ summary_math.pnl }} ({{ summary_math.pnl_pct }}%)
             </strong>
         </div>
@@ -295,6 +295,56 @@
     <script>
         // ── X-ray mode state ──────────────────────────────────────────────────────
         window._xrayMode = false;
+        window._xraySummaryOriginal = null;
+
+        function _captureSummaryOriginal() {
+            var costEl = document.getElementById('summary-cost-val');
+            var mvEl   = document.getElementById('summary-mv-val');
+            var pnlEl  = document.getElementById('summary-pnl-val');
+            if (!costEl) return;
+            window._xraySummaryOriginal = {
+                cost:        costEl.textContent,
+                mv:          mvEl  ? mvEl.textContent  : '',
+                pnl:         pnlEl ? pnlEl.textContent : '',
+                pnlPositive: pnlEl ? pnlEl.classList.contains('pnl-positive') : true,
+            };
+        }
+
+        function _restoreSummaryOriginal() {
+            var orig = window._xraySummaryOriginal;
+            if (!orig) return;
+            var costEl = document.getElementById('summary-cost-val');
+            var mvEl   = document.getElementById('summary-mv-val');
+            var pnlEl  = document.getElementById('summary-pnl-val');
+            if (costEl) costEl.textContent = orig.cost;
+            if (mvEl)   mvEl.textContent   = orig.mv;
+            if (pnlEl) {
+                pnlEl.textContent = orig.pnl;
+                pnlEl.className   = 'summary-value-large ' + (orig.pnlPositive ? 'pnl-positive' : 'pnl-negative');
+            }
+        }
+
+        function _updateSummaryRow(data) {
+            var costEl = document.getElementById('summary-cost-val');
+            var mvEl   = document.getElementById('summary-mv-val');
+            var pnlEl  = document.getElementById('summary-pnl-val');
+            if (!costEl) return;
+            var cur    = data.base_currency || 'GBP';
+            var sym    = ({GBP:'£', USD:'$', EUR:'€'})[cur] || (cur + ' ');
+            var fmtAmt = function(v) {
+                return sym + (v || 0).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}) + ' ' + cur;
+            };
+            var mv   = data.portfolio_total_value       || 0;
+            var cost = data.portfolio_total_investment   || 0;
+            var pnl  = mv - cost;
+            var pct  = cost > 0 ? (pnl / cost * 100) : 0;
+            costEl.textContent = fmtAmt(cost);
+            if (mvEl)  mvEl.textContent  = fmtAmt(mv);
+            if (pnlEl) {
+                pnlEl.textContent = (pnl >= 0 ? '+' : '') + fmtAmt(pnl) + ' (' + pct.toFixed(2) + '%)';
+                pnlEl.className   = 'summary-value-large ' + (pnl >= 0 ? 'pnl-positive' : 'pnl-negative');
+            }
+        }
 
         function toggleXray() {
             if (!window._xrayMode) { _enterXrayMode(); } else { _exitXrayMode(); }
@@ -305,6 +355,7 @@
         }
 
         function _enterXrayMode() {
+            _captureSummaryOriginal();
             window._xrayMode = true;
             var ctrl = document.querySelector('.controls-container');
             var tbl  = _getTableContainer();
@@ -327,6 +378,7 @@
             document.getElementById('xray-panel').style.display = 'none';
             var lnk = document.getElementById('xray-link');
             if (lnk) lnk.innerHTML = '&#128302; X-ray';
+            _restoreSummaryOriginal();
         }
 
         // Overrides the navbar's onchange handler; honours X-ray mode
@@ -350,6 +402,7 @@
                         return;
                     }
                     _renderXray(data);
+                    _updateSummaryRow(data);
                     if (loadEl) loadEl.style.display = 'none';
                     if (contEl) contEl.style.display = 'block';
                 })
