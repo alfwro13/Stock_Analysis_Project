@@ -2,8 +2,9 @@
 import json
 import re
 import logging
+from contextlib import contextmanager
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 import pandas as pd
 import ta
@@ -27,8 +28,32 @@ class AIPromptEngine:
     prompt is far more useful than no prompt at all.
     """
 
+    _HTML_TAG_RE = re.compile('<.*?>')
+
     def __init__(self) -> None:
-        pass
+        self._prompt_cache: Dict[tuple, str] = {}
+        self._cache_date: str = ""
+
+    def _cache_key(self, ticker: str, mode: str) -> tuple:
+        today = datetime.now().strftime("%Y-%m-%d")
+        if today != self._cache_date:
+            self._prompt_cache.clear()
+            self._cache_date = today
+        return (ticker, mode, today)
+
+    def invalidate_cache(self) -> None:
+        """Force-clear the prompt cache (call after a manual data refresh)."""
+        self._prompt_cache.clear()
+        self._cache_date = ""
+
+    @contextmanager
+    def _db(self):
+        """Context manager that yields an open cursor and closes the connection on exit."""
+        conn = get_connection()
+        try:
+            yield conn.cursor()
+        finally:
+            conn.close()
 
     # ------------------------------------------------------------------ #
     # Low-level helpers
@@ -40,8 +65,7 @@ class AIPromptEngine:
 
         # Format lists cleanly before stripping tags
         text = raw_html.replace('<li>', '\n- ').replace('</li>', '').replace('<br>', '\n')
-        cleanr = re.compile('<.*?>')
-        cleantext = re.sub(cleanr, '', text)
+        cleantext = self._HTML_TAG_RE.sub('', text)
         return cleantext.replace('&nbsp;', ' ').strip()
 
     @staticmethod
@@ -123,6 +147,9 @@ class AIPromptEngine:
             "average_volume": "N/A",
             "volume_contraction_ratio": "N/A",
             "price_path": "N/A",
+            "adx": "N/A",
+            "bb_pband": "N/A",
+            "bb_wband": "N/A",
         }
 
         if not df_path.exists():
@@ -149,6 +176,40 @@ class AIPromptEngine:
             # --- Price path ---
             metrics["price_path"] = self._describe_series_trajectory(close, decimals=2)
 
+            # --- ADX trend strength (14-period) ---
+            # Requires High/Low columns; degrade gracefully if absent.
+            if 'High' in df.columns and 'Low' in df.columns:
+                adx_indicator = ta.trend.ADXIndicator(
+                    high=df['High'], low=df['Low'], close=close, window=14
+                )
+                adx_val = adx_indicator.adx().iloc[-1]
+                if not pd.isna(adx_val):
+                    if adx_val >= 50:
+                        strength = "STRONG TREND"
+                    elif adx_val >= 25:
+                        strength = "TRENDING"
+                    else:
+                        strength = "WEAK/CHOPPY"
+                    metrics["adx"] = f"{adx_val:.1f} ({strength})"
+
+            # --- Bollinger Band position (20-period, 2σ) ---
+            bb = ta.volatility.BollingerBands(close=close, window=20, window_dev=2)
+            pband = bb.bollinger_pband().iloc[-1]
+            wband = bb.bollinger_wband().iloc[-1]
+            if not pd.isna(pband) and not pd.isna(wband):
+                if pband >= 1.0:
+                    bb_pos = "ABOVE upper band (overbought risk)"
+                elif pband <= 0.0:
+                    bb_pos = "BELOW lower band (oversold / breakdown)"
+                elif pband >= 0.8:
+                    bb_pos = "Near upper band"
+                elif pband <= 0.2:
+                    bb_pos = "Near lower band"
+                else:
+                    bb_pos = "Mid-band"
+                metrics["bb_pband"] = f"{pband:.2f} ({bb_pos})"
+                metrics["bb_wband"] = f"{wband:.4f} (band width as % of price)"
+
             # --- OBV accumulation/distribution ---
             obv = ta.volume.OnBalanceVolumeIndicator(close=close, volume=volume).on_balance_volume()
             obv_ma = obv.rolling(window=21).mean()
@@ -159,7 +220,7 @@ class AIPromptEngine:
                 )
 
             # --- Volume trajectory + contraction ratio (VCP detector) ---
-            metrics["volume_path"] = self._describe_series_trajectory(volume.tail(5), decimals=0)
+            metrics["volume_path"] = self._describe_series_trajectory(volume, decimals=0)
             avg_vol_21 = volume.rolling(21).mean().iloc[-1]
             if not pd.isna(avg_vol_21):
                 metrics["average_volume"] = f"{avg_vol_21:,.0f}"
@@ -192,34 +253,29 @@ class AIPromptEngine:
             "rel_strength_5d": "N/A", "rel_strength_20d": "N/A",
         }
 
-        conn = None
         try:
-            conn = get_connection()
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT mom_1m, mom_3m, mom_6m, mom_12m_skip1m,
-                       hist_vol_20, atr_pct, rel_strength_5d, rel_strength_20d
-                FROM quant_signals
-                WHERE ticker = ?
-                ORDER BY date DESC
-                LIMIT 1
-            """, (ticker,))
-            row = cursor.fetchone()
-            if row:
-                r = dict(row)
-                factors["mom_1m"] = self._fmt_pct(r.get('mom_1m'))
-                factors["mom_3m"] = self._fmt_pct(r.get('mom_3m'))
-                factors["mom_6m"] = self._fmt_pct(r.get('mom_6m'))
-                factors["mom_12m_skip1m"] = self._fmt_pct(r.get('mom_12m_skip1m'))
-                factors["hist_vol_20"] = self._fmt_pct(r.get('hist_vol_20'))
-                factors["atr_pct"] = self._fmt_pct(r.get('atr_pct'))
-                factors["rel_strength_5d"] = self._fmt_pct(r.get('rel_strength_5d'))
-                factors["rel_strength_20d"] = self._fmt_pct(r.get('rel_strength_20d'))
+            with self._db() as cursor:
+                cursor.execute("""
+                    SELECT mom_1m, mom_3m, mom_6m, mom_12m_skip1m,
+                           hist_vol_20, atr_pct, rel_strength_5d, rel_strength_20d
+                    FROM quant_signals
+                    WHERE ticker = ?
+                    ORDER BY date DESC
+                    LIMIT 1
+                """, (ticker,))
+                row = cursor.fetchone()
+                if row:
+                    r = dict(row)
+                    factors["mom_1m"] = self._fmt_pct(r.get('mom_1m'))
+                    factors["mom_3m"] = self._fmt_pct(r.get('mom_3m'))
+                    factors["mom_6m"] = self._fmt_pct(r.get('mom_6m'))
+                    factors["mom_12m_skip1m"] = self._fmt_pct(r.get('mom_12m_skip1m'))
+                    factors["hist_vol_20"] = self._fmt_pct(r.get('hist_vol_20'))
+                    factors["atr_pct"] = self._fmt_pct(r.get('atr_pct'))
+                    factors["rel_strength_5d"] = self._fmt_pct(r.get('rel_strength_5d'))
+                    factors["rel_strength_20d"] = self._fmt_pct(r.get('rel_strength_20d'))
         except Exception as e:
             logger.error(f"[AI ENGINE] Failed to fetch momentum factor stack for {ticker}: {e}")
-        finally:
-            if conn:
-                conn.close()
 
         return factors
 
@@ -245,55 +301,50 @@ class AIPromptEngine:
             logger.warning(f"[AI ENGINE] Could not load volatility regime: {e}")
 
         # --- Systemic yield threat + DXY (macro_regimes) ---
-        conn = None
         try:
-            conn = get_connection()
-            cursor = conn.cursor()
-            cursor.execute("SELECT * FROM macro_regimes ORDER BY date DESC LIMIT 1")
-            macro_row = cursor.fetchone()
-            if macro_row:
-                m = dict(macro_row)
-                lines.append(
-                    f"US Yield Threat: {m.get('us_threat_level', 'GREEN')} "
-                    f"(10Y {self._fmt_float(m.get('tnx_close'))}%, "
-                    f"velocity {self._fmt_float(m.get('us_yield_velocity'))} bps/3d) | "
-                    f"UK Yield Threat: {m.get('uk_threat_level', 'GREEN')} "
-                    f"(Gilt {self._fmt_float(m.get('uk_gilt_close'))}%, "
-                    f"velocity {self._fmt_float(m.get('uk_yield_velocity'))} bps/3d)"
-                )
-                lines.append(
-                    f"US Dollar Index (DXY): {self._fmt_float(m.get('dxy_close'))} | "
-                    f"GBP/USD: {self._fmt_float(m.get('gbpusd_close'), 4)}"
-                )
-
-            # --- 7-day Tier-1 event radar (macro_calendar) ---
-            now = datetime.now()
-            now_str = now.strftime('%Y-%m-%d %H:%M:%S')
-            horizon_7d = (now + timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')
-            cursor.execute("""
-                SELECT event_date, currency, impact, event_name, forecast_val, previous_val
-                FROM macro_calendar
-                WHERE event_date BETWEEN ? AND ?
-                  AND impact = 'High'
-                ORDER BY event_date ASC
-                LIMIT 12
-            """, (now_str, horizon_7d))
-            events = cursor.fetchall()
-            if events:
-                lines.append("Upcoming Tier-1 Macro Events (7-Day Radar):")
-                for ev in events:
-                    e = dict(ev)
-                    fc = self._fmt_float(e.get('forecast_val'))
-                    prev = self._fmt_float(e.get('previous_val'))
+            with self._db() as cursor:
+                cursor.execute("SELECT * FROM macro_regimes ORDER BY date DESC LIMIT 1")
+                macro_row = cursor.fetchone()
+                if macro_row:
+                    m = dict(macro_row)
                     lines.append(
-                        f"  - [{e.get('event_date')}] {e.get('currency')} "
-                        f"{e.get('event_name')} (Est: {fc} | Prev: {prev})"
+                        f"US Yield Threat: {m.get('us_threat_level', 'GREEN')} "
+                        f"(10Y {self._fmt_float(m.get('tnx_close'))}%, "
+                        f"velocity {self._fmt_float(m.get('us_yield_velocity'))} bps/3d) | "
+                        f"UK Yield Threat: {m.get('uk_threat_level', 'GREEN')} "
+                        f"(Gilt {self._fmt_float(m.get('uk_gilt_close'))}%, "
+                        f"velocity {self._fmt_float(m.get('uk_yield_velocity'))} bps/3d)"
                     )
+                    lines.append(
+                        f"US Dollar Index (DXY): {self._fmt_float(m.get('dxy_close'))} | "
+                        f"GBP/USD: {self._fmt_float(m.get('gbpusd_close'), 4)}"
+                    )
+
+                # --- 7-day Tier-1 event radar (macro_calendar) ---
+                now = datetime.now()
+                now_str = now.strftime('%Y-%m-%d %H:%M:%S')
+                horizon_7d = (now + timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')
+                cursor.execute("""
+                    SELECT event_date, currency, impact, event_name, forecast_val, previous_val
+                    FROM macro_calendar
+                    WHERE event_date BETWEEN ? AND ?
+                      AND impact = 'High'
+                    ORDER BY event_date ASC
+                    LIMIT 12
+                """, (now_str, horizon_7d))
+                events = cursor.fetchall()
+                if events:
+                    lines.append("Upcoming Tier-1 Macro Events (7-Day Radar):")
+                    for ev in events:
+                        e = dict(ev)
+                        fc = self._fmt_float(e.get('forecast_val'))
+                        prev = self._fmt_float(e.get('previous_val'))
+                        lines.append(
+                            f"  - [{e.get('event_date')}] {e.get('currency')} "
+                            f"{e.get('event_name')} (Est: {fc} | Prev: {prev})"
+                        )
         except Exception as e:
             logger.error(f"[AI ENGINE] Failed to assemble macro context: {e}")
-        finally:
-            if conn:
-                conn.close()
 
         if not lines:
             return "Macro regime data unavailable."
@@ -308,25 +359,23 @@ class AIPromptEngine:
         if not sector:
             return "Sector unknown; peer comparison unavailable."
 
-        conn = None
         try:
-            conn = get_connection()
-            cursor = conn.cursor()
-            # Join each sector peer to its most-recent quant_signals relative-strength
-            # reading. Correlated subquery keeps us to the latest row per ticker.
-            cursor.execute("""
-                SELECT s.ticker,
-                       s.company_name,
-                       q.rel_strength_20d
-                FROM stock_signals s
-                JOIN quant_signals q
-                  ON s.ticker = q.ticker
-                 AND q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = s.ticker)
-                WHERE s.sector = ?
-                  AND q.rel_strength_20d IS NOT NULL
-                ORDER BY q.rel_strength_20d DESC
-            """, (sector,))
-            peers = [dict(r) for r in cursor.fetchall()]
+            with self._db() as cursor:
+                # Join each sector peer to its most-recent quant_signals relative-strength
+                # reading. Correlated subquery keeps us to the latest row per ticker.
+                cursor.execute("""
+                    SELECT s.ticker,
+                           s.company_name,
+                           q.rel_strength_20d
+                    FROM stock_signals s
+                    JOIN quant_signals q
+                      ON s.ticker = q.ticker
+                     AND q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = s.ticker)
+                    WHERE s.sector = ?
+                      AND q.rel_strength_20d IS NOT NULL
+                    ORDER BY q.rel_strength_20d DESC
+                """, (sector,))
+                peers = [dict(r) for r in cursor.fetchall()]
 
             if not peers or len(peers) < 2:
                 return f"Sector '{sector}': insufficient peer data for ranking."
@@ -344,8 +393,10 @@ class AIPromptEngine:
                 )
 
             # Show the strongest and weakest peers for context.
-            top = peers[:3]
-            bottom = peers[-3:]
+            # Cap at total//2 so the two lists never overlap (e.g. 4 peers → top-2/bottom-2).
+            n = min(3, total // 2)
+            top = peers[:n]
+            bottom = peers[-n:]
             lines.append("Strongest in sector (20D rel-strength): " + ", ".join(
                 f"{p['ticker']} {self._fmt_pct(p['rel_strength_20d'])}" for p in top
             ))
@@ -357,9 +408,6 @@ class AIPromptEngine:
         except Exception as e:
             logger.error(f"[AI ENGINE] Failed to build sector peer context for {ticker}: {e}")
             return "Sector peer comparison unavailable."
-        finally:
-            if conn:
-                conn.close()
 
     def _get_options_volatility(self, ticker: str) -> str:
         """
@@ -367,17 +415,16 @@ class AIPromptEngine:
         edge score is Historical Move minus Isolated Implied Move: positive means
         options are underpriced (buy premium), negative means overpriced (IV-crush risk).
         """
-        conn = None
         try:
-            conn = get_connection()
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT next_earnings_date, implied_move_pct, historical_avg_move_pct,
-                       edge_score, options_volume
-                FROM earnings_volatility
-                WHERE ticker = ?
-            """, (ticker,))
-            row = cursor.fetchone()
+            with self._db() as cursor:
+                cursor.execute("""
+                    SELECT next_earnings_date, implied_move_pct, historical_avg_move_pct,
+                           edge_score, options_volume, last_updated
+                    FROM earnings_volatility
+                    WHERE ticker = ?
+                """, (ticker,))
+                row = cursor.fetchone()
+
             if not row:
                 return "No earnings volatility edge data on file for this ticker."
 
@@ -390,53 +437,160 @@ class AIPromptEngine:
             else:
                 verdict = "Options fairly priced relative to history."
 
+            # Staleness check — warn the LLM if data is older than 7 days.
+            last_updated = r.get('last_updated', '')
+            staleness_note = ""
+            try:
+                lu_dt = datetime.strptime(last_updated[:19], "%Y-%m-%d %H:%M:%S")
+                age_days = (datetime.now() - lu_dt).days
+                if age_days > 7:
+                    staleness_note = f"\n[WARNING: This data is {age_days} days old — treat as stale.]"
+            except (ValueError, TypeError):
+                pass
+
             return (
                 f"Next Earnings: {r.get('next_earnings_date', 'N/A')}\n"
                 f"Isolated Implied Move (ATM straddle): {self._fmt_float(r.get('implied_move_pct'))}%\n"
                 f"Historical Avg Earnings Move: {self._fmt_float(r.get('historical_avg_move_pct'))}%\n"
                 f"Edge Score (Hist - Implied): {self._fmt_float(r.get('edge_score'))}% — {verdict}\n"
-                f"Options Liquidity (ATM Open Interest): {r.get('options_volume', 'N/A')}"
+                f"Options Liquidity (ATM Open Interest): {r.get('options_volume', 'N/A')}\n"
+                f"Data as of: {last_updated or 'N/A'}{staleness_note}"
             )
         except Exception as e:
             logger.error(f"[AI ENGINE] Failed to fetch options volatility for {ticker}: {e}")
             return "Earnings volatility data unavailable."
-        finally:
-            if conn:
-                conn.close()
+
+    def _get_xray_context(self, ticker: str) -> str:
+        """
+        Pulls portfolio-level risk data from the three X-ray tables:
+        beta + annualised vol (xray_risk_cache), top portfolio correlations
+        (xray_correlation_matrix), and dividend yield (xray_dividend_cache).
+
+        Only surfaces when data is present; degrades gracefully otherwise so it
+        never blocks prompt generation for tickers not yet analysed by the X-ray engine.
+        """
+        lines: List[str] = []
+
+        try:
+            with self._db() as cursor:
+                # --- Beta + annualised vol vs benchmark (SWDA.L / iShares MSCI World) ---
+                cursor.execute("""
+                    SELECT beta, annualized_vol, benchmark, last_updated
+                    FROM xray_risk_cache
+                    WHERE ticker = ?
+                    ORDER BY last_updated DESC
+                    LIMIT 1
+                """, (ticker,))
+                risk_row = cursor.fetchone()
+                if risk_row:
+                    r = dict(risk_row)
+                    lines.append(
+                        f"Portfolio Beta vs {r.get('benchmark', 'benchmark')}: "
+                        f"{self._fmt_float(r.get('beta'), 3)} | "
+                        f"Annualised Vol: {self._fmt_pct(r.get('annualized_vol'), 1)}"
+                    )
+
+                # --- Top portfolio correlations (parse JSON matrix) ---
+                cursor.execute("""
+                    SELECT tickers_json, matrix_json
+                    FROM xray_correlation_matrix
+                    ORDER BY last_updated DESC
+                    LIMIT 1
+                """)
+                corr_row = cursor.fetchone()
+                if corr_row:
+                    tickers = json.loads(corr_row["tickers_json"])
+                    matrix = json.loads(corr_row["matrix_json"])
+                    if ticker in tickers:
+                        idx = tickers.index(ticker)
+                        row_corrs = [
+                            (tickers[j], matrix[idx][j])
+                            for j in range(len(tickers))
+                            if j != idx and tickers[j] != ticker
+                        ]
+                        row_corrs.sort(key=lambda x: abs(x[1]), reverse=True)
+                        top_corrs = row_corrs[:3]
+                        if top_corrs:
+                            corr_strs = ", ".join(
+                                f"{t} ({v:+.2f})" for t, v in top_corrs
+                            )
+                            lines.append(f"Top Portfolio Correlations: {corr_strs}")
+
+                # --- Dividend yield ---
+                cursor.execute("""
+                    SELECT dividend_yield_pct, dividend_in_base_currency
+                    FROM xray_dividend_cache
+                    WHERE ticker = ?
+                    ORDER BY last_updated DESC
+                    LIMIT 1
+                """, (ticker,))
+                div_row = cursor.fetchone()
+                if div_row:
+                    d = dict(div_row)
+                    lines.append(
+                        f"Dividend Yield: {self._fmt_float(d.get('dividend_yield_pct'), 2)}% | "
+                        f"Annual Dividend (base CCY): {self._fmt_float(d.get('dividend_in_base_currency'), 2)}"
+                    )
+
+        except Exception as e:
+            logger.warning(f"[AI ENGINE] Could not load X-ray context for {ticker}: {e}")
+
+        if not lines:
+            return "X-ray portfolio risk data not yet computed for this ticker."
+        return "\n".join(lines)
 
     # ------------------------------------------------------------------ #
     # Master prompt assembly
     # ------------------------------------------------------------------ #
-    def generate_prompt(self, ticker: str, mode: str) -> Optional[str]:
+    _KNOWN_MODES = frozenset({
+        "The Devil's Advocate analysis",
+        "Risk/Reward Audit",
+        "Quantamental Deep-Dive",
+        "Earnings Strategy",
+    })
+
+    def generate_prompt(
+        self,
+        ticker: str,
+        mode: Literal[
+            "The Devil's Advocate analysis",
+            "Risk/Reward Audit",
+            "Quantamental Deep-Dive",
+            "Earnings Strategy",
+        ],
+    ) -> Optional[str]:
         """
         Compiles the master prompt string based on the requested analysis mode.
 
         Returns None only when the core stock_signals record is missing — every
         auxiliary context block degrades gracefully to an 'unavailable' note.
+
+        Results are cached by (ticker, mode, trading_date) and auto-invalidated
+        at midnight so repeated chat turns in the same session skip all DB I/O.
         """
+        cache_key = self._cache_key(ticker, mode)
+        if cache_key in self._prompt_cache:
+            logger.debug(f"[AI ENGINE] Cache hit for {ticker}/{mode}")
+            return self._prompt_cache[cache_key]
+
         # 1. Fetch Core Database Record & Advanced Metrics
-        conn = None
+        stock_row = None
         try:
-            conn = get_connection()
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT s.*,
-                       q.ml_confidence_score,
-                       q.var_95,
-                       q.cvar_95,
-                       q.sentiment_score
-                FROM stock_signals s
-                LEFT JOIN quant_signals q ON s.ticker = q.ticker
-                    AND q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = s.ticker)
-                WHERE s.ticker = ?
-            """, (ticker,))
-            stock_row = cursor.fetchone()
+            with self._db() as cursor:
+                cursor.execute("""
+                    SELECT s.*,
+                           q.ml_confidence_score,
+                           q.var_95,
+                           q.cvar_95,
+                           q.sentiment_score
+                    FROM stock_signals s
+                    LEFT JOIN quant_signals q ON s.ticker = q.ticker
+                        AND q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = s.ticker)
+                    WHERE s.ticker = ?
+                """, (ticker,))
+                stock_row = cursor.fetchone()
         except Exception as e:
             logger.error(f"[AI ENGINE] Core record query failed for {ticker}: {e}")
-            stock_row = None
-        finally:
-            if conn:
-                conn.close()
 
         if not stock_row:
             logger.warning(f"[AI ENGINE] No stock_signals record found for {ticker}; cannot build prompt.")
@@ -451,6 +605,7 @@ class AIPromptEngine:
         macro_context = self._get_macro_context()
         peer_context = self._get_sector_peer_context(ticker, stock_data.get('sector'))
         options_context = self._get_options_volatility(ticker)
+        xray_context = self._get_xray_context(ticker)
         clean_notes = self._clean_html(stock_data.get('educational_notes', ''))
 
         # 3. Safe Formatting Block
@@ -561,6 +716,11 @@ USER PORTFOLIO CONTEXT
 {portfolio_str}
 
 =========================================================
+X-RAY PORTFOLIO RISK METRICS
+=========================================================
+{xray_context}
+
+=========================================================
 ASSET DATA: {stock_data.get('company_name', ticker)} ({stock_data.get('ticker', ticker)})
 =========================================================
 Sector: {stock_data.get('sector', 'Unknown')}
@@ -605,6 +765,9 @@ RSI (14) Path: {technicals['rsi_path']}
 MACD Line Path: {technicals['macd_path']}
 MACD Signal Path: {technicals['macd_signal_path']}
 MACD Histogram Path: {technicals['macd_hist_path']}
+ADX Trend Strength (14): {technicals['adx']}
+Bollinger Band Position (20,2σ): {technicals['bb_pband']}
+Bollinger Band Width: {technicals['bb_wband']}
 OBV Trend: {technicals['obv_trend']}
 Volume Path: {technicals['volume_path']} (21D Avg: {technicals['average_volume']})
 Volume Contraction Ratio (5D vs prior 20D): {technicals['volume_contraction_ratio']}
@@ -655,10 +818,13 @@ Based on the current technical extensions (RSI/MACD trajectory, MAs), the option
 {context_payload}
 """
         else:
+            logger.warning(f"[AI ENGINE] Unknown analysis mode '{mode}'; falling back to generic prompt.")
             prompt_wrapper = f"""
 You are an elite-level Stock Market Analyst. Review the following data and provide an institutional-grade assessment.
 
 {context_payload}
 """
 
-        return prompt_wrapper.strip()
+        result = prompt_wrapper.strip()
+        self._prompt_cache[cache_key] = result
+        return result
