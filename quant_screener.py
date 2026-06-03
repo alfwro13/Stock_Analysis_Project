@@ -1,4 +1,5 @@
 # quant_screener.py
+import math
 import os
 import re
 import logging
@@ -15,6 +16,16 @@ from constants import (
 )
 
 logger = logging.getLogger(__name__)
+
+def _is_valid_numeric(v) -> bool:
+    """Returns True only when v is a real, finite number — not None, NaN, or ±inf."""
+    if v is None:
+        return False
+    try:
+        f = float(v)
+    except (ValueError, TypeError):
+        return False
+    return math.isfinite(f)
 
 # --- Expert System: Rule-Based Screens with Regime Context ---
 
@@ -37,17 +48,19 @@ def get_oversold_reversals(data: List[Dict[str, Any]], regime_label: str) -> Lis
         macd_hist = row.get('macd_hist')
         sector = row.get('sector', 'Unknown')
         
-        if rsi is not None and macd_hist is not None:
+        if _is_valid_numeric(rsi) and _is_valid_numeric(macd_hist):
             # RSI < 30 = deeply oversold. Positive MACD histogram = momentum recovering.
             # Bullish cross is a bonus tag but not required — the cross typically lags
             # RSI recovery by several sessions, making both conditions near-impossible to satisfy together.
             if rsi < RSI_OVERSOLD and macd_hist > 0:
                 if regime_label in ['Crash', 'Volatile']:
-                    # Safely extract beta
+                    # Safely extract beta — guard against None, non-numeric, and ±inf
                     beta_raw = row.get('beta')
                     try:
                         beta = float(beta_raw) if beta_raw is not None else 1.0
-                    except ValueError:
+                        if not math.isfinite(beta):
+                            beta = 1.0
+                    except (ValueError, TypeError):
                         beta = 1.0
                         
                     is_defensive = sector in defensive_sectors
@@ -91,7 +104,7 @@ def get_momentum_surges(data: List[Dict[str, Any]], regime_label: str) -> List[D
         close_price = row.get('close_price', 0)
         sma_200 = row.get('sma_200', 0)
         
-        if vol_surge in (1, True) and rsi is not None:
+        if vol_surge in (1, True) and _is_valid_numeric(rsi):
             if RSI_MOMENTUM_MIN <= rsi <= RSI_OVERBOUGHT:
                 if regime_label in ['Crash', 'Volatile']:
                     if sma_200 is not None and close_price > sma_200:
@@ -112,7 +125,7 @@ def get_overbought_warnings(data: List[Dict[str, Any]], regime_label: str) -> Li
         rsi = row.get('rsi_14')
         macd_hist = row.get('macd_hist')
         
-        if rsi is not None and macd_hist is not None:
+        if _is_valid_numeric(rsi) and _is_valid_numeric(macd_hist):
             if rsi > rsi_threshold and macd_hist < 0:
                 results.append(row)
     return results
@@ -180,14 +193,12 @@ def filter_macro_vetoes(setups: List[Dict[str, Any]], threat_level: str) -> Tupl
         pe = row.get('trailing_pe')
         debt = row.get('debt_to_equity')
         corr = row.get('yield_correlation')
-        
-        # Neutral assumption for missing correlation data.
-        # A stock with no yield correlation history is unknown, not negatively correlated.
-        if corr is None:
-            corr = 0.0
-            
+
         is_high_multiple = (pe is not None and pe > 30) or (debt is not None and debt > 1.5)
-        is_neg_corr = corr <= -0.3
+        # Missing correlation data is treated as a risk factor, not neutral.
+        # A high-multiple stock with no yield-correlation history provides no evidence
+        # it is rate-safe, so we apply the veto rather than assume safety.
+        is_neg_corr = corr is None or corr <= -0.3
         
         if is_high_multiple and is_neg_corr:
             vetoed.append(row)
@@ -286,7 +297,7 @@ def _extract_numeric(val_str: str) -> float:
     if not val_str:
         return None
     try:
-        match = re.search(r'-?[\d]+\.?[\d]*', str(val_str))
+        match = re.search(r'-?[\d]*\.?[\d]+', str(val_str))
         return float(match.group()) if match else None
     except Exception:
         return None

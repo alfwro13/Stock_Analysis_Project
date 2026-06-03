@@ -112,7 +112,7 @@ def run_daily_quant_scan(ticker_list: List[str], scan_type: str = 'daily') -> No
                 sma_200                     = smas[200]
                 vol_sma_20                  = compute_volume_sma(volume_s)
                 atr_series                  = compute_atr(df['High'], df['Low'], df['Close'])
-                atr_pct_series              = atr_series / df['Close']
+                atr_pct_series              = atr_series / df['Close'].replace(0, float('nan'))
 
                 # Extract latest localized date and metrics
                 last_date = df.index[-1].strftime('%Y-%m-%d')

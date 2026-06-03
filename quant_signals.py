@@ -624,12 +624,12 @@ class QuantEngine:
             
             # Pence misquote correction: yfinance sometimes returns GBp yields as
             # (pence_dividend / pence_price) which is 100x the true decimal yield.
-            # Any yield > 0.25 (25%) for a GBP/GBp asset is virtually impossible for
-            # a legitimate stock and almost certainly a pence denomination artifact.
-            # Lower threshold to 0.15 (15%) to catch more misquotes while still
-            # allowing genuine high-yield instruments (REITs, BDCs) to pass through.
+            # A yield > 1.0 (100%) is impossible for any real stock, so any value
+            # above that threshold is a pence-denomination artifact (e.g. 8.0 meaning 8%).
+            # The old threshold of 0.15 was too low — it incorrectly halved genuine
+            # high-yield instruments like REITs returning 16–20%.
             if dividend_yield is not None and currency in ['GBp', 'GBP']:
-                if dividend_yield > 0.15:
+                if dividend_yield > 1.0:
                     dividend_yield /= 100.0
 
             ex_dividend_date = info.get('exDividendDate', None)
