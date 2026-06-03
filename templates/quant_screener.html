@@ -40,8 +40,43 @@
     <div class="report-container" id="markdown-render-area">
     </div>
 
+    <!-- Signal Explorer: interactive sortable/filterable table -->
+    <div class="report-container" id="screener-table-panel" style="margin-top:2rem;">
+        <h2>📊 Signal Explorer</h2>
+        <p style="color:#aaa;font-size:0.9rem;">Live view of all tracked signals. Click column headers to sort. Quality: A=high-quality compounder, B=solid, C=average, D=avoid.</p>
+        <div style="display:flex;gap:0.75rem;flex-wrap:wrap;margin-bottom:1rem;">
+            <input type="text"   id="se-text-filter"  placeholder="Filter ticker or name…"    style="padding:0.4rem 0.6rem;background:#1e1e1e;color:#eee;border:1px solid #444;border-radius:4px;flex:1;min-width:160px;">
+            <input type="number" id="se-score-filter" placeholder="Min score (e.g. 20)"       style="padding:0.4rem 0.6rem;background:#1e1e1e;color:#eee;border:1px solid #444;border-radius:4px;width:160px;" step="1">
+            <button id="se-reset" style="padding:0.4rem 0.8rem;background:#333;color:#eee;border:1px solid #555;border-radius:4px;cursor:pointer;">Reset</button>
+        </div>
+        <div id="se-table-container" style="overflow-x:auto;">
+            <p style="color:#888;">Loading…</p>
+        </div>
+    </div>
+
+    <style>
+        #se-table-container table { width:100%; border-collapse:collapse; font-size:0.85rem; }
+        #se-table-container th { background:#1a1a2e; color:#ccc; padding:0.5rem 0.6rem; text-align:left; cursor:pointer; white-space:nowrap; user-select:none; }
+        #se-table-container th:hover { background:#252545; }
+        #se-table-container td { padding:0.45rem 0.6rem; border-bottom:1px solid #2a2a2a; vertical-align:middle; }
+        #se-table-container tr:hover td { background:#1c1c1c; }
+        .se-badge { display:inline-block; padding:0.15rem 0.45rem; border-radius:4px; font-weight:600; font-size:0.8rem; }
+        .se-score-strongbuy  { background:#1b4332; color:#6fcf97; }
+        .se-score-bullish    { background:#003333; color:#4dd0e1; }
+        .se-score-neutral    { background:#2a2a2a; color:#bbb; }
+        .se-score-bearish    { background:#3d2000; color:#ffb74d; }
+        .se-score-sell       { background:#3b0000; color:#ef9a9a; }
+        .se-qual-a { background:#3d3000; color:#ffd54f; }
+        .se-qual-b { background:#1b3a2a; color:#81c784; }
+        .se-qual-c { background:#2a2a2a; color:#aaa; }
+        .se-qual-d { background:#3b0000; color:#ef9a9a; }
+        .se-earnings-warn { color:#ffb74d; font-weight:600; }
+        #se-sort-indicator { color:#4dd0e1; margin-left:4px; }
+    </style>
+
     <script>
         document.addEventListener("DOMContentLoaded", async function() {
+            // --- Freshness badge ---
             try {
                 const container = document.querySelector('.header-container');
                 if (container) {
@@ -64,11 +99,125 @@
                 }
             } catch (e) { /* fail silently */ }
 
-            // Securely extract the JSON-escaped markdown payload from the backend
+            // --- Markdown briefing ---
             const rawMarkdown = {{ markdown_content | tojson | safe }};
-            
-            // Parse the markdown into HTML and inject it into the DOM container
             document.getElementById('markdown-render-area').innerHTML = marked.parse(rawMarkdown);
+
+            // --- Signal Explorer table ---
+            let allRows = [];
+            let sortCol = 'composite_score';
+            let sortAsc = false;
+
+            const COLS = [
+                { key: 'ticker',          label: 'Ticker',    render: r => `<strong>${r.ticker||''}</strong>` },
+                { key: 'company_name',    label: 'Name',      render: r => `<span style="color:#bbb">${(r.company_name||'').slice(0,28)}</span>` },
+                { key: 'composite_score', label: 'Score',     render: r => scoreBadge(r.composite_score) },
+                { key: 'overall_signal',  label: 'Signal',    render: r => `<span style="color:#ccc;font-size:0.8rem">${r.overall_signal||'—'}</span>` },
+                { key: 'quality_grade',   label: 'Quality',   render: r => qualBadge(r.quality_grade) },
+                { key: 'rsi_14',          label: 'RSI',       render: r => fmt1(r.rsi_14) },
+                { key: 'week52_pct',      label: '52W%',      render: r => r.week52_pct != null ? `${(r.week52_pct*100).toFixed(0)}%` : '—' },
+                { key: 'atr_pct',         label: 'ATR%',      render: r => r.atr_pct != null ? `${(r.atr_pct*100).toFixed(1)}%` : '—' },
+                { key: 'earnings_days',   label: 'Earnings',  render: r => earningsCell(r.earnings_days) },
+            ];
+
+            function scoreBadge(v) {
+                if (v == null) return '<span style="color:#666">—</span>';
+                let cls = v >= 40 ? 'se-score-strongbuy' : v >= 20 ? 'se-score-bullish' : v >= 0 ? 'se-score-neutral' : v >= -30 ? 'se-score-bearish' : 'se-score-sell';
+                return `<span class="se-badge ${cls}">${v}</span>`;
+            }
+            function qualBadge(g) {
+                if (!g) return '—';
+                const cls = {A:'se-qual-a',B:'se-qual-b',C:'se-qual-c',D:'se-qual-d'}[g] || 'se-qual-c';
+                return `<span class="se-badge ${cls}">${g}</span>`;
+            }
+            function earningsCell(d) {
+                if (d == null) return '<span style="color:#555">—</span>';
+                const cls = d <= 7 ? 'se-earnings-warn' : 'style="color:#ccc"';
+                return `<span ${d <= 7 ? 'class="se-earnings-warn"' : 'style="color:#ccc"'}>${d}d</span>`;
+            }
+            function fmt1(v) { return v != null ? parseFloat(v).toFixed(1) : '—'; }
+
+            function qualOrder(g) { return {A:0,B:1,C:2,D:3}[g] ?? 4; }
+
+            function sortValue(row, col) {
+                const v = row[col];
+                if (col === 'quality_grade') return qualOrder(v);
+                if (typeof v === 'string') return v.toLowerCase();
+                return v ?? -Infinity;
+            }
+
+            function applyFilters() {
+                const text  = document.getElementById('se-text-filter').value.toLowerCase();
+                const minSc = parseFloat(document.getElementById('se-score-filter').value);
+                return allRows.filter(r => {
+                    if (text && !(r.ticker||'').toLowerCase().includes(text) && !(r.company_name||'').toLowerCase().includes(text)) return false;
+                    if (!isNaN(minSc) && (r.composite_score == null || r.composite_score < minSc)) return false;
+                    return true;
+                });
+            }
+
+            function renderTable() {
+                const filtered = applyFilters();
+                filtered.sort((a, b) => {
+                    const va = sortValue(a, sortCol), vb = sortValue(b, sortCol);
+                    if (va < vb) return sortAsc ? -1 : 1;
+                    if (va > vb) return sortAsc ? 1 : -1;
+                    return 0;
+                });
+
+                const container = document.getElementById('se-table-container');
+                if (!filtered.length) { container.innerHTML = '<p style="color:#888;padding:1rem">No rows match the current filters.</p>'; return; }
+
+                const table = document.createElement('table');
+                const thead = document.createElement('thead');
+                const hrow  = document.createElement('tr');
+                COLS.forEach(col => {
+                    const th = document.createElement('th');
+                    th.textContent = col.label;
+                    if (col.key === sortCol) th.innerHTML += ` <span id="se-sort-indicator">${sortAsc ? '▲' : '▼'}</span>`;
+                    th.addEventListener('click', () => {
+                        if (sortCol === col.key) sortAsc = !sortAsc;
+                        else { sortCol = col.key; sortAsc = col.key !== 'composite_score'; }
+                        renderTable();
+                    });
+                    hrow.appendChild(th);
+                });
+                thead.appendChild(hrow);
+                table.appendChild(thead);
+
+                const tbody = document.createElement('tbody');
+                filtered.forEach(row => {
+                    const tr = document.createElement('tr');
+                    COLS.forEach(col => {
+                        const td = document.createElement('td');
+                        td.innerHTML = col.render(row);
+                        tr.appendChild(td);
+                    });
+                    tbody.appendChild(tr);
+                });
+                table.appendChild(tbody);
+
+                container.innerHTML = `<p style="color:#888;font-size:0.8rem;margin-bottom:0.5rem">${filtered.length} of ${allRows.length} signals</p>`;
+                container.appendChild(table);
+            }
+
+            document.getElementById('se-text-filter').addEventListener('input', renderTable);
+            document.getElementById('se-score-filter').addEventListener('input', renderTable);
+            document.getElementById('se-reset').addEventListener('click', () => {
+                document.getElementById('se-text-filter').value = '';
+                document.getElementById('se-score-filter').value = '';
+                renderTable();
+            });
+
+            try {
+                const resp = await fetch('/api/screener-data');
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                const json = await resp.json();
+                allRows = json.data || [];
+                renderTable();
+            } catch (e) {
+                document.getElementById('se-table-container').innerHTML = `<p style="color:#e57373">Failed to load signal data: ${e.message}</p>`;
+            }
         });
     </script>
 </body>

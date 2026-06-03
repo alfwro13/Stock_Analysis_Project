@@ -50,6 +50,7 @@ from data_engine import DataEngine
 from utils import normalize_ticker
 from quant_signals import QuantEngine
 from quant_engine import run_daily_quant_scan
+from quant_screener import compute_quality_grade, _get_earnings_days
 from earnings_vol_engine import run_earnings_vol_scan
 from universe_engine import update_market_universe
 from reports_engine import get_sector_trends, get_mean_reversion_setups, get_leaders_laggards, get_dividend_harvest_setups, get_quality_compounders, get_garp_tenbaggers, get_quality_on_sale
@@ -1222,8 +1223,11 @@ async def get_screener_data():
             q.volume, q.rsi_14, q.macd_hist, q.sma_50, q.sma_200,
             q.volume_surge, q.bullish_cross,
             q.ml_confidence_score, q.var_95, q.cvar_95, q.atr_pct,
+            q.week52_pct,
             qs_sent.sentiment_score,
-            s.composite_score,
+            s.composite_score, s.overall_signal,
+            s.roe, s.peg_ratio, s.trailing_pe, s.debt_to_equity,
+            COALESCE(s.next_earnings_date, ev.next_earnings_date) AS next_earnings_date,
             m.is_freetrade, m.freetrade_subtitle, m.freetrade_url,
             COALESCE(p.quote_type, s.quote_type, m.quote_type, 'EQUITY') as quote_type
         FROM quant_signals q
@@ -1236,13 +1240,20 @@ async def get_screener_data():
             ON qs_sent.ticker = ls.ticker
             AND qs_sent.date = ls.max_date
             AND qs_sent.sentiment_score IS NOT NULL
+        LEFT JOIN earnings_volatility ev ON q.ticker = ev.ticker
         """
         if freetrade_only:
-            query += " AND m.is_freetrade = 1"
-            
+            query += " WHERE m.is_freetrade = 1"
+
         cursor.execute(query)
         rows = cursor.fetchall()
-        data = [dict(row) for row in rows]
+        today_str = datetime.now().strftime('%Y-%m-%d')
+        data = []
+        for row in rows:
+            r = dict(row)
+            r['quality_grade'] = compute_quality_grade(r)
+            r['earnings_days'] = _get_earnings_days(r, today_str)
+            data.append(r)
         return JSONResponse(content={"data": data})
     except Exception as e:
         logger.error(f"Failed to fetch screener data: {e}")

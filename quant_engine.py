@@ -114,6 +114,13 @@ def run_daily_quant_scan(ticker_list: List[str], scan_type: str = 'daily') -> No
                 atr_series                  = compute_atr(df['High'], df['Low'], df['Close'])
                 atr_pct_series              = atr_series / df['Close'].replace(0, float('nan'))
 
+                # 52-week range position: where current price sits between its 52W low and high
+                close_safe = df['Close'].replace(0, float('nan'))
+                high_52w = close_safe.rolling(252, min_periods=200).max()
+                low_52w  = close_safe.rolling(252, min_periods=200).min()
+                range_52w = (high_52w - low_52w).replace(0, float('nan'))
+                week52_pct_series = (close_safe - low_52w) / range_52w
+
                 # Extract latest localized date and metrics
                 last_date = df.index[-1].strftime('%Y-%m-%d')
                 c_price = float(close_s.iloc[-1])
@@ -125,7 +132,8 @@ def run_daily_quant_scan(ticker_list: List[str], scan_type: str = 'daily') -> No
                 c_hist   = float(hist_series.iloc[-1])   if not pd.isna(hist_series.iloc[-1])   else None
                 c_sma50  = float(sma_50.iloc[-1])        if not pd.isna(sma_50.iloc[-1])        else None
                 c_sma200 = float(sma_200.iloc[-1])       if not pd.isna(sma_200.iloc[-1])       else None
-                c_atr_pct = float(atr_pct_series.iloc[-1]) if not pd.isna(atr_pct_series.iloc[-1]) else None
+                c_atr_pct    = float(atr_pct_series.iloc[-1])    if not pd.isna(atr_pct_series.iloc[-1])    else None
+                c_week52_pct = float(week52_pct_series.iloc[-1]) if not pd.isna(week52_pct_series.iloc[-1]) else None
 
                 # Logic Triggers
                 # [MATH-09 RESOLUTION] Scalar bool for the DB True/False flag — NaN inputs safely yield False
@@ -134,9 +142,9 @@ def run_daily_quant_scan(ticker_list: List[str], scan_type: str = 'daily') -> No
 
                 # --- Database Write (Safe Upsert) ---
                 cursor.execute('''
-                    INSERT INTO quant_signals 
-                    (ticker, date, close_price, volume, rsi_14, macd, macd_signal, macd_hist, sma_50, sma_200, volume_surge, bullish_cross, atr_pct)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO quant_signals
+                    (ticker, date, close_price, volume, rsi_14, macd, macd_signal, macd_hist, sma_50, sma_200, volume_surge, bullish_cross, atr_pct, week52_pct)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(ticker, date) DO UPDATE SET
                         close_price=excluded.close_price,
                         volume=excluded.volume,
@@ -148,8 +156,9 @@ def run_daily_quant_scan(ticker_list: List[str], scan_type: str = 'daily') -> No
                         sma_200=excluded.sma_200,
                         volume_surge=excluded.volume_surge,
                         bullish_cross=excluded.bullish_cross,
-                        atr_pct=excluded.atr_pct
-                ''', (ticker, last_date, c_price, c_vol, c_rsi, c_macd, c_signal, c_hist, c_sma50, c_sma200, vol_surge, bullish_cross, c_atr_pct))
+                        atr_pct=excluded.atr_pct,
+                        week52_pct=excluded.week52_pct
+                ''', (ticker, last_date, c_price, c_vol, c_rsi, c_macd, c_signal, c_hist, c_sma50, c_sma200, vol_surge, bullish_cross, c_atr_pct, c_week52_pct))
 
                 # Update State Engine
                 cursor.execute("UPDATE quant_scan_states SET last_processed_ticker = ? WHERE scan_date = ? AND scan_type = ?", (ticker, today_str, scan_type))

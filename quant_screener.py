@@ -130,6 +130,48 @@ def get_overbought_warnings(data: List[Dict[str, Any]], regime_label: str) -> Li
                 results.append(row)
     return results
 
+def get_longterm_entry_setups(data: List[Dict[str, Any]], regime_label: str) -> List[Dict[str, Any]]:
+    """
+    Surfaces quality stocks that have pulled back into a buyable range — tuned for a
+    buy-and-hold trader who wants to enter at a good price rather than chase momentum.
+
+    Criteria:
+      - Price above 200D SMA (institutional uptrend intact)
+      - composite_score >= 20 (passing fundamentals + technicals)
+      - RSI 35–60 (healthy pullback; not oversold panic, not overbought chase)
+      - atr_pct < 0.025 (daily vol < 2.5% — filters out speculative/wild names)
+      - Quality grade A or B (no loss-making or overleveraged companies)
+
+    In Crash/Volatile regimes the RSI ceiling is tightened to 55 to avoid
+    catching falling knives dressed as pullbacks.
+    """
+    results = []
+    rsi_ceiling = 55 if regime_label in ['Crash', 'Volatile'] else 60
+
+    for row in data:
+        close_price    = row.get('close_price')
+        sma_200        = row.get('sma_200')
+        composite_score = row.get('composite_score')
+        rsi            = row.get('rsi_14')
+        atr_pct        = row.get('atr_pct')
+
+        if not all(_is_valid_numeric(v) for v in [close_price, sma_200, composite_score, rsi, atr_pct]):
+            continue
+        if close_price <= sma_200:
+            continue
+        if composite_score < 20:
+            continue
+        if not (35 <= rsi <= rsi_ceiling):
+            continue
+        if atr_pct >= 0.025:
+            continue
+        if compute_quality_grade(row) not in ('A', 'B'):
+            continue
+
+        results.append(row)
+
+    return results
+
 def filter_ai_vetoes(setups: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     """
     Evaluates ML prediction metrics on algorithmic setups. 
@@ -209,6 +251,70 @@ def filter_macro_vetoes(setups: List[Dict[str, Any]], threat_level: str) -> Tupl
 
 # --- Data Retrieval ---
 
+def get_portfolio_deterioration_alerts(target_date: str) -> List[Dict[str, Any]]:
+    """
+    Finds portfolio/watchlist holdings where today's composite score is 15+ points
+    lower than the most recent score from at least 5 calendar days ago.
+    Uses score_history — gracefully returns [] if the table is empty or not yet populated.
+    """
+    try:
+        from data_engine import DataEngine
+        portfolio_tickers = DataEngine().get_all_tickers()
+    except Exception:
+        return []
+
+    if not portfolio_tickers:
+        return []
+
+    lookup_cutoff = (datetime.strptime(target_date, '%Y-%m-%d') - timedelta(days=5)).strftime('%Y-%m-%d')
+    placeholders = ','.join('?' for _ in portfolio_tickers)
+
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        # Today's scores
+        cursor.execute(
+            f"SELECT ticker, score, close_price FROM score_history WHERE ticker IN ({placeholders}) AND date = ?",
+            (*portfolio_tickers, target_date),
+        )
+        today_scores = {r['ticker']: dict(r) for r in cursor.fetchall()}
+
+        # Most recent score per ticker that is at least 5 calendar days old
+        cursor.execute(
+            f"""SELECT ticker, score, date FROM score_history
+                WHERE ticker IN ({placeholders}) AND date <= ?
+                GROUP BY ticker HAVING date = MAX(date)""",
+            (*portfolio_tickers, lookup_cutoff),
+        )
+        past_scores = {r['ticker']: dict(r) for r in cursor.fetchall()}
+
+        alerts = []
+        for ticker, today in today_scores.items():
+            past = past_scores.get(ticker)
+            if past is None:
+                continue
+            drop = today['score'] - past['score']
+            if drop <= -15:
+                alerts.append({
+                    'ticker': ticker,
+                    'score_today': today['score'],
+                    'score_past': past['score'],
+                    'score_drop': drop,
+                    'past_date': past['date'],
+                    'close_price': today.get('close_price'),
+                })
+        alerts.sort(key=lambda r: r['score_drop'])
+        return alerts
+
+    except Exception as e:
+        logger.warning(f"Portfolio deterioration check skipped (score_history may be empty): {e}")
+        return []
+    finally:
+        if conn:
+            conn.close()
+
 def fetch_latest_signals(target_date: str) -> List[Dict[str, Any]]:
     """
     Connects to the SQLite database and retrieves all quantitative signals for the target date,
@@ -220,11 +326,17 @@ def fetch_latest_signals(target_date: str) -> List[Dict[str, Any]]:
         conn = get_connection()
         cursor = conn.cursor()
         
-        # Parameterized query to prevent SQL injection, joining fundamentals
+        # Parameterized query to prevent SQL injection, joining fundamentals and earnings data.
+        # earnings_volatility provides the next earnings date if stock_signals doesn't have it.
         cursor.execute('''
-            SELECT q.*, s.trailing_pe, s.debt_to_equity, s.yield_correlation, s.country, s.currency, s.sector, s.beta
+            SELECT q.*,
+                   s.trailing_pe, s.debt_to_equity, s.yield_correlation,
+                   s.country, s.currency, s.sector, s.beta,
+                   s.roe, s.peg_ratio,
+                   COALESCE(s.next_earnings_date, ev.next_earnings_date) AS next_earnings_date
             FROM quant_signals q
             LEFT JOIN stock_signals s ON q.ticker = s.ticker
+            LEFT JOIN earnings_volatility ev ON q.ticker = ev.ticker
             WHERE q.date = ?
         ''', (target_date,))
         
@@ -268,29 +380,110 @@ def fetch_upcoming_macro_events(target_date: str) -> List[Dict[str, Any]]:
 
 # --- Report Generation ---
 
-def _format_mobile_markdown_list(data: List[Dict[str, Any]]) -> str:
+def _format_longterm_setup_list(data: List[Dict[str, Any]], target_date: str = '') -> str:
+    """Formats long-term entry setups with composite score and key metrics front and centre."""
+    if not data:
+        return "*No setups passed all long-term entry criteria today.*\n\n"
+
+    # Sort strongest score first
+    sorted_data = sorted(data, key=lambda r: r.get('composite_score', 0), reverse=True)
+    output = ""
+    for row in sorted_data:
+        ticker  = row.get('ticker', 'N/A')
+        price   = f"${row.get('close_price', 0):.2f}"
+        score   = row.get('composite_score', 'N/A')
+        signal  = row.get('overall_signal', '')
+        rsi     = f"{row.get('rsi_14', 0):.1f}" if _is_valid_numeric(row.get('rsi_14')) else "N/A"
+        atr_pct = row.get('atr_pct')
+        atr_str = f"{atr_pct * 100:.1f}%" if _is_valid_numeric(atr_pct) else "N/A"
+        grade   = compute_quality_grade(row)
+        w52     = f"{row.get('week52_pct') * 100:.0f}%" if _is_valid_numeric(row.get('week52_pct')) else "N/A"
+
+        earnings_tag = ""
+        if target_date:
+            days = _get_earnings_days(row, target_date)
+            if days is not None and days <= 14:
+                earnings_tag = f" | ⚠️ Earnings {days}d"
+
+        output += f"🎯 **{ticker}** ({price}) | **Score:** {score} | **Qual:** {grade} | **52W:** {w52}{earnings_tag}\n"
+        output += f"&nbsp;&nbsp;&nbsp;↳ *RSI:* {rsi} | *ATR:* {atr_str} | *Signal:* {signal}\n\n"
+
+    return output
+
+def _format_mobile_markdown_list(data: List[Dict[str, Any]], target_date: str = '') -> str:
     """
-    Helper function to format a list of dictionaries into a mobile-friendly 
-    Markdown list, bypassing the lack of table support in mobile chat apps.
+    Formats a list of signal rows into a mobile-friendly Markdown list.
+    Includes quality grade and earnings risk flag when data is available.
     """
     if not data:
         return "*No assets met the criteria for this screen today.*\n\n"
-        
+
     output = ""
     for row in data:
-        ticker = row.get('ticker', 'N/A')
-        price = f"${row.get('close_price', 0):.2f}"
-        rsi = f"{row.get('rsi_14', 0):.1f}" if row.get('rsi_14') is not None else "N/A"
-        macd_hist = f"{row.get('macd_hist', 0):.3f}" if row.get('macd_hist') is not None else "N/A"
-        vol_surge = "Yes" if row.get('volume_surge') in (1, True) else "No"
+        ticker      = row.get('ticker', 'N/A')
+        price       = f"${row.get('close_price', 0):.2f}"
+        rsi         = f"{row.get('rsi_14', 0):.1f}" if row.get('rsi_14') is not None else "N/A"
+        macd_hist   = f"{row.get('macd_hist', 0):.3f}" if row.get('macd_hist') is not None else "N/A"
+        vol_surge   = "Yes" if row.get('volume_surge') in (1, True) else "No"
         bullish_cross = "Yes" if row.get('bullish_cross') in (1, True) else "No"
-        ml_conf = f"{row.get('ml_confidence_score'):.1f}%" if row.get('ml_confidence_score') is not None else "N/A"
-        
-        # Dense, mobile-friendly 2-line structure
-        output += f"🔹 **{ticker}** ({price}) | **RSI:** {rsi} | **ML:** {ml_conf}\n"
+        ml_conf     = f"{row.get('ml_confidence_score'):.1f}%" if row.get('ml_confidence_score') is not None else "N/A"
+        grade       = compute_quality_grade(row)
+        w52         = f"{row.get('week52_pct') * 100:.0f}%" if _is_valid_numeric(row.get('week52_pct')) else "N/A"
+
+        # Earnings risk tag
+        earnings_tag = ""
+        if target_date:
+            days = _get_earnings_days(row, target_date)
+            if days is not None and days <= 14:
+                earnings_tag = f" | ⚠️ **Earnings in {days}d**"
+
+        output += f"🔹 **{ticker}** ({price}) | **RSI:** {rsi} | **Qual:** {grade} | **52W:** {w52} | **ML:** {ml_conf}{earnings_tag}\n"
         output += f"&nbsp;&nbsp;&nbsp;↳ *MACD:* {macd_hist} | *Vol Surge:* {vol_surge} | *Cross:* {bullish_cross}\n\n"
-        
+
     return output
+
+def compute_quality_grade(row: Dict[str, Any]) -> str:
+    """
+    Returns A/B/C/D quality grade based on fundamental health.
+    Pulls ROE, debt/equity, and PE/PEG from the enriched signal row.
+    """
+    roe  = row.get('roe')
+    debt = row.get('debt_to_equity')
+    pe   = row.get('trailing_pe')
+    peg  = row.get('peg_ratio')
+
+    # D: loss-making or dangerously leveraged
+    if (roe is not None and roe < 0) or (debt is not None and debt > 2.0):
+        return 'D'
+
+    # A: high-quality compounder
+    a_roe  = roe is not None and roe > 15
+    a_debt = debt is None or debt < 0.5
+    a_val  = (pe is not None and pe < 25) or (peg is not None and peg < 1.5)
+    if a_roe and a_debt and a_val:
+        return 'A'
+
+    # B: solid business
+    b_roe  = roe is not None and roe > 10
+    b_debt = debt is None or debt < 1.0
+    b_val  = pe is None or pe < 35
+    if b_roe and b_debt and b_val:
+        return 'B'
+
+    return 'C'
+
+def _get_earnings_days(row: Dict[str, Any], target_date: str) -> int | None:
+    """Returns days until next earnings, or None if unknown or already passed."""
+    raw = row.get('next_earnings_date')
+    if not raw or raw == 'Unknown':
+        return None
+    try:
+        earnings_dt = datetime.strptime(raw[:10], '%Y-%m-%d').date()
+        today_dt = datetime.strptime(target_date, '%Y-%m-%d').date()
+        delta = (earnings_dt - today_dt).days
+        return delta if delta >= 0 else None
+    except (ValueError, TypeError):
+        return None
 
 def _extract_numeric(val_str: str) -> float:
     """Extracts the first number (including optional leading minus) from a string."""
@@ -357,6 +550,8 @@ def generate_markdown_briefing(target_date: str, data: List[Dict[str, Any]]) -> 
     raw_macd_crosses = get_macd_bullish_crosses(data, regime_label)
     raw_surges = get_momentum_surges(data, regime_label)
     warnings = get_overbought_warnings(data, regime_label)
+    longterm_setups = get_longterm_entry_setups(data, regime_label)
+    deterioration_alerts = get_portfolio_deterioration_alerts(target_date)
     
     # 3. Intercept & Filter ML Divergences & Macro Yield Vetoes
     approved_1, ml_veto_1 = filter_ai_vetoes(raw_oversold)
@@ -425,32 +620,48 @@ def generate_markdown_briefing(target_date: str, data: List[Dict[str, Any]]) -> 
     report += f"Automated overnight screening executed against {len(data)} tracked equities. "
     report += "Identifies high-probability statistical anomalies, momentum shifts, and risk-management triggers based on institutional-grade technical parameters.\n\n"
     
+    report += "## 🎯 Long-Term Entry Setups\n"
+    report += "*Quality A/B-grade stocks in a confirmed uptrend (above 200D MA) that have pulled back into a healthy RSI zone (35–60). Filtered for low volatility and a composite score ≥ 20. Purpose-built for buy-and-hold entry timing.*\n\n"
+    report += _format_longterm_setup_list(longterm_setups, target_date)
+
     report += "## 📉 Oversold Reversals\n"
     report += "*Aggressively sold off (RSI < 30) but demonstrating early quantitative signs of momentum recovery (Positive MACD Histogram). High-conviction, deep-value entry opportunities.*\n\n"
-    report += _format_mobile_markdown_list(oversold)
-    
+    report += _format_mobile_markdown_list(oversold, target_date)
+
     report += "## 📈 MACD Bullish Crosses\n"
     report += "*Triggered a Bullish MACD Crossover, indicating a mathematical momentum reversal to the upside and underlying institutional accumulation.*\n\n"
-    report += _format_mobile_markdown_list(macd_crosses)
-    
+    report += _format_mobile_markdown_list(macd_crosses, target_date)
+
     report += "## 🚀 Momentum & Volume Surges\n"
     report += "*Explosive buying volume (Volume > 1.5x 20-Day SMA) operating in a healthy momentum band (RSI 50-70). Strong institutional backing without immediate overbought exhaustion risk.*\n\n"
-    report += _format_mobile_markdown_list(surges)
-    
+    report += _format_mobile_markdown_list(surges, target_date)
+
     if macro_vetoed:
         report += "## 🏛️ Macro/Liquidity Vetoed Setups\n"
         report += "*These equities triggered algorithmic buy signals but were VETOED by the Intermarket Engine due to surging global interest rates or failing systemic credit spreads. Avoid entry.*\n\n"
-        report += _format_mobile_markdown_list(macro_vetoed)
+        report += _format_mobile_markdown_list(macro_vetoed, target_date)
 
     if ml_vetoed:
         report += "## 🤖 AI Vetoed Setups (Divergence Warnings)\n"
         report += "*These equities triggered algorithmic buy signals, but the Machine Learning Ensemble predicts a high probability of failure (Confidence < 40%). Proceed with extreme caution.*\n\n"
-        report += _format_mobile_markdown_list(ml_vetoed)
-    
+        report += _format_mobile_markdown_list(ml_vetoed, target_date)
+
     report += "## 🚨 Overbought Warnings (Distribution Risk)\n"
     report += "*Risk Management Alert: Mathematically overextended and beginning to flash negative momentum divergence (Negative MACD Histogram). Trim positions or tighten stop-losses, as algorithmic mean-reversion is highly probable.*\n\n"
-    report += _format_mobile_markdown_list(warnings)
-    
+    report += _format_mobile_markdown_list(warnings, target_date)
+
+    if deterioration_alerts:
+        report += "## 📉 Portfolio Deterioration Alerts\n"
+        report += "*Holdings where the composite score has dropped 15+ points over the past 5 days. The technical or fundamental thesis may be weakening — review before adding or holding.*\n\n"
+        for alert in deterioration_alerts:
+            ticker = alert['ticker']
+            today_score = alert['score_today']
+            past_score  = alert['score_past']
+            drop        = alert['score_drop']
+            past_date   = alert['past_date']
+            price_str   = f"${alert['close_price']:.2f}" if _is_valid_numeric(alert.get('close_price')) else "N/A"
+            report += f"⚠️ **{ticker}** ({price_str}) | **Score now:** {today_score} | **Score {past_date}:** {past_score} | **Drop:** {drop:+d} pts\n\n"
+
     report += "---\n"
     report += "*Generated automatically by the Quantamental Python Engine.*"
     
