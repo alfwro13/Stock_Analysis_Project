@@ -72,6 +72,11 @@
         .se-qual-d { background:#3b0000; color:#ef9a9a; }
         .se-earnings-warn { color:#ffb74d; font-weight:600; }
         #se-sort-indicator { color:#4dd0e1; margin-left:4px; }
+        .se-pagebar { display:flex; align-items:center; gap:1rem; margin-top:0.75rem; }
+        .se-pagebar button { padding:0.35rem 0.8rem; background:#2a2a2a; color:#ccc; border:1px solid #444; border-radius:4px; cursor:pointer; }
+        .se-pagebar button:disabled { opacity:0.35; cursor:default; }
+        .se-pagebar button:not(:disabled):hover { background:#3a3a3a; }
+        .se-pagebar span { color:#888; font-size:0.85rem; }
     </style>
 
     <script>
@@ -107,6 +112,8 @@
             let allRows = [];
             let sortCol = 'composite_score';
             let sortAsc = false;
+            let currentPage = 1;
+            const PAGE_SIZE = 10;
 
             const COLS = [
                 { key: 'ticker',          label: 'Ticker',    render: r => `<strong>${r.ticker||''}</strong>` },
@@ -168,6 +175,10 @@
                 const container = document.getElementById('se-table-container');
                 if (!filtered.length) { container.innerHTML = '<p style="color:#888;padding:1rem">No rows match the current filters.</p>'; return; }
 
+                const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
+                if (currentPage > totalPages) currentPage = totalPages;
+                const pageRows = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
                 const table = document.createElement('table');
                 const thead = document.createElement('thead');
                 const hrow  = document.createElement('tr');
@@ -178,6 +189,7 @@
                     th.addEventListener('click', () => {
                         if (sortCol === col.key) sortAsc = !sortAsc;
                         else { sortCol = col.key; sortAsc = col.key !== 'composite_score'; }
+                        currentPage = 1;
                         renderTable();
                     });
                     hrow.appendChild(th);
@@ -186,7 +198,7 @@
                 table.appendChild(thead);
 
                 const tbody = document.createElement('tbody');
-                filtered.forEach(row => {
+                pageRows.forEach(row => {
                     const tr = document.createElement('tr');
                     COLS.forEach(col => {
                         const td = document.createElement('td');
@@ -197,15 +209,45 @@
                 });
                 table.appendChild(tbody);
 
-                container.innerHTML = `<p style="color:#888;font-size:0.8rem;margin-bottom:0.5rem">${filtered.length} of ${allRows.length} signals</p>`;
+                // Summary line
+                const start = (currentPage - 1) * PAGE_SIZE + 1;
+                const end   = Math.min(currentPage * PAGE_SIZE, filtered.length);
+                const summary = document.createElement('p');
+                summary.style.cssText = 'color:#888;font-size:0.8rem;margin-bottom:0.5rem';
+                summary.textContent = `Showing ${start}–${end} of ${filtered.length} signals (${allRows.length} total)`;
+
+                // Pagination bar
+                const pagebar = document.createElement('div');
+                pagebar.className = 'se-pagebar';
+                const btnPrev = document.createElement('button');
+                btnPrev.textContent = '← Prev';
+                btnPrev.disabled = currentPage === 1;
+                btnPrev.addEventListener('click', () => { currentPage--; renderTable(); });
+
+                const pageInfo = document.createElement('span');
+                pageInfo.textContent = `Page ${currentPage} of ${totalPages}`;
+
+                const btnNext = document.createElement('button');
+                btnNext.textContent = 'Next →';
+                btnNext.disabled = currentPage === totalPages;
+                btnNext.addEventListener('click', () => { currentPage++; renderTable(); });
+
+                pagebar.appendChild(btnPrev);
+                pagebar.appendChild(pageInfo);
+                pagebar.appendChild(btnNext);
+
+                container.innerHTML = '';
+                container.appendChild(summary);
                 container.appendChild(table);
+                container.appendChild(pagebar);
             }
 
-            document.getElementById('se-text-filter').addEventListener('input', renderTable);
-            document.getElementById('se-score-filter').addEventListener('input', renderTable);
+            document.getElementById('se-text-filter').addEventListener('input', () => { currentPage = 1; renderTable(); });
+            document.getElementById('se-score-filter').addEventListener('input', () => { currentPage = 1; renderTable(); });
             document.getElementById('se-reset').addEventListener('click', () => {
                 document.getElementById('se-text-filter').value = '';
                 document.getElementById('se-score-filter').value = '';
+                currentPage = 1;
                 renderTable();
             });
 
