@@ -1541,12 +1541,10 @@
                         setStatus('git-status-msg', 'success', `Waiting for service to come back up... (${elapsed}s)`);
 
                         try {
-                            const check = await fetch('/api/confirm-token', { method: 'GET' });
-                            if (check.ok || check.status === 401 || check.status === 403) {
-                                // Server is responding — reload
-                                clearInterval(poll);
-                                window.location.reload();
-                            }
+                            await fetch('/', { method: 'HEAD', cache: 'no-store' });
+                            // Any HTTP response (200, 302, 401…) means the server is alive again
+                            clearInterval(poll);
+                            window.location.reload();
                         } catch (_) {
                             // Still down — keep polling
                         }
