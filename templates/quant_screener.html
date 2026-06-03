@@ -77,6 +77,21 @@
         .se-pagebar button:disabled { opacity:0.35; cursor:default; }
         .se-pagebar button:not(:disabled):hover { background:#3a3a3a; }
         .se-pagebar span { color:#888; font-size:0.85rem; }
+        /* Column header tooltips */
+        #se-table-container th[data-tip] { position:relative; }
+        #se-table-container th[data-tip]::after {
+            content: attr(data-tip);
+            position:absolute; bottom:calc(100% + 6px); left:50%; transform:translateX(-50%);
+            background:#111; color:#ddd; font-size:0.75rem; font-weight:400;
+            padding:0.4rem 0.6rem; border-radius:5px; border:1px solid #444;
+            width:220px; white-space:normal; line-height:1.4;
+            pointer-events:none; opacity:0; transition:opacity 0.15s;
+            z-index:100;
+        }
+        #se-table-container th[data-tip]:hover::after { opacity:1; }
+        /* Clickable ticker link */
+        .se-ticker-link { color:#4dd0e1; text-decoration:none; font-weight:600; }
+        .se-ticker-link:hover { text-decoration:underline; }
     </style>
 
     <script>
@@ -115,8 +130,20 @@
             let currentPage = 1;
             const PAGE_SIZE = 10;
 
+            const TOOLTIPS = {
+                ticker:          null,
+                company_name:    null,
+                composite_score: 'Composite score from −100 to +100. Combines moving averages, RSI health, volume, candlestick patterns, VCP breakout, relative strength, and fundamentals. ≥40 = Strong Buy, ≥20 = Bullish, <0 = Caution.',
+                overall_signal:  'Signal label derived from the composite score: Strong Buy / Bullish / Neutral / Bearish / Strong Sell / Toxic.',
+                quality_grade:   'Fundamental quality grade. A = ROE >15%, low debt, fair PE/PEG. B = ROE >10%, manageable debt. C = Average or missing data. D = Loss-making (ROE <0%) or dangerously leveraged (D/E >2×). Avoid D-grade entries.',
+                rsi_14:          'Relative Strength Index (14-day). Measures momentum on a 0–100 scale. Below 30 = oversold / potential reversal. Above 70 = overbought / distribution risk. 40–60 = healthy trend zone — ideal for long-term entries.',
+                week52_pct:      'Position within the 52-week price range. 0% = at the 52-week low, 100% = at the 52-week high. Values above 70% indicate the stock is trading near its highs (breakout territory).',
+                atr_pct:         'Average True Range as a % of price (14-day). Measures daily price volatility. <1.5% = calm/low-risk. 1.5–3% = normal. >3% = highly volatile — wider stop-losses required. Long-term entry setups target <2.5%.',
+                earnings_days:   'Days until the next scheduled earnings release. Entering a long-term position just before earnings adds significant gap risk. Highlighted in orange when ≤7 days away.',
+            };
+
             const COLS = [
-                { key: 'ticker',          label: 'Ticker',    render: r => `<strong>${r.ticker||''}</strong>` },
+                { key: 'ticker',          label: 'Ticker',    render: r => `<a class="se-ticker-link" href="/stock/${encodeURIComponent(r.ticker||'')}">${r.ticker||''}</a>` },
                 { key: 'company_name',    label: 'Name',      render: r => `<span style="color:#bbb">${(r.company_name||'').slice(0,28)}</span>` },
                 { key: 'composite_score', label: 'Score',     render: r => scoreBadge(r.composite_score) },
                 { key: 'overall_signal',  label: 'Signal',    render: r => `<span style="color:#ccc;font-size:0.8rem">${r.overall_signal||'—'}</span>` },
@@ -186,6 +213,7 @@
                     const th = document.createElement('th');
                     th.textContent = col.label;
                     if (col.key === sortCol) th.innerHTML += ` <span id="se-sort-indicator">${sortAsc ? '▲' : '▼'}</span>`;
+                    if (TOOLTIPS[col.key]) th.dataset.tip = TOOLTIPS[col.key];
                     th.addEventListener('click', () => {
                         if (sortCol === col.key) sortAsc = !sortAsc;
                         else { sortCol = col.key; sortAsc = col.key !== 'composite_score'; }
