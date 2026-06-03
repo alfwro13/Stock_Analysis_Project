@@ -485,32 +485,93 @@
             var varAbs = (rm.var_95_1d !== null && rm.var_95_1d !== undefined)
                 ? sym + Math.abs(rm.var_95_1d).toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits:0})
                 : 'N/A';
+            var acv = rm.avg_pairwise_correlation, acc = '';
+            if (acv !== null && acv !== undefined) acc = acv > 0.7 ? 'xray-val-red' : acv > 0.5 ? 'xray-val-amber' : 'xray-val-green';
 
             html += '<div class="xray-cards-row">';
-            html += _card('Portfolio Beta',      bv !== null && bv !== undefined ? _num(bv,2) : 'N/A', tips.beta,          bc);
-            html += _card('Ann. Volatility',     _pct(rm.annualized_vol, 1),                           tips.vol,           '');
-            html += _card('Max Drawdown',        ddv !== null && ddv !== undefined ? _pct(ddv,1) : 'N/A', tips.max_drawdown, ddc);
-            html += _card('VaR 95% (1-day)',     varAbs,                                               tips.var,           '');
-            html += _card('HHI Score',           hv !== undefined ? _num(hv,3) : 'N/A',                tips.hhi,           hc);
-            html += _card('Top-5 Weight',        t5v !== undefined ? _pct(t5v,1) : 'N/A',             tips.top5,          t5c);
+            html += _card('Portfolio Beta',     bv !== null && bv !== undefined ? _num(bv,2) : 'N/A', tips.beta,            bc);
+            html += _card('Ann. Volatility',    _pct(rm.annualized_vol, 1),                           tips.vol,             '');
+            html += _card('Max Drawdown',       ddv !== null && ddv !== undefined ? _pct(ddv,1) : 'N/A', tips.max_drawdown, ddc);
+            html += _card('VaR 95% (1-day)',    varAbs,                                               tips.var,             '');
+            html += _card('HHI Score',          hv !== undefined ? _num(hv,3) : 'N/A',               tips.hhi,             hc);
+            html += _card('Top-5 Weight',       t5v !== undefined ? _pct(t5v,1) : 'N/A',             tips.top5,            t5c);
+            html += _card('Avg Correlation',    acv !== null && acv !== undefined ? _num(acv,3) : 'N/A', tips.avg_correlation, acc);
             html += '</div>';
 
-            // ── Row 2: Allocation donuts ──────────────────────────────────────────
+            // ── Row 2: Extended metrics (only when returns cache has data) ─────────
+            var hasExtended = rm.sharpe_ratio !== null && rm.sharpe_ratio !== undefined;
+            if (hasExtended) {
+                var sv = rm.sharpe_ratio, sc = '';
+                if (sv !== null && sv !== undefined) sc = sv > 1 ? 'xray-val-green' : sv > 0 ? 'xray-val-amber' : 'xray-val-red';
+                var hvarAbs = (rm.historical_var_95_1d !== null && rm.historical_var_95_1d !== undefined)
+                    ? sym + rm.historical_var_95_1d.toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits:0}) : 'N/A';
+                var cvarAbs = (rm.cvar_95_1d !== null && rm.cvar_95_1d !== undefined)
+                    ? sym + rm.cvar_95_1d.toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits:0}) : 'N/A';
+                var skv = rm.skewness, skc = '';
+                if (skv !== null && skv !== undefined) skc = skv < -0.5 ? 'xray-val-red' : skv < 0 ? 'xray-val-amber' : '';
+                html += '<div class="xray-cards-row xray-cards-row-secondary">';
+                html += _card('Sharpe Ratio',    sv !== null && sv !== undefined ? _num(sv,2) : 'N/A', tips.sharpe_ratio,   sc);
+                html += _card('Calmar Ratio',    rm.calmar_ratio !== null && rm.calmar_ratio !== undefined ? _num(rm.calmar_ratio,2) : 'N/A', tips.calmar_ratio, '');
+                html += _card('Hist. VaR 95%',   hvarAbs,                                              tips.historical_var, '');
+                html += _card('CVaR 95%',        cvarAbs,                                              tips.cvar,           '');
+                html += _card('Tracking Error',  _pct(rm.tracking_error, 1),                          tips.tracking_error, '');
+                html += _card('Return Skewness', skv !== null && skv !== undefined ? _num(skv,2) : 'N/A', tips.skewness,   skc);
+                html += '</div>';
+            }
+
+            // ── Allocation: 2x2 grid (Instrument, Sector, Geographic, FX) ──────────
+            var hasFX = data.fx_exposure && data.fx_exposure.length > 0;
             html += '<div class="xray-section">'
                 + '<h3 class="xray-section-title">Allocation Overview ' + _tip(tips.weights_note) + '</h3>'
-                + '<div class="xray-row-3col">'
+                + '<div class="' + (hasFX ? 'xray-row-2x2' : 'xray-row-3col') + '">'
                 + '<div class="xray-chart-box"><div class="xray-chart-label">Instrument Type ' + _tip(tips.instrument_type) + '</div><div id="xray-c-assetclass" class="xray-chart-el"></div></div>'
                 + '<div class="xray-chart-box"><div class="xray-chart-label">True Sector Exposure <span class="xray-badge">look-through</span> ' + _tip(tips.sector_lookthrough) + '</div><div id="xray-c-sector" class="xray-chart-el"></div></div>'
                 + '<div class="xray-chart-box"><div class="xray-chart-label">Geographic Exposure</div><div id="xray-c-geo" class="xray-chart-el"></div></div>'
+                + (hasFX ? '<div class="xray-chart-box"><div class="xray-chart-label">FX / Currency Exposure ' + _tip(tips.fx_exposure) + '</div><div id="xray-c-fx" class="xray-chart-el"></div></div>' : '')
                 + '</div></div>';
 
-            // ── Row 3: Concentration bar chart ────────────────────────────────────
+            // ── Position Concentration ────────────────────────────────────────────
             html += '<div class="xray-section">'
                 + '<h3 class="xray-section-title">Position Concentration</h3>'
                 + '<div id="xray-c-concentration" class="xray-chart-el"></div>'
                 + '</div>';
 
-            // ── Row 4: Income & P&L ───────────────────────────────────────────────
+            // ── Risk Contribution (MRC) ───────────────────────────────────────────
+            var mrcHoldings = (data.holdings || []).filter(function(h){ return h.marginal_risk_contribution != null; });
+            if (mrcHoldings.length >= 2) {
+                html += '<div class="xray-section">'
+                    + '<h3 class="xray-section-title">Risk Contribution per Holding ' + _tip(tips.marginal_risk_contribution) + '</h3>'
+                    + '<div id="xray-c-mrc" class="xray-chart-el"></div>'
+                    + '</div>';
+            }
+
+            // ── Correlation Matrix ────────────────────────────────────────────────
+            var cm = data.correlation_matrix || {};
+            if (cm.tickers && cm.tickers.length >= 2) {
+                html += '<div class="xray-section">'
+                    + '<h3 class="xray-section-title">Correlation Matrix ' + _tip(tips.avg_correlation) + '</h3>'
+                    + '<div class="xray-corr-guide">'
+                    + '<strong>How to read this chart:</strong> Each cell shows the correlation between two holdings '
+                    + '&mdash; how closely they move together over the past year. '
+                    + 'A value near <strong>+1</strong> means the pair rises and falls in lockstep: holding both adds no diversification benefit, just doubled exposure. '
+                    + 'A value near <strong>0</strong> means the two holdings are essentially independent &mdash; what happens to one does not predict the other. '
+                    + 'A value near <strong>&minus;1</strong> means they move in opposite directions, acting as a natural hedge. '
+                    + 'The diagonal is always <strong>1.0</strong> (a holding is perfectly correlated with itself). '
+                    + '<br><br>'
+                    + '<strong>What to watch for:</strong> Red clusters between ETFs that are supposed to diversify you often reveal they hold the same underlying stocks '
+                    + '(e.g. a global tracker and a developed-market ETF). A fully red matrix means your portfolio reacts to market shocks as a single unit &mdash; when one falls, everything falls. '
+                    + 'Teal (low or negative correlation) holdings are your genuine shock absorbers.'
+                    + '<div class="xray-corr-legend">'
+                    + '<div class="xray-corr-legend-item"><div class="xray-corr-swatch" style="background:#ff4d4d"></div>Near +1 &mdash; move together, concentrated risk</div>'
+                    + '<div class="xray-corr-legend-item"><div class="xray-corr-swatch" style="background:#2c2c2c;border:1px solid #444"></div>Near 0 &mdash; independent, genuine diversification</div>'
+                    + '<div class="xray-corr-legend-item"><div class="xray-corr-swatch" style="background:#00ffcc"></div>Near &minus;1 &mdash; inverse movement, natural hedge</div>'
+                    + '</div>'
+                    + '</div>'
+                    + '<div id="xray-c-corr" class="xray-chart-el"></div>'
+                    + '</div>';
+            }
+
+            // ── Income & P&L ──────────────────────────────────────────────────────
             html += '<div class="xray-section"><h3 class="xray-section-title">Income &amp; Unrealised P&amp;L</h3>'
                 + '<div class="xray-row-2col">'
                 + '<div class="xray-income-cards">'
@@ -532,7 +593,7 @@
 
             document.getElementById('xray-content').innerHTML = html;
 
-            // Render charts after DOM update
+            // ── Render all charts after DOM update ────────────────────────────────
             _plotDonut('xray-c-assetclass', data.asset_class_allocation, 'By Type');
             var sectorData = data.sector_allocation.slice(0, 10);
             if (data.sector_allocation.length > 10) {
@@ -541,7 +602,12 @@
             }
             _plotDonut('xray-c-sector', sectorData, 'Sectors');
             _plotDonut('xray-c-geo', data.geographic_allocation, 'Regions');
+            if (hasFX) {
+                _plotDonut('xray-c-fx', data.fx_exposure.map(function(e){ return {name:e.currency, weight:e.weight}; }), 'Currency');
+            }
             _plotConcentration('xray-c-concentration', data.holdings, conc);
+            if (mrcHoldings.length >= 2) { _plotMRC('xray-c-mrc', data.holdings); }
+            if (cm.tickers && cm.tickers.length >= 2) { _plotCorrHeatmap('xray-c-corr', cm); }
             _plotPnL('xray-c-pnl', data.holdings, sym);
         }
 
@@ -614,6 +680,69 @@
                 xaxis: { color:'#aaa', tickangle:-45, automargin:true },
                 yaxis: { color:'#888', automargin:true, tickformat:',.0f' },
                 bargap: 0.3
+            }), _PC);
+        }
+
+        function _plotMRC(elId, holdings) {
+            var mrcH = holdings.filter(function(h){ return h.marginal_risk_contribution != null; });
+            if (!mrcH.length) return;
+            mrcH.sort(function(a,b){ return b.marginal_risk_contribution - a.marginal_risk_contribution; });
+            var top = mrcH.slice(0, 20).reverse();
+            var mrcPct = top.map(function(h){ return h.marginal_risk_contribution * 100; });
+            Plotly.newPlot(elId, [{
+                type: 'bar', orientation: 'h',
+                x: mrcPct,
+                y: top.map(function(h){ return h.symbol; }),
+                marker: { color: mrcPct.map(function(v){ return v > 5 ? '#ff4d4d' : v > 3 ? '#ffaa00' : '#bb86fc'; }) },
+                text: mrcPct.map(function(v){ return v.toFixed(2) + '%'; }),
+                textposition: 'outside',
+                customdata: top.map(function(h){ return (h.weight * 100).toFixed(1); }),
+                hovertemplate: '<b>%{y}</b><br>Risk contribution: %{x:.2f}%<br>Portfolio weight: %{customdata}%<extra></extra>',
+                cliponaxis: false
+            }], _baseLayout({
+                height: Math.max(300, top.length * 28 + 100),
+                margin: { t: 20, r: 80, b: 40, l: 80 },
+                xaxis: { color: '#888', tickformat: '.1f', ticksuffix: '%', title: { text: '% of total portfolio volatility', font: { size: 11, color: '#666' } } },
+                yaxis: { color: '#aaa', automargin: true }
+            }), _PC);
+        }
+
+        function _plotCorrHeatmap(elId, corrData) {
+            var tickers = corrData.tickers;
+            var matrix  = corrData.matrix;
+            if (!tickers || tickers.length < 2 || !matrix) return;
+            var textVals = matrix.map(function(row){
+                return row.map(function(v){ return (v !== null && v !== undefined) ? v.toFixed(2) : ''; });
+            });
+            Plotly.newPlot(elId, [{
+                type: 'heatmap',
+                z: matrix,
+                x: tickers,
+                y: tickers,
+                colorscale: [
+                    [0,   '#00ffcc'],
+                    [0.5, '#1e1e1e'],
+                    [1,   '#ff4d4d']
+                ],
+                zmin: -1, zmax: 1,
+                text: textVals,
+                texttemplate: '%{text}',
+                textfont: { size: 10, color: '#e0e0e0' },
+                hovertemplate: '<b>%{x} × %{y}</b><br>Correlation: %{z:.3f}<extra></extra>',
+                showscale: true,
+                colorbar: {
+                    tickvals: [-1, -0.5, 0, 0.5, 1],
+                    ticktext: ['-1', '-0.5', '0', '+0.5', '+1'],
+                    thickness: 12,
+                    len: 0.8,
+                    tickfont: { color: '#888', size: 10 },
+                    title: { text: 'r', font: { color: '#888', size: 11 } }
+                }
+            }], _baseLayout({
+                height: Math.max(320, tickers.length * 40 + 120),
+                margin: { t: 20, r: 100, b: 100, l: 80 },
+                xaxis: { color: '#aaa', tickangle: -45, automargin: true },
+                yaxis: { color: '#aaa', automargin: true, autorange: 'reversed' }
             }), _PC);
         }
 

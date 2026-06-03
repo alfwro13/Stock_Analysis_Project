@@ -657,7 +657,15 @@ table.dataTable tbody tr td { color: #ccc; }
 .xray-section-title { font-size: 15px; font-weight: bold; color: #e0e0e0; margin: 0 0 16px 0; display: flex; align-items: center; gap: 6px; }
 /* 3-column chart row */
 .xray-row-3col { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.xray-row-2x2  { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
 .xray-row-2col { display: grid; grid-template-columns: 1fr 2fr; gap: 16px; align-items: start; }
+.xray-cards-row-secondary .xray-metric-card { border-top-color: #2c2c5e; }
+.xray-cards-row-secondary .xray-metric-value { font-size: 20px; }
+.xray-corr-guide { background: rgba(77,166,255,0.06); border: 1px solid #2a3a55; border-radius: 6px; padding: 14px 18px; margin-bottom: 16px; font-size: 13px; color: #aaa; line-height: 1.6; }
+.xray-corr-guide strong { color: #e0e0e0; }
+.xray-corr-legend { display: flex; gap: 20px; flex-wrap: wrap; margin-top: 8px; font-size: 12px; }
+.xray-corr-legend-item { display: flex; align-items: center; gap: 6px; }
+.xray-corr-swatch { width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0; }
 .xray-chart-box { background: #1e1e1e; border-radius: 6px; padding: 12px; overflow: hidden; }
 .xray-chart-label { font-size: 12px; color: #aaa; margin-bottom: 6px; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 .xray-chart-el { min-height: 200px; }
@@ -675,6 +683,7 @@ table.dataTable tbody tr td { color: #ccc; }
 /* Responsive */
 @media (max-width: 900px) {
   .xray-row-3col { grid-template-columns: 1fr; }
+  .xray-row-2x2  { grid-template-columns: 1fr; }
   .xray-row-2col { grid-template-columns: 1fr; }
   .xray-cards-row .xray-metric-card { min-width: 120px; }
 }
