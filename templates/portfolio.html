@@ -198,9 +198,19 @@
                 <td data-sort="{{ item.var_95 if item.var_95 is not none else -999 }}">
                     {% if item.var_95 is not none %}
                         {% set var_class = 'metric-poor' if item.var_95 > 0.05 else 'metric-neutral' %}
-                        <abbr title="Log-Return Expected Shortfall (CVaR): {% if item.cvar_95 is not none %}{{ '{:,.2f}'.format(item.cvar_95 * 100) }}%{% else %}N/A{% endif %}">
-                            <span class="{{ var_class }}">{{ "{:,.2f}".format(item.var_95 * 100) }}%</span>
-                        </abbr>
+                        {% set cvar_pct = '{:,.2f}'.format(item.cvar_95 * 100) ~ '%' if item.cvar_95 is not none else 'N/A' %}
+                        {% set base_sym = '£' if config.BASE_CURRENCY == 'GBP' else ('€' if config.BASE_CURRENCY == 'EUR' else '$') %}
+                        {% if item.market_value_base %}
+                            {% set dar = item.var_95 * item.market_value_base %}
+                            {% set cdar = item.cvar_95 * item.market_value_base if item.cvar_95 is not none else none %}
+                            <abbr title="1-day 95% VaR: {{ base_sym }}{{ '{:,.2f}'.format(dar) }} · CVaR (Exp. Shortfall): {{ cvar_pct }}{% if cdar is not none %} / {{ base_sym }}{{ '{:,.2f}'.format(cdar) }}{% endif %}">
+                                <span class="{{ var_class }}">{{ "{:,.2f}".format(item.var_95 * 100) }}%<br><small style="color:#aaa;font-size:0.8em;">{{ base_sym }}{{ '{:,.0f}'.format(dar) }}</small></span>
+                            </abbr>
+                        {% else %}
+                            <abbr title="Log-Return Expected Shortfall (CVaR): {{ cvar_pct }}">
+                                <span class="{{ var_class }}">{{ "{:,.2f}".format(item.var_95 * 100) }}%</span>
+                            </abbr>
+                        {% endif %}
                     {% else %}
                         N/A
                     {% endif %}

@@ -567,6 +567,7 @@ async def portfolio_page(request: Request, account_id: str = "all", embed: bool 
     portfolio_data.sort(key=lambda x: x['ticker'])
 
     for row_dict in portfolio_data:
+        row_dict['market_value_base'] = None
         asset = next((d for d in portfolio_json.values() if d.get("ticker") == row_dict['ticker']), None)
         if asset and row_dict['current_price']:
             shares = 0
@@ -585,6 +586,7 @@ async def portfolio_page(request: Request, account_id: str = "all", embed: bool 
             cost_in_base = shares * buy_price_base
             exchange_rate = get_rate_to_base(row_dict['currency'])
             val_in_base = (shares * row_dict['current_price']) * exchange_rate
+            row_dict['market_value_base'] = round(val_in_base, 2)
 
             summary_math["value"] += val_in_base
             summary_math["cost"] += cost_in_base
