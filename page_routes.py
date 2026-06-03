@@ -15,7 +15,7 @@ from fastapi.templating import Jinja2Templates
 
 from position_sizing import get_position_sizing_config
 
-from config import load_config, PORTFOLIO_PATH, WATCHLIST_PATH, HISTORICAL_DIR, INTRADAY_DIR, BASE_CURRENCY
+from config import load_config, PORTFOLIO_PATH, WATCHLIST_PATH, HISTORICAL_DIR, INTRADAY_DIR, FUNDAMENTALS_DIR, BASE_CURRENCY
 from database import get_connection
 from regime_engine import get_latest_regime
 from sentiment_engine import (
@@ -157,6 +157,82 @@ EVENT_GLOSSARY = {
     # --- ENERGY & COMMODITIES (Inverse/Neutral Polarity) ---
     r"crude oil|natural gas": {"desc": "Energy Inventories (EIA/API). Drops in supply can spike oil prices, driving up inflation and hurting consumer discretionary stocks.", "polarity": "inverse"}
 }
+
+def _fmt_currency(value) -> str | None:
+    if value is None:
+        return None
+    abs_val = abs(value)
+    sign = "-" if value < 0 else ""
+    if abs_val >= 1e12:
+        return f"{sign}${abs_val/1e12:.2f}T"
+    if abs_val >= 1e9:
+        return f"{sign}${abs_val/1e9:.2f}B"
+    if abs_val >= 1e6:
+        return f"{sign}${abs_val/1e6:.1f}M"
+    return f"{sign}${abs_val:,.0f}"
+
+
+def _fmt_volume(value) -> str | None:
+    if value is None:
+        return None
+    if value >= 1e9:
+        return f"{value/1e9:.1f}B"
+    if value >= 1e6:
+        return f"{value/1e6:.1f}M"
+    if value >= 1e3:
+        return f"{value/1e3:.0f}K"
+    return str(int(value))
+
+
+def _load_fundamentals_extra(ticker: str) -> dict:
+    empty: dict = {
+        "market_cap_fmt": None, "trailing_eps": None, "forward_eps": None,
+        "earnings_growth": None, "free_cash_flow_fmt": None, "total_debt_fmt": None,
+        "total_cash_fmt": None, "net_cash_fmt": None, "roa": None, "quick_ratio": None,
+        "insider_ownership": None, "payout_ratio": None, "ex_dividend_date_fmt": None,
+        "average_volume_fmt": None, "full_time_employees_fmt": None, "website": None,
+    }
+    path = FUNDAMENTALS_DIR / f"{ticker}.json"
+    if not path.exists():
+        return empty
+    try:
+        with open(path) as f:
+            d = json.load(f)
+
+        ex_div_fmt = None
+        ex_div_ts = d.get("exDividendDate")
+        if ex_div_ts:
+            try:
+                ex_div_fmt = datetime.utcfromtimestamp(ex_div_ts).strftime("%Y-%m-%d")
+            except Exception:
+                pass
+
+        total_cash = d.get("totalCash")
+        total_debt = d.get("totalDebt")
+        net_cash = (total_cash - total_debt) if (total_cash is not None and total_debt is not None) else None
+
+        employees = d.get("fullTimeEmployees")
+        return {
+            "market_cap_fmt": _fmt_currency(d.get("marketCap")),
+            "trailing_eps": d.get("trailingEps"),
+            "forward_eps": d.get("forwardEps"),
+            "earnings_growth": d.get("earningsGrowth"),
+            "free_cash_flow_fmt": _fmt_currency(d.get("freeCashflow")),
+            "total_debt_fmt": _fmt_currency(total_debt),
+            "total_cash_fmt": _fmt_currency(total_cash),
+            "net_cash_fmt": _fmt_currency(net_cash),
+            "roa": d.get("returnOnAssets"),
+            "quick_ratio": d.get("quickRatio"),
+            "insider_ownership": d.get("heldPercentInsiders"),
+            "payout_ratio": d.get("payoutRatio"),
+            "ex_dividend_date_fmt": ex_div_fmt,
+            "average_volume_fmt": _fmt_volume(d.get("averageVolume")),
+            "full_time_employees_fmt": f"{employees:,}" if employees else None,
+            "website": d.get("website"),
+        }
+    except Exception:
+        return empty
+
 
 def enrich_macro_events(events_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
@@ -827,7 +903,12 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
                (SELECT sentiment_score FROM quant_signals
                 WHERE ticker = s.ticker AND sentiment_score IS NOT NULL
                 ORDER BY date DESC LIMIT 1) AS sentiment_score,
-               q.atr_pct,
+               q.atr_pct, q.volume, q.volume_surge, q.bullish_cross,
+               q.macd, q.macd_signal, q.macd_hist,
+               q.sma_50, q.sma_200,
+               q.mom_1m, q.mom_3m, q.mom_6m, q.mom_12m_skip1m,
+               q.hist_vol_20, q.rel_strength_5d, q.rel_strength_20d,
+               mu.industry, mu.index_membership,
                COALESCE(
                    NULLIF(p.company_name, s.ticker),
                    NULLIF(mu.company_name, s.ticker),
@@ -860,12 +941,13 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
         )
     else:
         cursor.execute('''
-            SELECT q.*, 
-                   COALESCE(p.company_name, m.company_name, q.ticker) as company_name, 
-                   COALESCE(p.sector, 'Unclassified') as sector, 
-                   COALESCE(p.currency, 'USD') as currency, 
-                   COALESCE(p.quote_type, 'EQUITY') as quote_type, 
-                   p.business_summary 
+            SELECT q.*,
+                   COALESCE(p.company_name, m.company_name, q.ticker) as company_name,
+                   COALESCE(p.sector, 'Unclassified') as sector,
+                   COALESCE(p.currency, 'USD') as currency,
+                   COALESCE(p.quote_type, 'EQUITY') as quote_type,
+                   p.business_summary,
+                   m.industry, m.index_membership
             FROM quant_signals q
             LEFT JOIN market_universe m ON q.ticker = m.ticker
             LEFT JOIN asset_profiles p ON q.ticker = p.ticker
@@ -925,7 +1007,24 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
                 "nav_price": None,
                 "dividend_yield": None,
                 "top_holdings": None,
-                "sector_weightings": None
+                "sector_weightings": None,
+                "volume": q_data.get("volume"),
+                "volume_surge": q_data.get("volume_surge"),
+                "bullish_cross": q_data.get("bullish_cross"),
+                "macd": q_data.get("macd"),
+                "macd_signal": q_data.get("macd_signal"),
+                "macd_hist": q_data.get("macd_hist"),
+                "sma_50": q_data.get("sma_50"),
+                "sma_200": q_data.get("sma_200"),
+                "mom_1m": q_data.get("mom_1m"),
+                "mom_3m": q_data.get("mom_3m"),
+                "mom_6m": q_data.get("mom_6m"),
+                "mom_12m_skip1m": q_data.get("mom_12m_skip1m"),
+                "hist_vol_20": q_data.get("hist_vol_20"),
+                "rel_strength_5d": q_data.get("rel_strength_5d"),
+                "rel_strength_20d": q_data.get("rel_strength_20d"),
+                "industry": q_data.get("industry"),
+                "index_membership": q_data.get("index_membership"),
             }
         else:
             stock_data = {
@@ -972,11 +1071,30 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
                 "nav_price": None,
                 "dividend_yield": None,
                 "top_holdings": None,
-                "sector_weightings": None
+                "sector_weightings": None,
+                "volume": None, "volume_surge": None, "bullish_cross": None,
+                "macd": None, "macd_signal": None, "macd_hist": None,
+                "sma_50": None, "sma_200": None,
+                "mom_1m": None, "mom_3m": None, "mom_6m": None, "mom_12m_skip1m": None,
+                "hist_vol_20": None, "rel_strength_5d": None, "rel_strength_20d": None,
+                "industry": None, "index_membership": None,
             }
-            
+
+    # --- earnings_volatility enrichment ---
+    earnings_vol: dict = {}
+    if stock_data:
+        cursor.execute('''
+            SELECT implied_move_pct, historical_avg_move_pct, edge_score, options_volume
+            FROM earnings_volatility WHERE ticker = ?
+        ''', (ticker,))
+        ev_row = cursor.fetchone()
+        if ev_row:
+            earnings_vol = dict(ev_row)
+
     conn.close()
-    
+
+    fundamentals_extra = _load_fundamentals_extra(ticker)
+
     data_status = 'red'
     last_updated_str = "Never"
     if stock_data and stock_data.get('last_updated'):
@@ -1144,7 +1262,9 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
             "is_in_watchlist": is_in_watchlist,
             "data_status": data_status,
             "last_updated_str": last_updated_str,
-            "position_sizing": position_sizing_context
+            "position_sizing": position_sizing_context,
+            "earnings_vol": earnings_vol,
+            "fundamentals_extra": fundamentals_extra,
         }
     )
 
