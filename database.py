@@ -371,6 +371,19 @@ def init_db() -> None:
             )
         ''')
 
+        # Score history — one row per (ticker, trading_date); upserted on every scan run.
+        # Accumulates over time so a forward-returns analysis can be run after 6+ months.
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS score_history (
+                ticker TEXT NOT NULL,
+                date TEXT NOT NULL,
+                score INTEGER NOT NULL,
+                signal TEXT NOT NULL,
+                close_price REAL,
+                PRIMARY KEY (ticker, date)
+            )
+        ''')
+
         conn.commit()
 
         # Run the dynamic migration script to inject any missing columns safely
@@ -632,6 +645,32 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
     except Exception as e:
         logger.error(f"[MIGRATION ERROR] Failed to commit migration changes: {e}")
         conn.rollback()
+
+
+def log_score_event(ticker: str, date: str, score: int, signal: str, close_price: Optional[float]) -> None:
+    """
+    Upserts one row into score_history for the given ticker and trading date.
+    Called after every scoring run so forward-returns analysis can be run later.
+    """
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """INSERT INTO score_history (ticker, date, score, signal, close_price)
+               VALUES (?, ?, ?, ?, ?)
+               ON CONFLICT(ticker, date) DO UPDATE SET
+                   score = excluded.score,
+                   signal = excluded.signal,
+                   close_price = COALESCE(excluded.close_price, score_history.close_price)""",
+            (ticker, date, score, signal, close_price)
+        )
+        conn.commit()
+    except Exception as e:
+        logger.error(f"Failed to log score event for {ticker} on {date}: {e}")
+    finally:
+        if conn:
+            conn.close()
 
 
 def get_universe_tickers() -> List[str]:

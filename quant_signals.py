@@ -10,7 +10,7 @@ import pandas as pd
 import ta
 
 from config import HISTORICAL_DIR, FUNDAMENTALS_DIR
-from database import get_connection
+from database import get_connection, log_score_event
 from fundamentals_helpers import calculate_peter_lynch_peg
 from constants import (
     RSI_HEALTHY_MIN, RSI_HEALTHY_MAX,
@@ -765,7 +765,11 @@ class QuantEngine:
                 short_interest, institutional_ownership, beta, yield_correlation,
                 score, signal, notes_html, tags_json
             )
-            
+
+            if _has_tech and df is not None and not df.empty:
+                event_date = df.index[-1].strftime('%Y-%m-%d') if hasattr(df.index[-1], 'strftime') else str(df.index[-1])[:10]
+                log_score_event(ticker, event_date, score, signal, current_price)
+
         except Exception as e:
             logger.error(f"Failed to analyze {ticker}: {e}")
 
