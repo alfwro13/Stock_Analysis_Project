@@ -27,6 +27,7 @@ from universe_deep_sync_engine import run_universe_deep_sync
 # Import new Macro Engines
 from macro_calendar_engine import update_macro_calendar
 from macro_data_engine import update_macro_indicators
+from xray_engine import run_xray_precompute
 
 logger = logging.getLogger(__name__)
 
@@ -403,6 +404,22 @@ def run_macro_data_update():
         log_sched_notification("Error", f"Macro Data Update failed: {e}")
     finally:
         record_job_run('macro_data_job')
+
+def run_xray_risk_cache_job():
+    """Pre-computes portfolio beta, vol, correlation, and dividend yields for the X-ray report."""
+    log_sched_notification("Scheduler", "Started X-ray Risk Cache job...")
+    try:
+        success = run_xray_precompute()
+        if success:
+            log_sched_notification("Success", "X-ray Risk Cache updated successfully.")
+        else:
+            log_sched_notification("Warning", "X-ray Risk Cache job completed with warnings — check logs.")
+    except Exception as e:
+        logger.error(f"X-ray Risk Cache job failed: {e}")
+        log_sched_notification("Error", f"X-ray Risk Cache job failed: {e}")
+    finally:
+        record_job_run('xray_risk_cache_job')
+
 
 def reload_scheduler():
     """Reads the latest config.json and updates APScheduler dynamically."""
@@ -799,6 +816,19 @@ def reload_scheduler():
             logger.info(f"Universe Deep Sync Pipeline scheduled for {uds_days} at {uds_time}")
         except Exception as e:
             logger.error(f"Failed to schedule Universe Deep Sync Pipeline: {e}")
+
+
+    # Always-on: X-ray Risk Cache — runs daily Mon–Fri at 19:00 (after market close).
+    # No config flag required; the X-ray report is always available.
+    try:
+        scheduler.add_job(
+            run_xray_risk_cache_job,
+            CronTrigger(day_of_week='mon-fri', hour=19, minute=0),
+            id='xray_risk_cache_job',
+        )
+        logger.info("X-ray Risk Cache job scheduled for mon-fri at 19:00.")
+    except Exception as e:
+        logger.error(f"Failed to schedule X-ray Risk Cache job: {e}")
 
 
 def start_scheduler():

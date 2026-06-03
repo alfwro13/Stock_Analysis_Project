@@ -626,3 +626,55 @@ table.dataTable tbody tr td { color: #ccc; }
 .report-jump-list .jump-sep { color: #3a4a5a; }
 .back-to-top { font-size: 0.7rem; color: #4a5a6a; text-decoration: none; margin-left: 10px; font-weight: normal; vertical-align: middle; letter-spacing: 0.02em; transition: color 0.15s; }
 .back-to-top:hover { color: #7a9ab0; }
+/* ─────────── Portfolio X-ray Panel ─────────── */
+#xray-panel { display: none; }
+#xray-loading { display: none; align-items: center; gap: 12px; padding: 40px 20px; color: #aaa; font-size: 15px; justify-content: center; }
+#xray-content { display: none; }
+/* Spinner */
+.xray-spinner { width: 24px; height: 24px; border: 3px solid #333; border-top-color: #00ffcc; border-radius: 50%; animation: spin 0.8s linear infinite; flex-shrink: 0; }
+/* X-ray link in summary bar */
+.xray-link-container { margin-left: auto; display: flex; align-items: center; }
+.xray-link-btn { color: #00ffcc; text-decoration: none; font-weight: bold; font-size: 14px; padding: 6px 14px; border: 1px solid #00ffcc; border-radius: 16px; transition: background-color 0.2s, color 0.2s; white-space: nowrap; }
+.xray-link-btn:hover { background-color: #00ffcc; color: #121212; }
+/* Warnings */
+.xray-warnings { background: rgba(255,170,0,0.08); border-left: 4px solid #ffaa00; border-radius: 6px; padding: 12px 16px; margin-bottom: 20px; }
+.xray-warning-item { color: #ffaa00; font-size: 13px; margin-bottom: 4px; }
+.xray-warning-item:last-child { margin-bottom: 0; }
+.xray-error-msg { color: #ff4d4d; font-size: 14px; }
+/* Metric cards row */
+.xray-cards-row { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 24px; }
+.xray-metric-card { flex: 1; min-width: 140px; background: #1e1e1e; border-radius: 8px; padding: 16px 18px; border-top: 3px solid #333; box-shadow: 0 2px 6px rgba(0,0,0,0.3); }
+.xray-metric-label { font-size: 12px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; display: flex; align-items: center; gap: 4px; }
+.xray-metric-value { font-size: 22px; font-weight: 700; color: #e0e0e0; font-variant-numeric: tabular-nums; }
+/* Value colour states */
+.xray-val-red    { color: #ff4d4d !important; }
+.xray-val-amber  { color: #ffaa00 !important; }
+.xray-val-green  { color: #00ffcc !important; }
+/* Tooltip icon */
+.xray-tooltip { display: inline-flex; width: 14px; height: 14px; background: #2c2c2c; color: #888; border-radius: 50%; font-size: 9px; font-weight: bold; justify-content: center; align-items: center; cursor: help; vertical-align: middle; flex-shrink: 0; border: 1px solid #444; }
+/* Sections */
+.xray-section { background: #1a1a1a; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+.xray-section-title { font-size: 15px; font-weight: bold; color: #e0e0e0; margin: 0 0 16px 0; display: flex; align-items: center; gap: 6px; }
+/* 3-column chart row */
+.xray-row-3col { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.xray-row-2col { display: grid; grid-template-columns: 1fr 2fr; gap: 16px; align-items: start; }
+.xray-chart-box { background: #1e1e1e; border-radius: 6px; padding: 12px; overflow: hidden; }
+.xray-chart-label { font-size: 12px; color: #aaa; margin-bottom: 6px; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.xray-chart-el { min-height: 200px; }
+/* Look-through badge */
+.xray-badge { background: rgba(77,166,255,0.15); color: #4da6ff; font-size: 10px; padding: 2px 6px; border-radius: 8px; font-weight: 600; letter-spacing: 0.3px; }
+/* Correlation score */
+.xray-corr-score { font-size: 14px; color: #aaa; margin-bottom: 12px; }
+/* Income cards */
+.xray-income-cards { display: flex; flex-direction: column; gap: 12px; }
+.xray-income-card { background: #1e1e1e; border-radius: 8px; padding: 16px 18px; border-left: 4px solid #4da6ff; }
+.xray-income-label { font-size: 12px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; display: flex; align-items: center; gap: 4px; }
+.xray-income-value { font-size: 22px; font-weight: 700; color: #e0e0e0; }
+/* Footer */
+.xray-footer { font-size: 11px; color: #555; padding: 12px 0 4px 0; border-top: 1px solid #2a2a2a; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+/* Responsive */
+@media (max-width: 900px) {
+  .xray-row-3col { grid-template-columns: 1fr; }
+  .xray-row-2col { grid-template-columns: 1fr; }
+  .xray-cards-row .xray-metric-card { min-width: 120px; }
+}

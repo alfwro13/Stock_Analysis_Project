@@ -38,7 +38,8 @@ from config import (
     INTRADAY_DIR
 )
 from database import get_connection, get_universe_tickers
-from scheduler_engine import run_update_pipeline, run_ghostfolio_sync, run_freetrade_sync, reload_scheduler, run_sentiment_scan, run_index_scraper, run_fundamentals_profiler, run_universe_deep_sync_job, get_all_job_last_runs
+from scheduler_engine import run_update_pipeline, run_ghostfolio_sync, run_freetrade_sync, reload_scheduler, run_sentiment_scan, run_index_scraper, run_fundamentals_profiler, run_universe_deep_sync_job, get_all_job_last_runs, run_xray_risk_cache_job
+from xray_engine import assemble_xray_report
 from ghostfolio_sync import GhostfolioSyncEngine
 from market_pulse import get_cached_pulse_from_db, fetch_and_save_pulse
 from sentiment_engine import run_nextcloud_alert, update_all_sentiment
@@ -1368,4 +1369,39 @@ async def get_data_freshness():
         "prices_date":   prices_date,
         "prices_days_ago": prices_days,
         "prices_state":  prices_state,
+    })
+
+
+@api_router.get("/xray")
+async def get_xray_report(account_id: str = "all"):
+    """
+    Returns the full Portfolio X-ray report JSON for the given account scope.
+    account_id: "all" for global (all active accounts) or a Ghostfolio account UUID.
+
+    Combines live Ghostfolio holdings/allocations with SQLite-cached risk stats
+    (beta, vol, correlation, VaR). The cache is populated by the nightly
+    xray_risk_cache_job scheduler job.
+    """
+    try:
+        report = assemble_xray_report(account_id)
+        return JSONResponse(content=report)
+    except RuntimeError as e:
+        logger.warning(f"X-ray report failed for account_id={account_id!r}: {e}")
+        return JSONResponse(status_code=503, content={"error": str(e)})
+    except Exception as e:
+        logger.error(f"X-ray report unexpected error: {e}")
+        return JSONResponse(status_code=500, content={"error": "Internal error — check server logs."})
+
+
+@api_router.post("/xray/trigger")
+async def trigger_xray_risk_cache(background_tasks: BackgroundTasks):
+    """
+    Manually triggers the X-ray risk cache pre-compute job in the background.
+    Use this after first setup or after adding new holdings to immediately
+    populate the cache without waiting for the scheduled run.
+    """
+    background_tasks.add_task(run_xray_risk_cache_job)
+    return JSONResponse(content={
+        "status": "queued",
+        "message": "X-ray risk cache job queued. Check system notifications for completion.",
     })

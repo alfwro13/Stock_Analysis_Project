@@ -334,6 +334,43 @@ def init_db() -> None:
             )
         ''')
 
+        # --- X-RAY RISK CACHE (Tier C — yfinance pre-compute) ---
+        # Per-ticker beta and annualised volatility vs the configured benchmark.
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS xray_risk_cache (
+                ticker TEXT NOT NULL,
+                benchmark TEXT NOT NULL,
+                last_updated TEXT NOT NULL,
+                beta REAL,
+                annualized_vol REAL,
+                PRIMARY KEY (ticker, benchmark)
+            )
+        ''')
+
+        # Full pairwise correlation matrix stored as JSON blobs.
+        # One row per benchmark — cheapest way to reconstruct the N×N matrix.
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS xray_correlation_matrix (
+                benchmark TEXT PRIMARY KEY,
+                last_updated TEXT NOT NULL,
+                tickers_json TEXT NOT NULL,
+                matrix_json TEXT NOT NULL
+            )
+        ''')
+
+        # Per-holding dividend yield cache (one live Ghostfolio call per holding,
+        # done on the scheduler job so page load never blocks on it).
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS xray_dividend_cache (
+                ticker TEXT NOT NULL,
+                data_source TEXT NOT NULL,
+                last_updated TEXT NOT NULL,
+                dividend_yield_pct REAL,
+                dividend_in_base_currency REAL,
+                PRIMARY KEY (ticker, data_source)
+            )
+        ''')
+
         conn.commit()
 
         # Run the dynamic migration script to inject any missing columns safely

@@ -10,6 +10,7 @@
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
     <script src="/static/js/position_sizing.js"></script>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
 </head>
 <body class="body-portfolio">
 
@@ -58,12 +59,23 @@
                 {{ summary_math.pnl }} ({{ summary_math.pnl_pct }}%)
             </strong>
         </div>
+        <div class="summary-label xray-link-container">
+            <a href="#" id="xray-link" class="xray-link-btn" onclick="toggleXray(); return false;">&#128302; X-ray</a>
+        </div>
     </div>
     {% endif %}
 
     {% if macro_regime %}
         {% include 'partials/risk_summary.html' %}
     {% endif %}
+
+    <div id="xray-panel">
+        <div id="xray-loading" class="xray-loading">
+            <div class="xray-spinner"></div>
+            Computing X-ray analysis&hellip;
+        </div>
+        <div id="xray-content"></div>
+    </div>
 
     <div class="controls-container">
         <input type="text" id="customSearchInput" class="filter-input" placeholder="🔍 Search ticker or name...">
@@ -281,33 +293,325 @@
     </script>
 
     <script>
-        function switchAccountContext() {
-            var selectedId = document.getElementById("accountContextSelector").value;
-            window.location.href = "/portfolio?account_id=" + selectedId;
+        // ── X-ray mode state ──────────────────────────────────────────────────────
+        window._xrayMode = false;
+
+        function toggleXray() {
+            if (!window._xrayMode) { _enterXrayMode(); } else { _exitXrayMode(); }
         }
 
+        function _getTableContainer() {
+            return document.getElementById('dataTable_wrapper') || document.getElementById('dataTable');
+        }
+
+        function _enterXrayMode() {
+            window._xrayMode = true;
+            var ctrl = document.querySelector('.controls-container');
+            var tbl  = _getTableContainer();
+            if (ctrl) ctrl.style.display = 'none';
+            if (tbl)  tbl.style.display  = 'none';
+            document.getElementById('xray-panel').style.display  = 'block';
+            document.getElementById('xray-loading').style.display = 'flex';
+            document.getElementById('xray-content').style.display = 'none';
+            var lnk = document.getElementById('xray-link');
+            if (lnk) lnk.innerHTML = '&larr; Back to Portfolio';
+            _loadXray(document.getElementById('accountContextSelector').value);
+        }
+
+        function _exitXrayMode() {
+            window._xrayMode = false;
+            var ctrl = document.querySelector('.controls-container');
+            var tbl  = _getTableContainer();
+            if (ctrl) ctrl.style.display = '';
+            if (tbl)  tbl.style.display  = '';
+            document.getElementById('xray-panel').style.display = 'none';
+            var lnk = document.getElementById('xray-link');
+            if (lnk) lnk.innerHTML = '&#128302; X-ray';
+        }
+
+        // Overrides the navbar's onchange handler; honours X-ray mode
+        function switchAccountContext() {
+            var selectedId = document.getElementById('accountContextSelector').value;
+            if (window._xrayMode) { _loadXray(selectedId); }
+            else { window.location.href = '/portfolio?account_id=' + selectedId; }
+        }
+
+        function _loadXray(accountId) {
+            var loadEl = document.getElementById('xray-loading');
+            var contEl = document.getElementById('xray-content');
+            if (loadEl) { loadEl.style.display = 'flex'; loadEl.innerHTML = '<div class="xray-spinner"></div>Computing X-ray analysis&hellip;'; }
+            if (contEl) contEl.style.display = 'none';
+
+            fetch('/api/xray?account_id=' + encodeURIComponent(accountId))
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data.error) {
+                        if (loadEl) loadEl.innerHTML = '<span class="xray-error-msg">&#9888; ' + data.error + '</span>';
+                        return;
+                    }
+                    _renderXray(data);
+                    if (loadEl) loadEl.style.display = 'none';
+                    if (contEl) contEl.style.display = 'block';
+                })
+                .catch(function(err) {
+                    if (loadEl) loadEl.innerHTML = '<span class="xray-error-msg">&#9888; Failed to load X-ray data. Try again or check server logs.</span>';
+                });
+        }
+
+        // ── Render helpers ────────────────────────────────────────────────────────
+        function _tip(text) {
+            if (!text) return '';
+            return '<span class="xray-tooltip" title="' + text.replace(/"/g, '&quot;') + '">?</span>';
+        }
+
+        function _card(label, value, tipText, colorClass) {
+            return '<div class="xray-metric-card">'
+                + '<div class="xray-metric-label">' + label + _tip(tipText) + '</div>'
+                + '<div class="xray-metric-value' + (colorClass ? ' ' + colorClass : '') + '">' + value + '</div>'
+                + '</div>';
+        }
+
+        function _pct(v, dec) {
+            if (v === null || v === undefined) return 'N/A';
+            return (v * 100).toFixed(dec !== undefined ? dec : 1) + '%';
+        }
+
+        function _num(v, dec) {
+            if (v === null || v === undefined) return 'N/A';
+            return v.toFixed(dec !== undefined ? dec : 2);
+        }
+
+        function _baseLayout(overrides) {
+            var base = {
+                paper_bgcolor: '#1e1e1e', plot_bgcolor: '#1e1e1e',
+                font: { color: '#e0e0e0', family: 'system-ui,-apple-system,sans-serif', size: 12 },
+                margin: { t: 30, r: 20, b: 40, l: 20 },
+                showlegend: false
+            };
+            return Object.assign(base, overrides || {});
+        }
+        var _PC = { displayModeBar: false, responsive: true };
+
+        // ── Full render ───────────────────────────────────────────────────────────
+        function _renderXray(data) {
+            var rm   = data.risk_metrics || {};
+            var conc = data.concentration || {};
+            var inc  = data.income || {};
+            var tips = data.tooltips || {};
+            var cur  = data.base_currency || 'GBP';
+            var sym  = ({ GBP:'£', USD:'$', EUR:'€' })[cur] || (cur + ' ');
+            var html = '';
+
+            // Warnings
+            if (data.data_warnings && data.data_warnings.length) {
+                html += '<div class="xray-warnings">';
+                data.data_warnings.forEach(function(w) { html += '<div class="xray-warning-item">&#9888; ' + w + '</div>'; });
+                html += '</div>';
+            }
+
+            // ── Row 1: Headline metric cards ──────────────────────────────────────
+            var bv = rm.portfolio_beta, bc = '';
+            if (bv !== null && bv !== undefined) bc = bv > 1.5 ? 'xray-val-red' : bv > 1.1 ? 'xray-val-amber' : '';
+            var hv = conc.hhi, hc = '';
+            if (hv !== undefined) hc = hv > 0.25 ? 'xray-val-red' : hv > 0.15 ? 'xray-val-amber' : 'xray-val-green';
+            var t5v = conc.top5_weight, t5c = '';
+            if (t5v !== undefined) t5c = t5v > 0.5 ? 'xray-val-red' : t5v > 0.35 ? 'xray-val-amber' : '';
+            var ddv = rm.max_drawdown, ddc = '';
+            if (ddv !== null && ddv !== undefined) ddc = ddv < -0.25 ? 'xray-val-red' : ddv < -0.15 ? 'xray-val-amber' : '';
+            var varAbs = (rm.var_95_1d !== null && rm.var_95_1d !== undefined)
+                ? sym + Math.abs(rm.var_95_1d).toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits:0})
+                : 'N/A';
+
+            html += '<div class="xray-cards-row">';
+            html += _card('Portfolio Beta',      bv !== null && bv !== undefined ? _num(bv,2) : 'N/A', tips.beta,          bc);
+            html += _card('Ann. Volatility',     _pct(rm.annualized_vol, 1),                           tips.vol,           '');
+            html += _card('Max Drawdown',        ddv !== null && ddv !== undefined ? _pct(ddv,1) : 'N/A', tips.max_drawdown, ddc);
+            html += _card('VaR 95% (1-day)',     varAbs,                                               tips.var,           '');
+            html += _card('HHI Score',           hv !== undefined ? _num(hv,3) : 'N/A',                tips.hhi,           hc);
+            html += _card('Top-5 Weight',        t5v !== undefined ? _pct(t5v,1) : 'N/A',             tips.top5,          t5c);
+            html += '</div>';
+
+            // ── Row 2: Allocation donuts ──────────────────────────────────────────
+            html += '<div class="xray-section">'
+                + '<h3 class="xray-section-title">Allocation Overview ' + _tip(tips.weights_note) + '</h3>'
+                + '<div class="xray-row-3col">'
+                + '<div class="xray-chart-box"><div class="xray-chart-label">Instrument Type ' + _tip(tips.instrument_type) + '</div><div id="xray-c-assetclass" class="xray-chart-el"></div></div>'
+                + '<div class="xray-chart-box"><div class="xray-chart-label">True Sector Exposure <span class="xray-badge">look-through</span> ' + _tip(tips.sector_lookthrough) + '</div><div id="xray-c-sector" class="xray-chart-el"></div></div>'
+                + '<div class="xray-chart-box"><div class="xray-chart-label">Geographic Exposure</div><div id="xray-c-geo" class="xray-chart-el"></div></div>'
+                + '</div></div>';
+
+            // ── Row 3: Concentration bar chart ────────────────────────────────────
+            html += '<div class="xray-section">'
+                + '<h3 class="xray-section-title">Position Concentration</h3>'
+                + '<div id="xray-c-concentration" class="xray-chart-el"></div>'
+                + '</div>';
+
+            // ── Row 4: Correlation heatmap ────────────────────────────────────────
+            if (data.correlation_matrix && data.correlation_matrix.tickers && data.correlation_matrix.tickers.length >= 2) {
+                var cv = rm.avg_pairwise_correlation, cc = '';
+                if (cv !== null && cv !== undefined) cc = cv > 0.6 ? 'xray-val-red' : cv > 0.4 ? 'xray-val-amber' : 'xray-val-green';
+                html += '<div class="xray-section"><h3 class="xray-section-title">Correlation Matrix ' + _tip(tips.avg_correlation) + '</h3>';
+                if (cv !== null && cv !== undefined) {
+                    html += '<div class="xray-corr-score">Diversification Score (avg pairwise correlation): <span class="' + cc + '">' + _num(cv,2) + '</span></div>';
+                }
+                html += '<div id="xray-c-correlation" class="xray-chart-el"></div></div>';
+            }
+
+            // ── Row 5: Income & P&L ───────────────────────────────────────────────
+            html += '<div class="xray-section"><h3 class="xray-section-title">Income &amp; Unrealised P&amp;L</h3>'
+                + '<div class="xray-row-2col">'
+                + '<div class="xray-income-cards">'
+                + '<div class="xray-income-card"><div class="xray-income-label">Weighted Dividend Yield ' + _tip(tips.dividend_yield) + '</div>'
+                + '<div class="xray-income-value">' + _pct(inc.weighted_dividend_yield, 2) + '</div></div>'
+                + '<div class="xray-income-card"><div class="xray-income-label">Projected Annual Income ' + _tip(tips.projected_income) + '</div>'
+                + '<div class="xray-income-value">' + sym + (inc.projected_annual_income || 0).toLocaleString(undefined, {minimumFractionDigits:0,maximumFractionDigits:0}) + '</div></div>'
+                + '</div>'
+                + '<div id="xray-c-pnl" class="xray-chart-el"></div>'
+                + '</div></div>';
+
+            // Footer
+            if (rm.cache_date) {
+                html += '<div class="xray-footer">Risk metrics as of ' + rm.cache_date
+                    + ' &middot; benchmark: ' + rm.benchmark
+                    + ' &middot; lookback: ' + rm.lookback_days + ' days ' + _tip(tips.benchmark)
+                    + ' &middot; all % = invested capital, cash excluded</div>';
+            }
+
+            document.getElementById('xray-content').innerHTML = html;
+
+            // Render charts after DOM update
+            _plotDonut('xray-c-assetclass', data.asset_class_allocation, 'By Type');
+            var sectorData = data.sector_allocation.slice(0, 10);
+            if (data.sector_allocation.length > 10) {
+                var rest = data.sector_allocation.slice(10).reduce(function(s,x){return s+x.weight;}, 0);
+                sectorData = sectorData.concat([{name:'Other', weight:rest}]);
+            }
+            _plotDonut('xray-c-sector', sectorData, 'Sectors');
+            _plotDonut('xray-c-geo', data.geographic_allocation, 'Regions');
+            _plotConcentration('xray-c-concentration', data.holdings, conc);
+            if (data.correlation_matrix && data.correlation_matrix.tickers.length >= 2) {
+                _plotCorrelation('xray-c-correlation', data.correlation_matrix);
+            }
+            _plotPnL('xray-c-pnl', data.holdings, sym);
+        }
+
+        // ── Chart renderers ───────────────────────────────────────────────────────
+        var _DC = ['#4da6ff','#00ffcc','#ffd700','#ff6b6b','#bb86fc','#ff9800','#2196f3','#4caf50','#f44336','#9c27b0','#607d8b'];
+
+        function _plotDonut(elId, alloc, centerText) {
+            if (!alloc || !alloc.length) return;
+            Plotly.newPlot(elId, [{
+                type: 'pie', hole: 0.55,
+                values: alloc.map(function(a){return a.weight;}),
+                labels: alloc.map(function(a){return a.name;}),
+                textinfo: 'none',
+                hovertemplate: '<b>%{label}</b><br>%{percent}<extra></extra>',
+                marker: { colors: _DC }
+            }], _baseLayout({
+                height: 260,
+                margin: { t: 10, r: 20, b: 30, l: 20 },
+                showlegend: true,
+                legend: { font:{size:11,color:'#aaa'}, orientation:'h', y:-0.15, x:0.5, xanchor:'center' },
+                annotations: [{ text: centerText, showarrow: false, font: {color:'#888',size:11} }]
+            }), _PC);
+        }
+
+        function _plotConcentration(elId, holdings, conc) {
+            var top = holdings.slice(0, 20);
+            var labels = top.map(function(h){return h.symbol;}).reverse();
+            var values = top.map(function(h){return h.weight * 100;}).reverse();
+            var colors = values.map(function(v){return v > 20 ? '#ff4d4d' : v > 10 ? '#ffaa00' : '#4da6ff';});
+            var maxV   = Math.max.apply(null, values);
+            Plotly.newPlot(elId, [{
+                type: 'bar', orientation: 'h',
+                x: values, y: labels,
+                marker: { color: colors },
+                text: values.map(function(v){return v.toFixed(1)+'%';}),
+                textposition: 'outside',
+                hovertemplate: '<b>%{y}</b>: %{x:.1f}%<extra></extra>',
+                cliponaxis: false
+            }], _baseLayout({
+                height: Math.max(320, top.length * 30 + 100),
+                margin: { t: 20, r: 70, b: 40, l: 80 },
+                xaxis: { color:'#888', tickformat:'.0f', ticksuffix:'%', range:[0, Math.min(maxV * 1.25, 100)] },
+                yaxis: { color:'#aaa', automargin: true },
+                shapes: [
+                    { type:'line', x0:10, x1:10, y0:0, y1:1, yref:'paper', line:{color:'#ffaa00',width:1,dash:'dot'} },
+                    { type:'line', x0:20, x1:20, y0:0, y1:1, yref:'paper', line:{color:'#ff4d4d',width:1,dash:'dot'} }
+                ]
+            }), _PC);
+        }
+
+        function _plotCorrelation(elId, corrData) {
+            var tickers = corrData.tickers;
+            var matrix  = corrData.matrix;
+            var n       = tickers.length;
+            var textTpl = n <= 12 ? '%{text}' : '';
+            var textMat = matrix.map(function(row){
+                return row.map(function(v){return v !== null ? v.toFixed(2) : '';});
+            });
+            Plotly.newPlot(elId, [{
+                type: 'heatmap',
+                z: matrix, x: tickers, y: tickers,
+                colorscale: [[0,'#4da6ff'],[0.5,'#2a2a2a'],[1,'#ff4d4d']],
+                zmin: -1, zmax: 1,
+                text: textMat, texttemplate: textTpl,
+                textfont: { size: 11 },
+                hovertemplate: '<b>%{y} vs %{x}</b>: %{z:.2f}<extra></extra>',
+                showscale: true,
+                colorbar: { tickfont:{color:'#aaa',size:10}, title:{text:'ρ',font:{color:'#aaa',size:12}} }
+            }], _baseLayout({
+                height: Math.max(320, n * 38 + 100),
+                margin: { t: 20, r: 80, b: 80, l: 80 },
+                xaxis: { color:'#aaa', side:'bottom', tickangle:-45, automargin:true },
+                yaxis: { color:'#aaa', autorange:'reversed', automargin:true }
+            }), _PC);
+        }
+
+        function _plotPnL(elId, holdings, curSym) {
+            var withPnL = holdings.filter(function(h){return h.gross_perf !== 0;});
+            if (!withPnL.length) return;
+            withPnL.sort(function(a,b){return b.gross_perf - a.gross_perf;});
+            Plotly.newPlot(elId, [{
+                type: 'bar',
+                x: withPnL.map(function(h){return h.symbol;}),
+                y: withPnL.map(function(h){return h.gross_perf;}),
+                marker: { color: withPnL.map(function(h){return h.gross_perf >= 0 ? '#00ffcc' : '#ff4d4d';}) },
+                text: withPnL.map(function(h){
+                    var p = h.gross_perf_pct;
+                    return p !== undefined ? (h.gross_perf >= 0 ? '+' : '') + p.toFixed(1) + '%' : '';
+                }),
+                textposition: 'outside',
+                hovertemplate: '<b>%{x}</b><br>P&L: ' + curSym + '%{y:,.0f}<extra></extra>',
+                cliponaxis: false
+            }], _baseLayout({
+                height: 260,
+                margin: { t: 30, r: 20, b: 60, l: 80 },
+                xaxis: { color:'#aaa', tickangle:-45, automargin:true },
+                yaxis: { color:'#888', automargin:true, tickformat:',.0f' },
+                bargap: 0.3
+            }), _PC);
+        }
+
+        // ── DataTables init (unchanged) ───────────────────────────────────────────
         $(document).ready(function() {
-            // Initialize DataTables
             var table = $('#dataTable').DataTable({
                 pageLength: 50,
                 deferRender: true,
-                dom: 'lrtip', // Hides the default DataTables search box since we map our custom one
-                order: [] // Preserves your initial backend sorting
+                dom: 'lrtip',
+                order: []
             });
-            
-            // Map Custom Search Box
+
             $('#customSearchInput').on('keyup', function () {
                 table.search(this.value).draw();
             });
 
-            // Signal is column 19
             $('#signalFilter').on('change', function() {
                 var val = $(this).val();
                 if(val === 'ALL') { table.column(19).search('').draw(); }
                 else { table.column(19).search('^' + val + '$', true, false).draw(); }
             });
 
-            // Setups & Tags is column 18
             $('#tagFilter').on('change', function() {
                 var val = $(this).val();
                 if(val === 'ALL') { table.column(18).search('').draw(); }
