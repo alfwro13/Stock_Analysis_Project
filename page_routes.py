@@ -944,9 +944,12 @@ async def index_detail(request: Request, ticker: str):
     conn.close()
 
     price_action = None
-    parquet_name = INDEX_PARQUET_MAP.get(ticker)
+    # Prefer fresh per-ticker parquet (written by /api/index/refresh); fall back to shared baseline
+    _ticker_parquet = HISTORICAL_DIR / f"{ticker}.parquet"
+    _baseline_name = INDEX_PARQUET_MAP.get(ticker)
+    parquet_path = _ticker_parquet if _ticker_parquet.exists() else (HISTORICAL_DIR / _baseline_name if _baseline_name else None)
     try:
-        df_macro = pd.read_parquet(HISTORICAL_DIR / parquet_name) if parquet_name else pd.DataFrame()
+        df_macro = pd.read_parquet(parquet_path) if parquet_path else pd.DataFrame()
         if df_macro.empty:
             raise FileNotFoundError
         macro_html = create_macro_chart(df_macro, None, ticker)

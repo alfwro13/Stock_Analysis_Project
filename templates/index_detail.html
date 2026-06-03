@@ -51,7 +51,12 @@
 
     <div id="overview">
         <div class="summary-box">
-            <h2 class="m-0 border-none p-0">Market Snapshot</h2>
+            <div class="flex-between-center">
+                <h2 class="m-0 border-none p-0">Market Snapshot</h2>
+                <button id="refreshDataBtn" onclick="refreshIndexData('{{ ticker }}')" class="btn-refresh">
+                    <span class="btn-icon">↻</span> Refresh
+                </button>
+            </div>
             <div class="flex-gap-40 font-16 mt-15 mb-20">
                 <div>
                     <span class="text-muted">Current Level:</span>
@@ -307,6 +312,31 @@
 
 <script>
     window.REFRESH_RATE_MS = {{ config.UI_PREFERENCES.REFRESH_RATE | default(60) }} * 1000;
+
+    async function refreshIndexData(ticker) {
+        const btn = document.getElementById('refreshDataBtn');
+        btn.disabled = true;
+        btn.innerHTML = `<span class="btn-icon spin-icon">↻</span> Crunching...`;
+        try {
+            const response = await fetch('/api/index/refresh', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ticker: ticker })
+            });
+            const data = await response.json();
+            if (response.ok && data.status === 'success') {
+                window.location.reload();
+            } else {
+                alert("Failed to refresh data: " + (data.message || "Unknown error"));
+                btn.disabled = false;
+                btn.innerHTML = `<span class="btn-icon">↻</span> Refresh`;
+            }
+        } catch (e) {
+            alert("Network error refreshing data.");
+            btn.disabled = false;
+            btn.innerHTML = `<span class="btn-icon">↻</span> Refresh`;
+        }
+    }
 
     function toggleFullscreen(wrapperId) {
         const wrapper = document.getElementById(wrapperId);

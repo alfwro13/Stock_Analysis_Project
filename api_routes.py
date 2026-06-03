@@ -1167,6 +1167,26 @@ async def api_data_refresh_single(req: TickerRequest):
         logger.exception("refresh-single failed for %s", req.ticker)
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
+
+@api_router.post("/index/refresh")
+async def api_index_refresh(req: TickerRequest):
+    ticker = normalize_ticker(req.ticker)
+    try:
+        fetch_and_save_pulse([ticker])
+        data_engine = DataEngine()
+        quant_engine = QuantEngine()
+        if not data_engine.fetch_and_save_data(ticker):
+            return JSONResponse(status_code=500, content={"status": "error", "message": "Data fetch failed."})
+        quant_engine.analyze_ticker(ticker)
+        target_list = [ticker]
+        update_all_tail_risks(target_list)
+        update_all_sentiment(target_list)
+        return JSONResponse(content={"status": "success"})
+    except Exception as e:
+        logger.exception("index/refresh failed for %s", ticker)
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+
 @api_router.get("/options/chain/{ticker}")
 async def api_options_chain(ticker: str = PathParam(..., pattern=r"^[A-Z0-9.\-\^=]{1,20}$")):
     data = fetch_options_chain(ticker)
