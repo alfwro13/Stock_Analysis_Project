@@ -425,7 +425,7 @@
         // ── Render helpers ────────────────────────────────────────────────────────
         function _tip(text) {
             if (!text) return '';
-            return '<span class="xray-tooltip" title="' + text.replace(/"/g, '&quot;') + '">?</span>';
+            return '<span class="xray-tooltip" title="' + text.replace(/"/g, '&quot;') + '"></span>';
         }
 
         function _card(label, value, tipText, colorClass) {
