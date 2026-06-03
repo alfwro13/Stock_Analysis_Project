@@ -1541,12 +1541,14 @@
                         setStatus('git-status-msg', 'success', `Waiting for service to come back up... (${elapsed}s)`);
 
                         try {
-                            await fetch('/', { method: 'HEAD', cache: 'no-store' });
-                            // Any HTTP response (200, 302, 401…) means the server is alive again
-                            clearInterval(poll);
-                            window.location.reload();
+                            const check = await fetch('/', { method: 'HEAD', cache: 'no-store' });
+                            // 5xx = nginx is up but app is still down; anything else = app is back
+                            if (check.status < 500) {
+                                clearInterval(poll);
+                                window.location.reload();
+                            }
                         } catch (_) {
-                            // Still down — keep polling
+                            // Network error — still down, keep polling
                         }
 
                         if (Date.now() - started > maxWait) {
