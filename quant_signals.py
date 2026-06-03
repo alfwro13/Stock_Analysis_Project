@@ -76,11 +76,32 @@ def get_candlestick_patterns(prev2: pd.Series, prev1: pd.Series, curr: pd.Series
                     "score": -20
                 })
 
+    # 3. Three White Soldiers (Bullish Continuation)
+    # Three consecutive bullish candles, each with a meaningful body, each opening inside the prior
+    # body and closing progressively higher — signals sustained institutional buying across sessions.
+    prev2_range = max(prev2['High'] - prev2['Low'], 0.001)
+    if (prev2_is_bullish and prev1_is_bullish and curr_is_bullish
+            and prev2_body > prev2_range * 0.40
+            and prev1_body > prev1_range * 0.40
+            and curr_body > curr_range * 0.40
+            and prev1['Close'] > prev2['Close']
+            and curr['Close'] > prev1['Close']
+            and prev2['Open'] <= prev1['Open'] <= prev2['Close']
+            and prev1['Open'] <= curr['Open'] <= prev1['Close']):
+        patterns.append({
+            "name": "🪖 Three White Soldiers",
+            "tooltip": "Three consecutive bullish candles, each opening inside the prior body and closing higher. Signals sustained institutional buying pressure across multiple sessions — buyers are in full control.",
+            "breakdown": "+18: <abbr title='Three consecutive bullish closes, each higher than the last, with opens inside prior body.'>Three White Soldiers</abbr>",
+            "score": 18
+        })
+
     # ==========================================
     # TIER 2: 2-CANDLE PATTERNS
     # ==========================================
 
-    # 2. Bullish Engulfing
+    harami_cross_detected = False
+
+    # 4. Bullish Engulfing
     if prev1_is_bearish and curr_is_bullish and (curr['Open'] <= prev1['Close']) and (curr['Close'] >= prev1['Open']):
         patterns.append({
             "name": "🐂 Bullish Engulfing",
@@ -88,8 +109,8 @@ def get_candlestick_patterns(prev2: pd.Series, prev1: pd.Series, curr: pd.Series
             "breakdown": "+15: <abbr title='Buyers completely overwhelmed sellers. The current green body fully engulfed the previous red body.'>Bullish Engulfing Pattern</abbr>",
             "score": 15
         })
-        
-    # 3. Bearish Engulfing
+
+    # 5. Bearish Engulfing
     if prev1_is_bullish and curr_is_bearish and (curr['Open'] >= prev1['Close']) and (curr['Close'] <= prev1['Open']):
         patterns.append({
             "name": "🐻 Bearish Engulfing",
@@ -98,11 +119,53 @@ def get_candlestick_patterns(prev2: pd.Series, prev1: pd.Series, curr: pd.Series
             "score": -15
         })
 
+    # 6. Bullish Harami Cross — large bearish D1 followed by a Doji contained within its body.
+    # Stronger reversal signal than a standalone Doji because the containment adds directional context.
+    if (prev1_is_bearish and prev1_body > prev1_range * 0.50
+            and curr_body <= curr_range * 0.10
+            and prev1['Close'] <= curr['Open'] <= prev1['Open']
+            and prev1['Close'] <= curr['Close'] <= prev1['Open']):
+        patterns.append({
+            "name": "🌱 Bullish Harami Cross",
+            "tooltip": "A Doji forms entirely inside a large bearish candle. Unlike a standalone Doji, the containment signals that sellers have exhausted themselves — buyers are stepping in cautiously.",
+            "breakdown": "+8: <abbr title='Doji contained within a large bearish body: sellers exhausted, potential bullish reversal.'>Bullish Harami Cross</abbr>",
+            "score": 8
+        })
+        harami_cross_detected = True
+
+    # 7. Bearish Harami Cross — large bullish D1 followed by a Doji contained within its body.
+    elif (prev1_is_bullish and prev1_body > prev1_range * 0.50
+            and curr_body <= curr_range * 0.10
+            and prev1['Open'] <= curr['Open'] <= prev1['Close']
+            and prev1['Open'] <= curr['Close'] <= prev1['Close']):
+        patterns.append({
+            "name": "🕸️ Bearish Harami Cross",
+            "tooltip": "A Doji forms entirely inside a large bullish candle. Unlike a standalone Doji, the containment signals that buyers have run out of steam — sellers are beginning to assert control.",
+            "breakdown": "-8: <abbr title='Doji contained within a large bullish body: buyers exhausted, potential bearish reversal.'>Bearish Harami Cross</abbr>",
+            "score": -8
+        })
+        harami_cross_detected = True
+
+    # 8. Piercing Line — bearish D1, bullish D2 that opens below D1's close but pierces above its midpoint.
+    # Weaker than Bullish Engulfing (doesn't fully overtake), but still a meaningful reversal attempt.
+    prev1_midpoint = (prev1['Open'] + prev1['Close']) / 2.0
+    if (prev1_is_bearish and prev1_body > prev1_range * 0.50
+            and curr_is_bullish
+            and curr['Open'] <= prev1['Close']
+            and curr['Close'] > prev1_midpoint
+            and curr['Close'] < prev1['Open']):
+        patterns.append({
+            "name": "🗡️ Piercing Line",
+            "tooltip": "A strong bearish day is followed by a bullish candle that opens lower but fights back above the midpoint of the prior red body. Buyers are defending the low — a moderate reversal signal.",
+            "breakdown": "+10: <abbr title='Bullish candle opens below prior close and closes above D1 midpoint without fully engulfing.'>Piercing Line</abbr>",
+            "score": 10
+        })
+
     # ==========================================
     # TIER 3: 1-CANDLE PATTERNS (Mutually Exclusive)
     # ==========================================
 
-    # 4. Hammer / Dragonfly Doji (Bullish Rejection)
+    # 9. Hammer / Dragonfly Doji (Bullish Rejection)
     if curr_lower_wick >= (2.0 * curr_body_safe) and curr_upper_wick <= (0.2 * curr_range):
         patterns.append({
             "name": "🔨 Hammer Rejection",
@@ -110,8 +173,8 @@ def get_candlestick_patterns(prev2: pd.Series, prev1: pd.Series, curr: pd.Series
             "breakdown": "+10: <abbr title='Sellers tried to crash the price intraday, but institutional buyers violently rejected it. Indicates strong support.'>Bullish Hammer Candlestick</abbr>",
             "score": 10
         })
-        
-    # 5. Shooting Star / Gravestone Doji (Bearish Rejection)
+
+    # 10. Shooting Star / Gravestone Doji (Bearish Rejection)
     elif curr_upper_wick >= (2.0 * curr_body_safe) and curr_lower_wick <= (0.2 * curr_range):
         patterns.append({
             "name": "🌠 Shooting Star",
@@ -119,9 +182,9 @@ def get_candlestick_patterns(prev2: pd.Series, prev1: pd.Series, curr: pd.Series
             "breakdown": "-10: <abbr title='Retail buyers tried to push the price up, but institutional sellers aggressively dumped shares.'>Bearish Shooting Star</abbr>",
             "score": -10
         })
-        
-    # 6. Standard Doji (Indecision)
-    elif curr_body <= (curr_range * 0.1):
+
+    # 11. Standard Doji (Indecision) — suppressed when a Harami Cross already fired on this candle
+    elif not harami_cross_detected and curr_body <= (curr_range * 0.1):
         patterns.append({
             "name": "⚖️ Doji",
             "tooltip": "The opening and closing prices are mathematically almost identical. This represents total equilibrium and indecision between buyers and sellers.",
