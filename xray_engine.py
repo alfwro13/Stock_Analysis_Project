@@ -152,6 +152,15 @@ class GhostfolioXRayClient:
             logger.error(f"Ghostfolio portfolio/details failed: {e}")
             return [], 0.0
 
+        # ISO 4217 currency codes that Ghostfolio uses as cash-holding symbols.
+        # Used as a secondary cash filter when assetProfile is absent.
+        _CURRENCY_SYMBOLS: frozenset = frozenset({
+            "AED", "AUD", "BRL", "CAD", "CHF", "CNY", "CZK", "DKK", "EUR",
+            "GBP", "GBX", "GBp", "HKD", "HUF", "IDR", "ILS", "INR", "JPY",
+            "KRW", "MXN", "MYR", "NOK", "NZD", "PHP", "PLN", "RON", "RUB",
+            "SAR", "SEK", "SGD", "THB", "TRY", "TWD", "USD", "ZAR",
+        })
+
         holdings: List[Dict] = []
         for symbol, h in raw_holdings.items():
             # Ghostfolio moved static metadata (assetClass, assetSubClass, sectors,
@@ -165,10 +174,13 @@ class GhostfolioXRayClient:
                 profile.get("assetClass") or h.get("assetClass") or ""
             ).upper()
 
-            # Exclude cash entries (CASH asset class OR bare currency-code symbols)
+            # Primary: assetClass == "CASH" (reliable when assetProfile is present).
+            # Secondary: explicit ISO 4217 set — safety net for when assetProfile
+            # is absent and the symbol is literally a currency code (e.g. "GBP").
+            # Never use a length heuristic — it silently drops 4-letter tickers (AAPL etc.)
             if asset_class == "CASH":
                 continue
-            if len(symbol) <= 4 and symbol.isalpha() and symbol.isupper():
+            if symbol in _CURRENCY_SYMBOLS:
                 continue
             value = float(h.get("valueInBaseCurrency") or 0)
             if value <= 0:
