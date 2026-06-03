@@ -154,8 +154,18 @@ class GhostfolioXRayClient:
 
         holdings: List[Dict] = []
         for symbol, h in raw_holdings.items():
-            asset_class = (h.get("assetClass") or "").upper()
-            # Exclude cash entries (CASH asset class OR bare 3-letter currency codes)
+            # Ghostfolio moved static metadata (assetClass, assetSubClass, sectors,
+            # countries, currency, dataSource, name) from the top-level holding to
+            # holding["assetProfile"] in a breaking change that removed the deprecated
+            # top-level duplicates.  Read from assetProfile first; fall back to the
+            # top-level keys so the code works on both old and new Ghostfolio versions.
+            profile: Dict = h.get("assetProfile") or {}
+
+            asset_class = (
+                profile.get("assetClass") or h.get("assetClass") or ""
+            ).upper()
+
+            # Exclude cash entries (CASH asset class OR bare currency-code symbols)
             if asset_class == "CASH":
                 continue
             if len(symbol) <= 4 and symbol.isalpha() and symbol.isupper():
@@ -166,19 +176,21 @@ class GhostfolioXRayClient:
 
             holdings.append({
                 "symbol": symbol,
-                "name": h.get("name") or symbol,
+                "name": profile.get("name") or h.get("name") or symbol,
                 "asset_class": asset_class,
-                "asset_sub_class": (h.get("assetSubClass") or "").upper(),
-                "currency": h.get("currency") or "",
-                "data_source": h.get("dataSource") or "YAHOO",
+                "asset_sub_class": (
+                    profile.get("assetSubClass") or h.get("assetSubClass") or ""
+                ).upper(),
+                "currency": profile.get("currency") or h.get("currency") or "",
+                "data_source": profile.get("dataSource") or h.get("dataSource") or "YAHOO",
                 "value": value,
                 "investment": float(h.get("investment") or 0),
                 "quantity": float(h.get("quantity") or 0),
                 "market_price": float(h.get("marketPrice") or 0),
                 "gross_perf": float(h.get("grossPerformance") or 0),
                 "gross_perf_pct": float(h.get("grossPerformancePercent") or 0),
-                "sectors": h.get("sectors") or [],
-                "countries": h.get("countries") or [],
+                "sectors": profile.get("sectors") or h.get("sectors") or [],
+                "countries": profile.get("countries") or h.get("countries") or [],
                 "weight": 0.0,
             })
 
