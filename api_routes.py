@@ -334,6 +334,8 @@ class SchedulingConfig(BaseModel):
     EARNINGS_ENGINE: Optional[ScheduleItemConfig] = None
     DISPATCHER: Optional[ScheduleItemConfig] = None
     UNIVERSE_ENGINE: Optional[ScheduleItemConfig] = None
+    CB_NLP_ALERT: Optional[ScheduleItemConfig] = None
+    AI_CONTAGION: Optional[ScheduleItemConfig] = None
 
 class ReportsDefaultsConfig(BaseModel):
     MR_MAX_RSI: Optional[int] = None
@@ -356,6 +358,15 @@ class NotificationItemConfig(BaseModel):
     SMA_GAP_PERCENT: Optional[float] = None
     SPIKE_PERCENT: Optional[float] = None
     SPIKE_DAYS: Optional[int] = None
+    THRESHOLD: Optional[float] = None
+    COOLDOWN_MINUTES: Optional[float] = None
+    RETRIGGER_PERCENT: Optional[float] = None
+    REARM_PERCENT: Optional[float] = None
+    LEADER_THRESHOLD_PCT: Optional[float] = None
+    ETF_CONFIRMATION_THRESHOLD_PCT: Optional[float] = None
+    VOLUME_SPIKE_MULTIPLIER: Optional[float] = None
+    BELLWETHER_TICKERS: Optional[List[str]] = None
+    ETF_BASKET: Optional[List[str]] = None
 
 class NotificationsConfig(BaseModel):
     MARKET_SENTIMENT: Optional[NotificationItemConfig] = None
@@ -363,7 +374,10 @@ class NotificationsConfig(BaseModel):
     INSIDER_TRADING: Optional[NotificationItemConfig] = None
     CRASH_ALERTS: Optional[NotificationItemConfig] = None
     MOONSHOT_ALERTS: Optional[NotificationItemConfig] = None
+    MACRO_ALERTS: Optional[NotificationItemConfig] = None
+    ANOMALY_ALERTS: Optional[NotificationItemConfig] = None
     RSS_FEED: Optional[NotificationItemConfig] = None
+    AI_CONTAGION: Optional[NotificationItemConfig] = None
 
 class FreetradeMappingsConfig(BaseModel):
     US_MICS: Optional[List[str]] = None
@@ -1145,6 +1159,50 @@ async def purge_all_notifications():
     finally:
         if conn:
             conn.close()
+
+@api_router.get("/ai-contagion/status")
+async def get_ai_contagion_status():
+    """Returns the last 20 AI Contagion scan snapshots for the market-sentiment status panel."""
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT scan_ts, leader_count, etf_count, alert_fired, payload_json "
+            "FROM ai_contagion_snapshots ORDER BY scan_ts DESC LIMIT 20"
+        )
+        rows = cursor.fetchall()
+        snapshots = [
+            {
+                "scan_ts": row["scan_ts"],
+                "leader_count": row["leader_count"],
+                "etf_count": row["etf_count"],
+                "alert_fired": bool(row["alert_fired"]),
+                "tickers": json.loads(row["payload_json"] or "[]"),
+            }
+            for row in rows
+        ]
+        return JSONResponse(content={"status": "success", "snapshots": snapshots})
+    except Exception as e:
+        logger.error(f"ai-contagion/status failed: {e}")
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+    finally:
+        if conn:
+            conn.close()
+
+
+@api_router.post("/ai-contagion/trigger")
+@limiter.limit("4/minute")
+async def trigger_ai_contagion(request: Request, background_tasks: BackgroundTasks):
+    """Manually triggers an AI Contagion scan in the background (useful for testing)."""
+    try:
+        from scheduler_engine import run_ai_contagion_job
+        background_tasks.add_task(run_ai_contagion_job)
+        return JSONResponse(content={"status": "success", "message": "AI Contagion scan triggered."})
+    except Exception as e:
+        logger.error(f"Failed to trigger AI Contagion scan: {e}")
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
 
 @api_router.get("/ai-prompt/{ticker}")
 async def get_ai_prompt(ticker: str = PathParam(..., pattern=r"^[A-Z0-9.\-\^=]{1,20}$"), mode: str = "Quantamental Deep-Dive"):

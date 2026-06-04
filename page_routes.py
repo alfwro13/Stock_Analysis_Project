@@ -449,6 +449,17 @@ async def market_sentiment_page(request: Request):
         if cb_row:
             cb_nlp_latest = _parse_cb_nlp_message(cb_row["message_text"], cb_row["timestamp"])
 
+        # Fetch AI Contagion Monitor status (last 5 scans)
+        ai_contagion_status = []
+        try:
+            rows = cursor.execute(
+                "SELECT scan_ts, leader_count, etf_count, alert_fired, payload_json "
+                "FROM ai_contagion_snapshots ORDER BY scan_ts DESC LIMIT 5"
+            ).fetchall()
+            ai_contagion_status = [dict(r) for r in rows]
+        except Exception:
+            pass  # table absent on first boot — silently ignore
+
         # Process Historical DataFrame Indicators
         try:
             df_indicators = pd.read_sql_query("SELECT * FROM macro_indicators", conn)
@@ -507,6 +518,7 @@ async def market_sentiment_page(request: Request):
         us_inflation_html = "<p>Data unavailable.</p>"
         uk_inflation_html = "<p>Data unavailable.</p>"
         cb_nlp_latest = None
+        ai_contagion_status = []
     finally:
         conn.close()
         
@@ -532,6 +544,7 @@ async def market_sentiment_page(request: Request):
             "us_events": us_events,
             "uk_events": uk_events,
             "cb_nlp_latest": cb_nlp_latest,
+            "ai_contagion_status": ai_contagion_status,
             "unread_count": get_unread_count(),
             "config": load_config()
         }

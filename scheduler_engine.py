@@ -9,6 +9,7 @@ from sentiment_engine import run_nextcloud_alert, update_all_sentiment, run_cent
 from earnings_engine import run_earnings_alert
 from insider_engine import run_insider_alert
 from intraday_orchestrator import IntradayOrchestrator
+from nextcloud_talk import send_text_message
 from maintenance_engine import MaintenanceEngine
 from data_engine import DataEngine
 from quant_signals import QuantEngine
@@ -440,6 +441,88 @@ def run_anomaly_training_job():
         record_job_run('anomaly_training_job')
 
 
+def _build_contagion_message(event: dict, config: dict) -> str:
+    leaders = event.get("leader_shocks", [])
+    etfs = event.get("etf_hits", [])
+    vol_tickers = event.get("volume_spikes", [])
+
+    lines = [
+        "🚨 **AI SECTOR CONTAGION DETECTED** 🚨",
+        "",
+        "A flash sell-off in leading AI stocks is spreading to sector ETFs.",
+        "",
+        "**📉 Leader Shocks:**",
+    ]
+    for s in leaders:
+        vol_note = " _(volume spike)_" if s["ticker"] in vol_tickers else ""
+        lines.append(f"- **{s['ticker']}**: {s['intraday_pct']:+.2f}%{vol_note}")
+
+    lines += ["", "**📉 ETF Contagion Confirmed:**"]
+    for e in etfs:
+        lines.append(f"- **{e['ticker']}**: {e['intraday_pct']:+.2f}%")
+
+    lines += ["", "_Consider reviewing open positions and hedging long AI/semiconductor exposure._"]
+    return "\n".join(lines)
+
+
+def run_ai_contagion_job():
+    """Intraday AI Sector Contagion scan — runs every 15 min during extended market hours."""
+    from ai_contagion_engine import AIContagionEngine, record_scan_snapshot
+    config = load_config()
+    conn = get_connection()
+    try:
+        engine = AIContagionEngine(config)
+        candidates = engine.scan(conn)
+
+        record_scan_snapshot(conn, candidates)
+
+        if not candidates:
+            return
+
+        orch = IntradayOrchestrator(config)
+        contagion_cfg = config.get("NOTIFICATIONS", {}).get("AI_CONTAGION", {})
+        nextcloud_enabled = contagion_cfg.get("ENABLED", False)
+
+        for event in candidates:
+            suppress = orch._evaluate_alert_gate(
+                "AIContagion", event["ticker"], event["price"], event["reason"], conn
+            )
+            if suppress:
+                logger.info("AIContagion: alert suppressed by gate (cooldown/rearm).")
+                continue
+
+            if nextcloud_enabled:
+                msg = _build_contagion_message(event, config)
+                try:
+                    ok = send_text_message(msg, config)
+                except Exception as e:
+                    logger.error(f"AIContagion: Nextcloud dispatch failed: {e}")
+                    ok = False
+            else:
+                ok = True  # record dedup state even when Nextcloud is disabled
+
+            if ok:
+                orch.record_alert_fired(
+                    "AIContagion", event["ticker"], event["price"], event["reason"], conn
+                )
+                leaders_summary = ", ".join(
+                    f"{s['ticker']} ({s['intraday_pct']:+.2f}%)"
+                    for s in event.get("leader_shocks", [])
+                )
+                orch.log_notification_feed(
+                    "AIContagion",
+                    f"Contagion: {leaders_summary}",
+                    conn,
+                )
+                logger.warning("AIContagion: alert fired. Leaders: %s", leaders_summary)
+    except Exception as e:
+        logger.error(f"AI Contagion job failed: {e}")
+        log_sched_notification("Error", f"AI Contagion job failed: {e}")
+    finally:
+        conn.close()
+        record_job_run('ai_contagion_job')
+
+
 def reload_scheduler():
     """Reads the latest config.json and updates APScheduler dynamically."""
     logger.info("Reloading scheduled jobs from configuration...")
@@ -850,6 +933,27 @@ def reload_scheduler():
             logger.info("Anomaly Training job scheduled for mon-fri at 18:30.")
         except Exception as e:
             logger.error(f"Failed to schedule Anomaly Training job: {e}")
+
+    # AI Sector Contagion Monitor — intraday scan, every N minutes during extended market hours.
+    ai_c_sched = scheduling.get("AI_CONTAGION", {})
+    if ai_c_sched.get("ENABLED", False):
+        try:
+            start_h = int(ai_c_sched.get("START_TIME", "09:00").split(":")[0])
+            end_h   = int(ai_c_sched.get("END_TIME",   "21:00").split(":")[0])
+            mins    = int(ai_c_sched.get("INTERVAL_MINUTES", 15))
+            freq    = ai_c_sched.get("FREQUENCY", "mon-fri")
+            scheduler.add_job(
+                run_ai_contagion_job,
+                CronTrigger(day_of_week=freq, hour=f"{start_h}-{end_h}", minute=f"*/{mins}"),
+                id='ai_contagion_job',
+                replace_existing=True,
+                misfire_grace_time=300,
+            )
+            logger.info(
+                f"AI Contagion Monitor scheduled ({freq} {start_h:02d}:00–{end_h:02d}:00 every {mins}m)."
+            )
+        except Exception as e:
+            logger.error(f"Failed to schedule AI Contagion Monitor: {e}")
 
     # Always-on: X-ray Risk Cache — runs daily Mon–Fri at 19:00 (after market close).
     # No config flag required; the X-ray report is always available.

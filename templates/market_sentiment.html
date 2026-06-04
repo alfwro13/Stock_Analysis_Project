@@ -111,6 +111,32 @@
     </div>
     {% endif %}
 
+    {% if ai_contagion_status %}
+    {% set latest = ai_contagion_status[0] %}
+    <div class="risk-summary-row {% if latest.alert_fired %}risk-summary-red{% endif %}" style="padding: 18px 20px; border-radius: 8px; margin-bottom: 25px;">
+        <div class="risk-summary-flex" style="align-items: center; gap: 30px;">
+            <div style="flex: 1;">
+                <h3 class="risk-summary-header {% if latest.alert_fired %}red{% else %}text-cyan{% endif %}" style="margin-bottom: 4px;">
+                    🤖 AI Sector Contagion Monitor
+                    <span style="font-size: 12px; font-weight: normal; color: #888; margin-left: 10px;">Last scan: {{ latest.scan_ts }} UTC</span>
+                </h3>
+                {% if latest.alert_fired %}
+                <p class="risk-summary-text" style="color: #f44336; font-weight: 600;">
+                    CONTAGION SIGNAL ACTIVE &mdash; Leader shocks: {{ latest.leader_count }} &nbsp;|&nbsp; ETF confirmations: {{ latest.etf_count }}
+                </p>
+                {% else %}
+                <p class="risk-summary-text">
+                    No contagion signal &mdash; Leader shocks detected: {{ latest.leader_count }} &nbsp;|&nbsp; ETF hits: {{ latest.etf_count }}
+                </p>
+                {% endif %}
+            </div>
+            <div style="text-align: right; flex-shrink: 0;">
+                <span style="font-size: 11px; color: #666;">{{ ai_contagion_status | length }} scan(s) loaded</span>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     <div class="sentiment-split-grid">
         
         <div class="sentiment-column">

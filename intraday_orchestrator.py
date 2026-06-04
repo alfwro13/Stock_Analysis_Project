@@ -200,6 +200,8 @@ class IntradayOrchestrator:
             key = "MOONSHOT_ALERTS"
         elif engine == "Anomaly":
             key = "ANOMALY_ALERTS"
+        elif engine == "AIContagion":
+            key = "AI_CONTAGION"
         else:  # Macro and any future engines
             key = "MACRO_ALERTS"
         block = self.config.get("NOTIFICATIONS", {}).get(key, {})

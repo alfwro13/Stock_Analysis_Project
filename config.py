@@ -192,6 +192,13 @@ DEFAULT_CONFIG = {
             "ENABLED": True,
             "DAYS": ["mon", "tue", "wed", "thu", "fri"],
             "TIME": "01:30"
+        },
+        "AI_CONTAGION": {
+            "ENABLED": False,
+            "FREQUENCY": "mon-fri",
+            "START_TIME": "09:00",
+            "END_TIME": "21:00",
+            "INTERVAL_MINUTES": 15
         }
     },
     "REPORTS_DEFAULTS": {
@@ -251,6 +258,17 @@ DEFAULT_CONFIG = {
         },
         "RSS_FEED": {
             "ENABLED": False
+        },
+        "AI_CONTAGION": {
+            "ENABLED": False,
+            "LEADER_THRESHOLD_PCT": 4.0,
+            "ETF_CONFIRMATION_THRESHOLD_PCT": 2.5,
+            "VOLUME_SPIKE_MULTIPLIER": 1.8,
+            "BELLWETHER_TICKERS": ["NVDA", "AMD", "MSFT", "META", "GOOGL", "AAPL", "AVGO"],
+            "ETF_BASKET": ["SMH", "SOXX", "QQQ"],
+            "COOLDOWN_MINUTES": 60,
+            "RETRIGGER_PERCENT": 1.5,
+            "REARM_PERCENT": 2.5
         }
     },
     "XRAY_TARGETS": {

@@ -514,6 +514,111 @@
                 </details>
 
                 <details class="settings-card">
+                    <summary>🤖 AI Sector Contagion Monitor</summary>
+                    <p class="settings-desc">
+                        Monitors AI bellwether stocks and semiconductor ETFs for intraday flash crashes using
+                        15-minute pre/post-market data. Requires a two-tier confirmation: at least one leader shock
+                        (e.g. NVDA down >4%) <strong>and</strong> at least one ETF basket drop (e.g. SMH down >2.5%)
+                        before firing an alert — filtering out isolated single-stock news.
+                    </p>
+
+                    {% set ac_sched = config.SCHEDULING.AI_CONTAGION if config.SCHEDULING.AI_CONTAGION else {} %}
+                    {% set ac_cfg = config.NOTIFICATIONS.AI_CONTAGION if config.NOTIFICATIONS.AI_CONTAGION else {} %}
+
+                    <div class="settings-panel border-left-purple">
+                        <h4 class="settings-panel-header text-purple">⏱️ Scan Schedule</h4>
+                        <p class="settings-desc-sm">Wide windows (e.g. 09:00–21:00) cover US pre-market (opens ~14:00 UTC) and post-market for earnings reactions.</p>
+                        <div class="checkbox-group mb-10">
+                            <input type="checkbox" id="AI_CONTAGION_SCHED_ENABLED" {% if ac_sched.ENABLED %}checked{% endif %}>
+                            <label for="AI_CONTAGION_SCHED_ENABLED">Enable AI Contagion Monitor (runs every N minutes)</label>
+                        </div>
+                        <div class="flex-gap-15 mb-10">
+                            <div class="form-group flex-1">
+                                <label>Active Days</label>
+                                <select id="AI_CONTAGION_FREQ">
+                                    <option value="mon-fri" {% if ac_sched.FREQUENCY == 'mon-fri' or not ac_sched.FREQUENCY %}selected{% endif %}>Mon–Fri</option>
+                                    <option value="*" {% if ac_sched.FREQUENCY == '*' %}selected{% endif %}>Every Day</option>
+                                </select>
+                            </div>
+                            <div class="form-group flex-1">
+                                <label>Start Time</label>
+                                <input type="time" id="AI_CONTAGION_START" value="{{ ac_sched.START_TIME | default('09:00') }}">
+                            </div>
+                            <div class="form-group flex-1">
+                                <label>End Time</label>
+                                <input type="time" id="AI_CONTAGION_END" value="{{ ac_sched.END_TIME | default('21:00') }}">
+                            </div>
+                            <div class="form-group flex-1">
+                                <label>Interval (mins)</label>
+                                <input type="number" id="AI_CONTAGION_INTERVAL" value="{{ ac_sched.INTERVAL_MINUTES | default(15) }}" min="5" max="60">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-panel border-left-orange">
+                        <h4 class="settings-panel-header text-orange">📉 Detection Thresholds</h4>
+                        <div class="checkbox-group mb-10">
+                            <input type="checkbox" id="AI_CONTAGION_ENABLED" {% if ac_cfg.ENABLED %}checked{% endif %}>
+                            <label for="AI_CONTAGION_ENABLED">Send Nextcloud Talk alert when contagion is confirmed</label>
+                        </div>
+                        <div class="flex-gap-15 mb-10">
+                            <div class="form-group flex-1">
+                                <label>Leader Shock Threshold (%)</label>
+                                <input type="number" id="AI_CONTAGION_LEADER_THRESHOLD" value="{{ ac_cfg.LEADER_THRESHOLD_PCT | default(4.0) }}" step="0.1" min="0.5">
+                                <p class="text-muted-desc">Min intraday drop % for a bellwether to count as a leader shock.</p>
+                            </div>
+                            <div class="form-group flex-1">
+                                <label>ETF Confirmation Threshold (%)</label>
+                                <input type="number" id="AI_CONTAGION_ETF_THRESHOLD" value="{{ ac_cfg.ETF_CONFIRMATION_THRESHOLD_PCT | default(2.5) }}" step="0.1" min="0.5">
+                                <p class="text-muted-desc">Min ETF drop % required to confirm sector-wide contagion.</p>
+                            </div>
+                            <div class="form-group flex-1">
+                                <label>Volume Spike Multiplier</label>
+                                <input type="number" id="AI_CONTAGION_VOLUME_MULT" value="{{ ac_cfg.VOLUME_SPIKE_MULTIPLIER | default(1.8) }}" step="0.1" min="1.0">
+                                <p class="text-muted-desc">Volume vs 20-day avg to flag as a spike (informational only).</p>
+                            </div>
+                        </div>
+                        <div class="flex-gap-15 mb-10">
+                            <div class="form-group flex-1">
+                                <label>Cooldown (Minutes)</label>
+                                <input type="number" id="AI_CONTAGION_COOLDOWN" value="{{ ac_cfg.COOLDOWN_MINUTES | default(60) }}" min="15">
+                            </div>
+                            <div class="form-group flex-1">
+                                <label>Retrigger % (Worsened)</label>
+                                <input type="number" id="AI_CONTAGION_RETRIGGER" value="{{ ac_cfg.RETRIGGER_PERCENT | default(1.5) }}" step="0.1">
+                            </div>
+                            <div class="form-group flex-1">
+                                <label>Re-arm % (Recovered)</label>
+                                <input type="number" id="AI_CONTAGION_REARM" value="{{ ac_cfg.REARM_PERCENT | default(2.5) }}" step="0.1">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-panel border-left-cyan">
+                        <h4 class="settings-panel-header text-cyan">🎯 Monitored Basket</h4>
+                        <p class="settings-desc-sm">Comma- or space-separated tickers. Bellwethers trigger the leader shock signal; ETFs must confirm for an alert to fire.</p>
+                        <div class="flex-gap-15 mb-10">
+                            <div class="form-group flex-1">
+                                <label>Bellwether Stocks</label>
+                                <input type="text" id="AI_CONTAGION_BELLWETHERS" value="{{ (ac_cfg.BELLWETHER_TICKERS | default(['NVDA','AMD','MSFT','META','GOOGL','AAPL','AVGO'])) | join(', ') }}">
+                            </div>
+                        </div>
+                        <div class="flex-gap-15 mb-10">
+                            <div class="form-group flex-1">
+                                <label>ETF Confirmation Basket</label>
+                                <input type="text" id="AI_CONTAGION_ETFS" value="{{ (ac_cfg.ETF_BASKET | default(['SMH','SOXX','QQQ'])) | join(', ') }}">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex-gap-15 align-end mt-10">
+                        <button type="button" class="btn-test mt-0" style="background: #6a0dad; border-color: #6a0dad;"
+                                onclick="triggerAIContagionScan()">▶ Run Scan Now</button>
+                    </div>
+                    <div id="ai-contagion-scan-msg" class="mt-10"></div>
+                </details>
+
+                <details class="settings-card">
                     <summary>📊 Alerts and Reports</summary>
 
                     <div class="settings-panel">
@@ -2050,6 +2155,24 @@
             }, 3000);
         }
 
+        async function triggerAIContagionScan() {
+            const btn = document.querySelector('button[onclick="triggerAIContagionScan()"]');
+            const msgEl = document.getElementById('ai-contagion-scan-msg');
+            btn.disabled = true;
+            btn.innerText = "⏳ Scanning...";
+            msgEl.innerHTML = '';
+            try {
+                const resp = await fetch('/api/ai-contagion/trigger', { method: 'POST' });
+                const data = await resp.json();
+                const color = data.status === 'success' ? '#4caf50' : '#f44336';
+                msgEl.innerHTML = `<span style="color:${color}; font-size:13px;">${data.message}</span>`;
+            } catch (err) {
+                msgEl.innerHTML = `<span style="color:#f44336; font-size:13px;">Request failed: ${err.message}</span>`;
+            } finally {
+                setTimeout(() => { btn.disabled = false; btn.innerText = "▶ Run Scan Now"; }, 3000);
+            }
+        }
+
         async function fetchNetworkStatus() {
             try {
                 const response = await fetch('/api/settings/network-status');
@@ -2442,6 +2565,13 @@
                         "CALENDAR_TIME": document.getElementById('MACRO_CALENDAR_TIME').value,
                         "DATA_DAY": document.getElementById('MACRO_DATA_DAY').value,
                         "DATA_TIME": document.getElementById('MACRO_DATA_TIME').value
+                    },
+                    "AI_CONTAGION": {
+                        "ENABLED": document.getElementById('AI_CONTAGION_SCHED_ENABLED').checked,
+                        "FREQUENCY": document.getElementById('AI_CONTAGION_FREQ').value,
+                        "START_TIME": document.getElementById('AI_CONTAGION_START').value,
+                        "END_TIME": document.getElementById('AI_CONTAGION_END').value,
+                        "INTERVAL_MINUTES": parseInt(document.getElementById('AI_CONTAGION_INTERVAL').value) || 15
                     }
                 },
                 "NOTIFICATIONS": {
@@ -2479,6 +2609,19 @@
                     },
                     "RSS_FEED": {
                         "ENABLED": document.getElementById('RSS_FEED_ENABLED').checked
+                    },
+                    "AI_CONTAGION": {
+                        "ENABLED": document.getElementById('AI_CONTAGION_ENABLED').checked,
+                        "LEADER_THRESHOLD_PCT": parseFloat(document.getElementById('AI_CONTAGION_LEADER_THRESHOLD').value),
+                        "ETF_CONFIRMATION_THRESHOLD_PCT": parseFloat(document.getElementById('AI_CONTAGION_ETF_THRESHOLD').value),
+                        "VOLUME_SPIKE_MULTIPLIER": parseFloat(document.getElementById('AI_CONTAGION_VOLUME_MULT').value),
+                        "BELLWETHER_TICKERS": document.getElementById('AI_CONTAGION_BELLWETHERS').value
+                            .split(/[,\s]+/).map(s => s.trim()).filter(Boolean),
+                        "ETF_BASKET": document.getElementById('AI_CONTAGION_ETFS').value
+                            .split(/[,\s]+/).map(s => s.trim()).filter(Boolean),
+                        "COOLDOWN_MINUTES": parseFloat(document.getElementById('AI_CONTAGION_COOLDOWN').value),
+                        "RETRIGGER_PERCENT": parseFloat(document.getElementById('AI_CONTAGION_RETRIGGER').value),
+                        "REARM_PERCENT": parseFloat(document.getElementById('AI_CONTAGION_REARM').value)
                     }
                 },
                 "XRAY_TARGETS": (function() {

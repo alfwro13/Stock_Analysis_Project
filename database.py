@@ -396,6 +396,17 @@ def init_db() -> None:
             )
         ''')
 
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS ai_contagion_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                scan_ts TEXT NOT NULL,
+                leader_count INTEGER NOT NULL DEFAULT 0,
+                etf_count INTEGER NOT NULL DEFAULT 0,
+                alert_fired INTEGER NOT NULL DEFAULT 0,
+                payload_json TEXT
+            )
+        ''')
+
         conn.commit()
 
         # Run the dynamic migration script to inject any missing columns safely
@@ -644,7 +655,22 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
                 logger.error(f"[MIGRATION ERROR] Failed on macro_indicators: {e}")
                 continue
 
-    # 8. Ensure covering index on quant_signals for efficient latest-date lookups
+    # 8. Ensure ai_contagion_snapshots table exists (added in contagion monitor feature)
+    try:
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS ai_contagion_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                scan_ts TEXT NOT NULL,
+                leader_count INTEGER NOT NULL DEFAULT 0,
+                etf_count INTEGER NOT NULL DEFAULT 0,
+                alert_fired INTEGER NOT NULL DEFAULT 0,
+                payload_json TEXT
+            )
+        ''')
+    except Exception as e:
+        logger.error(f"[MIGRATION ERROR] Failed to create ai_contagion_snapshots: {e}")
+
+    # 9. Ensure covering index on quant_signals for efficient latest-date lookups
     try:
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_qs_ticker_date
