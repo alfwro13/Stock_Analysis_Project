@@ -668,7 +668,7 @@ table.dataTable tbody tr td { color: #ccc; }
 .xray-corr-swatch { width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0; }
 .xray-chart-box { background: #1e1e1e; border-radius: 6px; padding: 12px; overflow: hidden; }
 .xray-chart-label { font-size: 12px; color: #aaa; margin-bottom: 6px; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
-.xray-chart-el { min-height: 200px; }
+.xray-chart-el { min-height: 200px; width: 100%; }
 /* Look-through badge */
 .xray-badge { background: rgba(77,166,255,0.15); color: #4da6ff; font-size: 10px; padding: 2px 6px; border-radius: 8px; font-weight: 600; letter-spacing: 0.3px; }
 /* Correlation score */

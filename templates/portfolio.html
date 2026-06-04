@@ -416,6 +416,7 @@
                     _updateSummaryRow(data);
                     if (loadEl) loadEl.style.display = 'none';
                     if (contEl) contEl.style.display = 'block';
+                    requestAnimationFrame(function() { window.dispatchEvent(new Event('resize')); });
                 })
                 .catch(function(err) {
                     if (loadEl) loadEl.innerHTML = '<span class="xray-error-msg">&#9888; Failed to load X-ray data. Try again or check server logs.</span>';
@@ -453,7 +454,8 @@
                 paper_bgcolor: '#1e1e1e', plot_bgcolor: '#1e1e1e',
                 font: { color: '#e0e0e0', family: 'system-ui,-apple-system,sans-serif', size: 12 },
                 margin: { t: 30, r: 20, b: 40, l: 20 },
-                showlegend: false
+                showlegend: false,
+                autosize: true
             };
             return Object.assign(base, overrides || {});
         }
