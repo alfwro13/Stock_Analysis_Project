@@ -31,8 +31,12 @@ from xray_engine import (
     GhostfolioXRayClient,
     _compute_max_drawdown,
     _get_instrument_type,
+    _generate_xray_recommendations,
     assemble_xray_report,
     BENCHMARK_SYMBOL,
+    _DEVELOPED_MARKET_CODES,
+    _EMERGING_MARKET_CODES,
+    _APAC_CODES,
 )
 
 # ─── Unique ticker namespaces for this module (avoid collisions with other tests)
@@ -669,3 +673,402 @@ class TestTooltips:
                     "sharpe_ratio", "calmar_ratio", "skewness", "fx_exposure",
                     "marginal_risk_contribution"):
             assert key in XRAY_TOOLTIPS, f"XRAY_TOOLTIPS missing '{key}'"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 9. Country classification constants
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestCountryClassificationConstants:
+    """Smoke-checks that key codes are in the right classification set."""
+
+    def test_major_developed_codes_present(self):
+        for code in ("US", "GB", "DE", "FR", "JP", "AU", "CA", "CH", "SG"):
+            assert code in _DEVELOPED_MARKET_CODES, f"{code} missing from _DEVELOPED_MARKET_CODES"
+
+    def test_major_emerging_codes_present(self):
+        for code in ("CN", "IN", "BR", "ZA", "MX", "KR", "TW", "TH"):
+            assert code in _EMERGING_MARKET_CODES, f"{code} missing from _EMERGING_MARKET_CODES"
+
+    def test_apac_codes_present(self):
+        for code in ("AU", "NZ", "SG", "HK", "KR", "TW"):
+            assert code in _APAC_CODES, f"{code} missing from _APAC_CODES"
+
+    def test_japan_not_in_apac(self):
+        # Japan is its own regional cluster, not lumped into Asia-Pacific
+        assert "JP" not in _APAC_CODES
+
+    def test_no_overlap_developed_emerging(self):
+        overlap = _DEVELOPED_MARKET_CODES & _EMERGING_MARKET_CODES
+        assert not overlap, f"Codes in both sets: {overlap}"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 10. _generate_xray_recommendations — pure function unit tests
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _rec_holdings(specs):
+    """
+    Build a minimal holdings list for recommendation tests.
+    Each spec: {weight, countries: [{code, name, continent, weight}]}
+    """
+    return [
+        {
+            "weight": s["weight"],
+            "countries": s.get("countries", []),
+            "sectors": s.get("sectors", []),
+            "symbol": s.get("symbol", "TST"),
+        }
+        for s in specs
+    ]
+
+
+def _call_recs(holdings=None, sector_alloc=None, asset_alloc=None,
+               risk_metrics=None, concentration=None, income=None, targets=None):
+    """Convenience wrapper with safe defaults."""
+    return _generate_xray_recommendations(
+        holdings=holdings or [],
+        sector_allocation=sector_alloc or [],
+        asset_class_allocation=asset_alloc or [],
+        risk_metrics=risk_metrics or {},
+        concentration=concentration or {},
+        income=income or {},
+        targets=targets or {},
+    )
+
+
+class TestRecItemStatuses:
+    """_generate_xray_recommendations status classification for each bound type."""
+
+    def _geo_holding(self, code, continent, weight=1.0):
+        return _rec_holdings([{
+            "weight": 1.0,
+            "countries": [{"code": code, "name": "Test Country",
+                           "continent": continent, "weight": weight}],
+        }])
+
+    # ── market_development status ──
+
+    def test_developed_exceeds_max(self):
+        # 100% US (Developed) vs max 95%
+        h = self._geo_holding("US", "North America")
+        result = _call_recs(holdings=h, targets={
+            "market_development": {"Developed Markets": {"min": None, "max": 95.0}}
+        })
+        items = result["market_development"]
+        assert len(items) == 1
+        assert items[0]["status"] == "exceeds"
+        assert items[0]["current_value"] == pytest.approx(100.0, abs=0.1)
+
+    def test_emerging_below_min(self):
+        # 0% Emerging vs min 5%
+        h = self._geo_holding("US", "North America")
+        result = _call_recs(holdings=h, targets={
+            "market_development": {"Emerging Markets": {"min": 5.0, "max": None}}
+        })
+        items = result["market_development"]
+        assert len(items) == 1
+        assert items[0]["status"] == "below"
+
+    def test_developed_within_range(self):
+        # 90% US Developed, target 80–95%
+        h = _rec_holdings([{
+            "weight": 1.0,
+            "countries": [
+                {"code": "US", "name": "United States", "continent": "North America", "weight": 0.9},
+                {"code": "CN", "name": "China",         "continent": "Asia",          "weight": 0.1},
+            ],
+        }])
+        result = _call_recs(holdings=h, targets={
+            "market_development": {"Developed Markets": {"min": 80.0, "max": 95.0}}
+        })
+        items = result["market_development"]
+        assert len(items) == 1
+        assert items[0]["status"] == "within"
+
+    def test_ok_status_passes_single_upper_bound(self):
+        # 60% US Developed, max 70%
+        h = _rec_holdings([{
+            "weight": 1.0,
+            "countries": [
+                {"code": "US", "name": "United States", "continent": "North America", "weight": 0.6},
+            ],
+        }])
+        result = _call_recs(holdings=h, targets={
+            "market_development": {"Developed Markets": {"min": None, "max": 70.0}}
+        })
+        items = result["market_development"]
+        assert len(items) == 1
+        assert items[0]["status"] == "ok"
+
+
+class TestRegionalClusterMapping:
+    """Country codes must map to the correct regional bucket."""
+
+    def _single_country(self, code, continent):
+        return _rec_holdings([{
+            "weight": 1.0,
+            "countries": [{"code": code, "name": code, "continent": continent, "weight": 1.0}],
+        }])
+
+    def test_japan_code_goes_to_japan_cluster(self):
+        result = _call_recs(
+            holdings=self._single_country("JP", "Asia"),
+            targets={"regional_clusters": {"Japan": {"min": None, "max": 10.0}}},
+        )
+        cats = {i["category"] for i in result["regional_clusters"]}
+        assert "Japan" in cats
+        # JP must NOT also appear in Asia-Pacific
+        assert all(i["category"] != "Asia-Pacific" for i in result["regional_clusters"])
+
+    def test_apac_code_goes_to_asia_pacific(self):
+        result = _call_recs(
+            holdings=self._single_country("AU", "Oceania"),
+            targets={"regional_clusters": {"Asia-Pacific": {"min": 2.0, "max": None}}},
+        )
+        cats = {i["category"] for i in result["regional_clusters"]}
+        assert "Asia-Pacific" in cats
+
+    def test_north_america_by_continent(self):
+        result = _call_recs(
+            holdings=self._single_country("CA", "North America"),
+            targets={"regional_clusters": {"North America": {"min": 55.0, "max": 75.0}}},
+        )
+        cats = {i["category"] for i in result["regional_clusters"]}
+        assert "North America" in cats
+
+    def test_europe_by_continent(self):
+        result = _call_recs(
+            holdings=self._single_country("DE", "Europe"),
+            targets={"regional_clusters": {"Europe": {"min": 12.0, "max": 22.0}}},
+        )
+        cats = {i["category"] for i in result["regional_clusters"]}
+        assert "Europe" in cats
+
+    def test_emerging_market_code_in_regional_em_bucket(self):
+        # CN is in _EMERGING_MARKET_CODES, so it should contribute to regional EM
+        result = _call_recs(
+            holdings=self._single_country("CN", "Asia"),
+            targets={"regional_clusters": {"Emerging Markets": {"min": 5.0, "max": None}}},
+        )
+        cats = {i["category"] for i in result["regional_clusters"]}
+        assert "Emerging Markets" in cats
+
+    def test_unknown_code_not_in_any_cluster(self):
+        # Code "XX" not in any classification set
+        result = _call_recs(
+            holdings=self._single_country("XX", "Unknown"),
+            targets={"regional_clusters": {
+                "Japan": {"min": None, "max": 10.0},
+                "Asia-Pacific": {"min": 2.0, "max": None},
+            }},
+        )
+        # No cluster should have a non-zero current_value from code XX
+        for item in result["regional_clusters"]:
+            assert item["current_value"] == pytest.approx(0.0, abs=0.01), (
+                f"Unknown code XX should not contribute to {item['category']}"
+            )
+
+
+class TestSectorAndAssetClassTargets:
+    def test_sector_exceeds_max(self):
+        result = _call_recs(
+            sector_alloc=[{"name": "Technology", "weight": 0.40}],
+            targets={"sector_targets": {"Technology": {"min": None, "max": 35.0}}},
+        )
+        items = result["sector"]
+        assert len(items) == 1
+        assert items[0]["status"] == "exceeds"
+        assert items[0]["current_value"] == pytest.approx(40.0, abs=0.01)
+
+    def test_sector_case_insensitive_match(self):
+        # Ghostfolio may return "technology" in lowercase
+        result = _call_recs(
+            sector_alloc=[{"name": "technology", "weight": 0.40}],
+            targets={"sector_targets": {"Technology": {"min": None, "max": 35.0}}},
+        )
+        assert len(result["sector"]) == 1
+
+    def test_zero_weight_sector_with_no_min_not_emitted(self):
+        # Sector absent from portfolio + no min bound → should not produce noise
+        result = _call_recs(
+            sector_alloc=[],
+            targets={"sector_targets": {"Real Estate": {"min": None, "max": 8.0}}},
+        )
+        assert result["sector"] == []
+
+    def test_asset_class_below_min(self):
+        result = _call_recs(
+            asset_alloc=[{"name": "ETF", "weight": 0.30}],
+            targets={"asset_class_targets": {"ETF": {"min": 40.0, "max": None}}},
+        )
+        items = result["asset_class"]
+        assert len(items) == 1
+        assert items[0]["status"] == "below"
+
+
+class TestConcentrationAndRiskTargets:
+    def test_max_single_position_exceeds(self):
+        result = _call_recs(
+            concentration={"hhi": 0.05, "top5_weight": 0.3, "top10_weight": 0.5,
+                           "max_single_position": 0.20},
+            targets={"concentration_targets": {
+                "max_single_position_pct": 15.0,
+                "top5_weight_max_pct": 50.0,
+                "top10_weight_max_pct": 70.0,
+                "hhi_max": 0.15,
+            }},
+        )
+        cats = {i["category"]: i for i in result["concentration"]}
+        assert cats["Max Single Position"]["status"] == "exceeds"
+        # Others are within bounds
+        assert cats["Top-5 Concentration"]["status"] == "ok"
+
+    def test_none_beta_suppressed(self):
+        result = _call_recs(
+            risk_metrics={"portfolio_beta": None, "annualized_vol": None,
+                          "max_drawdown": None, "sharpe_ratio": None,
+                          "avg_pairwise_correlation": None},
+            targets={"risk_metric_targets": {
+                "portfolio_beta_min": 0.6, "portfolio_beta_max": 1.4,
+                "annualized_vol_max_pct": 20.0, "sharpe_ratio_min": 0.5,
+                "max_drawdown_max_pct": 30.0, "avg_correlation_max": 0.75,
+            }},
+        )
+        assert result["risk_metrics"] == [], (
+            "None risk metrics must produce no recommendation items"
+        )
+
+    def test_valid_beta_within_range_emitted(self):
+        result = _call_recs(
+            risk_metrics={"portfolio_beta": 1.0, "annualized_vol": None,
+                          "max_drawdown": None, "sharpe_ratio": None,
+                          "avg_pairwise_correlation": None},
+            targets={"risk_metric_targets": {"portfolio_beta_min": 0.6, "portfolio_beta_max": 1.4}},
+        )
+        items = result["risk_metrics"]
+        assert len(items) == 1
+        assert items[0]["category"] == "Portfolio Beta"
+        assert items[0]["status"] == "within"
+
+    def test_dividend_yield_below_min(self):
+        result = _call_recs(
+            income={"weighted_dividend_yield": 0.01},
+            targets={"income_targets": {"dividend_yield_min_pct": 1.5}},
+        )
+        items = result["income"]
+        assert len(items) == 1
+        assert items[0]["status"] == "below"
+        assert items[0]["current_value"] == pytest.approx(1.0, abs=0.01)
+
+
+class TestRecommendationMessageFormat:
+    """The human-readable message must match the expected pattern exactly."""
+
+    def _run_developed(self, current_pct, min_val, max_val):
+        weight = current_pct / 100.0
+        h = _rec_holdings([{
+            "weight": 1.0,
+            "countries": [{"code": "US", "name": "US", "continent": "North America",
+                           "weight": weight}],
+        }])
+        result = _call_recs(holdings=h, targets={
+            "market_development": {"Developed Markets": {"min": min_val, "max": max_val}}
+        })
+        return result["market_development"][0]
+
+    def test_exceeds_message_contains_exceeds_and_threshold(self):
+        item = self._run_developed(98.0, None, 95.0)
+        assert "exceeds" in item["message"]
+        assert "95.0%" in item["message"]
+
+    def test_below_message_contains_below_and_threshold(self):
+        item = self._run_developed(60.0, 80.0, None)
+        assert "below" in item["message"]
+        assert "80.0%" in item["message"]
+
+    def test_within_message_contains_range_text(self):
+        item = self._run_developed(88.0, 80.0, 95.0)
+        assert "within the range of" in item["message"]
+        assert "80.0%" in item["message"]
+        assert "95.0%" in item["message"]
+
+    def test_message_includes_current_value(self):
+        item = self._run_developed(90.0, 80.0, 95.0)
+        # The current % must appear in the message
+        assert "90.0%" in item["message"]
+
+    def test_empty_targets_all_lists_empty(self):
+        result = _call_recs(targets={})
+        for key in ("market_development", "regional_clusters", "country_concentration",
+                    "sector", "asset_class", "concentration", "risk_metrics", "income"):
+            assert result[key] == [], f"Expected empty list for '{key}' with no targets"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 11. recommendations key present in assemble_xray_report output
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestRecommendationsInReport:
+    """assemble_xray_report() must include 'recommendations' in its output."""
+
+    @pytest.fixture(autouse=True)
+    def _seed(self):
+        holdings, total = _make_holdings([
+            {"symbol": T1, "value": 7000,
+             "sectors": [{"name": "Technology", "weight": 1.0}],
+             "countries": [{"code": "US", "name": "United States",
+                            "continent": "North America", "weight": 1.0}]},
+            {"symbol": T2, "value": 3000,
+             "sectors": [{"name": "Financials", "weight": 1.0}],
+             "countries": [{"code": "GB", "name": "United Kingdom",
+                            "continent": "Europe", "weight": 1.0}]},
+        ])
+        _seed_risk_cache([
+            (T1, 1.10, 0.18, "2026-06-03"),
+            (T2, 0.90, 0.22, "2026-06-03"),
+        ])
+        _seed_corr_matrix([T1, T2], [[1.0, 0.4], [0.4, 1.0]])
+        _seed_div_cache([(T1, 2.0, 140.0), (T2, 1.5, 45.0)])
+        self._holdings = holdings
+        self._total = total
+
+    def _run(self, xray_targets=None):
+        config = {
+            "GHOSTFOLIO_ACCOUNTS": {"active": ["test-account"]},
+            "BASE_CURRENCY": "GBP",
+            "RISK_FREE_RATE": 0.045,
+            "XRAY_TARGETS": xray_targets or {},
+        }
+        patches, _ = _patch_report(self._holdings, self._total, config=config)
+        with patches[0], patches[1]:
+            return assemble_xray_report("all")
+
+    def test_recommendations_key_present(self):
+        result = self._run()
+        assert "recommendations" in result, (
+            "assemble_xray_report must include a 'recommendations' key"
+        )
+
+    def test_recommendations_has_expected_categories(self):
+        result = self._run()
+        recs = result["recommendations"]
+        for key in ("market_development", "regional_clusters", "country_concentration",
+                    "sector", "asset_class", "concentration", "risk_metrics", "income"):
+            assert key in recs, f"recommendations missing category '{key}'"
+
+    def test_recommendations_uses_xray_targets_from_config(self):
+        # Set a target that the holdings clearly violate: US max 30% (holdings are 70% US)
+        targets = {"country_concentration": {"United States": {"min": None, "max": 30.0}}}
+        result = self._run(xray_targets=targets)
+        cc = result["recommendations"]["country_concentration"]
+        assert len(cc) == 1
+        assert cc[0]["status"] == "exceeds", (
+            "US at 70% should exceed the max=30% target from config"
+        )
+
+    def test_empty_targets_produces_empty_recommendation_lists(self):
+        result = self._run(xray_targets={})
+        recs = result["recommendations"]
+        for key, items in recs.items():
+            assert items == [], f"With empty targets, '{key}' should be an empty list"
