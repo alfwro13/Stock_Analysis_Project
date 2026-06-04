@@ -22,11 +22,20 @@ def create_session_token(username: str, remember: bool) -> str:
     return f"{payload}.{sig}"
 
 
+_SESSION_MAX_AGE = 24 * 3600  # non-remember sessions expire after 24 hours
+
+
 def verify_session_token(token: str) -> bool:
     try:
         payload, sig = token.rsplit(".", 1)
         expected = hmac.new(_secret(), payload.encode(), hashlib.sha256).hexdigest()
-        return hmac.compare_digest(sig, expected)
+        if not hmac.compare_digest(sig, expected):
+            return False
+        data = json.loads(base64.urlsafe_b64decode(payload + "=="))
+        issued_at = data.get("t", 0)
+        remember = data.get("r", False)
+        max_age = _REMEMBER_MAX_AGE if remember else _SESSION_MAX_AGE
+        return (time.time() - issued_at) < max_age
     except Exception:
         return False
 

@@ -15,6 +15,7 @@ have those services mocked to avoid network dependency.
 """
 
 import sys
+import tempfile
 from pathlib import Path
 from unittest.mock import patch, MagicMock, AsyncMock
 
@@ -255,3 +256,29 @@ def test_no_trigger_endpoint_returns_500(client):
         "The following POST trigger endpoints returned server errors (500+):\n"
         + "\n".join(failures)
     )
+
+
+# ── Import security: path traversal ──────────────────────────────────────────
+
+@pytest.mark.api
+class TestImportServerSecurity:
+
+    def test_path_traversal_with_dotdot_is_rejected(self, client):
+        resp = client.post("/api/universe/import/server", json={"filename": "../../../etc/passwd.csv"})
+        assert resp.status_code == 400
+        assert _json(resp).get("status") == "error"
+
+    def test_absolute_path_disguised_as_csv_is_rejected(self, client):
+        resp = client.post("/api/universe/import/server", json={"filename": "/etc/passwd.csv"})
+        assert resp.status_code == 400
+        assert _json(resp).get("status") == "error"
+
+    def test_non_csv_extension_is_rejected(self, client):
+        resp = client.post("/api/universe/import/server", json={"filename": "data.txt"})
+        assert resp.status_code == 400
+
+    def test_valid_filename_passes_path_check(self, client):
+        # A well-formed filename should pass the path/extension guards.
+        # The file won't exist on disk, so we expect 404 (not 400).
+        resp = client.post("/api/universe/import/server", json={"filename": "my_universe.csv"})
+        assert resp.status_code == 404

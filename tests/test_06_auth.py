@@ -26,6 +26,7 @@ Design notes
 
 import os
 import sys
+import time
 from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import patch
@@ -96,6 +97,29 @@ class TestTokenHelpers:
         # is picked up immediately without reloading the module.
         token = create_session_token("alice", remember=False)
         monkeypatch.setenv("APP_SECRET_KEY", "completely-different-secret")
+        assert verify_session_token(token) is False
+
+    def test_expired_session_token_fails(self, monkeypatch):
+        # A non-remember token created 25 hours ago must be rejected (limit is 24h).
+        import auth as _auth_module
+        past = time.time() - (25 * 3600)
+        monkeypatch.setattr(_auth_module.time, "time", lambda: past)
+        token = create_session_token("alice", remember=False)
+        monkeypatch.undo()
+        assert verify_session_token(token) is False
+
+    def test_recent_session_token_is_valid(self):
+        # A token created moments ago must still verify (not yet expired).
+        token = create_session_token("alice", remember=False)
+        assert verify_session_token(token) is True
+
+    def test_expired_remember_me_token_fails(self, monkeypatch):
+        # A remember-me token created 31 days ago must be rejected (limit is 30 days).
+        import auth as _auth_module
+        past = time.time() - (31 * 24 * 3600)
+        monkeypatch.setattr(_auth_module.time, "time", lambda: past)
+        token = create_session_token("alice", remember=True)
+        monkeypatch.undo()
         assert verify_session_token(token) is False
 
 
