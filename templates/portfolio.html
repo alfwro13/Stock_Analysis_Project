@@ -110,8 +110,6 @@
                 <th><abbr title="Standard PEG Ratio">PEG</abbr></th>
                 <th><abbr title="Peter Lynch Fair Value">PL PEG</abbr></th>
                 <th>Stop-Loss</th>
-                <th><abbr title="Suggested position value in your base currency, sized to risk the configured % of your account">Pos. Size</abbr></th>
-                <th><abbr title="Whole share count corresponding to the suggested position">Shares</abbr></th>
                 <th>RSI</th>
                 <th><abbr title="Machine Learning Ensemble confidence score predicting a >3% return over the next 10 days.">ML Conf</abbr></th>
                 <th>VaR (95%)</th>
@@ -125,7 +123,7 @@
         <tbody>
             {% for item in portfolio %}
             <tr class="live-asset-row" data-ticker="{{ item.ticker }}" data-currency="{{ item.currency }}" data-signal="{{ item.overall_signal | upper }}" data-tags="{% for tag in item.setup_tags_list %}{{ tag.name }} {% endfor %}">
-                <td data-sort="{{ item.ticker }}">
+                <td data-sort="{{ item.ticker }}" class="num-cell">
                     <a href="/stock/{{ item.ticker }}{% if embed %}?embed=true{% endif %}" class="ticker-link">{{ item.ticker }}</a>
                 </td>
                 <td data-sort="{{ item.company_name }}">
@@ -133,7 +131,7 @@
                 </td>
                 
                 {% set cp = cached_pulse.get(item.ticker) %}
-                <td data-sort="{{ cp.price if cp else (item.current_price or 0) }}">
+                <td data-sort="{{ cp.price if cp else (item.current_price or 0) }}" class="num-cell">
                     <span id="price-{{ item.ticker }}" class="{% if cp and cp.is_stale %}stale-text{% elif cp %}{% if cp.is_positive %}trend-up{% else %}trend-down{% endif %}{% endif %}">
                         {% set display_price = cp.price|float if cp else (item.current_price if item.current_price is not none else none) %}
                         {% if display_price is not none %}
@@ -146,7 +144,7 @@
                     </span>
                 </td>
                 
-                <td data-sort="{{ cp.change_pct if cp else 0 }}">
+                <td data-sort="{{ cp.change_pct if cp else 0 }}" class="num-cell">
                     <span id="change-{{ item.ticker }}" class="{% if cp and cp.is_stale %}stale-text{% elif cp %}{% if cp.is_positive %}trend-up{% else %}trend-down{% endif %}{% endif %}">
                         {% if cp %}
                             {% set sign = '+' if cp.is_positive else '' %}
@@ -157,7 +155,7 @@
                     </span>
                 </td>
                 
-                <td data-sort="{{ item.target_price if item.target_price is not none else -999 }}">
+                <td data-sort="{{ item.target_price if item.target_price is not none else -999 }}" class="num-cell">
                     {% if item.target_price is not none %}
                         {% set t_val = (item.target_price / 100.0) if item.currency == 'GBp' else item.target_price %}
                         {{ "{:,.2f}".format(t_val) }}
@@ -165,28 +163,17 @@
                 </td>
                 <td data-sort="{{ 1 if item.trend_50d == 'UP' else 0 }}"><span class="{% if item.trend_50d == 'UP' %}trend-up{% else %}trend-down{% endif %}">{{ item.trend_50d }}</span></td>
                 <td data-sort="{{ 1 if item.trend_200d == 'UP' else 0 }}"><span class="{% if item.trend_200d == 'UP' %}trend-up{% else %}trend-down{% endif %}">{{ item.trend_200d }}</span></td>
-                <td data-sort="{{ item.peg_ratio if item.peg_ratio is not none else 999 }}">{% if item.peg_ratio is not none %}{{ "{:,.2f}".format(item.peg_ratio) }}{% else %}N/A{% endif %}</td>
-                <td data-sort="{{ item.peter_lynch_peg if item.peter_lynch_peg is not none else 999 }}">{% if item.peter_lynch_peg is not none %}{{ "{:,.2f}".format(item.peter_lynch_peg) }}{% else %}N/A{% endif %}</td>
-                <td data-sort="{{ item.atr_stop_loss if item.atr_stop_loss is not none else -999 }}" class="text-warning">
+                <td data-sort="{{ item.peg_ratio if item.peg_ratio is not none else 999 }}" class="num-cell">{% if item.peg_ratio is not none %}{{ "{:,.2f}".format(item.peg_ratio) }}{% else %}N/A{% endif %}</td>
+                <td data-sort="{{ item.peter_lynch_peg if item.peter_lynch_peg is not none else 999 }}" class="num-cell">{% if item.peter_lynch_peg is not none %}{{ "{:,.2f}".format(item.peter_lynch_peg) }}{% else %}N/A{% endif %}</td>
+                <td data-sort="{{ item.atr_stop_loss if item.atr_stop_loss is not none else -999 }}" class="text-warning num-cell">
                     {% if item.atr_stop_loss is not none %}
                         {% set atr_val = (item.atr_stop_loss / 100.0) if item.currency == 'GBp' else item.atr_stop_loss %}
                         {{ "{:,.2f}".format(atr_val) }}
                     {% else %}N/A{% endif %}
                 </td>
-                <td class="ps-cell" 
-                    data-sort="0"
-                    data-entry-price="{{ item.current_price or 0 }}"
-                    data-atr-pct="{{ item.atr_pct if item.atr_pct is not none else '' }}"
-                    data-currency="{{ item.currency or 'USD' }}">
-                    —
-                </td>
-                <td class="ps-cell-shares" 
-                    data-sort="0">
-                    —
-                </td>
-                <td data-sort="{{ item.rsi_14 if item.rsi_14 is not none else -999 }}">{% if item.rsi_14 is not none %}{{ "{:,.1f}".format(item.rsi_14) }}{% else %}N/A{% endif %}</td>
+                <td data-sort="{{ item.rsi_14 if item.rsi_14 is not none else -999 }}" class="num-cell">{% if item.rsi_14 is not none %}{{ "{:,.1f}".format(item.rsi_14) }}{% else %}N/A{% endif %}</td>
 
-                <td data-sort="{{ item.ml_confidence_score if item.ml_confidence_score is not none else -999 }}">
+                <td data-sort="{{ item.ml_confidence_score if item.ml_confidence_score is not none else -999 }}" class="num-cell">
                     {% if item.ml_confidence_score is not none %}
                         {% set ml_class = 'metric-excellent' if item.ml_confidence_score > 40 else ('metric-poor' if item.ml_confidence_score < 20 else 'metric-neutral') %}
                         <span class="{{ ml_class }}">{{ "{:,.1f}".format(item.ml_confidence_score) }}%</span>
@@ -194,8 +181,8 @@
                         N/A
                     {% endif %}
                 </td>
-                
-                <td data-sort="{{ item.var_95 if item.var_95 is not none else -999 }}">
+
+                <td data-sort="{{ item.var_95 if item.var_95 is not none else -999 }}" class="num-cell">
                     {% if item.var_95 is not none %}
                         {% set var_class = 'metric-poor' if item.var_95 > 0.05 else 'metric-neutral' %}
                         {% set cvar_pct = '{:,.2f}'.format(item.cvar_95 * 100) ~ '%' if item.cvar_95 is not none else 'N/A' %}
@@ -234,8 +221,8 @@
                     {% endif %}
                 </td>
 
-                <td data-sort="{{ item.next_earnings_date or '9999-12-31' }}" class="text-muted-small">{% if item.next_earnings_date %}{{ item.next_earnings_date }}{% else %}N/A{% endif %}</td>
-                <td data-sort="{{ item.composite_score }}">{{ item.composite_score }}</td>
+                <td data-sort="{{ item.next_earnings_date or '9999-12-31' }}" class="num-cell">{% if item.next_earnings_date %}{{ item.next_earnings_date }}{% else %}N/A{% endif %}</td>
+                <td data-sort="{{ item.composite_score }}" class="num-cell">{{ item.composite_score }}</td>
                 <td class="max-w-150">
                     {% for tag in item.setup_tags_list %}
                         <div class="inline-block">
@@ -808,14 +795,14 @@
 
             $('#signalFilter').on('change', function() {
                 var val = $(this).val();
-                if(val === 'ALL') { table.column(19).search('').draw(); }
-                else { table.column(19).search('^' + val + '$', true, false).draw(); }
+                if(val === 'ALL') { table.column(17).search('').draw(); }
+                else { table.column(17).search('^' + val + '$', true, false).draw(); }
             });
 
             $('#tagFilter').on('change', function() {
                 var val = $(this).val();
-                if(val === 'ALL') { table.column(18).search('').draw(); }
-                else { table.column(18).search(val).draw(); }
+                if(val === 'ALL') { table.column(16).search('').draw(); }
+                else { table.column(16).search(val).draw(); }
             });
         });
     </script>

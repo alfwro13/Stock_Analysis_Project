@@ -400,6 +400,7 @@ table.dataTable tbody tr td { color: #ccc; }
 .no-decoration-abbr { text-decoration: none; }
 .help-abbr { text-decoration: underline dotted; cursor: help; }
 .max-w-150 { max-width: 150px; }
+.num-cell { font-size: 16px; }
 .text-danger { color: #ff4d4d; }
 .text-success { color: #00ff00; }
 .text-white { color: #fff; }
