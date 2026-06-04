@@ -509,7 +509,7 @@ def create_anomaly_feature_radar(features: dict, ticker: str) -> str:
             angularaxis=dict(tickfont=dict(size=11)),
         ),
         height=300,
-        margin=dict(l=50, r=50, t=50, b=20),
+        margin=dict(l=100, r=80, t=50, b=20),
         title=dict(text=f"{ticker} — Feature Snapshot", font=dict(size=13, color='#ccc'), x=0.5),
         showlegend=False,
     )

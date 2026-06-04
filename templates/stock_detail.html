@@ -913,12 +913,18 @@
                         <div style="flex:0 0 320px;">
                             {{ anomaly_radar_html | safe }}
                         </div>
-                        <div style="flex:1;min-width:220px;font-size:0.82rem;color:#aaa;line-height:1.6;padding-top:8px;">
+                        <div style="flex:1;min-width:220px;font-size:0.82rem;color:#aaa;line-height:1.7;padding-top:8px;">
                             <strong style="color:#ccc;">Feature Snapshot</strong><br>
-                            Each axis shows the approximate current value of one Isolation Forest input feature, normalised to a typical market range.
-                            A polygon pushed toward the outer edge on multiple axes simultaneously indicates the kind of compound anomaly the model is most sensitive to.
+                            Each axis shows one Isolation Forest input, normalised to a typical market range. A polygon pushed toward the outer edge on <em>multiple axes simultaneously</em> signals the compound anomaly the model is most sensitive to.
                             <br><br>
-                            <em>Note: values are reconstructed from stored signals and may differ slightly from the intraday scoring vector.</em>
+                            <span style="color:#ccc;">Volume Ratio</span> — today's volume ÷ 20-day average. Values above 1.5× indicate a surge.<br>
+                            <span style="color:#ccc;">RSI (14)</span> — Relative Strength Index over 14 days. &gt;70 overbought, &lt;30 oversold.<br>
+                            <span style="color:#ccc;">Daily Return %</span> — today's percentage price change from previous close.<br>
+                            <span style="color:#ccc;">SMA50 Dist %</span> — how far price sits above or below the 50-day simple moving average.<br>
+                            <span style="color:#ccc;">Hist Vol 20d</span> — 20-day annualised historical volatility from log returns.<br>
+                            <span style="color:#ccc;">Beta</span> — market sensitivity vs the benchmark; clamped to [0.1, 3.0].<br>
+                            <br>
+                            <em>Values are reconstructed from stored signals and may differ slightly from the intraday scoring vector.</em>
                         </div>
                     </div>
                     {% endif %}
