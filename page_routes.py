@@ -1380,7 +1380,7 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
         anomaly_rows = conn_a.execute(
             "SELECT date, anomaly_score, close_price FROM quant_signals "
             "WHERE ticker = ? AND anomaly_score IS NOT NULL "
-            "ORDER BY date ASC LIMIT 90",
+            "ORDER BY date DESC LIMIT 90",
             (ticker,),
         ).fetchall()
         conn_a.close()
@@ -1391,6 +1391,7 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
             )
             df_anomaly["date"] = pd.to_datetime(df_anomaly["date"])
             df_anomaly.set_index("date", inplace=True)
+            df_anomaly.sort_index(inplace=True)  # DESC fetch → re-sort ASC for chart
             anomaly_threshold = float(
                 config_data.get("NOTIFICATIONS", {}).get("ANOMALY_ALERTS", {}).get("THRESHOLD", 0.7)
             )
