@@ -2231,7 +2231,9 @@
                     document.getElementById('diag-mac-rf').innerText = fmt(data.ml.macro_rf_outputs);
                     document.getElementById('diag-mac-ind').innerText = fmt(data.state.macro_ind);
                     
-                    document.getElementById('diag-anomaly-cnt').innerText = `${fmt(data.ml.anomaly_model_count)} Models`;
+                    const staleCount = data.ml.anomaly_stale_count || 0;
+                    const staleLabel = staleCount > 0 ? ` <span style="color:#ff4d4d">(${staleCount} stale)</span>` : '';
+                    document.getElementById('diag-anomaly-cnt').innerHTML = `${fmt(data.ml.anomaly_model_count)} Models${staleLabel}`;
                     if (data.ml.anomaly_model_count === 0) document.getElementById('diag-anomaly-cnt').style.color = "#ffaa00";
 
                     document.getElementById('diag-notes-sent').innerText = `${fmt(data.state.notes_sent)} Sent`;

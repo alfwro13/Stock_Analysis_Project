@@ -90,28 +90,30 @@ class TestTrainAndScore:
         engine.train_one("AAPL", _make_ohlcv(), beta=1.0)
         assert (tmp_path / "AAPL.joblib").exists()
 
-    def test_score_returns_float_in_unit_interval(self, tmp_path):
+    def test_score_returns_dict_in_unit_interval(self, tmp_path):
         engine = _engine(tmp_path)
         engine.train_one("AAPL", _make_ohlcv(), beta=1.0)
-        score = engine.score("AAPL", [1.0, 50.0, 0.1, 0.5, 0.18, 1.0])
-        assert score is not None
-        assert isinstance(score, float)
-        assert 0.0 <= score <= 1.0
+        result = engine.score("AAPL", [1.0, 50.0, 0.1, 0.5, 0.18, 1.0])
+        assert result is not None
+        assert isinstance(result, dict)
+        assert 'score' in result and 'features' in result
+        assert isinstance(result['score'], float)
+        assert 0.0 <= result['score'] <= 1.0
 
     def test_extreme_vector_scores_higher_than_normal_vector(self, tmp_path):
         engine = _engine(tmp_path)
         engine.train_one("AAPL", _make_ohlcv(), beta=1.0)
-        normal_score  = engine.score("AAPL", [1.0, 50.0, 0.1, 0.5, 0.18, 1.0])
-        extreme_score = engine.score("AAPL", [10.0, 92.0, -14.0, -7.0, 2.5, 1.8])
-        assert extreme_score is not None and normal_score is not None
-        assert extreme_score > normal_score
+        normal_result  = engine.score("AAPL", [1.0, 50.0, 0.1, 0.5, 0.18, 1.0])
+        extreme_result = engine.score("AAPL", [10.0, 92.0, -14.0, -7.0, 2.5, 1.8])
+        assert extreme_result is not None and normal_result is not None
+        assert extreme_result['score'] > normal_result['score']
 
     def test_score_clamps_to_1_for_maximally_anomalous_input(self, tmp_path):
         engine = _engine(tmp_path)
         engine.train_one("AAPL", _make_ohlcv(), beta=1.0)
         # Extreme values far outside training distribution should be clamped at 1.0
-        score = engine.score("AAPL", [100.0, 99.0, -50.0, -40.0, 10.0, 2.0])
-        assert score == 1.0
+        result = engine.score("AAPL", [100.0, 99.0, -50.0, -40.0, 10.0, 2.0])
+        assert result['score'] == 1.0
 
     def test_score_clamps_to_0_for_minimally_anomalous_input(self, tmp_path):
         engine = _engine(tmp_path)
@@ -119,9 +121,9 @@ class TestTrainAndScore:
         engine.train_one("AAPL", df, beta=1.0)
         # A score more normal than anything in training is clamped at 0.0
         # Use a copy of the training distribution's median as input
-        score = engine.score("AAPL", [1.0, 50.0, 0.0, 0.0, 0.15, 1.0])
-        assert score is not None
-        assert score >= 0.0
+        result = engine.score("AAPL", [1.0, 50.0, 0.0, 0.0, 0.15, 1.0])
+        assert result is not None
+        assert result['score'] >= 0.0
 
     def test_beta_none_defaults_to_1(self, tmp_path):
         engine = _engine(tmp_path)

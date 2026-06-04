@@ -889,7 +889,14 @@
                     </div>
                 </div>
                 <div id="anomaly-section">
-                    <h2>Isolation Forest Anomaly Score</h2>
+                    <h2>Isolation Forest Anomaly Score
+                        {% if anomaly_percentile is not none %}
+                        <span style="font-size:0.75rem;font-weight:400;margin-left:10px;padding:3px 9px;border-radius:12px;
+                              background:{% if anomaly_percentile >= 90 %}rgba(255,77,77,0.25);color:#ff4d4d{% elif anomaly_percentile >= 60 %}rgba(255,170,0,0.2);color:#ffaa00{% else %}rgba(0,255,204,0.15);color:#00ffcc{% endif %};">
+                            {{ anomaly_percentile }}th pct (90d)
+                        </span>
+                        {% endif %}
+                    </h2>
                     <div class="chart-wrapper" id="anomaly-wrapper">
                         <button class="fullscreen-btn" onclick="toggleFullscreen('anomaly-wrapper')">⛶ Fullscreen</button>
                         {{ anomaly_chart_html | safe }}
@@ -901,6 +908,20 @@
                         A sustained red period does not predict direction — it signals a structural regime change that often precedes a significant price move in either direction.
                         The bottom panel shows the closing price for context; look for correlation between anomaly spikes and subsequent price action.
                     </p>
+                    {% if anomaly_radar_html %}
+                    <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start;margin-top:16px;">
+                        <div style="flex:0 0 320px;">
+                            {{ anomaly_radar_html | safe }}
+                        </div>
+                        <div style="flex:1;min-width:220px;font-size:0.82rem;color:#aaa;line-height:1.6;padding-top:8px;">
+                            <strong style="color:#ccc;">Feature Snapshot</strong><br>
+                            Each axis shows the approximate current value of one Isolation Forest input feature, normalised to a typical market range.
+                            A polygon pushed toward the outer edge on multiple axes simultaneously indicates the kind of compound anomaly the model is most sensitive to.
+                            <br><br>
+                            <em>Note: values are reconstructed from stored signals and may differ slightly from the intraday scoring vector.</em>
+                        </div>
+                    </div>
+                    {% endif %}
                 </div>
             </div> </div> </div>
 

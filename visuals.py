@@ -457,3 +457,63 @@ def create_anomaly_score_chart(df: pd.DataFrame, ticker: str, threshold: float =
     fig.update_xaxes(rangeslider_visible=False)
 
     return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
+
+
+def create_anomaly_feature_radar(features: dict, ticker: str) -> str:
+    """
+    Plotly radar/spider chart showing the 6 Isolation Forest input features normalised to [0, 1].
+
+    features: {'volume_ratio': float, 'rsi_14': float, 'daily_return_pct': float,
+               'sma50_dist_pct': float, 'hist_vol_20': float, 'beta': float}
+    """
+    # (label, feature_key, range_lo, range_hi) — ranges represent typical market bounds
+    AXES = [
+        ('Volume Ratio',   'volume_ratio',     0.0,   3.0),
+        ('RSI (14)',       'rsi_14',           0.0, 100.0),
+        ('Daily Return %', 'daily_return_pct', -10.0, 10.0),
+        ('SMA50 Dist %',   'sma50_dist_pct',  -20.0, 20.0),
+        ('Hist Vol 20d',   'hist_vol_20',       0.0,   0.8),
+        ('Beta',           'beta',              0.0,   3.0),
+    ]
+
+    labels, norm_vals, hover = [], [], []
+    for label, key, lo, hi in AXES:
+        raw = float(features.get(key) or 0.0)
+        n = max(0.0, min(1.0, (raw - lo) / (hi - lo))) if hi != lo else 0.0
+        labels.append(label)
+        norm_vals.append(round(n, 3))
+        hover.append(f"{label}: {raw:.3f}")
+
+    # Close the polygon
+    labels += [labels[0]]
+    norm_vals += [norm_vals[0]]
+    hover += [hover[0]]
+
+    fig = go.Figure(go.Scatterpolar(
+        r=norm_vals,
+        theta=labels,
+        fill='toself',
+        fillcolor='rgba(0, 255, 204, 0.12)',
+        line=dict(color='#00ffcc', width=2),
+        text=hover,
+        hovertemplate='%{text}<extra></extra>',
+    ))
+    fig.update_layout(
+        template='plotly_dark',
+        polar=dict(
+            radialaxis=dict(
+                visible=True, range=[0, 1],
+                tickvals=[0.25, 0.5, 0.75, 1.0],
+                tickfont=dict(size=9),
+            ),
+            angularaxis=dict(tickfont=dict(size=11)),
+        ),
+        height=300,
+        margin=dict(l=50, r=50, t=50, b=20),
+        title=dict(text=f"{ticker} — Feature Snapshot", font=dict(size=13, color='#ccc'), x=0.5),
+        showlegend=False,
+    )
+    return fig.to_html(
+        full_html=False, include_plotlyjs=False,
+        config={'responsive': True, 'displaylogo': False},
+    )

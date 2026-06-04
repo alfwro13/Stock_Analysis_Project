@@ -961,7 +961,20 @@ async def get_system_metrics():
         rf_states = get_cnt("SELECT COUNT(*) FROM macro_calendar WHERE ai_consensus_miss_prob IS NOT NULL")
 
         from config import ANOMALY_MODELS_DIR
-        anomaly_model_cnt = len(list(ANOMALY_MODELS_DIR.glob("*.joblib"))) if ANOMALY_MODELS_DIR.exists() else 0
+        from datetime import datetime, timezone, timedelta
+        _stale_cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+        anomaly_model_cnt = 0
+        anomaly_stale_cnt = 0
+        if ANOMALY_MODELS_DIR.exists():
+            for _jf in ANOMALY_MODELS_DIR.glob("*.joblib"):
+                anomaly_model_cnt += 1
+                try:
+                    _payload = joblib.load(_jf)
+                    _trained_at = _payload.get('trained_at')
+                    if not _trained_at or datetime.fromisoformat(_trained_at) < _stale_cutoff:
+                        anomaly_stale_cnt += 1
+                except Exception:
+                    anomaly_stale_cnt += 1
         
         # 3. Infrastructure & Storage
         cpu_load = os.getloadavg() if hasattr(os, 'getloadavg') else (0.0, 0.0, 0.0)
@@ -1022,7 +1035,8 @@ async def get_system_metrics():
             "ml": {
                 "ensemble": ensemble_stats, "feature_count": feature_count,
                 "macro_hmm_outputs": hmm_states, "macro_rf_outputs": rf_states,
-                "anomaly_model_count": anomaly_model_cnt
+                "anomaly_model_count": anomaly_model_cnt,
+                "anomaly_stale_count": anomaly_stale_cnt
             },
             "infra": {
                 "cpu": [round(c, 2) for c in cpu_load],

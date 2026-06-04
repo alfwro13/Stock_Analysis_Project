@@ -756,7 +756,8 @@ class IntradayOrchestrator:
                                 float(asset_meta.get('hist_vol_20') or 0.2),
                                 clamp_beta(asset_meta.get('beta')),
                             ]
-                            anomaly_score = self.anomaly_engine.score(ticker, feature_vector)
+                            anomaly_result = self.anomaly_engine.score(ticker, feature_vector)
+                            anomaly_score = anomaly_result['score'] if anomaly_result is not None else None
                             if anomaly_score is not None:
                                 today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
                                 try:

@@ -38,6 +38,7 @@ from visuals import (
     create_us_inflation_chart,
     create_uk_inflation_chart,
     create_anomaly_score_chart,
+    create_anomaly_feature_radar,
 )
 from portfolio_service import get_rate_to_base, get_rate_from_base
 from quant_signals import get_candlestick_patterns
@@ -1375,6 +1376,8 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
         "<span style='font-size:0.85rem;'>Scores are written during market hours once models are trained.</span>"
         "</div>"
     )
+    anomaly_percentile = None
+    anomaly_radar_html = None
     try:
         conn_a = get_connection()
         anomaly_rows = conn_a.execute(
@@ -1396,6 +1399,25 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
                 config_data.get("NOTIFICATIONS", {}).get("ANOMALY_ALERTS", {}).get("THRESHOLD", 0.7)
             )
             anomaly_chart_html = create_anomaly_score_chart(df_anomaly, ticker, threshold=anomaly_threshold)
+
+            # Percentile rank of latest score vs its own 90-day history
+            latest_score = df_anomaly["anomaly_score"].iloc[-1]
+            history = df_anomaly["anomaly_score"]
+            anomaly_percentile = round(float((history <= latest_score).mean() * 100), 1)
+
+            # Feature snapshot radar — reconstruct from available stock_data fields
+            current_price = stock_data.get("current_price") or 0.0
+            sma_50 = stock_data.get("sma_50") or current_price
+            sma50_dist_pct = ((current_price - sma_50) / sma_50 * 100) if sma_50 else 0.0
+            radar_features = {
+                "volume_ratio":     stock_data.get("volume_surge") or 1.0,
+                "rsi_14":           stock_data.get("rsi_14") or 50.0,
+                "daily_return_pct": stock_data.get("mom_1m") or 0.0,
+                "sma50_dist_pct":   sma50_dist_pct,
+                "hist_vol_20":      stock_data.get("hist_vol_20") or 0.2,
+                "beta":             stock_data.get("beta") or 1.0,
+            }
+            anomaly_radar_html = create_anomaly_feature_radar(radar_features, ticker)
     except Exception:
         pass  # fallback placeholder already set
 
@@ -1408,6 +1430,8 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
             "macro_html": macro_html,
             "intraday_html": intraday_html,
             "anomaly_chart_html": anomaly_chart_html,
+            "anomaly_radar_html": anomaly_radar_html,
+            "anomaly_percentile": anomaly_percentile,
             "portfolio_math": portfolio_math,
             "days_to_earnings": days_to_earnings,
             "volatility_date": volatility_date,
