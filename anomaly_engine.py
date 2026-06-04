@@ -12,6 +12,7 @@ import ta
 from sklearn.ensemble import IsolationForest
 
 from config import ANOMALY_MODELS_DIR
+from database import get_connection
 from utils import clamp_beta
 
 logger = logging.getLogger(__name__)
@@ -130,6 +131,108 @@ class AnomalyEngine:
         out_path = self.models_dir / f"{ticker}.joblib"
         joblib.dump({'model': model, 'score_min': score_min, 'score_max': score_max}, out_path)
         logger.debug("Saved anomaly model for %s (%d rows) → %s", ticker, len(df), out_path)
+
+    # ------------------------------------------------------------------
+    # Historical backfill
+    # ------------------------------------------------------------------
+
+    def backfill_all(self, tickers: list[str], parquet_dir: Path) -> None:
+        """
+        Score every existing quant_signals row for tickers that have a trained model
+        and write the result back to anomaly_score. Designed to run immediately after
+        train_all so the stock detail chart has data without waiting for a live scan.
+        """
+        # Bulk-fetch betas in one query
+        conn = get_connection()
+        try:
+            placeholders = ','.join('?' for _ in tickers)
+            beta_rows = conn.execute(
+                f"SELECT ticker, beta FROM stock_signals WHERE ticker IN ({placeholders})",
+                tickers,
+            ).fetchall()
+            beta_map = {r['ticker']: clamp_beta(r['beta']) for r in beta_rows}
+
+            scored, skipped = 0, 0
+            for ticker in tickers:
+                model_path = self.models_dir / f"{ticker}.joblib"
+                if not model_path.exists():
+                    skipped += 1
+                    continue
+                parquet_path = parquet_dir / f"{ticker}.parquet"
+                if not parquet_path.exists():
+                    skipped += 1
+                    continue
+                try:
+                    df = pd.read_parquet(parquet_path)
+                    if isinstance(df.columns, pd.MultiIndex):
+                        df.columns = df.columns.get_level_values(0)
+                    beta = beta_map.get(ticker, 1.0)
+                    rows_written = self._backfill_ticker(ticker, df, beta, conn)
+                    scored += rows_written
+                except Exception:
+                    logger.error("Backfill failed for %s", ticker, exc_info=True)
+                    skipped += 1
+
+            conn.commit()
+            logger.info("Anomaly backfill complete: %d scores written, %d tickers skipped.", scored, skipped)
+        finally:
+            conn.close()
+
+    def _backfill_ticker(self, ticker: str, df_hist: pd.DataFrame, beta: float, conn) -> int:
+        """
+        Compute feature vectors for all rows in df_hist, score them, and UPDATE
+        quant_signals. Returns the number of rows updated.
+        """
+        df = df_hist.copy()
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+
+        required = {'Open', 'High', 'Low', 'Close', 'Volume'}
+        if not required.issubset(df.columns):
+            return 0
+
+        df = df[list(required)].copy()
+
+        # Compute features (same logic as train_one)
+        df['vol_ma20'] = df['Volume'].rolling(20).mean()
+        df['volume_ratio'] = df['Volume'] / df['vol_ma20'].replace(0, np.nan)
+        df['rsi_14'] = ta.momentum.RSIIndicator(close=df['Close'], window=14).rsi()
+        df['daily_return_pct'] = df['Close'].pct_change() * 100
+        sma50 = ta.trend.SMAIndicator(close=df['Close'], window=50).sma_indicator()
+        df['sma50_dist_pct'] = ((df['Close'] - sma50) / sma50.replace(0, np.nan)) * 100
+        log_ret = np.log(df['Close'] / df['Close'].shift(1))
+        df['hist_vol_20'] = log_ret.rolling(20).std() * np.sqrt(252)
+        df['beta'] = beta
+
+        feature_cols = ['volume_ratio', 'rsi_14', 'daily_return_pct',
+                        'sma50_dist_pct', 'hist_vol_20', 'beta']
+        df = df.dropna(subset=feature_cols)
+        if df.empty:
+            return 0
+
+        # Score all rows at once
+        payload = joblib.load(self.models_dir / f"{ticker}.joblib")
+        model: IsolationForest = payload['model']
+        score_min: float = payload['score_min']
+        score_max: float = payload['score_max']
+        if score_max == score_min:
+            return 0
+
+        X = df[feature_cols].values
+        raw_scores = model.decision_function(X)
+        anomaly_scores = np.clip(1.0 - (raw_scores - score_min) / (score_max - score_min), 0.0, 1.0)
+
+        # Match Parquet dates to quant_signals date strings
+        written = 0
+        for idx, anom_score in zip(df.index, anomaly_scores):
+            date_str = pd.Timestamp(idx).strftime('%Y-%m-%d')
+            result = conn.execute(
+                "UPDATE quant_signals SET anomaly_score = ? WHERE ticker = ? AND date = ?",
+                (float(anom_score), ticker, date_str),
+            )
+            written += result.rowcount
+
+        return written
 
     # ------------------------------------------------------------------
     # Scoring

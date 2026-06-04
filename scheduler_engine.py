@@ -429,8 +429,10 @@ def run_anomaly_training_job():
         from config import load_config, HISTORICAL_DIR
         config = load_config()
         all_tickers = DataEngine().get_all_tickers()
-        AnomalyEngine(config).train_all(all_tickers, HISTORICAL_DIR)
-        log_sched_notification("Success", "Anomaly Training job completed.")
+        engine = AnomalyEngine(config)
+        engine.train_all(all_tickers, HISTORICAL_DIR)
+        engine.backfill_all(all_tickers, HISTORICAL_DIR)
+        log_sched_notification("Success", "Anomaly Training & backfill completed.")
     except Exception as e:
         logger.error("Anomaly Training job failed: %s", e)
         log_sched_notification("Error", f"Anomaly Training job failed: {e}")
