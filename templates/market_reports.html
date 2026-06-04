@@ -517,6 +517,7 @@
                     {
                         data: 'avg_rsi',
                         render: function(data) {
+                            if (data == null) return '—';
                             let cssClass = '';
                             if (data > 60) cssClass = 'positive-val';
                             else if (data < 40) cssClass = 'negative-val';
@@ -526,6 +527,7 @@
                     {
                         data: 'pct_above_50d',
                         render: function(data, type, row) {
+                            if (data == null) return '—';
                             const encodedSector = encodeURIComponent(row.sector);
                             return `<a href="/market-screener?sector=${encodedSector}&above_50d=true" class="text-light text-decoration-dotted" title="Filter Screener for ${row.sector} > 50D SMA">${data.toFixed(2)}%</a>`;
                         }
@@ -533,6 +535,7 @@
                     {
                         data: 'pct_bullish_cross',
                         render: function(data, type, row) {
+                            if (data == null) return '—';
                             const encodedSector = encodeURIComponent(row.sector);
                             return `<a href="/market-screener?sector=${encodedSector}&bullish_cross=true" class="text-light text-decoration-dotted" title="Filter Screener for ${row.sector} Golden Crosses">${data.toFixed(2)}%</a>`;
                         }
