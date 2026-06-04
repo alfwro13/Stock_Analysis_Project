@@ -401,6 +401,7 @@ class SettingsConfig(BaseModel):
     SCHEDULING: Optional[SchedulingConfig] = None
     REPORTS_DEFAULTS: Optional[ReportsDefaultsConfig] = None
     NOTIFICATIONS: Optional[NotificationsConfig] = None
+    XRAY_TARGETS: Optional[dict] = None
 
 
 def log_notification(message_type: str, message_text: str) -> None:
