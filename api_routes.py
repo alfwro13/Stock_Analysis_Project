@@ -38,7 +38,7 @@ from config import (
     INTRADAY_DIR
 )
 from database import get_connection, get_universe_tickers
-from scheduler_engine import run_update_pipeline, run_ghostfolio_sync, run_freetrade_sync, reload_scheduler, run_sentiment_scan, run_index_scraper, run_fundamentals_profiler, run_universe_deep_sync_job, get_all_job_last_runs, run_xray_risk_cache_job, run_anomaly_training_job
+from scheduler_engine import run_update_pipeline, run_ghostfolio_sync, run_freetrade_sync, reload_scheduler, run_sentiment_scan, run_index_scraper, run_fundamentals_profiler, run_universe_deep_sync_job, get_all_job_last_runs, run_xray_risk_cache_job, run_anomaly_training_job, record_job_run
 from xray_engine import assemble_xray_report
 from ghostfolio_sync import GhostfolioSyncEngine
 from market_pulse import get_cached_pulse_from_db, fetch_and_save_pulse
@@ -440,7 +440,10 @@ def bg_execute_quant_scan():
 def bg_execute_earnings_scan():
     engine = DataEngine()
     tickers = engine.get_all_tickers()
-    run_earnings_vol_scan(tickers)
+    try:
+        run_earnings_vol_scan(tickers)
+    finally:
+        record_job_run('weekend_earnings_vol_scan_job')
 
 def bg_execute_universe_quant_scan():
     tickers = get_universe_tickers()
@@ -1033,6 +1036,8 @@ async def get_system_metrics():
             "UNIVERSE_DEEP_SYNC": "universe_deep_sync_job",
             "ANOMALY_TRAINING":   "anomaly_training_job",
             "XRAY_RISK_CACHE":    "xray_risk_cache_job",
+            "AI_CONTAGION":       "ai_contagion_job",
+            "CB_NLP_ALERT":       "cb_nlp_alert_job",
         }
         scheduler_last_runs = {
             cfg_key: job_last_runs.get(job_id, "Never")
