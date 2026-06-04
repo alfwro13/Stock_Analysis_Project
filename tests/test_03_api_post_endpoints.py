@@ -220,10 +220,15 @@ def test_post_market_pulse_with_mocked_fetch(client):
 
 @pytest.mark.api
 def test_post_data_refresh_single_with_mock(client):
-    """POST /api/data/refresh-single must not crash (DataEngine mocked)."""
-    with patch("api_routes.DataEngine") as MockDE:
+    """POST /api/data/refresh-single must not crash (heavy deps mocked)."""
+    with patch("api_routes.update_single_profile"), \
+         patch("api_routes.DataEngine") as MockDE, \
+         patch("api_routes.QuantEngine") as MockQE, \
+         patch("api_routes.update_daily_ml_predictions"), \
+         patch("api_routes.update_all_tail_risks"), \
+         patch("api_routes.update_all_sentiment"):
         instance = MockDE.return_value
-        instance.run_for_ticker.return_value = None
+        instance.fetch_and_save_data.return_value = True
         resp = client.post("/api/data/refresh-single", json={"ticker": "AAPL"})
     assert resp.status_code in (200, 400, 404, 422), (
         f"Unexpected status {resp.status_code} for single refresh"
