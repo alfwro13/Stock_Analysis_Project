@@ -157,7 +157,8 @@ DEFAULT_CONFIG = {
         "MAINTENANCE": {
             "ENABLED": True,
             "DAY_OF_WEEK": "sun",
-            "TIME": "02:00"
+            "TIME": "02:00",
+            "DAYS_TO_KEEP_FILES": 60
         },
         "FREETRADE_SYNC": {
             "ENABLED": False,

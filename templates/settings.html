@@ -1332,6 +1332,17 @@
                                 <label>Execution Time</label>
                                 <input type="time" id="MAINTENANCE_TIME" value="{{ config.SCHEDULING.MAINTENANCE.TIME }}">
                             </div>
+                            <div class="form-group flex-1">
+                                <label>Days to Keep Data Files</label>
+                                <input type="number" id="MAINTENANCE_DAYS_TO_KEEP_FILES" min="1" max="365" value="{{ config.SCHEDULING.MAINTENANCE.DAYS_TO_KEEP_FILES | default(60) }}">
+                            </div>
+                        </div>
+                        <div class="flex-gap-10 mt-5">
+                            <button type="button" id="maintenanceRunBtn" class="btn btn-update flex-1" onclick="runMaintenanceNow()">▶ Run Now</button>
+                            <button type="button" id="maintenanceDryRunBtn" class="btn btn-sync flex-1" onclick="runMaintenanceDryRun()">🔍 Dry Run</button>
+                        </div>
+                        <div id="maintenance-dry-run-output" class="mt-10" style="display:none;">
+                            <div id="maintenance-dry-run-content" class="settings-panel border-left-cyan" style="font-family:monospace;font-size:0.8rem;white-space:pre-wrap;max-height:320px;overflow-y:auto;"></div>
                         </div>
                     </div>
                 </div>
@@ -1649,6 +1660,61 @@
             btn.innerText = "Updating..."; btn.disabled = true;
             try { await fetch('/api/update', { method: 'POST' }); alert("Analysis initiated in the background! The system is building fresh mathematical models."); } catch (e) { }
             setTimeout(() => { btn.innerText = "↻ Force Update Analysis Models"; btn.disabled = false; }, 15000);
+        }
+
+        async function runMaintenanceNow() {
+            const btn = document.getElementById('maintenanceRunBtn');
+            btn.innerText = "Running..."; btn.disabled = true;
+            try {
+                const resp = await fetch('/api/maintenance/run', { method: 'POST' });
+                const data = await resp.json();
+                if (data.status === 'success') {
+                    setBoxStatus && setBoxStatus('maintenance-dry-run-content', 'success', '✅ ' + data.message);
+                } else {
+                    alert('Maintenance failed: ' + (data.message || 'Unknown error'));
+                }
+            } catch (e) {
+                alert('Network error triggering maintenance.');
+            }
+            setTimeout(() => { btn.innerText = "▶ Run Now"; btn.disabled = false; }, 8000);
+        }
+
+        async function runMaintenanceDryRun() {
+            const btn = document.getElementById('maintenanceDryRunBtn');
+            const outputBox = document.getElementById('maintenance-dry-run-output');
+            const content = document.getElementById('maintenance-dry-run-content');
+            btn.innerText = "Scanning..."; btn.disabled = true;
+            outputBox.style.display = 'block';
+            content.innerText = 'Scanning file system...';
+            try {
+                const resp = await fetch('/api/maintenance/dry-run', { method: 'POST' });
+                const data = await resp.json();
+                if (data.status === 'success') {
+                    const r = data.results;
+                    const s = r.summary;
+                    let out = `DRY RUN — no files were deleted\n`;
+                    out += `Retention threshold : ${r.days_to_keep_files} days\n`;
+                    out += `Active tickers in DB: ${r.active_tickers_count}\n`;
+                    out += `─────────────────────────────────────────\n`;
+                    out += `Would DELETE  : ${s.delete_count} file(s)\n`;
+                    out += `Kept (active) : ${s.keep_active_count} file(s)\n`;
+                    out += `Kept (fresh)  : ${s.keep_fresh_count} file(s)\n`;
+                    if (r.would_delete.length > 0) {
+                        out += `\n── Files that WOULD be deleted ──\n`;
+                        r.would_delete.forEach(f => { out += `  ✗  ${f.file}  (${f.age_days}d old)\n`; });
+                    }
+                    if (r.would_keep_fresh.length > 0) {
+                        out += `\n── Files kept because they are not yet old enough ──\n`;
+                        r.would_keep_fresh.forEach(f => { out += `  ⏳  ${f.file}  (${f.reason})\n`; });
+                    }
+                    content.innerText = out;
+                } else {
+                    content.innerText = 'Error: ' + (data.message || 'Unknown error');
+                }
+            } catch (e) {
+                content.innerText = 'Network error during dry run.';
+            }
+            btn.innerText = "🔍 Dry Run"; btn.disabled = false;
         }
 
         async function scanImportDirectory() {
@@ -2507,7 +2573,8 @@
                     "MAINTENANCE": {
                         "ENABLED": document.getElementById('MAINTENANCE_ENABLED').checked,
                         "DAY_OF_WEEK": document.getElementById('MAINTENANCE_DAY').value,
-                        "TIME": document.getElementById('MAINTENANCE_TIME').value
+                        "TIME": document.getElementById('MAINTENANCE_TIME').value,
+                        "DAYS_TO_KEEP_FILES": parseInt(document.getElementById('MAINTENANCE_DAYS_TO_KEEP_FILES').value) || 60
                     },
                     "QUANT_ENGINE": {
                         "DAYS": quantDays,

@@ -38,7 +38,8 @@ from config import (
     INTRADAY_DIR
 )
 from database import get_connection, get_universe_tickers
-from scheduler_engine import run_update_pipeline, run_ghostfolio_sync, run_freetrade_sync, reload_scheduler, run_sentiment_scan, run_index_scraper, run_fundamentals_profiler, run_universe_deep_sync_job, get_all_job_last_runs, run_xray_risk_cache_job, run_anomaly_training_job, record_job_run
+from scheduler_engine import run_update_pipeline, run_ghostfolio_sync, run_freetrade_sync, reload_scheduler, run_sentiment_scan, run_index_scraper, run_fundamentals_profiler, run_universe_deep_sync_job, get_all_job_last_runs, run_xray_risk_cache_job, run_anomaly_training_job, record_job_run, run_maintenance_engine
+from maintenance_engine import MaintenanceEngine
 from xray_engine import assemble_xray_report
 from ghostfolio_sync import GhostfolioSyncEngine
 from market_pulse import get_cached_pulse_from_db, fetch_and_save_pulse
@@ -314,6 +315,7 @@ class ScheduleItemConfig(BaseModel):
     DATA_DAY: Optional[str] = None
     DATA_TIME: Optional[str] = None
     DAY_OF_WEEK: Optional[str] = None
+    DAYS_TO_KEEP_FILES: Optional[int] = None
 
 class SchedulingConfig(BaseModel):
     SYNC_INDICES: Optional[ScheduleItemConfig] = None
@@ -751,6 +753,23 @@ async def trigger_freetrade_sync_endpoint(request: Request, background_tasks: Ba
         "status": "success",
         "message": "Freetrade synchronization initiated in the background. Check System Notifications for progress updates."
     })
+
+@api_router.post("/maintenance/run")
+@limiter.limit("5/minute")
+async def trigger_maintenance_run(request: Request, background_tasks: BackgroundTasks):
+    background_tasks.add_task(run_maintenance_engine)
+    return JSONResponse(content={"status": "success", "message": "Maintenance job started in the background. Check System Notifications for the summary."})
+
+@api_router.post("/maintenance/dry-run")
+@limiter.limit("5/minute")
+async def trigger_maintenance_dry_run(request: Request):
+    try:
+        engine = MaintenanceEngine()
+        results = engine.dry_run()
+        return JSONResponse(content={"status": "success", "results": results})
+    except Exception as e:
+        logger.exception("Maintenance dry-run failed")
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 @api_router.post("/ghostfolio/discover")
 async def trigger_discovery():
