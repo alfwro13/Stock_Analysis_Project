@@ -25,6 +25,7 @@ class MaintenanceEngine:
         self.metrics = {
             "logs_deleted": 0,
             "files_deleted": 0,
+            "deleted_files": [],   # list of "dir/filename (Xd old)" strings
             "pulse_cache_deleted": 0,
             "vacuum_success": False
         }
@@ -141,6 +142,7 @@ class MaintenanceEngine:
         for directory in directories:
             if not os.path.exists(directory):
                 continue
+            dir_label = os.path.basename(str(directory))
 
             for filename in os.listdir(directory):
                 if filename in self.protected_files:
@@ -166,8 +168,10 @@ class MaintenanceEngine:
                     if file_mtime > cutoff_time:
                         print(f"  -> Skipping {filename} (less than {self.days_to_keep_files} days old)")
                         continue
+                    age_days = int((time.time() - file_mtime) / 86400)
                     os.remove(filepath)
                     self.metrics["files_deleted"] += 1
+                    self.metrics["deleted_files"].append(f"{dir_label}/{filename} ({age_days}d old)")
                     print(f"  -> Deleted orphaned file: {filename}")
                 except Exception as e:
                     print(f"  -> Failed to delete {filename}: {e}")
@@ -198,11 +202,17 @@ class MaintenanceEngine:
             cursor = conn.cursor()
             
             vac_status = "Successful" if self.metrics["vacuum_success"] else "Failed (Locked or Busy)"
+            deleted = self.metrics["deleted_files"]
+            if deleted:
+                file_list = "\n".join(f"  ✗ {f}" for f in sorted(deleted))
+                files_section = f"\n• Deleted Files ({len(deleted)}):\n{file_list}"
+            else:
+                files_section = "\n• Deleted Files: none"
             msg = (
                 f"Automated System Maintenance completed.\n"
                 f"• Stale Logs Trimmed: {self.metrics['logs_deleted']}\n"
-                f"• Stale Pulse Cache Records Removed: {self.metrics['pulse_cache_deleted']}\n"
-                f"• Orphaned Files Reclaimed: {self.metrics['files_deleted']}\n"
+                f"• Stale Pulse Cache Records Removed: {self.metrics['pulse_cache_deleted']}"
+                f"{files_section}\n"
                 f"• DB Defragmentation: {vac_status}"
             )
             
