@@ -894,6 +894,13 @@
                         <button class="fullscreen-btn" onclick="toggleFullscreen('anomaly-wrapper')">⛶ Fullscreen</button>
                         {{ anomaly_chart_html | safe }}
                     </div>
+                    <p class="chart-explainer">
+                        <strong>How to read this chart:</strong> The top panel shows the Isolation Forest anomaly score (0–1) for the last 90 trading days.
+                        The score measures how statistically unusual this stock's behaviour is across six dimensions simultaneously — volume, RSI, daily return, SMA50 distance, volatility, and beta.
+                        <strong>Cyan dots</strong> indicate normal trading; <strong>red dots</strong> indicate the score has crossed the alert threshold (dotted gold line), meaning the combination of signals is rare for this specific ticker.
+                        A sustained red period does not predict direction — it signals a structural regime change that often precedes a significant price move in either direction.
+                        The bottom panel shows the closing price for context; look for correlation between anomaly spikes and subsequent price action.
+                    </p>
                 </div>
             </div> </div> </div>
 

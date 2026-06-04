@@ -69,6 +69,18 @@
                     <span class="term-title">Turbulence Index & Regimes</span>
                     <p>A macro filter using EWMA realized volatility of SPY and FTSE. VIX is shown alongside for reference but is not part of the regime signal. Classifies market into Normal, Volatile, or Crash regimes.</p>
                 </div>
+                <div class="term-box">
+                    <span class="term-title">Isolation Forest Anomaly Score</span>
+                    <p>An unsupervised machine learning signal that detects when a stock is behaving in a statistically unusual way across <strong>six simultaneous dimensions</strong>: intraday volume relative to its 20-day average, RSI momentum, daily return percentage, distance from the 50-day SMA, 20-day historical volatility, and beta-adjusted market sensitivity. Unlike a single-threshold rule (e.g. "volume > 1.5×"), the Isolation Forest notices compound anomalies — for example, a volume spike that would be unremarkable on its own, but is occurring alongside an RSI divergence and an SMA break simultaneously.</p>
+                    <p>The model is trained separately for each ticker on approximately one year of daily data, so it learns what <em>normal</em> looks like specifically for that stock, not the broad market. The output is a score between <strong>0.00 and 1.00</strong>:</p>
+                    <ul>
+                        <li><strong>0.00 – 0.40 (Normal):</strong> The stock is trading within its typical multi-dimensional behaviour pattern. No action required.</li>
+                        <li><strong>0.40 – 0.70 (Elevated):</strong> Some unusual characteristics present but not outside normal market noise. Worth monitoring.</li>
+                        <li><strong>0.70 – 1.00 (Alert Zone):</strong> The combination of signals is statistically rare for this specific ticker. The system fires a pre-alert to Nextcloud. This does <em>not</em> predict direction — it flags that something structural is changing before a price threshold is breached.</li>
+                    </ul>
+                    <div class="rule">KEY DISTINCTION: This is an early-warning layer, not a crash detector. A score above 0.70 while the price is flat or rising often indicates silent institutional repositioning — accumulation or distribution at scale — before the price reaction is visible.</div>
+                    <p>Models are retrained nightly at 18:30 (Mon–Fri) after market close and are stored as per-ticker <code>.joblib</code> files. Historical scores are backfilled across the full <code>quant_signals</code> history so the 90-day chart on each stock detail page is populated immediately after training.</p>
+                </div>
             </details>
 
             <details class="settings-card" id="quant-screener">
