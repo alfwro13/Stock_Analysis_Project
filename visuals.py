@@ -384,7 +384,9 @@ def create_anomaly_score_chart(df: pd.DataFrame, ticker: str, threshold: float =
     """
     Two-row Plotly chart: Isolation Forest anomaly score (top) + closing price (bottom).
     df must have columns ['anomaly_score', 'close_price'] with a DatetimeIndex.
-    Scores above threshold are coloured red; below are coloured green.
+
+    Renders as ONE continuous line with per-point coloured markers (cyan = normal,
+    red = above threshold) and a shaded alert zone, so the line is never visually split.
     """
     fig = make_subplots(
         rows=2, cols=1,
@@ -394,29 +396,27 @@ def create_anomaly_score_chart(df: pd.DataFrame, ticker: str, threshold: float =
         subplot_titles=(f"{ticker} — Isolation Forest Anomaly Score (90d)", "Close Price"),
     )
 
-    # Split score series into two traces for conditional colouring
-    normal_x = df.index[df['anomaly_score'] <= threshold]
-    normal_y = df.loc[df['anomaly_score'] <= threshold, 'anomaly_score']
-    anomaly_x = df.index[df['anomaly_score'] > threshold]
-    anomaly_y = df.loc[df['anomaly_score'] > threshold, 'anomaly_score']
-
-    fig.add_trace(
-        go.Scatter(
-            x=normal_x, y=normal_y,
-            mode='lines+markers',
-            name='Normal',
-            line=dict(color='#00ffcc', width=1.5),
-            marker=dict(size=3, color='#00ffcc'),
-        ),
+    # Shaded alert zone — subtle red band above the threshold
+    fig.add_hrect(
+        y0=threshold, y1=1.01,
+        fillcolor="#ff4d4d", opacity=0.08,
+        line_width=0,
         row=1, col=1,
     )
+
+    # Single continuous line — one unbroken series, per-point marker colours
+    marker_colors = [
+        '#ff4d4d' if s > threshold else '#00ffcc'
+        for s in df['anomaly_score']
+    ]
     fig.add_trace(
         go.Scatter(
-            x=anomaly_x, y=anomaly_y,
+            x=df.index,
+            y=df['anomaly_score'],
             mode='lines+markers',
-            name='High Anomaly',
-            line=dict(color='#ff4d4d', width=1.5),
-            marker=dict(size=5, color='#ff4d4d'),
+            name='Anomaly Score',
+            line=dict(color='#888888', width=1.5),
+            marker=dict(color=marker_colors, size=5),
         ),
         row=1, col=1,
     )
