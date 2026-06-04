@@ -12,7 +12,7 @@ import pandas as pd
 import logging
 import requests
 import yfinance as yf
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from typing import Any, List, Optional
 from pathlib import Path
 
@@ -961,7 +961,6 @@ async def get_system_metrics():
         rf_states = get_cnt("SELECT COUNT(*) FROM macro_calendar WHERE ai_consensus_miss_prob IS NOT NULL")
 
         from config import ANOMALY_MODELS_DIR
-        from datetime import datetime, timezone, timedelta
         _stale_cutoff = datetime.now(timezone.utc) - timedelta(days=7)
         anomaly_model_cnt = 0
         anomaly_stale_cnt = 0
