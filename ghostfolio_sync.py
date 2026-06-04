@@ -144,10 +144,11 @@ class GhostfolioSyncEngine:
                 
                 # 2. Process and aggregate the holdings
                 for asset in holdings_list:
-                    symbol = asset.get('symbol', '')
+                    profile = asset.get('assetProfile') or asset  # API v1 nests symbol/name/currency under assetProfile
+                    symbol = profile.get('symbol', '') or asset.get('symbol', '')
                     quantity = float(asset.get('quantity', 0))
-                    name = asset.get('name', '')
-                    currency = asset.get('currency', '')
+                    name = profile.get('name', '') or asset.get('name', '')
+                    currency = profile.get('currency', '') or asset.get('currency', '')
                     total_investment = float(asset.get('investment', 0))
                     
                     if quantity <= 0:
