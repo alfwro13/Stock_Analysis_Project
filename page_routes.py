@@ -1028,6 +1028,7 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
                q.sma_50, q.sma_200,
                q.mom_1m, q.mom_3m, q.mom_6m, q.mom_12m_skip1m,
                q.hist_vol_20, q.rel_strength_5d, q.rel_strength_20d,
+               q.anomaly_score,
                mu.industry, mu.index_membership,
                COALESCE(
                    NULLIF(p.company_name, s.ticker),
@@ -1143,6 +1144,7 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
                 "hist_vol_20": q_data.get("hist_vol_20"),
                 "rel_strength_5d": q_data.get("rel_strength_5d"),
                 "rel_strength_20d": q_data.get("rel_strength_20d"),
+                "anomaly_score": q_data.get("anomaly_score"),
                 "industry": q_data.get("industry"),
                 "index_membership": q_data.get("index_membership"),
             }
@@ -1197,6 +1199,7 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
                 "sma_50": None, "sma_200": None,
                 "mom_1m": None, "mom_3m": None, "mom_6m": None, "mom_12m_skip1m": None,
                 "hist_vol_20": None, "rel_strength_5d": None, "rel_strength_20d": None,
+                "anomaly_score": None,
                 "industry": None, "index_membership": None,
             }
 

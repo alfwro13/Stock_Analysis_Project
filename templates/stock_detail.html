@@ -497,6 +497,15 @@
                                 </span>
                             </div>
                             <div class="data-row">
+                                <span class="data-label"><abbr title="Isolation Forest multi-dimensional anomaly score (0 = normal, 1 = anomalous). Scores above 0.70 trigger a pre-alert.">Anomaly Score:</abbr></span>
+                                <span class="data-value">
+                                    {% if stock.anomaly_score is not none %}
+                                        {% set anom_class = 'metric-poor' if stock.anomaly_score > 0.7 else ('metric-neutral' if stock.anomaly_score > 0.4 else 'metric-excellent') %}
+                                        <span class="{{ anom_class }}">{{ "{:,.2f}".format(stock.anomaly_score) }}</span>
+                                    {% else %}N/A{% endif %}
+                                </span>
+                            </div>
+                            <div class="data-row">
                                 <span class="data-label"><abbr title="FinBERT NLP compound score generated from the latest news headlines.">Media Sentiment:</abbr></span>
                                 <span class="data-value">
                                     {% if stock.sentiment_score is not none %}
@@ -610,6 +619,15 @@
                                     {% if stock.cvar_95 is not none %}
                                         {% set cvar_class = 'metric-poor' if stock.cvar_95 > 0.07 else 'metric-neutral' %}
                                         <span class="{{ cvar_class }}">{{ "{:,.2f}".format(stock.cvar_95 * 100) }}%</span>
+                                    {% else %}N/A{% endif %}
+                                </span>
+                            </div>
+                            <div class="data-row">
+                                <span class="data-label"><abbr title="Isolation Forest multi-dimensional anomaly score (0 = normal, 1 = anomalous). Scores above 0.70 trigger a pre-alert.">Anomaly Score:</abbr></span>
+                                <span class="data-value">
+                                    {% if stock.anomaly_score is not none %}
+                                        {% set anom_class = 'metric-poor' if stock.anomaly_score > 0.7 else ('metric-neutral' if stock.anomaly_score > 0.4 else 'metric-excellent') %}
+                                        <span class="{{ anom_class }}">{{ "{:,.2f}".format(stock.anomaly_score) }}</span>
                                     {% else %}N/A{% endif %}
                                 </span>
                             </div>

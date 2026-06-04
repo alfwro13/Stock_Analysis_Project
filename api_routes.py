@@ -992,6 +992,7 @@ async def get_system_metrics():
             "SYNC_INDICES":       "index_scraper_job",
             "PROFILER_ENGINE":    "fundamentals_profiler_job",
             "UNIVERSE_DEEP_SYNC": "universe_deep_sync_job",
+            "ANOMALY_TRAINING":   "anomaly_training_job",
         }
         scheduler_last_runs = {
             cfg_key: job_last_runs.get(job_id, "Never")
