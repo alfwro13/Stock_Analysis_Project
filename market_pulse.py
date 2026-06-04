@@ -186,7 +186,7 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
         if tickers_to_fetch:
             try:
                 df_daily = yf.download(tickers_to_fetch, period="5d", interval="1d", group_by='ticker', progress=False)
-                df_live = yf.download(tickers_to_fetch, period="1d", interval="2m", prepost=True, group_by='ticker', progress=False)
+                df_live = yf.download(tickers_to_fetch, period="2d", interval="2m", prepost=True, group_by='ticker', progress=False)
             except Exception as e:
                 logger.error(f"YFinance batch download failed: {e}")
                 
