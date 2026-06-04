@@ -732,6 +732,25 @@
                         </div>
                     </div>
 
+                    {% set anomaly_cfg = config.NOTIFICATIONS.ANOMALY_ALERTS if config.NOTIFICATIONS.ANOMALY_ALERTS else {} %}
+                    <div class="settings-panel border-left-green">
+                        <h4 class="settings-panel-header text-green">🔬 Isolation Forest Anomaly Detection</h4>
+                        <p class="settings-desc-sm">Trains a per-ticker unsupervised Isolation Forest model on 6-dimensional market features (volume ratio, RSI, daily return, SMA distance, volatility, beta). Runs nightly at 18:30. Anomaly scores are written intraday and displayed on each stock detail page.</p>
+
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="ANOMALY_ALERTS_ENABLED" {% if anomaly_cfg.ENABLED %}checked{% endif %}>
+                            <label for="ANOMALY_ALERTS_ENABLED">Enable anomaly scoring & pre-alerts</label>
+                        </div>
+
+                        <div class="flex-gap-15 align-end flex-wrap mt-10">
+                            <div class="form-group mb-0">
+                                <label>Alert Threshold (0–1)</label>
+                                <input type="number" id="ANOMALY_ALERTS_THRESHOLD" min="0" max="1" step="0.05" value="{{ anomaly_cfg.THRESHOLD | default(0.7) }}" style="width:90px;">
+                            </div>
+                            <button type="button" class="btn-test mt-0 btn-green" onclick="triggerAnomalyTraining()">▶️ Train Models Now</button>
+                        </div>
+                    </div>
+
                     <div class="settings-panel-sm border-left-cyan">
                         <h4 class="settings-panel-header text-cyan">📰 NLP Market Sentiment Engine</h4>
                         <p class="settings-desc-sm">Fetches financial news and runs FinBERT NLP sentiment analysis independently of the core quant scan.</p>
@@ -1089,6 +1108,7 @@
                                     <tr><td>Macro HMM State Outputs</td><td class="val-col" id="diag-mac-hmm">--</td><td class="sub-val-col">Rows logged</td></tr>
                                     <tr><td>Macro RF Surprise Outputs</td><td class="val-col" id="diag-mac-rf">--</td><td class="sub-val-col">Rows logged</td></tr>
                                     <tr><td>Macro Indicators (FRED/BoE)</td><td class="val-col" id="diag-mac-ind">--</td><td class="sub-val-col">Structural rows</td></tr>
+                                    <tr><td>Isolation Forest Models</td><td class="val-col" id="diag-anomaly-cnt">--</td><td class="sub-val-col">anomaly_models/</td></tr>
                                     <tr><td>Notification Ledger</td><td class="val-col" id="diag-notes-sent">--</td><td class="sub-val-col" id="diag-notes-pending">--</td></tr>
                                 </tbody>
                             </table>
@@ -1976,6 +1996,24 @@
             }, 3000);
         }
 
+        async function triggerAnomalyTraining() {
+            const btn = document.querySelector('button[onclick="triggerAnomalyTraining()"]');
+            btn.disabled = true;
+            btn.innerText = "▶️ Training Models...";
+
+            try {
+                await fetch('/api/ml/trigger-anomaly-training', { method: 'POST' });
+                alert("Isolation Forest training initiated in the background. Check system notifications for progress.");
+            } catch (error) {
+                alert("Failed to initiate anomaly training. Network or server error.");
+            }
+
+            setTimeout(() => {
+                btn.disabled = false;
+                btn.innerText = "▶️ Train Models Now";
+            }, 3000);
+        }
+
         async function triggerMacroInit() {
             const btn = document.querySelector('button[onclick="triggerMacroInit()"]');
             btn.disabled = true;
@@ -2193,6 +2231,9 @@
                     document.getElementById('diag-mac-rf').innerText = fmt(data.ml.macro_rf_outputs);
                     document.getElementById('diag-mac-ind').innerText = fmt(data.state.macro_ind);
                     
+                    document.getElementById('diag-anomaly-cnt').innerText = `${fmt(data.ml.anomaly_model_count)} Models`;
+                    if (data.ml.anomaly_model_count === 0) document.getElementById('diag-anomaly-cnt').style.color = "#ffaa00";
+
                     document.getElementById('diag-notes-sent').innerText = `${fmt(data.state.notes_sent)} Sent`;
                     document.getElementById('diag-notes-pending').innerText = `${fmt(data.state.notes_pending)} Pending`;
                     if (data.state.notes_pending > 0) document.getElementById('diag-notes-pending').style.color = "#ffaa00";

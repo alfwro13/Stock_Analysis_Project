@@ -38,7 +38,7 @@ from config import (
     INTRADAY_DIR
 )
 from database import get_connection, get_universe_tickers
-from scheduler_engine import run_update_pipeline, run_ghostfolio_sync, run_freetrade_sync, reload_scheduler, run_sentiment_scan, run_index_scraper, run_fundamentals_profiler, run_universe_deep_sync_job, get_all_job_last_runs, run_xray_risk_cache_job
+from scheduler_engine import run_update_pipeline, run_ghostfolio_sync, run_freetrade_sync, reload_scheduler, run_sentiment_scan, run_index_scraper, run_fundamentals_profiler, run_universe_deep_sync_job, get_all_job_last_runs, run_xray_risk_cache_job, run_anomaly_training_job
 from xray_engine import assemble_xray_report
 from ghostfolio_sync import GhostfolioSyncEngine
 from market_pulse import get_cached_pulse_from_db, fetch_and_save_pulse
@@ -535,6 +535,15 @@ async def trigger_ml_inference_endpoint(request: Request, background_tasks: Back
         "message": "Daily ML Inference initiated in the background. Check System Notifications."
     })
 
+@api_router.post("/ml/trigger-anomaly-training")
+@limiter.limit("2/minute")
+async def trigger_anomaly_training_endpoint(request: Request, background_tasks: BackgroundTasks):
+    background_tasks.add_task(run_anomaly_training_job)
+    return JSONResponse(content={
+        "status": "success",
+        "message": "Isolation Forest anomaly training initiated in the background. Check System Notifications."
+    })
+
 @api_router.post("/trigger-quant-scan")
 @limiter.limit("10/minute")
 async def trigger_quant_scan_endpoint(request: Request, background_tasks: BackgroundTasks):
@@ -950,6 +959,9 @@ async def get_system_metrics():
         
         hmm_states = get_cnt("SELECT COUNT(*) FROM market_regimes WHERE ai_hmm_state IS NOT NULL")
         rf_states = get_cnt("SELECT COUNT(*) FROM macro_calendar WHERE ai_consensus_miss_prob IS NOT NULL")
+
+        from config import ANOMALY_MODELS_DIR
+        anomaly_model_cnt = len(list(ANOMALY_MODELS_DIR.glob("*.joblib"))) if ANOMALY_MODELS_DIR.exists() else 0
         
         # 3. Infrastructure & Storage
         cpu_load = os.getloadavg() if hasattr(os, 'getloadavg') else (0.0, 0.0, 0.0)
@@ -1009,7 +1021,8 @@ async def get_system_metrics():
             },
             "ml": {
                 "ensemble": ensemble_stats, "feature_count": feature_count,
-                "macro_hmm_outputs": hmm_states, "macro_rf_outputs": rf_states
+                "macro_hmm_outputs": hmm_states, "macro_rf_outputs": rf_states,
+                "anomaly_model_count": anomaly_model_cnt
             },
             "infra": {
                 "cpu": [round(c, 2) for c in cpu_load],
