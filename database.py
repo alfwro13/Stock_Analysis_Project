@@ -523,6 +523,7 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
         'composite_score': 'INTEGER',
         'overall_signal': 'TEXT',
         'week52_pct': 'REAL',
+        'anomaly_score': 'REAL',
     }
 
     for col_name, data_type in required_quant_columns.items():

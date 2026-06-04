@@ -36,7 +36,8 @@ from visuals import (
     create_uk_credit_chart,
     create_yield_curve_chart,
     create_us_inflation_chart,
-    create_uk_inflation_chart
+    create_uk_inflation_chart,
+    create_anomaly_score_chart,
 )
 from portfolio_service import get_rate_to_base, get_rate_from_base
 from quant_signals import get_candlestick_patterns
@@ -1362,16 +1363,49 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
     fake_rows = [{"currency": stock_data.get("currency", "USD")}]
     position_sizing_context = _build_position_sizing_context(config_data, fake_rows)
 
+    # Anomaly score chart — last 90 trading days with non-NULL scores
+    anomaly_chart_html = (
+        "<div style='display:flex;flex-direction:column;align-items:center;"
+        "justify-content:center;height:180px;gap:10px;color:#888;'>"
+        "<span style='font-size:2rem;'>📊</span>"
+        "<span style='font-weight:600;'>No anomaly data yet</span>"
+        "<span style='font-size:0.85rem;'>Scores are written during market hours once models are trained.</span>"
+        "</div>"
+    )
+    try:
+        conn_a = get_connection()
+        anomaly_rows = conn_a.execute(
+            "SELECT date, anomaly_score, close_price FROM quant_signals "
+            "WHERE ticker = ? AND anomaly_score IS NOT NULL "
+            "ORDER BY date ASC LIMIT 90",
+            (ticker,),
+        ).fetchall()
+        conn_a.close()
+        if anomaly_rows:
+            df_anomaly = pd.DataFrame(
+                [(r["date"], r["anomaly_score"], r["close_price"]) for r in anomaly_rows],
+                columns=["date", "anomaly_score", "close_price"],
+            )
+            df_anomaly["date"] = pd.to_datetime(df_anomaly["date"])
+            df_anomaly.set_index("date", inplace=True)
+            anomaly_threshold = float(
+                config_data.get("NOTIFICATIONS", {}).get("ANOMALY_ALERTS", {}).get("THRESHOLD", 0.7)
+            )
+            anomaly_chart_html = create_anomaly_score_chart(df_anomaly, ticker, threshold=anomaly_threshold)
+    except Exception:
+        pass  # fallback placeholder already set
+
     return templates.TemplateResponse(
-        request=request, name="stock_detail.html", 
+        request=request, name="stock_detail.html",
         context={
-            "stock": stock_data, 
+            "stock": stock_data,
             "top_holdings": top_holdings,
             "sector_weightings": sector_weightings,
-            "macro_html": macro_html, 
+            "macro_html": macro_html,
             "intraday_html": intraday_html,
+            "anomaly_chart_html": anomaly_chart_html,
             "portfolio_math": portfolio_math,
-            "days_to_earnings": days_to_earnings,   
+            "days_to_earnings": days_to_earnings,
             "volatility_date": volatility_date,
             "price_action": price_action,
             "unread_count": get_unread_count(),

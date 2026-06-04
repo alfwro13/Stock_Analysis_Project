@@ -421,6 +421,23 @@ def run_xray_risk_cache_job():
         record_job_run('xray_risk_cache_job')
 
 
+def run_anomaly_training_job():
+    """Nightly retraining of per-ticker Isolation Forest anomaly models (Mon–Fri 18:30)."""
+    log_sched_notification("Scheduler", "Started Anomaly Training job...")
+    try:
+        from anomaly_engine import AnomalyEngine
+        from config import load_config, HISTORICAL_DIR
+        config = load_config()
+        all_tickers = DataEngine().get_all_tickers()
+        AnomalyEngine(config).train_all(all_tickers, HISTORICAL_DIR)
+        log_sched_notification("Success", "Anomaly Training job completed.")
+    except Exception as e:
+        logger.error("Anomaly Training job failed: %s", e)
+        log_sched_notification("Error", f"Anomaly Training job failed: {e}")
+    finally:
+        record_job_run('anomaly_training_job')
+
+
 def reload_scheduler():
     """Reads the latest config.json and updates APScheduler dynamically."""
     logger.info("Reloading scheduled jobs from configuration...")
@@ -817,6 +834,20 @@ def reload_scheduler():
         except Exception as e:
             logger.error(f"Failed to schedule Universe Deep Sync Pipeline: {e}")
 
+
+    # Anomaly Training Job — runs Mon–Fri at 18:30 (after quant_analysis_job at 18:00,
+    # before xray_risk_cache_job at 19:00). Controlled by NOTIFICATIONS.ANOMALY_ALERTS.ENABLED.
+    anomaly_cfg = notifications.get("ANOMALY_ALERTS", {})
+    if anomaly_cfg.get("ENABLED", False):
+        try:
+            scheduler.add_job(
+                run_anomaly_training_job,
+                CronTrigger(day_of_week='mon-fri', hour=18, minute=30),
+                id='anomaly_training_job',
+            )
+            logger.info("Anomaly Training job scheduled for mon-fri at 18:30.")
+        except Exception as e:
+            logger.error(f"Failed to schedule Anomaly Training job: {e}")
 
     # Always-on: X-ray Risk Cache — runs daily Mon–Fri at 19:00 (after market close).
     # No config flag required; the X-ray report is always available.

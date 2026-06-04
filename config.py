@@ -38,7 +38,8 @@ DATA_DIR = BASE_DIR / "data"
 # Sub-directories for organized data storage
 HISTORICAL_DIR = DATA_DIR / "historical"       
 INTRADAY_DIR = DATA_DIR / "intraday"           
-FUNDAMENTALS_DIR = DATA_DIR / "fundamentals"   
+FUNDAMENTALS_DIR = DATA_DIR / "fundamentals"
+ANOMALY_MODELS_DIR = DATA_DIR / "anomaly_models"
 
 # Define specific file paths
 DB_PATH = DATA_DIR / "analysis.db"
@@ -50,6 +51,7 @@ SECRETS_PATH = BASE_DIR / "config.json"
 HISTORICAL_DIR.mkdir(parents=True, exist_ok=True)
 INTRADAY_DIR.mkdir(parents=True, exist_ok=True)
 FUNDAMENTALS_DIR.mkdir(parents=True, exist_ok=True)
+ANOMALY_MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
 # Application Default Variables
 PORT = 8090
@@ -236,6 +238,13 @@ DEFAULT_CONFIG = {
             "REARM_PERCENT": 3.0
         },
         "MACRO_ALERTS": {
+            "COOLDOWN_MINUTES": 120,
+            "RETRIGGER_PERCENT": 2.0,
+            "REARM_PERCENT": 3.0
+        },
+        "ANOMALY_ALERTS": {
+            "ENABLED": True,
+            "THRESHOLD": 0.7,
             "COOLDOWN_MINUTES": 120,
             "RETRIGGER_PERCENT": 2.0,
             "REARM_PERCENT": 3.0

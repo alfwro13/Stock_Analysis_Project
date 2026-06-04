@@ -378,3 +378,82 @@ def create_yield_curve_chart(df_curve: pd.DataFrame) -> str:
     fig.update_yaxes(title_text="Spread (%)", showgrid=True, gridcolor="#333333")
 
     return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
+
+
+def create_anomaly_score_chart(df: pd.DataFrame, ticker: str, threshold: float = 0.7) -> str:
+    """
+    Two-row Plotly chart: Isolation Forest anomaly score (top) + closing price (bottom).
+    df must have columns ['anomaly_score', 'close_price'] with a DatetimeIndex.
+    Scores above threshold are coloured red; below are coloured green.
+    """
+    fig = make_subplots(
+        rows=2, cols=1,
+        shared_xaxes=True,
+        row_heights=[0.6, 0.4],
+        vertical_spacing=0.06,
+        subplot_titles=(f"{ticker} — Isolation Forest Anomaly Score (90d)", "Close Price"),
+    )
+
+    # Split score series into two traces for conditional colouring
+    normal_x = df.index[df['anomaly_score'] <= threshold]
+    normal_y = df.loc[df['anomaly_score'] <= threshold, 'anomaly_score']
+    anomaly_x = df.index[df['anomaly_score'] > threshold]
+    anomaly_y = df.loc[df['anomaly_score'] > threshold, 'anomaly_score']
+
+    fig.add_trace(
+        go.Scatter(
+            x=normal_x, y=normal_y,
+            mode='lines+markers',
+            name='Normal',
+            line=dict(color='#00ffcc', width=1.5),
+            marker=dict(size=3, color='#00ffcc'),
+        ),
+        row=1, col=1,
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=anomaly_x, y=anomaly_y,
+            mode='lines+markers',
+            name='High Anomaly',
+            line=dict(color='#ff4d4d', width=1.5),
+            marker=dict(size=5, color='#ff4d4d'),
+        ),
+        row=1, col=1,
+    )
+
+    # Threshold reference line
+    fig.add_hline(
+        y=threshold,
+        line_dash="dot",
+        line_color="#ffaa00",
+        annotation_text=f"Alert Threshold ({threshold})",
+        annotation_position="top right",
+        annotation_font_color="#ffaa00",
+        row=1, col=1,
+    )
+
+    # Closing price
+    fig.add_trace(
+        go.Scatter(
+            x=df.index, y=df['close_price'],
+            mode='lines',
+            name='Close',
+            line=dict(color='white', width=1.5),
+            showlegend=False,
+        ),
+        row=2, col=1,
+    )
+
+    fig.update_layout(
+        template="plotly_dark",
+        height=500,
+        margin=dict(l=20, r=20, t=60, b=20),
+        hovermode="x unified",
+        hoverlabel=dict(align="left"),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
+    )
+    fig.update_yaxes(title_text="Anomaly Score", range=[0, 1], row=1, col=1)
+    fig.update_yaxes(title_text="Close Price", row=2, col=1)
+    fig.update_xaxes(rangeslider_visible=False)
+
+    return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})

@@ -17,7 +17,9 @@ from utils import normalize_ticker
 from database import get_connection
 from crash_engine import CrashEngine
 from moonshot_engine import MoonshotEngine
+from anomaly_engine import AnomalyEngine
 from nextcloud_talk import send_text_message
+from utils import clamp_beta
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +98,7 @@ class IntradayOrchestrator:
         # Instantiate engines with config so they don't reload it internally
         self.crash_engine = CrashEngine(self.config)
         self.moonshot_engine = MoonshotEngine(self.config)
+        self.anomaly_engine = AnomalyEngine(self.config)
         # Keyed (ticker, date-str) so each ticker is fetched at most once per calendar day.
         self._corp_action_cache: Dict[tuple, bool] = {}
 
@@ -122,9 +125,10 @@ class IntradayOrchestrator:
         
         query = f"""
             SELECT s.ticker, s.company_name, s.currency, s.atr_stop_loss, s.last_updated, s.beta,
-                   q.ml_confidence_score, q.var_95, q.cvar_95, q.sentiment_score
+                   q.ml_confidence_score, q.var_95, q.cvar_95, q.sentiment_score,
+                   q.rsi_14, q.sma_50, q.hist_vol_20
             FROM stock_signals s
-            LEFT JOIN quant_signals q ON s.ticker = q.ticker 
+            LEFT JOIN quant_signals q ON s.ticker = q.ticker
                 AND q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = s.ticker)
             WHERE s.ticker IN ({placeholders})
         """
@@ -141,7 +145,10 @@ class IntradayOrchestrator:
                 'ml_confidence_score': row['ml_confidence_score'],
                 'var_95': row['var_95'],
                 'cvar_95': row['cvar_95'],
-                'sentiment_score': row['sentiment_score']
+                'sentiment_score': row['sentiment_score'],
+                'rsi_14': row['rsi_14'],
+                'sma_50': row['sma_50'],
+                'hist_vol_20': row['hist_vol_20'],
             }
         conn.close()
         return metadata
@@ -191,6 +198,8 @@ class IntradayOrchestrator:
             key = "CRASH_ALERTS"
         elif engine == "Moonshot":
             key = "MOONSHOT_ALERTS"
+        elif engine == "Anomaly":
+            key = "ANOMALY_ALERTS"
         else:  # Macro and any future engines
             key = "MACRO_ALERTS"
         block = self.config.get("NOTIFICATIONS", {}).get(key, {})
@@ -617,10 +626,12 @@ class IntradayOrchestrator:
 
         crash_alerts_to_send = []
         moonshot_alerts_to_send = []
-        
+        anomaly_alerts_to_send = []
+
         # Check correct config paths for enablement (SCHEDULING, not NOTIFICATIONS)
         crash_enabled = self.config.get("SCHEDULING", {}).get("CRASH_ALERTS", {}).get("ENABLED", False)
         moonshot_enabled = self.config.get("SCHEDULING", {}).get("MOONSHOT_ALERTS", {}).get("ENABLED", False)
+        anomaly_enabled = self.config.get("NOTIFICATIONS", {}).get("ANOMALY_ALERTS", {}).get("ENABLED", False)
 
         for ticker in tickers:
             try:
@@ -730,6 +741,69 @@ class IntradayOrchestrator:
                     ):
                         moonshot_alerts_to_send.append((ticker, moonshot_alert, currency, asset_meta))
 
+                # --- EVALUATE ANOMALY ENGINE ---
+                if anomaly_enabled and 'Volume' in df_intraday.columns:
+                    try:
+                        vol_ma20 = df_hist['Volume'].tail(20).mean()
+                        if vol_ma20 > 0:
+                            prev_close_hist = float(df_hist['Close'].iloc[-1])
+                            sma_50 = asset_meta.get('sma_50') or current_price
+                            feature_vector = [
+                                float(df_intraday['Volume'].sum()) / vol_ma20,
+                                float(asset_meta.get('rsi_14') or 50.0),
+                                ((current_price - prev_close_hist) / prev_close_hist) * 100,
+                                ((current_price - sma_50) / sma_50) * 100,
+                                float(asset_meta.get('hist_vol_20') or 0.2),
+                                clamp_beta(asset_meta.get('beta')),
+                            ]
+                            anomaly_score = self.anomaly_engine.score(ticker, feature_vector)
+                            if anomaly_score is not None:
+                                today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                                try:
+                                    conn.execute(
+                                        "UPDATE quant_signals SET anomaly_score = ? "
+                                        "WHERE ticker = ? AND date = ?",
+                                        (anomaly_score, ticker, today_str),
+                                    )
+                                    conn.commit()
+                                except Exception as db_err:
+                                    logger.warning("anomaly_score DB write failed for %s: %s", ticker, db_err)
+
+                                threshold = float(
+                                    self.config.get("NOTIFICATIONS", {})
+                                    .get("ANOMALY_ALERTS", {})
+                                    .get("THRESHOLD", 0.7)
+                                )
+                                if anomaly_score > threshold:
+                                    # Corroborate any crash alert that also fired this scan
+                                    corroborated = False
+                                    for i, (t, alert, *_) in enumerate(crash_alerts_to_send):
+                                        if t == ticker:
+                                            crash_alerts_to_send[i][1]['reason'] += (
+                                                f"\n🤖 *Anomaly Score: {anomaly_score:.2f}* (Isolation Forest)"
+                                            )
+                                            corroborated = True
+                                            break
+                                    if not corroborated:
+                                        anomaly_alert = {
+                                            'price': current_price,
+                                            'reason': (
+                                                f"Isolation Forest score {anomaly_score:.2f} "
+                                                f"exceeds threshold {threshold:.2f}"
+                                            ),
+                                            'anomaly_score': anomaly_score,
+                                            'threshold': threshold,
+                                        }
+                                        if not self._evaluate_alert_gate(
+                                            "Anomaly", ticker, current_price,
+                                            anomaly_alert['reason'], conn,
+                                        ):
+                                            anomaly_alerts_to_send.append(
+                                                (ticker, anomaly_alert, currency, asset_meta)
+                                            )
+                    except Exception:
+                        logger.error("Anomaly evaluation failed for %s", ticker, exc_info=True)
+
             except Exception:
                 logger.error("Error processing %s", ticker, exc_info=True)
 
@@ -771,8 +845,31 @@ class IntradayOrchestrator:
                 f"**Price:** {p} | Moonshot triggered for {t}. Reason: {a['reason']}"
             ),
         )
+        self._dispatch_alerts(
+            "Anomaly",
+            anomaly_alerts_to_send,
+            conn,
+            lambda t, p, a, ml, v, s, u: (
+                f"⚠️ **ANOMALY ALERT: {t}** ⚠️\n\n"
+                f"**Price:** {p}\n"
+                f"**Anomaly Score:** {a.get('anomaly_score', 0):.2f} / 1.00 "
+                f"(Threshold: {a.get('threshold', 0.7):.2f})\n"
+                f"**Trigger:** Isolation Forest detected a multi-dimensional statistical outlier.\n\n"
+                f"📊 **Context:**\n"
+                f"• AI Confidence: {ml}\n"
+                f"• Downside Log-Return VaR: {v}\n"
+                f"• NLP Sentiment: {s}\n\n"
+                f"🔗 [View Breakdown]({u})"
+            ),
+            lambda t, p, a: (
+                f"Anomaly Score: {a.get('anomaly_score', 0):.2f} detected for {t} at {p}"
+            ),
+        )
 
-        logger.info("Scan complete. Dispatched %d crashes and %d moonshots.", len(crash_alerts_to_send), len(moonshot_alerts_to_send))
+        logger.info(
+            "Scan complete. Dispatched %d crashes, %d moonshots, %d anomalies.",
+            len(crash_alerts_to_send), len(moonshot_alerts_to_send), len(anomaly_alerts_to_send),
+        )
 
 if __name__ == "__main__":
     try:

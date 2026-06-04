@@ -870,6 +870,13 @@
                         {{ macro_html | safe }}
                     </div>
                 </div>
+                <div id="anomaly-section">
+                    <h2>Isolation Forest Anomaly Score</h2>
+                    <div class="chart-wrapper" id="anomaly-wrapper">
+                        <button class="fullscreen-btn" onclick="toggleFullscreen('anomaly-wrapper')">⛶ Fullscreen</button>
+                        {{ anomaly_chart_html | safe }}
+                    </div>
+                </div>
             </div> </div> </div>
 
     <script>
