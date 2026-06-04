@@ -42,7 +42,7 @@ def load_blacklist() -> set:
             with open(BLACKLIST_PATH, 'r') as f:
                 return set(json.load(f))
         except Exception:
-            pass
+            logger.warning("Failed to read Freetrade blacklist from %s", BLACKLIST_PATH, exc_info=True)
     return set()
 
 def log_freetrade_notification(msg_type: str, msg_text: str) -> None:
@@ -90,8 +90,8 @@ def resolve_ticker(symbol: str, isin: str, mic: str, cache_dict: Dict[str, str],
                             cache_dict[isin] = resolved_symbol
                             return resolved_symbol, True
             except Exception:
-                pass
-        
+                logger.debug("ISIN lookup failed for %s, using fallback symbol", isin, exc_info=True)
+
         # Fallback if ISIN lookup fails for a mutual fund
         return ft_symbol + ".L", True
 

@@ -995,7 +995,7 @@ async def get_system_metrics():
                 f_stats = joblib.load(feat_stats_path)
                 feature_count = len(f_stats.keys()) if isinstance(f_stats, dict) else 0
             except Exception:
-                pass
+                logger.warning("Failed to load ML feature stats from %s", feat_stats_path, exc_info=True)
         
         hmm_states = get_cnt("SELECT COUNT(*) FROM market_regimes WHERE ai_hmm_state IS NOT NULL")
         rf_states = get_cnt("SELECT COUNT(*) FROM macro_calendar WHERE ai_consensus_miss_prob IS NOT NULL")
@@ -1302,7 +1302,8 @@ async def api_index_refresh(req: TickerRequest):
 
 
 @api_router.get("/options/chain/{ticker}")
-async def api_options_chain(ticker: str = PathParam(..., pattern=r"^[A-Z0-9.\-\^=]{1,20}$")):
+@limiter.limit("10/minute")
+async def api_options_chain(request: Request, ticker: str = PathParam(..., pattern=r"^[A-Z0-9.\-\^=]{1,20}$")):
     data = fetch_options_chain(ticker)
     if "error" in data:
         return JSONResponse(status_code=400, content=data)
@@ -1321,7 +1322,8 @@ async def api_options_payoff(req: PayoffRequest):
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 @api_router.get("/screener-data")
-async def get_screener_data():
+@limiter.limit("20/minute")
+async def get_screener_data(request: Request):
     conn = None
     try:
         config_data = load_config()
@@ -1397,7 +1399,8 @@ async def get_screener_data():
             conn.close()
 
 @api_router.get("/reports/quality-compounders")
-async def api_reports_quality_compounders():
+@limiter.limit("10/minute")
+async def api_reports_quality_compounders(request: Request):
     try:
         data = get_quality_compounders()
         return JSONResponse(content={"data": data})
@@ -1406,7 +1409,8 @@ async def api_reports_quality_compounders():
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 @api_router.get("/reports/quality-on-sale")
-async def api_reports_quality_on_sale():
+@limiter.limit("10/minute")
+async def api_reports_quality_on_sale(request: Request):
     try:
         data = get_quality_on_sale()
         return JSONResponse(content={"data": data})
@@ -1415,7 +1419,8 @@ async def api_reports_quality_on_sale():
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 @api_router.get("/reports/garp-tenbaggers")
-async def api_reports_garp_tenbaggers():
+@limiter.limit("10/minute")
+async def api_reports_garp_tenbaggers(request: Request):
     try:
         data = get_garp_tenbaggers()
         return JSONResponse(content={"data": data})
@@ -1424,7 +1429,8 @@ async def api_reports_garp_tenbaggers():
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 @api_router.get("/reports/sectors")
-async def api_reports_sectors():
+@limiter.limit("10/minute")
+async def api_reports_sectors(request: Request):
     try:
         data = get_sector_trends()
         return JSONResponse(content={"data": data})
@@ -1433,7 +1439,9 @@ async def api_reports_sectors():
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 @api_router.get("/reports/mean-reversion")
+@limiter.limit("10/minute")
 async def api_reports_mean_reversion(
+    request: Request,
     max_rsi: float = Query(default=30.0, ge=0.0, le=100.0),
     min_sma_distance: float = Query(default=0.0, ge=0.0),
 ):
@@ -1445,7 +1453,8 @@ async def api_reports_mean_reversion(
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 @api_router.get("/reports/leaders")
-async def api_reports_leaders():
+@limiter.limit("10/minute")
+async def api_reports_leaders(request: Request):
     try:
         data = get_leaders_laggards()
         return JSONResponse(content={"data": data})
@@ -1454,7 +1463,9 @@ async def api_reports_leaders():
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 @api_router.get("/reports/dividends")
+@limiter.limit("10/minute")
 async def api_reports_dividends(
+    request: Request,
     min_yield: float = Query(default=0.02, ge=0.0, le=1.0),
     min_score: int   = Query(default=50,   ge=0,   le=100),
 ):
@@ -1518,7 +1529,8 @@ async def get_data_freshness():
 
 
 @api_router.get("/xray")
-async def get_xray_report(account_id: str = "all"):
+@limiter.limit("10/minute")
+async def get_xray_report(request: Request, account_id: str = "all"):
     """
     Returns the full Portfolio X-ray report JSON for the given account scope.
     account_id: "all" for global (all active accounts) or a Ghostfolio account UUID.

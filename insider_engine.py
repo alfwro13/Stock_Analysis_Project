@@ -1,4 +1,5 @@
 # insider_engine.py
+import logging
 import os
 import json
 import requests
@@ -7,6 +8,8 @@ import pandas as pd
 from datetime import datetime, timedelta
 from database import get_connection
 from config import PORTFOLIO_PATH, WATCHLIST_PATH, load_config
+
+logger = logging.getLogger(__name__)
 
 def send_nextcloud_message(message_text: str, config_data: dict) -> bool:
     """Sends a direct text payload to Nextcloud Talk using dynamic configurations."""
@@ -117,7 +120,7 @@ def run_insider_alert():
                     try:
                         insider_df = stock.get_insider_transactions()
                     except Exception:
-                        pass
+                        logger.warning("get_insider_transactions failed for %s", ticker, exc_info=True)
                 
                 if insider_df is None or not isinstance(insider_df, pd.DataFrame) or insider_df.empty:
                     continue

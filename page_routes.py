@@ -2,8 +2,11 @@
 import email.utils
 import ipaddress
 import json
+import logging
 import re
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 from datetime import datetime, timedelta, timezone
 from html import escape as html_escape
 from typing import Dict, Any, List
@@ -115,7 +118,7 @@ def _build_position_sizing_context(config_data: dict, db_rows) -> dict:
             if rate is not None and rate > 0:
                 fx_rates[cur] = float(rate)
         except Exception:
-            pass
+            logger.warning("FX rate lookup failed for currency %s", cur, exc_info=True)
     # Always provide a 1.0 entry for the base currency itself
     fx_rates[base_currency] = 1.0
     
@@ -237,7 +240,7 @@ def _load_fundamentals_extra(ticker: str) -> dict:
             try:
                 ex_div_fmt = datetime.utcfromtimestamp(ex_div_ts).strftime("%Y-%m-%d")
             except Exception:
-                pass
+                logger.warning("Could not parse exDividendDate timestamp %s", ex_div_ts)
 
         total_cash = d.get("totalCash")
         total_debt = d.get("totalDebt")
@@ -1248,15 +1251,15 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
     top_holdings = []
     sector_weightings = []
     if stock_data and stock_data.get('top_holdings'):
-        try: 
+        try:
             top_holdings = json.loads(stock_data['top_holdings'])
-        except Exception: 
-            pass
+        except Exception:
+            logger.warning("Failed to parse top_holdings JSON for %s", ticker, exc_info=True)
     if stock_data and stock_data.get('sector_weightings'):
-        try: 
+        try:
             sector_weightings = json.loads(stock_data['sector_weightings'])
-        except Exception: 
-            pass
+        except Exception:
+            logger.warning("Failed to parse sector_weightings JSON for %s", ticker, exc_info=True)
 
     days_to_earnings = None
     volatility_date = None
@@ -1267,7 +1270,7 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
             days_to_earnings = (e_date - today).days
             volatility_date = (e_date - timedelta(days=7)).strftime('%Y-%m-%d')
         except Exception:
-            pass
+            logger.warning("Could not parse next_earnings_date for %s: %s", ticker, stock_data.get('next_earnings_date'))
 
     portfolio_json = get_json_data(PORTFOLIO_PATH)
     user_asset = next((data for key, data in portfolio_json.items() if data.get("ticker") == ticker), None)

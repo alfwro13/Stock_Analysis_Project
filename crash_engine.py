@@ -262,7 +262,7 @@ class CrashEngine:
                 updated_dt = pd.to_datetime(atr_last_updated)
                 atr_is_fresh = (pd.Timestamp.now() - updated_dt) <= pd.Timedelta(days=3)
             except Exception:
-                pass
+                logger.debug("Could not parse ATR last_updated timestamp '%s', treating as stale", atr_last_updated)
         is_below_atr = atr_stop is not None and atr_is_fresh and (0 < current_price < atr_stop)
 
         # Execution Logic: If Session Crash OR (X-Drop AND Y-Gap) OR (Broke Mathematical ATR)

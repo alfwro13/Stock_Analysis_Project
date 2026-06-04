@@ -1187,7 +1187,7 @@ def assemble_xray_report(account_id: str) -> Dict:
                     "the scheduler may not have run recently."
                 )
         except Exception:
-            pass
+            logger.debug("Could not compute risk cache age, skipping staleness check", exc_info=True)
     uncovered = [h["symbol"] for h in holdings_sorted if h.get("beta") is None and risk_cache]
     if uncovered:
         data_warnings.append(

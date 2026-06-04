@@ -21,7 +21,7 @@ def load_blacklist() -> set:
             with open(BLACKLIST_PATH, 'r') as f:
                 return set(json.load(f))
         except Exception:
-            pass
+            logger.warning("Failed to read profile blacklist from %s", BLACKLIST_PATH, exc_info=True)
     return set()
 
 def save_blacklist(blacklist: set) -> None:

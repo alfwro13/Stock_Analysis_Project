@@ -22,7 +22,7 @@ def _fetch_info(ticker: str) -> dict:
             with open(cache_path, 'r') as f:
                 return json.load(f)
         except Exception:
-            pass
+            logger.warning("Corrupted fundamentals cache for %s, re-fetching", ticker, exc_info=True)
     try:
         info = yf.Ticker(ticker).info or {}
         if info.get('quoteType'):

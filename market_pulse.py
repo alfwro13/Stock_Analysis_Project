@@ -193,7 +193,17 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
         conn = get_connection()
         cursor = conn.cursor()
         current_time: float = time.time()
-        
+
+        # Pre-fetch existing cache rows for all tickers in one query to avoid N+1 lookups
+        existing_cache: dict = {}
+        if tickers_to_fetch:
+            placeholders = ','.join('?' for _ in tickers_to_fetch)
+            cursor.execute(
+                f"SELECT ticker, price FROM market_pulse_cache WHERE ticker IN ({placeholders})",
+                tickers_to_fetch,
+            )
+            existing_cache = {row['ticker']: row['price'] for row in cursor.fetchall()}
+
         # 1. Ingest Standard Yahoo Finance Securities
         for ticker in tickers_to_fetch:
             try:
@@ -207,7 +217,7 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
                     else:
                         if len(tickers_to_fetch) == 1:
                             t_daily = df_daily.copy()
-                            
+
                 if not df_live.empty:
                     if isinstance(df_live.columns, pd.MultiIndex):
                         if ticker in df_live.columns.get_level_values(0):
@@ -215,7 +225,7 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
                     else:
                         if len(tickers_to_fetch) == 1:
                             t_live = df_live.copy()
-                            
+
                 if not t_daily.empty:
                     t_daily.dropna(subset=['Close'], inplace=True)
                 if not t_live.empty:
@@ -223,14 +233,14 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
 
                 if t_daily.empty:
                     # No daily data at all — transient outage or genuinely invalid ticker.
-                    cursor.execute("SELECT price FROM market_pulse_cache WHERE ticker = ?", (ticker,))
-                    existing = cursor.fetchone()
-                    if existing is not None and existing['price']:
+                    price_in_cache = existing_cache.get(ticker)
+                    in_cache = ticker in existing_cache
+                    if in_cache and price_in_cache:
                         cursor.execute(
                             "UPDATE market_pulse_cache SET last_updated = ? WHERE ticker = ?",
                             (current_time, ticker)
                         )
-                    elif existing is not None:
+                    elif in_cache:
                         cursor.execute(
                             "UPDATE market_pulse_cache SET last_updated = 0 WHERE ticker = ?",
                             (ticker,)
@@ -300,8 +310,8 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
                             elif len(df_gilt_hist) == 1:
                                 gilt_prev_close = float(df_gilt_hist['Close'].iloc[-1])
                         except Exception:
-                            pass
-                            
+                            logger.debug("Could not parse gilt history close price, using default prev_close")
+
                     gilt_change_pts: float = live_gilt_yield - gilt_prev_close
                     gilt_change_pct: float = (gilt_change_pts / gilt_prev_close) * 100.0 if gilt_prev_close != 0.0 else 0.0
                     

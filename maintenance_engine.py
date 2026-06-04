@@ -1,9 +1,12 @@
 # maintenance_engine.py
+import logging
 import os
 import time
 import json
 import sqlite3
 from datetime import datetime, timedelta
+
+logger = logging.getLogger(__name__)
 from config import (
     PORTFOLIO_PATH, WATCHLIST_PATH, HISTORICAL_DIR,
     INTRADAY_DIR, FUNDAMENTALS_DIR, load_config
@@ -47,7 +50,7 @@ class MaintenanceEngine:
                         if 'ticker' in v:
                             active_tickers.add(v['ticker'])
             except Exception:
-                pass
+                logger.warning("Failed to parse portfolio.json for active tickers", exc_info=True)
 
         # 2. Watchlist JSON
         if os.path.exists(WATCHLIST_PATH):
@@ -57,7 +60,7 @@ class MaintenanceEngine:
                     if 'watchlist' in data:
                         active_tickers.update(data['watchlist'])
             except Exception:
-                pass
+                logger.warning("Failed to parse watchlist.json for active tickers", exc_info=True)
 
         # 3. Every DB table that tracks per-ticker data.
         #    Universe engine alone can track thousands of equities that may not be
@@ -81,7 +84,7 @@ class MaintenanceEngine:
                     cursor.execute(f"SELECT DISTINCT ticker FROM {table}")
                     active_tickers.update(row[0] for row in cursor.fetchall() if row[0])
                 except Exception:
-                    pass  # table may not exist on older installs
+                    logger.debug("Table %s not present, skipping ticker discovery", table)
             conn.close()
         except Exception:
             pass
