@@ -586,6 +586,48 @@
                 + '<div id="xray-c-pnl" class="xray-chart-el"></div>'
                 + '</div></div>';
 
+            // ── Recommendations ───────────────────────────────────────────────────
+            var recs = data.recommendations || {};
+            var recGroups = [
+                { key: 'market_development',   label: 'Market Development',     icon: '🌍' },
+                { key: 'regional_clusters',     label: 'Regional Clusters',      icon: '🗺️' },
+                { key: 'country_concentration', label: 'Country Concentration',  icon: '🏳️' },
+                { key: 'sector',                label: 'Sector Exposure',         icon: '📊' },
+                { key: 'asset_class',           label: 'Asset Class',            icon: '🧩' },
+                { key: 'concentration',         label: 'Concentration',          icon: '⚖️' },
+                { key: 'risk_metrics',          label: 'Risk Metrics',           icon: '📉' },
+                { key: 'income',                label: 'Income',                 icon: '💰' }
+            ];
+            var statusBadge = {
+                'exceeds': '<span class="xray-rec-badge xray-rec-exceeds">Exceeds</span>',
+                'below':   '<span class="xray-rec-badge xray-rec-below">Below target</span>',
+                'within':  '<span class="xray-rec-badge xray-rec-within">Within range ✓</span>',
+                'ok':      '<span class="xray-rec-badge xray-rec-within">OK ✓</span>'
+            };
+            var hasAnyRec = recGroups.some(function(g){ return (recs[g.key] || []).length > 0; });
+            if (hasAnyRec) {
+                html += '<div class="xray-section"><h3 class="xray-section-title">Portfolio Recommendations</h3>';
+                html += '<p class="xray-rec-intro">Comparison of your current allocations against the configured MSCI ACWI-based targets. '
+                      + 'Targets can be customised in <a href="/settings" style="color:#00bcd4;">Settings → X-Ray Allocation Targets</a>.</p>';
+                recGroups.forEach(function(g) {
+                    var items = recs[g.key] || [];
+                    if (!items.length) return;
+                    html += '<details class="xray-rec-group" open>'
+                          + '<summary class="xray-rec-group-summary">' + g.icon + ' ' + g.label
+                          + ' <span class="xray-rec-count">' + items.length + '</span></summary>'
+                          + '<div class="xray-rec-list">';
+                    items.forEach(function(item) {
+                        var badge = statusBadge[item.status] || '';
+                        html += '<div class="xray-rec-item xray-rec-item-' + item.status + '">'
+                              + badge
+                              + '<span class="xray-rec-msg">' + item.message + '</span>'
+                              + '</div>';
+                    });
+                    html += '</div></details>';
+                });
+                html += '</div>';
+            }
+
             // Footer
             if (rm.cache_date) {
                 html += '<div class="xray-footer">Risk metrics as of ' + rm.cache_date

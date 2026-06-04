@@ -680,6 +680,27 @@ table.dataTable tbody tr td { color: #ccc; }
 .xray-income-value { font-size: 22px; font-weight: 700; color: #e0e0e0; }
 /* Footer */
 .xray-footer { font-size: 11px; color: #555; padding: 12px 0 4px 0; border-top: 1px solid #2a2a2a; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+
+/* Recommendations */
+.xray-rec-intro { font-size: 13px; color: #888; margin: -8px 0 16px 0; }
+.xray-rec-group { border: 1px solid #2a2a2a; border-radius: 6px; margin-bottom: 10px; overflow: hidden; }
+.xray-rec-group-summary { font-size: 14px; font-weight: 600; color: #ccc; padding: 10px 14px; cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px; background: #1e1e1e; }
+.xray-rec-group-summary::-webkit-details-marker { display: none; }
+.xray-rec-group-summary::before { content: '▶'; font-size: 10px; color: #555; transition: transform 0.2s; }
+details[open].xray-rec-group .xray-rec-group-summary::before { transform: rotate(90deg); }
+.xray-rec-count { margin-left: auto; background: #2c2c2c; color: #888; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; }
+.xray-rec-list { padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; background: #161616; }
+.xray-rec-item { display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px; border-radius: 5px; background: #1a1a1a; border-left: 3px solid transparent; font-size: 13px; }
+.xray-rec-item-exceeds { border-left-color: #e74c3c; }
+.xray-rec-item-below   { border-left-color: #f39c12; }
+.xray-rec-item-within  { border-left-color: #2ecc71; }
+.xray-rec-item-ok      { border-left-color: #2ecc71; }
+.xray-rec-badge { display: inline-block; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px; white-space: nowrap; flex-shrink: 0; text-transform: uppercase; letter-spacing: 0.4px; }
+.xray-rec-exceeds { background: rgba(231,76,60,0.15);  color: #e74c3c; }
+.xray-rec-below   { background: rgba(243,156,18,0.15); color: #f39c12; }
+.xray-rec-within  { background: rgba(46,204,113,0.15); color: #2ecc71; }
+.xray-rec-msg { color: #bbb; line-height: 1.4; }
+
 /* Responsive */
 @media (max-width: 900px) {
   .xray-row-3col { grid-template-columns: 1fr; }

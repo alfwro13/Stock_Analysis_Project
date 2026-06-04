@@ -43,6 +43,21 @@ _CURRENCY_SYMBOLS: frozenset = frozenset({
     "SAR", "SEK", "SGD", "THB", "TRY", "TWD", "USD", "ZAR",
 })
 
+# ISO 3166-1 alpha-2 country code classification (MSCI methodology)
+_DEVELOPED_MARKET_CODES: frozenset = frozenset({
+    "US", "CA", "GB", "DE", "FR", "CH", "NL", "SE", "DK", "NO", "FI",
+    "BE", "AT", "NZ", "AU", "JP", "HK", "SG", "IL", "PT", "IE", "ES",
+    "IT", "PL", "CZ", "HU", "GR",
+})
+_EMERGING_MARKET_CODES: frozenset = frozenset({
+    "CN", "IN", "BR", "TW", "KR", "ZA", "MX", "SA", "RU", "TH", "MY",
+    "ID", "PH", "EG", "PK", "PE", "CO", "CL", "QA", "AE", "KW",
+})
+# Pacific ex-Japan (used for "Asia-Pacific" regional cluster)
+_APAC_CODES: frozenset = frozenset({
+    "AU", "NZ", "HK", "SG", "KR", "TW", "TH", "MY", "ID", "PH",
+})
+
 # Centralised glossary — single source of truth for all X-ray tooltips.
 # Serialised into the API response so the frontend never hard-codes definitions.
 XRAY_TOOLTIPS: Dict[str, str] = {
@@ -631,6 +646,214 @@ def _compute_max_drawdown(chart: List[Dict]) -> Optional[float]:
 
 
 # ---------------------------------------------------------------------------
+# Recommendations engine — compares current allocations against configured targets
+# ---------------------------------------------------------------------------
+
+def _rec_item(
+    category: str,
+    current: float,
+    min_val: Optional[float],
+    max_val: Optional[float],
+    unit: str = "%",
+) -> Optional[Dict]:
+    """Build a single recommendation dict, or None if no bound is defined."""
+    if min_val is None and max_val is None:
+        return None
+
+    pct_str = f"{round(current, 2)}{unit}"
+    if max_val is not None and current > max_val:
+        status = "exceeds"
+        msg = f"The {category} contribution of your current investment ({pct_str}) exceeds {max_val}{unit}"
+    elif min_val is not None and current < min_val:
+        if max_val is not None:
+            status = "below"
+            msg = f"The {category} contribution of your current investment ({pct_str}) is below {min_val}{unit}"
+        else:
+            status = "below"
+            msg = f"The {category} contribution of your current investment ({pct_str}) is below {min_val}{unit}"
+    elif min_val is not None and max_val is not None:
+        status = "within"
+        msg = (
+            f"The {category} contribution of your current investment ({pct_str}) "
+            f"is within the range of {min_val}{unit} and {max_val}{unit}"
+        )
+    else:
+        status = "ok"
+        msg = f"The {category} contribution of your current investment ({pct_str}) meets the target"
+
+    return {
+        "category": category,
+        "current_value": round(current, 4),
+        "status": status,
+        "min": min_val,
+        "max": max_val,
+        "unit": unit,
+        "message": msg,
+    }
+
+
+def _generate_xray_recommendations(
+    holdings: List[Dict],
+    sector_allocation: List[Dict],
+    asset_class_allocation: List[Dict],
+    risk_metrics: Dict,
+    concentration: Dict,
+    income: Dict,
+    targets: Dict,
+) -> Dict[str, List[Dict]]:
+    """Compare current allocations against configured targets and return recommendation messages."""
+
+    result: Dict[str, List[Dict]] = {
+        "market_development": [],
+        "regional_clusters": [],
+        "country_concentration": [],
+        "sector": [],
+        "asset_class": [],
+        "concentration": [],
+        "risk_metrics": [],
+        "income": [],
+    }
+
+    # --- 1. Market development & regional clusters (country-level iteration) ---
+    dev_weight = 0.0
+    em_weight = 0.0
+    regional: Dict[str, float] = {}
+    country_totals: Dict[str, float] = {}
+
+    for h in holdings:
+        h_weight = h.get("weight", 0.0)
+        for country in h.get("countries") or []:
+            code = (country.get("code") or "").upper()
+            name = country.get("name") or ""
+            continent = country.get("continent") or ""
+            c_weight = float(country.get("weight") or 0.0) * h_weight
+
+            # Market development
+            if code in _DEVELOPED_MARKET_CODES:
+                dev_weight += c_weight
+            elif code in _EMERGING_MARKET_CODES:
+                em_weight += c_weight
+
+            # Regional clusters
+            if code == "JP":
+                regional["Japan"] = regional.get("Japan", 0.0) + c_weight
+            elif code in _APAC_CODES:
+                regional["Asia-Pacific"] = regional.get("Asia-Pacific", 0.0) + c_weight
+            elif continent == "North America":
+                regional["North America"] = regional.get("North America", 0.0) + c_weight
+            elif continent == "Europe":
+                regional["Europe"] = regional.get("Europe", 0.0) + c_weight
+            if code in _EMERGING_MARKET_CODES:
+                regional["Emerging Markets"] = regional.get("Emerging Markets", 0.0) + c_weight
+
+            # Country concentration
+            if name:
+                country_totals[name] = country_totals.get(name, 0.0) + c_weight
+
+    # Market development recommendations
+    md_targets = targets.get("market_development", {})
+    for label, weight in [("Developed Markets", dev_weight * 100), ("Emerging Markets", em_weight * 100)]:
+        t = md_targets.get(label, {})
+        item = _rec_item(label, weight, t.get("min"), t.get("max"))
+        if item:
+            result["market_development"].append(item)
+
+    # Regional cluster recommendations
+    rc_targets = targets.get("regional_clusters", {})
+    for label, weight in regional.items():
+        t = rc_targets.get(label, {})
+        item = _rec_item(label, weight * 100, t.get("min"), t.get("max"))
+        if item:
+            result["regional_clusters"].append(item)
+    result["regional_clusters"].sort(key=lambda x: x["current_value"], reverse=True)
+
+    # Country concentration recommendations
+    cc_targets = targets.get("country_concentration", {})
+    for country_name, t in cc_targets.items():
+        weight = country_totals.get(country_name, 0.0) * 100
+        item = _rec_item(country_name, weight, t.get("min"), t.get("max"))
+        if item:
+            result["country_concentration"].append(item)
+
+    # --- 2. Sector targets ---
+    sector_targets = targets.get("sector_targets", {})
+    sector_map = {s["name"].lower(): s["weight"] for s in sector_allocation}
+    for sector_name, t in sector_targets.items():
+        weight = sector_map.get(sector_name.lower(), 0.0) * 100
+        if weight == 0.0 and t.get("min") is None:
+            continue
+        item = _rec_item(sector_name, weight, t.get("min"), t.get("max"))
+        if item:
+            result["sector"].append(item)
+
+    # --- 3. Asset class targets ---
+    ac_targets = targets.get("asset_class_targets", {})
+    ac_map = {a["name"].lower(): a["weight"] for a in asset_class_allocation}
+    for ac_name, t in ac_targets.items():
+        weight = ac_map.get(ac_name.lower(), 0.0) * 100
+        if weight == 0.0 and t.get("min") is None:
+            continue
+        item = _rec_item(ac_name, weight, t.get("min"), t.get("max"))
+        if item:
+            result["asset_class"].append(item)
+
+    # --- 4. Concentration targets ---
+    conc_t = targets.get("concentration_targets", {})
+    hhi = concentration.get("hhi", 0.0) or 0.0
+    top5 = concentration.get("top5_weight", 0.0) or 0.0
+    top10 = concentration.get("top10_weight", 0.0) or 0.0
+    max_pos = concentration.get("max_single_position", 0.0) or 0.0
+
+    for label, val, min_v, max_v, unit in [
+        ("Max Single Position", max_pos * 100, None, conc_t.get("max_single_position_pct"), "%"),
+        ("Top-5 Concentration", top5 * 100, None, conc_t.get("top5_weight_max_pct"), "%"),
+        ("Top-10 Concentration", top10 * 100, None, conc_t.get("top10_weight_max_pct"), "%"),
+        ("Portfolio HHI", hhi, None, conc_t.get("hhi_max"), ""),
+    ]:
+        item = _rec_item(label, val, min_v, max_v, unit)
+        if item:
+            result["concentration"].append(item)
+
+    # --- 5. Risk metric targets ---
+    rm_t = targets.get("risk_metric_targets", {})
+    beta = risk_metrics.get("portfolio_beta")
+    vol = risk_metrics.get("annualized_vol")
+    sharpe = risk_metrics.get("sharpe_ratio")
+    drawdown = risk_metrics.get("max_drawdown")
+    avg_corr = risk_metrics.get("avg_pairwise_correlation")
+
+    if beta is not None:
+        item = _rec_item("Portfolio Beta", beta, rm_t.get("portfolio_beta_min"), rm_t.get("portfolio_beta_max"), "")
+        if item:
+            result["risk_metrics"].append(item)
+    if vol is not None:
+        item = _rec_item("Annualised Volatility", vol * 100, None, rm_t.get("annualized_vol_max_pct"))
+        if item:
+            result["risk_metrics"].append(item)
+    if sharpe is not None:
+        item = _rec_item("Sharpe Ratio", sharpe, rm_t.get("sharpe_ratio_min"), None, "")
+        if item:
+            result["risk_metrics"].append(item)
+    if drawdown is not None:
+        item = _rec_item("Max Drawdown", abs(drawdown) * 100, None, rm_t.get("max_drawdown_max_pct"))
+        if item:
+            result["risk_metrics"].append(item)
+    if avg_corr is not None:
+        item = _rec_item("Average Correlation", avg_corr, None, rm_t.get("avg_correlation_max"), "")
+        if item:
+            result["risk_metrics"].append(item)
+
+    # --- 6. Income targets ---
+    inc_t = targets.get("income_targets", {})
+    div_yield = income.get("weighted_dividend_yield", 0.0) or 0.0
+    item = _rec_item("Dividend Yield", div_yield * 100, inc_t.get("dividend_yield_min_pct"), None)
+    if item:
+        result["income"].append(item)
+
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Main report assembler (called by the /api/xray endpoint)
 # ---------------------------------------------------------------------------
 
@@ -998,6 +1221,28 @@ def assemble_xray_report(account_id: str) -> Dict:
         for h in holdings_sorted
     ]
 
+    xray_targets = load_config().get("XRAY_TARGETS", {})
+    recommendations = _generate_xray_recommendations(
+        holdings=holdings,
+        sector_allocation=sector_allocation,
+        asset_class_allocation=asset_class_allocation,
+        risk_metrics={
+            "portfolio_beta": portfolio_beta,
+            "annualized_vol": portfolio_vol,
+            "max_drawdown": max_drawdown,
+            "sharpe_ratio": sharpe_ratio,
+            "avg_pairwise_correlation": avg_pairwise_corr,
+        },
+        concentration={
+            "hhi": hhi,
+            "top5_weight": top5_weight,
+            "top10_weight": top10_weight,
+            "max_single_position": max(h["weight"] for h in holdings) if holdings else 0.0,
+        },
+        income={"weighted_dividend_yield": weighted_div_yield},
+        targets=xray_targets,
+    )
+
     return {
         "account_id": account_id,
         "generated_at": datetime.datetime.now().isoformat(),
@@ -1043,4 +1288,5 @@ def assemble_xray_report(account_id: str) -> Dict:
         },
         "tooltips": XRAY_TOOLTIPS,
         "data_warnings": data_warnings,
+        "recommendations": recommendations,
     }

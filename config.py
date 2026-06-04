@@ -243,6 +243,61 @@ DEFAULT_CONFIG = {
         "RSS_FEED": {
             "ENABLED": False
         }
+    },
+    "XRAY_TARGETS": {
+        "market_development": {
+            "Developed Markets": {"min": 80.0, "max": 95.0},
+            "Emerging Markets":  {"min": 5.0,  "max": 20.0}
+        },
+        "regional_clusters": {
+            "North America":    {"min": 55.0, "max": 75.0},
+            "Europe":           {"min": 12.0, "max": 22.0},
+            "Japan":            {"min": 3.0,  "max": 8.0},
+            "Asia-Pacific":     {"min": 2.0,  "max": 8.0},
+            "Emerging Markets": {"min": 5.0,  "max": 18.0}
+        },
+        "country_concentration": {
+            "United States":  {"min": None, "max": 70.0},
+            "China":          {"min": None, "max": 15.0},
+            "Japan":          {"min": None, "max": 10.0},
+            "United Kingdom": {"min": None, "max": 10.0}
+        },
+        "sector_targets": {
+            "Technology":             {"min": None, "max": 35.0},
+            "Financials":             {"min": None, "max": 25.0},
+            "Healthcare":             {"min": None, "max": 20.0},
+            "Consumer Cyclical":      {"min": None, "max": 20.0},
+            "Industrials":            {"min": None, "max": 20.0},
+            "Communication Services": {"min": None, "max": 15.0},
+            "Consumer Staples":       {"min": None, "max": 15.0},
+            "Energy":                 {"min": None, "max": 10.0},
+            "Materials":              {"min": None, "max": 10.0},
+            "Utilities":              {"min": None, "max": 8.0},
+            "Real Estate":            {"min": None, "max": 8.0}
+        },
+        "asset_class_targets": {
+            "ETF":          {"min": 40.0, "max": None},
+            "Equity":       {"min": None, "max": 40.0},
+            "Fixed Income": {"min": None, "max": 30.0},
+            "Commodity":    {"min": None, "max": 10.0}
+        },
+        "concentration_targets": {
+            "max_single_position_pct": 15.0,
+            "top5_weight_max_pct": 50.0,
+            "top10_weight_max_pct": 70.0,
+            "hhi_max": 0.15
+        },
+        "risk_metric_targets": {
+            "portfolio_beta_min": 0.6,
+            "portfolio_beta_max": 1.4,
+            "annualized_vol_max_pct": 20.0,
+            "sharpe_ratio_min": 0.5,
+            "max_drawdown_max_pct": 30.0,
+            "avg_correlation_max": 0.75
+        },
+        "income_targets": {
+            "dividend_yield_min_pct": 1.5
+        }
     }
 }
 
