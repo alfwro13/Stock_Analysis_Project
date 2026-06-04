@@ -16,7 +16,7 @@ from quant_signals import QuantEngine
 from ghostfolio_sync import GhostfolioSyncEngine
 from quant_engine import run_daily_quant_scan
 from earnings_vol_engine import run_earnings_vol_scan
-from report_dispatcher import push_morning_quant_briefing
+from report_dispatcher import push_morning_quant_briefing, push_lunchtime_quant_briefing
 from database import get_universe_tickers, get_connection
 from universe_engine import update_market_universe
 from profile_engine import run_profile_audit
@@ -206,6 +206,21 @@ def run_morning_briefing_dispatch():
         log_sched_notification("Error", f"Morning Briefing Dispatch failed: {e}")
     finally:
         record_job_run('morning_briefing_dispatch_job')
+
+
+def run_lunchtime_briefing_dispatch():
+    """Executes the lunchtime quant briefing dispatch."""
+    log_sched_notification("Scheduler", "Started Lunchtime Briefing Dispatch...")
+    try:
+        logger.info("Lunchtime briefing dispatch initiated.")
+        push_lunchtime_quant_briefing()
+        logger.info("Lunchtime briefing dispatch complete.")
+        log_sched_notification("Success", "Lunchtime Briefing Dispatch completed successfully.")
+    except Exception as e:
+        logger.error(f"Lunchtime Briefing Dispatch Failed: {e}")
+        log_sched_notification("Error", f"Lunchtime Briefing Dispatch failed: {e}")
+    finally:
+        record_job_run('lunchtime_briefing_dispatch_job')
 
 def run_weekend_universe_routine():
     """Executes the massive 4000+ Universe Download and Quant Scan."""
@@ -723,8 +738,8 @@ def reload_scheduler():
     if disp_cfg.get("ENABLED", False):
         disp_days_list = disp_cfg.get("DAYS", ["mon", "tue", "wed", "thu", "fri"])
         disp_days = ",".join(disp_days_list) if disp_days_list else "mon-fri"
-        disp_time = disp_cfg.get("TIME", "08:00")
-        
+        disp_time = disp_cfg.get("TIME", "07:15")
+
         try:
             hour, minute = map(int, disp_time.split(':'))
             scheduler.add_job(
@@ -735,6 +750,24 @@ def reload_scheduler():
             logger.info(f"Morning Briefing Dispatch scheduled for {disp_days} at {disp_time}")
         except Exception as e:
             logger.error(f"Failed to schedule Morning Briefing Dispatch: {e}")
+
+    # 9b. Lunchtime Briefing Dispatch Engine
+    lunch_cfg = scheduling.get("LUNCH_DISPATCHER", {})
+    if lunch_cfg.get("ENABLED", False):
+        lunch_days_list = lunch_cfg.get("DAYS", ["mon", "tue", "wed", "thu", "fri"])
+        lunch_days = ",".join(lunch_days_list) if lunch_days_list else "mon-fri"
+        lunch_time = lunch_cfg.get("TIME", "12:00")
+
+        try:
+            hour, minute = map(int, lunch_time.split(':'))
+            scheduler.add_job(
+                run_lunchtime_briefing_dispatch,
+                CronTrigger(day_of_week=lunch_days, hour=hour, minute=minute),
+                id='lunchtime_briefing_dispatch_job'
+            )
+            logger.info(f"Lunchtime Briefing Dispatch scheduled for {lunch_days} at {lunch_time}")
+        except Exception as e:
+            logger.error(f"Failed to schedule Lunchtime Briefing Dispatch: {e}")
 
     # 10. Weekend Universe Routine (4000+ Tickers)
     uni_cfg = scheduling.get("UNIVERSE_ENGINE", {})

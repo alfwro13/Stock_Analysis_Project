@@ -619,7 +619,7 @@
                 </details>
 
                 <details class="settings-card">
-                    <summary>📊 Alerts and Reports</summary>
+                    <summary>📊 Alerts, Reports & Quant Briefings</summary>
 
                     <div class="settings-panel">
                         <h4 class="settings-panel-header text-blue">📅 Portfolio Earnings Alerts</h4>
@@ -712,14 +712,16 @@
 
                     {% set d_engine = config.SCHEDULING.DISPATCHER if config.SCHEDULING.DISPATCHER else {} %}
                     {% set d_days = d_engine.DAYS if d_engine.DAYS else ['mon', 'tue', 'wed', 'thu', 'fri'] %}
+                    {% set l_engine = config.SCHEDULING.LUNCH_DISPATCHER if config.SCHEDULING.LUNCH_DISPATCHER else {} %}
+                    {% set l_days = l_engine.DAYS if l_engine.DAYS else ['mon', 'tue', 'wed', 'thu', 'fri'] %}
 
                     <div class="settings-panel border-left-pink">
-                        <h4 class="settings-panel-header text-pink">📨 Morning Briefing Push Notification</h4>
-                        <p class="settings-desc-sm">Automatically dispatches the overnight Quant Screener Markdown report directly to Nextcloud Talk.</p>
+                        <h4 class="settings-panel-header text-pink">🌅 Morning Briefing (Pre UK Open)</h4>
+                        <p class="settings-desc-sm">Dispatches at 07:15 UK: overnight portfolio news, US futures, UK pre-open snapshot &amp; quant screener signals to Nextcloud Talk.</p>
 
                         <div class="checkbox-group">
                             <input type="checkbox" id="DISPATCHER_ENABLED" {% if d_engine.ENABLED %}checked{% endif %}>
-                            <label for="DISPATCHER_ENABLED">Enable Nextcloud Talk Dispatch</label>
+                            <label for="DISPATCHER_ENABLED">Enable Morning Briefing dispatch</label>
                         </div>
 
                         <div class="flex-gap-15 mb-15 flex-wrap">
@@ -735,7 +737,34 @@
                         <div class="flex-gap-15 align-end">
                             <div class="form-group mb-0">
                                 <label>Execution Time</label>
-                                <input type="time" id="DISPATCHER_TIME" value="{{ d_engine.TIME | default('08:00') }}">
+                                <input type="time" id="DISPATCHER_TIME" value="{{ d_engine.TIME | default('07:15') }}">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-panel border-left-pink">
+                        <h4 class="settings-panel-header text-pink">🕛 Lunchtime Briefing (12:00 UK)</h4>
+                        <p class="settings-desc-sm">Dispatches at 12:00 UK: morning session news since the morning briefing, UK mid-session snapshot &amp; US pre-market to Nextcloud Talk.</p>
+
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="LUNCH_DISPATCHER_ENABLED" {% if l_engine.ENABLED %}checked{% endif %}>
+                            <label for="LUNCH_DISPATCHER_ENABLED">Enable Lunchtime Briefing dispatch</label>
+                        </div>
+
+                        <div class="flex-gap-15 mb-15 flex-wrap">
+                            <label><input type="checkbox" class="lunch-dispatch-day" value="mon" {% if 'mon' in l_days %}checked{% endif %}> Mon</label>
+                            <label><input type="checkbox" class="lunch-dispatch-day" value="tue" {% if 'tue' in l_days %}checked{% endif %}> Tue</label>
+                            <label><input type="checkbox" class="lunch-dispatch-day" value="wed" {% if 'wed' in l_days %}checked{% endif %}> Wed</label>
+                            <label><input type="checkbox" class="lunch-dispatch-day" value="thu" {% if 'thu' in l_days %}checked{% endif %}> Thu</label>
+                            <label><input type="checkbox" class="lunch-dispatch-day" value="fri" {% if 'fri' in l_days %}checked{% endif %}> Fri</label>
+                            <label><input type="checkbox" class="lunch-dispatch-day" value="sat" {% if 'sat' in l_days %}checked{% endif %}> Sat</label>
+                            <label><input type="checkbox" class="lunch-dispatch-day" value="sun" {% if 'sun' in l_days %}checked{% endif %}> Sun</label>
+                        </div>
+
+                        <div class="flex-gap-15 align-end">
+                            <div class="form-group mb-0">
+                                <label>Execution Time</label>
+                                <input type="time" id="LUNCH_DISPATCHER_TIME" value="{{ l_engine.TIME | default('12:00') }}">
                             </div>
                         </div>
                     </div>
@@ -2495,6 +2524,7 @@
             const quantDays = Array.from(document.querySelectorAll('.quant-day:checked')).map(cb => cb.value);
             const earnDays = Array.from(document.querySelectorAll('.earn-day:checked')).map(cb => cb.value);
             const dispatchDays = Array.from(document.querySelectorAll('.dispatch-day:checked')).map(cb => cb.value);
+            const lunchDispatchDays = Array.from(document.querySelectorAll('.lunch-dispatch-day:checked')).map(cb => cb.value);
             const universeDays = Array.from(document.querySelectorAll('.universe-day:checked')).map(cb => cb.value);
             const mlBackfillDays = Array.from(document.querySelectorAll('.ml-backfill-day:checked')).map(cb => cb.value);
             const mlTrainingDays = Array.from(document.querySelectorAll('.ml-training-day:checked')).map(cb => cb.value);
@@ -2588,6 +2618,11 @@
                         "ENABLED": document.getElementById('DISPATCHER_ENABLED').checked,
                         "DAYS": dispatchDays,
                         "TIME": document.getElementById('DISPATCHER_TIME').value
+                    },
+                    "LUNCH_DISPATCHER": {
+                        "ENABLED": document.getElementById('LUNCH_DISPATCHER_ENABLED').checked,
+                        "DAYS": lunchDispatchDays,
+                        "TIME": document.getElementById('LUNCH_DISPATCHER_TIME').value
                     },
                     "SYNC_INDICES": {
                         "ENABLED": document.getElementById('SYNC_INDICES_ENABLED').checked,

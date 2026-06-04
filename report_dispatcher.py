@@ -2,8 +2,8 @@
 report_dispatcher.py
 
 Automated dispatch microservice for the Quantamental Dashboard.
-Generates the Morning Quant Briefing and pushes it securely to Nextcloud Talk
-via WebDAV file upload and OCS API sharing.
+Generates Morning and Lunchtime Quant Briefings and pushes them securely to
+Nextcloud Talk via WebDAV file upload and OCS API sharing.
 """
 
 import os
@@ -12,7 +12,8 @@ import requests
 from datetime import datetime, timedelta
 
 from config import load_config
-from quant_screener import fetch_latest_signals, generate_markdown_briefing
+from morning_briefing import generate_morning_briefing
+from lunchtime_briefing import generate_lunchtime_briefing
 from nextcloud_talk import upload_file_webdav, share_file_to_talk, send_text_message
 
 logger = logging.getLogger(__name__)
@@ -44,105 +45,137 @@ def ensure_remote_directory(nc_url: str, nc_user: str, nc_pass: str, folder_name
         logger.error(f"Failed to verify or create remote directory: {e}")
 
 
-def push_morning_quant_briefing() -> bool:
+def _dispatch_briefing(
+    local_file_path: str,
+    remote_folder: str,
+    remote_filename: str,
+    notify_msg: str,
+    config: dict,
+) -> bool:
     """
-    Generates the Morning Quant Briefing and automatically pushes the file 
-    and a summary message to the user's Nextcloud Talk app.
-    
-    Returns:
-        bool: True if the entire dispatch pipeline succeeds, False otherwise.
+    Shared upload-and-notify pipeline: ensures remote dir exists, uploads the file,
+    shares it to the Talk conversation, then sends a text notification.
+    Returns True on full success.
     """
-    logger.info("Initiating Morning Quant Briefing dispatch pipeline...")
-    
-    # 1. Load Nextcloud Configurations
-    config = load_config()
     nc_url = config.get("NEXTCLOUD_URL", "").rstrip("/")
     nc_user = config.get("BOT_USERNAME", "")
     nc_pass = config.get("APP_PASSWORD", "")
     nc_token = config.get("CONVERSATION_TOKEN", "")
-    
+
     if not all([nc_url, nc_user, nc_pass, nc_token]):
         logger.warning("Nextcloud credentials missing or incomplete in config. Aborting dispatch.")
         return False
 
-    # 2. Determine the Target Date and Fetch Signals
-    today = datetime.now()
-    target_date = today.strftime('%Y-%m-%d')
-    
-    # Attempt to fetch today's signals
-    signals = fetch_latest_signals(target_date)
-    
-    # Fallback: If today's scan hasn't run or yielded no data, check yesterday's close
-    if not signals:
-        logger.info(f"No signals found for {target_date}, falling back to yesterday's data.")
-        yesterday = today - timedelta(days=1)
-        target_date = yesterday.strftime('%Y-%m-%d')
-        signals = fetch_latest_signals(target_date)
-        
-    if not signals:
-        logger.warning("No signals available to generate report for today or yesterday. Aborting dispatch.")
+    if not os.path.exists(local_file_path):
+        logger.error("Report file not found locally at %s. Aborting.", local_file_path)
         return False
 
-    # 3. Generate Report and Save to Local Disk
-    logger.info(f"Generating Markdown Briefing for {target_date}...")
-    generate_markdown_briefing(target_date, signals)
-    
-    # Construct exact paths (matching quant_screener.py output logic)
-    local_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'reports', f"quant_briefing_{target_date}.md")
-    
-    remote_folder = "quant_briefings"
-    remote_path = f"{remote_folder}/quant_briefing_{target_date}.md"
-    
-    if not os.path.exists(local_file_path):
-        logger.error(f"Report file not found locally at {local_file_path}. Aborting.")
-        return False
-        
-    # 4. Ensure Remote Directory Exists (The Fix)
-    logger.info(f"Verifying remote directory '/{remote_folder}' exists...")
+    remote_path = f"{remote_folder}/{remote_filename}"
+
     ensure_remote_directory(nc_url, nc_user, nc_pass, remote_folder)
-        
-    # 5. Upload to Nextcloud via WebDAV
-    logger.info(f"Uploading {local_file_path} to Nextcloud WebDAV at {remote_path}...")
+
     upload_success = upload_file_webdav(
-        local_path=local_file_path, 
-        remote_path=remote_path, 
-        nextcloud_url=nc_url, 
-        bot_username=nc_user, 
-        app_password=nc_pass, 
-        log_message=logger.info
+        local_path=local_file_path,
+        remote_path=remote_path,
+        nextcloud_url=nc_url,
+        bot_username=nc_user,
+        app_password=nc_pass,
+        log_message=logger.info,
     )
-    
     if not upload_success:
-        logger.error("Failed to upload Morning Briefing to Nextcloud. Aborting.")
+        logger.error("Failed to upload briefing to Nextcloud. Aborting.")
         return False
-        
-    # 6. Share File to Talk Conversation
-    logger.info("Sharing uploaded file to the specified Talk conversation...")
+
     share_success = share_file_to_talk(
         remote_path=remote_path,
         conversation_token=nc_token,
         nextcloud_url=nc_url,
         bot_username=nc_user,
         app_password=nc_pass,
-        log_message=logger.info
+        log_message=logger.info,
     )
-    
     if not share_success:
-        logger.warning("File uploaded, but failed to share directly to the Talk conversation. Proceeding to text dispatch.")
-        
-    # 7. Dispatch the Text Notification
-    msg = f"📊 *Morning Quant Briefing generated for {target_date}!* Open the attached file to review the latest statistical setups, or visit your dashboard."
-    logger.info("Dispatching summary text message to Talk...")
-    send_success = send_text_message(msg, config)
-    
+        logger.warning("File uploaded but failed to share to Talk conversation. Proceeding to text dispatch.")
+
+    send_success = send_text_message(notify_msg, config)
     if send_success:
-        logger.info("Morning Briefing Dispatch completed successfully.")
+        logger.info("Briefing dispatch completed successfully.")
         return True
     else:
         logger.error("Failed to send summary text message to Talk.")
         return False
 
 
+def push_morning_quant_briefing() -> bool:
+    """
+    Generates the enhanced Morning Quant Briefing (overnight news + US futures +
+    UK pre-open + quant screener signals) and pushes it to Nextcloud Talk.
+
+    Returns:
+        bool: True if the entire dispatch pipeline succeeds, False otherwise.
+    """
+    logger.info("Initiating Morning Quant Briefing dispatch pipeline...")
+
+    config = load_config()
+    target_date = datetime.now().strftime("%Y-%m-%d")
+
+    logger.info("Generating Morning Briefing for %s...", target_date)
+    generate_morning_briefing(target_date)
+
+    local_file_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "reports",
+        f"morning_briefing_{target_date}.md",
+    )
+    msg = (
+        f"🌅 *Morning Quant Briefing — {target_date}*\n"
+        "Overnight news, US futures, UK pre-open snapshot & quant signals attached. "
+        "Or visit your dashboard for live views."
+    )
+
+    return _dispatch_briefing(
+        local_file_path=local_file_path,
+        remote_folder="quant_briefings",
+        remote_filename=f"morning_briefing_{target_date}.md",
+        notify_msg=msg,
+        config=config,
+    )
+
+
+def push_lunchtime_quant_briefing() -> bool:
+    """
+    Generates the Lunchtime Quant Briefing (morning session news + UK mid-session +
+    US pre-market + intraday alerts) and pushes it to Nextcloud Talk.
+
+    Returns:
+        bool: True if the entire dispatch pipeline succeeds, False otherwise.
+    """
+    logger.info("Initiating Lunchtime Quant Briefing dispatch pipeline...")
+
+    config = load_config()
+    target_date = datetime.now().strftime("%Y-%m-%d")
+
+    logger.info("Generating Lunchtime Briefing for %s...", target_date)
+    generate_lunchtime_briefing(target_date)
+
+    local_file_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "reports",
+        f"lunch_briefing_{target_date}.md",
+    )
+    msg = (
+        f"🕛 *Lunch Quant Briefing — {target_date}*\n"
+        "Morning session news, UK mid-session & US pre-market snapshot attached."
+    )
+
+    return _dispatch_briefing(
+        local_file_path=local_file_path,
+        remote_folder="quant_briefings",
+        remote_filename=f"lunch_briefing_{target_date}.md",
+        notify_msg=msg,
+        config=config,
+    )
+
+
 if __name__ == "__main__":
-    # Standalone execution logic for testing
     push_morning_quant_briefing()
