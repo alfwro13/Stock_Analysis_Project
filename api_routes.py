@@ -1670,8 +1670,11 @@ async def intraday_monitor_add(req: TickerRequest):
         conn.commit()
     finally:
         conn.close()
-    # Arm the dedup state so the first bottoming signal fires an alert
-    await asyncio.to_thread(IntradayBottomEngine().arm_alert, ticker)
+    engine = IntradayBottomEngine()
+    await asyncio.to_thread(engine.arm_alert, ticker)
+    # One-time notification confirming monitoring is active for this session
+    from database import log_notification
+    log_notification("DipRadar", f"🎯 Dip Radar enabled for {ticker} — scanning every 2 min until 16:05 ET. You will be notified if a bottoming zone is detected.")
     return JSONResponse(content={"status": "ok", "ticker": ticker})
 
 

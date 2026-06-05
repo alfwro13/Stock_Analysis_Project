@@ -462,15 +462,11 @@ def run_intraday_dip_scan():
     """Scans actively-monitored tickers for intraday capitulation bottoms (every 2 min, market hours)."""
     engine = IntradayBottomEngine()
     if not engine.get_active_monitors():
-        return  # Fast-exit — nothing armed
-    log_sched_notification("Scheduler", "DipRadar: running intraday bottom scan...")
+        return  # Fast-exit — nothing armed, log nothing
     try:
-        hits = engine.run_scan()
-        if hits:
-            tickers_hit = ", ".join(h["ticker"] for h in hits)
-            log_sched_notification("Success", f"DipRadar: bottoming zone(s) detected — {tickers_hit}.")
-        else:
-            log_sched_notification("Success", "DipRadar: scan complete — no bottoming zones detected.")
+        engine.run_scan()
+        # Bottoming-zone alerts are logged inside engine._fire_alert() only when score ≥ 65.
+        # Silent on clean scans to avoid filling the notification feed with noise.
     except Exception as e:
         logger.error("DipRadar scan job failed: %s", e)
         log_sched_notification("Error", f"DipRadar scan failed: {e}")
@@ -480,9 +476,9 @@ def run_intraday_dip_scan():
 
 def run_intraday_dip_reset():
     """Deactivates all intraday monitors at end of trading day (16:05 ET)."""
-    log_sched_notification("Scheduler", "DipRadar: deactivating all session monitors (market close)...")
     try:
         IntradayBottomEngine().deactivate_all_today()
+        # deactivate_all_today() logs the end-of-session notification internally.
     except Exception as e:
         logger.error("DipRadar reset job failed: %s", e)
         log_sched_notification("Error", f"DipRadar reset failed: {e}")
