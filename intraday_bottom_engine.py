@@ -232,27 +232,27 @@ class IntradayBottomEngine:
             if rsi_val is not None:
                 if rsi_val < 25:
                     score += 30
-                    reasons.append(f"Extreme Oversold (RSI: {rsi_val:.1f})")
+                    reasons.append(f"Heavily oversold — stock dropped too far, too fast (momentum: {rsi_val:.0f}/100)")
                 elif rsi_val < 30:
                     score += 15
-                    reasons.append(f"Oversold (RSI: {rsi_val:.1f})")
+                    reasons.append(f"Oversold — strong selling pressure building (momentum: {rsi_val:.0f}/100)")
 
             close = float(cur["Close"])
             bb_lower = float(cur["BB_Lower"]) if not pd.isna(cur["BB_Lower"]) else None
             if bb_lower is not None and close < bb_lower:
                 score += 25
-                reasons.append("Price pierced extreme Lower Bollinger Band (2.5σ)")
+                reasons.append("Price far below its normal range — unusually deep sell-off vs. recent history")
 
             vwap = float(cur["VWAP"]) if not pd.isna(cur["VWAP"]) else None
             vwap_lower = float(cur["VWAP_Lower"]) if not pd.isna(cur["VWAP_Lower"]) else None
             vwap_dev = (close - vwap) if vwap else None
             if vwap_lower is not None and close < vwap_lower:
                 score += 20
-                reasons.append("Extreme negative VWAP deviation (price -2.5σ below VWAP)")
+                reasons.append("Trading far below today's average price — most buyers today are sitting on losses")
 
             if bool(cur["Vol_Climax"]) and close < prev_close:
                 score += 25
-                reasons.append("Volume Capitulation — high-volume down-candle (weak hands washing out)")
+                reasons.append("Panic selling spike — unusually heavy volume on a down move, sellers may be exhausted")
 
             is_bottoming = score >= _BOTTOMING_THRESHOLD
 
@@ -312,7 +312,9 @@ class IntradayBottomEngine:
             try:
                 from nextcloud_talk import send_text_message
                 msg = f"{summary}\n" + "\n".join(f"• {r}" for r in reasons)
-                send_text_message(msg, self.config)
+                ok = send_text_message(msg, self.config)
+                if not ok:
+                    logger.error("DipRadar: Nextcloud message not delivered for %s (check credentials in .env)", ticker)
             except Exception as e:
                 logger.error("DipRadar: Nextcloud send failed for %s: %s", ticker, e)
 

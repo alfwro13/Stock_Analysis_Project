@@ -486,6 +486,30 @@ def run_intraday_dip_reset(exchange: str = "NYSE"):
         record_job_run('intraday_dip_reset_job')
 
 
+def _build_contagion_feed_text(event: dict) -> str:
+    """Short multi-line body for the in-app notification feed card."""
+    leaders = event.get("leader_shocks", [])
+    etfs = event.get("etf_hits", [])
+    vol_tickers = set(event.get("volume_spikes", []))
+    severity = event.get("severity_score", 0.0)
+
+    n = len(leaders)
+    leader_parts = [
+        f"{s['ticker']} ({s['intraday_pct']:+.2f}%){' ⚡' if s['ticker'] in vol_tickers else ''}"
+        for s in leaders
+    ]
+    etf_parts = [f"{e['ticker']} ({e['intraday_pct']:+.2f}%)" for e in etfs]
+
+    lines = [
+        f"AI/Semi flash crash — {n} leader{'s' if n != 1 else ''} down, ETF contagion confirmed",
+        f"Leaders: {', '.join(leader_parts)}",
+    ]
+    if etf_parts:
+        lines.append(f"ETFs: {', '.join(etf_parts)}")
+    lines.append(f"Severity {severity:.0%} | Review AI/semiconductor exposure")
+    return "\n".join(lines)
+
+
 def _build_contagion_message(event: dict, config: dict) -> str:
     leaders = event.get("leader_shocks", [])
     etfs = event.get("etf_hits", [])
@@ -550,14 +574,14 @@ def run_ai_contagion_job():
                 orch.record_alert_fired(
                     "AIContagion", event["ticker"], event["price"], event["reason"], conn
                 )
+                orch.log_notification_feed(
+                    "AIContagion",
+                    _build_contagion_feed_text(event),
+                    conn,
+                )
                 leaders_summary = ", ".join(
                     f"{s['ticker']} ({s['intraday_pct']:+.2f}%)"
                     for s in event.get("leader_shocks", [])
-                )
-                orch.log_notification_feed(
-                    "AIContagion",
-                    f"Contagion: {leaders_summary}",
-                    conn,
                 )
                 logger.warning("AIContagion: alert fired. Leaders: %s", leaders_summary)
     except Exception as e:
