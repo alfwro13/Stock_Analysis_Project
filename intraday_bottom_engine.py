@@ -368,8 +368,17 @@ class IntradayBottomEngine:
                 "SELECT ticker FROM intraday_monitors WHERE is_active = 1 AND date_added = ?",
                 (today,),
             ).fetchall()
-            to_deactivate = [r["ticker"] for r in rows
-                             if time_engine.ticker_exchange(r["ticker"]) == exchange]
+            tickers = [r["ticker"] for r in rows]
+            if not tickers:
+                return
+            placeholders = ",".join("?" * len(tickers))
+            currency_rows = conn.execute(
+                f"SELECT ticker, currency FROM stock_signals WHERE ticker IN ({placeholders})",
+                tickers,
+            ).fetchall()
+            currency_map = {r["ticker"]: r["currency"] for r in currency_rows}
+            to_deactivate = [t for t in tickers
+                             if time_engine.ticker_exchange(t, currency_map.get(t, "")) == exchange]
             if not to_deactivate:
                 return
             placeholders = ",".join("?" * len(to_deactivate))
