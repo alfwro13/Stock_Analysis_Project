@@ -27,8 +27,6 @@ import sys
 from pathlib import Path
 
 import pandas as pd
-import pytest
-
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from visuals import create_intraday_chart, _intraday_market_tz, _EXCHANGE_DELAYS
@@ -48,25 +46,23 @@ def _single_candle_df(naive_utc_str: str) -> pd.DataFrame:
 # ── 1. Routing ────────────────────────────────────────────────────────────────
 
 class TestIntradayMarketTz:
+    """
+    _intraday_market_tz() is a display helper — it returns the user's configured
+    USER_TIMEZONE for all tickers so intraday charts are always shown in local time.
+    Exchange routing (NYSE/LSE/etc.) lives in time_engine.ticker_exchange().
+    """
 
-    def test_uk_ticker_suffix_returns_london(self):
-        assert _intraday_market_tz("VOD.L", "GBp") == "Europe/London"
+    def test_returns_a_valid_iana_tz_string(self):
+        from zoneinfo import ZoneInfo
+        tz_str = _intraday_market_tz("AAPL", "USD")
+        ZoneInfo(tz_str)  # raises if invalid
 
-    def test_uk_gbp_currency_returns_london(self):
-        assert _intraday_market_tz("IGLT", "GBP") == "Europe/London"
+    def test_same_tz_for_uk_and_us_tickers(self):
+        # All tickers get the same display timezone regardless of their exchange
+        assert _intraday_market_tz("VOD.L", "GBp") == _intraday_market_tz("AAPL", "USD")
 
-    def test_uk_gbp_pence_currency_returns_london(self):
-        assert _intraday_market_tz("BARC.L", "GBp") == "Europe/London"
-
-    def test_us_ticker_returns_new_york(self):
-        assert _intraday_market_tz("AAPL", "USD") == "America/New_York"
-
-    def test_generic_usd_returns_new_york(self):
-        assert _intraday_market_tz("SPY", "USD") == "America/New_York"
-
-    def test_eur_de_ticker_returns_xetra(self):
-        # .DE suffix / EUR currency → XETRA (Europe/Berlin), not NYSE
-        assert _intraday_market_tz("SIE.DE", "EUR") == "Europe/Berlin"
+    def test_same_tz_for_all_currencies(self):
+        assert _intraday_market_tz("SPY", "USD") == _intraday_market_tz("SIE.DE", "EUR")
 
 
 class TestExchangeDelays:

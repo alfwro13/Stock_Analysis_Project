@@ -14,9 +14,8 @@ _EXCHANGE_DELAYS = {
 
 
 def _intraday_market_tz(ticker: str, currency: str) -> str:
-    """Return the IANA timezone name for a ticker's home exchange."""
-    exchange = time_engine.ticker_exchange(ticker, currency)
-    return time_engine.EXCHANGE_HOURS.get(exchange, {}).get("tz", "America/New_York")
+    """Return the user's display timezone for intraday chart timestamps."""
+    return time_engine.get_user_tz().key
 
 
 def create_intraday_chart(df, ticker, s1=None, s2=None, live_pattern_name=None, live_pattern_tooltip=None, live_pattern_score=None, include_plotlyjs='cdn', market_tz=None, data_delay_minutes=0):
@@ -141,7 +140,7 @@ def create_macro_chart(df, df_baseline, ticker):
                 else:
                     fig.add_annotation(row=1, col=1, x=curr_row.name, y=curr_row['Low'], yshift=-15, text="◆", hovertext=f"<b>{p['name']}</b><br>{wrapped_tooltip}", showarrow=False, font=dict(color="#ffaa00", size=12))
 
-    colors = ['green' if row['Close'] >= row['Open'] else 'red' for index, row in df.iterrows()]
+    colors = ['green' if row['Close'] >= row['Open'] else 'red' for _, row in df.iterrows()]
     fig.add_trace(go.Bar(x=df.index, y=df['Volume'], marker_color=colors, name="Volume"), row=2, col=1)
 
     fig.add_trace(go.Scatter(x=df.index, y=df['RSI'], line=dict(color='purple', width=2), name="RSI"), row=3, col=1)

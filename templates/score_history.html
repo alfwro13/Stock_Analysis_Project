@@ -140,7 +140,7 @@
                     <th onclick="sortTable('dataTable', 2)">Score &#8597;</th>
                     <th>Signal</th>
                     {% if active_filter == 'portfolio' %}<th>Account</th>{% endif %}
-                    <th onclick="sortTable('dataTable', {% if active_filter == 'portfolio' %}5{% else %}4{% endif %})">Entry Price &#8597;</th>
+                    <th onclick="sortTable('dataTable', {% if active_filter == 'portfolio' %}5{% else %}4{% endif %})">Price at Signal &#8597;</th>
                     <th onclick="sortTable('dataTable', {% if active_filter == 'portfolio' %}6{% else %}5{% endif %})" title="Return ~90 days after entry">3M Return &#8597;</th>
                     <th onclick="sortTable('dataTable', {% if active_filter == 'portfolio' %}7{% else %}6{% endif %})" title="Return ~180 days after entry">6M Return &#8597;</th>
                     <th onclick="sortTable('dataTable', {% if active_filter == 'portfolio' %}8{% else %}7{% endif %})" title="Return ~365 days after entry">12M Return &#8597;</th>
