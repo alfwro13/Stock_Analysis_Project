@@ -1,0 +1,574 @@
+"""
+tests/test_insider_engine.py  ── INSIDER ENGINE
+
+Covers:
+  send_nextcloud_message()     — Nextcloud Talk POST, auth, failure handling
+  get_tickers_from_json()      — portfolio / watchlist JSON parsing
+  run_insider_alert()          — config loading, filter logic, alert dispatch,
+                                 connection lifecycle, and guard paths
+"""
+
+import json
+import os
+import sys
+import sqlite3
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from unittest.mock import MagicMock, patch, mock_open
+
+import pandas as pd
+import pytest
+import requests
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+import insider_engine
+from insider_engine import send_nextcloud_message, get_tickers_from_json, run_insider_alert
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Fixtures
+# ──────────────────────────────────────────────────────────────────────────────
+
+@pytest.fixture
+def db_path(tmp_path):
+    """Temp-file SQLite with the schema run_insider_alert needs."""
+    path = tmp_path / "insider_test.db"
+    conn = sqlite3.connect(str(path))
+    conn.row_factory = sqlite3.Row
+    conn.executescript("""
+        CREATE TABLE stock_signals (
+            ticker          TEXT PRIMARY KEY,
+            company_name    TEXT,
+            composite_score REAL,
+            atr_stop_loss   REAL,
+            current_price   REAL
+        );
+        CREATE TABLE system_notifications (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            message_type TEXT,
+            message_text TEXT
+        );
+    """)
+    conn.commit()
+    conn.close()
+    return path
+
+
+def _get_conn(db_path):
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def _read(db_path, sql, *params):
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    row = conn.execute(sql, params).fetchone()
+    conn.close()
+    return row
+
+
+def _read_all(db_path, sql, *params):
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(sql, params).fetchall()
+    conn.close()
+    return rows
+
+
+def _mock_http_resp(status=200):
+    m = MagicMock()
+    m.status_code = status
+    if status >= 400:
+        m.raise_for_status.side_effect = requests.exceptions.HTTPError(f"HTTP {status}")
+    else:
+        m.raise_for_status.return_value = None
+    return m
+
+
+def _insider_df(days_ago=1, action="Purchase", value=100_000, shares=500):
+    """Build a minimal insider_transactions DataFrame matching yfinance output."""
+    date = (datetime.now(timezone.utc) - timedelta(days=days_ago)).strftime("%Y-%m-%d")
+    return pd.DataFrame([{
+        "Start Date": date,
+        "Text": action,
+        "Value": f"${value:,}",
+        "Shares": f"{shares:,}",
+        "Insider": "Jane Doe",
+        "Position": "CEO",
+    }])
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 1. send_nextcloud_message()
+# ──────────────────────────────────────────────────────────────────────────────
+
+class TestSendNextcloudMessage:
+
+    def test_success_returns_true(self):
+        config = {
+            "NEXTCLOUD_URL": "https://nc.example.com",
+            "CONVERSATION_TOKEN": "tok123",
+            "BOT_USERNAME": "bot",
+            "APP_PASSWORD": "pass",
+        }
+        with patch("requests.post", return_value=_mock_http_resp(200)) as mock_post:
+            result = send_nextcloud_message("hello", config)
+        assert result is True
+        mock_post.assert_called_once()
+
+    def test_correct_api_endpoint_used(self):
+        """CONTRACT: endpoint must include /ocs/v2.php/apps/spreed/api/v1/chat/<token>."""
+        config = {
+            "NEXTCLOUD_URL": "https://nc.example.com",
+            "CONVERSATION_TOKEN": "MYTOKEN",
+            "BOT_USERNAME": "bot",
+            "APP_PASSWORD": "pass",
+        }
+        called_urls = []
+        with patch("requests.post",
+                   side_effect=lambda url, **kw: called_urls.append(url) or _mock_http_resp(200)):
+            send_nextcloud_message("test", config)
+        assert any("MYTOKEN" in u and "spreed" in u for u in called_urls), (
+            "CONTRACT VIOLATION: Nextcloud API endpoint changed."
+        )
+
+    def test_http_error_returns_false(self):
+        config = {
+            "NEXTCLOUD_URL": "https://nc.example.com",
+            "CONVERSATION_TOKEN": "tok",
+            "BOT_USERNAME": "bot",
+            "APP_PASSWORD": "pass",
+        }
+        with patch("requests.post", return_value=_mock_http_resp(403)):
+            result = send_nextcloud_message("hello", config)
+        assert result is False
+
+    def test_connection_error_returns_false(self):
+        config = {
+            "NEXTCLOUD_URL": "https://nc.example.com",
+            "CONVERSATION_TOKEN": "tok",
+            "BOT_USERNAME": "bot",
+            "APP_PASSWORD": "pass",
+        }
+        with patch("requests.post", side_effect=requests.exceptions.ConnectionError("refused")):
+            result = send_nextcloud_message("hello", config)
+        assert result is False
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 2. get_tickers_from_json()
+# ──────────────────────────────────────────────────────────────────────────────
+
+class TestGetTickersFromJson:
+
+    def test_missing_file_returns_empty(self, tmp_path):
+        result = get_tickers_from_json(str(tmp_path / "nonexistent.json"))
+        assert result == []
+
+    def test_portfolio_tickers_extracted(self, tmp_path):
+        data = {
+            "AAPL": {"ticker": "AAPL"},
+            "MSFT": {"ticker": "MSFT"},
+            "no_ticker": {},
+        }
+        path = tmp_path / "portfolio.json"
+        path.write_text(json.dumps(data))
+        result = get_tickers_from_json(str(path), is_watchlist=False)
+        assert set(result) == {"AAPL", "MSFT"}
+
+    def test_watchlist_tickers_extracted(self, tmp_path):
+        data = {"watchlist": ["TSLA", "NVDA"]}
+        path = tmp_path / "watchlist.json"
+        path.write_text(json.dumps(data))
+        result = get_tickers_from_json(str(path), is_watchlist=True)
+        assert result == ["TSLA", "NVDA"]
+
+    def test_corrupted_json_returns_empty(self, tmp_path):
+        path = tmp_path / "bad.json"
+        path.write_text("{not valid json")
+        result = get_tickers_from_json(str(path))
+        assert result == []
+
+    def test_empty_watchlist_returns_empty(self, tmp_path):
+        data = {"watchlist": []}
+        path = tmp_path / "watchlist.json"
+        path.write_text(json.dumps(data))
+        result = get_tickers_from_json(str(path), is_watchlist=True)
+        assert result == []
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 3. run_insider_alert()
+# ──────────────────────────────────────────────────────────────────────────────
+
+class TestRunInsiderAlertGuards:
+
+    def test_both_toggles_disabled_returns_skipped(self):
+        cfg = {"NOTIFICATIONS": {"INSIDER_TRADING": {
+            "ENABLED_PORTFOLIO": False, "ENABLED_WATCHLIST": False,
+        }}}
+        with patch("insider_engine.load_config", return_value=cfg):
+            ok, msg = run_insider_alert()
+        assert ok is True
+        assert "skipped" in msg.lower()
+
+    def test_no_valid_tickers_returns_early(self):
+        cfg = {"NOTIFICATIONS": {"INSIDER_TRADING": {
+            "ENABLED_PORTFOLIO": True, "ENABLED_WATCHLIST": False,
+            "MIN_VALUE": 50000, "DAYS_BACK": 7,
+        }}}
+        with patch("insider_engine.load_config", return_value=cfg), \
+             patch("insider_engine.get_tickers_from_json", return_value=[]):
+            ok, msg = run_insider_alert()
+        assert ok is True
+        assert "no valid" in msg.lower()
+
+    def test_0p_tickers_excluded(self, db_path):
+        """Freetrade fund tickers starting with 0P must be excluded."""
+        cfg = {"NOTIFICATIONS": {"INSIDER_TRADING": {
+            "ENABLED_PORTFOLIO": True, "ENABLED_WATCHLIST": False,
+            "MIN_VALUE": 50000, "DAYS_BACK": 7,
+        }}}
+        with patch("insider_engine.load_config", return_value=cfg), \
+             patch("insider_engine.get_tickers_from_json", return_value=["0P0000ABC", "0P9999XYZ"]), \
+             patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)):
+            ok, msg = run_insider_alert()
+        assert ok is True
+        assert "no valid" in msg.lower()
+
+    def test_fatal_config_error_returns_false(self):
+        with patch("insider_engine.load_config", side_effect=RuntimeError("config missing")):
+            ok, msg = run_insider_alert()
+        assert ok is False
+        assert "crash" in msg.lower()
+
+
+class TestRunInsiderAlertFiltering:
+
+    def _base_cfg(self, min_value=50000, days_back=7):
+        return {"NOTIFICATIONS": {"INSIDER_TRADING": {
+            "ENABLED_PORTFOLIO": True, "ENABLED_WATCHLIST": False,
+            "MIN_VALUE": min_value, "DAYS_BACK": days_back,
+        }}}
+
+    def test_old_transaction_skipped(self, db_path):
+        """Transaction older than DAYS_BACK must not trigger an alert."""
+        cfg = self._base_cfg(days_back=7)
+        old_df = _insider_df(days_ago=30, action="Purchase", value=200_000)
+
+        mock_ticker = MagicMock()
+        mock_ticker.insider_transactions = old_df
+
+        with patch("insider_engine.load_config", return_value=cfg), \
+             patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
+             patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("yfinance.Ticker", return_value=mock_ticker):
+            ok, msg = run_insider_alert()
+
+        assert ok is True
+        rows = _read_all(db_path, "SELECT * FROM system_notifications")
+        assert len(rows) == 0, "Old transaction must not create a notification"
+
+    def test_sale_transaction_skipped(self, db_path):
+        """Insider sale / option exercise must not trigger a buy alert."""
+        cfg = self._base_cfg()
+        sale_df = _insider_df(days_ago=1, action="Sale", value=500_000)
+
+        mock_ticker = MagicMock()
+        mock_ticker.insider_transactions = sale_df
+
+        with patch("insider_engine.load_config", return_value=cfg), \
+             patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
+             patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("yfinance.Ticker", return_value=mock_ticker):
+            ok, msg = run_insider_alert()
+
+        rows = _read_all(db_path, "SELECT * FROM system_notifications")
+        assert len(rows) == 0
+
+    def test_value_below_min_skipped(self, db_path):
+        """Purchase below MIN_VALUE must not trigger an alert."""
+        cfg = self._base_cfg(min_value=100_000)
+        cheap_df = _insider_df(days_ago=1, action="Purchase", value=10_000)
+
+        mock_ticker = MagicMock()
+        mock_ticker.insider_transactions = cheap_df
+
+        with patch("insider_engine.load_config", return_value=cfg), \
+             patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
+             patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("yfinance.Ticker", return_value=mock_ticker):
+            ok, msg = run_insider_alert()
+
+        rows = _read_all(db_path, "SELECT * FROM system_notifications")
+        assert len(rows) == 0
+
+    def test_qualifying_buy_creates_notification(self, db_path):
+        """Recent purchase above MIN_VALUE must write a system_notifications row."""
+        cfg = self._base_cfg(min_value=50_000)
+        buy_df = _insider_df(days_ago=1, action="Purchase", value=200_000, shares=1000)
+
+        mock_ticker = MagicMock()
+        mock_ticker.insider_transactions = buy_df
+
+        with patch("insider_engine.load_config", return_value=cfg), \
+             patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
+             patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("insider_engine.send_nextcloud_message", return_value=True), \
+             patch("yfinance.Ticker", return_value=mock_ticker):
+            ok, msg = run_insider_alert()
+
+        assert ok is True
+        rows = _read_all(db_path, "SELECT * FROM system_notifications")
+        assert len(rows) == 1
+        assert rows[0]["message_type"] == "Insider"
+        assert "AAPL" in rows[0]["message_text"]
+
+    def test_alerts_sent_count_in_return_message(self, db_path):
+        """Return message must include the number of alerts triggered."""
+        cfg = self._base_cfg(min_value=50_000)
+        buy_df = _insider_df(days_ago=1, action="Purchase", value=200_000)
+
+        mock_ticker = MagicMock()
+        mock_ticker.insider_transactions = buy_df
+
+        with patch("insider_engine.load_config", return_value=cfg), \
+             patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
+             patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("insider_engine.send_nextcloud_message", return_value=True), \
+             patch("yfinance.Ticker", return_value=mock_ticker):
+            ok, msg = run_insider_alert()
+
+        assert "1" in msg
+
+    def test_empty_insider_df_skips_ticker(self, db_path):
+        """When yfinance returns an empty DataFrame, no alert fires."""
+        cfg = self._base_cfg()
+        mock_ticker = MagicMock()
+        mock_ticker.insider_transactions = pd.DataFrame()
+
+        with patch("insider_engine.load_config", return_value=cfg), \
+             patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
+             patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("yfinance.Ticker", return_value=mock_ticker):
+            ok, _ = run_insider_alert()
+
+        rows = _read_all(db_path, "SELECT * FROM system_notifications")
+        assert len(rows) == 0
+
+    def test_none_insider_df_skips_ticker(self, db_path):
+        """When yfinance returns None for insider_transactions, no crash and no alert."""
+        cfg = self._base_cfg()
+        mock_ticker = MagicMock()
+        mock_ticker.insider_transactions = None
+
+        with patch("insider_engine.load_config", return_value=cfg), \
+             patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
+             patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("yfinance.Ticker", return_value=mock_ticker):
+            ok, _ = run_insider_alert()
+
+        assert ok is True
+
+    def test_yfinance_exception_continues_to_next_ticker(self, db_path):
+        """
+        REGRESSION: per-ticker exception must not abort the whole run.
+        A valid second ticker should still be evaluated.
+        """
+        cfg = self._base_cfg(min_value=50_000)
+        buy_df = _insider_df(days_ago=1, action="Purchase", value=200_000)
+
+        def ticker_factory(sym):
+            m = MagicMock()
+            if sym == "BADFEED":
+                m.insider_transactions = property(lambda self: (_ for _ in ()).throw(RuntimeError("API down")))
+                # Use side_effect on attribute access via __getattr__
+                type(m).insider_transactions = property(lambda self: (_ for _ in ()).throw(RuntimeError("API down")))
+            else:
+                m.insider_transactions = buy_df
+            return m
+
+        with patch("insider_engine.load_config", return_value=cfg), \
+             patch("insider_engine.get_tickers_from_json", return_value=["BADFEED", "GOOD"]), \
+             patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("insider_engine.send_nextcloud_message", return_value=True), \
+             patch("yfinance.Ticker", side_effect=ticker_factory):
+            ok, _ = run_insider_alert()
+
+        assert ok is True
+        # GOOD ticker must still fire
+        rows = _read_all(db_path, "SELECT * FROM system_notifications")
+        assert len(rows) == 1
+
+    def test_nextcloud_failure_does_not_increment_alerts_sent(self, db_path):
+        """Alert is written to DB even if Nextcloud POST fails, but count stays 0."""
+        cfg = self._base_cfg(min_value=50_000)
+        buy_df = _insider_df(days_ago=1, action="Purchase", value=200_000)
+
+        mock_ticker = MagicMock()
+        mock_ticker.insider_transactions = buy_df
+
+        with patch("insider_engine.load_config", return_value=cfg), \
+             patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
+             patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("insider_engine.send_nextcloud_message", return_value=False), \
+             patch("yfinance.Ticker", return_value=mock_ticker):
+            ok, msg = run_insider_alert()
+
+        # DB notification still written
+        rows = _read_all(db_path, "SELECT * FROM system_notifications")
+        assert len(rows) == 1
+        # Count in return message is 0 because Nextcloud returned False
+        assert "0" in msg
+
+
+class TestRunInsiderAlertQuantamentalAlignment:
+
+    def _base_cfg(self):
+        return {"NOTIFICATIONS": {"INSIDER_TRADING": {
+            "ENABLED_PORTFOLIO": True, "ENABLED_WATCHLIST": False,
+            "MIN_VALUE": 50_000, "DAYS_BACK": 7,
+        }}}
+
+    def test_high_score_adds_alignment_banner(self, db_path):
+        """When composite_score >= 60, message includes QUANTAMENTAL ALIGNMENT."""
+        setup = _get_conn(db_path)
+        setup.execute(
+            "INSERT INTO stock_signals (ticker, company_name, composite_score, atr_stop_loss, current_price) "
+            "VALUES ('AAPL', 'Apple Inc.', 75.0, 100.0, 150.0)"
+        )
+        setup.commit()
+        setup.close()
+
+        buy_df = _insider_df(days_ago=1, action="Purchase", value=200_000)
+        mock_ticker = MagicMock()
+        mock_ticker.insider_transactions = buy_df
+
+        with patch("insider_engine.load_config", return_value=self._base_cfg()), \
+             patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
+             patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("insider_engine.send_nextcloud_message", return_value=True), \
+             patch("yfinance.Ticker", return_value=mock_ticker):
+            run_insider_alert()
+
+        rows = _read_all(db_path, "SELECT message_text FROM system_notifications")
+        assert any("QUANTAMENTAL" in r["message_text"] for r in rows)
+
+    def test_low_score_no_alignment_banner(self, db_path):
+        """When composite_score < 60 and price is not in dip zone, no banner."""
+        setup = _get_conn(db_path)
+        setup.execute(
+            "INSERT INTO stock_signals (ticker, company_name, composite_score, atr_stop_loss, current_price) "
+            "VALUES ('AAPL', 'Apple Inc.', 30.0, 100.0, 200.0)"
+        )
+        setup.commit()
+        setup.close()
+
+        buy_df = _insider_df(days_ago=1, action="Purchase", value=200_000)
+        mock_ticker = MagicMock()
+        mock_ticker.insider_transactions = buy_df
+
+        with patch("insider_engine.load_config", return_value=self._base_cfg()), \
+             patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
+             patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("insider_engine.send_nextcloud_message", return_value=True), \
+             patch("yfinance.Ticker", return_value=mock_ticker):
+            run_insider_alert()
+
+        rows = _read_all(db_path, "SELECT message_text FROM system_notifications")
+        assert not any("QUANTAMENTAL" in r["message_text"] for r in rows)
+
+    def test_dip_zone_adds_alignment_banner(self, db_path):
+        """Price within 1–15% above ATR stop triggers dip banner even if score < 60."""
+        setup = _get_conn(db_path)
+        setup.execute(
+            "INSERT INTO stock_signals (ticker, company_name, composite_score, atr_stop_loss, current_price) "
+            "VALUES ('AAPL', 'Apple Inc.', 30.0, 100.0, 108.0)"
+        )
+        setup.commit()
+        setup.close()
+
+        buy_df = _insider_df(days_ago=1, action="Purchase", value=200_000)
+        mock_ticker = MagicMock()
+        mock_ticker.insider_transactions = buy_df
+
+        with patch("insider_engine.load_config", return_value=self._base_cfg()), \
+             patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
+             patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("insider_engine.send_nextcloud_message", return_value=True), \
+             patch("yfinance.Ticker", return_value=mock_ticker):
+            run_insider_alert()
+
+        rows = _read_all(db_path, "SELECT message_text FROM system_notifications")
+        assert any("QUANTAMENTAL" in r["message_text"] for r in rows)
+
+
+class TestRunInsiderAlertConnectionLifecycle:
+
+    def test_connection_closed_after_success(self):
+        """Connection must be closed even when the run completes with no alerts."""
+        cfg = {"NOTIFICATIONS": {"INSIDER_TRADING": {
+            "ENABLED_PORTFOLIO": True, "ENABLED_WATCHLIST": False,
+            "MIN_VALUE": 50_000, "DAYS_BACK": 7,
+        }}}
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_cursor.fetchall.return_value = []
+
+        mock_ticker = MagicMock()
+        mock_ticker.insider_transactions = pd.DataFrame()
+
+        with patch("insider_engine.load_config", return_value=cfg), \
+             patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
+             patch("insider_engine.get_connection", return_value=mock_conn), \
+             patch("yfinance.Ticker", return_value=mock_ticker):
+            run_insider_alert()
+
+        mock_conn.close.assert_called_once()
+
+    def test_connection_closed_after_ticker_exception(self):
+        """Connection must be closed even when a per-ticker exception occurs."""
+        cfg = {"NOTIFICATIONS": {"INSIDER_TRADING": {
+            "ENABLED_PORTFOLIO": True, "ENABLED_WATCHLIST": False,
+            "MIN_VALUE": 50_000, "DAYS_BACK": 7,
+        }}}
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_cursor.fetchall.return_value = []
+
+        with patch("insider_engine.load_config", return_value=cfg), \
+             patch("insider_engine.get_tickers_from_json", return_value=["BOOM"]), \
+             patch("insider_engine.get_connection", return_value=mock_conn), \
+             patch("yfinance.Ticker", side_effect=RuntimeError("yfinance exploded")):
+            ok, _ = run_insider_alert()
+
+        assert ok is True
+        mock_conn.close.assert_called_once()
+
+    def test_utc_cutoff_date_used(self, db_path):
+        """
+        REGRESSION: cutoff_date must use UTC (not naive datetime.now()).
+        A UTC-aware timestamp must compare correctly with pd.to_datetime(utc=True).
+        """
+        cfg = {"NOTIFICATIONS": {"INSIDER_TRADING": {
+            "ENABLED_PORTFOLIO": True, "ENABLED_WATCHLIST": False,
+            "MIN_VALUE": 1, "DAYS_BACK": 7,
+        }}}
+        # Transaction dated "today" must be included (within 7 days)
+        buy_df = _insider_df(days_ago=0, action="Purchase", value=5_000)
+        mock_ticker = MagicMock()
+        mock_ticker.insider_transactions = buy_df
+
+        with patch("insider_engine.load_config", return_value=cfg), \
+             patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
+             patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
+             patch("insider_engine.send_nextcloud_message", return_value=True), \
+             patch("yfinance.Ticker", return_value=mock_ticker):
+            ok, _ = run_insider_alert()
+
+        rows = _read_all(db_path, "SELECT * FROM system_notifications")
+        assert len(rows) == 1, "UTC-aware cutoff must include today's transaction"
