@@ -3,7 +3,7 @@ import json
 import re
 import logging
 from contextlib import contextmanager
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Literal, Optional
 
 import pandas as pd
@@ -12,6 +12,7 @@ import ta
 from config import PORTFOLIO_PATH, HISTORICAL_DIR
 from database import get_connection
 from portfolio_service import get_rate_to_base
+from time_engine import now_local
 from regime_engine import get_latest_regime
 
 logger = logging.getLogger(__name__)
@@ -35,7 +36,7 @@ class AIPromptEngine:
         self._cache_date: str = ""
 
     def _cache_key(self, ticker: str, mode: str) -> tuple:
-        today = datetime.now().strftime("%Y-%m-%d")
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         if today != self._cache_date:
             self._prompt_cache.clear()
             self._cache_date = today
@@ -321,7 +322,7 @@ class AIPromptEngine:
                     )
 
                 # --- 7-day Tier-1 event radar (macro_calendar) ---
-                now = datetime.now()
+                now = datetime.now(timezone.utc)
                 now_str = now.strftime('%Y-%m-%d %H:%M:%S')
                 horizon_7d = (now + timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')
                 cursor.execute("""
@@ -442,7 +443,7 @@ class AIPromptEngine:
             staleness_note = ""
             try:
                 lu_dt = datetime.strptime(last_updated[:19], "%Y-%m-%d %H:%M:%S")
-                age_days = (datetime.now() - lu_dt).days
+                age_days = (datetime.now(timezone.utc).replace(tzinfo=None) - lu_dt).days
                 if age_days > 7:
                     staleness_note = f"\n[WARNING: This data is {age_days} days old — treat as stale.]"
             except (ValueError, TypeError):
@@ -635,7 +636,7 @@ class AIPromptEngine:
 
         # get_rate_to_base returns NATIVE->BASE; the portfolio math below needs
         # BASE->NATIVE to express VWAP back in the stock's own currency.
-        base_to_native = (1.0 / exchange_rate) if exchange_rate else 1.0
+        base_to_native = (1.0 / exchange_rate) if exchange_rate and exchange_rate > 0 else 1.0
 
         # 4. Format Portfolio String
         portfolio_str = "No active holdings in the current portfolio."
@@ -680,7 +681,7 @@ class AIPromptEngine:
                     )
 
         # --- GET CURRENT SYSTEM DATE ---
-        current_date_str = datetime.now().strftime("%Y-%m-%d")
+        current_date_str = now_local().strftime("%Y-%m-%d")
 
         # Safe core price formatting
         current_price = stock_data.get('current_price')
