@@ -99,7 +99,7 @@ class IntradayOrchestrator:
         # Instantiate engines with config so they don't reload it internally
         self.crash_engine = CrashEngine(self.config)
         self.moonshot_engine = MoonshotEngine(self.config)
-        self.anomaly_engine = AnomalyEngine(self.config)
+        self.anomaly_engine = AnomalyEngine()
         # Keyed (ticker, date-str) so each ticker is fetched at most once per calendar day.
         self._corp_action_cache: Dict[tuple, bool] = {}
 

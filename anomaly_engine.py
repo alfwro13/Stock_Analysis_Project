@@ -4,7 +4,6 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
 
 import joblib
 import numpy as np
@@ -52,8 +51,7 @@ class AnomalyEngine:
     trained model is available.
     """
 
-    def __init__(self, config: dict[str, Any]) -> None:
-        self.config = config
+    def __init__(self) -> None:
         self.models_dir = ANOMALY_MODELS_DIR
         self._model_cache: dict[str, dict] = {}
 
@@ -170,6 +168,8 @@ class AnomalyEngine:
         and write the result back to anomaly_score. Designed to run immediately after
         train_all so the stock detail chart has data without waiting for a live scan.
         """
+        if not tickers:
+            return
         conn = get_connection()
         try:
             placeholders = ','.join('?' for _ in tickers)

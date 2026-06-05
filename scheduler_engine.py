@@ -448,7 +448,7 @@ def run_anomaly_training_job():
         from config import load_config, HISTORICAL_DIR
         config = load_config()
         all_tickers = DataEngine().get_all_tickers()
-        engine = AnomalyEngine(config)
+        engine = AnomalyEngine()
         engine.train_all(all_tickers, HISTORICAL_DIR)
         engine.backfill_all(all_tickers, HISTORICAL_DIR)
         log_sched_notification("Success", "Anomaly Training & backfill completed.")
