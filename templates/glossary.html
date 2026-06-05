@@ -35,6 +35,7 @@
             <a href="#strategies" class="sidebar-link">🎯 Trading Strategies</a>
             <a href="#candlesticks" class="sidebar-link">🕯️ Candlestick Anatomy</a>
             <a href="#technicals" class="sidebar-link">📈 Technical Analysis</a>
+            <a href="#dip-radar" class="sidebar-link">🎯 Dip Radar</a>
             <a href="#fundamentals" class="sidebar-link">🏢 Company Valuation</a>
             <a href="#methodology" class="sidebar-link">🧠 System Philosophy</a>
         </aside>
@@ -238,6 +239,45 @@
                     <p>This line isn't just an arbitrary number; it is the mathematical boundary of the stock's standard volatility envelope.</p>
                     <p>As long as the stock stays above the ATR stop, its uptrend is structurally intact. Any drop is just a "normal pullback" (a true dip).</p>
                     <p>If the stock drops below the ATR stop, it has mathematically violated its volatility envelope. It is no longer a normal pullback; the structural trend has broken, and the asset is in freefall.</p>
+                </div>
+            </details>
+
+            <details class="settings-card" id="dip-radar">
+                <summary>🎯 Dip Radar — Intraday Capitulation Detection</summary>
+                <div class="term-box">
+                    <span class="term-title">Intraday Mean Reversion</span>
+                    <p>The quantitative principle underlying Dip Radar. Intraday prices frequently overshoot to the downside during sell-offs as panic, margin calls, and stop-loss cascades force sellers to hit bids indiscriminately. Once selling pressure is mathematically exhausted — a state called <em>capitulation</em> — price tends to snap back toward its fair intraday value (VWAP). Dip Radar measures four independent dimensions of this exhaustion and combines them into a single score.</p>
+                </div>
+                <div class="term-box">
+                    <span class="term-title">Reversal Score (0–100)</span>
+                    <p>The composite signal output by the Dip Radar engine. Points are awarded for each confirmed exhaustion condition:</p>
+                    <div class="rule">+30 pts: RSI &lt; 25 (extreme oversold) — or +15 pts: RSI &lt; 30 (oversold)</div>
+                    <div class="rule">+25 pts: Price below the Lower Bollinger Band at 2.5σ deviation</div>
+                    <div class="rule">+20 pts: Price more than 2.5σ below the intraday VWAP</div>
+                    <div class="rule">+25 pts: Volume Capitulation — current down-candle's volume exceeds the 20-candle SMA by more than 3 standard deviations</div>
+                    <div class="rule border-left-orange"><strong>Alert threshold: Score ≥ 65.</strong> Below this, selling pressure is still present. Above this, the system has detected a high-probability exhaustion zone.</div>
+                    <p>The maximum score is 100 (all four conditions simultaneously active). A score of 65–80 indicates a likely short-term bottom. A score of 80–100 indicates a potential capitulation washout — the highest-probability reversal setup.</p>
+                </div>
+                <div class="term-box">
+                    <span class="term-title">VWAP (Volume Weighted Average Price)</span>
+                    <p>The intraday "true fair value" of a stock, calculated by weighting each minute's price by the trading volume at that time. Unlike a simple moving average, VWAP gives more weight to the prices where the most money changed hands — it is the benchmark institutional traders use to evaluate execution quality.</p>
+                    <p>Dip Radar uses the intraday VWAP anchored from the market open (09:30 ET) and calculates a rolling 30-bar standard deviation band around it. A price trading 2.5σ below VWAP means it has deviated so far from fair value that a statistical mean-reversion is likely.</p>
+                    <div class="rule">VWAP = Σ(Typical Price × Volume) / Σ(Volume), reset at each market open.</div>
+                </div>
+                <div class="term-box">
+                    <span class="term-title">Bollinger Bands (2.5σ Extreme Variant)</span>
+                    <p>Standard Bollinger Bands use 2 standard deviations (σ). Dip Radar deliberately uses a wider 2.5σ band over a 20-candle window to filter out routine volatility and identify only <em>statistically extreme</em> price dislocations. A price piercing the 2.5σ lower band on 1-minute data occurs in less than 1% of candles under normal distribution — when it does, it signals that momentum has overextended to the downside.</p>
+                    <div class="rule">BB Lower = 20-period SMA − (2.5 × 20-period Std Dev)</div>
+                </div>
+                <div class="term-box">
+                    <span class="term-title">Volume Capitulation (Climax Volume)</span>
+                    <p>The most powerful single signal in the Dip Radar algorithm. Capitulation occurs when panicking sellers all exit at the same time, producing a down-candle with a volume spike that is 3 or more standard deviations above the 20-candle rolling average. This is the quantitative fingerprint of "weak hands washing out" — forced sellers (margin calls, stop-loss orders, retail panic) exhausting their supply of stock.</p>
+                    <p>After capitulation, there are no more forced sellers left in the short term, removing the primary source of downward pressure. The remaining participants are either long-term holders or new buyers looking for value — setting up a sharp reversal.</p>
+                    <div class="rule border-left-red">Condition: Volume &gt; (20-candle Volume SMA) + (3 × 20-candle Volume Std Dev) — AND — current candle closes lower than the prior candle.</div>
+                </div>
+                <div class="term-box">
+                    <span class="term-title">Session-Scoped Monitoring</span>
+                    <p>Dip Radar is deliberately not a persistent background monitor. It is activated on-demand per ticker from the stock detail page and automatically deactivates at 16:05 ET each trading day. This design prevents alert fatigue and avoids scanning noise outside of active market hours. The deduplication system (alert_state table) ensures that only the first breach of the score threshold fires an alert — repeat scans at the same high score are silently suppressed until a new session arms the ticker again.</p>
                 </div>
             </details>
 

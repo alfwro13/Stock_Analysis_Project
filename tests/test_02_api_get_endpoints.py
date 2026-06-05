@@ -194,6 +194,8 @@ def test_no_endpoint_returns_500(client):
         "/api/reports/mean-reversion",
         "/api/reports/leaders",
         "/api/reports/dividends",
+        "/api/intraday-monitor/list",
+        "/api/intraday-monitor/analysis/AAPL",
     ]
     failures = []
     for url in get_endpoints:
@@ -206,3 +208,73 @@ def test_no_endpoint_returns_500(client):
         + "\n".join(failures)
         + "\nThis means code in those routes crashed.  Check logs above for the traceback."
     )
+
+
+# ── Intraday Dip Radar ────────────────────────────────────────────────────────
+
+@pytest.mark.api
+def test_intraday_monitor_list_returns_200(client):
+    """GET /api/intraday-monitor/list must return 200 with a monitors list."""
+    resp = client.get("/api/intraday-monitor/list")
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
+    data = _json(resp)
+    assert "monitors" in data, f"Missing 'monitors' key in response: {data}"
+    assert isinstance(data["monitors"], list), "'monitors' must be a list"
+
+
+@pytest.mark.api
+def test_intraday_monitor_list_is_empty_on_fresh_db(client):
+    """On a fresh test database, no monitors exist so the list must be empty."""
+    resp = client.get("/api/intraday-monitor/list")
+    data = _json(resp)
+    assert data["monitors"] == [], (
+        "Expected empty list on fresh DB — found unexpected monitors: "
+        + str(data["monitors"])
+    )
+
+
+@pytest.mark.api
+def test_intraday_monitor_analysis_unknown_ticker_returns_null(client):
+    """GET /api/intraday-monitor/analysis/ZZNONE must return 200 with null body (no crash)."""
+    resp = client.get("/api/intraday-monitor/analysis/ZZNONE")
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
+    assert resp.json() is None, (
+        "Expected null for a ticker with no scan results, got: " + resp.text[:200]
+    )
+
+
+@pytest.mark.api
+def test_intraday_monitor_analysis_returns_data_after_result_inserted(client):
+    """After inserting a result row, GET /api/intraday-monitor/analysis/{ticker} must return it."""
+    import json
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+    import database as _db
+
+    conn = _db.get_connection()
+    reasons = ["Extreme Oversold (RSI: 21.5)", "Volume Capitulation detected"]
+    try:
+        conn.execute(
+            """INSERT OR REPLACE INTO intraday_monitor_results
+               (ticker, scan_ts, current_price, reversal_score, is_bottoming,
+                reasons_json, rsi, vwap, vwap_deviation)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            ("TESTRADAR", "2025-01-15 10:32", 110.5, 75, 1,
+             json.dumps(reasons), 21.5, 113.0, -2.5),
+        )
+        conn.commit()
+
+        resp = client.get("/api/intraday-monitor/analysis/TESTRADAR")
+        assert resp.status_code == 200
+        data = _json(resp)
+        assert data is not None, "Expected a result dict, got null"
+        assert data["ticker"] == "TESTRADAR"
+        assert data["reversal_score"] == 75
+        assert data["is_bottoming"] == 1
+        assert isinstance(data["reasons"], list), "'reasons' must be a decoded list"
+        assert len(data["reasons"]) == 2
+    finally:
+        conn.execute("DELETE FROM intraday_monitor_results WHERE ticker = 'TESTRADAR'")
+        conn.commit()
+        conn.close()

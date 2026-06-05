@@ -282,3 +282,93 @@ class TestImportServerSecurity:
         # The file won't exist on disk, so we expect 404 (not 400).
         resp = client.post("/api/universe/import/server", json={"filename": "my_universe.csv"})
         assert resp.status_code == 404
+
+
+# ── Intraday Dip Radar ────────────────────────────────────────────────────────
+
+@pytest.mark.api
+class TestIntradayDipRadar:
+
+    def test_add_monitor_returns_ok(self, client):
+        """POST /api/intraday-monitor/add must return 200 with status='ok' and the ticker."""
+        resp = client.post("/api/intraday-monitor/add", json={"ticker": "AAPL"})
+        assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
+        data = _json(resp)
+        assert data.get("status") == "ok", f"Expected status='ok', got: {data}"
+        assert data.get("ticker") == "AAPL"
+
+    def test_add_monitor_persists_to_db(self, client):
+        """After adding, the ticker must appear as active in the DB."""
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+        import database as _db
+        from datetime import date
+
+        client.post("/api/intraday-monitor/add", json={"ticker": "MSFT"})
+        conn = _db.get_connection()
+        try:
+            row = conn.execute(
+                "SELECT is_active FROM intraday_monitors WHERE ticker = ? AND date_added = ?",
+                ("MSFT", date.today().isoformat()),
+            ).fetchone()
+            assert row is not None, "Monitor row not found in DB after add"
+            assert row["is_active"] == 1, "Monitor was not set to is_active=1"
+        finally:
+            conn.execute("DELETE FROM intraday_monitors WHERE ticker = 'MSFT'")
+            conn.commit()
+            conn.close()
+
+    def test_remove_monitor_returns_ok(self, client):
+        """POST /api/intraday-monitor/remove must return 200 with status='ok'."""
+        client.post("/api/intraday-monitor/add", json={"ticker": "GOOG"})
+        resp = client.post("/api/intraday-monitor/remove", json={"ticker": "GOOG"})
+        assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
+        data = _json(resp)
+        assert data.get("status") == "ok"
+
+    def test_remove_monitor_sets_inactive_in_db(self, client):
+        """After removing, is_active must be 0 in the DB."""
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+        import database as _db
+
+        client.post("/api/intraday-monitor/add", json={"ticker": "META"})
+        client.post("/api/intraday-monitor/remove", json={"ticker": "META"})
+        conn = _db.get_connection()
+        try:
+            row = conn.execute(
+                "SELECT is_active FROM intraday_monitors WHERE ticker = 'META'"
+            ).fetchone()
+            assert row is not None, "Monitor row disappeared after remove"
+            assert row["is_active"] == 0, "is_active was not set to 0 after remove"
+        finally:
+            conn.execute("DELETE FROM intraday_monitors WHERE ticker = 'META'")
+            conn.commit()
+            conn.close()
+
+    def test_add_monitor_missing_ticker_returns_422(self, client):
+        """POST /api/intraday-monitor/add without a ticker body must return 422 (validation error)."""
+        resp = client.post("/api/intraday-monitor/add", json={})
+        assert resp.status_code == 422, f"Expected 422, got {resp.status_code}"
+
+    def test_add_monitor_idempotent(self, client):
+        """Calling add twice for the same ticker must not duplicate the DB row."""
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+        import database as _db
+
+        client.post("/api/intraday-monitor/add", json={"ticker": "NVDA"})
+        client.post("/api/intraday-monitor/add", json={"ticker": "NVDA"})
+        conn = _db.get_connection()
+        try:
+            row = conn.execute(
+                "SELECT COUNT(*) AS cnt FROM intraday_monitors WHERE ticker = 'NVDA'"
+            ).fetchone()
+            assert row["cnt"] == 1, "Duplicate row created by idempotent add"
+        finally:
+            conn.execute("DELETE FROM intraday_monitors WHERE ticker = 'NVDA'")
+            conn.commit()
+            conn.close()

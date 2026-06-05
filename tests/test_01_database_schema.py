@@ -64,6 +64,8 @@ EXPECTED_TABLES = [
     "market_universe",
     "asset_profiles",
     "market_regimes",
+    "intraday_monitors",
+    "intraday_monitor_results",
     "macro_regimes",
     "scheduler_run_log",
 ]
@@ -304,3 +306,83 @@ def test_database_file_is_accessible():
     db_path = _db.DB_PATH
     assert db_path.exists(), f"Database file does not exist at {db_path}"
     assert db_path.stat().st_size > 0, "Database file is empty"
+
+
+# ── Intraday Dip Radar tables ─────────────────────────────────────────────────
+
+@pytest.mark.db
+def test_intraday_monitors_has_required_columns():
+    """intraday_monitors must have ticker (PK), date_added, is_active, activated_by."""
+    cols = _columns("intraday_monitors")
+    required = {"ticker", "date_added", "is_active", "activated_by"}
+    missing = required - cols
+    assert not missing, f"intraday_monitors missing columns: {missing}"
+
+
+@pytest.mark.db
+def test_intraday_monitor_results_has_required_columns():
+    """intraday_monitor_results must store the full scoring payload."""
+    cols = _columns("intraday_monitor_results")
+    required = {"ticker", "scan_ts", "current_price", "reversal_score",
+                "is_bottoming", "reasons_json", "rsi", "vwap", "vwap_deviation"}
+    missing = required - cols
+    assert not missing, f"intraday_monitor_results missing columns: {missing}"
+
+
+@pytest.mark.db
+def test_intraday_monitors_upsert_on_ticker_pk():
+    """INSERT OR REPLACE on intraday_monitors must update the existing row, not duplicate it."""
+    conn = _conn()
+    today = "2025-01-15"
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO intraday_monitors (ticker, date_added, is_active, activated_by)"
+            " VALUES ('TEST_RADAR', ?, 1, 'user')", (today,)
+        )
+        conn.commit()
+        conn.execute(
+            "INSERT OR REPLACE INTO intraday_monitors (ticker, date_added, is_active, activated_by)"
+            " VALUES ('TEST_RADAR', ?, 0, 'user')", (today,)
+        )
+        conn.commit()
+        rows = conn.execute(
+            "SELECT COUNT(*) AS cnt FROM intraday_monitors WHERE ticker = 'TEST_RADAR'"
+        ).fetchone()
+        assert rows["cnt"] == 1, "Upsert created a duplicate row"
+        row = conn.execute(
+            "SELECT is_active FROM intraday_monitors WHERE ticker = 'TEST_RADAR'"
+        ).fetchone()
+        assert row["is_active"] == 0, "is_active was not updated by upsert"
+    finally:
+        conn.execute("DELETE FROM intraday_monitors WHERE ticker = 'TEST_RADAR'")
+        conn.commit()
+        conn.close()
+
+
+@pytest.mark.db
+def test_intraday_monitor_results_roundtrip():
+    """INSERT + SELECT on intraday_monitor_results must preserve all scoring fields."""
+    import json
+    conn = _conn()
+    reasons = ["Extreme Oversold (RSI: 22.1)", "Volume Capitulation detected"]
+    try:
+        conn.execute(
+            """INSERT OR REPLACE INTO intraday_monitor_results
+               (ticker, scan_ts, current_price, reversal_score, is_bottoming,
+                reasons_json, rsi, vwap, vwap_deviation)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            ("TEST_RADAR", "2025-01-15 10:32", 185.42, 80, 1,
+             json.dumps(reasons), 22.1, 188.75, -3.33),
+        )
+        conn.commit()
+        row = conn.execute(
+            "SELECT * FROM intraday_monitor_results WHERE ticker = 'TEST_RADAR'"
+        ).fetchone()
+        assert row is not None, "Inserted result row not found"
+        assert row["reversal_score"] == 80
+        assert row["is_bottoming"] == 1
+        assert json.loads(row["reasons_json"]) == reasons
+    finally:
+        conn.execute("DELETE FROM intraday_monitor_results WHERE ticker = 'TEST_RADAR'")
+        conn.commit()
+        conn.close()
