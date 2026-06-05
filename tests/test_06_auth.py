@@ -347,44 +347,45 @@ class TestLogout:
 
 class TestChangePassword:
     """Uses the api-key-authenticated `client` so middleware is bypassed;
-    only the change-password business logic is under test."""
+    only the change-password business logic is under test.
+    All requests must include X-Confirm-Token (added as a security fix)."""
 
-    def test_wrong_current_password_returns_400(self, client, test_password):
+    def test_wrong_current_password_returns_400(self, client, confirm_token, test_password):
         resp = client.post("/api/change-password", json={
             "current_password": "definitely-not-the-right-password",
             "new_password": "brandnewpass99",
             "confirm_password": "brandnewpass99",
-        })
+        }, headers={"X-Confirm-Token": confirm_token})
         assert resp.status_code == 400
         assert "incorrect" in resp.json().get("detail", "").lower()
 
-    def test_mismatched_new_passwords_return_400(self, client, test_password):
+    def test_mismatched_new_passwords_return_400(self, client, confirm_token, test_password):
         resp = client.post("/api/change-password", json={
             "current_password": test_password,
             "new_password": "newpassword456",
             "confirm_password": "differentpass456",
-        })
+        }, headers={"X-Confirm-Token": confirm_token})
         assert resp.status_code == 400
         assert "match" in resp.json().get("detail", "").lower()
 
-    def test_password_shorter_than_8_chars_returns_400(self, client, test_password):
+    def test_password_shorter_than_8_chars_returns_400(self, client, confirm_token, test_password):
         resp = client.post("/api/change-password", json={
             "current_password": test_password,
             "new_password": "short",
             "confirm_password": "short",
-        })
+        }, headers={"X-Confirm-Token": confirm_token})
         assert resp.status_code == 400
         assert "8" in resp.json().get("detail", "")
 
-    def test_changeme_password_is_rejected(self, client, test_password):
+    def test_changeme_password_is_rejected(self, client, confirm_token, test_password):
         resp = client.post("/api/change-password", json={
             "current_password": test_password,
             "new_password": "changeme",
             "confirm_password": "changeme",
-        })
+        }, headers={"X-Confirm-Token": confirm_token})
         assert resp.status_code == 400
 
-    def test_valid_password_change_returns_200(self, client, test_password):
+    def test_valid_password_change_returns_200(self, client, confirm_token, test_password):
         original = os.environ.get("DASHBOARD_PASSWORD", test_password)
         try:
             with patch("dotenv.set_key"):  # prevent writing to the real .env file
@@ -392,7 +393,7 @@ class TestChangePassword:
                     "current_password": original,
                     "new_password": "brandnewpass99",
                     "confirm_password": "brandnewpass99",
-                })
+                }, headers={"X-Confirm-Token": confirm_token})
             assert resp.status_code == 200
             assert resp.json().get("status") == "ok"
         finally:
@@ -435,3 +436,48 @@ class TestConfirmToken:
     def test_system_restart_requires_confirm_token(self, client):
         resp = client.post("/api/system/restart")
         assert resp.status_code == 422
+
+    def test_generate_api_key_requires_confirm_token(self, client):
+        """POST /api/generate-api-key must reject requests without X-Confirm-Token."""
+        resp = client.post("/api/generate-api-key")
+        assert resp.status_code == 422, (
+            f"Missing X-Confirm-Token must return 422; got {resp.status_code}"
+        )
+
+    def test_generate_api_key_invalid_token_returns_403(self, client):
+        resp = client.post("/api/generate-api-key", headers={"X-Confirm-Token": "wrong"})
+        assert resp.status_code == 403
+
+    def test_generate_api_key_valid_token_returns_200(self, client, confirm_token):
+        with patch("dotenv.set_key"), patch.dict(os.environ, {}, clear=False):
+            resp = client.post("/api/generate-api-key", headers={"X-Confirm-Token": confirm_token})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "api_key" in data, f"Response must contain api_key; got {data}"
+        assert len(data["api_key"]) == 64, "api_key must be 64 hex chars (32-byte token)"
+
+    def test_change_password_requires_confirm_token(self, client):
+        """POST /api/change-password must reject requests without X-Confirm-Token."""
+        resp = client.post("/api/change-password", json={
+            "current_password": "x", "new_password": "y", "confirm_password": "y"
+        })
+        assert resp.status_code == 422, (
+            f"Missing X-Confirm-Token must return 422; got {resp.status_code}"
+        )
+
+    def test_change_password_invalid_token_returns_403(self, client):
+        resp = client.post("/api/change-password", json={
+            "current_password": "x", "new_password": "newpass99", "confirm_password": "newpass99"
+        }, headers={"X-Confirm-Token": "wrong"})
+        assert resp.status_code == 403
+
+    def test_test_nextcloud_message_requires_confirm_token(self, client):
+        """POST /api/test-nextcloud-message must reject requests without X-Confirm-Token."""
+        resp = client.post("/api/test-nextcloud-message")
+        assert resp.status_code == 422, (
+            f"Missing X-Confirm-Token must return 422; got {resp.status_code}"
+        )
+
+    def test_test_nextcloud_message_invalid_token_returns_403(self, client):
+        resp = client.post("/api/test-nextcloud-message", headers={"X-Confirm-Token": "wrong"})
+        assert resp.status_code == 403

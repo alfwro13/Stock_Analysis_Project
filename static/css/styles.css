@@ -702,6 +702,12 @@ details[open].xray-rec-group .xray-rec-group-summary::before { transform: rotate
 .xray-rec-within  { background: rgba(46,204,113,0.15); color: #2ecc71; }
 .xray-rec-msg { color: #bbb; line-height: 1.4; }
 
+/* Intraday chart placeholders */
+.intraday-placeholder { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 120px; gap: 10px; color: #888; }
+.intraday-placeholder-icon { font-size: 1.8rem; }
+.intraday-placeholder-label { font-weight: 600; }
+.intraday-placeholder--error { gap: 8px; }
+
 /* Responsive */
 @media (max-width: 900px) {
   .xray-row-3col { grid-template-columns: 1fr; }

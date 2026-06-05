@@ -110,7 +110,7 @@ async def login(request: Request, body: LoginRequest, response: Response):
     return {"status": "ok"}
 
 
-@api_router.post("/generate-api-key")
+@api_router.post("/generate-api-key", dependencies=[Depends(require_confirm_token)])
 async def generate_api_key():
     import secrets as _secrets
     from dotenv import set_key
@@ -127,7 +127,7 @@ class ChangePasswordRequest(BaseModel):
     confirm_password: str
 
 
-@api_router.post("/change-password")
+@api_router.post("/change-password", dependencies=[Depends(require_confirm_token)])
 async def change_password(body: ChangePasswordRequest):
     import secrets as _secrets
     from dotenv import set_key
@@ -173,7 +173,7 @@ async def save_nextcloud_settings(body: SaveNextcloudSettingsRequest):
     return {"status": "ok"}
 
 
-@api_router.post("/test-nextcloud-message")
+@api_router.post("/test-nextcloud-message", dependencies=[Depends(require_confirm_token)])
 async def test_nextcloud_message():
     from nextcloud_talk import send_text_message
     url = os.environ.get("NEXTCLOUD_URL", "")
@@ -493,9 +493,9 @@ def bg_init_macro_pipeline():
         ai_engine.train_consensus_miss_probability()
         ai_engine.train_volatility_magnitude()
         
-        scan_date = datetime.now().strftime('%Y-%m-%d')
+        scan_date = time_engine.now_local().strftime('%Y-%m-%d')
         ai_engine.run_macro_inference(scan_date)
-        
+
         # Update config.json to mark initialization as complete
         update_config_atomic({"SCHEDULING": {"MACRO_ENGINE": {"INITIALIZED": True}}})
         
@@ -513,9 +513,9 @@ def bg_run_macro_pipeline():
         update_macro_indicators() # REFRESH THE MACRO INDICATOR DATA
         
         ai_engine = MacroAIEngine()
-        scan_date = datetime.now().strftime('%Y-%m-%d')
+        scan_date = time_engine.now_local().strftime('%Y-%m-%d')
         ai_engine.run_macro_inference(scan_date)
-        
+
         log_notification("Success", "Macro AI Pipeline executed successfully.")
     except Exception as e:
         logger.error(f"Macro AI Pipeline execution failed: {e}")
@@ -718,7 +718,6 @@ async def import_server_csv(request: ImportRequest, background_tasks: Background
         return JSONResponse(status_code=400, content={"status": "error", "message": "Invalid filename."})
     conn = None
     try:
-        file_path = IMPORT_DIR / request.filename
         if not file_path.exists():
             return JSONResponse(status_code=404, content={"status": "error", "message": f"File '{request.filename}' not found on server at {file_path}."})
             
@@ -730,7 +729,7 @@ async def import_server_csv(request: ImportRequest, background_tasks: Background
         
         df = df.dropna(subset=['ticker'])
         records = []
-        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        current_time = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         for _, row in df.iterrows():
             records.append((
                 str(row['ticker']),
@@ -954,7 +953,6 @@ async def get_system_metrics():
     conn = None
     try:
         conn = get_connection()
-        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
         # 1. Universe & Data Coverage
@@ -1040,7 +1038,13 @@ async def get_system_metrics():
                 try:
                     _payload = joblib.load(_jf)
                     _trained_at = _payload.get('trained_at')
-                    if not _trained_at or datetime.fromisoformat(_trained_at) < _stale_cutoff:
+                    if not _trained_at:
+                        anomaly_stale_cnt += 1
+                        continue
+                    _dt = datetime.fromisoformat(_trained_at)
+                    if _dt.tzinfo is None:
+                        _dt = _dt.replace(tzinfo=timezone.utc)
+                    if _dt < _stale_cutoff:
                         anomaly_stale_cnt += 1
                 except Exception:
                     anomaly_stale_cnt += 1
@@ -1671,7 +1675,7 @@ async def intraday_monitor_add(req: TickerRequest):
     ticker = req.ticker.upper().strip()
     if not ticker:
         raise HTTPException(status_code=400, detail="ticker is required")
-    today = datetime.now().date().isoformat()
+    today = time_engine.now_local().date().isoformat()
     conn = get_connection()
     try:
         conn.execute(
@@ -1720,7 +1724,7 @@ async def intraday_monitor_remove(req: TickerRequest):
 
 @api_router.get("/intraday-monitor/list")
 async def intraday_monitor_list():
-    today = datetime.now().date().isoformat()
+    today = time_engine.now_local().date().isoformat()
     conn = get_connection()
     try:
         rows = conn.execute(
@@ -1786,10 +1790,10 @@ async def get_intraday_chart(ticker: str = PathParam(..., pattern=r"^[A-Z0-9.\-\
     try:
         df_intraday = pd.read_parquet(INTRADAY_DIR / f"{ticker}_intraday.parquet")
     except FileNotFoundError:
-        html = "<div style='display:flex;flex-direction:column;align-items:center;justify-content:center;height:120px;gap:10px;color:#888;'><span style='font-size:1.8rem;'>📭</span><span style='font-weight:600;'>No intraday data yet</span></div>"
+        html = "<div class='intraday-placeholder'><span class='intraday-placeholder-icon'>📭</span><span class='intraday-placeholder-label'>No intraday data yet</span></div>"
         return JSONResponse(content={"html": html})
     except Exception:
-        html = "<div style='display:flex;flex-direction:column;align-items:center;justify-content:center;height:120px;gap:8px;color:#888;'><span style='font-size:1.8rem;'>⚠️</span><span style='font-weight:600;'>Intraday data unavailable</span></div>"
+        html = "<div class='intraday-placeholder intraday-placeholder--error'><span class='intraday-placeholder-icon'>⚠️</span><span class='intraday-placeholder-label'>Intraday data unavailable</span></div>"
         return JSONResponse(content={"html": html})
 
     live_pattern_name = live_pattern_tooltip = live_pattern_score = None
