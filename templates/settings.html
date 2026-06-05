@@ -495,6 +495,11 @@
                         </div>
                     </div>
 
+                </details>
+
+                <details class="settings-card">
+                    <summary>📰 News & RSS</summary>
+
                     <div class="settings-panel border-left-blue">
                         <h4 class="settings-panel-header text-blue">📡 RSS Feed</h4>
                         <p class="settings-desc-sm">Subscribe to crash and moonshot alerts via RSS. The feed is unauthenticated and publicly accessible — share the URL with any RSS reader.</p>
@@ -510,6 +515,48 @@
                             </div>
                             <p class="text-muted-desc">Add this URL to any RSS reader (e.g. Nextcloud News, Feedly, Miniflux). When disabled, the feed returns 404.</p>
                         </div>
+                    </div>
+
+                    <div class="settings-panel-sm border-left-cyan">
+                        <h4 class="settings-panel-header text-cyan">📰 News Feed</h4>
+                        <p class="settings-desc-sm">Fetches Yahoo Finance news for portfolio &amp; watchlist tickers, extracts full article text, and stores articles for in-app reading. Premium/paywalled articles are skipped automatically.</p>
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="NEWS_FEED_ENABLED" {% if config.SCHEDULING.NEWS_FEED.ENABLED %}checked{% endif %}>
+                            <label for="NEWS_FEED_ENABLED">Enable automated news fetching</label>
+                        </div>
+                        <div class="flex-gap-15 mb-10">
+                            <div class="form-group flex-1">
+                                <label>Active Days</label>
+                                <select id="NEWS_FEED_FREQ">
+                                    <option value="mon-fri" {% if config.SCHEDULING.NEWS_FEED.FREQUENCY == 'mon-fri' %}selected{% endif %}>Mon-Fri</option>
+                                    <option value="*" {% if config.SCHEDULING.NEWS_FEED.FREQUENCY == '*' %}selected{% endif %}>Every Day</option>
+                                </select>
+                            </div>
+                            <div class="form-group flex-1">
+                                <label>Start Time</label>
+                                <input type="time" id="NEWS_FEED_START" value="{{ config.SCHEDULING.NEWS_FEED.START_TIME | default('08:00') }}">
+                            </div>
+                            <div class="form-group flex-1">
+                                <label>End Time</label>
+                                <input type="time" id="NEWS_FEED_END" value="{{ config.SCHEDULING.NEWS_FEED.END_TIME | default('20:00') }}">
+                            </div>
+                            <div class="form-group flex-1">
+                                <label>Interval (Hours)</label>
+                                <input type="number" id="NEWS_FEED_INTERVAL" value="{{ config.SCHEDULING.NEWS_FEED.INTERVAL_HOURS | default(4) }}" min="1">
+                            </div>
+                        </div>
+                        <div class="flex-gap-15 mb-10">
+                            <div class="form-group flex-1">
+                                <label>Max Articles / Ticker</label>
+                                <input type="number" id="NEWS_FEED_MAX_PER" value="{{ config.SCHEDULING.NEWS_FEED.MAX_PER_TICKER | default(5) }}" min="1" max="20">
+                            </div>
+                            <div class="form-group flex-1">
+                                <label>Retain Articles (Days)</label>
+                                <input type="number" id="NEWS_FEED_MAX_AGE" value="{{ config.SCHEDULING.NEWS_FEED.MAX_AGE_DAYS | default(7) }}" min="1" max="30">
+                            </div>
+                        </div>
+                        <button type="button" class="btn-test mt-0 btn-cyan" onclick="triggerNewsFetch()">▶ Fetch News Now</button>
+                        <span id="news-fetch-status" style="margin-left:10px;font-size:0.82em;"></span>
                     </div>
                 </details>
 
@@ -919,47 +966,6 @@
                         <button type="button" class="btn-test mt-0 btn-cyan" onclick="triggerSentimentScan()">▶️ Run Sentiment Scan Now</button>
                     </div>
 
-                    <div class="settings-panel-sm border-left-cyan">
-                        <h4 class="settings-panel-header text-cyan">📰 News Feed</h4>
-                        <p class="settings-desc-sm">Fetches Yahoo Finance news for portfolio &amp; watchlist tickers, extracts full article text, and stores articles for in-app reading. Premium/paywalled articles are skipped automatically.</p>
-                        <div class="checkbox-group">
-                            <input type="checkbox" id="NEWS_FEED_ENABLED" {% if config.SCHEDULING.NEWS_FEED.ENABLED %}checked{% endif %}>
-                            <label for="NEWS_FEED_ENABLED">Enable automated news fetching</label>
-                        </div>
-                        <div class="flex-gap-15 mb-10">
-                            <div class="form-group flex-1">
-                                <label>Active Days</label>
-                                <select id="NEWS_FEED_FREQ">
-                                    <option value="mon-fri" {% if config.SCHEDULING.NEWS_FEED.FREQUENCY == 'mon-fri' %}selected{% endif %}>Mon-Fri</option>
-                                    <option value="*" {% if config.SCHEDULING.NEWS_FEED.FREQUENCY == '*' %}selected{% endif %}>Every Day</option>
-                                </select>
-                            </div>
-                            <div class="form-group flex-1">
-                                <label>Start Time</label>
-                                <input type="time" id="NEWS_FEED_START" value="{{ config.SCHEDULING.NEWS_FEED.START_TIME | default('08:00') }}">
-                            </div>
-                            <div class="form-group flex-1">
-                                <label>End Time</label>
-                                <input type="time" id="NEWS_FEED_END" value="{{ config.SCHEDULING.NEWS_FEED.END_TIME | default('20:00') }}">
-                            </div>
-                            <div class="form-group flex-1">
-                                <label>Interval (Hours)</label>
-                                <input type="number" id="NEWS_FEED_INTERVAL" value="{{ config.SCHEDULING.NEWS_FEED.INTERVAL_HOURS | default(4) }}" min="1">
-                            </div>
-                        </div>
-                        <div class="flex-gap-15 mb-10">
-                            <div class="form-group flex-1">
-                                <label>Max Articles / Ticker</label>
-                                <input type="number" id="NEWS_FEED_MAX_PER" value="{{ config.SCHEDULING.NEWS_FEED.MAX_PER_TICKER | default(5) }}" min="1" max="20">
-                            </div>
-                            <div class="form-group flex-1">
-                                <label>Retain Articles (Days)</label>
-                                <input type="number" id="NEWS_FEED_MAX_AGE" value="{{ config.SCHEDULING.NEWS_FEED.MAX_AGE_DAYS | default(7) }}" min="1" max="30">
-                            </div>
-                        </div>
-                        <button type="button" class="btn-test mt-0 btn-cyan" onclick="triggerNewsFetch()">▶ Fetch News Now</button>
-                        <span id="news-fetch-status" style="margin-left:10px;font-size:0.82em;"></span>
-                    </div>
                 </details>
                 
                 <details class="settings-card">
