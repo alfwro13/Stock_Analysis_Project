@@ -437,18 +437,25 @@
                             const vwapFired  = data.vwap_lower != null && price < data.vwap_lower;
                             const volFired   = data.vol_climax === true;
 
-                            function tile(lbl, val, pts, fired, sub) {
+                            function tile(lbl, val, pts, fired, sub, tooltip) {
                                 var bg  = fired ? 'rgba(0,204,102,.1)'      : 'rgba(255,255,255,.04)';
                                 var bdr = fired ? '1px solid rgba(0,204,102,.35)' : '1px solid rgba(255,255,255,.1)';
                                 var ic  = fired ? '&#x2705;' : '&#x274C;';
                                 var pc  = fired ? '#00cc66' : '#555';
+                                var tip = tooltip ? ' title="' + tooltip.replace(/"/g, '&quot;') + '"' : '';
+                                var tipIcon = tooltip ? ' <abbr' + tip + ' style="color:#444;font-size:9px;cursor:help;text-decoration:none;font-style:normal;">ⓘ</abbr>' : '';
                                 return '<div style="background:' + bg + ';border:' + bdr + ';border-radius:6px;padding:9px 10px;min-width:0;">' +
-                                    '<div style="color:#888;font-size:10px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">' + lbl + '</div>' +
+                                    '<div style="color:#888;font-size:10px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">' + lbl + tipIcon + '</div>' +
                                     '<div style="color:#e8e8e8;font-size:13px;font-weight:bold;margin-bottom:1px;">' + (val != null ? val : '&mdash;') + '</div>' +
                                     '<div style="color:' + pc + ';font-size:11px;">' + ic + ' ' + pts + ' pts</div>' +
                                     (sub ? '<div style="color:#666;font-size:10px;margin-top:2px;">' + sub + '</div>' : '') +
                                     '</div>';
                             }
+
+                            var TIP_RSI  = 'RSI 14 (Relative Strength Index, 14-period on 1-min bars)\n\nMeasures the speed of price movement. Below 30 = oversold selling momentum. Below 25 = extreme oversold — the selling velocity is at a statistical extreme.\n\nScoring: RSI < 25 → +30 pts | RSI < 30 → +15 pts';
+                            var TIP_BB   = 'Lower Bollinger Band (20-bar SMA − 2.5 standard deviations)\n\nStandard bands use 2σ. Dip Radar uses the wider 2.5σ setting so only truly extreme dislocations score. A price below this line is statistically expected less than 1.2% of the time — it signals the sell-off has pushed price far beyond normal volatility.\n\nScoring: price below BB Lower → +25 pts';
+                            var TIP_VWAP = 'VWAP − 2.5σ (Volume Weighted Average Price, intraday anchor)\n\nVWAP is the fair-value price for the session, weighting each minute by its traded volume — the benchmark institutional desks use to judge execution quality. Trading 2.5σ below VWAP means the stock is at a statistically extreme discount to where the majority of today\'s money changed hands. Institutions often step in at these levels.\n\nScoring: price below VWAP − 2.5σ → +20 pts';
+                            var TIP_VOL  = 'Volume Climax (Capitulation)\n\nFires when the current down-candle\'s volume exceeds the 20-bar rolling average by 3 or more standard deviations. This is the footprint of forced selling — margin calls, stop-loss cascades, and panic redemptions all hitting bids simultaneously. Once this supply is exhausted there are no more forced sellers left, which removes the primary source of downward pressure.\n\nScoring: high-volume down-candle → +25 pts';
 
                             document.getElementById('dip-score-display').innerHTML =
                                 // Score bar header
@@ -465,10 +472,10 @@
                                 '</div>' +
                                 // Four signal tiles
                                 '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(78px,1fr));gap:7px;margin-bottom:9px;">' +
-                                  tile('RSI 14',    rsi != null ? rsi.toFixed(1) : null, rsiPts, rsiFired, rsiSub) +
-                                  tile('BB Lower',  data.bb_lower  != null ? '$' + data.bb_lower.toFixed(2)  : null, bbFired   ? 25 : 0, bbFired,   bbFired   ? 'Price &lt; 2.5&sigma; band' : '') +
-                                  tile('VWAP &minus;2.5&sigma;', data.vwap_lower != null ? '$' + data.vwap_lower.toFixed(2) : null, vwapFired ? 20 : 0, vwapFired, vwapFired ? 'VWAP deviation' : '') +
-                                  tile('Vol Climax', volFired ? 'YES' : (data.vol_climax != null ? 'No' : null), volFired ? 25 : 0, volFired, volFired ? 'High-vol down-bar' : '') +
+                                  tile('RSI 14',    rsi != null ? rsi.toFixed(1) : null, rsiPts, rsiFired, rsiSub, TIP_RSI) +
+                                  tile('BB Lower',  data.bb_lower  != null ? '$' + data.bb_lower.toFixed(2)  : null, bbFired   ? 25 : 0, bbFired,   bbFired   ? 'Price &lt; 2.5&sigma; band' : '', TIP_BB) +
+                                  tile('VWAP &minus;2.5&sigma;', data.vwap_lower != null ? '$' + data.vwap_lower.toFixed(2) : null, vwapFired ? 20 : 0, vwapFired, vwapFired ? 'VWAP deviation' : '', TIP_VWAP) +
+                                  tile('Vol Climax', volFired ? 'YES' : (data.vol_climax != null ? 'No' : null), volFired ? 25 : 0, volFired, volFired ? 'High-vol down-bar' : '', TIP_VOL) +
                                 '</div>' +
                                 // Footer stats
                                 '<div style="color:#555;font-size:11px;border-top:1px solid #222;padding-top:6px;">' +
