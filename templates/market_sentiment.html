@@ -62,7 +62,7 @@
         <div class="flex-col">
             {% for evt in urgent_events %}
             <div class="urgent-event-row">
-                <span class="ue-date font-monospace text-sm">[{{ evt.event_date }}]</span>
+                <span class="ue-date font-monospace text-sm">[{{ evt.display_date }}]</span>
                 <span class="ue-name">
                     {% if evt.context %}
                         <abbr title="{{ evt.context }}" class="text-help text-white">{{ evt.event_name }}</abbr>
@@ -121,7 +121,7 @@
             <div style="flex: 1;">
                 <h3 class="risk-summary-header {% if latest.alert_fired %}red{% else %}text-cyan{% endif %}" style="margin-bottom: 4px;">
                     🤖 AI Sector Contagion Monitor
-                    <span style="font-size: 12px; font-weight: normal; color: #888; margin-left: 10px;">Last scan: {{ latest.scan_ts }} UTC</span>
+                    <span style="font-size: 12px; font-weight: normal; color: #888; margin-left: 10px;">Last scan: {{ latest.scan_ts }}</span>
                 </h3>
                 {% if latest.alert_fired %}
                 <p class="risk-summary-text" style="color: #f44336; font-weight: 600;">
@@ -268,7 +268,7 @@
                 <table id="usCalendarTable" class="display w-100">
                     <thead>
                         <tr>
-                            <th>Date (UTC)</th>
+                            <th>Date ({{ user_tz_label }})</th>
                             <th>Event</th>
                             <th>Forecast</th>
                             <th>Previous</th>
@@ -278,7 +278,7 @@
                     <tbody>
                         {% for row in us_events %}
                         <tr>
-                            <td class="font-monospace text-sm">{{ row.event_date }}</td>
+                            <td class="font-monospace text-sm">{{ row.display_date }}</td>
                             <td class="font-bold">
                                 {% if row.context %}
                                     <abbr title="{{ row.context }}" class="text-help text-white">{{ row.event_name }}</abbr>
@@ -386,7 +386,7 @@
                 <table id="ukCalendarTable" class="display w-100">
                     <thead>
                         <tr>
-                            <th>Date (UTC)</th>
+                            <th>Date ({{ user_tz_label }})</th>
                             <th>Event</th>
                             <th>Forecast</th>
                             <th>Previous</th>
@@ -396,7 +396,7 @@
                     <tbody>
                         {% for row in uk_events %}
                         <tr>
-                            <td class="font-monospace text-sm">{{ row.event_date }}</td>
+                            <td class="font-monospace text-sm">{{ row.display_date }}</td>
                             <td class="font-bold">
                                 {% if row.context %}
                                     <abbr title="{{ row.context }}" class="text-help text-white">{{ row.event_name }}</abbr>

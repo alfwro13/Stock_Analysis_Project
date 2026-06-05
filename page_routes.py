@@ -19,6 +19,7 @@ from fastapi.templating import Jinja2Templates
 from position_sizing import get_position_sizing_config
 
 from config import load_config, PORTFOLIO_PATH, WATCHLIST_PATH, HISTORICAL_DIR, INTRADAY_DIR, FUNDAMENTALS_DIR, BASE_CURRENCY
+import time_engine
 from database import get_connection
 from regime_engine import get_latest_regime
 from sentiment_engine import (
@@ -271,6 +272,15 @@ def _load_fundamentals_extra(ticker: str) -> dict:
         return empty
 
 
+def _utc_str_to_local(s: str) -> str:
+    """Convert a naive UTC datetime string to the user's display timezone."""
+    try:
+        dt = datetime.strptime(s, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+        return time_engine.fmt_datetime(dt)
+    except Exception:
+        return s
+
+
 def enrich_macro_events(events_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     Scans event names against the glossary to append tooltips and mathematically 
@@ -280,7 +290,8 @@ def enrich_macro_events(events_list: List[Dict[str, Any]]) -> List[Dict[str, Any
         evt_name = evt.get('event_name', '')
         evt['context'] = None
         evt['insight'] = ""
-        
+        evt['display_date'] = _utc_str_to_local(evt.get('event_date', ''))
+
         polarity = "neutral"
         
         # 1. Match Glossary Context and Polarity
@@ -468,7 +479,7 @@ async def market_sentiment_page(request: Request):
                 else:
                     tickers, severity_score = raw.get("tickers", []), raw.get("severity_score", 0.0)
                 ai_contagion_status.append({
-                    "scan_ts": r["scan_ts"],
+                    "scan_ts": _utc_str_to_local(r["scan_ts"]),
                     "leader_count": r["leader_count"],
                     "etf_count": r["etf_count"],
                     "alert_fired": bool(r["alert_fired"]),
@@ -563,6 +574,7 @@ async def market_sentiment_page(request: Request):
             "uk_events": uk_events,
             "cb_nlp_latest": cb_nlp_latest,
             "ai_contagion_status": ai_contagion_status,
+            "user_tz_label": time_engine.now_local().strftime("%Z"),
             "unread_count": get_unread_count(),
             "config": load_config()
         }
