@@ -510,7 +510,8 @@
                         <div class="form-group">
                             <label>Feed URL</label>
                             <div class="flex-gap-10">
-                                <input type="text" id="RSS_FEED_URL" value="{{ config.SERVER_URL }}:{{ config.PORT }}/rss/alerts.xml" readonly style="flex: 1; background: #1a1a1a; cursor: default;">
+                                <input type="text" id="RSS_FEED_URL" readonly style="flex: 1; background: #1a1a1a; cursor: default;">
+                                <script>document.getElementById('RSS_FEED_URL').value = window.location.origin + '/rss/alerts.xml';</script>
                                 <button type="button" class="btn-secondary" onclick="copyRssFeedUrl()" style="white-space: nowrap;">Copy URL</button>
                             </div>
                             <p class="text-muted-desc">Add this URL to any RSS reader (e.g. Nextcloud News, Feedly, Miniflux). When disabled, the feed returns 404.</p>
