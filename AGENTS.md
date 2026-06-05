@@ -166,6 +166,7 @@ Tests live in `tests/`. Fixtures and the test client are in `tests/conftest.py`.
 - **Do not create new files** unless strictly necessary; prefer editing existing modules.
 - **Do not introduce abstractions** beyond what the task requires.
 - **Run `./run_tests.sh`** after every change and fix failures before marking work done.
+- **Tooltips:** Use `<abbr title="Explanation text.">Label</abbr>` — wrap the label itself, no custom JS, no icon. This is the established convention across all templates (e.g. Support 1, RSI, ATR). Keep tooltip text to 1–2 sentences matching that style.
 - **UK market quirks:** LSE-listed stocks may have prices quoted in pence (GBX), not pounds (GBP). The codebase handles this explicitly — do not remove or simplify that logic.
 - **Secrets:** All credentials live in `.env` (loaded via `python-dotenv`). Never hard-code tokens or API keys. Never commit `.env`.
 - **Port:** Default is `8090`. Do not change it without updating `config.json` and `config.py`.
