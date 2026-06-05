@@ -43,7 +43,6 @@ class GiltDataService:
                 wait = 2 ** attempt
                 logger.warning(f"Request to {url} failed (attempt {attempt + 1}/{retries}): {e}. Retrying in {wait}s.")
                 time.sleep(wait)
-        raise RuntimeError(f"_get_with_retry exhausted {retries} attempts for {url}")
 
     def fetch_historical_boe(self, start_date: str = "01/Jan/2020") -> Optional[pd.DataFrame]:
         """Queries the Bank of England IADB endpoint to fetch true historical spot data."""
@@ -79,8 +78,8 @@ class GiltDataService:
             # Rename to match standard Quant Engine layout
             df = df.rename(columns={"DATE": "Date", "IUDMNPY": "Close"})
             return df[["Date", "Close"]]
-        except Exception as e:
-            logger.error(f"Failed to extract historical data layers from BoE: {str(e)}")
+        except Exception:
+            logger.exception("Failed to extract historical data layers from BoE.")
             return None
 
     def fetch_live_ft_yield(self) -> Optional[float]:
@@ -129,8 +128,8 @@ class GiltDataService:
 
             logger.warning("Financial Times content layout has shifted. Yield token missed.")
             return None
-        except Exception as e:
-            logger.error(f"Network transport error hitting Financial Times data layers: {str(e)}")
+        except Exception:
+            logger.exception("Network transport error hitting Financial Times data layers.")
             return None
 
     def sync_gilt_data(self) -> bool:
