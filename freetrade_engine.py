@@ -46,18 +46,19 @@ def load_blacklist() -> set:
     return set()
 
 def log_freetrade_notification(msg_type: str, msg_text: str) -> None:
+    conn = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO system_notifications (message_type, message_text) VALUES (?, ?)", 
+            "INSERT INTO system_notifications (message_type, message_text) VALUES (?, ?)",
             (msg_type, msg_text)
         )
         conn.commit()
     except Exception as e:
         logger.error(f"Failed to log notification: {e}")
     finally:
-        if 'conn' in locals():
+        if conn is not None:
             conn.close()
 
 def resolve_ticker(symbol: str, isin: str, mic: str, cache_dict: Dict[str, str], ft_config: Dict) -> Tuple[Optional[str], bool]:
@@ -149,7 +150,7 @@ def sync_freetrade_universe(target_mic: Optional[str] = None, limit: Optional[in
             isin = row.get('ISIN')
             mic = str(row.get('MIC')).strip().upper()
             
-            if pd.isna(symbol_raw) or str(symbol_raw).lower() == 'nan' or not str(symbol_raw).strip():
+            if pd.isna(symbol_raw) or not str(symbol_raw).strip():
                 continue
                 
             resolved_ticker, is_mapped = resolve_ticker(symbol_raw, isin, mic, cache_dict, ft_config)
@@ -190,9 +191,9 @@ def sync_freetrade_universe(target_mic: Optional[str] = None, limit: Optional[in
             return
 
         conn = get_connection()
-        cursor = conn.cursor()
-        
+
         try:
+            cursor = conn.cursor()
             if not target_mic and not limit:
                 logger.info("Executing Bulk Freetrade Flag Reset & Upsert...")
                 # THE FIX: Safely toggle the flag to 0 instead of deleting the row. 
@@ -217,9 +218,9 @@ def sync_freetrade_universe(target_mic: Optional[str] = None, limit: Optional[in
             
             logger.info(f"Successfully synced {len(records)} Freetrade assets to the database.")
             
-        except Exception as db_err:
+        except Exception:
             conn.rollback()
-            raise db_err
+            raise
         finally:
             conn.close()
 
