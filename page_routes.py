@@ -750,7 +750,8 @@ async def portfolio_page(request: Request, account_id: str = "all", embed: bool 
             # Global aggregation — use live pulse price (same source as Price column)
             # to avoid stale DB price diverging from what the user sees
             pulse_entry = live_pulse.get(row_dict['ticker'])
-            live_price = pulse_entry['price'] if pulse_entry else row_dict['current_price']
+            live_price = (pulse_entry['price'] if pulse_entry and pulse_entry['price'] > 0
+                          else row_dict['current_price'])
             global_shares = asset.get('global_shares', 0)
             global_buy_price = asset.get('global_buy_price', 0)
             global_cost = global_shares * global_buy_price
