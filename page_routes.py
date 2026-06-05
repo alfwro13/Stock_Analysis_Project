@@ -853,28 +853,51 @@ async def earnings_volatility_page(request: Request):
 
 @page_router.get("/quant-screener", response_class=HTMLResponse)
 async def quant_screener_page(request: Request):
+    import os as _os
     today = datetime.now()
     target_date = today.strftime('%Y-%m-%d')
-    
-    signals = fetch_latest_signals(target_date)
-    
-    if not signals:
-        yesterday = today - timedelta(days=1)
-        target_date = yesterday.strftime('%Y-%m-%d')
-        signals = fetch_latest_signals(target_date)
-        
-    if signals:
-        markdown_content = generate_markdown_briefing(target_date, signals)
+
+    reports_dir = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "reports")
+
+    # Prefer the pre-generated morning briefing (new full format with news + futures + UK snapshot).
+    # Fall back to generating the quant-signals-only version on the fly when it hasn't been run yet.
+    morning_file = _os.path.join(reports_dir, f"morning_briefing_{target_date}.md")
+    if not _os.path.exists(morning_file):
+        yesterday = (today - timedelta(days=1)).strftime('%Y-%m-%d')
+        morning_file = _os.path.join(reports_dir, f"morning_briefing_{yesterday}.md")
+        if _os.path.exists(morning_file):
+            target_date = yesterday
+
+    if _os.path.exists(morning_file):
+        try:
+            with open(morning_file, "r", encoding="utf-8") as f:
+                markdown_content = f.read()
+        except Exception:
+            markdown_content = None
     else:
-        markdown_content = (
-            f"# 📊 Morning Quant Briefing\n"
-            f"**Date:** {target_date}\n\n"
-            f"*No signals available for today or yesterday. Ensure the `quant_engine` scheduled overnight scan is running successfully.*"
-        )
-        
+        markdown_content = None
+
+    if not markdown_content:
+        # Fall back to live quant screener generation (signals only, no news/futures)
+        signals = fetch_latest_signals(target_date)
+        if not signals:
+            yesterday = (today - timedelta(days=1)).strftime('%Y-%m-%d')
+            target_date = yesterday
+            signals = fetch_latest_signals(target_date)
+
+        if signals:
+            markdown_content = generate_markdown_briefing(target_date, signals)
+        else:
+            markdown_content = (
+                f"# 📊 Morning Quant Briefing\n"
+                f"**Date:** {target_date}\n\n"
+                f"*No briefing generated yet today. Use the Run Morning Briefing Now button in Settings, "
+                f"or wait for the scheduled run. Ensure the overnight quant scan is running.*"
+            )
+
     return templates.TemplateResponse(
-        request=request, 
-        name="quant_screener.html", 
+        request=request,
+        name="quant_screener.html",
         context={
             "markdown_content": markdown_content,
             "target_date": target_date,

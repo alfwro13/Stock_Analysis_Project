@@ -57,13 +57,14 @@ def _dispatch_briefing(
     shares it to the Talk conversation, then sends a text notification.
     Returns True on full success.
     """
-    nc_url = config.get("NEXTCLOUD_URL", "").rstrip("/")
-    nc_user = config.get("BOT_USERNAME", "")
-    nc_pass = config.get("APP_PASSWORD", "")
-    nc_token = config.get("CONVERSATION_TOKEN", "")
+    # Env vars take precedence (credentials are never stored in config.json)
+    nc_url = (os.environ.get("NEXTCLOUD_URL") or config.get("NEXTCLOUD_URL", "")).rstrip("/")
+    nc_user = os.environ.get("NEXTCLOUD_BOT_USERNAME") or config.get("BOT_USERNAME", "")
+    nc_pass = os.environ.get("NEXTCLOUD_APP_PASSWORD") or config.get("APP_PASSWORD", "")
+    nc_token = os.environ.get("NEXTCLOUD_CONVERSATION_TOKEN") or config.get("CONVERSATION_TOKEN", "")
 
     if not all([nc_url, nc_user, nc_pass, nc_token]):
-        logger.warning("Nextcloud credentials missing or incomplete in config. Aborting dispatch.")
+        logger.warning("Nextcloud credentials missing or incomplete (checked env vars + config). Aborting dispatch.")
         return False
 
     if not os.path.exists(local_file_path):
