@@ -69,6 +69,8 @@ from seed_macro_calendar import seed_calendar
 from macro_calendar_engine import update_macro_calendar
 from macro_data_engine import update_macro_indicators
 from macro_ai_engine import MacroAIEngine
+from visuals import create_intraday_chart
+from quant_signals import get_candlestick_patterns
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -1723,3 +1725,54 @@ async def intraday_monitor_analysis(ticker: str = PathParam(..., pattern=r"^[A-Z
         return JSONResponse(content=data)
     finally:
         conn.close()
+
+
+@api_router.get("/intraday-chart/{ticker}")
+async def get_intraday_chart(ticker: str = PathParam(..., pattern=r"^[A-Z0-9.\-\^=]{1,20}$")):
+    """Return freshly rendered intraday chart HTML for a given ticker."""
+    ticker = ticker.upper()
+    s1 = s2 = None
+    df_macro = pd.DataFrame()
+    try:
+        df_macro = pd.read_parquet(HISTORICAL_DIR / f"{ticker}.parquet")
+        if not df_macro.empty and len(df_macro) > 1:
+            prev_day = df_macro.iloc[-2]
+            P = (prev_day['High'] + prev_day['Low'] + prev_day['Close']) / 3
+            s1 = P * 2 - prev_day['High']
+            s2 = P - (prev_day['High'] - prev_day['Low'])
+    except Exception:
+        pass
+
+    try:
+        df_intraday = pd.read_parquet(INTRADAY_DIR / f"{ticker}_intraday.parquet")
+    except FileNotFoundError:
+        html = "<div style='display:flex;flex-direction:column;align-items:center;justify-content:center;height:120px;gap:10px;color:#888;'><span style='font-size:1.8rem;'>📭</span><span style='font-weight:600;'>No intraday data yet</span></div>"
+        return JSONResponse(content={"html": html})
+    except Exception:
+        html = "<div style='display:flex;flex-direction:column;align-items:center;justify-content:center;height:120px;gap:8px;color:#888;'><span style='font-size:1.8rem;'>⚠️</span><span style='font-weight:600;'>Intraday data unavailable</span></div>"
+        return JSONResponse(content={"html": html})
+
+    live_pattern_name = live_pattern_tooltip = live_pattern_score = None
+    try:
+        if not df_intraday.empty and not df_macro.empty and len(df_macro) >= 2:
+            curr_pseudo = pd.Series({
+                'Open': df_intraday['Open'].iloc[0],
+                'High': df_intraday['High'].max(),
+                'Low': df_intraday['Low'].min(),
+                'Close': df_intraday['Close'].iloc[-1],
+            })
+            live_patterns = get_candlestick_patterns(df_macro.iloc[-2], df_macro.iloc[-1], curr_pseudo)
+            if live_patterns:
+                live_pattern_name = live_patterns[0]["name"]
+                live_pattern_tooltip = live_patterns[0]["tooltip"]
+                live_pattern_score = live_patterns[0]["score"]
+    except Exception:
+        pass
+
+    html = create_intraday_chart(
+        df_intraday, ticker, s1=s1, s2=s2,
+        live_pattern_name=live_pattern_name,
+        live_pattern_tooltip=live_pattern_tooltip,
+        live_pattern_score=live_pattern_score,
+    )
+    return JSONResponse(content={"html": html})

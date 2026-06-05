@@ -1085,12 +1085,62 @@
             star.classList.remove('syncing');
         }
 
+        // --- INTRADAY AUTO-REFRESH ---
+        // Shared lock: true while a chart fetch OR a full data refresh is in progress.
+        // Prevents the auto-timer from firing a duplicate request mid-flight.
+        let _intradayBusy = false;
+        let _intradayTimer = null;
+
+        async function _refreshIntradayChart(ticker) {
+            if (_intradayBusy) return;
+            _intradayBusy = true;
+            try {
+                const resp = await fetch('/api/intraday-chart/' + encodeURIComponent(ticker));
+                if (!resp.ok) return;
+                const data = await resp.json();
+                if (!data || !data.html) return;
+                const wrapper = document.getElementById('intraday-wrapper');
+                if (!wrapper) return;
+                // Keep the fullscreen button; replace only the chart content that follows it
+                const btn = wrapper.querySelector('.fullscreen-btn');
+                // Remove all children except the fullscreen button
+                Array.from(wrapper.children).forEach(function(child) {
+                    if (child !== btn) child.remove();
+                });
+                const tmp = document.createElement('div');
+                tmp.innerHTML = data.html;
+                while (tmp.firstChild) wrapper.appendChild(tmp.firstChild);
+            } catch (e) {
+                // silently ignore — next tick will retry
+            } finally {
+                _intradayBusy = false;
+            }
+        }
+
+        function startIntradayAutoRefresh() {
+            const ticker = '{{ stock.ticker }}';
+            const quoteType = '{{ stock.quote_type }}';
+            // Mutual funds only report once per day — no point polling
+            if (quoteType === 'MUTUALFUND') return;
+            const intervalMs = (window.REFRESH_RATE_MS && window.REFRESH_RATE_MS > 0)
+                ? window.REFRESH_RATE_MS
+                : 60000;
+            _intradayTimer = setInterval(function() {
+                _refreshIntradayChart(ticker);
+            }, intervalMs);
+        }
+        startIntradayAutoRefresh();
+
         // --- SINGLE ASSET REFRESH LOGIC ---
         async function refreshSingleData(ticker) {
+            // Block auto-refresh during a full data reload (page will reload anyway)
+            _intradayBusy = true;
+            if (_intradayTimer) clearInterval(_intradayTimer);
+
             const btn = document.getElementById('refreshDataBtn');
             btn.disabled = true;
             btn.innerHTML = `<span class="btn-icon spin-icon">↻</span> Crunching...`;
-            
+
             try {
                 const response = await fetch('/api/data/refresh-single', {
                     method: 'POST',
@@ -1105,11 +1155,16 @@
                     alert("Failed to refresh data: " + (data.message || "Unknown error"));
                     btn.disabled = false;
                     btn.innerHTML = `<span class="btn-icon">↻</span> Refresh`;
+                    // Re-enable auto-refresh on failure
+                    _intradayBusy = false;
+                    startIntradayAutoRefresh();
                 }
             } catch (e) {
                 alert("Network error refreshing data.");
                 btn.disabled = false;
                 btn.innerHTML = `<span class="btn-icon">↻</span> Refresh`;
+                _intradayBusy = false;
+                startIntradayAutoRefresh();
             }
         }
 
