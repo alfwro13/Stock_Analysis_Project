@@ -239,8 +239,8 @@
     <!-- CONTROLS -->
     <div id="newsControls">
         <div class="btn-group">
-            <button class="btn-filter active" data-source="all"       onclick="setSource('all')">All</button>
-            <button class="btn-filter"        data-source="portfolio" onclick="setSource('portfolio')">Portfolio</button>
+            <button class="btn-filter"        data-source="all"       onclick="setSource('all')">All</button>
+            <button class="btn-filter active" data-source="portfolio" onclick="setSource('portfolio')">Portfolio</button>
             <button class="btn-filter"        data-source="watchlist" onclick="setSource('watchlist')">Watchlist</button>
         </div>
 
@@ -282,7 +282,7 @@
 
 <script>
     let allArticles = [];
-    let currentSource = 'all';
+    let currentSource = 'portfolio';
     let selectedId = null;
 
     function relTime(ts) {
