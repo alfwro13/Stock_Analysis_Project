@@ -45,6 +45,7 @@ from ghostfolio_sync import GhostfolioSyncEngine
 from market_pulse import get_cached_pulse_from_db, fetch_and_save_pulse
 from sentiment_engine import run_nextcloud_alert, update_all_sentiment
 from earnings_engine import run_earnings_alert
+from report_dispatcher import push_morning_quant_briefing, push_lunchtime_quant_briefing
 from insider_engine import run_insider_alert
 from ai_engine import AIPromptEngine
 from data_engine import DataEngine
@@ -578,8 +579,26 @@ async def trigger_quant_scan_endpoint(request: Request, background_tasks: Backgr
 async def trigger_earnings_scan_endpoint(request: Request, background_tasks: BackgroundTasks):
     background_tasks.add_task(bg_execute_earnings_scan)
     return JSONResponse(content={
-        "status": "success", 
+        "status": "success",
         "message": "Earnings Volatility Scan initiated in the background. Check System Notifications for progress updates."
+    })
+
+@api_router.post("/trigger-morning-briefing")
+@limiter.limit("10/minute")
+async def trigger_morning_briefing_endpoint(request: Request, background_tasks: BackgroundTasks):
+    background_tasks.add_task(push_morning_quant_briefing)
+    return JSONResponse(content={
+        "status": "success",
+        "message": "Morning Briefing generation started in the background. Check reports/ for the output file."
+    })
+
+@api_router.post("/trigger-lunch-briefing")
+@limiter.limit("10/minute")
+async def trigger_lunch_briefing_endpoint(request: Request, background_tasks: BackgroundTasks):
+    background_tasks.add_task(push_lunchtime_quant_briefing)
+    return JSONResponse(content={
+        "status": "success",
+        "message": "Lunchtime Briefing generation started in the background. Check reports/ for the output file."
     })
 
 @api_router.post("/trigger-universe-update")

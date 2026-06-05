@@ -108,19 +108,24 @@ def _dispatch_briefing(
 
 def push_morning_quant_briefing() -> bool:
     """
-    Generates the enhanced Morning Quant Briefing (overnight news + US futures +
-    UK pre-open + quant screener signals) and pushes it to Nextcloud Talk.
+    Generates the Morning Quant Briefing and saves it to disk.
+    Only sends to Nextcloud Talk if SCHEDULING.DISPATCHER.ENABLED is true.
 
     Returns:
-        bool: True if the entire dispatch pipeline succeeds, False otherwise.
+        bool: True if generation succeeded (Talk send is best-effort).
     """
-    logger.info("Initiating Morning Quant Briefing dispatch pipeline...")
+    logger.info("Running Morning Quant Briefing generation...")
 
     config = load_config()
     target_date = datetime.now().strftime("%Y-%m-%d")
 
-    logger.info("Generating Morning Briefing for %s...", target_date)
     generate_morning_briefing(target_date)
+    logger.info("Morning Briefing generated for %s.", target_date)
+
+    send_to_talk = config.get("SCHEDULING", {}).get("DISPATCHER", {}).get("ENABLED", False)
+    if not send_to_talk:
+        logger.info("Nextcloud Talk dispatch disabled (DISPATCHER.ENABLED=false). Briefing saved locally only.")
+        return True
 
     local_file_path = os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
@@ -144,19 +149,24 @@ def push_morning_quant_briefing() -> bool:
 
 def push_lunchtime_quant_briefing() -> bool:
     """
-    Generates the Lunchtime Quant Briefing (morning session news + UK mid-session +
-    US pre-market + intraday alerts) and pushes it to Nextcloud Talk.
+    Generates the Lunchtime Quant Briefing and saves it to disk.
+    Only sends to Nextcloud Talk if SCHEDULING.LUNCH_DISPATCHER.ENABLED is true.
 
     Returns:
-        bool: True if the entire dispatch pipeline succeeds, False otherwise.
+        bool: True if generation succeeded (Talk send is best-effort).
     """
-    logger.info("Initiating Lunchtime Quant Briefing dispatch pipeline...")
+    logger.info("Running Lunchtime Quant Briefing generation...")
 
     config = load_config()
     target_date = datetime.now().strftime("%Y-%m-%d")
 
-    logger.info("Generating Lunchtime Briefing for %s...", target_date)
     generate_lunchtime_briefing(target_date)
+    logger.info("Lunchtime Briefing generated for %s.", target_date)
+
+    send_to_talk = config.get("SCHEDULING", {}).get("LUNCH_DISPATCHER", {}).get("ENABLED", False)
+    if not send_to_talk:
+        logger.info("Nextcloud Talk dispatch disabled (LUNCH_DISPATCHER.ENABLED=false). Briefing saved locally only.")
+        return True
 
     local_file_path = os.path.join(
         os.path.dirname(os.path.abspath(__file__)),

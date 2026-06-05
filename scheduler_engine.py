@@ -733,41 +733,39 @@ def reload_scheduler():
     except Exception as e:
         logger.error(f"Failed to schedule Earnings Volatility Scan: {e}")
 
-    # 9. Morning Briefing Dispatch Engine
+    # 9. Morning Briefing — always schedule; ENABLED flag only gates Nextcloud Talk sending
     disp_cfg = scheduling.get("DISPATCHER", {})
-    if disp_cfg.get("ENABLED", False):
-        disp_days_list = disp_cfg.get("DAYS", ["mon", "tue", "wed", "thu", "fri"])
-        disp_days = ",".join(disp_days_list) if disp_days_list else "mon-fri"
-        disp_time = disp_cfg.get("TIME", "07:15")
+    disp_days_list = disp_cfg.get("DAYS", ["mon", "tue", "wed", "thu", "fri"])
+    disp_days = ",".join(disp_days_list) if disp_days_list else "mon-fri"
+    disp_time = disp_cfg.get("TIME", "07:15")
 
-        try:
-            hour, minute = map(int, disp_time.split(':'))
-            scheduler.add_job(
-                run_morning_briefing_dispatch,
-                CronTrigger(day_of_week=disp_days, hour=hour, minute=minute),
-                id='morning_briefing_dispatch_job'
-            )
-            logger.info(f"Morning Briefing Dispatch scheduled for {disp_days} at {disp_time}")
-        except Exception as e:
-            logger.error(f"Failed to schedule Morning Briefing Dispatch: {e}")
+    try:
+        hour, minute = map(int, disp_time.split(':'))
+        scheduler.add_job(
+            run_morning_briefing_dispatch,
+            CronTrigger(day_of_week=disp_days, hour=hour, minute=minute),
+            id='morning_briefing_dispatch_job'
+        )
+        logger.info(f"Morning Briefing scheduled for {disp_days} at {disp_time}")
+    except Exception as e:
+        logger.error(f"Failed to schedule Morning Briefing: {e}")
 
-    # 9b. Lunchtime Briefing Dispatch Engine
+    # 9b. Lunchtime Briefing — always schedule; ENABLED flag only gates Nextcloud Talk sending
     lunch_cfg = scheduling.get("LUNCH_DISPATCHER", {})
-    if lunch_cfg.get("ENABLED", False):
-        lunch_days_list = lunch_cfg.get("DAYS", ["mon", "tue", "wed", "thu", "fri"])
-        lunch_days = ",".join(lunch_days_list) if lunch_days_list else "mon-fri"
-        lunch_time = lunch_cfg.get("TIME", "12:00")
+    lunch_days_list = lunch_cfg.get("DAYS", ["mon", "tue", "wed", "thu", "fri"])
+    lunch_days = ",".join(lunch_days_list) if lunch_days_list else "mon-fri"
+    lunch_time = lunch_cfg.get("TIME", "12:00")
 
-        try:
-            hour, minute = map(int, lunch_time.split(':'))
-            scheduler.add_job(
-                run_lunchtime_briefing_dispatch,
-                CronTrigger(day_of_week=lunch_days, hour=hour, minute=minute),
-                id='lunchtime_briefing_dispatch_job'
-            )
-            logger.info(f"Lunchtime Briefing Dispatch scheduled for {lunch_days} at {lunch_time}")
-        except Exception as e:
-            logger.error(f"Failed to schedule Lunchtime Briefing Dispatch: {e}")
+    try:
+        hour, minute = map(int, lunch_time.split(':'))
+        scheduler.add_job(
+            run_lunchtime_briefing_dispatch,
+            CronTrigger(day_of_week=lunch_days, hour=hour, minute=minute),
+            id='lunchtime_briefing_dispatch_job'
+        )
+        logger.info(f"Lunchtime Briefing scheduled for {lunch_days} at {lunch_time}")
+    except Exception as e:
+        logger.error(f"Failed to schedule Lunchtime Briefing: {e}")
 
     # 10. Weekend Universe Routine (4000+ Tickers)
     uni_cfg = scheduling.get("UNIVERSE_ENGINE", {})
