@@ -874,18 +874,25 @@ async def quant_screener_page(request: Request):
 
     reports_dir = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "reports")
 
-    # Prefer the pre-generated morning briefing (new full format with news + futures + UK snapshot).
-    # Fall back to generating the quant-signals-only version on the fly when it hasn't been run yet.
-    morning_file = _os.path.join(reports_dir, f"morning_briefing_{target_date}.md")
-    if not _os.path.exists(morning_file):
-        yesterday = (today - timedelta(days=1)).strftime('%Y-%m-%d')
-        morning_file = _os.path.join(reports_dir, f"morning_briefing_{yesterday}.md")
-        if _os.path.exists(morning_file):
-            target_date = yesterday
+    # Prefer the most recently generated briefing (lunch takes precedence over morning when both
+    # exist for today; fall back to yesterday if nothing generated today yet).
+    def _best_briefing(date_str):
+        candidates = []
+        for prefix in ("lunch_briefing", "morning_briefing"):
+            f = _os.path.join(reports_dir, f"{prefix}_{date_str}.md")
+            if _os.path.exists(f):
+                candidates.append((f, _os.path.getmtime(f)))
+        return max(candidates, key=lambda x: x[1]) if candidates else None
 
-    if _os.path.exists(morning_file):
+    yesterday = (today - timedelta(days=1)).strftime('%Y-%m-%d')
+    best = _best_briefing(target_date) or _best_briefing(yesterday)
+
+    if best:
+        best_file, _ = best
+        base = _os.path.basename(best_file)
+        target_date = yesterday if yesterday in base else target_date
         try:
-            with open(morning_file, "r", encoding="utf-8") as f:
+            with open(best_file, "r", encoding="utf-8") as f:
                 markdown_content = f.read()
         except Exception:
             markdown_content = None
