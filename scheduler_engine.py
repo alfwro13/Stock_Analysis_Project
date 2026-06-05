@@ -1040,12 +1040,12 @@ def reload_scheduler():
     try:
         scheduler.add_job(
             run_intraday_dip_scan,
-            CronTrigger(day_of_week='mon-fri', hour='8-16', minute='*/2', timezone='America/New_York'),
+            CronTrigger(day_of_week='mon-fri', hour='7-21', minute='*/2', timezone='UTC'),
             id='intraday_dip_scan_job',
             replace_existing=True,
             misfire_grace_time=60,
         )
-        logger.info("Intraday Dip Radar scan scheduled mon-fri 08:00–16:59 ET (America/New_York) every 2 min.")
+        logger.info("Intraday Dip Radar scan scheduled mon-fri 07:00–21:59 UTC every 2 min (covers LSE 08:00–16:30 BST and NYSE 14:30–21:00 BST).")
     except Exception as e:
         logger.error(f"Failed to schedule Intraday Dip Radar scan: {e}")
 
