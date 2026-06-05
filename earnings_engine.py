@@ -5,6 +5,7 @@ import requests
 from datetime import datetime
 from database import get_connection
 from config import PORTFOLIO_PATH, load_config
+from time_engine import now_local
 
 def send_nextcloud_message(message_text, config_data):
     """Sends a direct text payload to Nextcloud Talk using dynamic configurations."""
@@ -64,65 +65,67 @@ def run_earnings_alert():
 
         # 3. Query Local Database
         conn = get_connection()
-        cursor = conn.cursor()
-        
-        placeholders = ','.join('?' for _ in tickers)
-        query = f"SELECT ticker, company_name, next_earnings_date FROM stock_signals WHERE ticker IN ({placeholders})"
-        cursor.execute(query, tickers)
-        rows = cursor.fetchall()
-        
-        today = datetime.now().date()
-        alerts_sent = 0
-        
-        # 4. Evaluate Dates
-        for row in rows:
-            ticker = row['ticker']
-            name = row['company_name']
-            earnings_date_str = row['next_earnings_date']
-            
-            if not earnings_date_str or earnings_date_str == 'Unknown':
-                continue
-                
-            try:
-                e_date = datetime.strptime(earnings_date_str, '%Y-%m-%d').date()
-                days_to_earnings = (e_date - today).days
-                
-                send_alert = False
-                
-                # Logic branch for configuration preferences
-                if alert_type == "once":
-                    if days_to_earnings == days_ahead:
-                        send_alert = True
-                elif alert_type == "daily":
-                    if 0 <= days_to_earnings <= days_ahead:
-                        send_alert = True
-                        
-                if send_alert:
-                    if days_to_earnings == 0:
-                        time_str = "TODAY"
-                    elif days_to_earnings == 1:
-                        time_str = "TOMORROW"
-                    else:
-                        time_str = f"in {days_to_earnings} days"
-                        
-                    msg = f"📅 *Upcoming Earnings Report*\n\nStock: {name} ({ticker})\nDate: {earnings_date_str} ({time_str})"
-                    
-                    # Log the alert to the local SQLite Notification Center
-                    cursor.execute(
-                        "INSERT INTO system_notifications (message_type, message_text) VALUES (?, ?)",
-                        ("Earnings", msg)
-                    )
-                    conn.commit()
-                    
-                    # Dispatch to Nextcloud
-                    if send_nextcloud_message(msg, config):
+        try:
+            cursor = conn.cursor()
+
+            placeholders = ','.join('?' for _ in tickers)
+            query = f"SELECT ticker, company_name, next_earnings_date FROM stock_signals WHERE ticker IN ({placeholders})"
+            cursor.execute(query, tickers)
+            rows = cursor.fetchall()
+
+            today = now_local().date()
+            alerts_sent = 0
+            dispatch_failures = 0
+
+            # 4. Evaluate Dates
+            for row in rows:
+                ticker = row['ticker']
+                name = row['company_name']
+                earnings_date_str = row['next_earnings_date']
+
+                if not earnings_date_str or earnings_date_str == 'Unknown':
+                    continue
+
+                try:
+                    e_date = datetime.strptime(earnings_date_str, '%Y-%m-%d').date()
+                    days_to_earnings = (e_date - today).days
+
+                    send_alert = False
+
+                    # Logic branch for configuration preferences
+                    if alert_type == "once":
+                        if days_to_earnings == days_ahead:
+                            send_alert = True
+                    elif alert_type == "daily":
+                        if 0 <= days_to_earnings <= days_ahead:
+                            send_alert = True
+
+                    if send_alert:
+                        if days_to_earnings == 0:
+                            time_str = "TODAY"
+                        elif days_to_earnings == 1:
+                            time_str = "TOMORROW"
+                        else:
+                            time_str = f"in {days_to_earnings} days"
+
+                        msg = f"📅 *Upcoming Earnings Report*\n\nStock: {name} ({ticker})\nDate: {earnings_date_str} ({time_str})"
+
+                        cursor.execute(
+                            "INSERT INTO system_notifications (message_type, message_text) VALUES (?, ?)",
+                            ("Earnings", msg)
+                        )
                         alerts_sent += 1
-                        
-            except Exception as e:
-                print(f"[ERROR] Evaluating earnings date for {ticker}: {e}")
-                
-        conn.close()
-        return True, f"Earnings check complete. Triggered {alerts_sent} alerts based on current settings."
+
+                        if not send_nextcloud_message(msg, config):
+                            dispatch_failures += 1
+
+                except Exception as e:
+                    print(f"[ERROR] Evaluating earnings date for {ticker}: {e}")
+
+            conn.commit()
+            return True, f"Earnings check complete. Triggered {alerts_sent} alerts based on current settings."
+        finally:
+            conn.close()
     
     except Exception as e:
         print(f"[ERROR] Fatal crash in run_earnings_alert: {e}")
