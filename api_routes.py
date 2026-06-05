@@ -1,6 +1,7 @@
 # api_routes.py
 import asyncio
 import os
+import time_engine
 import shutil
 import sqlite3
 import json
@@ -1687,7 +1688,11 @@ async def intraday_monitor_add(req: TickerRequest):
     await asyncio.to_thread(engine.arm_alert, ticker)
     # One-time notification confirming monitoring is active for this session
     from database import log_notification
-    log_notification("DipRadar", f"🎯 Dip Radar enabled for {ticker} — scanning every 2 min until 16:05 ET (America/New_York). You will be notified if a bottoming zone is detected.")
+    _exch = time_engine.ticker_exchange(ticker)
+    _params = time_engine.reset_cron_trigger_params(_exch)
+    _exch_info = time_engine.EXCHANGE_HOURS.get(_exch, {})
+    _reset_local = f"{_params['hour']:02d}:{_params['minute']:02d} ({_exch_info.get('tz', _exch)})"
+    log_notification("DipRadar", f"🎯 Dip Radar enabled for {ticker} — scanning every 2 min until {_reset_local}. You will be notified if a bottoming zone is detected.")
     return JSONResponse(content={"status": "ok", "ticker": ticker})
 
 

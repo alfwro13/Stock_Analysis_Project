@@ -5,6 +5,7 @@ import pandas as pd
 import ta
 import textwrap
 from quant_signals import get_candlestick_patterns
+import time_engine
 
 _EXCHANGE_DELAYS = {
     'GBp': 15, 'GBP': 15,  # LSE — Yahoo Finance free-tier delay
@@ -13,10 +14,9 @@ _EXCHANGE_DELAYS = {
 
 
 def _intraday_market_tz(ticker: str, currency: str) -> str:
-    """Return the pytz timezone name for a ticker's home exchange."""
-    if ticker.endswith('.L') or currency in ('GBp', 'GBP'):
-        return 'Europe/London'
-    return 'America/New_York'
+    """Return the IANA timezone name for a ticker's home exchange."""
+    exchange = time_engine.ticker_exchange(ticker, currency)
+    return time_engine.EXCHANGE_HOURS.get(exchange, {}).get("tz", "America/New_York")
 
 
 def create_intraday_chart(df, ticker, s1=None, s2=None, live_pattern_name=None, live_pattern_tooltip=None, live_pattern_score=None, include_plotlyjs='cdn', market_tz=None, data_delay_minutes=0):

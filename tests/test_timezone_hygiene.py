@@ -64,9 +64,9 @@ class TestIntradayMarketTz:
     def test_generic_usd_returns_new_york(self):
         assert _intraday_market_tz("SPY", "USD") == "America/New_York"
 
-    def test_non_uk_non_us_defaults_to_new_york(self):
-        # EUR-denominated tickers fall through to the default
-        assert _intraday_market_tz("SIE.DE", "EUR") == "America/New_York"
+    def test_eur_de_ticker_returns_xetra(self):
+        # .DE suffix / EUR currency → XETRA (Europe/Berlin), not NYSE
+        assert _intraday_market_tz("SIE.DE", "EUR") == "Europe/Berlin"
 
 
 class TestExchangeDelays:

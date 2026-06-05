@@ -4,6 +4,8 @@ import logging
 from datetime import date, datetime
 from typing import Dict, List, Optional
 
+import time_engine
+
 import numpy as np
 import pandas as pd
 import yfinance as yf
@@ -255,7 +257,8 @@ class IntradayBottomEngine:
             is_bottoming = score >= _BOTTOMING_THRESHOLD
 
             try:
-                mkt_tz = 'Europe/London' if ticker.endswith('.L') else 'America/New_York'
+                exchange = time_engine.ticker_exchange(ticker)
+                mkt_tz = time_engine.EXCHANGE_HOURS.get(exchange, {}).get("tz", "America/New_York")
                 ts = cur.name
                 # yf.download() returns tz-aware timestamps; parquet strips TZ (naive UTC).
                 # Handle both: localize only if naive, then convert.
@@ -326,6 +329,12 @@ class IntradayBottomEngine:
 
         hits = []
         for ticker in tickers:
+            exchange = time_engine.ticker_exchange(ticker)
+            # US exchanges include pre-market; LSE and others use regular hours only
+            premarket = exchange in ("NYSE",)
+            if not time_engine.is_market_open(exchange, include_premarket=premarket):
+                logger.debug("DipRadar: %s — %s market closed, skipping.", ticker, exchange)
+                continue
             result = self.analyze_ticker(ticker)
             if result and result["is_bottoming"]:
                 if self._should_alert(ticker):
@@ -345,6 +354,37 @@ class IntradayBottomEngine:
             self._log_notification("DipRadar", "Session ended — all Dip Radar monitors deactivated.")
         except Exception as e:
             logger.error("DipRadar: failed to deactivate monitors: %s", e)
+        finally:
+            if conn:
+                conn.close()
+
+    def deactivate_exchange_today(self, exchange: str) -> None:
+        """Deactivate only monitors whose ticker belongs to *exchange*, leaving others running."""
+        today = date.today().isoformat()
+        conn = None
+        try:
+            conn = self._get_connection()
+            rows = conn.execute(
+                "SELECT ticker FROM intraday_monitors WHERE is_active = 1 AND date_added = ?",
+                (today,),
+            ).fetchall()
+            to_deactivate = [r["ticker"] for r in rows
+                             if time_engine.ticker_exchange(r["ticker"]) == exchange]
+            if not to_deactivate:
+                return
+            placeholders = ",".join("?" * len(to_deactivate))
+            conn.execute(
+                f"UPDATE intraday_monitors SET is_active = 0 "
+                f"WHERE ticker IN ({placeholders}) AND date_added = ?",
+                (*to_deactivate, today),
+            )
+            conn.commit()
+            self._log_notification(
+                "DipRadar",
+                f"{exchange} session ended — {len(to_deactivate)} Dip Radar monitor(s) deactivated.",
+            )
+        except Exception as e:
+            logger.error("DipRadar: failed to deactivate %s monitors: %s", exchange, e)
         finally:
             if conn:
                 conn.close()

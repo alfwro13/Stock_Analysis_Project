@@ -1478,6 +1478,20 @@
                     <input type="text" id="BASE_CURRENCY" value="{{ config.BASE_CURRENCY }}">
                 </div>
                 <div class="form-group">
+                    <label>Display Timezone (IANA name — all times shown in this timezone)</label>
+                    <input type="text" id="USER_TIMEZONE" value="{{ config.USER_TIMEZONE | default('Europe/London') }}" placeholder="e.g. Europe/London, America/New_York, Europe/Berlin">
+                </div>
+                <div class="form-group">
+                    <label>Home Exchange (drives default market-window logic and DIP Radar reset)</label>
+                    <select id="HOME_EXCHANGE">
+                        {% set home_ex = config.HOME_EXCHANGE | default('LSE') %}
+                        <option value="LSE"   {% if home_ex == 'LSE'   %}selected{% endif %}>LSE — London Stock Exchange (08:00–16:30 Europe/London)</option>
+                        <option value="NYSE"  {% if home_ex == 'NYSE'  %}selected{% endif %}>NYSE — New York Stock Exchange (09:30–16:00 America/New_York, pre-market from 04:00)</option>
+                        <option value="XETRA" {% if home_ex == 'XETRA' %}selected{% endif %}>XETRA — Frankfurt (09:00–17:30 Europe/Berlin)</option>
+                        <option value="TSE"   {% if home_ex == 'TSE'   %}selected{% endif %}>TSE — Tokyo Stock Exchange (09:00–15:30 Asia/Tokyo)</option>
+                    </select>
+                </div>
+                <div class="form-group">
                     <label>Ignored Tickers (Comma separated, e.g. GBP, USD, 0P00018XAR.L)</label>
                     <input type="text" id="IGNORED_TICKERS" value="{{ config.IGNORED_TICKERS | join(', ') if config.IGNORED_TICKERS else '' }}">
                 </div>
@@ -2727,6 +2741,8 @@
                 "SERVER_URL": document.getElementById('SERVER_URL').value,
                 "PORT": parseInt(document.getElementById('PORT').value),
                 "BASE_CURRENCY": document.getElementById('BASE_CURRENCY').value,
+                "USER_TIMEZONE": document.getElementById('USER_TIMEZONE').value.trim(),
+                "HOME_EXCHANGE": document.getElementById('HOME_EXCHANGE').value,
                 "IGNORED_TICKERS": document.getElementById('IGNORED_TICKERS').value.split(',').map(s => s.trim()).filter(Boolean),
                 "YAHOO_IPV6_ADDRESS": document.getElementById('YAHOO_IPV6_ADDRESS').value.trim(),
                 "GHOSTFOLIO_ACCOUNTS": {

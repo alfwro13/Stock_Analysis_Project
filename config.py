@@ -74,6 +74,8 @@ DEFAULT_CONFIG = {
     "YAHOO_IPV6_ADDRESS": "",
     "PORT": 8090,
     "BASE_CURRENCY": "GBP",
+    "USER_TIMEZONE": "Europe/London",   # IANA tz string — used for all display formatting
+    "HOME_EXCHANGE": "LSE",             # NYSE | LSE | XETRA | TSE — drives default market-window logic
     "IGNORED_TICKERS": ["GBP", "USD", "EUR"],
     "GHOSTFOLIO_ACCOUNTS": {
         "discovered": [],
@@ -135,23 +137,23 @@ DEFAULT_CONFIG = {
         "SENTIMENT_ENGINE": {
             "ENABLED": False,
             "FREQUENCY": "mon-fri",
-            "START_TIME": "09:30",
-            "END_TIME": "16:00",
+            "START_TIME": "08:00",   # UTC — covers LSE open; set "" to derive from HOME_EXCHANGE
+            "END_TIME": "21:00",     # UTC — covers NYSE close
             "INTERVAL_HOURS": 4
         },
         "CRASH_ALERTS": {
             "ENABLED": False,
             "FREQUENCY": "mon-fri",
-            "START_TIME": "09:30",
-            "END_TIME": "16:00",
+            "START_TIME": "08:00",   # UTC — covers LSE open; set "" to derive from HOME_EXCHANGE
+            "END_TIME": "21:00",     # UTC — covers NYSE close
             "INTERVAL_MINUTES": 10,
             "FLASH_CRASH_THRESHOLD": 3.0
         },
         "MOONSHOT_ALERTS": {
             "ENABLED": False,
             "FREQUENCY": "mon-fri",
-            "START_TIME": "09:30",
-            "END_TIME": "16:00",
+            "START_TIME": "08:00",   # UTC — covers LSE open; set "" to derive from HOME_EXCHANGE
+            "END_TIME": "21:00",     # UTC — covers NYSE close
             "INTERVAL_MINUTES": 10
         },
         "MAINTENANCE": {
@@ -372,6 +374,17 @@ def load_config() -> dict:
                 else:
                     merged_config[key] = val
 
+            # Migrate broken ET-as-UTC defaults for market-window alerts.
+            # "09:30"/"16:00" were NYSE local times mistakenly compared to the UTC wall
+            # clock; replace them with a wide UTC window covering LSE + NYSE.
+            _ALERT_KEYS = ("SENTIMENT_ENGINE", "CRASH_ALERTS", "MOONSHOT_ALERTS")
+            for _ak in _ALERT_KEYS:
+                _blk = merged_config.get("SCHEDULING", {}).get(_ak, {})
+                if _blk.get("START_TIME") == "09:30":
+                    _blk["START_TIME"] = "08:00"
+                if _blk.get("END_TIME") == "16:00":
+                    _blk["END_TIME"] = "21:00"
+
             return merged_config
     except Exception as e:
         print(f"[ERROR] Failed to read config.json: {e}. Using defaults.")
@@ -395,6 +408,8 @@ YAHOO_IPV6_ADDRESS = current_config.get("YAHOO_IPV6_ADDRESS", "")
 GHOSTFOLIO_ACCOUNTS = current_config.get("GHOSTFOLIO_ACCOUNTS", {"discovered": [], "active": []})
 PORT = current_config.get("PORT", 8090)
 BASE_CURRENCY = current_config.get("BASE_CURRENCY", "GBP")
+USER_TIMEZONE = current_config.get("USER_TIMEZONE", "Europe/London")
+HOME_EXCHANGE  = current_config.get("HOME_EXCHANGE", "LSE")
 IGNORED_TICKERS = current_config.get("IGNORED_TICKERS", [])
 UI_PREFERENCES = current_config.get("UI_PREFERENCES", {})
 NOTIFICATIONS = current_config.get("NOTIFICATIONS", {})

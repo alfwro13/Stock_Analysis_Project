@@ -13,6 +13,7 @@ import yfinance as yf
 import pandas as pd
 from datetime import datetime, timezone
 from config import load_config, PORTFOLIO_PATH, INTRADAY_DIR, HISTORICAL_DIR, PORT, SERVER_URL
+import time_engine
 from utils import normalize_ticker
 from database import get_connection
 from crash_engine import CrashEngine
@@ -473,17 +474,20 @@ class IntradayOrchestrator:
         self._prune_alert_state(conn)
         logger.info("Scan initiated.")
         
-        # Check active bounds
+        # Check active bounds — compare UTC wall clock against configured UTC window.
+        # When START_TIME/END_TIME are absent or blank, derive from HOME_EXCHANGE via
+        # time_engine so DST is handled correctly without manual UTC arithmetic.
         sched_cfg = self.config.get("SCHEDULING", {}).get("CRASH_ALERTS", {})
-        start_str = sched_cfg.get("START_TIME", "09:30")
-        end_str = sched_cfg.get("END_TIME", "16:00")
-        
+        _default_open, _default_close = time_engine.market_window_utc()
+        start_str = sched_cfg.get("START_TIME") or _default_open.strftime("%H:%M")
+        end_str   = sched_cfg.get("END_TIME")   or _default_close.strftime("%H:%M")
+
         try:
-            now = datetime.now(timezone.utc).time()
+            now = datetime.now(timezone.utc).time().replace(tzinfo=None)
             start_time = datetime.strptime(start_str, "%H:%M").time()
             end_time = datetime.strptime(end_str, "%H:%M").time()
             if not (start_time <= now <= end_time):
-                logger.info("Outside active bounds (%s-%s). Aborted.", start_str, end_str)
+                logger.info("Outside active bounds (%s-%s UTC). Aborted.", start_str, end_str)
                 return
         except (ValueError, TypeError) as e:
             logger.error("Invalid schedule time config (%s-%s): %s", start_str, end_str, e)
@@ -496,7 +500,7 @@ class IntradayOrchestrator:
         # breakout as "low volume" regardless of actual participation.
         _to_min = lambda t: t.hour * 60 + t.minute
         _session_total = _to_min(end_time) - _to_min(start_time)
-        _elapsed = max(0, _to_min(datetime.now(timezone.utc).time()) - _to_min(start_time))
+        _elapsed = max(0, _to_min(datetime.now(timezone.utc).time().replace(tzinfo=None)) - _to_min(start_time))
         session_elapsed_frac = max(0.01, min(1.0, _elapsed / _session_total)) if _session_total > 0 else 1.0
 
         tickers = self.get_portfolio_tickers()

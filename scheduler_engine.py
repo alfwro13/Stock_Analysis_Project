@@ -5,6 +5,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from config import load_config
+import time_engine
 from sentiment_engine import run_nextcloud_alert, update_all_sentiment, run_central_bank_nlp_alert
 from earnings_engine import run_earnings_alert
 from insider_engine import run_insider_alert
@@ -474,14 +475,13 @@ def run_intraday_dip_scan():
         record_job_run('intraday_dip_scan_job')
 
 
-def run_intraday_dip_reset():
-    """Deactivates all intraday monitors at end of trading day (16:05 ET / America/New_York)."""
+def run_intraday_dip_reset(exchange: str = "NYSE"):
+    """Deactivates intraday monitors for *exchange* at end of its trading day."""
     try:
-        IntradayBottomEngine().deactivate_all_today()
-        # deactivate_all_today() logs the end-of-session notification internally.
+        IntradayBottomEngine().deactivate_exchange_today(exchange)
     except Exception as e:
-        logger.error("DipRadar reset job failed: %s", e)
-        log_sched_notification("Error", f"DipRadar reset failed: {e}")
+        logger.error("DipRadar reset job failed (%s): %s", exchange, e)
+        log_sched_notification("Error", f"DipRadar reset failed ({exchange}): {e}")
     finally:
         record_job_run('intraday_dip_reset_job')
 
@@ -1049,16 +1049,22 @@ def reload_scheduler():
     except Exception as e:
         logger.error(f"Failed to schedule Intraday Dip Radar scan: {e}")
 
-    try:
-        scheduler.add_job(
-            run_intraday_dip_reset,
-            CronTrigger(day_of_week='mon-fri', hour=16, minute=5, timezone='America/New_York'),
-            id='intraday_dip_reset_job',
-            replace_existing=True,
-        )
-        logger.info("Intraday Dip Radar reset scheduled mon-fri at 16:05 ET (America/New_York).")
-    except Exception as e:
-        logger.error(f"Failed to schedule Intraday Dip Radar reset: {e}")
+    for _exch in ("LSE", "NYSE"):
+        try:
+            _params = time_engine.reset_cron_trigger_params(_exch)
+            _info = time_engine.EXCHANGE_HOURS[_exch]
+            scheduler.add_job(
+                lambda e=_exch: run_intraday_dip_reset(e),
+                CronTrigger(**_params),
+                id=f'intraday_dip_reset_{_exch.lower()}_job',
+                replace_existing=True,
+            )
+            logger.info(
+                "Intraday Dip Radar reset for %s scheduled mon-fri at %02d:%02d %s.",
+                _exch, _params["hour"], _params["minute"], _info["tz"],
+            )
+        except Exception as e:
+            logger.error(f"Failed to schedule Intraday Dip Radar reset for {_exch}: {e}")
 
     # Always-on: X-ray Risk Cache — runs daily Mon–Fri at 19:00 (after market close).
     # No config flag required; the X-ray report is always available.

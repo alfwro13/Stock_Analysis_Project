@@ -172,6 +172,22 @@ Tests live in `tests/`. Fixtures and the test client are in `tests/conftest.py`.
 - **Secrets:** All credentials live in `.env` (loaded via `python-dotenv`). Never hard-code tokens or API keys. Never commit `.env`.
 - **Port:** Default is `8090`. Do not change it without updating `config.json` and `config.py`.
 
+### Time and Timezone Rules
+
+All time-related code **must** go through `time_engine.py`. Never hardcode timezone strings, market hours, or reset times anywhere else in the codebase.
+
+**Storage:** Always store datetimes in UTC (SQLite text as `"%Y-%m-%d %H:%M:%S"`, Parquet as naive UTC timestamps). Never store local times.
+
+**Display:** Convert to the user's local timezone at the point of display only, using `time_engine.to_local(dt)`, `time_engine.fmt_time(dt)`, or `time_engine.fmt_datetime(dt)`. These read `USER_TIMEZONE` from config automatically.
+
+**Market-window checks:** Use `time_engine.is_market_open(exchange)` or `time_engine.market_window_utc(exchange)`. Never compare `datetime.now(timezone.utc).time()` against a hardcoded `"HH:MM"` string — that pattern is always a bug because the string has no timezone context.
+
+**Per-ticker exchange detection:** Use `time_engine.ticker_exchange(ticker, currency)` — it maps `.L`/GBP→LSE, `.DE`/EUR→XETRA, `.T`→TSE, USD→NYSE, and falls back to `HOME_EXCHANGE` for ambiguous tickers.
+
+**APScheduler jobs:** Use `time_engine.reset_cron_trigger_params(exchange)` to generate `CronTrigger` kwargs for end-of-session resets. Always specify `timezone` in every `CronTrigger` — a trigger without a timezone is implicitly system-local and will break across DST boundaries or server moves.
+
+**Config keys:** `USER_TIMEZONE` (IANA string, e.g. `"Europe/London"`) and `HOME_EXCHANGE` (`"LSE"` | `"NYSE"` | `"XETRA"` | `"TSE"`) are the two user-facing settings that drive all of the above. Both live in `config.json` and are editable via the Settings UI.
+
 ---
 
 ## External Integrations
