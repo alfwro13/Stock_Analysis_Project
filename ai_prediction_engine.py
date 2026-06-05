@@ -884,14 +884,6 @@ def train_global_ml_model() -> None:
             f"(baseline: {true_oos_baseline:.2%})."
         )
 
-        joblib.dump(production_ensemble, MODEL_PATH)
-        logger.info(f"✅ Production ML Ensemble saved to {MODEL_PATH}")
-        log_notification(
-            "Success",
-            f"ML Model trained — True OOS PR-AUC: {true_oos_pr_auc:.2%}  "
-            f"(baseline: {true_oos_baseline:.2%})."
-        )
-
     except Exception as e:
         logger.error(f"Fatal error during ML training: {e}")
         log_notification("Error", f"ML Model Training failed: {str(e)}")
@@ -1084,8 +1076,10 @@ def update_daily_ml_predictions(tickers: List[str]) -> None:
             if pd.isna(row[FEATURE_COLS]).any():
                 continue
 
-            X_infer             = pd.DataFrame([row[FEATURE_COLS]])
-            prob                = model.predict_proba(X_infer)[0][1]
+            X_infer = pd.DataFrame([row[FEATURE_COLS]])
+            prob    = model.predict_proba(X_infer)[0][1]
+            if not (0.0 <= prob <= 1.0):
+                continue
             ml_confidence_score = float(round(prob * 100.0, 2))
 
             update_payloads.append((ml_confidence_score, row['ticker'], row['date']))
