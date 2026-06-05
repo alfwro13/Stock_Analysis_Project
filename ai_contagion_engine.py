@@ -2,13 +2,14 @@
 import json
 import logging
 import sqlite3
-from datetime import datetime, timezone, time as dtime
+from datetime import datetime, timezone
 from typing import Optional
 
 import pandas as pd
 import yfinance as yf
 
-from config import load_config, HISTORICAL_DIR
+from config import HISTORICAL_DIR
+from time_engine import is_market_open
 from tools.network_engine import yahoo_connection_boundary
 
 logger = logging.getLogger(__name__)
@@ -30,16 +31,12 @@ class AIContagionEngine:
 
     def __init__(self, config: dict) -> None:
         cfg = config.get("NOTIFICATIONS", {}).get("AI_CONTAGION", {})
-        sched = config.get("SCHEDULING", {}).get("AI_CONTAGION", {})
         self.bellwethers: list = cfg.get("BELLWETHER_TICKERS", _DEFAULT_BELLWETHERS)
         self.etfs: list = cfg.get("ETF_BASKET", _DEFAULT_ETFS)
         # Store as negative fraction for direct comparison with drawdown values
         self.leader_threshold: float = -abs(cfg.get("LEADER_THRESHOLD_PCT", 4.0)) / 100.0
         self.etf_threshold: float = -abs(cfg.get("ETF_CONFIRMATION_THRESHOLD_PCT", 2.5)) / 100.0
         self.volume_spike_multiplier: float = cfg.get("VOLUME_SPIKE_MULTIPLIER", 1.8)
-        # Times are compared against UTC wall clock — configure in UTC in settings
-        self._start_time_utc: str = sched.get("START_TIME", "09:00")
-        self._end_time_utc: str = sched.get("END_TIME", "21:00")
 
     # ── public API ─────────────────────────────────────────────────────────────
 
@@ -52,7 +49,7 @@ class AIContagionEngine:
         one cooldown slot for the whole sector rather than per-ticker slots.
         conn is used for snapshot recording and passed through; not closed here.
         """
-        if not self._is_within_active_window():
+        if not is_market_open("NYSE", include_premarket=True):
             return []
 
         df_basket = self._fetch_basket_data()
@@ -97,16 +94,6 @@ class AIContagionEngine:
 
     # ── internals ──────────────────────────────────────────────────────────────
 
-    def _is_within_active_window(self) -> bool:
-        try:
-            now_t = datetime.now(timezone.utc).time().replace(tzinfo=None)
-            sh, sm = map(int, self._start_time_utc.split(":"))
-            eh, em = map(int, self._end_time_utc.split(":"))
-            return dtime(sh, sm) <= now_t <= dtime(eh, em)
-        except Exception as e:
-            logger.error(f"AIContagionEngine: active window check failed: {e}")
-            return True  # fail open — threshold gate prevents false positives
-
     def _fetch_basket_data(self) -> Optional[pd.DataFrame]:
         tickers = self.bellwethers + self.etfs
         try:
@@ -136,14 +123,11 @@ class AIContagionEngine:
         breached. Returns None when below threshold or data is insufficient.
         """
         try:
-            if isinstance(df_basket.columns, pd.MultiIndex):
-                if ticker not in df_basket.columns.get_level_values(0):
-                    return None
-                df = df_basket[ticker].copy()
-            else:
-                if "Close" not in df_basket.columns:
-                    return None
-                df = df_basket.copy()
+            if not isinstance(df_basket.columns, pd.MultiIndex):
+                return None
+            if ticker not in df_basket.columns.get_level_values(0):
+                return None
+            df = df_basket[ticker].copy()
 
             df = df.dropna(subset=["Close"])
             if len(df) < 2:
@@ -159,7 +143,7 @@ class AIContagionEngine:
             if prev_df.empty:
                 return None
             prev_close = float(prev_df["Close"].iloc[-1])
-            if prev_close == 0.0:
+            if prev_close <= 0.0:
                 return None
 
             drawdown = (current_price - prev_close) / prev_close
@@ -184,7 +168,7 @@ class AIContagionEngine:
         try:
             df_hist = pd.read_parquet(HISTORICAL_DIR / f"{ticker}.parquet", columns=["Volume"])
             avg_vol = float(df_hist["Volume"].tail(20).mean())
-            if avg_vol <= 0:
+            if avg_vol <= 0 or pd.isna(avg_vol):
                 return False
             recent_vol = float(df["Volume"].iloc[-1]) if "Volume" in df.columns else 0.0
             # avg_vol is from daily OHLCV parquet; normalize to per-15min-bar equivalent
