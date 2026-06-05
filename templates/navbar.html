@@ -1,12 +1,4 @@
 <div class="nav-links">
-    {% if active_page == 'portfolio' %}
-    <select class="context-selector" id="accountContextSelector" onchange="switchAccountContext()">
-        {% for opt in account_options %}
-        <option value="{{ opt.id }}" {% if selected_account == opt.id %}selected{% endif %}>{{ opt.name }}</option>
-        {% endfor %}
-    </select>
-    {% endif %}
-    
     <a href="/portfolio" class="{% if active_page == 'portfolio' %}active{% endif %}">💼 Portfolio</a>
     <a href="/watchlist" class="{% if active_page == 'watchlist' %}active{% endif %}">👀 Watchlist</a>
     <a href="/news" class="{% if active_page == 'news' %}active{% endif %}">📰 News</a>

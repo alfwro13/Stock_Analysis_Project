@@ -79,6 +79,19 @@
     </div>
 
     <div class="controls-container">
+        {% if account_options and account_options | length > 1 %}
+        <select class="context-selector" id="accountContextSelector" onchange="switchAccountContext()">
+            {% for opt in account_options %}
+            <option value="{{ opt.id }}" {% if selected_account == opt.id %}selected{% endif %}>{{ opt.name }}</option>
+            {% endfor %}
+        </select>
+        {% else %}
+        <select class="context-selector" id="accountContextSelector" onchange="switchAccountContext()" style="display:none">
+            {% for opt in account_options %}
+            <option value="{{ opt.id }}" {% if selected_account == opt.id %}selected{% endif %}>{{ opt.name }}</option>
+            {% endfor %}
+        </select>
+        {% endif %}
         <input type="text" id="customSearchInput" class="filter-input" placeholder="🔍 Search ticker or name...">
         <select id="signalFilter" class="filter-select">
             <option value="ALL">All Signals</option>
