@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 from database import get_connection
 from morning_briefing import (
     fetch_portfolio_news,
+    generate_uk_charts,
     _load_portfolio_tickers,
     _get_company_names,
     _get_pulse_rows,
@@ -31,6 +32,7 @@ def _render_uk_midsession(
     pulse: dict,
     regime_data: dict,
     macro_regime: dict,
+    charts: dict | None = None,
 ) -> str:
     uk_regime = regime_data.get("uk_regime_label", "Unknown") if regime_data else "Unknown"
     uk_turb = regime_data.get("uk_turbulence", 0.0) if regime_data else 0.0
@@ -98,6 +100,15 @@ def _render_uk_midsession(
         out += "> ⚡ **Volatile conditions.** Apply tighter risk controls.\n\n"
     else:
         out += "> Standard conditions. No systemic warnings active.\n\n"
+
+    if charts:
+        if "ftse" in charts:
+            out += f"![FTSE 100]({charts['ftse']})\n"
+        if "gilt" in charts:
+            out += f"![UK 10Y Gilt]({charts['gilt']})\n"
+        if "gbpusd" in charts:
+            out += f"![GBP/USD]({charts['gbpusd']})\n"
+        out += "\n"
 
     return out
 
@@ -231,6 +242,10 @@ def generate_lunchtime_briefing(target_date: str) -> str:
         logger.info("Fetching morning session news for %d portfolio tickers...", len(tickers))
         news_data = fetch_portfolio_news(tickers, since_dt)
 
+    # --- UK charts (regenerated with live mid-session data) ---
+    logger.info("Generating UK market chart snapshots for lunchtime briefing...")
+    charts = generate_uk_charts(target_date)
+
     # --- Assemble report ---
     report = f"# 🕛 Quant Lunch Briefing — {target_date}\n"
     report += f"**Generated:** {generated_at} UK | Morning session update\n\n"
@@ -246,7 +261,7 @@ def generate_lunchtime_briefing(target_date: str) -> str:
         report += section
         report += "---\n\n"
 
-    report += _render_uk_midsession(pulse, regime_data, macro_regime)
+    report += _render_uk_midsession(pulse, regime_data, macro_regime, charts=charts)
     report += "---\n\n"
 
     report += _render_us_premarket(pulse)

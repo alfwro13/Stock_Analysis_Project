@@ -12,7 +12,7 @@ import requests
 from datetime import datetime, timedelta
 
 from config import load_config
-from morning_briefing import generate_morning_briefing
+from morning_briefing import generate_morning_briefing, generate_uk_charts
 from lunchtime_briefing import generate_lunchtime_briefing
 from nextcloud_talk import upload_file_webdav, share_file_to_talk, send_text_message
 
@@ -107,6 +107,42 @@ def _dispatch_briefing(
         return False
 
 
+def _share_charts_to_talk(chart_paths: list[str], config: dict) -> None:
+    """Uploads chart PNGs to Nextcloud and shares each to the Talk conversation."""
+    nc_url = (os.environ.get("NEXTCLOUD_URL") or config.get("NEXTCLOUD_URL", "")).rstrip("/")
+    nc_user = os.environ.get("NEXTCLOUD_BOT_USERNAME") or config.get("BOT_USERNAME", "")
+    nc_pass = os.environ.get("NEXTCLOUD_APP_PASSWORD") or config.get("APP_PASSWORD", "")
+    nc_token = os.environ.get("NEXTCLOUD_CONVERSATION_TOKEN") or config.get("CONVERSATION_TOKEN", "")
+
+    if not all([nc_url, nc_user, nc_pass, nc_token]):
+        return
+
+    ensure_remote_directory(nc_url, nc_user, nc_pass, "quant_briefings/charts")
+
+    for local_path in chart_paths:
+        if not os.path.exists(local_path):
+            continue
+        filename = os.path.basename(local_path)
+        remote_path = f"quant_briefings/charts/{filename}"
+        ok = upload_file_webdav(
+            local_path=local_path,
+            remote_path=remote_path,
+            nextcloud_url=nc_url,
+            bot_username=nc_user,
+            app_password=nc_pass,
+            log_message=logger.debug,
+        )
+        if ok:
+            share_file_to_talk(
+                remote_path=remote_path,
+                conversation_token=nc_token,
+                nextcloud_url=nc_url,
+                bot_username=nc_user,
+                app_password=nc_pass,
+                log_message=logger.debug,
+            )
+
+
 def push_morning_quant_briefing() -> bool:
     """
     Generates the Morning Quant Briefing and saves it to disk.
@@ -128,24 +164,31 @@ def push_morning_quant_briefing() -> bool:
         logger.info("Nextcloud Talk dispatch disabled (DISPATCHER.ENABLED=false). Briefing saved locally only.")
         return True
 
-    local_file_path = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)),
-        "reports",
-        f"morning_briefing_{target_date}.md",
-    )
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    local_file_path = os.path.join(base_dir, "reports", f"morning_briefing_{target_date}.md")
     msg = (
         f"🌅 *Morning Quant Briefing — {target_date}*\n"
-        "Overnight news, US futures, UK pre-open snapshot & quant signals attached. "
-        "Or visit your dashboard for live views."
+        "Overnight news, US futures, UK pre-open charts & quant signals attached."
     )
 
-    return _dispatch_briefing(
+    ok = _dispatch_briefing(
         local_file_path=local_file_path,
         remote_folder="quant_briefings",
         remote_filename=f"morning_briefing_{target_date}.md",
         notify_msg=msg,
         config=config,
     )
+
+    # Share chart PNGs to Talk after the main .md
+    charts_dir = os.path.join(base_dir, "static", "briefing_charts")
+    chart_files = [
+        os.path.join(charts_dir, f"ftse_{target_date}.png"),
+        os.path.join(charts_dir, f"gilt_{target_date}.png"),
+        os.path.join(charts_dir, f"gbpusd_{target_date}.png"),
+    ]
+    _share_charts_to_talk([p for p in chart_files if os.path.exists(p)], config)
+
+    return ok
 
 
 def push_lunchtime_quant_briefing() -> bool:
