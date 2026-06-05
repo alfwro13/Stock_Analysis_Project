@@ -717,6 +717,8 @@ async def portfolio_page(request: Request, account_id: str = "all", embed: bool 
 
     portfolio_data.sort(key=lambda x: x['ticker'])
 
+    live_pulse = get_all_cached_pulse()
+
     for row_dict in portfolio_data:
         row_dict['market_value_base'] = None
         row_dict['global_market_value'] = None
@@ -745,11 +747,14 @@ async def portfolio_page(request: Request, account_id: str = "all", embed: bool 
             summary_math["value"] += val_in_base
             summary_math["cost"] += cost_in_base
 
-            # Global aggregation (always across all accounts)
+            # Global aggregation — use live pulse price (same source as Price column)
+            # to avoid stale DB price diverging from what the user sees
+            pulse_entry = live_pulse.get(row_dict['ticker'])
+            live_price = pulse_entry['price'] if pulse_entry else row_dict['current_price']
             global_shares = asset.get('global_shares', 0)
             global_buy_price = asset.get('global_buy_price', 0)
             global_cost = global_shares * global_buy_price
-            global_val = (global_shares * row_dict['current_price']) * exchange_rate
+            global_val = (global_shares * live_price) * exchange_rate
             row_dict['global_market_value'] = round(global_val, 2)
             global_pnl = global_val - global_cost
             row_dict['global_unrealized_pnl'] = round(global_pnl, 2)
@@ -779,7 +784,7 @@ async def portfolio_page(request: Request, account_id: str = "all", embed: bool 
             "selected_account": account_id,
             "summary_math": formatted_summary,
             "config": config_data,
-            "cached_pulse": get_all_cached_pulse(),
+            "cached_pulse": live_pulse,
             "macro_regime": macro_regime,
             "position_sizing": position_sizing_context
         }
