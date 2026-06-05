@@ -3,7 +3,7 @@ from io import StringIO
 import logging
 import requests
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Optional, Callable
 
 from config import load_config
@@ -76,12 +76,13 @@ def fetch_index_constituents(index_key: str) -> List[Dict[str, str]]:
             col_map[target] = matched_col
 
         formatter: Callable = config["ticker_formatter"]
-        
+
         records = []
         for _, row in df.iterrows():
-            ticker = formatter(row[col_map[config["col_ticker"]]])
-            if not ticker or pd.isna(ticker):
+            raw_ticker = row[col_map[config["col_ticker"]]]
+            if pd.isna(raw_ticker) or not str(raw_ticker).strip():
                 continue
+            ticker = formatter(raw_ticker)
                 
             records.append({
                 "ticker": ticker,
@@ -93,11 +94,11 @@ def fetch_index_constituents(index_key: str) -> List[Dict[str, str]]:
         logger.info(f"Successfully scraped {len(records)} constituents for {index_key}.")
         return records
 
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Network error while scraping {index_key}: {e}")
+    except requests.exceptions.RequestException:
+        logger.exception(f"Network error while scraping {index_key}.")
         return []
-    except Exception as e:
-        logger.error(f"Data extraction failed for {index_key}: {e}")
+    except Exception:
+        logger.exception(f"Data extraction failed for {index_key}.")
         return []
 
 
@@ -111,15 +112,16 @@ def upsert_index_assets(records: List[Dict[str, str]]) -> bool:
     if not records:
         return False
 
-    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    current_time = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     upsert_data = [
         (
-            r["ticker"], r["company_name"], r["sector"], 
+            r["ticker"], r["company_name"], r["sector"],
             r["index_membership"], current_time
         )
         for r in records
     ]
 
+    conn = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
@@ -145,11 +147,11 @@ def upsert_index_assets(records: List[Dict[str, str]]) -> bool:
         conn.commit()
         return True
 
-    except Exception as e:
-        logger.error(f"Failed to upsert index records to database: {e}")
+    except Exception:
+        logger.exception("Failed to upsert index records to database.")
         return False
     finally:
-        if 'conn' in locals():
+        if conn is not None:
             conn.close()
 
 
