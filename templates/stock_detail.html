@@ -448,7 +448,7 @@
                                 var ic  = fired ? '&#x2705;' : '&#x274C;';
                                 var pc  = fired ? '#00cc66' : '#555';
                                 var labelHtml = tooltip
-                                    ? '<abbr title="' + tooltip.replace(/"/g, '&quot;') + '" style="text-decoration:underline dotted;cursor:help;">' + lbl + '</abbr>'
+                                    ? '<abbr title="' + tooltip.replace(/"/g, '&quot;') + '">' + lbl + '</abbr>'
                                     : lbl;
                                 return '<div style="background:' + bg + ';border:' + bdr + ';border-radius:6px;padding:9px 10px;min-width:0;">' +
                                     '<div style="color:#888;font-size:10px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">' + labelHtml + '</div>' +
