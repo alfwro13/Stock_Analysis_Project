@@ -194,18 +194,14 @@
             color: #aaa;
             font-style: italic;
         }
-        .open-link {
-            display: inline-block;
-            margin-top: 18px;
-            padding: 6px 16px;
-            background: #00b4d8;
-            color: #000;
-            border-radius: 4px;
+        .reader-headline-link {
+            color: inherit;
             text-decoration: none;
-            font-size: 0.85em;
-            font-weight: 600;
         }
-        .open-link:hover { background: #0090b0; }
+        .reader-headline-link:hover {
+            text-decoration: underline;
+            text-underline-offset: 3px;
+        }
 
         #noArticles {
             padding: 40px 20px;
@@ -393,8 +389,11 @@
             ? `<div class="reader-body">${escHtml(a.full_text)}</div>`
             : `<div class="reader-body summary-fallback">${escHtml(a.summary || 'No summary available.')}<br><em style="font-size:0.85em;color:#666;">(Full text unavailable — open original for the complete article)</em></div>`;
 
+        const headlineHtml = a.url
+            ? `<a href="${escHtml(a.url)}" target="_blank" rel="noopener" class="reader-headline-link">${escHtml(a.headline)}</a>`
+            : escHtml(a.headline);
         reader.innerHTML = `
-            <h2>${escHtml(a.headline)}</h2>
+            <h2>${headlineHtml}</h2>
             <div class="reader-meta">
                 <span class="art-ticker-badge">${escHtml(a.ticker)}${a.company_name ? ' · ' + escHtml(a.company_name) : ''}</span>
                 ${sourceBadge(a.source_list)}
@@ -403,7 +402,6 @@
                 <span>${pubDate}</span>
             </div>
             ${bodyHtml}
-            ${a.url ? `<a href="${escHtml(a.url)}" target="_blank" rel="noopener" class="open-link">Open original ↗</a>` : ''}
         `;
     }
 
