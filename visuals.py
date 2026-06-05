@@ -6,13 +6,33 @@ import ta
 import textwrap
 from quant_signals import get_candlestick_patterns
 
-def create_intraday_chart(df, ticker, s1=None, s2=None, live_pattern_name=None, live_pattern_tooltip=None, live_pattern_score=None, include_plotlyjs='cdn'):
+_EXCHANGE_DELAYS = {
+    'GBp': 15, 'GBP': 15,  # LSE — Yahoo Finance free-tier delay
+    'EUR': 15,              # Euronext and other European exchanges
+}
+
+
+def _intraday_market_tz(ticker: str, currency: str) -> str:
+    """Return the pytz timezone name for a ticker's home exchange."""
+    if ticker.endswith('.L') or currency in ('GBp', 'GBP'):
+        return 'Europe/London'
+    return 'America/New_York'
+
+
+def create_intraday_chart(df, ticker, s1=None, s2=None, live_pattern_name=None, live_pattern_tooltip=None, live_pattern_score=None, include_plotlyjs='cdn', market_tz=None, data_delay_minutes=0):
     """
-    Generates a high-resolution, short-term chart using 5-minute data 
+    Generates a high-resolution, short-term chart using 5-minute data
     for the current trading day. Conditionally plots algorithmic floors (S1/S2).
+    market_tz: pytz timezone string (e.g. 'Europe/London'). The parquet stores
+               naive UTC timestamps; if provided the index is converted before plotting.
+    data_delay_minutes: if > 0, an amber delay warning is added to the chart title.
     """
+    if market_tz and not df.empty:
+        df = df.copy()
+        df.index = df.index.tz_localize('UTC').tz_convert(market_tz).tz_localize(None)
+
     last_date = df.index[-1].date().strftime('%d-%b-%Y') if not df.empty else 'Today'
-    
+
     fig = go.Figure(data=[go.Candlestick(
         x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name="Intraday"
     )])
@@ -23,6 +43,8 @@ def create_intraday_chart(df, ticker, s1=None, s2=None, live_pattern_name=None, 
         fig.add_hline(y=s2, line_dash="dash", line_color="#00ffcc", annotation_text="S2 Support", annotation_position="top left", annotation_font_color="#00ffcc")
     
     title_text = f"{last_date} Pulse (5-Minute Intervals) - {ticker}"
+    if data_delay_minutes > 0:
+        title_text += f"<br><span style='color:#ffaa00; font-size: 12px;'>⚠ Data may be delayed up to {data_delay_minutes} min (exchange policy)</span>"
     if live_pattern_name:
         title_text += f"<br><span style='color:#ffaa00; font-size: 13px;'><i>Live Formation: {live_pattern_name} (Hover over chart marker for details)</i></span>"
 

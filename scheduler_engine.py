@@ -475,7 +475,7 @@ def run_intraday_dip_scan():
 
 
 def run_intraday_dip_reset():
-    """Deactivates all intraday monitors at end of trading day (16:05 ET)."""
+    """Deactivates all intraday monitors at end of trading day (16:05 ET / America/New_York)."""
     try:
         IntradayBottomEngine().deactivate_all_today()
         # deactivate_all_today() logs the end-of-session notification internally.
@@ -1052,11 +1052,11 @@ def reload_scheduler():
     try:
         scheduler.add_job(
             run_intraday_dip_reset,
-            CronTrigger(day_of_week='mon-fri', hour=16, minute=5),
+            CronTrigger(day_of_week='mon-fri', hour=16, minute=5, timezone='America/New_York'),
             id='intraday_dip_reset_job',
             replace_existing=True,
         )
-        logger.info("Intraday Dip Radar reset scheduled mon-fri at 16:05.")
+        logger.info("Intraday Dip Radar reset scheduled mon-fri at 16:05 ET (America/New_York).")
     except Exception as e:
         logger.error(f"Failed to schedule Intraday Dip Radar reset: {e}")
 

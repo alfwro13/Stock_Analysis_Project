@@ -52,6 +52,35 @@
         <script>
             window.ENABLE_LIVE_ASSETS = {% if config and config.UI_PREFERENCES and config.UI_PREFERENCES.LIVE_DETAILS %}true{% else %}false{% endif %};
             window.REFRESH_RATE_MS = {{ config.UI_PREFERENCES.REFRESH_RATE | default(60) }} * 1000;
+
+            // Dip Radar resets at 16:05 America/New_York — compute in user's local timezone
+            function formatDipResetLocalTime() {
+                try {
+                    const now = new Date();
+                    const nyDate = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/New_York' }).format(now);
+                    const [y, m, d] = nyDate.split('-').map(Number);
+                    // 16:05 ET can be 20:05 UTC (EDT, UTC-4) or 21:05 UTC (EST, UTC-5)
+                    for (const utcHour of [20, 21]) {
+                        const candidate = new Date(Date.UTC(y, m - 1, d, utcHour, 5));
+                        const nyHour = parseInt(
+                            new Intl.DateTimeFormat('en', {
+                                timeZone: 'America/New_York', hour: 'numeric', hour12: false
+                            }).format(candidate)
+                        );
+                        if (nyHour === 16) {
+                            return candidate.toLocaleTimeString([], {
+                                hour: '2-digit', minute: '2-digit', timeZoneName: 'short'
+                            });
+                        }
+                    }
+                } catch(e) {}
+                return '16:05 ET';
+            }
+            document.addEventListener('DOMContentLoaded', function() {
+                document.querySelectorAll('.dip-reset-time').forEach(function(el) {
+                    el.textContent = formatDipResetLocalTime();
+                });
+            });
         </script>
         {% set show_indexes = False %}
         {% if not embed %}
@@ -381,7 +410,7 @@
                     </summary>
                     <div class="settings-panel border-left-orange" style="margin:0 0 10px 0;">
                         <h4 class="settings-panel-header text-orange">Intraday Bottom Finder</h4>
-                        <p class="settings-desc-sm">Enable for this session to score (0–100) whether this stock is approaching a capitulation bottom. Monitors reset automatically at 16:05 ET.</p>
+                        <p class="settings-desc-sm">Enable for this session to score (0–100) whether this stock is approaching a capitulation bottom. Monitors reset automatically at <span class="dip-reset-time">16:05 ET</span> each trading day.</p>
                         <div class="checkbox-group mb-10">
                             <input type="checkbox" id="dip-radar-toggle"
                                    {% if is_dip_monitored %}checked{% endif %}

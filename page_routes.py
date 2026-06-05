@@ -33,6 +33,8 @@ from utils import normalize_ticker
 from visuals import (
     create_macro_chart,
     create_intraday_chart,
+    _intraday_market_tz,
+    _EXCHANGE_DELAYS,
     create_us_liquidity_chart,
     create_us_credit_chart,
     create_uk_liquidity_chart,
@@ -1026,7 +1028,10 @@ async def index_detail(request: Request, ticker: str):
         df_intraday = pd.read_parquet(INTRADAY_DIR / f"{ticker}_intraday.parquet")
         s1 = price_action['s1'] if price_action else None
         s2 = price_action['s2'] if price_action else None
-        intraday_html = create_intraday_chart(df_intraday, ticker, s1=s1, s2=s2)
+        mkt_tz = _intraday_market_tz(ticker, currency)
+        delay_min = _EXCHANGE_DELAYS.get(currency, 0)
+        intraday_html = create_intraday_chart(df_intraday, ticker, s1=s1, s2=s2,
+                                              market_tz=mkt_tz, data_delay_minutes=delay_min)
     except FileNotFoundError:
         intraday_html = "<div style='display:flex;flex-direction:column;align-items:center;justify-content:center;height:120px;gap:10px;color:#888;'><span style='font-size:1.8rem;'>📭</span><span style='font-weight:600;'>No intraday data yet</span></div>"
     except Exception:
@@ -1403,11 +1408,15 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
 
         s1_val = price_action['s1'] if price_action else None
         s2_val = price_action['s2'] if price_action else None
+        mkt_tz = _intraday_market_tz(ticker, currency)
+        delay_min = _EXCHANGE_DELAYS.get(currency, 0)
         intraday_html = create_intraday_chart(
             df_intraday, ticker, s1=s1_val, s2=s2_val,
             live_pattern_name=live_pattern_name,
             live_pattern_tooltip=live_pattern_tooltip,
-            live_pattern_score=live_pattern_score
+            live_pattern_score=live_pattern_score,
+            market_tz=mkt_tz,
+            data_delay_minutes=delay_min,
         )
     except FileNotFoundError:
         intraday_html = "<div style='display:flex;flex-direction:column;align-items:center;justify-content:center;height:120px;gap:10px;color:#888;'><span style='font-size:1.8rem;'>📭</span><span style='font-weight:600;'>No intraday data yet</span><span style='font-size:0.85rem;'>Press <strong>Refresh</strong> above to fetch today's intraday data.</span></div>"

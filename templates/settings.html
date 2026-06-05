@@ -499,7 +499,7 @@
 
                 <details class="settings-card" id="dip-radar-settings-card">
                     <summary>🎯 Dip Radar — Intraday Bottom Finder</summary>
-                    <p class="settings-desc">On-demand session monitoring to detect capitulation bottoms on selected tickers. Enable monitoring from any stock detail page. All monitors deactivate automatically at 16:05 ET.</p>
+                    <p class="settings-desc">On-demand session monitoring to detect capitulation bottoms on selected tickers. Enable monitoring from any stock detail page. All monitors deactivate automatically at <span class="dip-reset-time">16:05 ET</span> each trading day.</p>
 
                     <div class="settings-panel border-left-orange">
                         <h4 class="settings-panel-header text-orange">Notifications</h4>
@@ -1684,6 +1684,36 @@
     </script>
 
     <script>
+        // Populate Dip Radar reset time in user's local timezone
+        (function() {
+            function formatDipResetLocalTime() {
+                try {
+                    const now = new Date();
+                    const nyDate = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/New_York' }).format(now);
+                    const [y, m, d] = nyDate.split('-').map(Number);
+                    for (const utcHour of [20, 21]) {
+                        const candidate = new Date(Date.UTC(y, m - 1, d, utcHour, 5));
+                        const nyHour = parseInt(
+                            new Intl.DateTimeFormat('en', {
+                                timeZone: 'America/New_York', hour: 'numeric', hour12: false
+                            }).format(candidate)
+                        );
+                        if (nyHour === 16) {
+                            return candidate.toLocaleTimeString([], {
+                                hour: '2-digit', minute: '2-digit', timeZoneName: 'short'
+                            });
+                        }
+                    }
+                } catch(e) {}
+                return '16:05 ET';
+            }
+            document.addEventListener('DOMContentLoaded', function() {
+                document.querySelectorAll('.dip-reset-time').forEach(function(el) {
+                    el.textContent = formatDipResetLocalTime();
+                });
+            });
+        })();
+
         let CONFIRM_TOKEN = "{{ confirm_token }}";
         const accountsDataNode = document.getElementById('discoveredAccountsData').textContent;
         let currentDiscoveredAccounts = JSON.parse(accountsDataNode);

@@ -277,7 +277,7 @@
                 </div>
                 <div class="term-box">
                     <span class="term-title">Session-Scoped Monitoring</span>
-                    <p>Dip Radar is deliberately not a persistent background monitor. It is activated on-demand per ticker from the stock detail page and automatically deactivates at 16:05 ET each trading day. This design prevents alert fatigue and avoids scanning noise outside of active market hours. The deduplication system (alert_state table) ensures that only the first breach of the score threshold fires an alert — repeat scans at the same high score are silently suppressed until a new session arms the ticker again.</p>
+                    <p>Dip Radar is deliberately not a persistent background monitor. It is activated on-demand per ticker from the stock detail page and automatically deactivates at 16:05 ET (21:05 BST in summer / 22:05 GMT in winter) each trading day. This design prevents alert fatigue and avoids scanning noise outside of active market hours. The deduplication system (alert_state table) ensures that only the first breach of the score threshold fires an alert — repeat scans at the same high score are silently suppressed until a new session arms the ticker again.</p>
                 </div>
             </details>
 

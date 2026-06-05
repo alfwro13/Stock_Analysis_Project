@@ -69,7 +69,7 @@ from seed_macro_calendar import seed_calendar
 from macro_calendar_engine import update_macro_calendar
 from macro_data_engine import update_macro_indicators
 from macro_ai_engine import MacroAIEngine
-from visuals import create_intraday_chart
+from visuals import create_intraday_chart, _intraday_market_tz, _EXCHANGE_DELAYS
 from quant_signals import get_candlestick_patterns
 
 # Configure logger
@@ -1676,7 +1676,7 @@ async def intraday_monitor_add(req: TickerRequest):
     await asyncio.to_thread(engine.arm_alert, ticker)
     # One-time notification confirming monitoring is active for this session
     from database import log_notification
-    log_notification("DipRadar", f"🎯 Dip Radar enabled for {ticker} — scanning every 2 min until 16:05 ET. You will be notified if a bottoming zone is detected.")
+    log_notification("DipRadar", f"🎯 Dip Radar enabled for {ticker} — scanning every 2 min until 16:05 ET (America/New_York). You will be notified if a bottoming zone is detected.")
     return JSONResponse(content={"status": "ok", "ticker": ticker})
 
 
@@ -1733,6 +1733,22 @@ async def get_intraday_chart(ticker: str = PathParam(..., pattern=r"^[A-Z0-9.\-\
     ticker = ticker.upper()
     s1 = s2 = None
     df_macro = pd.DataFrame()
+
+    # Derive exchange metadata for timezone + delay
+    conn_meta = get_connection()
+    try:
+        row = conn_meta.execute(
+            "SELECT currency FROM stock_signals WHERE ticker = ? LIMIT 1", (ticker,)
+        ).fetchone()
+        currency = row["currency"] if row else "USD"
+    except Exception:
+        currency = "USD"
+    finally:
+        conn_meta.close()
+
+    mkt_tz = _intraday_market_tz(ticker, currency)
+    delay_min = _EXCHANGE_DELAYS.get(currency, 0)
+
     try:
         df_macro = pd.read_parquet(HISTORICAL_DIR / f"{ticker}.parquet")
         if not df_macro.empty and len(df_macro) > 1:
@@ -1775,5 +1791,7 @@ async def get_intraday_chart(ticker: str = PathParam(..., pattern=r"^[A-Z0-9.\-\
         live_pattern_tooltip=live_pattern_tooltip,
         live_pattern_score=live_pattern_score,
         include_plotlyjs=False,
+        market_tz=mkt_tz,
+        data_delay_minutes=delay_min,
     )
     return JSONResponse(content={"html": html})
