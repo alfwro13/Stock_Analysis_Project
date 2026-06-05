@@ -29,7 +29,9 @@ class GhostfolioSyncEngine:
         self.url = GHOSTFOLIO_URL.rstrip("/")
         self.token = GHOSTFOLIO_TOKEN
         self.headers = {}
-        
+        self.active_account_ids = GHOSTFOLIO_ACCOUNTS.get("active", [])
+        self.discovered_accounts = []
+
         if not self.url or not self.token:
             print("[ERROR] Ghostfolio credentials missing. Please check config.json.")
             self.is_configured = False
@@ -135,21 +137,23 @@ class GhostfolioSyncEngine:
                 # Fetch holdings strictly for this account
                 holdings_url = f"{self.url}/api/v1/portfolio/holdings?accounts={acc_id}"
                 resp = requests.get(holdings_url, headers=self.headers, verify=False, timeout=15)
-                
-                if resp.status_code != 200:
+
+                try:
+                    resp.raise_for_status()
+                except requests.exceptions.HTTPError:
                     print(f"[WARNING] Failed to fetch holdings for account {acc_name}. HTTP {resp.status_code}")
                     continue
-                    
+
                 holdings_list = resp.json().get("holdings", [])
                 
                 # 2. Process and aggregate the holdings
                 for asset in holdings_list:
                     profile = asset.get('assetProfile') or asset  # API v1 nests symbol/name/currency under assetProfile
                     symbol = profile.get('symbol', '') or asset.get('symbol', '')
-                    quantity = float(asset.get('quantity', 0))
+                    quantity = float(asset.get('quantity') or 0)
                     name = profile.get('name', '') or asset.get('name', '')
                     currency = profile.get('currency', '') or asset.get('currency', '')
-                    total_investment = float(asset.get('investment', 0))
+                    total_investment = float(asset.get('investment') or 0)
                     
                     if quantity <= 0:
                         continue
