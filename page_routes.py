@@ -719,6 +719,9 @@ async def portfolio_page(request: Request, account_id: str = "all", embed: bool 
 
     for row_dict in portfolio_data:
         row_dict['market_value_base'] = None
+        row_dict['global_market_value'] = None
+        row_dict['global_unrealized_pnl'] = None
+        row_dict['global_unrealized_pnl_pct'] = None
         asset = next((d for d in portfolio_json.values() if d.get("ticker") == row_dict['ticker']), None)
         if asset and row_dict['current_price']:
             shares = 0
@@ -741,6 +744,16 @@ async def portfolio_page(request: Request, account_id: str = "all", embed: bool 
 
             summary_math["value"] += val_in_base
             summary_math["cost"] += cost_in_base
+
+            # Global aggregation (always across all accounts)
+            global_shares = asset.get('global_shares', 0)
+            global_buy_price = asset.get('global_buy_price', 0)
+            global_cost = global_shares * global_buy_price
+            global_val = (global_shares * row_dict['current_price']) * exchange_rate
+            row_dict['global_market_value'] = round(global_val, 2)
+            global_pnl = global_val - global_cost
+            row_dict['global_unrealized_pnl'] = round(global_pnl, 2)
+            row_dict['global_unrealized_pnl_pct'] = round((global_pnl / global_cost) * 100, 2) if global_cost else None
 
     if summary_math["cost"] > 0:
         summary_math["pnl"] = summary_math["value"] - summary_math["cost"]

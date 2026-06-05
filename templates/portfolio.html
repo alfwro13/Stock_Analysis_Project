@@ -117,7 +117,8 @@
                 <th>Company Name</th>
                 <th>Price</th>
                 <th>Daily Change</th>
-                <th>Target</th>
+                <th><abbr title="Current market value across all accounts (in base currency)">Global Value</abbr></th>
+                <th><abbr title="Unrealized P&amp;L across all accounts (in base currency)">Global P&amp;L</abbr></th>
                 <th>50D</th>
                 <th>200D</th>
                 <th><abbr title="Standard PEG Ratio">PEG</abbr></th>
@@ -168,10 +169,21 @@
                     </span>
                 </td>
                 
-                <td data-sort="{{ item.target_price if item.target_price is not none else -999 }}" class="num-cell">
-                    {% if item.target_price is not none %}
-                        {% set t_val = (item.target_price / 100.0) if item.currency == 'GBp' else item.target_price %}
-                        {{ "{:,.2f}".format(t_val) }}
+                <td data-sort="{{ item.global_market_value if item.global_market_value is not none else -999 }}" class="num-cell">
+                    {% if item.global_market_value is not none %}
+                        {% set base_sym = '£' if config.BASE_CURRENCY == 'GBP' else ('€' if config.BASE_CURRENCY == 'EUR' else '$') %}
+                        {{ base_sym }}{{ "{:,.2f}".format(item.global_market_value) }}
+                    {% else %}N/A{% endif %}
+                </td>
+                <td data-sort="{{ item.global_unrealized_pnl if item.global_unrealized_pnl is not none else -999999 }}" class="num-cell">
+                    {% if item.global_unrealized_pnl is not none %}
+                        {% set base_sym = '£' if config.BASE_CURRENCY == 'GBP' else ('€' if config.BASE_CURRENCY == 'EUR' else '$') %}
+                        {% set pnl_class = 'trend-up' if item.global_unrealized_pnl >= 0 else 'trend-down' %}
+                        {% set pnl_sign = '+' if item.global_unrealized_pnl >= 0 else '' %}
+                        <span class="{{ pnl_class }}">{{ pnl_sign }}{{ base_sym }}{{ "{:,.2f}".format(item.global_unrealized_pnl) }}</span>
+                        {% if item.global_unrealized_pnl_pct is not none %}
+                            <br><small style="color:#aaa;font-size:0.8em;">{{ pnl_sign }}{{ "{:,.2f}".format(item.global_unrealized_pnl_pct) }}%</small>
+                        {% endif %}
                     {% else %}N/A{% endif %}
                 </td>
                 <td data-sort="{{ 1 if item.trend_50d == 'UP' else 0 }}"><span class="{% if item.trend_50d == 'UP' %}trend-up{% else %}trend-down{% endif %}">{{ item.trend_50d }}</span></td>
