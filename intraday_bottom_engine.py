@@ -255,7 +255,9 @@ class IntradayBottomEngine:
             is_bottoming = score >= _BOTTOMING_THRESHOLD
 
             try:
-                scan_ts = cur.name.strftime("%Y-%m-%d %H:%M")
+                mkt_tz = 'Europe/London' if ticker.endswith('.L') else 'America/New_York'
+                ts_local = cur.name.tz_localize('UTC').tz_convert(mkt_tz)
+                scan_ts = ts_local.strftime("%Y-%m-%d %H:%M %Z")
             except AttributeError:
                 scan_ts = str(cur.name)
 
