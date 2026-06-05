@@ -524,7 +524,7 @@ def run_ai_contagion_job():
         if not candidates:
             return
 
-        orch = IntradayOrchestrator(config)
+        orch = IntradayOrchestrator()
         contagion_cfg = config.get("NOTIFICATIONS", {}).get("AI_CONTAGION", {})
         nextcloud_enabled = contagion_cfg.get("ENABLED", False)
 
