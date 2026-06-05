@@ -421,20 +421,60 @@
                             if (!resp.ok) return;
                             const data = await resp.json();
                             if (!data) return;
-                            const score = data.reversal_score || 0;
-                            const color = score >= 65 ? '#00ff00' : score >= 40 ? '#ffaa00' : '#ff4d4d';
-                            const badge = data.is_bottoming
-                                ? '<span style="color:#00ff00;font-weight:bold;margin-left:8px;">✅ BOTTOMING ZONE</span>'
-                                : '';
-                            const reasons = (data.reasons || [])
-                                .map(function(r) { return '<li>' + r + '</li>'; }).join('');
+
+                            const score  = data.reversal_score || 0;
+                            const clr    = score >= 65 ? '#00cc66' : score >= 40 ? '#ffaa00' : '#ff4d4d';
+                            const label  = score >= 65 ? '&#x2705; BOTTOMING ZONE' : score >= 40 ? '&#x26A0;&#xFE0F; WATCHING' : '&mdash; Not triggered';
+
+                            // Re-derive which signals fired from the raw metric values
+                            const rsi        = data.rsi;
+                            const rsiFired   = rsi != null && rsi < 30;
+                            const rsiPts     = rsi != null ? (rsi < 25 ? 30 : rsi < 30 ? 15 : 0) : 0;
+                            const rsiSub     = rsi != null ? (rsi < 25 ? 'Extreme oversold' : rsi < 30 ? 'Oversold' : 'Neutral') : '';
+
+                            const price      = data.current_price;
+                            const bbFired    = data.bb_lower != null && price < data.bb_lower;
+                            const vwapFired  = data.vwap_lower != null && price < data.vwap_lower;
+                            const volFired   = data.vol_climax === true;
+
+                            function tile(lbl, val, pts, fired, sub) {
+                                var bg  = fired ? 'rgba(0,204,102,.1)'      : 'rgba(255,255,255,.04)';
+                                var bdr = fired ? '1px solid rgba(0,204,102,.35)' : '1px solid rgba(255,255,255,.1)';
+                                var ic  = fired ? '&#x2705;' : '&#x274C;';
+                                var pc  = fired ? '#00cc66' : '#555';
+                                return '<div style="background:' + bg + ';border:' + bdr + ';border-radius:6px;padding:9px 10px;min-width:0;">' +
+                                    '<div style="color:#888;font-size:10px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">' + lbl + '</div>' +
+                                    '<div style="color:#e8e8e8;font-size:13px;font-weight:bold;margin-bottom:1px;">' + (val != null ? val : '&mdash;') + '</div>' +
+                                    '<div style="color:' + pc + ';font-size:11px;">' + ic + ' ' + pts + ' pts</div>' +
+                                    (sub ? '<div style="color:#666;font-size:10px;margin-top:2px;">' + sub + '</div>' : '') +
+                                    '</div>';
+                            }
+
                             document.getElementById('dip-score-display').innerHTML =
-                                '<div style="margin-top:8px;">' +
-                                  '<strong style="color:' + color + ';font-size:15px;">Reversal Score: ' + score + '/100</strong>' + badge + '<br>' +
-                                  '<span style="color:#aaa;font-size:12px;">Price: ' + (data.current_price || '--') +
-                                    (data.vwap ? ' &nbsp;|&nbsp; VWAP: ' + data.vwap : '') +
-                                    ' &nbsp;|&nbsp; Last scan: ' + (data.scan_ts || '--') + '</span>' +
-                                  (reasons ? '<ul style="margin:6px 0 0 18px;color:#ccc;font-size:13px;">' + reasons + '</ul>' : '') +
+                                // Score bar header
+                                '<div style="margin-bottom:10px;">' +
+                                  '<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:5px;">' +
+                                    '<span style="color:#999;font-size:11px;text-transform:uppercase;letter-spacing:.5px;">Reversal Score</span>' +
+                                    '<span style="color:' + clr + ';font-size:17px;font-weight:bold;">' + score +
+                                      '<span style="font-size:11px;color:#555;"> / 100</span></span>' +
+                                  '</div>' +
+                                  '<div style="background:#1c1c1c;border-radius:4px;height:7px;overflow:hidden;">' +
+                                    '<div style="background:' + clr + ';width:' + score + '%;height:100%;border-radius:4px;"></div>' +
+                                  '</div>' +
+                                  '<div style="text-align:right;margin-top:3px;font-size:11px;color:' + clr + ';">' + label + '</div>' +
+                                '</div>' +
+                                // Four signal tiles
+                                '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(78px,1fr));gap:7px;margin-bottom:9px;">' +
+                                  tile('RSI 14',    rsi != null ? rsi.toFixed(1) : null, rsiPts, rsiFired, rsiSub) +
+                                  tile('BB Lower',  data.bb_lower  != null ? '$' + data.bb_lower.toFixed(2)  : null, bbFired   ? 25 : 0, bbFired,   bbFired   ? 'Price &lt; 2.5&sigma; band' : '') +
+                                  tile('VWAP &minus;2.5&sigma;', data.vwap_lower != null ? '$' + data.vwap_lower.toFixed(2) : null, vwapFired ? 20 : 0, vwapFired, vwapFired ? 'VWAP deviation' : '') +
+                                  tile('Vol Climax', volFired ? 'YES' : (data.vol_climax != null ? 'No' : null), volFired ? 25 : 0, volFired, volFired ? 'High-vol down-bar' : '') +
+                                '</div>' +
+                                // Footer stats
+                                '<div style="color:#555;font-size:11px;border-top:1px solid #222;padding-top:6px;">' +
+                                  'Price: <span style="color:#bbb;">' + (price != null ? price : '&mdash;') + '</span>' +
+                                  (data.vwap != null ? ' &nbsp;&middot;&nbsp; VWAP: <span style="color:#bbb;">' + data.vwap + '</span>' : '') +
+                                  ' &nbsp;&middot;&nbsp; Scan: <span style="color:#bbb;">' + (data.scan_ts || '&mdash;') + '</span>' +
                                 '</div>';
                         } catch(e) { console.error('DipRadar poll error:', e); }
                     }

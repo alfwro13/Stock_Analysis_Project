@@ -459,8 +459,11 @@ def init_db() -> None:
                 is_bottoming    INTEGER,
                 reasons_json    TEXT,
                 rsi             REAL,
+                bb_lower        REAL,
                 vwap            REAL,
-                vwap_deviation  REAL
+                vwap_lower      REAL,
+                vwap_deviation  REAL,
+                vol_climax      INTEGER
             )
         ''')
 
@@ -746,14 +749,33 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
                 is_bottoming    INTEGER,
                 reasons_json    TEXT,
                 rsi             REAL,
+                bb_lower        REAL,
                 vwap            REAL,
-                vwap_deviation  REAL
+                vwap_lower      REAL,
+                vwap_deviation  REAL,
+                vol_climax      INTEGER
             )
         ''')
     except Exception as e:
         logger.error(f"[MIGRATION ERROR] Failed to create intraday dip radar tables: {e}")
 
-    # 10. Ensure covering index on quant_signals for efficient latest-date lookups
+    # 10. Migrate intraday_monitor_results — add bb_lower, vwap_lower, vol_climax columns
+    cursor.execute("PRAGMA table_info(intraday_monitor_results)")
+    existing_imr_columns = [info['name'] for info in cursor.fetchall()]
+    required_imr_columns = {
+        'bb_lower':   'REAL',
+        'vwap_lower': 'REAL',
+        'vol_climax': 'INTEGER',
+    }
+    for col_name, data_type in required_imr_columns.items():
+        if col_name not in existing_imr_columns:
+            try:
+                logger.info(f"[MIGRATION] Adding column '{col_name}' to intraday_monitor_results...")
+                cursor.execute(f"ALTER TABLE intraday_monitor_results ADD COLUMN {col_name} {data_type}")
+            except Exception as e:
+                logger.error(f"[MIGRATION ERROR] Failed adding {col_name} to intraday_monitor_results: {e}")
+
+    # 11. Ensure covering index on quant_signals for efficient latest-date lookups
     try:
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_qs_ticker_date

@@ -63,8 +63,8 @@ class IntradayBottomEngine:
             conn.execute(
                 """INSERT INTO intraday_monitor_results
                    (ticker, scan_ts, current_price, reversal_score, is_bottoming,
-                    reasons_json, rsi, vwap, vwap_deviation)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    reasons_json, rsi, bb_lower, vwap, vwap_lower, vwap_deviation, vol_climax)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                    ON CONFLICT(ticker) DO UPDATE SET
                        scan_ts        = excluded.scan_ts,
                        current_price  = excluded.current_price,
@@ -72,8 +72,11 @@ class IntradayBottomEngine:
                        is_bottoming   = excluded.is_bottoming,
                        reasons_json   = excluded.reasons_json,
                        rsi            = excluded.rsi,
+                       bb_lower       = excluded.bb_lower,
                        vwap           = excluded.vwap,
-                       vwap_deviation = excluded.vwap_deviation""",
+                       vwap_lower     = excluded.vwap_lower,
+                       vwap_deviation = excluded.vwap_deviation,
+                       vol_climax     = excluded.vol_climax""",
                 (
                     result["ticker"],
                     result["scan_ts"],
@@ -82,8 +85,11 @@ class IntradayBottomEngine:
                     1 if result["is_bottoming"] else 0,
                     json.dumps(result["reasons"]),
                     result.get("rsi"),
+                    result.get("bb_lower"),
                     result.get("vwap"),
+                    result.get("vwap_lower"),
                     result.get("vwap_deviation"),
+                    1 if result.get("vol_climax") else 0,
                 ),
             )
             conn.commit()
@@ -168,7 +174,7 @@ class IntradayBottomEngine:
     def analyze_ticker(self, ticker: str) -> Optional[Dict]:
         try:
             data = yf.download(ticker, period="1d", interval="1m", progress=False, auto_adjust=True)
-            if data.empty or len(data) < 30:
+            if data.empty or len(data) < 32:
                 logger.warning("DipRadar: insufficient 1m data for %s (%d bars)", ticker, len(data))
                 return None
 
@@ -178,7 +184,7 @@ class IntradayBottomEngine:
 
             df = data.copy()
             df["VWAP"] = self._calculate_vwap(df)
-            df["VWAP_Std"] = df["Close"].rolling(window=30).std()
+            df["VWAP_Std"] = df["VWAP"].rolling(window=30).std()
             df["VWAP_Lower"] = df["VWAP"] - (2.5 * df["VWAP_Std"])
 
             # RSI (14-period, manual for no extra deps)
@@ -198,11 +204,24 @@ class IntradayBottomEngine:
             df["Vol_Std"] = df["Volume"].rolling(20).std()
             df["Vol_Climax"] = df["Volume"] > (df["Vol_SMA"] + 3 * df["Vol_Std"])
 
-            # Use the last fully-closed candle (-2); -1 is still forming
-            if len(df) < 3:
+            # Select analysis candle: if the last bar started within the past 2 minutes it is
+            # still forming (live market hours) — step back one bar. After market close all
+            # bars are fully settled so use iloc[-1].
+            try:
+                last_ts = df.index[-1]
+                now_utc = pd.Timestamp.utcnow().tz_localize("UTC")
+                last_ts_utc = last_ts.tz_convert("UTC") if last_ts.tzinfo is not None else last_ts.tz_localize("UTC")
+                still_forming = (now_utc - last_ts_utc) < pd.Timedelta(minutes=2)
+            except Exception:
+                still_forming = True  # safe default during market hours
+            candle_idx = -2 if still_forming else -1
+            cur = df.iloc[candle_idx]
+            prev_close = float(df.iloc[candle_idx - 1]["Close"])
+
+            # Skip if all rolling indicators are NaN — session data is still too short
+            if pd.isna(cur["RSI"]) and pd.isna(cur["BB_Lower"]) and pd.isna(cur["VWAP_Lower"]):
+                logger.warning("DipRadar: all indicators NaN for %s — insufficient session data", ticker)
                 return None
-            cur = df.iloc[-2]
-            prev_close = float(df.iloc[-3]["Close"])
 
             score = 0
             reasons = []
@@ -235,16 +254,24 @@ class IntradayBottomEngine:
 
             is_bottoming = score >= _BOTTOMING_THRESHOLD
 
+            try:
+                scan_ts = cur.name.strftime("%Y-%m-%d %H:%M")
+            except AttributeError:
+                scan_ts = str(cur.name)
+
             result = {
                 "ticker": ticker,
-                "scan_ts": cur.name.strftime("%Y-%m-%d %H:%M"),
+                "scan_ts": scan_ts,
                 "current_price": round(close, 4),
                 "reversal_score": score,
                 "is_bottoming": is_bottoming,
                 "reasons": reasons,
                 "rsi": round(rsi_val, 2) if rsi_val is not None else None,
+                "bb_lower": round(bb_lower, 4) if bb_lower is not None else None,
                 "vwap": round(vwap, 4) if vwap is not None else None,
+                "vwap_lower": round(vwap_lower, 4) if vwap_lower is not None else None,
                 "vwap_deviation": round(vwap_dev, 4) if vwap_dev is not None else None,
+                "vol_climax": bool(cur["Vol_Climax"]),
             }
             self._persist_result(result)
             return result

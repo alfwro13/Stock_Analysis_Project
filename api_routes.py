@@ -1718,6 +1718,8 @@ async def intraday_monitor_analysis(ticker: str = PathParam(..., pattern=r"^[A-Z
         data = dict(row)
         data["reasons"] = json.loads(data.get("reasons_json") or "[]")
         data.pop("reasons_json", None)
+        if "vol_climax" in data and data["vol_climax"] is not None:
+            data["vol_climax"] = bool(data["vol_climax"])
         return JSONResponse(content=data)
     finally:
         conn.close()
