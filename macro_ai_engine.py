@@ -3,7 +3,7 @@ import os
 import sqlite3
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 import pandas as pd
@@ -71,11 +71,11 @@ class MacroAIEngine:
                     (model_name, trained_at, n_samples, cv_score_mean, cv_score_std, score_metric)
                 VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (model_name, datetime.utcnow().isoformat(), n_samples, cv_mean, cv_std, metric),
+                (model_name, datetime.now(timezone.utc).isoformat(), n_samples, cv_mean, cv_std, metric),
             )
             self.conn.commit()
-        except Exception as e:
-            logger.error(f"Failed to persist training score for {model_name}: {e}")
+        except Exception:
+            logger.exception(f"Failed to persist training score for {model_name}.")
 
     def _remap_hmm_states(self, raw_states: np.ndarray) -> np.ndarray:
         """Remap arbitrary HMM state indices to a canonical ordering stable across retrains.
@@ -154,8 +154,8 @@ class MacroAIEngine:
             logger.info(f"HMM state canonical order (raw->canonical): {dict(enumerate(self.hmm_state_order))}")
 
             logger.info("Successfully trained Hidden Markov Model for Regime Clustering.")
-        except Exception as e:
-            logger.error(f"Failed to train Regime Clustering (HMM): {e}")
+        except Exception:
+            logger.exception("Failed to train Regime Clustering (HMM).")
 
     def train_consensus_miss_probability(self) -> None:
         """
@@ -197,8 +197,8 @@ class MacroAIEngine:
             self.rf_model.fit(X, y)
 
             logger.info(f"Successfully trained Random Forest Consensus Miss model on {len(X)} historical events.")
-        except Exception as e:
-            logger.error(f"Failed to train Consensus Miss Probability: {e}")
+        except Exception:
+            logger.exception("Failed to train Consensus Miss Probability.")
 
     def train_volatility_magnitude(self) -> None:
         """
@@ -213,7 +213,7 @@ class MacroAIEngine:
                 SELECT c.event_id, c.event_date, c.forecast_val, c.previous_val, c.actual_val, c.post_event_spy_gap, r.vix_close 
                 FROM macro_calendar c
                 LEFT JOIN market_regimes r ON date(c.event_date) = r.date
-                WHERE c.is_event_passed = 1 AND c.post_event_spy_gap IS NOT NULL
+                WHERE c.is_event_passed = 1 AND c.post_event_spy_gap IS NOT NULL AND c.post_event_spy_gap >= 0
             """
             df_cal = pd.read_sql_query(query, self.conn)
             
@@ -316,8 +316,8 @@ class MacroAIEngine:
             self.xgb_model.fit(X, y)
 
             logger.info(f"Successfully trained Stacking XGBoost Volatility model on {len(X)} historical events.")
-        except Exception as e:
-            logger.error(f"Failed to train Volatility Magnitude model: {e}")
+        except Exception:
+            logger.exception("Failed to train Volatility Magnitude model.")
 
     def run_macro_inference(self, target_date: str) -> None:
         """
@@ -360,8 +360,8 @@ class MacroAIEngine:
                             SET ai_hmm_state = ? 
                             WHERE date = (SELECT MAX(date) FROM market_regimes)
                         """, (current_hmm_state,))
-                except Exception as ex:
-                    logger.error(f"Failed to calculate current live HMM hidden macro regime state: {ex}")
+                except Exception:
+                    logger.exception("Failed to calculate current live HMM hidden macro regime state.")
 
             # 3. Fetch upcoming events to forecast
             # Note: current_vix and current_hmm_state are intentionally shared across every
@@ -421,6 +421,6 @@ class MacroAIEngine:
             self.conn.commit()
             logger.info(f"Successfully processed {updates_count} events for Stacked AI Volatility and Surprise Warnings.")
 
-        except Exception as e:
+        except Exception:
             self.conn.rollback()
-            logger.error(f"Failed to run stacked macro inference: {e}")
+            logger.exception("Failed to run stacked macro inference.")

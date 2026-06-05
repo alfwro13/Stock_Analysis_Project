@@ -489,12 +489,14 @@ def bg_init_macro_pipeline():
         update_macro_indicators() # FETCH THE MACRO INDICATOR DATA
         
         ai_engine = MacroAIEngine()
-        ai_engine.train_regime_clustering()
-        ai_engine.train_consensus_miss_probability()
-        ai_engine.train_volatility_magnitude()
-        
-        scan_date = time_engine.now_local().strftime('%Y-%m-%d')
-        ai_engine.run_macro_inference(scan_date)
+        try:
+            ai_engine.train_regime_clustering()
+            ai_engine.train_consensus_miss_probability()
+            ai_engine.train_volatility_magnitude()
+            scan_date = time_engine.now_local().strftime('%Y-%m-%d')
+            ai_engine.run_macro_inference(scan_date)
+        finally:
+            ai_engine.close()
 
         # Update config.json to mark initialization as complete
         update_config_atomic({"SCHEDULING": {"MACRO_ENGINE": {"INITIALIZED": True}}})
@@ -513,8 +515,11 @@ def bg_run_macro_pipeline():
         update_macro_indicators() # REFRESH THE MACRO INDICATOR DATA
         
         ai_engine = MacroAIEngine()
-        scan_date = time_engine.now_local().strftime('%Y-%m-%d')
-        ai_engine.run_macro_inference(scan_date)
+        try:
+            scan_date = time_engine.now_local().strftime('%Y-%m-%d')
+            ai_engine.run_macro_inference(scan_date)
+        finally:
+            ai_engine.close()
 
         log_notification("Success", "Macro AI Pipeline executed successfully.")
     except Exception as e:
