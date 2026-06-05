@@ -30,8 +30,7 @@ def _make_ohlcv(n: int = 120, seed: int = 42) -> pd.DataFrame:
 
 
 def _engine(tmp_path) -> AnomalyEngine:
-    config = {"NOTIFICATIONS": {"ANOMALY_ALERTS": {"THRESHOLD": 0.7}}}
-    engine = AnomalyEngine(config)
+    engine = AnomalyEngine()
     engine.models_dir = tmp_path
     return engine
 
