@@ -497,6 +497,31 @@
 
                 </details>
 
+                <details class="settings-card" id="dip-radar-settings-card">
+                    <summary>🎯 Dip Radar — Intraday Bottom Finder</summary>
+                    <p class="settings-desc">On-demand session monitoring to detect capitulation bottoms on selected tickers. Enable monitoring from any stock detail page. All monitors deactivate automatically at 16:05 ET.</p>
+
+                    <div class="settings-panel border-left-orange">
+                        <h4 class="settings-panel-header text-orange">Notifications</h4>
+                        <div class="checkbox-group mb-10">
+                            <input type="checkbox" id="DIP_RADAR_NEXTCLOUD"
+                                   {% if config.NOTIFICATIONS.DIP_RADAR_NEXTCLOUD %}checked{% endif %}
+                                   onchange="saveSettings(true)">
+                            <label for="DIP_RADAR_NEXTCLOUD" class="text-orange font-bold">Send Nextcloud Talk message when a bottom is detected</label>
+                        </div>
+                        <p class="settings-desc-sm" style="margin:0;color:#888;">In-app notification (bell icon) is always sent. Enable this to also receive a Nextcloud Talk message when the Reversal Score reaches ≥ 65.</p>
+                    </div>
+
+                    <div class="settings-panel border-left-orange">
+                        <h4 class="settings-panel-header text-orange">Active Session Monitors</h4>
+                        <p class="settings-desc-sm">Tickers currently armed for today's session. You can also disable them here without navigating back to the stock detail page.</p>
+                        <div id="dip-radar-monitor-list" style="margin-top:10px;">
+                            <p style="color:#888;font-size:13px;">Loading...</p>
+                        </div>
+                        <button type="button" class="btn-test mt-10" onclick="loadDipRadarMonitors()">🔄 Refresh List</button>
+                    </div>
+                </details>
+
                 <details class="settings-card">
                     <summary>📰 News & RSS</summary>
 
@@ -2349,6 +2374,41 @@
             }, 3000);
         }
 
+        async function loadDipRadarMonitors() {
+            const container = document.getElementById('dip-radar-monitor-list');
+            try {
+                const resp = await fetch('/api/intraday-monitor/list');
+                const data = await resp.json();
+                const monitors = data.monitors || [];
+                if (monitors.length === 0) {
+                    container.innerHTML = '<p style="color:#888;font-size:13px;">No tickers armed for today\'s session.</p>';
+                    return;
+                }
+                container.innerHTML = monitors.map(m => `
+                    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #3a3a3a;">
+                        <span class="text-orange font-bold">${m.ticker}</span>
+                        <span style="color:${m.is_active ? '#00ff00' : '#888'};font-size:13px;">${m.is_active ? '● Active' : '○ Inactive'}</span>
+                        ${m.is_active ? `<button class="btn-test mt-0" style="padding:4px 10px;font-size:12px;" onclick="disableDipMonitor('${m.ticker}')">Disable</button>` : '<span style="color:#555;font-size:12px;">—</span>'}
+                    </div>`).join('');
+            } catch(e) {
+                container.innerHTML = '<p style="color:#f44336;font-size:13px;">Failed to load monitors.</p>';
+            }
+        }
+
+        async function disableDipMonitor(ticker) {
+            try {
+                await fetch('/api/intraday-monitor/remove', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ticker: ticker })
+                });
+            } catch(e) { console.error('disableDipMonitor error:', e); }
+            loadDipRadarMonitors();
+        }
+
+        // Load Dip Radar monitor list on page load
+        loadDipRadarMonitors();
+
         async function triggerAIContagionScan() {
             const btn = document.querySelector('button[onclick="triggerAIContagionScan()"]');
             const msgEl = document.getElementById('ai-contagion-scan-msg');
@@ -2832,7 +2892,8 @@
                         "COOLDOWN_MINUTES": parseFloat(document.getElementById('AI_CONTAGION_COOLDOWN').value),
                         "RETRIGGER_PERCENT": parseFloat(document.getElementById('AI_CONTAGION_RETRIGGER').value),
                         "REARM_PERCENT": parseFloat(document.getElementById('AI_CONTAGION_REARM').value)
-                    }
+                    },
+                    "DIP_RADAR_NEXTCLOUD": document.getElementById('DIP_RADAR_NEXTCLOUD').checked
                 },
                 "XRAY_TARGETS": (function() {
                     function xt(id) {

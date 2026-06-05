@@ -30,6 +30,7 @@ from macro_calendar_engine import update_macro_calendar
 from macro_data_engine import update_macro_indicators
 from xray_engine import run_xray_precompute
 from news_feed_engine import run_news_feed_job
+from intraday_bottom_engine import IntradayBottomEngine
 
 logger = logging.getLogger(__name__)
 
@@ -455,6 +456,38 @@ def run_anomaly_training_job():
         log_sched_notification("Error", f"Anomaly Training job failed: {e}")
     finally:
         record_job_run('anomaly_training_job')
+
+
+def run_intraday_dip_scan():
+    """Scans actively-monitored tickers for intraday capitulation bottoms (every 2 min, market hours)."""
+    engine = IntradayBottomEngine()
+    if not engine.get_active_monitors():
+        return  # Fast-exit — nothing armed
+    log_sched_notification("Scheduler", "DipRadar: running intraday bottom scan...")
+    try:
+        hits = engine.run_scan()
+        if hits:
+            tickers_hit = ", ".join(h["ticker"] for h in hits)
+            log_sched_notification("Success", f"DipRadar: bottoming zone(s) detected — {tickers_hit}.")
+        else:
+            log_sched_notification("Success", "DipRadar: scan complete — no bottoming zones detected.")
+    except Exception as e:
+        logger.error("DipRadar scan job failed: %s", e)
+        log_sched_notification("Error", f"DipRadar scan failed: {e}")
+    finally:
+        record_job_run('intraday_dip_scan_job')
+
+
+def run_intraday_dip_reset():
+    """Deactivates all intraday monitors at end of trading day (16:05 ET)."""
+    log_sched_notification("Scheduler", "DipRadar: deactivating all session monitors (market close)...")
+    try:
+        IntradayBottomEngine().deactivate_all_today()
+    except Exception as e:
+        logger.error("DipRadar reset job failed: %s", e)
+        log_sched_notification("Error", f"DipRadar reset failed: {e}")
+    finally:
+        record_job_run('intraday_dip_reset_job')
 
 
 def _build_contagion_message(event: dict, config: dict) -> str:
@@ -1006,6 +1039,30 @@ def reload_scheduler():
             logger.info(f"News Feed scheduled for {news_freq} between {news_start}-{news_end} every {news_interval_h}h.")
         except Exception as e:
             logger.error(f"Failed to schedule News Feed job: {e}")
+
+    # Intraday Dip Radar — always-on; fast-exits silently if no tickers are armed.
+    try:
+        scheduler.add_job(
+            run_intraday_dip_scan,
+            CronTrigger(day_of_week='mon-fri', hour='9-15', minute='*/2'),
+            id='intraday_dip_scan_job',
+            replace_existing=True,
+            misfire_grace_time=60,
+        )
+        logger.info("Intraday Dip Radar scan scheduled mon-fri 09:00–15:59 every 2 min.")
+    except Exception as e:
+        logger.error(f"Failed to schedule Intraday Dip Radar scan: {e}")
+
+    try:
+        scheduler.add_job(
+            run_intraday_dip_reset,
+            CronTrigger(day_of_week='mon-fri', hour=16, minute=5),
+            id='intraday_dip_reset_job',
+            replace_existing=True,
+        )
+        logger.info("Intraday Dip Radar reset scheduled mon-fri at 16:05.")
+    except Exception as e:
+        logger.error(f"Failed to schedule Intraday Dip Radar reset: {e}")
 
     # Always-on: X-ray Risk Cache — runs daily Mon–Fri at 19:00 (after market close).
     # No config flag required; the X-ray report is always available.

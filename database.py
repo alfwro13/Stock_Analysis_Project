@@ -438,6 +438,32 @@ def init_db() -> None:
             ON news_articles(source_list)
         ''')
 
+        # --- INTRADAY DIP RADAR ---
+        # Tracks which tickers are armed for today's session (one row per ticker).
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS intraday_monitors (
+                ticker       TEXT PRIMARY KEY,
+                date_added   DATE NOT NULL,
+                is_active    INTEGER NOT NULL DEFAULT 1,
+                activated_by TEXT
+            )
+        ''')
+
+        # Persists the latest scan result per ticker so the UI can poll without waiting.
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS intraday_monitor_results (
+                ticker          TEXT PRIMARY KEY,
+                scan_ts         DATETIME NOT NULL,
+                current_price   REAL,
+                reversal_score  INTEGER,
+                is_bottoming    INTEGER,
+                reasons_json    TEXT,
+                rsi             REAL,
+                vwap            REAL,
+                vwap_deviation  REAL
+            )
+        ''')
+
         conn.commit()
 
         # Run the dynamic migration script to inject any missing columns safely
@@ -701,7 +727,33 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
     except Exception as e:
         logger.error(f"[MIGRATION ERROR] Failed to create ai_contagion_snapshots: {e}")
 
-    # 9. Ensure covering index on quant_signals for efficient latest-date lookups
+    # 9. Ensure intraday dip radar tables exist (added in dip radar feature)
+    try:
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS intraday_monitors (
+                ticker       TEXT PRIMARY KEY,
+                date_added   DATE NOT NULL,
+                is_active    INTEGER NOT NULL DEFAULT 1,
+                activated_by TEXT
+            )
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS intraday_monitor_results (
+                ticker          TEXT PRIMARY KEY,
+                scan_ts         DATETIME NOT NULL,
+                current_price   REAL,
+                reversal_score  INTEGER,
+                is_bottoming    INTEGER,
+                reasons_json    TEXT,
+                rsi             REAL,
+                vwap            REAL,
+                vwap_deviation  REAL
+            )
+        ''')
+    except Exception as e:
+        logger.error(f"[MIGRATION ERROR] Failed to create intraday dip radar tables: {e}")
+
+    # 10. Ensure covering index on quant_signals for efficient latest-date lookups
     try:
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_qs_ticker_date

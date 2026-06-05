@@ -373,6 +373,81 @@
                     {% endif %}
                 </div>
 
+                <!-- Dip Radar — on-demand intraday bottom finder -->
+                <details id="dip-radar-panel" {% if is_dip_monitored %}open{% endif %} style="margin-bottom:20px;">
+                    <summary class="profile-summary" style="padding:15px 20px;display:flex;justify-content:space-between;align-items:center;">
+                        <h2 class="m-0 border-none p-0">🎯 Dip Radar</h2>
+                        <span class="profile-hint">(Click to expand)</span>
+                    </summary>
+                    <div class="settings-panel border-left-orange" style="margin:0 0 10px 0;">
+                        <h4 class="settings-panel-header text-orange">Intraday Bottom Finder</h4>
+                        <p class="settings-desc-sm">Enable for this session to score (0–100) whether this stock is approaching a capitulation bottom. Monitors reset automatically at 16:05 ET.</p>
+                        <div class="checkbox-group mb-10">
+                            <input type="checkbox" id="dip-radar-toggle"
+                                   {% if is_dip_monitored %}checked{% endif %}
+                                   onchange="toggleDipRadar('{{ stock.ticker }}', this.checked)">
+                            <label for="dip-radar-toggle" class="text-orange font-bold">
+                                Monitor {{ stock.ticker }} for today's session
+                            </label>
+                        </div>
+                        <div id="dip-radar-result" style="display:{% if is_dip_monitored %}block{% else %}none{% endif %};">
+                            <div id="dip-score-display" style="color:#888;font-size:13px;">Waiting for first scan (runs every 2 minutes during market hours)...</div>
+                        </div>
+                    </div>
+                </details>
+
+                <script>
+                (function() {
+                    async function toggleDipRadar(ticker, enable) {
+                        const endpoint = enable ? '/api/intraday-monitor/add' : '/api/intraday-monitor/remove';
+                        try {
+                            await fetch(endpoint, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ ticker: ticker })
+                            });
+                        } catch(e) { console.error('DipRadar toggle error:', e); }
+                        const resultDiv = document.getElementById('dip-radar-result');
+                        resultDiv.style.display = enable ? 'block' : 'none';
+                        if (enable) {
+                            document.getElementById('dip-score-display').textContent = 'Waiting for first scan (runs every 2 minutes during market hours)...';
+                            pollDipRadar(ticker);
+                        }
+                    }
+
+                    async function pollDipRadar(ticker) {
+                        try {
+                            const resp = await fetch('/api/intraday-monitor/analysis/' + ticker);
+                            if (!resp.ok) return;
+                            const data = await resp.json();
+                            if (!data) return;
+                            const score = data.reversal_score || 0;
+                            const color = score >= 65 ? '#00ff00' : score >= 40 ? '#ffaa00' : '#ff4d4d';
+                            const badge = data.is_bottoming
+                                ? '<span style="color:#00ff00;font-weight:bold;margin-left:8px;">✅ BOTTOMING ZONE</span>'
+                                : '';
+                            const reasons = (data.reasons || [])
+                                .map(function(r) { return '<li>' + r + '</li>'; }).join('');
+                            document.getElementById('dip-score-display').innerHTML =
+                                '<div style="margin-top:8px;">' +
+                                  '<strong style="color:' + color + ';font-size:15px;">Reversal Score: ' + score + '/100</strong>' + badge + '<br>' +
+                                  '<span style="color:#aaa;font-size:12px;">Price: ' + (data.current_price || '--') +
+                                    (data.vwap ? ' &nbsp;|&nbsp; VWAP: ' + data.vwap : '') +
+                                    ' &nbsp;|&nbsp; Last scan: ' + (data.scan_ts || '--') + '</span>' +
+                                  (reasons ? '<ul style="margin:6px 0 0 18px;color:#ccc;font-size:13px;">' + reasons + '</ul>' : '') +
+                                '</div>';
+                        } catch(e) { console.error('DipRadar poll error:', e); }
+                    }
+
+                    window.toggleDipRadar = toggleDipRadar;
+
+                    {% if is_dip_monitored %}
+                    pollDipRadar('{{ stock.ticker }}');
+                    setInterval(function() { pollDipRadar('{{ stock.ticker }}'); }, 120000);
+                    {% endif %}
+                })();
+                </script>
+
                 <div id="price-action">
                     <h2>Price Action & Pivot Levels</h2>
                     {% if price_action %}

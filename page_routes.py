@@ -1473,6 +1473,20 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
     except Exception:
         pass  # fallback placeholder already set
 
+    # Dip Radar: check if this ticker is actively monitored for today's session
+    is_dip_monitored = False
+    try:
+        from datetime import date as _date
+        conn_dip = get_connection()
+        dip_row = conn_dip.execute(
+            "SELECT is_active FROM intraday_monitors WHERE ticker = ? AND date_added = ?",
+            (ticker, _date.today().isoformat()),
+        ).fetchone()
+        conn_dip.close()
+        is_dip_monitored = bool(dip_row and dip_row["is_active"])
+    except Exception:
+        pass
+
     return templates.TemplateResponse(
         request=request, name="stock_detail.html",
         context={
@@ -1493,6 +1507,7 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
             "config": load_config(),
             "cached_pulse": get_all_cached_pulse(),
             "is_in_watchlist": is_in_watchlist,
+            "is_dip_monitored": is_dip_monitored,
             "data_status": data_status,
             "last_updated_str": last_updated_str,
             "position_sizing": position_sizing_context,

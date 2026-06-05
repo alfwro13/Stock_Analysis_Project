@@ -49,6 +49,7 @@ from report_dispatcher import push_morning_quant_briefing, push_lunchtime_quant_
 from insider_engine import run_insider_alert
 from ai_engine import AIPromptEngine
 from news_feed_engine import run_news_feed_job
+from intraday_bottom_engine import IntradayBottomEngine
 from data_engine import DataEngine
 from utils import normalize_ticker
 from quant_signals import QuantEngine
@@ -1643,3 +1644,77 @@ async def run_news_feed_now(background_tasks: BackgroundTasks):
         "status": "queued",
         "message": "News feed fetch queued. New articles will appear shortly.",
     })
+
+
+# ---------------------------------------------------------------------------
+# Intraday Dip Radar endpoints
+# ---------------------------------------------------------------------------
+
+@api_router.post("/intraday-monitor/add")
+async def intraday_monitor_add(req: TickerRequest):
+    ticker = req.ticker.upper().strip()
+    if not ticker:
+        raise HTTPException(status_code=400, detail="ticker is required")
+    today = datetime.now().date().isoformat()
+    conn = get_connection()
+    try:
+        conn.execute(
+            """INSERT INTO intraday_monitors (ticker, date_added, is_active, activated_by)
+               VALUES (?, ?, 1, 'user')
+               ON CONFLICT(ticker) DO UPDATE SET
+                   date_added   = excluded.date_added,
+                   is_active    = 1,
+                   activated_by = 'user'""",
+            (ticker, today),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    # Arm the dedup state so the first bottoming signal fires an alert
+    await asyncio.to_thread(IntradayBottomEngine().arm_alert, ticker)
+    return JSONResponse(content={"status": "ok", "ticker": ticker})
+
+
+@api_router.post("/intraday-monitor/remove")
+async def intraday_monitor_remove(req: TickerRequest):
+    ticker = req.ticker.upper().strip()
+    conn = get_connection()
+    try:
+        conn.execute(
+            "UPDATE intraday_monitors SET is_active = 0 WHERE ticker = ?", (ticker,)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return JSONResponse(content={"status": "ok", "ticker": ticker})
+
+
+@api_router.get("/intraday-monitor/list")
+async def intraday_monitor_list():
+    today = datetime.now().date().isoformat()
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT ticker, date_added, is_active FROM intraday_monitors WHERE date_added = ? ORDER BY ticker",
+            (today,),
+        ).fetchall()
+        return JSONResponse(content={"monitors": [dict(r) for r in rows]})
+    finally:
+        conn.close()
+
+
+@api_router.get("/intraday-monitor/analysis/{ticker}")
+async def intraday_monitor_analysis(ticker: str = PathParam(..., pattern=r"^[A-Z0-9.\-\^=]{1,20}$")):
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT * FROM intraday_monitor_results WHERE ticker = ?", (ticker.upper(),)
+        ).fetchone()
+        if not row:
+            return JSONResponse(content=None)
+        data = dict(row)
+        data["reasons"] = json.loads(data.get("reasons_json") or "[]")
+        data.pop("reasons_json", None)
+        return JSONResponse(content=data)
+    finally:
+        conn.close()
