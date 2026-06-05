@@ -96,11 +96,7 @@ class CrashEngine:
                 current_vol = vol_data['Volume'].iloc[-1]
                 valid_vol = vol_data['Volume'].dropna()
 
-                # Safely calculate rolling mean avoiding NaN for assets with < 20 days history
-                if len(valid_vol) >= 20:
-                    avg_vol = valid_vol.rolling(20).mean().iloc[-2]
-                else:
-                    avg_vol = valid_vol.mean()
+                avg_vol = valid_vol.iloc[:-1].tail(20).mean()
 
                 if not pd.isna(avg_vol) and avg_vol > 0:
                     if current_vol > (avg_vol * 1.5):
@@ -260,7 +256,8 @@ class CrashEngine:
         if atr_last_updated is not None:
             try:
                 updated_dt = pd.to_datetime(atr_last_updated)
-                atr_is_fresh = (pd.Timestamp.now() - updated_dt) <= pd.Timedelta(days=3)
+                now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+                atr_is_fresh = (now_utc - updated_dt.to_pydatetime()) <= timedelta(days=3)
             except Exception:
                 logger.debug("Could not parse ATR last_updated timestamp '%s', treating as stale", atr_last_updated)
         is_below_atr = atr_stop is not None and atr_is_fresh and (0 < current_price < atr_stop)
