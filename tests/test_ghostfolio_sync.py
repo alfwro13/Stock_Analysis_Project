@@ -32,6 +32,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, call, patch
 
 import pytest
+import requests
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -49,7 +50,7 @@ def _mock_resp(status_code: int, payload: dict) -> MagicMock:
     m.json.return_value = payload
     m.raise_for_status = MagicMock()
     if status_code >= 400:
-        m.raise_for_status.side_effect = Exception(f"HTTP {status_code}")
+        m.raise_for_status.side_effect = requests.exceptions.HTTPError(f"HTTP {status_code}")
     return m
 
 
@@ -108,6 +109,38 @@ HOLDING_AAPL_FLAT = {
     "quantity": 2.0,
     "investment": 500.0,
 }
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 0. __init__() — attribute defaults
+# ──────────────────────────────────────────────────────────────────────────────
+
+class TestInit:
+
+    def test_active_account_ids_initialized(self, monkeypatch):
+        """
+        active_account_ids must be set in __init__ so sync_portfolio() can be
+        called without a prior discover_accounts() call.
+        """
+        with patch("ghostfolio_sync.GHOSTFOLIO_URL", "http://ghost.local"), \
+             patch("ghostfolio_sync.GHOSTFOLIO_TOKEN", "tok"), \
+             patch("ghostfolio_sync.GHOSTFOLIO_ACCOUNTS", {"active": ["acc-x"]}):
+            engine = GhostfolioSyncEngine()
+        assert hasattr(engine, "active_account_ids"), "active_account_ids must exist after __init__"
+        assert engine.active_account_ids == ["acc-x"]
+
+    def test_discovered_accounts_initialized(self, monkeypatch):
+        """
+        discovered_accounts must default to [] so sync_portfolio() name lookup
+        does not raise AttributeError when discover_accounts() was never called
+        or failed at the outer exception level.
+        """
+        with patch("ghostfolio_sync.GHOSTFOLIO_URL", "http://ghost.local"), \
+             patch("ghostfolio_sync.GHOSTFOLIO_TOKEN", "tok"), \
+             patch("ghostfolio_sync.GHOSTFOLIO_ACCOUNTS", {"active": []}):
+            engine = GhostfolioSyncEngine()
+        assert hasattr(engine, "discovered_accounts"), "discovered_accounts must exist after __init__"
+        assert engine.discovered_accounts == []
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -448,6 +481,28 @@ class TestSyncPortfolio:
         with patch("ghostfolio_sync.PORTFOLIO_PATH", tmp_path / "portfolio.json"):
             result = engine.sync_portfolio()
         assert result is False
+
+    def test_null_quantity_holding_skipped(self, monkeypatch, tmp_path):
+        """
+        API returns {"quantity": null} — float(None) must not crash the sync.
+        The holding must be silently skipped (treated as zero quantity).
+        """
+        null_qty_holding = {**HOLDING_AAPL, "quantity": None}
+        result, data = self._run_sync(monkeypatch, {"acc-1": [null_qty_holding]}, tmp_path)
+        assert result is True
+        assert len(data) == 0, "Null-quantity holding must be skipped, not crash"
+
+    def test_null_investment_treated_as_zero(self, monkeypatch, tmp_path):
+        """
+        API returns {"investment": null} — float(None) must not crash the sync.
+        The holding is kept (quantity is valid) with investment treated as 0.
+        """
+        null_inv_holding = {**HOLDING_AAPL, "investment": None}
+        result, data = self._run_sync(monkeypatch, {"acc-1": [null_inv_holding]}, tmp_path)
+        assert result is True
+        assert len(data) == 1
+        entry = next(iter(data.values()))
+        assert entry["global_buy_price"] == pytest.approx(0.0)
 
     def test_http_error_on_one_account_continues(self, monkeypatch, tmp_path):
         """
