@@ -1645,7 +1645,7 @@ async def get_news_feed(
 async def run_news_feed_now(background_tasks: BackgroundTasks):
     background_tasks.add_task(run_news_feed_job)
     return JSONResponse(content={
-        "status": "queued",
+        "status": "success",
         "message": "News feed fetch queued. New articles will appear shortly.",
     })
 
