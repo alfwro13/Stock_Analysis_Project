@@ -2,7 +2,7 @@ import hashlib
 import json
 import logging
 import time
-from typing import Dict
+from typing import Dict, Optional
 
 import yfinance as yf
 
@@ -112,6 +112,56 @@ def _get_company_name(ticker: str) -> str | None:
             conn.close()
 
 
+def _label_from_score(score: float) -> str:
+    if score > 0.15:
+        return "positive"
+    if score < -0.15:
+        return "negative"
+    return "neutral"
+
+
+def _score_unscoredrows(conn) -> None:
+    """Run FinBERT over any news_articles rows that don't yet have a sentiment_score."""
+    try:
+        from sentiment_engine import _get_finbert_analyzer, _score_text
+    except ImportError:
+        logger.warning("News Feed: sentiment_engine not available, skipping sentiment scoring.")
+        return
+
+    analyzer = _get_finbert_analyzer()
+    if analyzer is None:
+        logger.warning("News Feed: FinBERT unavailable, skipping sentiment scoring.")
+        return
+
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id, headline, summary FROM news_articles WHERE sentiment_score IS NULL"
+    )
+    rows = cursor.fetchall()
+    if not rows:
+        return
+
+    logger.info(f"News Feed: scoring sentiment for {len(rows)} articles...")
+    scored = 0
+    for row in rows:
+        text = " ".join(filter(None, [row["headline"], row["summary"]])).strip()
+        if not text:
+            continue
+        try:
+            score = _score_text(analyzer, text)
+            label = _label_from_score(score)
+            cursor.execute(
+                "UPDATE news_articles SET sentiment_score = ?, sentiment_label = ? WHERE id = ?",
+                (round(score, 4), label, row["id"]),
+            )
+            scored += 1
+        except Exception as e:
+            logger.debug(f"News Feed: sentiment scoring failed for article {row['id']}: {e}")
+
+    conn.commit()
+    logger.info(f"News Feed: sentiment scored {scored}/{len(rows)} articles.")
+
+
 def run_news_feed_job() -> int:
     """
     Fetches news for all portfolio+watchlist tickers via yfinance, extracts full
@@ -210,6 +260,9 @@ def run_news_feed_job() -> int:
         pruned = cursor.rowcount
         if pruned > 0:
             logger.info(f"News Feed: pruned {pruned} expired articles.")
+
+        # --- Sentiment scoring pass (headline + summary, unscored rows only) ---
+        _score_unscoredrows(conn)
 
     except Exception as e:
         logger.error(f"News Feed job failed: {e}")

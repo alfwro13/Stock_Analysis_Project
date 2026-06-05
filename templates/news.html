@@ -154,6 +154,16 @@
         .art-source-watchlist  { background: rgba(255,193,7,0.15);  color: #ffc107; }
         .art-source-both       { background: rgba(138,43,226,0.2);  color: #bf7fff; }
 
+        .sent-badge {
+            border-radius: 3px;
+            padding: 1px 6px;
+            font-size: 0.78em;
+            font-weight: 600;
+        }
+        .sent-positive { background: rgba(78,201,87,0.2);  color: #4ec957; }
+        .sent-neutral  { background: rgba(150,150,150,0.15); color: #999; }
+        .sent-negative { background: rgba(255,77,77,0.2);  color: #ff6b6b; }
+
         /* Reader content */
         #readerContent {
             max-width: 820px;
@@ -292,6 +302,13 @@
         return `<span class="art-source-badge art-source-${src}">${label[src] || src}</span>`;
     }
 
+    function sentimentBadge(label, score) {
+        if (!label) return '';
+        const icon = label === 'positive' ? '▲' : label === 'negative' ? '▼' : '●';
+        const pct = score != null ? ` ${Math.round(Math.abs(score) * 100)}%` : '';
+        return `<span class="sent-badge sent-${label}" title="Sentiment: ${label}${pct}">${icon}${pct}</span>`;
+    }
+
     function escHtml(s) {
         if (!s) return '';
         return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -313,6 +330,7 @@
                 <div class="art-meta">
                     <span class="art-ticker-badge">${escHtml(a.ticker)}</span>
                     ${sourceBadge(a.source_list)}
+                    ${sentimentBadge(a.sentiment_label, a.sentiment_score)}
                     <span>${escHtml(a.publisher || '')}</span>
                     <span>${relTime(a.published_at)}</span>
                 </div>
@@ -380,6 +398,7 @@
             <div class="reader-meta">
                 <span class="art-ticker-badge">${escHtml(a.ticker)}${a.company_name ? ' · ' + escHtml(a.company_name) : ''}</span>
                 ${sourceBadge(a.source_list)}
+                ${sentimentBadge(a.sentiment_label, a.sentiment_score)}
                 <span>${escHtml(a.publisher || '')}</span>
                 <span>${pubDate}</span>
             </div>

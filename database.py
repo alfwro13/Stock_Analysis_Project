@@ -420,9 +420,11 @@ def init_db() -> None:
                 body_fetched INTEGER DEFAULT 0,
                 url          TEXT,
                 publisher    TEXT,
-                published_at INTEGER NOT NULL,
-                is_premium   INTEGER DEFAULT 0,
-                fetched_at   INTEGER NOT NULL
+                published_at    INTEGER NOT NULL,
+                is_premium      INTEGER DEFAULT 0,
+                fetched_at      INTEGER NOT NULL,
+                sentiment_score REAL,
+                sentiment_label TEXT
             )
         ''')
         cursor.execute('''
@@ -714,6 +716,18 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
             except Exception as e:
                 logger.error(f"[MIGRATION ERROR] Failed on macro_indicators: {e}")
                 continue
+
+    # 8a. Migrate news_articles — add sentiment columns if not present
+    try:
+        cursor.execute("PRAGMA table_info(news_articles)")
+        news_cols = [c['name'] for c in cursor.fetchall()]
+        for col, dtype in [("sentiment_score", "REAL"), ("sentiment_label", "TEXT")]:
+            if col not in news_cols:
+                cursor.execute(f"ALTER TABLE news_articles ADD COLUMN {col} {dtype}")
+                logger.info(f"[MIGRATION] Added column '{col}' to news_articles.")
+        conn.commit()
+    except Exception as e:
+        logger.error(f"[MIGRATION ERROR] news_articles sentiment columns: {e}")
 
     # 8. Ensure ai_contagion_snapshots table exists (added in contagion monitor feature)
     try:
