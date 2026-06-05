@@ -1774,5 +1774,6 @@ async def get_intraday_chart(ticker: str = PathParam(..., pattern=r"^[A-Z0-9.\-\
         live_pattern_name=live_pattern_name,
         live_pattern_tooltip=live_pattern_tooltip,
         live_pattern_score=live_pattern_score,
+        include_plotlyjs=False,
     )
     return JSONResponse(content={"html": html})

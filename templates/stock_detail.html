@@ -1109,15 +1109,29 @@
                 if (!data || !data.html) return;
                 const wrapper = document.getElementById('intraday-wrapper');
                 if (!wrapper) return;
-                // Keep the fullscreen button; replace only the chart content that follows it
+                // Keep the fullscreen button; replace only the chart content
                 const btn = wrapper.querySelector('.fullscreen-btn');
-                // Remove all children except the fullscreen button
                 Array.from(wrapper.children).forEach(function(child) {
                     if (child !== btn) child.remove();
                 });
+                // Parse the new HTML and separate scripts from other nodes.
+                // Scripts injected via innerHTML never execute; we must use
+                // createElement('script') so the browser runs them.
                 const tmp = document.createElement('div');
                 tmp.innerHTML = data.html;
-                while (tmp.firstChild) wrapper.appendChild(tmp.firstChild);
+                Array.from(tmp.childNodes).forEach(function(node) {
+                    if (node.nodeName !== 'SCRIPT') {
+                        wrapper.appendChild(node.cloneNode(true));
+                    }
+                });
+                tmp.querySelectorAll('script').forEach(function(oldScript) {
+                    const s = document.createElement('script');
+                    Array.from(oldScript.attributes).forEach(function(attr) {
+                        s.setAttribute(attr.name, attr.value);
+                    });
+                    s.textContent = oldScript.textContent;
+                    wrapper.appendChild(s);
+                });
             } catch (e) {
                 // silently ignore — next tick will retry
             } finally {

@@ -6,7 +6,7 @@ import ta
 import textwrap
 from quant_signals import get_candlestick_patterns
 
-def create_intraday_chart(df, ticker, s1=None, s2=None, live_pattern_name=None, live_pattern_tooltip=None, live_pattern_score=None):
+def create_intraday_chart(df, ticker, s1=None, s2=None, live_pattern_name=None, live_pattern_tooltip=None, live_pattern_score=None, include_plotlyjs='cdn'):
     """
     Generates a high-resolution, short-term chart using 5-minute data 
     for the current trading day. Conditionally plots algorithmic floors (S1/S2).
@@ -54,7 +54,7 @@ def create_intraday_chart(df, ticker, s1=None, s2=None, live_pattern_name=None, 
         'displaylogo': False
     }
 
-    return fig.to_html(full_html=False, include_plotlyjs='cdn', config=clean_config)
+    return fig.to_html(full_html=False, include_plotlyjs=include_plotlyjs, config=clean_config)
 
 
 def create_macro_chart(df, df_baseline, ticker):
