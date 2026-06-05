@@ -981,7 +981,7 @@ async def market_reports_page(request: Request):
 
 
 @page_router.get("/score-history", response_class=HTMLResponse)
-async def score_history_page(request: Request, filter: str = "all"):
+async def score_history_page(request: Request, filter: str = "all", ref: str = ""):
     from score_analysis import get_score_analysis
     valid_filters = {"all", "portfolio", "watchlist"}
     active_filter = filter if filter in valid_filters else "all"
@@ -992,6 +992,7 @@ async def score_history_page(request: Request, filter: str = "all"):
         context={
             "data": data,
             "active_filter": active_filter,
+            "back_url": ref if ref else None,
             "unread_count": get_unread_count(),
             "config": load_config(),
         }

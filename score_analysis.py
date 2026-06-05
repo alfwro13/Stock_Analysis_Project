@@ -1,5 +1,7 @@
 # score_analysis.py
+import json
 import logging
+import os
 from datetime import date, timedelta
 from typing import Optional
 
@@ -24,14 +26,34 @@ def _compute_return(entry_price: float, future_price: Optional[float]) -> Option
     return None
 
 
+def _build_ticker_accounts_map() -> dict[str, list[str]]:
+    """Returns a mapping of ticker -> list of account names from portfolio.json."""
+    if not os.path.exists(PORTFOLIO_PATH):
+        return {}
+    try:
+        with open(PORTFOLIO_PATH, "r") as f:
+            data = json.load(f)
+        result = {}
+        for entry in data.values():
+            ticker = entry.get("ticker")
+            accounts = [a.get("name", "") for a in entry.get("accounts", []) if a.get("name")]
+            if ticker and accounts:
+                result[ticker] = accounts
+        return result
+    except Exception:
+        return {}
+
+
 def get_score_analysis(filter_name: str = "all") -> dict:
     """
     Returns forward-returns analysis from score_history joined with quant_signals prices.
     filter_name: "all" | "portfolio" | "watchlist"
     """
     filter_tickers: Optional[list] = None
+    ticker_accounts: dict[str, list[str]] = {}
     if filter_name == "portfolio":
         filter_tickers = get_tickers_from_json(PORTFOLIO_PATH, is_watchlist=False) or None
+        ticker_accounts = _build_ticker_accounts_map()
     elif filter_name == "watchlist":
         filter_tickers = get_tickers_from_json(WATCHLIST_PATH, is_watchlist=True) or None
 
@@ -103,7 +125,9 @@ def get_score_analysis(filter_name: str = "all") -> dict:
         r3m = _compute_return(entry, forward_price(row["ticker"], row["date"], 90))
         r6m = _compute_return(entry, forward_price(row["ticker"], row["date"], 180))
         r12m = _compute_return(entry, forward_price(row["ticker"], row["date"], 365))
-        enriched.append({**row, "return_3m": r3m, "return_6m": r6m, "return_12m": r12m})
+        accounts = ticker_accounts.get(row["ticker"], [])
+        enriched.append({**row, "return_3m": r3m, "return_6m": r6m, "return_12m": r12m,
+                         "accounts": accounts})
 
     # Summary grouped by signal bucket
     signal_order = ["STRONG BUY", "BULLISH / HOLD", "NEUTRAL", "BEARISH / CAUTION", "STRONG SELL", "TOXIC / AVOID"]
