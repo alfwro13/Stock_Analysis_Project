@@ -37,8 +37,9 @@ class AIContagionEngine:
         self.leader_threshold: float = -abs(cfg.get("LEADER_THRESHOLD_PCT", 4.0)) / 100.0
         self.etf_threshold: float = -abs(cfg.get("ETF_CONFIRMATION_THRESHOLD_PCT", 2.5)) / 100.0
         self.volume_spike_multiplier: float = cfg.get("VOLUME_SPIKE_MULTIPLIER", 1.8)
-        self._start_time: str = sched.get("START_TIME", "09:00")
-        self._end_time: str = sched.get("END_TIME", "21:00")
+        # Times are compared against UTC wall clock — configure in UTC in settings
+        self._start_time_utc: str = sched.get("START_TIME", "09:00")
+        self._end_time_utc: str = sched.get("END_TIME", "21:00")
 
     # ── public API ─────────────────────────────────────────────────────────────
 
@@ -77,6 +78,10 @@ class AIContagionEngine:
             return []
 
         worst_leader_pct = min(s["intraday_pct"] for s in leader_shocks)
+        all_shocks = leader_shocks + etf_hits
+        avg_shock_pct = sum(abs(s["intraday_pct"]) for s in all_shocks) / len(all_shocks)
+        breadth = len(leader_shocks) / max(len(self.bellwethers), 1)
+        severity_score = round(breadth * 0.5 + min(avg_shock_pct / 10.0, 1.0) * 0.5, 3)
         return [{
             "ticker": "SECTOR",
             # price field is used by the gate's retrigger/rearm math as a magnitude proxy
@@ -87,6 +92,7 @@ class AIContagionEngine:
             # reason must be fingerprint-stable (alphabetic words only, no numerics)
             "reason": "FLASH CRASH LEADER SHOCK",
             "volume_spikes": [s["ticker"] for s in leader_shocks if s["volume_spike"]],
+            "severity_score": severity_score,
         }]
 
     # ── internals ──────────────────────────────────────────────────────────────
@@ -94,8 +100,8 @@ class AIContagionEngine:
     def _is_within_active_window(self) -> bool:
         try:
             now_t = datetime.now(timezone.utc).time().replace(tzinfo=None)
-            sh, sm = map(int, self._start_time.split(":"))
-            eh, em = map(int, self._end_time.split(":"))
+            sh, sm = map(int, self._start_time_utc.split(":"))
+            eh, em = map(int, self._end_time_utc.split(":"))
             return dtime(sh, sm) <= now_t <= dtime(eh, em)
         except Exception as e:
             logger.error(f"AIContagionEngine: active window check failed: {e}")
@@ -149,7 +155,10 @@ class AIContagionEngine:
                 return None
 
             current_price = float(df["Close"].iloc[-1])
-            prev_close = float(df[df["_date"] == unique_dates[-2]]["Close"].iloc[-1])
+            prev_df = df[df["_date"] == unique_dates[-2]]
+            if prev_df.empty:
+                return None
+            prev_close = float(prev_df["Close"].iloc[-1])
             if prev_close == 0.0:
                 return None
 
@@ -178,7 +187,10 @@ class AIContagionEngine:
             if avg_vol <= 0:
                 return False
             recent_vol = float(df["Volume"].iloc[-1]) if "Volume" in df.columns else 0.0
-            return recent_vol >= self.volume_spike_multiplier * avg_vol
+            # avg_vol is from daily OHLCV parquet; normalize to per-15min-bar equivalent
+            # (~26 bars per regular trading day: 6.5 hours × 4 bars/hr)
+            avg_vol_per_bar = avg_vol / 26.0
+            return recent_vol >= self.volume_spike_multiplier * avg_vol_per_bar
         except Exception:
             return False
 
@@ -196,14 +208,22 @@ def record_scan_snapshot(conn: sqlite3.Connection, alerts: list) -> None:
         event = alerts[0]
         leader_count = len(event.get("leader_shocks", []))
         etf_count = len(event.get("etf_hits", []))
-        payload = json.dumps([
-            {"ticker": s["ticker"], "pct": s["intraday_pct"], "vol_spike": s["volume_spike"]}
-            for s in event.get("leader_shocks", []) + event.get("etf_hits", [])
-        ])
+        payload = json.dumps({
+            "tickers": [
+                {
+                    "ticker": s["ticker"],
+                    "pct": s["intraday_pct"],
+                    "vol_spike": s["volume_spike"],
+                    "is_etf": s["is_etf"],
+                }
+                for s in event.get("leader_shocks", []) + event.get("etf_hits", [])
+            ],
+            "severity_score": event.get("severity_score", 0.0),
+        })
     else:
         leader_count = 0
         etf_count = 0
-        payload = "[]"
+        payload = json.dumps({"tickers": [], "severity_score": 0.0})
 
     try:
         cursor = conn.cursor()

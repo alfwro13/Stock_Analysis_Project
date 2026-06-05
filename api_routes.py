@@ -388,6 +388,7 @@ class NotificationsConfig(BaseModel):
     ANOMALY_ALERTS: Optional[NotificationItemConfig] = None
     RSS_FEED: Optional[NotificationItemConfig] = None
     AI_CONTAGION: Optional[NotificationItemConfig] = None
+    DIP_RADAR_NEXTCLOUD: Optional[bool] = None
 
 class FreetradeMappingsConfig(BaseModel):
     US_MICS: Optional[List[str]] = None
@@ -1227,16 +1228,24 @@ async def get_ai_contagion_status():
             "FROM ai_contagion_snapshots ORDER BY scan_ts DESC LIMIT 20"
         )
         rows = cursor.fetchall()
-        snapshots = [
-            {
+        def _parse_payload(raw_json: str) -> tuple:
+            raw = json.loads(raw_json or '{"tickers":[],"severity_score":0.0}')
+            if isinstance(raw, list):
+                # legacy rows stored a bare list
+                return raw, 0.0
+            return raw.get("tickers", []), raw.get("severity_score", 0.0)
+
+        snapshots = []
+        for row in rows:
+            tickers, severity_score = _parse_payload(row["payload_json"])
+            snapshots.append({
                 "scan_ts": row["scan_ts"],
                 "leader_count": row["leader_count"],
                 "etf_count": row["etf_count"],
                 "alert_fired": bool(row["alert_fired"]),
-                "tickers": json.loads(row["payload_json"] or "[]"),
-            }
-            for row in rows
-        ]
+                "tickers": tickers,
+                "severity_score": severity_score,
+            })
         return JSONResponse(content={"status": "success", "snapshots": snapshots})
     except Exception as e:
         logger.error(f"ai-contagion/status failed: {e}")

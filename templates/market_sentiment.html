@@ -113,6 +113,9 @@
 
     {% if ai_contagion_status %}
     {% set latest = ai_contagion_status[0] %}
+    {% if latest.severity_score >= 0.66 %}{% set sev_label = "HIGH" %}{% set sev_color = "#f44336" %}
+    {% elif latest.severity_score >= 0.33 %}{% set sev_label = "MED" %}{% set sev_color = "#ff9800" %}
+    {% else %}{% set sev_label = "LOW" %}{% set sev_color = "#4caf50" %}{% endif %}
     <div class="risk-summary-row {% if latest.alert_fired %}risk-summary-red{% endif %}" style="padding: 18px 20px; border-radius: 8px; margin-bottom: 25px;">
         <div class="risk-summary-flex" style="align-items: center; gap: 30px;">
             <div style="flex: 1;">
@@ -123,11 +126,38 @@
                 {% if latest.alert_fired %}
                 <p class="risk-summary-text" style="color: #f44336; font-weight: 600;">
                     CONTAGION SIGNAL ACTIVE &mdash; Leader shocks: {{ latest.leader_count }} &nbsp;|&nbsp; ETF confirmations: {{ latest.etf_count }}
+                    &nbsp;|&nbsp; Severity: <span style="color: {{ sev_color }}; font-weight: 700;">{{ sev_label }}</span>
+                    <span style="font-size: 11px; color: #aaa;">({{ "%.2f"|format(latest.severity_score) }})</span>
                 </p>
                 {% else %}
                 <p class="risk-summary-text">
                     No contagion signal &mdash; Leader shocks detected: {{ latest.leader_count }} &nbsp;|&nbsp; ETF hits: {{ latest.etf_count }}
                 </p>
+                {% endif %}
+                {% if latest.tickers %}
+                <div style="margin-top: 10px; overflow-x: auto;">
+                    <table style="border-collapse: collapse; font-size: 12px; width: auto; min-width: 340px;">
+                        <thead>
+                            <tr style="color: #888; text-align: left;">
+                                <th style="padding: 3px 12px 3px 0;">Ticker</th>
+                                <th style="padding: 3px 12px 3px 0;">Intraday %</th>
+                                <th style="padding: 3px 12px 3px 0;">Vol Spike</th>
+                                <th style="padding: 3px 0;">Type</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for t in latest.tickers %}
+                            {% set row_color = "#ff9800" if t.is_etf else "#f44336" %}
+                            <tr>
+                                <td style="padding: 2px 12px 2px 0; color: {{ row_color }}; font-weight: 600;">{{ t.ticker }}</td>
+                                <td style="padding: 2px 12px 2px 0; font-family: monospace; color: {{ row_color }};">{{ "%+.2f"|format(t.pct) }}%</td>
+                                <td style="padding: 2px 12px 2px 0;">{% if t.vol_spike %}<span title="Volume spike detected">⚡</span>{% else %}&mdash;{% endif %}</td>
+                                <td style="padding: 2px 0; color: #888; font-size: 11px;">{{ "ETF" if t.is_etf else "Leader" }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
                 {% endif %}
             </div>
             <div style="text-align: right; flex-shrink: 0;">

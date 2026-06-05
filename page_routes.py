@@ -461,7 +461,20 @@ async def market_sentiment_page(request: Request):
                 "SELECT scan_ts, leader_count, etf_count, alert_fired, payload_json "
                 "FROM ai_contagion_snapshots ORDER BY scan_ts DESC LIMIT 5"
             ).fetchall()
-            ai_contagion_status = [dict(r) for r in rows]
+            for r in rows:
+                raw = json.loads(r["payload_json"] or '{"tickers":[],"severity_score":0.0}')
+                if isinstance(raw, list):
+                    tickers, severity_score = raw, 0.0
+                else:
+                    tickers, severity_score = raw.get("tickers", []), raw.get("severity_score", 0.0)
+                ai_contagion_status.append({
+                    "scan_ts": r["scan_ts"],
+                    "leader_count": r["leader_count"],
+                    "etf_count": r["etf_count"],
+                    "alert_fired": bool(r["alert_fired"]),
+                    "tickers": tickers,
+                    "severity_score": severity_score,
+                })
         except Exception:
             pass  # table absent on first boot — silently ignore
 
