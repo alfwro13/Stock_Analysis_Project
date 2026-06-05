@@ -1608,7 +1608,8 @@ async def get_news_feed(
             cursor.execute(
                 """SELECT id, article_id, ticker, company_name, source_list,
                           headline, summary, full_text, body_fetched,
-                          url, publisher, published_at, fetched_at
+                          url, publisher, published_at, fetched_at,
+                          sentiment_score, sentiment_label
                    FROM news_articles
                    ORDER BY published_at DESC
                    LIMIT ? OFFSET ?""",
@@ -1623,7 +1624,8 @@ async def get_news_feed(
             cursor.execute(
                 """SELECT id, article_id, ticker, company_name, source_list,
                           headline, summary, full_text, body_fetched,
-                          url, publisher, published_at, fetched_at
+                          url, publisher, published_at, fetched_at,
+                          sentiment_score, sentiment_label
                    FROM news_articles
                    WHERE source_list IN (?, 'both')
                    ORDER BY published_at DESC
