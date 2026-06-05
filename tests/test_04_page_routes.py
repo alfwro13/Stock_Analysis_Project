@@ -116,6 +116,12 @@ def test_options_sandbox_page_loads(client):
     _assert_page_ok(client, "/options-sandbox", label="Options Sandbox")
 
 
+@pytest.mark.pages
+def test_news_page_loads(client):
+    """GET /news must load the news feed reader page without a server error."""
+    _assert_page_ok(client, "/news", label="News Feed")
+
+
 # ── Stock Detail ──────────────────────────────────────────────────────────────
 
 @pytest.mark.pages
@@ -157,6 +163,7 @@ def test_no_page_route_returns_500(client):
         ("/market-sentiment",   "Market Sentiment"),
         ("/earnings-volatility","Earnings Volatility"),
         ("/options-sandbox",    "Options Sandbox"),
+        ("/news",               "News Feed"),
     ]
     failures = []
     for url, label in pages:

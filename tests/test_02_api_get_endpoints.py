@@ -278,3 +278,76 @@ def test_intraday_monitor_analysis_returns_data_after_result_inserted(client):
         conn.execute("DELETE FROM intraday_monitor_results WHERE ticker = 'TESTRADAR'")
         conn.commit()
         conn.close()
+
+
+# ── News Feed API ─────────────────────────────────────────────────────────────
+
+@pytest.mark.api
+def test_news_feed_returns_200(client):
+    """GET /api/news-feed must return 200."""
+    resp = client.get("/api/news-feed")
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text[:300]}"
+
+
+@pytest.mark.api
+def test_news_feed_response_shape(client):
+    """GET /api/news-feed must return a JSON object with 'articles' (list) and 'total' (int)."""
+    resp = client.get("/api/news-feed")
+    data = _json(resp)
+    assert "articles" in data, f"Missing 'articles' key: {data}"
+    assert "total" in data, f"Missing 'total' key: {data}"
+    assert isinstance(data["articles"], list), "'articles' must be a list"
+    assert isinstance(data["total"], int), "'total' must be an int"
+
+
+@pytest.mark.api
+def test_news_feed_source_filter_accepted(client):
+    """GET /api/news-feed?source=portfolio must return 200 without server error."""
+    for src in ("portfolio", "watchlist", "both", "all"):
+        resp = client.get(f"/api/news-feed?source={src}")
+        assert resp.status_code == 200, (
+            f"source={src} returned HTTP {resp.status_code}: {resp.text[:200]}"
+        )
+
+
+@pytest.mark.api
+def test_news_feed_pagination_params_accepted(client):
+    """GET /api/news-feed?limit=10&offset=0 must return 200 without server error."""
+    resp = client.get("/api/news-feed?limit=10&offset=0")
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
+    data = _json(resp)
+    assert "articles" in data
+
+
+@pytest.mark.api
+def test_news_feed_returns_inserted_article(client):
+    """After inserting an article directly, GET /api/news-feed must include it."""
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+    import database as _db
+
+    conn = _db.get_connection()
+    try:
+        conn.execute(
+            """INSERT OR IGNORE INTO news_articles
+               (article_id, ticker, source_list, headline, published_at, fetched_at,
+                sentiment_score, sentiment_label)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            ("api-test-article-001", "MSFT", "portfolio",
+             "API test headline for news feed", 1700000100, 1700001100, 0.55, "positive"),
+        )
+        conn.commit()
+
+        resp = client.get("/api/news-feed?source=all&limit=200")
+        assert resp.status_code == 200
+        data = _json(resp)
+        ids = [a.get("article_id") for a in data["articles"]]
+        assert "api-test-article-001" in ids, (
+            "Inserted article not found in /api/news-feed response. "
+            f"article_ids returned: {ids[:10]}"
+        )
+    finally:
+        conn.execute("DELETE FROM news_articles WHERE article_id = 'api-test-article-001'")
+        conn.commit()
+        conn.close()

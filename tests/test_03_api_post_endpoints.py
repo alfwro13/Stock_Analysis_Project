@@ -91,6 +91,7 @@ TRIGGER_ENDPOINTS = [
     ("/api/update",                      "Full Data Update"),
     ("/api/sync-ghostfolio",             "Ghostfolio Sync"),
     ("/api/trigger-freetrade-sync",      "Freetrade Sync"),
+    ("/api/news-feed/run-now",           "News Feed Run Now"),
 ]
 
 

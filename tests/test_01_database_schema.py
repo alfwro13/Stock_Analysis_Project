@@ -68,6 +68,7 @@ EXPECTED_TABLES = [
     "intraday_monitor_results",
     "macro_regimes",
     "scheduler_run_log",
+    "news_articles",
 ]
 
 
@@ -195,6 +196,20 @@ def test_scheduler_run_log_has_required_columns():
     required = {"job_id", "last_run"}
     missing = required - cols
     assert not missing, f"scheduler_run_log missing columns: {missing}"
+
+
+@pytest.mark.db
+def test_news_articles_has_required_columns():
+    """news_articles must have all core columns including sentiment fields."""
+    cols = _columns("news_articles")
+    required = {
+        "id", "article_id", "ticker", "company_name", "source_list",
+        "headline", "summary", "full_text", "body_fetched",
+        "url", "publisher", "published_at", "is_premium", "fetched_at",
+        "sentiment_score", "sentiment_label",
+    }
+    missing = required - cols
+    assert not missing, f"news_articles missing columns: {missing}"
 
 
 # ── Read / Write round-trips ──────────────────────────────────────────────────
@@ -384,5 +399,59 @@ def test_intraday_monitor_results_roundtrip():
         assert json.loads(row["reasons_json"]) == reasons
     finally:
         conn.execute("DELETE FROM intraday_monitor_results WHERE ticker = 'TEST_RADAR'")
+        conn.commit()
+        conn.close()
+
+
+@pytest.mark.db
+def test_news_articles_roundtrip():
+    """INSERT a news article with sentiment, SELECT it back, verify all fields."""
+    conn = _db.get_connection()
+    try:
+        conn.execute(
+            """INSERT OR IGNORE INTO news_articles
+               (article_id, ticker, company_name, source_list, headline, summary,
+                body_fetched, url, publisher, published_at, fetched_at,
+                sentiment_score, sentiment_label)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            ("test-uuid-sentiment", "TSLA", "Tesla Inc.", "portfolio",
+             "Test headline for sentiment", "Short summary text.",
+             0, "https://example.com/article", "Test Publisher",
+             1700000000, 1700001000, 0.82, "positive"),
+        )
+        conn.commit()
+        row = conn.execute(
+            "SELECT * FROM news_articles WHERE article_id = 'test-uuid-sentiment'"
+        ).fetchone()
+        assert row is not None, "Inserted news article not found"
+        assert row["ticker"] == "TSLA"
+        assert row["source_list"] == "portfolio"
+        assert row["sentiment_label"] == "positive"
+        assert abs(row["sentiment_score"] - 0.82) < 0.001
+    finally:
+        conn.execute("DELETE FROM news_articles WHERE article_id = 'test-uuid-sentiment'")
+        conn.commit()
+        conn.close()
+
+
+@pytest.mark.db
+def test_news_articles_deduplication_via_unique_constraint():
+    """INSERT OR IGNORE on duplicate article_id must not raise and must not duplicate."""
+    conn = _db.get_connection()
+    try:
+        for _ in range(3):
+            conn.execute(
+                """INSERT OR IGNORE INTO news_articles
+                   (article_id, ticker, source_list, headline, published_at, fetched_at)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                ("test-dedup-id", "AAPL", "watchlist", "Dedup headline", 1700000000, 1700001000),
+            )
+        conn.commit()
+        count = conn.execute(
+            "SELECT COUNT(*) FROM news_articles WHERE article_id = 'test-dedup-id'"
+        ).fetchone()[0]
+        assert count == 1, f"Expected 1 row after 3 identical inserts, got {count}"
+    finally:
+        conn.execute("DELETE FROM news_articles WHERE article_id = 'test-dedup-id'")
         conn.commit()
         conn.close()
