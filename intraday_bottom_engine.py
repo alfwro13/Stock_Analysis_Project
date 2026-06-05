@@ -256,9 +256,14 @@ class IntradayBottomEngine:
 
             try:
                 mkt_tz = 'Europe/London' if ticker.endswith('.L') else 'America/New_York'
-                ts_local = cur.name.tz_localize('UTC').tz_convert(mkt_tz)
+                ts = cur.name
+                # yf.download() returns tz-aware timestamps; parquet strips TZ (naive UTC).
+                # Handle both: localize only if naive, then convert.
+                if ts.tzinfo is None:
+                    ts = ts.tz_localize('UTC')
+                ts_local = ts.tz_convert(mkt_tz)
                 scan_ts = ts_local.strftime("%Y-%m-%d %H:%M %Z")
-            except AttributeError:
+            except Exception:
                 scan_ts = str(cur.name)
 
             result = {
