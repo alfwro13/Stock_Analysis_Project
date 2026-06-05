@@ -48,6 +48,7 @@ from earnings_engine import run_earnings_alert
 from report_dispatcher import push_morning_quant_briefing, push_lunchtime_quant_briefing
 from insider_engine import run_insider_alert
 from ai_engine import AIPromptEngine
+from news_feed_engine import run_news_feed_job
 from data_engine import DataEngine
 from utils import normalize_ticker
 from quant_signals import QuantEngine
@@ -317,6 +318,8 @@ class ScheduleItemConfig(BaseModel):
     DATA_TIME: Optional[str] = None
     DAY_OF_WEEK: Optional[str] = None
     DAYS_TO_KEEP_FILES: Optional[int] = None
+    MAX_PER_TICKER: Optional[int] = None
+    MAX_AGE_DAYS: Optional[int] = None
 
 class SchedulingConfig(BaseModel):
     SYNC_INDICES: Optional[ScheduleItemConfig] = None
@@ -339,6 +342,7 @@ class SchedulingConfig(BaseModel):
     UNIVERSE_ENGINE: Optional[ScheduleItemConfig] = None
     CB_NLP_ALERT: Optional[ScheduleItemConfig] = None
     AI_CONTAGION: Optional[ScheduleItemConfig] = None
+    NEWS_FEED: Optional[ScheduleItemConfig] = None
 
 class ReportsDefaultsConfig(BaseModel):
     MR_MAX_RSI: Optional[int] = None
@@ -1580,4 +1584,62 @@ async def trigger_xray_risk_cache(background_tasks: BackgroundTasks):
     return JSONResponse(content={
         "status": "queued",
         "message": "X-ray risk cache job queued. Check system notifications for completion.",
+    })
+
+
+@api_router.get("/news-feed")
+async def get_news_feed(
+    request: Request,
+    source: str = Query(default="all", pattern=r"^(all|portfolio|watchlist|both)$"),
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+):
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        if source == "all":
+            cursor.execute(
+                "SELECT COUNT(*) as total FROM news_articles"
+            )
+            total = cursor.fetchone()["total"]
+            cursor.execute(
+                """SELECT id, article_id, ticker, company_name, source_list,
+                          headline, summary, full_text, body_fetched,
+                          url, publisher, published_at, fetched_at
+                   FROM news_articles
+                   ORDER BY published_at DESC
+                   LIMIT ? OFFSET ?""",
+                (limit, offset),
+            )
+        else:
+            cursor.execute(
+                "SELECT COUNT(*) as total FROM news_articles WHERE source_list IN (?, 'both')",
+                (source,),
+            )
+            total = cursor.fetchone()["total"]
+            cursor.execute(
+                """SELECT id, article_id, ticker, company_name, source_list,
+                          headline, summary, full_text, body_fetched,
+                          url, publisher, published_at, fetched_at
+                   FROM news_articles
+                   WHERE source_list IN (?, 'both')
+                   ORDER BY published_at DESC
+                   LIMIT ? OFFSET ?""",
+                (source, limit, offset),
+            )
+        articles = [dict(row) for row in cursor.fetchall()]
+        return JSONResponse(content={"articles": articles, "total": total})
+    except Exception as e:
+        logger.error(f"GET /api/news-feed failed: {e}")
+        return JSONResponse(status_code=500, content={"error": str(e)})
+    finally:
+        conn.close()
+
+
+@api_router.post("/news-feed/run-now")
+async def run_news_feed_now(background_tasks: BackgroundTasks):
+    background_tasks.add_task(run_news_feed_job)
+    return JSONResponse(content={
+        "status": "queued",
+        "message": "News feed fetch queued. New articles will appear shortly.",
     })

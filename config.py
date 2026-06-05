@@ -200,6 +200,15 @@ DEFAULT_CONFIG = {
             "START_TIME": "09:00",
             "END_TIME": "21:00",
             "INTERVAL_MINUTES": 15
+        },
+        "NEWS_FEED": {
+            "ENABLED": False,
+            "FREQUENCY": "mon-fri",
+            "INTERVAL_HOURS": 4,
+            "START_TIME": "08:00",
+            "END_TIME": "20:00",
+            "MAX_PER_TICKER": 5,
+            "MAX_AGE_DAYS": 7
         }
     },
     "REPORTS_DEFAULTS": {

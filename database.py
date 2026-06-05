@@ -407,6 +407,37 @@ def init_db() -> None:
             )
         ''')
 
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS news_articles (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                article_id   TEXT    UNIQUE NOT NULL,
+                ticker       TEXT    NOT NULL,
+                company_name TEXT,
+                source_list  TEXT    NOT NULL,
+                headline     TEXT    NOT NULL,
+                summary      TEXT,
+                full_text    TEXT,
+                body_fetched INTEGER DEFAULT 0,
+                url          TEXT,
+                publisher    TEXT,
+                published_at INTEGER NOT NULL,
+                is_premium   INTEGER DEFAULT 0,
+                fetched_at   INTEGER NOT NULL
+            )
+        ''')
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_news_published
+            ON news_articles(published_at DESC)
+        ''')
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_news_ticker
+            ON news_articles(ticker)
+        ''')
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_news_source
+            ON news_articles(source_list)
+        ''')
+
         conn.commit()
 
         # Run the dynamic migration script to inject any missing columns safely

@@ -918,6 +918,48 @@
                         </div>
                         <button type="button" class="btn-test mt-0 btn-cyan" onclick="triggerSentimentScan()">▶️ Run Sentiment Scan Now</button>
                     </div>
+
+                    <div class="settings-panel-sm border-left-cyan">
+                        <h4 class="settings-panel-header text-cyan">📰 News Feed</h4>
+                        <p class="settings-desc-sm">Fetches Yahoo Finance news for portfolio &amp; watchlist tickers, extracts full article text, and stores articles for in-app reading. Premium/paywalled articles are skipped automatically.</p>
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="NEWS_FEED_ENABLED" {% if config.SCHEDULING.NEWS_FEED.ENABLED %}checked{% endif %}>
+                            <label for="NEWS_FEED_ENABLED">Enable automated news fetching</label>
+                        </div>
+                        <div class="flex-gap-15 mb-10">
+                            <div class="form-group flex-1">
+                                <label>Active Days</label>
+                                <select id="NEWS_FEED_FREQ">
+                                    <option value="mon-fri" {% if config.SCHEDULING.NEWS_FEED.FREQUENCY == 'mon-fri' %}selected{% endif %}>Mon-Fri</option>
+                                    <option value="*" {% if config.SCHEDULING.NEWS_FEED.FREQUENCY == '*' %}selected{% endif %}>Every Day</option>
+                                </select>
+                            </div>
+                            <div class="form-group flex-1">
+                                <label>Start Time</label>
+                                <input type="time" id="NEWS_FEED_START" value="{{ config.SCHEDULING.NEWS_FEED.START_TIME | default('08:00') }}">
+                            </div>
+                            <div class="form-group flex-1">
+                                <label>End Time</label>
+                                <input type="time" id="NEWS_FEED_END" value="{{ config.SCHEDULING.NEWS_FEED.END_TIME | default('20:00') }}">
+                            </div>
+                            <div class="form-group flex-1">
+                                <label>Interval (Hours)</label>
+                                <input type="number" id="NEWS_FEED_INTERVAL" value="{{ config.SCHEDULING.NEWS_FEED.INTERVAL_HOURS | default(4) }}" min="1">
+                            </div>
+                        </div>
+                        <div class="flex-gap-15 mb-10">
+                            <div class="form-group flex-1">
+                                <label>Max Articles / Ticker</label>
+                                <input type="number" id="NEWS_FEED_MAX_PER" value="{{ config.SCHEDULING.NEWS_FEED.MAX_PER_TICKER | default(5) }}" min="1" max="20">
+                            </div>
+                            <div class="form-group flex-1">
+                                <label>Retain Articles (Days)</label>
+                                <input type="number" id="NEWS_FEED_MAX_AGE" value="{{ config.SCHEDULING.NEWS_FEED.MAX_AGE_DAYS | default(7) }}" min="1" max="30">
+                            </div>
+                        </div>
+                        <button type="button" class="btn-test mt-0 btn-cyan" onclick="triggerNewsFetch()">▶ Fetch News Now</button>
+                        <span id="news-fetch-status" style="margin-left:10px;font-size:0.82em;"></span>
+                    </div>
                 </details>
                 
                 <details class="settings-card">
@@ -2169,6 +2211,29 @@
             }
         }
 
+        async function triggerNewsFetch() {
+            const btn = document.querySelector('button[onclick="triggerNewsFetch()"]');
+            const status = document.getElementById('news-fetch-status');
+            btn.disabled = true;
+            btn.textContent = '⏳ Queuing...';
+            status.textContent = '';
+            try {
+                const resp = await fetch('/api/news-feed/run-now', { method: 'POST' });
+                const data = await resp.json();
+                status.textContent = data.message || 'Queued.';
+                status.style.color = '#4ec957';
+            } catch (error) {
+                status.textContent = 'Error — check server logs.';
+                status.style.color = '#ff4d4d';
+            } finally {
+                setTimeout(() => {
+                    btn.disabled = false;
+                    btn.textContent = '▶ Fetch News Now';
+                    status.textContent = '';
+                }, 4000);
+            }
+        }
+
         async function triggerMLBackfill() {
             const btn = document.querySelector('button[onclick="triggerMLBackfill()"]');
             btn.disabled = true;
@@ -2607,6 +2672,15 @@
                         "START_TIME": document.getElementById('SENTIMENT_ENGINE_START').value,
                         "END_TIME": document.getElementById('SENTIMENT_ENGINE_END').value,
                         "INTERVAL_HOURS": parseInt(document.getElementById('SENTIMENT_ENGINE_INTERVAL').value) || 4
+                    },
+                    "NEWS_FEED": {
+                        "ENABLED": document.getElementById('NEWS_FEED_ENABLED').checked,
+                        "FREQUENCY": document.getElementById('NEWS_FEED_FREQ').value,
+                        "START_TIME": document.getElementById('NEWS_FEED_START').value,
+                        "END_TIME": document.getElementById('NEWS_FEED_END').value,
+                        "INTERVAL_HOURS": parseInt(document.getElementById('NEWS_FEED_INTERVAL').value) || 4,
+                        "MAX_PER_TICKER": parseInt(document.getElementById('NEWS_FEED_MAX_PER').value) || 5,
+                        "MAX_AGE_DAYS": parseInt(document.getElementById('NEWS_FEED_MAX_AGE').value) || 7
                     },
                     "CRASH_ALERTS": {
                         "ENABLED": document.getElementById('CRASH_ALERTS_SCHED_ENABLED').checked,

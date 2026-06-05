@@ -29,6 +29,7 @@ from universe_deep_sync_engine import run_universe_deep_sync
 from macro_calendar_engine import update_macro_calendar
 from macro_data_engine import update_macro_indicators
 from xray_engine import run_xray_precompute
+from news_feed_engine import run_news_feed_job
 
 logger = logging.getLogger(__name__)
 
@@ -985,6 +986,26 @@ def reload_scheduler():
             )
         except Exception as e:
             logger.error(f"Failed to schedule AI Contagion Monitor: {e}")
+
+    # 18. News Feed Engine — periodic yfinance + trafilatura article fetch
+    news_cfg = scheduling.get("NEWS_FEED", {})
+    if news_cfg.get("ENABLED", False):
+        news_freq = news_cfg.get("FREQUENCY", "mon-fri")
+        news_interval_h = int(news_cfg.get("INTERVAL_HOURS", 4))
+        news_start = news_cfg.get("START_TIME", "08:00")
+        news_end = news_cfg.get("END_TIME", "20:00")
+        try:
+            start_h, _ = map(int, news_start.split(":"))
+            end_h, _ = map(int, news_end.split(":"))
+            scheduler.add_job(
+                run_news_feed_job,
+                CronTrigger(day_of_week=news_freq, hour=f"{start_h}-{end_h}/{news_interval_h}"),
+                id="news_feed_job",
+                replace_existing=True,
+            )
+            logger.info(f"News Feed scheduled for {news_freq} between {news_start}-{news_end} every {news_interval_h}h.")
+        except Exception as e:
+            logger.error(f"Failed to schedule News Feed job: {e}")
 
     # Always-on: X-ray Risk Cache — runs daily Mon–Fri at 19:00 (after market close).
     # No config flag required; the X-ray report is always available.

@@ -822,6 +822,19 @@ async def watchlist_page(request: Request, embed: bool = False):
     )
 
 
+@page_router.get("/news", response_class=HTMLResponse)
+async def news_page(request: Request):
+    config_data = load_config()
+    return templates.TemplateResponse(
+        request=request,
+        name="news.html",
+        context={
+            "unread_count": get_unread_count(),
+            "config": config_data,
+        },
+    )
+
+
 @page_router.get("/earnings-volatility", response_class=HTMLResponse)
 async def earnings_volatility_page(request: Request):
     today_str = datetime.now().strftime('%Y-%m-%d')
