@@ -405,6 +405,8 @@ class SettingsConfig(BaseModel):
     YAHOO_IPV6_ADDRESS: Optional[str] = None
     PORT: Optional[int] = None
     BASE_CURRENCY: Optional[str] = None
+    USER_TIMEZONE: Optional[str] = None
+    HOME_EXCHANGE: Optional[str] = None
     IGNORED_TICKERS: Optional[List[str]] = None
     GHOSTFOLIO_ACCOUNTS: Optional[GhostfolioAccountsConfig] = None
     UI_PREFERENCES: Optional[UIPreferencesConfig] = None
