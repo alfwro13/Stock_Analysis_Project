@@ -1,5 +1,7 @@
 # visuals.py
+import numpy as np
 import plotly.graph_objects as go
+from datetime import datetime
 from plotly.subplots import make_subplots
 import pandas as pd
 import ta
@@ -745,9 +747,6 @@ def create_smgb_overlay_chart(
     prediction: dict,
     next_open_date: "date",
 ) -> str:
-    from datetime import date, datetime
-    import time_engine
-
     user_tz = time_engine.get_user_tz()
 
     def _to_local(s: "pd.Series") -> "pd.Series":
@@ -881,7 +880,6 @@ def create_ai_contagion_performance_chart(ticker_dfs: dict, period_label: str = 
 
 
 def create_ai_contagion_correlation_heatmap(ticker_dfs: dict, window: int = 20) -> str:
-    import numpy as np
     returns = {}
     for ticker, df in ticker_dfs.items():
         if df is None or df.empty or "Close" not in df.columns:

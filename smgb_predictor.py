@@ -477,7 +477,8 @@ def get_ai_contagion_data(days: int = 30) -> dict:
 def get_correlation_data(days: int = 60) -> dict:
     """
     Returns normalised-to-100 price DataFrame and rolling 30-day Pearson correlation
-    between SMGB.L and the equal-weighted US semiconductor basket, for chart rendering.
+    between SMGB.L and the equal-weighted average of the 10 semiconductor constituents.
+    Equal-weight is used here only for the rolling correlation; the prediction model uses known ETF weights.
     """
     all_tickers = _DEFAULT_TICKERS + [_SMGB, _FX_TICKER]
     df = fetch_daily_closes(all_tickers, days=days + 5)

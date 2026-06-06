@@ -23,6 +23,8 @@
 13. [Settings & Configuration](#13-settings--configuration)
 14. [System & Infrastructure](#14-system--infrastructure)
 15. [Alert Testing](#15-alert-testing)
+16. [UK ETF Forecast (SMGB.L)](#16-uk-etf-forecast-smgbl)
+17. [AI Sector Contagion Monitor](#17-ai-sector-contagion-monitor)
 
 ---
 
@@ -1162,4 +1164,53 @@ The ML model outputs a probability (0–100) that the ticker will return more th
 
 ---
 
-*Generated: 2026-05-29 · Quantamental Dashboard*
+## 16. UK ETF Forecast (SMGB.L)
+
+### `GET /api/smgb-prediction`
+
+Returns the current SMGB.L next-morning open prediction. Rate-limited to 10 requests/minute.
+
+**Response fields**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `status` | string | `"success"` or `"error"` |
+| `predicted_price` | float | Predicted SMGB.L open in GBP (£) |
+| `last_smgb_close` | float | Last known SMGB.L close in GBP (£) |
+| `predicted_change_pct` | float | Predicted change from last close (%) |
+| `data_source` | string | `"holdings"` · `"known_weights_fallback"` · `"regression_only"` |
+| `signal_source` | string | `"intraday_post_close"` · `"intraday_premarket"` · `"daily_close"` |
+| `fx_rate_gbpusd` | float | GBP/USD spot rate used for FX adjustment |
+| `next_open_date` | string | ISO date of predicted open (`"YYYY-MM-DD"`) |
+| `as_of_utc` | string | Data timestamp |
+| `n_holdings_used` | int | Number of holdings used by the holdings model |
+| `holdings_engine` | object\|null | Holdings model detail: `predicted_price`, `contributions[]`, `fx_adjustment_pct` |
+| `regression_engine` | object\|null | Regression model detail: `predicted_price`, `lower_bound`, `upper_bound`, `alpha`, `beta`, `r_squared`, `n_observations` |
+| `error` | string\|null | Error message if `status == "error"` |
+
+`signal_source` indicates which price data drove the prediction:
+- `intraday_post_close` — US prices after LSE close (16:30 BST), return measured vs price at UK-close time
+- `intraday_premarket` — US pre-market prices (04:00–09:30 ET)
+- `daily_close` — prior day daily closes (fallback)
+
+For methodology details see [`assets/smgb_predictor.md`](smgb_predictor.md).
+
+---
+
+### `GET /uk-etf-forecast`
+
+HTML page. Renders the full SMGB.L Morning Price Predictor UI including four charts and the portfolio impact tile.
+
+---
+
+## 17. AI Sector Contagion Monitor
+
+### `GET /ai-contagion`
+
+HTML page. Renders the AI Sector Contagion Monitor with 30-day normalised performance, intraday performance (when market is open), and a 20-day pairwise correlation heatmap for: NVDA, AMD, AVGO, GOOGL, MSFT, META, AAPL, ORCL, AMZN, TSLA.
+
+For methodology details see [`assets/ai_contagion_monitor.md`](ai_contagion_monitor.md).
+
+---
+
+*Generated: 2026-06-06 · Quantamental Dashboard*
