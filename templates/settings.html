@@ -1000,6 +1000,7 @@
                             <input type="password" id="HF_TOKEN" value="{{ hf_token }}" autocomplete="new-password" placeholder="hf_xxxxxxxxxxxxxxxxxxxx">
                         </div>
                         <button type="button" class="btn-test mt-0" onclick="saveHFToken()">💾 Save HF Token</button>
+                        <button type="button" class="btn-test mt-0 btn-cyan" onclick="testHFToken()">🧪 Verify Token</button>
                         <div id="hf-status-msg"></div>
                     </div>
 
@@ -3114,6 +3115,28 @@
             } finally {
                 btn.disabled = false;
                 btn.innerText = '💾 Save HF Token';
+            }
+        }
+
+        async function testHFToken() {
+            const btn = document.querySelector('button[onclick="testHFToken()"]');
+            btn.disabled = true;
+            btn.innerText = '⏳ Verifying…';
+            setStatus('hf-status-msg', 'info', 'Verifying token…');
+            try {
+                const res = await fetch('/api/test-hf-token', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-Confirm-Token': CONFIRM_TOKEN },
+                    body: JSON.stringify({ HF_TOKEN: document.getElementById('HF_TOKEN').value.trim() }),
+                });
+                const data = await res.json().catch(() => ({}));
+                setStatus('hf-status-msg', res.ok ? 'success' : 'error',
+                    res.ok ? (data.message || 'Token is valid.') : (data.detail || 'Verification failed.'));
+            } catch (e) {
+                setStatus('hf-status-msg', 'error', 'Network error while verifying.');
+            } finally {
+                btn.disabled = false;
+                btn.innerText = '🧪 Verify Token';
             }
         }
 

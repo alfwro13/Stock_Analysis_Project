@@ -235,6 +235,26 @@ async def save_hf_token(body: SaveHFTokenRequest):
     return {"status": "ok", "message": "HF Token saved."}
 
 
+class TestHFTokenRequest(BaseModel):
+    HF_TOKEN: str = ""
+
+
+@api_router.post("/test-hf-token", dependencies=[Depends(require_confirm_token)])
+async def test_hf_token(body: TestHFTokenRequest):
+    token = body.HF_TOKEN.strip() or os.environ.get("HF_TOKEN", "")
+    if not token:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="No HuggingFace token provided. Enter a token and try again.")
+    try:
+        from huggingface_hub import whoami
+        info = whoami(token=token)
+        username = info.get("name") or info.get("fullname") or "unknown"
+        return {"status": "ok", "message": f"Token is valid. Authenticated as: {username}"}
+    except Exception as e:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail=f"Token verification failed: {e}")
+
+
 class ChangeUsernameRequest(BaseModel):
     new_username: str
 
