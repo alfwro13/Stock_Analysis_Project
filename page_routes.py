@@ -45,6 +45,9 @@ from visuals import (
     create_uk_inflation_chart,
     create_anomaly_score_chart,
     create_anomaly_feature_radar,
+    create_smgb_correlation_chart,
+    create_smgb_prediction_chart,
+    create_smgb_contributions_chart,
 )
 from portfolio_service import get_rate_to_base, get_rate_from_base
 from quant_signals import get_candlestick_patterns
@@ -996,6 +999,64 @@ async def market_reports_page(request: Request):
             "unread_count": get_unread_count(),
             "config": load_config()
         }
+    )
+
+
+@page_router.get("/tools", response_class=HTMLResponse)
+async def tools_page(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="tools.html",
+        context={"unread_count": get_unread_count()},
+    )
+
+
+@page_router.get("/uk-etf-forecast", response_class=HTMLResponse)
+async def uk_etf_forecast_page(request: Request):
+    from smgb_predictor import run_smgb_prediction, get_correlation_data
+    error_html = "<p class='error-text'>Data unavailable — please try again later.</p>"
+    try:
+        prediction = run_smgb_prediction()
+        corr_data = get_correlation_data(days=60)
+
+        correlation_chart_html = error_html
+        prediction_chart_html = error_html
+        contributions_chart_html = ""
+
+        if not corr_data["normalized_df"].empty:
+            correlation_chart_html = create_smgb_correlation_chart(
+                corr_data["normalized_df"], corr_data["rolling_corr"]
+            )
+
+        if prediction.get("status") == "success":
+            smgb_hist = None
+            raw_df = corr_data.get("raw_df", pd.DataFrame())
+            if not raw_df.empty and "SMGB.L" in raw_df.columns:
+                smgb_hist = raw_df["SMGB.L"].dropna().tail(25)
+            prediction_chart_html = create_smgb_prediction_chart(smgb_hist, prediction)
+
+            contributions = []
+            if prediction.get("holdings_engine") and prediction["holdings_engine"].get("contributions"):
+                contributions = prediction["holdings_engine"]["contributions"]
+            if contributions:
+                contributions_chart_html = create_smgb_contributions_chart(contributions)
+    except Exception as exc:
+        logger.error("uk_etf_forecast_page failed: %s", exc)
+        prediction = {"status": "error", "error": str(exc), "predicted_price": None}
+        correlation_chart_html = error_html
+        prediction_chart_html = error_html
+        contributions_chart_html = ""
+
+    return templates.TemplateResponse(
+        request=request,
+        name="uk_impact.html",
+        context={
+            "prediction": prediction,
+            "correlation_chart_html": correlation_chart_html,
+            "prediction_chart_html": prediction_chart_html,
+            "contributions_chart_html": contributions_chart_html,
+            "unread_count": get_unread_count(),
+        },
     )
 
 

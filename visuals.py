@@ -538,3 +538,185 @@ def create_anomaly_feature_radar(features: dict, ticker: str) -> str:
         full_html=False, include_plotlyjs=False,
         config={'responsive': True, 'displaylogo': False},
     )
+
+
+# ── SMGB.L UK ETF Impact Charts ──────────────────────────────────────────────
+
+_SMGB_COLORS = {
+    "SMGB.L":  "#00ffff",
+    "NVDA":    "#f44336",
+    "AMD":     "#f44336",
+    "MSFT":    "#ff9800",
+    "META":    "#ff9800",
+    "GOOGL":   "#ff9800",
+    "AAPL":    "#ff9800",
+    "AVGO":    "#ff9800",
+    "SMH":     "#bb86fc",
+    "SOXX":    "#bb86fc",
+    "QQQ":     "#bb86fc",
+    "GBPUSD=X":"#ffff00",
+}
+_SMGB_TICKER_ORDER = ["SMGB.L", "NVDA", "AMD", "MSFT", "META", "GOOGL", "AAPL", "AVGO", "SMH", "SOXX", "QQQ", "GBPUSD=X"]
+
+
+def create_smgb_correlation_chart(normalized_df: pd.DataFrame, rolling_corr: pd.Series) -> str:
+    if normalized_df.empty:
+        fig = go.Figure()
+        fig.update_layout(template="plotly_dark", height=650, title=dict(text="SMGB.L Correlation — No Data", x=0.5))
+        return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
+
+    fig = make_subplots(
+        rows=2, cols=1,
+        shared_xaxes=True,
+        row_heights=[0.62, 0.38],
+        vertical_spacing=0.06,
+        subplot_titles=("Normalised Performance (Base = 100)", "30-Day Rolling Correlation: SMGB.L vs US Basket"),
+    )
+
+    ordered = [t for t in _SMGB_TICKER_ORDER if t in normalized_df.columns]
+    remaining = [t for t in normalized_df.columns if t not in ordered]
+    for ticker in ordered + remaining:
+        color = _SMGB_COLORS.get(ticker, "#888888")
+        width = 3 if ticker == "SMGB.L" else 1.5
+        dash = "dot" if ticker == "GBPUSD=X" else "solid"
+        fig.add_trace(
+            go.Scatter(
+                x=normalized_df.index,
+                y=normalized_df[ticker],
+                name=ticker,
+                line=dict(color=color, width=width, dash=dash),
+                connectgaps=True,
+                hovertemplate=f"{ticker}: %{{y:.1f}}<extra></extra>",
+            ),
+            row=1, col=1,
+        )
+
+    if not rolling_corr.dropna().empty:
+        fig.add_trace(
+            go.Scatter(
+                x=rolling_corr.index,
+                y=rolling_corr.values,
+                name="30D Correlation",
+                line=dict(color="#00ffff", width=2),
+                connectgaps=True,
+                hovertemplate="Corr: %{y:.3f}<extra></extra>",
+            ),
+            row=2, col=1,
+        )
+        fig.add_hline(y=0.7,  line_dash="dash", line_color="#4caf50", line_width=1, row=2, col=1)
+        fig.add_hline(y=0.0,  line_dash="dot",  line_color="#666666", line_width=1, row=2, col=1)
+        fig.add_hline(y=-0.7, line_dash="dash", line_color="#f44336", line_width=1, row=2, col=1)
+
+    fig.update_layout(
+        title=dict(text="SMGB.L vs US Semiconductor Basket — Normalised Performance & Correlation", x=0.5, xanchor="center", font=dict(size=14)),
+        template="plotly_dark",
+        height=650,
+        margin=dict(l=20, r=20, t=70, b=20),
+        hovermode="x unified",
+        legend=dict(orientation="h", yanchor="bottom", y=1.04, xanchor="right", x=1, font=dict(size=10)),
+    )
+    fig.update_yaxes(title_text="Indexed (100 = start)", row=1, col=1, showgrid=True, gridcolor="#333333")
+    fig.update_yaxes(title_text="Pearson r", row=2, col=1, showgrid=True, gridcolor="#333333", range=[-1.1, 1.1])
+    return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
+
+
+def create_smgb_prediction_chart(smgb_hist: pd.Series, prediction: dict) -> str:
+    fig = go.Figure()
+
+    if smgb_hist is not None and not smgb_hist.empty:
+        fig.add_trace(go.Scatter(
+            x=smgb_hist.index,
+            y=smgb_hist.values,
+            name="SMGB.L Close (GBX)",
+            line=dict(color="#00ffff", width=2),
+            connectgaps=True,
+            hovertemplate="Close: %{y:.1f}p<extra></extra>",
+        ))
+
+    last_close = prediction.get("last_smgb_close")
+    predicted_price = prediction.get("predicted_price")
+    reg = prediction.get("regression_engine")
+
+    if last_close and smgb_hist is not None and not smgb_hist.empty:
+        fig.add_hline(
+            y=last_close,
+            line_dash="dash",
+            line_color="#888888",
+            line_width=1,
+            annotation_text=f"Last Close: {last_close:.1f}p",
+            annotation_position="top right",
+            annotation_font_color="#888888",
+            annotation_font_size=11,
+        )
+
+    if predicted_price and smgb_hist is not None and not smgb_hist.empty:
+        last_date = smgb_hist.index[-1]
+        next_date = last_date + pd.offsets.BDay(1)
+
+        if reg and reg.get("lower_bound") and reg.get("upper_bound"):
+            fig.add_trace(go.Scatter(
+                x=[next_date, next_date],
+                y=[reg["upper_bound"], reg["lower_bound"]],
+                fill="toself",
+                fillcolor="rgba(187, 134, 252, 0.15)",
+                line=dict(color="rgba(187, 134, 252, 0.3)", width=1),
+                name="95% CI",
+                hovertemplate="CI: %{y:.1f}p<extra></extra>",
+            ))
+
+        change_pct = prediction.get("predicted_change_pct", 0)
+        fig.add_trace(go.Scatter(
+            x=[next_date],
+            y=[predicted_price],
+            mode="markers+text",
+            name=f"Predicted: {predicted_price:.1f}p",
+            marker=dict(color="#bb86fc", size=16, symbol="star"),
+            text=[f"{predicted_price:.1f}p ({change_pct:+.2f}%)"],
+            textposition="top right",
+            textfont=dict(color="#bb86fc", size=11),
+            hovertemplate=f"Predicted: {predicted_price:.1f}p ({change_pct:+.2f}%)<extra></extra>",
+        ))
+
+    fig.update_layout(
+        title=dict(text="SMGB.L — Historical Close + Next Morning Open Prediction (GBX)", x=0.5, xanchor="center"),
+        template="plotly_dark",
+        height=420,
+        margin=dict(l=20, r=20, t=50, b=20),
+        hovermode="x unified",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+    )
+    fig.update_yaxes(title_text="GBX (pence)", showgrid=True, gridcolor="#333333")
+    return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
+
+
+def create_smgb_contributions_chart(contributions: list) -> str:
+    if not contributions:
+        fig = go.Figure()
+        fig.update_layout(template="plotly_dark", height=350, title=dict(text="Holdings Contributions — No Data", x=0.5))
+        return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
+
+    sorted_items = sorted(contributions, key=lambda x: abs(x.get("contribution_pct", 0)), reverse=True)
+    tickers = [c["ticker"] for c in sorted_items]
+    values = [c["contribution_pct"] for c in sorted_items]
+    colors = ["#4caf50" if v >= 0 else "#f44336" for v in values]
+    weights = [f"{c['weight']*100:.1f}%" for c in sorted_items]
+
+    fig = go.Figure(go.Bar(
+        x=values,
+        y=tickers,
+        orientation="h",
+        marker=dict(color=colors),
+        customdata=list(zip(weights, [c["us_return_pct"] for c in sorted_items])),
+        hovertemplate="<b>%{y}</b><br>Contribution: %{x:+.3f}%<br>Weight: %{customdata[0]}<br>US Return: %{customdata[1]:+.2f}%<extra></extra>",
+    ))
+    fig.add_vline(x=0, line_color="#555555", line_width=1)
+    fig.update_layout(
+        title=dict(text="US Holdings — Weighted Contribution to SMGB.L Predicted Move (%)", x=0.5, xanchor="center"),
+        template="plotly_dark",
+        height=max(300, len(tickers) * 32 + 100),
+        margin=dict(l=20, r=20, t=50, b=40),
+        xaxis=dict(title="Contribution (%)", showgrid=True, gridcolor="#333333", zeroline=False),
+        yaxis=dict(autorange="reversed"),
+        showlegend=False,
+    )
+    return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})

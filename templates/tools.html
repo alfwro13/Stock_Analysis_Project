@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="color-scheme" content="dark">
+    <title>Quantamental - Tools</title>
+    <link rel="stylesheet" href="/static/css/styles.css?v={{ css_version }}">
+</head>
+<body class="body-watchlist">
+
+    <div class="header-container">
+        <div>
+            <div class="title-wrapper">
+                <a href="https://github.com/alfwro13/Stock_Analysis_Project" target="_blank" class="logo-link">
+                    <img src="/assets/logo_small.png" alt="Quantamental Logo" class="logo-img">
+                </a>
+                <h1><abbr title="Quantamental - a modern institutional strategy that combines Quantitative analysis with Fundamental analysis.">Q</abbr>uantamental Tools</h1>
+            </div>
+            <p class="page-subtitle">Analytical tools and calculators — click a tool to launch it</p>
+            {% set active_page = 'tools' %}
+            {% include 'navbar.html' %}
+        </div>
+    </div>
+
+    <div class="report-container report-container-wide">
+        <h2>Available Tools</h2>
+        <p>Standalone analytical tools for deeper investigation beyond the main dashboard. Each tool runs on demand — data is fetched live when you open it.</p>
+
+        <div class="tools-grid">
+
+            <div class="guide-card">
+                <h4>🇬🇧 SMGB.L Morning Price Predictor</h4>
+                <p>Estimates what SMGB.L (a London-listed semiconductor <abbr title="Exchange-Traded Fund — a basket of securities traded on an exchange like a stock.">ETF</abbr> priced in <abbr title="GBX = pence sterling. UK-listed ETFs are often quoted in pence, not pounds.">GBX</abbr>) will open at the next UK trading morning, based on the US semiconductor basket's evening close. Applies <abbr title="GBP/USD exchange rate adjustment — a falling pound boosts the GBX value of USD-denominated holdings.">GBPUSD FX adjustment</abbr> and uses actual ETF holdings weights where available, falling back to a 60-day <abbr title="Ordinary Least Squares regression — fits a linear model: SMGB morning return = α + β × US basket return.">OLS</abbr> regression model.</p>
+                <div class="why-use-it">Use after the US close to gauge SMGB.L's likely opening gap before the LSE opens at 08:00 UTC.</div>
+                <a href="/uk-etf-forecast" class="guide-card-link">Launch Tool →</a>
+            </div>
+
+        </div>
+    </div>
+
+</body>
+</html>

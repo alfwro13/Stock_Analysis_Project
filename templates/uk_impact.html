@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="color-scheme" content="dark">
+    <title>Quantamental - SMGB.L Morning Price Predictor</title>
+    <link rel="stylesheet" href="/static/css/styles.css?v={{ css_version }}">
+</head>
+<body class="body-watchlist">
+
+    <div class="header-container">
+        <div>
+            <div class="title-wrapper">
+                <a href="https://github.com/alfwro13/Stock_Analysis_Project" target="_blank" class="logo-link">
+                    <img src="/assets/logo_small.png" alt="Quantamental Logo" class="logo-img">
+                </a>
+                <h1>🇬🇧 SMGB.L Morning Price Predictor</h1>
+            </div>
+            <p class="page-subtitle">US Close → UK Open Impact Engine &mdash; prices in <abbr title="GBX = pence sterling. UK-listed ETFs are often quoted in pence, not pounds.">GBX</abbr></p>
+            {% set active_page = 'tools' %}
+            {% include 'navbar.html' %}
+        </div>
+    </div>
+
+    <div class="report-container report-container-wide">
+
+        <a href="/tools" class="btn-back">← Back to Tools</a>
+
+        {% if prediction.status == 'error' %}
+        <div class="sentiment-module module-red">
+            <div class="xray-metric-card">
+                <p class="xray-metric-label">Data Unavailable</p>
+                <p class="risk-summary-text">{{ prediction.error }}</p>
+                <p class="risk-summary-text">SMGB.L price data could not be retrieved from Yahoo Finance. Try again later or during active market hours.</p>
+            </div>
+        </div>
+
+        {% else %}
+
+        {# ── Prediction summary tiles ── #}
+        <div class="xray-cards-row">
+            <div class="xray-metric-card xray-metric-card--purple">
+                <div class="xray-metric-label"><abbr title="Predicted SMGB.L opening price in GBX (pence) based on US close prices.">Predicted Open</abbr></div>
+                <div class="prediction-hero">{{ prediction.predicted_price }}p</div>
+                <div class="{% if prediction.predicted_change_pct >= 0 %}prediction-change-pos{% else %}prediction-change-neg{% endif %}">
+                    {{ "%+.2f"|format(prediction.predicted_change_pct) }}%
+                </div>
+            </div>
+            <div class="xray-metric-card">
+                <div class="xray-metric-label">Last Close (<abbr title="GBX = pence sterling.">GBX</abbr>)</div>
+                <div class="xray-metric-value">{{ prediction.last_smgb_close }}p</div>
+            </div>
+            <div class="xray-metric-card">
+                <div class="xray-metric-label"><abbr title="GBP/USD spot rate used for FX adjustment. A falling pound boosts the GBX value of USD-denominated holdings.">GBPUSD Rate</abbr></div>
+                <div class="xray-metric-value">{{ prediction.fx_rate_gbpusd }}</div>
+                {% if prediction.fx_rate_gbpusd == 1.0 %}<span class="badge-warn">FX data unavailable &mdash; adjustment skipped</span>{% endif %}
+            </div>
+            <div class="xray-metric-card">
+                <div class="xray-metric-label">Model</div>
+                <div class="xray-metric-value xray-metric-value--sm">
+                    {% if prediction.data_source == 'holdings' %}
+                    <span class="badge-source">Holdings Weights</span>
+                    {% elif prediction.data_source == 'regression_fallback' %}
+                    <span class="badge-source-fallback">Equal-Weight Fallback</span>
+                    {% else %}
+                    <span class="badge-source-fallback">Regression Only</span>
+                    {% endif %}
+                </div>
+                {% if prediction.n_holdings_used > 0 %}
+                <div class="xray-metric-label xray-metric-sublabel">{{ prediction.n_holdings_used }} constituents used</div>
+                {% endif %}
+            </div>
+            {% if prediction.regression_engine %}
+            <div class="xray-metric-card">
+                <div class="xray-metric-label"><abbr title="OLS regression R² — measures how much of SMGB.L's morning return variance is explained by the US basket's prior close.">Regression R²</abbr></div>
+                <div class="xray-metric-value">{{ "%.3f"|format(prediction.regression_engine.r_squared) }}</div>
+                <div class="xray-metric-label xray-metric-sublabel">&beta; = {{ "%.3f"|format(prediction.regression_engine.beta) }} &nbsp;|&nbsp; n={{ prediction.regression_engine.n_observations }}</div>
+            </div>
+            <div class="xray-metric-card">
+                <div class="xray-metric-label"><abbr title="95% confidence interval from the OLS regression model. The actual open is likely to fall within this range.">95% CI (Regression)</abbr></div>
+                <div class="xray-metric-value xray-metric-value--sm">{{ prediction.regression_engine.lower_bound }}p &ndash; {{ prediction.regression_engine.upper_bound }}p</div>
+            </div>
+            {% endif %}
+            <div class="xray-metric-card">
+                <div class="xray-metric-label">As Of (UTC)</div>
+                <div class="xray-metric-value xray-metric-value--xs">{{ prediction.as_of_utc }}</div>
+            </div>
+        </div>
+
+        {# ── Methodology note ── #}
+        <p class="risk-summary-text">
+            <strong>How this works:</strong>
+            The <strong>Holdings model</strong> fetches SMGB.L's top constituent holdings from yfinance, computes a weighted sum of each US stock's latest daily return, then applies a GBP/USD FX adjustment.
+            If holdings data is unavailable, it falls back to an <strong>equal-weight basket</strong> of the AI contagion engine's default tickers (NVDA, AMD, MSFT, META, GOOGL, AAPL, AVGO, SMH, SOXX, QQQ).
+            In parallel, a <strong>60-day <abbr title="Ordinary Least Squares regression — fits a linear model: SMGB morning return = α + β × US basket return.">OLS</abbr> regression</strong> models the historical relationship between the US basket's daily return and SMGB.L's next-morning open return, providing a confidence interval.
+            All prices are in <abbr title="GBX = pence sterling.">GBX</abbr> (pence).
+        </p>
+
+        {# ── Prediction chart ── #}
+        <div class="sentiment-module module-purple sentiment-module--spaced">
+            <div class="chart-wrapper">
+                <button class="fullscreen-btn" onclick="toggleFullscreen('smgb-pred-wrapper')">⛶ Fullscreen</button>
+                <div id="smgb-pred-wrapper">
+                    {{ prediction_chart_html | safe }}
+                </div>
+            </div>
+            <div class="sentiment-footer">
+                <strong>Reading this chart:</strong> The cyan line shows SMGB.L's recent daily closes in GBX (pence).
+                The purple star marks the predicted next-morning open.
+                {% if prediction.regression_engine %}The shaded band shows the 95% confidence interval from the OLS regression model.{% endif %}
+                The dashed horizontal line marks the last close for reference.
+            </div>
+        </div>
+
+        {# ── Holdings contributions chart (only when holdings model ran) ── #}
+        {% if prediction.holdings_engine and prediction.holdings_engine.contributions and contributions_chart_html %}
+        <div class="sentiment-module module-yellow sentiment-module--spaced">
+            <div class="chart-wrapper">
+                <button class="fullscreen-btn" onclick="toggleFullscreen('smgb-contrib-wrapper')">⛶ Fullscreen</button>
+                <div id="smgb-contrib-wrapper">
+                    {{ contributions_chart_html | safe }}
+                </div>
+            </div>
+            <div class="sentiment-footer">
+                <strong>Reading this chart:</strong> Each bar shows one constituent's weighted contribution to the predicted SMGB.L move.
+                Green = positive contributor (US stock up). Red = negative contributor (US stock down).
+                Bar length = weight &times; US return.
+                FX adjustment of {{ "%+.3f"|format(prediction.holdings_engine.fx_adjustment_pct) }}% applied separately.
+            </div>
+        </div>
+        {% endif %}
+
+        {# ── Correlation chart ── #}
+        <div class="sentiment-module module-cyan sentiment-module--spaced">
+            <div class="chart-wrapper">
+                <button class="fullscreen-btn" onclick="toggleFullscreen('smgb-corr-wrapper')">⛶ Fullscreen</button>
+                <div id="smgb-corr-wrapper">
+                    {{ correlation_chart_html | safe }}
+                </div>
+            </div>
+            <div class="sentiment-footer">
+                <strong>Reading this chart:</strong> Top panel shows all series normalised to 100 at the start of the window &mdash; compare relative performance.
+                SMGB.L is cyan; US semiconductor leaders are red/orange; ETFs are purple; GBPUSD is yellow.
+                Bottom panel shows the rolling 30-day <abbr title="Pearson correlation coefficient — measures linear co-movement. 1 = perfect positive, -1 = perfect negative, 0 = no linear relationship.">Pearson correlation</abbr> between SMGB.L and the equal-weighted US basket.
+                Green dashed line = 0.7 (strong positive correlation). Red dashed line = &minus;0.7.
+            </div>
+        </div>
+
+        {% endif %}
+
+    </div>
+
+    <script>
+    function toggleFullscreen(wrapperId) {
+        const el = document.getElementById(wrapperId);
+        if (!el) return;
+        if (!document.fullscreenElement) {
+            el.requestFullscreen().catch(() => {});
+        } else {
+            document.exitFullscreen();
+        }
+    }
+    </script>
+
+</body>
+</html>

@@ -1281,6 +1281,19 @@ async def trigger_ai_contagion(request: Request, background_tasks: BackgroundTas
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 
+@api_router.get("/smgb-prediction")
+@limiter.limit("10/minute")
+async def get_smgb_prediction(request: Request):
+    """Returns SMGB.L predicted morning open based on US close prices. Prices in GBX (pence)."""
+    try:
+        from smgb_predictor import run_smgb_prediction
+        result = run_smgb_prediction()
+        return JSONResponse(content=result)
+    except Exception as e:
+        logger.error("smgb-prediction failed: %s", e)
+        return JSONResponse(content={"status": "error", "error": str(e), "predicted_price": None})
+
+
 @api_router.get("/ai-prompt/{ticker}")
 async def get_ai_prompt(ticker: str = PathParam(..., pattern=r"^[A-Z0-9.\-\^=]{1,20}$"), mode: str = "Quantamental Deep-Dive"):
     try:

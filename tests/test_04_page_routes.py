@@ -122,6 +122,18 @@ def test_news_page_loads(client):
     _assert_page_ok(client, "/news", label="News Feed")
 
 
+@pytest.mark.pages
+def test_tools_page_loads(client):
+    """GET /tools must load the tools launcher page without a server error."""
+    _assert_page_ok(client, "/tools", label="Tools")
+
+
+@pytest.mark.pages
+def test_uk_etf_forecast_page_loads(client):
+    """GET /uk-etf-forecast must not crash, even when yfinance is unavailable in tests."""
+    _assert_page_ok(client, "/uk-etf-forecast", label="UK ETF Forecast")
+
+
 # ── Stock Detail ──────────────────────────────────────────────────────────────
 
 @pytest.mark.pages
@@ -164,6 +176,8 @@ def test_no_page_route_returns_500(client):
         ("/earnings-volatility","Earnings Volatility"),
         ("/options-sandbox",    "Options Sandbox"),
         ("/news",               "News Feed"),
+        ("/tools",              "Tools"),
+        ("/uk-etf-forecast",    "UK ETF Forecast"),
     ]
     failures = []
     for url, label in pages:

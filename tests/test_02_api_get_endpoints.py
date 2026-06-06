@@ -196,6 +196,7 @@ def test_no_endpoint_returns_500(client):
         "/api/reports/dividends",
         "/api/intraday-monitor/list",
         "/api/intraday-monitor/analysis/AAPL",
+        "/api/smgb-prediction",
     ]
     failures = []
     for url in get_endpoints:
@@ -351,3 +352,17 @@ def test_news_feed_returns_inserted_article(client):
         conn.execute("DELETE FROM news_articles WHERE article_id = 'api-test-article-001'")
         conn.commit()
         conn.close()
+
+
+# ── SMGB.L Predictor ─────────────────────────────────────────────────────────
+
+@pytest.mark.api
+def test_smgb_prediction_returns_200_with_status_key(client):
+    """GET /api/smgb-prediction must return 200 with a 'status' key.
+    yfinance will fail in the test environment, so 'status' may be 'error' —
+    but the endpoint must never return a 500 server crash.
+    """
+    resp = client.get("/api/smgb-prediction")
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
+    data = _json(resp)
+    assert "status" in data, f"Missing 'status' key in smgb-prediction response: {data}"

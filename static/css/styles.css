@@ -715,3 +715,27 @@ details[open].xray-rec-group .xray-rec-group-summary::before { transform: rotate
   .xray-row-2col { grid-template-columns: 1fr; }
   .xray-cards-row .xray-metric-card { min-width: 120px; }
 }
+
+/* ── Tools launcher ──────────────────────────────────────────────────────── */
+.tools-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 24px; margin-top: 24px; }
+.guide-card-link { display: inline-block; margin-top: 14px; color: #00ffcc; font-weight: 600; font-size: 13px; text-decoration: none; }
+.guide-card-link:hover { text-decoration: underline; }
+
+/* ── Tool detail page ────────────────────────────────────────────────────── */
+.btn-back { display: inline-block; margin-bottom: 20px; color: #888; font-size: 13px; text-decoration: none; }
+.btn-back:hover { color: #ccc; }
+.badge-warn { display: inline-block; background: #3a2800; color: #ffaa00; border: 1px solid #ffaa00; border-radius: 4px; padding: 2px 8px; font-size: 11px; font-weight: 600; }
+.badge-source { display: inline-block; background: #1a2a1a; color: #4caf50; border: 1px solid #4caf50; border-radius: 4px; padding: 2px 8px; font-size: 11px; font-weight: 600; }
+.badge-source-fallback { display: inline-block; background: #2a2000; color: #ffaa00; border: 1px solid #ffaa00; border-radius: 4px; padding: 2px 8px; font-size: 11px; font-weight: 600; }
+.contagion-tool-link { margin-top: 12px; padding-top: 10px; border-top: 1px dashed #333; }
+.contagion-tool-caption { font-size: 11px; color: #555; margin-left: 10px; }
+.module-footer-link { color: #bb86fc; font-weight: 600; font-size: 13px; text-decoration: none; }
+.module-footer-link:hover { text-decoration: underline; }
+.prediction-hero { font-size: 2.4rem; font-weight: 700; color: #bb86fc; line-height: 1; }
+.prediction-change-pos { color: #4caf50; font-weight: 700; font-size: 1.1rem; }
+.prediction-change-neg { color: #f44336; font-weight: 700; font-size: 1.1rem; }
+.xray-metric-card--purple { border-top-color: #bb86fc; }
+.xray-metric-value--sm { font-size: 14px; padding-top: 4px; }
+.xray-metric-value--xs { font-size: 13px; }
+.xray-metric-sublabel { margin-top: 6px; }
+.sentiment-module--spaced { margin-top: 24px; }
