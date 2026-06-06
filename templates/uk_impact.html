@@ -59,9 +59,9 @@
                 <div class="xray-metric-label">Model</div>
                 <div class="xray-metric-value xray-metric-value--sm">
                     {% if prediction.data_source == 'holdings' %}
-                    <span class="badge-source">Holdings Weights</span>
-                    {% elif prediction.data_source == 'regression_fallback' %}
-                    <span class="badge-source-fallback">Equal-Weight Fallback</span>
+                    <span class="badge-source">Live Holdings Weights</span>
+                    {% elif prediction.data_source == 'known_weights_fallback' %}
+                    <span class="badge-source">Known ETF Weights</span>
                     {% else %}
                     <span class="badge-source-fallback">Regression Only</span>
                     {% endif %}
@@ -128,7 +128,7 @@
             <strong>How this works:</strong>
             Tracks the actual top-10 <abbr title="SMGB.L is a semiconductor ETF — holdings are MU, AMD, AVGO, ASML, INTC, TSM, NVDA, LRCX, AMAT, TXN.">SMGB.L semiconductor holdings</abbr> (MU, AMD, AVGO, ASML, INTC, TSM, NVDA, LRCX, AMAT, TXN).
             After the LSE closes at 16:30 BST, US markets continue trading for another 4&frac12; hours — the tool uses those live post-close moves as the primary signal.
-            The <strong>Holdings model</strong> computes a weighted sum of each constituent's return and applies a <abbr title="GBP/USD exchange rate adjustment — USD strength vs GBP affects the pound-denominated price of USD-asset holdings.">GBPUSD FX adjustment</abbr>.
+            The <strong>Holdings model</strong> computes a weighted sum of each constituent's return using the <abbr title="Known ETF weights: MU 14.7%, AMD 14.0%, INTC 11.0%, AVGO 10.9%, NVDA 10.7%, TSM 10.0%, ASML 9.5%, LRCX 6.9%, AMAT 6.6%, TXN 5.6% (normalised from VanEck factsheet).">known ETF weights</abbr> (live holdings from yfinance where available), then applies a <abbr title="GBP/USD exchange rate adjustment — USD strength vs GBP affects the pound-denominated price of USD-asset holdings.">GBPUSD FX adjustment</abbr>.
             In parallel, a <strong>60-day <abbr title="Ordinary Least Squares regression — fits a linear model: SMGB morning return = α + β × US basket return.">OLS</abbr> regression</strong> provides a 95% confidence interval.
             All prices are in GBP (£). Prediction is for the next UK trading morning (Monday if today is Friday).
         </p>

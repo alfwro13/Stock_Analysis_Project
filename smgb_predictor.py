@@ -11,11 +11,31 @@ from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
 
-# Correct top-10 SMGB.L semiconductor ETF holdings (US-listed ADRs/shares)
-_SEMIS_TICKERS = ["MU", "AMD", "AVGO", "ASML", "INTC", "TSM", "NVDA", "LRCX", "AMAT", "TXN"]
+# Top-10 SMGB.L semiconductor ETF holdings ordered by weight (US-listed ADRs/shares)
+_SEMIS_TICKERS = ["MU", "AMD", "INTC", "AVGO", "NVDA", "TSM", "ASML", "LRCX", "AMAT", "TXN"]
 _DEFAULT_TICKERS = _SEMIS_TICKERS
 _SMGB = "SMGB.L"
 _FX_TICKER = "GBPUSD=X"
+
+# Known ETF weights (source: VanEck SMGB.L factsheet, top-10 = 79.52% of fund).
+# Normalised to sum to 1.0 so the tracked basket covers 100% of our prediction.
+_KNOWN_WEIGHTS_RAW = {
+    "MU":   11.67,
+    "AMD":  11.10,
+    "INTC":  8.77,
+    "AVGO":  8.67,
+    "NVDA":  8.55,
+    "TSM":   7.98,
+    "ASML":  7.58,
+    "LRCX":  5.48,
+    "AMAT":  5.25,
+    "TXN":   4.47,
+}
+_TOTAL_RAW = sum(_KNOWN_WEIGHTS_RAW.values())
+_KNOWN_HOLDINGS = [
+    {"ticker": t, "weight": round(w / _TOTAL_RAW, 6)}
+    for t, w in _KNOWN_WEIGHTS_RAW.items()
+]
 
 
 def fetch_daily_closes(tickers: list, days: int = 65) -> pd.DataFrame:
@@ -57,9 +77,9 @@ def fetch_smgb_holdings() -> list:
     return result
 
 
-def _equal_weight_holdings(tickers: list) -> list:
-    w = 1.0 / len(tickers)
-    return [{"ticker": t, "weight": w} for t in tickers]
+def _fallback_holdings() -> list:
+    """Known ETF composition used when live holdings fetch fails."""
+    return _KNOWN_HOLDINGS
 
 
 def get_smgb_next_open_date() -> date:
@@ -394,8 +414,8 @@ def run_smgb_prediction() -> dict:
     holdings = fetch_smgb_holdings()
     data_source = "holdings"
     if not holdings:
-        holdings = _equal_weight_holdings(_DEFAULT_TICKERS)
-        data_source = "regression_fallback"
+        holdings = _fallback_holdings()
+        data_source = "known_weights_fallback"
 
     holdings_result = compute_holdings_prediction(df, holdings, fx_rate, smgb_last_close, intraday_returns)
     if holdings_result is None:
