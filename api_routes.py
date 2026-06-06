@@ -1099,6 +1099,7 @@ async def get_system_metrics():
             "XRAY_RISK_CACHE":    "xray_risk_cache_job",
             "AI_CONTAGION":       "ai_contagion_job",
             "CB_NLP_ALERT":       "cb_nlp_alert_job",
+            "NEWS_FEED":          "news_feed_job",
         }
         scheduler_last_runs = {
             cfg_key: job_last_runs.get(job_id, "Never")

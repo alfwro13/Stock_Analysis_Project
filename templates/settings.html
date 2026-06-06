@@ -1385,6 +1385,7 @@
                                     {% if job_cfg.DAYS %}{{ job_cfg.DAYS | join(', ') | upper }}
                                     {% elif job_cfg.FREQUENCY %}{{ job_cfg.FREQUENCY | upper }}
                                     {% elif job_cfg.DAY_OF_WEEK %}{{ job_cfg.DAY_OF_WEEK | upper }}
+                                    {% elif job_cfg.DATA_DAY %}Daily + {{ job_cfg.DATA_DAY | upper }}
                                     {% else %}—{% endif %}
                                 </td>
                                 <td class="font-monospace">
