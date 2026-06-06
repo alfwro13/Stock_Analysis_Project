@@ -1,14 +1,12 @@
 # risk_engine.py
 import logging
-import time
-import random
 import numpy as np
 import pandas as pd
-import yfinance as yf
 from scipy import stats
 from typing import Optional
 
 from database import get_connection
+from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
 
@@ -21,17 +19,14 @@ def calculate_tail_risk(ticker: str, target_date: Optional[str] = None) -> None:
     """
     try:
         # 1. Fetch 2 years (approx 504 trading days) of historical data
-        df = yf.download(ticker, period="2y", interval="1d", progress=False, auto_adjust=True)
-        
+        _result = yahoo_engine.get_price_history([ticker], period="2y", interval="1d")
+        df = _result.get(ticker, pd.DataFrame())
+
         if df.empty or len(df) < 50:
             logger.warning(f"Insufficient historical data to calculate tail risk for {ticker}.")
             return
 
-        # Handle multi-index columns returned by newer yfinance versions
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.get_level_values(0)
-
-        df.dropna(subset=['Close'], inplace=True)
+        df = df.dropna(subset=['Close'])
         
         # 2. Calculate daily logarithmic returns
         # Log returns are strictly preferred for statistical modeling over simple percentage returns

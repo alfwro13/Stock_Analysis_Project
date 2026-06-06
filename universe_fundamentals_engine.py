@@ -5,9 +5,8 @@ import time
 from datetime import datetime
 from typing import Optional
 
-import yfinance as yf
-
 from config import FUNDAMENTALS_DIR
+from yahoo_engine import yahoo_engine
 from database import get_connection, log_notification
 from fundamentals_helpers import calculate_peter_lynch_peg
 
@@ -24,7 +23,7 @@ def _fetch_info(ticker: str) -> dict:
         except Exception:
             logger.warning("Corrupted fundamentals cache for %s, re-fetching", ticker, exc_info=True)
     try:
-        info = yf.Ticker(ticker).info or {}
+        info = yahoo_engine.get_ticker_info(ticker) or {}
         if info.get('quoteType'):
             FUNDAMENTALS_DIR.mkdir(parents=True, exist_ok=True)
             with open(cache_path, 'w') as f:

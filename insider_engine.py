@@ -3,11 +3,11 @@ import logging
 import os
 import json
 import requests
-import yfinance as yf
 import pandas as pd
 from datetime import datetime, timedelta, timezone
 from database import get_connection
 from config import PORTFOLIO_PATH, WATCHLIST_PATH, load_config
+from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
 
@@ -112,17 +112,7 @@ def run_insider_alert():
             # 4. Scrape & Filter
             for ticker in target_tickers:
                 try:
-                    stock = yf.Ticker(ticker)
-
-                    # Robust extraction logic bypassing yfinance property/method changes
-                    insider_df = stock.insider_transactions
-                    if callable(insider_df):
-                        insider_df = insider_df()
-                    elif insider_df is None or (isinstance(insider_df, pd.DataFrame) and insider_df.empty):
-                        try:
-                            insider_df = stock.get_insider_transactions()
-                        except Exception:
-                            logger.warning("get_insider_transactions failed for %s", ticker, exc_info=True)
+                    insider_df = yahoo_engine.get_insider_transactions(ticker)
 
                     if insider_df is None or not isinstance(insider_df, pd.DataFrame) or insider_df.empty:
                         continue

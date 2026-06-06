@@ -11,8 +11,8 @@ from fake_useragent import UserAgent
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional, Tuple
 
-import yfinance as yf
 import plotly.graph_objects as go
+from yahoo_engine import yahoo_engine
 from plotly.subplots import make_subplots
 
 # Critical for headless Linux servers: Use 'Agg' backend so matplotlib doesn't crash
@@ -111,22 +111,17 @@ def fetch_fear_greed_data(start_date_str: str) -> pd.DataFrame:
 
 
 def fetch_stock_data(ticker: str, start_date: str) -> pd.DataFrame:
-    try:
-        stock_df = yf.download(
-            tickers=ticker, start=start_date, progress=False, auto_adjust=True
-        )
-    except Exception as e:
-        logger.warning(f"yf.download failed for {ticker}: {e}")
-        return pd.DataFrame()
+    _result = yahoo_engine.get_price_history([ticker], period="1y", interval="1d")
+    stock_df = _result.get(ticker, pd.DataFrame())
     if stock_df.empty:
         return pd.DataFrame()
-    if isinstance(stock_df.columns, pd.MultiIndex):
-        stock_df.columns = stock_df.columns.get_level_values(0)
-    stock_df.reset_index(inplace=True)
-    stock_df['Date'] = stock_df['Date'].dt.date
-    stock_df.set_index('Date', inplace=True)
+    stock_df = stock_df.reset_index()
+    stock_df['Date'] = pd.to_datetime(stock_df['Date']).dt.date
+    stock_df = stock_df.set_index('Date')
     if 'Close' not in stock_df.columns:
         return pd.DataFrame()
+    cutoff = pd.to_datetime(start_date).date()
+    stock_df = stock_df[stock_df.index >= cutoff]
     return stock_df[['Close']].rename(columns={'Close': f'{ticker}_Close'})
 
 
@@ -203,19 +198,15 @@ def generate_sentiment_figure() -> Optional[go.Figure]:
 
 def get_vix_spy_data() -> Optional[pd.DataFrame]:
     try:
-        tickers = ["SPY", "^VIX"]
-        df = yf.download(
-            tickers, period="1y", interval="1d", group_by='ticker',
-            auto_adjust=True, progress=False
-        )
-        
-        if df.empty or 'SPY' not in df.columns or '^VIX' not in df.columns:
+        ticker_dfs = yahoo_engine.get_price_history(["SPY", "^VIX"], period="1y", interval="1d")
+
+        if "SPY" not in ticker_dfs or "^VIX" not in ticker_dfs:
             logger.error("Failed to fetch SPY or VIX data from Yahoo Finance.")
             return None
 
-        spy_data = df['SPY'].dropna(subset=['Close']).rename(columns={'Close': 'SPY_Close'})
-        vix_data = df['^VIX'].dropna(subset=['Close']).rename(columns={'Close': 'VIX_Close'})
-        
+        spy_data = ticker_dfs["SPY"].dropna(subset=['Close'])[['Close']].rename(columns={'Close': 'SPY_Close'})
+        vix_data = ticker_dfs["^VIX"].dropna(subset=['Close'])[['Close']].rename(columns={'Close': 'VIX_Close'})
+
         if spy_data.empty or vix_data.empty:
             logger.error("Incomplete data received for SPY or VIX.")
             return None
@@ -224,7 +215,7 @@ def get_vix_spy_data() -> Optional[pd.DataFrame]:
             vix_data[['VIX_Close']], left_index=True, right_index=True, how='inner'
         )
         return merged_df
-        
+
     except Exception as e:
         logger.error(f"Fatal error fetching VIX vs SPY data: {e}")
         return None
@@ -265,7 +256,7 @@ def generate_vix_spy_figure() -> Optional[go.Figure]:
         hovermode="x unified",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
-    
+
     fig.update_yaxes(title_text="S&P 500 Price ($)", range=[min_spy, max_spy], secondary_y=False)
     max_vix = max(50, merged_df['VIX_Close'].max() * 1.1)
     fig.update_yaxes(title_text="VIX Level", range=[0, max_vix], secondary_y=True)
@@ -281,12 +272,12 @@ def get_yield_equity_html() -> str:
     _check_and_trigger_async_refresh()
     if _MACRO_HTML_CACHE.get("yield_equity_html"):
         return _MACRO_HTML_CACHE["yield_equity_html"]
-    
+
     today = datetime.now()
     start_date = (today - timedelta(days=365)).strftime('%Y-%m-%d')
     spy_data = fetch_stock_data('SPY', start_date)
     tyx_data = fetch_stock_data('^TYX', start_date)
-    
+
     if spy_data.empty or tyx_data.empty:
         return "<p>Error loading US Cost of Capital data.</p>"
     merged_df = spy_data.merge(tyx_data, left_index=True, right_index=True, how='inner')
@@ -314,15 +305,15 @@ def get_uk_yield_equity_html() -> str:
     _check_and_trigger_async_refresh()
     if _MACRO_HTML_CACHE.get("uk_yield_equity_html"):
         return _MACRO_HTML_CACHE["uk_yield_equity_html"]
-    
+
     today = datetime.now()
     start_date = (today - timedelta(days=365)).strftime('%Y-%m-%d')
     ftse_data = fetch_parquet_data('FTSE_BASELINE.parquet', start_date)
     gilt_data = fetch_parquet_data('UK_GILT_BASELINE.parquet', start_date)
-    
+
     if ftse_data.empty or gilt_data.empty:
         return "<p>Error loading UK Cost of Capital data. Ensure Gilt Data Service has run.</p>"
-        
+
     merged_df = ftse_data.merge(gilt_data, left_index=True, right_index=True, how='inner')
 
     fig = make_subplots(specs=[[{"secondary_y": True}]])
@@ -348,15 +339,15 @@ def get_ftse_gbp_html() -> str:
     _check_and_trigger_async_refresh()
     if _MACRO_HTML_CACHE.get("ftse_gbp_html"):
         return _MACRO_HTML_CACHE["ftse_gbp_html"]
-    
+
     today = datetime.now()
     start_date = (today - timedelta(days=365)).strftime('%Y-%m-%d')
     ftse_data = fetch_parquet_data('FTSE_BASELINE.parquet', start_date)
     gbp_data = fetch_parquet_data('GBPUSD_BASELINE.parquet', start_date)
-    
+
     if ftse_data.empty or gbp_data.empty:
         return "<p>Error loading GBP/USD Data.</p>"
-        
+
     merged_df = ftse_data.merge(gbp_data, left_index=True, right_index=True, how='inner')
 
     fig = make_subplots(specs=[[{"secondary_y": True}]])
@@ -382,7 +373,7 @@ def get_sentiment_html() -> str:
     _check_and_trigger_async_refresh()
     if _MACRO_HTML_CACHE.get("sentiment_html"):
         return _MACRO_HTML_CACHE["sentiment_html"]
-    
+
     fig = generate_sentiment_figure()
     if not fig:
         return "<p>Error loading sentiment data. Please try again later.</p>"
@@ -394,7 +385,7 @@ def get_vix_spy_html() -> str:
     _check_and_trigger_async_refresh()
     if _MACRO_HTML_CACHE.get("vix_spy_html"):
         return _MACRO_HTML_CACHE["vix_spy_html"]
-        
+
     fig = generate_vix_spy_figure()
     if not fig:
         return "<p>Error loading VIX data. Please try again later.</p>"
@@ -408,11 +399,11 @@ def get_vix_spy_html() -> str:
 def _check_and_trigger_async_refresh() -> None:
     """Evaluates the cache baseline age and shifts heavy processing out-of-band to a dedicated thread."""
     global _LAST_CACHE_TIME, _IS_REFRESHING
-    
+
     config_data = load_config()
     refresh_rate: int = config_data.get("UI_PREFERENCES", {}).get("REFRESH_RATE", 60)
     current_time: float = time.time()
-    
+
     if (current_time - _LAST_CACHE_TIME) > refresh_rate:
         with _CACHE_LOCK:
             if not _IS_REFRESHING:
@@ -426,25 +417,25 @@ def _async_chart_cruncher_worker() -> None:
     global _LAST_CACHE_TIME, _IS_REFRESHING
     try:
         logger.info("Background cruncher started compiling Plotly HTML fragments...")
-        
+
         # 1. Re-render Fear and Greed Matrix
         fig_sentiment = generate_sentiment_figure()
         html_sentiment = fig_sentiment.to_html(
             full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False}
         ) if fig_sentiment else ""
-        
+
         # 2. Re-render VIX Volatility Matrix
         fig_vix = generate_vix_spy_figure()
         html_vix = fig_vix.to_html(
             full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False}
         ) if fig_vix else ""
-        
+
         # 3. Re-render US Yield Compression
         today = datetime.now()
         start_date = (today - timedelta(days=365)).strftime('%Y-%m-%d')
         spy_df = fetch_stock_data('SPY', start_date)
         tyx_df = fetch_stock_data('^TYX', start_date)
-        
+
         html_yield_equity = ""
         if not spy_df.empty and not tyx_df.empty:
             m_df = spy_df.merge(tyx_df, left_index=True, right_index=True, how='inner')
@@ -469,7 +460,7 @@ def _async_chart_cruncher_worker() -> None:
         # 4. Re-render UK Yield Compression
         ftse_data = fetch_parquet_data('FTSE_BASELINE.parquet', start_date)
         gilt_data = fetch_parquet_data('UK_GILT_BASELINE.parquet', start_date)
-        
+
         html_uk_yield_equity = ""
         if not ftse_data.empty and not gilt_data.empty:
             m_df_uk = ftse_data.merge(gilt_data, left_index=True, right_index=True, how='inner')
@@ -522,7 +513,7 @@ def _async_chart_cruncher_worker() -> None:
             if html_uk_yield_equity: _MACRO_HTML_CACHE["uk_yield_equity_html"] = html_uk_yield_equity
             if html_ftse_gbp: _MACRO_HTML_CACHE["ftse_gbp_html"] = html_ftse_gbp
             _LAST_CACHE_TIME = time.time()
-            
+
         logger.info("Visual macro caches synchronized successfully.")
     except Exception as ex:
         logger.error(f"Background visual cruncher encountered a processing error: {ex}")
@@ -556,11 +547,11 @@ def run_nextcloud_alert() -> Tuple[bool, str]:
             ax1.plot(merged_df.index, merged_df['SPY_Close'], color=color, label='S&P 500 Price')
             ax1.tick_params(axis='y', labelcolor=color)
             ax1.grid(True)
-            
+
             min_spy = merged_df['SPY_Close'].min() * 0.98
             max_spy = merged_df['SPY_Close'].max() * 1.02
             ax1.set_ylim(min_spy, max_spy)
-            
+
             ax2 = ax1.twinx()
             color = 'tab:red'
             ax2.set_ylabel('Fear & Greed Index (0-100)', color=color)
@@ -568,26 +559,26 @@ def run_nextcloud_alert() -> Tuple[bool, str]:
             ax2.tick_params(axis='y', labelcolor=color)
             ax2.set_ylim(0, 100)
             ax2.set_yticks([0, 25, 50, 75, 100])
-            
+
             sentiment_levels = {0: 'Extreme Fear', 25: 'Fear', 50: 'Neutral', 75: 'Greed', 100: 'Extreme Greed'}
             for y_level, label in sentiment_levels.items():
                 ax2.axhline(y=y_level, color='gray', linestyle=':', alpha=0.4, linewidth=1)
                 ax2.text(merged_df.index[-1], y_level, f'— {label}', color='black', fontsize=9, ha='right', va='center')
-            
+
             plt.title('SPY Price vs. Fear & Greed Index')
             lines_1, labels_1 = ax1.get_legend_handles_labels()
             lines_2, labels_2 = ax2.get_legend_handles_labels()
             ax1.legend(lines_1 + lines_2, labels_1 + labels_2, loc='upper left')
-            
+
             plt.savefig(local_path, dpi=SENTIMENT_CHART_DPI, bbox_inches='tight')
             plt.close(fig)
         except Exception as e:
             return False, f"Matplotlib Render Error: {str(e)}"
-            
+
         upload_success = upload_file_webdav(local_path, remote_path, NEXTCLOUD_URL, BOT_USERNAME, APP_PASSWORD, print)
         if not upload_success:
             return False, "WebDAV Upload Failed. Check credentials or folder path."
-            
+
         report_message = "📊 *Fear & Greed Index overlayed with S&P 500 for comparison*"
         share_success = share_file_to_talk(remote_path, CONVERSATION_TOKEN, NEXTCLOUD_URL, BOT_USERNAME, APP_PASSWORD, print)
         if share_success:
@@ -603,7 +594,7 @@ def run_nextcloud_alert() -> Tuple[bool, str]:
             auth=(BOT_USERNAME, APP_PASSWORD),
             timeout=15
         )
-        
+
         if resp.status_code in [200, 201]:
             if share_success:
                 return True, "Alert successfully generated, uploaded, and shared to Talk."
@@ -625,42 +616,41 @@ def fetch_and_score_news(ticker: str, analyzer: Any) -> float:
     Scores the text utilizing FinBERT NLP and returns the normalized compound average.
     """
     try:
-        stock = yf.Ticker(ticker)
-        news = stock.news
-        
+        news = yahoo_engine.get_news(ticker)
+
         if not news or not isinstance(news, list):
             return 0.0
-            
+
         scores = []
         for item in news[:NLP_NEWS_FETCH_LIMIT]:
             # Defensively un-nest the Yahoo Finance payload
             content = item.get('content', item)
-            
+
             title = content.get('title', '')
             summary = content.get('summary', '')
-            
+
             # Publisher could be under 'publisher', 'provider', or nested inside provider
             publisher = content.get('publisher', '')
             if not publisher and isinstance(content.get('provider'), dict):
                 publisher = content['provider'].get('displayName', '')
-                
+
             text_to_analyze = f"{title}. {summary}. {publisher}"
-            
+
             # Skip if the combined string is entirely empty
             if not text_to_analyze.strip(". "):
                 continue
-                
+
             try:
                 scores.append(_score_text(analyzer, text_to_analyze))
             except Exception as e:
                 logger.debug(f"FinBERT failed to score string for {ticker}: {e}")
                 continue
-            
+
         if not scores:
             return 0.0
-            
+
         return sum(scores) / len(scores)
-        
+
     except Exception as e:
         logger.warning(f"Failed to fetch/score news for {ticker}: {e}")
         return 0.0
@@ -668,7 +658,7 @@ def fetch_and_score_news(ticker: str, analyzer: Any) -> float:
 
 def update_all_sentiment(tickers: List[str]) -> None:
     """
-    Loops through the target list, fetches the FinBERT sentiment score, 
+    Loops through the target list, fetches the FinBERT sentiment score,
     and updates the latest record in the quant_signals database table.
     """
     macro_tickers = ["^GSPC", "^NDX", "^FTSE", "^FTMC", "GBPUSD=X", "DX-Y.NYB"]
@@ -679,13 +669,13 @@ def update_all_sentiment(tickers: List[str]) -> None:
         return
 
     logger.info(f"Initiating FinBERT NLP Sentiment Scan for {len(combined_tickers)} assets.")
-    
+
     # Instantiate or retrieve the cached singleton model
     analyzer = _get_finbert_analyzer()
     if not analyzer:
         logger.error("FinBERT pipeline unavailable. Aborting scan.")
         return
-    
+
     conn = get_connection()
     try:
         cursor = conn.cursor()
@@ -735,7 +725,7 @@ def run_central_bank_nlp_alert(event_name: str, currency: str) -> bool:
     """
     logger.info(f"Intercepting Central Bank Event for NLP Analysis: {event_name}")
     config = load_config()
-    
+
     # 1. Initialize or retrieve the cached FinBERT singleton
     analyzer = _get_finbert_analyzer()
     if not analyzer:
@@ -755,33 +745,32 @@ def run_central_bank_nlp_alert(event_name: str, currency: str) -> bool:
 
     # 3. Fetch latest headlines
     try:
-        stock = yf.Ticker(ticker_proxy)
-        news = stock.news
+        news = yahoo_engine.get_news(ticker_proxy)
         if not news:
             return False
-            
+
         scores = []
         parsed_headlines = []
-        
+
         for item in news[:NLP_CB_NEWS_FETCH_LIMIT]:
             content = item.get('content', item)
             title = content.get('title', '')
             summary = content.get('summary', '')
-            
+
             # Ensure the news is actually talking about the central bank or rates
             text_to_analyze = f"{title}. {summary}"
             if "rate" not in text_to_analyze.lower() and "inflation" not in text_to_analyze.lower() and target_entity.lower() not in text_to_analyze.lower():
                 continue
-                
+
             scores.append(_score_text(analyzer, text_to_analyze))
             parsed_headlines.append(title)
-            
+
         if not scores:
             logger.info("No relevant Central Bank headlines found in the immediate fetch window.")
             return False
-            
+
         avg_score = sum(scores) / len(scores)
-        
+
         # 4. Map General Sentiment to Monetary Policy Tone
         # FinBERT scores "Yields surging" as Negative (- score) because it hurts stocks. Negative = Hawkish.
         # FinBERT scores "Rate cuts" as Positive (+ score) because it helps stocks. Positive = Dovish.
@@ -794,7 +783,7 @@ def run_central_bank_nlp_alert(event_name: str, currency: str) -> bool:
         else:
             tone = "⚖️ NEUTRAL"
             equity_impact = "Market pricing unchanged"
-            
+
         # 5. Dispatch Alert
         msg = (
             f"🏛️ **CENTRAL BANK NLP ANALYSIS** 🏛️\n\n"
@@ -804,19 +793,19 @@ def run_central_bank_nlp_alert(event_name: str, currency: str) -> bool:
             f"**Analyzed FinBERT Score:** {avg_score:+.3f}\n"
             f"*Top Headline Parsed:* {parsed_headlines[0]}"
         )
-        
+
         send_text_message(msg, config)
-        
+
         # Log to DB
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute("INSERT INTO system_notifications (message_type, message_text) VALUES (?, ?)", ("Macro NLP", msg))
         conn.commit()
         conn.close()
-        
+
         logger.info(f"Central Bank NLP successfully dispatched: {tone}")
         return True
-        
+
     except Exception as e:
         logger.error(f"Central Bank NLP analysis failed: {e}")
         return False

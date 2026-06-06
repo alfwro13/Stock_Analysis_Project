@@ -64,6 +64,7 @@ from ai_prediction_engine import train_global_ml_model, update_daily_ml_predicti
 from risk_engine import update_all_tail_risks
 from profile_engine import get_profiler_queue_breakdown, update_single_profile
 from tools.network_engine import GLOBAL_IPV6_STATUS
+from yahoo_engine import yahoo_engine
 # Import curl_cffi for resilient IPv6 socket testing
 from curl_cffi import requests as cffi_requests
 from seed_macro_calendar import seed_calendar
@@ -1133,7 +1134,8 @@ async def get_system_metrics():
                 "macro_ind": macro_ind_cnt, "macro_cal": macro_cal_cnt,
                 "notes_pending": pending_notes, "notes_sent": sent_notes
             },
-            "scheduler_last_runs": scheduler_last_runs
+            "scheduler_last_runs": scheduler_last_runs,
+            "yahoo_cache": yahoo_engine.get_stats(),
         })
     except Exception as e:
         logger.error(f"Failed to fetch system metrics: {e}")

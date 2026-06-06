@@ -4,11 +4,10 @@ from datetime import datetime, timezone
 
 import numpy as np
 import pandas as pd
-import yfinance as yf
 from scipy import stats
 
 import time_engine
-from tools.network_engine import yahoo_connection_boundary
+from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
 
@@ -19,41 +18,20 @@ _FX_TICKER = "GBPUSD=X"
 
 def fetch_daily_closes(tickers: list, days: int = 65) -> pd.DataFrame:
     """Download daily Close prices for all tickers. Returns a wide DataFrame (columns = tickers)."""
-    try:
-        with yahoo_connection_boundary("SMGB Predictor Data Fetch") as session:
-            raw = yf.download(
-                tickers,
-                period=f"{days}d",
-                interval="1d",
-                auto_adjust=True,
-                progress=False,
-                session=session,
-            )
-        if raw.empty:
-            return pd.DataFrame()
-        # Default yf.download: MultiIndex (price_type, ticker) — "Close" is at level 0.
-        # group_by="ticker" would flip this, so we intentionally omit it.
-        if isinstance(raw.columns, pd.MultiIndex):
-            df = raw["Close"]
-        else:
-            df = raw[["Close"]].rename(columns={"Close": tickers[0]})
-        return df.sort_index()
-    except Exception as exc:
-        logger.error("fetch_daily_closes failed: %s", exc)
+    ticker_dfs = yahoo_engine.get_price_history(tickers, period=f"{days}d", interval="1d")
+    if not ticker_dfs:
         return pd.DataFrame()
+    df = pd.DataFrame({t: df["Close"] for t, df in ticker_dfs.items() if "Close" in df.columns})
+    return df.sort_index()
 
 
 def fetch_fx_rate() -> float:
     """Return the most recent GBPUSD spot rate. Falls back to 1.0 on any failure."""
-    try:
-        with yahoo_connection_boundary("SMGB FX Rate") as session:
-            hist = yf.Ticker(_FX_TICKER, session=session).history(period="5d")
-        if hist.empty:
-            raise ValueError("empty FX history")
-        return float(hist["Close"].dropna().iloc[-1])
-    except Exception as exc:
-        logger.warning("fetch_fx_rate failed, using 1.0: %s", exc)
-        return 1.0
+    rate = yahoo_engine.get_fx_rate(_FX_TICKER)
+    if rate is not None:
+        return rate
+    logger.warning("fetch_fx_rate returned None, using 1.0")
+    return 1.0
 
 
 def fetch_smgb_holdings() -> list:
@@ -61,28 +39,20 @@ def fetch_smgb_holdings() -> list:
     Attempt to fetch SMGB.L holdings from yfinance.
     Returns list of {"ticker": str, "weight": float} or [] on any failure.
     """
-    try:
-        with yahoo_connection_boundary("SMGB Holdings Fetch") as session:
-            fund = yf.Ticker(_SMGB, session=session).get_funds_data()
-        if fund is None:
-            return []
-        holdings_df = getattr(fund, "top_holdings", None)
-        if holdings_df is None or (hasattr(holdings_df, "empty") and holdings_df.empty):
-            return []
-        result = []
-        for _, row in holdings_df.iterrows():
-            symbol = str(row.get("Symbol", row.get("symbol", ""))).strip()
-            weight = float(row.get("Holding Percent", row.get("holdingPercent", 0.0)))
-            if symbol and weight > 0:
-                result.append({"ticker": symbol, "weight": weight / 100.0 if weight > 1 else weight})
-        total = sum(h["weight"] for h in result)
-        if total > 0 and result:
-            for h in result:
-                h["weight"] /= total
-        return result
-    except Exception as exc:
-        logger.warning("fetch_smgb_holdings failed: %s", exc)
+    holdings_df = yahoo_engine.get_fund_holdings(_SMGB)
+    if holdings_df is None or holdings_df.empty:
         return []
+    result = []
+    for _, row in holdings_df.iterrows():
+        symbol = str(row.get("Symbol", row.get("symbol", ""))).strip()
+        weight = float(row.get("Holding Percent", row.get("holdingPercent", 0.0)))
+        if symbol and weight > 0:
+            result.append({"ticker": symbol, "weight": weight / 100.0 if weight > 1 else weight})
+    total = sum(h["weight"] for h in result)
+    if total > 0 and result:
+        for h in result:
+            h["weight"] /= total
+    return result
 
 
 def _equal_weight_holdings(tickers: list) -> list:
@@ -165,24 +135,14 @@ def compute_regression_prediction(df: pd.DataFrame, smgb_last_close_gbx: float) 
 
     us_daily_ret = df_us.pct_change().mean(axis=1).dropna()
 
-    try:
-        with yahoo_connection_boundary("SMGB Open Fetch") as session:
-            smgb_raw = yf.download(
-                _SMGB, period="70d", interval="1d", auto_adjust=True, progress=False, session=session
-            )
-    except Exception as exc:
-        logger.warning("compute_regression_prediction open fetch failed: %s", exc)
+    _smgb_result = yahoo_engine.get_price_history([_SMGB], period="70d", interval="1d")
+    smgb_raw = _smgb_result.get(_SMGB)
+    if smgb_raw is None or smgb_raw.empty:
+        logger.warning("compute_regression_prediction: SMGB history unavailable")
         return None
 
-    if smgb_raw.empty:
-        return None
-
-    if isinstance(smgb_raw.columns, pd.MultiIndex):
-        smgb_opens = smgb_raw["Open"].squeeze()
-        smgb_closes_raw = smgb_raw["Close"].squeeze()
-    else:
-        smgb_opens = smgb_raw["Open"]
-        smgb_closes_raw = smgb_raw["Close"]
+    smgb_opens = smgb_raw["Open"]
+    smgb_closes_raw = smgb_raw["Close"]
 
     smgb_opens.index = smgb_opens.index.normalize()
     smgb_closes_raw.index = smgb_closes_raw.index.normalize()
@@ -232,18 +192,17 @@ def run_smgb_prediction() -> dict:
     df = fetch_daily_closes(all_tickers)
 
     if _SMGB not in df.columns or df[_SMGB].dropna().empty:
-        try:
-            with yahoo_connection_boundary("SMGB Direct Fetch") as session:
-                fallback = yf.Ticker(_SMGB, session=session).history(period="65d")
-            if not fallback.empty:
-                close = fallback["Close"].copy()
-                if close.index.tz is not None:
-                    close.index = close.index.tz_localize(None)
-                close.index = close.index.normalize()
-                df.index = df.index.normalize()
-                df[_SMGB] = close.reindex(df.index)
-        except Exception as exc:
-            logger.warning("SMGB direct fallback also failed: %s", exc)
+        _fallback = yahoo_engine.get_price_history([_SMGB], period="65d", interval="1d")
+        fallback_df = _fallback.get(_SMGB)
+        if fallback_df is not None and not fallback_df.empty:
+            close = fallback_df["Close"].copy()
+            if close.index.tz is not None:
+                close.index = close.index.tz_localize(None)
+            close.index = close.index.normalize()
+            df.index = df.index.normalize()
+            df[_SMGB] = close.reindex(df.index)
+        else:
+            logger.warning("SMGB direct fallback also failed.")
 
     if _SMGB not in df.columns or df[_SMGB].dropna().empty:
         return {"status": "error", "error": "SMGB.L price data unavailable", "predicted_price": None}

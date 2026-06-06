@@ -279,27 +279,30 @@ class TestFetchReturns:
 
     def test_multi_ticker_returns_dataframe(self):
         symbols = [T1, T2]
-        with patch("yfinance.download", return_value=self._make_multi_df(symbols)):
+        flat = self._make_flat_df([T1])
+        with patch("xray_engine.yahoo_engine.get_price_history", return_value={T1: flat, T2: flat}):
             result = XRayRiskComputer()._fetch_returns(symbols)
         assert isinstance(result, pd.DataFrame)
         assert set(result.columns) == {T1, T2}
 
     def test_single_ticker_flat_columns_returns_dataframe(self):
-        """Single ticker with flat column layout (no MultiIndex)."""
-        with patch("yfinance.download", return_value=self._make_flat_df([T1])):
+        """Single ticker — yahoo_engine always returns a per-ticker flat DataFrame."""
+        flat = self._make_flat_df([T1])
+        with patch("xray_engine.yahoo_engine.get_price_history", return_value={T1: flat}):
             result = XRayRiskComputer()._fetch_returns([T1])
         assert isinstance(result, pd.DataFrame), "Must return DataFrame, not Series"
         assert T1 in result.columns
 
     def test_single_ticker_multiindex_returns_dataframe(self):
-        """Bug 5: single ticker that yfinance returns with MultiIndex must not crash."""
-        with patch("yfinance.download", return_value=self._make_multi_single(T1)):
+        """yahoo_engine strips MultiIndex internally; callers always get flat DataFrames."""
+        flat = self._make_flat_df([T1])
+        with patch("xray_engine.yahoo_engine.get_price_history", return_value={T1: flat}):
             result = XRayRiskComputer()._fetch_returns([T1])
         assert isinstance(result, pd.DataFrame), "Must return DataFrame, not Series"
         assert T1 in result.columns
 
     def test_empty_on_yfinance_failure(self):
-        with patch("yfinance.download", side_effect=RuntimeError("network")):
+        with patch("xray_engine.yahoo_engine.get_price_history", return_value={}):
             result = XRayRiskComputer()._fetch_returns([T1])
         assert result.empty
 

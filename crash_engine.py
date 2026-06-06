@@ -6,10 +6,10 @@ from typing import Any
 import logging
 
 import pandas as pd
-import yfinance as yf
 import ta
 
 from utils import clamp_beta
+from yahoo_engine import yahoo_engine
 
 # Initialize module-level logger for production observability
 logger = logging.getLogger(__name__)
@@ -42,8 +42,9 @@ class CrashEngine:
     def _fetch_market_context(self) -> float:
         """Fallback: fetches S&P 500 intraday performance using 5m bars, consistent with the system time-base."""
         try:
-            spy = yf.Ticker("SPY").history(period="1d", interval="5m")
-            if len(spy) >= 2:
+            _result = yahoo_engine.get_intraday(["SPY"], period="1d", interval="5m")
+            spy = _result.get("SPY")
+            if spy is not None and len(spy) >= 2:
                 session_open = float(spy['Close'].iloc[0])
                 curr_price = float(spy['Close'].iloc[-1])
                 if session_open > 0:
@@ -91,7 +92,8 @@ class CrashEngine:
         try:
             vol_data = df_hist if df_hist is not None and not df_hist.empty else None
             if vol_data is None:
-                vol_data = yf.Ticker(ticker).history(period="1mo")
+                _result = yahoo_engine.get_price_history([ticker], period="1mo", interval="1d")
+                vol_data = _result.get(ticker)
             if not vol_data.empty and 'Volume' in vol_data.columns:
                 current_vol = vol_data['Volume'].iloc[-1]
                 valid_vol = vol_data['Volume'].dropna()
@@ -123,7 +125,7 @@ class CrashEngine:
         # This is acceptable: _generate_context_report only executes for confirmed crash
         # alerts (not in the main scan loop), so one HTTP call per fired alert is correct.
         try:
-            news = yf.Ticker(ticker).news
+            news = yahoo_engine.get_news(ticker)
             if news:
                 # Parse every item into (pub_time, publisher, headline), drop unparseable ones,
                 # then sort newest-first and slice — fixes the bug where news[:3] could be all

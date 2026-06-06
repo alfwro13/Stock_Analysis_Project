@@ -7,43 +7,46 @@ from typing import List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
-import yfinance as yf
 
-# [DESIGN-04 FIXED] Import centralized notification helper
 from database import get_connection, log_notification
+from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
 
-def get_historical_earnings_move(ticker_obj: yf.Ticker) -> Optional[float]:
+def get_historical_earnings_move(ticker: str) -> Optional[float]:
     """
     Calculates the average absolute percentage gap of the last 4 earnings events.
     Uses yfinance's earnings dates to isolate price action immediately following reports.
     """
     try:
         # Retrieve recent historical earnings calendar dates
-        earnings_dates = ticker_obj.get_earnings_dates(limit=10)
+        earnings_dates = yahoo_engine.get_earnings_dates(ticker, limit=10)
         if earnings_dates is None or earnings_dates.empty:
             return None
-            
+
         # Safely handle timezone matching between the current time and the index
         now = pd.Timestamp.now(tz='UTC')
         if earnings_dates.index.tz is None:
             now = now.tz_localize(None)
-            
+
         # Filter for dates strictly in the past
         past_dates = earnings_dates[earnings_dates.index < now].index
         if len(past_dates) == 0:
             return None
 
+        # Load full 2-year daily history once; slice per earnings date (avoids N live HTTP calls)
+        _full = yahoo_engine.get_price_history([ticker], period="2y", interval="1d")
+        full_hist = _full.get(ticker)
+
         moves = []
         # Analyze up to the last 4 reported quarters
         for e_date in past_dates[:4]:
             try:
-                # Fetch a short window around the earnings date to capture the gap
+                if full_hist is None or full_hist.empty:
+                    break
                 start_date = (e_date - timedelta(days=3)).strftime('%Y-%m-%d')
                 end_date = (e_date + timedelta(days=4)).strftime('%Y-%m-%d')
-                
-                hist = ticker_obj.history(start=start_date, end=end_date)
+                hist = full_hist.loc[start_date:end_date]
                 if len(hist) < 2:
                     continue
                     
@@ -77,27 +80,28 @@ def get_historical_earnings_move(ticker_obj: yf.Ticker) -> Optional[float]:
         
     return None
 
-def get_implied_straddle_move(ticker_obj: yf.Ticker, underlying_price: float, target_date: datetime) -> Tuple[Optional[float], int, Optional[str]]:
+def get_implied_straddle_move(ticker: str, underlying_price: float, target_date: datetime) -> Tuple[Optional[float], int, Optional[str]]:
     """
     Finds the At-The-Money (ATM) Call and Put for the nearest expiration after the target date.
     Calculates the implied move % based on Straddle cost and records the combined options volume.
     Returns: (implied_move_pct, volume, target_expiry_str)
     """
     try:
-        options = ticker_obj.options
+        options = yahoo_engine.get_options_expirations(ticker)
         if not options:
             return None, 0, None
-            
+
         # Find the first expiration date that occurs AFTER the earnings report
         valid_expiries = [opt for opt in options if datetime.strptime(opt, '%Y-%m-%d') >= target_date]
         if not valid_expiries:
             return None, 0, None
-            
+
         target_expiry = valid_expiries[0]
-        chain = ticker_obj.option_chain(target_expiry)
-        
-        calls = chain.calls
-        puts = chain.puts
+        chain_result = yahoo_engine.get_options_chain(ticker, target_expiry)
+        if chain_result is None:
+            return None, 0, None
+
+        calls, puts = chain_result
         
         if calls.empty or puts.empty:
             return None, 0, None
@@ -156,29 +160,28 @@ def run_earnings_vol_scan(ticker_list: List[str]) -> None:
 
         for i, ticker in enumerate(ticker_list):
             try:
-                ticker_obj = yf.Ticker(ticker)
                 earnings_date = None
                 e_date_str = None
-                
+
                 # 1. LIVE VALIDATION: Strictly fetch fresh earnings dates from the API, bypassing stale SQLite values
                 try:
                     # Method 1: Check .info dictionary first (fastest)
-                    info = ticker_obj.info
+                    info = yahoo_engine.get_ticker_info(ticker) or {}
                     earnings_ts = info.get('earningsTimestamp')
                     if earnings_ts:
                         earnings_date = datetime.fromtimestamp(earnings_ts)
-                        
+
                     # Method 2: Validate against get_earnings_dates calendar (most accurate)
-                    live_dates = ticker_obj.get_earnings_dates(limit=5)
+                    live_dates = yahoo_engine.get_earnings_dates(ticker, limit=5)
                     if live_dates is not None and not live_dates.empty:
                         now_tz_naive = pd.Timestamp.now(tz='UTC').tz_localize(None)
                         if live_dates.index.tz is not None:
                             live_dates.index = live_dates.index.tz_convert('UTC').tz_localize(None)
-                            
+
                         future_dates = live_dates.index[live_dates.index >= now_tz_naive]
                         if len(future_dates) > 0:
                             earnings_date = future_dates.min().to_pydatetime()
-                            
+
                     if earnings_date:
                         e_date_str = earnings_date.strftime('%Y-%m-%d')
                 except Exception as e:
@@ -190,28 +193,30 @@ def run_earnings_vol_scan(ticker_list: List[str]) -> None:
                 # Bypass if the validated live date falls outside our strict 14-day actionable window
                 if not (today <= earnings_date <= cutoff_date):
                     continue
-                    
+
                 logger.info(f"Analyzing {ticker} (Live Earnings Date: {e_date_str})...")
-                
+
                 # Fetch 1 month of history to calculate base Historical Volatility
-                hist = ticker_obj.history(period="1mo")
-                
+                _hist_result = yahoo_engine.get_price_history([ticker], period="1mo", interval="1d")
+                hist = _hist_result.get(ticker, pd.DataFrame())
+
                 if hist.empty or len(hist) < 20:
                     logger.warning(f"Insufficient underlying price data available for {ticker}. Skipping.")
                     continue
-                    
+
                 underlying_price = hist['Close'].iloc[-1]
-                
+
                 # Calculate Base Historical Volatility (HV) for isolation math
+                hist = hist.copy()
                 hist['Returns'] = np.log(hist['Close'] / hist['Close'].shift(1))
                 historical_hv = hist['Returns'].std() * np.sqrt(252)
-                
+
                 if pd.isna(historical_hv) or historical_hv == 0:
                     continue
-                
+
                 # 2. Calculate Mathematical Vectors
-                hist_move_pct = get_historical_earnings_move(ticker_obj)
-                implied_move_pct, opt_volume, target_expiry = get_implied_straddle_move(ticker_obj, underlying_price, earnings_date)
+                hist_move_pct = get_historical_earnings_move(ticker)
+                implied_move_pct, opt_volume, target_expiry = get_implied_straddle_move(ticker, underlying_price, earnings_date)
                 
                 if hist_move_pct is None or implied_move_pct is None or target_expiry is None:
                     logger.debug(f"Missing volatility parameters or liquidity for {ticker}. Skipping edge calculation.")

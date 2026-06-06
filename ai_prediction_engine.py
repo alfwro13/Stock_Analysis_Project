@@ -8,7 +8,7 @@ from typing import List, Tuple, Dict, Optional, Any
 import pandas as pd
 import numpy as np
 import joblib
-import yfinance as yf
+from yahoo_engine import yahoo_engine
 from indicators import (
     compute_rsi,
     compute_macd,
@@ -253,13 +253,11 @@ def _download_spy_benchmark(period: str = "2y") -> Optional[pd.DataFrame]:
     Called once before the main ticker loop. Returns None on failure.
     """
     try:
-        spy = yf.download('SPY', period=period, interval='1d',
-                          progress=False, auto_adjust=True)
+        _spy_result = yahoo_engine.get_price_history(["SPY"], period=period, interval="1d")
+        spy = _spy_result.get("SPY", pd.DataFrame())
         if spy.empty:
             logger.warning("SPY download returned empty. Relative strength will be skipped.")
             return None
-        if isinstance(spy.columns, pd.MultiIndex):
-            spy.columns = spy.columns.get_level_values(0)
         spy = spy[['Close']].copy()
         spy['spy_ret_5d']  = spy['Close'].pct_change(5)
         spy['spy_ret_20d'] = spy['Close'].pct_change(20)
@@ -332,7 +330,7 @@ def sync_ticker_metadata(tickers: List[str]) -> None:
     records: List[Tuple[str, str, float, float]] = []
     for ticker in missing_tickers:
         try:
-            info   = yf.Ticker(ticker).info
+            info   = yahoo_engine.get_ticker_info(ticker) or {}
             sector = info.get('sector', 'Unknown')
             beta   = info.get('beta', 1.0)
             mcap   = info.get('marketCap', 0.0)
@@ -400,16 +398,11 @@ def run_historical_backfill(tickers: Optional[List[str]] = None) -> None:
             logger.info(f"[{i+1}/{total_tickers}] Processing 2y historical data for {ticker}...")
 
             try:
-                df = yf.download(
-                    ticker, period="2y", interval="1d",
-                    progress=False, auto_adjust=True
-                )
+                _result = yahoo_engine.get_price_history([ticker], period="2y", interval="1d")
+                df = _result.get(ticker, pd.DataFrame())
 
                 if df.empty:
                     continue
-
-                if isinstance(df.columns, pd.MultiIndex):
-                    df.columns = df.columns.get_level_values(0)
 
                 df.dropna(subset=['Close', 'Volume', 'High', 'Low'], inplace=True)
 

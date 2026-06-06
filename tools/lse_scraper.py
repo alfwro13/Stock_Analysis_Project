@@ -1,13 +1,16 @@
 import os
 import re
 import csv
+import sys
 import time
 import random
 import logging
 import pandas as pd
-import yfinance as yf
 from pathlib import Path
 from typing import Optional
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from yahoo_engine import yahoo_engine
 
 # ---------------------------------------------------------
 # Logging Configuration: Console (INFO) + File (ERROR)
@@ -165,9 +168,8 @@ def enrich_and_save(df: pd.DataFrame, output_filepath: str) -> None:
                 continue
                 
             try:
-                # Query Yahoo Finance
-                yf_ticker = yf.Ticker(ticker)
-                info = yf_ticker.info
+                # Query Yahoo Finance via central engine
+                info = yahoo_engine.get_ticker_info(ticker) or {}
                 
                 # Extract accurately cased name from Yahoo, fallback to LSE if missing
                 yf_name = info.get('shortName') or info.get('longName')

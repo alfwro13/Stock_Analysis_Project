@@ -5,9 +5,9 @@ import requests
 import xml.etree.ElementTree as ET
 import hashlib
 import pandas as pd
-import yfinance as yf
 from typing import Optional, List, Tuple
 from datetime import datetime, timedelta
+from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
 
@@ -199,21 +199,14 @@ def reconcile_past_events() -> None:
 
     # Fetch 7 days of 5m SPY data once to save API hits
     logger.info(f"Fetching SPY intraday data to reconcile {len(events_to_reconcile)} events.")
-    try:
-        spy_df = yf.download("SPY", period="7d", interval="5m", progress=False, auto_adjust=True)
-        if spy_df.empty:
-            logger.error("Failed to fetch SPY data for reconciliation.")
-            conn.close()
-            return
-            
-        if isinstance(spy_df.columns, pd.MultiIndex):
-            spy_df.columns = spy_df.columns.get_level_values(0)
-            
-        spy_df.index = spy_df.index.tz_localize(None)
-    except Exception as e:
-        logger.error(f"YFinance error during reconciliation: {e}")
+    _spy_result = yahoo_engine.get_intraday(["SPY"], period="7d", interval="5m")
+    spy_df = _spy_result.get("SPY")
+    if spy_df is None or spy_df.empty:
+        logger.error("Failed to fetch SPY data for reconciliation.")
         conn.close()
         return
+    if spy_df.index.tz is not None:
+        spy_df.index = spy_df.index.tz_convert(None)
 
     updates = []
     for row in events_to_reconcile:

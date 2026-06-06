@@ -258,13 +258,10 @@ class TestRunInsiderAlertFiltering:
         cfg = self._base_cfg(days_back=7)
         old_df = _insider_df(days_ago=30, action="Purchase", value=200_000)
 
-        mock_ticker = MagicMock()
-        mock_ticker.insider_transactions = old_df
-
         with patch("insider_engine.load_config", return_value=cfg), \
              patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
              patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("yfinance.Ticker", return_value=mock_ticker):
+             patch("insider_engine.yahoo_engine.get_insider_transactions", return_value=old_df):
             ok, msg = run_insider_alert()
 
         assert ok is True
@@ -276,13 +273,10 @@ class TestRunInsiderAlertFiltering:
         cfg = self._base_cfg()
         sale_df = _insider_df(days_ago=1, action="Sale", value=500_000)
 
-        mock_ticker = MagicMock()
-        mock_ticker.insider_transactions = sale_df
-
         with patch("insider_engine.load_config", return_value=cfg), \
              patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
              patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("yfinance.Ticker", return_value=mock_ticker):
+             patch("insider_engine.yahoo_engine.get_insider_transactions", return_value=sale_df):
             ok, msg = run_insider_alert()
 
         rows = _read_all(db_path, "SELECT * FROM system_notifications")
@@ -293,13 +287,10 @@ class TestRunInsiderAlertFiltering:
         cfg = self._base_cfg(min_value=100_000)
         cheap_df = _insider_df(days_ago=1, action="Purchase", value=10_000)
 
-        mock_ticker = MagicMock()
-        mock_ticker.insider_transactions = cheap_df
-
         with patch("insider_engine.load_config", return_value=cfg), \
              patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
              patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("yfinance.Ticker", return_value=mock_ticker):
+             patch("insider_engine.yahoo_engine.get_insider_transactions", return_value=cheap_df):
             ok, msg = run_insider_alert()
 
         rows = _read_all(db_path, "SELECT * FROM system_notifications")
@@ -310,14 +301,11 @@ class TestRunInsiderAlertFiltering:
         cfg = self._base_cfg(min_value=50_000)
         buy_df = _insider_df(days_ago=1, action="Purchase", value=200_000, shares=1000)
 
-        mock_ticker = MagicMock()
-        mock_ticker.insider_transactions = buy_df
-
         with patch("insider_engine.load_config", return_value=cfg), \
              patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
              patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
              patch("insider_engine.send_nextcloud_message", return_value=True), \
-             patch("yfinance.Ticker", return_value=mock_ticker):
+             patch("insider_engine.yahoo_engine.get_insider_transactions", return_value=buy_df):
             ok, msg = run_insider_alert()
 
         assert ok is True
@@ -331,43 +319,36 @@ class TestRunInsiderAlertFiltering:
         cfg = self._base_cfg(min_value=50_000)
         buy_df = _insider_df(days_ago=1, action="Purchase", value=200_000)
 
-        mock_ticker = MagicMock()
-        mock_ticker.insider_transactions = buy_df
-
         with patch("insider_engine.load_config", return_value=cfg), \
              patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
              patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
              patch("insider_engine.send_nextcloud_message", return_value=True), \
-             patch("yfinance.Ticker", return_value=mock_ticker):
+             patch("insider_engine.yahoo_engine.get_insider_transactions", return_value=buy_df):
             ok, msg = run_insider_alert()
 
         assert "1" in msg
 
     def test_empty_insider_df_skips_ticker(self, db_path):
-        """When yfinance returns an empty DataFrame, no alert fires."""
+        """When yahoo_engine returns an empty DataFrame, no alert fires."""
         cfg = self._base_cfg()
-        mock_ticker = MagicMock()
-        mock_ticker.insider_transactions = pd.DataFrame()
 
         with patch("insider_engine.load_config", return_value=cfg), \
              patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
              patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("yfinance.Ticker", return_value=mock_ticker):
+             patch("insider_engine.yahoo_engine.get_insider_transactions", return_value=pd.DataFrame()):
             ok, _ = run_insider_alert()
 
         rows = _read_all(db_path, "SELECT * FROM system_notifications")
         assert len(rows) == 0
 
     def test_none_insider_df_skips_ticker(self, db_path):
-        """When yfinance returns None for insider_transactions, no crash and no alert."""
+        """When yahoo_engine returns None for insider_transactions, no crash and no alert."""
         cfg = self._base_cfg()
-        mock_ticker = MagicMock()
-        mock_ticker.insider_transactions = None
 
         with patch("insider_engine.load_config", return_value=cfg), \
              patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
              patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("yfinance.Ticker", return_value=mock_ticker):
+             patch("insider_engine.yahoo_engine.get_insider_transactions", return_value=None):
             ok, _ = run_insider_alert()
 
         assert ok is True
@@ -380,21 +361,16 @@ class TestRunInsiderAlertFiltering:
         cfg = self._base_cfg(min_value=50_000)
         buy_df = _insider_df(days_ago=1, action="Purchase", value=200_000)
 
-        def ticker_factory(sym):
-            m = MagicMock()
+        def get_transactions_factory(sym):
             if sym == "BADFEED":
-                m.insider_transactions = property(lambda self: (_ for _ in ()).throw(RuntimeError("API down")))
-                # Use side_effect on attribute access via __getattr__
-                type(m).insider_transactions = property(lambda self: (_ for _ in ()).throw(RuntimeError("API down")))
-            else:
-                m.insider_transactions = buy_df
-            return m
+                raise RuntimeError("API down")
+            return buy_df
 
         with patch("insider_engine.load_config", return_value=cfg), \
              patch("insider_engine.get_tickers_from_json", return_value=["BADFEED", "GOOD"]), \
              patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
              patch("insider_engine.send_nextcloud_message", return_value=True), \
-             patch("yfinance.Ticker", side_effect=ticker_factory):
+             patch("insider_engine.yahoo_engine.get_insider_transactions", side_effect=get_transactions_factory):
             ok, _ = run_insider_alert()
 
         assert ok is True
@@ -407,14 +383,11 @@ class TestRunInsiderAlertFiltering:
         cfg = self._base_cfg(min_value=50_000)
         buy_df = _insider_df(days_ago=1, action="Purchase", value=200_000)
 
-        mock_ticker = MagicMock()
-        mock_ticker.insider_transactions = buy_df
-
         with patch("insider_engine.load_config", return_value=cfg), \
              patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
              patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
              patch("insider_engine.send_nextcloud_message", return_value=False), \
-             patch("yfinance.Ticker", return_value=mock_ticker):
+             patch("insider_engine.yahoo_engine.get_insider_transactions", return_value=buy_df):
             ok, msg = run_insider_alert()
 
         # DB notification still written
@@ -443,14 +416,12 @@ class TestRunInsiderAlertQuantamentalAlignment:
         setup.close()
 
         buy_df = _insider_df(days_ago=1, action="Purchase", value=200_000)
-        mock_ticker = MagicMock()
-        mock_ticker.insider_transactions = buy_df
 
         with patch("insider_engine.load_config", return_value=self._base_cfg()), \
              patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
              patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
              patch("insider_engine.send_nextcloud_message", return_value=True), \
-             patch("yfinance.Ticker", return_value=mock_ticker):
+             patch("insider_engine.yahoo_engine.get_insider_transactions", return_value=buy_df):
             run_insider_alert()
 
         rows = _read_all(db_path, "SELECT message_text FROM system_notifications")
@@ -467,14 +438,12 @@ class TestRunInsiderAlertQuantamentalAlignment:
         setup.close()
 
         buy_df = _insider_df(days_ago=1, action="Purchase", value=200_000)
-        mock_ticker = MagicMock()
-        mock_ticker.insider_transactions = buy_df
 
         with patch("insider_engine.load_config", return_value=self._base_cfg()), \
              patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
              patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
              patch("insider_engine.send_nextcloud_message", return_value=True), \
-             patch("yfinance.Ticker", return_value=mock_ticker):
+             patch("insider_engine.yahoo_engine.get_insider_transactions", return_value=buy_df):
             run_insider_alert()
 
         rows = _read_all(db_path, "SELECT message_text FROM system_notifications")
@@ -491,14 +460,12 @@ class TestRunInsiderAlertQuantamentalAlignment:
         setup.close()
 
         buy_df = _insider_df(days_ago=1, action="Purchase", value=200_000)
-        mock_ticker = MagicMock()
-        mock_ticker.insider_transactions = buy_df
 
         with patch("insider_engine.load_config", return_value=self._base_cfg()), \
              patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
              patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
              patch("insider_engine.send_nextcloud_message", return_value=True), \
-             patch("yfinance.Ticker", return_value=mock_ticker):
+             patch("insider_engine.yahoo_engine.get_insider_transactions", return_value=buy_df):
             run_insider_alert()
 
         rows = _read_all(db_path, "SELECT message_text FROM system_notifications")
@@ -518,13 +485,10 @@ class TestRunInsiderAlertConnectionLifecycle:
         mock_conn.cursor.return_value = mock_cursor
         mock_cursor.fetchall.return_value = []
 
-        mock_ticker = MagicMock()
-        mock_ticker.insider_transactions = pd.DataFrame()
-
         with patch("insider_engine.load_config", return_value=cfg), \
              patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
              patch("insider_engine.get_connection", return_value=mock_conn), \
-             patch("yfinance.Ticker", return_value=mock_ticker):
+             patch("insider_engine.yahoo_engine.get_insider_transactions", return_value=pd.DataFrame()):
             run_insider_alert()
 
         mock_conn.close.assert_called_once()
@@ -543,7 +507,7 @@ class TestRunInsiderAlertConnectionLifecycle:
         with patch("insider_engine.load_config", return_value=cfg), \
              patch("insider_engine.get_tickers_from_json", return_value=["BOOM"]), \
              patch("insider_engine.get_connection", return_value=mock_conn), \
-             patch("yfinance.Ticker", side_effect=RuntimeError("yfinance exploded")):
+             patch("insider_engine.yahoo_engine.get_insider_transactions", side_effect=RuntimeError("engine exploded")):
             ok, _ = run_insider_alert()
 
         assert ok is True
@@ -560,14 +524,12 @@ class TestRunInsiderAlertConnectionLifecycle:
         }}}
         # Transaction dated "today" must be included (within 7 days)
         buy_df = _insider_df(days_ago=0, action="Purchase", value=5_000)
-        mock_ticker = MagicMock()
-        mock_ticker.insider_transactions = buy_df
 
         with patch("insider_engine.load_config", return_value=cfg), \
              patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
              patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
              patch("insider_engine.send_nextcloud_message", return_value=True), \
-             patch("yfinance.Ticker", return_value=mock_ticker):
+             patch("insider_engine.yahoo_engine.get_insider_transactions", return_value=buy_df):
             ok, _ = run_insider_alert()
 
         rows = _read_all(db_path, "SELECT * FROM system_notifications")

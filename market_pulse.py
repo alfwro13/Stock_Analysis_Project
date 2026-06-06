@@ -4,12 +4,12 @@ import logging
 import threading
 from typing import List, Dict, Any
 import pandas as pd
-import yfinance as yf
 
 from config import load_config, HISTORICAL_DIR
 from database import get_connection
 from utils import normalize_ticker
 from gilt_engine import GiltDataService
+from yahoo_engine import yahoo_engine
 
 # Configure robust module-level logging
 logger = logging.getLogger(__name__)
@@ -180,15 +180,12 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
             handle_gilt = True
             tickers_to_fetch = [t for t in tickers_to_fetch if t != "UK10YG"]
             
-        df_daily = pd.DataFrame()
-        df_live = pd.DataFrame()
-        
+        daily_dfs: dict = {}
+        live_dfs: dict = {}
+
         if tickers_to_fetch:
-            try:
-                df_daily = yf.download(tickers_to_fetch, period="5d", interval="1d", group_by='ticker', progress=False)
-                df_live = yf.download(tickers_to_fetch, period="2d", interval="2m", prepost=True, group_by='ticker', progress=False)
-            except Exception as e:
-                logger.error(f"YFinance batch download failed: {e}")
+            daily_dfs = yahoo_engine.get_price_history(tickers_to_fetch, period="5d", interval="1d")
+            live_dfs = yahoo_engine.get_intraday(tickers_to_fetch, period="2d", interval="2m", prepost=True)
                 
         conn = get_connection()
         cursor = conn.cursor()
@@ -207,29 +204,13 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
         # 1. Ingest Standard Yahoo Finance Securities
         for ticker in tickers_to_fetch:
             try:
-                t_daily: pd.DataFrame = pd.DataFrame()
-                t_live: pd.DataFrame = pd.DataFrame()
-
-                if not df_daily.empty:
-                    if isinstance(df_daily.columns, pd.MultiIndex):
-                        if ticker in df_daily.columns.get_level_values(0):
-                            t_daily = df_daily[ticker].copy()
-                    else:
-                        if len(tickers_to_fetch) == 1:
-                            t_daily = df_daily.copy()
-
-                if not df_live.empty:
-                    if isinstance(df_live.columns, pd.MultiIndex):
-                        if ticker in df_live.columns.get_level_values(0):
-                            t_live = df_live[ticker].copy()
-                    else:
-                        if len(tickers_to_fetch) == 1:
-                            t_live = df_live.copy()
+                t_daily: pd.DataFrame = daily_dfs.get(ticker, pd.DataFrame())
+                t_live: pd.DataFrame = live_dfs.get(ticker, pd.DataFrame())
 
                 if not t_daily.empty:
-                    t_daily.dropna(subset=['Close'], inplace=True)
+                    t_daily = t_daily.dropna(subset=['Close'])
                 if not t_live.empty:
-                    t_live.dropna(subset=['Close'], inplace=True)
+                    t_live = t_live.dropna(subset=['Close'])
 
                 if t_daily.empty:
                     # No daily data at all — transient outage or genuinely invalid ticker.

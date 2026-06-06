@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import List
 
 import pandas as pd
-import yfinance as yf
+from yahoo_engine import yahoo_engine
 from indicators import (
     compute_rsi,
     compute_macd,
@@ -85,15 +85,12 @@ def run_daily_quant_scan(ticker_list: List[str], scan_type: str = 'daily') -> No
             
             try:
                 # Fetch 2-years of data to guarantee an accurate 200-day SMA baseline
-                df = yf.download(ticker, period="2y", interval="1d", progress=False, auto_adjust=True)
-                
+                _result = yahoo_engine.get_price_history([ticker], period="2y", interval="1d")
+                df = _result.get(ticker, pd.DataFrame())
+
                 if df.empty:
                     logger.warning(f"No OHLCV data returned for {ticker}. Skipping.")
                     continue
-
-                # Handle multi-index columns returned by newer yfinance versions
-                if isinstance(df.columns, pd.MultiIndex):
-                    df.columns = df.columns.get_level_values(0)
 
                 df.dropna(subset=['Close', 'Volume'], inplace=True)
                 

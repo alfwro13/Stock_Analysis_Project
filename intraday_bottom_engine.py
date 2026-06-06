@@ -8,7 +8,7 @@ import time_engine
 
 import numpy as np
 import pandas as pd
-import yfinance as yf
+from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
 
@@ -175,14 +175,11 @@ class IntradayBottomEngine:
 
     def analyze_ticker(self, ticker: str) -> Optional[Dict]:
         try:
-            data = yf.download(ticker, period="1d", interval="1m", progress=False, auto_adjust=True)
+            _result = yahoo_engine.get_intraday([ticker], period="1d", interval="1m")
+            data = _result.get(ticker, pd.DataFrame())
             if data.empty or len(data) < 32:
                 logger.warning("DipRadar: insufficient 1m data for %s (%d bars)", ticker, len(data))
                 return None
-
-            # Flatten MultiIndex columns produced by yfinance ≥0.2
-            if isinstance(data.columns, pd.MultiIndex):
-                data.columns = data.columns.get_level_values(0)
 
             df = data.copy()
             df["VWAP"] = self._calculate_vwap(df)

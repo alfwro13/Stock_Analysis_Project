@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import pandas as pd
-import yfinance as yf
+from yahoo_engine import yahoo_engine
 
 from config import PORTFOLIO_PATH, HISTORICAL_DIR
 from database import get_connection
@@ -115,7 +115,7 @@ def fetch_portfolio_news(
 
     for ticker in tickers:
         try:
-            raw_news = yf.Ticker(ticker).news or []
+            raw_news = yahoo_engine.get_news(ticker) or []
             parsed: list[tuple[datetime, dict]] = []
 
             for item in raw_news:
@@ -262,7 +262,7 @@ def generate_uk_charts(target_date: str) -> dict[str, str]:
 
     # 1. FTSE 100
     try:
-        df = yf.Ticker("^FTSE").history(period="14d", interval="1d")
+        df = yahoo_engine.get_price_history(["^FTSE"], period="14d", interval="1d").get("^FTSE", pd.DataFrame())
         if not df.empty and len(df) >= 3:
             fig, ax = plt.subplots(figsize=(8, 3))
             _style(ax, fig)
@@ -302,7 +302,7 @@ def generate_uk_charts(target_date: str) -> dict[str, str]:
 
     # 3. GBP/USD
     try:
-        df = yf.Ticker("GBPUSD=X").history(period="14d", interval="1d")
+        df = yahoo_engine.get_price_history(["GBPUSD=X"], period="14d", interval="1d").get("GBPUSD=X", pd.DataFrame())
         if not df.empty and len(df) >= 3:
             fig, ax = plt.subplots(figsize=(8, 3))
             _style(ax, fig)

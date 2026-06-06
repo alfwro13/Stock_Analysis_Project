@@ -141,13 +141,13 @@ class TestCalculateTailRiskIntegration:
     _PRICES  = _build_price_series(_RETURNS)
 
     @patch("risk_engine.get_connection")
-    @patch("risk_engine.yf")
+    @patch("risk_engine.yahoo_engine.get_price_history")
     def test_writes_correct_var_cvar(
-        self, mock_yf: MagicMock, mock_get_conn: MagicMock
+        self, mock_get_history: MagicMock, mock_get_conn: MagicMock
     ) -> None:
-        # --- mock yfinance ---
+        # --- mock yahoo_engine ---
         df = pd.DataFrame({"Close": self._PRICES})
-        mock_yf.download.return_value = df
+        mock_get_history.return_value = {"SPY": df}
 
         # --- mock DB connection ---
         mock_cursor = MagicMock()
@@ -178,12 +178,12 @@ class TestCalculateTailRiskIntegration:
         )
 
     @patch("risk_engine.get_connection")
-    @patch("risk_engine.yf")
+    @patch("risk_engine.yahoo_engine.get_price_history")
     def test_empty_dataframe_does_not_write(
-        self, mock_yf: MagicMock, mock_get_conn: MagicMock
+        self, mock_get_history: MagicMock, mock_get_conn: MagicMock
     ) -> None:
-        """If yfinance returns empty data the function should bail without DB write."""
-        mock_yf.download.return_value = pd.DataFrame()
+        """If yahoo_engine returns empty data the function should bail without DB write."""
+        mock_get_history.return_value = {}
         mock_cursor = MagicMock()
         mock_conn = MagicMock()
         mock_conn.cursor.return_value = mock_cursor

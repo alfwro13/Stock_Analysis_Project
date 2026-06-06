@@ -17,9 +17,9 @@ import datetime
 import numpy as np
 import pandas as pd
 import requests
-import yfinance as yf
 import urllib3
 from typing import Dict, List, Optional, Tuple
+from yahoo_engine import yahoo_engine
 from urllib.parse import quote
 
 from config import GHOSTFOLIO_URL, GHOSTFOLIO_TOKEN, PORTFOLIO_PATH, load_config
@@ -327,31 +327,15 @@ class XRayRiskComputer:
     """
 
     def _fetch_returns(self, symbols: List[str]) -> pd.DataFrame:
-        """Downloads 1-year adjusted daily close returns via yfinance."""
+        """Downloads 1-year adjusted daily close returns via yahoo_engine."""
         if not symbols:
             return pd.DataFrame()
-        try:
-            raw = yf.download(
-                symbols, period="1y", auto_adjust=True,
-                progress=False, threads=True,
-            )
-            if raw.empty:
-                return pd.DataFrame()
-            if isinstance(raw.columns, pd.MultiIndex):
-                # raw["Close"] returns a Series when there's only one ticker in some
-                # yfinance versions; wrap in DataFrame to guarantee consistent shape.
-                prices = pd.DataFrame(raw["Close"])
-                if len(prices.columns) == 1 and prices.columns[0] != symbols[0]:
-                    prices = prices.rename(columns={prices.columns[0]: symbols[0]})
-            else:
-                # Single ticker — yfinance returns flat columns
-                prices = raw[["Close"]].rename(columns={"Close": symbols[0]})
-            # Drop cols that are entirely NaN (failed fetches)
-            prices = prices.dropna(axis=1, how="all")
-            return prices.pct_change().dropna(how="all")
-        except Exception as e:
-            logger.error(f"yfinance download failed: {e}")
+        ticker_dfs = yahoo_engine.get_price_history(symbols, period="1y", interval="1d")
+        if not ticker_dfs:
             return pd.DataFrame()
+        prices = pd.DataFrame({t: df["Close"] for t, df in ticker_dfs.items() if "Close" in df.columns})
+        prices = prices.dropna(axis=1, how="all")
+        return prices.pct_change().dropna(how="all")
 
     def _compute_beta(
         self, asset_rets: pd.Series, bench_rets: pd.Series

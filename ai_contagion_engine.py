@@ -6,11 +6,10 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import pandas as pd
-import yfinance as yf
 
 from config import HISTORICAL_DIR
 from time_engine import is_market_open
-from tools.network_engine import yahoo_connection_boundary
+from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
 
@@ -52,13 +51,13 @@ class AIContagionEngine:
         if not is_market_open("NYSE", include_premarket=True):
             return []
 
-        df_basket = self._fetch_basket_data()
-        if df_basket is None or df_basket.empty:
+        ticker_dfs = self._fetch_basket_data()
+        if not ticker_dfs:
             return []
 
         leader_shocks = []
         for ticker in self.bellwethers:
-            hit = self._evaluate_ticker(ticker, df_basket, is_etf=False)
+            hit = self._evaluate_ticker(ticker, ticker_dfs, is_etf=False)
             if hit is not None:
                 leader_shocks.append(hit)
 
@@ -67,7 +66,7 @@ class AIContagionEngine:
 
         etf_hits = []
         for ticker in self.etfs:
-            hit = self._evaluate_ticker(ticker, df_basket, is_etf=True)
+            hit = self._evaluate_ticker(ticker, ticker_dfs, is_etf=True)
             if hit is not None:
                 etf_hits.append(hit)
 
@@ -94,40 +93,25 @@ class AIContagionEngine:
 
     # ── internals ──────────────────────────────────────────────────────────────
 
-    def _fetch_basket_data(self) -> Optional[pd.DataFrame]:
+    def _fetch_basket_data(self) -> Optional[dict]:
         tickers = self.bellwethers + self.etfs
-        try:
-            with yahoo_connection_boundary("AI Contagion Basket") as session:
-                df = yf.download(
-                    tickers,
-                    period="2d",
-                    interval="15m",
-                    group_by="ticker",
-                    auto_adjust=True,
-                    prepost=True,
-                    progress=False,
-                    session=session,
-                )
-            if df is None or df.empty:
-                logger.warning("AIContagionEngine: empty data returned from yfinance.")
-                return None
-            return df
-        except Exception as e:
-            logger.error(f"AIContagionEngine: yfinance fetch failed: {e}")
+        ticker_dfs = yahoo_engine.get_intraday(tickers, period="2d", interval="15m", prepost=True)
+        if not ticker_dfs:
+            logger.warning("AIContagionEngine: empty data returned from yahoo_engine.")
             return None
+        return ticker_dfs
 
-    def _evaluate_ticker(self, ticker: str, df_basket: pd.DataFrame, is_etf: bool) -> Optional[dict]:
+    def _evaluate_ticker(self, ticker: str, ticker_dfs: dict, is_etf: bool) -> Optional[dict]:
         """
-        Slices per-ticker data from the basket download (MultiIndex-aware), calculates
-        drawdown vs the previous day's close, and returns a hit dict if the threshold is
-        breached. Returns None when below threshold or data is insufficient.
+        Extracts per-ticker data from the engine result dict, calculates drawdown vs the
+        previous day's close, and returns a hit dict if the threshold is breached.
+        Returns None when below threshold or data is insufficient.
         """
         try:
-            if not isinstance(df_basket.columns, pd.MultiIndex):
+            df = ticker_dfs.get(ticker)
+            if df is None or df.empty:
                 return None
-            if ticker not in df_basket.columns.get_level_values(0):
-                return None
-            df = df_basket[ticker].copy()
+            df = df.copy()
 
             df = df.dropna(subset=["Close"])
             if len(df) < 2:

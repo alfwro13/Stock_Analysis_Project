@@ -103,13 +103,14 @@ def _flat_live_df(price: float) -> pd.DataFrame:
     )
 
 
-def _make_download_side_effect(daily_df, live_df):
-    """Returns a side_effect function that routes by interval kwarg."""
-    def _side_effect(*args, **kwargs):
-        if kwargs.get("interval") == "2m":
-            return live_df
-        return daily_df
-    return _side_effect
+def _pulse_patches(ticker, daily_df, live_df):
+    """Return a pair of patch context managers for yahoo_engine inside market_pulse."""
+    daily_rv = {ticker: daily_df} if not daily_df.empty else {}
+    live_rv  = {ticker: live_df}  if not live_df.empty  else {}
+    return (
+        patch("market_pulse.yahoo_engine.get_price_history", return_value=daily_rv),
+        patch("market_pulse.yahoo_engine.get_intraday",      return_value=live_rv),
+    )
 
 
 # ── daily-only path (the regression) ─────────────────────────────────────────
@@ -128,9 +129,8 @@ class TestDailyOnlyInstrument:
     def test_writes_cache_entry_from_daily_data(self):
         """Core regression: daily-only ticker must produce a valid cache row."""
         daily = _flat_daily_df([100.0, 102.5])
-        side_effect = _make_download_side_effect(daily, pd.DataFrame())
-
-        with patch("market_pulse.yf.download", side_effect=side_effect):
+        p1, p2 = _pulse_patches(MUTUAL_FUND, daily, pd.DataFrame())
+        with p1, p2:
             _mp.fetch_and_save_pulse([MUTUAL_FUND])
 
         row = _read_cache(MUTUAL_FUND)
@@ -140,9 +140,8 @@ class TestDailyOnlyInstrument:
     def test_change_calculated_from_previous_daily_close(self):
         """Day-over-day change must use daily[-2] as prev_close, not live data."""
         daily = _flat_daily_df([100.0, 103.0])   # +3.0 pts, +3.0%
-        side_effect = _make_download_side_effect(daily, pd.DataFrame())
-
-        with patch("market_pulse.yf.download", side_effect=side_effect):
+        p1, p2 = _pulse_patches(MUTUAL_FUND, daily, pd.DataFrame())
+        with p1, p2:
             _mp.fetch_and_save_pulse([MUTUAL_FUND])
 
         row = _read_cache(MUTUAL_FUND)
@@ -152,9 +151,8 @@ class TestDailyOnlyInstrument:
 
     def test_negative_change_sets_is_positive_false(self):
         daily = _flat_daily_df([105.0, 102.0])   # -3.0 pts
-        side_effect = _make_download_side_effect(daily, pd.DataFrame())
-
-        with patch("market_pulse.yf.download", side_effect=side_effect):
+        p1, p2 = _pulse_patches(MUTUAL_FUND, daily, pd.DataFrame())
+        with p1, p2:
             _mp.fetch_and_save_pulse([MUTUAL_FUND])
 
         row = _read_cache(MUTUAL_FUND)
@@ -164,9 +162,8 @@ class TestDailyOnlyInstrument:
     def test_single_row_daily_has_zero_change(self):
         """Only one day of history: prev_close falls back to current, so change = 0."""
         daily = _flat_daily_df([100.0])
-        side_effect = _make_download_side_effect(daily, pd.DataFrame())
-
-        with patch("market_pulse.yf.download", side_effect=side_effect):
+        p1, p2 = _pulse_patches(MUTUAL_FUND, daily, pd.DataFrame())
+        with p1, p2:
             _mp.fetch_and_save_pulse([MUTUAL_FUND])
 
         row = _read_cache(MUTUAL_FUND)
@@ -178,10 +175,10 @@ class TestDailyOnlyInstrument:
         """The critical invariant: last_updated must NOT be 0 after a successful daily fetch.
         A value of 0 keeps is_stale=True forever and causes an infinite refetch storm."""
         daily = _flat_daily_df([100.0, 102.0])
-        side_effect = _make_download_side_effect(daily, pd.DataFrame())
 
         before = datetime.now().timestamp() - 5
-        with patch("market_pulse.yf.download", side_effect=side_effect):
+        p1, p2 = _pulse_patches(MUTUAL_FUND, daily, pd.DataFrame())
+        with p1, p2:
             _mp.fetch_and_save_pulse([MUTUAL_FUND])
 
         row = _read_cache(MUTUAL_FUND)
@@ -193,10 +190,8 @@ class TestDailyOnlyInstrument:
     def test_does_not_log_error_for_empty_live_data(self):
         """A mutual fund with no 2m ticks must not log an error — it is expected."""
         daily = _flat_daily_df([100.0, 102.0])
-        side_effect = _make_download_side_effect(daily, pd.DataFrame())
-
-        with patch("market_pulse.yf.download", side_effect=side_effect), \
-             patch("market_pulse.logger.error") as mock_err:
+        p1, p2 = _pulse_patches(MUTUAL_FUND, daily, pd.DataFrame())
+        with p1, p2, patch("market_pulse.logger.error") as mock_err:
             _mp.fetch_and_save_pulse([MUTUAL_FUND])
 
         mock_err.assert_not_called()
@@ -211,8 +206,8 @@ class TestEmptyDailyPath:
         _clear_cache(NORMAL_TICKER)
 
     def test_new_ticker_seeds_stale_placeholder(self):
-        side_effect = _make_download_side_effect(pd.DataFrame(), pd.DataFrame())
-        with patch("market_pulse.yf.download", side_effect=side_effect):
+        p1, p2 = _pulse_patches(NORMAL_TICKER, pd.DataFrame(), pd.DataFrame())
+        with p1, p2:
             _mp.fetch_and_save_pulse([NORMAL_TICKER])
 
         row = _read_cache(NORMAL_TICKER)
@@ -224,10 +219,10 @@ class TestEmptyDailyPath:
         """A ticker with a known good price that temporarily returns no data
         should be stamped with current time, not dropped into the storm."""
         _seed_cache(NORMAL_TICKER, price=150.0, last_updated=0)
-        side_effect = _make_download_side_effect(pd.DataFrame(), pd.DataFrame())
 
         before = datetime.now().timestamp() - 5
-        with patch("market_pulse.yf.download", side_effect=side_effect):
+        p1, p2 = _pulse_patches(NORMAL_TICKER, pd.DataFrame(), pd.DataFrame())
+        with p1, p2:
             _mp.fetch_and_save_pulse([NORMAL_TICKER])
 
         row = _read_cache(NORMAL_TICKER)
@@ -238,9 +233,8 @@ class TestEmptyDailyPath:
         """A ticker that was seeded as a placeholder (price=0) and still has no data
         should stay stale so the next poll retries it."""
         _seed_cache(NORMAL_TICKER, price=0.0, last_updated=0)
-        side_effect = _make_download_side_effect(pd.DataFrame(), pd.DataFrame())
-
-        with patch("market_pulse.yf.download", side_effect=side_effect):
+        p1, p2 = _pulse_patches(NORMAL_TICKER, pd.DataFrame(), pd.DataFrame())
+        with p1, p2:
             _mp.fetch_and_save_pulse([NORMAL_TICKER])
 
         row = _read_cache(NORMAL_TICKER)
@@ -258,9 +252,8 @@ class TestNormalIntradayPath:
     def test_normal_ticker_uses_live_price(self):
         daily = _flat_daily_df([100.0, 100.5])
         live = _flat_live_df(101.75)
-        side_effect = _make_download_side_effect(daily, live)
-
-        with patch("market_pulse.yf.download", side_effect=side_effect):
+        p1, p2 = _pulse_patches(NORMAL_TICKER, daily, live)
+        with p1, p2:
             _mp.fetch_and_save_pulse([NORMAL_TICKER])
 
         row = _read_cache(NORMAL_TICKER)
@@ -271,9 +264,8 @@ class TestNormalIntradayPath:
         """Change is live_price - daily[-2] when daily[-1] >= today."""
         daily = _flat_daily_df([98.0, 100.0])
         live = _flat_live_df(101.0)   # change = 101 - 98 = +3.0 vs daily[-2]
-        side_effect = _make_download_side_effect(daily, live)
-
-        with patch("market_pulse.yf.download", side_effect=side_effect):
+        p1, p2 = _pulse_patches(NORMAL_TICKER, daily, live)
+        with p1, p2:
             _mp.fetch_and_save_pulse([NORMAL_TICKER])
 
         row = _read_cache(NORMAL_TICKER)
@@ -283,10 +275,10 @@ class TestNormalIntradayPath:
     def test_normal_ticker_last_updated_is_recent(self):
         daily = _flat_daily_df([100.0, 101.0])
         live = _flat_live_df(101.5)
-        side_effect = _make_download_side_effect(daily, live)
 
         before = datetime.now().timestamp() - 5
-        with patch("market_pulse.yf.download", side_effect=side_effect):
+        p1, p2 = _pulse_patches(NORMAL_TICKER, daily, live)
+        with p1, p2:
             _mp.fetch_and_save_pulse([NORMAL_TICKER])
 
         row = _read_cache(NORMAL_TICKER)

@@ -5,10 +5,10 @@ from typing import Dict, Any, Optional
 
 import numpy as np
 import pandas as pd
-import yfinance as yf
 
 from database import get_connection
 from config import HISTORICAL_DIR
+from yahoo_engine import yahoo_engine
 from constants import REGIME_CRASH_VOL, REGIME_VOLATILE_VOL
 
 logger = logging.getLogger(__name__)
@@ -48,24 +48,16 @@ def calculate_market_regime() -> None:
     
     try:
         # 1. Fetch exactly 1 year of historical market data
-        tickers = ["SPY", "^VIX", "^FTSE"]
-        df = yf.download(tickers, period="1y", interval="1d", group_by='ticker', auto_adjust=True, progress=False)
-        
-        if df.empty:
-            logger.error("Failed to fetch market data from Yahoo Finance: DataFrame is empty.")
-            return
+        ticker_dfs = yahoo_engine.get_price_history(["SPY", "^VIX", "^FTSE"], period="1y", interval="1d")
 
-        # Safely handle yfinance MultiIndex structures
-        available_tickers = df.columns.get_level_values(0).unique() if isinstance(df.columns, pd.MultiIndex) else df.columns
-        
-        if 'SPY' not in available_tickers or '^VIX' not in available_tickers or '^FTSE' not in available_tickers:
+        if not ticker_dfs or not all(t in ticker_dfs for t in ["SPY", "^VIX", "^FTSE"]):
             logger.error("Critical market indices missing from Yahoo Finance response.")
             return
 
         # Extract and clean sub-DataFrames
-        spy_data = df['SPY'].dropna(subset=['Close'])
-        vix_data = df['^VIX'].dropna(subset=['Close'])
-        ftse_data = df['^FTSE'].dropna(subset=['Close'])
+        spy_data = ticker_dfs["SPY"].dropna(subset=['Close'])
+        vix_data = ticker_dfs["^VIX"].dropna(subset=['Close'])
+        ftse_data = ticker_dfs["^FTSE"].dropna(subset=['Close'])
         
         if spy_data.empty or vix_data.empty or ftse_data.empty:
             logger.error("Incomplete data received for core regime tickers.")
@@ -161,10 +153,13 @@ def calculate_systemic_macro_threat() -> None:
     """Calculates yield rate of change in basis points (US & UK) and logs granular systemic compression risk to SQLite."""
     try:
         # Pull 10 days to survive weekends and holidays.
-        tyx = yf.Ticker("^TYX").history(period="10d")
-        tnx = yf.Ticker("^TNX").history(period="10d")
-        dxy = yf.Ticker("DX-Y.NYB").history(period="10d")
-        gbpusd = yf.Ticker("GBPUSD=X").history(period="10d")
+        _macro_dfs = yahoo_engine.get_price_history(
+            ["^TYX", "^TNX", "DX-Y.NYB", "GBPUSD=X"], period="10d", interval="1d"
+        )
+        tyx = _macro_dfs.get("^TYX", pd.DataFrame())
+        tnx = _macro_dfs.get("^TNX", pd.DataFrame())
+        dxy = _macro_dfs.get("DX-Y.NYB", pd.DataFrame())
+        gbpusd = _macro_dfs.get("GBPUSD=X", pd.DataFrame())
         
         if tnx.empty or len(tnx) < 4:
             logger.warning("Insufficient ^TNX data for macro threat evaluation.")

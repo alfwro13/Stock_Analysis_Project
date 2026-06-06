@@ -2,7 +2,6 @@ import time
 import logging
 from typing import List, Tuple
 import pandas as pd
-import yfinance as yf
 from indicators import (
     compute_rsi,
     compute_macd,
@@ -14,6 +13,7 @@ from indicators import (
 
 from database import get_connection
 from data_engine import DataEngine
+from yahoo_engine import yahoo_engine
 
 # Configure robust module-level logging
 logging.basicConfig(
@@ -77,15 +77,12 @@ def process_and_insert() -> None:
             
             try:
                 # 1. Download exactly 2y of daily data
-                df = yf.download(ticker, period="2y", interval="1d", progress=False, auto_adjust=True)
-                
+                _result = yahoo_engine.get_price_history([ticker], period="2y", interval="1d")
+                df = _result.get(ticker, pd.DataFrame())
+
                 if df.empty:
                     logger.warning(f"No data returned for {ticker}. Skipping.")
                     continue
-
-                # Handle multi-index columns returned by newer yfinance versions
-                if isinstance(df.columns, pd.MultiIndex):
-                    df.columns = df.columns.get_level_values(0)
 
                 df.dropna(subset=['Close', 'Volume'], inplace=True)
                 

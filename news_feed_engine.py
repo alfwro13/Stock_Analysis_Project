@@ -4,9 +4,8 @@ import logging
 import time
 from typing import Dict, Optional
 
-import yfinance as yf
-
 from config import load_config, PORTFOLIO_PATH, WATCHLIST_PATH
+from yahoo_engine import yahoo_engine
 from database import get_connection
 
 logger = logging.getLogger(__name__)
@@ -186,11 +185,7 @@ def run_news_feed_job() -> int:
 
     try:
         for ticker, source_list in sorted(ticker_map.items()):
-            try:
-                news_items = yf.Ticker(ticker).news or []
-            except Exception as e:
-                logger.error(f"News Feed: yfinance failed for {ticker}: {e}")
-                continue
+            news_items = yahoo_engine.get_news(ticker) or []
 
             company_name = _get_company_name(ticker)
             inserted_this_ticker = 0

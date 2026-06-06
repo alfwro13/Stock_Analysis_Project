@@ -9,10 +9,10 @@ import logging
 import sqlite3
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
-import yfinance as yf
 import pandas as pd
 from datetime import datetime, timezone
 from config import load_config, PORTFOLIO_PATH, INTRADAY_DIR, HISTORICAL_DIR, PORT, SERVER_URL
+from yahoo_engine import yahoo_engine
 import time_engine
 from utils import normalize_ticker
 from database import get_connection
@@ -409,8 +409,7 @@ class IntradayOrchestrator:
 
         result = False
         try:
-            tk = yf.Ticker(ticker)
-            actions = tk.actions
+            actions = yahoo_engine.get_ticker_actions(ticker)
             if actions is not None and not actions.empty:
                 if actions.index.tz is not None:
                     actions.index = actions.index.tz_localize(None)
@@ -522,12 +521,16 @@ class IntradayOrchestrator:
         download_list = sorted(set(tickers + macro_tickers))
         
         logger.info("Performing bulk YF 5m fetch for %d assets & macro benchmarks.", len(download_list))
-        try:
-            df_bulk = yf.download(download_list, period="1d", interval="5m", group_by='ticker', auto_adjust=True, progress=False)
-        except Exception:
-            logger.error("Bulk download failed.", exc_info=True)
+        ticker_dfs = yahoo_engine.get_intraday(download_list, period="1d", interval="5m")
+        if not ticker_dfs:
+            logger.warning("Bulk intraday download returned no data.")
             return
 
+        # Reconstruct a MultiIndex bulk frame so the rest of the scan loop is unchanged.
+        df_bulk = pd.concat(
+            {t: df for t, df in ticker_dfs.items()},
+            axis=1,
+        )
         if df_bulk.empty:
             logger.warning("Bulk download returned empty DataFrame.")
             return
