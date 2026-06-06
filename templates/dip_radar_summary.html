@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="color-scheme" content="dark">
+    <title>Quantamental - Dip Radar Summary</title>
+    <link rel="stylesheet" href="/static/css/styles.css?v={{ css_version }}">
+</head>
+<body class="body-watchlist">
+
+    <div class="header-container">
+        <div>
+            <div class="title-wrapper">
+                <a href="https://github.com/alfwro13/Stock_Analysis_Project" target="_blank" class="logo-link">
+                    <img src="/assets/logo_small.png" alt="Quantamental Logo" class="logo-img">
+                </a>
+                <h1>🎯 Dip Radar Summary</h1>
+            </div>
+            <p class="page-subtitle">Live <abbr title="Capitulation bottom — a sharp sell-off accompanied by technical exhaustion signals that often precede a short-term reversal.">intraday capitulation detector</abbr> &mdash; all monitored tickers in one view, refreshed every 2 minutes</p>
+            {% set active_page = 'tools' %}
+            {% include 'navbar.html' %}
+        </div>
+    </div>
+
+    <div class="report-container report-container-wide">
+
+        <a href="/tools" class="btn-back">← Back to Tools</a>
+
+        <div class="drs-toolbar">
+            <input type="text" id="drs-ticker-input" class="filter-input drs-ticker-input"
+                   placeholder="e.g. NVDA" maxlength="20"
+                   onkeydown="if(event.key==='Enter') drAddTicker()">
+            <button class="btn btn-update" onclick="drAddTicker()">+ Arm Ticker</button>
+            <span id="drs-add-status" class="drs-add-status"></span>
+            <span class="drs-countdown-label">Next refresh in <span id="drs-countdown" class="drs-countdown">2:00</span></span>
+        </div>
+
+        <div id="drs-grid" class="drs-grid">
+            <p id="drs-empty-msg" class="drs-empty-msg">No tickers armed for today's session. Use the input above to add one, or enable monitoring from a stock's detail page.</p>
+        </div>
+
+    </div>
+
+    <script>
+    (function () {
+        var POLL_MS = 120000;
+        var countdown = POLL_MS / 1000;
+        var countdownTimer = null;
+
+        function startCountdown() {
+            if (countdownTimer) clearInterval(countdownTimer);
+            countdown = POLL_MS / 1000;
+            renderCountdown();
+            countdownTimer = setInterval(function () {
+                countdown = Math.max(0, countdown - 1);
+                renderCountdown();
+                if (countdown === 0) {
+                    fetchSummary();
+                    countdown = POLL_MS / 1000;
+                }
+            }, 1000);
+        }
+
+        function renderCountdown() {
+            var el = document.getElementById('drs-countdown');
+            if (!el) return;
+            var m = Math.floor(countdown / 60);
+            var s = String(countdown % 60).padStart(2, '0');
+            el.textContent = m + ':' + s;
+        }
+
+        function drTile(lbl, val, pts, fired, sub, tooltip) {
+            var bg  = fired ? 'rgba(0,204,102,.1)'            : 'rgba(255,255,255,.04)';
+            var bdr = fired ? '1px solid rgba(0,204,102,.35)' : '1px solid rgba(255,255,255,.1)';
+            var ic  = fired ? '✅' : '❌';
+            var pc  = fired ? '#00cc66' : '#555';
+            var labelHtml = tooltip
+                ? '<abbr title="' + tooltip.replace(/"/g, '&quot;') + '">' + lbl + '</abbr>'
+                : lbl;
+            return '<div style="background:' + bg + ';border:' + bdr + ';border-radius:6px;padding:8px;min-width:0;">' +
+                '<div style="color:#888;font-size:10px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;">' + labelHtml + '</div>' +
+                '<div style="color:#e8e8e8;font-size:12px;font-weight:bold;">' + (val != null ? val : '&mdash;') + '</div>' +
+                '<div style="color:' + pc + ';font-size:11px;">' + ic + ' ' + pts + ' pts</div>' +
+                (sub ? '<div style="color:#666;font-size:10px;">' + sub + '</div>' : '') +
+                '</div>';
+        }
+
+        function drBuildCard(mon) {
+            var score = mon.reversal_score;
+
+            if (score == null) {
+                return '<div style="background:#1e1e1e;border-radius:8px;padding:14px;border-left:4px solid #333;">' +
+                    '<div style="font-size:16px;font-weight:bold;color:#e8e8e8;margin-bottom:8px;">' + mon.ticker + '</div>' +
+                    '<div style="color:#555;font-size:12px;">Waiting for first scan…</div>' +
+                    '<div style="color:#444;font-size:11px;margin-top:4px;">Scans run every 2 min during market hours</div>' +
+                    '<button onclick="drRemoveTicker(\'' + mon.ticker + '\')" style="margin-top:10px;background:none;border:1px solid #333;color:#666;border-radius:4px;padding:3px 8px;font-size:11px;cursor:pointer;">Remove</button>' +
+                '</div>';
+            }
+
+            var clr    = score >= 65 ? '#00cc66' : score >= 40 ? '#ffaa00' : '#ff4d4d';
+            var lbl    = score >= 65 ? '✅ BOTTOMING ZONE' : score >= 40 ? '⚠️ WATCHING' : '— No Signal';
+            var bdrClr = score >= 65 ? '#00cc66' : score >= 40 ? '#ffaa00' : '#2a2a2a';
+
+            var price     = mon.current_price;
+            var rsi       = mon.rsi;
+            var rsiFired  = rsi != null && rsi < 30;
+            var rsiPts    = rsi != null ? (rsi < 25 ? 30 : rsi < 30 ? 15 : 0) : 0;
+            var rsiSub    = rsi != null ? (rsi < 25 ? 'Extreme oversold' : rsi < 30 ? 'Oversold' : 'Neutral') : '';
+            var bbFired   = mon.bb_lower   != null && price < mon.bb_lower;
+            var vwapFired = mon.vwap_lower != null && price < mon.vwap_lower;
+            var volFired  = mon.vol_climax === true;
+
+            var TIP_RSI  = 'RSI-14 on 1-min bars. Below 30 = oversold (+15 pts), below 25 = extreme (+30 pts).';
+            var TIP_BB   = 'Bollinger Band lower (2.5σ). Price below = extreme sell-off. +25 pts.';
+            var TIP_VWAP = 'VWAP minus 2.5σ — institutional fair-value discount zone. +20 pts.';
+            var TIP_VOL  = 'Volume climax: down-candle volume 3+ SD above 20-bar mean. +25 pts.';
+
+            var scanTime = mon.scan_ts ? mon.scan_ts.replace('T', ' ').slice(0, 16) : '—';
+
+            return '<div style="background:#1e1e1e;border-radius:8px;padding:14px;border-left:4px solid ' + bdrClr + ';">' +
+                '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;">' +
+                    '<a href="/stock/' + mon.ticker + '" style="font-size:16px;font-weight:bold;color:#e8e8e8;text-decoration:none;">' + mon.ticker + '</a>' +
+                    '<span style="color:' + clr + ';font-size:18px;font-weight:bold;">' + score + '<span style="font-size:10px;color:#555;"> /100</span></span>' +
+                '</div>' +
+                '<div style="background:#1c1c1c;border-radius:4px;height:5px;overflow:hidden;margin-bottom:4px;">' +
+                    '<div style="background:' + clr + ';width:' + score + '%;height:100%;border-radius:4px;"></div>' +
+                '</div>' +
+                '<div style="text-align:right;font-size:10px;color:' + clr + ';margin-bottom:8px;">' + lbl + '</div>' +
+                '<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:8px;">' +
+                    drTile('RSI 14',     rsi          != null ? rsi.toFixed(1)            : null, rsiPts,       rsiFired,  rsiSub,                    TIP_RSI)  +
+                    drTile('BB Lower',   mon.bb_lower  != null ? mon.bb_lower.toFixed(2)  : null, bbFired   ? 25 : 0, bbFired,   bbFired   ? 'Price < 2.5σ' : '', TIP_BB)   +
+                    drTile('VWAP −2.5σ', mon.vwap_lower != null ? mon.vwap_lower.toFixed(2) : null, vwapFired ? 20 : 0, vwapFired, vwapFired ? 'VWAP dev' : '', TIP_VWAP) +
+                    drTile('Vol Climax', volFired ? 'YES' : (mon.vol_climax != null ? 'No' : null), volFired ? 25 : 0, volFired, volFired ? 'High-vol bar' : '', TIP_VOL) +
+                '</div>' +
+                '<div style="color:#444;font-size:11px;border-top:1px solid #222;padding-top:5px;display:flex;justify-content:space-between;align-items:center;">' +
+                    '<span>Price: <span style="color:#bbb;">' + (price != null ? price.toFixed(2) : '—') + '</span></span>' +
+                    '<button onclick="drRemoveTicker(\'' + mon.ticker + '\')" style="background:none;border:1px solid #333;color:#555;border-radius:4px;padding:2px 6px;font-size:10px;cursor:pointer;">Remove</button>' +
+                '</div>' +
+                '<div style="color:#444;font-size:10px;margin-top:3px;">Scan: ' + scanTime + '</div>' +
+            '</div>';
+        }
+
+        async function fetchSummary() {
+            try {
+                var resp = await fetch('/api/intraday-monitor/summary');
+                if (!resp.ok) return;
+                var data = await resp.json();
+                var monitors = data.monitors || [];
+                var grid = document.getElementById('drs-grid');
+                if (!grid) return;
+
+                if (monitors.length === 0) {
+                    grid.innerHTML = '<p class="drs-empty-msg">No tickers armed for today\'s session. Use the input above to add one, or enable monitoring from a stock\'s detail page.</p>';
+                    return;
+                }
+                grid.innerHTML = monitors.map(drBuildCard).join('');
+            } catch (e) {
+                console.error('DipRadar summary fetch error:', e);
+            }
+        }
+
+        window.drAddTicker = async function () {
+            var input  = document.getElementById('drs-ticker-input');
+            var status = document.getElementById('drs-add-status');
+            var ticker = (input.value || '').trim().toUpperCase();
+            if (!ticker) return;
+            status.textContent = 'Arming…';
+            status.style.color = '#aaa';
+            try {
+                var resp = await fetch('/api/intraday-monitor/add', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ticker: ticker })
+                });
+                if (resp.ok) {
+                    input.value = '';
+                    status.textContent = ticker + ' armed.';
+                    status.style.color = '#00cc66';
+                    await fetchSummary();
+                    countdown = POLL_MS / 1000;
+                } else {
+                    status.textContent = 'Failed to arm.';
+                    status.style.color = '#ff4d4d';
+                }
+            } catch (e) {
+                status.textContent = 'Network error.';
+                status.style.color = '#ff4d4d';
+            }
+            setTimeout(function () { status.textContent = ''; }, 4000);
+        };
+
+        window.drRemoveTicker = async function (ticker) {
+            try {
+                await fetch('/api/intraday-monitor/remove', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ticker: ticker })
+                });
+                await fetchSummary();
+            } catch (e) {
+                console.error('DipRadar remove error:', e);
+            }
+        };
+
+        document.addEventListener('visibilitychange', function () {
+            if (document.visibilityState === 'hidden') {
+                if (countdownTimer) clearInterval(countdownTimer);
+            } else {
+                fetchSummary();
+                startCountdown();
+            }
+        });
+
+        document.addEventListener('DOMContentLoaded', function () {
+            fetchSummary();
+            startCountdown();
+        });
+    })();
+    </script>
+
+</body>
+</html>

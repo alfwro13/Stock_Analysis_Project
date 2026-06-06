@@ -1018,6 +1018,15 @@ async def tools_page(request: Request):
     )
 
 
+@page_router.get("/dip-radar", response_class=HTMLResponse)
+async def dip_radar_page(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="dip_radar_summary.html",
+        context={"unread_count": get_unread_count()},
+    )
+
+
 def _smgb_portfolio_position() -> dict | None:
     """Return SMGB.L portfolio position dict, or None if not held."""
     try:

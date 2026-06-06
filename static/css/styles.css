@@ -721,8 +721,7 @@ details[open].xray-rec-group .xray-rec-group-summary::before { transform: rotate
 .guide-card-link { display: inline-block; margin-top: 14px; color: #00ffcc; font-weight: 600; font-size: 13px; text-decoration: none; }
 .guide-card-link:hover { text-decoration: underline; }
 
-/* ── Dip Radar Summary panel ─────────────────────────────────────────────── */
-details.settings-card.dip-radar-summary { border-left-color: #ffaa00; margin-bottom: 28px; }
+/* ── Dip Radar Summary page ──────────────────────────────────────────────── */
 .drs-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
 .drs-ticker-input { width: 130px; text-transform: uppercase; }
 .drs-add-status { font-size: 12px; color: #aaa; }
