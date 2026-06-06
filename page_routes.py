@@ -1004,8 +1004,9 @@ async def market_reports_page(request: Request):
 
 @page_router.get("/tools", response_class=HTMLResponse)
 async def tools_page(request: Request):
-    lse_open, _ = time_engine.market_window_utc("LSE")
-    lse_open_str = lse_open.strftime("%H:%M UTC")
+    lse_open_utc, _ = time_engine.market_window_utc("LSE")
+    lse_open_dt = datetime.combine(datetime.now(timezone.utc).date(), lse_open_utc, tzinfo=timezone.utc)
+    lse_open_str = time_engine.fmt_time(lse_open_dt)
     return templates.TemplateResponse(
         request=request,
         name="tools.html",
