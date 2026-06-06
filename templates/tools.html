@@ -29,6 +29,13 @@
         <div class="tools-grid">
 
             <div class="guide-card">
+                <h4>🎲 Options Sandbox</h4>
+                <p>Interactive options chain explorer. Fetch live calls and puts for any ticker, visualise the <abbr title="Implied Volatility — the market's expectation of future price movement, derived from option prices.">IV</abbr> smile, and inspect open interest and volume across expiries.</p>
+                <div class="why-use-it">Use to explore option pricing, compare expiries, and spot unusual activity before entering a position.</div>
+                <a href="/options-sandbox" class="guide-card-link">Launch Tool →</a>
+            </div>
+
+            <div class="guide-card">
                 <h4>🇬🇧 SMGB.L Morning Price Predictor</h4>
                 <p>Estimates what SMGB.L (a London-listed semiconductor <abbr title="Exchange-Traded Fund — a basket of securities traded on an exchange like a stock.">ETF</abbr> priced in <abbr title="GBP — British Pounds Sterling. SMGB.L is quoted in whole pounds on the London Stock Exchange.">GBP £</abbr>) will open at the next UK trading morning, based on the US semiconductor basket's evening close. Applies <abbr title="GBP/USD exchange rate adjustment — USD strength vs GBP affects the pound-denominated price of USD-asset holdings.">GBPUSD FX adjustment</abbr> and uses actual ETF holdings weights where available, falling back to a 60-day <abbr title="Ordinary Least Squares regression — fits a linear model: SMGB morning return = α + β × US basket return.">OLS</abbr> regression model.</p>
                 <div class="why-use-it">Use after the US close to gauge SMGB.L's likely opening gap before the LSE opens at {{ lse_open_time }}.</div>
