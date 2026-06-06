@@ -546,17 +546,30 @@ _SMGB_COLORS = {
     "SMGB.L":  "#00ffff",
     "NVDA":    "#f44336",
     "AMD":     "#f44336",
-    "MSFT":    "#ff9800",
-    "META":    "#ff9800",
-    "GOOGL":   "#ff9800",
-    "AAPL":    "#ff9800",
     "AVGO":    "#ff9800",
-    "SMH":     "#bb86fc",
-    "SOXX":    "#bb86fc",
-    "QQQ":     "#bb86fc",
+    "ASML":    "#ff9800",
+    "INTC":    "#ff9800",
+    "TSM":     "#ff9800",
+    "LRCX":    "#ff9800",
+    "AMAT":    "#ff9800",
+    "TXN":     "#ff9800",
+    "MU":      "#ff9800",
     "GBPUSD=X":"#ffff00",
 }
-_SMGB_TICKER_ORDER = ["SMGB.L", "NVDA", "AMD", "MSFT", "META", "GOOGL", "AAPL", "AVGO", "SMH", "SOXX", "QQQ", "GBPUSD=X"]
+_SMGB_TICKER_ORDER = ["SMGB.L", "NVDA", "AMD", "AVGO", "ASML", "INTC", "TSM", "LRCX", "AMAT", "TXN", "MU", "GBPUSD=X"]
+
+_AI_COLORS = {
+    "NVDA":  "#f44336",
+    "AMD":   "#f44336",
+    "AVGO":  "#f44336",
+    "GOOGL": "#4da6ff",
+    "MSFT":  "#4da6ff",
+    "META":  "#4da6ff",
+    "AAPL":  "#4da6ff",
+    "ORCL":  "#00ffcc",
+    "AMZN":  "#00ffcc",
+    "TSLA":  "#ff9800",
+}
 
 
 def create_smgb_correlation_chart(normalized_df: pd.DataFrame, rolling_corr: pd.Series) -> str:
@@ -718,5 +731,188 @@ def create_smgb_contributions_chart(contributions: list) -> str:
         xaxis=dict(title="Contribution (%)", showgrid=True, gridcolor="#333333", zeroline=False),
         yaxis=dict(autorange="reversed"),
         showlegend=False,
+    )
+    return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
+
+
+# ── Time-aligned SMGB.L vs US semis intraday overlay ─────────────────────────
+
+def create_smgb_overlay_chart(
+    smgb_series: "pd.Series",
+    us_series: "dict[str, pd.Series]",
+    smgb_last_close: float,
+    uk_close_utc: "datetime",
+    prediction: dict,
+    next_open_date: "date",
+) -> str:
+    from datetime import date, datetime
+    import time_engine
+
+    user_tz = time_engine.get_user_tz()
+
+    def _to_local(s: "pd.Series") -> "pd.Series":
+        if s.empty:
+            return s
+        idx = pd.DatetimeIndex(s.index)
+        if idx.tz is None:
+            idx = idx.tz_localize("UTC")
+        return s.set_axis(idx.tz_convert(user_tz).tz_localize(None))
+
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+
+    smgb_local = _to_local(smgb_series)
+    if not smgb_local.empty:
+        fig.add_trace(go.Scatter(
+            x=smgb_local.index,
+            y=smgb_local.values,
+            name="SMGB.L",
+            line=dict(color="#00ffff", width=2.5),
+            hovertemplate="SMGB.L: £%{y:.3f}<extra></extra>",
+        ), secondary_y=False)
+
+    anchor_price: dict[str, float] = {}
+    for ticker, series in us_series.items():
+        us_local = _to_local(series)
+        if us_local.empty:
+            continue
+        first_val = float(us_local.iloc[0])
+        if first_val == 0:
+            continue
+        scaled = us_local * (smgb_last_close / first_val) if smgb_last_close > 0 else us_local
+        color = _SMGB_COLORS.get(ticker, "#888888")
+        fig.add_trace(go.Scatter(
+            x=scaled.index,
+            y=scaled.values,
+            name=ticker,
+            line=dict(color=color, width=1.2),
+            opacity=0.75,
+            hovertemplate=f"{ticker}: %{{y:.3f}}<extra></extra>",
+        ), secondary_y=True)
+
+    # Convert UK close time to user local for the vline
+    uk_close_aware = pd.Timestamp(uk_close_utc).tz_localize("UTC").tz_convert(user_tz).tz_localize(None)
+    fig.add_vline(
+        x=str(uk_close_aware),
+        line_dash="dash",
+        line_color="#888888",
+        line_width=1.5,
+        annotation_text="LSE Close",
+        annotation_position="top left",
+        annotation_font_color="#aaaaaa",
+        annotation_font_size=11,
+    )
+
+    # Prediction marker at next trading day 08:00 local
+    pred_price = prediction.get("predicted_price")
+    pred_pct = prediction.get("predicted_change_pct", 0)
+    if pred_price and smgb_last_close > 0:
+        open_utc_time, _ = time_engine.market_window_utc("LSE")
+        pred_dt_utc = pd.Timestamp(datetime.combine(next_open_date, open_utc_time)).tz_localize("UTC")
+        pred_dt_local = pred_dt_utc.tz_convert(user_tz).tz_localize(None)
+        fig.add_trace(go.Scatter(
+            x=[pred_dt_local],
+            y=[pred_price],
+            mode="markers+text",
+            name=f"Predicted: £{pred_price:.2f}",
+            marker=dict(color="#bb86fc", size=18, symbol="star"),
+            text=[f"£{pred_price:.2f} ({pred_pct:+.2f}%)"],
+            textposition="top right",
+            textfont=dict(color="#bb86fc", size=11),
+            hovertemplate=f"Predicted open: £{pred_price:.2f} ({pred_pct:+.2f}%)<extra></extra>",
+        ), secondary_y=False)
+
+    fig.update_layout(
+        title=dict(
+            text="SMGB.L Intraday vs US Semiconductor Constituents — Time-Aligned",
+            x=0.5, xanchor="center", font=dict(size=13),
+        ),
+        template="plotly_dark",
+        height=520,
+        margin=dict(l=20, r=20, t=80, b=20),
+        hovermode="x unified",
+        legend=dict(orientation="h", yanchor="top", y=1.09, xanchor="right", x=1, font=dict(size=10)),
+    )
+    fig.update_yaxes(title_text="SMGB.L (GBP £)", secondary_y=False, showgrid=True, gridcolor="#333333")
+    fig.update_yaxes(title_text="US Semis (scaled to GBP £)", secondary_y=True, showgrid=False)
+    fig.update_xaxes(showgrid=True, gridcolor="#333333")
+    return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
+
+
+# ── AI Sector Contagion Monitor charts ───────────────────────────────────────
+
+def create_ai_contagion_performance_chart(ticker_dfs: dict, period_label: str = "30-Day") -> str:
+    if not ticker_dfs:
+        fig = go.Figure()
+        fig.update_layout(template="plotly_dark", height=480, title=dict(text="AI Sector Performance — No Data", x=0.5))
+        return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
+
+    fig = go.Figure()
+    for ticker, df in ticker_dfs.items():
+        if df is None or df.empty or "Close" not in df.columns:
+            continue
+        series = df["Close"].dropna()
+        if series.empty or float(series.iloc[0]) == 0:
+            continue
+        normalized = series / float(series.iloc[0]) * 100
+        color = _AI_COLORS.get(ticker, "#888888")
+        fig.add_trace(go.Scatter(
+            x=normalized.index,
+            y=normalized.values,
+            name=ticker,
+            line=dict(color=color, width=1.8),
+            hovertemplate=f"{ticker}: %{{y:.1f}}<extra></extra>",
+        ))
+
+    fig.add_hline(y=100, line_dash="dot", line_color="#555555", line_width=1)
+    fig.update_layout(
+        title=dict(text=f"AI Ecosystem — {period_label} Normalised Performance (Base = 100)", x=0.5, xanchor="center"),
+        template="plotly_dark",
+        height=480,
+        margin=dict(l=20, r=20, t=70, b=20),
+        hovermode="x unified",
+        legend=dict(orientation="h", yanchor="top", y=1.10, xanchor="right", x=1, font=dict(size=10)),
+    )
+    fig.update_yaxes(title_text="Indexed (100 = start)", showgrid=True, gridcolor="#333333")
+    return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
+
+
+def create_ai_contagion_correlation_heatmap(ticker_dfs: dict, window: int = 20) -> str:
+    import numpy as np
+    returns = {}
+    for ticker, df in ticker_dfs.items():
+        if df is None or df.empty or "Close" not in df.columns:
+            continue
+        r = df["Close"].dropna().pct_change().dropna()
+        if not r.empty:
+            returns[ticker] = r
+
+    if len(returns) < 2:
+        fig = go.Figure()
+        fig.update_layout(template="plotly_dark", height=500, title=dict(text="AI Correlation — Insufficient Data", x=0.5))
+        return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
+
+    ret_df = pd.DataFrame(returns).dropna()
+    corr = ret_df.tail(window).corr()
+    tickers = corr.columns.tolist()
+    z = corr.values
+    text = [[f"{v:.2f}" for v in row] for row in z]
+
+    fig = go.Figure(go.Heatmap(
+        z=z,
+        x=tickers,
+        y=tickers,
+        text=text,
+        texttemplate="%{text}",
+        colorscale="RdBu_r",
+        zmin=-1,
+        zmax=1,
+        hoverongaps=False,
+        hovertemplate="%{y} / %{x}: %{z:.3f}<extra></extra>",
+    ))
+    fig.update_layout(
+        title=dict(text=f"AI Sector Pairwise Correlation (trailing {window} days)", x=0.5, xanchor="center"),
+        template="plotly_dark",
+        height=500,
+        margin=dict(l=20, r=20, t=70, b=20),
     )
     return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})

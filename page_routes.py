@@ -48,6 +48,9 @@ from visuals import (
     create_smgb_correlation_chart,
     create_smgb_prediction_chart,
     create_smgb_contributions_chart,
+    create_smgb_overlay_chart,
+    create_ai_contagion_performance_chart,
+    create_ai_contagion_correlation_heatmap,
 )
 from portfolio_service import get_rate_to_base, get_rate_from_base
 from quant_signals import get_candlestick_patterns
@@ -1017,15 +1020,17 @@ async def tools_page(request: Request):
 
 @page_router.get("/uk-etf-forecast", response_class=HTMLResponse)
 async def uk_etf_forecast_page(request: Request):
-    from smgb_predictor import run_smgb_prediction, get_correlation_data
+    from smgb_predictor import run_smgb_prediction, get_correlation_data, get_intraday_overlay_data
     error_html = "<p class='error-text'>Data unavailable — please try again later.</p>"
     try:
         prediction = run_smgb_prediction()
         corr_data = get_correlation_data(days=60)
+        overlay_data = get_intraday_overlay_data()
 
         correlation_chart_html = error_html
         prediction_chart_html = error_html
         contributions_chart_html = ""
+        overlay_chart_html = error_html
 
         if not corr_data["normalized_df"].empty:
             correlation_chart_html = create_smgb_correlation_chart(
@@ -1044,12 +1049,22 @@ async def uk_etf_forecast_page(request: Request):
                 contributions = prediction["holdings_engine"]["contributions"]
             if contributions:
                 contributions_chart_html = create_smgb_contributions_chart(contributions)
+
+        overlay_chart_html = create_smgb_overlay_chart(
+            overlay_data["smgb_intraday"],
+            overlay_data["us_intraday"],
+            overlay_data["smgb_last_close"],
+            overlay_data["uk_close_utc"],
+            overlay_data["prediction"],
+            overlay_data["next_open_date"],
+        )
     except Exception as exc:
         logger.error("uk_etf_forecast_page failed: %s", exc)
         prediction = {"status": "error", "error": str(exc), "predicted_price": None}
         correlation_chart_html = error_html
         prediction_chart_html = error_html
         contributions_chart_html = ""
+        overlay_chart_html = error_html
 
     return templates.TemplateResponse(
         request=request,
@@ -1059,6 +1074,37 @@ async def uk_etf_forecast_page(request: Request):
             "correlation_chart_html": correlation_chart_html,
             "prediction_chart_html": prediction_chart_html,
             "contributions_chart_html": contributions_chart_html,
+            "overlay_chart_html": overlay_chart_html,
+            "unread_count": get_unread_count(),
+        },
+    )
+
+
+@page_router.get("/ai-contagion", response_class=HTMLResponse)
+async def ai_contagion_page(request: Request):
+    from smgb_predictor import get_ai_contagion_data
+    error_html = "<p class='error-text'>Data unavailable — please try again later.</p>"
+    try:
+        data = get_ai_contagion_data(days=30)
+        daily_dfs = data["daily_dfs"]
+        intraday_dfs = data["intraday_dfs"]
+
+        perf_daily_html = create_ai_contagion_performance_chart(daily_dfs, period_label="30-Day")
+        perf_intraday_html = create_ai_contagion_performance_chart(intraday_dfs, period_label="Intraday") if intraday_dfs else ""
+        corr_html = create_ai_contagion_correlation_heatmap(daily_dfs, window=20)
+    except Exception as exc:
+        logger.error("ai_contagion_page failed: %s", exc)
+        perf_daily_html = error_html
+        perf_intraday_html = ""
+        corr_html = error_html
+
+    return templates.TemplateResponse(
+        request=request,
+        name="ai_contagion.html",
+        context={
+            "perf_daily_html": perf_daily_html,
+            "perf_intraday_html": perf_intraday_html,
+            "corr_html": corr_html,
             "unread_count": get_unread_count(),
         },
     )

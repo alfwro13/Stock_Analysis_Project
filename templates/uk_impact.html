@@ -87,14 +87,49 @@
             </div>
         </div>
 
+        {# ── Signal source badge ── #}
+        {% if prediction.signal_source %}
+        <p class="risk-summary-text">
+            <strong>Signal source:</strong>
+            {% if prediction.signal_source == 'intraday_post_close' %}
+            <span class="badge-source">Post-LSE-close US intraday</span> &mdash; using live US semiconductor prices from after 16:30 BST.
+            {% elif prediction.signal_source == 'intraday_premarket' %}
+            <span class="badge-source-fallback">US pre-market</span> &mdash; using US pre-market prices (LSE not yet open).
+            {% else %}
+            <span class="badge-source-fallback">Prior daily closes</span> &mdash; live intraday data unavailable.
+            {% endif %}
+            {% if prediction.next_open_date %}
+            Predicting for <strong>{{ prediction.next_open_date }}</strong>.
+            {% endif %}
+        </p>
+        {% endif %}
+
         {# ── Methodology note ── #}
         <p class="risk-summary-text">
             <strong>How this works:</strong>
-            The <strong>Holdings model</strong> fetches SMGB.L's top constituent holdings from yfinance, computes a weighted sum of each US stock's latest daily return, then applies a GBP/USD FX adjustment.
-            If holdings data is unavailable, it falls back to an <strong>equal-weight basket</strong> of the AI contagion engine's default tickers (NVDA, AMD, MSFT, META, GOOGL, AAPL, AVGO, SMH, SOXX, QQQ).
-            In parallel, a <strong>60-day <abbr title="Ordinary Least Squares regression — fits a linear model: SMGB morning return = α + β × US basket return.">OLS</abbr> regression</strong> models the historical relationship between the US basket's daily return and SMGB.L's next-morning open return, providing a confidence interval.
-            All prices are in GBP (£).
+            Tracks the actual top-10 <abbr title="SMGB.L is a semiconductor ETF — holdings are MU, AMD, AVGO, ASML, INTC, TSM, NVDA, LRCX, AMAT, TXN.">SMGB.L semiconductor holdings</abbr> (MU, AMD, AVGO, ASML, INTC, TSM, NVDA, LRCX, AMAT, TXN).
+            After the LSE closes at 16:30 BST, US markets continue trading for another 4&frac12; hours — the tool uses those live post-close moves as the primary signal.
+            The <strong>Holdings model</strong> computes a weighted sum of each constituent's return and applies a <abbr title="GBP/USD exchange rate adjustment — USD strength vs GBP affects the pound-denominated price of USD-asset holdings.">GBPUSD FX adjustment</abbr>.
+            In parallel, a <strong>60-day <abbr title="Ordinary Least Squares regression — fits a linear model: SMGB morning return = α + β × US basket return.">OLS</abbr> regression</strong> provides a 95% confidence interval.
+            All prices are in GBP (£). Prediction is for the next UK trading morning (Monday if today is Friday).
         </p>
+
+        {# ── Time-aligned intraday overlay chart ── #}
+        <div class="sentiment-module module-cyan sentiment-module--spaced">
+            <div class="chart-wrapper">
+                <button class="fullscreen-btn" onclick="toggleFullscreen('smgb-overlay-wrapper')">⛶ Fullscreen</button>
+                <div id="smgb-overlay-wrapper">
+                    {{ overlay_chart_html | safe }}
+                </div>
+            </div>
+            <div class="sentiment-footer">
+                <strong>Reading this chart:</strong>
+                Cyan line = SMGB.L intraday today (08:00–16:30 BST, left axis in £).
+                Orange/red lines = the 10 US semiconductor constituents from NYSE open (14:30 BST) onward, <abbr title="Each US ticker is scaled so its value at the start of the chart equals SMGB.L's last close — this lets you see how much each constituent moved relative to that reference point.">scaled to SMGB.L's last close</abbr> so they start from the same level.
+                Dashed vertical line = LSE close (16:30 BST). Purple star = predicted next-morning SMGB.L open (positioned at 08:00 BST on the next trading day).
+                {% if prediction.signal_source == 'intraday_post_close' %}The prediction uses the US moves visible in the shaded post-close window.{% endif %}
+            </div>
+        </div>
 
         {# ── Prediction chart ── #}
         <div class="sentiment-module module-purple sentiment-module--spaced">
@@ -140,8 +175,8 @@
             </div>
             <div class="sentiment-footer">
                 <strong>Reading this chart:</strong> Top panel shows all series normalised to 100 at the start of the window &mdash; compare relative performance.
-                SMGB.L is cyan; US semiconductor leaders are red/orange; ETFs are purple; GBPUSD is yellow.
-                Bottom panel shows the rolling 30-day <abbr title="Pearson correlation coefficient — measures linear co-movement. 1 = perfect positive, -1 = perfect negative, 0 = no linear relationship.">Pearson correlation</abbr> between SMGB.L and the equal-weighted US basket.
+                SMGB.L is cyan; NVDA/AMD are red; remaining semiconductor constituents (AVGO, ASML, INTC, TSM, LRCX, AMAT, TXN, MU) are orange; GBPUSD is yellow.
+                Bottom panel shows the rolling 30-day <abbr title="Pearson correlation coefficient — measures linear co-movement. 1 = perfect positive, -1 = perfect negative, 0 = no linear relationship.">Pearson correlation</abbr> between SMGB.L and the equal-weighted semiconductor basket.
                 Green dashed line = 0.7 (strong positive correlation). Red dashed line = &minus;0.7.
             </div>
         </div>

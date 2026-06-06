@@ -1,6 +1,6 @@
 # smgb_predictor.py
 import logging
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import numpy as np
 import pandas as pd
@@ -11,7 +11,9 @@ from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_TICKERS = ["NVDA", "AMD", "MSFT", "META", "GOOGL", "AAPL", "AVGO", "SMH", "SOXX", "QQQ"]
+# Correct top-10 SMGB.L semiconductor ETF holdings (US-listed ADRs/shares)
+_SEMIS_TICKERS = ["MU", "AMD", "AVGO", "ASML", "INTC", "TSM", "NVDA", "LRCX", "AMAT", "TXN"]
+_DEFAULT_TICKERS = _SEMIS_TICKERS
 _SMGB = "SMGB.L"
 _FX_TICKER = "GBPUSD=X"
 
@@ -58,6 +60,136 @@ def fetch_smgb_holdings() -> list:
 def _equal_weight_holdings(tickers: list) -> list:
     w = 1.0 / len(tickers)
     return [{"ticker": t, "weight": w} for t in tickers]
+
+
+def get_smgb_next_open_date() -> date:
+    """Returns next SMGB.L trading day: Monday if today is Friday/Saturday, else tomorrow."""
+    today = date.today()
+    if today.weekday() == 4:   # Friday
+        return today + timedelta(days=3)
+    if today.weekday() == 5:   # Saturday
+        return today + timedelta(days=2)
+    return today + timedelta(days=1)
+
+
+def fetch_intraday_data(period: str = "2d") -> dict[str, pd.DataFrame]:
+    """
+    Fetch 5-min bars (with pre/post-market) for SMGB.L + all 10 semiconductor tickers + FX.
+    period="2d" covers yesterday's post-market and today's pre-market.
+    Returned DataFrames have a naive UTC DatetimeIndex (timezone stripped by yahoo_engine).
+    """
+    all_tickers = [_SMGB] + _SEMIS_TICKERS + [_FX_TICKER]
+    return yahoo_engine.get_intraday(all_tickers, period=period, interval="5m", prepost=True)
+
+
+def _lse_close_utc_dt(ref_date: date | None = None) -> datetime:
+    """Naive UTC datetime for LSE close on ref_date (today if None), honoring DST."""
+    _, close_utc_time = time_engine.market_window_utc("LSE")
+    return datetime.combine(ref_date or date.today(), close_utc_time)
+
+
+def _lse_open_utc_dt(ref_date: date | None = None) -> datetime:
+    """Naive UTC datetime for LSE open on ref_date, honoring DST."""
+    open_utc_time, _ = time_engine.market_window_utc("LSE")
+    return datetime.combine(ref_date or date.today(), open_utc_time)
+
+
+def filter_post_uk_close(df: pd.DataFrame, ref_date: date | None = None) -> pd.DataFrame:
+    """Filter intraday DataFrame (naive UTC index) to bars at or after LSE close."""
+    if df.empty:
+        return df
+    return df[df.index >= _lse_close_utc_dt(ref_date)]
+
+
+def filter_pre_uk_open(df: pd.DataFrame, ref_date: date | None = None) -> pd.DataFrame:
+    """Filter intraday DataFrame to US pre-market bars before today's LSE open."""
+    if df.empty:
+        return df
+    lse_open = _lse_open_utc_dt(ref_date)
+    ref = ref_date or date.today()
+    nyse_premarket_open, _ = time_engine.market_window_utc("NYSE", include_premarket=True)
+    premarket_start = datetime.combine(ref, nyse_premarket_open)
+    return df[(df.index >= premarket_start) & (df.index < lse_open)]
+
+
+def _latest_prices_from_intraday(
+    intraday: dict[str, pd.DataFrame],
+) -> tuple[dict[str, float], str]:
+    """
+    Extract the most recent Close for each US ticker from post-UK-close data.
+    Falls back to pre-market if no post-close bars exist.
+    Returns (prices_dict, signal_source).
+    """
+    prices: dict[str, float] = {}
+    found_post = False
+
+    for ticker in _SEMIS_TICKERS:
+        df = intraday.get(ticker)
+        if df is None or df.empty or "Close" not in df.columns:
+            continue
+        post = filter_post_uk_close(df)
+        if not post.empty:
+            val = post["Close"].dropna()
+            if not val.empty:
+                prices[ticker] = float(val.iloc[-1])
+                found_post = True
+                continue
+        pre = filter_pre_uk_open(df)
+        if not pre.empty:
+            val = pre["Close"].dropna()
+            if not val.empty:
+                prices[ticker] = float(val.iloc[-1])
+
+    signal_source = "intraday_post_close" if found_post else (
+        "intraday_premarket" if prices else "daily_close"
+    )
+    return prices, signal_source
+
+
+def get_intraday_overlay_data() -> dict:
+    """
+    Assemble data for the time-aligned intraday overlay chart.
+    Returns:
+      smgb_intraday  — pd.Series of SMGB.L Close prices today (08:00–16:30 BST, naive UTC index)
+      us_intraday    — dict[ticker, pd.Series] of US semi Close prices from NYSE open onward
+      uk_close_utc   — naive UTC datetime of LSE close today
+      smgb_last_close — float
+      prediction     — dict from run_smgb_prediction()
+      next_open_date — date
+    """
+    today = date.today()
+    lse_open_utc = _lse_open_utc_dt(today)
+    uk_close_utc = _lse_close_utc_dt(today)
+    nyse_open_utc_time, _ = time_engine.market_window_utc("NYSE")
+    nyse_open_utc = datetime.combine(today, nyse_open_utc_time)
+
+    intraday = fetch_intraday_data(period="2d")
+
+    smgb_series = pd.Series(dtype=float)
+    smgb_df = intraday.get(_SMGB)
+    if smgb_df is not None and not smgb_df.empty and "Close" in smgb_df.columns:
+        mask = (smgb_df.index >= lse_open_utc) & (smgb_df.index <= uk_close_utc)
+        smgb_series = smgb_df.loc[mask, "Close"].dropna()
+
+    us_intraday: dict[str, pd.Series] = {}
+    for ticker in _SEMIS_TICKERS:
+        df = intraday.get(ticker)
+        if df is None or df.empty or "Close" not in df.columns:
+            continue
+        bars = df[df.index >= nyse_open_utc]["Close"].dropna()
+        if not bars.empty:
+            us_intraday[ticker] = bars
+
+    smgb_last_close = float(smgb_series.iloc[-1]) if not smgb_series.empty else 0.0
+
+    return {
+        "smgb_intraday": smgb_series,
+        "us_intraday": us_intraday,
+        "uk_close_utc": uk_close_utc,
+        "smgb_last_close": smgb_last_close,
+        "prediction": run_smgb_prediction(),
+        "next_open_date": get_smgb_next_open_date(),
+    }
 
 
 def compute_holdings_prediction(
@@ -131,8 +263,6 @@ def compute_regression_prediction(df: pd.DataFrame, smgb_last_close_gbx: float) 
         return None
 
     df_us = df[us_tickers].dropna(how="all")
-    df_smgb = df[_SMGB].dropna()
-
     us_daily_ret = df_us.pct_change().mean(axis=1).dropna()
 
     _smgb_result = yahoo_engine.get_price_history([_SMGB], period="70d", interval="1d")
@@ -186,7 +316,8 @@ def compute_regression_prediction(df: pd.DataFrame, smgb_last_close_gbx: float) 
 def run_smgb_prediction() -> dict:
     """
     Orchestrates holdings + regression engines and returns a unified prediction dict.
-    All prices in GBX (pence). Returns {"status": "error", ...} on total failure.
+    Signal priority: post-UK-close intraday → US pre-market → prior daily closes.
+    All prices in GBP (£). Returns {"status": "error", ...} on total failure.
     """
     all_tickers = _DEFAULT_TICKERS + [_SMGB, _FX_TICKER]
     df = fetch_daily_closes(all_tickers)
@@ -209,8 +340,19 @@ def run_smgb_prediction() -> dict:
 
     smgb_series = df[_SMGB].dropna()
     smgb_last_close = float(smgb_series.iloc[-1])
-
     fx_rate = fetch_fx_rate()
+    signal_source = "daily_close"
+
+    # Augment daily closes with live intraday prices where available
+    try:
+        intraday = fetch_intraday_data(period="2d")
+        live_prices, signal_source = _latest_prices_from_intraday(intraday)
+        if live_prices and not df.empty:
+            for ticker, live_price in live_prices.items():
+                if ticker in df.columns:
+                    df.loc[df.index[-1], ticker] = live_price
+    except Exception as exc:
+        logger.warning("Intraday signal fetch failed, using daily closes: %s", exc)
 
     holdings = fetch_smgb_holdings()
     data_source = "holdings"
@@ -239,8 +381,10 @@ def run_smgb_prediction() -> dict:
         "last_smgb_close": round(smgb_last_close, 2),
         "predicted_change_pct": primary_change,
         "data_source": data_source,
+        "signal_source": signal_source,
         "fx_rate_gbpusd": round(fx_rate, 4),
         "as_of_utc": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+        "next_open_date": get_smgb_next_open_date().isoformat(),
         "n_holdings_used": holdings_result["n_holdings_used"] if holdings_result else 0,
         "holdings_engine": holdings_result,
         "regression_engine": regression_result,
@@ -248,10 +392,35 @@ def run_smgb_prediction() -> dict:
     }
 
 
+_AI_TICKERS = ["NVDA", "AMD", "AVGO", "GOOGL", "MSFT", "META", "AAPL", "ORCL", "AMZN", "TSLA"]
+
+
+def get_ai_contagion_data(days: int = 30) -> dict:
+    """
+    Fetch daily OHLCV for the AI ecosystem basket used by the Contagion Monitor.
+    Returns {"daily_dfs": dict[str, DataFrame], "intraday_dfs": dict[str, DataFrame], "error": str|None}.
+    """
+    try:
+        daily_dfs = yahoo_engine.get_price_history(_AI_TICKERS, period=f"{days + 5}d", interval="1d")
+        for ticker, df in daily_dfs.items():
+            daily_dfs[ticker] = df.tail(days)
+    except Exception as exc:
+        logger.error("get_ai_contagion_data daily fetch failed: %s", exc)
+        return {"daily_dfs": {}, "intraday_dfs": {}, "error": str(exc)}
+
+    intraday_dfs: dict = {}
+    try:
+        intraday_dfs = yahoo_engine.get_intraday(_AI_TICKERS, period="1d", interval="5m", prepost=False)
+    except Exception as exc:
+        logger.warning("get_ai_contagion_data intraday fetch failed: %s", exc)
+
+    return {"daily_dfs": daily_dfs, "intraday_dfs": intraday_dfs, "error": None}
+
+
 def get_correlation_data(days: int = 60) -> dict:
     """
     Returns normalised-to-100 price DataFrame and rolling 30-day Pearson correlation
-    between SMGB.L and the equal-weighted US basket, for chart rendering.
+    between SMGB.L and the equal-weighted US semiconductor basket, for chart rendering.
     """
     all_tickers = _DEFAULT_TICKERS + [_SMGB, _FX_TICKER]
     df = fetch_daily_closes(all_tickers, days=days + 5)
