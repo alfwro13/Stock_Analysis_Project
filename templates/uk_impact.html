@@ -16,7 +16,7 @@
                 </a>
                 <h1>🇬🇧 SMGB.L Morning Price Predictor</h1>
             </div>
-            <p class="page-subtitle">US Close → UK Open Impact Engine &mdash; prices in <abbr title="GBX = pence sterling. UK-listed ETFs are often quoted in pence, not pounds.">GBX</abbr></p>
+            <p class="page-subtitle">US Close → UK Open Impact Engine &mdash; prices in <abbr title="GBP — British Pounds Sterling. SMGB.L is quoted in whole pounds on the London Stock Exchange.">GBP £</abbr></p>
             {% set active_page = 'tools' %}
             {% include 'navbar.html' %}
         </div>
@@ -40,18 +40,18 @@
         {# ── Prediction summary tiles ── #}
         <div class="xray-cards-row">
             <div class="xray-metric-card xray-metric-card--purple">
-                <div class="xray-metric-label"><abbr title="Predicted SMGB.L opening price in GBX (pence) based on US close prices.">Predicted Open</abbr></div>
-                <div class="prediction-hero">{{ prediction.predicted_price }}p</div>
+                <div class="xray-metric-label"><abbr title="Predicted SMGB.L opening price in GBP (£) based on US close prices.">Predicted Open</abbr></div>
+                <div class="prediction-hero">£{{ prediction.predicted_price }}</div>
                 <div class="{% if prediction.predicted_change_pct >= 0 %}prediction-change-pos{% else %}prediction-change-neg{% endif %}">
                     {{ "%+.2f"|format(prediction.predicted_change_pct) }}%
                 </div>
             </div>
             <div class="xray-metric-card">
-                <div class="xray-metric-label">Last Close (<abbr title="GBX = pence sterling.">GBX</abbr>)</div>
-                <div class="xray-metric-value">{{ prediction.last_smgb_close }}p</div>
+                <div class="xray-metric-label">Last Close (GBP £)</div>
+                <div class="xray-metric-value">£{{ prediction.last_smgb_close }}</div>
             </div>
             <div class="xray-metric-card">
-                <div class="xray-metric-label"><abbr title="GBP/USD spot rate used for FX adjustment. A falling pound boosts the GBX value of USD-denominated holdings.">GBPUSD Rate</abbr></div>
+                <div class="xray-metric-label"><abbr title="GBP/USD spot rate used for FX adjustment. USD strength vs GBP affects the pound-denominated price of USD-asset holdings.">GBPUSD Rate</abbr></div>
                 <div class="xray-metric-value">{{ prediction.fx_rate_gbpusd }}</div>
                 {% if prediction.fx_rate_gbpusd == 1.0 %}<span class="badge-warn">FX data unavailable &mdash; adjustment skipped</span>{% endif %}
             </div>
@@ -93,7 +93,7 @@
             The <strong>Holdings model</strong> fetches SMGB.L's top constituent holdings from yfinance, computes a weighted sum of each US stock's latest daily return, then applies a GBP/USD FX adjustment.
             If holdings data is unavailable, it falls back to an <strong>equal-weight basket</strong> of the AI contagion engine's default tickers (NVDA, AMD, MSFT, META, GOOGL, AAPL, AVGO, SMH, SOXX, QQQ).
             In parallel, a <strong>60-day <abbr title="Ordinary Least Squares regression — fits a linear model: SMGB morning return = α + β × US basket return.">OLS</abbr> regression</strong> models the historical relationship between the US basket's daily return and SMGB.L's next-morning open return, providing a confidence interval.
-            All prices are in <abbr title="GBX = pence sterling.">GBX</abbr> (pence).
+            All prices are in GBP (£).
         </p>
 
         {# ── Prediction chart ── #}
@@ -105,7 +105,7 @@
                 </div>
             </div>
             <div class="sentiment-footer">
-                <strong>Reading this chart:</strong> The cyan line shows SMGB.L's recent daily closes in GBX (pence).
+                <strong>Reading this chart:</strong> The cyan line shows SMGB.L's recent daily closes in GBP (£).
                 The purple star marks the predicted next-morning open.
                 {% if prediction.regression_engine %}The shaded band shows the 95% confidence interval from the OLS regression model.{% endif %}
                 The dashed horizontal line marks the last close for reference.

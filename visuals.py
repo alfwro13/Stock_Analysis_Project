@@ -608,12 +608,12 @@ def create_smgb_correlation_chart(normalized_df: pd.DataFrame, rolling_corr: pd.
         fig.add_hline(y=-0.7, line_dash="dash", line_color="#f44336", line_width=1, row=2, col=1)
 
     fig.update_layout(
-        title=dict(text="SMGB.L vs US Semiconductor Basket — Normalised Performance & Correlation", x=0.5, xanchor="center", font=dict(size=14)),
+        title=dict(text="SMGB.L vs US Semiconductor Basket — Normalised Performance & Correlation", x=0.5, xanchor="center", font=dict(size=14), y=0.98),
         template="plotly_dark",
-        height=650,
-        margin=dict(l=20, r=20, t=70, b=20),
+        height=680,
+        margin=dict(l=20, r=20, t=130, b=20),
         hovermode="x unified",
-        legend=dict(orientation="h", yanchor="bottom", y=1.04, xanchor="right", x=1, font=dict(size=10)),
+        legend=dict(orientation="h", yanchor="top", y=1.12, xanchor="right", x=1, font=dict(size=10)),
     )
     fig.update_yaxes(title_text="Indexed (100 = start)", row=1, col=1, showgrid=True, gridcolor="#333333")
     fig.update_yaxes(title_text="Pearson r", row=2, col=1, showgrid=True, gridcolor="#333333", range=[-1.1, 1.1])
@@ -627,10 +627,10 @@ def create_smgb_prediction_chart(smgb_hist: pd.Series, prediction: dict) -> str:
         fig.add_trace(go.Scatter(
             x=smgb_hist.index,
             y=smgb_hist.values,
-            name="SMGB.L Close (GBX)",
+            name="SMGB.L Close (GBP £)",
             line=dict(color="#00ffff", width=2),
             connectgaps=True,
-            hovertemplate="Close: %{y:.1f}p<extra></extra>",
+            hovertemplate="Close: £%{y:.2f}<extra></extra>",
         ))
 
     last_close = prediction.get("last_smgb_close")
@@ -643,7 +643,7 @@ def create_smgb_prediction_chart(smgb_hist: pd.Series, prediction: dict) -> str:
             line_dash="dash",
             line_color="#888888",
             line_width=1,
-            annotation_text=f"Last Close: {last_close:.1f}p",
+            annotation_text=f"Last Close: £{last_close:.2f}",
             annotation_position="top right",
             annotation_font_color="#888888",
             annotation_font_size=11,
@@ -661,7 +661,7 @@ def create_smgb_prediction_chart(smgb_hist: pd.Series, prediction: dict) -> str:
                 fillcolor="rgba(187, 134, 252, 0.15)",
                 line=dict(color="rgba(187, 134, 252, 0.3)", width=1),
                 name="95% CI",
-                hovertemplate="CI: %{y:.1f}p<extra></extra>",
+                hovertemplate="CI: £%{y:.2f}<extra></extra>",
             ))
 
         change_pct = prediction.get("predicted_change_pct", 0)
@@ -669,23 +669,23 @@ def create_smgb_prediction_chart(smgb_hist: pd.Series, prediction: dict) -> str:
             x=[next_date],
             y=[predicted_price],
             mode="markers+text",
-            name=f"Predicted: {predicted_price:.1f}p",
+            name=f"Predicted: £{predicted_price:.2f}",
             marker=dict(color="#bb86fc", size=16, symbol="star"),
-            text=[f"{predicted_price:.1f}p ({change_pct:+.2f}%)"],
+            text=[f"£{predicted_price:.2f} ({change_pct:+.2f}%)"],
             textposition="top right",
             textfont=dict(color="#bb86fc", size=11),
-            hovertemplate=f"Predicted: {predicted_price:.1f}p ({change_pct:+.2f}%)<extra></extra>",
+            hovertemplate=f"Predicted: £{predicted_price:.2f} ({change_pct:+.2f}%)<extra></extra>",
         ))
 
     fig.update_layout(
-        title=dict(text="SMGB.L — Historical Close + Next Morning Open Prediction (GBX)", x=0.5, xanchor="center"),
+        title=dict(text="SMGB.L — Historical Close + Next Morning Open Prediction (GBP £)", x=0.5, xanchor="center"),
         template="plotly_dark",
         height=420,
-        margin=dict(l=20, r=20, t=50, b=20),
+        margin=dict(l=20, r=20, t=90, b=20),
         hovermode="x unified",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        legend=dict(orientation="h", yanchor="top", y=1.10, xanchor="right", x=1),
     )
-    fig.update_yaxes(title_text="GBX (pence)", showgrid=True, gridcolor="#333333")
+    fig.update_yaxes(title_text="GBP (£)", showgrid=True, gridcolor="#333333")
     return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
 
 

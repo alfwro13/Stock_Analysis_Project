@@ -303,7 +303,7 @@ def get_correlation_data(days: int = 60) -> dict:
     df = df.dropna(how="all").tail(days)
 
     first_valid = df.apply(lambda col: col.first_valid_index())
-    start = max(v for v in first_valid.values() if v is not None)
+    start = max(v for v in first_valid if v is not None)
     df = df.loc[start:]
 
     normalized = df.div(df.iloc[0]) * 100

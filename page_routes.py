@@ -1004,10 +1004,12 @@ async def market_reports_page(request: Request):
 
 @page_router.get("/tools", response_class=HTMLResponse)
 async def tools_page(request: Request):
+    lse_open, _ = time_engine.market_window_utc("LSE")
+    lse_open_str = lse_open.strftime("%H:%M UTC")
     return templates.TemplateResponse(
         request=request,
         name="tools.html",
-        context={"unread_count": get_unread_count()},
+        context={"unread_count": get_unread_count(), "lse_open_time": lse_open_str},
     )
 
 
