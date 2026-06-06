@@ -26,16 +26,17 @@ def fetch_daily_closes(tickers: list, days: int = 65) -> pd.DataFrame:
                 period=f"{days}d",
                 interval="1d",
                 auto_adjust=True,
-                group_by="ticker",
                 progress=False,
                 session=session,
             )
         if raw.empty:
             return pd.DataFrame()
+        # Default yf.download: MultiIndex (price_type, ticker) — "Close" is at level 0.
+        # group_by="ticker" would flip this, so we intentionally omit it.
         if isinstance(raw.columns, pd.MultiIndex):
-            df = raw.xs("Close", axis=1, level=0)
+            df = raw["Close"]
         else:
-            df = raw[["Close"]].rename(columns={"Close": tickers[0]}) if len(tickers) == 1 else raw
+            df = raw[["Close"]].rename(columns={"Close": tickers[0]})
         return df.sort_index()
     except Exception as exc:
         logger.error("fetch_daily_closes failed: %s", exc)
@@ -177,8 +178,8 @@ def compute_regression_prediction(df: pd.DataFrame, smgb_last_close_gbx: float) 
         return None
 
     if isinstance(smgb_raw.columns, pd.MultiIndex):
-        smgb_opens = smgb_raw.xs("Open", axis=1, level=0).squeeze()
-        smgb_closes_raw = smgb_raw.xs("Close", axis=1, level=0).squeeze()
+        smgb_opens = smgb_raw["Open"].squeeze()
+        smgb_closes_raw = smgb_raw["Close"].squeeze()
     else:
         smgb_opens = smgb_raw["Open"]
         smgb_closes_raw = smgb_raw["Close"]
@@ -235,7 +236,12 @@ def run_smgb_prediction() -> dict:
             with yahoo_connection_boundary("SMGB Direct Fetch") as session:
                 fallback = yf.Ticker(_SMGB, session=session).history(period="65d")
             if not fallback.empty:
-                df[_SMGB] = fallback["Close"].reindex(df.index)
+                close = fallback["Close"].copy()
+                if close.index.tz is not None:
+                    close.index = close.index.tz_localize(None)
+                close.index = close.index.normalize()
+                df.index = df.index.normalize()
+                df[_SMGB] = close.reindex(df.index)
         except Exception as exc:
             logger.warning("SMGB direct fallback also failed: %s", exc)
 
