@@ -1811,6 +1811,35 @@ async def intraday_monitor_analysis(ticker: str = PathParam(..., pattern=r"^[A-Z
         conn.close()
 
 
+@api_router.get("/intraday-monitor/summary")
+async def intraday_monitor_summary():
+    today = time_engine.now_local().date().isoformat()
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            """
+            SELECT m.ticker, m.date_added, m.activated_by,
+                   r.scan_ts, r.current_price, r.reversal_score,
+                   r.is_bottoming, r.rsi, r.bb_lower,
+                   r.vwap, r.vwap_lower, r.vwap_deviation, r.vol_climax
+            FROM intraday_monitors m
+            LEFT JOIN intraday_monitor_results r ON m.ticker = r.ticker
+            WHERE m.date_added = ? AND m.is_active = 1
+            ORDER BY COALESCE(r.reversal_score, -1) DESC
+            """,
+            (today,),
+        ).fetchall()
+        result = []
+        for row in rows:
+            d = dict(row)
+            if d.get("vol_climax") is not None:
+                d["vol_climax"] = bool(d["vol_climax"])
+            result.append(d)
+        return JSONResponse(content={"monitors": result, "session_date": today})
+    finally:
+        conn.close()
+
+
 @api_router.get("/intraday-chart/{ticker}")
 async def get_intraday_chart(ticker: str = PathParam(..., pattern=r"^[A-Z0-9.\-\^=]{1,20}$")):
     """Return freshly rendered intraday chart HTML for a given ticker."""
