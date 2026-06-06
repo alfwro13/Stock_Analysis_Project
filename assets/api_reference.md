@@ -1087,6 +1087,8 @@ Sends a test insider trading alert via Nextcloud Talk.
 | `POST` | `/api/trigger-universe-quant-scan` | Quant scan (full universe) |
 | `POST` | `/api/trigger-earnings-scan` | Earnings volatility scan |
 | `POST` | `/api/trigger-sentiment-scan` | FinBERT sentiment scan |
+| `POST` | `/api/save-hf-token` | Persist HuggingFace API token to `.env` |
+| `POST` | `/api/test-hf-token` | Verify HuggingFace token via `whoami` |
 | `GET` | `/api/screener-data` | Latest quant screener results |
 | `GET` | `/api/market-pulse` | Live market index pulse (cached) |
 | `POST` | `/api/market-pulse` | Live pulse for custom tickers |

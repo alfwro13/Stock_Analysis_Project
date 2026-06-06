@@ -789,17 +789,21 @@ def create_smgb_overlay_chart(
             hovertemplate=f"{ticker}: %{{y:.3f}}<extra></extra>",
         ), secondary_y=True)
 
-    # Convert UK close time to user local for the vline
+    # Vertical line at LSE close — use add_shape to avoid Plotly annotation mean bug
     uk_close_aware = pd.Timestamp(uk_close_utc).tz_localize("UTC").tz_convert(user_tz).tz_localize(None)
-    fig.add_vline(
-        x=str(uk_close_aware),
-        line_dash="dash",
-        line_color="#888888",
-        line_width=1.5,
-        annotation_text="LSE Close",
-        annotation_position="top left",
-        annotation_font_color="#aaaaaa",
-        annotation_font_size=11,
+    uk_close_str = str(uk_close_aware)
+    fig.add_shape(
+        type="line",
+        x0=uk_close_str, x1=uk_close_str,
+        y0=0, y1=1, yref="paper",
+        line=dict(dash="dash", color="#888888", width=1.5),
+    )
+    fig.add_annotation(
+        x=uk_close_str, y=1, yref="paper",
+        text="LSE Close 16:30",
+        showarrow=False,
+        font=dict(color="#aaaaaa", size=11),
+        xanchor="left", yanchor="top",
     )
 
     # Prediction marker at next trading day 08:00 local
