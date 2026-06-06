@@ -7,6 +7,7 @@ import pandas as pd
 from scipy import stats
 
 import time_engine
+from database import log_smgb_prediction
 from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
@@ -432,7 +433,7 @@ def run_smgb_prediction() -> dict:
     else:
         return {"status": "error", "error": "Both prediction engines failed", "predicted_price": None}
 
-    return {
+    result = {
         "status": "success",
         "predicted_price": primary_price,
         "last_smgb_close": round(smgb_last_close, 2),
@@ -447,6 +448,8 @@ def run_smgb_prediction() -> dict:
         "regression_engine": regression_result,
         "error": None,
     }
+    log_smgb_prediction(result)
+    return result
 
 
 _AI_TICKERS = ["NVDA", "AMD", "AVGO", "GOOGL", "MSFT", "META", "AAPL", "ORCL", "AMZN", "TSLA"]

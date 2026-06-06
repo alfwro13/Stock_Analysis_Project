@@ -1331,6 +1331,18 @@ async def get_smgb_prediction(request: Request):
         return JSONResponse(content={"status": "error", "error": str(e), "predicted_price": None})
 
 
+@api_router.get("/smgb-accuracy")
+@limiter.limit("10/minute")
+async def get_smgb_accuracy(request: Request):
+    """Returns historical SMGB.L prediction accuracy: last 60 rows and summary stats."""
+    try:
+        from database import get_smgb_accuracy
+        return JSONResponse(content=get_smgb_accuracy())
+    except Exception as e:
+        logger.error("smgb-accuracy failed: %s", e)
+        return JSONResponse(content={"rows": [], "summary": {}, "error": str(e)})
+
+
 @api_router.get("/ai-prompt/{ticker}")
 async def get_ai_prompt(ticker: str = PathParam(..., pattern=r"^[A-Z0-9.\-\^=]{1,20}$"), mode: str = "Quantamental Deep-Dive"):
     try:

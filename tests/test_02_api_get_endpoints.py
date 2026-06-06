@@ -366,3 +366,18 @@ def test_smgb_prediction_returns_200_with_status_key(client):
     assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
     data = _json(resp)
     assert "status" in data, f"Missing 'status' key in smgb-prediction response: {data}"
+
+
+@pytest.mark.api
+def test_smgb_accuracy_returns_200_with_summary_key(client):
+    """GET /api/smgb-accuracy must return 200 with 'summary' and 'rows' keys.
+    No predictions exist on a fresh test DB, so rows will be empty — but the
+    shape must be correct and the endpoint must not 500.
+    """
+    resp = client.get("/api/smgb-accuracy")
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
+    data = _json(resp)
+    assert "summary" in data, f"Missing 'summary' key: {data}"
+    assert "rows" in data, f"Missing 'rows' key: {data}"
+    assert isinstance(data["rows"], list), "'rows' must be a list"
+    assert isinstance(data["summary"], dict), "'summary' must be a dict"

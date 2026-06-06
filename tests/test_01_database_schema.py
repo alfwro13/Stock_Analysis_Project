@@ -69,6 +69,7 @@ EXPECTED_TABLES = [
     "macro_regimes",
     "scheduler_run_log",
     "news_articles",
+    "smgb_predictions",
 ]
 
 
@@ -453,5 +454,46 @@ def test_news_articles_deduplication_via_unique_constraint():
         assert count == 1, f"Expected 1 row after 3 identical inserts, got {count}"
     finally:
         conn.execute("DELETE FROM news_articles WHERE article_id = 'test-dedup-id'")
+        conn.commit()
+        conn.close()
+
+
+@pytest.mark.db
+def test_smgb_predictions_has_required_columns():
+    """smgb_predictions must have all columns required for accuracy tracking."""
+    cols = _columns("smgb_predictions")
+    required = {
+        "id", "prediction_date", "target_date", "predicted_price", "actual_open",
+        "predicted_change_pct", "actual_change_pct", "last_smgb_close",
+        "holdings_predicted_price", "regression_predicted_price",
+        "signal_source", "data_source", "fx_rate", "r_squared",
+        "absolute_error", "pct_error", "direction_correct", "created_at",
+    }
+    missing = required - cols
+    assert not missing, f"smgb_predictions missing columns: {missing}"
+
+
+@pytest.mark.db
+def test_smgb_predictions_unique_target_date():
+    """smgb_predictions must enforce one row per target_date (UNIQUE constraint)."""
+    import database as _db
+    conn = _db.get_connection()
+    try:
+        conn.execute(
+            "INSERT INTO smgb_predictions (prediction_date, target_date, predicted_price) VALUES (?, ?, ?)",
+            ("2099-01-01", "2099-01-02", 5.0),
+        )
+        conn.commit()
+        conn.execute(
+            "INSERT OR IGNORE INTO smgb_predictions (prediction_date, target_date, predicted_price) VALUES (?, ?, ?)",
+            ("2099-01-01", "2099-01-02", 6.0),
+        )
+        conn.commit()
+        count = conn.execute(
+            "SELECT COUNT(*) FROM smgb_predictions WHERE target_date = '2099-01-02'"
+        ).fetchone()[0]
+        assert count == 1, f"UNIQUE(target_date) violated: expected 1 row, got {count}"
+    finally:
+        conn.execute("DELETE FROM smgb_predictions WHERE target_date = '2099-01-02'")
         conn.commit()
         conn.close()

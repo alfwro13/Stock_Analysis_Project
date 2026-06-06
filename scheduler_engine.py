@@ -19,7 +19,7 @@ from ghostfolio_sync import GhostfolioSyncEngine
 from quant_engine import run_daily_quant_scan
 from earnings_vol_engine import run_earnings_vol_scan
 from report_dispatcher import push_morning_quant_briefing, push_lunchtime_quant_briefing
-from database import get_universe_tickers, get_connection
+from database import get_universe_tickers, get_connection, fill_smgb_actual
 from universe_engine import update_market_universe
 from profile_engine import run_profile_audit
 from regime_engine import calculate_market_regime
@@ -593,6 +593,44 @@ def run_ai_contagion_job():
         record_job_run('ai_contagion_job')
 
 
+def run_smgb_actual_fill():
+    """Fetches the actual SMGB.L open price and fills yesterday's prediction row."""
+    import yfinance as yf
+    from datetime import date, timedelta
+    log_sched_notification("Scheduler", "Started SMGB actual-fill job...")
+    try:
+        today = date.today()
+        # Target date = most recent weekday (today if Mon-Fri, else last Friday)
+        target = today
+        while target.weekday() >= 5:
+            target -= timedelta(days=1)
+        target_str = target.isoformat()
+
+        df = yf.download("SMGB.L", period="5d", interval="1d", progress=False, auto_adjust=True)
+        if df.empty:
+            log_sched_notification("Warning", "SMGB actual-fill: no price data returned.")
+            return
+
+        # Flatten multi-level columns if present
+        if isinstance(df.columns, type(df.columns)) and hasattr(df.columns, 'levels'):
+            df.columns = df.columns.get_level_values(0)
+
+        df.index = df.index.normalize()
+        import pandas as pd
+        target_ts = pd.Timestamp(target_str)
+        if target_ts not in df.index:
+            log_sched_notification("Warning", f"SMGB actual-fill: no data for {target_str}.")
+            return
+
+        actual_open = float(df.loc[target_ts, "Open"])
+        fill_smgb_actual(target_str, actual_open)
+        log_sched_notification("Success", f"SMGB actual-fill: filled {target_str} at £{actual_open:.4f}.")
+    except Exception as e:
+        log_sched_notification("Error", f"SMGB actual-fill failed: {e}")
+    finally:
+        record_job_run('smgb_actual_fill_job')
+
+
 def reload_scheduler():
     """Reads the latest config.json and updates APScheduler dynamically."""
     logger.info("Reloading scheduled jobs from configuration...")
@@ -1102,6 +1140,18 @@ def reload_scheduler():
         logger.info("X-ray Risk Cache job scheduled for mon-fri at 19:00.")
     except Exception as e:
         logger.error(f"Failed to schedule X-ray Risk Cache job: {e}")
+
+    # Always-on: SMGB.L Actual Fill — runs Mon–Fri at 09:15 GMT (45 min after LSE opens).
+    # Fetches the actual open price for that morning and resolves the previous prediction row.
+    try:
+        scheduler.add_job(
+            run_smgb_actual_fill,
+            CronTrigger(day_of_week='mon-fri', hour=9, minute=15),
+            id='smgb_actual_fill_job',
+        )
+        logger.info("SMGB actual-fill job scheduled for mon-fri at 09:15.")
+    except Exception as e:
+        logger.error(f"Failed to schedule SMGB actual-fill job: {e}")
 
 
 def start_scheduler():
