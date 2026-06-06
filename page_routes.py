@@ -1018,6 +1018,18 @@ async def tools_page(request: Request):
     )
 
 
+def _smgb_portfolio_position() -> dict | None:
+    """Return SMGB.L portfolio position dict, or None if not held."""
+    try:
+        portfolio = get_json_data(PORTFOLIO_PATH)
+        return next(
+            (v for v in portfolio.values() if v.get("ticker") == "SMGB.L"),
+            None,
+        )
+    except Exception:
+        return None
+
+
 @page_router.get("/uk-etf-forecast", response_class=HTMLResponse)
 async def uk_etf_forecast_page(request: Request):
     from smgb_predictor import run_smgb_prediction, get_correlation_data, get_intraday_overlay_data
@@ -1066,6 +1078,26 @@ async def uk_etf_forecast_page(request: Request):
         contributions_chart_html = ""
         overlay_chart_html = error_html
 
+    smgb_position = _smgb_portfolio_position()
+    smgb_pnl = None
+    if smgb_position and prediction.get("status") == "success":
+        shares = float(smgb_position.get("global_shares", 0))
+        avg_buy = float(smgb_position.get("global_buy_price", 0))
+        last_close = prediction.get("last_smgb_close", 0)
+        pred_price = prediction.get("predicted_price", 0)
+        if shares > 0 and pred_price and last_close:
+            predicted_value = shares * pred_price
+            current_value = shares * last_close
+            cost_basis = shares * avg_buy
+            smgb_pnl = {
+                "shares": round(shares, 4),
+                "avg_buy_price": round(avg_buy, 2),
+                "current_value": round(current_value, 2),
+                "predicted_value": round(predicted_value, 2),
+                "predicted_pnl_open": round(predicted_value - current_value, 2),
+                "total_unrealised_pnl": round(predicted_value - cost_basis, 2),
+            }
+
     return templates.TemplateResponse(
         request=request,
         name="uk_impact.html",
@@ -1075,6 +1107,7 @@ async def uk_etf_forecast_page(request: Request):
             "prediction_chart_html": prediction_chart_html,
             "contributions_chart_html": contributions_chart_html,
             "overlay_chart_html": overlay_chart_html,
+            "smgb_pnl": smgb_pnl,
             "unread_count": get_unread_count(),
         },
     )

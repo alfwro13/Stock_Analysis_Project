@@ -735,6 +735,8 @@ details[open].xray-rec-group .xray-rec-group-summary::before { transform: rotate
 .prediction-change-pos { color: #4caf50; font-weight: 700; font-size: 1.1rem; }
 .prediction-change-neg { color: #f44336; font-weight: 700; font-size: 1.1rem; }
 .xray-metric-card--purple { border-top-color: #bb86fc; }
+.xray-metric-card--cyan   { border-top-color: #00ffff; }
+.xray-metric-card--red    { border-top-color: #f44336; }
 .xray-metric-value--sm { font-size: 14px; padding-top: 4px; }
 .xray-metric-value--xs { font-size: 13px; }
 .xray-metric-sublabel { margin-top: 6px; }

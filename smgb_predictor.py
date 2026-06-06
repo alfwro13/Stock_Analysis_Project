@@ -72,6 +72,16 @@ def get_smgb_next_open_date() -> date:
     return today + timedelta(days=1)
 
 
+def _last_trading_date() -> date:
+    """Return the most recent weekday on or before today."""
+    today = date.today()
+    if today.weekday() == 5:   # Saturday
+        return today - timedelta(days=1)
+    if today.weekday() == 6:   # Sunday
+        return today - timedelta(days=2)
+    return today
+
+
 def fetch_intraday_data(period: str = "2d") -> dict[str, pd.DataFrame]:
     """
     Fetch 5-min bars (with pre/post-market) for SMGB.L + all 10 semiconductor tickers + FX.
@@ -112,58 +122,78 @@ def filter_pre_uk_open(df: pd.DataFrame, ref_date: date | None = None) -> pd.Dat
     return df[(df.index >= premarket_start) & (df.index < lse_open)]
 
 
-def _latest_prices_from_intraday(
+def _compute_intraday_returns(
     intraday: dict[str, pd.DataFrame],
+    ref_date: date | None = None,
 ) -> tuple[dict[str, float], str]:
     """
-    Extract the most recent Close for each US ticker from post-UK-close data.
-    Falls back to pre-market if no post-close bars exist.
-    Returns (prices_dict, signal_source).
+    Compute post-UK-close return for each US semiconductor ticker.
+    Return = (current_price / price_at_uk_close) - 1, so we only capture the move
+    that happened AFTER the LSE closed — not the full day's move from the prior daily close.
+    Falls back to pre-market return if no post-close data, then signals daily_close fallback.
+    Returns ({ticker: return_fraction}, signal_source).
     """
-    prices: dict[str, float] = {}
+    trading_date = ref_date or _last_trading_date()
+    uk_close = _lse_close_utc_dt(trading_date)
+    returns: dict[str, float] = {}
     found_post = False
 
     for ticker in _SEMIS_TICKERS:
         df = intraday.get(ticker)
         if df is None or df.empty or "Close" not in df.columns:
             continue
-        post = filter_post_uk_close(df)
-        if not post.empty:
-            val = post["Close"].dropna()
-            if not val.empty:
-                prices[ticker] = float(val.iloc[-1])
-                found_post = True
-                continue
-        pre = filter_pre_uk_open(df)
+        closes = df["Close"].dropna()
+
+        # Reference price: last bar at or before LSE close on the trading date
+        at_close = closes[closes.index <= uk_close]
+        if at_close.empty:
+            continue
+        ref_price = float(at_close.iloc[-1])
+        if ref_price == 0:
+            continue
+
+        # Current price: latest bar after LSE close
+        post_close = closes[closes.index > uk_close]
+        if not post_close.empty:
+            returns[ticker] = float(post_close.iloc[-1]) / ref_price - 1.0
+            found_post = True
+            continue
+
+        # Pre-market fallback (morning run before LSE opens)
+        lse_open = _lse_open_utc_dt(trading_date)
+        nyse_premarket_open, _ = time_engine.market_window_utc("NYSE", include_premarket=True)
+        pre_start = datetime.combine(trading_date, nyse_premarket_open)
+        pre = closes[(closes.index >= pre_start) & (closes.index < lse_open)]
         if not pre.empty:
-            val = pre["Close"].dropna()
-            if not val.empty:
-                prices[ticker] = float(val.iloc[-1])
+            returns[ticker] = float(pre.iloc[-1]) / ref_price - 1.0
 
     signal_source = "intraday_post_close" if found_post else (
-        "intraday_premarket" if prices else "daily_close"
+        "intraday_premarket" if returns else "daily_close"
     )
-    return prices, signal_source
+    return returns, signal_source
 
 
 def get_intraday_overlay_data() -> dict:
     """
     Assemble data for the time-aligned intraday overlay chart.
+    Uses the last trading day so the chart is never empty on weekends.
     Returns:
-      smgb_intraday  — pd.Series of SMGB.L Close prices today (08:00–16:30 BST, naive UTC index)
+      smgb_intraday  — pd.Series of SMGB.L Close prices (LSE session, naive UTC index)
       us_intraday    — dict[ticker, pd.Series] of US semi Close prices from NYSE open onward
-      uk_close_utc   — naive UTC datetime of LSE close today
+      uk_close_utc   — naive UTC datetime of LSE close on the last trading day
       smgb_last_close — float
       prediction     — dict from run_smgb_prediction()
       next_open_date — date
     """
-    today = date.today()
-    lse_open_utc = _lse_open_utc_dt(today)
-    uk_close_utc = _lse_close_utc_dt(today)
+    trading_date = _last_trading_date()
+    lse_open_utc = _lse_open_utc_dt(trading_date)
+    uk_close_utc = _lse_close_utc_dt(trading_date)
     nyse_open_utc_time, _ = time_engine.market_window_utc("NYSE")
-    nyse_open_utc = datetime.combine(today, nyse_open_utc_time)
+    # Include overlap: NYSE opens ~14:30 BST; start from 13:00 UTC to capture both DST seasons
+    nyse_open_utc = datetime.combine(trading_date, nyse_open_utc_time)
 
-    intraday = fetch_intraday_data(period="2d")
+    # period="5d" ensures we always have the last trading day even on weekends/holidays
+    intraday = fetch_intraday_data(period="5d")
 
     smgb_series = pd.Series(dtype=float)
     smgb_df = intraday.get(_SMGB)
@@ -197,12 +227,13 @@ def compute_holdings_prediction(
     holdings: list,
     fx_rate: float,
     smgb_last_close_gbx: float,
+    intraday_returns: dict[str, float] | None = None,
 ) -> dict | None:
     """
     Weighted US constituent returns → predicted SMGB.L price in GBX.
-    fx_rate is GBPUSD (how many USD per 1 GBP). A rising USD (falling GBP) boosts
-    GBX-priced assets that hold USD equities, so we apply the FX ratio as an additive
-    component on top of the weighted equity return.
+    When intraday_returns is provided, those returns (post-UK-close vs price AT UK-close)
+    are used directly instead of computing from daily closes, avoiding the 2-day-return bug.
+    fx_rate is GBPUSD (how many USD per 1 GBP). Rising USD = positive adjustment for GBX assets.
     """
     df_clean = df.dropna(how="all")
     contributions = []
@@ -217,12 +248,17 @@ def compute_holdings_prediction(
     for h in holdings:
         ticker = h["ticker"]
         weight = h["weight"]
-        if ticker not in df_clean.columns:
-            continue
-        series = df_clean[ticker].dropna()
-        if len(series) < 2:
-            continue
-        us_return = float(series.iloc[-1]) / float(series.iloc[-2]) - 1.0
+
+        if intraday_returns and ticker in intraday_returns:
+            us_return = intraday_returns[ticker]
+        else:
+            if ticker not in df_clean.columns:
+                continue
+            series = df_clean[ticker].dropna()
+            if len(series) < 2:
+                continue
+            us_return = float(series.iloc[-1]) / float(series.iloc[-2]) - 1.0
+
         contribution = weight * us_return
         contributions.append({
             "ticker": ticker,
@@ -342,15 +378,16 @@ def run_smgb_prediction() -> dict:
     smgb_last_close = float(smgb_series.iloc[-1])
     fx_rate = fetch_fx_rate()
     signal_source = "daily_close"
+    intraday_returns: dict[str, float] | None = None
 
-    # Augment daily closes with live intraday prices where available
+    # Compute post-UK-close intraday returns (vs price AT UK close, not prior daily close)
     try:
-        intraday = fetch_intraday_data(period="2d")
-        live_prices, signal_source = _latest_prices_from_intraday(intraday)
-        if live_prices and not df.empty:
-            for ticker, live_price in live_prices.items():
-                if ticker in df.columns:
-                    df.loc[df.index[-1], ticker] = live_price
+        intraday = fetch_intraday_data(period="5d")
+        intraday_returns, signal_source = _compute_intraday_returns(
+            intraday, ref_date=_last_trading_date()
+        )
+        if not intraday_returns:
+            intraday_returns = None
     except Exception as exc:
         logger.warning("Intraday signal fetch failed, using daily closes: %s", exc)
 
@@ -360,7 +397,7 @@ def run_smgb_prediction() -> dict:
         holdings = _equal_weight_holdings(_DEFAULT_TICKERS)
         data_source = "regression_fallback"
 
-    holdings_result = compute_holdings_prediction(df, holdings, fx_rate, smgb_last_close)
+    holdings_result = compute_holdings_prediction(df, holdings, fx_rate, smgb_last_close, intraday_returns)
     if holdings_result is None:
         data_source = "regression_only"
 
