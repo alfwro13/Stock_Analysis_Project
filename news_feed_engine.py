@@ -122,7 +122,7 @@ def _label_from_score(score: float) -> str:
 def _score_unscoredrows(conn) -> None:
     """Run FinBERT over any news_articles rows that don't yet have a sentiment_score."""
     try:
-        from sentiment_engine import _get_finbert_analyzer, _score_text
+        from huggingface_engine import _get_finbert_analyzer, _score_text
     except ImportError:
         logger.warning("News Feed: sentiment_engine not available, skipping sentiment scoring.")
         return

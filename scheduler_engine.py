@@ -6,7 +6,8 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from config import load_config
 import time_engine
-from sentiment_engine import run_nextcloud_alert, update_all_sentiment, run_central_bank_nlp_alert
+from sentiment_engine import run_nextcloud_alert
+from huggingface_engine import update_all_sentiment, run_central_bank_nlp_alert
 from earnings_engine import run_earnings_alert
 from insider_engine import run_insider_alert
 from intraday_orchestrator import IntradayOrchestrator

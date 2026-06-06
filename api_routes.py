@@ -44,7 +44,8 @@ from maintenance_engine import MaintenanceEngine
 from xray_engine import assemble_xray_report
 from ghostfolio_sync import GhostfolioSyncEngine
 from market_pulse import get_cached_pulse_from_db, fetch_and_save_pulse
-from sentiment_engine import run_nextcloud_alert, update_all_sentiment
+from sentiment_engine import run_nextcloud_alert
+from huggingface_engine import update_all_sentiment
 from earnings_engine import run_earnings_alert
 from report_dispatcher import push_morning_quant_briefing, push_lunchtime_quant_briefing
 from insider_engine import run_insider_alert
