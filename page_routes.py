@@ -373,6 +373,7 @@ async def settings_page(request: Request):
             "ghostfolio_url": os.environ.get("GHOSTFOLIO_URL", ""),
             "ghostfolio_token": os.environ.get("GHOSTFOLIO_TOKEN", ""),
             "fred_api_key": os.environ.get("FRED_API_KEY", ""),
+            "hf_token": os.environ.get("HF_TOKEN", ""),
         }
     )
 

@@ -992,6 +992,17 @@
                         <button type="button" class="btn-test mt-0 btn-cyan" onclick="triggerSentimentScan()">▶️ Run Sentiment Scan Now</button>
                     </div>
 
+                    <div class="settings-panel-sm border-left-cyan">
+                        <h4 class="settings-panel-header text-cyan">🤗 HuggingFace API Token</h4>
+                        <p class="settings-desc-sm">Optional. Suppresses unauthenticated-request warnings and enables higher rate limits when downloading or updating FinBERT and other HuggingFace models. Get a free token at <a href="https://huggingface.co/settings/tokens" target="_blank" class="text-cyan">huggingface.co/settings/tokens</a>.</p>
+                        <div class="form-group mb-10">
+                            <label>HuggingFace Token</label>
+                            <input type="password" id="HF_TOKEN" value="{{ hf_token }}" autocomplete="new-password" placeholder="hf_xxxxxxxxxxxxxxxxxxxx">
+                        </div>
+                        <button type="button" class="btn-test mt-0" onclick="saveHFToken()">💾 Save HF Token</button>
+                        <div id="hf-status-msg"></div>
+                    </div>
+
                 </details>
                 
                 <details class="settings-card">
@@ -3081,6 +3092,28 @@
             } finally {
                 btn.disabled = false;
                 btn.innerText = '💾 Save FRED API Key';
+            }
+        }
+
+        async function saveHFToken() {
+            const btn = document.querySelector('button[onclick="saveHFToken()"]');
+            btn.disabled = true;
+            btn.innerText = '⏳ Saving…';
+            setStatus('hf-status-msg', 'info', 'Saving…');
+            try {
+                const res = await fetch('/api/save-hf-token', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-Confirm-Token': CONFIRM_TOKEN },
+                    body: JSON.stringify({ HF_TOKEN: document.getElementById('HF_TOKEN').value.trim() }),
+                });
+                const data = await res.json().catch(() => ({}));
+                setStatus('hf-status-msg', res.ok ? 'success' : 'error',
+                    res.ok ? 'HF Token saved.' : (data.detail || 'Failed to save.'));
+            } catch (e) {
+                setStatus('hf-status-msg', 'error', 'Network error while saving.');
+            } finally {
+                btn.disabled = false;
+                btn.innerText = '💾 Save HF Token';
             }
         }
 

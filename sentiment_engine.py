@@ -67,8 +67,24 @@ def _get_finbert_analyzer() -> Optional[Any]:
             # Double-checked locking to prevent race conditions during initialization
             if _FINBERT_ANALYZER is None:
                 logger.info("Loading FinBERT model into memory (Lazy Initialization)...")
+
+                # Apply HF_TOKEN from .env if set — suppresses unauthenticated-request warnings
+                hf_token = os.environ.get("HF_TOKEN", "")
+                if hf_token:
+                    os.environ["HF_TOKEN"] = hf_token
+
                 try:
-                    _FINBERT_ANALYZER = pipeline("sentiment-analysis", model="ProsusAI/finbert")
+                    # Prefer local cache to skip redundant HuggingFace Hub HTTP round-trips.
+                    # Falls back to online download only when the cache is absent (first run).
+                    try:
+                        _FINBERT_ANALYZER = pipeline(
+                            "sentiment-analysis",
+                            model="ProsusAI/finbert",
+                            local_files_only=True,
+                        )
+                    except OSError:
+                        logger.info("FinBERT not in local cache; downloading from HuggingFace Hub...")
+                        _FINBERT_ANALYZER = pipeline("sentiment-analysis", model="ProsusAI/finbert")
                 except Exception as e:
                     logger.error(f"Failed to allocate memory or initialize FinBERT pipeline: {e}")
                     return None

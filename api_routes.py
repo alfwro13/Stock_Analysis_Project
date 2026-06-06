@@ -221,6 +221,20 @@ async def save_fred_api_key(body: SaveFredApiKeyRequest):
     return {"status": "ok"}
 
 
+class SaveHFTokenRequest(BaseModel):
+    HF_TOKEN: str
+
+
+@api_router.post("/save-hf-token", dependencies=[Depends(require_confirm_token)])
+async def save_hf_token(body: SaveHFTokenRequest):
+    from dotenv import set_key
+    from config import BASE_DIR
+    env_path = str(BASE_DIR / ".env")
+    set_key(env_path, "HF_TOKEN", body.HF_TOKEN)
+    os.environ["HF_TOKEN"] = body.HF_TOKEN
+    return {"status": "ok", "message": "HF Token saved."}
+
+
 class ChangeUsernameRequest(BaseModel):
     new_username: str
 
