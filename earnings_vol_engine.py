@@ -2,7 +2,7 @@
 import time
 import random
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Tuple
 
 import numpy as np
@@ -14,32 +14,23 @@ from yahoo_engine import yahoo_engine
 logger = logging.getLogger(__name__)
 
 def get_historical_earnings_move(ticker: str) -> Optional[float]:
-    """
-    Calculates the average absolute percentage gap of the last 4 earnings events.
-    Uses yfinance's earnings dates to isolate price action immediately following reports.
-    """
     try:
-        # Retrieve recent historical earnings calendar dates
         earnings_dates = yahoo_engine.get_earnings_dates(ticker, limit=10)
         if earnings_dates is None or earnings_dates.empty:
             return None
 
-        # Safely handle timezone matching between the current time and the index
         now = pd.Timestamp.now(tz='UTC')
         if earnings_dates.index.tz is None:
             now = now.tz_localize(None)
 
-        # Filter for dates strictly in the past
         past_dates = earnings_dates[earnings_dates.index < now].index
         if len(past_dates) == 0:
             return None
 
-        # Load full 2-year daily history once; slice per earnings date (avoids N live HTTP calls)
         _full = yahoo_engine.get_price_history([ticker], period="2y", interval="1d")
         full_hist = _full.get(ticker)
 
         moves = []
-        # Analyze up to the last 4 reported quarters
         for e_date in past_dates[:4]:
             try:
                 if full_hist is None or full_hist.empty:
@@ -50,17 +41,14 @@ def get_historical_earnings_move(ticker: str) -> Optional[float]:
                 if len(hist) < 2:
                     continue
                     
-                # Convert everything to pure, timezone-naive normalized dates (00:00:00)
-                # This completely destroys the [s] vs [us] resolution conflict crashing Pandas
+                # normalize() + tz_localize(None) avoids [s] vs [us] resolution conflicts in Pandas
                 hist_dates = pd.to_datetime(hist.index).tz_localize(None).normalize()
                 target_date = pd.to_datetime(e_date).tz_localize(None).normalize()
                 
-                # Calculate absolute differences in days to find the closest trading day
                 time_diffs = abs(hist_dates - target_date)
                 closest_idx = time_diffs.argmin()
                 
-                # Use a 2-session window: close before earnings day vs close after.
-                # This captures the full reaction regardless of AMC/BMO timing.
+                # 2-session window (pre vs post close) captures AMC/BMO timing without guessing report time
                 if closest_idx > 0 and (closest_idx + 1) < len(hist):
                     pre_close  = hist['Close'].iloc[closest_idx - 1]
                     post_close = hist['Close'].iloc[closest_idx + 1]
@@ -81,17 +69,11 @@ def get_historical_earnings_move(ticker: str) -> Optional[float]:
     return None
 
 def get_implied_straddle_move(ticker: str, underlying_price: float, target_date: datetime) -> Tuple[Optional[float], int, Optional[str]]:
-    """
-    Finds the At-The-Money (ATM) Call and Put for the nearest expiration after the target date.
-    Calculates the implied move % based on Straddle cost and records the combined options volume.
-    Returns: (implied_move_pct, volume, target_expiry_str)
-    """
     try:
         options = yahoo_engine.get_options_expirations(ticker)
         if not options:
             return None, 0, None
 
-        # Find the first expiration date that occurs AFTER the earnings report
         valid_expiries = [opt for opt in options if datetime.strptime(opt, '%Y-%m-%d') >= target_date]
         if not valid_expiries:
             return None, 0, None
@@ -106,7 +88,6 @@ def get_implied_straddle_move(ticker: str, underlying_price: float, target_date:
         if calls.empty or puts.empty:
             return None, 0, None
             
-        # Locate the ATM Strike (closest mathematically to the current underlying price)
         atm_strike = calls.iloc[(calls['strike'] - underlying_price).abs().argsort()[:1]]['strike'].values[0]
         
         atm_call = calls[calls['strike'] == atm_strike].iloc[0]
@@ -124,12 +105,8 @@ def get_implied_straddle_move(ticker: str, underlying_price: float, target_date:
         if call_price is None or put_price is None:
             return None, 0, None
         
-        # Implied move = straddle cost / underlying — the market's literal priced-in move.
-        # call_price and put_price are already validated for liquidity above; no IV needed.
+        # Straddle cost / underlying = literal market-priced move; OI not volume as proxy (OI persists outside hours)
         implied_move_pct = (call_price + put_price) / underlying_price * 100.0
-        
-        # Use Open Interest as the liquidity proxy — unlike volume, OI persists
-        # between sessions and is not 0 outside market hours.
         volume = int(atm_call.get('openInterest', 0)) + int(atm_put.get('openInterest', 0))
         
         return implied_move_pct, volume, target_expiry
@@ -139,10 +116,6 @@ def get_implied_straddle_move(ticker: str, underlying_price: float, target_date:
         return None, 0, None
 
 def run_earnings_vol_scan(ticker_list: List[str]) -> None:
-    """
-    Iterates through assets, filters for upcoming earnings within the next 14 days, 
-    calculates quantitative option mispricings (Edge), and saves to the SQLite database.
-    """
     total_tickers = len(ticker_list)
     if not ticker_list:
         logger.warning("Ticker list is empty. Aborting scan.")
@@ -151,11 +124,12 @@ def run_earnings_vol_scan(ticker_list: List[str]) -> None:
     logger.info(f"Starting earnings volatility scan for {total_tickers} assets...")
     log_notification("Info", f"Earnings Volatility Scan initiated for {total_tickers} assets.")
     
+    conn = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
-        
-        today = datetime.now()
+
+        today = datetime.now(timezone.utc).replace(tzinfo=None)
         cutoff_date = today + timedelta(days=14)
 
         for i, ticker in enumerate(ticker_list):
@@ -163,15 +137,14 @@ def run_earnings_vol_scan(ticker_list: List[str]) -> None:
                 earnings_date = None
                 e_date_str = None
 
-                # 1. LIVE VALIDATION: Strictly fetch fresh earnings dates from the API, bypassing stale SQLite values
+                # Bypass stale SQLite values — always fetch live to avoid acting on outdated dates
                 try:
-                    # Method 1: Check .info dictionary first (fastest)
                     info = yahoo_engine.get_ticker_info(ticker) or {}
                     earnings_ts = info.get('earningsTimestamp')
                     if earnings_ts:
-                        earnings_date = datetime.fromtimestamp(earnings_ts)
+                        earnings_date = datetime.fromtimestamp(earnings_ts, tz=timezone.utc).replace(tzinfo=None)
 
-                    # Method 2: Validate against get_earnings_dates calendar (most accurate)
+                    # Cross-check with earnings calendar (more accurate than the .info timestamp)
                     live_dates = yahoo_engine.get_earnings_dates(ticker, limit=5)
                     if live_dates is not None and not live_dates.empty:
                         now_tz_naive = pd.Timestamp.now(tz='UTC').tz_localize(None)
@@ -190,13 +163,11 @@ def run_earnings_vol_scan(ticker_list: List[str]) -> None:
                 if not earnings_date:
                     continue
 
-                # Bypass if the validated live date falls outside our strict 14-day actionable window
                 if not (today <= earnings_date <= cutoff_date):
                     continue
 
                 logger.info(f"Analyzing {ticker} (Live Earnings Date: {e_date_str})...")
 
-                # Fetch 1 month of history to calculate base Historical Volatility
                 _hist_result = yahoo_engine.get_price_history([ticker], period="1mo", interval="1d")
                 hist = _hist_result.get(ticker, pd.DataFrame())
 
@@ -206,7 +177,6 @@ def run_earnings_vol_scan(ticker_list: List[str]) -> None:
 
                 underlying_price = hist['Close'].iloc[-1]
 
-                # Calculate Base Historical Volatility (HV) for isolation math
                 hist = hist.copy()
                 hist['Returns'] = np.log(hist['Close'] / hist['Close'].shift(1))
                 historical_hv = hist['Returns'].std() * np.sqrt(252)
@@ -214,7 +184,6 @@ def run_earnings_vol_scan(ticker_list: List[str]) -> None:
                 if pd.isna(historical_hv) or historical_hv == 0:
                     continue
 
-                # 2. Calculate Mathematical Vectors
                 hist_move_pct = get_historical_earnings_move(ticker)
                 implied_move_pct, opt_volume, target_expiry = get_implied_straddle_move(ticker, underlying_price, earnings_date)
                 
@@ -222,11 +191,9 @@ def run_earnings_vol_scan(ticker_list: List[str]) -> None:
                     logger.debug(f"Missing volatility parameters or liquidity for {ticker}. Skipping edge calculation.")
                     continue
 
-                # 3. ISOLATE EARNINGS MOVE: Strip out non-earnings volatility (theta decay)
-                # days_to_expiry measured from now — the same window the straddle price covers.
-                # Subtracting diffusion over (days_to_expiry - 1) days isolates the earnings jump.
+                # Subtract diffusion over (days_to_expiry - 1) days to isolate the earnings jump from theta
                 target_expiry_date = datetime.strptime(target_expiry, '%Y-%m-%d')
-                days_to_expiry = max((target_expiry_date - datetime.now()).days, 1)
+                days_to_expiry = max((target_expiry_date - datetime.now(timezone.utc).replace(tzinfo=None)).days, 1)
                 non_earnings_days = max(days_to_expiry - 1, 0)
                 
                 daily_hv = historical_hv / np.sqrt(252)
@@ -235,12 +202,10 @@ def run_earnings_vol_scan(ticker_list: List[str]) -> None:
                 isolated_variance = max(total_implied_pct**2 - non_earn_pct**2, 0)
                 isolated_implied_move = np.sqrt(isolated_variance) * 100.0 if isolated_variance > 0 else 0.01
 
-                # Calculate True Options Mispricing Edge
                 edge_score = hist_move_pct - isolated_implied_move
-                last_updated = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                last_updated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
-                # 4. Save to Database
-                # We store isolated_implied_move as implied_move_pct because it reflects the true expected event variance
+                # Store isolated_implied_move in implied_move_pct column — reflects true event variance, not raw straddle
                 cursor.execute('''
                     INSERT OR REPLACE INTO earnings_volatility 
                     (ticker, next_earnings_date, implied_move_pct, historical_avg_move_pct, edge_score, options_volume, last_updated)
@@ -262,10 +227,8 @@ def run_earnings_vol_scan(ticker_list: List[str]) -> None:
                 logger.error(f"Error analyzing {ticker}: {str(e)}")
                 conn.rollback()
             finally:
-                # Mandated randomized API throttling
                 time.sleep(random.uniform(0.5, 1.5))
 
-            # --- Progress Heartbeat ---
             processed = i + 1
             if total_tickers >= 4 and processed % max(1, total_tickers // 4) == 0 and processed < total_tickers:
                 pct = int((processed / total_tickers) * 100)
@@ -278,7 +241,8 @@ def run_earnings_vol_scan(ticker_list: List[str]) -> None:
         logger.error(f"Fatal error during Earnings Scan: {str(e)}")
         log_notification("Error", f"Earnings Volatility Scan failed with a fatal error: {str(e)}")
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 if __name__ == "__main__":
     # Standalone execution logic for testing
