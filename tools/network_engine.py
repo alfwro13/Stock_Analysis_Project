@@ -17,9 +17,7 @@ _IPV6_FAULT_FLAG = DATA_DIR / "ipv6_fault.flag"
 
 logger = logging.getLogger(__name__)
 
-# Global state to track IPv6 health for the UI Settings page.
-# is_failing acts as a one-time latch: once set True it stays True for the
-# lifetime of the process. All callers check it before attempting IPv6.
+# is_failing is a one-time latch — once True it stays True for the process lifetime; callers skip IPv6 on sight.
 GLOBAL_IPV6_STATUS = {
     "is_failing": False,
     "last_error": "",
@@ -38,12 +36,7 @@ def _update_ipv6_status(failing: bool, error: str = "", fail_time: float = 0.0) 
 
 
 def _maybe_restore_latch() -> None:
-    """
-    Called once per process on the first yahoo_connection_boundary use.
-    Reads the flag file written by _trigger_fallback_alert. If a hard fault
-    occurred within the last hour, pre-sets the latch so a restarted process
-    doesn't re-alert for the same ongoing failure.
-    """
+    # Pre-sets the latch from the fault flag file so a restarted process silently skips IPv6 during an active fault window.
     global _latch_initialized
     with _latch_init_lock:
         if _latch_initialized:
@@ -68,12 +61,7 @@ def _maybe_restore_latch() -> None:
 
 
 def _trigger_fallback_alert(ipv6_address: str, action_context: str, error_summary: str, detailed_trace: str, config: dict) -> None:
-    """
-    On the first IPv6 hard fault: latch is_failing, write to DB, send one
-    Nextcloud Talk alert. All subsequent calls are no-ops (latch already set).
-    """
-    # Atomically check-and-set the latch so only the first concurrent caller
-    # fires the notification even when many requests fail simultaneously.
+    # Atomically check-and-set ensures only the first concurrent caller fires the alert; all others see is_failing=True and return.
     with _ipv6_status_lock:
         if GLOBAL_IPV6_STATUS["is_failing"]:
             logger.warning(f"IPv6 already disabled — suppressing duplicate alert for: {error_summary}")
@@ -82,7 +70,7 @@ def _trigger_fallback_alert(ipv6_address: str, action_context: str, error_summar
         GLOBAL_IPV6_STATUS["last_error"] = error_summary
         GLOBAL_IPV6_STATUS["last_fail_time"] = time.time()
 
-    # 1a. Flag file — survives process restarts; read by _maybe_restore_latch on next startup
+    # Survives process restarts; read by _maybe_restore_latch on next startup.
     try:
         _IPV6_FAULT_FLAG.write_text(json.dumps({
             "timestamp": GLOBAL_IPV6_STATUS["last_fail_time"],
@@ -91,7 +79,6 @@ def _trigger_fallback_alert(ipv6_address: str, action_context: str, error_summar
     except Exception as flag_e:
         logger.debug("Could not write IPv6 fault flag: %s", flag_e)
 
-    # 1b. Database Persistence (written once, contains the full trace)
     try:
         conn = get_connection()
         cursor = conn.cursor()
@@ -109,7 +96,7 @@ def _trigger_fallback_alert(ipv6_address: str, action_context: str, error_summar
     except Exception as db_e:
         logger.error(f"Failed to log network fault to SQLite: {db_e}")
 
-    # 2. Nextcloud Talk Alert — sent exactly once per process lifetime
+    # Sent exactly once per process lifetime.
     alert_msg = (
         f"🚨 **CRITICAL NETWORK FAULT: YAHOO FINANCE** 🚨\n\n"
         f"The custom IPv6 socket (`{ipv6_address}`) experienced a hard failure while fetching data for `{action_context}`.\n"
@@ -129,11 +116,7 @@ def _patch_session_with_retries(
     timeout: int = 30,
     max_retries: int = 3,
 ) -> None:
-    """
-    Monkey-patches session.request with a timeout default, HTTP 429 backoff,
-    and transient-error retry loop. Applied to the standard (non-IPv6) path so
-    it gets the same resilience as the IPv6 failover session.
-    """
+    # Applied to the non-IPv6 path to give it the same 429-backoff and transient-retry resilience as the failover session.
     original_request = session.request
     base_delay = 2.0
 
@@ -173,25 +156,13 @@ def _patch_session_with_retries(
 
 
 def create_failover_session(ipv6_address: str, action_context: str, config: dict) -> cffi_requests.Session:
-    """
-    Builds a true curl_cffi Session to satisfy yfinance >= 1.x requirements,
-    while monkey-patching the request method to intercept binding faults AND HTTP 429s.
-    Impersonates Chrome to bypass Yahoo TLS fingerprinting.
-    """
+    # Impersonates Chrome to bypass Yahoo TLS fingerprinting; monkey-patches request to catch IPv6 bind faults and HTTP 429s.
     session = cffi_requests.Session(impersonate="chrome", interface=ipv6_address)
     session.fallback_triggered = False
-    
-    # Store the original underlying request logic
     original_request = session.request
 
     def failover_request(method, url, **kwargs):
-        # IMPORTANT: `nonlocal` is mandatory here.
-        # Lines below reassign `session` and `original_request` inside this closure
-        # (the "Session is closed" rescue at the bottom of the except block).
-        # Without `nonlocal`, Python marks them as local variables throughout the
-        # entire function body — causing UnboundLocalError on the very first read
-        # (line `response = original_request(...)`) before any assignment runs.
-        # This has broken the session twice; do NOT remove these declarations.
+        # nonlocal required: without it Python treats `session`/`original_request` as locals (UnboundLocalError at first read). Has bitten us twice.
         nonlocal session, original_request
         global GLOBAL_IPV6_STATUS
         kwargs.setdefault("timeout", 30)
@@ -202,10 +173,9 @@ def create_failover_session(ipv6_address: str, action_context: str, config: dict
             try:
                 response = original_request(method, url, **kwargs)
                 
-                # Intercept HTTP 429 (Too Many Requests) BEFORE yfinance sees it
                 if response.status_code == 429:
                     if attempt < max_retries:
-                        # 429-specific backoff: 5s, 10s, 20s — longer than transient errors
+                        # longer backoff than transient errors: 5s → 10s → 20s
                         sleep_time = (5 * (2 ** attempt)) + random.uniform(0.5, 1.5)
                         logger.warning(f"[HTTP 429] Rate limited by Yahoo on IPv6 '{ipv6_address}'. Backing off for {sleep_time:.2f}s (Attempt {attempt + 1}/{max_retries}).")
                         time.sleep(sleep_time)
@@ -213,7 +183,6 @@ def create_failover_session(ipv6_address: str, action_context: str, config: dict
                     else:
                         raise Exception(f"HTTP 429 Max Retries Exceeded on IPv6 Interface. URL: {url}")
                         
-                # If we succeed on IPv6, mark the global status as healthy
                 if not getattr(session, 'fallback_triggered', False):
                     _update_ipv6_status(failing=False)
                     
@@ -222,7 +191,6 @@ def create_failover_session(ipv6_address: str, action_context: str, config: dict
             except Exception as e:
                 error_str = str(e)
                 
-                # --- 1. STRICT IPv6 LAZY-LOAD RESCUE ---
                 if "Session is closed" in error_str:
                     logger.warning(f"Closed session detected. Rebuilding IPv6 session for '{action_context}' ({ipv6_address})...")
                     session = cffi_requests.Session(impersonate="chrome", interface=ipv6_address)
@@ -233,9 +201,7 @@ def create_failover_session(ipv6_address: str, action_context: str, config: dict
                 if getattr(session, 'fallback_triggered', False):
                     raise e
                 
-                # --- 2. TRANSIENT TIMEOUT HANDLING ---
-                # bind errors (errno 99) are a startup race: the IPv6 interface may
-                # still be in kernel DAD after a process restart. Retry before hard-faulting.
+                # bind errors (errno 99) are a startup race — IPv6 interface may still be in DAD; retry before hard-faulting.
                 is_transient = any(term in error_str.lower() for term in [
                     "timeout", "connection reset", "code: 28",
                     "bind failed", "cannot assign requested address", "errno 99",
@@ -246,8 +212,6 @@ def create_failover_session(ipv6_address: str, action_context: str, config: dict
                     time.sleep(sleep_time)
                     continue
 
-                # --- 3. HARD FAULT / IPv4 FAILOVER ---
-                # We only reach this point if it's a definitive binding error, or if retries are exhausted.
                 error_summary = f"{type(e).__name__}: {error_str}"
                 detailed_trace = (
                     f"Target URL: {method} {url}\n"
@@ -256,13 +220,10 @@ def create_failover_session(ipv6_address: str, action_context: str, config: dict
                 )
                 
                 logger.error(f"Critical IPv6 Fault during '{action_context}': {error_summary}\n{detailed_trace}")
-                # _trigger_fallback_alert sets the is_failing latch and sends one
-                # Nextcloud notification; duplicate calls from concurrent requests are no-ops.
+                # duplicate concurrent callers are no-ops: latch check-and-set is atomic.
                 _trigger_fallback_alert(ipv6_address, action_context, error_summary, detailed_trace, config)
 
-                # Graceful Fallback: Build a fresh unbound session — mutating
-                # session.interface on a live curl_cffi session is not documented
-                # behaviour and may be silently ignored by libcurl at the socket layer.
+                # Build fresh unbound session — mutating session.interface on a live curl_cffi is undocumented and may be silently ignored by libcurl.
                 logger.warning(f"Exhausted IPv6 recovery options. Dropping custom interface {ipv6_address} and reverting to OS default routing (IPv4)...")
                 session.fallback_triggered = True
                 fallback_session = cffi_requests.Session(impersonate="chrome")
@@ -274,21 +235,13 @@ def create_failover_session(ipv6_address: str, action_context: str, config: dict
                 finally:
                     fallback_session.close()
 
-    # Monkey-patch the request method to our self-healing wrapper
     session.request = failover_request
     return session
 
 
 @contextmanager
 def yahoo_connection_boundary(action_context: str):
-    """
-    Context manager that yields a robust, self-healing curl_cffi Session 
-    for use with yfinance. Uses IPv6 if configured, else standard routing.
-    
-    Usage:
-        with yahoo_connection_boundary("Daily Download") as session:
-            df = yf.download("AAPL", session=session)
-    """
+    # Yields a curl_cffi Session for yfinance: IPv6-bound if configured and healthy, otherwise standard routing.
     _maybe_restore_latch()
 
     config = load_config()
@@ -307,7 +260,6 @@ def yahoo_connection_boundary(action_context: str):
             session.close()
         return
 
-    # Initialize the self-healing patched session
     session = create_failover_session(ipv6_addr, action_context, config)
     try:
         yield session
