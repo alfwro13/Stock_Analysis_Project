@@ -13,15 +13,16 @@ from nextcloud_talk import send_text_message
 
 logger = logging.getLogger(__name__)
 
-# Global state to track IPv6 health for the UI Settings page
+# Global state to track IPv6 health for the UI Settings page.
+# is_failing acts as a one-time latch: once set True it stays True for the
+# lifetime of the process. All callers check it before attempting IPv6.
 GLOBAL_IPV6_STATUS = {
     "is_failing": False,
     "last_error": "",
     "last_fail_time": 0.0,
-    "last_alert_fired": 0.0,   # epoch seconds — used to rate-limit Nextcloud alerts
 }
-_ALERT_COOLDOWN_SECS = 300     # only one Nextcloud Talk alert per 5 minutes
 _ipv6_status_lock = threading.Lock()
+
 
 def _update_ipv6_status(failing: bool, error: str = "", fail_time: float = 0.0) -> None:
     with _ipv6_status_lock:
@@ -29,12 +30,23 @@ def _update_ipv6_status(failing: bool, error: str = "", fail_time: float = 0.0) 
         GLOBAL_IPV6_STATUS["last_error"] = error
         GLOBAL_IPV6_STATUS["last_fail_time"] = fail_time
 
+
 def _trigger_fallback_alert(ipv6_address: str, action_context: str, error_summary: str, detailed_trace: str, config: dict) -> None:
     """
-    Handles logging the network fault to SQLite and dispatching an alert to Nextcloud.
-    Separates the concise summary for chat from the heavy traceback for the database.
+    On the first IPv6 hard fault: latch is_failing, write to DB, send one
+    Nextcloud Talk alert. All subsequent calls are no-ops (latch already set).
     """
-    # 1. Database Persistence (Heavy Traceback Logging)
+    # Atomically check-and-set the latch so only the first concurrent caller
+    # fires the notification even when many requests fail simultaneously.
+    with _ipv6_status_lock:
+        if GLOBAL_IPV6_STATUS["is_failing"]:
+            logger.warning(f"IPv6 already disabled — suppressing duplicate alert for: {error_summary}")
+            return
+        GLOBAL_IPV6_STATUS["is_failing"] = True
+        GLOBAL_IPV6_STATUS["last_error"] = error_summary
+        GLOBAL_IPV6_STATUS["last_fail_time"] = time.time()
+
+    # 1. Database Persistence (written once, contains the full trace)
     try:
         conn = get_connection()
         cursor = conn.cursor()
@@ -52,28 +64,18 @@ def _trigger_fallback_alert(ipv6_address: str, action_context: str, error_summar
     except Exception as db_e:
         logger.error(f"Failed to log network fault to SQLite: {db_e}")
 
-    # 2. Nextcloud Talk Alert — rate-limited to one message per cooldown window
-    now = time.time()
-    with _ipv6_status_lock:
-        last_fired = GLOBAL_IPV6_STATUS["last_alert_fired"]
-        cooldown_active = (now - last_fired) < _ALERT_COOLDOWN_SECS
-        if not cooldown_active:
-            GLOBAL_IPV6_STATUS["last_alert_fired"] = now
-
-    if not cooldown_active:
-        alert_msg = (
-            f"🚨 **CRITICAL NETWORK FAULT: YAHOO FINANCE** 🚨\n\n"
-            f"The custom IPv6 socket (`{ipv6_address}`) experienced a hard failure while fetching data for `{action_context}`.\n"
-            f"**Error:** {error_summary}\n\n"
-            f"🔄 *System is dropping the IPv6 interface and hopping to standard IPv4 routing to rescue the pipeline.*\n\n"
-            f"*(Note: Full stack trace and URL details have been written to the SQLite system_notifications table for debugging.)*"
-        )
-        try:
-            send_text_message(alert_msg, config)
-        except Exception as nc_e:
-            logger.error(f"Failed to dispatch Nextcloud alert for network fault: {nc_e}")
-    else:
-        logger.warning(f"IPv6 fault alert suppressed (cooldown active, last fired {int(now - last_fired)}s ago): {error_summary}")
+    # 2. Nextcloud Talk Alert — sent exactly once per process lifetime
+    alert_msg = (
+        f"🚨 **CRITICAL NETWORK FAULT: YAHOO FINANCE** 🚨\n\n"
+        f"The custom IPv6 socket (`{ipv6_address}`) experienced a hard failure while fetching data for `{action_context}`.\n"
+        f"**Error:** {error_summary}\n\n"
+        f"🔄 *IPv6 interface permanently disabled for this session. All subsequent requests will use standard IPv4 routing.*\n\n"
+        f"*(Full stack trace has been written to the SQLite system_notifications table.)*"
+    )
+    try:
+        send_text_message(alert_msg, config)
+    except Exception as nc_e:
+        logger.error(f"Failed to dispatch Nextcloud alert for network fault: {nc_e}")
 
 
 def _patch_session_with_retries(
@@ -131,8 +133,6 @@ def create_failover_session(ipv6_address: str, action_context: str, config: dict
     while monkey-patching the request method to intercept binding faults AND HTTP 429s.
     Impersonates Chrome to bypass Yahoo TLS fingerprinting.
     """
-    global GLOBAL_IPV6_STATUS
-    _update_ipv6_status(failing=False)
     session = cffi_requests.Session(impersonate="chrome", interface=ipv6_address)
     session.fallback_triggered = False
     
@@ -207,11 +207,10 @@ def create_failover_session(ipv6_address: str, action_context: str, config: dict
                 )
                 
                 logger.error(f"Critical IPv6 Fault during '{action_context}': {error_summary}\n{detailed_trace}")
+                # _trigger_fallback_alert sets the is_failing latch and sends one
+                # Nextcloud notification; duplicate calls from concurrent requests are no-ops.
                 _trigger_fallback_alert(ipv6_address, action_context, error_summary, detailed_trace, config)
-                
-                # Update Global Status for UI Dashboard
-                _update_ipv6_status(failing=True, error=error_summary, fail_time=time.time())
-                
+
                 # Graceful Fallback: Build a fresh unbound session — mutating
                 # session.interface on a live curl_cffi session is not documented
                 # behaviour and may be silently ignored by libcurl at the socket layer.
@@ -243,6 +242,10 @@ def yahoo_connection_boundary(action_context: str):
     """
     config = load_config()
     ipv6_addr = config.get("YAHOO_IPV6_ADDRESS", "").strip()
+
+    # Skip IPv6 entirely if the latch was tripped by a previous failure this session.
+    if GLOBAL_IPV6_STATUS["is_failing"]:
+        ipv6_addr = ""
 
     if not ipv6_addr:
         session = cffi_requests.Session(impersonate="chrome")
