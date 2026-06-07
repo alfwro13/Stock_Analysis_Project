@@ -1,13 +1,10 @@
-"""
-lunchtime_briefing.py
-
-Generates the Lunchtime Quant Briefing: news since the morning briefing,
-UK mid-session snapshot, US pre-market snapshot, and intraday alerts.
-"""
+"""Lunchtime Quant Briefing: mid-session news, UK snapshot, US pre-market, intraday alerts."""
 
 import logging
+import os
 from datetime import datetime, timedelta, timezone
 
+import time_engine
 from database import get_connection
 from morning_briefing import (
     fetch_portfolio_news,
@@ -21,9 +18,8 @@ from morning_briefing import (
     _US_DISPLAY_NAMES,
     _UK_DISPLAY_NAMES,
 )
-from quant_screener import fetch_upcoming_macro_events
+from quant_screener import fetch_upcoming_macro_events, _extract_numeric
 from regime_engine import get_latest_regime
-import os
 
 logger = logging.getLogger(__name__)
 
@@ -114,7 +110,6 @@ def _render_uk_midsession(
 
 
 def _render_us_premarket(pulse: dict) -> str:
-    """US pre-market snapshot table (US markets have not yet opened at 12:00 UK)."""
     out = "## 📈 US Pre-Market\n"
     out += "*US markets open at approx 14:30 UK*\n\n"
     out += "| Asset | Price | Change |\n"
@@ -139,7 +134,6 @@ def _render_us_premarket(pulse: dict) -> str:
 
 
 def _render_intraday_alerts(since_dt: datetime) -> str:
-    """Reports any crash/anomaly alerts fired since the morning briefing."""
     out = "## ⚡ Intraday Alerts Since Morning Briefing\n"
     try:
         conn = get_connection()
@@ -168,8 +162,6 @@ def _render_intraday_alerts(since_dt: datetime) -> str:
 
 
 def _render_macro_events(target_date: str) -> str:
-    """48-hour macro event radar section."""
-    from quant_screener import fetch_upcoming_macro_events, _extract_numeric  # local import avoids circular
     macro_events = fetch_upcoming_macro_events(target_date)
 
     out = "## 📅 Macro Events — Next 48 Hours\n"
@@ -209,13 +201,7 @@ def _render_macro_events(target_date: str) -> str:
 
 
 def generate_lunchtime_briefing(target_date: str) -> str:
-    """
-    Generates the Lunchtime Quant Briefing markdown:
-    morning session news → UK mid-session → US pre-market → intraday alerts → macro events.
-    Writes the report to disk and returns the markdown string.
-    """
-    now_uk = datetime.now()
-    generated_at = now_uk.strftime("%H:%M")
+    generated_at = time_engine.now_local().strftime("%H:%M")
 
     logger.info("Generating lunchtime briefing for %s", target_date)
 
@@ -233,14 +219,15 @@ def generate_lunchtime_briefing(target_date: str) -> str:
     macro_regime = dict(macro_row) if macro_row else {}
 
     # Morning session news window: ~5 hours back (07:15 UK to 12:00 UK)
-    since_dt = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=5)
-    morning_start_str = (datetime.now() - timedelta(hours=5)).strftime("%H:%M")
+    since_dt = datetime.now(timezone.utc) - timedelta(hours=5)
+    morning_start_str = (time_engine.now_local() - timedelta(hours=5)).strftime("%H:%M")
     window_desc = f"News published since ~{morning_start_str} UK (morning session)"
 
     news_data: dict = {}
     if tickers:
         logger.info("Fetching morning session news for %d portfolio tickers...", len(tickers))
-        news_data = fetch_portfolio_news(tickers, since_dt)
+        # fetch_portfolio_news expects naive UTC for its internal pub_time comparisons
+        news_data = fetch_portfolio_news(tickers, since_dt.replace(tzinfo=None))
 
     # --- UK charts (regenerated with live mid-session data) ---
     logger.info("Generating UK market chart snapshots for lunchtime briefing...")
