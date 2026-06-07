@@ -31,42 +31,54 @@ Stock_Analysis_Project/
 ├── auth.py                   # Session-cookie auth
 │
 ├── data_engine.py            # Yahoo Finance fetch + Parquet write
+├── yahoo_engine.py           # Yahoo Finance HTTP cache / rate-limit wrapper (singleton)
+├── huggingface_engine.py     # FinBERT NLP sentiment via HuggingFace transformers
 ├── universe_engine.py        # Market universe management
 ├── universe_fundamentals_engine.py
 ├── universe_deep_sync_engine.py
 ├── quant_engine.py           # Core scoring (0-100 composite score)
 ├── quant_screener.py         # Screener logic
 ├── quant_signals.py          # quant_signals table writes
+├── score_analysis.py         # Score history analytics
 ├── indicators.py             # TA calculations (RSI, MACD, SMA, OBV…)
 ├── risk_engine.py            # VaR / CVaR / ATR stop-loss
 ├── position_sizing.py        # Kelly / fixed-fraction sizing
 ├── regime_engine.py          # Market regime classification
 ├── market_pulse.py           # CNN Fear & Greed + S&P chart
-├── sentiment_engine.py       # FinBERT NLP sentiment
+├── sentiment_engine.py       # Sentiment orchestration wrapper
 ├── insider_engine.py         # SEC Form 4 scraping
 ├── earnings_engine.py        # Earnings date tracking
 ├── earnings_vol_engine.py    # Implied vs historical move edge
+├── options_engine.py         # Options chain data (calls/puts, IV smile)
 ├── macro_ai_engine.py        # HMM + RF + XGBoost macro predictions
 ├── macro_data_engine.py      # FRED / BoE / ONS ingestion
 ├── macro_calendar_engine.py  # Economic event calendar
 ├── ai_engine.py              # LLM prompt aggregator
 ├── ai_prediction_engine.py   # XGBoost + RF soft-voting ensemble
+├── ai_contagion_engine.py    # AI sector contagion monitor (10-ticker ecosystem)
+├── anomaly_engine.py         # Unsupervised anomaly detection per ticker
 ├── xray_engine.py            # Portfolio X-ray / risk diagnostics
 ├── crash_engine.py           # Intraday crash detection
 ├── moonshot_engine.py        # Intraday parabolic / ATH detection
+├── intraday_bottom_engine.py # Intraday capitulation-bottom detector (dip radar)
 ├── intraday_orchestrator.py  # 5-min scan loop
+├── news_feed_engine.py       # RSS + full-text news fetching (yfinance + trafilatura)
 ├── gilt_engine.py            # UK gilt yield tracking
 ├── index_engine.py           # Index data (SPY, FTSE…)
 ├── freetrade_engine.py       # Freetrade CSV import
 ├── ghostfolio_sync.py        # Ghostfolio API sync
 ├── fundamentals_helpers.py   # Shared fundamentals utilities
+├── smgb_predictor.py         # SMGB.L morning price predictor (ETF holdings + OLS)
 ├── visuals.py                # Matplotlib / Plotly chart generation
 ├── maintenance_engine.py     # DB vacuum, orphan file pruning
 ├── reports_engine.py         # Quant briefing report generation
+├── morning_briefing.py       # Morning briefing assembly + dispatch
+├── lunchtime_briefing.py     # Lunchtime briefing assembly + dispatch
 ├── report_dispatcher.py      # Nextcloud Talk / alert dispatch
 ├── nextcloud_talk.py         # Nextcloud Talk webhook client
 ├── portfolio_service.py      # Portfolio aggregation helpers
-├── profile_engine.py         # Asset profile cache
+├── profile_engine.py         # Asset profile cache (sector, country, exchange)
+├── time_engine.py            # Central time/timezone module (all market-hours logic)
 ├── utils.py                  # Shared utilities
 │
 ├── templates/                # Jinja2 HTML templates
@@ -96,18 +108,30 @@ All tables join on `ticker` as the primary key unless noted.
 | Table | Purpose |
 |---|---|
 | `market_universe` | Master list of ~4,000 equities/ETFs |
-| `asset_profiles` | Static corporate metadata (sector, summary) |
+| `asset_profiles` | Static corporate metadata (sector, country, exchange, summary) |
+| `ticker_metadata` | Lightweight beta + market-cap cache (sector, beta, market_cap) |
 | `stock_signals` | Final System Verdict + fundamental snapshot |
 | `quant_signals` | Daily historical TA + ML scores (composite PK: ticker + date) |
 | `quant_scan_states` | Resumability tracker for long-running scans |
+| `score_history` | Per-ticker daily score + signal + close price history |
 | `earnings_volatility` | Options arbitrage edge scores |
 | `market_regimes` | VIX + SPY volatility regime labels + HMM state |
+| `market_pulse_cache` | Cached CNN Fear & Greed + S&P snapshot |
 | `macro_regimes` | Gilt/bond yield threat levels (US + UK) |
 | `macro_calendar` | Economic events + AI volatility warnings |
 | `macro_indicators` | FRED / BoE / ONS structural macro metrics |
-| `portfolio_xray` | X-ray risk diagnostics (added June 2026) |
-| `xray_history` | Historical X-ray snapshots |
-| `xray_alerts` | X-ray alert ledger |
+| `intraday_monitors` | Active dip-radar watch list (ticker, date_added, activated_by) |
+| `intraday_monitor_results` | Per-ticker dip-radar scan results |
+| `xray_risk_cache` | Per-ticker beta + annualised vol vs benchmark |
+| `xray_portfolio_returns_cache` | Portfolio return series for X-ray calculations |
+| `xray_correlation_matrix` | Rolling pairwise correlation matrix snapshot |
+| `xray_dividend_cache` | Per-ticker dividend yield cache for X-ray |
+| `ai_contagion_snapshots` | AI sector contagion scan results (payload JSON + alert flag) |
+| `news_articles` | Full-text news articles with sentiment scores |
+| `smgb_predictions` | SMGB.L morning price predictions + actuals + accuracy metrics |
+| `alert_state` | Dedup ledger for intraday alert engines (fingerprint + cooldown) |
+| `system_notifications` | Scheduler job log visible in the Settings notifications panel |
+| `scheduler_run_log` | Last-run timestamp per APScheduler job ID |
 
 Schema changes must go through `database.py:init_db()`.
 
@@ -196,6 +220,7 @@ All time-related code **must** go through `time_engine.py`. Never hardcode timez
 |---|---|---|
 | Ghostfolio | Live portfolio holdings | `GHOSTFOLIO_URL`, `API_TOKEN` |
 | Yahoo Finance (`yfinance`) | Price, OHLCV, fundamentals | (public, no key) |
+| HuggingFace (`transformers`) | FinBERT NLP sentiment model | `HF_TOKEN` in `.env` (optional, speeds up hub download) |
 | Nextcloud Talk | Push alerts / morning briefing | `NEXTCLOUD_*` keys in `.env` |
 | FRED / BoE / ONS | Macro indicators | (public) |
 | SEC EDGAR | Insider Form 4 filings | (public) |
@@ -214,6 +239,19 @@ All time-related code **must** go through `time_engine.py`. Never hardcode timez
 | `feature_stats.joblib` | Cross-sectional z-score stats |
 
 Retrain via the Settings UI ("Initialize AI Engine") or the `ml_historical_backfill.py` script.
+
+---
+
+## Tools Menu (`/tools`)
+
+A dedicated page housing standalone analytical tools. Each tool is self-contained and fetches data live on demand. Accessible via the navbar (`🔧 Tools`). New tools are added as `guide-card` entries in `templates/tools.html` with a corresponding route in `page_routes.py`.
+
+| Tool | Route | Description |
+|---|---|---|
+| Dip Radar Summary | `/dip-radar` | Live intraday capitulation detector across all monitored tickers; reversal score 0–100, refreshed every 2 min |
+| Options Sandbox | `/options-sandbox` | Interactive options chain explorer; live calls/puts, IV smile, open interest and volume across expiries |
+| SMGB.L Morning Price Predictor | `/uk-etf-forecast` | Estimates SMGB.L next-open price using top-10 ETF holdings' US post-close prices + GBPUSD FX + OLS regression with 60-day confidence interval |
+| AI Sector Contagion Monitor | `/ai-contagion` | Tracks 10-ticker AI ecosystem (semis + hyperscalers + cloud); 30-day normalised performance, intraday session, rolling 20-day correlation heatmap |
 
 ---
 

@@ -764,11 +764,11 @@ def train_global_ml_model() -> None:
 
         # ── Hyperparameter Search (Train region only) ─────────────────────────
         rf_base = RandomForestClassifier(
-            class_weight='balanced', random_state=42, n_jobs=-1
+            class_weight='balanced', random_state=42, n_jobs=1
         )
         xgb_base = XGBClassifier(
             scale_pos_weight=scale_pos_weight_train,
-            random_state=42, n_jobs=-1, eval_metric='logloss'
+            random_state=42, n_jobs=1, eval_metric='logloss'
         )
 
         rf_param_dist = {
@@ -789,12 +789,12 @@ def train_global_ml_model() -> None:
         rf_search = RandomizedSearchCV(
             estimator=rf_base, param_distributions=rf_param_dist,
             n_iter=10, cv=cv_splits_train, scoring='average_precision',
-            random_state=42, n_jobs=-1
+            random_state=42, n_jobs=1
         )
         xgb_search = RandomizedSearchCV(
             estimator=xgb_base, param_distributions=xgb_param_dist,
             n_iter=10, cv=cv_splits_train, scoring='average_precision',
-            random_state=42, n_jobs=-1
+            random_state=42, n_jobs=1
         )
 
         rf_search.fit(X_train, y_train)

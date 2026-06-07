@@ -50,14 +50,14 @@ def log_sched_notification(msg_type: str, msg_text: str):
         logger.error(f"Failed to log notification: {e}")
 
 def record_job_run(job_id: str):
-    from datetime import datetime
+    from datetime import datetime, timezone
     try:
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute(
             "INSERT INTO scheduler_run_log (job_id, last_run) VALUES (?, ?) "
             "ON CONFLICT(job_id) DO UPDATE SET last_run = excluded.last_run",
-            (job_id, datetime.now().strftime('%Y-%m-%d %H:%M'))
+            (job_id, datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M'))
         )
         conn.commit()
         conn.close()
@@ -595,8 +595,8 @@ def run_ai_contagion_job():
 
 def run_smgb_actual_fill():
     """Fetches the actual SMGB.L open price and fills yesterday's prediction row."""
-    import yfinance as yf
     from datetime import date, timedelta
+    import pandas as pd
     log_sched_notification("Scheduler", "Started SMGB actual-fill job...")
     try:
         today = date.today()
@@ -606,17 +606,14 @@ def run_smgb_actual_fill():
             target -= timedelta(days=1)
         target_str = target.isoformat()
 
-        df = yf.download("SMGB.L", period="5d", interval="1d", progress=False, auto_adjust=True)
-        if df.empty:
+        from yahoo_engine import yahoo_engine as _ye
+        history = _ye.get_price_history(["SMGB.L"], period="5d", interval="1d")
+        df = history.get("SMGB.L")
+        if df is None or df.empty:
             log_sched_notification("Warning", "SMGB actual-fill: no price data returned.")
             return
 
-        # Flatten multi-level columns if present
-        if isinstance(df.columns, type(df.columns)) and hasattr(df.columns, 'levels'):
-            df.columns = df.columns.get_level_values(0)
-
         df.index = df.index.normalize()
-        import pandas as pd
         target_ts = pd.Timestamp(target_str)
         if target_ts not in df.index:
             log_sched_notification("Warning", f"SMGB actual-fill: no data for {target_str}.")
@@ -635,6 +632,7 @@ def reload_scheduler():
     """Reads the latest config.json and updates APScheduler dynamically."""
     logger.info("Reloading scheduled jobs from configuration...")
     scheduler.remove_all_jobs()
+    user_tz = time_engine.get_user_tz()
     
     config = load_config()
     notifications = config.get("NOTIFICATIONS", {})
@@ -649,7 +647,7 @@ def reload_scheduler():
             hour, minute = map(int, time_str.split(':'))
             scheduler.add_job(
                 trigger_sentiment_report,
-                CronTrigger(day_of_week=freq, hour=hour, minute=minute),
+                CronTrigger(day_of_week=freq, hour=hour, minute=minute, timezone=user_tz),
                 id='market_sentiment_job'
             )
             logger.info(f"Market Sentiment Job scheduled for {freq} at {time_str}")
@@ -664,7 +662,7 @@ def reload_scheduler():
             hour, minute = map(int, time_str.split(':'))
             scheduler.add_job(
                 run_earnings_alert,
-                CronTrigger(day_of_week='mon-fri', hour=hour, minute=minute),
+                CronTrigger(day_of_week='mon-fri', hour=hour, minute=minute, timezone=user_tz),
                 id='earnings_alert_job'
             )
             logger.info(f"Earnings Alerts Job scheduled for mon-fri at {time_str}")
@@ -680,7 +678,7 @@ def reload_scheduler():
             hour, minute = map(int, time_str.split(':'))
             scheduler.add_job(
                 run_insider_alert,
-                CronTrigger(day_of_week=freq, hour=hour, minute=minute),
+                CronTrigger(day_of_week=freq, hour=hour, minute=minute, timezone=user_tz),
                 id='insider_alert_job'
             )
             logger.info(f"Insider Trading Alert Job scheduled for {freq} at {time_str}")
@@ -701,7 +699,7 @@ def reload_scheduler():
                 hour, minute = map(int, time_str.split(':'))
                 scheduler.add_job(
                     run_ghostfolio_sync, 
-                    CronTrigger(day_of_week=freq, hour=hour, minute=minute), 
+                    CronTrigger(day_of_week=freq, hour=hour, minute=minute, timezone=user_tz), 
                     id='ghostfolio_sync_job'
                 )
                 logger.info(f"Ghostfolio Sync scheduled for {freq} at {time_str}")
@@ -721,7 +719,7 @@ def reload_scheduler():
                 hour, minute = map(int, time_str.split(':'))
                 scheduler.add_job(
                     run_update_pipeline, 
-                    CronTrigger(day_of_week=freq, hour=hour, minute=minute), 
+                    CronTrigger(day_of_week=freq, hour=hour, minute=minute, timezone=user_tz), 
                     id='quant_analysis_job'
                 )
                 logger.info(f"Quant Analysis scheduled for {freq} at {time_str}")
@@ -742,7 +740,7 @@ def reload_scheduler():
             
             scheduler.add_job(
                 run_sentiment_scan,
-                CronTrigger(day_of_week=freq, hour=f"{start_h}-{end_h}/{interval_hours}"),
+                CronTrigger(day_of_week=freq, hour=f"{start_h}-{end_h}/{interval_hours}", timezone=user_tz),
                 id='sentiment_scan_job'
             )
             logger.info(f"Sentiment Scan scheduled for {freq} between {start_time}-{end_time} every {interval_hours} hours.")
@@ -769,7 +767,7 @@ def reload_scheduler():
             
             scheduler.add_job(
                 run_intraday_orchestrator,
-                CronTrigger(day_of_week=freq, hour=f"{start_h}-{end_h}", minute=f"*/{interval_mins}"),
+                CronTrigger(day_of_week=freq, hour=f"{start_h}-{end_h}", minute=f"*/{interval_mins}", timezone=user_tz),
                 id='intraday_orchestrator_job'
             )
             logger.info(f"Unified Intraday Orchestrator scheduled for {freq} between {start_time}-{end_time} every {interval_mins} mins.")
@@ -785,7 +783,7 @@ def reload_scheduler():
             hour, minute = map(int, time_str.split(':'))
             scheduler.add_job(
                 run_maintenance_engine,
-                CronTrigger(day_of_week=day_of_week, hour=hour, minute=minute),
+                CronTrigger(day_of_week=day_of_week, hour=hour, minute=minute, timezone=user_tz),
                 id='maintenance_job'
             )
             logger.info(f"DB/File Maintenance scheduled for {day_of_week} at {time_str}")
@@ -802,7 +800,7 @@ def reload_scheduler():
         hour, minute = map(int, quant_time.split(':'))
         scheduler.add_job(
             run_overnight_quant_scan,
-            CronTrigger(day_of_week=quant_days, hour=hour, minute=minute),
+            CronTrigger(day_of_week=quant_days, hour=hour, minute=minute, timezone=user_tz),
             id='overnight_quant_scan_job'
         )
         logger.info(f"Overnight Quant Scan scheduled for {quant_days} at {quant_time}")
@@ -819,7 +817,7 @@ def reload_scheduler():
         hour, minute = map(int, earn_time.split(':'))
         scheduler.add_job(
             run_weekend_earnings_scan,
-            CronTrigger(day_of_week=earn_days, hour=hour, minute=minute),
+            CronTrigger(day_of_week=earn_days, hour=hour, minute=minute, timezone=user_tz),
             id='weekend_earnings_vol_scan_job'
         )
         logger.info(f"Earnings Volatility Scan scheduled for {earn_days} at {earn_time}")
@@ -836,7 +834,7 @@ def reload_scheduler():
         hour, minute = map(int, disp_time.split(':'))
         scheduler.add_job(
             run_morning_briefing_dispatch,
-            CronTrigger(day_of_week=disp_days, hour=hour, minute=minute),
+            CronTrigger(day_of_week=disp_days, hour=hour, minute=minute, timezone=user_tz),
             id='morning_briefing_dispatch_job'
         )
         logger.info(f"Morning Briefing scheduled for {disp_days} at {disp_time}")
@@ -853,7 +851,7 @@ def reload_scheduler():
         hour, minute = map(int, lunch_time.split(':'))
         scheduler.add_job(
             run_lunchtime_briefing_dispatch,
-            CronTrigger(day_of_week=lunch_days, hour=hour, minute=minute),
+            CronTrigger(day_of_week=lunch_days, hour=hour, minute=minute, timezone=user_tz),
             id='lunchtime_briefing_dispatch_job'
         )
         logger.info(f"Lunchtime Briefing scheduled for {lunch_days} at {lunch_time}")
@@ -870,7 +868,7 @@ def reload_scheduler():
         hour, minute = map(int, uni_time.split(':'))
         scheduler.add_job(
             run_weekend_universe_routine,
-            CronTrigger(day_of_week=uni_days, hour=hour, minute=minute),
+            CronTrigger(day_of_week=uni_days, hour=hour, minute=minute, timezone=user_tz),
             id='universe_routine_job'
         )
         logger.info(f"Weekend Universe Routine scheduled for {uni_days} at {uni_time}")
@@ -888,7 +886,7 @@ def reload_scheduler():
             hour, minute = map(int, backfill_time.split(':'))
             scheduler.add_job(
                 run_ml_backfill,
-                CronTrigger(day_of_week=backfill_days, hour=hour, minute=minute),
+                CronTrigger(day_of_week=backfill_days, hour=hour, minute=minute, timezone=user_tz),
                 id='ml_backfill_job'
             )
             logger.info(f"ML Historical Backfill scheduled for {backfill_days} at {backfill_time}")
@@ -904,7 +902,7 @@ def reload_scheduler():
             hour, minute = map(int, train_time.split(':'))
             scheduler.add_job(
                 run_ml_training,
-                CronTrigger(day_of_week=train_days, hour=hour, minute=minute),
+                CronTrigger(day_of_week=train_days, hour=hour, minute=minute, timezone=user_tz),
                 id='ml_training_job'
             )
             logger.info(f"ML Global Training scheduled for {train_days} at {train_time}")
@@ -920,7 +918,7 @@ def reload_scheduler():
             hour, minute = map(int, infer_time.split(':'))
             scheduler.add_job(
                 run_ml_inference,
-                CronTrigger(day_of_week=infer_days, hour=hour, minute=minute),
+                CronTrigger(day_of_week=infer_days, hour=hour, minute=minute, timezone=user_tz),
                 id='ml_inference_job'
             )
             logger.info(f"Daily ML Inference scheduled for {infer_days} at {infer_time}")
@@ -937,7 +935,7 @@ def reload_scheduler():
             hour, minute = map(int, ft_time.split(':'))
             scheduler.add_job(
                 run_freetrade_sync,
-                CronTrigger(day_of_week=ft_days, hour=hour, minute=minute),
+                CronTrigger(day_of_week=ft_days, hour=hour, minute=minute, timezone=user_tz),
                 id='freetrade_sync_job'
             )
             logger.info(f"Freetrade Sync scheduled for {ft_days} at {ft_time}")
@@ -955,7 +953,7 @@ def reload_scheduler():
             cal_hour, cal_minute = map(int, calendar_time.split(':'))
             scheduler.add_job(
                 run_macro_calendar_update,
-                CronTrigger(day_of_week='mon-sun', hour=cal_hour, minute=cal_minute),
+                CronTrigger(day_of_week='mon-sun', hour=cal_hour, minute=cal_minute, timezone=user_tz),
                 id='macro_calendar_job'
             )
             logger.info(f"Macro Calendar Update scheduled daily at {calendar_time}")
@@ -963,7 +961,7 @@ def reload_scheduler():
             data_hour, data_minute = map(int, data_time.split(':'))
             scheduler.add_job(
                 run_macro_data_update,
-                CronTrigger(day_of_week=data_day, hour=data_hour, minute=data_minute),
+                CronTrigger(day_of_week=data_day, hour=data_hour, minute=data_minute, timezone=user_tz),
                 id='macro_data_job'
             )
             logger.info(f"Macro Data Update scheduled for {data_day} at {data_time}")
@@ -982,7 +980,7 @@ def reload_scheduler():
             cb_end_h, _ = map(int, cb_end.split(':'))
             scheduler.add_job(
                 run_central_bank_nlp_check,
-                CronTrigger(day_of_week=cb_freq, hour=f"{cb_start_h}-{cb_end_h}", minute=f"*/{cb_interval}"),
+                CronTrigger(day_of_week=cb_freq, hour=f"{cb_start_h}-{cb_end_h}", minute=f"*/{cb_interval}", timezone=user_tz),
                 id='cb_nlp_alert_job'
             )
             logger.info(f"Central Bank NLP Alert polling scheduled {cb_freq} {cb_start}-{cb_end} UTC every {cb_interval}m")
@@ -999,7 +997,7 @@ def reload_scheduler():
             hour, minute = map(int, index_time.split(':'))
             scheduler.add_job(
                 run_index_scraper,
-                CronTrigger(day_of_week=index_days, hour=hour, minute=minute),
+                CronTrigger(day_of_week=index_days, hour=hour, minute=minute, timezone=user_tz),
                 id='index_scraper_job'
             )
             logger.info(f"Index Scraper scheduled for {index_days} at {index_time}")
@@ -1016,7 +1014,7 @@ def reload_scheduler():
             hour, minute = map(int, profiler_time.split(':'))
             scheduler.add_job(
                 run_fundamentals_profiler,
-                CronTrigger(day_of_week=profiler_days, hour=hour, minute=minute),
+                CronTrigger(day_of_week=profiler_days, hour=hour, minute=minute, timezone=user_tz),
                 id='fundamentals_profiler_job'
             )
             logger.info(f"Fundamentals Profiler scheduled for {profiler_days} at {profiler_time}")
@@ -1036,7 +1034,7 @@ def reload_scheduler():
             hour, minute = map(int, uds_time.split(':'))
             scheduler.add_job(
                 run_universe_deep_sync_job,
-                CronTrigger(day_of_week=uds_days, hour=hour, minute=minute),
+                CronTrigger(day_of_week=uds_days, hour=hour, minute=minute, timezone=user_tz),
                 id='universe_deep_sync_job'
             )
             logger.info(f"Universe Deep Sync Pipeline scheduled for {uds_days} at {uds_time}")
@@ -1051,7 +1049,7 @@ def reload_scheduler():
         try:
             scheduler.add_job(
                 run_anomaly_training_job,
-                CronTrigger(day_of_week='mon-fri', hour=18, minute=30),
+                CronTrigger(day_of_week='mon-fri', hour=18, minute=30, timezone=user_tz),
                 id='anomaly_training_job',
             )
             logger.info("Anomaly Training job scheduled for mon-fri at 18:30.")
@@ -1068,7 +1066,7 @@ def reload_scheduler():
             freq    = ai_c_sched.get("FREQUENCY", "mon-fri")
             scheduler.add_job(
                 run_ai_contagion_job,
-                CronTrigger(day_of_week=freq, hour=f"{start_h}-{end_h}", minute=f"*/{mins}"),
+                CronTrigger(day_of_week=freq, hour=f"{start_h}-{end_h}", minute=f"*/{mins}", timezone=user_tz),
                 id='ai_contagion_job',
                 replace_existing=True,
                 misfire_grace_time=300,
@@ -1091,7 +1089,7 @@ def reload_scheduler():
             end_h, _ = map(int, news_end.split(":"))
             scheduler.add_job(
                 run_news_feed_job,
-                CronTrigger(day_of_week=news_freq, hour=f"{start_h}-{end_h}/{news_interval_h}"),
+                CronTrigger(day_of_week=news_freq, hour=f"{start_h}-{end_h}/{news_interval_h}", timezone=user_tz),
                 id="news_feed_job",
                 replace_existing=True,
             )
@@ -1134,7 +1132,7 @@ def reload_scheduler():
     try:
         scheduler.add_job(
             run_xray_risk_cache_job,
-            CronTrigger(day_of_week='mon-fri', hour=19, minute=0),
+            CronTrigger(day_of_week='mon-fri', hour=19, minute=0, timezone=user_tz),
             id='xray_risk_cache_job',
         )
         logger.info("X-ray Risk Cache job scheduled for mon-fri at 19:00.")
@@ -1146,7 +1144,7 @@ def reload_scheduler():
     try:
         scheduler.add_job(
             run_smgb_actual_fill,
-            CronTrigger(day_of_week='mon-fri', hour=9, minute=15),
+            CronTrigger(day_of_week='mon-fri', hour=9, minute=15, timezone=user_tz),
             id='smgb_actual_fill_job',
         )
         logger.info("SMGB actual-fill job scheduled for mon-fri at 09:15.")

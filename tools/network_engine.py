@@ -17,8 +17,10 @@ logger = logging.getLogger(__name__)
 GLOBAL_IPV6_STATUS = {
     "is_failing": False,
     "last_error": "",
-    "last_fail_time": 0.0
+    "last_fail_time": 0.0,
+    "last_alert_fired": 0.0,   # epoch seconds — used to rate-limit Nextcloud alerts
 }
+_ALERT_COOLDOWN_SECS = 300     # only one Nextcloud Talk alert per 5 minutes
 _ipv6_status_lock = threading.Lock()
 
 def _update_ipv6_status(failing: bool, error: str = "", fail_time: float = 0.0) -> None:
@@ -50,20 +52,28 @@ def _trigger_fallback_alert(ipv6_address: str, action_context: str, error_summar
     except Exception as db_e:
         logger.error(f"Failed to log network fault to SQLite: {db_e}")
 
-    # 2. Nextcloud Talk Alert (Concise, Markdown formatted)
-    alert_msg = (
-        f"🚨 **CRITICAL NETWORK FAULT: YAHOO FINANCE** 🚨\n\n"
-        f"The custom IPv6 socket (`{ipv6_address}`) experienced a hard failure while fetching data for `{action_context}`.\n"
-        f"**Error:** {error_summary}\n\n"
-        f"🔄 *System is dropping the IPv6 interface and hopping to standard IPv4 routing to rescue the pipeline.*\n\n"
-        f"*(Note: Full stack trace and URL details have been written to the SQLite system_notifications table for debugging.)*"
-    )
-    
-    # Fire and forget to Nextcloud
-    try:
-        send_text_message(alert_msg, config)
-    except Exception as nc_e:
-        logger.error(f"Failed to dispatch Nextcloud alert for network fault: {nc_e}")
+    # 2. Nextcloud Talk Alert — rate-limited to one message per cooldown window
+    now = time.time()
+    with _ipv6_status_lock:
+        last_fired = GLOBAL_IPV6_STATUS["last_alert_fired"]
+        cooldown_active = (now - last_fired) < _ALERT_COOLDOWN_SECS
+        if not cooldown_active:
+            GLOBAL_IPV6_STATUS["last_alert_fired"] = now
+
+    if not cooldown_active:
+        alert_msg = (
+            f"🚨 **CRITICAL NETWORK FAULT: YAHOO FINANCE** 🚨\n\n"
+            f"The custom IPv6 socket (`{ipv6_address}`) experienced a hard failure while fetching data for `{action_context}`.\n"
+            f"**Error:** {error_summary}\n\n"
+            f"🔄 *System is dropping the IPv6 interface and hopping to standard IPv4 routing to rescue the pipeline.*\n\n"
+            f"*(Note: Full stack trace and URL details have been written to the SQLite system_notifications table for debugging.)*"
+        )
+        try:
+            send_text_message(alert_msg, config)
+        except Exception as nc_e:
+            logger.error(f"Failed to dispatch Nextcloud alert for network fault: {nc_e}")
+    else:
+        logger.warning(f"IPv6 fault alert suppressed (cooldown active, last fired {int(now - last_fired)}s ago): {error_summary}")
 
 
 def _patch_session_with_retries(

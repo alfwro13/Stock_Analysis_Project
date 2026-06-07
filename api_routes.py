@@ -1137,8 +1137,19 @@ async def get_system_metrics():
             "CB_NLP_ALERT":       "cb_nlp_alert_job",
             "NEWS_FEED":          "news_feed_job",
         }
+        def _localise_ts(ts: str) -> str:
+            if not ts or ts == "Never":
+                return "Never"
+            from datetime import datetime as _dt
+            for fmt in ('%Y-%m-%d %H:%M', '%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M:%S.%f', '%Y-%m-%dT%H:%M:%S'):
+                try:
+                    return time_engine.fmt_datetime(_dt.strptime(ts, fmt))
+                except ValueError:
+                    continue
+            return ts
+
         scheduler_last_runs = {
-            cfg_key: job_last_runs.get(job_id, "Never")
+            cfg_key: _localise_ts(job_last_runs.get(job_id, "Never"))
             for cfg_key, job_id in config_key_to_job.items()
         }
 
@@ -1216,15 +1227,21 @@ async def get_latest_notifications(last_id: int = 0):
             (last_id,)
         )
         rows = cursor.fetchall()
-        notifications = [
-            {
+        notifications = []
+        for row in rows:
+            ts_raw = row["timestamp"] or ""
+            try:
+                from datetime import datetime as _dt
+                dt = _dt.strptime(ts_raw[:19], "%Y-%m-%d %H:%M:%S")
+                ts_display = time_engine.fmt_datetime(dt)
+            except (ValueError, TypeError):
+                ts_display = ts_raw
+            notifications.append({
                 "id": row["id"],
                 "type": row["message_type"],
                 "text": row["message_text"],
-                "timestamp": row["timestamp"]
-            }
-            for row in rows
-        ]
+                "timestamp": ts_display,
+            })
         return JSONResponse(content={"status": "success", "notifications": notifications})
     except Exception as e:
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
