@@ -114,7 +114,7 @@ def test_update_config_atomic_persists_changes(tmp_path):
 
 @pytest.mark.config
 def test_update_config_atomic_strips_sensitive_keys(tmp_path):
-    """update_config_atomic() must not write user-supplied sensitive values into config.json."""
+    """update_config_atomic() must never write SENSITIVE_KEYS into config.json at all."""
     import config as _config
     original_path = _config.SECRETS_PATH
     test_config_path = tmp_path / "test_config.json"
@@ -122,9 +122,8 @@ def test_update_config_atomic_strips_sensitive_keys(tmp_path):
         _config.SECRETS_PATH = test_config_path
         _config.update_config_atomic({"API_TOKEN": "secret-credential-value", "PORT": 9999})
         raw = json.loads(test_config_path.read_text())
-        assert raw.get("API_TOKEN") != "secret-credential-value", (
-            "Sensitive key API_TOKEN must never be written with a user-supplied value"
-        )
+        for key in _config.SENSITIVE_KEYS:
+            assert key not in raw, f"Sensitive key '{key}' must never appear in config.json"
         assert raw.get("PORT") == 9999, "Non-sensitive key must still be written"
     finally:
         _config.SECRETS_PATH = original_path
