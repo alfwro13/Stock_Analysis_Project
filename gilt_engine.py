@@ -5,7 +5,7 @@ import time
 import logging
 import requests
 import pandas as pd
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from config import HISTORICAL_DIR
@@ -128,6 +128,11 @@ class GiltDataService:
         df_boe = df_boe.set_index("Date")
 
         live_yield = self.fetch_live_ft_yield()
+        # BoE-only alternative if FT.com scraping fails (BoE IADB publishes today's yield by ~4 pm)
+        # df_today = self.fetch_historical_boe(
+        #     start_date=(datetime.now(timezone.utc) - timedelta(days=7)).strftime("%d/%b/%Y")
+        # )
+        # live_yield = float(df_today["Close"].iloc[-1]) if df_today is not None and not df_today.empty else None
         if live_yield is not None:
             today_dt = pd.Timestamp(datetime.now(timezone.utc).date())
 
