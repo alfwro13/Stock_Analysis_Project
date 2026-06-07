@@ -5,6 +5,7 @@ import logging
 import traceback
 import threading
 from contextlib import contextmanager
+from datetime import datetime, timezone, timedelta
 from curl_cffi import requests as cffi_requests
 
 from database import get_connection
@@ -22,6 +23,8 @@ GLOBAL_IPV6_STATUS = {
     "last_fail_time": 0.0,
 }
 _ipv6_status_lock = threading.Lock()
+_latch_initialized = False
+_latch_init_lock = threading.Lock()
 
 
 def _update_ipv6_status(failing: bool, error: str = "", fail_time: float = 0.0) -> None:
@@ -29,6 +32,40 @@ def _update_ipv6_status(failing: bool, error: str = "", fail_time: float = 0.0) 
         GLOBAL_IPV6_STATUS["is_failing"] = failing
         GLOBAL_IPV6_STATUS["last_error"] = error
         GLOBAL_IPV6_STATUS["last_fail_time"] = fail_time
+
+
+def _maybe_restore_latch_from_db() -> None:
+    """
+    Called once per process on the first yahoo_connection_boundary use.
+    If a Network Fault was recorded within the last hour, pre-sets the latch
+    so a restarted process doesn't re-alert for the same ongoing failure.
+    """
+    global _latch_initialized
+    with _latch_init_lock:
+        if _latch_initialized:
+            return
+        _latch_initialized = True
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT timestamp FROM system_notifications WHERE message_type = 'Network Fault' "
+            "ORDER BY id DESC LIMIT 1"
+        )
+        row = cursor.fetchone()
+        conn.close()
+        if row:
+            ts = datetime.strptime(row[0], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+            age = datetime.now(timezone.utc) - ts
+            if age < timedelta(hours=1):
+                _update_ipv6_status(
+                    failing=True,
+                    error=f"Latch restored from DB — last hard fault {int(age.total_seconds() // 60)}m ago.",
+                    fail_time=ts.timestamp(),
+                )
+                logger.warning("IPv6 latch pre-set from DB: last hard fault was %dm ago — skipping IPv6 this session.", int(age.total_seconds() // 60))
+    except Exception as e:
+        logger.debug("Could not restore IPv6 latch from DB: %s", e)
 
 
 def _trigger_fallback_alert(ipv6_address: str, action_context: str, error_summary: str, detailed_trace: str, config: dict) -> None:
@@ -189,8 +226,12 @@ def create_failover_session(ipv6_address: str, action_context: str, config: dict
                     raise e
                 
                 # --- 2. TRANSIENT TIMEOUT HANDLING ---
-                # Do NOT drop the IPv6 interface for a simple timeout. Retry on IPv6.
-                is_transient = any(term in error_str.lower() for term in ["timeout", "connection reset", "code: 28"])
+                # bind errors (errno 99) are a startup race: the IPv6 interface may
+                # still be in kernel DAD after a process restart. Retry before hard-faulting.
+                is_transient = any(term in error_str.lower() for term in [
+                    "timeout", "connection reset", "code: 28",
+                    "bind failed", "cannot assign requested address", "errno 99",
+                ])
                 if is_transient and attempt < max_retries:
                     sleep_time = (base_delay ** attempt) + random.uniform(0.5, 1.5)
                     logger.warning(f"Transient network error on IPv6 '{ipv6_address}': {error_str}. Retrying in {sleep_time:.2f}s (Attempt {attempt + 1}/{max_retries}).")
@@ -240,6 +281,8 @@ def yahoo_connection_boundary(action_context: str):
         with yahoo_connection_boundary("Daily Download") as session:
             df = yf.download("AAPL", session=session)
     """
+    _maybe_restore_latch_from_db()
+
     config = load_config()
     ipv6_addr = config.get("YAHOO_IPV6_ADDRESS", "").strip()
 
