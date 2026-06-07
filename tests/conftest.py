@@ -39,6 +39,7 @@ _TEST_USERNAME = "testadmin"
 _TEST_PASSWORD = "TestPassword123"
 os.environ.setdefault("DASHBOARD_USERNAME", _TEST_USERNAME)
 os.environ.setdefault("DASHBOARD_PASSWORD", _TEST_PASSWORD)
+os.environ.setdefault("APP_SECRET_KEY", "test-app-secret-key-do-not-use-in-production")
 
 # ── 1. Make the project root importable ──────────────────────────────────────
 PROJECT_ROOT = Path(__file__).parent.parent

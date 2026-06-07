@@ -75,7 +75,6 @@ from macro_ai_engine import MacroAIEngine
 from visuals import create_intraday_chart, _intraday_market_tz, _EXCHANGE_DELAYS
 from quant_signals import get_candlestick_patterns
 
-# Configure logger
 logger = logging.getLogger(__name__)
 
 api_router = APIRouter(prefix="/api")
@@ -432,9 +431,7 @@ class FreetradeMappingsConfig(BaseModel):
     EXCHANGES: Optional[dict] = None
 
 class SettingsConfig(BaseModel):
-    # Sensitive credentials are managed via .env and must never be written via this endpoint.
-    # Keys: API_TOKEN, APP_PASSWORD, BOT_USERNAME, CONVERSATION_TOKEN,
-    #       NEXTCLOUD_URL, GHOSTFOLIO_URL, FRED_API_KEY
+    # Credentials live in .env only — never written through this endpoint.
     model_config = {"extra": "forbid"}
 
     SERVER_URL: Optional[str] = None
@@ -470,21 +467,12 @@ def log_notification(message_type: str, message_text: str) -> None:
             conn.close()
 
 def bg_execute_quant_scan():
-    """
-    Executes the complete daily quant scan including Machine Learning 
-    inference and Tail Risk calculations for the active portfolio/watchlist.
-    """
     engine = DataEngine()
     tickers = engine.get_all_tickers()
-    
+
     if tickers:
-        # 1. Execute Core Technicals & Screener Flags
         run_daily_quant_scan(tickers)
-        
-        # 2. Execute Machine Learning (XGBoost/RF) Inference
         update_daily_ml_predictions(tickers)
-        
-        # 3. Calculate Parametric Log-Return VaR & CVaR (Expected Shortfall)
         update_all_tail_risks(tickers)
 
 def bg_execute_earnings_scan():
@@ -506,7 +494,6 @@ def bg_execute_universe_quant_scan_subset(tickers: List[str]):
     run_daily_quant_scan(tickers, scan_type='sideload')
 
 def bg_execute_ml_inference():
-    """Wrapper function to perform the dynamic ML daily inference routing."""
     tickers = get_universe_tickers()
     if not tickers:
         engine = DataEngine()
@@ -516,13 +503,12 @@ def bg_execute_ml_inference():
         update_daily_ml_predictions(tickers)
 
 def bg_init_macro_pipeline():
-    """Executes full Macro AI initialization: Seeding -> Calendar Sync -> Data Sync -> Training -> Inference."""
     try:
         logger.info("Starting Macro AI Initialization Sequence...")
         
         seed_calendar()
         update_macro_calendar()
-        update_macro_indicators() # FETCH THE MACRO INDICATOR DATA
+        update_macro_indicators()
         
         ai_engine = MacroAIEngine()
         try:
@@ -543,12 +529,11 @@ def bg_init_macro_pipeline():
         log_notification("Error", f"Macro AI Pipeline Initialization failed: {e}")
 
 def bg_run_macro_pipeline():
-    """Executes standard Macro AI run: Calendar Sync -> Data Sync -> Inference."""
     try:
         logger.info("Starting Macro AI Run Sequence...")
         
         update_macro_calendar()
-        update_macro_indicators() # REFRESH THE MACRO INDICATOR DATA
+        update_macro_indicators()
         
         ai_engine = MacroAIEngine()
         try:
@@ -972,7 +957,7 @@ async def get_network_status():
         })
         
     if GLOBAL_IPV6_STATUS["is_failing"]:
-        fail_time_str = datetime.fromtimestamp(GLOBAL_IPV6_STATUS["last_fail_time"]).strftime('%Y-%m-%d %H:%M:%S')
+        fail_time_str = time_engine.fmt_datetime(datetime.fromtimestamp(GLOBAL_IPV6_STATUS["last_fail_time"], tz=timezone.utc))
         return JSONResponse(content={
             "status": "warning",
             "route": "IPv4 (Failover Rescue Active)",
@@ -1052,7 +1037,7 @@ async def get_system_metrics():
         def get_file_stats(path: Path) -> dict:
             if not path.exists():
                 return {"exists": False, "mtime": "Not Found", "size_mb": 0.0}
-            mtime = datetime.fromtimestamp(path.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')
+            mtime = time_engine.fmt_datetime(datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc))
             size_mb = round(path.stat().st_size / (1024 * 1024), 2)
             return {"exists": True, "mtime": mtime, "size_mb": size_mb}
             
@@ -1510,7 +1495,7 @@ async def get_screener_data(request: Request):
 
         cursor.execute(query)
         rows = cursor.fetchall()
-        today_str = datetime.now().strftime('%Y-%m-%d')
+        today_str = time_engine.now_local().strftime('%Y-%m-%d')
         data = []
         for row in rows:
             r = dict(row)
@@ -1611,7 +1596,7 @@ async def get_data_freshness():
         FRESHNESS_MODEL_WARN_DAYS, FRESHNESS_MODEL_STALE_DAYS,
         FRESHNESS_PRICES_WARN_DAYS, FRESHNESS_PRICES_STALE_DAYS,
     )
-    today = datetime.now().date()
+    today = time_engine.now_local().date()
 
     def _state(days_ago: int, warn: int, stale: int) -> str:
         if days_ago >= stale: return "freshness-stale"
@@ -1621,7 +1606,7 @@ async def get_data_freshness():
     # Model file staleness
     model_path = BASE_DIR / "models" / "ml_ensemble.joblib"
     if model_path.exists():
-        mtime        = datetime.fromtimestamp(model_path.stat().st_mtime).date()
+        mtime        = time_engine.to_local(datetime.fromtimestamp(model_path.stat().st_mtime, tz=timezone.utc)).date()
         model_days   = (today - mtime).days
         model_date   = mtime.strftime('%Y-%m-%d')
         model_state  = _state(model_days, FRESHNESS_MODEL_WARN_DAYS, FRESHNESS_MODEL_STALE_DAYS)
@@ -1784,10 +1769,10 @@ async def intraday_monitor_add(req: TickerRequest):
     # One-time notification confirming monitoring is active for this session
     from database import log_notification
     from zoneinfo import ZoneInfo
-    from datetime import date as _d, time as _t
+    from datetime import time as _t
     _exch = time_engine.ticker_exchange(ticker, _currency)
     _params = time_engine.reset_cron_trigger_params(_exch)
-    _reset_dt = datetime.combine(_d.today(), _t(_params["hour"], _params["minute"]), tzinfo=ZoneInfo(_params["timezone"]))
+    _reset_dt = datetime.combine(time_engine.now_local().date(), _t(_params["hour"], _params["minute"]), tzinfo=ZoneInfo(_params["timezone"]))
     _reset_str = time_engine.fmt_time(_reset_dt)
     log_notification("DipRadar", f"🎯 Dip Radar enabled for {ticker} — scanning every 2 min until {_reset_str}. You will be notified if a bottoming zone is detected.")
     return JSONResponse(content={"status": "ok", "ticker": ticker})

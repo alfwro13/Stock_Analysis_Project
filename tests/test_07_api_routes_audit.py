@@ -9,6 +9,9 @@ Covers the bugs found and fixed in the June 2026 api_routes.py audit:
    throughout, not a re-created unresolved one.
 3. Intraday chart placeholder HTML — /api/intraday-chart/<ticker> must NOT
    return inline style= attributes in its error/empty fallback responses.
+4. AI Contagion status — GET /api/ai-contagion/status must parse both new-format
+   (dict payload with tickers + severity_score) and legacy-format (bare list)
+   snapshot rows without crashing, and must return the correct shape.
 """
 
 import io
@@ -236,3 +239,112 @@ class TestIntradayPlaceholderCss:
 
     def test_intraday_placeholder_error_modifier_defined(self):
         assert ".intraday-placeholder--error" in self._css()
+
+
+# ── 4. AI Contagion status — _parse_payload covers new and legacy formats ─────
+
+class TestAiContagionStatusEndpoint:
+    """
+    GET /api/ai-contagion/status reads ai_contagion_snapshots rows and passes
+    payload_json through an internal _parse_payload() helper that handles two
+    formats:
+      - New: JSON object {"tickers": [...], "severity_score": 0.5}
+      - Legacy: bare JSON array  ["NVDA", "MSFT"]
+
+    Tests seed rows directly into the in-memory test DB so the response can be
+    verified end-to-end without mocking the DB layer.
+    """
+
+    def _seed(self, conn, payload_json: str, alert: int = 0):
+        conn.execute(
+            """INSERT INTO ai_contagion_snapshots
+               (scan_ts, leader_count, etf_count, alert_fired, payload_json)
+               VALUES ('2026-06-07 10:00:00', 2, 1, ?, ?)""",
+            (alert, payload_json),
+        )
+        conn.commit()
+
+    def _cleanup(self, conn):
+        conn.execute("DELETE FROM ai_contagion_snapshots")
+        conn.commit()
+
+    def test_empty_snapshots_returns_empty_list(self, client):
+        import database
+        conn = database.get_connection()
+        try:
+            self._cleanup(conn)
+            resp = client.get("/api/ai-contagion/status")
+        finally:
+            self._cleanup(conn)
+            conn.close()
+        assert resp.status_code == 200
+        data = _json(resp)
+        assert data["status"] == "success"
+        assert data["snapshots"] == []
+
+    def test_new_format_payload_parsed_correctly(self, client):
+        import json
+        import database
+        conn = database.get_connection()
+        try:
+            self._cleanup(conn)
+            payload = json.dumps({"tickers": ["NVDA", "AMD"], "severity_score": 0.75})
+            self._seed(conn, payload, alert=1)
+            resp = client.get("/api/ai-contagion/status")
+        finally:
+            self._cleanup(conn)
+            conn.close()
+        assert resp.status_code == 200
+        snap = _json(resp)["snapshots"][0]
+        assert snap["tickers"] == ["NVDA", "AMD"]
+        assert snap["severity_score"] == pytest.approx(0.75)
+        assert snap["alert_fired"] is True
+
+    def test_legacy_list_payload_parsed_without_crash(self, client):
+        import json
+        import database
+        conn = database.get_connection()
+        try:
+            self._cleanup(conn)
+            payload = json.dumps(["NVDA", "AMD"])
+            self._seed(conn, payload)
+            resp = client.get("/api/ai-contagion/status")
+        finally:
+            self._cleanup(conn)
+            conn.close()
+        assert resp.status_code == 200
+        snap = _json(resp)["snapshots"][0]
+        assert snap["tickers"] == ["NVDA", "AMD"]
+        assert snap["severity_score"] == 0.0
+
+    def test_null_payload_json_does_not_crash(self, client):
+        import database
+        conn = database.get_connection()
+        try:
+            self._cleanup(conn)
+            self._seed(conn, None)
+            resp = client.get("/api/ai-contagion/status")
+        finally:
+            self._cleanup(conn)
+            conn.close()
+        assert resp.status_code == 200
+        snap = _json(resp)["snapshots"][0]
+        assert snap["tickers"] == []
+        assert snap["severity_score"] == 0.0
+
+    def test_response_shape_has_required_keys(self, client):
+        import json
+        import database
+        conn = database.get_connection()
+        try:
+            self._cleanup(conn)
+            payload = json.dumps({"tickers": ["SPY"], "severity_score": 0.1})
+            self._seed(conn, payload)
+            resp = client.get("/api/ai-contagion/status")
+        finally:
+            self._cleanup(conn)
+            conn.close()
+        assert resp.status_code == 200
+        snap = _json(resp)["snapshots"][0]
+        for key in ("scan_ts", "leader_count", "etf_count", "alert_fired", "tickers", "severity_score"):
+            assert key in snap, f"Missing key in snapshot: {key}"
