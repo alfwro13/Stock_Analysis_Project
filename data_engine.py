@@ -37,36 +37,6 @@ class DataEngine:
             df.index = df.index.tz_convert(None)
         return df
 
-    @staticmethod
-    def _persist_ticker_slice(
-        df_bulk: pd.DataFrame,
-        key: str,
-        path: Path,
-        dropna_subset: List[str],
-        *,
-        flat_single: bool = False,
-    ) -> bool:
-        """Extract one ticker's slice from a bulk frame, clean it, and write to parquet."""
-        if isinstance(df_bulk.columns, pd.MultiIndex):
-            if key not in df_bulk.columns.get_level_values(0):
-                return False
-            df = df_bulk[key].copy()
-        elif flat_single:
-            df = df_bulk.copy()
-        else:
-            return False
-
-        present = [c for c in dropna_subset if c in df.columns]
-        if not present:
-            return False
-        df.dropna(subset=present, inplace=True)
-        if df.empty:
-            return False
-
-        DataEngine._strip_tz(df)
-        df.to_parquet(path, engine='pyarrow')
-        return True
-
     def _load_json(self, filepath: str) -> Dict[str, Any]:
         """Safely loads JSON files, logging missing/corrupt files without crashing init."""
         try:
@@ -83,21 +53,19 @@ class DataEngine:
             return {}
             
     def get_all_tickers(self) -> List[str]:
-        """Extracts a unique set of tickers from both Portfolio and Watchlist, excluding ignored items."""
         tickers: Set[str] = set()
-        
-        # Parse Portfolio (defensive against malformed non-dict entries)
+
+        # defensive against malformed non-dict entries in portfolio.json
         for _asset_key, asset_data in self.portfolio.items():
             if isinstance(asset_data, dict) and asset_data.get("ticker"):
                 tickers.add(normalize_ticker(asset_data["ticker"]))
 
-        # Parse Watchlist
         if isinstance(self.watchlist.get("watchlist"), list):
             for ticker in self.watchlist["watchlist"]:
                 if ticker:
                     tickers.add(normalize_ticker(ticker))
 
-        # Strip out ignored tickers (normalized to match the uppercased ticker set)
+        # normalized to match the uppercased ticker set
         config_data = load_config()
         ignored_tickers = {normalize_ticker(t) for t in config_data.get("IGNORED_TICKERS", [])}
 
@@ -105,7 +73,6 @@ class DataEngine:
         return sorted(valid_tickers)
 
     def fetch_market_baseline(self) -> None:
-        """Downloads macroeconomic gravity indices and benchmarks for intermarket calculations."""
         logger.info("Fetching Market and Intermarket Baselines (US & UK)...")
         try:
             baselines = {
@@ -160,7 +127,6 @@ class DataEngine:
             logger.error(f"Fatal error during bulk historical download: {e}")
 
     def bulk_download_intraday(self, tickers: List[str]) -> None:
-        """Vectorized bulk download of 1-day 5-minute intraday prices."""
         if not tickers:
             return
 
@@ -202,15 +168,11 @@ class DataEngine:
                 time.sleep(random.uniform(0.5, 2.0))
 
     def fetch_and_save_data(self, ticker: str) -> bool:
-        """
-        Legacy single-ticker master fetcher (used by single-UI refreshes).
-        Wrapped safely in the new Session boundary.
-        """
+        """Legacy single-ticker fetcher used by manual UI refresh."""
         logger.info(f"Processing Data for single ticker {ticker}...")
         try:
             persisted = False
 
-            # 1. Fetch Macro Historical Data
             _daily = yahoo_engine.get_price_history([ticker], period="2y", interval="1d")
             df_daily = _daily.get(ticker, pd.DataFrame())
             if not df_daily.empty:
@@ -218,7 +180,6 @@ class DataEngine:
                 df_daily.to_parquet(HISTORICAL_DIR / f"{ticker}.parquet", engine='pyarrow')
                 persisted = True
 
-            # 2. Fetch Intraday Data
             _intraday = yahoo_engine.get_intraday([ticker], period="1d", interval="5m")
             df_intraday = _intraday.get(ticker, pd.DataFrame())
             if not df_intraday.empty:
@@ -226,7 +187,6 @@ class DataEngine:
                 df_intraday.to_parquet(INTRADAY_DIR / f"{ticker}_intraday.parquet", engine='pyarrow')
                 persisted = True
 
-            # 3. Fetch Fundamental Data
             fundamentals = yahoo_engine.get_ticker_info(ticker) or {}
             if fundamentals:
                 with open(FUNDAMENTALS_DIR / f"{ticker}.json", 'w') as f:
@@ -242,7 +202,6 @@ class DataEngine:
             return False
 
     def update_all_data(self) -> None:
-        """Master function triggered by the system to update all core assets using Institutional Bulk Logic."""
         self.fetch_market_baseline()
         
         tickers = self.get_all_tickers()
@@ -260,12 +219,7 @@ class DataEngine:
 _EXPECTED_YFINANCE_COLUMNS = {"Open", "High", "Low", "Close", "Volume"}
 
 def run_yfinance_smoke_test() -> bool:
-    """
-    Fetches a 5-day SPY slice on startup and verifies yfinance's column schema
-    hasn't silently changed. Writes to the notifications table on failure so the
-    problem is visible in the UI, not just in server logs.
-    Returns True if healthy, False if the schema is broken or the fetch fails.
-    """
+    """Writes to the notifications table on failure so it's visible in the UI, not just server logs."""
     from database import log_notification
     try:
         _result = yahoo_engine.get_price_history(["SPY"], period="5d", interval="1d")
@@ -300,6 +254,5 @@ def run_yfinance_smoke_test() -> bool:
 
 
 if __name__ == "__main__":
-    # Test block to execute the massive data pipeline directly
     engine = DataEngine()
     engine.update_all_data()

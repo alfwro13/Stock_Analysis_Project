@@ -9,27 +9,16 @@ logger = logging.getLogger(__name__)
 
 
 def get_connection() -> sqlite3.Connection:
-    """
-    Creates and returns a connection to the local SQLite database.
-    Using sqlite3.Row allows us to access columns by name (e.g., row['ticker']).
-    """
-    # Added timeout=20.0 to gracefully handle background thread write collisions
+    """sqlite3.Row enables column-name access (row['ticker'])."""
+    # timeout=20.0 gracefully handles background thread write collisions
     conn = sqlite3.connect(DB_PATH, timeout=20.0)
-    
-    # Enable Write-Ahead Logging (WAL) to allow concurrent reads and writes
-    conn.execute('PRAGMA journal_mode=WAL;')
-    # Optimize synchronization for WAL mode for significant write performance gain
-    conn.execute('PRAGMA synchronous=NORMAL;')
-    
+    conn.execute('PRAGMA journal_mode=WAL;')   # concurrent reads + writes
+    conn.execute('PRAGMA synchronous=NORMAL;')  # significant write-perf gain in WAL mode
     conn.row_factory = sqlite3.Row
     return conn
 
 
 def log_notification(message_type: str, message_text: str) -> None:
-    """
-    Centralized helper function to log scan progress to the system notification center.
-    Guards against NameError if get_connection() raises an exception.
-    """
     conn = None
     try:
         conn = get_connection()
@@ -47,15 +36,10 @@ def log_notification(message_type: str, message_text: str) -> None:
 
 
 def init_db() -> None:
-    """
-    Initializes the master database schema for the Quantamental dashboard.
-    Includes the Event-Driven Macroeconomic tracking tables.
-    """
     conn = get_connection()
     cursor = conn.cursor()
 
     try:
-        # Base table creation for quantitative analysis data
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS stock_signals (
                 ticker TEXT PRIMARY KEY,
@@ -126,7 +110,6 @@ def init_db() -> None:
             )
         ''')
 
-        # New table for the Notification Center
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS system_notifications (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -160,7 +143,6 @@ def init_db() -> None:
             )
         ''')
 
-        # New table for the Live Market Pulse Database Cache
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS market_pulse_cache (
                 ticker TEXT PRIMARY KEY,
@@ -173,7 +155,6 @@ def init_db() -> None:
             )
         ''')
 
-        # Quantitative Signals Tracking (Enricher Engine) - Includes ML/Risk fields
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS quant_signals (
                 ticker TEXT,
@@ -206,7 +187,6 @@ def init_db() -> None:
             )
         ''')
 
-        # Proper Composite Primary Key for Scan State
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS quant_scan_states (
                 scan_date TEXT,
@@ -217,7 +197,6 @@ def init_db() -> None:
             )
         ''')
 
-        # New table for Quantitative Earnings Options Volatility
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS earnings_volatility (
                 ticker TEXT PRIMARY KEY,
@@ -230,7 +209,6 @@ def init_db() -> None:
             )
         ''')
 
-        # Expanded Market Universe (4,000+ Tickers) supporting multi-national assets
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS market_universe (
                 ticker TEXT PRIMARY KEY,
@@ -264,7 +242,15 @@ def init_db() -> None:
             )
         ''')
 
-        # --- PHASE 1: MARKET REGIMES (MACRO TURBULENCE Tracking) ---
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS ticker_metadata (
+                ticker TEXT PRIMARY KEY,
+                sector TEXT,
+                beta REAL,
+                market_cap REAL
+            )
+        ''')
+
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS market_regimes (
                 date TEXT PRIMARY KEY,
@@ -278,7 +264,6 @@ def init_db() -> None:
             )
         ''')
 
-        # --- PHASE 2: SYSTEMIC MACRO RISK TRACKING (DUAL-REGION UPGRADE) ---
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS macro_regimes (
                 date TEXT PRIMARY KEY,
@@ -294,7 +279,6 @@ def init_db() -> None:
             )
         ''')
 
-        # --- PHASE 3: MACROECONOMIC CALENDAR EVENTS ---
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS macro_calendar (
                 event_id TEXT PRIMARY KEY,
@@ -312,7 +296,6 @@ def init_db() -> None:
             )
         ''')
 
-        # --- PHASE 3: STRUCTURAL MACRO INDICATORS ---
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS macro_indicators (
                 date TEXT PRIMARY KEY,
@@ -494,7 +477,6 @@ def init_db() -> None:
 
         conn.commit()
 
-        # Run the dynamic migration script to inject any missing columns safely
         migrate_db(conn, cursor)
 
         logger.info("Database connection verified and schema is fully up-to-date.")
@@ -506,12 +488,7 @@ def init_db() -> None:
 
 
 def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
-    """
-    Dynamically checks the existing tables against a master list of required columns.
-    Gracefully executes ALTER TABLE to apply schema updates without dropping data.
-    Wraps individual ALTER statements in try/except blocks to ensure atomic migrations.
-    """
-    # 0. Migrate quant_scan_states PK normalization
+    # quant_scan_states PK normalization
     try:
         cursor.execute("PRAGMA table_info(quant_scan_states)")
         existing_state_columns = [info['name'] for info in cursor.fetchall()]
@@ -531,15 +508,14 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
     except Exception as e:
         logger.error(f"[MIGRATION ERROR] Failed on quant_scan_states recreation: {e}")
 
-    # 0.5 Migrate market_pulse_cache from TEXT to REAL
+    # market_pulse_cache TEXT→REAL column type migration
     try:
         cursor.execute("PRAGMA table_info(market_pulse_cache)")
         cache_columns = cursor.fetchall()
         for col in cache_columns:
             if col['name'] == 'price' and col['type'].upper() == 'TEXT':
                 logger.info("[MIGRATION] Rebuilding market_pulse_cache to strictly enforce REAL numeric types...")
-                
-                # 4-Step Table Rebuild Migration (Standard SQLite workaround for changing types)
+                # SQLite has no ALTER COLUMN — rename/recreate/copy/drop is the standard workaround
                 cursor.execute("ALTER TABLE market_pulse_cache RENAME TO _legacy_market_pulse_cache")
                 cursor.execute('''
                     CREATE TABLE market_pulse_cache (
@@ -567,7 +543,6 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
     except Exception as e:
         logger.error(f"[MIGRATION ERROR] Failed on market_pulse_cache numeric enforcement: {e}")
 
-    # 1. Migrate stock_signals
     cursor.execute("PRAGMA table_info(stock_signals)")
     existing_stock_columns = [info['name'] for info in cursor.fetchall()]
 
@@ -599,7 +574,6 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
                 logger.error(f"[MIGRATION ERROR] Failed on stock_signals: {e}")
                 continue
 
-    # 2. Migrate quant_signals (Adding ML and Risk Factor Columns)
     cursor.execute("PRAGMA table_info(quant_signals)")
     existing_quant_columns = [info['name'] for info in cursor.fetchall()]
 
@@ -631,7 +605,6 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
                 logger.error(f"[MIGRATION ERROR] Failed on quant_signals: {e}")
                 continue
 
-    # 3. Migrate market_universe
     cursor.execute("PRAGMA table_info(market_universe)")
     existing_universe_columns = [info['name'] for info in cursor.fetchall()]
 
@@ -655,7 +628,6 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
                 logger.error(f"[MIGRATION ERROR] Failed on market_universe: {e}")
                 continue
 
-    # 4. Migrate market_regimes (Dual-Region Refactor + Stacking UI Expansion)
     cursor.execute("PRAGMA table_info(market_regimes)")
     existing_regime_columns = [info['name'] for info in cursor.fetchall()]
 
@@ -679,7 +651,6 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
                 logger.error(f"[MIGRATION ERROR] Failed on market_regimes: {e}")
                 continue
 
-    # 5. Migrate macro_regimes
     cursor.execute("PRAGMA table_info(macro_regimes)")
     existing_macro_columns = [info['name'] for info in cursor.fetchall()]
 
@@ -699,7 +670,6 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
                 logger.error(f"[MIGRATION ERROR] Failed on macro_regimes: {e}")
                 continue
 
-    # 6. Migrate macro_calendar (Adding Stacking surprise probability field)
     cursor.execute("PRAGMA table_info(macro_calendar)")
     existing_calendar_columns = [info['name'] for info in cursor.fetchall()]
 
@@ -720,7 +690,6 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
                 logger.error(f"[MIGRATION ERROR] Failed on macro_calendar: {e}")
                 continue
 
-    # 7. Migrate macro_indicators
     cursor.execute("PRAGMA table_info(macro_indicators)")
     existing_indicator_columns = [info['name'] for info in cursor.fetchall()]
 
@@ -740,7 +709,7 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
                 logger.error(f"[MIGRATION ERROR] Failed on macro_indicators: {e}")
                 continue
 
-    # 8a. Migrate news_articles — add sentiment columns if not present
+    # news_articles — add sentiment columns if not present
     try:
         cursor.execute("PRAGMA table_info(news_articles)")
         news_cols = [c['name'] for c in cursor.fetchall()]
@@ -752,7 +721,7 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
     except Exception as e:
         logger.error(f"[MIGRATION ERROR] news_articles sentiment columns: {e}")
 
-    # 8. Ensure ai_contagion_snapshots table exists (added in contagion monitor feature)
+    # ai_contagion_snapshots (guard for pre-feature DBs)
     try:
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS ai_contagion_snapshots (
@@ -767,7 +736,7 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
     except Exception as e:
         logger.error(f"[MIGRATION ERROR] Failed to create ai_contagion_snapshots: {e}")
 
-    # 9. Ensure intraday dip radar tables exist (added in dip radar feature)
+    # intraday dip radar tables (guard for pre-feature DBs)
     try:
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS intraday_monitors (
@@ -796,7 +765,7 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
     except Exception as e:
         logger.error(f"[MIGRATION ERROR] Failed to create intraday dip radar tables: {e}")
 
-    # 10. Migrate intraday_monitor_results — add bb_lower, vwap_lower, vol_climax columns
+    # intraday_monitor_results — add bb_lower, vwap_lower, vol_climax if missing
     cursor.execute("PRAGMA table_info(intraday_monitor_results)")
     existing_imr_columns = [info['name'] for info in cursor.fetchall()]
     required_imr_columns = {
@@ -812,7 +781,20 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
             except Exception as e:
                 logger.error(f"[MIGRATION ERROR] Failed adding {col_name} to intraday_monitor_results: {e}")
 
-    # 11. Ensure covering index on quant_signals for efficient latest-date lookups
+    # ticker_metadata (guard for pre-feature DBs)
+    try:
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS ticker_metadata (
+                ticker TEXT PRIMARY KEY,
+                sector TEXT,
+                beta REAL,
+                market_cap REAL
+            )
+        ''')
+    except Exception as e:
+        logger.error(f"[MIGRATION ERROR] Failed to create ticker_metadata: {e}")
+
+    # covering index on quant_signals for efficient latest-date lookups
     try:
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_qs_ticker_date
@@ -830,10 +812,6 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
 
 
 def log_score_event(ticker: str, date: str, score: int, signal: str, close_price: Optional[float]) -> None:
-    """
-    Upserts one row into score_history for the given ticker and trading date.
-    Called after every scoring run so forward-returns analysis can be run later.
-    """
     conn = None
     try:
         conn = get_connection()
@@ -856,10 +834,7 @@ def log_score_event(ticker: str, date: str, score: int, signal: str, close_price
 
 
 def log_smgb_prediction(result: dict) -> None:
-    """
-    Inserts one row per target_date into smgb_predictions.
-    ON CONFLICT DO NOTHING — safe to call on every page load.
-    """
+    """ON CONFLICT DO NOTHING — safe to call on every page load."""
     conn = None
     try:
         conn = get_connection()
@@ -896,10 +871,6 @@ def log_smgb_prediction(result: dict) -> None:
 
 
 def fill_smgb_actual(target_date: str, actual_open: float) -> None:
-    """
-    Fills the actual open price for target_date and computes error metrics.
-    Called by the 09:15 GMT scheduler job each trading morning.
-    """
     conn = None
     try:
         conn = get_connection()
@@ -938,9 +909,6 @@ def fill_smgb_actual(target_date: str, actual_open: float) -> None:
 
 
 def get_smgb_accuracy() -> dict:
-    """
-    Returns the last 60 prediction rows (newest first) plus overall summary statistics.
-    """
     conn = None
     try:
         conn = get_connection()
@@ -1003,22 +971,17 @@ def get_smgb_accuracy() -> dict:
 
 
 def get_universe_tickers() -> List[str]:
-    """
-    Connects to the SQLite DB and extracts all tracked universe tickers.
-    Enforces the Freetrade Firewall if enabled in UI settings.
-    """
+    """Respects FREETRADE_ONLY_MODE: returns only is_freetrade=1 tickers when enabled."""
     try:
         config_data = load_config()
         freetrade_only = config_data.get("UI_PREFERENCES", {}).get("FREETRADE_ONLY_MODE", False)
 
         conn = get_connection()
         cursor = conn.cursor()
-        
+
         if freetrade_only:
-            # FIREWALL: Only process assets you can actually trade
             cursor.execute("SELECT ticker FROM market_universe WHERE is_freetrade = 1")
         else:
-            # LEGACY: Process everything
             cursor.execute("SELECT ticker FROM market_universe")
             
         tickers = [row['ticker'] for row in cursor.fetchall()]
@@ -1047,10 +1010,7 @@ def upsert_quant_signal(
     var_95: Optional[float] = None,
     cvar_95: Optional[float] = None
 ) -> bool:
-    """
-    Centralized, highly-typed function to insert or update daily quantitative signals.
-    Returns True on success, False on failure.
-    """
+    conn = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
@@ -1090,7 +1050,8 @@ def upsert_quant_signal(
         logger.error(f"Database insertion failed for quant_signal ({ticker} on {date}): {e}")
         return False
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 
 if __name__ == "__main__":

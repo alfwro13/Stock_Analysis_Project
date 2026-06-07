@@ -91,3 +91,69 @@ A stacked model architecture that evaluates systemic market risk.
 * **Flow:** * **HMM (Hidden Markov Model):** Reads structural `macro_indicators` to predict the hidden regime state (`ai_hmm_state` in `market_regimes`).
   * **Random Forest:** Reads `macro_calendar` forecasts to predict the probability of Wall Street being wrong (`ai_consensus_miss_prob`).
   * **XGBoost (Stacking):** Consumes the HMM state and RF probability to predict the exact percentage shock an upcoming event will have on the S&P 500 (`ai_volatility_warning`).
+
+---
+
+## 4. Additional SQLite Tables
+
+Tables added after initial schema creation. All managed via `database.py:init_db()` and `migrate_db()`.
+
+#### `ticker_metadata`
+* **Purpose:** Lightweight beta + market-cap cache used by ML feature assembly. Created by `ai_prediction_engine.sync_ticker_metadata()` rather than `init_db()` (see code note).
+* **Key Columns:** `ticker` (PK), `sector`, `beta`, `market_cap`.
+
+#### `market_pulse_cache`
+* **Purpose:** Cached CNN Fear & Greed + major-index snapshot to avoid re-fetching on every page load.
+* **Key Columns:** `ticker` (PK), `name`, `price`, `change_pts`, `change_pct`, `is_positive`, `last_updated`.
+
+#### `alert_state`
+* **Purpose:** Dedup ledger for intraday alert engines. Decoupled from `system_notifications` so display and dedup logic never interfere.
+* **Key Columns:** `engine`, `ticker` (composite PK), `fingerprint`, `last_price`, `last_fired_utc`, `armed`, `fire_count`, `state_date`.
+
+#### `system_notifications`
+* **Purpose:** Scheduler job log surfaced in the Settings notifications panel.
+* **Key Columns:** `id` (PK autoincrement), `timestamp`, `message_type`, `message_text`, `is_read`, `status`.
+
+#### `scheduler_run_log`
+* **Purpose:** Records the last-run timestamp per APScheduler job ID so jobs can guard against re-running within their minimum interval.
+* **Key Columns:** `job_id` (PK), `last_run`.
+
+#### `score_history`
+* **Purpose:** Per-ticker daily score + signal + close price history. Accumulates over time to enable forward-returns analysis.
+* **Key Columns:** `ticker`, `date` (composite PK), `score`, `signal`, `close_price`.
+
+#### `xray_risk_cache`
+* **Purpose:** Per-ticker beta and annualised volatility vs the configured benchmark, pre-computed by the scheduler job.
+* **Key Columns:** `ticker`, `benchmark` (composite PK), `last_updated`, `beta`, `annualized_vol`.
+
+#### `xray_correlation_matrix`
+* **Purpose:** Full pairwise correlation matrix stored as JSON blobs (one row per benchmark — cheapest way to reconstruct the N×N matrix).
+* **Key Columns:** `benchmark` (PK), `last_updated`, `tickers_json`, `matrix_json`.
+
+#### `xray_dividend_cache`
+* **Purpose:** Per-holding dividend yield cache to avoid blocking the page load with live Ghostfolio calls.
+* **Key Columns:** `ticker`, `data_source` (composite PK), `last_updated`, `dividend_yield_pct`, `dividend_in_base_currency`.
+
+#### `xray_portfolio_returns_cache`
+* **Purpose:** Weighted daily portfolio return series for historical VaR/CVaR, tracking error, Sharpe, and skewness/kurtosis.
+* **Key Columns:** `benchmark` (PK), `last_updated`, `dates_json`, `returns_json`, `benchmark_returns_json`.
+
+#### `ai_contagion_snapshots`
+* **Purpose:** AI sector contagion scan results — payload JSON + alert flag. Pruned to last 7 days automatically.
+* **Key Columns:** `id` (PK autoincrement), `scan_ts`, `leader_count`, `etf_count`, `alert_fired`, `payload_json`.
+
+#### `news_articles`
+* **Purpose:** Full-text news articles with FinBERT sentiment scores, deduped by `article_id`.
+* **Key Columns:** `id` (PK autoincrement), `article_id` (UNIQUE), `ticker`, `source_list`, `headline`, `published_at`, `sentiment_score`, `sentiment_label`.
+
+#### `smgb_predictions`
+* **Purpose:** SMGB.L morning price predictions, actuals, and accuracy metrics.
+* **Key Columns:** `id` (PK autoincrement), `target_date` (UNIQUE), `predicted_price`, `actual_open`, `absolute_error`, `pct_error`, `direction_correct`.
+
+#### `intraday_monitors`
+* **Purpose:** Active dip-radar watch list — one row per ticker armed for today's session.
+* **Key Columns:** `ticker` (PK), `date_added`, `is_active`, `activated_by`.
+
+#### `intraday_monitor_results`
+* **Purpose:** Latest scan result per ticker so the dip-radar UI can poll without waiting for the next orchestrator cycle.
+* **Key Columns:** `ticker` (PK), `scan_ts`, `current_price`, `reversal_score`, `is_bottoming`, `reasons_json`, `rsi`, `vwap`, `vwap_deviation`.

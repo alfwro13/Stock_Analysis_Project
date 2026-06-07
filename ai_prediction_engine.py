@@ -313,12 +313,6 @@ def sync_ticker_metadata(tickers: List[str]) -> None:
     conn   = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS ticker_metadata (
-            ticker TEXT PRIMARY KEY, sector TEXT, beta REAL, market_cap REAL
-        )
-    """)
-
     cursor.execute("SELECT ticker FROM ticker_metadata")
     existing_tickers = {row[0] for row in cursor.fetchall()}
     missing_tickers  = [t for t in tickers if t not in existing_tickers]

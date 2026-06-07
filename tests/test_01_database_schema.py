@@ -63,6 +63,7 @@ EXPECTED_TABLES = [
     "earnings_volatility",
     "market_universe",
     "asset_profiles",
+    "ticker_metadata",
     "market_regimes",
     "intraday_monitors",
     "intraday_monitor_results",
