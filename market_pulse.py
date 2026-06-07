@@ -1,4 +1,3 @@
-# market_pulse.py
 import time
 import logging
 import threading
@@ -11,11 +10,9 @@ from utils import normalize_ticker
 from gilt_engine import GiltDataService
 from yahoo_engine import yahoo_engine
 
-# Configure robust module-level logging
 logger = logging.getLogger(__name__)
 
-# Dictionary mapping market identifiers to clean UI display names.
-# Registering 'UK10YG' directly below 'GBPUSD=X' places the tile right next to it.
+# UK10YG is registered directly below GBPUSD=X so its tile appears adjacent in the UI.
 INDEX_TICKERS: Dict[str, str] = {
     "^FTSE": "UK FTSE 100",
     "^FTMC": "UK FTSE 250",
@@ -66,11 +63,7 @@ def get_all_cached_pulse() -> Dict[str, Dict[str, Any]]:
 
 
 def get_cached_pulse_from_db(asset_tickers: List[str], refresh_rate: int) -> Dict[str, List[Dict[str, Any]]]:
-    """
-    Fetches the latest live prices from the SQLite Cache to ensure instant UI rendering.
-    Calculates if the data is stale based on the user's refresh rate.
-    Also merges the latest FinBERT sentiment score securely fetched via subquery.
-    """
+    """Returns cached pulse prices (with staleness flag + latest FinBERT sentiment) split into indexes vs. assets."""
     if asset_tickers is None:
         asset_tickers = []
 
@@ -96,11 +89,9 @@ def get_cached_pulse_from_db(asset_tickers: List[str], refresh_rate: int) -> Dic
         if all_tickers:
             placeholders = ','.join('?' for _ in all_tickers)
 
-            # 1. Fetch Market Pulse baseline
             cursor.execute(f"SELECT ticker, name, price, change_pts, change_pct, is_positive, last_updated FROM market_pulse_cache WHERE ticker IN ({placeholders})", all_tickers)
             rows = cursor.fetchall()
 
-            # 2. Fetch Latest Sentiment Output
             query = f"""
                 SELECT ticker, sentiment_score
                 FROM quant_signals
@@ -126,10 +117,8 @@ def get_cached_pulse_from_db(asset_tickers: List[str], refresh_rate: int) -> Dic
     results: Dict[str, List[Dict[str, Any]]] = {"indexes": [], "assets": []}
     current_time: float = time.time()
     
-    # Map database rows for O(1) lookup
     db_map: Dict[str, Any] = {row['ticker']: row for row in rows}
 
-    # Iterate through our strictly ordered all_tickers list
     for t in all_tickers:
         if t in db_map:
             row = db_map[t]
@@ -165,16 +154,12 @@ def get_cached_pulse_from_db(asset_tickers: List[str], refresh_rate: int) -> Dic
 
 
 def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
-    """
-    Background Task: Connects to Yahoo Finance to fetch raw ticks and saves them to the DB.
-    Intercepts and evaluates UK10YG exclusively via the official FT.com engine scraper.
-    """
+    """Fetches live ticks from Yahoo Finance and saves to DB; UK10YG is sourced exclusively from FT.com."""
     if not _FETCH_LOCK.acquire(blocking=False):
         return
 
     conn = None
     try:
-        # Separate the custom Financial Times target from the yfinance payload list
         handle_gilt: bool = False
         if "UK10YG" in tickers_to_fetch:
             handle_gilt = True
@@ -201,7 +186,6 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
             )
             existing_cache = {row['ticker']: row['price'] for row in cursor.fetchall()}
 
-        # 1. Ingest Standard Yahoo Finance Securities
         for ticker in tickers_to_fetch:
             try:
                 t_daily: pd.DataFrame = daily_dfs.get(ticker, pd.DataFrame())
@@ -263,14 +247,12 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
             except Exception as e:
                 logger.error(f"[MARKET PULSE BACKGROUND] Error processing {ticker}: {e}")
                 
-        # 2. Ingest Sovereign UK 10Y Gilt Exclusively via FT.com Scraper Engine
         if handle_gilt:
             try:
                 gilt_service = GiltDataService()
                 live_gilt_yield = gilt_service.fetch_live_ft_yield()
                 parquet_path = HISTORICAL_DIR / "UK_GILT_BASELINE.parquet"
                 
-                # Resilient Fallback: If live scrape returns None, pull the last verified close from Parquet
                 if live_gilt_yield is None and parquet_path.exists():
                     try:
                         df_gilt_hist = pd.read_parquet(parquet_path)
