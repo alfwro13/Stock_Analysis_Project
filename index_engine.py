@@ -1,4 +1,3 @@
-### `index_engine.py`
 from io import StringIO
 import logging
 import requests
@@ -11,8 +10,7 @@ from database import get_connection, log_notification
 
 logger = logging.getLogger(__name__)
 
-# --- REGISTRY PATTERN FOR EXTENSIBILITY ---
-# To add a new index, simply create a new dictionary entry here.
+# To add a new index: add an entry here; no other code changes needed.
 INDEX_REGISTRY: Dict[str, Dict] = {
     "SP500": {
         "url": "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
@@ -36,10 +34,7 @@ INDEX_REGISTRY: Dict[str, Dict] = {
 
 
 def fetch_index_constituents(index_key: str) -> List[Dict[str, str]]:
-    """
-    Natively scrapes Wikipedia for index constituents using pandas.
-    Employs fuzzy column matching to survive Wikipedia's frequent header changes.
-    """
+    """Scrape Wikipedia constituents; fuzzy column matching survives Wikipedia header renames."""
     if index_key not in INDEX_REGISTRY:
         logger.error(f"Index '{index_key}' is not defined in the Registry.")
         return []
@@ -61,8 +56,7 @@ def fetch_index_constituents(index_key: str) -> List[Dict[str, str]]:
 
         df = tables[0]
         
-        # --- FUZZY COLUMN MATCHING ---
-        # Map our expected config columns to the actual Wikipedia columns (case-insensitive subset match)
+        # Case-insensitive subset match: tolerates Wikipedia's frequent column renames.
         col_map = {}
         target_cols = [config["col_ticker"], config["col_company"], config["col_sector"]]
         
@@ -103,12 +97,7 @@ def fetch_index_constituents(index_key: str) -> List[Dict[str, str]]:
 
 
 def upsert_index_assets(records: List[Dict[str, str]]) -> bool:
-    """
-    Executes a surgical INSERT OR UPDATE operation.
-    CRITICAL: This query explicitly omits the 'is_freetrade' column from the UPDATE block.
-    This establishes the Freetrade Firewall, preventing us from overwriting broker integrations.
-    It elegantly concatenates index memberships (e.g., AAPL becomes 'SP500,NASDAQ100').
-    """
+    """Upsert records into market_universe; omits is_freetrade from UPDATE to preserve broker flags."""
     if not records:
         return False
 
@@ -126,7 +115,6 @@ def upsert_index_assets(records: List[Dict[str, str]]) -> bool:
         conn = get_connection()
         cursor = conn.cursor()
 
-        # The Freetrade Firewall Query
         query = '''
             INSERT INTO market_universe (
                 ticker, company_name, sector, is_index, index_membership, last_updated
@@ -156,10 +144,7 @@ def upsert_index_assets(records: List[Dict[str, str]]) -> bool:
 
 
 def sync_all_indices() -> None:
-    """
-    Orchestration point triggered by the `scheduler_engine.py` background job.
-    Reads user preferences and triggers the scraping pipeline.
-    """
+    """Scheduler entry point: reads active indices from config and runs the scrape pipeline."""
     config_data = load_config()
     index_cfg = config_data.get("SCHEDULING", {}).get("SYNC_INDICES", {})
     
@@ -184,5 +169,4 @@ def sync_all_indices() -> None:
 
 
 if __name__ == "__main__":
-    # Allows you to test the scraper instantly via terminal: `python index_engine.py`
     sync_all_indices()
