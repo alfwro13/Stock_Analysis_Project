@@ -11,36 +11,26 @@ import ta
 from utils import clamp_beta
 from yahoo_engine import yahoo_engine
 
-# Initialize module-level logger for production observability
 logger = logging.getLogger(__name__)
 
 class CrashEngine:
     def __init__(self, config: dict[str, Any]) -> None:
-        """Initializes the Crash Engine with dynamically loaded configurations."""
         self.config = config
         self.crash_cfg = self.config.get("NOTIFICATIONS", {}).get("CRASH_ALERTS", {})
-        
-        # Standard trend thresholds
         self.drop_percent = float(self.crash_cfg.get("DROP_PERCENT", 5.0))
         self.drop_days = int(self.crash_cfg.get("DROP_DAYS", 3))
         self.sma_length = int(self.crash_cfg.get("SMA_LENGTH", 10))
         self.sma_gap_percent = float(self.crash_cfg.get("SMA_GAP_PERCENT", 2.0))
-        
-        # New Circuit Breaker Threshold for instant Intraday Drops
         self.session_crash_threshold = float(
             self.crash_cfg.get("SESSION_CRASH_THRESHOLD", self.crash_cfg.get("FLASH_CRASH_THRESHOLD", 3.0))
         )
-
         # Injected by the orchestrator once per run to avoid a per-crash SPY HTTP call
         self.spy_change_pct: float | None = None
-
-        # Hard ceiling applied AFTER beta scaling when the AI Volatility Defense is active.
-        # Kept separate from session_crash_threshold so beta scaling cannot widen it back out —
-        # the whole point of the AI override is to protect high-beta names on macro shock days.
+        # Ceiling applied AFTER beta scaling so high-beta names can't widen the AI Volatility Defense cap back out.
         self.ai_threshold_cap: float | None = None
 
     def _fetch_market_context(self) -> float:
-        """Fallback: fetches S&P 500 intraday performance using 5m bars, consistent with the system time-base."""
+        # Fallback used when spy_change_pct was not pre-injected by the orchestrator.
         try:
             _result = yahoo_engine.get_intraday(["SPY"], period="1d", interval="5m")
             spy = _result.get("SPY")
@@ -61,15 +51,10 @@ class CrashEngine:
         asset_meta: dict[str, Any],
         df_hist: pd.DataFrame | None = None,
     ) -> str:
-        """
-        Fetches live news, volume anomalies, and macro context to construct a
-        5-10 sentence analytical conclusion of why the crash is happening.
-        """
         report = []
         company_name = asset_meta.get('company_name', ticker)
 
-        # 1. Macro Context (Systematic vs Idiosyncratic)
-        # Use pre-fetched SPY value injected by the orchestrator; fall back to live fetch only if unavailable
+        # Use pre-fetched SPY value injected by the orchestrator; fall back to live fetch only if unavailable.
         if self.spy_change_pct is not None:
             spy_drop = self.spy_change_pct
         else:
@@ -86,9 +71,7 @@ class CrashEngine:
         else:
             report.append(f"The broader market is slightly weak (S&P 500: {spy_drop:.2f}%), but {company_name} is significantly underperforming the baseline.")
 
-        # 2. Volume Anomaly Check
         # Use df_hist (already loaded by orchestrator) to avoid a per-crash HTTP call.
-        # Fall back to a live yfinance fetch only when df_hist is unavailable.
         try:
             vol_data = df_hist if df_hist is not None and not df_hist.empty else None
             if vol_data is None:
@@ -108,8 +91,7 @@ class CrashEngine:
         except Exception as e:
             logger.warning(f"Volume anomaly check failed for {ticker}: {e}")
 
-        # 3. Technical Damage Assessment
-        # Use settled bars only for the SMA; compare current live price against it.
+        # Use settled bars only for SMA; the live tick is a partially-formed bar.
         df_settled = df_combined.iloc[:-1]
         latest_price = df_combined['Close'].iloc[-1]
         prev_settled_close = df_settled['Close'].iloc[-1]
@@ -120,16 +102,11 @@ class CrashEngine:
         except Exception as e:
             logger.warning(f"Technical damage assessment failed for {ticker}: {e}")
 
-        # 4. Catalyst Extraction (News Headlines)
-        # News is never derivable from df_hist — always requires a live yfinance call.
-        # This is acceptable: _generate_context_report only executes for confirmed crash
-        # alerts (not in the main scan loop), so one HTTP call per fired alert is correct.
+        # News requires a live yfinance call (never in df_hist), but _generate_context_report only runs on confirmed alerts — one call per fired event is acceptable.
         try:
             news = yahoo_engine.get_news(ticker)
             if news:
-                # Parse every item into (pub_time, publisher, headline), drop unparseable ones,
-                # then sort newest-first and slice — fixes the bug where news[:3] could be all
-                # stale items while breaking news sits at position 4+.
+                # Sort newest-first after parsing; news[:3] could otherwise be stale while breaking news sits at position 4+.
                 parsed: list[tuple[datetime, str, str]] = []
                 for item in news:
                     content = item.get('content', item)
@@ -168,7 +145,6 @@ class CrashEngine:
             logger.warning(f"Catalyst extraction failed for {ticker}: {e}")
             report.append("\n**Catalysts:** No major breaking news headlines found on Yahoo Finance within the last 48 hours.")
 
-        # Final string construction
         return "\n".join(report)
 
     def evaluate(
@@ -180,35 +156,22 @@ class CrashEngine:
         df_hist: pd.DataFrame | None = None,
         session_open: float | None = None,
     ) -> dict[str, Any] | None:
-        """
-        Evaluates mathematical crash signatures, now prioritizing Session Crashes.
-        Returns an alert dictionary if triggered, else None.
-
-        df_combined contract: must contain a 'Close' column only — the orchestrator
-        builds it from df_hist[['Close']] plus the live tick. Do NOT add OHLCV reads
-        here without also updating the stitching logic in intraday_orchestrator.py.
-        df_hist is passed separately for any full-OHLCV calculations.
-        """
-        # Exclude the live intraday tick from indicator calculations — it is a partially-formed
-        # bar mid-session and skews trend signals on volatile open days.
+        # df_combined contract: 'Close' column only (df_hist[['Close']] + live tick). Adding OHLCV here requires updating intraday_orchestrator.py too.
+        # Exclude the live tick from indicator calculations — partially-formed bar skews trend signals on volatile open days.
         df_settled = df_combined.iloc[:-1]
 
         if df_settled.empty or len(df_settled) < self.sma_length:
             return None
 
-        # The orchestrator appends the live current_price as the final row of df_combined (iloc[-1]).
-        # The prior session's close is the last settled row.
         prev_close = df_settled['Close'].iloc[-1]
         if not prev_close:
             logger.debug("Non-positive prev_close for %s; skipping.", ticker)
             return None
 
-        # Beta-normalise all thresholds: high-beta stocks require a larger move to qualify;
-        # low-beta stocks trip on smaller moves. Clamp to [0.5, 2.0] to cap outlier sensitivity.
+        # Beta-scale all thresholds (clamped to [0.5, 2.0]) so high-beta names need a bigger move and low-beta names trip earlier.
         beta = clamp_beta(asset_meta.get('beta'))
         adj_session_threshold = self.session_crash_threshold * beta
-        # Apply the AI Volatility Defense cap AFTER beta scaling so that high-beta names
-        # cannot have the override silently widened back out by their own volatility multiplier.
+        # Cap AFTER beta scaling so high-beta names cannot widen the AI Volatility Defense back out.
         if self.ai_threshold_cap is not None:
             adj_session_threshold = min(adj_session_threshold, self.ai_threshold_cap)
         adj_drop_percent      = self.drop_percent            * beta
@@ -216,10 +179,7 @@ class CrashEngine:
 
         intraday_drop_pct = ((current_price - prev_close) / prev_close) * 100.0
 
-        # When the session open is available, distinguish two phenomena:
-        #   Gap & Crash    — opened down AND is still falling below the open → real crash
-        #   Gap & Recovery — opened down BUT price has since climbed above the open → bullish
-        # Without session_open we fall back to the raw prev_close comparison.
+        # Gap & Crash: opened down AND still below open. Gap & Recovery: opened down but since recovered. Without session_open, fall back to prev_close comparison.
         since_open_pct: float | None = None
         gap_pct: float | None = None
         if session_open is not None and session_open > 0:
@@ -229,7 +189,6 @@ class CrashEngine:
         else:
             is_session_crash = intraday_drop_pct <= -adj_session_threshold
 
-        # --- 2. OLD LOGIC: Prolonged Trend Bleed ---
         lookback_idx = -(self.drop_days + 1)
         if abs(lookback_idx) > len(df_settled):
             logger.debug(
@@ -251,7 +210,6 @@ class CrashEngine:
         is_dropping_fast = price_drop_pct <= -adj_drop_percent
         is_breaking_sma = below_sma_pct >= adj_sma_gap_percent
         
-        # --- 3. Quantamental ATR Floor ---
         atr_stop = asset_meta.get('atr_stop_loss')
         atr_last_updated = asset_meta.get('atr_last_updated')
         atr_is_fresh = False
@@ -264,12 +222,10 @@ class CrashEngine:
                 logger.debug("Could not parse ATR last_updated timestamp '%s', treating as stale", atr_last_updated)
         is_below_atr = atr_stop is not None and atr_is_fresh and (0 < current_price < atr_stop)
 
-        # Execution Logic: If Session Crash OR (X-Drop AND Y-Gap) OR (Broke Mathematical ATR)
         if is_session_crash or (is_dropping_fast and is_breaking_sma) or is_below_atr:
             reason = []
             context_report = ""
-            
-            # Prioritize the Session Crash reporting
+
             if is_session_crash:
                 if gap_pct is not None and since_open_pct is not None:
                     gap_dir = "up" if gap_pct >= 0 else "down"
@@ -280,7 +236,6 @@ class CrashEngine:
                     )
                 else:
                     reason.append(f"SESSION CRASH / GAP DOWN: Dropped {abs(intraday_drop_pct):.2f}% today.")
-                # Run the heavy Context Analyzer only when a crash actually occurs
                 context_report = self._generate_context_report(ticker, intraday_drop_pct, df_combined, asset_meta, df_hist)
             
             if is_dropping_fast and not is_session_crash:
