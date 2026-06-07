@@ -1,7 +1,7 @@
 # intraday_bottom_engine.py
 import json
 import logging
-from datetime import date, datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 import time_engine
@@ -17,19 +17,7 @@ _BOTTOMING_THRESHOLD = 65
 
 
 class IntradayBottomEngine:
-    """
-    Intraday Dip Radar: detects capitulation/exhaustion bottoms on user-selected tickers.
-
-    Scoring (0–100) based on four independent conditions:
-      A. RSI extreme oversold        — up to 30 pts
-      B. Price below lower BB (2.5σ) — 25 pts
-      C. Price below VWAP - 2.5σ    — 20 pts
-      D. Volume climax on down-move  — 25 pts
-
-    Fires an in-app notification when score ≥ 65.
-    Fires a Nextcloud Talk message when score ≥ 65 AND config flag is set.
-    Uses alert_state table to suppress repeat alerts within the same dip.
-    """
+    """Dip Radar: scores intraday capitulation bottoms 0–100 via RSI/BB/VWAP/volume-climax conditions; fires alert at ≥65."""
 
     def __init__(self):
         from config import load_config
@@ -37,12 +25,8 @@ class IntradayBottomEngine:
         self._get_connection = get_connection
         self.config = load_config()
 
-    # ------------------------------------------------------------------
-    # DB helpers
-    # ------------------------------------------------------------------
-
     def get_active_monitors(self) -> List[str]:
-        today = date.today().isoformat()
+        today = datetime.now(timezone.utc).date().isoformat()
         conn = None
         try:
             conn = self._get_connection()
@@ -131,7 +115,7 @@ class IntradayBottomEngine:
                        last_fired_utc = excluded.last_fired_utc,
                        fire_count     = alert_state.fire_count + 1,
                        state_date     = excluded.state_date""",
-                (ticker, datetime.utcnow().isoformat(), date.today().isoformat()),
+                (ticker, datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"), datetime.now(timezone.utc).date().isoformat()),
             )
             conn.commit()
         except Exception as e:
@@ -151,7 +135,7 @@ class IntradayBottomEngine:
                    ON CONFLICT(engine, ticker) DO UPDATE SET
                        armed      = 1,
                        state_date = excluded.state_date""",
-                (ticker, date.today().isoformat()),
+                (ticker, datetime.now(timezone.utc).date().isoformat()),
             )
             conn.commit()
         except Exception as e:
@@ -160,18 +144,10 @@ class IntradayBottomEngine:
             if conn:
                 conn.close()
 
-    # ------------------------------------------------------------------
-    # Technical calculations
-    # ------------------------------------------------------------------
-
     @staticmethod
     def _calculate_vwap(df: pd.DataFrame) -> pd.Series:
         typical = (df["High"] + df["Low"] + df["Close"]) / 3
         return (typical * df["Volume"]).cumsum() / df["Volume"].cumsum()
-
-    # ------------------------------------------------------------------
-    # Core analysis
-    # ------------------------------------------------------------------
 
     def analyze_ticker(self, ticker: str) -> Optional[Dict]:
         try:
@@ -203,12 +179,10 @@ class IntradayBottomEngine:
             df["Vol_Std"] = df["Volume"].rolling(20).std()
             df["Vol_Climax"] = df["Volume"] > (df["Vol_SMA"] + 3 * df["Vol_Std"])
 
-            # Select analysis candle: if the last bar started within the past 2 minutes it is
-            # still forming (live market hours) — step back one bar. After market close all
-            # bars are fully settled so use iloc[-1].
+            # Last bar within 2 min is still forming during live hours — use iloc[-2] to avoid partial data.
             try:
                 last_ts = df.index[-1]
-                now_utc = pd.Timestamp.utcnow().tz_localize("UTC")
+                now_utc = pd.Timestamp.now(tz="UTC")
                 last_ts_utc = last_ts.tz_convert("UTC") if last_ts.tzinfo is not None else last_ts.tz_localize("UTC")
                 still_forming = (now_utc - last_ts_utc) < pd.Timedelta(minutes=2)
             except Exception:
@@ -257,8 +231,7 @@ class IntradayBottomEngine:
                 exchange = time_engine.ticker_exchange(ticker)
                 mkt_tz = time_engine.EXCHANGE_HOURS.get(exchange, {}).get("tz", "America/New_York")
                 ts = cur.name
-                # yf.download() returns tz-aware timestamps; parquet strips TZ (naive UTC).
-                # Handle both: localize only if naive, then convert.
+                # yfinance returns tz-aware; parquet strips TZ (naive UTC) — localize only if naive.
                 if ts.tzinfo is None:
                     ts = ts.tz_localize('UTC')
                 ts_local = ts.tz_convert(mkt_tz)
@@ -287,10 +260,6 @@ class IntradayBottomEngine:
             logger.error("DipRadar: analysis failed for %s: %s", ticker, e)
             return None
 
-    # ------------------------------------------------------------------
-    # Notification helpers
-    # ------------------------------------------------------------------
-
     def _log_notification(self, msg_type: str, msg_text: str) -> None:
         from database import log_notification
         log_notification(msg_type, msg_text)
@@ -317,10 +286,6 @@ class IntradayBottomEngine:
 
         self._disarm_alert(ticker)
 
-    # ------------------------------------------------------------------
-    # Public entry points
-    # ------------------------------------------------------------------
-
     def run_scan(self) -> List[Dict]:
         tickers = self.get_active_monitors()
         if not tickers:
@@ -342,7 +307,7 @@ class IntradayBottomEngine:
         return hits
 
     def deactivate_all_today(self) -> None:
-        today = date.today().isoformat()
+        today = datetime.now(timezone.utc).date().isoformat()
         conn = None
         try:
             conn = self._get_connection()
@@ -359,7 +324,7 @@ class IntradayBottomEngine:
 
     def deactivate_exchange_today(self, exchange: str) -> None:
         """Deactivate only monitors whose ticker belongs to *exchange*, leaving others running."""
-        today = date.today().isoformat()
+        today = datetime.now(timezone.utc).date().isoformat()
         conn = None
         try:
             conn = self._get_connection()
