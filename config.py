@@ -60,6 +60,7 @@ DEPRECATED_SCHEDULE_KEYS: set = {"UNIVERSE_FUNDAMENTALS"}
 DEFAULT_CONFIG = {
     "SERVER_URL": "http://localhost",
     "YAHOO_IPV6_ADDRESS": "",
+    "NETWORK_FAULT_NOTIFY_NEXTCLOUD": False,
     "PORT": 8090,
     "BASE_CURRENCY": "GBP",
     "USER_TIMEZONE": "Europe/London",   # IANA tz string — used for all display formatting

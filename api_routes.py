@@ -436,6 +436,7 @@ class SettingsConfig(BaseModel):
 
     SERVER_URL: Optional[str] = None
     YAHOO_IPV6_ADDRESS: Optional[str] = None
+    NETWORK_FAULT_NOTIFY_NEXTCLOUD: Optional[bool] = None
     PORT: Optional[int] = None
     BASE_CURRENCY: Optional[str] = None
     USER_TIMEZONE: Optional[str] = None

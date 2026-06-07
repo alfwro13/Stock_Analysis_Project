@@ -96,18 +96,18 @@ def _trigger_fallback_alert(ipv6_address: str, action_context: str, error_summar
     except Exception as db_e:
         logger.error(f"Failed to log network fault to SQLite: {db_e}")
 
-    # Sent exactly once per process lifetime.
-    alert_msg = (
-        f"🚨 **CRITICAL NETWORK FAULT: YAHOO FINANCE** 🚨\n\n"
-        f"The custom IPv6 socket (`{ipv6_address}`) experienced a hard failure while fetching data for `{action_context}`.\n"
-        f"**Error:** {error_summary}\n\n"
-        f"🔄 *IPv6 interface permanently disabled for this session. All subsequent requests will use standard IPv4 routing.*\n\n"
-        f"*(Full stack trace has been written to the SQLite system_notifications table.)*"
-    )
-    try:
-        send_text_message(alert_msg, config)
-    except Exception as nc_e:
-        logger.error(f"Failed to dispatch Nextcloud alert for network fault: {nc_e}")
+    if config.get("NETWORK_FAULT_NOTIFY_NEXTCLOUD", False):
+        alert_msg = (
+            f"🚨 **CRITICAL NETWORK FAULT: YAHOO FINANCE** 🚨\n\n"
+            f"The custom IPv6 socket (`{ipv6_address}`) experienced a hard failure while fetching data for `{action_context}`.\n"
+            f"**Error:** {error_summary}\n\n"
+            f"🔄 *IPv6 interface permanently disabled for this session. All subsequent requests will use standard IPv4 routing.*\n\n"
+            f"*(Full stack trace has been written to the SQLite system_notifications table.)*"
+        )
+        try:
+            send_text_message(alert_msg, config)
+        except Exception as nc_e:
+            logger.error(f"Failed to dispatch Nextcloud alert for network fault: {nc_e}")
 
 
 def _patch_session_with_retries(
