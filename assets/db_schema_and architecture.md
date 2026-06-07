@@ -157,3 +157,8 @@ Tables added after initial schema creation. All managed via `database.py:init_db
 #### `intraday_monitor_results`
 * **Purpose:** Latest scan result per ticker so the dip-radar UI can poll without waiting for the next orchestrator cycle.
 * **Key Columns:** `ticker` (PK), `scan_ts`, `current_price`, `reversal_score`, `is_bottoming`, `reasons_json`, `rsi`, `vwap`, `vwap_deviation`.
+
+#### `model_training_log`
+* **Purpose:** Audit log of ML model training runs — stores CV score and sample count per training event.
+* **Key Columns:** `id` (PK autoincrement), `model_name`, `trained_at`, `n_samples`, `cv_score_mean`, `cv_score_std`, `score_metric`.
+* **Note:** Created by `MacroAIEngine._ensure_training_log_table()` on first use, not by `database.py:init_db()`.
