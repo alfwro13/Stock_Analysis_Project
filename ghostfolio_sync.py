@@ -22,10 +22,6 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 class GhostfolioSyncEngine:
     def __init__(self):
-        """
-        Initializes the Sync Engine using raw REST APIs to mirror the HA integration logic.
-        Provides granular control over account extraction and token lifecycles.
-        """
         self.url = GHOSTFOLIO_URL.rstrip("/")
         self.token = GHOSTFOLIO_TOKEN
         self.headers = {}
@@ -39,9 +35,6 @@ class GhostfolioSyncEngine:
             self.is_configured = True
 
     def authenticate(self) -> bool:
-        """
-        Authenticates anonymously via the Access Token to receive a short-lived Bearer Token.
-        """
         auth_url = f"{self.url}/api/v1/auth/anonymous"
         payload = {"accessToken": self.token}
         
@@ -62,10 +55,6 @@ class GhostfolioSyncEngine:
             return False
 
     def discover_accounts(self) -> list:
-        """
-        Queries the Ghostfolio server for all active accounts and updates the config.json.
-        This enables the Opt-In Sync Boundary feature.
-        """
         print("[SYNC] Discovering active accounts on Ghostfolio server...")
         try:
             response = requests.get(f"{self.url}/api/v1/account", headers=self.headers, verify=False, timeout=10)
@@ -83,13 +72,11 @@ class GhostfolioSyncEngine:
                     "currency": acc.get("currency", "Unknown")
                 })
             
-            # --- Safely Update config.json ---
             try:
                 current_cfg = load_config()
                 current_active = current_cfg.get("GHOSTFOLIO_ACCOUNTS", {}).get("active", [])
 
-                # Auto-whitelist all discovered accounts if the active list is totally empty
-                # This ensures a seamless transition for legacy users without breaking their dashboards
+                # Auto-activate all on first discovery so existing users don't need to reconfigure
                 if not current_active:
                     current_active = [acc["id"] for acc in discovered_accounts]
                     print("[SYNC] First-time discovery detected. Auto-activating all accounts.")
@@ -97,7 +84,6 @@ class GhostfolioSyncEngine:
                 updated_accounts = {"discovered": discovered_accounts, "active": current_active}
                 update_config_atomic({"GHOSTFOLIO_ACCOUNTS": updated_accounts})
 
-                # Update runtime state
                 self.active_account_ids = current_active
                 self.discovered_accounts = discovered_accounts
 
@@ -115,10 +101,6 @@ class GhostfolioSyncEngine:
             return []
 
     def sync_portfolio(self) -> bool:
-        """
-        Executes the Hierarchical Macro-to-Micro data extraction.
-        Queries ONLY active accounts and builds a VWAP-adjusted global portfolio.
-        """
         if not self.active_account_ids:
             print("[SYNC] No active accounts configured to sync. Aborting portfolio pull.")
             return False
@@ -128,13 +110,8 @@ class GhostfolioSyncEngine:
         try:
             print(f"[SYNC] Extracting holdings from {len(self.active_account_ids)} active accounts...")
             
-            # 1. Loop over each explicitly whitelisted account
             for acc_id in self.active_account_ids:
-                
-                # Find the account name from our discovery payload for nice UI mapping
                 acc_name = next((acc["name"] for acc in self.discovered_accounts if acc["id"] == acc_id), acc_id)
-                
-                # Fetch holdings strictly for this account
                 holdings_url = f"{self.url}/api/v1/portfolio/holdings?accounts={acc_id}"
                 resp = requests.get(holdings_url, headers=self.headers, verify=False, timeout=15)
 
@@ -145,8 +122,6 @@ class GhostfolioSyncEngine:
                     continue
 
                 holdings_list = resp.json().get("holdings", [])
-                
-                # 2. Process and aggregate the holdings
                 for asset in holdings_list:
                     profile = asset.get('assetProfile') or asset  # API v1 nests symbol/name/currency under assetProfile
                     symbol = profile.get('symbol', '') or asset.get('symbol', '')
@@ -158,33 +133,26 @@ class GhostfolioSyncEngine:
                     if quantity <= 0:
                         continue
 
-                    # Exact cost basis for THIS specific account
                     acc_avg_buy_price = total_investment / quantity
                     key = slugify(name, separator='_')
                     is_pence = (currency == 'GBp')
 
-                    # 3. Build or update the Global Hierarchical Object
                     if key not in output_json:
-                        # First time encountering this asset across any account
                         output_json[key] = {
                             "ticker": symbol,
                             "price_in_pence": is_pence,
                             "global_shares": quantity,
-                            "global_total_investment": total_investment, 
-                            "global_buy_price": round(acc_avg_buy_price, 4), # Will recalculate below
+                            "global_total_investment": total_investment,
+                            "global_buy_price": round(acc_avg_buy_price, 4),
                             "accounts": []
                         }
                     else:
-                        # We already saw this asset in a previous account. Aggregate the macro data.
                         output_json[key]["global_shares"] += quantity
                         output_json[key]["global_total_investment"] += total_investment
-                        
-                        # Recalculate the VWAP (Volume Weighted Average Price) for the Macro view
                         new_global_shares = output_json[key]["global_shares"]
                         new_global_investment = output_json[key]["global_total_investment"]
                         output_json[key]["global_buy_price"] = round(new_global_investment / new_global_shares, 4)
 
-                    # Append the Micro (Account-level) ledger entry
                     output_json[key]["accounts"].append({
                         "id": acc_id,
                         "name": acc_name,
@@ -193,11 +161,9 @@ class GhostfolioSyncEngine:
                         "total_investment": round(total_investment, 2)
                     })
 
-            # 4. Clean up standard output (Remove the temp global_total_investment key)
             for k in output_json.keys():
                 output_json[k].pop("global_total_investment", None)
 
-            # 5. Persist to Disk
             with open(PORTFOLIO_PATH, 'w') as f:
                 json.dump(output_json, f, indent=4)
                 
@@ -209,10 +175,6 @@ class GhostfolioSyncEngine:
             return False
 
     def sync_watchlist(self) -> bool:
-        """
-        Fetches the watchlist from Ghostfolio and saves the raw tickers 
-        to watchlist.json for the system to scan.
-        """
         try:
             print("[SYNC] Fetching watchlist from Ghostfolio...")
             response = requests.get(f"{self.url}/api/v1/watchlist", headers=self.headers, verify=False, timeout=10)
@@ -225,7 +187,6 @@ class GhostfolioSyncEngine:
             tickers = [item.get('symbol') for item in watchlist_items if item.get('symbol')]
             output_data = {"watchlist": tickers}
 
-            # Safely overwrite the existing watchlist.json
             with open(WATCHLIST_PATH, 'w') as f:
                 json.dump(output_data, f, indent=4)
                 
@@ -237,7 +198,6 @@ class GhostfolioSyncEngine:
             return False
 
     def add_to_watchlist(self, symbol: str) -> bool:
-        """Adds a single ticker to the Ghostfolio Watchlist using the default YAHOO dataSource."""
         if not self.authenticate():
             return False
         try:
@@ -254,7 +214,6 @@ class GhostfolioSyncEngine:
             return False
 
     def remove_from_watchlist(self, symbol: str) -> bool:
-        """Removes a single ticker from the Ghostfolio Watchlist using the YAHOO dataSource route."""
         if not self.authenticate():
             return False
         try:
@@ -270,7 +229,6 @@ class GhostfolioSyncEngine:
             return False
 
     def run_full_sync(self) -> bool:
-        """Executes the complete Ghostfolio extraction pipeline sequentially."""
         print("\n--- INITIATING INSTITUTIONAL GHOSTFOLIO SYNC ---")
         
         if not self.is_configured:
@@ -290,6 +248,5 @@ class GhostfolioSyncEngine:
 
 
 if __name__ == "__main__":
-    # Test block to execute the sync manually via the terminal
     engine = GhostfolioSyncEngine()
     engine.run_full_sync()
