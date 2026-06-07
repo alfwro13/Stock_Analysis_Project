@@ -542,7 +542,7 @@ def run_ai_contagion_job():
     conn = get_connection()
     try:
         engine = AIContagionEngine(config)
-        candidates = engine.scan(conn)
+        candidates = engine.scan()
 
         record_scan_snapshot(conn, candidates)
 

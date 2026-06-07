@@ -39,14 +39,13 @@ class AIContagionEngine:
 
     # ── public API ─────────────────────────────────────────────────────────────
 
-    def scan(self, conn: sqlite3.Connection) -> list:
+    def scan(self) -> list:
         """
         Runs a full contagion check. Returns [] if no contagion or outside active window.
         Returns [event_dict] (single-element list) when a contagion event is confirmed.
 
         The event dict uses ticker="SECTOR" as a synthetic dedup key so alert_state tracks
         one cooldown slot for the whole sector rather than per-ticker slots.
-        conn is used for snapshot recording and passed through; not closed here.
         """
         if not is_market_open("NYSE", include_premarket=True):
             return []
