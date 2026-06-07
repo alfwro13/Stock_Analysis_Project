@@ -464,3 +464,51 @@ class TestMacroEngine:
         }
         s = orch._dedup_settings("Macro")
         assert s["cooldown_minutes"] == 240.0, "Macro is reading MOONSHOT_ALERTS instead of MACRO_ALERTS"
+
+
+# ── N4: IntradayBottomEngine._disarm_alert stores parseable last_fired_utc ────
+
+class TestDipRadarDisarmAlert:
+    """
+    REGRESSION: _disarm_alert previously used datetime.utcnow().isoformat() which
+    produces "2026-06-07T15:30:00.123456". _evaluate_alert_gate parses with
+    strptime(..., "%Y-%m-%d %H:%M:%S"), which raises ValueError on that format,
+    so last_fired was always None and cooldowns never worked.
+    """
+
+    DIP_TICKER = "_DIP_DISARM_TEST"
+
+    def teardown_method(self):
+        conn = _conn()
+        conn.execute("DELETE FROM alert_state WHERE ticker = ?", (self.DIP_TICKER,))
+        conn.commit()
+        conn.close()
+
+    def test_disarm_stores_parseable_last_fired_utc(self):
+        """last_fired_utc written by _disarm_alert must parse with %Y-%m-%d %H:%M:%S."""
+        from intraday_bottom_engine import IntradayBottomEngine
+        import database as _db_mod
+        engine = IntradayBottomEngine.__new__(IntradayBottomEngine)
+        engine._get_connection = lambda: _conn()
+        # Arm first so there is a row to disarm
+        engine.arm_alert(self.DIP_TICKER)
+        engine._disarm_alert(self.DIP_TICKER)
+        row = _read_alert_state("dip_radar", self.DIP_TICKER)
+        assert row is not None
+        assert row["armed"] == 0
+        # The critical assertion: value must parse with the format _evaluate_alert_gate uses
+        from datetime import datetime
+        parsed = datetime.strptime(row["last_fired_utc"], "%Y-%m-%d %H:%M:%S")
+        assert parsed is not None
+
+    def test_disarm_uses_utc_date_for_state_date(self):
+        """state_date must match today's UTC date, not local-clock date."""
+        from datetime import datetime, timezone
+        from intraday_bottom_engine import IntradayBottomEngine
+        engine = IntradayBottomEngine.__new__(IntradayBottomEngine)
+        engine._get_connection = lambda: _conn()
+        engine.arm_alert(self.DIP_TICKER)
+        engine._disarm_alert(self.DIP_TICKER)
+        row = _read_alert_state("dip_radar", self.DIP_TICKER)
+        expected = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        assert row["state_date"] == expected
