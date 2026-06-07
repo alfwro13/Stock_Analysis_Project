@@ -2,42 +2,14 @@
 import logging
 import os
 import json
-import requests
 import pandas as pd
 from datetime import datetime, timedelta, timezone
 from database import get_connection
 from config import PORTFOLIO_PATH, WATCHLIST_PATH, load_config
 from yahoo_engine import yahoo_engine
+from nextcloud_talk import send_text_message
 
 logger = logging.getLogger(__name__)
-
-def send_nextcloud_message(message_text: str, config_data: dict) -> bool:
-    """Sends a direct text payload to Nextcloud Talk using dynamic configurations."""
-    url = config_data.get("NEXTCLOUD_URL", "")
-    token = config_data.get("CONVERSATION_TOKEN", "")
-    user = config_data.get("BOT_USERNAME", "")
-    pwd = config_data.get("APP_PASSWORD", "")
-
-    api_endpoint = f"{url}/ocs/v2.php/apps/spreed/api/v1/chat/{token}"
-    payload = {"message": message_text}
-    headers = {
-        "OCS-APIRequest": "true",
-        "Content-Type": "application/json",
-        "Accept": "application/json"
-    }
-    try:
-        response = requests.post(
-            api_endpoint,
-            headers=headers,
-            json=payload,
-            auth=(user, pwd),
-            timeout=10
-        )
-        response.raise_for_status()
-        return True
-    except Exception:
-        logger.exception("Failed to send Nextcloud insider message.")
-        return False
 
 def get_tickers_from_json(filepath: str, is_watchlist: bool = False) -> list:
     """Safely extracts tickers from either portfolio.json or watchlist.json."""
@@ -58,7 +30,6 @@ def run_insider_alert():
     try:
         logger.info("Starting Insider Trading Alert Check...")
 
-        # 1. Load Configurations
         config = load_config()
         insider_cfg = config.get("NOTIFICATIONS", {}).get("INSIDER_TRADING", {})
 
@@ -70,7 +41,6 @@ def run_insider_alert():
         if not enable_portfolio and not enable_watchlist:
             return True, "Insider checks skipped (Both toggles disabled)."
 
-        # 2. Build target list
         target_tickers = set()
         if enable_portfolio:
             target_tickers.update(get_tickers_from_json(PORTFOLIO_PATH, False))
@@ -81,14 +51,12 @@ def run_insider_alert():
         if not target_tickers:
             return True, "No valid equity tickers found to check."
 
-        # 3. Cache company data and quant scores from SQLite
         conn = None
         try:
             conn = get_connection()
             cursor = conn.cursor()
             placeholders = ','.join('?' for _ in target_tickers)
 
-            # Fetching enhanced quantitative data for alignment checks
             query = f"""
                 SELECT ticker, company_name, composite_score, atr_stop_loss, current_price
                 FROM stock_signals
@@ -96,7 +64,6 @@ def run_insider_alert():
             """
             cursor.execute(query, list(target_tickers))
 
-            # Store as a dict of dicts for easy access
             db_data = {}
             for row in cursor.fetchall():
                 db_data[row['ticker']] = {
@@ -109,7 +76,6 @@ def run_insider_alert():
             cutoff_date = pd.to_datetime(datetime.now(timezone.utc) - timedelta(days=days_back), utc=True)
             alerts_sent = 0
 
-            # 4. Scrape & Filter
             for ticker in target_tickers:
                 try:
                     insider_df = yahoo_engine.get_insider_transactions(ticker)
@@ -119,7 +85,7 @@ def run_insider_alert():
 
                     insider_df = insider_df.reset_index()
 
-                    # Heuristic 1: Find the Date
+                    # yfinance column names vary across versions — try known names then fuzzy-match.
                     date_col = next((col for col in ['Start Date', 'Date', 'Transaction Date'] if col in insider_df.columns), None)
                     if not date_col:
                         date_col = next((c for c in insider_df.columns if 'date' in c.lower()), None)
@@ -129,7 +95,6 @@ def run_insider_alert():
                     else:
                         continue
 
-                    # Heuristic 2: Find the Action/Text
                     col_action = next((col for col in ['Text', 'Transaction', 'Action'] if col in insider_df.columns), None)
                     if not col_action:
                         col_action = next((c for c in insider_df.columns if 'text' in c.lower() or 'trans' in c.lower() or 'action' in c.lower()), None)
@@ -137,7 +102,6 @@ def run_insider_alert():
                     if not col_action:
                         continue
 
-                    # Heuristic 3: Clean Value column
                     val_col = next((col for col in ['Value'] if col in insider_df.columns), None)
                     if not val_col:
                         val_col = next((c for c in insider_df.columns if 'value' in c.lower()), None)
@@ -149,7 +113,6 @@ def run_insider_alert():
                     else:
                         continue
 
-                    # Heuristic 4: Clean Shares column
                     shares_col = next((col for col in ['Shares'] if col in insider_df.columns), None)
                     if not shares_col:
                         shares_col = next((c for c in insider_df.columns if 'share' in c.lower()), None)
@@ -161,7 +124,6 @@ def run_insider_alert():
                     else:
                         insider_df['Clean_Shares'] = 0
 
-                    # 5. Apply Core Logic Filters
                     recent_buys = insider_df[insider_df['Parsed_Date'] >= cutoff_date].copy()
                     if recent_buys.empty:
                         continue
@@ -169,21 +131,15 @@ def run_insider_alert():
                     recent_buys = recent_buys[recent_buys[col_action].astype(str).str.contains('Buy|Purchase|Acquisition|P -|P-', case=False, na=False)]
                     major_buys = recent_buys[recent_buys['Clean_Value'] >= min_value]
 
-                    # Retrieve Quant Data for this Ticker
                     t_data = db_data.get(ticker, {})
                     comp_name = t_data.get('company_name', ticker)
                     score = t_data.get('composite_score')
                     atr_stop = t_data.get('atr_stop_loss')
                     curr_price = t_data.get('current_price')
 
-                    # Evaluate Quantamental Alignment Conditions
-                    # Condition 1: High System Score (Strong Momentum & Volume)
                     is_bullish_trend = score is not None and score >= 60
-
-                    # Condition 2: Institutional Dip Buy (Price retreating to, but holding above, the ATR floor)
                     is_buying_dip = curr_price is not None and atr_stop is not None and (atr_stop < curr_price <= atr_stop * 1.15)
 
-                    # 6. Dispatch Alerts
                     for idx, row in major_buys.iterrows():
                         exec_name = row.get('Insider', 'Unknown Executive')
                         position = row.get('Position', 'Insider')
@@ -191,7 +147,6 @@ def run_insider_alert():
                         share_str = f"{row['Clean_Shares']:,.0f}" if row['Clean_Shares'] > 0 else "Unknown"
                         date_str = row['Parsed_Date'].strftime('%Y-%m-%d')
 
-                        # Construct Alignment Banner if conditions are met
                         alignment_banner = ""
                         if is_bullish_trend or is_buying_dip:
                             alignment_banner = "\n\n🔥 **QUANTAMENTAL ALIGNMENT TRIGGERED** 🔥"
@@ -210,15 +165,13 @@ def run_insider_alert():
                             f"{alignment_banner}"
                         )
 
-                        # Save to Local Notification Center Database
                         cursor.execute(
                             "INSERT INTO system_notifications (message_type, message_text) VALUES (?, ?)",
                             ("Insider", msg)
                         )
                         conn.commit()
 
-                        # Send to Nextcloud
-                        if send_nextcloud_message(msg, config):
+                        if send_text_message(msg, config):
                             alerts_sent += 1
 
                 except Exception:
