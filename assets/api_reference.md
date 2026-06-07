@@ -937,6 +937,49 @@ Returns the currently active Yahoo Finance routing mode and its health status.
 
 ## 14. System & Infrastructure
 
+### `POST /api/maintenance/run`
+
+Triggers the weekly `MaintenanceEngine` as a background task. Returns immediately; progress is visible in the Notifications panel.
+
+**Request body:** none
+
+**Response**
+
+```json
+{ "status": "success", "message": "Maintenance job started." }
+```
+
+---
+
+### `POST /api/maintenance/dry-run`
+
+Scans the data directories exactly as `MaintenanceEngine.garbage_collect_files()` would, but deletes nothing. Returns a preview of what would be removed.
+
+**Request body:** none
+
+**Response**
+
+```json
+{
+  "status": "success",
+  "days_to_keep_files": 60,
+  "active_tickers_count": 4150,
+  "would_delete": [
+    { "file": "historical/AAPL.parquet", "ticker": "AAPL", "age_days": 90 }
+  ],
+  "would_keep_fresh": [
+    { "file": "historical/TSLA.parquet", "ticker": "TSLA", "age_days": 5, "reason": "only 5d old (threshold: 60d)" }
+  ],
+  "summary": {
+    "delete_count": 1,
+    "keep_active_count": 4149,
+    "keep_fresh_count": 1
+  }
+}
+```
+
+---
+
 ### `GET /api/system/metrics`
 
 Returns a comprehensive diagnostic snapshot of the system: universe coverage, ML model state, storage, and macro data counts.
