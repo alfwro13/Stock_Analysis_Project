@@ -14,3 +14,4 @@ config.json
 ml_pipeline_results.json
 .env
 *.env
+audit.md
