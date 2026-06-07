@@ -41,7 +41,7 @@ MODEL_PATH         = MODELS_DIR / "ml_ensemble.joblib"
 FEATURE_STATS_PATH = MODELS_DIR / "feature_stats.joblib"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# FEATURE REGISTRY  (24 features, up from 18)
+# FEATURE REGISTRY  (18 features — 6 fundamental features removed 2026-05-29)
 #
 # TECHNICAL FEATURES (10):
 #   rsi_14, macd_pct, macd_signal_pct, macd_hist_pct, volume_surge,
@@ -543,23 +543,21 @@ def run_historical_backfill(tickers: Optional[List[str]] = None) -> None:
 
 def train_global_ml_model() -> None:
     """
-    Builds a 24-feature ensemble model predicting returns exceeding
+    Builds an 18-feature ensemble model predicting returns exceeding
     PREDICTION_RETURN_THRESHOLD over PREDICTION_HORIZON_DAYS trading days,
     using Anchored Walk-Forward Validation with Temporal Embargos.
 
-    FEATURE SET (24 features):
+    FEATURE SET (18 features — see FEATURE REGISTRY block for history):
         Technical:         rsi_14, macd_pct, macd_signal_pct, macd_hist_pct,
                            volume_surge, bullish_cross, dist_sma_50, dist_sma_200,
                            sector_code, dollar_vol_log
         Momentum:          mom_1m, mom_3m, mom_6m, mom_12m_skip1m
         Volatility:        atr_pct, hist_vol_20
         Relative Strength: rel_strength_5d, rel_strength_20d
-        Fundamentals:      trailing_pe, price_to_book, profit_margin,
-                           roe, revenue_growth, debt_to_equity
 
-    Fundamentals are joined from stock_signals (one row per ticker, latest
-    snapshot). This introduces mild point-in-time lookahead bias which is
-    documented and accepted for a hobbyist project.
+    Fundamental columns are still joined and preprocessed for feature drift
+    diagnostics but are excluded from FEATURE_COLS and do not influence
+    predictions. See the A/B test note in the FEATURE REGISTRY block above.
     """
     logger.info("Initiating Global ML Model Training pipeline with Hyperparameter Optimization...")
 

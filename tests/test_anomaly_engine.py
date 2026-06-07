@@ -1,13 +1,19 @@
 # tests/test_anomaly_engine.py
 """
-Unit tests for AnomalyEngine: training, scoring, normalisation, and graceful fallbacks.
-All tests are offline — no network, no database.
+Unit tests for AnomalyEngine: training, scoring, normalisation, graceful fallbacks,
+and the backfill DB-write path.
 """
+import sys
 import os
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import pytest
 
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+import database as db
 from anomaly_engine import AnomalyEngine
 
 
@@ -185,3 +191,142 @@ class TestNormalisation:
         s_nvda = engine.score("NVDA", fv)
         assert s_aapl is not None
         assert s_nvda is not None
+
+
+# ---------------------------------------------------------------------------
+# backfill_all() + _backfill_ticker() — DB write path
+# ---------------------------------------------------------------------------
+
+def _make_ohlcv_dated(n: int = 120, seed: int = 42) -> pd.DataFrame:
+    """OHLCV DataFrame with a daily DatetimeIndex — required for backfill DB-write tests."""
+    rng = np.random.default_rng(seed)
+    close = 100.0 + np.cumsum(rng.normal(0, 0.5, n))
+    volume = rng.integers(100_000, 500_000, n).astype(float)
+    dates = pd.date_range(end="2026-06-01", periods=n, freq="B")
+    return pd.DataFrame(
+        {"Open": close * 0.999, "High": close * 1.005,
+         "Low": close * 0.995, "Close": close, "Volume": volume},
+        index=dates,
+    )
+
+
+def _last_feature_date(df_dated: pd.DataFrame) -> str:
+    """Return the last date that will survive NaN-drop during feature computation.
+
+    SMA50 needs 50 rows and is the dominant NaN source — so skip the first 49 rows.
+    """
+    return df_dated.index[-1].strftime("%Y-%m-%d")
+
+
+def _seed_quant_signals(ticker: str, date: str) -> None:
+    """Insert a minimal quant_signals row with anomaly_score = NULL."""
+    conn = db.get_connection()
+    conn.execute(
+        "INSERT OR REPLACE INTO quant_signals (ticker, date) VALUES (?, ?)",
+        (ticker, date),
+    )
+    conn.commit()
+    conn.close()
+
+
+def _read_anomaly_score(ticker: str, date: str):
+    conn = db.get_connection()
+    row = conn.execute(
+        "SELECT anomaly_score FROM quant_signals WHERE ticker = ? AND date = ?",
+        (ticker, date),
+    ).fetchone()
+    conn.close()
+    return row["anomaly_score"] if row else None
+
+
+class TestBackfillTicker:
+    def test_writes_anomaly_score_to_quant_signals(self, tmp_path):
+        ticker = "BF_AAPL"
+        df_hist = _make_ohlcv_dated()
+        date = _last_feature_date(df_hist)
+        _seed_quant_signals(ticker, date)
+
+        engine = _engine(tmp_path)
+        engine.train_one(ticker, df_hist, beta=1.0)
+
+        conn = db.get_connection()
+        try:
+            rows = engine._backfill_ticker(
+                ticker, df_hist, 1.0, conn,
+                tmp_path / f"{ticker}.joblib",
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        assert rows > 0
+        score = _read_anomaly_score(ticker, date)
+        assert score is not None
+        assert 0.0 <= score <= 1.0
+
+    def test_returns_zero_when_missing_ohlcv_columns(self, tmp_path):
+        engine = _engine(tmp_path)
+        df_bad = pd.DataFrame({"Close": [100.0] * 60})
+        engine.train_one("BF_BAD", _make_ohlcv(), beta=1.0)
+        conn = db.get_connection()
+        try:
+            rows = engine._backfill_ticker(
+                "BF_BAD", df_bad, 1.0, conn,
+                tmp_path / "BF_BAD.joblib",
+            )
+        finally:
+            conn.close()
+        assert rows == 0
+
+
+class TestBackfillAll:
+    def test_skips_ticker_with_no_model(self, tmp_path):
+        ticker = "BFA_NOMODEL"
+        df = _make_ohlcv_dated()
+        date = _last_feature_date(df)
+        _seed_quant_signals(ticker, date)
+        engine = _engine(tmp_path)
+        parquet_dir = tmp_path / "parquet"
+        parquet_dir.mkdir()
+        df.to_parquet(parquet_dir / f"{ticker}.parquet")
+        # No model trained → should skip without error
+        engine.backfill_all([ticker], parquet_dir)
+        assert _read_anomaly_score(ticker, date) is None
+
+    def test_skips_ticker_with_no_parquet(self, tmp_path):
+        ticker = "BFA_NOPARQUET"
+        df = _make_ohlcv_dated()
+        date = _last_feature_date(df)
+        _seed_quant_signals(ticker, date)
+        engine = _engine(tmp_path)
+        engine.train_one(ticker, df, beta=1.0)
+        parquet_dir = tmp_path / "parquet"
+        parquet_dir.mkdir()
+        # No parquet file → should skip without error
+        engine.backfill_all([ticker], parquet_dir)
+        assert _read_anomaly_score(ticker, date) is None
+
+    def test_writes_scores_for_valid_ticker(self, tmp_path):
+        ticker = "BFA_VALID"
+        df = _make_ohlcv_dated(seed=99)
+        date = _last_feature_date(df)
+        _seed_quant_signals(ticker, date)
+
+        engine = _engine(tmp_path)
+        engine.train_one(ticker, df, beta=1.0)
+
+        parquet_dir = tmp_path / "parquet"
+        parquet_dir.mkdir()
+        df.to_parquet(parquet_dir / f"{ticker}.parquet")
+
+        engine.backfill_all([ticker], parquet_dir)
+
+        score = _read_anomaly_score(ticker, date)
+        assert score is not None
+        assert 0.0 <= score <= 1.0
+
+    def test_empty_ticker_list_is_noop(self, tmp_path):
+        engine = _engine(tmp_path)
+        parquet_dir = tmp_path / "parquet"
+        parquet_dir.mkdir()
+        engine.backfill_all([], parquet_dir)  # must not raise
