@@ -453,6 +453,18 @@ def init_db() -> None:
         ''')
 
         cursor.execute('''
+            CREATE TABLE IF NOT EXISTS model_training_log (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                model_name      TEXT    NOT NULL,
+                trained_at      TEXT    NOT NULL,
+                n_samples       INTEGER,
+                cv_score_mean   REAL,
+                cv_score_std    REAL,
+                score_metric    TEXT
+            )
+        ''')
+
+        cursor.execute('''
             CREATE TABLE IF NOT EXISTS smgb_predictions (
                 id                       INTEGER PRIMARY KEY AUTOINCREMENT,
                 prediction_date          TEXT NOT NULL,
@@ -793,6 +805,22 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
         ''')
     except Exception as e:
         logger.error(f"[MIGRATION ERROR] Failed to create ticker_metadata: {e}")
+
+    # model_training_log (guard for DBs that pre-date init_db ownership of this table)
+    try:
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS model_training_log (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                model_name      TEXT    NOT NULL,
+                trained_at      TEXT    NOT NULL,
+                n_samples       INTEGER,
+                cv_score_mean   REAL,
+                cv_score_std    REAL,
+                score_metric    TEXT
+            )
+        ''')
+    except Exception as e:
+        logger.error(f"[MIGRATION ERROR] Failed to create model_training_log: {e}")
 
     # covering index on quant_signals for efficient latest-date lookups
     try:
