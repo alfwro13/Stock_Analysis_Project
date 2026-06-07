@@ -1,4 +1,3 @@
-# macro_data_engine.py
 import logging
 import requests
 import io
@@ -7,12 +6,11 @@ import pandas as pd
 from datetime import datetime, timedelta
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
-from typing import Optional, List, Dict
+from typing import Dict
 
 from config import load_config
-from database import get_connection
+from database import get_connection, init_db
 
-# Configure module-level logging
 logger = logging.getLogger(__name__)
 
 # Standard headers to bypass WAF challenges
@@ -21,35 +19,12 @@ HEADERS = {
     'Accept': 'application/json, text/csv'
 }
 
-# The modern ONS Taxonomy Dictionary linking Tickers to exact JSON data paths
 ONS_TAXONOMY: Dict[str, str] = {
     "D7G7": "/economy/inflationandpriceindices/timeseries/d7g7/mm23/data",
     "BCJD": "/employmentandlabourmarket/peoplenotinwork/outofworkbenefits/timeseries/bcjd/unem/data"
 }
 
-def setup_database() -> None:
-    """Ensures the macro_indicators table is structured idempotently."""
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS macro_indicators (
-            date TEXT PRIMARY KEY,
-            us_m2 REAL,
-            us_jobless_claims REAL,
-            us_high_yield_spread REAL,
-            us_yield_curve REAL,
-            uk_m4 REAL,
-            uk_corporate_spread REAL,
-            uk_cpi_inflation REAL,
-            uk_claimant_count REAL,
-            us_cpi_inflation REAL
-        )
-    ''')
-    conn.commit()
-    conn.close()
-
 def get_retry_session() -> requests.Session:
-    """Constructs a robust requests Session with exponential backoff retries."""
     session = requests.Session()
     retry_strategy = Retry(
         total=5,
@@ -64,7 +39,6 @@ def get_retry_session() -> requests.Session:
     return session
 
 def fetch_fred_api(session: requests.Session, series_id: str, start_date: datetime, end_date: datetime, api_key: str) -> pd.DataFrame:
-    """Fetches US Macro and Credit data using the Official FRED REST API."""
     cosd = start_date.strftime('%Y-%m-%d')
     coed = end_date.strftime('%Y-%m-%d')
     
@@ -105,7 +79,6 @@ def fetch_fred_api(session: requests.Session, series_id: str, start_date: dateti
         return pd.DataFrame()
 
 def fetch_boe_data(session: requests.Session, series_code: str, start_date: datetime, end_date: datetime) -> pd.DataFrame:
-    """Fetches Broad Money M4 from Bank of England CSV interface."""
     fmt_start = start_date.strftime("%d/%b/%Y")
     fmt_end = end_date.strftime("%d/%b/%Y")
     
@@ -136,7 +109,6 @@ def fetch_boe_data(session: requests.Session, series_code: str, start_date: date
         df.dropna(subset=['PUBLICATION_DATE'], inplace=True)
         df.set_index('PUBLICATION_DATE', inplace=True)
         
-        # Defensive renaming mechanism
         df.rename(columns={col: series_code for col in df.columns if series_code in col}, inplace=True)
         if series_code in df.columns:
             return df[[series_code]]
@@ -150,7 +122,6 @@ def fetch_boe_data(session: requests.Session, series_code: str, start_date: date
         return pd.DataFrame()
 
 def fetch_ons_taxonomy_data(session: requests.Session, series_id: str, start_date: datetime) -> pd.DataFrame:
-    """Fetches high-frequency UK Real Economy indicators via ONS Taxonomy paths."""
     taxonomy_path = ONS_TAXONOMY.get(series_id)
     if not taxonomy_path:
         return pd.DataFrame()
@@ -193,17 +164,11 @@ def fetch_ons_taxonomy_data(session: requests.Session, series_id: str, start_dat
         return pd.DataFrame()
 
 def update_macro_indicators() -> None:
-    """
-    Master pipeline: Aggregates FRED, BoE, and ONS data. Aligns daily, weekly, 
-    and monthly structural indices using a forward-fill mechanism, then bulk upserts history.
-    """
     config = load_config()
     fred_api_key = config.get("FRED_API_KEY")
     if not fred_api_key:
         logger.error("FRED_API_KEY is not configured in settings. Aborting FRED API fetch.")
 
-    setup_database()
-    
     end_dt = datetime.now()
     start_dt = end_dt - timedelta(days=730) 
     session = get_retry_session()
@@ -284,6 +249,7 @@ def update_macro_indicators() -> None:
         conn.close()
 
 if __name__ == "__main__":
+    init_db()
     logger.info("Initializing Master Macro Data Engine...")
     update_macro_indicators()
     logger.info("Macro Data Engine Execution Complete.")
