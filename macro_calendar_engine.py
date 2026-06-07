@@ -5,6 +5,7 @@ import xml.etree.ElementTree as ET
 import pandas as pd
 from typing import Optional, List, Tuple
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from database import get_connection
 from yahoo_engine import yahoo_engine
 
@@ -13,6 +14,7 @@ logger = logging.getLogger(__name__)
 FEED_URL = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml"
 TARGET_CURRENCIES = {'USD', 'GBP'}
 TARGET_IMPACT = 'High'
+_ET = ZoneInfo("America/New_York")
 
 def clean_value(val_str: Optional[str]) -> Optional[float]:
     """Parse financial magnitude strings (K/M/B/T/%) to raw float, or None if unparseable."""
@@ -84,12 +86,12 @@ def fetch_and_process_calendar() -> List[Tuple]:
             formatted_date = ""
             try:
                 time_clean = time_str.replace(' ', '').lower()
-                dt_obj = datetime.strptime(f"{date_str} {time_clean}", "%m-%d-%Y %I:%M%p")
-                formatted_date = dt_obj.strftime("%Y-%m-%d %H:%M:%S")
+                dt_naive = datetime.strptime(f"{date_str} {time_clean}", "%m-%d-%Y %I:%M%p")
+                formatted_date = dt_naive.replace(tzinfo=_ET).astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
             except ValueError:
                 try:
-                    dt_obj = datetime.strptime(date_str, "%m-%d-%Y")
-                    formatted_date = dt_obj.strftime("%Y-%m-%d 00:00:00")
+                    dt_naive = datetime.strptime(date_str, "%m-%d-%Y")
+                    formatted_date = dt_naive.replace(tzinfo=_ET).astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
                 except ValueError:
                     logger.warning(f"Could not parse date: {date_str} {time_str}")
                     formatted_date = f"{date_str} {time_str}"
@@ -101,10 +103,8 @@ def fetch_and_process_calendar() -> List[Tuple]:
             actual_val = clean_value(event.findtext('actual'))
 
             try:
-                # NOTE: ForexFactory timestamps are US Eastern; datetime.now() is server-local.
-                # This comparison is approximate and may misfire near event boundaries across
-                # DST transitions. See [NEEDS REVIEW] in audit.md for the full fix.
-                is_passed = 1 if datetime.now() > datetime.strptime(formatted_date, "%Y-%m-%d %H:%M:%S") else 0
+                event_utc = datetime.strptime(formatted_date, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+                is_passed = 1 if datetime.now(timezone.utc) > event_utc else 0
             except ValueError:
                 is_passed = 0
 
