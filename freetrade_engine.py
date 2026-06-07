@@ -14,7 +14,6 @@ from config import load_config
 
 logger = logging.getLogger(__name__)
 
-# Constants
 FREETRADE_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTGZT9-lSDDlgQzHsH0vYdTSz-xnL7zIJQ1SHUddo-BBD5_QlN--57cRe_8Zvw-7QsMrw6X1phz-vKq/pub?output=csv"
 ISIN_CACHE_PATH = Path("data/isin_ticker_cache.json")
 BLACKLIST_PATH = Path("data/freetrade_blacklist.json")
@@ -69,7 +68,6 @@ def resolve_ticker(symbol: str, isin: str, mic: str, cache_dict: Dict[str, str],
     us_mics = ft_config.get("US_MICS", [])
     exchanges = ft_config.get("EXCHANGES", {})
     
-    # 1. Specialized ISIN Search for UK Mutual Funds
     if mic == "MUTUAL_FUND_EXCHANGE":
         if pd.notna(isin) and str(isin).strip():
             isin = str(isin).strip()
@@ -93,18 +91,16 @@ def resolve_ticker(symbol: str, isin: str, mic: str, cache_dict: Dict[str, str],
             except Exception:
                 logger.debug("ISIN lookup failed for %s, using fallback symbol", isin, exc_info=True)
 
-        # Fallback if ISIN lookup fails for a mutual fund
         return ft_symbol + ".L", True
 
-    # 2. Standard US Exchanges (Replace internal dots with hyphens, e.g., BRK.B -> BRK-B)
+    # BRK.B → BRK-B: Yahoo tickers use hyphens where US exchanges use dots
     if mic in us_mics:
         return ft_symbol.replace('.', '-').upper(), True
-        
-    # 3. The Filter! If the MIC is not in our config (e.g., XETR, XPAR), reject it immediately
+
+    # MICs not in EXCHANGES config (e.g., XETR, XPAR) are unsupported – skip
     if mic not in exchanges:
         return None, False
-        
-    # 4. Standard London Equities (XLON)
+
     return ft_symbol + ".L", True
 
 
@@ -162,7 +158,6 @@ def sync_freetrade_universe(target_mic: Optional[str] = None, limit: Optional[in
                 unmapped_mics.add(mic)
                 continue
                 
-            # --- BLACKLIST FILTER ---
             if resolved_ticker in blacklist:
                 if target_mic or limit:
                     logger.info(f"TEST: '{resolved_ticker}' is on the Blacklist. Skipping DB insertion.")
@@ -196,8 +191,7 @@ def sync_freetrade_universe(target_mic: Optional[str] = None, limit: Optional[in
             cursor = conn.cursor()
             if not target_mic and not limit:
                 logger.info("Executing Bulk Freetrade Flag Reset & Upsert...")
-                # THE FIX: Safely toggle the flag to 0 instead of deleting the row. 
-                # This protects the Wikipedia is_index flags from being wiped out!
+                # Soft-delete instead of DELETE to preserve is_index flags set by the Wikipedia import
                 cursor.execute("UPDATE market_universe SET is_freetrade = 0 WHERE is_freetrade = 1")
             else:
                 logger.info("Running in Safe Mode (No purge). Upserting records...")
