@@ -23,7 +23,7 @@ import requests
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import insider_engine
-from insider_engine import send_nextcloud_message, get_tickers_from_json, run_insider_alert
+from insider_engine import get_tickers_from_json, run_insider_alert
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -101,64 +101,7 @@ def _insider_df(days_ago=1, action="Purchase", value=100_000, shares=500):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# 1. send_nextcloud_message()
-# ──────────────────────────────────────────────────────────────────────────────
-
-class TestSendNextcloudMessage:
-
-    def test_success_returns_true(self):
-        config = {
-            "NEXTCLOUD_URL": "https://nc.example.com",
-            "CONVERSATION_TOKEN": "tok123",
-            "BOT_USERNAME": "bot",
-            "APP_PASSWORD": "pass",
-        }
-        with patch("requests.post", return_value=_mock_http_resp(200)) as mock_post:
-            result = send_nextcloud_message("hello", config)
-        assert result is True
-        mock_post.assert_called_once()
-
-    def test_correct_api_endpoint_used(self):
-        """CONTRACT: endpoint must include /ocs/v2.php/apps/spreed/api/v1/chat/<token>."""
-        config = {
-            "NEXTCLOUD_URL": "https://nc.example.com",
-            "CONVERSATION_TOKEN": "MYTOKEN",
-            "BOT_USERNAME": "bot",
-            "APP_PASSWORD": "pass",
-        }
-        called_urls = []
-        with patch("requests.post",
-                   side_effect=lambda url, **kw: called_urls.append(url) or _mock_http_resp(200)):
-            send_nextcloud_message("test", config)
-        assert any("MYTOKEN" in u and "spreed" in u for u in called_urls), (
-            "CONTRACT VIOLATION: Nextcloud API endpoint changed."
-        )
-
-    def test_http_error_returns_false(self):
-        config = {
-            "NEXTCLOUD_URL": "https://nc.example.com",
-            "CONVERSATION_TOKEN": "tok",
-            "BOT_USERNAME": "bot",
-            "APP_PASSWORD": "pass",
-        }
-        with patch("requests.post", return_value=_mock_http_resp(403)):
-            result = send_nextcloud_message("hello", config)
-        assert result is False
-
-    def test_connection_error_returns_false(self):
-        config = {
-            "NEXTCLOUD_URL": "https://nc.example.com",
-            "CONVERSATION_TOKEN": "tok",
-            "BOT_USERNAME": "bot",
-            "APP_PASSWORD": "pass",
-        }
-        with patch("requests.post", side_effect=requests.exceptions.ConnectionError("refused")):
-            result = send_nextcloud_message("hello", config)
-        assert result is False
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# 2. get_tickers_from_json()
+# 1. get_tickers_from_json()
 # ──────────────────────────────────────────────────────────────────────────────
 
 class TestGetTickersFromJson:
@@ -200,7 +143,7 @@ class TestGetTickersFromJson:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# 3. run_insider_alert()
+# 2. run_insider_alert()
 # ──────────────────────────────────────────────────────────────────────────────
 
 class TestRunInsiderAlertGuards:
@@ -304,7 +247,7 @@ class TestRunInsiderAlertFiltering:
         with patch("insider_engine.load_config", return_value=cfg), \
              patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
              patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("insider_engine.send_nextcloud_message", return_value=True), \
+             patch("insider_engine.send_text_message", return_value=True), \
              patch("insider_engine.yahoo_engine.get_insider_transactions", return_value=buy_df):
             ok, msg = run_insider_alert()
 
@@ -322,7 +265,7 @@ class TestRunInsiderAlertFiltering:
         with patch("insider_engine.load_config", return_value=cfg), \
              patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
              patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("insider_engine.send_nextcloud_message", return_value=True), \
+             patch("insider_engine.send_text_message", return_value=True), \
              patch("insider_engine.yahoo_engine.get_insider_transactions", return_value=buy_df):
             ok, msg = run_insider_alert()
 
@@ -369,7 +312,7 @@ class TestRunInsiderAlertFiltering:
         with patch("insider_engine.load_config", return_value=cfg), \
              patch("insider_engine.get_tickers_from_json", return_value=["BADFEED", "GOOD"]), \
              patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("insider_engine.send_nextcloud_message", return_value=True), \
+             patch("insider_engine.send_text_message", return_value=True), \
              patch("insider_engine.yahoo_engine.get_insider_transactions", side_effect=get_transactions_factory):
             ok, _ = run_insider_alert()
 
@@ -386,7 +329,7 @@ class TestRunInsiderAlertFiltering:
         with patch("insider_engine.load_config", return_value=cfg), \
              patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
              patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("insider_engine.send_nextcloud_message", return_value=False), \
+             patch("insider_engine.send_text_message", return_value=False), \
              patch("insider_engine.yahoo_engine.get_insider_transactions", return_value=buy_df):
             ok, msg = run_insider_alert()
 
@@ -420,7 +363,7 @@ class TestRunInsiderAlertQuantamentalAlignment:
         with patch("insider_engine.load_config", return_value=self._base_cfg()), \
              patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
              patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("insider_engine.send_nextcloud_message", return_value=True), \
+             patch("insider_engine.send_text_message", return_value=True), \
              patch("insider_engine.yahoo_engine.get_insider_transactions", return_value=buy_df):
             run_insider_alert()
 
@@ -442,7 +385,7 @@ class TestRunInsiderAlertQuantamentalAlignment:
         with patch("insider_engine.load_config", return_value=self._base_cfg()), \
              patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
              patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("insider_engine.send_nextcloud_message", return_value=True), \
+             patch("insider_engine.send_text_message", return_value=True), \
              patch("insider_engine.yahoo_engine.get_insider_transactions", return_value=buy_df):
             run_insider_alert()
 
@@ -464,7 +407,7 @@ class TestRunInsiderAlertQuantamentalAlignment:
         with patch("insider_engine.load_config", return_value=self._base_cfg()), \
              patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
              patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("insider_engine.send_nextcloud_message", return_value=True), \
+             patch("insider_engine.send_text_message", return_value=True), \
              patch("insider_engine.yahoo_engine.get_insider_transactions", return_value=buy_df):
             run_insider_alert()
 
@@ -528,7 +471,7 @@ class TestRunInsiderAlertConnectionLifecycle:
         with patch("insider_engine.load_config", return_value=cfg), \
              patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
              patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("insider_engine.send_nextcloud_message", return_value=True), \
+             patch("insider_engine.send_text_message", return_value=True), \
              patch("insider_engine.yahoo_engine.get_insider_transactions", return_value=buy_df):
             ok, _ = run_insider_alert()
 
