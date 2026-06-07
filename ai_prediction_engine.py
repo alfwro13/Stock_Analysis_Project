@@ -2,6 +2,7 @@
 import time
 import logging
 import sqlite3
+import psutil
 from pathlib import Path
 from typing import List, Tuple, Dict, Optional, Any
 
@@ -561,6 +562,26 @@ def train_global_ml_model() -> None:
     documented and accepted for a hobbyist project.
     """
     logger.info("Initiating Global ML Model Training pipeline with Hyperparameter Optimization...")
+
+    # Memory guard — training requires ~1.5 GB free; abort or throttle rather than OOM-crashing the server
+    _mem = psutil.virtual_memory()
+    _avail_gb = _mem.available / (1024 ** 3)
+    _ABORT_GB = 0.75
+    _THROTTLE_GB = 1.5
+    if _avail_gb < _ABORT_GB:
+        msg = (
+            f"ML Training aborted: only {_avail_gb:.1f} GB RAM available "
+            f"(minimum {_ABORT_GB} GB required). Free memory and retry."
+        )
+        logger.error(msg)
+        log_notification("Error", msg)
+        return
+    _n_iter = 4 if _avail_gb < _THROTTLE_GB else 10
+    if _avail_gb < _THROTTLE_GB:
+        logger.warning(
+            f"Low memory ({_avail_gb:.1f} GB available) — throttling search to {_n_iter} iterations."
+        )
+
     log_notification("Info", "Global ML Model Training pipeline initiated.")
 
     try:
@@ -788,12 +809,12 @@ def train_global_ml_model() -> None:
 
         rf_search = RandomizedSearchCV(
             estimator=rf_base, param_distributions=rf_param_dist,
-            n_iter=10, cv=cv_splits_train, scoring='average_precision',
+            n_iter=_n_iter, cv=cv_splits_train, scoring='average_precision',
             random_state=42, n_jobs=1
         )
         xgb_search = RandomizedSearchCV(
             estimator=xgb_base, param_distributions=xgb_param_dist,
-            n_iter=10, cv=cv_splits_train, scoring='average_precision',
+            n_iter=_n_iter, cv=cv_splits_train, scoring='average_precision',
             random_state=42, n_jobs=1
         )
 
