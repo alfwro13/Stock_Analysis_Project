@@ -1,6 +1,8 @@
 # profile_engine.py
 import logging
 import json
+import time
+import random
 from pathlib import Path
 from datetime import datetime
 from config import load_config
