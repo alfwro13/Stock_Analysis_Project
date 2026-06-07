@@ -4,7 +4,7 @@ import time
 import random
 import logging
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Any, Optional
 
 from transformers import pipeline
@@ -20,16 +20,12 @@ from constants import (
 
 logger = logging.getLogger(__name__)
 
-# --- ML MODEL LAZY LOADING STATE ---
 _FINBERT_ANALYZER = None
 _MODEL_LOCK = threading.Lock()
 
 
 def _get_finbert_analyzer() -> Optional[Any]:
-    """
-    Thread-safe singleton for lazy-loading the FinBERT model.
-    Prevents multi-worker memory explosion and redundant initializations.
-    """
+    """Thread-safe singleton; prevents multi-worker memory explosion on first load."""
     global _FINBERT_ANALYZER
     if _FINBERT_ANALYZER is None:
         with _MODEL_LOCK:
@@ -37,14 +33,13 @@ def _get_finbert_analyzer() -> Optional[Any]:
             if _FINBERT_ANALYZER is None:
                 logger.info("Loading FinBERT model into memory (Lazy Initialization)...")
 
-                # Apply HF_TOKEN from .env if set — suppresses unauthenticated-request warnings
+                # HuggingFace reads HF_TOKEN from the environment directly; no re-assignment needed.
                 hf_token = os.environ.get("HF_TOKEN", "")
                 if hf_token:
-                    os.environ["HF_TOKEN"] = hf_token
+                    logger.debug("HF_TOKEN detected — authenticated Hub requests enabled.")
 
                 try:
-                    # Prefer local cache to skip redundant HuggingFace Hub HTTP round-trips.
-                    # Falls back to online download only when the cache is absent (first run).
+                    # Prefer local cache; falls back to Hub download only on first run.
                     try:
                         _FINBERT_ANALYZER = pipeline(
                             "sentiment-analysis",
@@ -73,10 +68,7 @@ def _score_text(analyzer, text: str) -> float:
 
 
 def fetch_and_score_news(ticker: str, analyzer: Any) -> float:
-    """
-    Fetches the latest 15 news headlines for a ticker via Yahoo Finance.
-    Scores the text utilizing FinBERT NLP and returns the normalized compound average.
-    """
+    """Fetch latest headlines via Yahoo Finance and return mean FinBERT compound score [-1, 1]."""
     try:
         news = yahoo_engine.get_news(ticker)
 
@@ -98,7 +90,6 @@ def fetch_and_score_news(ticker: str, analyzer: Any) -> float:
 
             text_to_analyze = f"{title}. {summary}. {publisher}"
 
-            # Skip if the combined string is entirely empty
             if not text_to_analyze.strip(". "):
                 continue
 
@@ -119,10 +110,7 @@ def fetch_and_score_news(ticker: str, analyzer: Any) -> float:
 
 
 def update_all_sentiment(tickers: List[str]) -> None:
-    """
-    Loops through the target list, fetches the FinBERT sentiment score,
-    and updates the latest record in the quant_signals database table.
-    """
+    """Score FinBERT sentiment for all tickers and upsert into quant_signals."""
     macro_tickers = ["^GSPC", "^NDX", "^FTSE", "^FTMC", "GBPUSD=X", "DX-Y.NYB"]
     combined_tickers = list(set((tickers if tickers else []) + macro_tickers))
 
@@ -132,7 +120,6 @@ def update_all_sentiment(tickers: List[str]) -> None:
 
     logger.info(f"Initiating FinBERT NLP Sentiment Scan for {len(combined_tickers)} assets.")
 
-    # Instantiate or retrieve the cached singleton model
     analyzer = _get_finbert_analyzer()
     if not analyzer:
         logger.error("FinBERT pipeline unavailable. Aborting scan.")
@@ -154,7 +141,7 @@ def update_all_sentiment(tickers: List[str]) -> None:
 
                 # Upsert macro tickers / new assets if the UPDATE matched no existing rows
                 if cursor.rowcount == 0:
-                    today_str = datetime.now().strftime('%Y-%m-%d')
+                    today_str = datetime.now(timezone.utc).strftime('%Y-%m-%d')
                     cursor.execute("""
                         INSERT INTO quant_signals (ticker, date, sentiment_score)
                         VALUES (?, ?, ?)
@@ -179,22 +166,15 @@ def update_all_sentiment(tickers: List[str]) -> None:
 # Triggered by run_central_bank_nlp_check() in scheduler_engine.py, which polls
 # macro_calendar every 30 min (mon-fri 12:00-21:00 UTC) for same-day CB events.
 def run_central_bank_nlp_alert(event_name: str, currency: str) -> bool:
-    """
-    Specifically targets Tier-1 Central Bank events (FOMC, BoE).
-    Parses immediate media reactions to determine if the monetary policy tone
-    is mathematically 'Hawkish' (Bearish for equities) or 'Dovish' (Bullish for equities).
-    Dispatches a specialized alert to Nextcloud Talk.
-    """
+    """Classify FOMC/BoE tone as Hawkish/Dovish/Neutral and dispatch to Nextcloud Talk."""
     logger.info(f"Intercepting Central Bank Event for NLP Analysis: {event_name}")
     config = load_config()
 
-    # 1. Initialize or retrieve the cached FinBERT singleton
     analyzer = _get_finbert_analyzer()
     if not analyzer:
         logger.error("FinBERT pipeline unavailable. Aborting Central Bank NLP.")
         return False
 
-    # 2. Determine target entity for proxy news scraping
     if currency == "USD":
         target_entity = "Federal Reserve"
         ticker_proxy = "^TNX" # 10Y Treasury news usually captures Fed statements fastest
@@ -205,7 +185,6 @@ def run_central_bank_nlp_alert(event_name: str, currency: str) -> bool:
         logger.warning(f"Unsupported currency {currency} for Central Bank NLP.")
         return False
 
-    # 3. Fetch latest headlines
     try:
         news = yahoo_engine.get_news(ticker_proxy)
         if not news:
@@ -219,7 +198,6 @@ def run_central_bank_nlp_alert(event_name: str, currency: str) -> bool:
             title = content.get('title', '')
             summary = content.get('summary', '')
 
-            # Ensure the news is actually talking about the central bank or rates
             text_to_analyze = f"{title}. {summary}"
             if "rate" not in text_to_analyze.lower() and "inflation" not in text_to_analyze.lower() and target_entity.lower() not in text_to_analyze.lower():
                 continue
@@ -233,9 +211,7 @@ def run_central_bank_nlp_alert(event_name: str, currency: str) -> bool:
 
         avg_score = sum(scores) / len(scores)
 
-        # 4. Map General Sentiment to Monetary Policy Tone
-        # FinBERT scores "Yields surging" as Negative (- score) because it hurts stocks. Negative = Hawkish.
-        # FinBERT scores "Rate cuts" as Positive (+ score) because it helps stocks. Positive = Dovish.
+        # Negative FinBERT score = bad for equities = Hawkish; Positive = good for equities = Dovish.
         if avg_score < -NLP_CB_TONE_THRESHOLD:
             tone = "🦅 HAWKISH (Restrictive)"
             equity_impact = "Bearish for Equities"
@@ -246,7 +222,6 @@ def run_central_bank_nlp_alert(event_name: str, currency: str) -> bool:
             tone = "⚖️ NEUTRAL"
             equity_impact = "Market pricing unchanged"
 
-        # 5. Dispatch Alert
         msg = (
             f"🏛️ **CENTRAL BANK NLP ANALYSIS** 🏛️\n\n"
             f"**Event:** {event_name} ({currency})\n"
@@ -258,12 +233,15 @@ def run_central_bank_nlp_alert(event_name: str, currency: str) -> bool:
 
         send_text_message(msg, config)
 
-        # Log to DB
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("INSERT INTO system_notifications (message_type, message_text) VALUES (?, ?)", ("Macro NLP", msg))
-        conn.commit()
-        conn.close()
+        conn = None
+        try:
+            conn = get_connection()
+            cursor = conn.cursor()
+            cursor.execute("INSERT INTO system_notifications (message_type, message_text) VALUES (?, ?)", ("Macro NLP", msg))
+            conn.commit()
+        finally:
+            if conn:
+                conn.close()
 
         logger.info(f"Central Bank NLP successfully dispatched: {tone}")
         return True
