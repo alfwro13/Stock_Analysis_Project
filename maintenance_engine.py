@@ -1,10 +1,8 @@
-# maintenance_engine.py
 import logging
 import os
 import time
 import json
-import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 logger = logging.getLogger(__name__)
 from config import (
@@ -14,34 +12,25 @@ from config import (
 from database import get_connection
 
 class MaintenanceEngine:
-    """
-    Automated system cleaner. Trims the notification ledger, 
-    deletes orphaned files from sold assets, and vacuums the SQLite database.
-    """
+    """Weekly housekeeping: prune notification logs, delete orphaned files, VACUUM the DB."""
 
     def __init__(self):
-        self.days_to_keep_logs = 30   # notification / pulse-cache retention (days)
+        self.days_to_keep_logs = 30
         cfg = load_config()
         self.days_to_keep_files = cfg.get("SCHEDULING", {}).get("MAINTENANCE", {}).get("DAYS_TO_KEEP_FILES", 60)
         self.protected_files = {"SP500_BASELINE.parquet", "FTSE_BASELINE.parquet"}
-        # Track metrics for the final notification log
         self.metrics = {
             "logs_deleted": 0,
             "files_deleted": 0,
-            "deleted_files": [],   # list of "dir/filename (Xd old)" strings
+            "deleted_files": [],
             "pulse_cache_deleted": 0,
             "vacuum_success": False
         }
 
     def _get_active_tickers(self) -> set:
-        """
-        Collects every ticker the system knows about — portfolio, watchlist, and
-        every DB table that stores per-ticker data.  A ticker present in ANY of
-        these sources is considered active; its local files must not be deleted.
-        """
+        """Collects tickers from portfolio JSON, watchlist JSON, and every DB table; any hit → file must not be deleted."""
         active_tickers = set()
 
-        # 1. Portfolio JSON
         if os.path.exists(PORTFOLIO_PATH):
             try:
                 with open(PORTFOLIO_PATH, 'r') as f:
@@ -52,7 +41,6 @@ class MaintenanceEngine:
             except Exception:
                 logger.warning("Failed to parse portfolio.json for active tickers", exc_info=True)
 
-        # 2. Watchlist JSON
         if os.path.exists(WATCHLIST_PATH):
             try:
                 with open(WATCHLIST_PATH, 'r') as f:
@@ -62,9 +50,7 @@ class MaintenanceEngine:
             except Exception:
                 logger.warning("Failed to parse watchlist.json for active tickers", exc_info=True)
 
-        # 3. Every DB table that tracks per-ticker data.
-        #    Universe engine alone can track thousands of equities that may not be
-        #    in the portfolio/watchlist yet but whose downloaded data we still want.
+        # Universe engine tracks thousands of equities not in portfolio/watchlist whose files we still want.
         ticker_tables = [
             'market_universe',
             'stock_signals',
@@ -76,6 +62,7 @@ class MaintenanceEngine:
             'market_pulse_cache',
             'alert_state',
         ]
+        conn = None
         try:
             conn = get_connection()
             cursor = conn.cursor()
@@ -85,58 +72,51 @@ class MaintenanceEngine:
                     active_tickers.update(row[0] for row in cursor.fetchall() if row[0])
                 except Exception:
                     logger.debug("Table %s not present, skipping ticker discovery", table)
-            conn.close()
         except Exception:
             pass
+        finally:
+            if conn:
+                conn.close()
 
         return active_tickers
 
     def prune_database_logs(self):
-        """Deletes notification logs older than 30 days to prevent bloat."""
-        print("[MAINTENANCE] Pruning Notification Database...")
+        conn = None
         try:
             conn = get_connection()
             cursor = conn.cursor()
-            
-            cutoff_date = (datetime.now() - timedelta(days=self.days_to_keep_logs)).strftime("%Y-%m-%d %H:%M:%S")
-            
+            cutoff_date = (datetime.now(timezone.utc) - timedelta(days=self.days_to_keep_logs)).strftime("%Y-%m-%d %H:%M:%S")
             cursor.execute("DELETE FROM system_notifications WHERE timestamp <= ?", (cutoff_date,))
             self.metrics["logs_deleted"] = cursor.rowcount
-            
             conn.commit()
-            conn.close()
-            print(f"[MAINTENANCE] Removed {self.metrics['logs_deleted']} stale notifications.")
+            logger.info("Removed %d stale notifications", self.metrics["logs_deleted"])
         except Exception as e:
-            print(f"[MAINTENANCE] Error pruning database: {e}")
+            logger.error("Error pruning notification database: %s", e)
+        finally:
+            if conn:
+                conn.close()
 
     def prune_pulse_cache(self):
-        """Cleans up extremely old records from the live market pulse cache table."""
-        print("[MAINTENANCE] Pruning Market Pulse Cache...")
+        conn = None
         try:
             conn = get_connection()
             cursor = conn.cursor()
-            # Delete records older than 24 hours (86400 seconds)
             cursor.execute("DELETE FROM market_pulse_cache WHERE last_updated <= ?", (time.time() - 86400,))
             self.metrics["pulse_cache_deleted"] = cursor.rowcount
             conn.commit()
-            conn.close()
-            print(f"[MAINTENANCE] Removed {self.metrics['pulse_cache_deleted']} stale pulse records.")
+            logger.info("Removed %d stale pulse records", self.metrics["pulse_cache_deleted"])
         except Exception as e:
-            print(f"[MAINTENANCE] Error pruning pulse cache: {e}")
+            logger.error("Error pruning pulse cache: %s", e)
+        finally:
+            if conn:
+                conn.close()
 
     def garbage_collect_files(self):
-        """
-        Deletes local data files only when ALL of these are true:
-          - The file is not in the protected set
-          - The ticker is not tracked anywhere in the system (portfolio, watchlist, any DB table)
-          - The file has not been modified in the last 60 days
-        Downloading from Yahoo Finance is expensive; local storage is cheap.
-        """
-        print("[MAINTENANCE] Running File Garbage Collection...")
+        """Deletes orphaned local files (not in portfolio/watchlist/DB and older than DAYS_TO_KEEP_FILES)."""
         active_tickers = self._get_active_tickers()
 
         if not active_tickers:
-            print("[MAINTENANCE] No active tickers found. Aborting file deletion for safety.")
+            logger.warning("No active tickers found; aborting file deletion for safety")
             return
 
         cutoff_time = time.time() - (self.days_to_keep_files * 86400)
@@ -151,8 +131,7 @@ class MaintenanceEngine:
                 if filename in self.protected_files:
                     continue
 
-                # Robust ticker extraction that handles dots in ticker symbols
-                # (e.g. 0P00018XAR.L.parquet, BRK-B.parquet, AAPL_intraday.parquet)
+                # Dots in ticker symbols (e.g. 0P00018XAR.L, RR.) require stripping from the correct end.
                 if filename.endswith('_intraday.parquet'):
                     ticker = filename[:-len('_intraday.parquet')]
                 elif filename.endswith('.parquet'):
@@ -160,7 +139,7 @@ class MaintenanceEngine:
                 elif filename.endswith('.json'):
                     ticker = filename[:-len('.json')]
                 else:
-                    continue  # unknown file type — leave it alone
+                    continue
 
                 if ticker in active_tickers:
                     continue
@@ -169,41 +148,40 @@ class MaintenanceEngine:
                 try:
                     file_mtime = os.path.getmtime(filepath)
                     if file_mtime > cutoff_time:
-                        print(f"  -> Skipping {filename} (less than {self.days_to_keep_files} days old)")
                         continue
                     age_days = int((time.time() - file_mtime) / 86400)
                     os.remove(filepath)
                     self.metrics["files_deleted"] += 1
                     self.metrics["deleted_files"].append(f"{dir_label}/{filename} ({age_days}d old)")
-                    print(f"  -> Deleted orphaned file: {filename}")
+                    logger.debug("Deleted orphaned file: %s", filename)
                 except Exception as e:
-                    print(f"  -> Failed to delete {filename}: {e}")
+                    logger.warning("Failed to delete %s: %s", filename, e)
 
-        print(f"[MAINTENANCE] File GC complete. Reclaimed {self.metrics['files_deleted']} files.")
+        logger.info("File GC complete; reclaimed %d files", self.metrics["files_deleted"])
 
     def vacuum_database(self):
-        """Runs the SQLite VACUUM command to defragment and optimize disk space."""
-        print("[MAINTENANCE] Vacuuming SQLite Database...")
+        conn = None
         try:
             conn = get_connection()
             # SQLite VACUUM requires an Exclusive Lock and cannot run inside an implicit transaction.
             # Setting isolation_level to None forces Python into autocommit mode.
-            conn.isolation_level = None 
+            conn.isolation_level = None
             conn.execute("VACUUM")
-            conn.close()
             self.metrics["vacuum_success"] = True
-            print("[MAINTENANCE] Database Vacuum Complete.")
+            logger.info("Database vacuum complete")
         except Exception as e:
             # Under heavy load, even a 20-second timeout might fail to acquire an Exclusive Lock.
             # We catch it gracefully rather than crashing the maintenance thread.
-            print(f"[MAINTENANCE] Error vacuuming database: {e}")
+            logger.error("Error vacuuming database: %s", e)
+        finally:
+            if conn:
+                conn.close()
 
     def log_notification(self):
-        """Logs the maintenance summary to the internal SQLite notification center."""
+        conn = None
         try:
             conn = get_connection()
             cursor = conn.cursor()
-            
             vac_status = "Successful" if self.metrics["vacuum_success"] else "Failed (Locked or Busy)"
             deleted = self.metrics["deleted_files"]
             if deleted:
@@ -218,22 +196,19 @@ class MaintenanceEngine:
                 f"{files_section}\n"
                 f"• DB Defragmentation: {vac_status}"
             )
-            
             cursor.execute(
-                "INSERT INTO system_notifications (message_type, message_text) VALUES (?, ?)", 
+                "INSERT INTO system_notifications (message_type, message_text) VALUES (?, ?)",
                 ("Maintenance", msg)
             )
             conn.commit()
-            conn.close()
         except Exception as e:
-            print(f"[MAINTENANCE] Failed to write notification to DB: {e}")
+            logger.error("Failed to write maintenance notification: %s", e)
+        finally:
+            if conn:
+                conn.close()
 
     def dry_run(self) -> dict:
-        """
-        Scans exactly as garbage_collect_files() would, but deletes nothing.
-        Returns a dict describing what would be removed and what would be kept,
-        so the UI can show the user a preview before committing.
-        """
+        """Same scan as garbage_collect_files() but deletes nothing; returns what would/would-not be removed."""
         active_tickers = self._get_active_tickers()
         cutoff_time = time.time() - (self.days_to_keep_files * 86400)
         directories = [HISTORICAL_DIR, INTRADAY_DIR, FUNDAMENTALS_DIR]
@@ -287,16 +262,13 @@ class MaintenanceEngine:
         }
 
     def run(self):
-        print(f"\n--- [MAINTENANCE ENGINE] Initiated @ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ---")
+        logger.info("Maintenance engine initiated")
         self.prune_database_logs()
         self.prune_pulse_cache()
         self.garbage_collect_files()
         self.vacuum_database()
-        
-        # Write the final summary to the Dashboard Notification UI
         self.log_notification()
-        
-        print("--- [MAINTENANCE ENGINE] Optimization Complete ---\n")
+        logger.info("Maintenance engine complete")
 
 
 if __name__ == "__main__":
