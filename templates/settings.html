@@ -3255,7 +3255,7 @@
             btn.innerText = '⏳ Sending…';
             setStatus('nc-status-msg', 'info', 'Sending test message…');
             try {
-                const res = await fetch('/api/test-nextcloud-message', { method: 'POST' });
+                const res = await fetch('/api/test-nextcloud-message', { method: 'POST', headers: { 'X-Confirm-Token': CONFIRM_TOKEN } });
                 const data = await res.json().catch(() => ({}));
                 if (res.ok) {
                     setStatus('nc-status-msg', 'success', data.message || 'Test message sent successfully.');

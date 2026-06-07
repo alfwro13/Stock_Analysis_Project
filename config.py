@@ -59,9 +59,6 @@ DEPRECATED_SCHEDULE_KEYS: set = {"UNIVERSE_FUNDAMENTALS"}
 
 DEFAULT_CONFIG = {
     "SERVER_URL": "http://localhost",
-    "GHOSTFOLIO_URL": "",
-    "API_TOKEN": "",
-    "FRED_API_KEY": "",
     "YAHOO_IPV6_ADDRESS": "",
     "PORT": 8090,
     "BASE_CURRENCY": "GBP",
@@ -72,10 +69,6 @@ DEFAULT_CONFIG = {
         "discovered": [],
         "active": []
     },
-    "NEXTCLOUD_URL": "",
-    "BOT_USERNAME": "",
-    "APP_PASSWORD": "",
-    "CONVERSATION_TOKEN": "",
     "UI_PREFERENCES": {
         "LIVE_PORTFOLIO": False,
         "LIVE_WATCHLIST": False,
@@ -405,7 +398,7 @@ def update_config_atomic(new_data: dict) -> None:
     new_data = {k: v for k, v in new_data.items() if k not in SENSITIVE_KEYS}
     tmp_path = SECRETS_PATH.with_suffix('.tmp')
     try:
-        current = load_config()
+        current = {k: v for k, v in load_config().items() if k not in SENSITIVE_KEYS}
 
         def deep_merge(d, u):
             for k, v in u.items():
