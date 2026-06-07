@@ -47,7 +47,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
 app.add_middleware(
     CSRFMiddleware,
-    secret=os.environ.get("APP_SECRET_KEY", "fallback-insecure"),
+    secret=os.environ.get("APP_SECRET_KEY") or secrets.token_hex(32),
     sensitive_cookies={"session"},   # only enforce when a session cookie is present
     cookie_httponly=False,           # JS must be able to read it
     cookie_samesite="lax",
@@ -90,11 +90,9 @@ async def auth_middleware(request: Request, call_next):
     return await call_next(request)
 
 
-# Mount Static Directories
 app.mount("/assets", StaticFiles(directory="assets"), name="assets")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# Mount Logical Sub-Routers
 app.include_router(api_router)
 app.include_router(page_router)
 
