@@ -1,13 +1,4 @@
-"""
-indicators.py — canonical technical-indicator computations.
-
-Pure, vectorised, side-effect-free.  Every engine that needs these values
-imports from here so that one definition change propagates everywhere and
-the ML training pipeline always sees the same math as the live screener.
-
-Callers are responsible for flattening yfinance MultiIndex columns before
-passing Series in.  No I/O, no DB, no yfinance, no logging.
-"""
+"""Pure, side-effect-free TA functions; callers must flatten yfinance MultiIndex columns before passing Series in."""
 from __future__ import annotations
 
 from typing import Dict, List, Tuple
@@ -15,7 +6,6 @@ from typing import Dict, List, Tuple
 import pandas as pd
 import ta
 
-# ── Window / threshold constants ──────────────────────────────────────────────
 RSI_WINDOW: int = 14
 MACD_FAST: int = 12
 MACD_SLOW: int = 26
