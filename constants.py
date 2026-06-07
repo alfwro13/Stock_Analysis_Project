@@ -1,6 +1,4 @@
-# constants.py
-# Single source of truth for every threshold shared across Python modules and
-# templates. Change a value here; all callers update automatically.
+# constants.py — single source of truth for every threshold shared across modules.
 
 # ── ML prediction ─────────────────────────────────────────────────────────────
 PREDICTION_HORIZON_DAYS     = 10    # trading days from T+1 entry to T+10 exit

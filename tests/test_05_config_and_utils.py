@@ -112,6 +112,72 @@ def test_update_config_atomic_persists_changes(tmp_path):
         _config.SECRETS_PATH = original_path
 
 
+@pytest.mark.config
+def test_update_config_atomic_strips_sensitive_keys(tmp_path):
+    """update_config_atomic() must not write user-supplied sensitive values into config.json."""
+    import config as _config
+    original_path = _config.SECRETS_PATH
+    test_config_path = tmp_path / "test_config.json"
+    try:
+        _config.SECRETS_PATH = test_config_path
+        _config.update_config_atomic({"API_TOKEN": "secret-credential-value", "PORT": 9999})
+        raw = json.loads(test_config_path.read_text())
+        assert raw.get("API_TOKEN") != "secret-credential-value", (
+            "Sensitive key API_TOKEN must never be written with a user-supplied value"
+        )
+        assert raw.get("PORT") == 9999, "Non-sensitive key must still be written"
+    finally:
+        _config.SECRETS_PATH = original_path
+
+
+@pytest.mark.config
+def test_load_config_strips_deprecated_schedule_keys(tmp_path):
+    """load_config() must silently drop DEPRECATED_SCHEDULE_KEYS from a saved config."""
+    import config as _config
+    original_path = _config.SECRETS_PATH
+    stale_config_path = tmp_path / "stale.json"
+    stale = {"SCHEDULING": {"UNIVERSE_FUNDAMENTALS": {"ENABLED": True}, "QUANT_ANALYSIS": {"TIME": "18:00"}}}
+    stale_config_path.write_text(json.dumps(stale))
+    try:
+        _config.SECRETS_PATH = stale_config_path
+        result = _config.load_config()
+        scheduling = result.get("SCHEDULING", {})
+        assert "UNIVERSE_FUNDAMENTALS" not in scheduling, (
+            "Deprecated UNIVERSE_FUNDAMENTALS key must be stripped during load"
+        )
+        assert "QUANT_ANALYSIS" in scheduling, "Valid scheduling keys must be preserved"
+    finally:
+        _config.SECRETS_PATH = original_path
+
+
+@pytest.mark.config
+def test_load_config_migrates_et_as_utc_defaults(tmp_path):
+    """load_config() must replace the legacy ET-as-UTC time defaults with correct UTC windows."""
+    import config as _config
+    original_path = _config.SECRETS_PATH
+    legacy_config_path = tmp_path / "legacy.json"
+    legacy = {
+        "SCHEDULING": {
+            "SENTIMENT_ENGINE": {"START_TIME": "09:30", "END_TIME": "16:00"},
+            "CRASH_ALERTS":     {"START_TIME": "09:30", "END_TIME": "16:00"},
+        }
+    }
+    legacy_config_path.write_text(json.dumps(legacy))
+    try:
+        _config.SECRETS_PATH = legacy_config_path
+        result = _config.load_config()
+        for key in ("SENTIMENT_ENGINE", "CRASH_ALERTS"):
+            block = result["SCHEDULING"][key]
+            assert block["START_TIME"] == "08:00", (
+                f"SCHEDULING.{key}.START_TIME must be migrated from '09:30' to '08:00'"
+            )
+            assert block["END_TIME"] == "21:00", (
+                f"SCHEDULING.{key}.END_TIME must be migrated from '16:00' to '21:00'"
+            )
+    finally:
+        _config.SECRETS_PATH = original_path
+
+
 # ── Ticker normalisation ──────────────────────────────────────────────────────
 
 @pytest.mark.config

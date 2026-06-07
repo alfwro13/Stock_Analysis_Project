@@ -7,7 +7,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Dynamically resolve the absolute path to the directory containing this file
 BASE_DIR = Path(__file__).resolve().parent
 
 # Auto-provision default dashboard credentials into .env if not already set
@@ -32,40 +31,32 @@ def _provision_default_credentials():
 
 _provision_default_credentials()
 
-# Define core directories
 DATA_DIR = BASE_DIR / "data"
 
-# Sub-directories for organized data storage
-HISTORICAL_DIR = DATA_DIR / "historical"       
-INTRADAY_DIR = DATA_DIR / "intraday"           
+HISTORICAL_DIR = DATA_DIR / "historical"
+INTRADAY_DIR = DATA_DIR / "intraday"
 FUNDAMENTALS_DIR = DATA_DIR / "fundamentals"
 ANOMALY_MODELS_DIR = DATA_DIR / "anomaly_models"
 
-# Define specific file paths
 DB_PATH = DATA_DIR / "analysis.db"
 PORTFOLIO_PATH = DATA_DIR / "portfolio.json"
 WATCHLIST_PATH = DATA_DIR / "watchlist.json"
 SECRETS_PATH = BASE_DIR / "config.json"
 
-# Automatically create the required directories if they do not exist
 HISTORICAL_DIR.mkdir(parents=True, exist_ok=True)
 INTRADAY_DIR.mkdir(parents=True, exist_ok=True)
 FUNDAMENTALS_DIR.mkdir(parents=True, exist_ok=True)
 ANOMALY_MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
-# Application Default Variables
 PORT = 8090
 BASE_CURRENCY = "GBP"
 
 # Keys that must never be written back to config.json — sourced from .env only
 SENSITIVE_KEYS: set = {"API_TOKEN", "APP_PASSWORD", "NEXTCLOUD_URL", "BOT_USERNAME", "CONVERSATION_TOKEN", "GHOSTFOLIO_URL", "FRED_API_KEY"}
 
-# Schedule keys that existed in previous releases and should be silently
-# stripped from any existing config.json on load. Maintained as a module
-# constant so it's easy to find and extend as the app evolves.
+# Backward compat: scheduling keys removed in later releases; silently stripped on load.
 DEPRECATED_SCHEDULE_KEYS: set = {"UNIVERSE_FUNDAMENTALS"}
 
-# Base Schema for Application Configuration
 DEFAULT_CONFIG = {
     "SERVER_URL": "http://localhost",
     "GHOSTFOLIO_URL": "",
@@ -341,7 +332,6 @@ DEFAULT_CONFIG = {
 }
 
 def load_config() -> dict:
-    """Loads config.json into memory safely using Deep Copy merging."""
     if not SECRETS_PATH.exists():
         print("[INFO] config.json not found. Generating default template...")
         with open(SECRETS_PATH, 'w') as f:
@@ -354,14 +344,10 @@ def load_config() -> dict:
             
             # Use Deep Copy so we don't mutate the global defaults dictionary
             merged_config = copy.deepcopy(DEFAULT_CONFIG)
-            
-            # Safely merge nested dictionaries without deleting missing keys
             for key, val in data.items():
                 if key in ["NOTIFICATIONS", "SCHEDULING", "GHOSTFOLIO_ACCOUNTS", "UI_PREFERENCES", "FREETRADE_MAPPINGS", "POSITION_SIZING"] and isinstance(val, dict):
                     for sub_key, sub_val in val.items():
-                        # Strip deprecated schedule keys (e.g. legacy UNIVERSE_FUNDAMENTALS
-                        # superseded by UNIVERSE_DEEP_SYNC). Tolerates their presence in
-                        # existing config.json files without crashing.
+                        # Silently drop keys removed in later releases (backward compat).
                         if key == "SCHEDULING" and sub_key in DEPRECATED_SCHEDULE_KEYS:
                             continue
                         if sub_key in merged_config[key]:
@@ -374,9 +360,7 @@ def load_config() -> dict:
                 else:
                     merged_config[key] = val
 
-            # Migrate broken ET-as-UTC defaults for market-window alerts.
-            # "09:30"/"16:00" were NYSE local times mistakenly compared to the UTC wall
-            # clock; replace them with a wide UTC window covering LSE + NYSE.
+            # One-time migration: "09:30"/"16:00" were ET times stored as UTC; widen to cover LSE+NYSE.
             _ALERT_KEYS = ("SENTIMENT_ENGINE", "CRASH_ALERTS", "MOONSHOT_ALERTS")
             for _ak in _ALERT_KEYS:
                 _blk = merged_config.get("SCHEDULING", {}).get(_ak, {})
@@ -390,7 +374,6 @@ def load_config() -> dict:
         print(f"[ERROR] Failed to read config.json: {e}. Using defaults.")
         return copy.deepcopy(DEFAULT_CONFIG)
 
-# Load variables immediately on import
 current_config = load_config()
 
 # Sensitive values: env vars take precedence over anything in config.json
@@ -418,7 +401,6 @@ REPORTS_DEFAULTS = current_config.get("REPORTS_DEFAULTS", DEFAULT_CONFIG["REPORT
 
 
 def update_config_atomic(new_data: dict) -> None:
-    """Atomically merges new_data into config.json using a temp file swap (os.replace)."""
     # Strip sensitive keys — they live in .env, not config.json
     new_data = {k: v for k, v in new_data.items() if k not in SENSITIVE_KEYS}
     tmp_path = SECRETS_PATH.with_suffix('.tmp')
