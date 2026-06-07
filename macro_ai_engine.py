@@ -1,4 +1,3 @@
-# macro_ai_engine.py
 import os
 import sqlite3
 import logging
@@ -37,7 +36,6 @@ logger = logging.getLogger(__name__)
 class MacroAIEngine:
     def __init__(self) -> None:
         self.conn = get_connection()
-        self._ensure_training_log_table()
 
         # Production Models
         self.hmm_model: Optional[hmm.GaussianHMM] = None
@@ -48,20 +46,6 @@ class MacroAIEngine:
 
     def close(self) -> None:
         self.conn.close()
-
-    def _ensure_training_log_table(self) -> None:
-        self.conn.execute("""
-            CREATE TABLE IF NOT EXISTS model_training_log (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                model_name  TEXT    NOT NULL,
-                trained_at  TEXT    NOT NULL,
-                n_samples   INTEGER,
-                cv_score_mean REAL,
-                cv_score_std  REAL,
-                score_metric  TEXT
-            )
-        """)
-        self.conn.commit()
 
     def _log_training_score(self, model_name: str, n_samples: int, cv_mean: float, cv_std: Optional[float], metric: str) -> None:
         try:
@@ -106,14 +90,9 @@ class MacroAIEngine:
             return np.nan
 
     def train_regime_clustering(self) -> None:
-        """
-        Model 1: Time-Series Regime Detection (Hidden Markov Model).
-        Consumes deep structural macro factors (Liquidity, Labor, Credit, Yield Curve)
-        to calculate transition probabilities and hidden market states.
-        """
+        """HMM regime clustering on structural macro indicators (liquidity, labor, credit, yield curve)."""
         logger.info("Training Time-Series Regime Clustering model (HMM)...")
         try:
-            # Fetch structural macro data, including the new Yield Curve inversion tracker
             query = """
                 SELECT date, us_m2, us_jobless_claims, us_high_yield_spread, us_yield_curve 
                 FROM macro_indicators 
@@ -128,9 +107,7 @@ class MacroAIEngine:
             
             # Scale features for the Gaussian emission distributions
             X = self.hmm_scaler.fit_transform(df[['us_m2', 'us_jobless_claims', 'us_high_yield_spread', 'us_yield_curve']])
-            
-            # Initialize a 3-State Hidden Markov Model (e.g., Expansion, Choppy/Stagflation, Recession/Crash)
-            # Score on held-out tail before committing the production fit
+
             split = max(1, int(len(X) * MACRO_HMM_HOLDOUT_FRAC))
             if split < len(X):
                 eval_hmm = hmm.GaussianHMM(n_components=MACRO_HMM_N_STATES, covariance_type="full", n_iter=MACRO_HMM_N_ITER, random_state=42)
@@ -147,9 +124,7 @@ class MacroAIEngine:
             )
             self.hmm_model.fit(X)
 
-            # Anchor state labels to us_high_yield_spread (feature index 2, scaled).
-            # Relative ordering survives scaling, so argsort on means_ gives a consistent
-            # mapping: canonical 0 = lowest spread (expansion), 2 = highest (recession/stress).
+            # argsort on means_[:,2] (us_high_yield_spread) gives a stable canonical ordering: 0=expansion, 2=recession
             self.hmm_state_order = np.argsort(self.hmm_model.means_[:, 2])
             logger.info(f"HMM state canonical order (raw->canonical): {dict(enumerate(self.hmm_state_order))}")
 
@@ -158,11 +133,7 @@ class MacroAIEngine:
             logger.exception("Failed to train Regime Clustering (HMM).")
 
     def train_consensus_miss_probability(self) -> None:
-        """
-        Model 2: Random Forest Classifier.
-        Predicts whether the 'Actual' release will be mathematically greater than the 'Forecast'
-        based on historical tracking of how often Wall Street is wrong.
-        """
+        """Random Forest classifier predicting whether actual macro releases exceed Wall Street forecasts."""
         logger.info("Training Consensus Miss Probability model (Random Forest)...")
         try:
             query = "SELECT forecast_val, previous_val, actual_val FROM macro_calendar WHERE is_event_passed = 1"
@@ -172,7 +143,6 @@ class MacroAIEngine:
             df['previous_num'] = df['previous_val'].apply(self._extract_numeric)
             df['actual_num'] = df['actual_val'].apply(self._extract_numeric)
             
-            # Drop rows where we lack ground truth
             df = df.dropna(subset=['forecast_num', 'previous_num', 'actual_num'])
             
             if len(df) < MACRO_CAL_MIN_TRAIN_ROWS:
@@ -201,14 +171,9 @@ class MacroAIEngine:
             logger.exception("Failed to train Consensus Miss Probability.")
 
     def train_volatility_magnitude(self) -> None:
-        """
-        Model 3: XGBoost Regressor with Model Stacking.
-        Consumes Event Data + Historical VIX + Upstream Stacking Features (HMM state and RF probability)
-        to predict the exact percentage magnitude of the SPY gap following a macroeconomic release.
-        """
+        """Stacked XGBoost regressor predicting SPY gap magnitude from event data, VIX, HMM state, and RF probability."""
         logger.info("Training Volatility Magnitude model (XGBoost) with Model Stacking Architecture...")
         try:
-            # Join the specific event dates with the market regime table to capture historical VIX context
             query = """
                 SELECT c.event_id, c.event_date, c.forecast_val, c.previous_val, c.actual_val, c.post_event_spy_gap, r.vix_close 
                 FROM macro_calendar c
@@ -252,7 +217,6 @@ class MacroAIEngine:
                 logger.warning("Insufficient verified SPY gap data to train Volatility Magnitude model. Skipping.")
                 return
 
-            # --- Stacking Feature 1: Compile historical HMM hidden state map ---
             hmm_state_map = {}
             if self.hmm_model is not None:
                 try:
@@ -267,11 +231,7 @@ class MacroAIEngine:
                 except Exception as ex:
                     logger.error(f"Failed to compile historical HMM feature states for stacking: {ex}")
 
-            # --- Stacking Feature 2: Assemble unified multidimensional feature matrix ---
-            # log1p-transform the target: post_event_spy_gap is right-skewed and strictly
-            # non-negative, so training in log-space gives MSE a symmetric distribution to
-            # work with and avoids wasting capacity near the zero boundary.
-            # Inverted with expm1 at inference time.
+            # log1p-transform: post_event_spy_gap is right-skewed + non-negative; log-space symmetrises MSE; inverted with expm1 at inference
             y = np.log1p(df_cal['post_event_spy_gap'].values)
 
             # HMM states: vectorised date-map lookup, fallback 0 for unmatched dates
@@ -296,7 +256,6 @@ class MacroAIEngine:
                 rf_probs,
             ])
 
-            # CV score before final fit
             tscv = TimeSeriesSplit(n_splits=MACRO_CV_N_SPLITS)
             cv_scores = cross_val_score(
                 xgb.XGBRegressor(n_estimators=MACRO_XGB_N_ESTIMATORS, max_depth=MACRO_XGB_MAX_DEPTH, learning_rate=MACRO_XGB_LEARNING_RATE, objective='reg:squarederror', random_state=42),
@@ -320,22 +279,15 @@ class MacroAIEngine:
             logger.exception("Failed to train Volatility Magnitude model.")
 
     def run_macro_inference(self, target_date: str) -> None:
-        """
-        Runs live inference for upcoming events in the next 48 hours.
-        Leverages the HMM regime model and Random Forest surprise model as standalone predictors,
-        persists their independent insights to SQLite tables for the UI, and feeds them into
-        the final stacked XGBoost model for precision volatility forecasting.
-        """
+        """Run live stacked inference for upcoming 48h macro events; writes ai_volatility_warning and ai_consensus_miss_prob."""
         logger.info(f"Running Stacked Macro AI Inference for 48H window starting: {target_date}")
         try:
             cursor = self.conn.cursor()
             
-            # 1. Fetch current VIX context
             cursor.execute("SELECT vix_close FROM market_regimes ORDER BY date DESC LIMIT 1")
             vix_row = cursor.fetchone()
             current_vix = float(vix_row['vix_close']) if vix_row and vix_row['vix_close'] else MACRO_VIX_DEFAULT
 
-            # 2. Compute current live HMM Hidden Macro State
             current_hmm_state = 0
             if self.hmm_model is not None:
                 try:
@@ -354,7 +306,6 @@ class MacroAIEngine:
                         ]])
                         current_hmm_state = int(self._remap_hmm_states(self.hmm_model.predict(X_ind_live))[0])
                         
-                        # Surface the standalone HMM prediction to the UI via market_regimes table update
                         cursor.execute("""
                             UPDATE market_regimes 
                             SET ai_hmm_state = ? 
@@ -363,11 +314,7 @@ class MacroAIEngine:
                 except Exception:
                     logger.exception("Failed to calculate current live HMM hidden macro regime state.")
 
-            # 3. Fetch upcoming events to forecast
-            # Note: current_vix and current_hmm_state are intentionally shared across every
-            # event in the 48h window. VIX and macro regime are market-wide conditions, not
-            # event-specific. Within this window the XGBoost model differentiates events solely
-            # via forecast_val, previous_val, and rf_consensus_miss_prob.
+            # VIX and HMM state are market-wide; the same values apply to every event in the 48h window
             cursor.execute('''
                 SELECT event_id, forecast_val, previous_val FROM macro_calendar 
                 WHERE date(event_date) >= date(?) 
@@ -392,7 +339,6 @@ class MacroAIEngine:
                 if pd.isna(f_val) or pd.isna(p_val):
                     continue
 
-                # Compute Standalone Surprise Probability using the Random Forest model
                 rf_consensus_miss_prob = 0.5
                 if self.rf_model is not None:
                     try:
@@ -400,13 +346,10 @@ class MacroAIEngine:
                     except Exception as ex:
                         logger.debug(f"Failed to infer consensus miss probability for event {event['event_id']}: {ex}")
 
-                # Assemble the complete stacked feature vector matching training schema.
-                # Model predicts in log1p-space; expm1 inverts back to % gap units.
-                # Clamping before expm1 (not after) is the correct inversion of log1p(0)=0.
+                # clamp before expm1 (not after): correct inversion of log1p; log1p(0)=0, so clamp at 0
                 X_infer = np.array([[f_val, p_val, current_vix, current_hmm_state, rf_consensus_miss_prob]])
                 predicted_gap = float(np.expm1(max(0.0, float(self.xgb_model.predict(X_infer)[0]))))
                 
-                # Surface BOTH the final volatility warning AND the independent surprise probability to the database
                 cursor.execute("""
                     UPDATE macro_calendar 
                     SET ai_volatility_warning = ?, 
