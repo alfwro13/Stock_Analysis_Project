@@ -1,9 +1,12 @@
 # ghostfolio_sync.py
 import json
+import logging
 import requests
 import urllib3
 from slugify import slugify
 from typing import Dict, Any
+
+logger = logging.getLogger(__name__)
 
 from config import (
     load_config,
@@ -29,7 +32,7 @@ class GhostfolioSyncEngine:
         self.discovered_accounts = []
 
         if not self.url or not self.token:
-            print("[ERROR] Ghostfolio credentials missing. Please check config.json.")
+            logger.error("Ghostfolio credentials missing. Please check config.json.")
             self.is_configured = False
         else:
             self.is_configured = True
@@ -44,18 +47,18 @@ class GhostfolioSyncEngine:
             
             bearer_token = response.json().get("authToken")
             if not bearer_token:
-                print("[ERROR] Authentication succeeded but no Bearer token returned.")
+                logger.error("Authentication succeeded but no Bearer token returned.")
                 return False
-                
+
             self.headers = {"Authorization": f"Bearer {bearer_token}"}
             return True
-            
+
         except Exception as e:
-            print(f"[ERROR] Failed to authenticate with Ghostfolio: {e}")
+            logger.error(f"Failed to authenticate with Ghostfolio: {e}")
             return False
 
     def discover_accounts(self) -> list:
-        print("[SYNC] Discovering active accounts on Ghostfolio server...")
+        logger.info("Discovering active accounts on Ghostfolio server...")
         try:
             response = requests.get(f"{self.url}/api/v1/account", headers=self.headers, verify=False, timeout=10)
             response.raise_for_status()
@@ -79,7 +82,7 @@ class GhostfolioSyncEngine:
                 # Auto-activate all on first discovery so existing users don't need to reconfigure
                 if not current_active:
                     current_active = [acc["id"] for acc in discovered_accounts]
-                    print("[SYNC] First-time discovery detected. Auto-activating all accounts.")
+                    logger.info("First-time discovery: auto-activating all accounts.")
 
                 updated_accounts = {"discovered": discovered_accounts, "active": current_active}
                 update_config_atomic({"GHOSTFOLIO_ACCOUNTS": updated_accounts})
@@ -87,28 +90,28 @@ class GhostfolioSyncEngine:
                 self.active_account_ids = current_active
                 self.discovered_accounts = discovered_accounts
 
-                print(f"[SUCCESS] Discovered {len(discovered_accounts)} accounts. {len(self.active_account_ids)} are set to Active.")
+                logger.info(f"Discovered {len(discovered_accounts)} accounts; {len(self.active_account_ids)} active.")
                 return discovered_accounts
 
             except Exception as e:
-                print(f"[ERROR] Failed to update config.json with discovered accounts: {e}")
+                logger.error(f"Failed to update config.json with discovered accounts: {e}")
                 self.active_account_ids = GHOSTFOLIO_ACCOUNTS.get("active", [])
                 return discovered_accounts
 
         except Exception as e:
-            print(f"[ERROR] Account discovery failed: {e}")
+            logger.error(f"Account discovery failed: {e}")
             self.active_account_ids = GHOSTFOLIO_ACCOUNTS.get("active", [])
             return []
 
     def sync_portfolio(self) -> bool:
         if not self.active_account_ids:
-            print("[SYNC] No active accounts configured to sync. Aborting portfolio pull.")
+            logger.warning("No active accounts configured to sync.")
             return False
 
         output_json: Dict[str, Any] = {}
 
         try:
-            print(f"[SYNC] Extracting holdings from {len(self.active_account_ids)} active accounts...")
+            logger.info(f"Extracting holdings from {len(self.active_account_ids)} active accounts...")
             
             for acc_id in self.active_account_ids:
                 acc_name = next((acc["name"] for acc in self.discovered_accounts if acc["id"] == acc_id), acc_id)
@@ -118,7 +121,7 @@ class GhostfolioSyncEngine:
                 try:
                     resp.raise_for_status()
                 except requests.exceptions.HTTPError:
-                    print(f"[WARNING] Failed to fetch holdings for account {acc_name}. HTTP {resp.status_code}")
+                    logger.warning(f"Failed to fetch holdings for account {acc_name}: HTTP {resp.status_code}")
                     continue
 
                 holdings_list = resp.json().get("holdings", [])
@@ -167,16 +170,16 @@ class GhostfolioSyncEngine:
             with open(PORTFOLIO_PATH, 'w') as f:
                 json.dump(output_json, f, indent=4)
                 
-            print(f"[SUCCESS] Synced {len(output_json)} unique macro assets to portfolio.json.")
+            logger.info(f"Synced {len(output_json)} unique assets to portfolio.json.")
             return True
 
         except Exception as e:
-            print(f"[ERROR] Failed to sync portfolio via Opt-In pipeline: {e}")
+            logger.error(f"Failed to sync portfolio: {e}")
             return False
 
     def sync_watchlist(self) -> bool:
         try:
-            print("[SYNC] Fetching watchlist from Ghostfolio...")
+            logger.info("Fetching watchlist from Ghostfolio...")
             response = requests.get(f"{self.url}/api/v1/watchlist", headers=self.headers, verify=False, timeout=10)
             response.raise_for_status()
             
@@ -190,11 +193,11 @@ class GhostfolioSyncEngine:
             with open(WATCHLIST_PATH, 'w') as f:
                 json.dump(output_data, f, indent=4)
                 
-            print(f"[SUCCESS] Synced {len(tickers)} tickers to watchlist.json.")
+            logger.info(f"Synced {len(tickers)} tickers to watchlist.json.")
             return True
 
         except Exception as e:
-            print(f"[ERROR] Failed to sync watchlist: {e}")
+            logger.error(f"Failed to sync watchlist: {e}")
             return False
 
     def add_to_watchlist(self, symbol: str) -> bool:
@@ -204,13 +207,13 @@ class GhostfolioSyncEngine:
             payload = {"symbol": symbol, "dataSource": "YAHOO"}
             response = requests.post(f"{self.url}/api/v1/watchlist", json=payload, headers=self.headers, verify=False, timeout=10)
             if response.status_code in [200, 201]:
-                print(f"[SUCCESS] Added {symbol} to Ghostfolio Watchlist.")
+                logger.info(f"Added {symbol} to Ghostfolio Watchlist.")
                 return True
             else:
-                print(f"[ERROR] Failed to add {symbol} to Watchlist: HTTP {response.status_code} - {response.text}")
+                logger.error(f"Failed to add {symbol} to Watchlist: HTTP {response.status_code}")
                 return False
         except Exception as e:
-            print(f"[ERROR] Exception adding {symbol} to Watchlist: {e}")
+            logger.error(f"Exception adding {symbol} to Watchlist: {e}")
             return False
 
     def remove_from_watchlist(self, symbol: str) -> bool:
@@ -219,31 +222,31 @@ class GhostfolioSyncEngine:
         try:
             response = requests.delete(f"{self.url}/api/v1/watchlist/YAHOO/{symbol}", headers=self.headers, verify=False, timeout=10)
             if response.status_code in [200, 204]:
-                print(f"[SUCCESS] Removed {symbol} from Ghostfolio Watchlist.")
+                logger.info(f"Removed {symbol} from Ghostfolio Watchlist.")
                 return True
             else:
-                print(f"[ERROR] Failed to remove {symbol} from Watchlist: HTTP {response.status_code} - {response.text}")
+                logger.error(f"Failed to remove {symbol} from Watchlist: HTTP {response.status_code}")
                 return False
         except Exception as e:
-            print(f"[ERROR] Exception removing {symbol} from Watchlist: {e}")
+            logger.error(f"Exception removing {symbol} from Watchlist: {e}")
             return False
 
     def run_full_sync(self) -> bool:
-        print("\n--- INITIATING INSTITUTIONAL GHOSTFOLIO SYNC ---")
-        
+        logger.info("Ghostfolio sync starting...")
+
         if not self.is_configured:
-            print("[ABORT] Sync engine is not properly configured.")
+            logger.error("Sync aborted: engine not configured.")
             return False
-            
+
         if not self.authenticate():
-            print("[ABORT] Could not secure Bearer token.")
+            logger.error("Sync aborted: could not authenticate.")
             return False
-            
+
         self.discover_accounts()
         p_success = self.sync_portfolio()
         w_success = self.sync_watchlist()
-        
-        print("--- GHOSTFOLIO SYNC COMPLETE ---\n")
+
+        logger.info("Ghostfolio sync complete.")
         return p_success and w_success
 
 
