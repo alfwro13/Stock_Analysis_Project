@@ -71,6 +71,7 @@ EXPECTED_TABLES = [
     "scheduler_run_log",
     "news_articles",
     "smgb_predictions",
+    "model_training_log",
 ]
 
 

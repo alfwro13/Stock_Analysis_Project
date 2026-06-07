@@ -34,7 +34,6 @@ def engine():
     """MacroAIEngine backed by an in-memory SQLite — no network, no disk."""
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
-    # Minimal schema so _ensure_training_log_table and queries don't error
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS market_regimes (
             date TEXT PRIMARY KEY, vix_close REAL, ai_hmm_state INTEGER
@@ -54,6 +53,15 @@ def engine():
             is_event_passed INTEGER DEFAULT 0,
             ai_volatility_warning REAL,
             ai_consensus_miss_prob REAL
+        );
+        CREATE TABLE IF NOT EXISTS model_training_log (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            model_name      TEXT    NOT NULL,
+            trained_at      TEXT    NOT NULL,
+            n_samples       INTEGER,
+            cv_score_mean   REAL,
+            cv_score_std    REAL,
+            score_metric    TEXT
         );
     """)
     conn.commit()
@@ -140,7 +148,7 @@ class TestRemapHmmStates:
 class TestTrainingLog:
 
     def test_table_created(self, engine):
-        """model_training_log table must exist after __init__."""
+        """model_training_log table must exist (created by init_db / fixture schema)."""
         row = engine.conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='model_training_log'"
         ).fetchone()
