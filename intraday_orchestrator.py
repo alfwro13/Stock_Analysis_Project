@@ -24,30 +24,21 @@ from utils import clamp_beta
 
 logger = logging.getLogger(__name__)
 
-# ── Intraday orchestrator thresholds ──────────────────────────────────────────
 _STALE_SECONDS        = 5400   # 90 min: market closed / asset halted circuit breaker
 _CORP_ACTION_GAP_PCT  = 10.0   # price gap % that triggers a corporate action lookup
 _MACRO_YIELD_SURGE_PCT = 1.5   # intraday yield spike % that fires a systemic macro alert
 _AI_DEFENSE_THRESHOLD = 2.0    # predicted SPY gap % that activates AI Volatility Defense
 _AI_DEFENSE_CAP       = 1.5    # flash-crash threshold cap (%) applied when defense is active
-# Delay between consecutive Nextcloud Talk sends. A full second is conservative; if
-# Nextcloud's actual rate limit is looser, reduce this. Note: _run() is synchronous on
-# an APScheduler worker thread — N alerts × this delay = N seconds of blocked execution,
-# during which the DB connection is held and the next scan may queue. With a large
-# portfolio under a macro-crash morning, consider batching alerts into a digest message
-# instead of N sequential sends.
+# N alerts × 1 s blocks the APScheduler thread and holds the DB connection; consider a digest for large portfolios.
 _DISPATCH_SLEEP_SECONDS = 1
 
 
 def format_currency(price: float, currency_code: Optional[str]) -> str:
-    """
-    Formats price with correct symbol, scaling GBp to GBP dynamically.
-    Fails over to the 3-letter currency code if symbol mapping is unavailable.
-    """
+    """Format price with currency symbol; scales GBp→GBP (/100); falls back to the 3-letter code."""
     if price is None:
         return "N/A"
     if not currency_code:
-        currency_code = 'USD'  # Fallback
+        currency_code = 'USD'
         
     if currency_code == 'GBp':
         price = price / 100.0
@@ -66,10 +57,7 @@ def format_currency(price: float, currency_code: Optional[str]) -> str:
         return f"{price:,.2f} {currency_code}"
 
 def build_stock_url(server_url: str, port: int, ticker: str) -> str:
-    """
-    Intelligently constructs the URL. If the server is a domain/proxy, it drops the port.
-    If it's an IP address or localhost, it appends the port automatically.
-    """
+    """Build stock detail URL; appends port only for IP/localhost, drops it for domain/proxy."""
     base = str(server_url).rstrip('/')
     parsed = urlparse(base if "://" in base else f"http://{base}")
     hostname = parsed.hostname or ""
@@ -90,10 +78,7 @@ def build_stock_url(server_url: str, port: int, ticker: str) -> str:
 
 
 class IntradayOrchestrator:
-    """
-    Centralized monitor that batches network and disk I/O operations, 
-    feeding raw context into the mathematical quant engines.
-    """
+    """Batches network/disk I/O for the 5-minute intraday scan and feeds context to the quant engines."""
     def __init__(self) -> None:
         self.config = load_config()
         # Instantiate engines with config so they don't reload it internally
@@ -119,51 +104,47 @@ class IntradayOrchestrator:
         """Fetches currency, ATR stop loss, company name, ML, and Risk metrics in a single bulk SQLite query."""
         if not tickers:
             return {}
-            
-        conn = get_connection()
-        cursor = conn.cursor()
-        placeholders = ','.join('?' for _ in tickers)
-        
-        query = f"""
-            SELECT s.ticker, s.company_name, s.currency, s.atr_stop_loss, s.last_updated, s.beta,
-                   q.ml_confidence_score, q.var_95, q.cvar_95, q.sentiment_score,
-                   q.rsi_14, q.sma_50, q.hist_vol_20
-            FROM stock_signals s
-            LEFT JOIN quant_signals q ON s.ticker = q.ticker
-                AND q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = s.ticker)
-            WHERE s.ticker IN ({placeholders})
-        """
-        cursor.execute(query, tickers)
-        
-        metadata = {}
-        for row in cursor.fetchall():
-            metadata[row['ticker']] = {
-                'company_name': row['company_name'],
-                'currency': row['currency'],
-                'atr_stop_loss': row['atr_stop_loss'],
-                'atr_last_updated': row['last_updated'],
-                'beta': row['beta'],
-                'ml_confidence_score': row['ml_confidence_score'],
-                'var_95': row['var_95'],
-                'cvar_95': row['cvar_95'],
-                'sentiment_score': row['sentiment_score'],
-                'rsi_14': row['rsi_14'],
-                'sma_50': row['sma_50'],
-                'hist_vol_20': row['hist_vol_20'],
-            }
-        conn.close()
-        return metadata
+
+        conn = None
+        try:
+            conn = get_connection()
+            cursor = conn.cursor()
+            placeholders = ','.join('?' for _ in tickers)
+
+            query = f"""
+                SELECT s.ticker, s.company_name, s.currency, s.atr_stop_loss, s.last_updated, s.beta,
+                       q.ml_confidence_score, q.var_95, q.cvar_95, q.sentiment_score,
+                       q.rsi_14, q.sma_50, q.hist_vol_20
+                FROM stock_signals s
+                LEFT JOIN quant_signals q ON s.ticker = q.ticker
+                    AND q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = s.ticker)
+                WHERE s.ticker IN ({placeholders})
+            """
+            cursor.execute(query, tickers)
+
+            metadata = {}
+            for row in cursor.fetchall():
+                metadata[row['ticker']] = {
+                    'company_name': row['company_name'],
+                    'currency': row['currency'],
+                    'atr_stop_loss': row['atr_stop_loss'],
+                    'atr_last_updated': row['last_updated'],
+                    'beta': row['beta'],
+                    'ml_confidence_score': row['ml_confidence_score'],
+                    'var_95': row['var_95'],
+                    'cvar_95': row['cvar_95'],
+                    'sentiment_score': row['sentiment_score'],
+                    'rsi_14': row['rsi_14'],
+                    'sma_50': row['sma_50'],
+                    'hist_vol_20': row['hist_vol_20'],
+                }
+            return metadata
+        finally:
+            if conn:
+                conn.close()
 
     def log_notification_feed(self, msg_type: str, msg_text: str, conn: sqlite3.Connection, status: str = "sent") -> None:
-        """Writes a row to the user-facing notification feed (display only).
-
-        Fire-and-forget — has NO bearing on alert suppression. Deduplication is
-        governed exclusively by the alert_state ledger via _evaluate_alert_gate() /
-        record_alert_fired(). A slow or failed feed write can never cause an alert
-        to re-fire, and vice versa.
-
-        conn is the run()-scoped connection; this method does not open or close it.
-        """
+        """Display-only feed write; no effect on alert suppression; conn is caller-scoped."""
         try:
             cursor = conn.cursor()
             cursor.execute(
@@ -177,20 +158,12 @@ class IntradayOrchestrator:
 
     @staticmethod
     def _condition_fingerprint(reason: str) -> str:
-        """Derives a stable identifier for the class of condition that fired.
-
-        Strips digits/punctuation and hashes the leading descriptive phrase so
-        that fluctuating prices in the reason string don't change the fingerprint.
-        Two alerts with the same fingerprint are the same ongoing event; a changed
-        fingerprint means a genuinely different trigger.
-        """
+        """Hashes the first 6 alphabetic tokens of reason so price fluctuations don't create spurious new fingerprints."""
         if not reason:
             return "generic"
         tokens = re.findall(r"[A-Za-z]+", reason.upper())
         descriptor = " ".join(tokens[:6])
-        # 6 tokens verified sufficient: every distinct trigger from CrashEngine /
-        # MoonshotEngine diverges within the first 3–4 alphabetic words, so there
-        # is no collision risk with the current reason-string vocabulary.
+        # 6 tokens: every distinct Crash/Moonshot trigger diverges within 3–4 words; no collision risk with current vocabulary.
         return hashlib.sha1(descriptor.encode("utf-8"), usedforsecurity=False).hexdigest()[:16]
 
     def _dedup_settings(self, engine: str) -> Dict[str, float]:
@@ -220,27 +193,10 @@ class IntradayOrchestrator:
         reason: str,
         conn: sqlite3.Connection,
     ) -> bool:
-        """Single, deterministic suppression decision. Returns True if the alert
-        should be SUPPRESSED, False if it is cleared to fire.
-
-        Logic (edge-triggered with hysteresis):
-          1. No prior state today -> FIRE.
-          2. Different condition fingerprint -> FIRE (new event class).
-          3. Same condition, currently armed -> FIRE (first fire of this event).
-          4. Same condition, suppressed:
-               a. Price recovered >= REARM_PERCENT -> re-arm and SUPPRESS this scan.
-               b. Cooldown elapsed AND price worsened >= RETRIGGER_PERCENT -> FIRE.
-               c. Otherwise -> SUPPRESS.
-
-        record_alert_fired() must be called by the dispatch loop only after a
-        confirmed send, so a failed send leaves us armed and the alert retries.
-        """
+        """Returns True (suppress) or False (fire): no-prior-state/new-fingerprint/armed→fire; recovery re-arms; cooldown+worsening retriggers."""
         settings = self._dedup_settings(engine)
         fingerprint = self._condition_fingerprint(reason)
-        # state_date is always UTC so the daily rollover is consistent regardless
-        # of the server's local timezone. Session bounds in run() use local time
-        # deliberately (market hours are exchange-local); the disagreement window
-        # is only between midnight UTC and midnight local, i.e. outside trading hours.
+        # state_date UTC so rollover is consistent; disagreement with exchange-local session bounds is only outside trading hours.
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
         try:
@@ -283,8 +239,7 @@ class IntradayOrchestrator:
                 worsened_pct = pct_change
                 recovered_pct = -pct_change
 
-            # Case 4a: hysteresis re-arm. Event has materially reversed; re-arm so a
-            # future breach is a fresh alert, but stay silent now.
+            # Case 4a: event materially reversed — re-arm for a future breach, stay silent now.
             if recovered_pct >= settings["rearm_percent"]:
                 cursor.execute(
                     "UPDATE alert_state SET armed = 1, state_date = ? WHERE engine = ? AND ticker = ?",
@@ -295,9 +250,7 @@ class IntradayOrchestrator:
 
             # Case 4b: cooldown elapsed AND material deterioration.
             try:
-                # Parse the stored UTC string and attach tzinfo so it can be
-                # subtracted from the aware datetime.now(timezone.utc) without
-                # raising TypeError (aware - naive is an error in Python).
+                # Attach tzinfo so it can be subtracted from aware datetime.now(timezone.utc).
                 last_fired = datetime.strptime(
                     row["last_fired_utc"], "%Y-%m-%d %H:%M:%S"
                 ).replace(tzinfo=timezone.utc)
@@ -327,14 +280,7 @@ class IntradayOrchestrator:
         reason: str,
         conn: sqlite3.Connection,
     ) -> None:
-        """Commits suppression state AFTER a successful dispatch.
-
-        Sets armed=0 (now in cooldown), stamps the price/time/fingerprint, and
-        bumps the daily fire counter. Idempotent via INSERT OR REPLACE on the
-        (engine, ticker) primary key.
-
-        conn is the run()-scoped connection; this method does not open or close it.
-        """
+        """Stamps last_fired/price/fingerprint and sets armed=0 after a confirmed send; idempotent on (engine, ticker); conn is caller-scoped."""
         fingerprint = self._condition_fingerprint(reason)
         _now = datetime.now(timezone.utc)
         now_utc = _now.strftime("%Y-%m-%d %H:%M:%S")
@@ -362,28 +308,14 @@ class IntradayOrchestrator:
 
     @staticmethod
     def _seconds_since(ts: pd.Timestamp) -> float:
-        """Returns elapsed seconds between ts and now, always in UTC.
-
-        Uses .tzinfo (the correct scalar attribute) rather than .tz, which is a
-        DatetimeIndex-level property and can raise AttributeError on a plain
-        Timestamp in some pandas versions. Naive timestamps are treated as UTC
-        rather than local time, which matches how yfinance writes its index after
-        tz_localize(None) strips the zone — comparing a naive local now() against
-        a stripped-UTC timestamp would be wrong by the UTC offset (up to ±1 h in
-        the UK under BST).
-        """
+        """Elapsed seconds to now (UTC); treats naive ts as UTC to match yfinance's stripped-zone convention and avoid BST-offset errors."""
         now_utc = pd.Timestamp.now(tz="UTC")
         if ts.tzinfo is not None:
             return (now_utc - ts.tz_convert("UTC")).total_seconds()
         return (now_utc - ts.tz_localize("UTC")).total_seconds()
 
     def _prune_alert_state(self, conn: sqlite3.Connection) -> None:
-        """Deletes alert_state rows older than 7 days to keep the table bounded.
-        Active tickers reset daily via state_date comparison so they are unaffected;
-        only rows for delisted or removed tickers accumulate and need clearing.
-
-        conn is the run()-scoped connection; this method does not open or close it.
-        """
+        """Deletes alert_state rows older than 7 days; only delisted/removed tickers accumulate; conn is caller-scoped."""
         try:
             cursor = conn.cursor()
             cursor.execute("DELETE FROM alert_state WHERE state_date < date('now', '-7 days')")
@@ -395,13 +327,7 @@ class IntradayOrchestrator:
             logger.error(f"Failed to prune alert_state: {e}")
 
     def _has_corporate_action_today(self, ticker: str) -> bool:
-        """
-        Queries Yahoo Finance for dividends or stock splits occurring today.
-        Used as a lazy circuit breaker to prevent false anomaly alerts.
-
-        Results are memoized for the calendar day — corporate actions don't change
-        intraday, so re-fetching on every 5-minute scan is pure wasted I/O.
-        """
+        """Returns True if Yahoo Finance reports a dividend or split today; memoised per calendar day to avoid redundant HTTP calls."""
         today_date = datetime.now(timezone.utc).date()
         cache_key = (ticker, today_date.isoformat())
         if cache_key in self._corp_action_cache:
@@ -430,18 +356,11 @@ class IntradayOrchestrator:
         msg_builder,   # (ticker, formatted_price, alert, ml_conf, var, sent, url) -> str
         feed_builder,  # (ticker, formatted_price, alert) -> str
     ) -> None:
-        """Send, record, and feed-log each alert in alert_tuples for the given engine.
-
-        Centralises the shared dispatch sequence (format → send → record → feed → sleep)
-        so that per-engine divergences (emoji, cautions block, VaR label) live only in
-        the msg_builder/feed_builder callables passed by the caller.
-        """
+        """Runs format→send→record→feed→sleep for each alert; msg_builder/feed_builder carry per-engine formatting differences."""
         for ticker, alert, currency, meta in alert_tuples:
             formatted_price = format_currency(alert['price'], currency)
             url = build_stock_url(SERVER_URL, PORT, ticker)
-            # ml_confidence_score is stored 0–100 (ai_prediction_engine multiplies prob by 100).
-            # var_95 / cvar_95 are stored as fractions 0–1 (risk_engine: 1 - exp(log_return));
-            # multiply by 100 here to render as a human-readable percentage.
+            # ml_confidence_score 0–100; var_95/cvar_95 are fractions 0–1 (multiply by 100 for display).
             ml_conf = f"{meta.get('ml_confidence_score'):.1f}%" if meta.get('ml_confidence_score') is not None else "N/A"
             var = f"{(meta.get('var_95') * 100):.2f}%" if meta.get('var_95') is not None else "N/A"
             sent = f"{meta.get('sentiment_score'):.3f}" if meta.get('sentiment_score') is not None else "N/A"
@@ -461,8 +380,7 @@ class IntradayOrchestrator:
             time.sleep(_DISPATCH_SLEEP_SECONDS)
 
     def run(self) -> None:
-        # One connection for the entire scan. Opened here (not in __init__) so it is
-        # always on the correct thread when APScheduler dispatches to a worker.
+        # Opened here (not in __init__) so it is always on the correct APScheduler worker thread.
         conn = get_connection()
         try:
             self._run(conn)
@@ -473,9 +391,7 @@ class IntradayOrchestrator:
         self._prune_alert_state(conn)
         logger.info("Scan initiated.")
         
-        # Check active bounds — compare UTC wall clock against configured UTC window.
-        # When START_TIME/END_TIME are absent or blank, derive from HOME_EXCHANGE via
-        # time_engine so DST is handled correctly without manual UTC arithmetic.
+        # When START_TIME/END_TIME absent, derive from HOME_EXCHANGE via time_engine so DST is handled automatically.
         sched_cfg = self.config.get("SCHEDULING", {}).get("CRASH_ALERTS", {})
         _default_open, _default_close = time_engine.market_window_utc()
         start_str = sched_cfg.get("START_TIME") or _default_open.strftime("%H:%M")
@@ -492,11 +408,7 @@ class IntradayOrchestrator:
             logger.error("Invalid schedule time config (%s-%s): %s", start_str, end_str, e)
             return
 
-        # Fraction of the trading session elapsed — used to project intraday cumulative
-        # volume to a full-day estimate before passing it to the Moonshot volume check.
-        # Without this, partial-day volume is compared to a 50-day full-day average,
-        # producing a systematically understated ratio that flags nearly every morning
-        # breakout as "low volume" regardless of actual participation.
+        # Without normalisation, partial-day volume vs 50-day average understates the ratio and flags every morning breakout as low-volume.
         _to_min = lambda t: t.hour * 60 + t.minute
         _session_total = _to_min(end_time) - _to_min(start_time)
         _elapsed = max(0, _to_min(datetime.now(timezone.utc).time().replace(tzinfo=None)) - _to_min(start_time))
@@ -505,7 +417,6 @@ class IntradayOrchestrator:
         tickers = self.get_portfolio_tickers()
         ignored = self.config.get("IGNORED_TICKERS", [])
         
-        # Filter out ignored list AND Mutual Funds
         tickers = [t for t in tickers if t not in ignored and not t.startswith('0P')]
         
         if not tickers:
@@ -514,8 +425,7 @@ class IntradayOrchestrator:
 
         metadata = self.get_asset_metadata(tickers)
         
-        # Add system yield benchmarks and SPY for macro shock detection
-        # SPY is fetched here once so crash_engine never needs its own per-crash HTTP call
+        # SPY fetched here once so crash_engine never needs a per-scan HTTP call
         macro_tickers = ["^TYX", "SPY"]
         spy_change_pct: Optional[float] = None
         download_list = sorted(set(tickers + macro_tickers))
@@ -526,7 +436,6 @@ class IntradayOrchestrator:
             logger.warning("Bulk intraday download returned no data.")
             return
 
-        # Reconstruct a MultiIndex bulk frame so the rest of the scan loop is unchanged.
         df_bulk = pd.concat(
             {t: df for t, df in ticker_dfs.items()},
             axis=1,
@@ -535,7 +444,6 @@ class IntradayOrchestrator:
             logger.warning("Bulk download returned empty DataFrame.")
             return
 
-        # --- MACRO FLASH SURGE DETECTION ---
         for m_ticker in macro_tickers:
             try:
                 if isinstance(df_bulk.columns, pd.MultiIndex):
@@ -559,9 +467,8 @@ class IntradayOrchestrator:
                 if len(m_df) < 5: 
                     continue
 
-                # --- STALENESS / MARKET CLOSED CIRCUIT BREAKER ---
                 if self._seconds_since(m_df.index[-1]) > _STALE_SECONDS:
-                    continue  # Bypass stale data
+                    continue
                 
                 m_open = float(m_df['Close'].iloc[0])
                 m_curr = float(m_df['Close'].iloc[-1])
@@ -606,8 +513,6 @@ class IntradayOrchestrator:
             except Exception:
                 logger.error("Macro eval failed for %s", m_ticker, exc_info=True)
 
-        # --- PHASE 4: AI MACRO DEFENSE OVERRIDE ---
-        # Dynamically tighten the crash threshold if the XGBoost AI model predicts an imminent > 2.0% SPY gap today.
         try:
             cursor = conn.cursor()
             cursor.execute('''
@@ -620,9 +525,7 @@ class IntradayOrchestrator:
 
             if ai_warning_row and ai_warning_row['max_warning'] is not None and float(ai_warning_row['max_warning']) > _AI_DEFENSE_THRESHOLD:
                 logger.info("AI Volatility Defense active: tightening flash crash threshold to %.1f%%.", _AI_DEFENSE_CAP)
-                # Set a post-beta cap, NOT session_crash_threshold directly — mutating the base
-                # threshold lets beta scaling widen it back out for high-beta names, defeating
-                # the override. The cap is applied after beta multiplication inside evaluate().
+                # Cap is applied post-beta so beta scaling can't widen it back out and defeat the override.
                 self.crash_engine.ai_threshold_cap = _AI_DEFENSE_CAP
             else:
                 self.crash_engine.ai_threshold_cap = None
@@ -659,45 +562,29 @@ class IntradayOrchestrator:
                 if len(df_intraday) < 2:
                     continue
 
-                # --- STALENESS / MARKET CLOSED CIRCUIT BREAKER ---
-                # Completely bypass evaluation if restarting the app over the weekend/holiday
                 if self._seconds_since(df_intraday.index[-1]) > _STALE_SECONDS:
-                    # Market is closed, or asset is halted. Save the parquet but skip alert evaluation.
                     df_intraday.index = df_intraday.index.tz_localize(None)
                     df_intraday.to_parquet(INTRADAY_DIR / f"{ticker}_intraday.parquet", engine='pyarrow')
                     continue
 
-                # Strip timezone before any index arithmetic; parquet write is deferred
-                # until after history validation so a short/corrupt intraday frame cannot
-                # overwrite a good dashboard parquet.
+                # Strip TZ before index arithmetic; parquet write deferred until after history validation.
                 df_intraday.index = df_intraday.index.tz_localize(None)
 
                 current_price = float(df_intraday['Close'].iloc[-1])
                 session_open = float(df_intraday['Open'].iloc[0]) if 'Open' in df_intraday.columns else None
 
-                # Load Historical Data for stitching and math
                 hist_path = HISTORICAL_DIR / f"{ticker}.parquet"
                 if not hist_path.exists():
                     continue
 
                 df_hist = pd.read_parquet(hist_path)
-                # Drop trailing NaN closes before any length or value check.
-                # A NaN last-close passes the > 0 corp-action gate (NaN > 0 is False,
-                # so the lookup is skipped) but propagates into df_combined, where it
-                # becomes prev_close in the crash engine and poisons every pct comparison
-                # with NaN — the crash is then silently missed because NaN <= threshold
-                # evaluates to False rather than raising.
+                # NaN last-close propagates into df_combined as prev_close, silently poisoning pct comparisons.
                 df_hist = df_hist[df_hist['Close'].notna()]
                 if df_hist.empty or len(df_hist) < 20:
                     continue
 
-                # Save Intraday Parquet for the Web Dashboard — written here, after history
-                # validation, so only frames with sufficient context reach the dashboard.
                 df_intraday.to_parquet(INTRADAY_DIR / f"{ticker}_intraday.parquet", engine='pyarrow')
 
-                # --- PRE-FLIGHT ANOMALY CHECK (CORPORATE ACTION CIRCUIT BREAKER) ---
-                # Compare the live price against the last known historical close.
-                # If there's a massive gap (>10%), lazily check for a split/dividend to avoid false alerts.
                 last_hist_close = df_hist['Close'].iloc[-1]
                 if last_hist_close > 0:
                     raw_gap_pct = abs((current_price - last_hist_close) / last_hist_close) * 100.0
@@ -706,7 +593,6 @@ class IntradayOrchestrator:
                             logger.info("Corporate action detected for %s; suppressing alert evaluation.", ticker)
                             continue
 
-                # Strict Time-Series Stitching Normalization
                 latest_dt = df_intraday.index[-1]
                 latest_date_only = latest_dt.normalize()
                 hist_last_date_only = df_hist.index[-1].normalize()
@@ -722,9 +608,7 @@ class IntradayOrchestrator:
                 asset_meta = metadata.get(ticker, {})
                 currency = asset_meta.get('currency', 'USD')
                 
-                # --- EVALUATE CRASH ENGINE ---
-                # evaluate() runs first so we have the reason string for fingerprinting.
-                # The gate check is cheap; evaluate() returns None when no condition is met.
+                # evaluate() first so reason string is available for fingerprinting; returns None when no condition met.
                 if crash_enabled:
                     crash_alert = self.crash_engine.evaluate(
                         ticker, current_price, df_combined, asset_meta, df_hist, session_open
@@ -734,11 +618,9 @@ class IntradayOrchestrator:
                     ):
                         crash_alerts_to_send.append((ticker, crash_alert, currency, asset_meta))
 
-                # --- EVALUATE MOONSHOT ENGINE ---
                 if moonshot_enabled:
                     if 'Volume' in df_intraday.columns:
-                        # Project cumulative intraday volume to a full-day equivalent so
-                        # it is comparable to the 50-day daily average in the engine.
+                        # Project to full-day equivalent so it compares correctly against the 50-day average.
                         projected_volume = float(df_intraday['Volume'].sum()) / session_elapsed_frac
                     else:
                         projected_volume = None
@@ -750,7 +632,6 @@ class IntradayOrchestrator:
                     ):
                         moonshot_alerts_to_send.append((ticker, moonshot_alert, currency, asset_meta))
 
-                # --- EVALUATE ANOMALY ENGINE ---
                 if anomaly_enabled and 'Volume' in df_intraday.columns:
                     try:
                         vol_ma20 = df_hist['Volume'].tail(20).mean()
@@ -785,7 +666,6 @@ class IntradayOrchestrator:
                                     .get("THRESHOLD", 0.7)
                                 )
                                 if anomaly_score > threshold:
-                                    # Corroborate any crash alert that also fired this scan
                                     corroborated = False
                                     for i, (t, alert, *_) in enumerate(crash_alerts_to_send):
                                         if t == ticker:
@@ -817,7 +697,6 @@ class IntradayOrchestrator:
             except Exception:
                 logger.error("Error processing %s", ticker, exc_info=True)
 
-        # --- BATCH DISPATCH ALERTS (One Message Per Ticker) ---
         self._dispatch_alerts(
             "Crash",
             crash_alerts_to_send,
