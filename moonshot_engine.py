@@ -1,4 +1,3 @@
-# moonshot_engine.py
 from __future__ import annotations
 
 from typing import Any
@@ -12,16 +11,11 @@ from utils import clamp_beta
 logger = logging.getLogger(__name__)
 
 class MoonshotEngine:
-    """
-    Evaluates parabolic upside volatility and 52-week highs.
-    Applies technical analysis (RSI, Bollinger Bands) to warn of mean-reversion risks.
-    """
+    """Detects parabolic upside volatility and 52-week ATH breakouts; RSI/Bollinger caution notes warn of mean-reversion risk."""
 
     def __init__(self, config: dict[str, Any]) -> None:
         self.config = config
         self.moon_cfg = self.config.get("NOTIFICATIONS", {}).get("MOONSHOT_ALERTS", {})
-        
-        # Pull Thresholds from Config
         self.spike_percent = float(self.moon_cfg.get("SPIKE_PERCENT", 5.0))
         self.spike_days = int(self.moon_cfg.get("SPIKE_DAYS", 3))
         self.sma_length = int(self.moon_cfg.get("SMA_LENGTH", 10))
@@ -43,20 +37,7 @@ class MoonshotEngine:
         df_hist: pd.DataFrame,
         current_volume: float | None = None,
     ) -> dict[str, Any] | None:
-        """
-        Evaluates the mathematical moonshot signatures.
-        Returns an alert dictionary if triggered, else None.
-
-        df_combined contract: must contain a 'Close' column only — the orchestrator
-        builds it from df_hist[['Close']] plus the live tick. Do NOT add OHLCV reads
-        here without also updating the stitching logic in intraday_orchestrator.py.
-        df_hist is passed separately for any full-OHLCV calculations.
-
-        current_volume contract: must be a PROJECTED full-day volume estimate, not raw
-        cumulative intraday volume. The orchestrator divides the cumulative sum by the
-        fraction of session elapsed before passing it here, so the comparison against
-        the 50-day daily average is apples-to-apples.
-        """
+        """Returns alert dict if moonshot signature detected, else None. current_volume must be a projected full-day estimate (orchestrator normalises by session-elapsed fraction); df_combined must be Close-only."""
         # Exclude the live intraday tick from indicator calculations — it is a partially-formed
         # bar mid-session and skews RSI/Bollinger on volatile open days.
         df_settled = df_combined.iloc[:-1]
@@ -141,7 +122,6 @@ class MoonshotEngine:
             except Exception as e:
                 logger.warning(f"Volume confirmation check failed for {ticker}: {e}")
 
-            # Construct Reason
             reasons: list[str] = []
             if is_ath:
                 reasons.append(f"Breached 52-Week High ({fifty_two_wk_high:.2f})")
