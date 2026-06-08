@@ -84,22 +84,36 @@ def _fallback_holdings() -> list:
 
 
 def get_smgb_next_open_date() -> date:
-    """Returns next SMGB.L trading day: Monday if today is Friday/Saturday, else tomorrow."""
+    """Returns the next SMGB.L trading day to open: today if before LSE open, else tomorrow."""
+    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
     today = date.today()
-    if today.weekday() == 4:   # Friday
-        return today + timedelta(days=3)
-    if today.weekday() == 5:   # Saturday
+    if today.weekday() == 5:   # Saturday → Monday
         return today + timedelta(days=2)
+    if today.weekday() == 6:   # Sunday → Monday
+        return today + timedelta(days=1)
+    lse_open_utc, _ = time_engine.market_window_utc("LSE")
+    if now_utc < datetime.combine(today, lse_open_utc):
+        return today
+    if today.weekday() == 4:   # Friday → Monday
+        return today + timedelta(days=3)
     return today + timedelta(days=1)
 
 
 def _last_trading_date() -> date:
-    """Return the most recent weekday on or before today."""
+    """Return the most recent weekday whose LSE session has started or completed."""
+    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
     today = date.today()
-    if today.weekday() == 5:   # Saturday
+    if today.weekday() == 5:   # Saturday → Friday
         return today - timedelta(days=1)
-    if today.weekday() == 6:   # Sunday
+    if today.weekday() == 6:   # Sunday → Friday
         return today - timedelta(days=2)
+    lse_open_utc, _ = time_engine.market_window_utc("LSE")
+    if now_utc < datetime.combine(today, lse_open_utc):
+        # LSE hasn't opened yet today — use previous trading day
+        d = today - timedelta(days=1)
+        while d.weekday() >= 5:
+            d -= timedelta(days=1)
+        return d
     return today
 
 
