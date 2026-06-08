@@ -60,6 +60,15 @@ The Quantamental system features an automated configuration engine. You do not n
 
 **Note:** Ensure your `BASE_CURRENCY` (e.g., GBP, USD, EUR) is set correctly in the Settings. This ensures that foreign assets are mathematically converted to your local currency using live FX rates for accurate P&L calculations.
 
+**File Logging:** To capture the full application log to disk, enable `FILE_LOGGING` in Settings → Core System & Currencies. Key options:
+- `ENABLED` — toggle file logging on/off without restarting the server
+- `LEVEL` — minimum severity written to the file (`DEBUG` | `INFO` | `WARNING` | `ERROR` | `CRITICAL`); the console stays at INFO regardless
+- `DAYS_TO_KEEP` — number of daily rotated files to retain (default 30)
+- `ARCHIVE` — gzip-compress rotated files to save disk space
+- `LOG_DIR` — directory for log files, relative to the project root (default `logs/`)
+
+The active log is always `logs/app.log`. Rotated files are named `app.log.YYYY-MM-DD` (or `.gz` if archive is enabled). Changes take effect immediately without a restart.
+
 
 ### **4. Initial AI Training (Cold Start)**
 Before the system can provide Machine Learning predictions, it must build its historical training set.
