@@ -1,31 +1,14 @@
-# universe_engine.py
 import os
 import logging
 from ftplib import FTP
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 
-from database import get_connection
+from database import get_connection, log_notification
 
 logger = logging.getLogger(__name__)
 
-def log_notification(message_type: str, message_text: str) -> None:
-    """Helper function to log scan progress to the system notification center."""
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO system_notifications (message_type, message_text) VALUES (?, ?)",
-            (message_type, message_text)
-        )
-        conn.commit()
-    except Exception as e:
-        logger.error(f"Failed to log notification: {e}")
-    finally:
-        conn.close()
-
 def _download_ftp_files(filenames: dict) -> bool:
-    """Establishes an anonymous FTP connection to Nasdaq and retrieves master lists."""
     logger.info("Connecting to ftp.nasdaqtrader.com...")
     try:
         ftp = FTP("ftp.nasdaqtrader.com")
@@ -34,25 +17,20 @@ def _download_ftp_files(filenames: dict) -> bool:
         ftp.cwd("SymbolDirectory")
 
         for filename, filepath in filenames.items():
-            logger.info(f"Downloading {filename}.txt to {filepath}...")
+            logger.info("Downloading %s.txt to %s...", filename, filepath)
             with open(filepath, "wb") as f:
                 ftp.retrbinary(f"RETR {filename}.txt", f.write)
-        
+
         ftp.quit()
         return True
     except Exception as e:
-        logger.error(f"Failed to download FTP files: {e}")
+        logger.error("Failed to download FTP files: %s", e)
         return False
 
 def update_market_universe() -> None:
-    """
-    Downloads the master ticker list, filters for common stocks, 
-    and bulk inserts the universe into the SQLite database.
-    """
     logger.info("Initiating Market Universe Update...")
     log_notification("Info", "Market Universe Update initiated. Fetching master list from Nasdaq FTP.")
-    
-    # Ensure a temporary data directory exists
+
     temp_dir = Path("data/temp")
     temp_dir.mkdir(parents=True, exist_ok=True)
     
@@ -66,7 +44,7 @@ def update_market_universe() -> None:
         return
 
     tickers_to_insert = []
-    last_updated = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    last_updated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
     logger.info("Parsing listed files and filtering for tradable Common Stock...")
     try:
@@ -83,39 +61,35 @@ def update_market_universe() -> None:
                     symbol = line_data[0]
                     description = line_data[1]
 
-                    # Execution Rules based on Nasdaq format specifications
-                    # Exclude test issues, preferred stocks, and warrants.
+                    # Nasdaq format: column 6 (nasdaqlisted) or 4 (otherlisted) is a test-issue flag.
                     is_test_nasdaq = (filename == "nasdaqlisted" and len(line_data) > 6 and line_data[6] == "Y")
                     is_test_other = (filename == "otherlisted" and len(line_data) > 4 and line_data[4] == "Y")
-                    
+
                     if symbol == "" or description == "" or is_test_nasdaq or is_test_other or "$" in symbol:
                         continue
 
-                    # Institutional filter: We only want equities, not ETFs, ETNs, or preferred shares
                     if "Common Stock" not in description:
                         continue
 
-                    clean_symbol = symbol.replace(".", "-") # Normalize BRK.B to BRK-B for Yahoo Finance
+                    clean_symbol = symbol.replace(".", "-")  # BRK.B → BRK-B for Yahoo Finance
                     clean_name = description.replace(" - Common Stock", "").replace(" Common Stock", "").strip()
-                    
-                    # Map the native Exchange using the source filename
+
                     exchange_label = "NASDAQ" if filename == "nasdaqlisted" else "NYSE/AMEX"
-                    
+
                     tickers_to_insert.append((
                         clean_symbol,
                         clean_name,
-                        None, # Sector
-                        None, # Industry
-                        'US', # Country
-                        exchange_label, # Exchange
+                        None,
+                        None,
+                        'US',
+                        exchange_label,
                         last_updated
                     ))
     except Exception as e:
-        logger.error(f"Error parsing FTP files: {e}")
+        logger.error("Error parsing FTP files: %s", e)
         log_notification("Error", f"Market Universe Update failed during parsing: {e}")
         return
     finally:
-        # Clean up temporary files
         for filepath in filenames.values():
             if os.path.exists(filepath):
                 os.remove(filepath)
@@ -124,27 +98,25 @@ def update_market_universe() -> None:
         logger.warning("No valid tickers found to insert.")
         return
 
-    logger.info(f"Preparing to bulk insert {len(tickers_to_insert)} equities into the database...")
-    
+    logger.info("Preparing to bulk insert %s equities into the database...", len(tickers_to_insert))
+
+    conn = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
-        
-        # We use executemany for rapid, transaction-safe bulk inserts
         cursor.executemany('''
             INSERT OR REPLACE INTO market_universe (ticker, company_name, sector, industry, country, exchange, last_updated)
             VALUES (?, ?, ?, ?, ?, ?, ?)
         ''', tickers_to_insert)
-        
         conn.commit()
         logger.info("Database bulk insert complete.")
         log_notification("Success", f"Market Universe updated successfully. Engine is now tracking {len(tickers_to_insert):,} US Equities.")
-        
     except Exception as e:
-        logger.error(f"Database insertion failed: {e}")
+        logger.error("Database insertion failed: %s", e)
         log_notification("Error", f"Market Universe DB Insert failed: {e}")
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 if __name__ == "__main__":
     update_market_universe()
