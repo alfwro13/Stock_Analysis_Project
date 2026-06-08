@@ -1,4 +1,3 @@
-# portfolio_service.py
 import logging
 from typing import Dict
 from config import BASE_CURRENCY
@@ -16,14 +15,13 @@ def _fx_rate(pair: str) -> float:
         _last_known_rates[pair] = rate
         return rate
     if pair in _last_known_rates:
-        logger.warning(f"Using stale FX rate for {pair}.")
+        logger.warning("Using stale FX rate for %s.", pair)
         return _last_known_rates[pair]
-    logger.warning(f"No FX data for {pair}. Returning 1.0 fallback.")
+    logger.warning("No FX data for %s. Returning 1.0 fallback.", pair)
     return 1.0
 
 
 def get_rate_to_base(stock_currency: str) -> float:
-    """Converts Native to Base (e.g., USD -> GBP)."""
     if stock_currency == 'GBp' and BASE_CURRENCY == 'GBP':
         return 0.01  # Special LSE Math
 
@@ -34,7 +32,6 @@ def get_rate_to_base(stock_currency: str) -> float:
 
 
 def get_rate_from_base(stock_currency: str) -> float:
-    """Converts Base to Native (e.g., GBP -> USD)."""
     if not stock_currency or stock_currency in [BASE_CURRENCY, 'GBp', 'GBP']:
         return 1.0
 
