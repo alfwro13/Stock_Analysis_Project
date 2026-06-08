@@ -318,3 +318,57 @@ def test_label_from_score_exact_boundary_negative():
     from news_feed_engine import _label_from_score
     assert _label_from_score(-0.151) == "negative"
     assert _label_from_score(-0.15)  == "neutral"
+
+
+# ---------------------------------------------------------------------------
+# utils.clamp_beta
+# ---------------------------------------------------------------------------
+
+@pytest.mark.utils
+def test_clamp_beta_normal_value():
+    from utils import clamp_beta
+    assert clamp_beta(1.2) == pytest.approx(1.2)
+
+
+@pytest.mark.utils
+def test_clamp_beta_clamps_high():
+    from utils import clamp_beta
+    assert clamp_beta(3.0) == pytest.approx(2.0)
+
+
+@pytest.mark.utils
+def test_clamp_beta_clamps_low():
+    from utils import clamp_beta
+    assert clamp_beta(0.1) == pytest.approx(0.5)
+
+
+@pytest.mark.utils
+def test_clamp_beta_none_returns_default():
+    from utils import clamp_beta
+    assert clamp_beta(None) == pytest.approx(1.0)
+
+
+@pytest.mark.utils
+def test_clamp_beta_empty_string_returns_default():
+    from utils import clamp_beta
+    assert clamp_beta("") == pytest.approx(1.0)
+
+
+@pytest.mark.utils
+def test_clamp_beta_non_numeric_string_returns_default():
+    from utils import clamp_beta
+    assert clamp_beta("bad") == pytest.approx(1.0)
+
+
+@pytest.mark.utils
+def test_clamp_beta_custom_bounds():
+    from utils import clamp_beta
+    assert clamp_beta(0.0, lo=0.2, hi=1.5) == pytest.approx(0.2)
+    assert clamp_beta(2.0, lo=0.2, hi=1.5) == pytest.approx(1.5)
+
+
+@pytest.mark.utils
+def test_clamp_beta_exact_boundary_not_clamped():
+    from utils import clamp_beta
+    assert clamp_beta(0.5) == pytest.approx(0.5)
+    assert clamp_beta(2.0) == pytest.approx(2.0)
