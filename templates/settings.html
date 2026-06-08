@@ -1508,6 +1508,43 @@
                     <label>Ignored Tickers (Comma separated, e.g. GBP, USD, 0P00018XAR.L)</label>
                     <input type="text" id="IGNORED_TICKERS" value="{{ config.IGNORED_TICKERS | join(', ') if config.IGNORED_TICKERS else '' }}">
                 </div>
+
+                <div class="settings-panel border-left-cyan">
+                    <strong>📄 File Logging</strong>
+                    <p class="settings-desc">Write all console log output to a rotating daily log file. Each day's file is kept for the configured number of days, then deleted automatically on the next rotation.</p>
+
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="FILE_LOGGING_ENABLED" {% if config.FILE_LOGGING and config.FILE_LOGGING.ENABLED %}checked{% endif %}>
+                            <abbr title="When enabled, a TimedRotatingFileHandler is attached to the root Python logger. All output that currently goes to the console is also written to the log file.">Enable file logging</abbr>
+                        </label>
+                    </div>
+                    <div class="form-group">
+                        <label><abbr title="Minimum severity level written to the log file. The console log level is unaffected and stays at INFO.">Log level</abbr></label>
+                        <select id="FILE_LOGGING_LEVEL">
+                            {% set fl_level = config.FILE_LOGGING.LEVEL | default('INFO') if config.FILE_LOGGING else 'INFO' %}
+                            <option value="DEBUG"    {% if fl_level == 'DEBUG'    %}selected{% endif %}>DEBUG — everything</option>
+                            <option value="INFO"     {% if fl_level == 'INFO'     %}selected{% endif %}>INFO — standard operational messages</option>
+                            <option value="WARNING"  {% if fl_level == 'WARNING'  %}selected{% endif %}>WARNING — warnings and above</option>
+                            <option value="ERROR"    {% if fl_level == 'ERROR'    %}selected{% endif %}>ERROR — errors and above</option>
+                            <option value="CRITICAL" {% if fl_level == 'CRITICAL' %}selected{% endif %}>CRITICAL — critical errors only</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label><abbr title="Number of daily rotated log files to retain. Files older than this are deleted automatically when the next midnight rotation occurs.">Days to keep</abbr></label>
+                        <input type="number" id="FILE_LOGGING_DAYS_TO_KEEP" min="1" max="365" value="{{ config.FILE_LOGGING.DAYS_TO_KEEP | default(30) if config.FILE_LOGGING else 30 }}">
+                    </div>
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="FILE_LOGGING_ARCHIVE" {% if config.FILE_LOGGING and config.FILE_LOGGING.ARCHIVE %}checked{% endif %}>
+                            <abbr title="When enabled, rotated log files are gzip-compressed (.gz) to save disk space. The active app.log is always plain text.">Compress rotated files (gzip)</abbr>
+                        </label>
+                    </div>
+                    <div class="form-group">
+                        <label><abbr title="Directory where log files are written, relative to the project root. Created automatically if it does not exist.">Log directory (relative path)</abbr></label>
+                        <input type="text" id="FILE_LOGGING_LOG_DIR" value="{{ config.FILE_LOGGING.LOG_DIR | default('logs') if config.FILE_LOGGING else 'logs' }}" placeholder="logs">
+                    </div>
+                </div>
             </details>
 
             <details class="settings-card">
@@ -2764,6 +2801,13 @@
                 "USER_TIMEZONE": document.getElementById('USER_TIMEZONE').value.trim(),
                 "HOME_EXCHANGE": document.getElementById('HOME_EXCHANGE').value,
                 "IGNORED_TICKERS": document.getElementById('IGNORED_TICKERS').value.split(',').map(s => s.trim()).filter(Boolean),
+                "FILE_LOGGING": {
+                    "ENABLED": document.getElementById('FILE_LOGGING_ENABLED').checked,
+                    "LEVEL": document.getElementById('FILE_LOGGING_LEVEL').value,
+                    "DAYS_TO_KEEP": parseInt(document.getElementById('FILE_LOGGING_DAYS_TO_KEEP').value) || 30,
+                    "ARCHIVE": document.getElementById('FILE_LOGGING_ARCHIVE').checked,
+                    "LOG_DIR": document.getElementById('FILE_LOGGING_LOG_DIR').value.trim() || 'logs'
+                },
                 "YAHOO_IPV6_ADDRESS": document.getElementById('YAHOO_IPV6_ADDRESS').value.trim(),
                 "NETWORK_FAULT_NOTIFY_NEXTCLOUD": document.getElementById('NETWORK_FAULT_NOTIFY_NEXTCLOUD').checked,
                 "GHOSTFOLIO_ACCOUNTS": {
