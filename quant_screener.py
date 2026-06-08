@@ -1,9 +1,8 @@
-# quant_screener.py
 import math
 import os
 import re
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any, Tuple
 
 from database import get_connection
@@ -27,19 +26,8 @@ def _is_valid_numeric(v) -> bool:
         return False
     return math.isfinite(f)
 
-# --- Expert System: Rule-Based Screens with Regime Context ---
-
 def get_oversold_reversals(data: List[Dict[str, Any]], regime_label: str) -> List[Dict[str, Any]]:
-    """
-    Identifies assets that are heavily oversold but showing early momentum recovery.
-    Logic: RSI < 30 AND MACD Histogram > 0.
-    The MACD bullish cross is intentionally NOT required — it typically lags RSI
-    recovery by several sessions, so demanding both conditions makes the screen
-    fire almost never. See inline comment in the loop body.
-    Regime Context: In 'Crash'/'Volatile', traditional RSI dips fail as stocks keep dropping.
-    Instead of requiring Price > 200D SMA (which contradicts RSI < 30), we require defensive
-    characteristics: low beta (<0.8) or defensive sectors.
-    """
+    """RSI<30 + positive MACD hist; in Crash/Volatile requires low-beta or defensive sector instead of >200D SMA."""
     results = []
     defensive_sectors = DEFENSIVE_SECTORS
     
@@ -49,9 +37,7 @@ def get_oversold_reversals(data: List[Dict[str, Any]], regime_label: str) -> Lis
         sector = row.get('sector', 'Unknown')
         
         if _is_valid_numeric(rsi) and _is_valid_numeric(macd_hist):
-            # RSI < 30 = deeply oversold. Positive MACD histogram = momentum recovering.
-            # Bullish cross is a bonus tag but not required — the cross typically lags
-            # RSI recovery by several sessions, making both conditions near-impossible to satisfy together.
+            # MACD bullish cross not required — typically lags RSI recovery by sessions, making both near-impossible together.
             if rsi < RSI_OVERSOLD and macd_hist > 0:
                 if regime_label in ['Crash', 'Volatile']:
                     # Safely extract beta — guard against None, non-numeric, and ±inf
@@ -73,11 +59,7 @@ def get_oversold_reversals(data: List[Dict[str, Any]], regime_label: str) -> Lis
     return results
 
 def get_macd_bullish_crosses(data: List[Dict[str, Any]], regime_label: str) -> List[Dict[str, Any]]:
-    """
-    Identifies assets that have triggered a MACD Bullish Cross.
-    Logic: bullish_cross == 1 (True)
-    Regime Context: In 'Crash'/'Volatile', strictly requires Price > 200D SMA to avoid false bear-market rallies.
-    """
+    """bullish_cross==True; in Crash/Volatile also requires price > SMA-200 to avoid false bear-market rallies."""
     results = []
     for row in data:
         if row.get('bullish_cross') in (1, True):
@@ -92,11 +74,7 @@ def get_macd_bullish_crosses(data: List[Dict[str, Any]], regime_label: str) -> L
     return results
 
 def get_momentum_surges(data: List[Dict[str, Any]], regime_label: str) -> List[Dict[str, Any]]:
-    """
-    Identifies assets breaking out with high volume while in a healthy momentum band.
-    Logic: volume_surge == 1 (True) AND 50 < RSI < 70
-    Regime Context: In 'Crash'/'Volatile', strictly requires Price > 200D SMA.
-    """
+    """volume_surge==True + RSI in momentum band (50–70); in Crash/Volatile also requires price > SMA-200."""
     results = []
     for row in data:
         vol_surge = row.get('volume_surge')
@@ -114,10 +92,7 @@ def get_momentum_surges(data: List[Dict[str, Any]], regime_label: str) -> List[D
     return results
 
 def get_overbought_warnings(data: List[Dict[str, Any]], regime_label: str) -> List[Dict[str, Any]]:
-    """
-    Identifies assets that are mathematically overextended and beginning to lose momentum.
-    Logic: RSI > 70 AND MACD Histogram < 0 (Tightened to > 65 in Crash Regimes).
-    """
+    """RSI > 70 (>65 in Crash/Volatile) AND negative MACD hist — distribution-risk flag."""
     results = []
     rsi_threshold = RSI_OVERBOUGHT_STRESSED if regime_label in ['Crash', 'Volatile'] else RSI_OVERBOUGHT
     
@@ -131,20 +106,7 @@ def get_overbought_warnings(data: List[Dict[str, Any]], regime_label: str) -> Li
     return results
 
 def get_longterm_entry_setups(data: List[Dict[str, Any]], regime_label: str) -> List[Dict[str, Any]]:
-    """
-    Surfaces quality stocks that have pulled back into a buyable range — tuned for a
-    buy-and-hold trader who wants to enter at a good price rather than chase momentum.
-
-    Criteria:
-      - Price above 200D SMA (institutional uptrend intact)
-      - composite_score >= 20 (passing fundamentals + technicals)
-      - RSI 35–60 (healthy pullback; not oversold panic, not overbought chase)
-      - atr_pct < 0.025 (daily vol < 2.5% — filters out speculative/wild names)
-      - Quality grade A or B (no loss-making or overleveraged companies)
-
-    In Crash/Volatile regimes the RSI ceiling is tightened to 55 to avoid
-    catching falling knives dressed as pullbacks.
-    """
+    """Price>SMA-200, score≥20, RSI 35–60 (55 ceiling in Crash/Volatile), ATR<2.5%, grade A/B — buy-and-hold entry filter."""
     results = []
     rsi_ceiling = 55 if regime_label in ['Crash', 'Volatile'] else 60
 
@@ -173,10 +135,7 @@ def get_longterm_entry_setups(data: List[Dict[str, Any]], regime_label: str) -> 
     return results
 
 def filter_ai_vetoes(setups: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
-    """
-    Evaluates ML prediction metrics on algorithmic setups. 
-    If ML Confidence < 40% (or missing), the asset is stripped from the standard list and funnelled to the veto list.
-    """
+    """Splits setups into (approved, vetoed) based on ML confidence threshold; missing confidence → vetoed."""
     approved = []
     vetoed = []
     for row in setups:
@@ -188,11 +147,7 @@ def filter_ai_vetoes(setups: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]]
     return approved, vetoed
 
 def filter_macro_vetoes(setups: List[Dict[str, Any]], threat_level: str) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
-    """
-    Applies Systemic Liquidity Drain Circuit Breaker via credit spreads and vetoes high-multiple 
-    or highly indebted stocks that negatively correlate with surging yields.
-    """
-    # 1. Fetch Systemic Liquidity Constraints (Credit Spreads)
+    """Credit-spread circuit breaker + yield-correlation veto on high-multiple/high-debt stocks in RED/YELLOW regimes."""
     us_spread = 0.0
     uk_spread = 0.0
     conn = None
@@ -202,12 +157,11 @@ def filter_macro_vetoes(setups: List[Dict[str, Any]], threat_level: str) -> Tupl
         cursor.execute("SELECT us_high_yield_spread, uk_corporate_spread FROM macro_indicators ORDER BY date DESC LIMIT 1")
         row = cursor.fetchone()
         if row:
-            # FIX: Cast sqlite3.Row to dict to use .get()
             row_dict = dict(row)
             us_spread = float(row_dict.get('us_high_yield_spread') or 0.0)
             uk_spread = float(row_dict.get('uk_corporate_spread') or 0.0)
     except Exception as e:
-        logger.error(f"Failed to fetch credit spreads for circuit breaker: {e}")
+        logger.error("Failed to fetch credit spreads for circuit breaker: %s", e)
     finally:
         if conn:
             conn.close()
@@ -222,12 +176,11 @@ def filter_macro_vetoes(setups: List[Dict[str, Any]], threat_level: str) -> Tupl
         is_us_asset = country == 'US' or currency == 'USD'
         is_uk_asset = country == 'UK' or currency in ['GBP', 'GBp']
         
-        # 2. Hard Liquidity Drain Circuit Breaker (Trumps all logic) - Threshold raised to 6.5
+        # Hard circuit breaker: credit spread >6.5% (US) / >3.0% (UK) overrides all other logic.
         if (is_us_asset and us_spread > 6.5) or (is_uk_asset and uk_spread > 3.0):
             vetoed.append(row)
             continue
             
-        # 3. Macro Yield Valuation Vetoes
         if threat_level not in ['RED', 'YELLOW']:
             approved.append(row)
             continue
@@ -237,9 +190,7 @@ def filter_macro_vetoes(setups: List[Dict[str, Any]], threat_level: str) -> Tupl
         corr = row.get('yield_correlation')
 
         is_high_multiple = (pe is not None and pe > 30) or (debt is not None and debt > 1.5)
-        # Missing correlation data is treated as a risk factor, not neutral.
-        # A high-multiple stock with no yield-correlation history provides no evidence
-        # it is rate-safe, so we apply the veto rather than assume safety.
+        # Missing correlation treated as risk: no yield-correlation history → cannot assume rate-safety → veto.
         is_neg_corr = corr is None or corr <= -0.3
         
         if is_high_multiple and is_neg_corr:
@@ -249,14 +200,8 @@ def filter_macro_vetoes(setups: List[Dict[str, Any]], threat_level: str) -> Tupl
             
     return approved, vetoed
 
-# --- Data Retrieval ---
-
 def get_portfolio_deterioration_alerts(target_date: str) -> List[Dict[str, Any]]:
-    """
-    Finds portfolio/watchlist holdings where today's composite score is 15+ points
-    lower than the most recent score from at least 5 calendar days ago.
-    Uses score_history — gracefully returns [] if the table is empty or not yet populated.
-    """
+    """Returns portfolio holdings whose composite score dropped ≥15pts vs their most recent score ≥5 days ago."""
     try:
         from data_engine import DataEngine
         portfolio_tickers = DataEngine().get_all_tickers()
@@ -274,14 +219,12 @@ def get_portfolio_deterioration_alerts(target_date: str) -> List[Dict[str, Any]]
         conn = get_connection()
         cursor = conn.cursor()
 
-        # Today's scores
         cursor.execute(
             f"SELECT ticker, score, close_price FROM score_history WHERE ticker IN ({placeholders}) AND date = ?",
             (*portfolio_tickers, target_date),
         )
         today_scores = {r['ticker']: dict(r) for r in cursor.fetchall()}
 
-        # Most recent score per ticker that is at least 5 calendar days old
         cursor.execute(
             f"""SELECT ticker, score, date FROM score_history
                 WHERE ticker IN ({placeholders}) AND date <= ?
@@ -309,25 +252,22 @@ def get_portfolio_deterioration_alerts(target_date: str) -> List[Dict[str, Any]]
         return alerts
 
     except Exception as e:
-        logger.warning(f"Portfolio deterioration check skipped (score_history may be empty): {e}")
+        logger.warning("Portfolio deterioration check skipped (score_history may be empty): %s", e)
         return []
     finally:
         if conn:
             conn.close()
 
 def fetch_latest_signals(target_date: str) -> List[Dict[str, Any]]:
-    """
-    Connects to the SQLite database and retrieves all quantitative signals for the target date,
-    joining stock_signals to capture valuation and macro correlation metrics required for veto filters.
-    """
-    logger.info(f"Fetching overnight quant signals for date: {target_date}")
-    
+    """Fetches quant_signals for target_date joined with stock_signals/earnings_volatility for veto-filter fields."""
+    logger.info("Fetching overnight quant signals for date: %s", target_date)
+
+    conn = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
-        
-        # Parameterized query to prevent SQL injection, joining fundamentals and earnings data.
-        # earnings_volatility provides the next earnings date if stock_signals doesn't have it.
+
+        # COALESCE: earnings_volatility provides next_earnings_date when stock_signals lacks it.
         cursor.execute('''
             SELECT q.*,
                    s.trailing_pe, s.debt_to_equity, s.yield_correlation,
@@ -339,46 +279,44 @@ def fetch_latest_signals(target_date: str) -> List[Dict[str, Any]]:
             LEFT JOIN earnings_volatility ev ON q.ticker = ev.ticker
             WHERE q.date = ?
         ''', (target_date,))
-        
+
         rows = cursor.fetchall()
         data = [dict(row) for row in rows]
-        
-        conn.close()
-        
-        logger.info(f"Successfully retrieved {len(data)} records from the database.")
+
+        logger.info("Successfully retrieved %d records from the database.", len(data))
         return data
-        
+
     except Exception as e:
-        logger.error(f"Failed to fetch quant signals: {e}")
+        logger.error("Failed to fetch quant signals: %s", e)
         return []
+    finally:
+        if conn:
+            conn.close()
 
 def fetch_upcoming_macro_events(target_date: str) -> List[Dict[str, Any]]:
-    """
-    Retrieves Tier-1 macroeconomic events occurring within a rolling 48-hour window from the target date.
-    """
-    logger.info(f"Fetching upcoming Tier-1 macro events for 48-hour window starting: {target_date}")
-    
+    """Fetches macro_calendar rows within the 48-hour window starting at target_date."""
+    logger.info("Fetching upcoming Tier-1 macro events for 48-hour window starting: %s", target_date)
+
+    conn = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
-        
+
         cursor.execute('''
-            SELECT * FROM macro_calendar 
-            WHERE date(event_date) >= date(?) 
-            AND date(event_date) <= date(?, '+2 days') 
+            SELECT * FROM macro_calendar
+            WHERE date(event_date) >= date(?)
+            AND date(event_date) <= date(?, '+2 days')
             ORDER BY event_date ASC
         ''', (target_date, target_date))
-        
-        rows = cursor.fetchall()
-        events = [dict(row) for row in rows]
-        conn.close()
-        
-        return events
-    except Exception as e:
-        logger.error(f"Failed to fetch upcoming macro events: {e}")
-        return []
 
-# --- Report Generation ---
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+    except Exception as e:
+        logger.error("Failed to fetch upcoming macro events: %s", e)
+        return []
+    finally:
+        if conn:
+            conn.close()
 
 def _format_longterm_setup_list(data: List[Dict[str, Any]], target_date: str = '') -> str:
     """Formats long-term entry setups with composite score and key metrics front and centre."""
@@ -411,10 +349,7 @@ def _format_longterm_setup_list(data: List[Dict[str, Any]], target_date: str = '
     return output
 
 def _format_mobile_markdown_list(data: List[Dict[str, Any]], target_date: str = '') -> str:
-    """
-    Formats a list of signal rows into a mobile-friendly Markdown list.
-    Includes quality grade and earnings risk flag when data is available.
-    """
+    """Formats signal rows into a mobile-friendly Markdown list with quality grade and earnings risk flag."""
     if not data:
         return "*No assets met the criteria for this screen today.*\n\n"
 
@@ -430,7 +365,6 @@ def _format_mobile_markdown_list(data: List[Dict[str, Any]], target_date: str = 
         grade       = compute_quality_grade(row)
         w52         = f"{row.get('week52_pct') * 100:.0f}%" if _is_valid_numeric(row.get('week52_pct')) else "N/A"
 
-        # Earnings risk tag
         earnings_tag = ""
         if target_date:
             days = _get_earnings_days(row, target_date)
@@ -443,10 +377,7 @@ def _format_mobile_markdown_list(data: List[Dict[str, Any]], target_date: str = 
     return output
 
 def compute_quality_grade(row: Dict[str, Any]) -> str:
-    """
-    Returns A/B/C/D quality grade based on fundamental health.
-    Pulls ROE, debt/equity, and PE/PEG from the enriched signal row.
-    """
+    """A/B/C/D grade from ROE, debt/equity, PE/PEG: D=loss-making or over-leveraged, A=high-quality compounder."""
     roe  = row.get('roe')
     debt = row.get('debt_to_equity')
     pe   = row.get('trailing_pe')
@@ -496,20 +427,16 @@ def _extract_numeric(val_str: str) -> float:
         return None
 
 def generate_markdown_briefing(target_date: str, data: List[Dict[str, Any]]) -> str:
-    """
-    Executes all rule-based screens contextualized by Market and Macro Regime, 
-    and generates the final formatted Markdown report. Writes the output to disk.
-    """
+    """Runs all screener rules under market/macro regime context, builds the Markdown briefing, and saves to disk."""
     logger.info("Applying contextual screening rules and generating Markdown briefing...")
-    
-    # 1. Fetch Market Regime Context (Volatility - Dual Region Support)
+
     regime_data = get_latest_regime()
     us_regime = regime_data.get('us_regime_label', 'Normal') if regime_data else 'Normal'
     uk_regime = regime_data.get('uk_regime_label', 'Normal') if regime_data else 'Normal'
     us_turb = regime_data.get('us_turbulence', 0.0) if regime_data else 0.0
     uk_turb = regime_data.get('uk_turbulence', 0.0) if regime_data else 0.0
     
-    # Global Worst Case for Circuit Breaker logic
+    # Global worst-case for circuit breaker logic
     if us_regime == 'Crash' or uk_regime == 'Crash':
         regime_label = 'Crash'
     elif us_regime == 'Volatile' or uk_regime == 'Volatile':
@@ -517,15 +444,17 @@ def generate_markdown_briefing(target_date: str, data: List[Dict[str, Any]]) -> 
     else:
         regime_label = 'Normal'
 
-    # Fetch Macro Regime Context (Systemic Yields)
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM macro_regimes ORDER BY date DESC LIMIT 1")
-    macro_row = cursor.fetchone()
-    conn.close()
+    conn = None
+    try:
+        conn = get_connection()
+        macro_row = conn.execute("SELECT * FROM macro_regimes ORDER BY date DESC LIMIT 1").fetchone()
+    except Exception:
+        macro_row = None
+    finally:
+        if conn:
+            conn.close()
     macro_regime = dict(macro_row) if macro_row else {}
-    
-    # Extract dual-region metrics
+
     us_threat = macro_regime.get('us_threat_level', 'GREEN')
     uk_threat = macro_regime.get('uk_threat_level', 'GREEN')
     us_vel_raw = macro_regime.get('us_yield_velocity')
@@ -533,27 +462,23 @@ def generate_markdown_briefing(target_date: str, data: List[Dict[str, Any]]) -> 
     
     us_vel = float(us_vel_raw) if us_vel_raw is not None else 0.0
     uk_vel = float(uk_vel_raw) if uk_vel_raw is not None else 0.0
-    
-    # Calculate Unified Global Threat Level for downstream filtering
+
     if us_threat == 'RED' or uk_threat == 'RED':
         threat_level = 'RED'
     elif us_threat == 'YELLOW' or uk_threat == 'YELLOW':
         threat_level = 'YELLOW'
     else:
         threat_level = 'GREEN'
-        
-    # Fetch 48H Macro Events
+
     macro_events = fetch_upcoming_macro_events(target_date)
-    
-    # 2. Execute Screens mapped by Global Worst-Case Regime
+
     raw_oversold = get_oversold_reversals(data, regime_label)
     raw_macd_crosses = get_macd_bullish_crosses(data, regime_label)
     raw_surges = get_momentum_surges(data, regime_label)
     warnings = get_overbought_warnings(data, regime_label)
     longterm_setups = get_longterm_entry_setups(data, regime_label)
     deterioration_alerts = get_portfolio_deterioration_alerts(target_date)
-    
-    # 3. Intercept & Filter ML Divergences & Macro Yield Vetoes
+
     approved_1, ml_veto_1 = filter_ai_vetoes(raw_oversold)
     oversold, macro_veto_1 = filter_macro_vetoes(approved_1, threat_level)
 
@@ -562,15 +487,13 @@ def generate_markdown_briefing(target_date: str, data: List[Dict[str, Any]]) -> 
 
     approved_3, ml_veto_3 = filter_ai_vetoes(raw_surges)
     surges, macro_veto_3 = filter_macro_vetoes(approved_3, threat_level)
-    
-    # Combine Vetoes natively, deduplicating by ticker
+
     ml_vetoed_dict = {row['ticker']: row for row in ml_veto_1 + ml_veto_2 + ml_veto_3}
     ml_vetoed = list(ml_vetoed_dict.values())
 
     macro_vetoed_dict = {row['ticker']: row for row in macro_veto_1 + macro_veto_2 + macro_veto_3}
     macro_vetoed = list(macro_vetoed_dict.values())
-    
-    # 4. Build Markdown String
+
     report = f"# 📊 Morning Quant Briefing\n"
     report += f"**Date:** {target_date}\n\n"
     
@@ -597,16 +520,13 @@ def generate_markdown_briefing(target_date: str, data: List[Dict[str, Any]]) -> 
             fcst_val = ev.get('forecast_val', 'N/A')
             ai_warning = ev.get('ai_volatility_warning', 0.0)
             
-            # Mathematical evaluation of divergence
             is_divergent = False
             if prev_val != 'N/A' and fcst_val != 'N/A':
                 prev_num = _extract_numeric(prev_val)
                 fcst_num = _extract_numeric(fcst_val)
-                
-                # Flag if there is a measurable expectation shift
                 if prev_num is not None and fcst_num is not None and abs(prev_num - fcst_num) > 0.0001:
                     is_divergent = True
-                elif prev_val != fcst_val: # Fallback to string matching
+                elif prev_val != fcst_val:  # fallback to string comparison
                     is_divergent = True
             
             flag = "⚠️ " if is_divergent else ""
@@ -665,27 +585,24 @@ def generate_markdown_briefing(target_date: str, data: List[Dict[str, Any]]) -> 
     report += "---\n"
     report += "*Generated automatically by the Quantamental Python Engine.*"
     
-    # Ensure the reports directory exists
     reports_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'reports')
     os.makedirs(reports_dir, exist_ok=True)
-    
-    # Write to file
     file_path = os.path.join(reports_dir, f"quant_briefing_{target_date}.md")
     try:
         with open(file_path, 'w', encoding='utf-8') as f:
             f.write(report)
-        logger.info(f"Morning Briefing successfully saved to: {file_path}")
+        logger.info("Morning Briefing successfully saved to: %s", file_path)
     except Exception as e:
-        logger.error(f"Failed to write report to disk: {e}")
+        logger.error("Failed to write report to disk: %s", e)
         
     return report
 
 if __name__ == "__main__":
-    scan_date = datetime.now().strftime('%Y-%m-%d')
+    scan_date = datetime.now(timezone.utc).strftime('%Y-%m-%d')
     raw_signals = fetch_latest_signals(scan_date)
-    
+
     if not raw_signals:
-        logger.warning(f"No data found for {scan_date}. Ensure the quant_engine ran successfully overnight.")
+        logger.warning("No data found for %s. Ensure the quant_engine ran successfully overnight.", scan_date)
     else:
         markdown_output = generate_markdown_briefing(scan_date, raw_signals)
         print("\n" + "="*60 + "\n")

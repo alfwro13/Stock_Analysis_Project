@@ -272,3 +272,107 @@ class TestLongtermEntrySetups:
     def test_nan_fields_excluded(self):
         rows = [self._good_row(rsi_14=float('nan'))]
         assert get_longterm_entry_setups(rows, 'Normal') == []
+
+
+# ------------------------------------------------------------------ #
+#  get_macd_bullish_crosses                                           #
+# ------------------------------------------------------------------ #
+
+from quant_screener import get_macd_bullish_crosses, get_momentum_surges, filter_ai_vetoes
+
+
+class TestMacdBullishCrosses:
+    def test_bullish_cross_passes_normal(self):
+        rows = [_make_row(bullish_cross=1, close_price=110.0, sma_200=100.0)]
+        assert len(get_macd_bullish_crosses(rows, 'Normal')) == 1
+
+    def test_no_cross_excluded(self):
+        rows = [_make_row(bullish_cross=0)]
+        assert get_macd_bullish_crosses(rows, 'Normal') == []
+
+    def test_crash_regime_requires_above_sma200(self):
+        rows = [_make_row(bullish_cross=1, close_price=90.0, sma_200=100.0)]
+        assert get_macd_bullish_crosses(rows, 'Crash') == []
+
+    def test_crash_regime_above_sma200_passes(self):
+        rows = [_make_row(bullish_cross=1, close_price=110.0, sma_200=100.0)]
+        assert len(get_macd_bullish_crosses(rows, 'Crash')) == 1
+
+    def test_volatile_regime_same_as_crash(self):
+        rows = [_make_row(bullish_cross=1, close_price=90.0, sma_200=100.0)]
+        assert get_macd_bullish_crosses(rows, 'Volatile') == []
+
+
+# ------------------------------------------------------------------ #
+#  get_momentum_surges                                                #
+# ------------------------------------------------------------------ #
+
+class TestMomentumSurges:
+    def _surge_row(self, **kwargs):
+        base = _make_row(volume_surge=1, rsi_14=60.0, close_price=110.0, sma_200=100.0)
+        base.update(kwargs)
+        return base
+
+    def test_surge_passes_normal(self):
+        assert len(get_momentum_surges([self._surge_row()], 'Normal')) == 1
+
+    def test_no_surge_excluded(self):
+        rows = [self._surge_row(volume_surge=0)]
+        assert get_momentum_surges(rows, 'Normal') == []
+
+    def test_rsi_too_high_excluded(self):
+        rows = [self._surge_row(rsi_14=75.0)]
+        assert get_momentum_surges(rows, 'Normal') == []
+
+    def test_rsi_too_low_excluded(self):
+        rows = [self._surge_row(rsi_14=45.0)]
+        assert get_momentum_surges(rows, 'Normal') == []
+
+    def test_crash_regime_requires_above_sma200(self):
+        rows = [self._surge_row(close_price=90.0, sma_200=100.0)]
+        assert get_momentum_surges(rows, 'Crash') == []
+
+    def test_crash_regime_above_sma200_passes(self):
+        rows = [self._surge_row(close_price=110.0, sma_200=100.0)]
+        assert len(get_momentum_surges(rows, 'Crash')) == 1
+
+
+# ------------------------------------------------------------------ #
+#  filter_ai_vetoes                                                   #
+# ------------------------------------------------------------------ #
+
+class TestFilterAiVetoes:
+    def test_above_threshold_approved(self):
+        rows = [_make_row(ml_confidence_score=65.0)]
+        approved, vetoed = filter_ai_vetoes(rows)
+        assert len(approved) == 1
+        assert vetoed == []
+
+    def test_below_threshold_vetoed(self):
+        rows = [_make_row(ml_confidence_score=30.0)]
+        approved, vetoed = filter_ai_vetoes(rows)
+        assert approved == []
+        assert len(vetoed) == 1
+
+    def test_missing_confidence_vetoed(self):
+        rows = [_make_row(ml_confidence_score=None)]
+        approved, vetoed = filter_ai_vetoes(rows)
+        assert approved == []
+        assert len(vetoed) == 1
+
+    def test_exactly_at_threshold_approved(self):
+        from constants import ML_CONFIDENCE_THRESHOLD
+        rows = [_make_row(ml_confidence_score=ML_CONFIDENCE_THRESHOLD)]
+        approved, vetoed = filter_ai_vetoes(rows)
+        assert len(approved) == 1
+
+    def test_mixed_list_split_correctly(self):
+        rows = [
+            _make_row(ticker='A', ml_confidence_score=70.0),
+            _make_row(ticker='B', ml_confidence_score=20.0),
+            _make_row(ticker='C', ml_confidence_score=None),
+        ]
+        approved, vetoed = filter_ai_vetoes(rows)
+        assert len(approved) == 1
+        assert approved[0]['ticker'] == 'A'
+        assert len(vetoed) == 2
