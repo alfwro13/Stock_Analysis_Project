@@ -1,4 +1,3 @@
-# regime_engine.py
 import logging
 from datetime import datetime
 from typing import Dict, Any, Optional
@@ -13,146 +12,108 @@ from constants import REGIME_CRASH_VOL, REGIME_VOLATILE_VOL
 
 logger = logging.getLogger(__name__)
 
-def initialize_regime_table() -> None:
-    """Ensures the dual-region market_regimes table exists before insertion."""
-    conn = get_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS market_regimes (
-                date TEXT PRIMARY KEY,
-                vix_close REAL,
-                spy_volatility REAL,
-                us_turbulence REAL,
-                us_regime_label TEXT,
-                ftse_volatility REAL,
-                uk_turbulence REAL,
-                uk_regime_label TEXT
-            )
-        ''')
-        conn.commit()
-    except Exception as e:
-        logger.error(f"Failed to initialize market_regimes table: {e}")
-    finally:
-        conn.close()
-
 def calculate_market_regime() -> None:
-    """
-    Downloads 1 year of SPY, VIX, and FTSE data.
-    Calculates 10-day EWMA annualized historical volatility to minimize lag.
-    Creates independent Composite Turbulence Indices for US and UK markets.
-    Persists the data natively to SQLite with strict connection safety.
-    """
+    """Fetches 1y of SPY/VIX/FTSE, computes RiskMetrics EWMA vol, classifies regimes, and persists to market_regimes."""
     logger.info("Initiating daily Dual-Region Market Regime calculation...")
-    initialize_regime_table()
-    
+
     try:
-        # 1. Fetch exactly 1 year of historical market data
         ticker_dfs = yahoo_engine.get_price_history(["SPY", "^VIX", "^FTSE"], period="1y", interval="1d")
 
         if not ticker_dfs or not all(t in ticker_dfs for t in ["SPY", "^VIX", "^FTSE"]):
             logger.error("Critical market indices missing from Yahoo Finance response.")
             return
 
-        # Extract and clean sub-DataFrames
         spy_data = ticker_dfs["SPY"].dropna(subset=['Close'])
         vix_data = ticker_dfs["^VIX"].dropna(subset=['Close'])
         ftse_data = ticker_dfs["^FTSE"].dropna(subset=['Close'])
-        
+
         if spy_data.empty or vix_data.empty or ftse_data.empty:
             logger.error("Incomplete data received for core regime tickers.")
             return
 
-        # 2. Calculate Realized Volatility (RiskMetrics EWMA, Lambda = 0.94)
+        # RiskMetrics EWMA (λ=0.94): minimizes lag vs simple rolling window
         LAMBDA = 0.94
-        
-        # US Realized Volatility (SPY)
+
         spy_log_returns = np.log(spy_data['Close'] / spy_data['Close'].shift(1)).dropna()
-        spy_returns_sq = spy_log_returns ** 2
-        spy_var_ewma = spy_returns_sq.ewm(alpha=(1 - LAMBDA), adjust=False).mean()
+        spy_var_ewma = (spy_log_returns ** 2).ewm(alpha=(1 - LAMBDA), adjust=False).mean()
         spy_vol_ewma = np.sqrt(spy_var_ewma) * np.sqrt(252) * 100.0
 
-        # UK Realized Volatility (FTSE)
         ftse_log_returns = np.log(ftse_data['Close'] / ftse_data['Close'].shift(1)).dropna()
-        ftse_returns_sq = ftse_log_returns ** 2
-        ftse_var_ewma = ftse_returns_sq.ewm(alpha=(1 - LAMBDA), adjust=False).mean()
+        ftse_var_ewma = (ftse_log_returns ** 2).ewm(alpha=(1 - LAMBDA), adjust=False).mean()
         ftse_vol_ewma = np.sqrt(ftse_var_ewma) * np.sqrt(252) * 100.0
 
-        # Extract latest metrics
         latest_date = spy_data.index[-1].strftime('%Y-%m-%d')
         latest_vix = float(vix_data['Close'].iloc[-1])
         latest_spy_vol = float(spy_vol_ewma.iloc[-1])
         latest_ftse_vol = float(ftse_vol_ewma.iloc[-1])
-        
+
         if pd.isna(latest_spy_vol) or pd.isna(latest_ftse_vol):
             logger.warning("Not enough data to calculate EWMA volatilities.")
             return
 
-        # 3. Calculate Independent Composite Turbulence Indices
         # US: 100% EWMA Realized (VIX is fetched for display purposes only, not blended in)
         us_turbulence = latest_spy_vol
         # UK: 100% EWMA Realized (no robust UK implied vol feed available on Yahoo Finance)
         uk_turbulence = latest_ftse_vol
-        
-        # 4. Classify Market Regimes
+
         us_regime_label = 'Crash' if us_turbulence >= REGIME_CRASH_VOL else \
                           'Volatile' if us_turbulence >= REGIME_VOLATILE_VOL else 'Normal'
 
         uk_regime_label = 'Crash' if uk_turbulence >= REGIME_CRASH_VOL else \
                           'Volatile' if uk_turbulence >= REGIME_VOLATILE_VOL else 'Normal'
 
-        # 5. Persist to Database (Strict Context Handling)
-        conn = get_connection()
+        conn = None
         try:
+            conn = get_connection()
             cursor = conn.cursor()
             cursor.execute('''
-                INSERT OR REPLACE INTO market_regimes 
-                (date, vix_close, spy_volatility, us_turbulence, us_regime_label, 
+                INSERT OR REPLACE INTO market_regimes
+                (date, vix_close, spy_volatility, us_turbulence, us_regime_label,
                  ftse_volatility, uk_turbulence, uk_regime_label)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
-                latest_date, 
-                round(latest_vix, 2), 
-                round(latest_spy_vol, 2), 
-                round(us_turbulence, 2), 
+                latest_date,
+                round(latest_vix, 2),
+                round(latest_spy_vol, 2),
+                round(us_turbulence, 2),
                 us_regime_label,
                 round(latest_ftse_vol, 2),
                 round(uk_turbulence, 2),
                 uk_regime_label
             ))
             conn.commit()
-            logger.info(f"Regimes recorded | Date: {latest_date} | US: {us_regime_label} ({us_turbulence:.2f}) | UK: {uk_regime_label} ({uk_turbulence:.2f})")
+            logger.info("Regimes recorded | Date: %s | US: %s (%.2f) | UK: %s (%.2f)",
+                        latest_date, us_regime_label, us_turbulence, uk_regime_label, uk_turbulence)
         except Exception as e:
-            conn.rollback()
-            logger.error(f"Database insertion failed during regime calculation: {e}")
+            if conn:
+                conn.rollback()
+            logger.error("Database insertion failed during regime calculation: %s", e)
             raise
         finally:
-            conn.close()
-            
+            if conn:
+                conn.close()
+
     except Exception as e:
-        logger.error(f"Fatal error calculating market regime: {e}")
+        logger.error("Fatal error calculating market regime: %s", e)
 
 def get_latest_regime() -> Optional[Dict[str, Any]]:
-    """
-    Queries the database for the most recent market regime classification.
-    Returns a dictionary with the regime details or None if unavailable.
-    """
-    conn = get_connection()
+    conn = None
     try:
+        conn = get_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM market_regimes ORDER BY date DESC LIMIT 1")
         row = cursor.fetchone()
         return dict(row) if row else None
     except Exception as e:
-        logger.error(f"Failed to fetch latest regime: {e}")
+        logger.error("Failed to fetch latest regime: %s", e)
         return None
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 def calculate_systemic_macro_threat() -> None:
-    """Calculates yield rate of change in basis points (US & UK) and logs granular systemic compression risk to SQLite."""
     try:
-        # Pull 10 days to survive weekends and holidays.
+        # pull 10 days to survive weekends and holidays
         _macro_dfs = yahoo_engine.get_price_history(
             ["^TYX", "^TNX", "DX-Y.NYB", "GBPUSD=X"], period="10d", interval="1d"
         )
@@ -160,51 +121,38 @@ def calculate_systemic_macro_threat() -> None:
         tnx = _macro_dfs.get("^TNX", pd.DataFrame())
         dxy = _macro_dfs.get("DX-Y.NYB", pd.DataFrame())
         gbpusd = _macro_dfs.get("GBPUSD=X", pd.DataFrame())
-        
+
         if tnx.empty or len(tnx) < 4:
             logger.warning("Insufficient ^TNX data for macro threat evaluation.")
             return
-            
-        # Current and Past (3 trading days ago) values
+
         curr_tnx = float(tnx['Close'].iloc[-1])
-        # Use the row 3 trading days ago (iloc[-4] assumes 4 rows exist and no gaps).
-        # Date-based fallback: find the closest row at least 3 calendar days back.
+        # iloc[-4] is fragile across holidays; use date lookback instead
         target_past = tnx.index[-1] - pd.Timedelta(days=4)
         tnx_past_rows = tnx[tnx.index <= target_past]
         past_tnx = float(tnx_past_rows['Close'].iloc[-1]) if not tnx_past_rows.empty else curr_tnx
-        
-        # Fetch and assign 30Y Treasury Data safely
-        curr_tyx = float(tyx['Close'].iloc[-1]) if not tyx.empty else curr_tnx
 
+        curr_tyx = float(tyx['Close'].iloc[-1]) if not tyx.empty else curr_tnx
         curr_dxy = float(dxy['Close'].iloc[-1]) if not dxy.empty else 0.0
         curr_gbpusd = float(gbpusd['Close'].iloc[-1]) if not gbpusd.empty else 0.0
-        
-        # Read the UK Gilt data from our custom FT.com parquet scraper
+
         uk_gilt_path = HISTORICAL_DIR / "UK_GILT_BASELINE.parquet"
         if uk_gilt_path.exists():
             gilt_df = pd.read_parquet(uk_gilt_path)
-            
             # Strip out weekend padding (Saturday=5, Sunday=6) to align with trading days
             gilt_df = gilt_df[gilt_df.index.dayofweek < 5]
-            
             curr_gilt = float(gilt_df['Close'].iloc[-1]) if len(gilt_df) >= 1 else curr_tnx
             target_past_gilt = gilt_df.index[-1] - pd.Timedelta(days=4)
             gilt_past_rows = gilt_df[gilt_df.index <= target_past_gilt]
             past_gilt = float(gilt_past_rows['Close'].iloc[-1]) if not gilt_past_rows.empty else curr_tnx
-
         else:
             logger.warning("UK Gilt Baseline Parquet missing. Falling back to TNX equivalence.")
             curr_gilt, past_gilt = curr_tnx, past_tnx
-            
-        # Calculate yield velocity in basis points (bps)
+
         us_velocity_bps = (curr_tnx - past_tnx) * 100.0
         gilt_velocity_bps = (curr_gilt - past_gilt) * 100.0
-        
-        # US Institutional Rule Classification
-        # Velocity in bps, Absolute Level in Percentage Points
-        # Calibrated to modern (post-2022) rate environment:
-        # RED:    Velocity >= 30 bps/3-days OR 10Y >= 4.75% (elevated historical level)
-        # YELLOW: Velocity >= 15 bps/3-days OR 10Y >= 4.25% (recent post-hike ceiling)
+
+        # calibrated to post-2022 rate environment: 30bps/3-day or 4.75% = RED, 15bps or 4.25% = YELLOW
         if us_velocity_bps >= 30.0 or curr_tnx >= 4.75:
             us_threat_level = "RED"
         elif us_velocity_bps >= 15.0 or curr_tnx >= 4.25:
@@ -212,47 +160,48 @@ def calculate_systemic_macro_threat() -> None:
         else:
             us_threat_level = "GREEN"
 
-        # UK Institutional Rule Classification
-        # Calibrated absolute threshold to 6.0% reflecting historically higher Gilt risk premiums
+        # calibrated to higher UK gilt premiums: 30bps/3-day or 5.0% = RED, 15bps or 4.5% = YELLOW
         if gilt_velocity_bps >= 30.0 or curr_gilt >= 5.0:
             uk_threat_level = "RED"
         elif gilt_velocity_bps >= 15.0 or curr_gilt >= 4.5:
             uk_threat_level = "YELLOW"
         else:
             uk_threat_level = "GREEN"
-            
+
         latest_date = tnx.index[-1].strftime('%Y-%m-%d')
-        
-        # Native upsert into macro ledger with strict connection handling
-        conn = get_connection()
+
+        conn = None
         try:
+            conn = get_connection()
             cursor = conn.cursor()
-         
             cursor.execute('''
-                INSERT OR REPLACE INTO macro_regimes 
-                (date, tyx_close, tnx_close, dxy_close, uk_gilt_close, gbpusd_close, 
+                INSERT OR REPLACE INTO macro_regimes
+                (date, tyx_close, tnx_close, dxy_close, uk_gilt_close, gbpusd_close,
                  us_yield_velocity, us_threat_level, uk_yield_velocity, uk_threat_level)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
-                latest_date, 
-                round(curr_tyx, 3), 
-                round(curr_tnx, 3), 
-                round(curr_dxy, 3), 
-                round(curr_gilt, 3), 
-                round(curr_gbpusd, 4), 
-                round(us_velocity_bps, 2), 
-                us_threat_level, 
-                round(gilt_velocity_bps, 2), 
+                latest_date,
+                round(curr_tyx, 3),
+                round(curr_tnx, 3),
+                round(curr_dxy, 3),
+                round(curr_gilt, 3),
+                round(curr_gbpusd, 4),
+                round(us_velocity_bps, 2),
+                us_threat_level,
+                round(gilt_velocity_bps, 2),
                 uk_threat_level
             ))
             conn.commit()
-            logger.info(f"Macro Risk Evaluated | US: {us_threat_level} (Vel: {us_velocity_bps:+.2f} bps, Lvl: {curr_tnx:.2f}%) | UK: {uk_threat_level} (Vel: {gilt_velocity_bps:+.2f} bps, Lvl: {curr_gilt:.2f}%)")
+            logger.info("Macro Risk Evaluated | US: %s (Vel: %+.2f bps, Lvl: %.2f%%) | UK: %s (Vel: %+.2f bps, Lvl: %.2f%%)",
+                        us_threat_level, us_velocity_bps, curr_tnx, uk_threat_level, gilt_velocity_bps, curr_gilt)
         except Exception as e:
-            conn.rollback()
-            logger.error(f"Database insertion failed during macro threat calculation: {e}")
+            if conn:
+                conn.rollback()
+            logger.error("Database insertion failed during macro threat calculation: %s", e)
             raise
         finally:
-            conn.close()
-            
+            if conn:
+                conn.close()
+
     except Exception as e:
-        logger.error(f"Fatal crash inside systemic threat calculator: {e}")
+        logger.error("Fatal crash inside systemic threat calculator: %s", e)

@@ -1,17 +1,11 @@
-"""
-report_dispatcher.py
-
-Automated dispatch microservice for the Quantamental Dashboard.
-Generates Morning and Lunchtime Quant Briefings and pushes them securely to
-Nextcloud Talk via WebDAV file upload and OCS API sharing.
-"""
+"""Generates and dispatches Morning/Lunchtime Quant Briefings to Nextcloud Talk via WebDAV upload and OCS sharing."""
 
 import os
 import logging
 import requests
-from datetime import datetime, timedelta
 
 from config import load_config
+import time_engine
 from morning_briefing import generate_morning_briefing, generate_uk_charts
 from lunchtime_briefing import generate_lunchtime_briefing
 from nextcloud_talk import upload_file_webdav, share_file_to_talk, send_text_message
@@ -20,29 +14,25 @@ logger = logging.getLogger(__name__)
 
 
 def ensure_remote_directory(nc_url: str, nc_user: str, nc_pass: str, folder_name: str) -> None:
-    """
-    Executes a WebDAV MKCOL request to ensure the target directory exists on Nextcloud.
-    Prevents 404 errors during the file upload process.
-    """
+    """MKCOL the target folder on Nextcloud; 405 means it already exists (fine)."""
     webdav_url = f"{nc_url}/remote.php/dav/files/{nc_user}/{folder_name}"
     try:
         response = requests.request(
-            "MKCOL", 
-            webdav_url, 
-            auth=(nc_user, nc_pass), 
+            "MKCOL",
+            webdav_url,
+            auth=(nc_user, nc_pass),
             headers={"OCS-APIRequest": "true"},
             timeout=15
         )
-        # 201 Created = Success. 
-        # 405 Method Not Allowed = Directory already exists (which is fine).
+        # 201 = created, 405 = already exists
         if response.status_code == 201:
-            logger.info(f"Successfully created remote directory: {folder_name}")
+            logger.info("Successfully created remote directory: %s", folder_name)
         elif response.status_code == 405:
-            logger.debug(f"Remote directory '{folder_name}' already exists.")
+            logger.debug("Remote directory '%s' already exists.", folder_name)
         else:
-            logger.warning(f"MKCOL returned unexpected status {response.status_code} for {folder_name}. Upload may fail.")
+            logger.warning("MKCOL returned unexpected status %s for %s. Upload may fail.", response.status_code, folder_name)
     except Exception as e:
-        logger.error(f"Failed to verify or create remote directory: {e}")
+        logger.error("Failed to verify or create remote directory: %s", e)
 
 
 def _dispatch_briefing(
@@ -52,11 +42,6 @@ def _dispatch_briefing(
     notify_msg: str,
     config: dict,
 ) -> bool:
-    """
-    Shared upload-and-notify pipeline: ensures remote dir exists, uploads the file,
-    shares it to the Talk conversation, then sends a text notification.
-    Returns True on full success.
-    """
     # Env vars take precedence (credentials are never stored in config.json)
     nc_url = (os.environ.get("NEXTCLOUD_URL") or config.get("NEXTCLOUD_URL", "")).rstrip("/")
     nc_user = os.environ.get("NEXTCLOUD_BOT_USERNAME") or config.get("BOT_USERNAME", "")
@@ -108,7 +93,6 @@ def _dispatch_briefing(
 
 
 def _share_charts_to_talk(chart_paths: list[str], config: dict) -> None:
-    """Uploads chart PNGs to Nextcloud and shares each to the Talk conversation."""
     nc_url = (os.environ.get("NEXTCLOUD_URL") or config.get("NEXTCLOUD_URL", "")).rstrip("/")
     nc_user = os.environ.get("NEXTCLOUD_BOT_USERNAME") or config.get("BOT_USERNAME", "")
     nc_pass = os.environ.get("NEXTCLOUD_APP_PASSWORD") or config.get("APP_PASSWORD", "")
@@ -144,17 +128,11 @@ def _share_charts_to_talk(chart_paths: list[str], config: dict) -> None:
 
 
 def push_morning_quant_briefing() -> bool:
-    """
-    Generates the Morning Quant Briefing and saves it to disk.
-    Only sends to Nextcloud Talk if SCHEDULING.DISPATCHER.ENABLED is true.
-
-    Returns:
-        bool: True if generation succeeded (Talk send is best-effort).
-    """
+    """Generates the morning briefing and dispatches it to Talk if SCHEDULING.DISPATCHER.ENABLED is true."""
     logger.info("Running Morning Quant Briefing generation...")
 
     config = load_config()
-    target_date = datetime.now().strftime("%Y-%m-%d")
+    target_date = time_engine.now_local().strftime("%Y-%m-%d")
 
     generate_morning_briefing(target_date)
     logger.info("Morning Briefing generated for %s.", target_date)
@@ -179,7 +157,6 @@ def push_morning_quant_briefing() -> bool:
         config=config,
     )
 
-    # Share chart PNGs to Talk after the main .md
     charts_dir = os.path.join(base_dir, "static", "briefing_charts")
     chart_files = [
         os.path.join(charts_dir, f"ftse_{target_date}.png"),
@@ -192,17 +169,11 @@ def push_morning_quant_briefing() -> bool:
 
 
 def push_lunchtime_quant_briefing() -> bool:
-    """
-    Generates the Lunchtime Quant Briefing and saves it to disk.
-    Only sends to Nextcloud Talk if SCHEDULING.LUNCH_DISPATCHER.ENABLED is true.
-
-    Returns:
-        bool: True if generation succeeded (Talk send is best-effort).
-    """
+    """Generates the lunchtime briefing and dispatches it to Talk if SCHEDULING.LUNCH_DISPATCHER.ENABLED is true."""
     logger.info("Running Lunchtime Quant Briefing generation...")
 
     config = load_config()
-    target_date = datetime.now().strftime("%Y-%m-%d")
+    target_date = time_engine.now_local().strftime("%Y-%m-%d")
 
     generate_lunchtime_briefing(target_date)
     logger.info("Lunchtime Briefing generated for %s.", target_date)
