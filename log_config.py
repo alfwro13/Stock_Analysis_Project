@@ -1,4 +1,3 @@
-# log_config.py
 import gzip
 import logging
 import logging.handlers
@@ -11,11 +10,7 @@ _VALID_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
 
 
 def configure_file_logging(cfg: dict) -> None:
-    """Attach or remove a rotating file handler on the root logger.
-
-    Safe to call multiple times — removes any existing file handler first so
-    settings changes take effect without a restart.
-    """
+    """Hot-swappable file handler — safe to call repeatedly; removes old handler first."""
     root = logging.getLogger()
 
     for handler in list(root.handlers):
