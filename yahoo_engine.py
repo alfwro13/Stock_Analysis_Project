@@ -1,4 +1,3 @@
-# yahoo_engine.py
 import time
 import logging
 import threading
@@ -41,8 +40,6 @@ class YahooEngine:
         self._hits = 0
         self._misses = 0
 
-    # ── Cache helpers ─────────────────────────────────────────────────────────
-
     def _ttl(self, data_type: str, interval: str = "") -> int:
         if data_type == "intraday":
             return _TTLS.get(f"intraday_{interval}", _TTLS["intraday"])
@@ -82,20 +79,13 @@ class YahooEngine:
             df.index = df.index.tz_convert(None)
         return df
 
-    # ── Batch price data ──────────────────────────────────────────────────────
-
     def get_price_history(
         self,
         tickers: list[str],
         period: str = "2y",
         interval: str = "1d",
     ) -> dict[str, pd.DataFrame]:
-        """
-        Batch daily/weekly price history. Returns {ticker: DataFrame}.
-        Cache misses are fetched in one yf.download() call.
-        Missing/failed tickers are omitted from the result; callers should
-        fall back to their local Parquet cache when a ticker is absent.
-        """
+        # Returns {ticker: DataFrame}; missing/failed tickers omitted — callers fall back to local Parquet.
         tickers = list(dict.fromkeys(tickers))
         ttl = self._ttl("history")
         key_fn = lambda t: f"history:{t}:{period}:{interval}"
@@ -129,10 +119,7 @@ class YahooEngine:
         interval: str = "5m",
         prepost: bool = False,
     ) -> dict[str, pd.DataFrame]:
-        """
-        Batch intraday bars. Returns {ticker: DataFrame}.
-        Cache key includes the prepost flag to keep extended-hours data separate.
-        """
+        # Cache key includes the prepost flag to keep extended-hours data separate.
         tickers = list(dict.fromkeys(tickers))
         ttl = self._ttl("intraday", interval)
         pp = "pp" if prepost else ""
@@ -159,8 +146,6 @@ class YahooEngine:
                 logger.error("get_intraday failed for %s", missing, exc_info=True)
 
         return {t: df for t, df in result.items() if df is not None}
-
-    # ── Single-ticker lookups ─────────────────────────────────────────────────
 
     def get_ticker_info(self, ticker: str) -> Optional[dict]:
         """Raw yfinance .info dict for one ticker, cached 6 h."""
@@ -300,10 +285,7 @@ class YahooEngine:
         return None
 
     def get_fx_rate(self, pair: str) -> Optional[float]:
-        """
-        Latest close for a yfinance FX pair (e.g. USDGBP=X), cached 10 min.
-        Returns None on failure; callers should use their own stale-cache fallback.
-        """
+        # Returns None on failure; callers should use their own stale-cache fallback.
         key = f"fx_rate:{pair}"
         cached = self._get(key)
         if cached is not None:
@@ -318,8 +300,6 @@ class YahooEngine:
         except Exception:
             logger.error("get_fx_rate failed for %s", pair, exc_info=True)
         return None
-
-    # ── Observability ─────────────────────────────────────────────────────────
 
     def get_stats(self) -> dict:
         with self._lock:
