@@ -1,4 +1,3 @@
-# sentiment_engine.py
 import os
 import json
 import time
@@ -7,7 +6,7 @@ import threading
 import pandas as pd
 import requests
 from fake_useragent import UserAgent
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Optional, Tuple
 
 import plotly.graph_objects as go
@@ -28,10 +27,8 @@ from config import (
     load_config, HISTORICAL_DIR
 )
 
-# Configure robust module-level logging
 logger = logging.getLogger(__name__)
 
-# --- GLOBAL THREAD-SAFE STORAGE AND STATE MATRIX ---
 _CACHE_LOCK = threading.Lock()
 _IS_REFRESHING = False
 _LAST_CACHE_TIME = 0.0
