@@ -1,4 +1,3 @@
-# page_routes.py
 import email.utils
 import ipaddress
 import json
@@ -88,27 +87,21 @@ def get_json_data(filepath: str) -> Dict[str, Any]:
 
 
 def get_unread_count() -> int:
+    conn = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT COUNT(*) as cnt FROM system_notifications WHERE is_read = 0")
-        count = cursor.fetchone()['cnt']
-        conn.close()
-        return count
+        return cursor.fetchone()['cnt']
     except Exception:
         return 0
+    finally:
+        if conn:
+            conn.close()
 
 def _build_position_sizing_context(config_data: dict, db_rows) -> dict:
-    """
-    Builds a context dict for client-side position sizing.
-    Walks unique currencies in the result set, fetches FX rates once,
-    returns a JSON-serializable structure for embedding in templates.
-    """
-    from portfolio_service import get_rate_to_base
-    
     base_currency = config_data.get("BASE_CURRENCY", "GBP")
     
-    # Find all unique currencies in the result set
     currencies = set()
     for row in db_rows:
         try:
@@ -118,8 +111,6 @@ def _build_position_sizing_context(config_data: dict, db_rows) -> dict:
         if cur:
             currencies.add(cur)
     currencies.add(base_currency)
-    
-    # Fetch FX rates (native → base) for each currency seen
     fx_rates = {}
     for cur in currencies:
         try:
@@ -128,7 +119,6 @@ def _build_position_sizing_context(config_data: dict, db_rows) -> dict:
                 fx_rates[cur] = float(rate)
         except Exception:
             logger.warning("FX rate lookup failed for currency %s", cur, exc_info=True)
-    # Always provide a 1.0 entry for the base currency itself
     fx_rates[base_currency] = 1.0
     
     return {
@@ -247,7 +237,7 @@ def _load_fundamentals_extra(ticker: str) -> dict:
         ex_div_ts = d.get("exDividendDate")
         if ex_div_ts:
             try:
-                ex_div_fmt = datetime.utcfromtimestamp(ex_div_ts).strftime("%Y-%m-%d")
+                ex_div_fmt = datetime.fromtimestamp(ex_div_ts, tz=timezone.utc).strftime("%Y-%m-%d")
             except Exception:
                 logger.warning("Could not parse exDividendDate timestamp %s", ex_div_ts)
 
@@ -279,7 +269,6 @@ def _load_fundamentals_extra(ticker: str) -> dict:
 
 
 def _utc_str_to_local(s: str) -> str:
-    """Convert a naive UTC datetime string to the user's display timezone."""
     try:
         dt = datetime.strptime(s, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
         return time_engine.fmt_datetime(dt)
@@ -288,10 +277,6 @@ def _utc_str_to_local(s: str) -> str:
 
 
 def enrich_macro_events(events_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """
-    Scans event names against the glossary to append tooltips and mathematically 
-    calculates the Delta between Forecast and Previous to generate actionable insights.
-    """
     for evt in events_list:
         evt_name = evt.get('event_name', '')
         evt['context'] = None
@@ -299,15 +284,11 @@ def enrich_macro_events(events_list: List[Dict[str, Any]]) -> List[Dict[str, Any
         evt['display_date'] = _utc_str_to_local(evt.get('event_date', ''))
 
         polarity = "neutral"
-        
-        # 1. Match Glossary Context and Polarity
         for pattern, data in EVENT_GLOSSARY.items():
             if re.search(pattern, evt_name, re.IGNORECASE):
                 evt['context'] = data["desc"]
                 polarity = data["polarity"]
                 break
-                
-        # 2. Calculate Mathematical Delta & Generate Insight
         f_val = evt.get('forecast_val')
         p_val = evt.get('previous_val')
         
@@ -316,8 +297,6 @@ def enrich_macro_events(events_list: List[Dict[str, Any]]) -> List[Dict[str, Any
                 f_num = float(f_val)
                 p_num = float(p_val)
                 delta = f_num - p_num
-                
-                # Apply Polarity Rules
                 if polarity == "inverse":
                     if delta < 0:
                         evt['insight'] = f"📉 Expected to drop by {delta:+.2f} (Cooling / Dovish)"
@@ -382,7 +361,6 @@ async def settings_page(request: Request):
 
 
 def _parse_cb_nlp_message(msg_text: str, timestamp: str) -> dict | None:
-    """Extract structured fields from a stored Macro NLP notification message."""
     try:
         result: dict = {"timestamp": timestamp}
         for line in msg_text.split('\n'):
@@ -430,16 +408,13 @@ async def market_sentiment_page(request: Request):
         cursor.execute("SELECT * FROM macro_regimes ORDER BY date DESC LIMIT 1")
         macro_row = cursor.fetchone()
         macro_regime = dict(macro_row) if macro_row else None
-        
-        # --- Macroeconomic Event Routing ---
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
         
         horizon_48h = (now + timedelta(hours=48)).strftime('%Y-%m-%d %H:%M:%S')
         horizon_7d = (now + timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')
         now_str = start_of_day.strftime('%Y-%m-%d %H:%M:%S')
 
-        # Fetch Urgent Events (48 hours)
         cursor.execute("""
             SELECT * FROM macro_calendar 
             WHERE event_date BETWEEN ? AND ? 
@@ -447,7 +422,6 @@ async def market_sentiment_page(request: Request):
         """, (now_str, horizon_48h))
         urgent_events = enrich_macro_events([dict(row) for row in cursor.fetchall()])
 
-        # Fetch US 7-Day Calendar
         cursor.execute("""
             SELECT * FROM macro_calendar 
             WHERE currency = 'USD' AND event_date BETWEEN ? AND ? 
@@ -455,7 +429,6 @@ async def market_sentiment_page(request: Request):
         """, (now_str, horizon_7d))
         us_events = enrich_macro_events([dict(row) for row in cursor.fetchall()])
 
-        # Fetch UK 7-Day Calendar
         cursor.execute("""
             SELECT * FROM macro_calendar 
             WHERE currency = 'GBP' AND event_date BETWEEN ? AND ? 
@@ -463,7 +436,6 @@ async def market_sentiment_page(request: Request):
         """, (now_str, horizon_7d))
         uk_events = enrich_macro_events([dict(row) for row in cursor.fetchall()])
 
-        # Fetch latest Central Bank NLP dispatch
         cb_nlp_latest = None
         cb_row = cursor.execute(
             "SELECT message_text, timestamp FROM system_notifications "
@@ -472,7 +444,6 @@ async def market_sentiment_page(request: Request):
         if cb_row:
             cb_nlp_latest = _parse_cb_nlp_message(cb_row["message_text"], cb_row["timestamp"])
 
-        # Fetch AI Contagion Monitor status (last 5 scans)
         ai_contagion_status = []
         try:
             rows = cursor.execute(
@@ -496,7 +467,6 @@ async def market_sentiment_page(request: Request):
         except Exception:
             pass  # table absent on first boot — silently ignore
 
-        # Process Historical DataFrame Indicators
         try:
             df_indicators = pd.read_sql_query("SELECT * FROM macro_indicators", conn)
             
@@ -516,11 +486,10 @@ async def market_sentiment_page(request: Request):
                 df_m2, df_us_hy, df_m4, df_uk_ig, df_yield_curve = pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
                 df_us_cpi, df_uk_cpi = pd.DataFrame(), pd.DataFrame()
         except Exception as e:
-            print(f"[DEBUG] Error processing macro indicators matrix: {e}")
+            logger.error("Error processing macro indicators matrix: %s", e)
             df_m2, df_us_hy, df_m4, df_uk_ig, df_yield_curve = pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
             df_us_cpi, df_uk_cpi = pd.DataFrame(), pd.DataFrame()
 
-        # Safely fetch baseline SPY & FTSE prices
         try:
             df_spy = pd.read_parquet(HISTORICAL_DIR / "SP500_BASELINE.parquet")
         except Exception:
@@ -530,8 +499,6 @@ async def market_sentiment_page(request: Request):
             df_ftse = pd.read_parquet(HISTORICAL_DIR / "FTSE_BASELINE.parquet")
         except Exception:
             df_ftse = pd.DataFrame()
-            
-        # Generate chart HTML
         us_liquidity_html = create_us_liquidity_chart(df_spy, df_m2)
         us_credit_html = create_us_credit_chart(df_us_hy)
         uk_liquidity_html = create_uk_liquidity_chart(df_ftse, df_m4)
@@ -541,7 +508,7 @@ async def market_sentiment_page(request: Request):
         uk_inflation_html = create_uk_inflation_chart(df_ftse, df_uk_cpi)
 
     except Exception as e:
-        print(f"[DEBUG] Fatal error in market_sentiment route: {e}")
+        logger.error("Fatal error in market_sentiment route: %s", e)
         macro_regime = None
         urgent_events = []
         us_events = []
@@ -604,10 +571,12 @@ async def options_sandbox_page(request: Request):
 @page_router.get("/notifications", response_class=HTMLResponse)
 async def notifications_page(request: Request):
     conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM system_notifications ORDER BY timestamp DESC LIMIT 100")
-    notifications = cursor.fetchall()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM system_notifications ORDER BY timestamp DESC LIMIT 100")
+        notifications = cursor.fetchall()
+    finally:
+        conn.close()
     return templates.TemplateResponse(
         request=request,
         name="notifications.html",
@@ -951,10 +920,8 @@ async def quant_screener_page(request: Request):
         markdown_content = None
 
     if not markdown_content:
-        # Fall back to live quant screener generation (signals only, no news/futures)
         signals = fetch_latest_signals(target_date)
         if not signals:
-            yesterday = (today - timedelta(days=1)).strftime('%Y-%m-%d')
             target_date = yesterday
             signals = fetch_latest_signals(target_date)
 
@@ -1028,7 +995,6 @@ async def dip_radar_page(request: Request):
 
 
 def _smgb_portfolio_position() -> dict | None:
-    """Return SMGB.L portfolio position dict, or None if not held."""
     try:
         portfolio = get_json_data(PORTFOLIO_PATH)
         return next(
@@ -1486,8 +1452,8 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
     if stock_data and stock_data.get('last_updated'):
         last_updated_str = stock_data['last_updated']
         try:
-            lu_date = datetime.strptime(last_updated_str, "%Y-%m-%d %H:%M:%S")
-            if datetime.now() - lu_date < timedelta(hours=24):
+            lu_date = datetime.strptime(last_updated_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+            if datetime.now(timezone.utc) - lu_date < timedelta(hours=24):
                 data_status = 'green'
             else:
                 data_status = 'yellow'
@@ -1559,7 +1525,6 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
     try:
         df_macro = pd.read_parquet(HISTORICAL_DIR / f"{ticker}.parquet")
         
-        # --- DYNAMIC BENCHMARK SELECTION ---
         currency = stock_data.get('currency', 'USD') if stock_data else 'USD'
         if ticker.endswith('.L') or currency in ['GBp', 'GBP']:
             try:
@@ -1629,11 +1594,8 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
         intraday_html = "<div style='display:flex;flex-direction:column;align-items:center;justify-content:center;height:120px;gap:8px;color:#888;'><span style='font-size:1.8rem;'>⚠️</span><span style='font-weight:600;'>Intraday data unavailable</span></div>"
     
     config_data = load_config()
-    # Build minimal context — single ticker
     fake_rows = [{"currency": stock_data.get("currency", "USD")}]
     position_sizing_context = _build_position_sizing_context(config_data, fake_rows)
-
-    # Anomaly score chart — last 90 trading days with non-NULL scores
     anomaly_chart_html = (
         "<div style='display:flex;flex-direction:column;align-items:center;"
         "justify-content:center;height:180px;gap:10px;color:#888;'>"
@@ -1666,12 +1628,10 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
             )
             anomaly_chart_html = create_anomaly_score_chart(df_anomaly, ticker, threshold=anomaly_threshold)
 
-            # Percentile rank of latest score vs its own 90-day history
             latest_score = df_anomaly["anomaly_score"].iloc[-1]
             history = df_anomaly["anomaly_score"]
             anomaly_percentile = round(float((history <= latest_score).mean() * 100), 1)
 
-            # Feature snapshot radar — reconstruct from available stock_data fields
             current_price = stock_data.get("current_price") or 0.0
             sma_50 = stock_data.get("sma_50") or current_price
             sma50_dist_pct = ((current_price - sma_50) / sma_50 * 100) if sma_50 else 0.0
@@ -1687,7 +1647,6 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
     except Exception:
         pass  # fallback placeholder already set
 
-    # Dip Radar: check if this ticker is actively monitored for today's session
     is_dip_monitored = False
     try:
         from datetime import date as _date
@@ -1732,7 +1691,6 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
 
 
 def _build_rss_base_url(server_url: str, port: int) -> str:
-    """Build base URL for RSS feed, appending port only for IP/localhost."""
     base = str(server_url).rstrip('/')
     parsed = urlparse(base if "://" in base else f"http://{base}")
     hostname = parsed.hostname or ""
