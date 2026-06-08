@@ -1,18 +1,13 @@
-# reports_engine.py
 import logging
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Any
 from database import get_connection
 
 logger = logging.getLogger(__name__)
 
 def get_sector_trends() -> List[Dict[str, Any]]:
-    """
-    Calculates aggregated momentum and trend health metrics grouped by market sector and exchange.
-    Requires joining the latest quantitative signals with the market universe table.
-    Strictly filters for EQUITIES to prevent Mutual Funds (NAV priced) from skewing RSI momentum averages.
-    """
+    """Aggregates RSI/SMA momentum by sector and exchange; EQUITY filter prevents NAV-priced funds from skewing averages."""
     logger.info("Generating Sector Trends Report...")
     conn = None
     try:
@@ -56,19 +51,15 @@ def get_sector_trends() -> List[Dict[str, Any]]:
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
     except Exception as e:
-        logger.error(f"Failed to generate Sector Trends: {e}")
+        logger.error("Failed to generate Sector Trends: %s", e)
         return []
     finally:
         if conn:
             conn.close()
 
 def get_mean_reversion_setups(max_rsi: float = 30.0, min_sma_distance: float = 0.0) -> List[Dict[str, Any]]:
-    """
-    Identifies stocks that are fundamentally in a long-term uptrend (Price > 200D SMA)
-    but are experiencing a severe short-term sell-off (RSI < max_rsi).
-    Strictly filters for EQUITIES to prevent illiquid funds from appearing.
-    """
-    logger.info(f"Generating Mean Reversion Report (Max RSI: {max_rsi})...")
+    """Stocks above 200D SMA with RSI < max_rsi; EQUITY filter prevents illiquid funds appearing."""
+    logger.info("Generating Mean Reversion Report (Max RSI: %s)...", max_rsi)
     conn = None
     try:
         conn = get_connection()
@@ -103,21 +94,16 @@ def get_mean_reversion_setups(max_rsi: float = 30.0, min_sma_distance: float = 0
         """
         cursor.execute(query, (max_rsi,))
         rows = cursor.fetchall()
-        # Optionally filter out stocks that aren't far enough above their 200D
         return [dict(row) for row in rows if row['distance_from_200d_pct'] >= min_sma_distance]
     except Exception as e:
-        logger.error(f"Failed to generate Mean Reversion Setups: {e}")
+        logger.error("Failed to generate Mean Reversion Setups: %s", e)
         return []
     finally:
         if conn:
             conn.close()
 
 def get_leaders_laggards() -> List[Dict[str, Any]]:
-    """
-    Identifies the strongest momentum leaders in the market right now.
-    Filters for stocks above their 50D SMA, sorted by highest RSI and MACD Histogram.
-    Strictly filters for EQUITIES to prevent indexing ETFs from dominating the leaderboards.
-    """
+    """Momentum leaders above 50D SMA sorted by RSI/MACD; EQUITY filter prevents ETFs dominating the leaderboard."""
     logger.info("Generating Momentum Leaders Report...")
     conn = None
     try:
@@ -162,29 +148,18 @@ def get_leaders_laggards() -> List[Dict[str, Any]]:
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
     except Exception as e:
-        logger.error(f"Failed to generate Leaders & Laggards: {e}")
+        logger.error("Failed to generate Leaders & Laggards: %s", e)
         return []
     finally:
         if conn:
             conn.close()
 
 def get_dividend_harvest_setups(min_yield: float = 0.02, min_score: int = 50) -> List[Dict[str, Any]]:
-    """
-    Fetches high-yield dividend stocks, filtering out potential 'Yield Traps' 
-    using a minimum quantitative score. Parses YF Unix timestamps dynamically.
-    
-    ARCHITECTURAL NOTE ON SQL JOINS: 
-    Unlike the momentum-based reports which use an INNER JOIN to restrict results 
-    strictly to the standard equity screener universe, this function deliberately 
-    uses a LEFT JOIN on `market_universe`. This ensures that obscure high-yield 
-    ETFs, Mutual Funds, or international OTC assets synced directly from the user's 
-    Ghostfolio portfolio are not dropped from the income report.
-    """
-    logger.info(f"Generating Dividend Harvest Report (Min Yield: {min_yield}, Min Score: {min_score})...")
+    """High-yield dividend stocks filtered for yield traps; LEFT JOIN on market_universe keeps portfolio-only OTC/ETF holdings."""
+    logger.info("Generating Dividend Harvest Report (Min Yield: %s, Min Score: %s)...", min_yield, min_score)
     conn = None
     try:
         conn = get_connection()
-        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
         query = """
@@ -237,7 +212,7 @@ def get_dividend_harvest_setups(min_yield: float = 0.02, min_score: int = 50) ->
                 ts = float(ex_date_raw)
                 # Ensure it is a valid, modern timestamp (post-2000)
                 if ts > 946684800:
-                    parsed_date = datetime.fromtimestamp(ts).strftime('%Y-%m-%d')
+                    parsed_date = datetime.fromtimestamp(ts, tz=timezone.utc).strftime('%Y-%m-%d')
             except (ValueError, TypeError):
                 # Already a date string from the DB — validate it is ISO-formatted
                 if isinstance(ex_date_raw, str) and len(ex_date_raw) == 10:
@@ -254,23 +229,18 @@ def get_dividend_harvest_setups(min_yield: float = 0.02, min_score: int = 50) ->
         return sorted(results, key=lambda x: x['ex_dividend_date'])
 
     except Exception as e:
-        logger.error(f"Failed to fetch dividend harvest setups: {e}")
+        logger.error("Failed to fetch dividend harvest setups: %s", e)
         return []
     finally:
         if conn:
             conn.close()
 
 def get_quality_compounders() -> List[Dict[str, Any]]:
-    """
-    Identifies 'buy and hold' quality compounders.
-    Filters for high capital efficiency, strong margins, low debt, 
-    consistent growth, and reasonable valuations.
-    """
+    """High-ROCE, low-debt quality compounders: ROE>15%, margin>10%, D/E<100, growth>5%, PE 10-35, score>=60."""
     logger.info("Generating Quality Compounders Report...")
     conn = None
     try:
         conn = get_connection()
-        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
         query = """
@@ -319,33 +289,18 @@ def get_quality_compounders() -> List[Dict[str, Any]]:
         return [dict(row) for row in rows]
 
     except Exception as e:
-        logger.error(f"Failed to generate Quality Compounders: {e}")
+        logger.error("Failed to generate Quality Compounders: %s", e)
         return []
     finally:
         if conn:
             conn.close()
 
 def get_quality_on_sale() -> List[Dict[str, Any]]:
-    """
-    "Quality on Sale" — 52-Week Low Bargains.
-    Surfaces high-quality businesses the market has thrown out with the bathwater.
-    Distinct from Mean Reversion (RSI-based, short-term panic) — this is structural
-    value: good fundamentals at multi-month price lows.
-
-    Filter criteria:
-      - close_price <= fifty_two_week_low * 1.15  (within 15% of 52-week low)
-      - roe > 10%                                  (still a quality business)
-      - debt_to_equity < 150                       (< 1.5x ratio; yfinance stores as %)
-      - profit_margin > 5%
-      - trailing_pe between 0 and 25               (profitable, not overvalued)
-      - composite_score >= 50
-      - quote_type = EQUITY
-    """
+    """Quality-on-sale: within 15% of 52W low + ROE>10%, margin>5%, PE<25, score>=50. Distinct from mean-reversion (RSI-based) — this is structural value."""
     logger.info("Generating Quality on Sale Report...")
     conn = None
     try:
         conn = get_connection()
-        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
         query = """
@@ -397,7 +352,7 @@ def get_quality_on_sale() -> List[Dict[str, Any]]:
         return [dict(row) for row in rows]
 
     except Exception as e:
-        logger.error(f"Failed to generate Quality on Sale: {e}")
+        logger.error("Failed to generate Quality on Sale: %s", e)
         return []
     finally:
         if conn:
@@ -405,28 +360,11 @@ def get_quality_on_sale() -> List[Dict[str, Any]]:
 
 
 def get_garp_tenbaggers() -> List[Dict[str, Any]]:
-    """
-    GARP "Peter Lynch Tenbaggers" — Growth-At-Reasonable-Price screener.
-
-    Filter criteria (all hard gates, applied server-side):
-      - peter_lynch_peg in (0, 1.0]   (yield-adjusted PEG, Lynch's fair-value line)
-      - revenue_growth > 15% YoY
-      - roe > 10%
-      - forward_pe between 10 and 40
-      - market_cap > $500M             (excludes micro-cap pump-and-dumps)
-      - quote_type = EQUITY
-      - is_index = 1                   (universe scope — market_cap is universe-only data)
-
-    ML confidence is NOT a server-side gate — returned as a nullable column for
-    client-side filtering. NULL displays as "—" in the UI.
-
-    Sort: peter_lynch_peg ASC (cheapest growth first), ml_confidence_score DESC tiebreak.
-    """
+    """GARP/Peter Lynch screener: PEG<=1.0, growth>15%, ROE>10%, fwd_PE 10-40, mktcap>$500M; ML confidence returned nullable for client-side filtering."""
     logger.info("Generating GARP Tenbaggers Report...")
     conn = None
     try:
         conn = get_connection()
-        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
         query = """
@@ -477,7 +415,7 @@ def get_garp_tenbaggers() -> List[Dict[str, Any]]:
         return [dict(row) for row in rows]
 
     except Exception as e:
-        logger.error(f"Failed to generate GARP Tenbaggers: {e}")
+        logger.error("Failed to generate GARP Tenbaggers: %s", e)
         return []
     finally:
         if conn:
