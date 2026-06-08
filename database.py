@@ -29,17 +29,17 @@ def log_notification(message_type: str, message_text: str) -> None:
         )
         conn.commit()
     except Exception as e:
-        logger.error(f"Failed to log notification: {e}")
+        logger.error("Failed to log notification: %s", e)
     finally:
         if conn:
             conn.close()
 
 
 def init_db() -> None:
-    conn = get_connection()
-    cursor = conn.cursor()
-
+    conn = None
     try:
+        conn = get_connection()
+        cursor = conn.cursor()
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS stock_signals (
                 ticker TEXT PRIMARY KEY,
@@ -496,7 +496,7 @@ def init_db() -> None:
         logger.info("Database connection verified and schema is fully up-to-date.")
 
     except Exception as e:
-        logger.error(f"Failed to initialize database schema: {e}")
+        logger.error("Failed to initialize database schema: %s", e)
     finally:
         conn.close()
 
@@ -520,7 +520,7 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
             ''')
             conn.commit()
     except Exception as e:
-        logger.error(f"[MIGRATION ERROR] Failed on quant_scan_states recreation: {e}")
+        logger.error("[MIGRATION ERROR] Failed on quant_scan_states recreation: %s", e)
 
     # market_pulse_cache TEXT→REAL column type migration
     try:
@@ -555,7 +555,7 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
                 conn.commit()
                 break
     except Exception as e:
-        logger.error(f"[MIGRATION ERROR] Failed on market_pulse_cache numeric enforcement: {e}")
+        logger.error("[MIGRATION ERROR] Failed on market_pulse_cache numeric enforcement: %s", e)
 
     cursor.execute("PRAGMA table_info(stock_signals)")
     existing_stock_columns = [info['name'] for info in cursor.fetchall()]
@@ -582,10 +582,10 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
     for col_name, data_type in required_stock_columns.items():
         if col_name not in existing_stock_columns:
             try:
-                logger.info(f"[MIGRATION] Adding column: '{col_name}' to stock_signals...")
+                logger.info("[MIGRATION] Adding column: %s to stock_signals...", col_name)
                 cursor.execute(f"ALTER TABLE stock_signals ADD COLUMN {col_name} {data_type}")
             except Exception as e:
-                logger.error(f"[MIGRATION ERROR] Failed on stock_signals: {e}")
+                logger.error("[MIGRATION ERROR] Failed on stock_signals: %s", e)
                 continue
 
     cursor.execute("PRAGMA table_info(quant_signals)")
@@ -613,10 +613,10 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
     for col_name, data_type in required_quant_columns.items():
         if col_name not in existing_quant_columns:
             try:
-                logger.info(f"[MIGRATION] Adding column: '{col_name}' to quant_signals...")
+                logger.info("[MIGRATION] Adding column: %s to quant_signals...", col_name)
                 cursor.execute(f"ALTER TABLE quant_signals ADD COLUMN {col_name} {data_type}")
             except Exception as e:
-                logger.error(f"[MIGRATION ERROR] Failed on quant_signals: {e}")
+                logger.error("[MIGRATION ERROR] Failed on quant_signals: %s", e)
                 continue
 
     cursor.execute("PRAGMA table_info(market_universe)")
@@ -636,10 +636,10 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
     for col_name, data_type in required_universe_columns.items():
         if col_name not in existing_universe_columns:
             try:
-                logger.info(f"[MIGRATION] Adding column: '{col_name}' to market_universe...")
+                logger.info("[MIGRATION] Adding column: %s to market_universe...", col_name)
                 cursor.execute(f"ALTER TABLE market_universe ADD COLUMN {col_name} {data_type}")
             except Exception as e:
-                logger.error(f"[MIGRATION ERROR] Failed on market_universe: {e}")
+                logger.error("[MIGRATION ERROR] Failed on market_universe: %s", e)
                 continue
 
     cursor.execute("PRAGMA table_info(market_regimes)")
@@ -659,10 +659,10 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
     for col_name, data_type in required_regime_columns.items():
         if col_name not in existing_regime_columns:
             try:
-                logger.info(f"[MIGRATION] Expanding market_regimes schema: '{col_name}'...")
+                logger.info("[MIGRATION] Expanding market_regimes schema: %s...", col_name)
                 cursor.execute(f"ALTER TABLE market_regimes ADD COLUMN {col_name} {data_type}")
             except Exception as e:
-                logger.error(f"[MIGRATION ERROR] Failed on market_regimes: {e}")
+                logger.error("[MIGRATION ERROR] Failed on market_regimes: %s", e)
                 continue
 
     cursor.execute("PRAGMA table_info(macro_regimes)")
@@ -678,10 +678,10 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
     for col_name, data_type in required_macro_columns.items():
         if col_name not in existing_macro_columns:
             try:
-                logger.info(f"[MIGRATION] Adding dual-region risk column '{col_name}'...")
+                logger.info("[MIGRATION] Adding dual-region risk column %s...", col_name)
                 cursor.execute(f"ALTER TABLE macro_regimes ADD COLUMN {col_name} {data_type}")
             except Exception as e:
-                logger.error(f"[MIGRATION ERROR] Failed on macro_regimes: {e}")
+                logger.error("[MIGRATION ERROR] Failed on macro_regimes: %s", e)
                 continue
 
     cursor.execute("PRAGMA table_info(macro_calendar)")
@@ -698,10 +698,10 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
     for col_name, data_type in required_calendar_columns.items():
         if col_name not in existing_calendar_columns:
             try:
-                logger.info(f"[MIGRATION] Adding column '{col_name}' to macro_calendar...")
+                logger.info("[MIGRATION] Adding column %s to macro_calendar...", col_name)
                 cursor.execute(f"ALTER TABLE macro_calendar ADD COLUMN {col_name} {data_type}")
             except Exception as e:
-                logger.error(f"[MIGRATION ERROR] Failed on macro_calendar: {e}")
+                logger.error("[MIGRATION ERROR] Failed on macro_calendar: %s", e)
                 continue
 
     cursor.execute("PRAGMA table_info(macro_indicators)")
@@ -717,10 +717,10 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
     for col_name, data_type in required_indicator_columns.items():
         if col_name not in existing_indicator_columns:
             try:
-                logger.info(f"[MIGRATION] Adding Phase 1 Yield Curve column '{col_name}' to macro_indicators...")
+                logger.info("[MIGRATION] Adding Phase 1 Yield Curve column %s to macro_indicators...", col_name)
                 cursor.execute(f"ALTER TABLE macro_indicators ADD COLUMN {col_name} {data_type}")
             except Exception as e:
-                logger.error(f"[MIGRATION ERROR] Failed on macro_indicators: {e}")
+                logger.error("[MIGRATION ERROR] Failed on macro_indicators: %s", e)
                 continue
 
     # news_articles — add sentiment columns if not present
@@ -730,10 +730,10 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
         for col, dtype in [("sentiment_score", "REAL"), ("sentiment_label", "TEXT")]:
             if col not in news_cols:
                 cursor.execute(f"ALTER TABLE news_articles ADD COLUMN {col} {dtype}")
-                logger.info(f"[MIGRATION] Added column '{col}' to news_articles.")
+                logger.info("[MIGRATION] Added column %s to news_articles.", col)
         conn.commit()
     except Exception as e:
-        logger.error(f"[MIGRATION ERROR] news_articles sentiment columns: {e}")
+        logger.error("[MIGRATION ERROR] news_articles sentiment columns: %s", e)
 
     # ai_contagion_snapshots (guard for pre-feature DBs)
     try:
@@ -748,7 +748,7 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
             )
         ''')
     except Exception as e:
-        logger.error(f"[MIGRATION ERROR] Failed to create ai_contagion_snapshots: {e}")
+        logger.error("[MIGRATION ERROR] Failed to create ai_contagion_snapshots: %s", e)
 
     # intraday dip radar tables (guard for pre-feature DBs)
     try:
@@ -777,7 +777,7 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
             )
         ''')
     except Exception as e:
-        logger.error(f"[MIGRATION ERROR] Failed to create intraday dip radar tables: {e}")
+        logger.error("[MIGRATION ERROR] Failed to create intraday dip radar tables: %s", e)
 
     # intraday_monitor_results — add bb_lower, vwap_lower, vol_climax if missing
     cursor.execute("PRAGMA table_info(intraday_monitor_results)")
@@ -790,10 +790,10 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
     for col_name, data_type in required_imr_columns.items():
         if col_name not in existing_imr_columns:
             try:
-                logger.info(f"[MIGRATION] Adding column '{col_name}' to intraday_monitor_results...")
+                logger.info("[MIGRATION] Adding column %s to intraday_monitor_results...", col_name)
                 cursor.execute(f"ALTER TABLE intraday_monitor_results ADD COLUMN {col_name} {data_type}")
             except Exception as e:
-                logger.error(f"[MIGRATION ERROR] Failed adding {col_name} to intraday_monitor_results: {e}")
+                logger.error("[MIGRATION ERROR] Failed adding %s to intraday_monitor_results: %s", col_name, e)
 
     # ticker_metadata (guard for pre-feature DBs)
     try:
@@ -806,7 +806,7 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
             )
         ''')
     except Exception as e:
-        logger.error(f"[MIGRATION ERROR] Failed to create ticker_metadata: {e}")
+        logger.error("[MIGRATION ERROR] Failed to create ticker_metadata: %s", e)
 
     # model_training_log (guard for DBs that pre-date init_db ownership of this table)
     try:
@@ -822,7 +822,7 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
             )
         ''')
     except Exception as e:
-        logger.error(f"[MIGRATION ERROR] Failed to create model_training_log: {e}")
+        logger.error("[MIGRATION ERROR] Failed to create model_training_log: %s", e)
 
     # covering index on quant_signals for efficient latest-date lookups
     try:
@@ -832,7 +832,7 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
         """)
         logger.info("[MIGRATION] Verified index idx_qs_ticker_date on quant_signals(ticker, date).")
     except Exception as e:
-        logger.error(f"[MIGRATION ERROR] Failed to create idx_qs_ticker_date: {e}")
+        logger.error("[MIGRATION ERROR] Failed to create idx_qs_ticker_date: %s", e)
 
     # smgb_predictions: add prediction_type column + composite unique (target_date, prediction_type)
     try:
@@ -884,12 +884,12 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
             cursor.execute("ALTER TABLE smgb_predictions_new RENAME TO smgb_predictions")
             logger.info("[MIGRATION] smgb_predictions rebuilt with prediction_type column.")
     except Exception as e:
-        logger.error(f"[MIGRATION ERROR] smgb_predictions rebuild failed: {e}")
+        logger.error("[MIGRATION ERROR] smgb_predictions rebuild failed: %s", e)
 
     try:
         conn.commit()
     except Exception as e:
-        logger.error(f"[MIGRATION ERROR] Failed to commit migration changes: {e}")
+        logger.error("[MIGRATION ERROR] Failed to commit migration changes: %s", e)
         conn.rollback()
 
 
@@ -909,7 +909,7 @@ def log_score_event(ticker: str, date: str, score: int, signal: str, close_price
         )
         conn.commit()
     except Exception as e:
-        logger.error(f"Failed to log score event for {ticker} on {date}: {e}")
+        logger.error("Failed to log score event for %s on %s: %s", ticker, date, e)
     finally:
         if conn:
             conn.close()
@@ -954,7 +954,7 @@ def log_smgb_prediction(result: dict) -> None:
         )
         conn.commit()
     except Exception as e:
-        logger.error(f"Failed to log SMGB prediction: {e}")
+        logger.error("Failed to log SMGB prediction: %s", e)
     finally:
         if conn:
             conn.close()
@@ -993,7 +993,7 @@ def fill_smgb_actual(target_date: str, actual_price: float, prediction_type: str
         )
         conn.commit()
     except Exception as e:
-        logger.error(f"Failed to fill SMGB actual for {target_date} ({prediction_type}): {e}")
+        logger.error("Failed to fill SMGB actual for %s (%s): %s", target_date, prediction_type, e)
     finally:
         if conn:
             conn.close()
@@ -1053,8 +1053,14 @@ def get_smgb_accuracy() -> dict:
             "us_open_impact": _type_stats("us_open_impact"),
         }
     except Exception as e:
-        logger.error(f"Failed to get SMGB accuracy: {e}")
-        return {"next_open": {"rows": [], "summary": {}}, "us_open_impact": {"rows": [], "summary": {}}}
+        logger.error("Failed to get SMGB accuracy: %s", e)
+        def _empty():
+            return {"rows": [], "summary": {
+                "total_predictions": 0, "resolved_count": 0,
+                "direction_accuracy_pct": None, "mae_gbp": None, "mape_pct": None,
+                "last_10_direction_pct": None, "last_30_direction_pct": None,
+            }}
+        return {"next_open": _empty(), "us_open_impact": _empty()}
     finally:
         if conn:
             conn.close()
@@ -1062,24 +1068,23 @@ def get_smgb_accuracy() -> dict:
 
 def get_universe_tickers() -> List[str]:
     """Respects FREETRADE_ONLY_MODE: returns only is_freetrade=1 tickers when enabled."""
+    conn = None
     try:
         config_data = load_config()
         freetrade_only = config_data.get("UI_PREFERENCES", {}).get("FREETRADE_ONLY_MODE", False)
-
         conn = get_connection()
         cursor = conn.cursor()
-
         if freetrade_only:
             cursor.execute("SELECT ticker FROM market_universe WHERE is_freetrade = 1")
         else:
             cursor.execute("SELECT ticker FROM market_universe")
-            
-        tickers = [row['ticker'] for row in cursor.fetchall()]
-        conn.close()
-        return tickers
+        return [row['ticker'] for row in cursor.fetchall()]
     except Exception as e:
-        logger.error(f"Failed to fetch universe tickers: {e}")
+        logger.error("Failed to fetch universe tickers: %s", e)
         return []
+    finally:
+        if conn:
+            conn.close()
 
 
 def upsert_quant_signal(
@@ -1137,7 +1142,7 @@ def upsert_quant_signal(
         conn.commit()
         return True
     except Exception as e:
-        logger.error(f"Database insertion failed for quant_signal ({ticker} on {date}): {e}")
+        logger.error("Database insertion failed for quant_signal (%s on %s): %s", ticker, date, e)
         return False
     finally:
         if conn:
