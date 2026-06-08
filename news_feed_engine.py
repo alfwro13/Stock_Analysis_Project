@@ -2,6 +2,7 @@ import hashlib
 import json
 import logging
 import time
+from datetime import datetime, timezone
 from typing import Dict, Optional
 
 from config import load_config, PORTFOLIO_PATH, WATCHLIST_PATH
@@ -20,7 +21,6 @@ def _load_json_file(path) -> dict:
 
 
 def _build_ticker_source_map() -> Dict[str, str]:
-    """Returns {ticker: source_list} where source_list is 'portfolio', 'watchlist', or 'both'."""
     portfolio_data = _load_json_file(PORTFOLIO_PATH)
     watchlist_data = _load_json_file(WATCHLIST_PATH)
 
@@ -59,8 +59,6 @@ def _make_article_id(item: dict, ticker: str, published_at: float) -> str:
 
 def _extract_published_at(item: dict) -> float:
     """Returns Unix timestamp (seconds). Returns 0 if unparseable."""
-    from datetime import datetime
-
     ts = item.get("providerPublishTime", 0)
     if ts and ts > 1_000_000_000_000:
         return ts / 1000
@@ -79,7 +77,6 @@ def _extract_published_at(item: dict) -> float:
 
 
 def _fetch_full_text(url: str) -> str | None:
-    """Fetches article body via trafilatura. Returns None on failure."""
     if not url or url == "N/A":
         return None
     try:
@@ -120,7 +117,6 @@ def _label_from_score(score: float) -> str:
 
 
 def _score_unscoredrows(conn) -> None:
-    """Run FinBERT over any news_articles rows that don't yet have a sentiment_score."""
     try:
         from huggingface_engine import _get_finbert_analyzer, _score_text
     except ImportError:
@@ -162,11 +158,7 @@ def _score_unscoredrows(conn) -> None:
 
 
 def run_news_feed_job() -> int:
-    """
-    Fetches news for all portfolio+watchlist tickers via yfinance, extracts full
-    article text via trafilatura, stores results in news_articles. Returns the
-    number of new articles inserted.
-    """
+    """Fetch news for all portfolio+watchlist tickers, full-text extract via trafilatura, store in news_articles; returns new row count."""
     cfg = load_config().get("SCHEDULING", {}).get("NEWS_FEED", {})
     max_per_ticker = int(cfg.get("MAX_PER_TICKER", 5))
     max_age_days = int(cfg.get("MAX_AGE_DAYS", 7))
@@ -196,18 +188,15 @@ def run_news_feed_job() -> int:
 
                 content = item.get("content") or {}
 
-                # --- Premium check ---
                 finance_data = content.get("finance") or {}
                 premium_data = finance_data.get("premiumFinance") or {}
                 if premium_data.get("isPremiumNews", False):
                     continue
 
-                # --- Timestamp ---
                 published_at = _extract_published_at(item)
                 if published_at == 0.0 or published_at < cutoff_ts:
                     continue
 
-                # --- Article metadata ---
                 headline = content.get("title") or item.get("title", "N/A")
                 summary = content.get("summary") or item.get("summary") or ""
 
@@ -219,7 +208,6 @@ def run_news_feed_job() -> int:
                 article_id = _make_article_id(item, ticker, published_at)
                 fetched_at = int(time.time())
 
-                # --- INSERT OR IGNORE (deduplication) ---
                 cursor.execute(
                     """INSERT OR IGNORE INTO news_articles
                        (article_id, ticker, company_name, source_list, headline, summary,
@@ -235,7 +223,6 @@ def run_news_feed_job() -> int:
                     total_inserted += 1
                     inserted_this_ticker += 1
 
-                    # --- Full text fetch ---
                     full_text = _fetch_full_text(url)
                     if full_text:
                         cursor.execute(
@@ -247,7 +234,6 @@ def run_news_feed_job() -> int:
                         conn.commit()
                     logger.info(f"News Feed: new article for {ticker} (body={'yes' if full_text else 'no'}): {headline[:60]}")
 
-        # --- Prune expired rows ---
         cursor.execute(
             "DELETE FROM news_articles WHERE published_at < ?", (int(cutoff_ts),)
         )
@@ -256,7 +242,6 @@ def run_news_feed_job() -> int:
         if pruned > 0:
             logger.info(f"News Feed: pruned {pruned} expired articles.")
 
-        # --- Sentiment scoring pass (headline + summary, unscored rows only) ---
         _score_unscoredrows(conn)
 
     except Exception as e:
@@ -264,17 +249,19 @@ def run_news_feed_job() -> int:
     finally:
         conn.close()
 
+    log_conn = None
     try:
-        from datetime import datetime as _dt
         log_conn = get_connection()
         log_conn.execute(
             "INSERT OR REPLACE INTO scheduler_run_log (job_id, last_run) VALUES (?, ?)",
-            ("news_feed_job", _dt.utcnow().isoformat()),
+            ("news_feed_job", datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")),
         )
         log_conn.commit()
-        log_conn.close()
     except Exception:
         pass
+    finally:
+        if log_conn:
+            log_conn.close()
 
     logger.info(f"News Feed job complete. {total_inserted} new articles inserted.")
     return total_inserted
