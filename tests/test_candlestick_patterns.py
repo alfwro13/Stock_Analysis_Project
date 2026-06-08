@@ -14,7 +14,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import pytest
 import pandas as pd
 
-from quant_signals import get_candlestick_patterns
+import numpy as np
+
+from quant_signals import get_candlestick_patterns, QuantEngine
 
 
 def _candle(open_: float, high: float, low: float, close: float) -> pd.Series:
@@ -229,3 +231,159 @@ class TestGetCandlestickPatterns:
         curr  = _candle(88, 97, 86, 96)     # closes at 96 < midpoint 100
         names = _names(get_candlestick_patterns(prev2, prev1, curr))
         assert "🗡️ Piercing Line" not in names
+
+
+# ---------------------------------------------------------------------------
+# Helpers for VCP / divergence tests
+# ---------------------------------------------------------------------------
+
+def _make_flat_ohlcv(n: int = 260, price: float = 100.0, volume: int = 1_000_000) -> pd.DataFrame:
+    dates = pd.bdate_range(start="2024-01-01", periods=n)
+    return pd.DataFrame(
+        {
+            "Open": [price] * n,
+            "High": [price * 1.002] * n,
+            "Low": [price * 0.998] * n,
+            "Close": [price] * n,
+            "Volume": [volume] * n,
+        },
+        index=dates,
+    )
+
+
+class TestCalculateVcpBreakout:
+
+    def setup_method(self):
+        self.engine = QuantEngine()
+
+    def test_returns_all_false_for_none_input(self):
+        assert self.engine.calculate_vcp_breakout(None) == (False, False, False)
+
+    def test_returns_all_false_when_fewer_than_252_rows(self):
+        df = _make_flat_ohlcv(n=100)
+        assert self.engine.calculate_vcp_breakout(df) == (False, False, False)
+
+    def test_returns_false_false_false_for_flat_price(self):
+        # Flat price: 52W high ≈ 52W low → prior advance ≈ 0 < 0.30.
+        df = _make_flat_ohlcv(n=260)
+        vcp_base, breakout, uptrend = self.engine.calculate_vcp_breakout(df)
+        assert uptrend is False
+        assert vcp_base is False
+        assert breakout is False
+
+    def test_prior_uptrend_flag_set_when_price_ran_30pct(self):
+        # 260-day climb from 100 to 140 (+40%), then drops to 90 (far from 52W high → is_near_high=False).
+        n = 260
+        dates = pd.bdate_range(start="2024-01-01", periods=n)
+        closes = [100 + 40 * i / 200 if i < 200 else 90.0 for i in range(n)]
+        df = pd.DataFrame(
+            {
+                "Open": closes,
+                "High": [c * 1.002 for c in closes],
+                "Low": [c * 0.998 for c in closes],
+                "Close": closes,
+                "Volume": [1_000_000] * n,
+            },
+            index=dates,
+        )
+        _vcp_base, breakout, uptrend = self.engine.calculate_vcp_breakout(df)
+        assert uptrend is True
+        assert breakout is False
+
+    def test_near_high_flag_false_when_price_far_below_52w_high(self):
+        # After the uptrend the price falls 30% below the 52W high — is_near_high must be False.
+        n = 260
+        dates = pd.bdate_range(start="2024-01-01", periods=n)
+        # high_52w ≈ 140, final price = 90  →  dist = (140-90)/140 ≈ 35.7% > 15%
+        closes = [100 + 40 * i / 200 if i < 200 else 90.0 for i in range(n)]
+        df = pd.DataFrame(
+            {
+                "Open": closes,
+                "High": [c * 1.002 for c in closes],
+                "Low": [c * 0.998 for c in closes],
+                "Close": closes,
+                "Volume": [1_000_000] * n,
+            },
+            index=dates,
+        )
+        vcp_base, _breakout, _uptrend = self.engine.calculate_vcp_breakout(df)
+        assert vcp_base is False
+
+
+class TestDetectBearishDivergence:
+
+    def setup_method(self):
+        self.engine = QuantEngine()
+
+    def test_returns_false_when_rsi_column_missing(self):
+        df = _make_flat_ohlcv(n=30)
+        assert self.engine.detect_bearish_divergence(df) is False
+
+    def test_returns_false_when_fewer_than_30_rows(self):
+        df = _make_flat_ohlcv(n=20)
+        df["RSI"] = 55.0
+        assert self.engine.detect_bearish_divergence(df) is False
+
+    def test_returns_true_on_classic_bearish_divergence(self):
+        # Price: higher high (peak2=116 > peak1=111).
+        # RSI:   lower high at peak2 (60 < 70) with first peak RSI > 55.
+        n = 30
+        dates = pd.bdate_range(start="2024-01-01", periods=n)
+        closes = [100.0] * 14 + [110.0] + [105.0] * 8 + [115.0] + [112.0] * 6
+        rsi_vals = (
+            [50.0] * 12 + [65.0, 68.0, 70.0]  # peak1 at iloc=14; window max=70
+            + [55.0] * 6 + [55.0, 58.0, 60.0]  # peak2 at iloc=23; window max=60
+            + [55.0] * 6
+        )
+        df = pd.DataFrame(
+            {
+                "High": [c + 1.0 for c in closes],
+                "Low": [c - 1.0 for c in closes],
+                "Close": closes,
+                "RSI": rsi_vals,
+            },
+            index=dates,
+        )
+        assert self.engine.detect_bearish_divergence(df) is True
+
+    def test_returns_false_when_first_rsi_peak_below_55(self):
+        # Same price structure but RSI peak1 = 50 (baseline not bullish enough).
+        n = 30
+        dates = pd.bdate_range(start="2024-01-01", periods=n)
+        closes = [100.0] * 14 + [110.0] + [105.0] * 8 + [115.0] + [112.0] * 6
+        rsi_vals = (
+            [40.0] * 12 + [45.0, 48.0, 50.0]   # peak1 RSI window max = 50 < 55
+            + [40.0] * 6 + [40.0, 43.0, 45.0]
+            + [40.0] * 6
+        )
+        df = pd.DataFrame(
+            {
+                "High": [c + 1.0 for c in closes],
+                "Low": [c - 1.0 for c in closes],
+                "Close": closes,
+                "RSI": rsi_vals,
+            },
+            index=dates,
+        )
+        assert self.engine.detect_bearish_divergence(df) is False
+
+    def test_returns_false_when_no_higher_price_high(self):
+        # Price peak2 (110) < price peak1 (115) — not a higher high, so no divergence.
+        n = 30
+        dates = pd.bdate_range(start="2024-01-01", periods=n)
+        closes = [100.0] * 14 + [115.0] + [105.0] * 8 + [110.0] + [108.0] * 6
+        rsi_vals = (
+            [50.0] * 12 + [65.0, 68.0, 70.0]
+            + [55.0] * 6 + [55.0, 58.0, 60.0]
+            + [55.0] * 6
+        )
+        df = pd.DataFrame(
+            {
+                "High": [c + 1.0 for c in closes],
+                "Low": [c - 1.0 for c in closes],
+                "Close": closes,
+                "RSI": rsi_vals,
+            },
+            index=dates,
+        )
+        assert self.engine.detect_bearish_divergence(df) is False

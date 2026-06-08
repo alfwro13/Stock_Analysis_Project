@@ -1,8 +1,7 @@
-# quant_signals.py
 import os
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional, Tuple
 
 import numpy as np
@@ -21,14 +20,9 @@ logger = logging.getLogger(__name__)
 
 
 def get_candlestick_patterns(prev2: pd.Series, prev1: pd.Series, curr: pd.Series) -> List[Dict[str, Any]]:
-    """
-    Algorithmic Candlestick Pattern Recognition (Hierarchical Engine).
-    Evaluates all structural criteria independently to allow signal confluence 
-    (e.g., scoring both a Bullish Engulfing and a Hammer rejection on the same day).
-    """
+    """Pattern recognition engine; patterns are non-exclusive to allow signal confluence."""
     patterns: List[Dict[str, Any]] = []
-    
-    # --- Anatomy of the Current Candle ---
+
     curr_body = abs(curr['Open'] - curr['Close'])
     curr_body_safe = max(curr_body, 0.001) 
     curr_range = max(curr['High'] - curr['Low'], 0.001) 
@@ -37,7 +31,6 @@ def get_candlestick_patterns(prev2: pd.Series, prev1: pd.Series, curr: pd.Series
     curr_is_bullish = bool(curr['Close'] > curr['Open'])
     curr_is_bearish = bool(curr['Close'] < curr['Open'])
 
-    # --- Anatomy of the Previous Candles ---
     prev1_body = abs(prev1['Open'] - prev1['Close'])
     prev1_range = max(prev1['High'] - prev1['Low'], 0.001)
     prev1_is_bearish = bool(prev1['Close'] < prev1['Open'])
@@ -46,12 +39,7 @@ def get_candlestick_patterns(prev2: pd.Series, prev1: pd.Series, curr: pd.Series
     
     prev2_body = abs(prev2['Open'] - prev2['Close'])
     prev2_is_bearish = bool(prev2['Close'] < prev2['Open'])
-    
-    # ==========================================
-    # TIER 1: 3-CANDLE PATTERNS
-    # ==========================================
-    
-    # 1. Morning Star (Bullish Reversal)
+
     # Day 1: Strong Bearish. Day 2: Indecision/Gap down. Day 3: Strong Bullish pushing > 50% into Day 1.
     prev2_midpoint = (prev2['Open'] + prev2['Close']) / 2.0
     if prev2_is_bearish and prev2_body > (prev2['High'] - prev2['Low']) * 0.5:
@@ -63,7 +51,6 @@ def get_candlestick_patterns(prev2: pd.Series, prev1: pd.Series, curr: pd.Series
                     "breakdown": "+20: <abbr title='3-Day Pattern: Heavy dump, followed by indecision, followed by violent recovery buying.'>Morning Star Reversal</abbr>",
                     "score": 20
                 })
-    # 2. Evening Star (Bearish Reversal) — symmetric counterpart to Morning Star
     # Day 1: Strong Bullish. Day 2: Indecision/Gap up. Day 3: Strong Bearish pushing below 50% of Day 1.
     prev2_midpoint_bull = (prev2['Open'] + prev2['Close']) / 2.0
     if prev2_is_bullish and prev2_body > (prev2['High'] - prev2['Low']) * 0.5:
@@ -76,9 +63,7 @@ def get_candlestick_patterns(prev2: pd.Series, prev1: pd.Series, curr: pd.Series
                     "score": -20
                 })
 
-    # 3. Three White Soldiers (Bullish Continuation)
-    # Three consecutive bullish candles, each with a meaningful body, each opening inside the prior
-    # body and closing progressively higher — signals sustained institutional buying across sessions.
+    # Three consecutive bullish candles, each opening inside prior body and closing higher.
     prev2_range = max(prev2['High'] - prev2['Low'], 0.001)
     if (prev2_is_bullish and prev1_is_bullish and curr_is_bullish
             and prev2_body > prev2_range * 0.40
@@ -95,13 +80,9 @@ def get_candlestick_patterns(prev2: pd.Series, prev1: pd.Series, curr: pd.Series
             "score": 18
         })
 
-    # ==========================================
-    # TIER 2: 2-CANDLE PATTERNS
-    # ==========================================
-
     harami_cross_detected = False
 
-    # 4. Bullish Engulfing
+
     if prev1_is_bearish and curr_is_bullish and (curr['Open'] <= prev1['Close']) and (curr['Close'] >= prev1['Open']):
         patterns.append({
             "name": "🐂 Bullish Engulfing",
@@ -110,7 +91,6 @@ def get_candlestick_patterns(prev2: pd.Series, prev1: pd.Series, curr: pd.Series
             "score": 15
         })
 
-    # 5. Bearish Engulfing
     if prev1_is_bullish and curr_is_bearish and (curr['Open'] >= prev1['Close']) and (curr['Close'] <= prev1['Open']):
         patterns.append({
             "name": "🐻 Bearish Engulfing",
@@ -119,8 +99,7 @@ def get_candlestick_patterns(prev2: pd.Series, prev1: pd.Series, curr: pd.Series
             "score": -15
         })
 
-    # 6. Bullish Harami Cross — large bearish D1 followed by a Doji contained within its body.
-    # Stronger reversal signal than a standalone Doji because the containment adds directional context.
+    # Large bearish D1 followed by Doji inside its body; stronger signal than standalone Doji.
     if (prev1_is_bearish and prev1_body > prev1_range * 0.50
             and curr_body <= curr_range * 0.10
             and prev1['Close'] <= curr['Open'] <= prev1['Open']
@@ -133,7 +112,6 @@ def get_candlestick_patterns(prev2: pd.Series, prev1: pd.Series, curr: pd.Series
         })
         harami_cross_detected = True
 
-    # 7. Bearish Harami Cross — large bullish D1 followed by a Doji contained within its body.
     elif (prev1_is_bullish and prev1_body > prev1_range * 0.50
             and curr_body <= curr_range * 0.10
             and prev1['Open'] <= curr['Open'] <= prev1['Close']
@@ -146,8 +124,7 @@ def get_candlestick_patterns(prev2: pd.Series, prev1: pd.Series, curr: pd.Series
         })
         harami_cross_detected = True
 
-    # 8. Piercing Line — bearish D1, bullish D2 that opens below D1's close but pierces above its midpoint.
-    # Weaker than Bullish Engulfing (doesn't fully overtake), but still a meaningful reversal attempt.
+    # Bearish D1 + bullish D2 that opens below D1 close and pierces above midpoint; weaker than engulfing.
     prev1_midpoint = (prev1['Open'] + prev1['Close']) / 2.0
     if (prev1_is_bearish and prev1_body > prev1_range * 0.50
             and curr_is_bullish
@@ -161,11 +138,6 @@ def get_candlestick_patterns(prev2: pd.Series, prev1: pd.Series, curr: pd.Series
             "score": 10
         })
 
-    # ==========================================
-    # TIER 3: 1-CANDLE PATTERNS (Mutually Exclusive)
-    # ==========================================
-
-    # 9. Hammer / Dragonfly Doji (Bullish Rejection)
     if curr_lower_wick >= (2.0 * curr_body_safe) and curr_upper_wick <= (0.2 * curr_range):
         patterns.append({
             "name": "🔨 Hammer Rejection",
@@ -174,7 +146,6 @@ def get_candlestick_patterns(prev2: pd.Series, prev1: pd.Series, curr: pd.Series
             "score": 10
         })
 
-    # 10. Shooting Star / Gravestone Doji (Bearish Rejection)
     elif curr_upper_wick >= (2.0 * curr_body_safe) and curr_lower_wick <= (0.2 * curr_range):
         patterns.append({
             "name": "🌠 Shooting Star",
@@ -183,7 +154,7 @@ def get_candlestick_patterns(prev2: pd.Series, prev1: pd.Series, curr: pd.Series
             "score": -10
         })
 
-    # 11. Standard Doji (Indecision) — suppressed when a Harami Cross already fired on this candle
+    # Doji suppressed when Harami Cross already fired on this candle.
     elif not harami_cross_detected and curr_body <= (curr_range * 0.1):
         patterns.append({
             "name": "⚖️ Doji",
@@ -200,19 +171,16 @@ class QuantEngine:
         pass
 
     def close(self):
-        """Safely closes the database connection."""
         if hasattr(self, 'conn') and self.conn:
             self.conn.close()
 
     def load_parquet(self, ticker: str) -> Optional[pd.DataFrame]:
-        """Loads the historical daily data from the local Parquet file."""
         filepath = HISTORICAL_DIR / f"{ticker}.parquet"
         if not filepath.exists():
             return None
         return pd.read_parquet(filepath)
 
     def load_fundamentals(self, ticker: str) -> dict:
-        """Loads the raw Yahoo Finance .info dictionary."""
         filepath = FUNDAMENTALS_DIR / f"{ticker}.json"
         if not filepath.exists():
             return {}
@@ -220,32 +188,12 @@ class QuantEngine:
             return json.load(f)
 
     def calculate_vcp_breakout(self, df: pd.DataFrame) -> Tuple[bool, bool, bool]:
-        """
-        Institutional Minervini VCP — Evaluates all 5 structural criteria.
-
-        Returns:
-            is_vcp_base (bool): Criteria 1-4 met — valid base structure confirmed.
-            is_confirmed_breakout (bool): Criteria 1-5 met — price broke resistance on volume.
-            has_prior_uptrend (bool): Standalone flag for partial scoring in analyze_ticker.
-
-        Mathematical Definitions:
-            Prior Uptrend:     (52W_High - 52W_Low) / 52W_Low >= 0.30
-            Proximity to High: (52W_High - Current_Price) / 52W_High <= 0.15
-            Contraction:       W1_Range > W2_Range > W3_Range AND total_range_pct <= 10%
-            Volume Dry-Up:     3W_Avg_Vol < 10W_Avg_Weekly_Vol * 0.80
-            Breakout:          Close > Base_Resistance AND Daily_Vol > 50D_Vol_SMA * 1.50
-        """
+        """Returns (is_vcp_base, is_confirmed_breakout, has_prior_uptrend) for all 5 Minervini VCP criteria."""
         # Require minimum 1 year of data to compute a valid 52-week window
         if df is None or len(df) < 252:
             return False, False, False
 
-        # ─────────────────────────────────────────────────────────────────
-        # CRITERION 1: Prior Uptrend — 30%+ advance from 52W Low to 52W High
-        # ─────────────────────────────────────────────────────────────────
-        # Measured over the full 252-day window using intraday High/Low extremes
-        # to capture the true prior advance, not just daily close-to-close.
-        #high_52w = df['High'].rolling(window=252).max().iloc[-1]
-        #low_52w = df['Low'].rolling(window=252).min().iloc[-1]
+        # Use calendar-exact 52W window via DateOffset to capture true intraday extremes.
         cutoff_52w = df.index[-1] - pd.DateOffset(weeks=52)
         df_52w     = df[df.index >= cutoff_52w]
         high_52w   = df_52w['High'].max()
@@ -257,11 +205,7 @@ class QuantEngine:
         prior_advance = (high_52w - low_52w) / low_52w
         has_prior_uptrend: bool = bool(prior_advance >= 0.30)
 
-        # ─────────────────────────────────────────────────────────────────
-        # CRITERION 2: Proximity to 52-Week High — Stock must be within 15%
-        # ─────────────────────────────────────────────────────────────────
-        # VCP bases form near the TOP of a prior advance. A stock 40% below its
-        # 52W high is in a bear market basing pattern — not a launch pad.
+        # VCP bases form near the top of a prior advance; a stock 40% below its 52W high is not a launchpad.
         current_price = float(df['Close'].iloc[-1])
         if pd.isna(current_price) or current_price <= 0:
             return False, False, has_prior_uptrend
@@ -269,9 +213,6 @@ class QuantEngine:
         dist_from_52w_high: float = (high_52w - current_price) / high_52w
         is_near_high: bool = bool(dist_from_52w_high <= 0.15)
 
-        # ─────────────────────────────────────────────────────────────────
-        # CRITERION 3: Sequential Range Contraction (3-Week Window)
-        # ─────────────────────────────────────────────────────────────────
         weekly_data = df.resample('W-FRI').agg({
             'Open': 'first',
             'High': 'max',
@@ -283,8 +224,7 @@ class QuantEngine:
         if len(weekly_data) < 4:
             return False, False, has_prior_uptrend
 
-        # Drop the current incomplete week if today is not Friday (weekday == 4)
-        # This prevents partial-week data from corrupting the contraction measurement.
+        # Drop partial week (non-Friday) to avoid corrupting the contraction measurement.
         if df.index[-1].weekday() < 4:
             completed_weeks = weekly_data.iloc[:-1]
         else:
@@ -302,16 +242,12 @@ class QuantEngine:
         # Strict sequential: every week must be smaller than the prior
         is_contracting: bool = bool(w1_range > w2_range > w3_range > 0)
 
-        # Total aggregate range across the 3-week base must be ≤ 10% of the low
         max_high = float(last_3_weeks['High'].max())
         min_low = float(last_3_weeks['Low'].min())
-        # Normalize range against current price (Minervini's published definition)
+        # Normalise against current price (Minervini's published definition, not against the low).
         total_range_pct = (max_high - min_low) / current_price if current_price > 0 else 1.0
         is_tight: bool = is_contracting and (total_range_pct <= 0.10)
 
-        # ─────────────────────────────────────────────────────────────────
-        # CRITERION 4: Volume Dry-Up — Base volume below 10-Week average
-        # ─────────────────────────────────────────────────────────────────
         weekly_vol_avg_10w = completed_weeks['Volume'].rolling(window=10).mean().iloc[-1]
 
         is_dry_volume: bool = False
@@ -319,9 +255,6 @@ class QuantEngine:
             avg_vol_3w = float(last_3_weeks['Volume'].mean())
             is_dry_volume = bool(avg_vol_3w < (weekly_vol_avg_10w * 0.80))
 
-        # ─────────────────────────────────────────────────────────────────
-        # COMPOSITE: Valid VCP Base = All 4 structural criteria confirmed
-        # ─────────────────────────────────────────────────────────────────
         is_vcp_base: bool = bool(
             has_prior_uptrend and
             is_near_high and
@@ -329,14 +262,7 @@ class QuantEngine:
             is_dry_volume
         )
 
-        # ─────────────────────────────────────────────────────────────────
-        # CRITERION 5: Confirmed Breakout — Price + Volume Trigger (DAILY)
-        # ─────────────────────────────────────────────────────────────────
-        # A confirmed VCP breakout requires price to CLOSE above the highest
-        # High of the 3-week base (the "pivot point" / resistance) on DAILY
-        # volume that is ≥ 1.5× the 50-day average daily volume.
-        # This uses daily data intentionally — weekly volume is too coarse
-        # to capture the single-session institutional surge that marks a real breakout.
+        # Daily volume for criterion 5: weekly volume is too coarse to detect a single-session institutional surge.
         is_confirmed_breakout: bool = False
         if is_vcp_base:
             resistance_level = float(last_3_weeks['High'].max())
@@ -354,7 +280,6 @@ class QuantEngine:
 
     def detect_bearish_divergence(self, df: pd.DataFrame) -> bool:
         """Checks if price is making structurally higher highs while RSI makes lower highs."""
-        # [BUG-11] Guard against missing RSI column before execution
         if 'RSI' not in df.columns:
             return False
 
@@ -375,44 +300,33 @@ class QuantEngine:
         price_peak1 = last_30[high_col].iloc[peak1_iloc]
         price_peak2 = last_30[high_col].iloc[peak2_iloc]
         
-        # Safely bind indices. 
-        # Left boundary looks back 2 days. 
-        # Right boundary is clamped to +1 (exclusive) to completely eliminate look-ahead bias.
+        # Right boundary clamped to +1 (exclusive) to eliminate look-ahead bias.
         window1_start = max(0, peak1_iloc - 2)
         window1_end = min(len(last_30), peak1_iloc + 1)
         window2_start = max(0, peak2_iloc - 2)
         window2_end = min(len(last_30), peak2_iloc + 1)
         
-        # Extract the maximum RSI reading specifically within the localized windows
         rsi_at_peak1 = last_30['RSI'].iloc[window1_start:window1_end].max()
         rsi_at_peak2 = last_30['RSI'].iloc[window2_start:window2_end].max()
-        
-        # Divergence confirmed: Price is higher, RSI is lower, and the first RSI peak showed baseline bullish momentum
+
         if price_peak2 > price_peak1 and rsi_at_peak2 < rsi_at_peak1 and rsi_at_peak1 > 55.0:
             return True
         return False
 
     def analyze_ticker(self, ticker: str) -> None:
-        """
-        Runs the combined Technical and Fundamental analysis.
-        Gracefully handles missing historical data and filters trailing NaNs for funds/ETFs.
-        Dynamically adjusts stop-loss based on Macro AI Engine.
-        """
+        """Combined technical + fundamental analysis with dynamic ATR stop-loss per Macro AI regime."""
         try:
             df = self.load_parquet(ticker)
             info = self.load_fundamentals(ticker)
-            
-            # --- DYNAMIC BENCHMARK SELECTION ---
+
             currency = info.get('currency', 'USD')
             is_uk_asset = bool(ticker.endswith('.L') or currency in ['GBp', 'GBP'])
             baseline_name = "FTSE_BASELINE" if is_uk_asset else "SP500_BASELINE"
             df_baseline = self.load_parquet(baseline_name)
-            
-            # --- INTERMARKET COST OF CAPITAL TRACKING ---
+
             yield_baseline = "UK_GILT_BASELINE" if is_uk_asset else "TYX_BASELINE"
             df_yield = self.load_parquet(yield_baseline)
-            
-            # Mathematical Vector Correlation Math (60-Day Lookback Window)
+
             yield_correlation = None
             if df_yield is not None and not df_yield.empty and df is not None and len(df) >= 60:
                 try:
@@ -423,9 +337,8 @@ class QuantEngine:
                     if not pd.isna(rolling_corr.iloc[-1]):
                         yield_correlation = float(rolling_corr.iloc[-1])
                 except Exception as ex:
-                    logger.debug(f"Failed rolling yield correlation calculations for {ticker}: {ex}")
+                    logger.debug("Failed rolling yield correlation for %s: %s", ticker, ex)
 
-            # --- MACRO AI PREEMPTIVE DEFENSE ---
             has_volatility_warning = False
             try:
                 conn = get_connection()
@@ -444,11 +357,8 @@ class QuantEngine:
                 finally:
                     conn.close()
             except Exception as e:
-                logger.error(f"Failed AI Macro defense check: {e}")
+                logger.error("Failed AI Macro defense check: %s", e)
 
-            # ==========================================
-            # PART 1: TECHNICAL ANALYSIS & MATH
-            # ==========================================
             current_price = None
             ma5 = ma10 = ma21 = ma50 = ma200 = None
             trend_50d = trend_200d = "N/A"
@@ -474,7 +384,6 @@ class QuantEngine:
                 valid_ma50 = df['MA_50'].dropna()
                 valid_ma200 = df['MA_200'].dropna()
 
-                # Extract last valid technical metrics
                 ma5 = valid_ma5.iloc[-1] if not valid_ma5.empty else None
                 ma10 = valid_ma10.iloc[-1] if not valid_ma10.empty else None
                 ma21 = valid_ma21.iloc[-1] if not valid_ma21.empty else None
@@ -526,8 +435,7 @@ class QuantEngine:
                 if 'Volume' in df.columns and not df['Volume'].isna().all():
                     df['OBV'] = ta.volume.OnBalanceVolumeIndicator(close=df['Close'], volume=df['Volume']).on_balance_volume()
                     df['OBV_MA'] = df['OBV'].rolling(window=21).mean()
-                    
-                    # [BUG-07] Guard both OBV and OBV_MA against NaN before boolean comparison
+
                     obv_bullish = (
                         bool(df['OBV'].iloc[-1] > df['OBV_MA'].iloc[-1])
                         if not pd.isna(df['OBV_MA'].iloc[-1]) and not pd.isna(df['OBV'].iloc[-1])
@@ -562,16 +470,12 @@ class QuantEngine:
                             if rs_1y_return > 0.15 and current_price is not None and current_price > ma200_val:
                                 is_market_leader = True
             else:
-                logger.warning(f"[PARTIAL SKIP] Insufficient historical data for {ticker}. Proceeding with fundamental analysis only.")
+                logger.warning("[PARTIAL SKIP] Insufficient historical data for %s. Proceeding with fundamental analysis only.", ticker)
                 current_price = info.get('navPrice') or info.get('regularMarketPrice') or info.get('previousClose')
 
-            # ==========================================
-            # PART 2: FUNDAMENTAL EXTRACTION
-            # ==========================================
             quote_type = info.get('quoteType', 'EQUITY')
             is_fund = bool(quote_type in ['ETF', 'MUTUALFUND'])
-            
-            # --- DATABASE FALLBACK FOR MUTUAL FUND NAMING ISSUES ---
+
             company_name = info.get('shortName') or info.get('longName')
             if not company_name:
                 try:
@@ -590,7 +494,7 @@ class QuantEngine:
                     finally:
                         conn.close()
                 except Exception as ex:
-                    logger.debug(f"Failed to fetch database fallback name for {ticker}: {ex}")
+                    logger.debug("Failed to fetch database fallback name for %s: %s", ticker, ex)
             company_name = company_name or ticker
             
             sector = info.get('category', info.get('sector', 'Fund')) if is_fund else info.get('sector', 'Unknown')
@@ -622,12 +526,7 @@ class QuantEngine:
             
             dividend_yield = info.get('dividendYield', None)
             
-            # Pence misquote correction: yfinance sometimes returns GBp yields as
-            # (pence_dividend / pence_price) which is 100x the true decimal yield.
-            # A yield > 1.0 (100%) is impossible for any real stock, so any value
-            # above that threshold is a pence-denomination artifact (e.g. 8.0 meaning 8%).
-            # The old threshold of 0.15 was too low — it incorrectly halved genuine
-            # high-yield instruments like REITs returning 16–20%.
+            # GBp yields can arrive as 100× the true decimal (pence_dividend/pence_price); >1.0 is impossible for a real yield.
             if dividend_yield is not None and currency in ['GBp', 'GBP']:
                 if dividend_yield > 1.0:
                     dividend_yield /= 100.0
@@ -637,7 +536,7 @@ class QuantEngine:
             analyst_rating = info.get('recommendationKey', 'None').upper()
             
             earnings_ts = info.get('earningsTimestamp', None)
-            next_earnings_date = datetime.fromtimestamp(earnings_ts).strftime('%Y-%m-%d') if earnings_ts else "Unknown"
+            next_earnings_date = datetime.fromtimestamp(earnings_ts, tz=timezone.utc).strftime('%Y-%m-%d') if earnings_ts else "Unknown"
 
             short_interest = info.get('shortPercentOfFloat', None)
             institutional_ownership = info.get('heldPercentInstitutions', None)
@@ -652,9 +551,6 @@ class QuantEngine:
                 dividend_yield=dividend_yield,
             )
 
-            # ==========================================
-            # PART 3: SCORING & SETUP TAGS
-            # ==========================================
             score = 0
             breakdown = []
             tags = []
@@ -667,7 +563,6 @@ class QuantEngine:
                         breakdown.append(pattern["breakdown"])
                         score += pattern["score"]
 
-                # [BUG-03] Guard MACD Series access to ensure sufficient tail history exists
                 macd_line_clean = df['MACD_Line'].dropna()
                 macd_signal_clean = df['MACD_Signal'].dropna()
                 
@@ -689,9 +584,6 @@ class QuantEngine:
 
                 if not is_fund:
                     if is_confirmed_breakout:
-                        # Highest conviction: all 5 Minervini criteria satisfied.
-                        # Prior uptrend ✓ | Near 52W high ✓ | Contracting base ✓
-                        # Volume dry-up ✓ | Breakout on institutional volume ✓
                         tags.append({
                             "name": "🔥 VCP Confirmed Breakout",
                             "tooltip": (
@@ -708,8 +600,6 @@ class QuantEngine:
                         )
 
                     elif is_vcp_base:
-                        # Valid base structure (criteria 1-4) but no breakout yet.
-                        # This is the actionable setup to WATCH, not yet a trade entry.
                         tags.append({
                             "name": "🌀 VCP Base Forming",
                             "tooltip": (
@@ -725,8 +615,6 @@ class QuantEngine:
                         )
 
                     elif has_prior_uptrend:
-                        # Weakest positive: the stock has the foundation (prior advance)
-                        # but has not yet built a proper base. Partial credit only.
                         score += 5
                         breakdown.append(
                             "+5: <abbr title='30%+ prior uptrend confirmed but base not yet formed.'>Prior "
@@ -753,7 +641,6 @@ class QuantEngine:
                         score += 7
                         breakdown.append("+7: MAs Partially Aligned (5 > 10, short-term momentum only)")
 
-                # [MATH-10] Rebalance to heavily prioritize structural multi-month trend
                 if trend_200d == "UP":
                     score += 20
                     breakdown.append("+20: 200D Trend UP (Institutional Backing)")
@@ -765,8 +652,7 @@ class QuantEngine:
                     score += 10
                     breakdown.append("+10: RSI Healthy (Room to run)")
 
-                # [MATH-10] Rebalance OBV weight to avoid overshadowing long-term trend lines
-                if is_fund: 
+                if is_fund:
                     score += 0
                     breakdown.append("+0: OBV Ignored (Fund Exemption)")
                 elif obv_bullish:
@@ -781,16 +667,13 @@ class QuantEngine:
                     score -= 30
                     breakdown.append("-30: Algorithmic Bearish Divergence")
                 
-                # Append Macro AI Preemptive Defense Logic to Breakdown
                 if has_volatility_warning:
                     breakdown.append("-0: 🛡️ Preemptive Defense Active: Stop-Loss tightened defensively due to imminent high-volatility macro event.")
 
             else:
                 breakdown.append("+0: Technical indicators skipped (Insufficient Historical Data)")
 
-            # Safely clamp the final score between -100 and 100 to allow structural weakness visibility
             score = max(-100, min(score, 100))
-            # Guard: stocks that never entered the technical block have score == 0
             _has_tech = df is not None and len(df) >= 21
             if not _has_tech:
                 signal = "INSUFFICIENT DATA"
@@ -834,7 +717,7 @@ class QuantEngine:
                 log_score_event(ticker, event_date, score, signal, current_price)
 
         except Exception as e:
-            logger.error(f"Failed to analyze {ticker}: {e}")
+            logger.error("Failed to analyze %s: %s", ticker, e)
 
     def save_to_db(self, ticker: str, company_name: str, sector: str, country: str, currency: str, quote_type: str,
                    price: Optional[float], ma5: Optional[float], ma10: Optional[float], ma21: Optional[float],
@@ -852,7 +735,6 @@ class QuantEngine:
                    institutional_ownership: Optional[float], beta: Optional[float], yield_correlation: Optional[float],
                    score: int, signal: str, notes: str, tags_json: str) -> None:
         
-        # Internal cleaner to aggressively handle pandas NaNs, Inf, and String Variants
         def _clean(v: Any) -> Any:
             if v is None: 
                 return None
@@ -899,7 +781,7 @@ class QuantEngine:
                     )
                 '''
                 
-                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
                 values = (
                     ticker, timestamp, company_name, sector, country, currency, quote_type,
                     _clean(price), _clean(ma5), _clean(ma10), _clean(ma21), _clean(ma50), _clean(ma200), trend_50d, trend_200d, _clean(rsi), _clean(stop_loss),
@@ -924,15 +806,15 @@ class QuantEngine:
                 ''', (int(score), signal, ticker, ticker))
 
                 conn.commit()
-                logger.info(f"[SUCCESS] Analyzed {ticker} | Signal: {signal} | Score: {score}/100")
+                logger.info("[SUCCESS] Analyzed %s | Signal: %s | Score: %s/100", ticker, signal, score)
                 
             except Exception as e:
                 conn.rollback()
-                logger.error(f"Failed to execute insertion for {ticker}: {e}")
+                logger.error("Failed to execute insertion for %s: %s", ticker, e)
             finally:
                 conn.close()
         except Exception as conn_e:
-            logger.error(f"Failed to secure database connection for {ticker}: {conn_e}")
+            logger.error("Failed to secure database connection for %s: %s", ticker, conn_e)
 
     def run_all(self) -> None:
         logger.info("Starting Institutional Quantamental Engine...")
