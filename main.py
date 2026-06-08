@@ -12,11 +12,12 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from starlette_csrf import CSRFMiddleware
 
-from config import PORT, SERVER_URL
+from config import PORT, SERVER_URL, load_config
 from auth import COOKIE_NAME, verify_session_token
 from api_routes import limiter
 from database import init_db
 from scheduler_engine import start_scheduler, shutdown_scheduler, reload_scheduler
+from log_config import configure_file_logging
 
 from api_routes import api_router
 from page_routes import page_router
@@ -27,6 +28,8 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+configure_file_logging(load_config())
 
 
 @asynccontextmanager
