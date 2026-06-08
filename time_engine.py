@@ -1,30 +1,16 @@
-# time_engine.py
-"""
-Central time utility module.
-
-All timezone-aware operations flow through here. Two settings in config.json drive behaviour:
-  USER_TIMEZONE  — IANA string (e.g. "Europe/London") for display formatting
-  HOME_EXCHANGE  — one of EXCHANGE_HOURS keys, for default market-window logic
-
-Per-ticker exchange detection uses ticker suffix / currency so DIP Radar and intraday
-charts automatically apply the right exchange clock regardless of HOME_EXCHANGE.
-"""
+"""Central time utility. USER_TIMEZONE + HOME_EXCHANGE in config.json drive all tz-aware behaviour."""
 from __future__ import annotations
 
-from datetime import date, datetime, time as dtime, timedelta, timezone
+from datetime import datetime, time as dtime, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from typing import Optional
-
-# ---------------------------------------------------------------------------
-# Exchange registry
-# ---------------------------------------------------------------------------
 
 EXCHANGE_HOURS: dict[str, dict] = {
     "NYSE": {
         "open":           "09:30",
         "close":          "16:00",
         "tz":             "America/New_York",
-        "premarket_open": "04:00",   # pre-market starts 04:00 ET
+        "premarket_open": "04:00",
     },
     "LSE": {
         "open":  "08:00",
@@ -46,10 +32,6 @@ EXCHANGE_HOURS: dict[str, dict] = {
 
 _FALLBACK_EXCHANGE = "NYSE"
 
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
-
 def _load_config() -> dict:
     from config import load_config as _lc   # lazy import avoids circular-import issues
     return _lc()
@@ -59,12 +41,7 @@ def _parse_hm(hm: str) -> dtime:
     h, m = map(int, hm.split(":"))
     return dtime(h, m)
 
-# ---------------------------------------------------------------------------
-# Public API — user display timezone
-# ---------------------------------------------------------------------------
-
 def get_user_tz() -> ZoneInfo:
-    """Return the user's configured display timezone."""
     tz_name = _load_config().get("USER_TIMEZONE", "Europe/London")
     try:
         return ZoneInfo(tz_name)
@@ -73,7 +50,6 @@ def get_user_tz() -> ZoneInfo:
 
 
 def now_local() -> datetime:
-    """Current datetime in the user's display timezone."""
     return datetime.now(get_user_tz())
 
 
@@ -93,17 +69,8 @@ def fmt_datetime(dt: datetime) -> str:
     """Format as '2026-06-05 16:05 GMT'."""
     return to_local(dt).strftime("%Y-%m-%d %H:%M %Z")
 
-# ---------------------------------------------------------------------------
-# Per-ticker exchange detection
-# ---------------------------------------------------------------------------
-
 def ticker_exchange(ticker: str, currency: str = "") -> str:
-    """
-    Infer the primary exchange from ticker suffix / currency.
-    USD-denominated tickers without an exchange suffix are treated as NYSE/NASDAQ.
-    Falls back to HOME_EXCHANGE only for genuinely ambiguous tickers.
-    Returns a key from EXCHANGE_HOURS.
-    """
+    """Infer exchange from ticker suffix or currency; ambiguous USD-less tickers fall back to HOME_EXCHANGE."""
     if ticker.endswith(".L") or currency in ("GBp", "GBP"):
         return "LSE"
     if ticker.endswith(".DE") or currency == "EUR":
@@ -114,25 +81,17 @@ def ticker_exchange(ticker: str, currency: str = "") -> str:
         return "NYSE"   # USD without exchange suffix → US market
     return _load_config().get("HOME_EXCHANGE", _FALLBACK_EXCHANGE)
 
-# ---------------------------------------------------------------------------
-# Public API — market windows
-# ---------------------------------------------------------------------------
-
 def market_window_utc(
     exchange: Optional[str] = None,
     include_premarket: bool = False,
 ) -> tuple[dtime, dtime]:
-    """
-    Return (open_utc, close_utc) for *exchange* as naive UTC wall-clock times for today,
-    honouring DST.  When *include_premarket* is True and the exchange defines
-    'premarket_open', the open time is extended to cover pre-market hours.
-    """
+    """Return (open_utc, close_utc) as naive UTC times for today, honouring DST."""
     if exchange is None:
         exchange = _load_config().get("HOME_EXCHANGE", _FALLBACK_EXCHANGE)
 
     info = EXCHANGE_HOURS.get(exchange, EXCHANGE_HOURS[_FALLBACK_EXCHANGE])
     tz = ZoneInfo(info["tz"])
-    today = date.today()
+    today = datetime.now(timezone.utc).date()
 
     open_key = "premarket_open" if (include_premarket and "premarket_open" in info) else "open"
     open_local  = datetime.combine(today, _parse_hm(info[open_key]),  tzinfo=tz)
@@ -154,15 +113,7 @@ def is_market_open(
 
 
 def reset_cron_trigger_params(exchange: Optional[str] = None) -> dict:
-    """
-    Return kwargs for APScheduler CronTrigger to fire 5 minutes after *exchange* close.
-    The timezone is set to the exchange's own timezone so APScheduler handles DST
-    automatically — no UTC conversion needed at the call site.
-
-    Usage:
-        params = time_engine.reset_cron_trigger_params("LSE")
-        CronTrigger(**params)  # fires at 16:35 Europe/London every weekday
-    """
+    """Return APScheduler CronTrigger kwargs for 5 min after exchange close; uses exchange tz so DST is automatic."""
     if exchange is None:
         exchange = _load_config().get("HOME_EXCHANGE", _FALLBACK_EXCHANGE)
     info = EXCHANGE_HOURS.get(exchange, EXCHANGE_HOURS[_FALLBACK_EXCHANGE])
