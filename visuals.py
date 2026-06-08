@@ -746,6 +746,8 @@ def create_smgb_overlay_chart(
     uk_close_utc: "datetime",
     prediction: dict,
     next_open_date: "date",
+    us_prev_closes: "dict[str, float] | None" = None,
+    nyse_open_utc: "datetime | None" = None,
 ) -> str:
     user_tz = time_engine.get_user_tz()
 
@@ -757,36 +759,37 @@ def create_smgb_overlay_chart(
             idx = idx.tz_localize("UTC")
         return s.set_axis(idx.tz_convert(user_tz).tz_localize(None))
 
-    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    def _to_pct(s: "pd.Series", ref: float) -> "pd.Series":
+        return (s / ref - 1) * 100
+
+    fig = go.Figure()
 
     smgb_local = _to_local(smgb_series)
-    if not smgb_local.empty:
+    if not smgb_local.empty and smgb_last_close > 0:
         fig.add_trace(go.Scatter(
             x=smgb_local.index,
-            y=smgb_local.values,
+            y=_to_pct(smgb_local, smgb_last_close).values,
             name="SMGB.L",
             line=dict(color="#00ffff", width=2.5),
-            hovertemplate="SMGB.L: £%{y:.3f}<extra></extra>",
-        ), secondary_y=False)
+            hovertemplate="SMGB.L: %{y:+.2f}%<extra></extra>",
+        ))
 
-    anchor_price: dict[str, float] = {}
     for ticker, series in us_series.items():
         us_local = _to_local(series)
         if us_local.empty:
             continue
-        first_val = float(us_local.iloc[0])
-        if first_val == 0:
+        ref = (us_prev_closes or {}).get(ticker) or float(us_local.iloc[0])
+        if ref == 0:
             continue
-        scaled = us_local * (smgb_last_close / first_val) if smgb_last_close > 0 else us_local
         color = _SMGB_COLORS.get(ticker, "#888888")
         fig.add_trace(go.Scatter(
-            x=scaled.index,
-            y=scaled.values,
+            x=us_local.index,
+            y=_to_pct(us_local, ref).values,
             name=ticker,
             line=dict(color=color, width=1.2),
             opacity=0.75,
-            hovertemplate=f"{ticker}: %{{y:.3f}}<extra></extra>",
-        ), secondary_y=True)
+            hovertemplate=f"{ticker}: %{{y:+.2f}}%<extra></extra>",
+        ))
 
     # Vertical line at LSE close — use add_shape to avoid Plotly annotation mean bug
     uk_close_aware = pd.Timestamp(uk_close_utc).tz_localize("UTC").tz_convert(user_tz).tz_localize(None)
@@ -805,24 +808,46 @@ def create_smgb_overlay_chart(
         xanchor="left", yanchor="top",
     )
 
-    # Prediction marker at next trading day 08:00 local
+    # Vertical line at NYSE open
+    if nyse_open_utc is not None:
+        nyse_open_aware = pd.Timestamp(nyse_open_utc).tz_localize("UTC").tz_convert(user_tz).tz_localize(None)
+        nyse_open_str = str(nyse_open_aware)
+        fig.add_shape(
+            type="line",
+            x0=nyse_open_str, x1=nyse_open_str,
+            y0=0, y1=1, yref="paper",
+            line=dict(dash="dash", color="#f6ad55", width=1.5),
+        )
+        fig.add_annotation(
+            x=nyse_open_str, y=0.97, yref="paper",
+            text="NYSE Open 14:30",
+            showarrow=False,
+            font=dict(color="#f6ad55", size=11),
+            xanchor="left", yanchor="top",
+        )
+
+    # Prediction marker — sits on NYSE open line for intraday signals, LSE open next day otherwise
     pred_price = prediction.get("predicted_price")
     pred_pct = prediction.get("predicted_change_pct", 0)
+    signal_source = prediction.get("signal_source", "daily_close")
     if pred_price and smgb_last_close > 0:
-        open_utc_time, _ = time_engine.market_window_utc("LSE")
-        pred_dt_utc = pd.Timestamp(datetime.combine(next_open_date, open_utc_time)).tz_localize("UTC")
-        pred_dt_local = pred_dt_utc.tz_convert(user_tz).tz_localize(None)
+        is_intraday = signal_source in ("intraday_premarket", "intraday_live")
+        if is_intraday and nyse_open_utc is not None:
+            pred_dt = pd.Timestamp(nyse_open_utc).tz_localize("UTC").tz_convert(user_tz).tz_localize(None)
+        else:
+            open_utc_time, _ = time_engine.market_window_utc("LSE")
+            pred_dt = pd.Timestamp(datetime.combine(next_open_date, open_utc_time)).tz_localize("UTC").tz_convert(user_tz).tz_localize(None)
         fig.add_trace(go.Scatter(
-            x=[pred_dt_local],
-            y=[pred_price],
+            x=[pred_dt],
+            y=[pred_pct],
             mode="markers+text",
             name=f"Predicted: £{pred_price:.2f}",
             marker=dict(color="#bb86fc", size=18, symbol="star"),
             text=[f"£{pred_price:.2f} ({pred_pct:+.2f}%)"],
             textposition="top right",
             textfont=dict(color="#bb86fc", size=11),
-            hovertemplate=f"Predicted open: £{pred_price:.2f} ({pred_pct:+.2f}%)<extra></extra>",
-        ), secondary_y=False)
+            hovertemplate=f"Predicted: £{pred_price:.2f} ({pred_pct:+.2f}%)<extra></extra>",
+        ))
 
     fig.update_layout(
         title=dict(
@@ -835,8 +860,15 @@ def create_smgb_overlay_chart(
         hovermode="x unified",
         legend=dict(orientation="h", yanchor="top", y=1.09, xanchor="right", x=1, font=dict(size=10)),
     )
-    fig.update_yaxes(title_text="SMGB.L (GBP £)", secondary_y=False, showgrid=True, gridcolor="#333333")
-    fig.update_yaxes(title_text="US Semis (scaled to GBP £)", secondary_y=True, showgrid=False)
+    fig.update_yaxes(
+        title_text="% Change from Previous Close",
+        ticksuffix="%",
+        zeroline=True,
+        zerolinecolor="#555555",
+        zerolinewidth=1.5,
+        showgrid=True,
+        gridcolor="#333333",
+    )
     fig.update_xaxes(showgrid=True, gridcolor="#333333")
     return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
 

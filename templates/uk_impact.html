@@ -145,10 +145,11 @@
             </div>
             <div class="sentiment-footer">
                 <strong>Reading this chart:</strong>
-                Cyan line = SMGB.L intraday today (08:00–16:30 BST, left axis in £).
-                Orange/red lines = the 10 US semiconductor constituents from US pre-market open (09:00 BST) onward, <abbr title="Each US ticker is scaled so its value at the start of the chart equals SMGB.L's last close — this lets you see how much each constituent moved relative to that reference point.">scaled to SMGB.L's last close</abbr> so they start from the same level.
-                Dashed vertical line = LSE close (16:30 BST). Purple star = predicted SMGB.L price.
-                {% if prediction.signal_source == 'intraday_post_close' %}The prediction uses the US moves visible in the shaded post-close window.{% elif prediction.signal_source == 'intraday_live' or prediction.signal_source == 'intraday_premarket' %}The prediction uses current US prices to project SMGB.L&rsquo;s move at NYSE open (14:30 BST).{% endif %}
+                All lines show <abbr title="% change vs each ticker's previous daily close — this puts SMGB.L (GBP) and the US semiconductors (USD) on the same scale so their moves are directly comparable.">% change from previous close</abbr>.
+                Cyan = SMGB.L intraday (08:00–16:30 BST).
+                Orange/red lines = the 10 US semiconductor constituents from US pre-market open (09:00 BST) onward.
+                Grey dashed line = LSE close (16:30 BST). Orange dashed line = NYSE open (14:30 BST). Purple star = predicted SMGB.L move.
+                {% if prediction.signal_source == 'intraday_post_close' %}The star sits at tomorrow&rsquo;s LSE open — prediction uses US post-close moves.{% elif prediction.signal_source == 'intraday_live' or prediction.signal_source == 'intraday_premarket' %}The star sits on the NYSE open line — prediction projects SMGB.L&rsquo;s reaction when US markets open at 14:30 BST.{% endif %}
             </div>
         </div>
 
