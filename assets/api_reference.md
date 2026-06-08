@@ -1168,6 +1168,8 @@ Sends a test insider trading alert via Nextcloud Talk.
 | `POST` | `/api/test-sentiment-alert` | Test Nextcloud sentiment alert |
 | `POST` | `/api/test-earnings-alert` | Test Nextcloud earnings alert |
 | `POST` | `/api/test-insider-alert` | Test Nextcloud insider alert |
+| `GET` | `/api/news-feed` | Paginated news articles from local store |
+| `POST` | `/api/news-feed/run-now` | Trigger immediate news feed refresh |
 
 ---
 
@@ -1253,6 +1255,61 @@ HTML page. Renders the full SMGB.L Morning Price Predictor UI including four cha
 HTML page. Renders the AI Sector Contagion Monitor with 30-day normalised performance, intraday performance (when market is open), and a 20-day pairwise correlation heatmap for: NVDA, AMD, AVGO, GOOGL, MSFT, META, AAPL, ORCL, AMZN, TSLA.
 
 For methodology details see [`assets/ai_contagion_monitor.md`](ai_contagion_monitor.md).
+
+---
+
+## 18. News Feed
+
+Stores and retrieves news articles for portfolio and watchlist tickers. Articles are fetched via yfinance, full-text extracted via trafilatura, and sentiment-scored via FinBERT. Results are stored in the `news_articles` table.
+
+### `GET /api/news-feed`
+
+Returns paginated news articles from the local `news_articles` table.
+
+**Query parameters**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `source` | string | `"all"` | Filter by source list: `"portfolio"`, `"watchlist"`, or `"all"` |
+| `page` | int | `1` | Page number (1-based) |
+| `per_page` | int | `20` | Items per page |
+
+**Response**
+
+```json
+{
+  "status": "success",
+  "total": 87,
+  "page": 1,
+  "per_page": 20,
+  "articles": [
+    {
+      "id": 1,
+      "article_id": "abc123...",
+      "ticker": "AAPL",
+      "company_name": "Apple Inc.",
+      "source_list": "portfolio",
+      "headline": "Apple Reports Record Earnings",
+      "summary": "...",
+      "url": "https://...",
+      "publisher": "Reuters",
+      "published_at": 1717840000,
+      "sentiment_score": 0.72,
+      "sentiment_label": "positive",
+      "body_fetched": 1
+    }
+  ]
+}
+```
+
+---
+
+### `POST /api/news-feed/run-now`
+
+Triggers an immediate news feed refresh in the background. Fetches news for all portfolio and watchlist tickers, extracts full article text, and runs FinBERT sentiment scoring on unscored rows.
+
+**Request body:** none  
+**Response:** `{"status": "success", "message": "News feed refresh triggered."}`
 
 ---
 
