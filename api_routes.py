@@ -25,6 +25,7 @@ from slowapi.util import get_remote_address
 limiter = Limiter(key_func=get_remote_address)
 from pydantic import BaseModel
 
+from log_config import configure_file_logging
 from config import (
     load_config,
     update_config_atomic,
@@ -430,6 +431,13 @@ class FreetradeMappingsConfig(BaseModel):
     US_MICS: Optional[List[str]] = None
     EXCHANGES: Optional[dict] = None
 
+class FileLoggingConfig(BaseModel):
+    ENABLED: Optional[bool] = None
+    LEVEL: Optional[str] = None
+    DAYS_TO_KEEP: Optional[int] = None
+    ARCHIVE: Optional[bool] = None
+    LOG_DIR: Optional[str] = None
+
 class SettingsConfig(BaseModel):
     # Credentials live in .env only — never written through this endpoint.
     model_config = {"extra": "forbid"}
@@ -450,6 +458,7 @@ class SettingsConfig(BaseModel):
     REPORTS_DEFAULTS: Optional[ReportsDefaultsConfig] = None
     NOTIFICATIONS: Optional[NotificationsConfig] = None
     XRAY_TARGETS: Optional[dict] = None
+    FILE_LOGGING: Optional[FileLoggingConfig] = None
 
 
 def log_notification(message_type: str, message_text: str) -> None:
@@ -1198,6 +1207,7 @@ async def save_settings(config: SettingsConfig):
         incoming_data = config.model_dump(exclude_none=True)
         update_config_atomic(incoming_data)
         reload_scheduler()
+        configure_file_logging(load_config())
         return JSONResponse(content={"status": "success", "message": "Settings saved successfully."})
     except Exception as e:
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
