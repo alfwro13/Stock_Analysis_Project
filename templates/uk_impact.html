@@ -111,9 +111,11 @@
         <p class="risk-summary-text">
             <strong>Signal source:</strong>
             {% if prediction.signal_source == 'intraday_post_close' %}
-            <span class="badge-source">Post-LSE-close US intraday</span> &mdash; using live US semiconductor prices from after 16:30 BST.
+            <span class="badge-source">Post-LSE-close US intraday</span> &mdash; using US semiconductor prices after LSE closed at 16:30 BST. Predicting tomorrow&rsquo;s open.
+            {% elif prediction.signal_source == 'intraday_live' %}
+            <span class="badge-source">Live NYSE session</span> &mdash; using live US prices to project SMGB.L impact at NYSE open (14:30 BST).
             {% elif prediction.signal_source == 'intraday_premarket' %}
-            <span class="badge-source-fallback">US pre-market</span> &mdash; using US pre-market prices (LSE not yet open).
+            <span class="badge-source">US pre-market</span> &mdash; using US pre-market prices to project SMGB.L impact at NYSE open (14:30 BST).
             {% else %}
             <span class="badge-source-fallback">Prior daily closes</span> &mdash; live intraday data unavailable.
             {% endif %}
@@ -144,9 +146,9 @@
             <div class="sentiment-footer">
                 <strong>Reading this chart:</strong>
                 Cyan line = SMGB.L intraday today (08:00–16:30 BST, left axis in £).
-                Orange/red lines = the 10 US semiconductor constituents from NYSE open (14:30 BST) onward, <abbr title="Each US ticker is scaled so its value at the start of the chart equals SMGB.L's last close — this lets you see how much each constituent moved relative to that reference point.">scaled to SMGB.L's last close</abbr> so they start from the same level.
-                Dashed vertical line = LSE close (16:30 BST). Purple star = predicted next-morning SMGB.L open (positioned at 08:00 BST on the next trading day).
-                {% if prediction.signal_source == 'intraday_post_close' %}The prediction uses the US moves visible in the shaded post-close window.{% endif %}
+                Orange/red lines = the 10 US semiconductor constituents from US pre-market open (09:00 BST) onward, <abbr title="Each US ticker is scaled so its value at the start of the chart equals SMGB.L's last close — this lets you see how much each constituent moved relative to that reference point.">scaled to SMGB.L's last close</abbr> so they start from the same level.
+                Dashed vertical line = LSE close (16:30 BST). Purple star = predicted SMGB.L price.
+                {% if prediction.signal_source == 'intraday_post_close' %}The prediction uses the US moves visible in the shaded post-close window.{% elif prediction.signal_source == 'intraday_live' or prediction.signal_source == 'intraday_premarket' %}The prediction uses current US prices to project SMGB.L&rsquo;s move at NYSE open (14:30 BST).{% endif %}
             </div>
         </div>
 

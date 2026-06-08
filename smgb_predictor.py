@@ -84,15 +84,15 @@ def _fallback_holdings() -> list:
 
 
 def get_smgb_next_open_date() -> date:
-    """Returns the next SMGB.L trading day to open: today if before LSE open, else tomorrow."""
+    """Returns the prediction target date: today until LSE closes, next trading day after."""
     now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
     today = date.today()
     if today.weekday() == 5:   # Saturday → Monday
         return today + timedelta(days=2)
     if today.weekday() == 6:   # Sunday → Monday
         return today + timedelta(days=1)
-    lse_open_utc, _ = time_engine.market_window_utc("LSE")
-    if now_utc < datetime.combine(today, lse_open_utc):
+    _, lse_close_utc = time_engine.market_window_utc("LSE")
+    if now_utc < datetime.combine(today, lse_close_utc):
         return today
     if today.weekday() == 4:   # Friday → Monday
         return today + timedelta(days=3)
@@ -160,18 +160,21 @@ def filter_pre_uk_open(df: pd.DataFrame, ref_date: date | None = None) -> pd.Dat
 def _compute_intraday_returns(
     intraday: dict[str, pd.DataFrame],
     ref_date: date | None = None,
+    daily_df: "pd.DataFrame | None" = None,
 ) -> tuple[dict[str, float], str]:
     """
-    Compute post-UK-close return for each US semiconductor ticker.
-    Return = (current_price / price_at_uk_close) - 1, so we only capture the move
-    that happened AFTER the LSE closed — not the full day's move from the prior daily close.
-    Falls back to pre-market return if no post-close data, then signals daily_close fallback.
+    Compute US semiconductor returns for the prediction model.
+    Priority:
+      1. Post-LSE-close: return vs price at LSE close (predicting next-day open).
+      2. Intraday — LSE open, US pre-market or live: return vs yesterday's daily close
+         (predicting SMGB.L move by NYSE open at 14:30 BST).
     Returns ({ticker: return_fraction}, signal_source).
     """
     trading_date = ref_date or _last_trading_date()
     uk_close = _lse_close_utc_dt(trading_date)
     returns: dict[str, float] = {}
     found_post = False
+    found_intraday = False
 
     for ticker in _SEMIS_TICKERS:
         df = intraday.get(ticker)
@@ -179,32 +182,41 @@ def _compute_intraday_returns(
             continue
         closes = df["Close"].dropna()
 
-        # Reference price: last bar at or before LSE close on the trading date
+        # Post-LSE-close signal: current vs price at LSE close
         at_close = closes[closes.index <= uk_close]
-        if at_close.empty:
-            continue
-        ref_price = float(at_close.iloc[-1])
-        if ref_price == 0:
-            continue
+        if not at_close.empty:
+            ref_price = float(at_close.iloc[-1])
+            if ref_price > 0:
+                post_close = closes[closes.index > uk_close]
+                if not post_close.empty:
+                    returns[ticker] = float(post_close.iloc[-1]) / ref_price - 1.0
+                    found_post = True
+                    continue
 
-        # Current price: latest bar after LSE close
-        post_close = closes[closes.index > uk_close]
-        if not post_close.empty:
-            returns[ticker] = float(post_close.iloc[-1]) / ref_price - 1.0
-            found_post = True
-            continue
+        # Intraday signal (LSE open, US pre-market or live): return vs yesterday's daily close
+        if daily_df is not None and ticker in daily_df.columns:
+            daily_series = daily_df[ticker].dropna()
+            if len(daily_series) >= 2:
+                yesterday_close = float(daily_series.iloc[-1])
+                if yesterday_close > 0:
+                    today_bars = closes[closes.index.normalize() == pd.Timestamp(trading_date)]
+                    if not today_bars.empty:
+                        returns[ticker] = float(today_bars.iloc[-1]) / yesterday_close - 1.0
+                        found_intraday = True
 
-        # Pre-market fallback (morning run before LSE opens)
-        lse_open = _lse_open_utc_dt(trading_date)
-        nyse_premarket_open, _ = time_engine.market_window_utc("NYSE", include_premarket=True)
-        pre_start = datetime.combine(trading_date, nyse_premarket_open)
-        pre = closes[(closes.index >= pre_start) & (closes.index < lse_open)]
-        if not pre.empty:
-            returns[ticker] = float(pre.iloc[-1]) / ref_price - 1.0
+    if found_post:
+        signal_source = "intraday_post_close"
+    elif found_intraday:
+        now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+        nyse_open_utc, _ = time_engine.market_window_utc("NYSE")
+        signal_source = (
+            "intraday_live"
+            if now_utc >= datetime.combine(trading_date, nyse_open_utc)
+            else "intraday_premarket"
+        )
+    else:
+        signal_source = "daily_close"
 
-    signal_source = "intraday_post_close" if found_post else (
-        "intraday_premarket" if returns else "daily_close"
-    )
     return returns, signal_source
 
 
@@ -223,9 +235,8 @@ def get_intraday_overlay_data() -> dict:
     trading_date = _last_trading_date()
     lse_open_utc = _lse_open_utc_dt(trading_date)
     uk_close_utc = _lse_close_utc_dt(trading_date)
-    nyse_open_utc_time, _ = time_engine.market_window_utc("NYSE")
-    # Include overlap: NYSE opens ~14:30 BST; start from 13:00 UTC to capture both DST seasons
-    nyse_open_utc = datetime.combine(trading_date, nyse_open_utc_time)
+    nyse_premarket_utc_time, _ = time_engine.market_window_utc("NYSE", include_premarket=True)
+    nyse_premarket_utc = datetime.combine(trading_date, nyse_premarket_utc_time)
 
     # period="5d" ensures we always have the last trading day even on weekends/holidays
     intraday = fetch_intraday_data(period="5d")
@@ -241,7 +252,7 @@ def get_intraday_overlay_data() -> dict:
         df = intraday.get(ticker)
         if df is None or df.empty or "Close" not in df.columns:
             continue
-        bars = df[df.index >= nyse_open_utc]["Close"].dropna()
+        bars = df[df.index >= nyse_premarket_utc]["Close"].dropna()
         if not bars.empty:
             us_intraday[ticker] = bars
 
@@ -419,7 +430,7 @@ def run_smgb_prediction() -> dict:
     try:
         intraday = fetch_intraday_data(period="5d")
         intraday_returns, signal_source = _compute_intraday_returns(
-            intraday, ref_date=_last_trading_date()
+            intraday, ref_date=_last_trading_date(), daily_df=df
         )
         if not intraday_returns:
             intraday_returns = None
