@@ -322,6 +322,13 @@ DEFAULT_CONFIG = {
         "income_targets": {
             "dividend_yield_min_pct": 1.5
         }
+    },
+    "FILE_LOGGING": {
+        "ENABLED": False,
+        "LEVEL": "INFO",
+        "DAYS_TO_KEEP": 30,
+        "ARCHIVE": False,
+        "LOG_DIR": "logs"
     }
 }
 
