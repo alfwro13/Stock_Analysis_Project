@@ -594,17 +594,15 @@ def run_ai_contagion_job():
 
 
 def run_smgb_actual_fill():
-    """Fetches the actual SMGB.L open price and fills yesterday's prediction row."""
+    """Fills actuals for both prediction types from today's open and yesterday's close."""
     from datetime import date, timedelta
     import pandas as pd
     log_sched_notification("Scheduler", "Started SMGB actual-fill job...")
     try:
         today = date.today()
-        # Target date = most recent weekday (today if Mon-Fri, else last Friday)
         target = today
         while target.weekday() >= 5:
             target -= timedelta(days=1)
-        target_str = target.isoformat()
 
         from yahoo_engine import yahoo_engine as _ye
         history = _ye.get_price_history(["SMGB.L"], period="5d", interval="1d")
@@ -614,14 +612,25 @@ def run_smgb_actual_fill():
             return
 
         df.index = df.index.normalize()
-        target_ts = pd.Timestamp(target_str)
-        if target_ts not in df.index:
-            log_sched_notification("Warning", f"SMGB actual-fill: no data for {target_str}.")
-            return
 
-        actual_open = float(df.loc[target_ts, "Open"])
-        fill_smgb_actual(target_str, actual_open)
-        log_sched_notification("Success", f"SMGB actual-fill: filled {target_str} at £{actual_open:.4f}.")
+        # next_open: today's actual opening price
+        target_ts = pd.Timestamp(target.isoformat())
+        if target_ts in df.index:
+            actual_open = float(df.loc[target_ts, "Open"])
+            fill_smgb_actual(target.isoformat(), actual_open, prediction_type='next_open')
+            log_sched_notification("Success", f"SMGB actual-fill (next_open): {target} at open £{actual_open:.4f}.")
+        else:
+            log_sched_notification("Warning", f"SMGB actual-fill: no data for {target}.")
+
+        # us_open_impact: yesterday's closing price (reflects full US session influence)
+        prev = target - timedelta(days=1)
+        while prev.weekday() >= 5:
+            prev -= timedelta(days=1)
+        prev_ts = pd.Timestamp(prev.isoformat())
+        if prev_ts in df.index:
+            actual_close = float(df.loc[prev_ts, "Close"])
+            fill_smgb_actual(prev.isoformat(), actual_close, prediction_type='us_open_impact')
+            log_sched_notification("Success", f"SMGB actual-fill (us_open_impact): {prev} at close £{actual_close:.4f}.")
     except Exception as e:
         log_sched_notification("Error", f"SMGB actual-fill failed: {e}")
     finally:

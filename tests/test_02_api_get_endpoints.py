@@ -370,14 +370,18 @@ def test_smgb_prediction_returns_200_with_status_key(client):
 
 @pytest.mark.api
 def test_smgb_accuracy_returns_200_with_summary_key(client):
-    """GET /api/smgb-accuracy must return 200 with 'summary' and 'rows' keys.
+    """GET /api/smgb-accuracy must return 200 with 'next_open' and 'us_open_impact' keys.
     No predictions exist on a fresh test DB, so rows will be empty — but the
     shape must be correct and the endpoint must not 500.
     """
     resp = client.get("/api/smgb-accuracy")
     assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
     data = _json(resp)
-    assert "summary" in data, f"Missing 'summary' key: {data}"
-    assert "rows" in data, f"Missing 'rows' key: {data}"
-    assert isinstance(data["rows"], list), "'rows' must be a list"
-    assert isinstance(data["summary"], dict), "'summary' must be a dict"
+    assert "next_open" in data, f"Missing 'next_open' key: {data}"
+    assert "us_open_impact" in data, f"Missing 'us_open_impact' key: {data}"
+    for section_key in ("next_open", "us_open_impact"):
+        section = data[section_key]
+        assert "rows" in section, f"Missing 'rows' in {section_key}"
+        assert "summary" in section, f"Missing 'summary' in {section_key}"
+        assert isinstance(section["rows"], list), f"'rows' must be a list in {section_key}"
+        assert isinstance(section["summary"], dict), f"'summary' must be a dict in {section_key}"

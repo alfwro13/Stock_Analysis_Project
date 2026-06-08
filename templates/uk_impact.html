@@ -211,13 +211,14 @@
                 <span id="accuracy-toggle-icon" style="font-size:1.1em;">&#9660;</span>
             </div>
             <div id="accuracy-body">
-                <div id="accuracy-summary-tiles" class="xray-cards-row" style="margin-top:1rem;">
-                    <div class="xray-metric-card">
-                        <div class="xray-metric-label">Loading&hellip;</div>
-                    </div>
+
+                {# Next-day open section #}
+                <p style="margin:1rem 0 0.4rem;font-size:0.85rem;color:#aaa;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">Next-Day Open Predictions</p>
+                <div id="accuracy-summary-next" class="xray-cards-row">
+                    <div class="xray-metric-card"><div class="xray-metric-label">Loading&hellip;</div></div>
                 </div>
-                <div id="accuracy-table-wrapper" style="margin-top:1rem;overflow-x:auto;">
-                    <table id="accuracy-table" style="width:100%;border-collapse:collapse;font-size:0.82rem;">
+                <div style="margin-top:0.75rem;overflow-x:auto;">
+                    <table style="width:100%;border-collapse:collapse;font-size:0.82rem;">
                         <thead>
                             <tr style="border-bottom:1px solid #444;">
                                 <th style="text-align:left;padding:4px 8px;">Date</th>
@@ -230,15 +231,43 @@
                                 <th style="text-align:left;padding:4px 8px;">Source</th>
                             </tr>
                         </thead>
-                        <tbody id="accuracy-tbody">
+                        <tbody id="accuracy-tbody-next">
                             <tr><td colspan="8" style="text-align:center;padding:12px;color:#888;">Loading&hellip;</td></tr>
                         </tbody>
                     </table>
                 </div>
-                <div class="sentiment-footer">
-                    Predicted vs actual SMGB.L open price. Direction = whether the predicted up/down move matched reality.
-                    Unresolved rows (today's prediction, no actual yet) shown in grey.
-                    Data auto-fills each trading morning at ~09:15 GMT via scheduled job.
+
+                {# US open impact section #}
+                <p style="margin:1.5rem 0 0.4rem;font-size:0.85rem;color:#aaa;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">Intraday US-Open Impact Predictions</p>
+                <div id="accuracy-summary-impact" class="xray-cards-row">
+                    <div class="xray-metric-card"><div class="xray-metric-label">Loading&hellip;</div></div>
+                </div>
+                <div style="margin-top:0.75rem;overflow-x:auto;">
+                    <table style="width:100%;border-collapse:collapse;font-size:0.82rem;">
+                        <thead>
+                            <tr style="border-bottom:1px solid #444;">
+                                <th style="text-align:left;padding:4px 8px;">Date</th>
+                                <th style="text-align:right;padding:4px 8px;">Predicted</th>
+                                <th style="text-align:right;padding:4px 8px;">Actual Close</th>
+                                <th style="text-align:right;padding:4px 8px;">Error</th>
+                                <th style="text-align:right;padding:4px 8px;">Pred %</th>
+                                <th style="text-align:right;padding:4px 8px;">Actual %</th>
+                                <th style="text-align:center;padding:4px 8px;">Dir</th>
+                                <th style="text-align:left;padding:4px 8px;">Source</th>
+                            </tr>
+                        </thead>
+                        <tbody id="accuracy-tbody-impact">
+                            <tr><td colspan="8" style="text-align:center;padding:12px;color:#888;">Loading&hellip;</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="sentiment-footer" style="margin-top:1rem;">
+                    <strong>Next-Day Open:</strong> predicted vs actual SMGB.L opening price the following morning.
+                    Filled daily at ~09:15 GMT.<br>
+                    <strong>Intraday US-Open Impact:</strong> predicted vs actual SMGB.L closing price on the same day (captures the full US session influence).
+                    Filled the following morning at ~09:15 GMT.
+                    Direction = whether the predicted up/down move matched reality. Unresolved rows shown in grey.
                 </div>
             </div>
         </div>
@@ -263,16 +292,22 @@
             .then(r => r.json())
             .then(data => {
                 _accuracyLoaded = true;
-                renderAccuracySummary(data.summary || {});
-                renderAccuracyTable(data.rows || []);
+                const no = data.next_open || {};
+                const ui = data.us_open_impact || {};
+                renderSummaryTiles(no.summary || {}, 'accuracy-summary-next');
+                renderSummaryTiles(ui.summary || {}, 'accuracy-summary-impact');
+                renderAccuracyTable(no.rows || [], 'accuracy-tbody-next');
+                renderAccuracyTable(ui.rows || [], 'accuracy-tbody-impact');
             })
             .catch(() => {
-                document.getElementById('accuracy-tbody').innerHTML =
-                    '<tr><td colspan="8" style="text-align:center;color:#f88;">Failed to load accuracy data.</td></tr>';
+                ['accuracy-tbody-next', 'accuracy-tbody-impact'].forEach(id => {
+                    document.getElementById(id).innerHTML =
+                        '<tr><td colspan="8" style="text-align:center;color:#f88;">Failed to load accuracy data.</td></tr>';
+                });
             });
     }
 
-    function renderAccuracySummary(s) {
+    function renderSummaryTiles(s, containerId) {
         const fmt = (v, suffix='') => v !== null && v !== undefined ? v + suffix : '—';
         const tiles = [
             { label: 'Direction Accuracy', value: fmt(s.direction_accuracy_pct, '%'), sub: 'All time' },
@@ -282,7 +317,7 @@
             { label: 'Mean Abs % Error', value: fmt(s.mape_pct, '%'), sub: 'MAPE' },
             { label: 'Predictions', value: (s.resolved_count || 0) + ' / ' + (s.total_predictions || 0), sub: 'Resolved / Total' },
         ];
-        document.getElementById('accuracy-summary-tiles').innerHTML = tiles.map(t =>
+        document.getElementById(containerId).innerHTML = tiles.map(t =>
             `<div class="xray-metric-card">
                 <div class="xray-metric-label">${t.label}</div>
                 <div class="xray-metric-value">${t.value}</div>
@@ -291,13 +326,13 @@
         ).join('');
     }
 
-    function renderAccuracyTable(rows) {
+    function renderAccuracyTable(rows, tbodyId) {
         if (!rows.length) {
-            document.getElementById('accuracy-tbody').innerHTML =
-                '<tr><td colspan="8" style="text-align:center;color:#888;">No predictions recorded yet. Load this page to start tracking.</td></tr>';
+            document.getElementById(tbodyId).innerHTML =
+                '<tr><td colspan="8" style="text-align:center;color:#888;">No predictions recorded yet.</td></tr>';
             return;
         }
-        const html = rows.map(r => {
+        document.getElementById(tbodyId).innerHTML = rows.map(r => {
             const resolved = r.actual_open !== null;
             const correct = r.direction_correct;
             let rowColor = '';
@@ -305,7 +340,6 @@
             else if (correct === 1) rowColor = 'color:#4fd1a5;';
             else if (correct === 0) rowColor = 'color:#f87171;';
             const dirIcon = !resolved ? '⏳' : correct === 1 ? '✓' : '✗';
-            const errStr = r.pct_error != null ? r.pct_error.toFixed(2) + '%' : '—';
             return `<tr style="${rowColor}border-bottom:1px solid #2a2a2a;">
                 <td style="padding:4px 8px;">${r.target_date}</td>
                 <td style="text-align:right;padding:4px 8px;">${r.predicted_price != null ? '£' + r.predicted_price.toFixed(4) : '—'}</td>
@@ -317,7 +351,6 @@
                 <td style="padding:4px 8px;">${r.signal_source || '—'}</td>
             </tr>`;
         }).join('');
-        document.getElementById('accuracy-tbody').innerHTML = html;
     }
 
     function toggleFullscreen(wrapperId) {

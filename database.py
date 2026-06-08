@@ -468,7 +468,8 @@ def init_db() -> None:
             CREATE TABLE IF NOT EXISTS smgb_predictions (
                 id                       INTEGER PRIMARY KEY AUTOINCREMENT,
                 prediction_date          TEXT NOT NULL,
-                target_date              TEXT NOT NULL UNIQUE,
+                target_date              TEXT NOT NULL,
+                prediction_type          TEXT NOT NULL DEFAULT 'next_open',
                 predicted_price          REAL,
                 actual_open              REAL,
                 predicted_change_pct     REAL,
@@ -483,7 +484,8 @@ def init_db() -> None:
                 absolute_error           REAL,
                 pct_error                REAL,
                 direction_correct        INTEGER,
-                created_at               TEXT DEFAULT (datetime('now'))
+                created_at               TEXT DEFAULT (datetime('now')),
+                UNIQUE(target_date, prediction_type)
             )
         ''')
 
@@ -832,6 +834,58 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
     except Exception as e:
         logger.error(f"[MIGRATION ERROR] Failed to create idx_qs_ticker_date: {e}")
 
+    # smgb_predictions: add prediction_type column + composite unique (target_date, prediction_type)
+    try:
+        cursor.execute("PRAGMA table_info(smgb_predictions)")
+        existing_sp_cols = {row['name'] for row in cursor.fetchall()}
+        if 'prediction_type' not in existing_sp_cols:
+            logger.info("[MIGRATION] Rebuilding smgb_predictions to add prediction_type column...")
+            cursor.execute("""
+                CREATE TABLE smgb_predictions_new (
+                    id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+                    prediction_date          TEXT NOT NULL,
+                    target_date              TEXT NOT NULL,
+                    prediction_type          TEXT NOT NULL DEFAULT 'next_open',
+                    predicted_price          REAL,
+                    actual_open              REAL,
+                    predicted_change_pct     REAL,
+                    actual_change_pct        REAL,
+                    last_smgb_close          REAL,
+                    holdings_predicted_price REAL,
+                    regression_predicted_price REAL,
+                    signal_source            TEXT,
+                    data_source              TEXT,
+                    fx_rate                  REAL,
+                    r_squared                REAL,
+                    absolute_error           REAL,
+                    pct_error                REAL,
+                    direction_correct        INTEGER,
+                    created_at               TEXT DEFAULT (datetime('now')),
+                    UNIQUE(target_date, prediction_type)
+                )
+            """)
+            cursor.execute("""
+                INSERT INTO smgb_predictions_new (
+                    id, prediction_date, target_date, prediction_type,
+                    predicted_price, actual_open, predicted_change_pct, actual_change_pct,
+                    last_smgb_close, holdings_predicted_price, regression_predicted_price,
+                    signal_source, data_source, fx_rate, r_squared,
+                    absolute_error, pct_error, direction_correct, created_at
+                )
+                SELECT
+                    id, prediction_date, target_date, 'next_open',
+                    predicted_price, actual_open, predicted_change_pct, actual_change_pct,
+                    last_smgb_close, holdings_predicted_price, regression_predicted_price,
+                    signal_source, data_source, fx_rate, r_squared,
+                    absolute_error, pct_error, direction_correct, created_at
+                FROM smgb_predictions
+            """)
+            cursor.execute("DROP TABLE smgb_predictions")
+            cursor.execute("ALTER TABLE smgb_predictions_new RENAME TO smgb_predictions")
+            logger.info("[MIGRATION] smgb_predictions rebuilt with prediction_type column.")
+    except Exception as e:
+        logger.error(f"[MIGRATION ERROR] smgb_predictions rebuild failed: {e}")
+
     try:
         conn.commit()
     except Exception as e:
@@ -869,22 +923,30 @@ def log_smgb_prediction(result: dict) -> None:
         cursor = conn.cursor()
         reg = result.get("regression_engine") or {}
         hold = result.get("holdings_engine") or {}
+        signal = result.get("signal_source", "daily_close")
+        prediction_type = (
+            "us_open_impact"
+            if signal in ("intraday_premarket", "intraday_live")
+            else "next_open"
+        )
         cursor.execute(
             """INSERT INTO smgb_predictions (
-                   prediction_date, target_date, predicted_price, predicted_change_pct,
+                   prediction_date, target_date, prediction_type,
+                   predicted_price, predicted_change_pct,
                    last_smgb_close, holdings_predicted_price, regression_predicted_price,
                    signal_source, data_source, fx_rate, r_squared
-               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-               ON CONFLICT(target_date) DO NOTHING""",
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(target_date, prediction_type) DO NOTHING""",
             (
                 result.get("as_of_utc", "")[:10],
                 result.get("next_open_date"),
+                prediction_type,
                 result.get("predicted_price"),
                 result.get("predicted_change_pct"),
                 result.get("last_smgb_close"),
                 hold.get("predicted_price"),
                 reg.get("predicted_price"),
-                result.get("signal_source"),
+                signal,
                 result.get("data_source"),
                 result.get("fx_rate_gbpusd"),
                 reg.get("r_squared"),
@@ -898,39 +960,40 @@ def log_smgb_prediction(result: dict) -> None:
             conn.close()
 
 
-def fill_smgb_actual(target_date: str, actual_open: float) -> None:
+def fill_smgb_actual(target_date: str, actual_price: float, prediction_type: str = 'next_open') -> None:
     conn = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT predicted_price, last_smgb_close FROM smgb_predictions WHERE target_date = ?",
-            (target_date,)
+            """SELECT predicted_price, last_smgb_close FROM smgb_predictions
+               WHERE target_date = ? AND prediction_type = ? AND actual_open IS NULL""",
+            (target_date, prediction_type)
         )
         row = cursor.fetchone()
         if row is None:
-            logger.warning(f"fill_smgb_actual: no prediction row for {target_date}")
             return
         predicted = row["predicted_price"]
         last_close = row["last_smgb_close"]
-        absolute_error = round(abs(predicted - actual_open), 4) if predicted is not None else None
-        pct_error = round(abs(predicted - actual_open) / actual_open * 100, 4) if predicted and actual_open else None
-        actual_change_pct = round((actual_open - last_close) / last_close * 100, 4) if last_close else None
-        predicted_change_pct_sign = row["predicted_price"] - last_close if predicted and last_close else None
-        actual_change_sign = actual_open - last_close if last_close else None
+        absolute_error = round(abs(predicted - actual_price), 4) if predicted is not None else None
+        pct_error = round(abs(predicted - actual_price) / actual_price * 100, 4) if predicted and actual_price else None
+        actual_change_pct = round((actual_price - last_close) / last_close * 100, 4) if last_close else None
+        predicted_change_sign = predicted - last_close if predicted and last_close else None
+        actual_change_sign = actual_price - last_close if last_close else None
         direction_correct = None
-        if predicted_change_pct_sign is not None and actual_change_sign is not None:
-            direction_correct = 1 if (predicted_change_pct_sign >= 0) == (actual_change_sign >= 0) else 0
+        if predicted_change_sign is not None and actual_change_sign is not None:
+            direction_correct = 1 if (predicted_change_sign >= 0) == (actual_change_sign >= 0) else 0
         cursor.execute(
             """UPDATE smgb_predictions SET
                    actual_open = ?, actual_change_pct = ?,
                    absolute_error = ?, pct_error = ?, direction_correct = ?
-               WHERE target_date = ?""",
-            (actual_open, actual_change_pct, absolute_error, pct_error, direction_correct, target_date)
+               WHERE target_date = ? AND prediction_type = ?""",
+            (actual_price, actual_change_pct, absolute_error, pct_error, direction_correct,
+             target_date, prediction_type)
         )
         conn.commit()
     except Exception as e:
-        logger.error(f"Failed to fill SMGB actual for {target_date}: {e}")
+        logger.error(f"Failed to fill SMGB actual for {target_date} ({prediction_type}): {e}")
     finally:
         if conn:
             conn.close()
@@ -941,58 +1004,57 @@ def get_smgb_accuracy() -> dict:
     try:
         conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute(
-            """SELECT * FROM smgb_predictions ORDER BY target_date DESC LIMIT 60"""
-        )
-        rows = [dict(r) for r in cursor.fetchall()]
 
-        cursor.execute(
-            """SELECT COUNT(*) as total,
-                      SUM(CASE WHEN actual_open IS NOT NULL THEN 1 ELSE 0 END) as resolved,
-                      AVG(CASE WHEN direction_correct IS NOT NULL THEN direction_correct END) as dir_acc,
-                      AVG(CASE WHEN absolute_error IS NOT NULL THEN absolute_error END) as mae,
-                      AVG(CASE WHEN pct_error IS NOT NULL THEN pct_error END) as mape
-               FROM smgb_predictions"""
-        )
-        agg = dict(cursor.fetchone())
-
-        def _window_dir(n: int) -> Optional[float]:
+        def _type_stats(ptype: str) -> dict:
             cursor.execute(
-                """SELECT AVG(direction_correct) FROM (
-                       SELECT direction_correct FROM smgb_predictions
-                       WHERE direction_correct IS NOT NULL
-                       ORDER BY target_date DESC LIMIT ?
-                   )""",
-                (n,)
+                """SELECT * FROM smgb_predictions WHERE prediction_type = ?
+                   ORDER BY target_date DESC LIMIT 60""",
+                (ptype,)
             )
-            val = cursor.fetchone()[0]
-            return round(val * 100, 1) if val is not None else None
+            rows = [dict(r) for r in cursor.fetchall()]
+            cursor.execute(
+                """SELECT COUNT(*) as total,
+                          SUM(CASE WHEN actual_open IS NOT NULL THEN 1 ELSE 0 END) as resolved,
+                          AVG(CASE WHEN direction_correct IS NOT NULL THEN direction_correct END) as dir_acc,
+                          AVG(CASE WHEN absolute_error IS NOT NULL THEN absolute_error END) as mae,
+                          AVG(CASE WHEN pct_error IS NOT NULL THEN pct_error END) as mape
+                   FROM smgb_predictions WHERE prediction_type = ?""",
+                (ptype,)
+            )
+            agg = dict(cursor.fetchone())
 
-        cursor.execute(
-            """SELECT signal_source,
-                      COUNT(*) as cnt,
-                      AVG(direction_correct) as dir_acc,
-                      AVG(pct_error) as mape
-               FROM smgb_predictions
-               WHERE actual_open IS NOT NULL
-               GROUP BY signal_source"""
-        )
-        by_source = [dict(r) for r in cursor.fetchall()]
+            def _window_dir(n: int) -> Optional[float]:
+                cursor.execute(
+                    """SELECT AVG(direction_correct) FROM (
+                           SELECT direction_correct FROM smgb_predictions
+                           WHERE prediction_type = ? AND direction_correct IS NOT NULL
+                           ORDER BY target_date DESC LIMIT ?
+                       )""",
+                    (ptype, n)
+                )
+                val = cursor.fetchone()[0]
+                return round(val * 100, 1) if val is not None else None
 
-        summary = {
-            "total_predictions": agg["total"] or 0,
-            "resolved_count": agg["resolved"] or 0,
-            "direction_accuracy_pct": round(agg["dir_acc"] * 100, 1) if agg["dir_acc"] is not None else None,
-            "mae_gbp": round(agg["mae"], 4) if agg["mae"] is not None else None,
-            "mape_pct": round(agg["mape"], 2) if agg["mape"] is not None else None,
-            "last_10_direction_pct": _window_dir(10),
-            "last_30_direction_pct": _window_dir(30),
-            "by_signal_source": by_source,
+            return {
+                "rows": rows,
+                "summary": {
+                    "total_predictions": agg["total"] or 0,
+                    "resolved_count": agg["resolved"] or 0,
+                    "direction_accuracy_pct": round(agg["dir_acc"] * 100, 1) if agg["dir_acc"] is not None else None,
+                    "mae_gbp": round(agg["mae"], 4) if agg["mae"] is not None else None,
+                    "mape_pct": round(agg["mape"], 2) if agg["mape"] is not None else None,
+                    "last_10_direction_pct": _window_dir(10),
+                    "last_30_direction_pct": _window_dir(30),
+                },
+            }
+
+        return {
+            "next_open": _type_stats("next_open"),
+            "us_open_impact": _type_stats("us_open_impact"),
         }
-        return {"rows": rows, "summary": summary}
     except Exception as e:
         logger.error(f"Failed to get SMGB accuracy: {e}")
-        return {"rows": [], "summary": {}}
+        return {"next_open": {"rows": [], "summary": {}}, "us_open_impact": {"rows": [], "summary": {}}}
     finally:
         if conn:
             conn.close()
