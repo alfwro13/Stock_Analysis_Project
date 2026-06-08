@@ -6,11 +6,9 @@ import requests
 logger = logging.getLogger(__name__)
 
 def __noop_logger(*args, **kwargs):
-    """A logger that does nothing."""
     pass
 
 def upload_file_webdav(local_path, remote_path, nextcloud_url, bot_username, app_password, log_message=__noop_logger):
-    """Uploads the file using a WebDAV PUT request."""
     webdav_url = f"{nextcloud_url}/remote.php/dav/files/{bot_username}/{remote_path}"
 
     try:
@@ -27,13 +25,8 @@ def upload_file_webdav(local_path, remote_path, nextcloud_url, bot_username, app
                 timeout=30
             )
             response.raise_for_status()
-
-            if response.status_code in [200, 201, 204]:
-                log_message(f"✅ File uploaded successfully via WebDAV to /files/{bot_username}/{remote_path}")
-                return True
-            else:
-                log_message(f"❌ WebDAV Upload Failed: HTTP {response.status_code}")
-                return False
+            log_message(f"✅ File uploaded successfully via WebDAV to /files/{bot_username}/{remote_path}")
+            return True
 
     except requests.exceptions.RequestException as e:
         log_message(f"❌ FATAL WebDAV Upload Error: {e}")
@@ -41,7 +34,6 @@ def upload_file_webdav(local_path, remote_path, nextcloud_url, bot_username, app
 
 
 def share_file_to_talk(remote_path, conversation_token, nextcloud_url, bot_username, app_password, log_message=__noop_logger):
-    """Shares the uploaded file into the target Talk conversation."""
     share_endpoint = f"{nextcloud_url}/ocs/v2.php/apps/files_sharing/api/v1/shares"
 
     share_path_clean = remote_path if remote_path.startswith('/') else f'/{remote_path}'
@@ -49,7 +41,7 @@ def share_file_to_talk(remote_path, conversation_token, nextcloud_url, bot_usern
     share_payload = {
         "path": share_path_clean,
         "shareType": 10, # 10 = Talk Conversation
-        "shareWith": conversation_token,  
+        "shareWith": conversation_token,
     }
 
     headers = {
@@ -81,7 +73,6 @@ def share_file_to_talk(remote_path, conversation_token, nextcloud_url, bot_usern
         return False
 
 def send_text_message(message_text: str, config_data: dict) -> bool:
-    """Sends a direct text payload to Nextcloud Talk using dynamic configurations."""
     # Env vars take precedence — credentials are sensitive and are never written to
     # config.json, only to .env / os.environ. config_data (from load_config()) is
     # kept as a fallback for callers that resolve credentials themselves.
