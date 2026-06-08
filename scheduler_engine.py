@@ -1,5 +1,3 @@
-# scheduler_engine.py
-import threading
 import logging
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -27,7 +25,6 @@ from ai_prediction_engine import train_global_ml_model, update_daily_ml_predicti
 from risk_engine import update_all_tail_risks
 from freetrade_engine import sync_freetrade_universe
 from universe_deep_sync_engine import run_universe_deep_sync
-# Import new Macro Engines
 from macro_calendar_engine import update_macro_calendar
 from macro_data_engine import update_macro_indicators
 from xray_engine import run_xray_precompute
@@ -36,21 +33,24 @@ from intraday_bottom_engine import IntradayBottomEngine
 
 logger = logging.getLogger(__name__)
 
-# --- Background Task Scheduler Setup ---
 scheduler = BackgroundScheduler()
 
 def log_sched_notification(msg_type: str, msg_text: str):
+    conn = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute("INSERT INTO system_notifications (message_type, message_text) VALUES (?, ?)", (msg_type, msg_text))
         conn.commit()
-        conn.close()
     except Exception as e:
-        logger.error(f"Failed to log notification: {e}")
+        logger.error("Failed to log notification: %s", e)
+    finally:
+        if conn:
+            conn.close()
 
 def record_job_run(job_id: str):
     from datetime import datetime, timezone
+    conn = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
@@ -60,44 +60,45 @@ def record_job_run(job_id: str):
             (job_id, datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M'))
         )
         conn.commit()
-        conn.close()
     except Exception as e:
-        logger.error(f"Failed to record job run for {job_id}: {e}")
+        logger.error("Failed to record job run for %s: %s", job_id, e)
+    finally:
+        if conn:
+            conn.close()
 
 def get_all_job_last_runs() -> dict:
+    conn = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT job_id, last_run FROM scheduler_run_log")
         rows = cursor.fetchall()
-        conn.close()
         return {row[0]: row[1] for row in rows}
     except Exception:
         return {}
+    finally:
+        if conn:
+            conn.close()
 
 def trigger_sentiment_report():
-    """Triggered by the scheduler to run the Nextcloud Market Sentiment alert."""
     try:
         run_nextcloud_alert()
     finally:
         record_job_run('market_sentiment_job')
 
 def run_intraday_orchestrator():
-    """Executes the unified high-frequency intraday scan (Crash + Moonshot)."""
     try:
         IntradayOrchestrator().run()
     finally:
         record_job_run('intraday_orchestrator_job')
 
 def run_maintenance_engine():
-    """Executes the background database and file system maintenance."""
     try:
         MaintenanceEngine().run()
     finally:
         record_job_run('maintenance_job')
 
 def run_update_pipeline():
-    """Executes the heavy data ingestion and mathematical quant modeling."""
     log_sched_notification("Scheduler", "Started Update Pipeline...")
     try:
         logger.info("Background update initiated.")
@@ -114,7 +115,6 @@ def run_update_pipeline():
         record_job_run('quant_analysis_job')
 
 def run_ghostfolio_sync():
-    """Executes the Ghostfolio API Sync to extract account holdings."""
     log_sched_notification("Scheduler", "Started Ghostfolio Sync...")
     try:
         sync_engine = GhostfolioSyncEngine()
@@ -126,7 +126,6 @@ def run_ghostfolio_sync():
         record_job_run('ghostfolio_sync_job')
 
 def run_freetrade_sync():
-    """Executes the Freetrade Universe CSV Sync."""
     log_sched_notification("Scheduler", "Started Freetrade Sync...")
     try:
         logger.info("Freetrade sync initiated.")
@@ -134,13 +133,12 @@ def run_freetrade_sync():
         logger.info("Freetrade sync complete.")
         log_sched_notification("Success", "Freetrade Sync completed successfully.")
     except Exception as e:
-        logger.error(f"Freetrade Sync Failed: {e}")
+        logger.error("Freetrade Sync Failed: %s", e)
         log_sched_notification("Error", f"Freetrade Sync failed: {e}")
     finally:
         record_job_run('freetrade_sync_job')
 
 def run_sentiment_scan():
-    """Executes the standalone NLP Sentiment pipeline."""
     log_sched_notification("Scheduler", "Started Sentiment Scan...")
     try:
         logger.info("Sentiment scan initiated.")
@@ -150,39 +148,30 @@ def run_sentiment_scan():
         logger.info("Sentiment scan complete.")
         log_sched_notification("Success", "Sentiment Scan completed successfully.")
     except Exception as e:
-        logger.error(f"Sentiment Scan Failed: {e}")
+        logger.error("Sentiment Scan Failed: %s", e)
         log_sched_notification("Error", f"Sentiment Scan failed: {e}")
     finally:
         record_job_run('sentiment_scan_job')
 
 def run_overnight_quant_scan():
-    """
-    Fetches the combined list of portfolio and watchlist tickers,
-    executes the resumable daily quant scan, and Tail Risk.
-    """
+    """Portfolio + watchlist resumable quant scan followed by tail-risk computation."""
     log_sched_notification("Scheduler", "Started Overnight Quant Scan...")
     try:
         logger.info("Overnight quant scan initiated.")
         engine = DataEngine()
         all_tickers = engine.get_all_tickers()
-
-        # 1. Execute Technical Analysis Pipeline
         run_daily_quant_scan(all_tickers)
-
-        # 2. Execute Tail Risk calculations
         logger.info("Overnight tail risk computation initiated.")
         update_all_tail_risks(all_tickers)
-
         logger.info("Overnight quant scan complete.")
         log_sched_notification("Success", "Overnight Quant Scan completed successfully.")
     except Exception as e:
-        logger.error(f"Overnight Quant Scan Failed: {e}")
+        logger.error("Overnight Quant Scan Failed: %s", e)
         log_sched_notification("Error", f"Overnight Quant Scan failed: {e}")
     finally:
         record_job_run('overnight_quant_scan_job')
 
 def run_weekend_earnings_scan():
-    """Executes the quantitative earnings volatility options scan."""
     log_sched_notification("Scheduler", "Started Earnings Volatility Scan...")
     try:
         logger.info("Earnings volatility scan initiated.")
@@ -192,13 +181,12 @@ def run_weekend_earnings_scan():
         logger.info("Earnings volatility scan complete.")
         log_sched_notification("Success", "Earnings Volatility Scan completed successfully.")
     except Exception as e:
-        logger.error(f"Earnings Volatility Scan Failed: {e}")
+        logger.error("Earnings Volatility Scan Failed: %s", e)
         log_sched_notification("Error", f"Earnings Volatility Scan failed: {e}")
     finally:
         record_job_run('weekend_earnings_vol_scan_job')
 
 def run_morning_briefing_dispatch():
-    """Executes the morning quant briefing dispatch."""
     log_sched_notification("Scheduler", "Started Morning Briefing Dispatch...")
     try:
         logger.info("Morning briefing dispatch initiated.")
@@ -206,14 +194,13 @@ def run_morning_briefing_dispatch():
         logger.info("Morning briefing dispatch complete.")
         log_sched_notification("Success", "Morning Briefing Dispatch completed successfully.")
     except Exception as e:
-        logger.error(f"Morning Briefing Dispatch Failed: {e}")
+        logger.error("Morning Briefing Dispatch Failed: %s", e)
         log_sched_notification("Error", f"Morning Briefing Dispatch failed: {e}")
     finally:
         record_job_run('morning_briefing_dispatch_job')
 
 
 def run_lunchtime_briefing_dispatch():
-    """Executes the lunchtime quant briefing dispatch."""
     log_sched_notification("Scheduler", "Started Lunchtime Briefing Dispatch...")
     try:
         logger.info("Lunchtime briefing dispatch initiated.")
@@ -221,100 +208,78 @@ def run_lunchtime_briefing_dispatch():
         logger.info("Lunchtime briefing dispatch complete.")
         log_sched_notification("Success", "Lunchtime Briefing Dispatch completed successfully.")
     except Exception as e:
-        logger.error(f"Lunchtime Briefing Dispatch Failed: {e}")
+        logger.error("Lunchtime Briefing Dispatch Failed: %s", e)
         log_sched_notification("Error", f"Lunchtime Briefing Dispatch failed: {e}")
     finally:
         record_job_run('lunchtime_briefing_dispatch_job')
 
 def run_weekend_universe_routine():
-    """Executes the massive 4000+ Universe Download and Quant Scan."""
     log_sched_notification("Scheduler", "Started Weekend Universe Routine...")
     try:
         logger.info("Weekend universe routine initiated.")
-        # 1. Update the Ticker List from the FTP server
         update_market_universe()
-
-        # 2. Extract the fresh list and run the massive quant scan
         all_tickers = get_universe_tickers()
         if all_tickers:
-            # 2a. Execute Core Technicals
             run_daily_quant_scan(all_tickers, scan_type='universe')
-            # 2b. Execute Heavy Metrics (Risk, Sentiment)
             logger.info("Universe Technicals complete. Proceeding to heavy metric crunch (VaR, Sentiment)...")
             update_all_tail_risks(all_tickers)
             update_all_sentiment(all_tickers)
         else:
             logger.warning("Universe is empty, skipping quant scan.")
-
         logger.info("Weekend universe routine complete.")
         log_sched_notification("Success", "Weekend Universe Routine completed successfully.")
     except Exception as e:
-        logger.error(f"Weekend Universe Routine Failed: {e}")
+        logger.error("Weekend Universe Routine Failed: %s", e)
         log_sched_notification("Error", f"Weekend Universe Routine failed: {e}")
     finally:
         record_job_run('universe_routine_job')
 
 def run_index_scraper():
-    """Executes the Wikipedia index constituent scraper."""
     log_sched_notification("Scheduler", "Started Index Constituents Scraper...")
     try:
         logger.info("Index scraper initiated.")
-        # Delayed import to avoid circular dependencies before Phase 4 is built
+        # Delayed import avoids circular dependency with index_engine
         from index_engine import sync_all_indices
         sync_all_indices()
         logger.info("Index scraper complete.")
         log_sched_notification("Success", "Index Constituents Scraper completed successfully.")
     except Exception as e:
-        logger.error(f"Index Scraper Failed: {e}")
+        logger.error("Index Scraper Failed: %s", e)
         log_sched_notification("Error", f"Index Scraper failed: {e}")
     finally:
         record_job_run('index_scraper_job')
 
 def run_fundamentals_profiler():
-    """Executes the heavy rolling metadata audit to download fundamentals (PE, EPS, Sector)."""
+    """Batch size read from SCHEDULING.PROFILER_ENGINE.BATCH_SIZE in config."""
     log_sched_notification("Scheduler", "Started Fundamentals Profiler...")
     try:
         logger.info("Fundamentals profiler initiated.")
         from profile_engine import run_profile_audit
-
-        # Read the dynamic batch size from config
         config = load_config()
         batch_size = config.get("SCHEDULING", {}).get("PROFILER_ENGINE", {}).get("BATCH_SIZE", 250)
-
         run_profile_audit(limit=int(batch_size))
-
         logger.info("Fundamentals profiler complete.")
         log_sched_notification("Success", "Fundamentals Profiler completed successfully.")
     except Exception as e:
-        logger.error(f"Fundamentals Profiler Failed: {e}")
+        logger.error("Fundamentals Profiler Failed: %s", e)
         log_sched_notification("Error", f"Fundamentals Profiler failed: {e}")
     finally:
         record_job_run('fundamentals_profiler_job')
 
 def run_universe_deep_sync_job():
-    """
-    Scheduler wrapper executing the unified Universe Deep Sync pipeline.
-
-    The orchestrator (universe_deep_sync_engine.run_universe_deep_sync) emits
-    its own rich per-stage notifications. This wrapper adds the standard
-    scheduler envelope (Started / Success / Error) for consistency with the
-    other _job functions in this module.
-    """
+    """Scheduler envelope for universe_deep_sync_engine; that engine emits its own per-stage notifications."""
     log_sched_notification("Scheduler", "Started Universe Deep Sync Pipeline...")
     try:
         run_universe_deep_sync()
         log_sched_notification("Success", "Universe Deep Sync Pipeline job completed.")
     except Exception as e:
-        logger.error(f"Universe Deep Sync Pipeline Failed: {e}")
+        logger.error("Universe Deep Sync Pipeline Failed: %s", e)
         log_sched_notification("Error", f"Universe Deep Sync Pipeline failed: {e}")
     finally:
         record_job_run('universe_deep_sync_job')
 
 
-# --- MODULAR ML PIPELINE RUNNERS ---
-
 def run_ml_backfill():
-    """Executes the Historical Data Backfill for the Machine Learning pipeline."""
     log_sched_notification("Scheduler", "Started ML Historical Backfill...")
     try:
         logger.info("ML Historical Backfill initiated.")
@@ -322,13 +287,12 @@ def run_ml_backfill():
         logger.info("ML Historical Backfill complete.")
         log_sched_notification("Success", "ML Historical Backfill completed successfully.")
     except Exception as e:
-        logger.error(f"ML Historical Backfill Failed: {e}")
+        logger.error("ML Historical Backfill Failed: %s", e)
         log_sched_notification("Error", f"ML Historical Backfill failed: {e}")
     finally:
         record_job_run('ml_backfill_job')
 
 def run_ml_training():
-    """Executes the Global Machine Learning Walk-Forward Training cycle."""
     log_sched_notification("Scheduler", "Started ML Global Training...")
     try:
         logger.info("ML Global Training initiated.")
@@ -336,13 +300,12 @@ def run_ml_training():
         logger.info("ML Global Training complete.")
         log_sched_notification("Success", "ML Global Training completed successfully.")
     except Exception as e:
-        logger.error(f"ML Global Training Failed: {e}")
+        logger.error("ML Global Training Failed: %s", e)
         log_sched_notification("Error", f"ML Global Training failed: {e}")
     finally:
         record_job_run('ml_training_job')
 
 def run_ml_inference():
-    """Executes the Daily Machine Learning Prediction Inference."""
     log_sched_notification("Scheduler", "Started Daily ML Inference...")
     try:
         logger.info("Daily ML Inference initiated.")
@@ -355,13 +318,12 @@ def run_ml_inference():
         logger.info("Daily ML Inference complete.")
         log_sched_notification("Success", "Daily ML Inference completed successfully.")
     except Exception as e:
-        logger.error(f"Daily ML Inference Failed: {e}")
+        logger.error("Daily ML Inference Failed: %s", e)
         log_sched_notification("Error", f"Daily ML Inference failed: {e}")
     finally:
         record_job_run('ml_inference_job')
 
 def run_macro_calendar_update():
-    """Executes the daily Tier-1 Macro Calendar refresh."""
     log_sched_notification("Scheduler", "Started Macro Calendar Update...")
     try:
         logger.info("Macro calendar update initiated.")
@@ -369,7 +331,7 @@ def run_macro_calendar_update():
         logger.info("Macro calendar update complete.")
         log_sched_notification("Success", "Macro Calendar Update completed successfully.")
     except Exception as e:
-        logger.error(f"Macro Calendar Update Failed: {e}")
+        logger.error("Macro Calendar Update Failed: %s", e)
         log_sched_notification("Error", f"Macro Calendar Update failed: {e}")
     finally:
         record_job_run('macro_calendar_job')
@@ -382,37 +344,44 @@ def run_central_bank_nlp_check():
     }
     placeholders = ','.join('?' * len(CB_EVENTS))
     try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        rows = cursor.execute(
-            f"""SELECT event_id, event_name, currency FROM macro_calendar
-                WHERE DATE(event_date) = DATE('now')
-                AND event_date <= datetime('now')
-                AND alert_dispatched = 0
-                AND event_name IN ({placeholders})""",
-            tuple(CB_EVENTS)
-        ).fetchall()
-        conn.close()
+        rows = []
+        conn = None
+        try:
+            conn = get_connection()
+            rows = conn.cursor().execute(
+                f"""SELECT event_id, event_name, currency FROM macro_calendar
+                    WHERE DATE(event_date) = DATE('now')
+                    AND event_date <= datetime('now')
+                    AND alert_dispatched = 0
+                    AND event_name IN ({placeholders})""",
+                tuple(CB_EVENTS)
+            ).fetchall()
+        finally:
+            if conn:
+                conn.close()
 
         for event_id, event_name, currency in rows:
             success = run_central_bank_nlp_alert(event_name, currency)
             if success:
-                conn = get_connection()
-                conn.execute(
-                    "UPDATE macro_calendar SET alert_dispatched = 1 WHERE event_id = ?",
-                    (event_id,)
-                )
-                conn.commit()
-                conn.close()
+                conn2 = None
+                try:
+                    conn2 = get_connection()
+                    conn2.execute(
+                        "UPDATE macro_calendar SET alert_dispatched = 1 WHERE event_id = ?",
+                        (event_id,)
+                    )
+                    conn2.commit()
+                finally:
+                    if conn2:
+                        conn2.close()
                 log_sched_notification("Macro NLP", f"Central Bank NLP dispatched for: {event_name}")
     except Exception as e:
-        logger.error(f"Central Bank NLP check failed: {e}")
+        logger.error("Central Bank NLP check failed: %s", e)
     finally:
         record_job_run('cb_nlp_alert_job')
 
 
 def run_macro_data_update():
-    """Executes the weekly structural Macroeconomic Data sync (FRED/BoE)."""
     log_sched_notification("Scheduler", "Started Macro Data Update...")
     try:
         logger.info("Macro data update initiated.")
@@ -420,7 +389,7 @@ def run_macro_data_update():
         logger.info("Macro data update complete.")
         log_sched_notification("Success", "Macro Data Update completed successfully.")
     except Exception as e:
-        logger.error(f"Macro Data Update Failed: {e}")
+        logger.error("Macro Data Update Failed: %s", e)
         log_sched_notification("Error", f"Macro Data Update failed: {e}")
     finally:
         record_job_run('macro_data_job')
@@ -435,7 +404,7 @@ def run_xray_risk_cache_job():
         else:
             log_sched_notification("Warning", "X-ray Risk Cache job completed with warnings — check logs.")
     except Exception as e:
-        logger.error(f"X-ray Risk Cache job failed: {e}")
+        logger.error("X-ray Risk Cache job failed: %s", e)
         log_sched_notification("Error", f"X-ray Risk Cache job failed: {e}")
     finally:
         record_job_run('xray_risk_cache_job')
@@ -446,8 +415,7 @@ def run_anomaly_training_job():
     log_sched_notification("Scheduler", "Started Anomaly Training job...")
     try:
         from anomaly_engine import AnomalyEngine
-        from config import load_config, HISTORICAL_DIR
-        config = load_config()
+        from config import HISTORICAL_DIR
         all_tickers = DataEngine().get_all_tickers()
         engine = AnomalyEngine()
         engine.train_all(all_tickers, HISTORICAL_DIR)
@@ -488,7 +456,6 @@ def run_intraday_dip_reset(exchange: str = "NYSE"):
 
 
 def _build_contagion_feed_text(event: dict) -> str:
-    """Short multi-line body for the in-app notification feed card."""
     leaders = event.get("leader_shocks", [])
     etfs = event.get("etf_hits", [])
     vol_tickers = set(event.get("volume_spikes", []))
@@ -539,8 +506,9 @@ def run_ai_contagion_job():
     """Intraday AI Sector Contagion scan — runs every 15 min during extended market hours."""
     from ai_contagion_engine import AIContagionEngine, record_scan_snapshot
     config = load_config()
-    conn = get_connection()
+    conn = None
     try:
+        conn = get_connection()
         engine = AIContagionEngine(config)
         candidates = engine.scan()
 
@@ -566,7 +534,7 @@ def run_ai_contagion_job():
                 try:
                     ok = send_text_message(msg, config)
                 except Exception as e:
-                    logger.error(f"AIContagion: Nextcloud dispatch failed: {e}")
+                    logger.error("AIContagion: Nextcloud dispatch failed: %s", e)
                     ok = False
             else:
                 ok = True  # record dedup state even when Nextcloud is disabled
@@ -586,21 +554,21 @@ def run_ai_contagion_job():
                 )
                 logger.warning("AIContagion: alert fired. Leaders: %s", leaders_summary)
     except Exception as e:
-        logger.error(f"AI Contagion job failed: {e}")
+        logger.error("AI Contagion job failed: %s", e)
         log_sched_notification("Error", f"AI Contagion job failed: {e}")
     finally:
-        conn.close()
+        if conn:
+            conn.close()
         record_job_run('ai_contagion_job')
 
 
 def run_smgb_actual_fill():
     """Fills actuals for both prediction types from today's open and yesterday's close."""
-    from datetime import date, timedelta
+    from datetime import datetime, timezone, timedelta
     import pandas as pd
     log_sched_notification("Scheduler", "Started SMGB actual-fill job...")
     try:
-        today = date.today()
-        target = today
+        target = datetime.now(timezone.utc).date()
         while target.weekday() >= 5:
             target -= timedelta(days=1)
 
@@ -642,12 +610,11 @@ def reload_scheduler():
     logger.info("Reloading scheduled jobs from configuration...")
     scheduler.remove_all_jobs()
     user_tz = time_engine.get_user_tz()
-    
+
     config = load_config()
     notifications = config.get("NOTIFICATIONS", {})
     scheduling = config.get("SCHEDULING", {})
-    
-    # 1. Market Sentiment Job
+
     sentiment_cfg = notifications.get("MARKET_SENTIMENT", {})
     if sentiment_cfg.get("ENABLED"):
         time_str = sentiment_cfg.get("TIME", "09:30")
@@ -659,11 +626,10 @@ def reload_scheduler():
                 CronTrigger(day_of_week=freq, hour=hour, minute=minute, timezone=user_tz),
                 id='market_sentiment_job'
             )
-            logger.info(f"Market Sentiment Job scheduled for {freq} at {time_str}")
+            logger.info("Market Sentiment Job scheduled for %s at %s", freq, time_str)
         except Exception as e:
-            logger.error(f"Failed to schedule Market Sentiment: {e}")
+            logger.error("Failed to schedule Market Sentiment: %s", e)
 
-    # 2. Earnings Alerts Job
     earnings_cfg = notifications.get("EARNINGS_ALERTS", {})
     if earnings_cfg.get("ENABLED"):
         time_str = earnings_cfg.get("TIME", "08:00")
@@ -674,11 +640,10 @@ def reload_scheduler():
                 CronTrigger(day_of_week='mon-fri', hour=hour, minute=minute, timezone=user_tz),
                 id='earnings_alert_job'
             )
-            logger.info(f"Earnings Alerts Job scheduled for mon-fri at {time_str}")
+            logger.info("Earnings Alerts Job scheduled for mon-fri at %s", time_str)
         except Exception as e:
-            logger.error(f"Failed to schedule Earnings Alerts: {e}")
-    
-    # 3. Insider Trading Alerts Job
+            logger.error("Failed to schedule Earnings Alerts: %s", e)
+
     insider_cfg = notifications.get("INSIDER_TRADING", {})
     if insider_cfg.get("ENABLED_PORTFOLIO") or insider_cfg.get("ENABLED_WATCHLIST"):
         time_str = insider_cfg.get("TIME", "18:00")
@@ -690,30 +655,29 @@ def reload_scheduler():
                 CronTrigger(day_of_week=freq, hour=hour, minute=minute, timezone=user_tz),
                 id='insider_alert_job'
             )
-            logger.info(f"Insider Trading Alert Job scheduled for {freq} at {time_str}")
+            logger.info("Insider Trading Alert Job scheduled for %s at %s", freq, time_str)
         except Exception as e:
-            logger.error(f"Failed to schedule Insider Alerts: {e}")
+            logger.error("Failed to schedule Insider Alerts: %s", e)
 
-    # 4. Core System Schedulers (Ghostfolio & Quant Analysis)
     ghost_cfg = scheduling.get("GHOSTFOLIO_SYNC", {})
     if ghost_cfg.get("ENABLED"):
         interval = int(ghost_cfg.get("INTERVAL_HOURS", 0))
         freq = ghost_cfg.get("FREQUENCY", "mon-fri")
         if interval > 0:
             scheduler.add_job(run_ghostfolio_sync, IntervalTrigger(hours=interval), id='ghostfolio_sync_job')
-            logger.info(f"Ghostfolio Sync scheduled every {interval} hours.")
+            logger.info("Ghostfolio Sync scheduled every %d hours.", interval)
         else:
             time_str = ghost_cfg.get("TIME", "06:00")
             try:
                 hour, minute = map(int, time_str.split(':'))
                 scheduler.add_job(
-                    run_ghostfolio_sync, 
-                    CronTrigger(day_of_week=freq, hour=hour, minute=minute, timezone=user_tz), 
+                    run_ghostfolio_sync,
+                    CronTrigger(day_of_week=freq, hour=hour, minute=minute, timezone=user_tz),
                     id='ghostfolio_sync_job'
                 )
-                logger.info(f"Ghostfolio Sync scheduled for {freq} at {time_str}")
+                logger.info("Ghostfolio Sync scheduled for %s at %s", freq, time_str)
             except Exception as e:
-                logger.error(f"Failed to schedule Ghostfolio Sync: {e}")
+                logger.error("Failed to schedule Ghostfolio Sync: %s", e)
 
     quant_cfg = scheduling.get("QUANT_ANALYSIS", {})
     if quant_cfg.get("ENABLED"):
@@ -721,69 +685,60 @@ def reload_scheduler():
         freq = quant_cfg.get("FREQUENCY", "mon-fri")
         if interval > 0:
             scheduler.add_job(run_update_pipeline, IntervalTrigger(hours=interval), id='quant_analysis_job')
-            logger.info(f"Quant Analysis scheduled every {interval} hours.")
+            logger.info("Quant Analysis scheduled every %d hours.", interval)
         else:
             time_str = quant_cfg.get("TIME", "18:00")
             try:
                 hour, minute = map(int, time_str.split(':'))
                 scheduler.add_job(
-                    run_update_pipeline, 
-                    CronTrigger(day_of_week=freq, hour=hour, minute=minute, timezone=user_tz), 
+                    run_update_pipeline,
+                    CronTrigger(day_of_week=freq, hour=hour, minute=minute, timezone=user_tz),
                     id='quant_analysis_job'
                 )
-                logger.info(f"Quant Analysis scheduled for {freq} at {time_str}")
+                logger.info("Quant Analysis scheduled for %s at %s", freq, time_str)
             except Exception as e:
-                logger.error(f"Failed to schedule Quant Analysis: {e}")
+                logger.error("Failed to schedule Quant Analysis: %s", e)
 
-    # 4b. Standalone NLP Market Sentiment Engine
     sent_scan_cfg = scheduling.get("SENTIMENT_ENGINE", {})
     if sent_scan_cfg.get("ENABLED"):
         freq = sent_scan_cfg.get("FREQUENCY", "mon-fri")
         start_time = sent_scan_cfg.get("START_TIME", "09:30")
         end_time = sent_scan_cfg.get("END_TIME", "16:00")
         interval_hours = int(sent_scan_cfg.get("INTERVAL_HOURS", 4))
-        
         try:
             start_h, _ = map(int, start_time.split(':'))
             end_h, _ = map(int, end_time.split(':'))
-            
             scheduler.add_job(
                 run_sentiment_scan,
                 CronTrigger(day_of_week=freq, hour=f"{start_h}-{end_h}/{interval_hours}", timezone=user_tz),
                 id='sentiment_scan_job'
             )
-            logger.info(f"Sentiment Scan scheduled for {freq} between {start_time}-{end_time} every {interval_hours} hours.")
+            logger.info("Sentiment Scan scheduled for %s between %s-%s every %d hours.", freq, start_time, end_time, interval_hours)
         except Exception as e:
-            logger.error(f"Failed to schedule Sentiment Scan: {e}")
+            logger.error("Failed to schedule Sentiment Scan: %s", e)
 
-    # 5. Unified Intraday Orchestrator
     crash_cfg = scheduling.get("CRASH_ALERTS", {})
     moon_cfg = scheduling.get("MOONSHOT_ALERTS", {})
-    
     crash_enabled = crash_cfg.get("ENABLED", False)
     moon_enabled = moon_cfg.get("ENABLED", False)
-    
     if crash_enabled or moon_enabled:
         active_cfg = crash_cfg if crash_enabled else moon_cfg
         freq = active_cfg.get("FREQUENCY", "mon-fri")
         start_time = active_cfg.get("START_TIME", "09:30")
         end_time = active_cfg.get("END_TIME", "16:00")
         interval_mins = int(active_cfg.get("INTERVAL_MINUTES", 10))
-        
         try:
             start_h, _ = map(int, start_time.split(':'))
             end_h, _ = map(int, end_time.split(':'))
-            
             scheduler.add_job(
                 run_intraday_orchestrator,
                 CronTrigger(day_of_week=freq, hour=f"{start_h}-{end_h}", minute=f"*/{interval_mins}", timezone=user_tz),
                 id='intraday_orchestrator_job'
             )
-            logger.info(f"Unified Intraday Orchestrator scheduled for {freq} between {start_time}-{end_time} every {interval_mins} mins.")
+            logger.info("Unified Intraday Orchestrator scheduled for %s between %s-%s every %d mins.", freq, start_time, end_time, interval_mins)
         except Exception as e:
-            logger.error(f"Failed to schedule Intraday Orchestrator: {e}")
+            logger.error("Failed to schedule Intraday Orchestrator: %s", e)
 
-    # 6. System Maintenance Engine
     maint_cfg = scheduling.get("MAINTENANCE", {})
     if maint_cfg.get("ENABLED", True):
         time_str = maint_cfg.get("TIME", "02:00")
@@ -795,16 +750,14 @@ def reload_scheduler():
                 CronTrigger(day_of_week=day_of_week, hour=hour, minute=minute, timezone=user_tz),
                 id='maintenance_job'
             )
-            logger.info(f"DB/File Maintenance scheduled for {day_of_week} at {time_str}")
+            logger.info("DB/File Maintenance scheduled for %s at %s", day_of_week, time_str)
         except Exception as e:
-            logger.error(f"Failed to schedule Maintenance Job: {e}")
+            logger.error("Failed to schedule Maintenance Job: %s", e)
 
-    # 7. Daily Quant Screener Engine (Portfolio/Watchlist)
     quant_cfg = scheduling.get("QUANT_ENGINE", {})
     quant_days_list = quant_cfg.get("DAYS", ["mon", "tue", "wed", "thu", "fri"])
     quant_days = ",".join(quant_days_list) if quant_days_list else "mon-fri"
     quant_time = quant_cfg.get("TIME", "01:00")
-    
     try:
         hour, minute = map(int, quant_time.split(':'))
         scheduler.add_job(
@@ -812,16 +765,14 @@ def reload_scheduler():
             CronTrigger(day_of_week=quant_days, hour=hour, minute=minute, timezone=user_tz),
             id='overnight_quant_scan_job'
         )
-        logger.info(f"Overnight Quant Scan scheduled for {quant_days} at {quant_time}")
+        logger.info("Overnight Quant Scan scheduled for %s at %s", quant_days, quant_time)
     except Exception as e:
-        logger.error(f"Failed to schedule Overnight Quant Scan: {e}")
+        logger.error("Failed to schedule Overnight Quant Scan: %s", e)
 
-    # 8. Earnings Volatility Engine
     earn_cfg = scheduling.get("EARNINGS_ENGINE", {})
     earn_days_list = earn_cfg.get("DAYS", ["sat"])
     earn_days = ",".join(earn_days_list) if earn_days_list else "sat"
     earn_time = earn_cfg.get("TIME", "10:00")
-    
     try:
         hour, minute = map(int, earn_time.split(':'))
         scheduler.add_job(
@@ -829,16 +780,15 @@ def reload_scheduler():
             CronTrigger(day_of_week=earn_days, hour=hour, minute=minute, timezone=user_tz),
             id='weekend_earnings_vol_scan_job'
         )
-        logger.info(f"Earnings Volatility Scan scheduled for {earn_days} at {earn_time}")
+        logger.info("Earnings Volatility Scan scheduled for %s at %s", earn_days, earn_time)
     except Exception as e:
-        logger.error(f"Failed to schedule Earnings Volatility Scan: {e}")
+        logger.error("Failed to schedule Earnings Volatility Scan: %s", e)
 
-    # 9. Morning Briefing — always schedule; ENABLED flag only gates Nextcloud Talk sending
+    # Morning Briefing — always schedule; ENABLED flag only gates Nextcloud Talk sending
     disp_cfg = scheduling.get("DISPATCHER", {})
     disp_days_list = disp_cfg.get("DAYS", ["mon", "tue", "wed", "thu", "fri"])
     disp_days = ",".join(disp_days_list) if disp_days_list else "mon-fri"
     disp_time = disp_cfg.get("TIME", "07:15")
-
     try:
         hour, minute = map(int, disp_time.split(':'))
         scheduler.add_job(
@@ -846,16 +796,15 @@ def reload_scheduler():
             CronTrigger(day_of_week=disp_days, hour=hour, minute=minute, timezone=user_tz),
             id='morning_briefing_dispatch_job'
         )
-        logger.info(f"Morning Briefing scheduled for {disp_days} at {disp_time}")
+        logger.info("Morning Briefing scheduled for %s at %s", disp_days, disp_time)
     except Exception as e:
-        logger.error(f"Failed to schedule Morning Briefing: {e}")
+        logger.error("Failed to schedule Morning Briefing: %s", e)
 
-    # 9b. Lunchtime Briefing — always schedule; ENABLED flag only gates Nextcloud Talk sending
+    # Lunchtime Briefing — always schedule; ENABLED flag only gates Nextcloud Talk sending
     lunch_cfg = scheduling.get("LUNCH_DISPATCHER", {})
     lunch_days_list = lunch_cfg.get("DAYS", ["mon", "tue", "wed", "thu", "fri"])
     lunch_days = ",".join(lunch_days_list) if lunch_days_list else "mon-fri"
     lunch_time = lunch_cfg.get("TIME", "12:00")
-
     try:
         hour, minute = map(int, lunch_time.split(':'))
         scheduler.add_job(
@@ -863,16 +812,14 @@ def reload_scheduler():
             CronTrigger(day_of_week=lunch_days, hour=hour, minute=minute, timezone=user_tz),
             id='lunchtime_briefing_dispatch_job'
         )
-        logger.info(f"Lunchtime Briefing scheduled for {lunch_days} at {lunch_time}")
+        logger.info("Lunchtime Briefing scheduled for %s at %s", lunch_days, lunch_time)
     except Exception as e:
-        logger.error(f"Failed to schedule Lunchtime Briefing: {e}")
+        logger.error("Failed to schedule Lunchtime Briefing: %s", e)
 
-    # 10. Weekend Universe Routine (4000+ Tickers)
     uni_cfg = scheduling.get("UNIVERSE_ENGINE", {})
     uni_days_list = uni_cfg.get("DAYS", ["sat"])
     uni_days = ",".join(uni_days_list) if uni_days_list else "sat"
     uni_time = uni_cfg.get("TIME", "02:00")
-    
     try:
         hour, minute = map(int, uni_time.split(':'))
         scheduler.add_job(
@@ -880,12 +827,10 @@ def reload_scheduler():
             CronTrigger(day_of_week=uni_days, hour=hour, minute=minute, timezone=user_tz),
             id='universe_routine_job'
         )
-        logger.info(f"Weekend Universe Routine scheduled for {uni_days} at {uni_time}")
-        
+        logger.info("Weekend Universe Routine scheduled for %s at %s", uni_days, uni_time)
     except Exception as e:
-        logger.error(f"Failed to schedule Weekend Universe Routine: {e}")
+        logger.error("Failed to schedule Weekend Universe Routine: %s", e)
 
-    # 12. Modular ML Engine Scheduling
     ml_backfill_cfg = scheduling.get("ML_BACKFILL", {})
     if ml_backfill_cfg.get("ENABLED", False):
         backfill_days_list = ml_backfill_cfg.get("DAYS", ["sat"])
@@ -898,9 +843,9 @@ def reload_scheduler():
                 CronTrigger(day_of_week=backfill_days, hour=hour, minute=minute, timezone=user_tz),
                 id='ml_backfill_job'
             )
-            logger.info(f"ML Historical Backfill scheduled for {backfill_days} at {backfill_time}")
+            logger.info("ML Historical Backfill scheduled for %s at %s", backfill_days, backfill_time)
         except Exception as e:
-            logger.error(f"Failed to schedule ML Backfill: {e}")
+            logger.error("Failed to schedule ML Backfill: %s", e)
 
     ml_training_cfg = scheduling.get("ML_TRAINING", {})
     if ml_training_cfg.get("ENABLED", True):
@@ -914,9 +859,9 @@ def reload_scheduler():
                 CronTrigger(day_of_week=train_days, hour=hour, minute=minute, timezone=user_tz),
                 id='ml_training_job'
             )
-            logger.info(f"ML Global Training scheduled for {train_days} at {train_time}")
+            logger.info("ML Global Training scheduled for %s at %s", train_days, train_time)
         except Exception as e:
-            logger.error(f"Failed to schedule ML Training: {e}")
+            logger.error("Failed to schedule ML Training: %s", e)
 
     ml_infer_cfg = scheduling.get("ML_INFERENCE", {})
     if ml_infer_cfg.get("ENABLED", True):
@@ -930,11 +875,10 @@ def reload_scheduler():
                 CronTrigger(day_of_week=infer_days, hour=hour, minute=minute, timezone=user_tz),
                 id='ml_inference_job'
             )
-            logger.info(f"Daily ML Inference scheduled for {infer_days} at {infer_time}")
+            logger.info("Daily ML Inference scheduled for %s at %s", infer_days, infer_time)
         except Exception as e:
-            logger.error(f"Failed to schedule ML Inference: {e}")
+            logger.error("Failed to schedule ML Inference: %s", e)
 
-    # 13. Freetrade Universe Sync Engine
     ft_cfg = scheduling.get("FREETRADE_SYNC", {})
     if ft_cfg.get("ENABLED", False):
         ft_days_list = ft_cfg.get("DAYS", ["mon", "tue", "wed", "thu", "fri"])
@@ -947,17 +891,15 @@ def reload_scheduler():
                 CronTrigger(day_of_week=ft_days, hour=hour, minute=minute, timezone=user_tz),
                 id='freetrade_sync_job'
             )
-            logger.info(f"Freetrade Sync scheduled for {ft_days} at {ft_time}")
+            logger.info("Freetrade Sync scheduled for %s at %s", ft_days, ft_time)
         except Exception as e:
-            logger.error(f"Failed to schedule Freetrade Sync: {e}")
+            logger.error("Failed to schedule Freetrade Sync: %s", e)
 
-    # 14. Macro Calendar and Data Engines
     macro_cfg = scheduling.get("MACRO_ENGINE", {})
     if macro_cfg.get("ENABLED", True):
         calendar_time = macro_cfg.get("CALENDAR_TIME", "04:00")
         data_day = macro_cfg.get("DATA_DAY", "sat")
         data_time = macro_cfg.get("DATA_TIME", "05:00")
-
         try:
             cal_hour, cal_minute = map(int, calendar_time.split(':'))
             scheduler.add_job(
@@ -965,7 +907,7 @@ def reload_scheduler():
                 CronTrigger(day_of_week='mon-sun', hour=cal_hour, minute=cal_minute, timezone=user_tz),
                 id='macro_calendar_job'
             )
-            logger.info(f"Macro Calendar Update scheduled daily at {calendar_time}")
+            logger.info("Macro Calendar Update scheduled daily at %s", calendar_time)
 
             data_hour, data_minute = map(int, data_time.split(':'))
             scheduler.add_job(
@@ -973,11 +915,10 @@ def reload_scheduler():
                 CronTrigger(day_of_week=data_day, hour=data_hour, minute=data_minute, timezone=user_tz),
                 id='macro_data_job'
             )
-            logger.info(f"Macro Data Update scheduled for {data_day} at {data_time}")
+            logger.info("Macro Data Update scheduled for %s at %s", data_day, data_time)
         except Exception as e:
-            logger.error(f"Failed to schedule Macro Engine Jobs: {e}")
+            logger.error("Failed to schedule Macro Engine Jobs: %s", e)
 
-    # 14b. Central Bank NLP Alert (polls for same-day FOMC/BoE events post-announcement)
     cb_nlp_cfg = scheduling.get("CB_NLP_ALERT", {})
     if cb_nlp_cfg.get("ENABLED", True):
         cb_freq = cb_nlp_cfg.get("FREQUENCY", "mon-fri")
@@ -992,11 +933,10 @@ def reload_scheduler():
                 CronTrigger(day_of_week=cb_freq, hour=f"{cb_start_h}-{cb_end_h}", minute=f"*/{cb_interval}", timezone=user_tz),
                 id='cb_nlp_alert_job'
             )
-            logger.info(f"Central Bank NLP Alert polling scheduled {cb_freq} {cb_start}-{cb_end} UTC every {cb_interval}m")
+            logger.info("Central Bank NLP Alert polling scheduled %s %s-%s UTC every %dm", cb_freq, cb_start, cb_end, cb_interval)
         except Exception as e:
-            logger.error(f"Failed to schedule Central Bank NLP Alert: {e}")
+            logger.error("Failed to schedule Central Bank NLP Alert: %s", e)
 
-    # 15. Index Constituents Scraper
     sync_indices_cfg = scheduling.get("SYNC_INDICES", {})
     if sync_indices_cfg.get("ENABLED", False):
         index_days_list = sync_indices_cfg.get("DAYS", ["sat"])
@@ -1009,11 +949,10 @@ def reload_scheduler():
                 CronTrigger(day_of_week=index_days, hour=hour, minute=minute, timezone=user_tz),
                 id='index_scraper_job'
             )
-            logger.info(f"Index Scraper scheduled for {index_days} at {index_time}")
+            logger.info("Index Scraper scheduled for %s at %s", index_days, index_time)
         except Exception as e:
-            logger.error(f"Failed to schedule Index Scraper: {e}")
+            logger.error("Failed to schedule Index Scraper: %s", e)
 
-    # 16. Fundamentals Profiler Engine
     profiler_cfg = scheduling.get("PROFILER_ENGINE", {})
     if profiler_cfg.get("ENABLED", False):
         profiler_days_list = profiler_cfg.get("DAYS", ["sun"])
@@ -1026,14 +965,13 @@ def reload_scheduler():
                 CronTrigger(day_of_week=profiler_days, hour=hour, minute=minute, timezone=user_tz),
                 id='fundamentals_profiler_job'
             )
-            logger.info(f"Fundamentals Profiler scheduled for {profiler_days} at {profiler_time}")
+            logger.info("Fundamentals Profiler scheduled for %s at %s", profiler_days, profiler_time)
         except Exception as e:
-            logger.error(f"Failed to schedule Fundamentals Profiler: {e}")
+            logger.error("Failed to schedule Fundamentals Profiler: %s", e)
 
-    # 17. Universe Deep Sync Pipeline (replaces legacy UNIVERSE_FUNDAMENTALS).
     # Sequences fundamentals -> metadata -> technicals -> ML inference for the
-    # full index universe (FTSE100 + S&P500). Required for the GARP, Quality
-    # Compounders, and other market-wide reports.
+    # full index universe (FTSE100 + S&P500). Required for GARP, Quality Compounders,
+    # and other market-wide reports.
     uds_cfg = scheduling.get("UNIVERSE_DEEP_SYNC", {})
     if uds_cfg.get("ENABLED", False):
         uds_days_list = uds_cfg.get("DAYS", ["sun"])
@@ -1046,10 +984,9 @@ def reload_scheduler():
                 CronTrigger(day_of_week=uds_days, hour=hour, minute=minute, timezone=user_tz),
                 id='universe_deep_sync_job'
             )
-            logger.info(f"Universe Deep Sync Pipeline scheduled for {uds_days} at {uds_time}")
+            logger.info("Universe Deep Sync Pipeline scheduled for %s at %s", uds_days, uds_time)
         except Exception as e:
-            logger.error(f"Failed to schedule Universe Deep Sync Pipeline: {e}")
-
+            logger.error("Failed to schedule Universe Deep Sync Pipeline: %s", e)
 
     # Anomaly Training Job — runs Mon–Fri at 18:30 (after quant_analysis_job at 18:00,
     # before xray_risk_cache_job at 19:00). Controlled by NOTIFICATIONS.ANOMALY_ALERTS.ENABLED.
@@ -1063,9 +1000,8 @@ def reload_scheduler():
             )
             logger.info("Anomaly Training job scheduled for mon-fri at 18:30.")
         except Exception as e:
-            logger.error(f"Failed to schedule Anomaly Training job: {e}")
+            logger.error("Failed to schedule Anomaly Training job: %s", e)
 
-    # AI Sector Contagion Monitor — intraday scan, every N minutes during extended market hours.
     ai_c_sched = scheduling.get("AI_CONTAGION", {})
     if ai_c_sched.get("ENABLED", False):
         try:
@@ -1081,12 +1017,12 @@ def reload_scheduler():
                 misfire_grace_time=300,
             )
             logger.info(
-                f"AI Contagion Monitor scheduled ({freq} {start_h:02d}:00–{end_h:02d}:00 every {mins}m)."
+                "AI Contagion Monitor scheduled (%s %02d:00–%02d:00 every %dm).",
+                freq, start_h, end_h, mins,
             )
         except Exception as e:
-            logger.error(f"Failed to schedule AI Contagion Monitor: {e}")
+            logger.error("Failed to schedule AI Contagion Monitor: %s", e)
 
-    # 18. News Feed Engine — periodic yfinance + trafilatura article fetch
     news_cfg = scheduling.get("NEWS_FEED", {})
     if news_cfg.get("ENABLED", False):
         news_freq = news_cfg.get("FREQUENCY", "mon-fri")
@@ -1102,11 +1038,11 @@ def reload_scheduler():
                 id="news_feed_job",
                 replace_existing=True,
             )
-            logger.info(f"News Feed scheduled for {news_freq} between {news_start}-{news_end} every {news_interval_h}h.")
+            logger.info("News Feed scheduled for %s between %s-%s every %dh.", news_freq, news_start, news_end, news_interval_h)
         except Exception as e:
-            logger.error(f"Failed to schedule News Feed job: {e}")
+            logger.error("Failed to schedule News Feed job: %s", e)
 
-    # Intraday Dip Radar — always-on; fast-exits silently if no tickers are armed.
+    # Always-on: fast-exits silently if no tickers are armed
     try:
         scheduler.add_job(
             run_intraday_dip_scan,
@@ -1117,7 +1053,7 @@ def reload_scheduler():
         )
         logger.info("Intraday Dip Radar scan scheduled mon-fri 07:00–21:59 UTC every 2 min (covers LSE 08:00–16:30 BST and NYSE 14:30–21:00 BST).")
     except Exception as e:
-        logger.error(f"Failed to schedule Intraday Dip Radar scan: {e}")
+        logger.error("Failed to schedule Intraday Dip Radar scan: %s", e)
 
     for _exch in ("LSE", "NYSE"):
         try:
@@ -1134,7 +1070,7 @@ def reload_scheduler():
                 _exch, _params["hour"], _params["minute"], _info["tz"],
             )
         except Exception as e:
-            logger.error(f"Failed to schedule Intraday Dip Radar reset for {_exch}: {e}")
+            logger.error("Failed to schedule Intraday Dip Radar reset for %s: %s", _exch, e)
 
     # Always-on: X-ray Risk Cache — runs daily Mon–Fri at 19:00 (after market close).
     # No config flag required; the X-ray report is always available.
@@ -1146,7 +1082,7 @@ def reload_scheduler():
         )
         logger.info("X-ray Risk Cache job scheduled for mon-fri at 19:00.")
     except Exception as e:
-        logger.error(f"Failed to schedule X-ray Risk Cache job: {e}")
+        logger.error("Failed to schedule X-ray Risk Cache job: %s", e)
 
     # Always-on: SMGB.L Actual Fill — runs Mon–Fri at 09:15 GMT (45 min after LSE opens).
     # Fetches the actual open price for that morning and resolves the previous prediction row.
@@ -1158,7 +1094,7 @@ def reload_scheduler():
         )
         logger.info("SMGB actual-fill job scheduled for mon-fri at 09:15.")
     except Exception as e:
-        logger.error(f"Failed to schedule SMGB actual-fill job: {e}")
+        logger.error("Failed to schedule SMGB actual-fill job: %s", e)
 
 
 def start_scheduler():
