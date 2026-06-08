@@ -1,8 +1,8 @@
-# universe_fundamentals_engine.py
 import json
 import logging
+import math
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from config import FUNDAMENTALS_DIR
@@ -30,16 +30,12 @@ def _fetch_info(ticker: str) -> dict:
                 json.dump(info, f)
         return info
     except Exception as e:
-        logger.warning(f"[{ticker}] yfinance fetch failed: {e}")
+        logger.warning("[%s] yfinance fetch failed: %s", ticker, e)
         return {}
 
 
 def _compute_fundamental_score(info: dict) -> tuple:
-    """
-    Fundamentals-only composite score (0-100) used for universe stocks that
-    have no price history parquet file. Scoring mirrors the quality filters
-    used by the Quality Compounders report so that eligible stocks score >= 60.
-    """
+    # Fundamentals-only composite score (0-100) — mirrors Quality Compounders report filters so eligible stocks score ≥ 60.
     score = 0
     breakdown = []
 
@@ -146,13 +142,11 @@ def _clean(v):
         if v.lower() in ('nan', 'inf', '-inf', 'infinity', '-infinity'):
             return None
         try:
-            import math
             fv = float(v)
             return None if (math.isnan(fv) or math.isinf(fv)) else fv
         except ValueError:
             return v
     try:
-        import math
         if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
             return None
     except Exception:
@@ -161,21 +155,10 @@ def _clean(v):
 
 
 def _get_pending_tickers(batch_size: int, freetrade_firewall: bool = False) -> list:
-    """
-    Return up to batch_size index tickers eligible for the weekly fundamentals refresh.
-
-    Selection rules:
-      - is_index = 1 defines the universe scope (FTSE100 + S&P500 + future indexes).
-      - When freetrade_firewall is True, additionally require is_freetrade = 1 so
-        yfinance calls are not spent on assets that cannot actually be traded.
-      - Tickers whose score_method is NOT 'UNIVERSE_FUNDAMENTALS' (i.e. they have
-        a full HARDCODED technical analysis from the portfolio/watchlist pipeline)
-        are excluded so the deeper data is never overwritten.
-      - Staleness filtering was removed in Step 1.2 — the new UNIVERSE_DEEP_SYNC
-        weekly schedule refreshes every eligible ticker on every run by design.
-    """
-    conn = get_connection()
+    # Excludes tickers whose score_method != 'UNIVERSE_FUNDAMENTALS' so HARDCODED portfolio/watchlist scores are never overwritten.
+    conn = None
     try:
+        conn = get_connection()
         cursor = conn.cursor()
         firewall_clause = "AND m.is_freetrade = 1" if freetrade_firewall else ""
         query = f"""
@@ -194,11 +177,11 @@ def _get_pending_tickers(batch_size: int, freetrade_firewall: bool = False) -> l
         cursor.execute(query, (batch_size,))
         return [r['ticker'] for r in cursor.fetchall()]
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 
 def _upsert_fundamentals(ticker: str, info: dict) -> None:
-    """Write fundamental data for a universe stock into stock_signals."""
     quote_type = info.get('quoteType', 'EQUITY')
     company_name = info.get('shortName') or info.get('longName') or ticker
     sector = info.get('sector') or info.get('category') or 'Unknown'
@@ -230,7 +213,7 @@ def _upsert_fundamentals(ticker: str, info: dict) -> None:
     ex_dividend_date = None
     if ex_div_ts:
         try:
-            ex_dividend_date = datetime.fromtimestamp(float(ex_div_ts)).strftime('%Y-%m-%d')
+            ex_dividend_date = datetime.fromtimestamp(float(ex_div_ts), tz=timezone.utc).strftime('%Y-%m-%d')
         except Exception:
             ex_dividend_date = str(ex_div_ts) if len(str(ex_div_ts)) == 10 else None
 
@@ -243,11 +226,9 @@ def _upsert_fundamentals(ticker: str, info: dict) -> None:
     fifty_two_week_high   = info.get('fiftyTwoWeekHigh')
 
     earnings_ts = info.get('earningsTimestamp')
-    next_earnings_date = datetime.fromtimestamp(earnings_ts).strftime('%Y-%m-%d') if earnings_ts else 'Unknown'
+    next_earnings_date = datetime.fromtimestamp(earnings_ts, tz=timezone.utc).strftime('%Y-%m-%d') if earnings_ts else 'Unknown'
 
-    # Compute canonical Peter Lynch PEG using the shared helper. Must happen
-    # AFTER the pence misquote correction above so dividend_yield is already
-    # in true decimal form (e.g. 0.045 == 4.5%).
+    # Compute PEG after pence misquote correction so dividend_yield is already in decimal form.
     peter_lynch_peg = calculate_peter_lynch_peg(
         forward_pe=forward_pe,
         trailing_pe=trailing_pe,
@@ -256,10 +237,11 @@ def _upsert_fundamentals(ticker: str, info: dict) -> None:
     )
 
     score, signal, notes_html = _compute_fundamental_score(info)
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
-    conn = get_connection()
+    conn = None
     try:
+        conn = get_connection()
         cursor = conn.cursor()
         cursor.execute("""
             INSERT OR REPLACE INTO stock_signals (
@@ -299,24 +281,12 @@ def _upsert_fundamentals(ticker: str, info: dict) -> None:
         ))
         conn.commit()
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 
 def run_universe_fundamentals_sync(batch_size: int = 50, freetrade_firewall: bool = False) -> None:
-    """
-    Fetches fundamental financial data (ROE, margins, D/E, peter_lynch_peg, etc.)
-    from Yahoo Finance for up to batch_size index-universe stocks eligible for refresh.
-
-    Args:
-        batch_size: Maximum tickers processed per call.
-        freetrade_firewall: When True, restricts the universe to is_freetrade = 1
-            tickers (avoids spending yfinance calls on untradable assets).
-            Caller should pass the FREETRADE_ONLY_MODE config flag here.
-
-    Callable both standalone (legacy schedule) and from the unified
-    UNIVERSE_DEEP_SYNC pipeline orchestrator (Step 1.3). Tickers with a full
-    HARDCODED technical analysis are never overwritten.
-    """
+    # Refreshes fundamentals for up to batch_size universe stocks; skips tickers with HARDCODED technical scores.
     tickers = _get_pending_tickers(batch_size, freetrade_firewall=freetrade_firewall)
     if not tickers:
         log_notification("Info", "Universe Fundamentals Sync: all index stocks are already up to date.")
@@ -325,7 +295,7 @@ def run_universe_fundamentals_sync(batch_size: int = 50, freetrade_firewall: boo
 
     total = len(tickers)
     log_notification("Info", f"Universe Fundamentals Sync started — processing {total} pending stocks (batch size: {batch_size}).")
-    logger.info(f"Universe Fundamentals Sync: {total} stocks to process this batch.")
+    logger.info("Universe Fundamentals Sync: %s stocks to process this batch.", total)
 
     processed = errors = 0
 
@@ -333,15 +303,14 @@ def run_universe_fundamentals_sync(batch_size: int = 50, freetrade_firewall: boo
         try:
             info = _fetch_info(ticker)
             if not info:
-                logger.warning(f"[{ticker}] No data returned, skipping.")
+                logger.warning("[%s] No data returned, skipping.", ticker)
                 errors += 1
                 continue
 
             _upsert_fundamentals(ticker, info)
             processed += 1
-            logger.info(f"[{i+1}/{total}] {ticker} — written.")
+            logger.info("[%s/%s] %s — written.", i + 1, total, ticker)
 
-            # Progress notification every 25%
             if total >= 4 and processed % max(1, total // 4) == 0:
                 pct = int((processed / total) * 100)
                 log_notification("Info", f"Universe Fundamentals Sync: {pct}% ({processed}/{total} written).")
@@ -350,7 +319,7 @@ def run_universe_fundamentals_sync(batch_size: int = 50, freetrade_firewall: boo
             time.sleep(0.4)
 
         except Exception as e:
-            logger.error(f"[{ticker}] Failed: {e}")
+            logger.error("[%s] Failed: %s", ticker, e)
             errors += 1
 
     log_notification(
@@ -358,4 +327,4 @@ def run_universe_fundamentals_sync(batch_size: int = 50, freetrade_firewall: boo
         f"Universe Fundamentals Sync batch complete. "
         f"Written: {processed} | Errors: {errors}."
     )
-    logger.info(f"Universe Fundamentals Sync batch done — written={processed}, errors={errors}.")
+    logger.info("Universe Fundamentals Sync batch done — written=%s, errors=%s.", processed, errors)
