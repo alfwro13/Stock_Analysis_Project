@@ -22,12 +22,12 @@ def _fx_rate(pair: str) -> float:
 
 
 def get_rate_to_base(stock_currency: str) -> float:
-    if stock_currency == 'GBp' and BASE_CURRENCY == 'GBP':
-        return 0.01  # Special LSE Math
-
-    if not stock_currency or stock_currency in [BASE_CURRENCY, 'GBp', 'GBP']:
+    if not stock_currency or stock_currency == BASE_CURRENCY:
         return 1.0
-
+    if stock_currency == 'GBp':
+        if BASE_CURRENCY == 'GBP':
+            return 0.01  # Special LSE Math: pence → pounds
+        return 0.01 * _fx_rate(f"GBP{BASE_CURRENCY}=X")
     return _fx_rate(f"{stock_currency}{BASE_CURRENCY}=X")
 
 

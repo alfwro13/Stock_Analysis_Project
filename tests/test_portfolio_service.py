@@ -54,6 +54,16 @@ class TestGetRateToBase:
                 result = get_rate_to_base(None)
         assert result == 1.0
 
+    def test_gbp_pence_to_non_gbp_base_converts_via_gbp(self):
+        # GBp → USD = 0.01 * GBPUSD rate (previously returned 1.0 — bug)
+        with patch("portfolio_service.BASE_CURRENCY", "USD"):
+            with patch("portfolio_service.yahoo_engine") as mock_yf:
+                mock_yf.get_fx_rate.return_value = 1.27
+                from portfolio_service import get_rate_to_base
+                result = get_rate_to_base("GBp")
+        assert result == pytest.approx(0.01 * 1.27)
+        mock_yf.get_fx_rate.assert_called_once_with("GBPUSD=X")
+
     def test_foreign_currency_calls_fx_rate(self):
         with patch("portfolio_service.BASE_CURRENCY", "GBP"):
             with patch("portfolio_service.yahoo_engine") as mock_yf:
