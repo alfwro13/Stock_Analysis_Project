@@ -1,15 +1,4 @@
-# xray_engine.py
-"""
-Portfolio X-ray Engine — risk / diagnostics analytics for the X-ray report.
-
-Data tiers
-----------
-Tier A  Live Ghostfolio data (holdings, sector look-through, performance chart)
-Tier C  yfinance via APScheduler → SQLite cache (beta, vol, correlation, VaR)
-
-Benchmark: SWDA.L (iShares MSCI World) — fetched independently from Yahoo Finance.
-           Never assumed to be a holding in the user's portfolio.
-"""
+# Tier A = live Ghostfolio (holdings, allocations); Tier C = yfinance/SQLite cache (beta, vol, VaR); benchmark SWDA.L always fetched independently.
 
 import json
 import logging
@@ -34,8 +23,7 @@ LOOKBACK_DAYS = 252            # 1-year trailing window
 AMBER_THRESHOLD = 0.10         # position weight colouring
 RED_THRESHOLD = 0.20
 
-# ISO 4217 currency codes Ghostfolio uses as cash-holding symbols.
-# Module-level so any future cash-detection caller can reuse the same set.
+# ISO 4217 codes Ghostfolio uses as cash symbols — module-level so cash detection is centralised.
 _CURRENCY_SYMBOLS: frozenset = frozenset({
     "AED", "AUD", "BRL", "CAD", "CHF", "CNY", "CZK", "DKK", "EUR",
     "GBP", "GBX", "GBp", "HKD", "HUF", "IDR", "ILS", "INR", "JPY",
@@ -58,8 +46,7 @@ _APAC_CODES: frozenset = frozenset({
     "AU", "NZ", "HK", "SG", "KR", "TW", "TH", "MY", "ID", "PH",
 })
 
-# Centralised glossary — single source of truth for all X-ray tooltips.
-# Serialised into the API response so the frontend never hard-codes definitions.
+# Serialised into the API response so the frontend never hard-codes tooltip definitions.
 XRAY_TOOLTIPS: Dict[str, str] = {
     "beta": (
         "Portfolio Beta: measures how sensitive your portfolio is to market moves. "
@@ -162,10 +149,6 @@ XRAY_TOOLTIPS: Dict[str, str] = {
 }
 
 
-# ---------------------------------------------------------------------------
-# Ghostfolio client
-# ---------------------------------------------------------------------------
-
 class GhostfolioXRayClient:
     """Minimal Ghostfolio REST client scoped to X-ray data fetches."""
 
@@ -191,18 +174,11 @@ class GhostfolioXRayClient:
             self._session.headers.update({"Authorization": f"Bearer {bearer}"})
             return True
         except Exception as e:
-            logger.error(f"Ghostfolio X-ray auth failed: {e}")
+            logger.error("Ghostfolio X-ray auth failed: %s", e)
             return False
 
     def get_holdings(self, account_ids: List[str]) -> Tuple[List[Dict], float]:
-        """
-        Fetches /api/v1/portfolio/details for the given account scope.
-        Filters cash, computes de-cashed weights from summed valueInBaseCurrency.
-        Returns (holdings_list, total_invested_value).
-
-        IMPORTANT: never call without explicit account_ids — passing the full active
-        list avoids leaking excluded accounts (e.g. aggregate-only pension accounts).
-        """
+        # Never call without explicit account_ids — omitting leaks excluded accounts.
         accounts_param = ",".join(account_ids)
         url = (
             f"{self.url}/api/v1/portfolio/details"
@@ -213,7 +189,7 @@ class GhostfolioXRayClient:
             resp.raise_for_status()
             raw_holdings: Dict = resp.json().get("holdings", {})
         except Exception as e:
-            logger.error(f"Ghostfolio portfolio/details failed: {e}")
+            logger.error("Ghostfolio portfolio/details failed: %s", e)
             return [], 0.0
 
         holdings: List[Dict] = []
@@ -271,10 +247,7 @@ class GhostfolioXRayClient:
         return holdings, total_value
 
     def get_performance_chart(self, account_ids: List[str]) -> List[Dict]:
-        """
-        Returns [{date, value}...] from portfolio performance endpoint.
-        Tries v2 (returns netWorth) then falls back to v1.
-        """
+        # Returns [{date, value}] from performance endpoint; tries v2 first then falls back to v1.
         accounts_param = ",".join(account_ids)
         for version in ("v2", "v1"):
             url = (
@@ -294,7 +267,7 @@ class GhostfolioXRayClient:
                 if result:
                     return result
             except Exception as e:
-                logger.warning(f"Performance chart ({version}) failed: {e}")
+                logger.warning("Performance chart (%s) failed: %s", version, e)
         return []
 
     def get_dividend_yield(self, data_source: str, symbol: str) -> Dict:
@@ -313,18 +286,8 @@ class GhostfolioXRayClient:
             return {"dividend_yield_pct": 0.0, "dividend_in_base_currency": 0.0}
 
 
-# ---------------------------------------------------------------------------
-# Risk computer (Tier C — yfinance + SQLite cache)
-# ---------------------------------------------------------------------------
-
 class XRayRiskComputer:
-    """
-    Computes beta, annualised vol, and pairwise correlation from yfinance daily returns.
-    Writes results to SQLite via INSERT OR REPLACE (idempotent).
-
-    The benchmark (SWDA.L) is always fetched as a standalone ticker regardless of
-    whether it appears in the user's portfolio.
-    """
+    # Benchmark SWDA.L is always fetched independently — never assumed to be a portfolio holding.
 
     def _fetch_returns(self, symbols: List[str]) -> pd.DataFrame:
         """Downloads 1-year adjusted daily close returns via yahoo_engine."""
@@ -358,14 +321,6 @@ class XRayRiskComputer:
         return float(clean.std() * np.sqrt(252))
 
     def compute_and_cache(self, holdings: List[Dict]) -> bool:
-        """
-        Main entry point for the APScheduler job.
-        1. Assembles portfolio symbol list from holdings.
-        2. Fetches daily returns for all portfolio tickers + benchmark (independently).
-        3. Computes per-ticker beta vs SWDA.L and annualised vol.
-        4. Computes the full pairwise correlation matrix for the portfolio.
-        5. Writes all results to SQLite with INSERT OR REPLACE.
-        """
         portfolio_symbols = list({h["symbol"] for h in holdings if h.get("symbol")})
         if not portfolio_symbols:
             logger.warning("X-ray risk compute: no portfolio symbols found.")
@@ -373,10 +328,7 @@ class XRayRiskComputer:
 
         # Benchmark is always fetched independently — not assumed to be a holding
         all_symbols = list(set(portfolio_symbols + [BENCHMARK_SYMBOL]))
-        logger.info(
-            f"X-ray risk compute: fetching {len(all_symbols)} symbols "
-            f"(incl. benchmark {BENCHMARK_SYMBOL})"
-        )
+        logger.info("X-ray risk compute: fetching %s symbols (incl. benchmark %s)", len(all_symbols), BENCHMARK_SYMBOL)
 
         returns_df = self._fetch_returns(all_symbols)
         if returns_df.empty:
@@ -389,19 +341,16 @@ class XRayRiskComputer:
             else None
         )
         if bench_rets is None:
-            logger.warning(
-                f"Benchmark {BENCHMARK_SYMBOL} not available from yfinance — "
-                "beta will be None for all tickers."
-            )
+            logger.warning("Benchmark %s not available from yfinance — beta will be None for all tickers.", BENCHMARK_SYMBOL)
 
-        today = datetime.date.today().isoformat()
+        today = datetime.datetime.now(datetime.timezone.utc).date().isoformat()
         conn = None
         try:
             conn = get_connection()
 
             for sym in portfolio_symbols:
                 if sym not in returns_df.columns:
-                    logger.warning(f"No returns data for {sym} — skipping.")
+                    logger.warning("No returns data for %s — skipping.", sym)
                     continue
                 asset_rets = returns_df[sym]
                 beta = self._compute_beta(asset_rets, bench_rets) if bench_rets is not None else None
@@ -413,7 +362,6 @@ class XRayRiskComputer:
                     (sym, BENCHMARK_SYMBOL, today, beta, vol),
                 )
 
-            # Correlation matrix for all portfolio tickers with available returns
             available = [s for s in portfolio_symbols if s in returns_df.columns]
             if len(available) >= 2:
                 corr_df = returns_df[available].dropna(how="any").corr()
@@ -429,14 +377,11 @@ class XRayRiskComputer:
                 )
 
             conn.commit()
-            logger.info(
-                f"X-ray risk cache updated: {len(available)} tickers, "
-                f"benchmark {BENCHMARK_SYMBOL}."
-            )
+            logger.info("X-ray risk cache updated: %s tickers, benchmark %s.", len(available), BENCHMARK_SYMBOL)
             return True
 
         except Exception as e:
-            logger.error(f"X-ray risk cache write failed: {e}")
+            logger.error("X-ray risk cache write failed: %s", e)
             if conn:
                 conn.rollback()
             return False
@@ -446,13 +391,7 @@ class XRayRiskComputer:
 
 
     def compute_and_cache_portfolio_returns(self, holdings_with_weights: List[Dict]) -> bool:
-        """
-        Computes the weighted daily portfolio return series and stores it alongside
-        the benchmark (SWDA.L) returns in xray_portfolio_returns_cache.
-
-        Called from run_xray_precompute with live Ghostfolio holdings (which have
-        weights).  Never called on page load.
-        """
+        # Never called on page load — requires live Ghostfolio holdings with weights.
         weighted = [(h["symbol"], h.get("weight", 0.0)) for h in holdings_with_weights
                     if h.get("symbol") and h.get("weight", 0.0) > 0]
         if not weighted:
@@ -464,13 +403,11 @@ class XRayRiskComputer:
         if returns_df.empty:
             return False
 
-        # Drop the pct_change first row (all-NaN) and align all tickers to common dates
         clean = returns_df.dropna(how="any")
         if len(clean) < 30:
             logger.warning("X-ray portfolio returns: fewer than 30 aligned trading days.")
             return False
 
-        # Weighted portfolio daily return
         weight_series = pd.Series(
             {sym: w for sym, w in weighted if sym in clean.columns}
         )
@@ -482,7 +419,7 @@ class XRayRiskComputer:
 
         bench_rets = clean[BENCHMARK_SYMBOL] if BENCHMARK_SYMBOL in clean.columns else None
 
-        today = datetime.date.today().isoformat()
+        today = datetime.datetime.now(datetime.timezone.utc).date().isoformat()
         conn = None
         try:
             conn = get_connection()
@@ -499,10 +436,10 @@ class XRayRiskComputer:
                 ),
             )
             conn.commit()
-            logger.info(f"X-ray portfolio returns cache updated: {len(port_rets)} trading days.")
+            logger.info("X-ray portfolio returns cache updated: %s trading days.", len(port_rets))
             return True
         except Exception as e:
-            logger.error(f"X-ray portfolio returns cache write failed: {e}")
+            logger.error("X-ray portfolio returns cache write failed: %s", e)
             if conn:
                 conn.rollback()
             return False
@@ -511,15 +448,9 @@ class XRayRiskComputer:
                 conn.close()
 
 
-# ---------------------------------------------------------------------------
-# Dividend cache helper (APScheduler job use only)
-# ---------------------------------------------------------------------------
 
 def cache_xray_dividends(holdings: List[Dict], client: GhostfolioXRayClient) -> None:
-    """
-    Fetches dividend yield per holding via Ghostfolio and writes to xray_dividend_cache.
-    One HTTP call per holding — must only be called from the scheduler job, never on page load.
-    """
+    # One HTTP call per holding — must only be called from the scheduler job, never on page load.
     today = datetime.date.today().isoformat()
     conn = None
     try:
@@ -535,9 +466,9 @@ def cache_xray_dividends(holdings: List[Dict], client: GhostfolioXRayClient) -> 
                 (sym, ds, today, div["dividend_yield_pct"], div["dividend_in_base_currency"]),
             )
         conn.commit()
-        logger.info(f"X-ray dividend cache updated for {len(holdings)} holdings.")
+        logger.info("X-ray dividend cache updated for %s holdings.", len(holdings))
     except Exception as e:
-        logger.error(f"X-ray dividend cache write failed: {e}")
+        logger.error("X-ray dividend cache write failed: %s", e)
         if conn:
             conn.rollback()
     finally:
@@ -545,23 +476,14 @@ def cache_xray_dividends(holdings: List[Dict], client: GhostfolioXRayClient) -> 
             conn.close()
 
 
-# ---------------------------------------------------------------------------
-# APScheduler entry point
-# ---------------------------------------------------------------------------
 
 def run_xray_precompute() -> bool:
-    """
-    APScheduler job entry point. Runs daily after market close.
-    1. Reads portfolio tickers from portfolio.json.
-    2. Computes and caches beta / vol / correlation via yfinance.
-    3. Fetches and caches per-holding dividend yields via Ghostfolio.
-    """
     logger.info("X-ray pre-compute job started.")
     try:
         with open(PORTFOLIO_PATH) as f:
             portfolio_json: Dict = json.load(f)
     except Exception as e:
-        logger.error(f"X-ray pre-compute: could not read portfolio.json — {e}")
+        logger.error("X-ray pre-compute: could not read portfolio.json — %s", e)
         return False
 
     holdings = [
@@ -587,15 +509,12 @@ def run_xray_precompute() -> bool:
                     cache_xray_dividends(live_holdings, client)
                     XRayRiskComputer().compute_and_cache_portfolio_returns(live_holdings)
     except Exception as e:
-        logger.warning(f"X-ray dividend/returns cache step failed (non-fatal): {e}")
+        logger.warning("X-ray dividend/returns cache step failed (non-fatal): %s", e)
 
-    logger.info(f"X-ray pre-compute finished. Risk cache: {'OK' if risk_ok else 'FAILED'}.")
+    logger.info("X-ray pre-compute finished. Risk cache: %s.", "OK" if risk_ok else "FAILED")
     return risk_ok
 
 
-# ---------------------------------------------------------------------------
-# Helpers for report assembly
-# ---------------------------------------------------------------------------
 
 def _get_instrument_type(asset_class: str, asset_sub_class: str) -> str:
     sub = (asset_sub_class or "").upper()
@@ -629,9 +548,6 @@ def _compute_max_drawdown(chart: List[Dict]) -> Optional[float]:
     return float(max_dd)
 
 
-# ---------------------------------------------------------------------------
-# Recommendations engine — compares current allocations against configured targets
-# ---------------------------------------------------------------------------
 
 def _rec_item(
     category: str,
@@ -698,7 +614,6 @@ def _generate_xray_recommendations(
         "income": [],
     }
 
-    # --- 1. Market development & regional clusters (country-level iteration) ---
     dev_weight = 0.0
     em_weight = 0.0
     regional: Dict[str, float] = {}
@@ -734,7 +649,6 @@ def _generate_xray_recommendations(
             if name:
                 country_totals[name] = country_totals.get(name, 0.0) + c_weight
 
-    # Market development recommendations
     md_targets = targets.get("market_development", {})
     for label, weight in [("Developed Markets", dev_weight * 100), ("Emerging Markets", em_weight * 100)]:
         t = md_targets.get(label, {})
@@ -742,7 +656,6 @@ def _generate_xray_recommendations(
         if item:
             result["market_development"].append(item)
 
-    # Regional cluster recommendations
     rc_targets = targets.get("regional_clusters", {})
     for label, weight in regional.items():
         t = rc_targets.get(label, {})
@@ -751,7 +664,6 @@ def _generate_xray_recommendations(
             result["regional_clusters"].append(item)
     result["regional_clusters"].sort(key=lambda x: x["current_value"], reverse=True)
 
-    # Country concentration recommendations
     cc_targets = targets.get("country_concentration", {})
     for country_name, t in cc_targets.items():
         weight = country_totals.get(country_name, 0.0) * 100
@@ -759,7 +671,6 @@ def _generate_xray_recommendations(
         if item:
             result["country_concentration"].append(item)
 
-    # --- 2. Sector targets ---
     sector_targets = targets.get("sector_targets", {})
     sector_map = {s["name"].lower(): s["weight"] for s in sector_allocation}
     for sector_name, t in sector_targets.items():
@@ -770,7 +681,6 @@ def _generate_xray_recommendations(
         if item:
             result["sector"].append(item)
 
-    # --- 3. Asset class targets ---
     ac_targets = targets.get("asset_class_targets", {})
     ac_map = {a["name"].lower(): a["weight"] for a in asset_class_allocation}
     for ac_name, t in ac_targets.items():
@@ -781,7 +691,6 @@ def _generate_xray_recommendations(
         if item:
             result["asset_class"].append(item)
 
-    # --- 4. Concentration targets ---
     conc_t = targets.get("concentration_targets", {})
     hhi = concentration.get("hhi", 0.0) or 0.0
     top5 = concentration.get("top5_weight", 0.0) or 0.0
@@ -798,7 +707,6 @@ def _generate_xray_recommendations(
         if item:
             result["concentration"].append(item)
 
-    # --- 5. Risk metric targets ---
     rm_t = targets.get("risk_metric_targets", {})
     beta = risk_metrics.get("portfolio_beta")
     vol = risk_metrics.get("annualized_vol")
@@ -827,7 +735,6 @@ def _generate_xray_recommendations(
         if item:
             result["risk_metrics"].append(item)
 
-    # --- 6. Income targets ---
     inc_t = targets.get("income_targets", {})
     div_yield = income.get("weighted_dividend_yield", 0.0) or 0.0
     item = _rec_item("Dividend Yield", div_yield * 100, inc_t.get("dividend_yield_min_pct"), None)
@@ -837,19 +744,9 @@ def _generate_xray_recommendations(
     return result
 
 
-# ---------------------------------------------------------------------------
-# Main report assembler (called by the /api/xray endpoint)
-# ---------------------------------------------------------------------------
 
 def assemble_xray_report(account_id: str) -> Dict:
-    """
-    Assembles the full X-ray report JSON.
-
-    Combines live Ghostfolio data (Tier A: holdings, allocations, performance chart)
-    with SQLite-cached risk stats (Tier C: beta, vol, correlation, VaR).
-
-    account_id: "all" for global (all active accounts) or a Ghostfolio account UUID.
-    """
+    # Combines live Ghostfolio (Tier A) with SQLite risk cache (Tier C); account_id="all" for global scope.
     config = load_config()
     active_ids: List[str] = config.get("GHOSTFOLIO_ACCOUNTS", {}).get("active", [])
     base_currency: str = config.get("BASE_CURRENCY", "GBP")
@@ -877,12 +774,10 @@ def assemble_xray_report(account_id: str) -> Dict:
 
     holdings_sorted = sorted(holdings, key=lambda h: h["weight"], reverse=True)
 
-    # --- Concentration metrics ---------------------------------------------------
     top5_weight = sum(h["weight"] for h in holdings_sorted[:5])
     top10_weight = sum(h["weight"] for h in holdings_sorted[:10])
     hhi = sum(h["weight"] ** 2 for h in holdings)
 
-    # --- Sector allocation (look-through) ----------------------------------------
     sector_map: Dict[str, float] = {}
     for h in holdings:
         for sec in h.get("sectors") or []:
@@ -906,7 +801,6 @@ def assemble_xray_report(account_id: str) -> Dict:
         key=lambda x: x["weight"], reverse=True,
     )
 
-    # --- Geographic allocation (by continent) ------------------------------------
     geo_map: Dict[str, float] = {}
     for h in holdings:
         for country in h.get("countries") or []:
@@ -919,7 +813,6 @@ def assemble_xray_report(account_id: str) -> Dict:
         key=lambda x: x["weight"], reverse=True,
     )
 
-    # --- Load cached risk stats --------------------------------------------------
     risk_cache: Dict[str, Dict] = {}
     corr_tickers: List[str] = []
     corr_matrix: List[List[float]] = []
@@ -980,13 +873,12 @@ def assemble_xray_report(account_id: str) -> Dict:
             port_rets_series = json.loads(port_ret_row["returns_json"])
             bench_rets_series = json.loads(port_ret_row["benchmark_returns_json"])
     except Exception as e:
-        logger.error(f"X-ray DB read failed: {e}")
+        logger.error("X-ray DB read failed: %s", e)
         raise
     finally:
         if conn:
             conn.close()
 
-    # Enrich sorted holdings with cached risk + dividend data
     for h in holdings_sorted:
         sym = h["symbol"]
         rc = risk_cache.get(sym, {})
@@ -999,7 +891,6 @@ def assemble_xray_report(account_id: str) -> Dict:
     # --- Data warnings (initialised early so risk blocks can append to it) ------
     data_warnings: List[str] = []
 
-    # --- Portfolio-level risk metrics from cached per-ticker data + live weights --
     portfolio_beta: Optional[float] = None
     portfolio_vol: Optional[float] = None
     var_95_1d: Optional[float] = None
@@ -1046,7 +937,6 @@ def assemble_xray_report(account_id: str) -> Dict:
                     "periods across holdings). Re-run the risk cache job to refresh."
                 )
 
-        # avg_pairwise_corr: only include tickers that are in current holdings
         current_syms = {h["symbol"] for h in holdings_sorted}
         active_indices = [
             i for i, t in enumerate(corr_tickers) if t in current_syms
@@ -1060,7 +950,6 @@ def assemble_xray_report(account_id: str) -> Dict:
             if off_diag:
                 avg_pairwise_corr = round(float(np.mean(off_diag)), 3)
 
-    # --- Max drawdown from Ghostfolio performance chart --------------------------
     max_drawdown: Optional[float] = None
     try:
         perf_chart = client.get_performance_chart(scope_ids)
@@ -1069,9 +958,8 @@ def assemble_xray_report(account_id: str) -> Dict:
             if max_drawdown is not None:
                 max_drawdown = round(max_drawdown, 4)
     except Exception as e:
-        logger.warning(f"Max drawdown computation failed: {e}")
+        logger.warning("Max drawdown computation failed: %s", e)
 
-    # --- Income ------------------------------------------------------------------
     weighted_div_yield = round(
         sum(h["weight"] * (h.get("dividend_yield_pct") or 0) for h in holdings_sorted), 4
     )
@@ -1079,7 +967,6 @@ def assemble_xray_report(account_id: str) -> Dict:
         sum(h.get("dividend_income") or 0 for h in holdings_sorted), 2
     )
 
-    # --- FX / currency exposure --------------------------------------------------
     fx_map: Dict[str, float] = {}
     for h in holdings_sorted:
         ccy = (h.get("currency") or "").upper() or "UNKNOWN"
@@ -1089,9 +976,7 @@ def assemble_xray_report(account_id: str) -> Dict:
         key=lambda x: x["weight"], reverse=True,
     )
 
-    # --- Marginal Risk Contribution (MRC) per holding ----------------------------
-    # MRC_i = (Sigma_daily · w)_i * w_i / sigma_p_daily * sqrt(252)
-    # Euler decomposition: sum(MRC_i) = portfolio annualised vol exactly.
+    # Euler decomposition (MRC_i = Σ·w_i/σ_p·w_i·√252): sum of all MRC_i = portfolio annualised vol.
     if portfolio_vol is not None and len(corr_tickers) >= 2 and corr_matrix:
         sigma_daily_full = np.outer(dv_arr, dv_arr) * np.array(corr_matrix)
         marginal_contrib_daily = sigma_daily_full @ w_arr
@@ -1103,11 +988,9 @@ def assemble_xray_report(account_id: str) -> Dict:
                     marginal_contrib_daily[i] * w_arr[i] / port_daily_vol_val * np.sqrt(252)
                 )
                 h_match["marginal_risk_contribution"] = round(mrc_ann, 4)
-    # Set None for any holding not in corr_tickers
     for h in holdings_sorted:
         h.setdefault("marginal_risk_contribution", None)
 
-    # --- Stats from portfolio returns series (historical VaR, Sharpe, etc.) -----
     historical_var_95_1d: Optional[float] = None
     cvar_95_1d: Optional[float] = None
     tracking_error: Optional[float] = None
@@ -1121,21 +1004,17 @@ def assemble_xray_report(account_id: str) -> Dict:
             import scipy.stats as _stats
             pr = np.array(port_rets_series)
 
-            # Historical VaR & CVaR (95%)
             var_threshold = float(np.percentile(pr, 5))
             historical_var_95_1d = round(abs(var_threshold) * total_value, 2)
             tail = pr[pr <= var_threshold]
             if len(tail) > 0:
                 cvar_95_1d = round(abs(float(tail.mean())) * total_value, 2)
 
-            # Skewness and excess kurtosis
             skewness = round(float(_stats.skew(pr)), 3)
             excess_kurtosis = round(float(_stats.kurtosis(pr)), 3)  # Fisher = excess
 
-            # 1-year annualised return from compounded daily returns
             ann_return = float((1 + pr).prod() ** (252 / len(pr)) - 1)
 
-            # Tracking error vs benchmark
             if bench_rets_series and len(bench_rets_series) == len(port_rets_series):
                 br = np.array(bench_rets_series)
                 active_rets = pr - br
@@ -1146,14 +1025,12 @@ def assemble_xray_report(account_id: str) -> Dict:
             if portfolio_vol and portfolio_vol > 0:
                 sharpe_ratio = round((ann_return - rf_rate) / portfolio_vol, 3)
 
-            # Calmar ratio
             if max_drawdown and max_drawdown < 0:
                 calmar_ratio = round(ann_return / abs(max_drawdown), 3)
 
         except Exception as e:
-            logger.warning(f"Portfolio return stats computation failed: {e}")
+            logger.warning("Portfolio return stats computation failed: %s", e)
 
-    # --- Data warnings (continued) -----------------------------------------------
     if not risk_cache:
         data_warnings.append(
             "Risk metrics (beta, volatility, correlation) are not yet available. "
@@ -1181,7 +1058,6 @@ def assemble_xray_report(account_id: str) -> Dict:
             + (" …" if len(uncovered) > 5 else "")
         )
 
-    # --- Final payload -----------------------------------------------------------
     holdings_payload = [
         {
             "symbol": h["symbol"],
@@ -1229,7 +1105,7 @@ def assemble_xray_report(account_id: str) -> Dict:
 
     return {
         "account_id": account_id,
-        "generated_at": datetime.datetime.now().isoformat(),
+        "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "portfolio_total_value": round(total_value, 2),
         "portfolio_total_investment": round(sum(h["investment"] for h in holdings_sorted), 2),
         "base_currency": base_currency,
