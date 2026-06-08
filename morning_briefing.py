@@ -1,9 +1,4 @@
-"""
-morning_briefing.py
-
-Generates the enhanced Morning Quant Briefing: overnight portfolio news,
-US futures snapshot, UK pre-open context, and the full quant screener signals.
-"""
+"""Generates the Morning Quant Briefing: overnight portfolio news, US futures, UK pre-open context, and quant screener signals."""
 
 import json
 import logging
@@ -15,6 +10,7 @@ from typing import Any
 import pandas as pd
 from yahoo_engine import yahoo_engine
 
+import time_engine
 from config import PORTFOLIO_PATH, HISTORICAL_DIR
 from database import get_connection
 from quant_screener import fetch_latest_signals, generate_markdown_briefing
@@ -23,7 +19,6 @@ from utils import normalize_ticker
 
 logger = logging.getLogger(__name__)
 
-# Tickers to show in the US futures / macro snapshot
 _US_PULSE_TICKERS = ["^GSPC", "^NDX", "^TNX", "DX-Y.NYB", "BZ=F"]
 _UK_PULSE_TICKERS = ["^FTSE", "^FTMC", "GBPUSD=X", "UK10YG"]
 
@@ -43,7 +38,6 @@ _UK_DISPLAY_NAMES = {
 
 
 def _load_portfolio_tickers() -> list[str]:
-    """Returns the list of tickers currently held in the portfolio."""
     try:
         with open(PORTFOLIO_PATH, "r") as f:
             data = json.load(f)
@@ -54,9 +48,9 @@ def _load_portfolio_tickers() -> list[str]:
 
 
 def _get_company_names(tickers: list[str]) -> dict[str, str]:
-    """Returns {ticker: company_name} from stock_signals, falling back to ticker if absent."""
     if not tickers:
         return {}
+    conn = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
@@ -66,17 +60,18 @@ def _get_company_names(tickers: list[str]) -> dict[str, str]:
             tickers,
         )
         result = {row["ticker"]: (row["company_name"] or row["ticker"]) for row in cursor.fetchall()}
-        conn.close()
     except Exception:
         result = {}
-    # Fill in missing entries with the ticker itself
+    finally:
+        if conn:
+            conn.close()
     return {t: result.get(t, t) for t in tickers}
 
 
 def _get_pulse_rows(tickers: list[str]) -> dict[str, dict]:
-    """Returns {ticker: {name, price, change_pct, is_positive}} from market_pulse_cache."""
     if not tickers:
         return {}
+    conn = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
@@ -86,11 +81,12 @@ def _get_pulse_rows(tickers: list[str]) -> dict[str, dict]:
             f"FROM market_pulse_cache WHERE ticker IN ({placeholders})",
             tickers,
         )
-        result = {row["ticker"]: dict(row) for row in cursor.fetchall()}
-        conn.close()
-        return result
+        return {row["ticker"]: dict(row) for row in cursor.fetchall()}
     except Exception:
         return {}
+    finally:
+        if conn:
+            conn.close()
 
 
 def _format_age(pub_time: datetime) -> str:
@@ -106,11 +102,7 @@ def fetch_portfolio_news(
     since_dt: datetime,
     max_per_ticker: int = 3,
 ) -> dict[str, list[dict[str, Any]]]:
-    """
-    Fetches recent Yahoo Finance news for each portfolio ticker, filtered to items
-    published on or after since_dt (naive UTC). Returns at most max_per_ticker
-    headlines per ticker, sorted newest-first.
-    """
+    """Fetch Yahoo Finance news per ticker; since_dt must be naive UTC; returns max_per_ticker items newest-first."""
     result: dict[str, list[dict]] = {}
 
     for ticker in tickers:
@@ -177,7 +169,6 @@ def _render_news_section(
     company_names: dict[str, str],
     window_desc: str,
 ) -> str:
-    """Builds the '📰 News — Your Holdings' markdown section."""
     out = f"## 📰 Overnight News — Your Holdings\n"
     out += f"*{window_desc} — portfolio holdings only*\n\n"
 
@@ -204,7 +195,6 @@ def _render_news_section(
 
 
 def _render_us_futures(pulse: dict[str, dict]) -> str:
-    """Builds the US Futures / macro snapshot table."""
     out = "## 📈 US Futures & Macro\n\n"
     out += "| Asset | Price | Change |\n"
     out += "|-------|-------|--------|\n"
@@ -228,12 +218,7 @@ def _render_us_futures(pulse: dict[str, dict]) -> str:
 
 
 def generate_uk_charts(target_date: str) -> dict[str, str]:
-    """
-    Generates static PNG snapshots of FTSE 100, UK 10Y Gilt and GBP/USD
-    for the past ~10 trading days. Saved to static/briefing_charts/ so they
-    are served at /static/briefing_charts/<filename>.
-    Returns {key: web_url_path} for any chart successfully created.
-    """
+    """Generate FTSE/Gilt/GBPUSD PNG snapshots into static/briefing_charts/; returns {key: /static/... URL}."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -328,7 +313,6 @@ def _render_uk_preopen(
     macro_regime: dict,
     charts: dict[str, str] | None = None,
 ) -> str:
-    """Builds the UK Pre-Open snapshot block."""
     uk_regime = regime_data.get("uk_regime_label", "Unknown") if regime_data else "Unknown"
     uk_turb = regime_data.get("uk_turbulence", 0.0) if regime_data else 0.0
     uk_threat = macro_regime.get("uk_threat_level", "GREEN")
@@ -382,49 +366,47 @@ def _render_uk_preopen(
 
 
 def generate_morning_briefing(target_date: str) -> str:
-    """
-    Generates the full Morning Quant Briefing markdown:
-    overnight portfolio news → US futures → UK pre-open → quant screener signals.
-    Writes the report to disk and returns the markdown string.
-    """
-    now_uk = datetime.now()
-    generated_at = now_uk.strftime("%H:%M")
+    """Assemble the morning briefing markdown (news → futures → UK pre-open → quant signals) and write to reports/."""
+    generated_at = time_engine.now_local().strftime("%H:%M")
 
     logger.info("Generating morning briefing for %s", target_date)
 
-    # --- Data loading ---
     tickers = _load_portfolio_tickers()
     company_names = _get_company_names(tickers)
     pulse = _get_pulse_rows(_US_PULSE_TICKERS + _UK_PULSE_TICKERS)
     regime_data = get_latest_regime()
 
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM macro_regimes ORDER BY date DESC LIMIT 1")
-    macro_row = cursor.fetchone()
-    conn.close()
-    macro_regime = dict(macro_row) if macro_row else {}
+    conn = None
+    macro_regime: dict = {}
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM macro_regimes ORDER BY date DESC LIMIT 1")
+        macro_row = cursor.fetchone()
+        macro_regime = dict(macro_row) if macro_row else {}
+    except Exception:
+        pass
+    finally:
+        if conn:
+            conn.close()
 
-    # Overnight news window: ~12 hours back captures aftermarket + overnight
-    since_dt = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=12)
+    # ~12 hours back captures aftermarket + overnight
+    since_dt = datetime.now(timezone.utc) - timedelta(hours=12)
     window_desc = "Aftermarket + overnight news (approx 21:00 UK yesterday — now)"
 
     news_data: dict[str, list[dict]] = {}
     if tickers:
         logger.info("Fetching overnight news for %d portfolio tickers...", len(tickers))
-        news_data = fetch_portfolio_news(tickers, since_dt)
+        news_data = fetch_portfolio_news(tickers, since_dt.replace(tzinfo=None))
 
-    # --- UK charts ---
     logger.info("Generating UK market chart snapshots...")
     charts = generate_uk_charts(target_date)
 
-    # --- Quant signals ---
     signals = fetch_latest_signals(target_date)
     if not signals:
         yesterday = (datetime.strptime(target_date, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
         signals = fetch_latest_signals(yesterday)
 
-    # --- Assemble report ---
     report = f"# 🌅 Quant Morning Briefing — {target_date}\n"
     report += f"**Generated:** {generated_at} UK (pre-open) | Overnight & aftermarket coverage\n\n"
     report += "---\n\n"
@@ -439,7 +421,7 @@ def generate_morning_briefing(target_date: str) -> str:
     report += _render_uk_preopen(pulse, regime_data, macro_regime, charts=charts)
     report += "---\n\n"
 
-    # Quant screener tail — strip the auto-generated title so we don't have two headers
+    # Strip the auto-generated quant screener title to avoid a duplicate header in the briefing.
     if signals:
         quant_md = generate_markdown_briefing(target_date, signals)
         # Drop first two lines ("# 📊 Morning Quant Briefing\n**Date:** ...\n\n")
@@ -457,8 +439,6 @@ def generate_morning_briefing(target_date: str) -> str:
     else:
         report += "*⚠️ No quant signals available for today — overnight scan may not have run yet.*\n"
 
-    # --- Save to disk ---
-    import os
     reports_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reports")
     os.makedirs(reports_dir, exist_ok=True)
     file_path = os.path.join(reports_dir, f"morning_briefing_{target_date}.md")
