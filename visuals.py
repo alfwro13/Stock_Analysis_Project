@@ -1,4 +1,3 @@
-# visuals.py
 import numpy as np
 import plotly.graph_objects as go
 from datetime import datetime
@@ -16,18 +15,11 @@ _EXCHANGE_DELAYS = {
 
 
 def _intraday_market_tz(ticker: str, currency: str) -> str:
-    """Return the user's display timezone for intraday chart timestamps."""
     return time_engine.get_user_tz().key
 
 
 def create_intraday_chart(df, ticker, s1=None, s2=None, live_pattern_name=None, live_pattern_tooltip=None, live_pattern_score=None, include_plotlyjs='cdn', market_tz=None, data_delay_minutes=0):
-    """
-    Generates a high-resolution, short-term chart using 5-minute data
-    for the current trading day. Conditionally plots algorithmic floors (S1/S2).
-    market_tz: pytz timezone string (e.g. 'Europe/London'). The parquet stores
-               naive UTC timestamps; if provided the index is converted before plotting.
-    data_delay_minutes: if > 0, an amber delay warning is added to the chart title.
-    """
+    # market_tz: parquet stores naive UTC; if provided the index is converted before plotting. data_delay_minutes > 0 adds amber warning.
     if market_tz and not df.empty:
         df = df.copy()
         df.index = df.index.tz_localize('UTC').tz_convert(market_tz).tz_localize(None)
@@ -81,9 +73,6 @@ def create_intraday_chart(df, ticker, s1=None, s2=None, live_pattern_name=None, 
 
 
 def create_macro_chart(df, df_baseline, ticker):
-    """
-    Generates the 5-Row Institutional Macro Chart.
-    """
     df = df.tail(126).copy()
     
     df['MA_21'] = df['Close'].rolling(window=21).mean()
@@ -176,19 +165,7 @@ def create_macro_chart(df, df_baseline, ticker):
     return fig.to_html(full_html=False, include_plotlyjs='cdn', config=clean_config)
 
 def create_us_inflation_chart(df_spy: pd.DataFrame, df_cpi: pd.DataFrame) -> str:
-    """
-    Renders US Price Stability chart: CPI YoY % (orange, secondary axis) vs S&P 500 (cyan, primary axis).
-
-    Input contract:
-        df_cpi['value'] contains the RAW CPIAUCSL index level (e.g. ~316 in 2025), forward-filled daily.
-
-    Transformation:
-        1. Resample to month-start frequency, taking the first valid observation per month.
-           This collapses the daily forward-fill back to the underlying monthly cadence.
-        2. Apply pct_change(periods=12) to compute true 12-month (year-over-year) change.
-
-    Reference lines: 2% (Fed target) and 5% (danger zone).
-    """
+    # df_cpi['value'] is the RAW CPIAUCSL index level (not already-YoY); pct_change(12) applied after resampling to monthly.
     fig = make_subplots(specs=[[{"secondary_y": True}]])
 
     if not df_spy.empty and 'Close' in df_spy.columns:
@@ -243,11 +220,7 @@ def create_us_inflation_chart(df_spy: pd.DataFrame, df_cpi: pd.DataFrame) -> str
 
 
 def create_uk_inflation_chart(df_ftse: pd.DataFrame, df_cpi: pd.DataFrame) -> str:
-    """
-    Renders UK Price Stability chart: CPI YoY % (orange, secondary axis) vs FTSE 100 (cyan, primary axis).
-    The raw ONS D7G7 series is ALREADY an annualized percentage rate, so no transformation is needed.
-    Reference lines plotted at 2% (BoE target) and 5% (danger zone).
-    """
+    # ONS D7G7 is already an annualised YoY % rate — no transformation needed (unlike US CPIAUCSL which is a raw index level).
     fig = make_subplots(specs=[[{"secondary_y": True}]])
 
     if not df_ftse.empty and 'Close' in df_ftse.columns:
@@ -404,13 +377,7 @@ def create_yield_curve_chart(df_curve: pd.DataFrame) -> str:
 
 
 def create_anomaly_score_chart(df: pd.DataFrame, ticker: str, threshold: float = 0.7) -> str:
-    """
-    Two-row Plotly chart: Isolation Forest anomaly score (top) + closing price (bottom).
-    df must have columns ['anomaly_score', 'close_price'] with a DatetimeIndex.
-
-    Renders as ONE continuous line with per-point coloured markers (cyan = normal,
-    red = above threshold) and a shaded alert zone, so the line is never visually split.
-    """
+    # df must have ['anomaly_score', 'close_price'] with DatetimeIndex; uses one continuous line with per-point marker colours so the series is never visually split.
     fig = make_subplots(
         rows=2, cols=1,
         shared_xaxes=True,
@@ -444,7 +411,6 @@ def create_anomaly_score_chart(df: pd.DataFrame, ticker: str, threshold: float =
         row=1, col=1,
     )
 
-    # Threshold reference line
     fig.add_hline(
         y=threshold,
         line_dash="dot",
@@ -455,7 +421,6 @@ def create_anomaly_score_chart(df: pd.DataFrame, ticker: str, threshold: float =
         row=1, col=1,
     )
 
-    # Closing price
     fig.add_trace(
         go.Scatter(
             x=df.index, y=df['close_price'],
@@ -483,12 +448,7 @@ def create_anomaly_score_chart(df: pd.DataFrame, ticker: str, threshold: float =
 
 
 def create_anomaly_feature_radar(features: dict, ticker: str) -> str:
-    """
-    Plotly radar/spider chart showing the 6 Isolation Forest input features normalised to [0, 1].
-
-    features: {'volume_ratio': float, 'rsi_14': float, 'daily_return_pct': float,
-               'sma50_dist_pct': float, 'hist_vol_20': float, 'beta': float}
-    """
+    # features: {'volume_ratio', 'rsi_14', 'daily_return_pct', 'sma50_dist_pct', 'hist_vol_20', 'beta'} normalised to [0, 1] against typical market bounds.
     # (label, feature_key, range_lo, range_hi) — ranges represent typical market bounds
     AXES = [
         ('Volume Ratio',   'volume_ratio',     0.0,   3.0),
@@ -507,7 +467,6 @@ def create_anomaly_feature_radar(features: dict, ticker: str) -> str:
         norm_vals.append(round(n, 3))
         hover.append(f"{label}: {raw:.3f}")
 
-    # Close the polygon
     labels += [labels[0]]
     norm_vals += [norm_vals[0]]
     hover += [hover[0]]
@@ -541,8 +500,6 @@ def create_anomaly_feature_radar(features: dict, ticker: str) -> str:
         config={'responsive': True, 'displaylogo': False},
     )
 
-
-# ── SMGB.L UK ETF Impact Charts ──────────────────────────────────────────────
 
 _SMGB_COLORS = {
     "SMGB.L":  "#00ffff",
@@ -737,8 +694,6 @@ def create_smgb_contributions_chart(contributions: list) -> str:
     return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
 
 
-# ── Time-aligned SMGB.L vs US semis intraday overlay ─────────────────────────
-
 def create_smgb_overlay_chart(
     smgb_series: "pd.Series",
     us_series: "dict[str, pd.Series]",
@@ -808,7 +763,6 @@ def create_smgb_overlay_chart(
         xanchor="left", yanchor="top",
     )
 
-    # Vertical line at NYSE open
     if nyse_open_utc is not None:
         nyse_open_aware = pd.Timestamp(nyse_open_utc).tz_localize("UTC").tz_convert(user_tz).tz_localize(None)
         nyse_open_str = str(nyse_open_aware)
@@ -872,8 +826,6 @@ def create_smgb_overlay_chart(
     fig.update_xaxes(showgrid=True, gridcolor="#333333")
     return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
 
-
-# ── AI Sector Contagion Monitor charts ───────────────────────────────────────
 
 def create_ai_contagion_performance_chart(ticker_dfs: dict, period_label: str = "30-Day") -> str:
     if not ticker_dfs:
