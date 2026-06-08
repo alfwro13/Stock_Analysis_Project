@@ -1,8 +1,7 @@
-# score_analysis.py
 import json
 import logging
 import os
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
 import pandas as pd
@@ -27,7 +26,6 @@ def _compute_return(entry_price: float, future_price: Optional[float]) -> Option
 
 
 def _build_ticker_accounts_map() -> dict[str, list[str]]:
-    """Returns a mapping of ticker -> list of account names from portfolio.json."""
     if not os.path.exists(PORTFOLIO_PATH):
         return {}
     try:
@@ -45,10 +43,7 @@ def _build_ticker_accounts_map() -> dict[str, list[str]]:
 
 
 def get_score_analysis(filter_name: str = "all") -> dict:
-    """
-    Returns forward-returns analysis from score_history joined with quant_signals prices.
-    filter_name: "all" | "portfolio" | "watchlist"
-    """
+    """Forward-returns analysis from score_history; filter_name: 'all' | 'portfolio' | 'watchlist'."""
     filter_tickers: Optional[list] = None
     ticker_accounts: dict[str, list[str]] = {}
     if filter_name == "portfolio":
@@ -57,8 +52,9 @@ def get_score_analysis(filter_name: str = "all") -> dict:
     elif filter_name == "watchlist":
         filter_tickers = get_tickers_from_json(WATCHLIST_PATH, is_watchlist=True) or None
 
-    conn = get_connection()
+    conn = None
     try:
+        conn = get_connection()
         cursor = conn.cursor()
 
         if filter_tickers:
@@ -92,10 +88,11 @@ def get_score_analysis(filter_name: str = "all") -> dict:
         )
         price_rows = cursor.fetchall()
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
     earliest_date = min(r["date"] for r in rows)
-    today_str = date.today().isoformat()
+    today_str = datetime.now(timezone.utc).date().isoformat()
 
     horizons_meta = {
         k: {"days": v, "available_from": _available_from(earliest_date, v), "ready": _available_from(earliest_date, v) <= today_str}
@@ -118,7 +115,6 @@ def get_score_analysis(filter_name: str = "all") -> dict:
         window = s[(s.index >= lo) & (s.index <= hi)]
         return float(window.iloc[0]) if not window.empty else None
 
-    # Compute returns for all rows (used for summary aggregation)
     enriched: list[dict] = []
     for row in rows:
         entry = row["close_price"]
@@ -129,7 +125,6 @@ def get_score_analysis(filter_name: str = "all") -> dict:
         enriched.append({**row, "return_3m": r3m, "return_6m": r6m, "return_12m": r12m,
                          "accounts": accounts})
 
-    # Summary grouped by signal bucket
     signal_order = ["STRONG BUY", "BULLISH / HOLD", "NEUTRAL", "BEARISH / CAUTION", "STRONG SELL", "TOXIC / AVOID"]
 
     def _avg(vals: list) -> Optional[float]:
