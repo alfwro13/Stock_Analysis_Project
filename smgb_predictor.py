@@ -1,4 +1,3 @@
-# smgb_predictor.py
 import logging
 from datetime import date, datetime, timedelta, timezone
 
@@ -40,7 +39,6 @@ _KNOWN_HOLDINGS = [
 
 
 def fetch_daily_closes(tickers: list, days: int = 65) -> pd.DataFrame:
-    """Download daily Close prices for all tickers. Returns a wide DataFrame (columns = tickers)."""
     ticker_dfs = yahoo_engine.get_price_history(tickers, period=f"{days}d", interval="1d")
     if not ticker_dfs:
         return pd.DataFrame()
@@ -49,7 +47,7 @@ def fetch_daily_closes(tickers: list, days: int = 65) -> pd.DataFrame:
 
 
 def fetch_fx_rate() -> float:
-    """Return the most recent GBPUSD spot rate. Falls back to 1.0 on any failure."""
+    """Falls back to 1.0 on any failure."""
     rate = yahoo_engine.get_fx_rate(_FX_TICKER)
     if rate is not None:
         return rate
@@ -58,10 +56,7 @@ def fetch_fx_rate() -> float:
 
 
 def fetch_smgb_holdings() -> list:
-    """
-    Attempt to fetch SMGB.L holdings from yfinance.
-    Returns list of {"ticker": str, "weight": float} or [] on any failure.
-    """
+    """Returns list of {"ticker": str, "weight": float} or [] on any failure."""
     holdings_df = yahoo_engine.get_fund_holdings(_SMGB)
     if holdings_df is None or holdings_df.empty:
         return []
@@ -86,7 +81,7 @@ def _fallback_holdings() -> list:
 def get_smgb_next_open_date() -> date:
     """Returns the prediction target date: today until LSE closes, next trading day after."""
     now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
-    today = date.today()
+    today = datetime.now(timezone.utc).date()
     if today.weekday() == 5:   # Saturday → Monday
         return today + timedelta(days=2)
     if today.weekday() == 6:   # Sunday → Monday
@@ -102,7 +97,7 @@ def get_smgb_next_open_date() -> date:
 def _last_trading_date() -> date:
     """Return the most recent weekday whose LSE session has started or completed."""
     now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
-    today = date.today()
+    today = datetime.now(timezone.utc).date()
     if today.weekday() == 5:   # Saturday → Friday
         return today - timedelta(days=1)
     if today.weekday() == 6:   # Sunday → Friday
@@ -118,11 +113,7 @@ def _last_trading_date() -> date:
 
 
 def fetch_intraday_data(period: str = "2d") -> dict[str, pd.DataFrame]:
-    """
-    Fetch 5-min bars (with pre/post-market) for SMGB.L + all 10 semiconductor tickers + FX.
-    period="2d" covers yesterday's post-market and today's pre-market.
-    Returned DataFrames have a naive UTC DatetimeIndex (timezone stripped by yahoo_engine).
-    """
+    """Returned DataFrames have a naive UTC DatetimeIndex (timezone stripped by yahoo_engine)."""
     all_tickers = [_SMGB] + _SEMIS_TICKERS + [_FX_TICKER]
     return yahoo_engine.get_intraday(all_tickers, period=period, interval="5m", prepost=True)
 
@@ -130,13 +121,13 @@ def fetch_intraday_data(period: str = "2d") -> dict[str, pd.DataFrame]:
 def _lse_close_utc_dt(ref_date: date | None = None) -> datetime:
     """Naive UTC datetime for LSE close on ref_date (today if None), honoring DST."""
     _, close_utc_time = time_engine.market_window_utc("LSE")
-    return datetime.combine(ref_date or date.today(), close_utc_time)
+    return datetime.combine(ref_date or datetime.now(timezone.utc).date(), close_utc_time)
 
 
 def _lse_open_utc_dt(ref_date: date | None = None) -> datetime:
     """Naive UTC datetime for LSE open on ref_date, honoring DST."""
     open_utc_time, _ = time_engine.market_window_utc("LSE")
-    return datetime.combine(ref_date or date.today(), open_utc_time)
+    return datetime.combine(ref_date or datetime.now(timezone.utc).date(), open_utc_time)
 
 
 def filter_post_uk_close(df: pd.DataFrame, ref_date: date | None = None) -> pd.DataFrame:
@@ -151,7 +142,7 @@ def filter_pre_uk_open(df: pd.DataFrame, ref_date: date | None = None) -> pd.Dat
     if df.empty:
         return df
     lse_open = _lse_open_utc_dt(ref_date)
-    ref = ref_date or date.today()
+    ref = ref_date or datetime.now(timezone.utc).date()
     nyse_premarket_open, _ = time_engine.market_window_utc("NYSE", include_premarket=True)
     premarket_start = datetime.combine(ref, nyse_premarket_open)
     return df[(df.index >= premarket_start) & (df.index < lse_open)]
@@ -162,14 +153,7 @@ def _compute_intraday_returns(
     ref_date: date | None = None,
     daily_df: "pd.DataFrame | None" = None,
 ) -> tuple[dict[str, float], str]:
-    """
-    Compute US semiconductor returns for the prediction model.
-    Priority:
-      1. Post-LSE-close: return vs price at LSE close (predicting next-day open).
-      2. Intraday — LSE open, US pre-market or live: return vs yesterday's daily close
-         (predicting SMGB.L move by NYSE open at 14:30 BST).
-    Returns ({ticker: return_fraction}, signal_source).
-    """
+    """Priority: post-LSE-close (vs price AT close) → pre-market → daily close. Returns ({ticker: return_fraction}, signal_source)."""
     trading_date = ref_date or _last_trading_date()
     uk_close = _lse_close_utc_dt(trading_date)
     returns: dict[str, float] = {}
@@ -221,17 +205,7 @@ def _compute_intraday_returns(
 
 
 def get_intraday_overlay_data() -> dict:
-    """
-    Assemble data for the time-aligned intraday overlay chart.
-    Uses the last trading day so the chart is never empty on weekends.
-    Returns:
-      smgb_intraday  — pd.Series of SMGB.L Close prices (LSE session, naive UTC index)
-      us_intraday    — dict[ticker, pd.Series] of US semi Close prices from NYSE open onward
-      uk_close_utc   — naive UTC datetime of LSE close on the last trading day
-      smgb_last_close — float
-      prediction     — dict from run_smgb_prediction()
-      next_open_date — date
-    """
+    """Assembles intraday chart data; uses last trading day so the chart is never empty on weekends."""
     trading_date = _last_trading_date()
     lse_open_utc = _lse_open_utc_dt(trading_date)
     uk_close_utc = _lse_close_utc_dt(trading_date)
@@ -258,7 +232,6 @@ def get_intraday_overlay_data() -> dict:
         if not bars.empty:
             us_intraday[ticker] = bars
 
-    # Yesterday's daily closes — reference prices for the % chart
     daily_df = fetch_daily_closes(_SEMIS_TICKERS + [_SMGB], days=10)
     smgb_last_close = (
         float(daily_df[_SMGB].dropna().iloc[-1])
@@ -290,12 +263,7 @@ def compute_holdings_prediction(
     smgb_last_close_gbx: float,
     intraday_returns: dict[str, float] | None = None,
 ) -> dict | None:
-    """
-    Weighted US constituent returns → predicted SMGB.L price in GBX.
-    When intraday_returns is provided, those returns (post-UK-close vs price AT UK-close)
-    are used directly instead of computing from daily closes, avoiding the 2-day-return bug.
-    fx_rate is GBPUSD (how many USD per 1 GBP). Rising USD = positive adjustment for GBX assets.
-    """
+    """Weighted US returns → predicted SMGB.L price (GBX). fx_rate is GBPUSD; rising USD adjusts price up."""
     df_clean = df.dropna(how="all")
     contributions = []
     weighted_equity_change = 0.0
@@ -351,10 +319,7 @@ def compute_holdings_prediction(
 
 
 def compute_regression_prediction(df: pd.DataFrame, smgb_last_close_gbx: float) -> dict | None:
-    """
-    60-day OLS: smgb_next_morning_return = α + β × avg_us_basket_return.
-    Returns predicted price in GBX with 95% confidence interval.
-    """
+    """60-day OLS: smgb_next_morning_return = α + β × avg_us_basket_return. Returns price in GBX with 95% CI."""
     us_tickers = [t for t in _DEFAULT_TICKERS if t in df.columns]
     if _SMGB not in df.columns or len(us_tickers) < 3:
         return None
@@ -411,11 +376,7 @@ def compute_regression_prediction(df: pd.DataFrame, smgb_last_close_gbx: float) 
 
 
 def run_smgb_prediction() -> dict:
-    """
-    Orchestrates holdings + regression engines and returns a unified prediction dict.
-    Signal priority: post-UK-close intraday → US pre-market → prior daily closes.
-    All prices in GBP (£). Returns {"status": "error", ...} on total failure.
-    """
+    """Orchestrates holdings + regression engines; signal priority: post-UK-close → pre-market → daily closes."""
     all_tickers = _DEFAULT_TICKERS + [_SMGB, _FX_TICKER]
     df = fetch_daily_closes(all_tickers)
 
@@ -496,10 +457,7 @@ _AI_TICKERS = ["NVDA", "AMD", "AVGO", "GOOGL", "MSFT", "META", "AAPL", "ORCL", "
 
 
 def get_ai_contagion_data(days: int = 30) -> dict:
-    """
-    Fetch daily OHLCV for the AI ecosystem basket used by the Contagion Monitor.
-    Returns {"daily_dfs": dict[str, DataFrame], "intraday_dfs": dict[str, DataFrame], "error": str|None}.
-    """
+    """Returns {"daily_dfs": ..., "intraday_dfs": ..., "error": str|None} for the AI ecosystem basket."""
     try:
         daily_dfs = yahoo_engine.get_price_history(_AI_TICKERS, period=f"{days + 5}d", interval="1d")
         for ticker, df in daily_dfs.items():
@@ -518,11 +476,7 @@ def get_ai_contagion_data(days: int = 30) -> dict:
 
 
 def get_correlation_data(days: int = 60) -> dict:
-    """
-    Returns normalised-to-100 price DataFrame and rolling 30-day Pearson correlation
-    between SMGB.L and the equal-weighted average of the 10 semiconductor constituents.
-    Equal-weight is used here only for the rolling correlation; the prediction model uses known ETF weights.
-    """
+    """Rolling 30-day Pearson correlation vs equal-weighted basket (equal-weight is chart-only; prediction uses ETF weights)."""
     all_tickers = _DEFAULT_TICKERS + [_SMGB, _FX_TICKER]
     df = fetch_daily_closes(all_tickers, days=days + 5)
 
