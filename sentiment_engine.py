@@ -42,10 +42,6 @@ _MACRO_HTML_CACHE: Dict[str, str] = {
     "ftse_gbp_html": ""
 }
 
-# ==========================================================
-# 1. MACRO SENTIMENT (FEAR & GREED INDEX)
-# ==========================================================
-
 def fetch_fear_greed_data(start_date_str: str) -> pd.DataFrame:
     base_url = "https://production.dataviz.cnn.io/index/fearandgreed/graphdata/"
     headers = {'User-Agent': _UA.random}
@@ -61,7 +57,7 @@ def fetch_fear_greed_data(start_date_str: str) -> pd.DataFrame:
         fng_df.set_index('Date', inplace=True)
         return fng_df
     except Exception as e:
-        logger.error(f"Fetching F&G data failed: {e}")
+        logger.error("Fetching F&G data failed: %s", e)
         return pd.DataFrame()
 
 
@@ -81,7 +77,6 @@ def fetch_stock_data(ticker: str, start_date: str) -> pd.DataFrame:
 
 
 def fetch_parquet_data(parquet_name: str, start_date: str) -> pd.DataFrame:
-    """Reads heavily sanitized local baseline data directly from Parquet files."""
     path = HISTORICAL_DIR / parquet_name
     if not path.exists():
         return pd.DataFrame()
@@ -93,12 +88,12 @@ def fetch_parquet_data(parquet_name: str, start_date: str) -> pd.DataFrame:
         prefix = parquet_name.split("_")[0]
         return df[['Close']].rename(columns={'Close': f'{prefix}_Close'})
     except Exception as e:
-        logger.error(f"Failed to read parquet {parquet_name}: {e}")
+        logger.error("Failed to read parquet %s: %s", parquet_name, e)
         return pd.DataFrame()
 
 
 def get_sentiment_data() -> Optional[pd.DataFrame]:
-    today = datetime.now()
+    today = datetime.now(timezone.utc)
     start_date = (today - timedelta(days=365)).strftime('%Y-%m-%d')
     fng_data = fetch_fear_greed_data(start_date)
     spy_data = fetch_stock_data('SPY', start_date)
@@ -147,10 +142,6 @@ def generate_sentiment_figure() -> Optional[go.Figure]:
     return fig
 
 
-# ==========================================================
-# 2. MARKET REGIME (VIX vs SPY)
-# ==========================================================
-
 def get_vix_spy_data() -> Optional[pd.DataFrame]:
     try:
         ticker_dfs = yahoo_engine.get_price_history(["SPY", "^VIX"], period="1y", interval="1d")
@@ -172,7 +163,7 @@ def get_vix_spy_data() -> Optional[pd.DataFrame]:
         return merged_df
 
     except Exception as e:
-        logger.error(f"Fatal error fetching VIX vs SPY data: {e}")
+        logger.error("Fatal error fetching VIX vs SPY data: %s", e)
         return None
 
 
@@ -218,17 +209,12 @@ def generate_vix_spy_figure() -> Optional[go.Figure]:
     return fig
 
 
-# ==========================================================
-# 3. INTERMARKET COST OF CAPITAL (YIELDS VS EQUITIES)
-# ==========================================================
-
 def get_yield_equity_html() -> str:
-    """Renders the Cost of Capital baseline chart comparing Treasury yields against Equities."""
     _check_and_trigger_async_refresh()
     if _MACRO_HTML_CACHE.get("yield_equity_html"):
         return _MACRO_HTML_CACHE["yield_equity_html"]
 
-    today = datetime.now()
+    today = datetime.now(timezone.utc)
     start_date = (today - timedelta(days=365)).strftime('%Y-%m-%d')
     spy_data = fetch_stock_data('SPY', start_date)
     tyx_data = fetch_stock_data('^TYX', start_date)
@@ -256,12 +242,11 @@ def get_yield_equity_html() -> str:
 
 
 def get_uk_yield_equity_html() -> str:
-    """Renders the Cost of Capital baseline chart comparing UK 10Y Gilt yields against FTSE 100."""
     _check_and_trigger_async_refresh()
     if _MACRO_HTML_CACHE.get("uk_yield_equity_html"):
         return _MACRO_HTML_CACHE["uk_yield_equity_html"]
 
-    today = datetime.now()
+    today = datetime.now(timezone.utc)
     start_date = (today - timedelta(days=365)).strftime('%Y-%m-%d')
     ftse_data = fetch_parquet_data('FTSE_BASELINE.parquet', start_date)
     gilt_data = fetch_parquet_data('UK_GILT_BASELINE.parquet', start_date)
@@ -290,12 +275,11 @@ def get_uk_yield_equity_html() -> str:
 
 
 def get_ftse_gbp_html() -> str:
-    """Renders the currency impact chart comparing GBP/USD against FTSE 100."""
     _check_and_trigger_async_refresh()
     if _MACRO_HTML_CACHE.get("ftse_gbp_html"):
         return _MACRO_HTML_CACHE["ftse_gbp_html"]
 
-    today = datetime.now()
+    today = datetime.now(timezone.utc)
     start_date = (today - timedelta(days=365)).strftime('%Y-%m-%d')
     ftse_data = fetch_parquet_data('FTSE_BASELINE.parquet', start_date)
     gbp_data = fetch_parquet_data('GBPUSD_BASELINE.parquet', start_date)
@@ -324,7 +308,6 @@ def get_ftse_gbp_html() -> str:
 
 
 def get_sentiment_html() -> str:
-    """Renders the Fear and Greed Index overlay frame."""
     _check_and_trigger_async_refresh()
     if _MACRO_HTML_CACHE.get("sentiment_html"):
         return _MACRO_HTML_CACHE["sentiment_html"]
@@ -336,7 +319,6 @@ def get_sentiment_html() -> str:
 
 
 def get_vix_spy_html() -> str:
-    """Renders the standard VIX versus SPY regime volatility matrix."""
     _check_and_trigger_async_refresh()
     if _MACRO_HTML_CACHE.get("vix_spy_html"):
         return _MACRO_HTML_CACHE["vix_spy_html"]
@@ -347,12 +329,7 @@ def get_vix_spy_html() -> str:
     return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
 
 
-# ==========================================================
-# 4. UNIFIED CACHE MANAGEMENT & BACKGROUND PROCESSING WORKER
-# ==========================================================
-
 def _check_and_trigger_async_refresh() -> None:
-    """Evaluates the cache baseline age and shifts heavy processing out-of-band to a dedicated thread."""
     global _LAST_CACHE_TIME, _IS_REFRESHING
 
     config_data = load_config()
@@ -368,25 +345,21 @@ def _check_and_trigger_async_refresh() -> None:
 
 
 def _async_chart_cruncher_worker() -> None:
-    """Isolated thread runner dedicated to handling external network I/O loops safely."""
     global _LAST_CACHE_TIME, _IS_REFRESHING
     try:
         logger.info("Background cruncher started compiling Plotly HTML fragments...")
 
-        # 1. Re-render Fear and Greed Matrix
         fig_sentiment = generate_sentiment_figure()
         html_sentiment = fig_sentiment.to_html(
             full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False}
         ) if fig_sentiment else ""
 
-        # 2. Re-render VIX Volatility Matrix
         fig_vix = generate_vix_spy_figure()
         html_vix = fig_vix.to_html(
             full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False}
         ) if fig_vix else ""
 
-        # 3. Re-render US Yield Compression
-        today = datetime.now()
+        today = datetime.now(timezone.utc)
         start_date = (today - timedelta(days=365)).strftime('%Y-%m-%d')
         spy_df = fetch_stock_data('SPY', start_date)
         tyx_df = fetch_stock_data('^TYX', start_date)
@@ -412,7 +385,6 @@ def _async_chart_cruncher_worker() -> None:
                 full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False}
             )
 
-        # 4. Re-render UK Yield Compression
         ftse_data = fetch_parquet_data('FTSE_BASELINE.parquet', start_date)
         gilt_data = fetch_parquet_data('UK_GILT_BASELINE.parquet', start_date)
 
@@ -437,7 +409,6 @@ def _async_chart_cruncher_worker() -> None:
                 full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False}
             )
 
-        # 5. Re-render UK Currency Impact
         gbp_data = fetch_parquet_data('GBPUSD_BASELINE.parquet', start_date)
         html_ftse_gbp = ""
         if not ftse_data.empty and not gbp_data.empty:
@@ -460,7 +431,6 @@ def _async_chart_cruncher_worker() -> None:
                 full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False}
             )
 
-        # Atomic update under synchronization fence
         with _CACHE_LOCK:
             if html_sentiment: _MACRO_HTML_CACHE["sentiment_html"] = html_sentiment
             if html_vix: _MACRO_HTML_CACHE["vix_spy_html"] = html_vix
@@ -471,15 +441,11 @@ def _async_chart_cruncher_worker() -> None:
 
         logger.info("Visual macro caches synchronized successfully.")
     except Exception as ex:
-        logger.error(f"Background visual cruncher encountered a processing error: {ex}")
+        logger.error("Background visual cruncher encountered a processing error: %s", ex)
     finally:
         with _CACHE_LOCK:
             _IS_REFRESHING = False
 
-
-# ==========================================================
-# 5. NEXTCLOUD ALERTS & MICRO SENTIMENT (FINBERT NLP)
-# ==========================================================
 
 def run_nextcloud_alert() -> Tuple[bool, str]:
     logger.info("Starting Market Sentiment Pipeline...")
@@ -489,7 +455,7 @@ def run_nextcloud_alert() -> Tuple[bool, str]:
         if merged_df is None:
             return False, "Failed to fetch data."
 
-        time_stamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+        time_stamp = datetime.now(timezone.utc).strftime('%Y-%m-%d_%H-%M-%S')
         file_name = f"Fear_vs_Greed_{time_stamp}.png"
         local_path = file_name
         remote_path = f"StockAlerts/{file_name}"
