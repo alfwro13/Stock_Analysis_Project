@@ -2,6 +2,8 @@
 __pycache__/
 reports/
 models/
+logs/
+static/briefing_charts/
 
 .claude/
 
