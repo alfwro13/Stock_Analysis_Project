@@ -25,6 +25,7 @@ from ai_prediction_engine import train_global_ml_model, update_daily_ml_predicti
 from risk_engine import update_all_tail_risks
 from freetrade_engine import sync_freetrade_universe
 from universe_deep_sync_engine import run_universe_deep_sync
+from system_check_engine import run_system_checks
 from macro_calendar_engine import update_macro_calendar
 from macro_data_engine import update_macro_indicators
 from xray_engine import run_xray_precompute
@@ -224,6 +225,7 @@ def run_weekend_universe_routine():
             logger.info("Universe Technicals complete. Proceeding to heavy metric crunch (VaR, Sentiment)...")
             update_all_tail_risks(all_tickers)
             update_all_sentiment(all_tickers)
+            run_historical_backfill(tickers=all_tickers)
         else:
             logger.warning("Universe is empty, skipping quant scan.")
         logger.info("Weekend universe routine complete.")
@@ -603,6 +605,36 @@ def run_smgb_actual_fill():
         log_sched_notification("Error", f"SMGB actual-fill failed: {e}")
     finally:
         record_job_run('smgb_actual_fill_job')
+
+
+def run_system_check_job():
+    log_sched_notification("Scheduler", "Started System Configuration Check...")
+    try:
+        issues = run_system_checks()
+        for issue in issues:
+            level = "Error" if issue["level"] == "error" else "Warning"
+            key_marker = f"[system-check:{issue['key']}]"
+            conn = None
+            try:
+                conn = get_connection()
+                already = conn.execute(
+                    "SELECT 1 FROM system_notifications WHERE message_text LIKE ?"
+                    " AND timestamp > datetime('now', '-23 hours')",
+                    (f"%{key_marker}%",)
+                ).fetchone()
+            finally:
+                if conn:
+                    conn.close()
+            if not already:
+                log_sched_notification(level, f"{key_marker} {issue['message']}")
+        label = f"{len(issues)} issue(s) found." if issues else "No issues found."
+        sched_level = "Warning" if issues else "Success"
+        log_sched_notification(sched_level, f"System Configuration Check: {label}")
+    except Exception as e:
+        logger.error("System Check Job Failed: %s", e)
+        log_sched_notification("Error", f"System Check failed: {e}")
+    finally:
+        record_job_run('system_check_job')
 
 
 def reload_scheduler():
@@ -1095,6 +1127,22 @@ def reload_scheduler():
         logger.info("SMGB actual-fill job scheduled for mon-fri at 09:15.")
     except Exception as e:
         logger.error("Failed to schedule SMGB actual-fill job: %s", e)
+
+    sys_check_cfg = scheduling.get("SYSTEM_CHECK", {})
+    if sys_check_cfg.get("ENABLED", True):
+        sys_check_days_list = sys_check_cfg.get("DAYS", ["mon", "tue", "wed", "thu", "fri", "sat", "sun"])
+        sys_check_days = ",".join(sys_check_days_list) if sys_check_days_list else "mon-sun"
+        sys_check_time = sys_check_cfg.get("TIME", "06:00")
+        try:
+            hour, minute = map(int, sys_check_time.split(':'))
+            scheduler.add_job(
+                run_system_check_job,
+                CronTrigger(day_of_week=sys_check_days, hour=hour, minute=minute, timezone=user_tz),
+                id='system_check_job'
+            )
+            logger.info("System Configuration Check scheduled for %s at %s", sys_check_days, sys_check_time)
+        except Exception as e:
+            logger.error("Failed to schedule System Configuration Check: %s", e)
 
 
 def start_scheduler():

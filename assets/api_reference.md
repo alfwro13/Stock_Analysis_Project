@@ -1058,6 +1058,37 @@ Returns a comprehensive diagnostic snapshot of the system: universe coverage, ML
 
 ---
 
+### `GET /api/system/checks`
+
+Returns the current list of active system-health warnings and errors detected by the System Check Engine. Called on every Settings page load to populate the top-of-page banner.
+
+**Authentication:** none required (read-only)
+
+**Response**
+
+```json
+{
+  "status": "success",
+  "issues": [
+    {
+      "key": "ml_training_without_backfill",
+      "level": "warning",
+      "message": "ML Training is scheduled but ML Historical Backfill is disabled. ..."
+    }
+  ]
+}
+```
+
+`issues` is an empty array when no problems are detected. Each issue has:
+
+| Field | Type | Description |
+|---|---|---|
+| `key` | string | Machine-readable identifier (`ml_training_without_backfill`, `ml_training_before_backfill`, `low_inference_coverage`) |
+| `level` | `"warning"` \| `"error"` | Severity |
+| `message` | string | Human-readable description with remediation hint |
+
+---
+
 ### `POST /api/system/git-pull`
 
 Pulls the latest code from the Git remote. Returns the git output.
@@ -1183,6 +1214,7 @@ Sends a test insider trading alert via Nextcloud Talk.
 | `POST` | `/api/settings/test-yahoo-ipv6` | Test IPv6 connection |
 | `GET` | `/api/settings/network-status` | Current routing health |
 | `GET` | `/api/system/metrics` | System diagnostic data |
+| `GET` | `/api/system/checks` | Active scheduling health warnings/errors |
 | `POST` | `/api/system/git-pull` | Pull latest code from git |
 | `POST` | `/api/system/restart` | Graceful application restart |
 | `POST` | `/api/test-sentiment-alert` | Test Nextcloud sentiment alert |

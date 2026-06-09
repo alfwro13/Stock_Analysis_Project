@@ -21,6 +21,8 @@
         </div>
     </div>
 
+    <div id="system-checks-banner" hidden></div>
+
     <div class="glossary-search-container settings-search-container">
         <input type="text" id="settingsSearch" class="glossary-search-bar" placeholder="🔍 Search settings, schedulers, or configuration options..." autocomplete="off">
     </div>
@@ -2549,11 +2551,27 @@
             }
         }
 
+        async function fetchSystemChecks() {
+            try {
+                const data = await fetch('/api/system/checks').then(r => r.json());
+                const banner = document.getElementById('system-checks-banner');
+                if (!data.issues || data.issues.length === 0) { banner.hidden = true; return; }
+                const hasError = data.issues.some(i => i.level === 'error');
+                const colorClass = hasError ? 'macro-banner-red' : 'macro-banner-yellow';
+                const icon = hasError ? '✖' : '⚠';
+                const title = hasError ? 'System Errors Detected' : 'Configuration Warnings';
+                const items = data.issues.map(i => `<li>${i.message}</li>`).join('');
+                banner.className = `macro-banner ${colorClass} settings-health-banner`;
+                banner.innerHTML = `<strong>${icon} ${title}</strong><ul class="system-checks-list">${items}</ul>`;
+                banner.hidden = false;
+            } catch (_) {}
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
             initGlobalBrowserNotifications();
             setInterval(pollGlobalSystemNotifications, 15000);
-            pollGlobalSystemNotifications(); 
-            
+            pollGlobalSystemNotifications();
+
             // Poll Network Status
             fetchNetworkStatus();
             setInterval(fetchNetworkStatus, 10000); // Update badge every 10s
@@ -2561,6 +2579,8 @@
             // NEW: Poll Profiler Queue Status
             fetchProfilerQueueStatus();
             setInterval(fetchProfilerQueueStatus, 30000); // Refresh every 30 seconds
+
+            fetchSystemChecks();
         });
 
         async function testYahooIPv6() {

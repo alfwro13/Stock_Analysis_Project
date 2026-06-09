@@ -1185,6 +1185,12 @@ async def get_system_metrics():
         if conn:
             conn.close()
 
+@api_router.get("/system/checks")
+async def get_system_checks(request: Request):
+    from system_check_engine import run_system_checks
+    issues = run_system_checks()
+    return JSONResponse(content={"status": "success", "issues": issues})
+
 @api_router.post("/system/git-pull", dependencies=[Depends(require_confirm_token)])
 async def git_pull_update():
     try:

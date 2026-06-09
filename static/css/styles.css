@@ -295,6 +295,8 @@ table.dataTable.display tbody tr.even > .sorting_1, table.dataTable.order-column
 .macro-banner-red { background-color: #4d0000; border-left: 4px solid #ff4d4d; }
 .macro-banner-yellow { background-color: #332b00; border-left: 4px solid #ffaa00; }
 .macro-banner-green { background-color: #003311; border-left: 4px solid #00ff00; }
+.settings-health-banner { margin: 12px 20px 0; }
+.system-checks-list { margin: 8px 0 0; padding-left: 20px; }
 .macro-header { margin-top: 0; margin-bottom: 5px; }
 .macro-header-red { color: #ff4d4d; }
 .macro-header-yellow { color: #ffaa00; }

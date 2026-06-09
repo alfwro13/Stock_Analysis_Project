@@ -181,6 +181,11 @@ DEFAULT_CONFIG = {
             "DAYS": ["mon", "tue", "wed", "thu", "fri"],
             "TIME": "01:30"
         },
+        "SYSTEM_CHECK": {
+            "ENABLED": True,
+            "DAYS": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+            "TIME": "06:00"
+        },
         "AI_CONTAGION": {
             "ENABLED": False,
             "FREQUENCY": "mon-fri",
