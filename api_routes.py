@@ -1064,14 +1064,17 @@ async def get_system_metrics():
                 logger.warning("Failed to load ML feature stats from %s", feat_stats_path, exc_info=True)
 
         inference_coverage = get_cnt("""
-            SELECT COUNT(DISTINCT ticker) FROM quant_signals
-            WHERE date = (
-                SELECT MAX(date) FROM quant_signals
-                WHERE mom_1m IS NOT NULL AND atr_pct IS NOT NULL
-                  AND rel_strength_5d IS NOT NULL AND rel_strength_20d IS NOT NULL
-            )
-              AND mom_1m IS NOT NULL AND atr_pct IS NOT NULL
-              AND rel_strength_5d IS NOT NULL AND rel_strength_20d IS NOT NULL
+            SELECT COUNT(DISTINCT qs.ticker) FROM quant_signals qs
+            WHERE qs.mom_1m IS NOT NULL AND qs.atr_pct IS NOT NULL
+              AND qs.rel_strength_5d IS NOT NULL AND qs.rel_strength_20d IS NOT NULL
+              AND qs.date = (
+                  SELECT MAX(qs2.date) FROM quant_signals qs2
+                  WHERE qs2.ticker           = qs.ticker
+                    AND qs2.mom_1m           IS NOT NULL
+                    AND qs2.atr_pct          IS NOT NULL
+                    AND qs2.rel_strength_5d  IS NOT NULL
+                    AND qs2.rel_strength_20d IS NOT NULL
+              )
         """)
         inference_threshold = max(30, int(0.25 * train_universe_size)) if train_universe_size else 0
         

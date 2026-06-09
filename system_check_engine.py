@@ -67,18 +67,19 @@ def run_system_checks() -> List[Dict[str, Any]]:
         conn = get_connection()
         row = conn.execute("""
             SELECT COUNT(DISTINCT ticker) AS cnt
-            FROM quant_signals
-            WHERE date = (
-                SELECT MAX(date) FROM quant_signals
-                WHERE mom_1m IS NOT NULL
-                  AND atr_pct IS NOT NULL
-                  AND rel_strength_5d IS NOT NULL
-                  AND rel_strength_20d IS NOT NULL
-            )
-              AND mom_1m IS NOT NULL
-              AND atr_pct IS NOT NULL
-              AND rel_strength_5d IS NOT NULL
-              AND rel_strength_20d IS NOT NULL
+            FROM quant_signals qs
+            WHERE qs.mom_1m IS NOT NULL
+              AND qs.atr_pct IS NOT NULL
+              AND qs.rel_strength_5d IS NOT NULL
+              AND qs.rel_strength_20d IS NOT NULL
+              AND qs.date = (
+                  SELECT MAX(qs2.date) FROM quant_signals qs2
+                  WHERE qs2.ticker           = qs.ticker
+                    AND qs2.mom_1m           IS NOT NULL
+                    AND qs2.atr_pct          IS NOT NULL
+                    AND qs2.rel_strength_5d  IS NOT NULL
+                    AND qs2.rel_strength_20d IS NOT NULL
+              )
         """).fetchone()
         coverage = row["cnt"] if row else 0
         train_size = _load_train_universe_size()

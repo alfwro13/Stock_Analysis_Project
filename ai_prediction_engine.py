@@ -955,17 +955,18 @@ def update_daily_ml_predictions(tickers: List[str]) -> None:
             FROM quant_signals qs
             LEFT JOIN stock_signals   ss ON qs.ticker = ss.ticker
             LEFT JOIN ticker_metadata tm ON qs.ticker = tm.ticker
-            WHERE qs.date = (
-                SELECT MAX(date) FROM quant_signals
-                WHERE mom_1m           IS NOT NULL
-                  AND atr_pct          IS NOT NULL
-                  AND rel_strength_5d  IS NOT NULL
-                  AND rel_strength_20d IS NOT NULL
-            )
-              AND qs.mom_1m           IS NOT NULL
+            WHERE qs.mom_1m           IS NOT NULL
               AND qs.atr_pct          IS NOT NULL
               AND qs.rel_strength_5d  IS NOT NULL
               AND qs.rel_strength_20d IS NOT NULL
+              AND qs.date = (
+                  SELECT MAX(qs2.date) FROM quant_signals qs2
+                  WHERE qs2.ticker          = qs.ticker
+                    AND qs2.mom_1m          IS NOT NULL
+                    AND qs2.atr_pct         IS NOT NULL
+                    AND qs2.rel_strength_5d  IS NOT NULL
+                    AND qs2.rel_strength_20d IS NOT NULL
+              )
         """
         df = pd.read_sql_query(query, conn)
 
