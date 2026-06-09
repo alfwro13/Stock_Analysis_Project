@@ -1330,6 +1330,7 @@
                                 <tbody>
                                     <tr><td>Micro-Equities Ensemble</td><td class="val-col" id="diag-ml-state">--</td><td class="sub-val-col" id="diag-ml-sub">--</td></tr>
                                     <tr><td>Vector Feature Dimensions</td><td class="val-col" id="diag-ml-feat">--</td><td class="sub-val-col">feature_stats.joblib</td></tr>
+                                    <tr><td><abbr title="Tickers with all four ML features populated on the latest scan date. Must meet 25% of training universe size.">Inference Universe Coverage</abbr></td><td class="val-col" id="diag-ml-cov">--</td><td class="sub-val-col" id="diag-ml-cov-sub">--</td></tr>
                                     <tr><td>Macro HMM State Outputs</td><td class="val-col" id="diag-mac-hmm">--</td><td class="sub-val-col">Rows logged</td></tr>
                                     <tr><td>Macro RF Surprise Outputs</td><td class="val-col" id="diag-mac-rf">--</td><td class="sub-val-col">Rows logged</td></tr>
                                     <tr><td>Macro Indicators (FRED/BoE)</td><td class="val-col" id="diag-mac-ind">--</td><td class="sub-val-col">Structural rows</td></tr>
@@ -1429,6 +1430,13 @@
                                 <td>MON-FRI</td>
                                 <td class="font-monospace">19:00</td>
                                 <td class="text-muted font-monospace" data-sched-key="XRAY_RISK_CACHE">—</td>
+                            </tr>
+                            <tr>
+                                <td class="font-bold">System Configuration Check</td>
+                                <td><span class="status-pill status-scheduled">DAILY</span></td>
+                                <td>MON-SUN</td>
+                                <td class="font-monospace">06:00</td>
+                                <td class="text-muted font-monospace" data-sched-key="SYSTEM_CHECK">—</td>
                             </tr>
                         </tbody>
                     </table>
@@ -2725,6 +2733,16 @@
                         document.getElementById('diag-ml-sub').innerText = "Awaiting Training";
                     }
                     document.getElementById('diag-ml-feat').innerText = `${data.ml.feature_count} Dimensions`;
+                    {
+                        const cov = data.ml.inference_coverage ?? 0;
+                        const thr = data.ml.inference_threshold ?? 0;
+                        const trainSz = data.ml.train_universe_size ?? 0;
+                        const covEl = document.getElementById('diag-ml-cov');
+                        const covSub = document.getElementById('diag-ml-cov-sub');
+                        covEl.innerText = `${cov} tickers`;
+                        covEl.style.color = (thr > 0 && cov < thr) ? '#ff4d4d' : '#4caf50';
+                        covSub.innerText = thr > 0 ? `min ${thr} (25% of ${trainSz})` : 'Threshold unknown';
+                    }
                     document.getElementById('diag-mac-hmm').innerText = fmt(data.ml.macro_hmm_outputs);
                     document.getElementById('diag-mac-rf').innerText = fmt(data.ml.macro_rf_outputs);
                     document.getElementById('diag-mac-ind').innerText = fmt(data.state.macro_ind);

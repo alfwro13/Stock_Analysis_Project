@@ -1054,12 +1054,26 @@ async def get_system_metrics():
         ensemble_stats = get_file_stats(ml_model_path)
         
         feature_count = 0
+        train_universe_size = 0
         if feat_stats_path.exists():
             try:
                 f_stats = joblib.load(feat_stats_path)
                 feature_count = len(f_stats.keys()) if isinstance(f_stats, dict) else 0
+                train_universe_size = int(f_stats.get("_meta", {}).get("train_universe_size") or 0) if isinstance(f_stats, dict) else 0
             except Exception:
                 logger.warning("Failed to load ML feature stats from %s", feat_stats_path, exc_info=True)
+
+        inference_coverage = get_cnt("""
+            SELECT COUNT(DISTINCT ticker) FROM quant_signals
+            WHERE date = (
+                SELECT MAX(date) FROM quant_signals
+                WHERE mom_1m IS NOT NULL AND atr_pct IS NOT NULL
+                  AND rel_strength_5d IS NOT NULL AND rel_strength_20d IS NOT NULL
+            )
+              AND mom_1m IS NOT NULL AND atr_pct IS NOT NULL
+              AND rel_strength_5d IS NOT NULL AND rel_strength_20d IS NOT NULL
+        """)
+        inference_threshold = max(30, int(0.25 * train_universe_size)) if train_universe_size else 0
         
         hmm_states = get_cnt("SELECT COUNT(*) FROM market_regimes WHERE ai_hmm_state IS NOT NULL")
         rf_states = get_cnt("SELECT COUNT(*) FROM macro_calendar WHERE ai_consensus_miss_prob IS NOT NULL")
@@ -1131,6 +1145,7 @@ async def get_system_metrics():
             "AI_CONTAGION":       "ai_contagion_job",
             "CB_NLP_ALERT":       "cb_nlp_alert_job",
             "NEWS_FEED":          "news_feed_job",
+            "SYSTEM_CHECK":       "system_check_job",
         }
         def _localise_ts(ts: str) -> str:
             if not ts or ts == "Never":
@@ -1160,7 +1175,10 @@ async def get_system_metrics():
                 "ensemble": ensemble_stats, "feature_count": feature_count,
                 "macro_hmm_outputs": hmm_states, "macro_rf_outputs": rf_states,
                 "anomaly_model_count": anomaly_model_cnt,
-                "anomaly_stale_count": anomaly_stale_cnt
+                "anomaly_stale_count": anomaly_stale_cnt,
+                "inference_coverage": inference_coverage,
+                "train_universe_size": train_universe_size,
+                "inference_threshold": inference_threshold
             },
             "infra": {
                 "cpu": [round(c, 2) for c in cpu_load],

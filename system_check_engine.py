@@ -89,8 +89,9 @@ def run_system_checks() -> List[Dict[str, Any]]:
                 "level": "error",
                 "message": (
                     f"ML inference universe: {coverage} tickers with complete features, "
-                    f"minimum {threshold} required. "
-                    "Run Settings → ▶ Run Backfill Now to restore coverage."
+                    f"minimum {threshold} required (25% of {train_size or 'unknown'} training tickers). "
+                    "Run ▶ Run Backfill Now to restore coverage, "
+                    "OR run ▶ Run Training Now to retrain the model on current data and reset the threshold."
                 ),
             })
     except Exception as e:

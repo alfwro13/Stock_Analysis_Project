@@ -289,7 +289,7 @@ def get_target_tickers() -> List[str]:
     try:
         conn   = get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT ticker FROM market_universe ORDER BY RANDOM() LIMIT 300")
+        cursor.execute("SELECT ticker FROM market_universe ORDER BY RANDOM() LIMIT 500")
         universe_sample = [row[0] for row in cursor.fetchall()]
         conn.close()
     except Exception as e:
@@ -298,7 +298,7 @@ def get_target_tickers() -> List[str]:
 
     combined_set  = set(user_tickers).union(set(universe_sample))
     cleaned_list  = [t for t in combined_set if t and not t.startswith("0P")]
-    final_tickers = sorted(cleaned_list)[:350]
+    final_tickers = sorted(cleaned_list)[:600]
 
     logger.info(f"Targeting {len(final_tickers)} unique tickers for historical backfill.")
     return final_tickers
