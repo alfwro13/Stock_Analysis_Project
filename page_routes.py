@@ -1090,6 +1090,18 @@ async def uk_etf_forecast_page(request: Request):
     )
 
 
+@page_router.get("/trap-monitor", response_class=HTMLResponse)
+async def trap_monitor_page(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="trap_monitor.html",
+        context={
+            "unread_count": get_unread_count(),
+            "config": load_config(),
+        },
+    )
+
+
 @page_router.get("/ai-contagion", response_class=HTMLResponse)
 async def ai_contagion_page(request: Request):
     from smgb_predictor import get_ai_contagion_data

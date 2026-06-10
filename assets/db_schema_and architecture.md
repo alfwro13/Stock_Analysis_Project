@@ -150,6 +150,11 @@ Tables added after initial schema creation. All managed via `database.py:init_db
 * **Purpose:** SMGB.L morning price predictions, actuals, and accuracy metrics.
 * **Key Columns:** `id` (PK autoincrement), `target_date` (UNIQUE), `predicted_price`, `actual_open`, `absolute_error`, `pct_error`, `direction_correct`.
 
+#### `trap_monitor_results`
+* **Purpose:** Latest Trap Monitor scan result per ticker — one row per ticker, upserted on each scan. Powers `/trap-monitor` live table.
+* **Key Columns:** `ticker` (PK), `phase` (lifecycle phase label), `bull_trap_level`, `bull_trap_vol_ratio`, `bear_trap_level`, `cap_level`, `cap_vol_zscore`, `wyckoff_level`, `wyckoff_bb_width`, `ema_distance`, `rsi`, `scan_ts`. Notes for each signal stored in `*_notes` text columns.
+* **Phase values:** `ACTIVE_SELLOFF` | `BULL_TRAP_RISK` | `CAPITULATION_FORMING` | `BEAR_TRAP_RISK` | `ACCUMULATION` | `CAUTION` | `NEUTRAL`.
+
 #### `intraday_monitors`
 * **Purpose:** Active dip-radar watch list — one row per ticker armed for today's session.
 * **Key Columns:** `ticker` (PK), `date_added`, `is_active`, `activated_by`.

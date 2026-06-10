@@ -137,6 +137,26 @@
                     <div class="rule">TRIGGER: Weekly variance < 2.5% AND volume dry-up > 20%.</div>
                 </div>
                 <div class="term-box">
+                    <span class="term-title">🎭 Bull Trap / Dead Cat Bounce</span>
+                    <p>A false recovery after a sell-off where prices bounce on suspiciously low volume while still trading below the 20-day EMA. Retail buyers purchase the dip, but institutional conviction is absent — the bounce is driven by short-covering, not genuine demand. The second leg down typically follows.</p>
+                    <div class="rule">SIGNAL: Close &lt; 20-EMA AND recent up-days AND avg volume on up-days / avg volume on down-days &lt; 0.75–0.90.</div>
+                </div>
+                <div class="term-box">
+                    <span class="term-title">🪤 Bear Trap / False Breakdown</span>
+                    <p>A false support breakdown: price briefly pierces the lower Bollinger Band or a key swing low intraday, enticing short sellers to open positions, but then reverses and closes back above support on low volume. The short sellers are &ldquo;trapped&rdquo; as the price rallies against them.</p>
+                    <div class="rule">SIGNAL: Intraday low &lt; Bollinger Lower Band AND close recovers above support AND breakdown volume &lt; 1.2× 20-day average.</div>
+                </div>
+                <div class="term-box">
+                    <span class="term-title">💥 Capitulation (Final Flush)</span>
+                    <p>A violent, high-volume selling climax where leveraged funds and retail traders are forced to liquidate at any price. The statistical signature is volume more than 3 standard deviations above the 20-day mean, combined with an extremely oversold RSI. A candle closing in the upper half of its range (long lower wick) suggests institutions absorbed the panic — this is the potential true bottom.</p>
+                    <div class="rule">SIGNAL: Volume &gt; μ<sub>20</sub> + 3σ AND RSI &lt; 30 AND close in upper 50% of day&rsquo;s range.</div>
+                </div>
+                <div class="term-box">
+                    <span class="term-title">🏗️ Wyckoff Accumulation Phase</span>
+                    <p>Named after Richard Wyckoff, this is the base-building period after capitulation where institutional buyers quietly absorb supply without moving the price. The quantitative fingerprint is a Bollinger Band squeeze (band width &lt; 2% of price, at a 20-day low) combined with declining ATR and drying volume. A high-volume breakout above the upper band confirms the accumulation phase is complete.</p>
+                    <div class="rule">SIGNAL: BB width &lt; 2% AND at 20-day low AND ATR now &lt; 70% of 20-day average AND 5-day avg vol &lt; 70% of 20-day average.</div>
+                </div>
+                <div class="term-box">
                     <span class="term-title">👑 Market Leader</span>
                     <p>Relative Strength (RS) compared to the S&P 500 Baseline.</p>
                 </div>

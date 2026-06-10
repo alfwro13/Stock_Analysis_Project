@@ -564,6 +564,80 @@ def run_ai_contagion_job():
         record_job_run('ai_contagion_job')
 
 
+def run_trap_monitor_job():
+    """Scans portfolio + proxy tickers for bull/bear trap, capitulation, and Wyckoff accumulation signals."""
+    from bull_bear_trap_engine import TrapEngine
+    from intraday_orchestrator import IntradayOrchestrator
+    from nextcloud_talk import send_text_message
+    config = load_config()
+    conn = None
+    try:
+        conn = get_connection()
+        engine = TrapEngine(config)
+        results = engine.run_scan()
+
+        if not results:
+            return
+
+        trap_cfg = config.get("NOTIFICATIONS", {}).get("TRAP_MONITOR_ALERTS", {})
+        nextcloud_enabled = trap_cfg.get("NEXTCLOUD_ENABLED", False)
+
+        # Only alert on high-severity phases
+        alert_phases = {"ACTIVE_SELLOFF", "BULL_TRAP_RISK", "CAPITULATION_FORMING", "BEAR_TRAP_RISK"}
+        orch = IntradayOrchestrator()
+
+        for row in results:
+            phase = row.get("phase", "NEUTRAL")
+            if phase not in alert_phases:
+                continue
+
+            ticker = row["ticker"]
+            reason = f"TRAP MONITOR {phase.replace('_', ' ')}"
+            suppress = orch._evaluate_alert_gate("TrapMonitor", ticker, None, reason, conn)
+            if suppress:
+                continue
+
+            notes = (
+                row.get("bull_trap_notes") or row.get("bear_trap_notes") or
+                row.get("cap_notes") or row.get("wyckoff_notes") or ""
+            )
+            feed_text = (
+                f"**{ticker}** — Phase: {phase.replace('_', ' ')} | "
+                f"RSI {row.get('rsi', '—')} | EMA dist {row.get('ema_distance', '—')}% | {notes}"
+            )
+
+            if nextcloud_enabled:
+                msg_lines = [
+                    f"🎭 **TRAP MONITOR: {ticker}** — {phase.replace('_', ' ')}",
+                    "",
+                    notes,
+                    "",
+                    f"RSI: {row.get('rsi', '—')} | EMA Distance: {row.get('ema_distance', '—')}%",
+                    f"Bull Trap: {row.get('bull_trap_level', '—')} | Bear Trap: {row.get('bear_trap_level', '—')}",
+                    f"Capitulation: {row.get('cap_level', '—')} | Wyckoff: {row.get('wyckoff_level', '—')}",
+                ]
+                try:
+                    ok = send_text_message("\n".join(msg_lines), config)
+                except Exception as e:
+                    logger.error("TrapMonitor: Nextcloud dispatch failed for %s: %s", ticker, e)
+                    ok = False
+            else:
+                ok = True
+
+            if ok:
+                orch.record_alert_fired("TrapMonitor", ticker, None, reason, conn)
+                orch.log_notification_feed("TrapMonitor", feed_text, conn)
+                logger.info("TrapMonitor: alert fired for %s (%s).", ticker, phase)
+
+    except Exception as e:
+        logger.error("Trap Monitor job failed: %s", e)
+        log_sched_notification("Error", f"Trap Monitor job failed: {e}")
+    finally:
+        if conn:
+            conn.close()
+        record_job_run('trap_monitor_job')
+
+
 def run_smgb_actual_fill():
     """Fills actuals for both prediction types from today's open and yesterday's close."""
     from datetime import datetime, timezone, timedelta
@@ -1087,6 +1161,27 @@ def reload_scheduler():
             )
         except Exception as e:
             logger.error("Failed to schedule AI Contagion Monitor: %s", e)
+
+    trap_sched = scheduling.get("TRAP_MONITORS", {})
+    if trap_sched.get("ENABLED", False):
+        try:
+            start_h = int(trap_sched.get("START_TIME", "08:00").split(":")[0])
+            end_h   = int(trap_sched.get("END_TIME",   "21:00").split(":")[0])
+            mins    = int(trap_sched.get("INTERVAL_MINUTES", 30))
+            freq    = trap_sched.get("FREQUENCY", "mon-fri")
+            scheduler.add_job(
+                run_trap_monitor_job,
+                CronTrigger(day_of_week=freq, hour=f"{start_h}-{end_h}", minute=f"*/{mins}", timezone=user_tz),
+                id='trap_monitor_job',
+                replace_existing=True,
+                misfire_grace_time=300,
+            )
+            logger.info(
+                "Trap Monitor scheduled (%s %02d:00–%02d:00 every %dm).",
+                freq, start_h, end_h, mins,
+            )
+        except Exception as e:
+            logger.error("Failed to schedule Trap Monitor: %s", e)
 
     news_cfg = scheduling.get("NEWS_FEED", {})
     if news_cfg.get("ENABLED", False):

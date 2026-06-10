@@ -1154,6 +1154,7 @@ async def get_system_metrics():
             "NEWS_FEED":          "news_feed_job",
             "SYSTEM_CHECK":       "system_check_job",
             "SMGB_PREDICTOR":     "smgb_predictor_job",
+            "TRAP_MONITORS":      "trap_monitor_job",
         }
         def _localise_ts(ts: str) -> str:
             if not ts or ts == "Never":
@@ -1360,6 +1361,40 @@ async def trigger_ai_contagion(request: Request, background_tasks: BackgroundTas
         return JSONResponse(content={"status": "success", "message": "AI Contagion scan triggered."})
     except Exception as e:
         logger.error(f"Failed to trigger AI Contagion scan: {e}")
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+
+@api_router.get("/trap-monitor/results")
+@limiter.limit("20/minute")
+async def get_trap_monitor_results(request: Request):
+    """Returns all trap monitor scan results ordered by phase severity (most severe first)."""
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM trap_monitor_results ORDER BY scan_ts DESC")
+        rows = [dict(r) for r in cursor.fetchall()]
+        from bull_bear_trap_engine import _phase_severity
+        rows.sort(key=lambda r: _phase_severity(r.get("phase", "NEUTRAL")))
+        return JSONResponse(content={"status": "success", "results": rows})
+    except Exception as e:
+        logger.error("trap-monitor/results failed: %s", e)
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+    finally:
+        if conn:
+            conn.close()
+
+
+@api_router.post("/trap-monitor/run")
+@limiter.limit("4/minute")
+async def run_trap_monitor(request: Request, background_tasks: BackgroundTasks):
+    """Manually triggers a Trap Monitor scan in the background."""
+    try:
+        from scheduler_engine import run_trap_monitor_job
+        background_tasks.add_task(run_trap_monitor_job)
+        return JSONResponse(content={"status": "success", "message": "Trap Monitor scan triggered."})
+    except Exception as e:
+        logger.error("Failed to trigger Trap Monitor scan: %s", e)
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 

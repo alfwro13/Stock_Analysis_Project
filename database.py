@@ -489,6 +489,27 @@ def init_db() -> None:
             )
         ''')
 
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS trap_monitor_results (
+                ticker               TEXT PRIMARY KEY,
+                phase                TEXT,
+                bull_trap_level      TEXT,
+                bull_trap_vol_ratio  REAL,
+                bull_trap_notes      TEXT,
+                bear_trap_level      TEXT,
+                bear_trap_notes      TEXT,
+                cap_level            TEXT,
+                cap_vol_zscore       REAL,
+                cap_notes            TEXT,
+                wyckoff_level        TEXT,
+                wyckoff_bb_width     REAL,
+                wyckoff_notes        TEXT,
+                ema_distance         REAL,
+                rsi                  REAL,
+                scan_ts              TEXT
+            )
+        ''')
+
         conn.commit()
 
         migrate_db(conn, cursor)

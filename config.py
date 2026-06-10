@@ -207,6 +207,17 @@ DEFAULT_CONFIG = {
             "PRE_US_OPEN_TIME": "13:30",
             "POST_US_CLOSE_TIME": "22:00",
             "SEND_NEXTCLOUD": False
+        },
+        "TRAP_MONITORS": {
+            "ENABLED": False,
+            "BULL_TRAP": True,
+            "BEAR_TRAP": True,
+            "CAPITULATION": True,
+            "WYCKOFF": True,
+            "FREQUENCY": "mon-fri",
+            "START_TIME": "08:00",
+            "END_TIME": "21:00",
+            "INTERVAL_MINUTES": 30
         }
     },
     "REPORTS_DEFAULTS": {
@@ -277,6 +288,17 @@ DEFAULT_CONFIG = {
             "COOLDOWN_MINUTES": 60,
             "RETRIGGER_PERCENT": 1.5,
             "REARM_PERCENT": 2.5
+        },
+        "TRAP_MONITOR_ALERTS": {
+            "NEXTCLOUD_ENABLED": False,
+            "COOLDOWN_MINUTES": 120,
+            "RETRIGGER_PERCENT": 3.0,
+            "REARM_PERCENT": 5.0,
+            "BULL_TRAP_VOLUME_RATIO": 0.75,
+            "BEAR_TRAP_VOLUME_RATIO": 1.20,
+            "CAPITULATION_VOL_ZSCORE": 3.0,
+            "WYCKOFF_BB_SQUEEZE_PCT": 2.0,
+            "PROXY_TICKERS": ["QQQ", "SMH", "NVDA", "MSFT", "AAPL"]
         }
     },
     "XRAY_TARGETS": {

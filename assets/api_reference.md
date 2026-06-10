@@ -1328,7 +1328,48 @@ For methodology details see [`assets/ai_contagion_monitor.md`](ai_contagion_moni
 
 ---
 
-## 18. News Feed
+## 18. Market Trap & Recovery Monitor
+
+Detects four post-crash lifecycle phases from daily OHLCV data: Bull Trap (Dead Cat Bounce), Bear Trap (False Breakdown), Capitulation (Volume Climax), and Wyckoff Accumulation (BB Squeeze). Covers portfolio tickers plus a configurable proxy basket.
+
+### `GET /trap-monitor`
+
+HTML page. Renders the unified Market Trap & Recovery Monitor with lifecycle arc diagram, active alert strip, and a full ticker status table showing all four signal columns.
+
+### `GET /api/trap-monitor/results`
+
+Returns all rows from `trap_monitor_results`, sorted by phase severity (most severe first).
+
+**Response**
+
+```json
+{
+  "status": "success",
+  "results": [
+    {
+      "ticker": "NVDA",
+      "phase": "BULL_TRAP_RISK",
+      "bull_trap_level": "SEVERE_TRAP_RISK",
+      "bull_trap_vol_ratio": 0.68,
+      "bull_trap_notes": "Vol ratio 0.68 — recovery volume severely below sell-off volume. RSI 44 still below 50.",
+      "bear_trap_level": "SAFE",
+      "cap_level": "NONE",
+      "wyckoff_level": "NONE",
+      "ema_distance": -4.2,
+      "rsi": 44.0,
+      "scan_ts": "2026-06-10 14:30:00"
+    }
+  ]
+}
+```
+
+### `POST /api/trap-monitor/run`
+
+Triggers a background scan immediately. Returns `{"status": "success"}` immediately; results appear in `/api/trap-monitor/results` within a few seconds.
+
+---
+
+## 19. News Feed
 
 Stores and retrieves news articles for portfolio and watchlist tickers. Articles are fetched via yfinance, full-text extracted via trafilatura, and sentiment-scored via FinBERT. Results are stored in the `news_articles` table.
 

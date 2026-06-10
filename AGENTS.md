@@ -56,6 +56,7 @@ Stock_Analysis_Project/
 ├── ai_engine.py              # LLM prompt aggregator
 ├── ai_prediction_engine.py   # XGBoost + RF soft-voting ensemble
 ├── ai_contagion_engine.py    # AI sector contagion monitor (10-ticker ecosystem)
+├── bull_bear_trap_engine.py  # Post-crash lifecycle detector (Bull Trap, Bear Trap, Capitulation, Wyckoff)
 ├── anomaly_engine.py         # Unsupervised anomaly detection per ticker
 ├── xray_engine.py            # Portfolio X-ray / risk diagnostics
 ├── crash_engine.py           # Intraday crash detection
@@ -127,6 +128,7 @@ All tables join on `ticker` as the primary key unless noted.
 | `xray_correlation_matrix` | Rolling pairwise correlation matrix snapshot |
 | `xray_dividend_cache` | Per-ticker dividend yield cache for X-ray |
 | `ai_contagion_snapshots` | AI sector contagion scan results (payload JSON + alert flag) |
+| `trap_monitor_results` | Latest trap scan result per ticker — phase label + four signal levels; powers `/trap-monitor` |
 | `news_articles` | Full-text news articles with sentiment scores |
 | `smgb_predictions` | SMGB.L morning price predictions + actuals + accuracy metrics |
 | `alert_state` | Dedup ledger for intraday alert engines (fingerprint + cooldown) |
