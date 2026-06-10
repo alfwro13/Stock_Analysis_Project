@@ -212,9 +212,17 @@ def update_macro_indicators() -> None:
     merged_df = pd.concat(dfs, axis=1, sort=False)
     merged_df.sort_index(inplace=True)
     merged_df.ffill(inplace=True)
-    
+
     # Phase 1 Remediation: Lookahead bias removed. No .bfill() is applied here.
-    
+
+    # Convert CPIAUCSL from raw index level (~310-340) to YoY % change (e.g. 3.2%).
+    # Resample to monthly (CPIAUCSL is monthly; ffill makes it daily-constant), compute
+    # exact 12-month pct_change, then project back onto the daily index via ffill.
+    if 'CPIAUCSL' in merged_df.columns and isinstance(merged_df.index, pd.DatetimeIndex):
+        monthly_cpi = merged_df['CPIAUCSL'].resample('ME').last().dropna()
+        cpi_yoy = monthly_cpi.pct_change(periods=12) * 100
+        merged_df['CPIAUCSL'] = cpi_yoy.reindex(merged_df.index).ffill()
+
     records = []
     for dt, row in merged_df.iterrows():
         records.append((
@@ -248,6 +256,21 @@ def update_macro_indicators() -> None:
         ''', records)
         conn.commit()
         logger.info(f"Successfully bulk-inserted up to {cursor.rowcount} new Macro Regime historical days (ignoring existing to preserve PIT).")
+
+        # Self-heal: overwrite us_cpi_inflation for any rows that stored the raw index
+        # level instead of the YoY % change (e.g. values > 100 are always wrong for CPI YoY).
+        # INSERT OR IGNORE above protects other columns from lookahead bias; this targeted
+        # UPDATE only touches the one column that was initially stored incorrectly.
+        if 'CPIAUCSL' in merged_df.columns:
+            cpi_patch = [
+                (float(row['CPIAUCSL']) if pd.notna(row['CPIAUCSL']) else None, dt.strftime("%Y-%m-%d"))
+                for dt, row in merged_df.iterrows()
+            ]
+            cursor.executemany(
+                "UPDATE macro_indicators SET us_cpi_inflation=? WHERE date=?",
+                [(v, d) for v, d in cpi_patch if v is not None],
+            )
+            conn.commit()
     except sqlite3.Error as e:
         logger.error(f"Database bulk insertion failed: {e}")
         conn.rollback()
