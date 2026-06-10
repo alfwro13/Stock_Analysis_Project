@@ -360,6 +360,9 @@ class ScheduleItemConfig(BaseModel):
     DAYS_TO_KEEP_FILES: Optional[int] = None
     MAX_PER_TICKER: Optional[int] = None
     MAX_AGE_DAYS: Optional[int] = None
+    PRE_US_OPEN_TIME: Optional[str] = None
+    POST_US_CLOSE_TIME: Optional[str] = None
+    SEND_NEXTCLOUD: Optional[bool] = None
 
 class SchedulingConfig(BaseModel):
     SYNC_INDICES: Optional[ScheduleItemConfig] = None
@@ -383,6 +386,7 @@ class SchedulingConfig(BaseModel):
     CB_NLP_ALERT: Optional[ScheduleItemConfig] = None
     AI_CONTAGION: Optional[ScheduleItemConfig] = None
     NEWS_FEED: Optional[ScheduleItemConfig] = None
+    SMGB_PREDICTOR: Optional[ScheduleItemConfig] = None
 
 class ReportsDefaultsConfig(BaseModel):
     MR_MAX_RSI: Optional[int] = None
@@ -1149,6 +1153,7 @@ async def get_system_metrics():
             "CB_NLP_ALERT":       "cb_nlp_alert_job",
             "NEWS_FEED":          "news_feed_job",
             "SYSTEM_CHECK":       "system_check_job",
+            "SMGB_PREDICTOR":     "smgb_predictor_job",
         }
         def _localise_ts(ts: str) -> str:
             if not ts or ts == "Never":

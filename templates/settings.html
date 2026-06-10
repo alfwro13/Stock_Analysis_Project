@@ -1736,6 +1736,46 @@
 
             </details>
 
+            <details class="settings-card">
+                <summary>🔧 Tools</summary>
+
+                {% set smgb_sched = config.SCHEDULING.SMGB_PREDICTOR if config.SCHEDULING.SMGB_PREDICTOR else {} %}
+
+                <div class="settings-panel border-left-cyan">
+                    <h4 class="settings-panel-header text-cyan">🇬🇧 SMGB.L Price Predictor Schedule</h4>
+                    <p class="settings-desc">Automatically runs the SMGB.L Price Predictor at two key times each trading day — once before the US market opens (to capture pre-market signals) and once after the US market closes (to lock in the post-close prediction for the next UK open).</p>
+                    <p class="settings-desc-sm"><strong>Suggested times:</strong> Pre-US open at <strong>13:30</strong> (captures NYSE pre-market, ~1 h before open at 14:30 BST); post-US close at <strong>22:00</strong> (NYSE closes ~21:00 BST, 1 h buffer for late data). Adjust to your timezone if needed.</p>
+
+                    <div class="checkbox-group mb-10">
+                        <input type="checkbox" id="SMGB_PREDICTOR_ENABLED" {% if smgb_sched.ENABLED %}checked{% endif %}>
+                        <label for="SMGB_PREDICTOR_ENABLED">Enable automated SMGB.L prediction runs (Mon–Fri)</label>
+                    </div>
+
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:12px;">
+                        <div class="form-group mb-0">
+                            <label>Pre-US Open Run</label>
+                            <input type="time" id="SMGB_PRE_US_OPEN_TIME" value="{{ smgb_sched.PRE_US_OPEN_TIME | default('13:30') }}">
+                            <p class="settings-desc-sm" style="margin:4px 0 0;">Runs before NYSE opens — uses US pre-market signal.</p>
+                        </div>
+                        <div class="form-group mb-0">
+                            <label>Post-US Close Run</label>
+                            <input type="time" id="SMGB_POST_US_CLOSE_TIME" value="{{ smgb_sched.POST_US_CLOSE_TIME | default('22:00') }}">
+                            <p class="settings-desc-sm" style="margin:4px 0 0;">Runs after NYSE closes — uses post-close signal for next UK open.</p>
+                        </div>
+                    </div>
+
+                    <div class="checkbox-group mt-10">
+                        <input type="checkbox" id="SMGB_PREDICTOR_SEND_NEXTCLOUD" {% if smgb_sched.SEND_NEXTCLOUD %}checked{% endif %}>
+                        <label for="SMGB_PREDICTOR_SEND_NEXTCLOUD">Send prediction to Nextcloud Talk</label>
+                    </div>
+                    <p class="settings-desc-sm">By default, predictions are only logged in the app notifications panel. Enable this to also push a message to your Nextcloud Talk conversation.</p>
+
+                    <button type="button" class="btn-test mt-0 btn-cyan" onclick="triggerSMGBPredictor()">▶️ Run Prediction Now</button>
+                    <div id="smgb-predictor-status" style="margin-top:6px; font-size:0.78rem; color:#aaa;"></div>
+                </div>
+
+            </details>
+
             <div class="system-updates-panel">
                 <h3 class="text-orange mb-5 mt-0">🔄 System Updates & Power</h3>
                 <p class="text-muted text-sm mt-0">Pull the latest code from the main GitHub repository, or manually restart the background service.</p>
@@ -2252,6 +2292,23 @@
                 statusEl.textContent = data.message || "Morning Briefing generation started.";
             } catch (error) {
                 statusEl.textContent = "Failed to start generation. Network or server error.";
+            }
+        }
+
+        async function triggerSMGBPredictor() {
+            const statusEl = document.getElementById('smgb-predictor-status');
+            statusEl.textContent = "Running prediction… this may take 10–20 seconds.";
+            try {
+                const resp = await fetch('/api/smgb-prediction');
+                const data = await resp.json();
+                if (data.status === 'success') {
+                    const sign = data.predicted_change_pct >= 0 ? '+' : '';
+                    statusEl.textContent = `Done — £${data.predicted_price} (${sign}${data.predicted_change_pct?.toFixed(2)}%) | signal: ${data.signal_source}`;
+                } else {
+                    statusEl.textContent = data.error || "Prediction failed.";
+                }
+            } catch (error) {
+                statusEl.textContent = "Failed to run prediction. Network or server error.";
             }
         }
 
@@ -2991,6 +3048,12 @@
                         "START_TIME": document.getElementById('AI_CONTAGION_START').value,
                         "END_TIME": document.getElementById('AI_CONTAGION_END').value,
                         "INTERVAL_MINUTES": parseInt(document.getElementById('AI_CONTAGION_INTERVAL').value) || 15
+                    },
+                    "SMGB_PREDICTOR": {
+                        "ENABLED": document.getElementById('SMGB_PREDICTOR_ENABLED').checked,
+                        "PRE_US_OPEN_TIME": document.getElementById('SMGB_PRE_US_OPEN_TIME').value,
+                        "POST_US_CLOSE_TIME": document.getElementById('SMGB_POST_US_CLOSE_TIME').value,
+                        "SEND_NEXTCLOUD": document.getElementById('SMGB_PREDICTOR_SEND_NEXTCLOUD').checked
                     }
                 },
                 "NOTIFICATIONS": {

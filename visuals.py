@@ -703,6 +703,8 @@ def create_smgb_overlay_chart(
     next_open_date: "date",
     us_prev_closes: "dict[str, float] | None" = None,
     nyse_open_utc: "datetime | None" = None,
+    lse_open_utc: "datetime | None" = None,
+    nyse_close_utc: "datetime | None" = None,
 ) -> str:
     user_tz = time_engine.get_user_tz()
 
@@ -746,9 +748,29 @@ def create_smgb_overlay_chart(
             hovertemplate=f"{ticker}: %{{y:+.2f}}%<extra></extra>",
         ))
 
+    # Vertical line at LSE open
+    if lse_open_utc is not None:
+        lse_open_aware = pd.Timestamp(lse_open_utc).tz_localize("UTC").tz_convert(user_tz).tz_localize(None)
+        lse_open_str = str(lse_open_aware)
+        lse_open_label = lse_open_aware.strftime("LSE Open %H:%M")
+        fig.add_shape(
+            type="line",
+            x0=lse_open_str, x1=lse_open_str,
+            y0=0, y1=1, yref="paper",
+            line=dict(dash="dot", color="#00ffff", width=1.2),
+        )
+        fig.add_annotation(
+            x=lse_open_str, y=0.91, yref="paper",
+            text=lse_open_label,
+            showarrow=False,
+            font=dict(color="#00ffff", size=11),
+            xanchor="left", yanchor="top",
+        )
+
     # Vertical line at LSE close — use add_shape to avoid Plotly annotation mean bug
     uk_close_aware = pd.Timestamp(uk_close_utc).tz_localize("UTC").tz_convert(user_tz).tz_localize(None)
     uk_close_str = str(uk_close_aware)
+    uk_close_label = uk_close_aware.strftime("LSE Close %H:%M")
     fig.add_shape(
         type="line",
         x0=uk_close_str, x1=uk_close_str,
@@ -757,7 +779,7 @@ def create_smgb_overlay_chart(
     )
     fig.add_annotation(
         x=uk_close_str, y=1, yref="paper",
-        text="LSE Close 16:30",
+        text=uk_close_label,
         showarrow=False,
         font=dict(color="#aaaaaa", size=11),
         xanchor="left", yanchor="top",
@@ -766,6 +788,7 @@ def create_smgb_overlay_chart(
     if nyse_open_utc is not None:
         nyse_open_aware = pd.Timestamp(nyse_open_utc).tz_localize("UTC").tz_convert(user_tz).tz_localize(None)
         nyse_open_str = str(nyse_open_aware)
+        nyse_open_label = nyse_open_aware.strftime("NYSE Open %H:%M")
         fig.add_shape(
             type="line",
             x0=nyse_open_str, x1=nyse_open_str,
@@ -774,9 +797,27 @@ def create_smgb_overlay_chart(
         )
         fig.add_annotation(
             x=nyse_open_str, y=0.97, yref="paper",
-            text="NYSE Open 14:30",
+            text=nyse_open_label,
             showarrow=False,
             font=dict(color="#f6ad55", size=11),
+            xanchor="left", yanchor="top",
+        )
+
+    if nyse_close_utc is not None:
+        nyse_close_aware = pd.Timestamp(nyse_close_utc).tz_localize("UTC").tz_convert(user_tz).tz_localize(None)
+        nyse_close_str = str(nyse_close_aware)
+        nyse_close_label = nyse_close_aware.strftime("NYSE Close %H:%M")
+        fig.add_shape(
+            type="line",
+            x0=nyse_close_str, x1=nyse_close_str,
+            y0=0, y1=1, yref="paper",
+            line=dict(dash="dot", color="#f87171", width=1.2),
+        )
+        fig.add_annotation(
+            x=nyse_close_str, y=0.94, yref="paper",
+            text=nyse_close_label,
+            showarrow=False,
+            font=dict(color="#f87171", size=11),
             xanchor="left", yanchor="top",
         )
 

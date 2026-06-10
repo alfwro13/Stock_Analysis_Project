@@ -211,8 +211,9 @@ def get_intraday_overlay_data() -> dict:
     uk_close_utc = _lse_close_utc_dt(trading_date)
     nyse_premarket_utc_time, _ = time_engine.market_window_utc("NYSE", include_premarket=True)
     nyse_premarket_utc = datetime.combine(trading_date, nyse_premarket_utc_time)
-    nyse_open_utc_time, _ = time_engine.market_window_utc("NYSE")
+    nyse_open_utc_time, nyse_close_utc_time = time_engine.market_window_utc("NYSE")
     nyse_open_utc = datetime.combine(trading_date, nyse_open_utc_time)
+    nyse_close_utc = datetime.combine(trading_date, nyse_close_utc_time)
 
     # period="5d" ensures we always have the last trading day even on weekends/holidays
     intraday = fetch_intraday_data(period="5d")
@@ -248,7 +249,9 @@ def get_intraday_overlay_data() -> dict:
         "smgb_intraday": smgb_series,
         "us_intraday": us_intraday,
         "uk_close_utc": uk_close_utc,
+        "lse_open_utc": lse_open_utc,
         "nyse_open_utc": nyse_open_utc,
+        "nyse_close_utc": nyse_close_utc,
         "smgb_last_close": smgb_last_close,
         "us_prev_closes": us_prev_closes,
         "prediction": run_smgb_prediction(),
@@ -443,6 +446,7 @@ def run_smgb_prediction() -> dict:
         "signal_source": signal_source,
         "fx_rate_gbpusd": round(fx_rate, 4),
         "as_of_utc": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+        "as_of_local": time_engine.fmt_datetime(datetime.now(timezone.utc)),
         "next_open_date": get_smgb_next_open_date().isoformat(),
         "n_holdings_used": holdings_result["n_holdings_used"] if holdings_result else 0,
         "holdings_engine": holdings_result,

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="color-scheme" content="dark">
-    <title>Quantamental - SMGB.L Morning Price Predictor</title>
+    <title>Quantamental - SMGB.L Price Predictor</title>
     <link rel="stylesheet" href="/static/css/styles.css?v={{ css_version }}">
 </head>
 <body class="body-watchlist">
@@ -14,7 +14,7 @@
                 <a href="https://github.com/alfwro13/Stock_Analysis_Project" target="_blank" class="logo-link">
                     <img src="/assets/logo_small.png" alt="Quantamental Logo" class="logo-img">
                 </a>
-                <h1>🇬🇧 SMGB.L Morning Price Predictor</h1>
+                <h1>🇬🇧 SMGB.L Price Predictor</h1>
             </div>
             <p class="page-subtitle">US Close → UK Open Impact Engine &mdash; prices in <abbr title="GBP — British Pounds Sterling. SMGB.L is quoted in whole pounds on the London Stock Exchange.">GBP £</abbr></p>
             {% set active_page = 'tools' %}
@@ -82,8 +82,8 @@
             </div>
             {% endif %}
             <div class="xray-metric-card">
-                <div class="xray-metric-label">As Of (UTC)</div>
-                <div class="xray-metric-value xray-metric-value--xs">{{ prediction.as_of_utc }}</div>
+                <div class="xray-metric-label">As Of</div>
+                <div class="xray-metric-value xray-metric-value--xs">{{ prediction.as_of_local }}</div>
             </div>
             {% if smgb_pnl %}
             <div class="xray-metric-card {% if smgb_pnl.predicted_pnl_open >= 0 %}xray-metric-card--cyan{% else %}xray-metric-card--red{% endif %}">
@@ -148,7 +148,7 @@
                 All lines show <abbr title="% change vs each ticker's previous daily close — this puts SMGB.L (GBP) and the US semiconductors (USD) on the same scale so their moves are directly comparable.">% change from previous close</abbr>.
                 Cyan = SMGB.L intraday (08:00–16:30 BST).
                 Orange/red lines = the 10 US semiconductor constituents from US pre-market open (09:00 BST) onward.
-                Grey dashed line = LSE close (16:30 BST). Orange dashed line = NYSE open (14:30 BST). Purple star = predicted SMGB.L move.
+                Cyan dotted = LSE open. Grey dashed = LSE close. Orange dashed = NYSE open. Red dotted = NYSE close. Purple star = predicted SMGB.L move.
                 {% if prediction.signal_source == 'intraday_post_close' %}The star sits at tomorrow&rsquo;s LSE open — prediction uses US post-close moves.{% elif prediction.signal_source == 'intraday_live' or prediction.signal_source == 'intraday_premarket' %}The star sits on the NYSE open line — prediction projects SMGB.L&rsquo;s reaction when US markets open at 14:30 BST.{% endif %}
             </div>
         </div>

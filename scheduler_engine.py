@@ -607,6 +607,39 @@ def run_smgb_actual_fill():
         record_job_run('smgb_actual_fill_job')
 
 
+def run_smgb_predictor_job():
+    """Runs the SMGB.L prediction and logs it; optionally dispatches to Nextcloud Talk."""
+    from smgb_predictor import run_smgb_prediction
+    log_sched_notification("Scheduler", "Started SMGB.L Price Predictor job...")
+    try:
+        result = run_smgb_prediction()
+        if result.get("status") != "success":
+            log_sched_notification("Warning", f"SMGB predictor: {result.get('error', 'unknown error')}")
+            return
+
+        predicted = result.get("predicted_price")
+        change = result.get("predicted_change_pct", 0)
+        signal = result.get("signal_source", "")
+        target = result.get("next_open_date", "")
+        sign = "+" if change >= 0 else ""
+        msg = (
+            f"SMGB.L Price Predictor — {target}: "
+            f"£{predicted:.4f} ({sign}{change:.2f}%) | signal: {signal}"
+        )
+        log_sched_notification("Success", msg)
+
+        cfg = load_config()
+        smgb_cfg = cfg.get("SCHEDULING", {}).get("SMGB_PREDICTOR", {})
+        if smgb_cfg.get("SEND_NEXTCLOUD", False):
+            from nextcloud_talk import send_text_message
+            send_text_message(msg, cfg)
+    except Exception as e:
+        logger.error("SMGB predictor job failed: %s", e)
+        log_sched_notification("Error", f"SMGB predictor job failed: {e}")
+    finally:
+        record_job_run('smgb_predictor_job')
+
+
 def run_system_check_job():
     log_sched_notification("Scheduler", "Started System Configuration Check...")
     try:
@@ -1115,6 +1148,31 @@ def reload_scheduler():
         logger.info("X-ray Risk Cache job scheduled for mon-fri at 19:00.")
     except Exception as e:
         logger.error("Failed to schedule X-ray Risk Cache job: %s", e)
+
+    smgb_pred_cfg = scheduling.get("SMGB_PREDICTOR", {})
+    if smgb_pred_cfg.get("ENABLED", False):
+        pre_time = smgb_pred_cfg.get("PRE_US_OPEN_TIME", "13:30")
+        post_time = smgb_pred_cfg.get("POST_US_CLOSE_TIME", "22:00")
+        try:
+            pre_h, pre_m = map(int, pre_time.split(':'))
+            scheduler.add_job(
+                run_smgb_predictor_job,
+                CronTrigger(day_of_week='mon-fri', hour=pre_h, minute=pre_m, timezone=user_tz),
+                id='smgb_predictor_job',
+            )
+            logger.info("SMGB predictor (pre-US-open) scheduled for mon-fri at %s.", pre_time)
+        except Exception as e:
+            logger.error("Failed to schedule SMGB predictor (pre-US-open): %s", e)
+        try:
+            post_h, post_m = map(int, post_time.split(':'))
+            scheduler.add_job(
+                run_smgb_predictor_job,
+                CronTrigger(day_of_week='mon-fri', hour=post_h, minute=post_m, timezone=user_tz),
+                id='smgb_predictor_post_job',
+            )
+            logger.info("SMGB predictor (post-US-close) scheduled for mon-fri at %s.", post_time)
+        except Exception as e:
+            logger.error("Failed to schedule SMGB predictor (post-US-close): %s", e)
 
     # Always-on: SMGB.L Actual Fill — runs Mon–Fri at 09:15 GMT (45 min after LSE opens).
     # Fetches the actual open price for that morning and resolves the previous prediction row.
