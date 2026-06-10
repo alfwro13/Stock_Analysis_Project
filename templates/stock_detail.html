@@ -1182,6 +1182,7 @@
             const intervalMs = (window.REFRESH_RATE_MS && window.REFRESH_RATE_MS > 0)
                 ? window.REFRESH_RATE_MS
                 : 60000;
+            _refreshIntradayChart(ticker);
             _intradayTimer = setInterval(function() {
                 resetCountdown();
                 _refreshIntradayChart(ticker);
