@@ -1303,7 +1303,7 @@ def log_etf_prediction(config_id: int, result: dict) -> None:
                 result.get("last_etf_close"),
                 hold.get("predicted_price"),
                 reg.get("predicted_price"),
-                signal,
+                result.get("signal_source"),
                 result.get("data_source"),
                 result.get("fx_rate"),
                 reg.get("r_squared"),
