@@ -532,7 +532,11 @@ def bg_init_macro_pipeline():
         seed_calendar()
         update_macro_calendar()
         update_macro_indicators()
-        
+
+        from regime_engine import calculate_systemic_macro_threat, calculate_market_regime
+        calculate_systemic_macro_threat()
+        calculate_market_regime()
+
         ai_engine = MacroAIEngine()
         try:
             ai_engine.train_regime_clustering()
@@ -554,10 +558,14 @@ def bg_init_macro_pipeline():
 def bg_run_macro_pipeline():
     try:
         logger.info("Starting Macro AI Run Sequence...")
-        
+
         update_macro_calendar()
         update_macro_indicators()
-        
+
+        from regime_engine import calculate_systemic_macro_threat, calculate_market_regime
+        calculate_systemic_macro_threat()
+        calculate_market_regime()
+
         ai_engine = MacroAIEngine()
         try:
             scan_date = time_engine.now_local().strftime('%Y-%m-%d')

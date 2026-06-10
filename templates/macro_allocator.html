@@ -237,7 +237,7 @@
                 if (d.status === "no_data") {
                     document.getElementById("macro-allocator-root").innerHTML =
                         `<div class="ma-loading-state"><p>${d.message}</p>
-                         <p><small>Run the Macro Data Engine from Settings &rarr; Macro tab, then trigger the Regime Engine.</small></p></div>`;
+                         <p><small>Go to <a href="/settings#macro" style="color:#00ffcc">Settings &rarr; Macroeconomic Data</a> and click <strong>Initialize Macro AI Pipeline</strong> (first time) or <strong>Run Now</strong>. The regime classifier runs automatically as part of that job.</small></p></div>`;
                     return;
                 }
                 renderPage(d);
