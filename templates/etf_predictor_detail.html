@@ -36,9 +36,13 @@
             <span id="run-status" class="status-msg-sm"></span>
         </div>
 
-        {% set no_data = accuracy.next_open.rows | length == 0 %}
-        {% set last = accuracy.next_open.rows[0] if not no_data else none %}
-        {% set summ = accuracy.next_open.summary %}
+        {# Use next_open if available, fall back to us_open_impact #}
+        {% set has_next_open = accuracy.next_open.rows | length > 0 %}
+        {% set has_us_impact = accuracy.us_open_impact.rows | length > 0 %}
+        {% set no_data = not has_next_open and not has_us_impact %}
+        {% set active_type = 'next_open' if has_next_open else 'us_open_impact' %}
+        {% set last = accuracy[active_type].rows[0] if not no_data else none %}
+        {% set summ = accuracy[active_type].summary %}
 
         {% if no_data %}
         <div class="settings-panel border-left-purple" style="text-align:center;padding:30px;">
@@ -46,6 +50,12 @@
             <p style="color:#aaa;">Click "Run Now" above or wait for the scheduled job to generate the first prediction.</p>
         </div>
         {% else %}
+
+        {% if not has_next_open and has_us_impact %}
+        <div style="margin-bottom:12px;padding:8px 12px;background:#1a2a1a;border-left:3px solid #00aa66;border-radius:4px;font-size:12px;color:#aaa;">
+            Showing <strong style="color:#00aa66;">US-open-impact</strong> predictions (intraday signal — ETF and constituents on the same exchange or same-session data).
+        </div>
+        {% endif %}
 
         {# ── Summary metric cards ── #}
         <div class="xray-cards-row" style="margin-bottom:24px;">
@@ -143,7 +153,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                        {% for row in accuracy.next_open.rows[:30] %}
+                        {% for row in accuracy[active_type].rows[:30] %}
                         <tr>
                             <td>{{ row.target_date }}</td>
                             <td>{{ "%.4f"|format(row.predicted_price) if row.predicted_price else '—' }}</td>
@@ -172,7 +182,9 @@
     <script>
     (function () {
         const accuracy = {{ accuracy_json | safe }};
-        const rows = (accuracy.next_open || {}).rows || [];
+        const nextOpenRows = (accuracy.next_open || {}).rows || [];
+        const usImpactRows = (accuracy.us_open_impact || {}).rows || [];
+        const rows = nextOpenRows.length >= usImpactRows.length ? nextOpenRows : usImpactRows;
         const resolved = rows.filter(r => r.actual_open !== null && r.pct_error !== null);
         if (resolved.length < 2) return;
 

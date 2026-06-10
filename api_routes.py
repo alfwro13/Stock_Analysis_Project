@@ -1687,7 +1687,16 @@ async def run_etf_predictor(request: Request, config_id: int, background_tasks: 
                 if result.get("status") != "success":
                     log_sched_notification("Warning", f"ETF predictor [{config_id}] run: {result.get('error')}")
                 else:
-                    log_sched_notification("Success", f"ETF predictor [{config_id}] prediction complete.")
+                    ptype = result.get("prediction_type", "next_open")
+                    price = result.get("predicted_price")
+                    chg = result.get("predicted_change_pct")
+                    signal = result.get("signal_source", "")
+                    log_sched_notification(
+                        "Success",
+                        f"ETF predictor [{config_id}] ({ptype}) — "
+                        f"{price} ({chg:+.2f}%) | signal: {signal}" if price and chg is not None else
+                        f"ETF predictor [{config_id}] prediction complete."
+                    )
             except Exception as exc:
                 from scheduler_engine import log_sched_notification
                 log_sched_notification("Error", f"ETF predictor [{config_id}] run failed: {exc}")

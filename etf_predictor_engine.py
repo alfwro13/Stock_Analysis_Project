@@ -441,6 +441,15 @@ def run_prediction(config_id: int) -> dict:
             "predicted_price": None,
         }
 
+    # us_open_impact only applies when ETF and constituents are on different exchanges
+    # (i.e. UK/EU ETF closes before US constituents finish trading).
+    # For same-exchange configs, always use next_open regardless of signal_source.
+    same_exchange = (etf_exchange == constituent_exchange)
+    if not same_exchange and signal_source in ("intraday_premarket", "intraday_live"):
+        prediction_type = "us_open_impact"
+    else:
+        prediction_type = "next_open"
+
     as_of_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     result = {
         "status": "success",
@@ -450,6 +459,7 @@ def run_prediction(config_id: int) -> dict:
         "predicted_change_pct": primary_change,
         "data_source": data_source,
         "signal_source": signal_source,
+        "prediction_type": prediction_type,
         "fx_rate": round(fx_rate, 4),
         "fx_pair": fx_pair,
         "as_of_utc": as_of_utc,

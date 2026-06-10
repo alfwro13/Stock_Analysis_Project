@@ -1277,10 +1277,10 @@ def log_etf_prediction(config_id: int, result: dict) -> None:
         cursor = conn.cursor()
         reg = result.get("regression_engine") or {}
         hold = result.get("holdings_engine") or {}
-        signal = result.get("signal_source", "daily_close")
-        prediction_type = (
+        # prediction_type computed in run_prediction (knows both exchanges); fall back to signal heuristic
+        prediction_type = result.get("prediction_type") or (
             "us_open_impact"
-            if signal in ("intraday_premarket", "intraday_live")
+            if result.get("signal_source", "") in ("intraday_premarket", "intraday_live")
             else "next_open"
         )
         run_at = result.get("as_of_utc", "")
@@ -1312,7 +1312,8 @@ def log_etf_prediction(config_id: int, result: dict) -> None:
         )
         conn.commit()
     except Exception as e:
-        logger.error("Failed to log ETF prediction for config %s: %s", config_id, e)
+        logger.error("Failed to log ETF prediction for config %s: %s", config_id, e, exc_info=True)
+        raise
     finally:
         if conn:
             conn.close()
