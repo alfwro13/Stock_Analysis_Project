@@ -170,7 +170,8 @@
                                 {% endif %}
                             </span>
                         </div>
-                        
+                        <div id="refresh-status" class="live-refresh-status"></div>
+
                         {% if stock.yield_correlation is not none and stock.yield_correlation <= -0.3 %}
                             {% if (stock.trailing_pe is not none and stock.trailing_pe > 30) or (stock.debt_to_equity is not none and stock.debt_to_equity > 1.5) %}
                                 <div class="yield-sensitive-container">
@@ -1169,6 +1170,7 @@
         }
 
         function startIntradayAutoRefresh() {
+            if (!window.ENABLE_LIVE_ASSETS) return;
             const ticker = '{{ stock.ticker }}';
             const quoteType = '{{ stock.quote_type }}';
             // Mutual funds only report once per day — no point polling
@@ -1177,10 +1179,44 @@
                 ? window.REFRESH_RATE_MS
                 : 60000;
             _intradayTimer = setInterval(function() {
+                resetCountdown();
                 _refreshIntradayChart(ticker);
             }, intervalMs);
         }
+
+        // --- REFRESH STATUS COUNTDOWN ---
+        let _countdownSecs = 0;
+        let _countdownTick = null;
+
+        function updateCountdownDisplay() {
+            const el = document.getElementById('refresh-status');
+            if (!el) return;
+            const m = Math.floor(_countdownSecs / 60);
+            const s = _countdownSecs % 60;
+            el.innerHTML = '<span class="pulse-dot pulse-dot-live"></span> Next update in ' + m + ':' + String(s).padStart(2, '0');
+        }
+
+        function resetCountdown() {
+            _countdownSecs = Math.round((window.REFRESH_RATE_MS || 60000) / 1000);
+            updateCountdownDisplay();
+        }
+
+        function initRefreshStatus() {
+            const el = document.getElementById('refresh-status');
+            if (!el) return;
+            if (!window.ENABLE_LIVE_ASSETS) {
+                el.innerHTML = '<span class="pulse-dot offline"></span> Manual updates only';
+                return;
+            }
+            resetCountdown();
+            _countdownTick = setInterval(function() {
+                _countdownSecs = Math.max(0, _countdownSecs - 1);
+                updateCountdownDisplay();
+            }, 1000);
+        }
+
         startIntradayAutoRefresh();
+        document.addEventListener('DOMContentLoaded', initRefreshStatus);
 
         // --- SINGLE ASSET REFRESH LOGIC ---
         async function refreshSingleData(ticker) {
