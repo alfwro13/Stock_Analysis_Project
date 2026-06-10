@@ -1421,6 +1421,46 @@ async def run_trap_monitor(request: Request, background_tasks: BackgroundTasks):
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 
+class StressTestRequest(BaseModel):
+    account_id: str = "all"
+    scenario_id: str
+    custom_drop: Optional[float] = None
+
+
+@api_router.get("/stress-test/scenarios")
+@limiter.limit("30/minute")
+async def get_stress_test_scenarios(request: Request):
+    """Returns the list of available stress-test scenarios."""
+    try:
+        from stress_engine import SCENARIOS
+        out = {}
+        for key, sc in SCENARIOS.items():
+            out[key] = {k: v for k, v in sc.items() if v is not None}
+        return JSONResponse(content={"status": "success", "scenarios": out})
+    except Exception as e:
+        logger.error("stress-test/scenarios failed: %s", e)
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+
+@api_router.post("/stress-test/run")
+@limiter.limit("10/minute")
+async def run_stress_test(request: Request, body: StressTestRequest):
+    """Applies a beta-adjusted scenario shock to the portfolio and returns a monetary impact report."""
+    try:
+        from stress_engine import run_stress_test as _run
+        result = _run(
+            account_id=body.account_id,
+            scenario_id=body.scenario_id,
+            custom_drop=body.custom_drop,
+        )
+        return JSONResponse(content={"status": "success", "result": result})
+    except (ValueError, RuntimeError) as e:
+        return JSONResponse(status_code=400, content={"status": "error", "message": str(e)})
+    except Exception as e:
+        logger.error("stress-test/run failed: %s", e)
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+
 @api_router.get("/smgb-prediction")
 @limiter.limit("10/minute")
 async def get_smgb_prediction(request: Request):

@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="color-scheme" content="dark">
+    <title>Quantamental - Historical Stress Tester</title>
+    <link rel="stylesheet" href="/static/css/styles.css?v={{ css_version }}">
+</head>
+<body class="body-watchlist">
+
+    <div class="header-container">
+        <div>
+            <div class="title-wrapper">
+                <a href="https://github.com/alfwro13/Stock_Analysis_Project" target="_blank" class="logo-link">
+                    <img src="/assets/logo_small.png" alt="Quantamental Logo" class="logo-img">
+                </a>
+                <h1>&#128200; Historical Stress Tester</h1>
+            </div>
+            <p class="page-subtitle">
+                Simulates your portfolio through historical crashes using
+                <abbr title="Beta-adjusted shock: each holding's expected drop = market crash % × its beta × a sector-specific multiplier. Holdings with β > 1 amplify the market move; defensive sectors are dampened.">beta-adjusted scenario shocks</abbr>
+                — see the monetary impact before the next crash, not after.
+            </p>
+            {% set active_page = 'tools' %}
+            {% include 'navbar.html' %}
+        </div>
+    </div>
+
+    <div class="report-container report-container-wide">
+
+        <a href="/tools" class="btn-back">&#8592; Back to Tools</a>
+
+        {# ── Scenario selector ── #}
+        <div class="sentiment-module module-cyan" style="margin-bottom:24px;">
+            <div style="padding:16px 20px 4px 20px;">
+                <h3 style="margin:0 0 12px 0;color:#00ffcc;font-size:13px;text-transform:uppercase;letter-spacing:1px;">
+                    1. Select a Crash Scenario
+                </h3>
+            </div>
+            <div style="padding:0 20px 20px 20px;">
+                <div class="stress-scenarios-grid" id="scenario-grid">
+
+                    <div class="stress-scenario-card selected" data-id="gfc_2008" onclick="selectScenario('gfc_2008')">
+                        <div class="sc-name">&#128308; GFC 2008–09</div>
+                        <div class="sc-drop">−57%</div>
+                        <div class="sc-recovery">~49 months to recover</div>
+                        <div class="sc-desc">US subprime collapse. Worst crash since 1929. Financials and Real Estate hardest hit.</div>
+                    </div>
+
+                    <div class="stress-scenario-card" data-id="dotcom_2000" onclick="selectScenario('dotcom_2000')">
+                        <div class="sc-name">&#128187; Dot-com 2000–02</div>
+                        <div class="sc-drop">−49%</div>
+                        <div class="sc-recovery">~84 months to recover</div>
+                        <div class="sc-desc">Internet bubble burst. NASDAQ fell 78%. Tech and Comms devastated; defensive sectors cushioned.</div>
+                    </div>
+
+                    <div class="stress-scenario-card" data-id="covid_2020" onclick="selectScenario('covid_2020')">
+                        <div class="sc-name">&#128567; COVID-19 2020</div>
+                        <div class="sc-drop">−34%</div>
+                        <div class="sc-recovery">~5 months to recover</div>
+                        <div class="sc-desc">Fastest 30% decline in S&amp;P history. Energy crushed; tech and healthcare relatively resilient.</div>
+                    </div>
+
+                    <div class="stress-scenario-card" data-id="inflation_2022" onclick="selectScenario('inflation_2022')">
+                        <div class="sc-name">&#128200; Inflation 2022</div>
+                        <div class="sc-drop">−25%</div>
+                        <div class="sc-recovery">~12 months to recover</div>
+                        <div class="sc-desc">Aggressive Fed tightening. Growth stocks crushed; energy surged. Tech and Comms worst hit.</div>
+                    </div>
+
+                    <div class="stress-scenario-card" data-id="custom" onclick="selectScenario('custom')">
+                        <div class="sc-name">&#9881; Custom Scenario</div>
+                        <div class="sc-drop" id="custom-drop-preview">−?%</div>
+                        <div class="sc-recovery">Your own shock</div>
+                        <div class="sc-desc">Enter any market drop %. No sector multipliers — pure beta shock across all holdings.</div>
+                    </div>
+
+                </div>
+
+                {# Custom drop input — only shown when custom selected #}
+                <div id="custom-row" style="display:none;margin-top:4px;padding:12px 16px;background:#111;border-radius:6px;border:1px solid #2a2a2a;">
+                    <label style="font-size:12px;color:#aaa;margin-right:10px;">Market drop %:</label>
+                    <input type="number" id="custom-drop-input" min="-99" max="-1" step="1" value="-30"
+                           style="width:80px;background:#1a1a1a;border:1px solid #333;color:#fff;padding:6px 8px;border-radius:4px;font-size:13px;font-family:monospace;"
+                           oninput="updateCustomPreview(this.value)">
+                    <span style="font-size:11px;color:#666;margin-left:8px;">Enter a negative value, e.g. −30 for a 30% market decline</span>
+                </div>
+            </div>
+        </div>
+
+        {# ── Account selector ── #}
+        {% set active_accounts = config.GHOSTFOLIO_ACCOUNTS.get('active', []) %}
+        {% set discovered_accounts = config.GHOSTFOLIO_ACCOUNTS.get('discovered', []) %}
+        {% set multi_account = discovered_accounts | length > 1 %}
+
+        {% if multi_account %}
+        <div class="sentiment-module module-cyan" style="margin-bottom:24px;">
+            <div style="padding:16px 20px;">
+                <h3 style="margin:0 0 10px 0;color:#00ffcc;font-size:13px;text-transform:uppercase;letter-spacing:1px;">2. Select Portfolio Scope</h3>
+                <select id="account-select" style="background:#1a1a1a;border:1px solid #333;color:#e0e0e0;padding:8px 12px;border-radius:4px;font-size:13px;min-width:220px;">
+                    <option value="all">All Accounts (combined)</option>
+                    {% for acc in discovered_accounts %}
+                        {% if acc.id in active_accounts %}
+                        <option value="{{ acc.id }}">{{ acc.name }}</option>
+                        {% endif %}
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        {% endif %}
+
+        {# ── Run button ── #}
+        <div style="display:flex;align-items:center;gap:14px;margin-bottom:28px;">
+            <button id="run-btn" class="btn btn-update" onclick="runStressTest()">&#9654; Run Stress Test</button>
+            <span id="run-status" style="font-size:12px;color:#888;"></span>
+        </div>
+
+        {# ── Results panel ── #}
+        <div id="results-panel" style="display:none;">
+
+            {# Summary headline #}
+            <div class="sentiment-module module-red" style="margin-bottom:24px;">
+                <div style="padding:20px 24px;">
+                    <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:16px;">
+                        <div>
+                            <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Estimated Portfolio Loss</div>
+                            <div class="stress-result-headline" id="result-loss-headline">—</div>
+                            <div class="stress-result-pct" id="result-loss-pct">—</div>
+                        </div>
+                        <div style="text-align:right;">
+                            <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Portfolio Value</div>
+                            <div style="font-size:18px;font-family:monospace;color:#aaa;" id="result-portfolio-value">—</div>
+                            <div style="font-size:11px;color:#555;margin-top:12px;">Scenario</div>
+                            <div style="font-size:13px;color:#888;font-weight:600;" id="result-scenario-name">—</div>
+                        </div>
+                    </div>
+
+                    <div id="result-recovery-row" style="margin-top:18px;padding-top:14px;border-top:1px solid rgba(255,77,77,0.2);display:none;">
+                        <span style="font-size:11px;color:#888;">Historical recovery time: </span>
+                        <span style="font-size:13px;color:#ffaa00;font-weight:600;" id="result-recovery">—</span>
+                        <span style="font-size:11px;color:#555;margin-left:16px;">Crash duration: </span>
+                        <span style="font-size:13px;color:#aaa;font-weight:600;" id="result-duration">—</span>
+                    </div>
+                </div>
+            </div>
+
+            {# Data warnings #}
+            <div id="result-warnings" style="display:none;margin-bottom:20px;">
+                <div class="sentiment-module module-yellow">
+                    <div style="padding:12px 16px;">
+                        <span style="font-size:12px;color:#ffaa00;font-weight:600;">&#9888; Data Warnings</span>
+                        <ul id="result-warnings-list" style="margin:6px 0 0 0;padding-left:18px;font-size:12px;color:#aaa;line-height:1.7;"></ul>
+                    </div>
+                </div>
+            </div>
+
+            {# Sector impact #}
+            <div class="sentiment-module module-cyan" style="margin-bottom:24px;">
+                <div style="padding:16px 20px 20px 20px;">
+                    <h3 style="margin:0 0 14px 0;color:#00ffcc;font-size:13px;text-transform:uppercase;letter-spacing:1px;">Sector Impact</h3>
+                    <div id="sector-bars"></div>
+                </div>
+            </div>
+
+            {# Holdings table #}
+            <div class="sentiment-module module-cyan">
+                <div style="padding:16px 20px 0 20px;">
+                    <h3 style="margin:0 0 12px 0;color:#00ffcc;font-size:13px;text-transform:uppercase;letter-spacing:1px;">
+                        Holdings Breakdown
+                        <span style="font-size:11px;color:#888;font-weight:normal;text-transform:none;letter-spacing:0;margin-left:8px;">sorted worst-first</span>
+                    </h3>
+                </div>
+                <div style="overflow-x:auto;padding:0 20px 20px 20px;">
+                    <table id="holdings-table" style="width:100%;border-collapse:collapse;font-size:12px;">
+                        <thead>
+                            <tr style="border-bottom:1px solid #333;">
+                                <th style="text-align:left;padding:8px 10px;color:#4da6ff;font-weight:600;">Ticker</th>
+                                <th style="text-align:left;padding:8px 10px;color:#4da6ff;font-weight:600;">Name</th>
+                                <th style="text-align:right;padding:8px 8px;color:#888;font-weight:600;">Weight</th>
+                                <th style="text-align:right;padding:8px 8px;color:#888;font-weight:600;"><abbr title="Beta measures how much the holding moves relative to the market. β=1.5 means 50% more volatile than the benchmark.">Beta</abbr></th>
+                                <th style="text-align:left;padding:8px 8px;color:#888;font-weight:600;">Sector</th>
+                                <th style="text-align:right;padding:8px 8px;color:#888;font-weight:600;"><abbr title="Sector multiplier: how much more or less the sector fell vs the market in this specific crash. 1.7 = 70% worse than market; -0.6 = actually gained.">Sect Mult</abbr></th>
+                                <th style="text-align:right;padding:8px 8px;color:#ffaa00;font-weight:600;"><abbr title="Estimated drop = market crash % × beta × sector multiplier. Capped at −95%.">Est. Drop</abbr></th>
+                                <th style="text-align:right;padding:8px 10px;color:#ff4d4d;font-weight:600;">Est. Loss</th>
+                            </tr>
+                        </thead>
+                        <tbody id="holdings-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+    <script>
+    (function () {
+        var selectedScenarioId = 'gfc_2008';
+        var baseCurrency = '{{ config.get("BASE_CURRENCY", "GBP") }}';
+
+        var currencySymbol = baseCurrency === 'GBP' ? '£'
+            : baseCurrency === 'USD' ? '$'
+            : baseCurrency === 'EUR' ? '€'
+            : baseCurrency;
+
+        function fmt(val) {
+            var abs = Math.abs(val);
+            if (abs >= 1000000) return currencySymbol + (val / 1000000).toFixed(2) + 'M';
+            if (abs >= 1000) return currencySymbol + (abs >= 10000
+                ? Math.round(val).toLocaleString()
+                : val.toLocaleString(undefined, { maximumFractionDigits: 0 })
+            );
+            return currencySymbol + val.toFixed(2);
+        }
+
+        window.selectScenario = function (id) {
+            selectedScenarioId = id;
+            document.querySelectorAll('.stress-scenario-card').forEach(function (el) {
+                el.classList.toggle('selected', el.getAttribute('data-id') === id);
+            });
+            document.getElementById('custom-row').style.display = (id === 'custom') ? 'block' : 'none';
+        };
+
+        window.updateCustomPreview = function (val) {
+            var n = parseFloat(val);
+            var el = document.getElementById('custom-drop-preview');
+            if (isNaN(n)) { el.textContent = '−?%'; return; }
+            el.textContent = (n >= 0 ? '+' : '') + n + '%';
+            el.style.color = n >= 0 ? '#4caf50' : '#ff4d4d';
+        };
+
+        window.runStressTest = function () {
+            var btn = document.getElementById('run-btn');
+            var status = document.getElementById('run-status');
+
+            var accountId = 'all';
+            var accountSelect = document.getElementById('account-select');
+            if (accountSelect) accountId = accountSelect.value;
+
+            var customDrop = null;
+            if (selectedScenarioId === 'custom') {
+                var raw = parseFloat(document.getElementById('custom-drop-input').value);
+                if (isNaN(raw) || raw >= 0) {
+                    status.textContent = 'Enter a negative drop % for the custom scenario.';
+                    status.style.color = '#ff4d4d';
+                    return;
+                }
+                customDrop = raw / 100;
+            }
+
+            btn.disabled = true;
+            btn.textContent = 'Running…';
+            status.textContent = 'Fetching portfolio data…';
+            status.style.color = '#888';
+            document.getElementById('results-panel').style.display = 'none';
+
+            fetch('/api/stress-test/run', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    account_id: accountId,
+                    scenario_id: selectedScenarioId,
+                    custom_drop: customDrop,
+                }),
+            })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                btn.disabled = false;
+                btn.textContent = '▶ Run Stress Test';
+                if (data.status !== 'success') {
+                    status.textContent = 'Error: ' + (data.message || 'Unknown error');
+                    status.style.color = '#ff4d4d';
+                    return;
+                }
+                status.textContent = 'Done.';
+                status.style.color = '#00ffcc';
+                renderResults(data.result);
+            })
+            .catch(function (e) {
+                btn.disabled = false;
+                btn.textContent = '▶ Run Stress Test';
+                status.textContent = 'Network error — check server logs.';
+                status.style.color = '#ff4d4d';
+                console.error(e);
+            });
+        };
+
+        function renderResults(r) {
+            var panel = document.getElementById('results-panel');
+            var sc = r.scenario;
+            var loss = r.estimated_loss;
+            var isGain = loss >= 0;
+
+            // Headline
+            var headlineEl = document.getElementById('result-loss-headline');
+            headlineEl.textContent = (isGain ? '+' : '') + fmt(loss);
+            headlineEl.className = 'stress-result-headline' + (isGain ? ' gain' : '');
+
+            var pctEl = document.getElementById('result-loss-pct');
+            pctEl.textContent = (isGain ? '+' : '') + r.estimated_loss_pct.toFixed(1) + '% of portfolio';
+            pctEl.className = 'stress-result-pct' + (isGain ? ' gain' : '');
+
+            document.getElementById('result-portfolio-value').textContent =
+                fmt(r.portfolio_value) + ' ' + r.portfolio_currency;
+            document.getElementById('result-scenario-name').textContent = sc.name || r.scenario_id;
+
+            // Recovery row
+            var recRow = document.getElementById('result-recovery-row');
+            if (sc.recovery_months || sc.duration_days) {
+                recRow.style.display = '';
+                document.getElementById('result-recovery').textContent =
+                    sc.recovery_months ? sc.recovery_months + ' months (historical avg)' : 'unknown';
+                document.getElementById('result-duration').textContent =
+                    sc.duration_days
+                        ? sc.duration_days + ' trading days ('
+                            + Math.round(sc.duration_days / 21) + ' months)'
+                        : 'unknown';
+            } else {
+                recRow.style.display = 'none';
+            }
+
+            // Warnings
+            var warnDiv = document.getElementById('result-warnings');
+            var warnList = document.getElementById('result-warnings-list');
+            if (r.data_warnings && r.data_warnings.length > 0) {
+                warnList.innerHTML = r.data_warnings.map(function (w) {
+                    return '<li>' + w + '</li>';
+                }).join('');
+                warnDiv.style.display = '';
+            } else {
+                warnDiv.style.display = 'none';
+            }
+
+            // Sector bars
+            renderSectorBars(r.sector_impact, r.portfolio_value);
+
+            // Holdings table
+            renderHoldingsTable(r.holdings, r.portfolio_currency);
+
+            panel.style.display = '';
+            panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        function renderSectorBars(sectors, portfolioValue) {
+            var container = document.getElementById('sector-bars');
+            if (!sectors || sectors.length === 0) {
+                container.innerHTML = '<span style="color:#555;font-size:12px;">No sector data available.</span>';
+                return;
+            }
+
+            // max absolute loss for scaling bars
+            var maxAbs = Math.max.apply(null, sectors.map(function (s) { return Math.abs(s.estimated_loss); })) || 1;
+
+            var html = '';
+            sectors.forEach(function (s) {
+                var isGain = s.estimated_loss >= 0;
+                var barPct = Math.min(100, Math.abs(s.estimated_loss) / maxAbs * 100);
+                var barColor = isGain ? '#4caf50' : '#ff4d4d';
+                var lossStr = (isGain ? '+' : '') + fmt(s.estimated_loss);
+                var lossColor = isGain ? '#4caf50' : '#ff8888';
+                var weightStr = (s.weight * 100).toFixed(1) + '%';
+
+                html += '<div class="stress-sector-bar-wrap">'
+                    + '<div class="stress-sector-label">'
+                    + '<span style="color:#555;">' + weightStr + '</span> '
+                    + s.sector
+                    + '</div>'
+                    + '<div class="stress-sector-bar-track">'
+                    + '<div class="stress-sector-bar-fill" style="width:' + barPct + '%;background:' + barColor + ';"></div>'
+                    + '</div>'
+                    + '<div class="stress-sector-loss-amt" style="color:' + lossColor + ';">' + lossStr + '</div>'
+                    + '</div>';
+            });
+            container.innerHTML = html;
+        }
+
+        function renderHoldingsTable(holdings, currency) {
+            var tbody = document.getElementById('holdings-tbody');
+            if (!holdings || holdings.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#555;">No holdings data.</td></tr>';
+                return;
+            }
+
+            var html = '';
+            holdings.forEach(function (h, idx) {
+                var isGain = h.estimated_loss >= 0;
+                var dropColor = h.estimated_drop_pct >= 0 ? '#4caf50'
+                    : h.estimated_drop_pct < -30 ? '#ff4d4d'
+                    : h.estimated_drop_pct < -15 ? '#ffaa00'
+                    : '#aaa';
+                var lossColor = isGain ? '#4caf50'
+                    : idx < 3 ? '#ff4d4d'
+                    : '#ff8888';
+                var rowBg = idx < 3 && !isGain ? 'background:rgba(255,77,77,.04);' : '';
+
+                var multColor = h.sector_multiplier > 1.3 ? '#ff8888'
+                    : h.sector_multiplier > 1.0 ? '#ffaa00'
+                    : h.sector_multiplier < 0 ? '#4caf50'
+                    : '#888';
+
+                html += '<tr style="border-bottom:1px solid #1a1a1a;' + rowBg + '" '
+                    + 'onmouseover="this.style.background=\'rgba(255,255,255,.03)\'" '
+                    + 'onmouseout="this.style.background=\'' + (idx < 3 && !isGain ? 'rgba(255,77,77,.04)' : '') + '\'">'
+                    + '<td style="padding:7px 10px;font-weight:700;">'
+                    + '<a href="/stock/' + h.symbol + '" style="color:#4da6ff;text-decoration:none;">' + h.symbol + '</a>'
+                    + '</td>'
+                    + '<td style="padding:7px 10px;color:#ccc;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + h.name + '</td>'
+                    + '<td style="text-align:right;padding:7px 8px;color:#888;font-family:monospace;">' + (h.weight * 100).toFixed(1) + '%</td>'
+                    + '<td style="text-align:right;padding:7px 8px;color:#aaa;font-family:monospace;">' + h.beta.toFixed(2) + '</td>'
+                    + '<td style="padding:7px 8px;color:#777;font-size:11px;">' + h.sector + '</td>'
+                    + '<td style="text-align:right;padding:7px 8px;font-family:monospace;color:' + multColor + ';">' + h.sector_multiplier.toFixed(2) + '×</td>'
+                    + '<td style="text-align:right;padding:7px 8px;font-family:monospace;color:' + dropColor + ';font-weight:700;">'
+                    + (h.estimated_drop_pct >= 0 ? '+' : '') + h.estimated_drop_pct.toFixed(1) + '%'
+                    + '</td>'
+                    + '<td style="text-align:right;padding:7px 10px;font-family:monospace;font-weight:700;color:' + lossColor + ';">'
+                    + (isGain ? '+' : '') + fmt(h.estimated_loss)
+                    + '</td>'
+                    + '</tr>';
+            });
+            tbody.innerHTML = html;
+        }
+    })();
+    </script>
+
+</body>
+</html>

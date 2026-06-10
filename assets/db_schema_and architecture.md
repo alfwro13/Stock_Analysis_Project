@@ -167,3 +167,10 @@ Tables added after initial schema creation. All managed via `database.py:init_db
 * **Purpose:** Audit log of ML model training runs — stores CV score and sample count per training event.
 * **Key Columns:** `id` (PK autoincrement), `model_name`, `trained_at`, `n_samples`, `cv_score_mean`, `cv_score_std`, `score_metric`.
 * **Note:** Created by `MacroAIEngine._ensure_training_log_table()` on first use, not by `database.py:init_db()`.
+
+---
+
+### Stateless Tools (no DB table)
+
+#### Historical Stress Tester (`stress_engine.py`)
+Results are computed on-demand and returned directly in the API response — **no table is written**. The engine reads per-ticker beta from `xray_risk_cache` and holdings from Ghostfolio's live API, applies pre-calibrated scenario shocks, and returns the monetary impact report. Run the X-ray nightly job first to ensure `xray_risk_cache` is populated with up-to-date betas.

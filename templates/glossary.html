@@ -301,6 +301,25 @@
                 </div>
             </details>
 
+            <details class="settings-card" id="stress-tester">
+                <summary>📉 Historical Stress Tester</summary>
+                <div class="term-box">
+                    <span class="term-title">Beta-Adjusted Scenario Shock</span>
+                    <p>The core formula used by the stress tester to estimate each holding's loss during a historical crash. Beta measures how much a stock amplifies (or dampens) the market's move: a stock with β=1.5 is expected to fall 50% more than the market on a down day.</p>
+                    <div class="rule">Holding Drop (%) = Market Crash % × Beta × Sector Multiplier</div>
+                    <p>The result is then multiplied by the holding's current value to produce a concrete monetary loss estimate in your base currency. Drops are capped at −95% to reflect that equity rarely goes to zero in a systemic crash.</p>
+                </div>
+                <div class="term-box">
+                    <span class="term-title">Sector Multiplier</span>
+                    <p>A per-sector adjustment that reflects how much more or less a given sector fell compared to the broad market during a specific historical crisis. A multiplier above 1.0 means the sector was hit harder than the index; below 1.0 means it held up better. A negative multiplier means the sector actually <em>gained</em> during the crash (e.g. Energy in the 2022 inflation shock).</p>
+                    <p>Examples from the Dot-com crash: Technology ×2.2 (NASDAQ fell 78% vs S&P's 49%), Consumer Defensive ×0.4 (fell far less than the market), Energy ×0.5.</p>
+                </div>
+                <div class="term-box">
+                    <span class="term-title">Why Not Historical Replay?</span>
+                    <p>The stress tester uses a parametric model rather than replaying actual historical prices for two reasons: (1) local price data only covers the past 2 years — the GFC, Dot-com crash, COVID crash, and 2022 shock are all outside this window; (2) many holdings (newer ETFs, recently-listed stocks) simply did not exist during those crashes. The beta-shock approach works for any holding regardless of listing date, and is transparent about its assumptions.</p>
+                </div>
+            </details>
+
             <details class="settings-card" id="fundamentals">
                 <summary>🏢 Fundamental Valuation (Company Health)</summary>
                 <div class="term-box">

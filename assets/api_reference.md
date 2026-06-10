@@ -1459,4 +1459,94 @@ Triggers an immediate news feed refresh in the background. Fetches news for all 
 
 ---
 
+---
+
+## 20. Historical Stress Tester
+
+Simulates portfolio impact during historical market crashes using a beta-adjusted scenario shock model. Each holding's estimated drop is computed as `market_drop × beta × sector_multiplier`. Sector multipliers are calibrated per scenario (e.g. Technology ×2.2 in the dot-com crash, Energy ×-0.6 in 2022). No historical price data is required — the model reads beta from `xray_risk_cache`. On-demand only; results are not persisted.
+
+### `GET /stress-test`
+
+HTML page. Renders the stress-test scenario selector, account scope picker, and results panel (populated by JS on demand).
+
+### `GET /api/stress-test/scenarios`
+
+Returns the full set of built-in scenarios.
+
+**Response**
+
+```json
+{
+  "status": "success",
+  "scenarios": {
+    "gfc_2008": {
+      "name": "Global Financial Crisis (2008–09)",
+      "market_drop": -0.57,
+      "duration_days": 517,
+      "recovery_months": 49,
+      "sector_multipliers": { "Financial Services": 1.8, "Technology": 1.1 },
+      "description": "..."
+    },
+    "dotcom_2000": { "market_drop": -0.49, ... },
+    "covid_2020":  { "market_drop": -0.34, ... },
+    "inflation_2022": { "market_drop": -0.25, ... },
+    "custom": { "description": "..." }
+  }
+}
+```
+
+### `POST /api/stress-test/run`
+
+Runs the stress simulation for the requested scenario and portfolio scope.
+
+**Request body**
+
+```json
+{
+  "account_id": "all",
+  "scenario_id": "gfc_2008",
+  "custom_drop": null
+}
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `account_id` | string | `"all"` | Ghostfolio account ID or `"all"` for the combined portfolio |
+| `scenario_id` | string | required | One of `gfc_2008`, `dotcom_2000`, `covid_2020`, `inflation_2022`, `custom` |
+| `custom_drop` | float \| null | `null` | Required when `scenario_id == "custom"`. Decimal e.g. `-0.30` for a 30% crash |
+
+**Response**
+
+```json
+{
+  "status": "success",
+  "result": {
+    "scenario": { "name": "...", "market_drop": -0.57, "recovery_months": 49 },
+    "scenario_id": "gfc_2008",
+    "account_id": "all",
+    "portfolio_value": 52300.00,
+    "portfolio_currency": "GBP",
+    "estimated_loss": -22450.00,
+    "estimated_loss_pct": -42.93,
+    "holdings": [
+      {
+        "symbol": "NVDA", "name": "NVIDIA Corporation",
+        "weight": 0.08, "value": 4184.0, "beta": 1.72,
+        "sector": "Technology", "sector_multiplier": 1.1,
+        "estimated_drop_pct": -107.9, "estimated_loss": -4515.3
+      }
+    ],
+    "sector_impact": [
+      { "sector": "Technology", "weight": 0.42, "estimated_loss": -12300.0 }
+    ],
+    "data_warnings": ["Beta not cached for 2 holding(s) — assumed β=1.0."],
+    "generated_at": "2026-06-10T14:30:00+00:00"
+  }
+}
+```
+
+Returns HTTP 400 if `scenario_id` is unknown or `custom_drop` is missing for a custom scenario.
+
+---
+
 *Generated: 2026-06-06 · Quantamental Dashboard*

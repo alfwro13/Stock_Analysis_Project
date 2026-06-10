@@ -753,3 +753,24 @@ details[open].xray-rec-group .xray-rec-group-summary::before { transform: rotate
 .xray-metric-value--xs { font-size: 13px; }
 .xray-metric-sublabel { margin-top: 6px; }
 .sentiment-module--spaced { margin-top: 24px; }
+
+/* ── Stress Test tool ────────────────────────────────────────────────────── */
+.stress-scenarios-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; margin-bottom: 24px; }
+.stress-scenario-card { background: #1a1a1a; border: 2px solid #2a2a2a; border-radius: 8px; padding: 16px; cursor: pointer; transition: border-color 0.2s, transform 0.15s; user-select: none; }
+.stress-scenario-card:hover { border-color: #555; transform: translateY(-2px); }
+.stress-scenario-card.selected { border-color: #00ffcc; background: #0d2a25; }
+.stress-scenario-card .sc-name { color: #00ffcc; font-size: 13px; font-weight: 700; margin-bottom: 6px; }
+.stress-scenario-card .sc-drop { font-size: 22px; font-weight: 700; color: #ff4d4d; font-family: monospace; margin-bottom: 4px; }
+.stress-scenario-card .sc-drop.positive { color: #4caf50; }
+.stress-scenario-card .sc-recovery { font-size: 11px; color: #888; margin-bottom: 8px; }
+.stress-scenario-card .sc-desc { font-size: 11px; color: #666; line-height: 1.4; }
+.stress-scenario-card.selected .sc-desc { color: #999; }
+.stress-result-headline { font-size: 2.8rem; font-weight: 700; color: #ff4d4d; font-family: monospace; line-height: 1; }
+.stress-result-headline.gain { color: #4caf50; }
+.stress-result-pct { font-size: 1.2rem; color: #ff8888; font-family: monospace; margin-top: 4px; }
+.stress-result-pct.gain { color: #81c784; }
+.stress-sector-bar-wrap { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.stress-sector-label { width: 160px; font-size: 11px; color: #aaa; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; }
+.stress-sector-bar-track { flex: 1; height: 12px; background: #111; border-radius: 4px; overflow: hidden; }
+.stress-sector-bar-fill { height: 100%; border-radius: 4px; transition: width 0.4s; }
+.stress-sector-loss-amt { width: 90px; font-size: 11px; text-align: right; font-family: monospace; flex-shrink: 0; }

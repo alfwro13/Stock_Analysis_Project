@@ -1102,6 +1102,18 @@ async def trap_monitor_page(request: Request):
     )
 
 
+@page_router.get("/stress-test", response_class=HTMLResponse)
+async def stress_test_page(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="stress_test.html",
+        context={
+            "unread_count": get_unread_count(),
+            "config": load_config(),
+        },
+    )
+
+
 @page_router.get("/ai-contagion", response_class=HTMLResponse)
 async def ai_contagion_page(request: Request):
     from smgb_predictor import get_ai_contagion_data
