@@ -198,6 +198,7 @@ def test_no_endpoint_returns_500(client):
         "/api/intraday-monitor/analysis/AAPL",
         "/api/smgb-prediction",
         "/api/trap-monitor/results",
+        "/api/macro-regime-allocation",
     ]
     failures = []
     for url in get_endpoints:

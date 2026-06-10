@@ -10,6 +10,8 @@ from regime_engine import (
     calculate_market_regime,
     get_latest_regime,
     calculate_systemic_macro_threat,
+    _classify_regime,
+    classify_macro_regime,
 )
 from constants import REGIME_CRASH_VOL, REGIME_VOLATILE_VOL
 
@@ -174,3 +176,121 @@ class TestMacroThreatVelocityRules:
         row = _run_macro(curr_tnx=4.20, past_tnx=4.00)
         assert row is not None
         assert abs(row["us_yield_velocity"] - 20.0) < 0.5
+
+
+class TestClassifyRegime:
+    """Unit tests for the pure _classify_regime() function — no DB needed."""
+
+    def test_risk_on_all_clear(self):
+        assert _classify_regime(0.50, 2.5, 300, 0, 1.2) == "Risk-On"
+
+    def test_risk_on_hmm_zero_positive_curve(self):
+        assert _classify_regime(0.80, 1.5, 250, 0, 2.0) == "Risk-On"
+
+    def test_late_cycle_flattening_curve_elevated_cpi(self):
+        assert _classify_regime(0.10, 3.5, 420, 1, 1.1) == "Late Cycle"
+
+    def test_late_cycle_curve_at_upper_boundary(self):
+        # 0.20 is the boundary — should still be Late Cycle when CPI > 3
+        assert _classify_regime(0.20, 3.2, 400, 0, 1.0) == "Late Cycle"
+
+    def test_stagflation_high_cpi_with_blown_spreads(self):
+        assert _classify_regime(0.30, 4.5, 550, 0, 0.5) == "Stagflation"
+
+    def test_stagflation_high_cpi_with_negative_real_yield(self):
+        assert _classify_regime(0.50, 4.1, 300, 0, -0.3) == "Stagflation"
+
+    def test_contraction_inverted_and_hmm_recession(self):
+        assert _classify_regime(-0.20, 2.5, 450, 2, 1.0) == "Contraction"
+
+    def test_contraction_inverted_blown_spreads_no_hmm(self):
+        # Spreads > 600 with inverted curve = Contraction regardless of HMM
+        assert _classify_regime(-0.10, 2.0, 650, 0, 1.0) == "Contraction"
+
+    def test_recovery_hmm_choppy_positive_curve(self):
+        assert _classify_regime(0.40, 2.0, 380, 1, 1.5) == "Recovery"
+
+    def test_risk_on_when_all_inputs_none(self):
+        # Must not raise; defaults to Risk-On
+        assert _classify_regime(None, None, None, None, None) == "Risk-On"
+
+    def test_stagflation_requires_both_cpi_and_stress(self):
+        # High CPI alone (no spread blow-out, positive real yield) does not trigger Stagflation
+        assert _classify_regime(0.50, 4.5, 350, 0, 1.0) == "Risk-On"
+
+    def test_late_cycle_not_triggered_below_cpi_threshold(self):
+        # Flattening curve but CPI under 3% → Risk-On, not Late Cycle
+        assert _classify_regime(0.10, 2.8, 350, 0, 1.0) == "Risk-On"
+
+
+class TestClassifyMacroRegime:
+    """Integration tests for classify_macro_regime() — verifies DB round-trip.
+
+    Uses a far-future sentinel date '2099-06-01' so it is always the most-recent
+    row in both macro_indicators and macro_regimes, regardless of what other tests
+    have inserted.
+    """
+
+    _DATE = "2099-06-01"
+
+    def _seed(self, us_yield_curve, us_cpi=2.5, us_hy_spread=300.0, us_real_yield=1.2):
+        conn = database.get_connection()
+        try:
+            conn.execute("DELETE FROM macro_indicators WHERE date=?", (self._DATE,))
+            conn.execute(
+                "INSERT INTO macro_indicators "
+                "(date, us_yield_curve, us_cpi_inflation, us_high_yield_spread, us_real_yield_10y) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (self._DATE, us_yield_curve, us_cpi, us_hy_spread, us_real_yield),
+            )
+            conn.execute("DELETE FROM macro_regimes WHERE date=?", (self._DATE,))
+            conn.execute(
+                "INSERT INTO macro_regimes (date, tnx_close, us_threat_level, uk_threat_level) "
+                "VALUES (?, 4.2, 'GREEN', 'GREEN')",
+                (self._DATE,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def _read_result(self):
+        conn = database.get_connection()
+        try:
+            row = conn.execute(
+                "SELECT regime_label, yield_curve_inverted, days_inverted "
+                "FROM macro_regimes WHERE date=?",
+                (self._DATE,),
+            ).fetchone()
+            return dict(row) if row else None
+        finally:
+            conn.close()
+
+    def test_writes_regime_label_to_db(self):
+        self._seed(us_yield_curve=0.50)
+        classify_macro_regime()
+        result = self._read_result()
+        assert result is not None
+        assert result["regime_label"] == "Risk-On"
+
+    def test_inverted_curve_sets_flag(self):
+        self._seed(us_yield_curve=-0.15)
+        classify_macro_regime()
+        result = self._read_result()
+        assert result is not None
+        assert result["yield_curve_inverted"] == 1
+
+    def test_positive_curve_clears_flag(self):
+        self._seed(us_yield_curve=0.40)
+        classify_macro_regime()
+        result = self._read_result()
+        assert result is not None
+        assert result["yield_curve_inverted"] == 0
+
+    def test_no_macro_indicators_does_not_raise(self):
+        conn = database.get_connection()
+        try:
+            conn.execute("DELETE FROM macro_indicators")
+            conn.commit()
+        finally:
+            conn.close()
+        classify_macro_regime()  # must not raise

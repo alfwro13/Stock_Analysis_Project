@@ -76,6 +76,16 @@ class TestFetchFredApi:
         expected_idx = pd.to_datetime(["2024-02-01", "2024-02-02"])
         assert list(df.index) == list(expected_idx)
 
+    def test_dfii10_uses_zero_day_lag(self):
+        """DFII10 (10-year TIPS real yield) is a daily market series — no publication lag."""
+        payload = _fred_payload("DFII10", [("2024-03-01", 1.85)])
+        session = _mock_session(json_body=payload)
+
+        df = fetch_fred_api(session, "DFII10", START, END, "dummy-key")
+
+        assert not df.empty
+        assert df.index[0] == pd.to_datetime("2024-03-01")
+
     def test_structural_series_applies_30_day_lag(self):
         """M2 / jobless-claims series must shift the index forward by 30 days."""
         payload = _fred_payload("WM2NS", [("2024-02-01", 21000.0)])
@@ -163,6 +173,22 @@ class TestFetchBoeData:
         session.get.side_effect = requests.exceptions.Timeout("timeout")
         df = fetch_boe_data(session, "LPMVWNM", START, END)
         assert df.empty
+
+    def test_lag_days_zero_produces_no_shift(self):
+        """lag_days=0 (used for Bank Rate IUDBEDR) must not shift dates."""
+        csv = "DATE,IUDBEDR\n2024-02-01,5.25\n"
+        session = _mock_session(text=csv)
+        df = fetch_boe_data(session, "IUDBEDR", START, END, lag_days=0)
+        assert not df.empty
+        assert df.index[0] == pd.to_datetime("2024-02-01")
+
+    def test_custom_lag_days_applied_correctly(self):
+        """Arbitrary lag_days value must shift the index by exactly that many days."""
+        csv = "DATE,LPMVWNM\n2024-02-01,2938000\n"
+        session = _mock_session(text=csv)
+        df = fetch_boe_data(session, "LPMVWNM", START, END, lag_days=7)
+        expected = pd.to_datetime("2024-02-01") + pd.DateOffset(days=7)
+        assert df.index[0] == expected
 
 
 # ──────────────────────────────────────────────────────────────────────────────

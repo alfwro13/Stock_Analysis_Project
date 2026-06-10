@@ -186,11 +186,24 @@ def test_market_regimes_has_required_columns():
 
 @pytest.mark.db
 def test_macro_regimes_has_required_columns():
-    """macro_regimes must record yield curve, DXY, and threat levels."""
+    """macro_regimes must record yield curve, DXY, threat levels, and regime classifier outputs."""
     cols = _columns("macro_regimes")
-    required = {"date", "tyx_close", "tnx_close", "dxy_close", "us_threat_level", "uk_threat_level"}
+    required = {
+        "date", "tyx_close", "tnx_close", "dxy_close",
+        "us_threat_level", "uk_threat_level",
+        "yield_curve_inverted", "days_inverted", "regime_label",
+    }
     missing = required - cols
     assert not missing, f"macro_regimes missing columns: {missing}"
+
+
+@pytest.mark.db
+def test_macro_indicators_has_new_rate_columns():
+    """macro_indicators must include Fed funds rate, TIPS real yield, and UK base rate."""
+    cols = _columns("macro_indicators")
+    required = {"us_fed_funds_rate", "us_real_yield_10y", "uk_base_rate"}
+    missing = required - cols
+    assert not missing, f"macro_indicators missing columns: {missing}"
 
 
 @pytest.mark.db
