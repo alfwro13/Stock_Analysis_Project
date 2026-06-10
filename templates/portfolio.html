@@ -71,6 +71,16 @@
     {% endif %}
 
     <div id="xray-panel">
+        {% if account_options and account_options | length > 1 %}
+        <div class="xray-account-bar">
+            <label class="xray-account-label">Account:</label>
+            <select class="context-selector xray-account-select" onchange="_loadXray(this.value)">
+                {% for opt in account_options %}
+                <option value="{{ opt.id }}" {% if selected_account == opt.id %}selected{% endif %}>{{ opt.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endif %}
         <div id="xray-loading" class="xray-loading">
             <div class="xray-spinner"></div>
             Computing X-ray analysis&hellip;
@@ -484,6 +494,20 @@
             var btnNo  = document.getElementById('ma-cash-btn-no');
             if (btnYes) btnYes.className = 'ma-cash-btn' + (val === 'yes' ? ' active'    : '');
             if (btnNo)  btnNo.className  = 'ma-cash-btn' + (val === 'no'  ? ' active-no' : '');
+            // Update cash delta text
+            var deltaEl = document.getElementById('ma-cash-delta-text');
+            if (deltaEl && window._macroAllocData && window._macroAllocData.fmtAmt) {
+                var d   = window._macroAllocData;
+                var fmt = d.fmtAmt;
+                if (val === 'yes') {
+                    deltaEl.className = 'ma-cash-delta-ok';
+                    deltaEl.textContent = 'On target ✓';
+                } else {
+                    var isShort = d.cashDelta < 0;
+                    deltaEl.className = isShort ? 'ma-cash-delta-short' : 'ma-cash-delta-ok';
+                    deltaEl.textContent = fmt(Math.abs(d.cashDelta)) + (isShort ? ' SHORT' : ' SURPLUS');
+                }
+            }
             // Re-plot allocation chart: include cash at ideal level when user confirms on-target
             if (window._macroAllocData) {
                 var c = window._macroAllocData.current
@@ -574,13 +598,14 @@
                   color: sigs.us_high_yield_spread > 600 ? '#ff4444' : sigs.us_high_yield_spread > 400 ? '#ffcc00' : '#00ffcc',
                   abbr: 'US High-Yield OAS spread. Above 600 bps = financial distress.' },
                 { label:'Real Yield (10y TIPS)', v: sigs.us_real_yield_10y,
-                  disp: sigs.us_real_yield_10y != null ? (sigs.us_real_yield_10y > 0 ? '+' : '') + fN(sigs.us_real_yield_10y) + '%' : '—',
-                  note: sigs.us_real_yield_10y == null ? '—' : sigs.us_real_yield_10y < 0 ? 'Negative — stagflation' : 'Positive',
+                  disp: sigs.us_real_yield_10y != null ? (sigs.us_real_yield_10y > 0 ? '+' : '') + fN(sigs.us_real_yield_10y) + '%' : null,
+                  note: sigs.us_real_yield_10y == null ? null : sigs.us_real_yield_10y < 0 ? 'Negative — stagflation' : 'Positive',
                   color: sigs.us_real_yield_10y != null && sigs.us_real_yield_10y < 0 ? '#ff9900' : '#00ffcc',
                   abbr: '10-year TIPS yield. Negative = bonds cannot keep pace with inflation — classic stagflation signal.' }
             ];
             var sigHtml = '<div class="ma-signals-grid">';
             sigDefs.forEach(function(c) {
+                if (c.disp == null) return;  // skip cards with no data
                 sigHtml += '<div class="ma-signal-card">'
                     + '<div class="ma-signal-label"><abbr title="' + c.abbr + '">' + c.label + '</abbr></div>'
                     + '<div class="ma-signal-value" style="color:' + c.color + '">' + c.disp + '</div>'
@@ -619,7 +644,7 @@
             if (totalValue > 0) {
                 html += '<div class="ma-cash-row"><span>You hold:</span><span>' + fmtAmt(cashHeld) + ' (' + (cashHeld / totalValue * 100).toFixed(1) + '%)</span></div>'
                     + '<div class="ma-cash-row"><span>Regime target:</span><span>' + fmtAmt(idealCashAmt) + ' (' + idealCashPct.toFixed(1) + '%)</span></div>'
-                    + '<div class="ma-cash-row"><span>You are:</span><span class="' + (cashDelta < 0 ? 'ma-cash-delta-short' : 'ma-cash-delta-ok') + '">'
+                    + '<div class="ma-cash-row"><span>You are:</span><span id="ma-cash-delta-text" class="' + (cashDelta < 0 ? 'ma-cash-delta-short' : 'ma-cash-delta-ok') + '">'
                     + fmtAmt(Math.abs(cashDelta)) + (cashDelta < 0 ? ' SHORT' : ' SURPLUS') + '</span></div>';
             } else {
                 html += '<div class="ma-cash-row"><span style="color:#888">Portfolio value unavailable — connect Ghostfolio to see cash guidance.</span></div>';
@@ -661,7 +686,10 @@
             window._macroAllocData = {
                 ideal: ideal,
                 current: curr,
-                originalCash: curr ? (curr.cash || 0) : 0
+                originalCash: curr ? (curr.cash || 0) : 0,
+                cashDelta: cashDelta,
+                idealCashAmt: idealCashAmt,
+                fmtAmt: fmtAmt
             };
             return { html: html, history: history, ideal: ideal, current: curr };
         }
@@ -871,6 +899,9 @@
                 if (macroResult.history && macroResult.history.length > 1) {
                     _plotMacroHistory('xray-ma-history-chart', macroResult.history);
                 }
+                // Restore cash toggle state from localStorage (applies chart + text updates)
+                var savedCash = localStorage.getItem('macro_cash_ok');
+                if (savedCash) { _setCashStatus(savedCash); }
             }
         }
 

@@ -801,6 +801,9 @@ details[open].xray-rec-group .xray-rec-group-summary::before { transform: rotate
 .ma-alloc-table td { padding: 8px 10px; border-bottom: 1px solid #1a1a1a; color: #ccc; }
 .ma-alloc-table tbody tr:hover { background: #161616; }
 .ma-note { font-size: 12px; color: #666; font-style: italic; margin: 8px 0 0 0; }
+.xray-account-bar { display: flex; align-items: center; gap: 10px; padding: 10px 0 4px 0; }
+.xray-account-label { font-size: 0.85rem; color: #888; }
+.xray-account-select { background: #1a1a1a; color: #ccc; border: 1px solid #333; border-radius: 4px; padding: 4px 8px; font-size: 0.85rem; }
 .ma-traffic-strip { display: flex; gap: 8px; margin: 12px 0 18px 0; }
 .ma-traffic-box { flex: 1; padding: 8px 4px; border-radius: 6px; text-align: center; font-size: 0.73rem; font-weight: 600; border: 2px solid currentColor; opacity: 0.22; transition: opacity 0.2s; cursor: default; }
 .ma-traffic-box.active { opacity: 1; box-shadow: 0 0 10px currentColor; }
