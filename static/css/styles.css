@@ -774,3 +774,30 @@ details[open].xray-rec-group .xray-rec-group-summary::before { transform: rotate
 .stress-sector-bar-track { flex: 1; height: 12px; background: #111; border-radius: 4px; overflow: hidden; }
 .stress-sector-bar-fill { height: 100%; border-radius: 4px; transition: width 0.4s; }
 .stress-sector-loss-amt { width: 90px; font-size: 11px; text-align: right; font-family: monospace; flex-shrink: 0; }
+
+/* ── Macro Regime Allocator ──────────────────────────────────────────────── */
+.ma-loading-state { padding: 40px; text-align: center; color: #888; }
+.ma-regime-banner { border: 2px solid #00ffcc; border-radius: 10px; padding: 18px 22px; margin-bottom: 24px; background: #0d1f1a; }
+.ma-regime-badge { display: inline-block; border-radius: 6px; padding: 4px 14px; font-size: 16px; font-weight: 700; letter-spacing: 0.5px; margin-right: 12px; }
+.ma-regime-date { font-size: 11px; color: #888; }
+.ma-regime-desc { margin-top: 10px; color: #ccc; font-size: 13px; line-height: 1.5; }
+.ma-threat-row { margin-top: 10px; font-size: 12px; color: #888; }
+.ma-two-col { display: grid; grid-template-columns: 1fr auto; gap: 16px; margin-bottom: 16px; }
+.ma-panel { background: #111; border: 1px solid #2a2a2a; border-radius: 8px; padding: 18px 20px; margin-bottom: 16px; }
+.ma-score-panel { min-width: 180px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.ma-panel-title { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #888; margin: 0 0 16px 0; }
+.ma-signals-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
+.ma-signal-card { background: #0d0d0d; border: 1px solid #2a2a2a; border-radius: 6px; padding: 14px 16px; }
+.ma-signal-label { font-size: 11px; color: #888; margin-bottom: 6px; }
+.ma-signal-value { font-size: 22px; font-weight: 700; font-family: monospace; line-height: 1.1; }
+.ma-signal-note { font-size: 11px; margin-top: 4px; }
+.ma-score-value { font-size: 48px; font-weight: 700; font-family: monospace; line-height: 1; }
+.ma-score-unit { font-size: 18px; color: #888; }
+.ma-score-label { font-size: 11px; color: #888; margin-top: 6px; }
+.ma-score-na { font-size: 12px; color: #666; line-height: 1.5; }
+.ma-chart-area { width: 100%; height: 280px; margin-bottom: 16px; }
+.ma-alloc-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.ma-alloc-table th { text-align: left; color: #888; font-size: 11px; text-transform: uppercase; padding: 6px 10px; border-bottom: 1px solid #2a2a2a; }
+.ma-alloc-table td { padding: 8px 10px; border-bottom: 1px solid #1a1a1a; color: #ccc; }
+.ma-alloc-table tbody tr:hover { background: #161616; }
+.ma-note { font-size: 12px; color: #666; font-style: italic; margin: 8px 0 0 0; }

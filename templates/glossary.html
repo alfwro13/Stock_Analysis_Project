@@ -71,6 +71,15 @@
                     <p>A macro filter using EWMA realized volatility of SPY and FTSE. VIX is shown alongside for reference but is not part of the regime signal. Classifies market into Normal, Volatile, or Crash regimes.</p>
                 </div>
                 <div class="term-box">
+                    <span class="term-title">🌍 Macro Regime Label (Yield Curve Allocator)</span>
+                    <p>A single named state synthesised from yield curve shape, CPI inflation, high-yield credit spreads, the 10-year TIPS real yield, and the HMM hidden state. Five labels are defined: <strong>Risk-On</strong> (positive curve, low inflation, tight spreads), <strong>Late Cycle</strong> (flattening curve, rising CPI), <strong>Stagflation</strong> (high CPI with financial stress or negative real yield), <strong>Contraction</strong> (inverted curve plus recession-mode HMM), and <strong>Recovery</strong> (transitioning out of contraction with improving HMM).</p>
+                    <div class="rule">Computed by <code>regime_engine.classify_macro_regime()</code> each time the systemic threat calculator runs. Stored as <code>regime_label</code> in <code>macro_regimes</code>. Powers the Macro Regime Allocator tool at <code>/macro-allocator</code>.</div>
+                </div>
+                <div class="term-box">
+                    <span class="term-title">Portfolio Regime Alignment Score</span>
+                    <p>A 0–100 score measuring how closely your current asset class weights (equities, bonds, commodities, cash) match the historically optimal weights for the detected macro regime. Computed using cosine similarity between the current allocation vector and the ideal allocation midpoint vector. 100 = perfect match; below 50 = meaningfully misaligned. The score is informational — it does not account for individual conviction, tax, or liquidity constraints.</p>
+                </div>
+                <div class="term-box">
                     <span class="term-title">Isolation Forest Anomaly Score</span>
                     <p>An unsupervised machine learning signal that detects when a stock is behaving in a statistically unusual way across <strong>six simultaneous dimensions</strong>: intraday volume relative to its 20-day average, RSI momentum, daily return percentage, distance from the 50-day SMA, 20-day historical volatility, and beta-adjusted market sensitivity. Unlike a single-threshold rule (e.g. "volume > 1.5×"), the Isolation Forest notices compound anomalies — for example, a volume spike that would be unremarkable on its own, but is occurring alongside an RSI divergence and an SMA break simultaneously.</p>
                     <p>The model is trained separately for each ticker on approximately one year of daily data, so it learns what <em>normal</em> looks like specifically for that stock, not the broad market. The output is a score between <strong>0.00 and 1.00</strong>:</p>

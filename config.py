@@ -357,6 +357,13 @@ DEFAULT_CONFIG = {
             "dividend_yield_min_pct": 1.5
         }
     },
+    "REGIME_TARGETS": {
+        "Risk-On":     {"equities": [65.0, 80.0], "bonds": [5.0, 20.0],  "commodities": [0.0, 10.0], "cash": [0.0, 10.0]},
+        "Late Cycle":  {"equities": [50.0, 65.0], "bonds": [20.0, 35.0], "commodities": [5.0, 15.0], "cash": [5.0, 15.0]},
+        "Stagflation": {"equities": [30.0, 45.0], "bonds": [10.0, 25.0], "commodities": [15.0, 25.0], "cash": [15.0, 25.0]},
+        "Contraction": {"equities": [20.0, 35.0], "bonds": [40.0, 55.0], "commodities": [0.0, 10.0],  "cash": [20.0, 30.0]},
+        "Recovery":    {"equities": [55.0, 70.0], "bonds": [15.0, 30.0], "commodities": [5.0, 15.0],  "cash": [5.0, 15.0]}
+    },
     "FILE_LOGGING": {
         "ENABLED": False,
         "LEVEL": "INFO",

@@ -1549,4 +1549,54 @@ Returns HTTP 400 if `scenario_id` is unknown or `custom_drop` is missing for a c
 
 ---
 
+## 21. Macro Regime & Yield Curve Allocator
+
+Synthesises live macro signals (yield curve, CPI, HY credit spread, real yield, HMM state) into a named economic regime label and returns the historically optimal asset class allocation for that regime. Requires the Macro Data Engine to have run at least once (`POST /api/macro/run-pipeline`). Portfolio alignment requires Ghostfolio to be configured.
+
+### `GET /macro-allocator`
+
+HTML page. Renders the regime banner, signal cards, allocation bar chart (current vs ideal), alignment score, and 90-day regime history. Data is fetched client-side from `/api/macro-regime-allocation`.
+
+### `GET /api/macro-regime-allocation`
+
+Returns the full regime allocation payload.
+
+**Response:**
+```json
+{
+  "status": "ok",
+  "regime_label": "Late Cycle",
+  "regime_date": "2026-06-10",
+  "yield_curve_inverted": false,
+  "days_inverted": 0,
+  "us_threat_level": "YELLOW",
+  "uk_threat_level": "GREEN",
+  "key_signals": {
+    "us_yield_curve": 0.14,
+    "us_cpi_inflation": 3.8,
+    "us_high_yield_spread": 380.0,
+    "us_fed_funds_rate": 5.33,
+    "us_real_yield_10y": 1.85,
+    "uk_base_rate": 5.25
+  },
+  "ideal_allocation": { "equities": 57.5, "bonds": 27.5, "commodities": 10.0, "cash": 10.0 },
+  "regime_ranges": {
+    "equities": [50.0, 65.0], "bonds": [20.0, 35.0], "commodities": [5.0, 15.0], "cash": [5.0, 15.0]
+  },
+  "current_allocation": { "equities": 71.2, "bonds": 8.3, "commodities": 2.1, "cash": 18.4 },
+  "alignment_score": 62,
+  "rebalance_deltas": { "equities": -13.7, "bonds": 19.2, "commodities": 7.9, "cash": -8.4 },
+  "portfolio_note": null,
+  "regime_history": [
+    { "date": "2026-06-10", "regime_label": "Late Cycle" }
+  ]
+}
+```
+
+`current_allocation`, `alignment_score`, and `rebalance_deltas` are `null` when Ghostfolio is not configured; `portfolio_note` then contains a human-readable explanation. Returns `{"status": "no_data"}` if the macro data engine has never run.
+
+Rate limit: 30/minute.
+
+---
+
 *Generated: 2026-06-06 · Quantamental Dashboard*

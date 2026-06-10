@@ -1114,6 +1114,15 @@ async def stress_test_page(request: Request):
     )
 
 
+@page_router.get("/macro-allocator", response_class=HTMLResponse)
+async def macro_allocator_page(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="macro_allocator.html",
+        context={"unread_count": get_unread_count()},
+    )
+
+
 @page_router.get("/ai-contagion", response_class=HTMLResponse)
 async def ai_contagion_page(request: Request):
     from smgb_predictor import get_ai_contagion_data

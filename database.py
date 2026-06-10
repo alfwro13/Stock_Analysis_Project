@@ -693,7 +693,10 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
         'us_yield_velocity': 'REAL',
         'us_threat_level': 'TEXT',
         'uk_yield_velocity': 'REAL',
-        'uk_threat_level': 'TEXT'
+        'uk_threat_level': 'TEXT',
+        'yield_curve_inverted': 'INTEGER',
+        'days_inverted': 'INTEGER',
+        'regime_label': 'TEXT'
     }
 
     for col_name, data_type in required_macro_columns.items():
@@ -732,7 +735,10 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
         'us_m2': 'REAL', 'us_jobless_claims': 'REAL', 'us_high_yield_spread': 'REAL',
         'us_yield_curve': 'REAL', 'uk_m4': 'REAL', 'uk_corporate_spread': 'REAL',
         'uk_cpi_inflation': 'REAL', 'uk_claimant_count': 'REAL',
-        'us_cpi_inflation': 'REAL'
+        'us_cpi_inflation': 'REAL',
+        'us_fed_funds_rate': 'REAL',
+        'us_real_yield_10y': 'REAL',
+        'uk_base_rate': 'REAL'
     }
 
     for col_name, data_type in required_indicator_columns.items():

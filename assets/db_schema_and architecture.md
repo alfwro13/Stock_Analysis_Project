@@ -44,16 +44,16 @@ The SQLite database acts as the central brain of the dashboard. It uses a star-l
 * **Key Columns:** `date` (PK), `vix_close`, `spy_volatility`, `us_turbulence`, `us_regime_label`, `uk_turbulence`, `uk_regime_label`, `ai_hmm_state`.
 
 #### `macro_regimes`
-* **Purpose:** Dual-region tracker for systemic threat levels derived from sovereign bond yields and exchange rates.
-* **Key Columns:** `date` (PK), `tyx_close`, `tnx_close`, `dxy_close`, `uk_gilt_close`, `us_yield_velocity`, `us_threat_level`, `uk_threat_level`.
+* **Purpose:** Dual-region tracker for systemic threat levels derived from sovereign bond yields and exchange rates. Also stores the synthesised macro regime label computed by `regime_engine.classify_macro_regime()`.
+* **Key Columns:** `date` (PK), `tyx_close`, `tnx_close`, `dxy_close`, `uk_gilt_close`, `us_yield_velocity`, `us_threat_level`, `uk_threat_level`, `yield_curve_inverted` (0/1), `days_inverted` (consecutive day streak), `regime_label` (one of: Risk-On, Late Cycle, Stagflation, Contraction, Recovery).
 
 #### `macro_calendar`
 * **Purpose:** Tracks Tier-1 economic events, their ground-truth effects on the SPY, and AI-predicted volatility warnings.
 * **Key Columns:** `event_id` (PK), `event_date`, `event_name`, `forecast_val`, `previous_val`, `actual_val`, `post_event_spy_gap`, `ai_volatility_warning`, `ai_consensus_miss_prob`.
 
 #### `macro_indicators`
-* **Purpose:** A structural economic datastore integrating FRED, BoE, and ONS metrics (M2 Supply, Jobless Claims, Yield Curve).
-* **Key Columns:** `date` (PK), `us_m2`, `us_jobless_claims`, `us_high_yield_spread`, `us_yield_curve`, `uk_m4`, `uk_corporate_spread`.
+* **Purpose:** A structural economic datastore integrating FRED, BoE, and ONS metrics (M2 Supply, Jobless Claims, Yield Curve, CPI, Fed Funds Rate, real yield).
+* **Key Columns:** `date` (PK), `us_m2`, `us_jobless_claims`, `us_high_yield_spread`, `us_yield_curve`, `uk_m4`, `uk_corporate_spread`, `us_cpi_inflation`, `us_fed_funds_rate` (FEDFUNDS), `us_real_yield_10y` (DFII10 TIPS), `uk_base_rate` (IUDBEDR).
 
 ---
 

@@ -584,9 +584,27 @@ async def trigger_macro_init_endpoint(request: Request, background_tasks: Backgr
 async def trigger_macro_run_endpoint(request: Request, background_tasks: BackgroundTasks):
     background_tasks.add_task(bg_run_macro_pipeline)
     return JSONResponse(content={
-        "status": "success", 
+        "status": "success",
         "message": "Macro AI Run initiated in the background. Check notifications."
     })
+
+
+@api_router.get("/macro-regime-allocation")
+@limiter.limit("30/minute")
+async def get_macro_regime_allocation(request: Request):
+    """
+    Returns the current macro regime label, key driving signals, ideal asset class
+    allocation for that regime, current portfolio allocation (requires Ghostfolio),
+    an alignment score 0–100, and the last 90 days of regime history.
+    """
+    from macro_allocator_engine import get_macro_allocation_data
+    try:
+        data = get_macro_allocation_data()
+        return JSONResponse(content=data)
+    except Exception as e:
+        logger.error("macro-regime-allocation error: %s", e)
+        return JSONResponse(status_code=500, content={"status": "error", "message": "Internal error — check server logs."})
+
 
 # --- MODULAR ML ENDPOINTS ---
 @api_router.post("/ml/trigger-backfill")

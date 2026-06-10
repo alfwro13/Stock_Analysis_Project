@@ -96,6 +96,104 @@ def calculate_market_regime() -> None:
     except Exception as e:
         logger.error("Fatal error calculating market regime: %s", e)
 
+def _classify_regime(
+    us_yield_curve: Optional[float],
+    us_cpi: Optional[float],
+    us_hy_spread: Optional[float],
+    ai_hmm_state: Optional[int],
+    us_real_yield: Optional[float],
+) -> str:
+    """Returns a named macro regime label based on the provided signal values."""
+    inverted = us_yield_curve is not None and us_yield_curve < 0
+
+    # Stagflation: persistent inflation + financial stress or negative real yield
+    if us_cpi is not None and us_cpi > 4.0:
+        if (us_hy_spread is not None and us_hy_spread > 500) or \
+                (us_real_yield is not None and us_real_yield < 0):
+            return "Stagflation"
+
+    # Contraction: inverted yield curve + recession-mode HMM or blown spreads
+    if inverted:
+        if ai_hmm_state == 2 or (us_hy_spread is not None and us_hy_spread > 600):
+            return "Contraction"
+
+    # Late Cycle: flattening curve with elevated CPI
+    if us_yield_curve is not None and 0.0 <= us_yield_curve <= 0.20:
+        if us_cpi is not None and us_cpi > 3.0:
+            return "Late Cycle"
+
+    # Recovery: HMM transitioning (choppy) with positive curve
+    if ai_hmm_state == 1 and not inverted:
+        return "Recovery"
+
+    return "Risk-On"
+
+
+def classify_macro_regime() -> None:
+    """Reads latest macro signals, computes regime label + inversion streak, writes to macro_regimes."""
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            "SELECT us_yield_curve, us_cpi_inflation, us_high_yield_spread, us_real_yield_10y "
+            "FROM macro_indicators WHERE us_yield_curve IS NOT NULL ORDER BY date DESC LIMIT 1"
+        )
+        ind_row = cursor.fetchone()
+        if not ind_row:
+            logger.warning("classify_macro_regime: no macro_indicators data available.")
+            return
+
+        us_yield_curve = ind_row['us_yield_curve']
+        us_cpi = ind_row['us_cpi_inflation']
+        us_hy_spread = ind_row['us_high_yield_spread']
+        us_real_yield = ind_row['us_real_yield_10y']
+
+        cursor.execute("SELECT ai_hmm_state FROM market_regimes ORDER BY date DESC LIMIT 1")
+        hmm_row = cursor.fetchone()
+        ai_hmm_state = hmm_row['ai_hmm_state'] if hmm_row and hmm_row['ai_hmm_state'] is not None else None
+
+        # Count consecutive days with inverted yield curve (most recent streak)
+        cursor.execute(
+            "SELECT us_yield_curve FROM macro_indicators "
+            "WHERE us_yield_curve IS NOT NULL ORDER BY date DESC LIMIT 365"
+        )
+        history = [r['us_yield_curve'] for r in cursor.fetchall()]
+        days_inverted = 0
+        for val in history:
+            if val < 0:
+                days_inverted += 1
+            else:
+                break
+
+        currently_inverted = us_yield_curve is not None and us_yield_curve < 0
+        regime_label = _classify_regime(us_yield_curve, us_cpi, us_hy_spread, ai_hmm_state, us_real_yield)
+
+        cursor.execute("SELECT date FROM macro_regimes ORDER BY date DESC LIMIT 1")
+        date_row = cursor.fetchone()
+        if not date_row:
+            logger.warning("classify_macro_regime: no macro_regimes row to update.")
+            return
+
+        cursor.execute(
+            "UPDATE macro_regimes SET yield_curve_inverted=?, days_inverted=?, regime_label=? WHERE date=?",
+            (1 if currently_inverted else 0, days_inverted, regime_label, date_row['date'])
+        )
+        conn.commit()
+        logger.info(
+            "Macro regime: %s | Inverted: %s | Days inverted: %d",
+            regime_label, currently_inverted, days_inverted,
+        )
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        logger.error("classify_macro_regime failed: %s", e)
+    finally:
+        if conn:
+            conn.close()
+
+
 def get_latest_regime() -> Optional[Dict[str, Any]]:
     conn = None
     try:
@@ -202,6 +300,8 @@ def calculate_systemic_macro_threat() -> None:
         finally:
             if conn:
                 conn.close()
+
+        classify_macro_regime()
 
     except Exception as e:
         logger.error("Fatal crash inside systemic threat calculator: %s", e)

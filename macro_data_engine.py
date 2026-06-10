@@ -65,7 +65,7 @@ def fetch_fred_api(session: requests.Session, series_id: str, start_date: dateti
         
         # Daily market metrics (Credit Spreads/Yield Curves) are instant. 
         # Structural economic data (M2/Claims) lags by ~30 days.
-        lag_days = 0 if series_id in ['BAMLH0A0HYM2', 'BAMLHE00EHYIOAS', 'T10Y2Y'] else 30
+        lag_days = 0 if series_id in ['BAMLH0A0HYM2', 'BAMLHE00EHYIOAS', 'T10Y2Y', 'DFII10'] else 30
         df['publication_date'] = df['date'] + pd.DateOffset(days=lag_days)
         
         df.dropna(subset=['publication_date'], inplace=True)
@@ -78,34 +78,33 @@ def fetch_fred_api(session: requests.Session, series_id: str, start_date: dateti
         logger.error(f"Failed to fetch FRED {series_id}: {e}")
         return pd.DataFrame()
 
-def fetch_boe_data(session: requests.Session, series_code: str, start_date: datetime, end_date: datetime) -> pd.DataFrame:
+def fetch_boe_data(session: requests.Session, series_code: str, start_date: datetime, end_date: datetime, lag_days: int = 30) -> pd.DataFrame:
     fmt_start = start_date.strftime("%d/%b/%Y")
     fmt_end = end_date.strftime("%d/%b/%Y")
-    
+
     url = (
         f"https://www.bankofengland.co.uk/boeapps/database/_iadb-FromShowColumns.asp?"
         f"csv.x=yes&Datefrom={fmt_start}&Dateto={fmt_end}&SeriesCodes={series_code}"
         f"&CSVF=TN&UsingCodes=Y&VPD=Y&VFD=N"
     )
-    
+
     try:
         response = session.get(url, timeout=30)
         response.raise_for_status()
-        
+
         if "<html" in response.text.lower():
             logger.error(f"BoE returned HTML instead of CSV for {series_code}.")
             return pd.DataFrame()
 
         df = pd.read_csv(io.StringIO(response.text))
-        
+
         if df.empty or 'DATE' not in df.columns:
             return pd.DataFrame()
-            
+
         df['DATE'] = pd.to_datetime(df['DATE'], errors='coerce')
-        
-        # [LOOKAHEAD BIAS RESOLVED] Apply a realistic 30-day publication lag for BoE M4 Supply
-        df['PUBLICATION_DATE'] = df['DATE'] + pd.DateOffset(days=30)
-        
+
+        df['PUBLICATION_DATE'] = df['DATE'] + pd.DateOffset(days=lag_days)
+
         df.dropna(subset=['PUBLICATION_DATE'], inplace=True)
         df.set_index('PUBLICATION_DATE', inplace=True)
         
@@ -185,16 +184,20 @@ def update_macro_indicators() -> None:
         # rewrite of the existing >3.0% circuit breaker threshold logic.
         # Alternative Option: Another option could be to use `GBPUSD=X` divergence + UK Gilt spread 
         # as an intermarket proxy, but that would require heavier downstream cross-engine calculation.
-        fred_tickers = ['WM2NS', 'ICSA', 'BAMLH0A0HYM2', 'BAMLHE00EHYIOAS', 'T10Y2Y', 'CPIAUCSL']
+        fred_tickers = ['WM2NS', 'ICSA', 'BAMLH0A0HYM2', 'BAMLHE00EHYIOAS', 'T10Y2Y', 'CPIAUCSL', 'FEDFUNDS', 'DFII10']
         for ticker in fred_tickers:
             df = fetch_fred_api(session, ticker, start_dt, end_dt, fred_api_key)
             if not df.empty:
                 dfs.append(df)
-            
+
     logger.info("Fetching Bank of England IADB Data (2-Year History)...")
     df_boe = fetch_boe_data(session, 'LPMVWNM', start_dt, end_dt)
     if not df_boe.empty:
         dfs.append(df_boe)
+
+    df_boe_rate = fetch_boe_data(session, 'IUDBEDR', start_dt, end_dt, lag_days=0)
+    if not df_boe_rate.empty:
+        dfs.append(df_boe_rate)
         
     logger.info("Fetching UK ONS Taxonomy Data (2-Year History)...")
     for ticker in ONS_TAXONOMY.keys():
@@ -224,9 +227,12 @@ def update_macro_indicators() -> None:
             float(row['BAMLHE00EHYIOAS']) if 'BAMLHE00EHYIOAS' in row and pd.notna(row['BAMLHE00EHYIOAS']) else None,
             float(row['D7G7']) if 'D7G7' in row and pd.notna(row['D7G7']) else None,
             float(row['BCJD']) if 'BCJD' in row and pd.notna(row['BCJD']) else None,
-            float(row['CPIAUCSL']) if 'CPIAUCSL' in row and pd.notna(row['CPIAUCSL']) else None
+            float(row['CPIAUCSL']) if 'CPIAUCSL' in row and pd.notna(row['CPIAUCSL']) else None,
+            float(row['FEDFUNDS']) if 'FEDFUNDS' in row and pd.notna(row['FEDFUNDS']) else None,
+            float(row['DFII10']) if 'DFII10' in row and pd.notna(row['DFII10']) else None,
+            float(row['IUDBEDR']) if 'IUDBEDR' in row and pd.notna(row['IUDBEDR']) else None,
         ))
-    
+
     conn = get_connection()
     try:
         cursor = conn.cursor()
@@ -237,8 +243,8 @@ def update_macro_indicators() -> None:
             INSERT OR IGNORE INTO macro_indicators (
                 date, us_m2, us_jobless_claims, us_high_yield_spread, us_yield_curve,
                 uk_m4, uk_corporate_spread, uk_cpi_inflation, uk_claimant_count,
-                us_cpi_inflation
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                us_cpi_inflation, us_fed_funds_rate, us_real_yield_10y, uk_base_rate
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', records)
         conn.commit()
         logger.info(f"Successfully bulk-inserted up to {cursor.rowcount} new Macro Regime historical days (ignoring existing to preserve PIT).")
