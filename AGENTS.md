@@ -278,6 +278,7 @@ A dedicated page housing standalone analytical tools. Each tool is self-containe
 | Options Sandbox | `/options-sandbox` | Interactive options chain explorer; live calls/puts, IV smile, open interest and volume across expiries |
 | SMGB.L Morning Price Predictor | `/uk-etf-forecast` | Estimates SMGB.L next-open price using top-10 ETF holdings' US post-close prices + GBPUSD FX + OLS regression with 60-day confidence interval |
 | AI Sector Contagion Monitor | `/ai-contagion` | Tracks 10-ticker AI ecosystem (semis + hyperscalers + cloud); 30-day normalised performance, intraday session, rolling 20-day correlation heatmap |
+| Market Trap & Recovery Monitor | `/trap-monitor` | Post-crash lifecycle monitor: Bull Trap / Dead Cat Bounce, Bear Trap, Capitulation volume climax, and Wyckoff Accumulation detection across portfolio + proxy basket |
 
 ---
 
