@@ -1984,6 +1984,8 @@ async def refresh_intraday_chart(req: TickerRequest):
         conn_meta.close()
 
     try:
+        with yahoo_engine._lock:
+            yahoo_engine._cache.pop(f"intraday:{ticker}:1d:5m:", None)
         result = yahoo_engine.get_intraday([ticker], period="1d", interval="5m")
         df_fetched = result.get(ticker, pd.DataFrame())
         if not df_fetched.empty:
