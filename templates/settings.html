@@ -781,15 +781,18 @@
 
                     <div class="settings-panel border-left-cyan">
                         <h4 class="settings-panel-header text-cyan">📋 Proxy Ticker Basket</h4>
-                        <p class="settings-desc-sm">Tickers scanned in addition to your portfolio. Comma-separated, e.g. QQQ, SMH, NVDA, MSFT, AAPL. Parquet history must exist for each ticker (run a data sync first if needed).</p>
+                        <p class="settings-desc-sm">Additional tickers to scan beyond your portfolio. Comma-separated, e.g. QQQ, SMH, NVDA. Parquet history must exist for each ticker (run a data sync first if needed).</p>
+                        <div class="checkbox-group mb-10">
+                            <input type="checkbox" id="TRAP_MONITOR_PORTFOLIO" {% if trap_sched.MONITOR_PORTFOLIO != false %}checked{% endif %}>
+                            <label for="TRAP_MONITOR_PORTFOLIO">Monitor Portfolio Tickers</label>
+                        </div>
                         <div class="form-group">
-                            <label>Proxy Tickers</label>
+                            <label>Extra Proxy Tickers</label>
                             <input type="text" id="TRAP_PROXY_TICKERS" value="{{ (trap_cfg.PROXY_TICKERS | default(['QQQ','SMH','NVDA','MSFT','AAPL'])) | join(', ') }}" placeholder="QQQ, SMH, NVDA, MSFT, AAPL">
                         </div>
                     </div>
 
                     <div class="flex-gap-15" style="margin-top:12px;">
-                        <button type="button" class="btn-test mt-0 btn-cyan" onclick="saveTrapMonitorSettings()">Save Settings</button>
                         <button type="button" class="btn-test mt-0" onclick="triggerTrapMonitorScan()">&#9654; Run Scan Now</button>
                     </div>
                     <div id="trap-monitor-msg" class="mt-10"></div>
@@ -2697,8 +2700,6 @@
             }
         }
 
-        function saveTrapMonitorSettings() { saveSettings(); }
-
         async function triggerTrapMonitorScan() {
             const btn = document.querySelector('button[onclick="triggerTrapMonitorScan()"]');
             const msgEl = document.getElementById('trap-monitor-msg');
@@ -3183,6 +3184,7 @@
                         "BEAR_TRAP": document.getElementById('TRAP_BEAR_ENABLED').checked,
                         "CAPITULATION": document.getElementById('TRAP_CAP_ENABLED').checked,
                         "WYCKOFF": document.getElementById('TRAP_WYK_ENABLED').checked,
+                        "MONITOR_PORTFOLIO": document.getElementById('TRAP_MONITOR_PORTFOLIO').checked,
                         "FREQUENCY": document.getElementById('TRAP_MONITOR_FREQ').value,
                         "START_TIME": document.getElementById('TRAP_MONITOR_START').value,
                         "END_TIME": document.getElementById('TRAP_MONITOR_END').value,

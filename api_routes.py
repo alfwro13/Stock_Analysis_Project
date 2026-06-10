@@ -363,6 +363,11 @@ class ScheduleItemConfig(BaseModel):
     PRE_US_OPEN_TIME: Optional[str] = None
     POST_US_CLOSE_TIME: Optional[str] = None
     SEND_NEXTCLOUD: Optional[bool] = None
+    BULL_TRAP: Optional[bool] = None
+    BEAR_TRAP: Optional[bool] = None
+    CAPITULATION: Optional[bool] = None
+    WYCKOFF: Optional[bool] = None
+    MONITOR_PORTFOLIO: Optional[bool] = None
 
 class SchedulingConfig(BaseModel):
     SYNC_INDICES: Optional[ScheduleItemConfig] = None
@@ -387,6 +392,7 @@ class SchedulingConfig(BaseModel):
     AI_CONTAGION: Optional[ScheduleItemConfig] = None
     NEWS_FEED: Optional[ScheduleItemConfig] = None
     SMGB_PREDICTOR: Optional[ScheduleItemConfig] = None
+    TRAP_MONITORS: Optional[ScheduleItemConfig] = None
 
 class ReportsDefaultsConfig(BaseModel):
     MR_MAX_RSI: Optional[int] = None
@@ -418,6 +424,8 @@ class NotificationItemConfig(BaseModel):
     VOLUME_SPIKE_MULTIPLIER: Optional[float] = None
     BELLWETHER_TICKERS: Optional[List[str]] = None
     ETF_BASKET: Optional[List[str]] = None
+    NEXTCLOUD_ENABLED: Optional[bool] = None
+    PROXY_TICKERS: Optional[List[str]] = None
 
 class NotificationsConfig(BaseModel):
     MARKET_SENTIMENT: Optional[NotificationItemConfig] = None
@@ -429,6 +437,7 @@ class NotificationsConfig(BaseModel):
     ANOMALY_ALERTS: Optional[NotificationItemConfig] = None
     RSS_FEED: Optional[NotificationItemConfig] = None
     AI_CONTAGION: Optional[NotificationItemConfig] = None
+    TRAP_MONITOR_ALERTS: Optional[NotificationItemConfig] = None
     DIP_RADAR_NEXTCLOUD: Optional[bool] = None
 
 class FreetradeMappingsConfig(BaseModel):

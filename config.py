@@ -214,6 +214,7 @@ DEFAULT_CONFIG = {
             "BEAR_TRAP": True,
             "CAPITULATION": True,
             "WYCKOFF": True,
+            "MONITOR_PORTFOLIO": True,
             "FREQUENCY": "mon-fri",
             "START_TIME": "08:00",
             "END_TIME": "21:00",

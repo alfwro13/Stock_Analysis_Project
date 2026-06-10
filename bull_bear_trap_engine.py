@@ -50,6 +50,7 @@ class TrapEngine:
         self.bear_trap_enabled: bool = sched_cfg.get("BEAR_TRAP", True)
         self.cap_enabled: bool = sched_cfg.get("CAPITULATION", True)
         self.wyckoff_enabled: bool = sched_cfg.get("WYCKOFF", True)
+        self.monitor_portfolio: bool = sched_cfg.get("MONITOR_PORTFOLIO", True)
 
     # ── public API ─────────────────────────────────────────────────────────────
 
@@ -405,16 +406,17 @@ class TrapEngine:
 
     def _get_ticker_list(self) -> list[str]:
         tickers: set[str] = set(self.proxy_tickers)
-        try:
-            if PORTFOLIO_PATH.exists():
-                with open(PORTFOLIO_PATH) as f:
-                    portfolio = json.load(f)
-                for item in portfolio:
-                    t = item.get("ticker") or item.get("symbol")
-                    if t:
-                        tickers.add(t.upper())
-        except Exception as e:
-            logger.warning("TrapEngine: could not load portfolio tickers: %s", e)
+        if self.monitor_portfolio:
+            try:
+                if PORTFOLIO_PATH.exists():
+                    with open(PORTFOLIO_PATH) as f:
+                        portfolio = json.load(f)
+                    for item in portfolio:
+                        t = item.get("ticker") or item.get("symbol")
+                        if t:
+                            tickers.add(t.upper())
+            except Exception as e:
+                logger.warning("TrapEngine: could not load portfolio tickers: %s", e)
         return sorted(tickers)
 
     def _load_history(self, ticker: str) -> Optional[pd.DataFrame]:
