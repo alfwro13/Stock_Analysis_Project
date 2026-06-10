@@ -74,80 +74,41 @@ def get_ideal_allocation(regime_label: str) -> Dict[str, float]:
     }
 
 
-def _get_portfolio_asset_class_weights() -> Optional[Dict[str, float]]:
+def _get_portfolio_asset_class_weights() -> tuple:
     """
-    Fetches live portfolio holdings from Ghostfolio and maps them to the four
-    macro asset classes (equities, bonds, commodities, cash).
-    Returns None if Ghostfolio is not configured or the fetch fails.
+    Fetches live portfolio holdings via GhostfolioXRayClient (handles two-step auth)
+    and maps them to the four macro asset classes.
+    Returns (weights_dict, None) on success, (None, error_message) on failure.
     """
     if not GHOSTFOLIO_URL or not GHOSTFOLIO_TOKEN:
-        return None
+        return None, "Ghostfolio is not configured — add your URL and access token in Settings."
 
-    import requests as _requests
+    from xray_engine import GhostfolioXRayClient, _get_instrument_type
+
     config = load_config()
     active_ids: List[str] = config.get("GHOSTFOLIO_ACCOUNTS", {}).get("active", [])
     if not active_ids:
-        return None
+        return None, "No Ghostfolio accounts are marked active — select at least one in Settings."
 
-    accounts_param = ",".join(active_ids)
-    url = (
-        f"{GHOSTFOLIO_URL.rstrip('/')}/api/v1/portfolio/details"
-        f"?accounts={accounts_param}&range=max&withMarkets=true&withSummary=true"
-    )
-    try:
-        resp = _requests.get(
-            url,
-            headers={"Authorization": f"Bearer {GHOSTFOLIO_TOKEN}"},
-            timeout=30,
-        )
-        resp.raise_for_status()
-        raw_holdings = resp.json().get("holdings", {})
-    except Exception as e:
-        logger.warning("macro_allocator: Ghostfolio fetch failed: %s", e)
-        return None
+    client = GhostfolioXRayClient()
+    if not client.authenticate():
+        return None, "Could not authenticate with Ghostfolio — check your access token in Settings."
 
-    weights: Dict[str, float] = {"equities": 0.0, "bonds": 0.0, "commodities": 0.0, "cash": 0.0}
-    total_value = 0.0
-
-    _CURRENCY_SYMBOLS = {
-        "GBP", "USD", "EUR", "CHF", "JPY", "AUD", "CAD", "HKD", "SGD", "NZD",
-        "SEK", "NOK", "DKK", "CZK", "PLN", "HUF", "TRY", "ZAR", "BRL", "INR",
-        "CNY", "MXN", "AED", "SAR", "TWD", "THB", "IDR", "MYR", "PHP",
-    }
+    holdings, total_value = client.get_holdings(active_ids)
+    if not holdings or total_value <= 0:
+        return None, "No holdings returned from Ghostfolio."
 
     holding_values: Dict[str, float] = {}
-    for symbol, h in raw_holdings.items():
-        profile = h.get("assetProfile") or {}
-        asset_class = (profile.get("assetClass") or h.get("assetClass") or "").upper()
-        if asset_class == "CASH" or symbol in _CURRENCY_SYMBOLS:
-            continue
-        value = float(h.get("valueInBaseCurrency") or 0)
-        if value <= 0:
-            continue
-
-        asset_sub_class = (profile.get("assetSubClass") or h.get("assetSubClass") or "").upper()
-        if asset_sub_class == "ETF" or asset_class == "ETF":
-            itype = "ETF"
-        elif asset_class in ("FIXED_INCOME", "BOND"):
-            itype = "Fixed Income"
-        elif asset_class == "COMMODITY":
-            itype = "Commodity"
-        else:
-            itype = "Equity"
-
+    for h in holdings:
+        itype = _get_instrument_type(h.get("asset_class", ""), h.get("asset_sub_class", ""))
         macro_class = _INSTRUMENT_TO_CLASS.get(itype, "equities")
-        holding_values[macro_class] = holding_values.get(macro_class, 0.0) + value
-        total_value += value
+        holding_values[macro_class] = holding_values.get(macro_class, 0.0) + h["value"]
 
-    if total_value <= 0:
-        return None
-
+    weights: Dict[str, float] = {}
     for cls in ("equities", "bonds", "commodities"):
         weights[cls] = round(holding_values.get(cls, 0.0) / total_value * 100, 1)
-
-    # Cash is whatever is left (Ghostfolio excludes cash from holdings)
     weights["cash"] = round(max(0.0, 100.0 - sum(weights[c] for c in ("equities", "bonds", "commodities"))), 1)
-    return weights
+    return weights, None
 
 
 def score_portfolio_alignment(current: Dict[str, float], ideal: Dict[str, float]) -> int:
@@ -201,7 +162,7 @@ def get_macro_allocation_data() -> Dict[str, Any]:
 
     regime_label = regime["regime_label"]
     ideal = get_ideal_allocation(regime_label)
-    current = _get_portfolio_asset_class_weights()
+    current, portfolio_error = _get_portfolio_asset_class_weights()
 
     config = load_config()
     regime_config = config.get("REGIME_TARGETS", {}).get(regime_label, {})
@@ -228,6 +189,6 @@ def get_macro_allocation_data() -> Dict[str, Any]:
         result["current_allocation"] = None
         result["alignment_score"] = None
         result["rebalance_deltas"] = None
-        result["portfolio_note"] = "Ghostfolio not configured — connect it in Settings to see portfolio alignment."
+        result["portfolio_note"] = portfolio_error or "Portfolio data unavailable."
 
     return result

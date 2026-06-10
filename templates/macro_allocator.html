@@ -103,8 +103,8 @@
                 </div>`).join('')}</div>`;
         }
 
-        function buildAllocTable(ideal, current, deltas, ranges) {
-            if (!current) return `<p class="ma-note">Connect Ghostfolio in Settings to see portfolio alignment and rebalancing guidance.</p>`;
+        function buildAllocTable(ideal, current, deltas, ranges, portfolioNote) {
+            if (!current) return `<p class="ma-note">${portfolioNote || "Portfolio data unavailable."}</p>`;
             const rows = ASSET_ORDER.map(k => {
                 const delta = deltas ? deltas[k] : null;
                 const lo = ranges && ranges[k] ? ranges[k][0] : null;
@@ -218,7 +218,7 @@
             <div class="ma-panel">
                 <h3 class="ma-panel-title">Asset Class Allocation: Current vs Regime Ideal</h3>
                 <div id="ma-alloc-chart" class="ma-chart-area"></div>
-                ${buildAllocTable(d.ideal_allocation || {}, d.current_allocation, d.rebalance_deltas, d.regime_ranges)}
+                ${buildAllocTable(d.ideal_allocation || {}, d.current_allocation, d.rebalance_deltas, d.regime_ranges, d.portfolio_note)}
             </div>
 
             <div class="ma-panel">
