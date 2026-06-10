@@ -148,7 +148,8 @@
                 All lines show <abbr title="% change vs each ticker's previous daily close — this puts SMGB.L (GBP) and the US semiconductors (USD) on the same scale so their moves are directly comparable.">% change from previous close</abbr>.
                 Cyan = SMGB.L intraday (08:00–16:30 BST).
                 Orange/red lines = the 10 US semiconductor constituents from US pre-market open (09:00 BST) onward.
-                Cyan dotted = LSE open. Grey dashed = LSE close. Orange dashed = NYSE open. Red dotted = NYSE close. Purple star = predicted SMGB.L move.
+                Cyan dotted = LSE open. Grey dashed = LSE close. Orange dashed = NYSE open. Red dotted = NYSE close. White dotted = Now. Purple star = predicted SMGB.L move.
+                Chart always shows a rolling 30-hour window with the current time at the two-thirds mark — scroll to see context on either side.
                 {% if prediction.signal_source == 'intraday_post_close' %}The star sits at tomorrow&rsquo;s LSE open — prediction uses US post-close moves.{% elif prediction.signal_source == 'intraday_live' or prediction.signal_source == 'intraday_premarket' %}The star sits on the NYSE open line — prediction projects SMGB.L&rsquo;s reaction when US markets open at 14:30 BST.{% endif %}
             </div>
         </div>

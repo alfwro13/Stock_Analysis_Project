@@ -205,31 +205,27 @@ def _compute_intraday_returns(
 
 
 def get_intraday_overlay_data() -> dict:
-    """Assembles intraday chart data; uses last trading day so the chart is never empty on weekends."""
+    """Assembles intraday chart data for a rolling 30h window centred ~2/3 left of 'now'."""
+    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
     trading_date = _last_trading_date()
-    lse_open_utc = _lse_open_utc_dt(trading_date)
-    uk_close_utc = _lse_close_utc_dt(trading_date)
-    nyse_premarket_utc_time, _ = time_engine.market_window_utc("NYSE", include_premarket=True)
-    nyse_premarket_utc = datetime.combine(trading_date, nyse_premarket_utc_time)
-    nyse_open_utc_time, nyse_close_utc_time = time_engine.market_window_utc("NYSE")
-    nyse_open_utc = datetime.combine(trading_date, nyse_open_utc_time)
-    nyse_close_utc = datetime.combine(trading_date, nyse_close_utc_time)
 
-    # period="5d" ensures we always have the last trading day even on weekends/holidays
+    # Rolling 25h look-back — larger than the 20h x-axis start so edges are never empty
+    window_start = now_utc - timedelta(hours=25)
+
+    # period="5d" ensures we always have data even on weekends/holidays
     intraday = fetch_intraday_data(period="5d")
 
     smgb_series = pd.Series(dtype=float)
     smgb_df = intraday.get(_SMGB)
     if smgb_df is not None and not smgb_df.empty and "Close" in smgb_df.columns:
-        mask = (smgb_df.index >= lse_open_utc) & (smgb_df.index <= uk_close_utc)
-        smgb_series = smgb_df.loc[mask, "Close"].dropna()
+        smgb_series = smgb_df.loc[smgb_df.index >= window_start, "Close"].dropna()
 
     us_intraday: dict[str, pd.Series] = {}
     for ticker in _SEMIS_TICKERS:
         df = intraday.get(ticker)
         if df is None or df.empty or "Close" not in df.columns:
             continue
-        bars = df[df.index >= nyse_premarket_utc]["Close"].dropna()
+        bars = df[df.index >= window_start]["Close"].dropna()
         if not bars.empty:
             us_intraday[ticker] = bars
 
@@ -248,10 +244,8 @@ def get_intraday_overlay_data() -> dict:
     return {
         "smgb_intraday": smgb_series,
         "us_intraday": us_intraday,
-        "uk_close_utc": uk_close_utc,
-        "lse_open_utc": lse_open_utc,
-        "nyse_open_utc": nyse_open_utc,
-        "nyse_close_utc": nyse_close_utc,
+        "now_utc": now_utc,
+        "trading_date": trading_date,
         "smgb_last_close": smgb_last_close,
         "us_prev_closes": us_prev_closes,
         "prediction": run_smgb_prediction(),

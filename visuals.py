@@ -698,15 +698,29 @@ def create_smgb_overlay_chart(
     smgb_series: "pd.Series",
     us_series: "dict[str, pd.Series]",
     smgb_last_close: float,
-    uk_close_utc: "datetime",
-    prediction: dict,
-    next_open_date: "date",
+    uk_close_utc: "datetime | None" = None,  # unused — kept for call-site compat
+    prediction: dict | None = None,
+    next_open_date: "date | None" = None,
     us_prev_closes: "dict[str, float] | None" = None,
-    nyse_open_utc: "datetime | None" = None,
-    lse_open_utc: "datetime | None" = None,
-    nyse_close_utc: "datetime | None" = None,
+    nyse_open_utc: "datetime | None" = None,  # unused — kept for call-site compat
+    lse_open_utc: "datetime | None" = None,   # unused — kept for call-site compat
+    nyse_close_utc: "datetime | None" = None, # unused — kept for call-site compat
+    now_utc: "datetime | None" = None,
+    trading_date: "date | None" = None,
 ) -> str:
+    from datetime import timedelta as _td, date as _date
+
+    if prediction is None:
+        prediction = {}
     user_tz = time_engine.get_user_tz()
+
+    if now_utc is None:
+        now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    now_local = pd.Timestamp(now_utc).tz_localize("UTC").tz_convert(user_tz).tz_localize(None)
+    # x-axis: now sits at exactly 2/3 from the left  (20h history, 10h future)
+    x_start = now_local - pd.Timedelta(hours=20)
+    x_end = now_local + pd.Timedelta(hours=10)
 
     def _to_local(s: "pd.Series") -> "pd.Series":
         if s.empty:
@@ -719,15 +733,31 @@ def create_smgb_overlay_chart(
     def _to_pct(s: "pd.Series", ref: float) -> "pd.Series":
         return (s / ref - 1) * 100
 
+    def _break_overnight_gaps(s: "pd.Series", gap_hours: float = 1.5) -> "pd.Series":
+        """Insert NaN entries where consecutive bars are more than gap_hours apart."""
+        if len(s) < 2:
+            return s
+        parts = []
+        for i in range(len(s) - 1):
+            parts.append(s.iloc[i : i + 1])
+            gap = (s.index[i + 1] - s.index[i]).total_seconds() / 3600
+            if gap > gap_hours:
+                mid = s.index[i] + (s.index[i + 1] - s.index[i]) / 2
+                parts.append(pd.Series([float("nan")], index=[mid]))
+        parts.append(s.iloc[-1:])
+        return pd.concat(parts)
+
     fig = go.Figure()
 
     smgb_local = _to_local(smgb_series)
     if not smgb_local.empty and smgb_last_close > 0:
+        smgb_gapped = _break_overnight_gaps(smgb_local)
         fig.add_trace(go.Scatter(
-            x=smgb_local.index,
-            y=_to_pct(smgb_local, smgb_last_close).values,
+            x=smgb_gapped.index,
+            y=_to_pct(smgb_gapped, smgb_last_close).values,
             name="SMGB.L",
             line=dict(color="#00ffff", width=2.5),
+            connectgaps=False,
             hovertemplate="SMGB.L: %{y:+.2f}%<extra></extra>",
         ))
 
@@ -735,103 +765,90 @@ def create_smgb_overlay_chart(
         us_local = _to_local(series)
         if us_local.empty:
             continue
-        ref = (us_prev_closes or {}).get(ticker) or float(us_local.iloc[0])
+        ref = (us_prev_closes or {}).get(ticker) or float(us_local.dropna().iloc[0])
         if ref == 0:
             continue
         color = _SMGB_COLORS.get(ticker, "#888888")
+        us_gapped = _break_overnight_gaps(us_local)
         fig.add_trace(go.Scatter(
-            x=us_local.index,
-            y=_to_pct(us_local, ref).values,
+            x=us_gapped.index,
+            y=_to_pct(us_gapped, ref).values,
             name=ticker,
             line=dict(color=color, width=1.2),
             opacity=0.75,
+            connectgaps=False,
             hovertemplate=f"{ticker}: %{{y:+.2f}}%<extra></extra>",
         ))
 
-    # Vertical line at LSE open
-    if lse_open_utc is not None:
-        lse_open_aware = pd.Timestamp(lse_open_utc).tz_localize("UTC").tz_convert(user_tz).tz_localize(None)
-        lse_open_str = str(lse_open_aware)
-        lse_open_label = lse_open_aware.strftime("LSE Open %H:%M")
-        fig.add_shape(
-            type="line",
-            x0=lse_open_str, x1=lse_open_str,
-            y0=0, y1=1, yref="paper",
-            line=dict(dash="dot", color="#00ffff", width=1.2),
-        )
-        fig.add_annotation(
-            x=lse_open_str, y=0.91, yref="paper",
-            text=lse_open_label,
-            showarrow=False,
-            font=dict(color="#00ffff", size=11),
-            xanchor="left", yanchor="top",
-        )
+    # Market-event vertical lines for every weekday that overlaps the visible window.
+    # Uses today's DST offsets — accurate unless a DST change falls within the 30h window.
+    _event_specs = [
+        ("LSE",  True,  "LSE Open",   "#00cccc", "dot",  0.91, 1.2),
+        ("LSE",  False, "LSE Close",  "#888888", "dash", 1.00, 1.5),
+        ("NYSE", True,  "NYSE Open",  "#f6ad55", "dash", 0.97, 1.5),
+        ("NYSE", False, "NYSE Close", "#f87171", "dot",  0.94, 1.2),
+    ]
+    # Collect all weekday dates that might have events in the visible window
+    _check_start = (x_start - pd.Timedelta(hours=2)).date()
+    _check_end = (x_end + pd.Timedelta(hours=2)).date()
+    _cur = _check_start
+    while _cur <= _check_end:
+        if _cur.weekday() < 5:
+            for _exch, _is_open, _label, _color, _dash, _y, _width in _event_specs:
+                try:
+                    _open_t, _close_t = time_engine.market_window_utc(_exch)
+                    _t = _open_t if _is_open else _close_t
+                    _utc_dt = datetime.combine(_cur, _t)
+                    _local_dt = pd.Timestamp(_utc_dt).tz_localize("UTC").tz_convert(user_tz).tz_localize(None)
+                    if not (x_start <= _local_dt <= x_end):
+                        continue
+                    _dt_str = str(_local_dt)
+                    fig.add_shape(
+                        type="line",
+                        x0=_dt_str, x1=_dt_str,
+                        y0=0, y1=1, yref="paper",
+                        line=dict(dash=_dash, color=_color, width=_width),
+                    )
+                    fig.add_annotation(
+                        x=_dt_str, y=_y, yref="paper",
+                        text=f"{_label} {_local_dt.strftime('%H:%M')}",
+                        showarrow=False,
+                        font=dict(color=_color, size=10),
+                        xanchor="left", yanchor="top",
+                    )
+                except Exception:
+                    pass
+        _cur += _td(days=1)
 
-    # Vertical line at LSE close — use add_shape to avoid Plotly annotation mean bug
-    uk_close_aware = pd.Timestamp(uk_close_utc).tz_localize("UTC").tz_convert(user_tz).tz_localize(None)
-    uk_close_str = str(uk_close_aware)
-    uk_close_label = uk_close_aware.strftime("LSE Close %H:%M")
+    # "Now" marker — thin white dotted line so the user always knows where current time is
+    now_str = str(now_local)
     fig.add_shape(
         type="line",
-        x0=uk_close_str, x1=uk_close_str,
+        x0=now_str, x1=now_str,
         y0=0, y1=1, yref="paper",
-        line=dict(dash="dash", color="#888888", width=1.5),
+        line=dict(dash="dot", color="rgba(255,255,255,0.35)", width=1.0),
     )
     fig.add_annotation(
-        x=uk_close_str, y=1, yref="paper",
-        text=uk_close_label,
+        x=now_str, y=0.85, yref="paper",
+        text=f"Now {now_local.strftime('%H:%M')}",
         showarrow=False,
-        font=dict(color="#aaaaaa", size=11),
+        font=dict(color="rgba(255,255,255,0.5)", size=10),
         xanchor="left", yanchor="top",
     )
 
-    if nyse_open_utc is not None:
-        nyse_open_aware = pd.Timestamp(nyse_open_utc).tz_localize("UTC").tz_convert(user_tz).tz_localize(None)
-        nyse_open_str = str(nyse_open_aware)
-        nyse_open_label = nyse_open_aware.strftime("NYSE Open %H:%M")
-        fig.add_shape(
-            type="line",
-            x0=nyse_open_str, x1=nyse_open_str,
-            y0=0, y1=1, yref="paper",
-            line=dict(dash="dash", color="#f6ad55", width=1.5),
-        )
-        fig.add_annotation(
-            x=nyse_open_str, y=0.97, yref="paper",
-            text=nyse_open_label,
-            showarrow=False,
-            font=dict(color="#f6ad55", size=11),
-            xanchor="left", yanchor="top",
-        )
-
-    if nyse_close_utc is not None:
-        nyse_close_aware = pd.Timestamp(nyse_close_utc).tz_localize("UTC").tz_convert(user_tz).tz_localize(None)
-        nyse_close_str = str(nyse_close_aware)
-        nyse_close_label = nyse_close_aware.strftime("NYSE Close %H:%M")
-        fig.add_shape(
-            type="line",
-            x0=nyse_close_str, x1=nyse_close_str,
-            y0=0, y1=1, yref="paper",
-            line=dict(dash="dot", color="#f87171", width=1.2),
-        )
-        fig.add_annotation(
-            x=nyse_close_str, y=0.94, yref="paper",
-            text=nyse_close_label,
-            showarrow=False,
-            font=dict(color="#f87171", size=11),
-            xanchor="left", yanchor="top",
-        )
-
-    # Prediction marker — sits on NYSE open line for intraday signals, LSE open next day otherwise
+    # Prediction marker
     pred_price = prediction.get("predicted_price")
     pred_pct = prediction.get("predicted_change_pct", 0)
     signal_source = prediction.get("signal_source", "daily_close")
-    if pred_price and smgb_last_close > 0:
+    if pred_price and smgb_last_close > 0 and next_open_date is not None:
         is_intraday = signal_source in ("intraday_premarket", "intraday_live")
-        if is_intraday and nyse_open_utc is not None:
-            pred_dt = pd.Timestamp(nyse_open_utc).tz_localize("UTC").tz_convert(user_tz).tz_localize(None)
+        if is_intraday:
+            nyse_open_t, _ = time_engine.market_window_utc("NYSE")
+            pred_dt_utc = datetime.combine(trading_date or next_open_date, nyse_open_t)
         else:
-            open_utc_time, _ = time_engine.market_window_utc("LSE")
-            pred_dt = pd.Timestamp(datetime.combine(next_open_date, open_utc_time)).tz_localize("UTC").tz_convert(user_tz).tz_localize(None)
+            lse_open_t, _ = time_engine.market_window_utc("LSE")
+            pred_dt_utc = datetime.combine(next_open_date, lse_open_t)
+        pred_dt = pd.Timestamp(pred_dt_utc).tz_localize("UTC").tz_convert(user_tz).tz_localize(None)
         fig.add_trace(go.Scatter(
             x=[pred_dt],
             y=[pred_pct],
@@ -864,7 +881,11 @@ def create_smgb_overlay_chart(
         showgrid=True,
         gridcolor="#333333",
     )
-    fig.update_xaxes(showgrid=True, gridcolor="#333333")
+    fig.update_xaxes(
+        range=[str(x_start), str(x_end)],
+        showgrid=True,
+        gridcolor="#333333",
+    )
     return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
 
 

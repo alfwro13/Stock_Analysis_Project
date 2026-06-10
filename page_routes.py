@@ -1041,13 +1041,11 @@ async def uk_etf_forecast_page(request: Request):
             overlay_data["smgb_intraday"],
             overlay_data["us_intraday"],
             overlay_data["smgb_last_close"],
-            overlay_data["uk_close_utc"],
-            overlay_data["prediction"],
-            overlay_data["next_open_date"],
+            prediction=overlay_data["prediction"],
+            next_open_date=overlay_data["next_open_date"],
             us_prev_closes=overlay_data.get("us_prev_closes"),
-            nyse_open_utc=overlay_data.get("nyse_open_utc"),
-            lse_open_utc=overlay_data.get("lse_open_utc"),
-            nyse_close_utc=overlay_data.get("nyse_close_utc"),
+            now_utc=overlay_data.get("now_utc"),
+            trading_date=overlay_data.get("trading_date"),
         )
     except Exception as exc:
         logger.error("uk_etf_forecast_page failed: %s", exc)
