@@ -36,6 +36,23 @@ logger = logging.getLogger(__name__)
 
 scheduler = BackgroundScheduler()
 
+import threading as _threading
+from datetime import datetime as _dt
+_active_jobs: dict[str, str] = {}
+_active_jobs_lock = _threading.Lock()
+
+def _mark_job_started(name: str) -> None:
+    with _active_jobs_lock:
+        _active_jobs[name] = _dt.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+
+def _mark_job_done(name: str) -> None:
+    with _active_jobs_lock:
+        _active_jobs.pop(name, None)
+
+def get_active_jobs() -> dict[str, str]:
+    with _active_jobs_lock:
+        return dict(_active_jobs)
+
 def log_sched_notification(msg_type: str, msg_text: str):
     conn = None
     try:
@@ -100,8 +117,9 @@ def run_maintenance_engine():
         record_job_run('maintenance_job')
 
 def run_update_pipeline():
-    log_sched_notification("Scheduler", "Started Update Pipeline...")
+    _mark_job_started("Update Pipeline")
     try:
+        log_sched_notification("Scheduler", "Started Update Pipeline...")
         logger.info("Background update initiated.")
         DataEngine().update_all_data()
         from regime_engine import calculate_systemic_macro_threat, calculate_market_regime
@@ -113,22 +131,26 @@ def run_update_pipeline():
     except Exception as e:
         log_sched_notification("Error", f"Update Pipeline failed: {e}")
     finally:
+        _mark_job_done("Update Pipeline")
         record_job_run('quant_analysis_job')
 
 def run_ghostfolio_sync():
-    log_sched_notification("Scheduler", "Started Ghostfolio Sync...")
+    _mark_job_started("Ghostfolio Sync")
     try:
+        log_sched_notification("Scheduler", "Started Ghostfolio Sync...")
         sync_engine = GhostfolioSyncEngine()
         sync_engine.run_full_sync()
         log_sched_notification("Success", "Ghostfolio Sync completed successfully.")
     except Exception as e:
         log_sched_notification("Error", f"Ghostfolio Sync failed: {e}")
     finally:
+        _mark_job_done("Ghostfolio Sync")
         record_job_run('ghostfolio_sync_job')
 
 def run_freetrade_sync():
-    log_sched_notification("Scheduler", "Started Freetrade Sync...")
+    _mark_job_started("Freetrade Sync")
     try:
+        log_sched_notification("Scheduler", "Started Freetrade Sync...")
         logger.info("Freetrade sync initiated.")
         sync_freetrade_universe()
         logger.info("Freetrade sync complete.")
@@ -137,11 +159,13 @@ def run_freetrade_sync():
         logger.error("Freetrade Sync Failed: %s", e)
         log_sched_notification("Error", f"Freetrade Sync failed: {e}")
     finally:
+        _mark_job_done("Freetrade Sync")
         record_job_run('freetrade_sync_job')
 
 def run_sentiment_scan():
-    log_sched_notification("Scheduler", "Started Sentiment Scan...")
+    _mark_job_started("Sentiment Scan")
     try:
+        log_sched_notification("Scheduler", "Started Sentiment Scan...")
         logger.info("Sentiment scan initiated.")
         engine = DataEngine()
         all_tickers = engine.get_all_tickers()
@@ -152,12 +176,14 @@ def run_sentiment_scan():
         logger.error("Sentiment Scan Failed: %s", e)
         log_sched_notification("Error", f"Sentiment Scan failed: {e}")
     finally:
+        _mark_job_done("Sentiment Scan")
         record_job_run('sentiment_scan_job')
 
 def run_overnight_quant_scan():
     """Portfolio + watchlist resumable quant scan followed by tail-risk computation."""
-    log_sched_notification("Scheduler", "Started Overnight Quant Scan...")
+    _mark_job_started("Overnight Quant Scan")
     try:
+        log_sched_notification("Scheduler", "Started Overnight Quant Scan...")
         logger.info("Overnight quant scan initiated.")
         engine = DataEngine()
         all_tickers = engine.get_all_tickers()
@@ -170,11 +196,13 @@ def run_overnight_quant_scan():
         logger.error("Overnight Quant Scan Failed: %s", e)
         log_sched_notification("Error", f"Overnight Quant Scan failed: {e}")
     finally:
+        _mark_job_done("Overnight Quant Scan")
         record_job_run('overnight_quant_scan_job')
 
 def run_weekend_earnings_scan():
-    log_sched_notification("Scheduler", "Started Earnings Volatility Scan...")
+    _mark_job_started("Earnings Volatility Scan")
     try:
+        log_sched_notification("Scheduler", "Started Earnings Volatility Scan...")
         logger.info("Earnings volatility scan initiated.")
         engine = DataEngine()
         all_tickers = engine.get_all_tickers()
@@ -185,11 +213,13 @@ def run_weekend_earnings_scan():
         logger.error("Earnings Volatility Scan Failed: %s", e)
         log_sched_notification("Error", f"Earnings Volatility Scan failed: {e}")
     finally:
+        _mark_job_done("Earnings Volatility Scan")
         record_job_run('weekend_earnings_vol_scan_job')
 
 def run_morning_briefing_dispatch():
-    log_sched_notification("Scheduler", "Started Morning Briefing Dispatch...")
+    _mark_job_started("Morning Briefing Dispatch")
     try:
+        log_sched_notification("Scheduler", "Started Morning Briefing Dispatch...")
         logger.info("Morning briefing dispatch initiated.")
         push_morning_quant_briefing()
         logger.info("Morning briefing dispatch complete.")
@@ -198,12 +228,14 @@ def run_morning_briefing_dispatch():
         logger.error("Morning Briefing Dispatch Failed: %s", e)
         log_sched_notification("Error", f"Morning Briefing Dispatch failed: {e}")
     finally:
+        _mark_job_done("Morning Briefing Dispatch")
         record_job_run('morning_briefing_dispatch_job')
 
 
 def run_lunchtime_briefing_dispatch():
-    log_sched_notification("Scheduler", "Started Lunchtime Briefing Dispatch...")
+    _mark_job_started("Lunchtime Briefing Dispatch")
     try:
+        log_sched_notification("Scheduler", "Started Lunchtime Briefing Dispatch...")
         logger.info("Lunchtime briefing dispatch initiated.")
         push_lunchtime_quant_briefing()
         logger.info("Lunchtime briefing dispatch complete.")
@@ -212,11 +244,13 @@ def run_lunchtime_briefing_dispatch():
         logger.error("Lunchtime Briefing Dispatch Failed: %s", e)
         log_sched_notification("Error", f"Lunchtime Briefing Dispatch failed: {e}")
     finally:
+        _mark_job_done("Lunchtime Briefing Dispatch")
         record_job_run('lunchtime_briefing_dispatch_job')
 
 def run_weekend_universe_routine():
-    log_sched_notification("Scheduler", "Started Weekend Universe Routine...")
+    _mark_job_started("Weekend Universe Routine")
     try:
+        log_sched_notification("Scheduler", "Started Weekend Universe Routine...")
         logger.info("Weekend universe routine initiated.")
         update_market_universe()
         all_tickers = get_universe_tickers()
@@ -234,11 +268,13 @@ def run_weekend_universe_routine():
         logger.error("Weekend Universe Routine Failed: %s", e)
         log_sched_notification("Error", f"Weekend Universe Routine failed: {e}")
     finally:
+        _mark_job_done("Weekend Universe Routine")
         record_job_run('universe_routine_job')
 
 def run_index_scraper():
-    log_sched_notification("Scheduler", "Started Index Constituents Scraper...")
+    _mark_job_started("Index Constituents Scraper")
     try:
+        log_sched_notification("Scheduler", "Started Index Constituents Scraper...")
         logger.info("Index scraper initiated.")
         # Delayed import avoids circular dependency with index_engine
         from index_engine import sync_all_indices
@@ -249,12 +285,14 @@ def run_index_scraper():
         logger.error("Index Scraper Failed: %s", e)
         log_sched_notification("Error", f"Index Scraper failed: {e}")
     finally:
+        _mark_job_done("Index Constituents Scraper")
         record_job_run('index_scraper_job')
 
 def run_fundamentals_profiler():
     """Batch size read from SCHEDULING.PROFILER_ENGINE.BATCH_SIZE in config."""
-    log_sched_notification("Scheduler", "Started Fundamentals Profiler...")
+    _mark_job_started("Fundamentals Profiler")
     try:
+        log_sched_notification("Scheduler", "Started Fundamentals Profiler...")
         logger.info("Fundamentals profiler initiated.")
         from profile_engine import run_profile_audit
         config = load_config()
@@ -266,24 +304,28 @@ def run_fundamentals_profiler():
         logger.error("Fundamentals Profiler Failed: %s", e)
         log_sched_notification("Error", f"Fundamentals Profiler failed: {e}")
     finally:
+        _mark_job_done("Fundamentals Profiler")
         record_job_run('fundamentals_profiler_job')
 
 def run_universe_deep_sync_job():
     """Scheduler envelope for universe_deep_sync_engine; that engine emits its own per-stage notifications."""
-    log_sched_notification("Scheduler", "Started Universe Deep Sync Pipeline...")
+    _mark_job_started("Universe Deep Sync")
     try:
+        log_sched_notification("Scheduler", "Started Universe Deep Sync Pipeline...")
         run_universe_deep_sync()
         log_sched_notification("Success", "Universe Deep Sync Pipeline job completed.")
     except Exception as e:
         logger.error("Universe Deep Sync Pipeline Failed: %s", e)
         log_sched_notification("Error", f"Universe Deep Sync Pipeline failed: {e}")
     finally:
+        _mark_job_done("Universe Deep Sync")
         record_job_run('universe_deep_sync_job')
 
 
 def run_ml_backfill():
-    log_sched_notification("Scheduler", "Started ML Historical Backfill...")
+    _mark_job_started("ML Historical Backfill")
     try:
+        log_sched_notification("Scheduler", "Started ML Historical Backfill...")
         logger.info("ML Historical Backfill initiated.")
         run_historical_backfill()
         logger.info("ML Historical Backfill complete.")
@@ -292,11 +334,13 @@ def run_ml_backfill():
         logger.error("ML Historical Backfill Failed: %s", e)
         log_sched_notification("Error", f"ML Historical Backfill failed: {e}")
     finally:
+        _mark_job_done("ML Historical Backfill")
         record_job_run('ml_backfill_job')
 
 def run_ml_training():
-    log_sched_notification("Scheduler", "Started ML Global Training...")
+    _mark_job_started("ML Global Training")
     try:
+        log_sched_notification("Scheduler", "Started ML Global Training...")
         logger.info("ML Global Training initiated.")
         train_global_ml_model()
         logger.info("ML Global Training complete.")
@@ -305,11 +349,13 @@ def run_ml_training():
         logger.error("ML Global Training Failed: %s", e)
         log_sched_notification("Error", f"ML Global Training failed: {e}")
     finally:
+        _mark_job_done("ML Global Training")
         record_job_run('ml_training_job')
 
 def run_ml_inference():
-    log_sched_notification("Scheduler", "Started Daily ML Inference...")
+    _mark_job_started("Daily ML Inference")
     try:
+        log_sched_notification("Scheduler", "Started Daily ML Inference...")
         logger.info("Daily ML Inference initiated.")
         tickers = get_universe_tickers()
         if not tickers:
@@ -323,11 +369,13 @@ def run_ml_inference():
         logger.error("Daily ML Inference Failed: %s", e)
         log_sched_notification("Error", f"Daily ML Inference failed: {e}")
     finally:
+        _mark_job_done("Daily ML Inference")
         record_job_run('ml_inference_job')
 
 def run_macro_calendar_update():
-    log_sched_notification("Scheduler", "Started Macro Calendar Update...")
+    _mark_job_started("Macro Calendar Update")
     try:
+        log_sched_notification("Scheduler", "Started Macro Calendar Update...")
         logger.info("Macro calendar update initiated.")
         update_macro_calendar()
         logger.info("Macro calendar update complete.")
@@ -336,6 +384,7 @@ def run_macro_calendar_update():
         logger.error("Macro Calendar Update Failed: %s", e)
         log_sched_notification("Error", f"Macro Calendar Update failed: {e}")
     finally:
+        _mark_job_done("Macro Calendar Update")
         record_job_run('macro_calendar_job')
 
 def run_central_bank_nlp_check():
@@ -384,8 +433,9 @@ def run_central_bank_nlp_check():
 
 
 def run_macro_data_update():
-    log_sched_notification("Scheduler", "Started Macro Data Update...")
+    _mark_job_started("Macro Data Update")
     try:
+        log_sched_notification("Scheduler", "Started Macro Data Update...")
         logger.info("Macro data update initiated.")
         update_macro_indicators()
         logger.info("Macro data update complete.")
@@ -394,12 +444,14 @@ def run_macro_data_update():
         logger.error("Macro Data Update Failed: %s", e)
         log_sched_notification("Error", f"Macro Data Update failed: {e}")
     finally:
+        _mark_job_done("Macro Data Update")
         record_job_run('macro_data_job')
 
 def run_xray_risk_cache_job():
     """Pre-computes portfolio beta, vol, correlation, and dividend yields for the X-ray report."""
-    log_sched_notification("Scheduler", "Started X-ray Risk Cache job...")
+    _mark_job_started("X-ray Risk Cache")
     try:
+        log_sched_notification("Scheduler", "Started X-ray Risk Cache job...")
         success = run_xray_precompute()
         if success:
             log_sched_notification("Success", "X-ray Risk Cache updated successfully.")
@@ -409,13 +461,15 @@ def run_xray_risk_cache_job():
         logger.error("X-ray Risk Cache job failed: %s", e)
         log_sched_notification("Error", f"X-ray Risk Cache job failed: {e}")
     finally:
+        _mark_job_done("X-ray Risk Cache")
         record_job_run('xray_risk_cache_job')
 
 
 def run_anomaly_training_job():
     """Nightly retraining of per-ticker Isolation Forest anomaly models (Mon–Fri 18:30)."""
-    log_sched_notification("Scheduler", "Started Anomaly Training job...")
+    _mark_job_started("Anomaly Training")
     try:
+        log_sched_notification("Scheduler", "Started Anomaly Training job...")
         from anomaly_engine import AnomalyEngine
         from config import HISTORICAL_DIR
         all_tickers = DataEngine().get_all_tickers()
@@ -427,6 +481,7 @@ def run_anomaly_training_job():
         logger.error("Anomaly Training job failed: %s", e)
         log_sched_notification("Error", f"Anomaly Training job failed: {e}")
     finally:
+        _mark_job_done("Anomaly Training")
         record_job_run('anomaly_training_job')
 
 

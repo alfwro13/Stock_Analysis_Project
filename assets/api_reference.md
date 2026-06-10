@@ -1124,18 +1124,50 @@ Pulls the latest code from the Git remote. Returns the git output.
 
 ---
 
-### `POST /api/system/restart`
+### `GET /api/system/active-jobs`
 
-Sends a `SIGTERM` to the running process after a 2-second delay, triggering a graceful shutdown. The process manager (e.g. systemd or Docker) is expected to restart it automatically.
-
-**Request body:** none
+Returns a snapshot of all scheduler jobs that are currently executing. The registry is updated in-memory by each job function; it is cleared on restart.
 
 **Response**
 
 ```json
 {
   "status": "success",
+  "busy": true,
+  "active_jobs": {
+    "ML Global Training": "2026-06-10T14:32:01",
+    "Overnight Quant Scan": "2026-06-10T14:28:45"
+  }
+}
+```
+
+`active_jobs` is an empty object `{}` when the server is idle. Timestamps are UTC ISO-8601 strings representing when each job started. The Settings page polls this endpoint every 30 seconds to display a live status indicator.
+
+---
+
+### `POST /api/system/restart`
+
+Sends a `SIGTERM` to the running process after a 2-second delay, triggering a graceful shutdown. The process manager (e.g. systemd or Docker) is expected to restart it automatically.
+
+Returns HTTP **409** if any scheduler jobs are currently running (see `GET /api/system/active-jobs`), with a message listing the active processes. In that case the restart is not initiated.
+
+**Request body:** none
+
+**Response (idle)**
+
+```json
+{
+  "status": "success",
   "message": "Restart signal sent. The dashboard will be back online in ~5-10 seconds."
+}
+```
+
+**Response (busy — HTTP 409)**
+
+```json
+{
+  "status": "busy",
+  "message": "Cannot restart: ML Global Training is currently running. Please wait for it to complete and try again."
 }
 ```
 
@@ -1233,8 +1265,9 @@ Sends a test insider trading alert via Nextcloud Talk.
 | `GET` | `/api/settings/network-status` | Current routing health |
 | `GET` | `/api/system/metrics` | System diagnostic data |
 | `GET` | `/api/system/checks` | Active scheduling health warnings/errors |
+| `GET` | `/api/system/active-jobs` | Currently executing scheduler jobs (busy indicator) |
 | `POST` | `/api/system/git-pull` | Pull latest code from git |
-| `POST` | `/api/system/restart` | Graceful application restart |
+| `POST` | `/api/system/restart` | Graceful application restart (409 if jobs running) |
 | `POST` | `/api/test-sentiment-alert` | Test Nextcloud sentiment alert |
 | `POST` | `/api/test-earnings-alert` | Test Nextcloud earnings alert |
 | `POST` | `/api/test-insider-alert` | Test Nextcloud insider alert |

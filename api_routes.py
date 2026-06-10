@@ -1238,8 +1238,22 @@ async def git_pull_update():
     except Exception as e:
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
+@api_router.get("/system/active-jobs")
+async def get_active_jobs_status():
+    from scheduler_engine import get_active_jobs
+    jobs = get_active_jobs()
+    return JSONResponse(content={"status": "success", "active_jobs": jobs, "busy": bool(jobs)})
+
 @api_router.post("/system/restart", dependencies=[Depends(require_confirm_token)])
 async def restart_system(background_tasks: BackgroundTasks):
+    from scheduler_engine import get_active_jobs
+    active = get_active_jobs()
+    if active:
+        names = ", ".join(active.keys())
+        return JSONResponse(
+            status_code=409,
+            content={"status": "busy", "message": f"Cannot restart: {names} is currently running. Please wait for it to complete and try again."}
+        )
     background_tasks.add_task(execute_restart)
     return JSONResponse(content={"status": "success", "message": "Restart signal sent. The dashboard will be back online in ~5-10 seconds."})
 
