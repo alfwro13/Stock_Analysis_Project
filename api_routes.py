@@ -1527,11 +1527,53 @@ class EtfPredictorConfigBody(BaseModel):
     post_run_time: Optional[str] = "22:00"
 
 
+class EtfValidateBody(BaseModel):
+    etf_ticker: str
+    constituents: List[EtfConstituentItem]
+
+
 def _normalise_constituents(items: List[EtfConstituentItem]) -> List[dict]:
     total = sum(i.weight for i in items)
     if total <= 0:
         return []
     return [{"ticker": i.ticker.upper().strip(), "weight": i.weight / total} for i in items]
+
+
+@api_router.post("/etf-predictors/validate")
+@limiter.limit("10/minute")
+async def validate_etf_predictor_config(request: Request, body: EtfValidateBody):
+    try:
+        etf_ticker = body.etf_ticker.upper().strip()
+        etf_info = yahoo_engine.get_ticker_info(etf_ticker)
+        etf_result = {
+            "ticker": etf_ticker,
+            "valid": etf_info is not None,
+            "name": (etf_info.get("longName") or etf_info.get("shortName", "")) if etf_info else None,
+        }
+
+        constituent_results = []
+        total_weight = 0.0
+        for item in body.constituents:
+            t = item.ticker.upper().strip()
+            info = yahoo_engine.get_ticker_info(t)
+            constituent_results.append({
+                "ticker": t,
+                "weight": item.weight,
+                "valid": info is not None,
+                "name": (info.get("longName") or info.get("shortName", "")) if info else None,
+            })
+            total_weight += item.weight
+
+        return JSONResponse(content={
+            "status": "success",
+            "etf": etf_result,
+            "constituents": constituent_results,
+            "total_weight": round(total_weight, 4),
+            "weight_ok": abs(total_weight - 100.0) < 1.0 or abs(total_weight - 1.0) < 0.01,
+        })
+    except Exception as e:
+        logger.error("validate_etf_predictor_config failed: %s", e)
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 
 @api_router.get("/etf-predictors")

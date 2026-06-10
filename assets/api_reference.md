@@ -1672,6 +1672,33 @@ Rate limit: 10/minute.
 
 ---
 
+### `POST /api/etf-predictors/validate`
+
+Validates an ETF ticker and its constituent list against Yahoo Finance. Returns per-ticker validity, resolved name, total weight, and a `weight_ok` flag (true if total is within 1% of 100 or 0.01 of 1.0).
+
+**Request body:**
+```json
+{
+  "etf_ticker": "VUSA.L",
+  "constituents": [{"ticker": "AAPL", "weight": 7.5}, ...]
+}
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "etf": {"ticker": "VUSA.L", "valid": true, "name": "Vanguard S&P 500 UCITS ETF"},
+  "constituents": [{"ticker": "AAPL", "valid": true, "name": "Apple Inc.", "weight": 7.5}, ...],
+  "total_weight": 100.0,
+  "weight_ok": true
+}
+```
+
+Rate limit: 10/minute.
+
+---
+
 ### `POST /api/etf-predictors/{id}/run`
 
 Triggers a prediction run as a background task. Returns immediately; progress visible in Notifications.

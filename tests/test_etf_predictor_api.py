@@ -167,3 +167,40 @@ def test_predictions_returns_accuracy_shape(client):
 def test_predictions_nonexistent_returns_404(client):
     resp = client.get("/api/etf-predictors/999996/predictions")
     assert resp.status_code == 404
+
+
+@pytest.mark.api
+def test_validate_returns_success_shape(client):
+    """Validate endpoint returns etf + constituents + total_weight keys."""
+    resp = client.post("/api/etf-predictors/validate", json={
+        "etf_ticker": "VUSA.L",
+        "constituents": [
+            {"ticker": "AAPL", "weight": 60.0},
+            {"ticker": "MSFT", "weight": 40.0},
+        ],
+    })
+    assert resp.status_code == 200
+    data = _json(resp)
+    assert data.get("status") == "success"
+    assert "etf" in data and "ticker" in data["etf"] and "valid" in data["etf"]
+    assert "constituents" in data and isinstance(data["constituents"], list)
+    assert len(data["constituents"]) == 2
+    assert "total_weight" in data
+    assert abs(data["total_weight"] - 100.0) < 0.01
+    assert "weight_ok" in data
+
+
+@pytest.mark.api
+def test_validate_weight_ok_flag(client):
+    """weight_ok is True when total is near 100, False otherwise."""
+    resp_ok = client.post("/api/etf-predictors/validate", json={
+        "etf_ticker": "TST.L",
+        "constituents": [{"ticker": "AAPL", "weight": 100.0}],
+    })
+    assert _json(resp_ok)["weight_ok"] is True
+
+    resp_bad = client.post("/api/etf-predictors/validate", json={
+        "etf_ticker": "TST.L",
+        "constituents": [{"ticker": "AAPL", "weight": 50.0}],
+    })
+    assert _json(resp_bad)["weight_ok"] is False
