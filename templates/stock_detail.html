@@ -1133,7 +1133,11 @@
             if (_intradayBusy) return;
             _intradayBusy = true;
             try {
-                const resp = await fetch('/api/intraday-chart/' + encodeURIComponent(ticker));
+                const resp = await fetch('/api/intraday-chart/refresh', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ticker: ticker })
+                });
                 if (!resp.ok) return;
                 const data = await resp.json();
                 if (!data || !data.html) return;

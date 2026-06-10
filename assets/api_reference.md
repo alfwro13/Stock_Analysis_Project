@@ -276,6 +276,24 @@ Fetches fresh price history, runs a full quant analysis, ML inference, tail risk
 
 ---
 
+### `POST /api/intraday-chart/refresh`
+
+Fetches fresh 5-minute intraday data from Yahoo Finance for a single ticker, persists it to parquet, then returns re-rendered chart HTML. Used by the Stock Detail page auto-refresh timer to keep the Intraday Pulse chart current without a full page reload.
+
+**Request body**
+
+```json
+{ "ticker": "SMGB.L" }
+```
+
+**Response**
+
+```json
+{ "html": "<plotly chart HTML string>" }
+```
+
+---
+
 ### `GET /api/freshness`
 
 Returns how up-to-date the ML model file and price data are, along with CSS state classes for the UI freshness badge.

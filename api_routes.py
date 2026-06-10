@@ -1965,3 +1965,82 @@ async def get_intraday_chart(ticker: str = PathParam(..., pattern=r"^[A-Z0-9.\-\
         data_delay_minutes=delay_min,
     )
     return JSONResponse(content={"html": html})
+
+
+@api_router.post("/intraday-chart/refresh")
+async def refresh_intraday_chart(req: TickerRequest):
+    """Fetch fresh intraday data from Yahoo Finance, persist to parquet, return re-rendered chart HTML."""
+    ticker = req.ticker.upper()
+
+    conn_meta = get_connection()
+    try:
+        row = conn_meta.execute(
+            "SELECT currency FROM stock_signals WHERE ticker = ? LIMIT 1", (ticker,)
+        ).fetchone()
+        currency = row["currency"] if row else "USD"
+    except Exception:
+        currency = "USD"
+    finally:
+        conn_meta.close()
+
+    try:
+        result = yahoo_engine.get_intraday([ticker], period="1d", interval="5m")
+        df_fetched = result.get(ticker, pd.DataFrame())
+        if not df_fetched.empty:
+            if df_fetched.index.tz is not None:
+                df_fetched.index = df_fetched.index.tz_convert(None)
+            df_fetched.to_parquet(INTRADAY_DIR / f"{ticker}_intraday.parquet", engine="pyarrow")
+    except Exception:
+        pass
+
+    s1 = s2 = None
+    df_macro = pd.DataFrame()
+    try:
+        df_macro = pd.read_parquet(HISTORICAL_DIR / f"{ticker}.parquet")
+        if not df_macro.empty and len(df_macro) > 1:
+            prev_day = df_macro.iloc[-2]
+            P = (prev_day["High"] + prev_day["Low"] + prev_day["Close"]) / 3
+            s1 = P * 2 - prev_day["High"]
+            s2 = P - (prev_day["High"] - prev_day["Low"])
+    except Exception:
+        pass
+
+    try:
+        df_intraday = pd.read_parquet(INTRADAY_DIR / f"{ticker}_intraday.parquet")
+    except FileNotFoundError:
+        html = "<div class='intraday-placeholder'><span class='intraday-placeholder-icon'>📭</span><span class='intraday-placeholder-label'>No intraday data yet</span></div>"
+        return JSONResponse(content={"html": html})
+    except Exception:
+        html = "<div class='intraday-placeholder intraday-placeholder--error'><span class='intraday-placeholder-icon'>⚠️</span><span class='intraday-placeholder-label'>Intraday data unavailable</span></div>"
+        return JSONResponse(content={"html": html})
+
+    mkt_tz = _intraday_market_tz(ticker, currency)
+    delay_min = _EXCHANGE_DELAYS.get(currency, 0)
+
+    live_pattern_name = live_pattern_tooltip = live_pattern_score = None
+    try:
+        if not df_intraday.empty and not df_macro.empty and len(df_macro) >= 2:
+            curr_pseudo = pd.Series({
+                "Open": df_intraday["Open"].iloc[0],
+                "High": df_intraday["High"].max(),
+                "Low": df_intraday["Low"].min(),
+                "Close": df_intraday["Close"].iloc[-1],
+            })
+            live_patterns = get_candlestick_patterns(df_macro.iloc[-2], df_macro.iloc[-1], curr_pseudo)
+            if live_patterns:
+                live_pattern_name = live_patterns[0]["name"]
+                live_pattern_tooltip = live_patterns[0]["tooltip"]
+                live_pattern_score = live_patterns[0]["score"]
+    except Exception:
+        pass
+
+    html = create_intraday_chart(
+        df_intraday, ticker, s1=s1, s2=s2,
+        live_pattern_name=live_pattern_name,
+        live_pattern_tooltip=live_pattern_tooltip,
+        live_pattern_score=live_pattern_score,
+        include_plotlyjs=False,
+        market_tz=mkt_tz,
+        data_delay_minutes=delay_min,
+    )
+    return JSONResponse(content={"html": html})
