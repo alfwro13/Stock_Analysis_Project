@@ -769,6 +769,100 @@ def run_smgb_predictor_job():
         record_job_run('smgb_predictor_job')
 
 
+def _run_etf_predictor_job(config_id: int, fill_actuals: bool = False) -> None:
+    job_type = "post" if fill_actuals else "pre"
+    job_id = f"etf_predictor_{config_id}_{job_type}_job"
+    job_name = f"ETF Predictor [{config_id}]"
+    _mark_job_started(job_name)
+    log_sched_notification("Scheduler", f"Started {job_name} ({job_type})...")
+    try:
+        from etf_predictor_engine import fill_actuals_for_config, run_prediction
+        if fill_actuals:
+            fill_actuals_for_config(config_id)
+            result = run_prediction(config_id)
+        else:
+            result = run_prediction(config_id)
+        if result.get("status") != "success":
+            log_sched_notification("Warning", f"{job_name}: {result.get('error', 'unknown error')}")
+            return
+        predicted = result.get("predicted_price")
+        change = result.get("predicted_change_pct", 0)
+        signal = result.get("signal_source", "")
+        target = result.get("next_open_date", "")
+        etf = config_id
+        cfg_db = result.get("etf_info", {})
+        ticker_label = cfg_db.get("name", str(config_id))
+        sign = "+" if change >= 0 else ""
+        log_sched_notification(
+            "Success",
+            f"{ticker_label} Predictor — {target}: {predicted:.4f} ({sign}{change:.2f}%) | signal: {signal}",
+        )
+    except Exception as e:
+        logger.error("ETF predictor job %s failed: %s", job_id, e)
+        log_sched_notification("Error", f"{job_name} failed: {e}")
+    finally:
+        _mark_job_done(job_name)
+        record_job_run(job_id)
+
+
+def register_etf_predictor_jobs(config: dict) -> None:
+    """Register or replace pre/post APScheduler jobs for a single ETF predictor config."""
+    config_id = config["id"]
+    if not config.get("enabled") or config.get("deleted_at"):
+        return
+    pre_time = config.get("pre_run_time", "13:30")
+    post_time = config.get("post_run_time", "22:00")
+    try:
+        pre_h, pre_m = map(int, pre_time.split(":"))
+        scheduler.add_job(
+            _run_etf_predictor_job,
+            CronTrigger(day_of_week="mon-fri", hour=pre_h, minute=pre_m, timezone="UTC"),
+            id=f"etf_predictor_{config_id}_pre_job",
+            kwargs={"config_id": config_id, "fill_actuals": False},
+            replace_existing=True,
+            misfire_grace_time=300,
+        )
+        logger.info("ETF predictor %s pre-job scheduled at %s UTC.", config_id, pre_time)
+    except Exception as e:
+        logger.error("Failed to register ETF predictor %s pre-job: %s", config_id, e)
+    try:
+        post_h, post_m = map(int, post_time.split(":"))
+        scheduler.add_job(
+            _run_etf_predictor_job,
+            CronTrigger(day_of_week="mon-fri", hour=post_h, minute=post_m, timezone="UTC"),
+            id=f"etf_predictor_{config_id}_post_job",
+            kwargs={"config_id": config_id, "fill_actuals": True},
+            replace_existing=True,
+            misfire_grace_time=300,
+        )
+        logger.info("ETF predictor %s post-job scheduled at %s UTC.", config_id, post_time)
+    except Exception as e:
+        logger.error("Failed to register ETF predictor %s post-job: %s", config_id, e)
+
+
+def unregister_etf_predictor_jobs(config_id: int) -> None:
+    """Remove pre/post jobs for a given ETF predictor config. Silently ignores missing jobs."""
+    from apscheduler.jobstores.base import JobLookupError
+    for suffix in ("pre", "post"):
+        try:
+            scheduler.remove_job(f"etf_predictor_{config_id}_{suffix}_job")
+        except (JobLookupError, Exception):
+            pass
+
+
+def run_etf_actual_fill_job() -> None:
+    """Always-on: fills actuals for all active ETF predictor configs."""
+    log_sched_notification("Scheduler", "Started ETF Predictor actual-fill job...")
+    try:
+        from etf_predictor_engine import fill_all_actuals
+        fill_all_actuals()
+        log_sched_notification("Success", "ETF Predictor actual-fill complete.")
+    except Exception as e:
+        log_sched_notification("Error", f"ETF Predictor actual-fill failed: {e}")
+    finally:
+        record_job_run("etf_predictor_actual_fill_job")
+
+
 def run_system_check_job():
     log_sched_notification("Scheduler", "Started System Configuration Check...")
     try:
@@ -1335,6 +1429,26 @@ def reload_scheduler():
         logger.info("SMGB actual-fill job scheduled for mon-fri at 09:15.")
     except Exception as e:
         logger.error("Failed to schedule SMGB actual-fill job: %s", e)
+
+    # Always-on: ETF Predictor actual-fill — runs Mon–Fri at 09:20 UTC.
+    try:
+        scheduler.add_job(
+            run_etf_actual_fill_job,
+            CronTrigger(day_of_week="mon-fri", hour=9, minute=20, timezone="UTC"),
+            id="etf_predictor_actual_fill_job",
+        )
+        logger.info("ETF Predictor actual-fill job scheduled for mon-fri at 09:20 UTC.")
+    except Exception as e:
+        logger.error("Failed to schedule ETF Predictor actual-fill job: %s", e)
+
+    # Dynamic: register per-config ETF predictor jobs from DB.
+    try:
+        from database import get_etf_predictor_configs as _get_etf_cfgs
+        for _etf_cfg in _get_etf_cfgs():
+            if _etf_cfg.get("auto_schedule") and _etf_cfg.get("enabled") and not _etf_cfg.get("deleted_at"):
+                register_etf_predictor_jobs(_etf_cfg)
+    except Exception as e:
+        logger.error("Failed to register ETF predictor jobs from DB: %s", e)
 
     sys_check_cfg = scheduling.get("SYSTEM_CHECK", {})
     if sys_check_cfg.get("ENABLED", True):

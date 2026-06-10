@@ -1102,6 +1102,59 @@ async def trap_monitor_page(request: Request):
     )
 
 
+@page_router.get("/etf-predictor", response_class=HTMLResponse)
+async def etf_predictor_index_page(request: Request):
+    from database import get_etf_predictor_configs, get_etf_accuracy
+    configs = get_etf_predictor_configs()
+    tiles = []
+    for cfg in configs:
+        accuracy = get_etf_accuracy(cfg["id"])
+        last_row = accuracy["next_open"]["rows"][0] if accuracy["next_open"]["rows"] else None
+        tiles.append({
+            "config": cfg,
+            "last_prediction": last_row,
+            "summary": accuracy["next_open"]["summary"],
+        })
+    return templates.TemplateResponse(
+        request=request,
+        name="etf_predictor.html",
+        context={
+            "tiles": tiles,
+            "unread_count": get_unread_count(),
+            "config": load_config(),
+        },
+    )
+
+
+@page_router.get("/etf-predictor/{config_id}", response_class=HTMLResponse)
+async def etf_predictor_detail_page(request: Request, config_id: int):
+    from database import get_etf_predictor_config, get_etf_accuracy
+    import json as _json
+    cfg = get_etf_predictor_config(config_id)
+    if cfg is None:
+        return templates.TemplateResponse(
+            request=request,
+            name="404.html",
+            context={"unread_count": get_unread_count()},
+            status_code=404,
+        )
+    accuracy = get_etf_accuracy(config_id)
+    from etf_predictor_engine import detect_etf_info
+    etf_info = detect_etf_info(cfg["etf_ticker"])
+    return templates.TemplateResponse(
+        request=request,
+        name="etf_predictor_detail.html",
+        context={
+            "cfg": cfg,
+            "etf_info": etf_info,
+            "accuracy": accuracy,
+            "accuracy_json": _json.dumps(accuracy),
+            "unread_count": get_unread_count(),
+            "config": load_config(),
+        },
+    )
+
+
 @page_router.get("/stress-test", response_class=HTMLResponse)
 async def stress_test_page(request: Request):
     return templates.TemplateResponse(

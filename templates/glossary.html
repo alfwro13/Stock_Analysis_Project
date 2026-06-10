@@ -310,6 +310,27 @@
                 </div>
             </details>
 
+            <details class="settings-card" id="etf-predictor">
+                <summary>📊 ETF Price Predictor</summary>
+                <div class="term-box">
+                    <span class="term-title">ETF Price Predictor</span>
+                    <p>A configurable tool that estimates an ETF's next-session opening price by weighting the after-hours returns of its top constituent holdings. Users configure the ETF ticker and up to 20 constituent tickers with weights in Settings. The system normalises weights to 100% and runs two engines: a holdings-weighted basket return engine (primary) and an OLS regression engine (fallback).</p>
+                </div>
+                <div class="term-box">
+                    <span class="term-title">Holdings Engine</span>
+                    <p>The primary prediction engine. For each constituent, the engine measures the price change since the ETF's home-exchange close (post-close intraday signal) or since the prior daily close (daily signal). It then weights these returns by each constituent's portfolio weight to compute a weighted basket return, applies an FX adjustment if the ETF and its constituents are denominated in different currencies, and projects the ETF's next open from its last close.</p>
+                    <div class="rule">Predicted Price = Last Close × (1 + Weighted Return + FX Adjustment)</div>
+                </div>
+                <div class="term-box">
+                    <span class="term-title">Regression Engine</span>
+                    <p>The fallback prediction engine. Uses 60+ days of history to fit an OLS regression model: ETF next-morning return = α + β × average constituent daily return. When fewer than 3 constituents have usable data (holdings engine returns None), the regression engine is used instead. Reports R², beta, and a 95% confidence interval derived from regression residuals.</p>
+                </div>
+                <div class="term-box">
+                    <span class="term-title">Constituent Weights</span>
+                    <p>The percentage allocation each ticker represents within the configured ETF prediction basket. Weights are automatically normalised to sum to 100% regardless of input values. Weights at the time of each prediction are saved as a snapshot so editing the config later does not distort historical accuracy records.</p>
+                </div>
+            </details>
+
             <details class="settings-card" id="stress-tester">
                 <summary>📉 Historical Stress Tester</summary>
                 <div class="term-box">

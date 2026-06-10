@@ -150,6 +150,16 @@ Tables added after initial schema creation. All managed via `database.py:init_db
 * **Purpose:** SMGB.L morning price predictions, actuals, and accuracy metrics.
 * **Key Columns:** `id` (PK autoincrement), `target_date` (UNIQUE), `predicted_price`, `actual_open`, `absolute_error`, `pct_error`, `direction_correct`.
 
+#### `etf_predictor_configs`
+* **Purpose:** Configuration for each generic ETF predictor setup (multi-config, user-managed from Settings).
+* **Key Columns:** `id` (PK autoincrement), `name`, `etf_ticker`, `constituents` (JSON array of `{ticker, weight}`), `enabled`, `auto_schedule`, `pre_run_time` (HH:MM UTC), `post_run_time` (HH:MM UTC), `deleted_at` (soft-delete), `created_at`.
+* **Notes:** Weights stored normalised to sum=1.0. Soft-delete preserves prediction history. Scheduler jobs are registered dynamically from this table at startup.
+
+#### `etf_predictor_predictions`
+* **Purpose:** Prediction log per config — tracks predicted vs actual open prices and accuracy metrics over time.
+* **Key Columns:** `id` (PK autoincrement), `config_id` (FK to etf_predictor_configs), `run_at`, `prediction_date`, `target_date`, `prediction_type` (`next_open` | `us_open_impact`), `predicted_price`, `actual_open`, `absolute_error`, `pct_error`, `direction_correct`, `constituent_snapshot` (JSON weights at prediction time), `fx_rate`, `r_squared`.
+* **Constraint:** `UNIQUE(config_id, target_date, prediction_type)` — idempotent logging via `ON CONFLICT DO NOTHING`.
+
 #### `trap_monitor_results`
 * **Purpose:** Latest Trap Monitor scan result per ticker — one row per ticker, upserted on each scan. Powers `/trap-monitor` live table.
 * **Key Columns:** `ticker` (PK), `phase` (lifecycle phase label), `bull_trap_level`, `bull_trap_vol_ratio`, `bear_trap_level`, `cap_level`, `cap_vol_zscore`, `wyckoff_level`, `wyckoff_bb_width`, `ema_distance`, `rsi`, `scan_ts`. Notes for each signal stored in `*_notes` text columns.

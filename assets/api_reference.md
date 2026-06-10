@@ -1595,4 +1595,153 @@ Rate limit: 30/minute.
 
 ---
 
+## 22. ETF Price Predictor
+
+Generic ETF next-session open price predictor. Multiple predictor configurations can be added from Settings → Tools → ETF Price Predictors. Each config specifies an ETF ticker and up to 20 constituent tickers with weights. Results accessible at `/etf-predictor`.
+
+### `GET /api/etf-predictors`
+
+Returns all non-deleted predictor configurations.
+
+**Response:**
+```json
+{
+  "status": "success",
+  "configs": [
+    {
+      "id": 1,
+      "name": "VUSA S&P500 Predictor",
+      "etf_ticker": "VUSA.L",
+      "constituents": [{"ticker": "AAPL", "weight": 0.07}, "..."],
+      "enabled": 1,
+      "auto_schedule": 1,
+      "pre_run_time": "13:30",
+      "post_run_time": "22:00",
+      "deleted_at": null,
+      "created_at": "2026-06-10 10:00:00"
+    }
+  ]
+}
+```
+
+Rate limit: 20/minute.
+
+---
+
+### `POST /api/etf-predictors`
+
+Create a new predictor configuration. Weights are normalised to sum=1.0 automatically.
+
+**Request body:**
+```json
+{
+  "name": "VUSA S&P500 Predictor",
+  "etf_ticker": "VUSA.L",
+  "constituents": [
+    {"ticker": "AAPL", "weight": 7.0},
+    {"ticker": "MSFT", "weight": 6.8}
+  ],
+  "enabled": true,
+  "auto_schedule": true,
+  "pre_run_time": "13:30",
+  "post_run_time": "22:00"
+}
+```
+
+Returns `{"status": "success", "message": "...", "id": <new_config_id>}`. Returns 422 if `constituents` is empty or all weights are zero.
+
+Rate limit: 10/minute.
+
+---
+
+### `PUT /api/etf-predictors/{id}`
+
+Update an existing predictor configuration. Same body as POST. Returns 404 if not found or soft-deleted.
+
+Rate limit: 10/minute.
+
+---
+
+### `DELETE /api/etf-predictors/{id}`
+
+Soft-deletes the predictor configuration (sets `deleted_at`). Prediction history is preserved. Unregisters any scheduled APScheduler jobs for this config.
+
+Returns 404 if not found.
+
+Rate limit: 10/minute.
+
+---
+
+### `POST /api/etf-predictors/{id}/run`
+
+Triggers a prediction run as a background task. Returns immediately; progress visible in Notifications.
+
+**Response:** `{"status": "success", "message": "ETF predictor {id} run initiated."}`
+
+Returns 404 if not found.
+
+Rate limit: 5/minute.
+
+---
+
+### `POST /api/etf-predictors/{id}/fill-actuals`
+
+Triggers an actuals-fill pass for this config as a background task. Fetches the current ETF price and fills `actual_open` for unresolved prediction rows.
+
+Returns 404 if not found.
+
+Rate limit: 5/minute.
+
+---
+
+### `GET /api/etf-predictors/{id}/predictions`
+
+Returns prediction history and accuracy summary for a specific config.
+
+**Response:**
+```json
+{
+  "status": "success",
+  "next_open": {
+    "rows": [
+      {
+        "id": 42,
+        "target_date": "2026-06-11",
+        "predicted_price": 8543.21,
+        "actual_open": 8512.00,
+        "pct_error": 0.37,
+        "direction_correct": 1,
+        "signal_source": "intraday_post_close"
+      }
+    ],
+    "summary": {
+      "total_predictions": 45,
+      "resolved_count": 40,
+      "direction_accuracy_pct": 62.5,
+      "mae": 31.4,
+      "mape_pct": 0.38,
+      "last_10_direction_pct": 70.0,
+      "last_30_direction_pct": 60.0
+    }
+  },
+  "us_open_impact": { "rows": [], "summary": {} }
+}
+```
+
+Returns 404 if config not found.
+
+Rate limit: 20/minute.
+
+---
+
+### `GET /etf-predictor`
+
+HTML page. Renders tile grid — one tile per configured predictor with last prediction, last actual, and direction accuracy summary.
+
+### `GET /etf-predictor/{id}`
+
+HTML page. Renders the detail view for a single predictor: accuracy metrics, prediction history table, Plotly accuracy-over-time chart, and ETF composition.
+
+---
+
 *Generated: 2026-06-06 · Quantamental Dashboard*

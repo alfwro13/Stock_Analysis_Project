@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="color-scheme" content="dark">
+    <title>Quantamental - {{ cfg.etf_ticker }} Predictor</title>
+    <link rel="stylesheet" href="/static/css/styles.css?v={{ css_version }}">
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+</head>
+<body class="body-watchlist">
+
+    <div class="header-container">
+        <div>
+            <div class="title-wrapper">
+                <a href="https://github.com/alfwro13/Stock_Analysis_Project" target="_blank" class="logo-link">
+                    <img src="/assets/logo_small.png" alt="Quantamental Logo" class="logo-img">
+                </a>
+                <h1>&#128202; {{ cfg.etf_ticker }} — {{ cfg.name }}</h1>
+            </div>
+            <p class="page-subtitle">
+                ETF Price Predictor &mdash;
+                <abbr title="Exchange: where the ETF is listed.">{{ etf_info.exchange }}</abbr> &middot;
+                {{ etf_info.currency }}
+                {% if etf_info.name and etf_info.name != cfg.etf_ticker %}&middot; {{ etf_info.name }}{% endif %}
+            </p>
+            {% set active_page = 'tools' %}
+            {% include 'navbar.html' %}
+        </div>
+    </div>
+
+    <div class="report-container report-container-wide">
+
+        <div class="flex-gap-15 mb-20" style="align-items:center;">
+            <a href="/etf-predictor" style="color:#aaa;font-size:13px;">← Back to ETF Predictors</a>
+            <button type="button" class="btn-test" style="font-size:12px;padding:5px 12px;" onclick="runNow()">▶ Run Now</button>
+            <span id="run-status" class="status-msg-sm"></span>
+        </div>
+
+        {% set no_data = accuracy.next_open.rows | length == 0 %}
+        {% set last = accuracy.next_open.rows[0] if not no_data else none %}
+        {% set summ = accuracy.next_open.summary %}
+
+        {% if no_data %}
+        <div class="settings-panel border-left-purple" style="text-align:center;padding:30px;">
+            <h4 class="text-purple">No predictions yet</h4>
+            <p style="color:#aaa;">Click "Run Now" above or wait for the scheduled job to generate the first prediction.</p>
+        </div>
+        {% else %}
+
+        {# ── Summary metric cards ── #}
+        <div class="xray-cards-row" style="margin-bottom:24px;">
+            <div class="xray-metric-card xray-metric-card--purple">
+                <div class="xray-metric-label"><abbr title="Most recent predicted opening price for this ETF.">Latest Predicted Open</abbr></div>
+                <div class="prediction-hero">{{ "%.4f"|format(last.predicted_price) if last.predicted_price else '—' }}</div>
+                {% if last.predicted_change_pct is not none %}
+                <div class="{% if last.predicted_change_pct >= 0 %}prediction-change-pos{% else %}prediction-change-neg{% endif %}">
+                    {{ "%+.2f"|format(last.predicted_change_pct) }}%
+                </div>
+                {% endif %}
+                <div style="color:#666;font-size:11px;margin-top:4px;">target: {{ last.target_date }}</div>
+            </div>
+            <div class="xray-metric-card">
+                <div class="xray-metric-label">Last ETF Close</div>
+                <div class="xray-metric-value">{{ "%.4f"|format(last.last_etf_close) if last.last_etf_close else '—' }}</div>
+            </div>
+            <div class="xray-metric-card">
+                <div class="xray-metric-label"><abbr title="Direction accuracy — percentage of predictions where the predicted direction (up/down) matched actual.">Direction Accuracy</abbr></div>
+                {% if summ.direction_accuracy_pct is not none %}
+                <div class="xray-metric-value" style="color:{% if summ.direction_accuracy_pct >= 60 %}#00ff00{% elif summ.direction_accuracy_pct >= 50 %}#ffaa00{% else %}#ff4d4d{% endif %};">
+                    {{ summ.direction_accuracy_pct }}%
+                </div>
+                <div class="xray-metric-label xray-metric-sublabel">{{ summ.resolved_count }} resolved of {{ summ.total_predictions }}</div>
+                {% else %}
+                <div class="xray-metric-value">—</div>
+                {% endif %}
+            </div>
+            <div class="xray-metric-card">
+                <div class="xray-metric-label"><abbr title="Mean Absolute Error — average absolute difference between predicted and actual open price.">MAE</abbr></div>
+                <div class="xray-metric-value">{{ "%.4f"|format(summ.mae) if summ.mae else '—' }}</div>
+            </div>
+            <div class="xray-metric-card">
+                <div class="xray-metric-label"><abbr title="Mean Absolute Percentage Error — average percentage difference between predicted and actual open price.">MAPE</abbr></div>
+                <div class="xray-metric-value">{{ "%.2f"|format(summ.mape_pct) ~ '%' if summ.mape_pct else '—' }}</div>
+            </div>
+            {% if summ.last_10_direction_pct is not none %}
+            <div class="xray-metric-card">
+                <div class="xray-metric-label">Last 10 Direction</div>
+                <div class="xray-metric-value" style="color:{% if summ.last_10_direction_pct >= 60 %}#00ff00{% elif summ.last_10_direction_pct >= 50 %}#ffaa00{% else %}#ff4d4d{% endif %};">
+                    {{ summ.last_10_direction_pct }}%
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        {# ── Signal source badge ── #}
+        {% if last.signal_source %}
+        <div style="margin-bottom:20px;">
+            <span style="font-size:12px;color:#888;">Signal source: </span>
+            <span class="badge-source" style="font-size:12px;">{{ last.signal_source }}</span>
+            {% if last.data_source %}
+            <span style="font-size:12px;color:#888;margin-left:10px;">Data: </span>
+            <span class="badge-source" style="font-size:12px;">{{ last.data_source }}</span>
+            {% endif %}
+            {% if last.fx_rate and last.fx_rate != 1.0 %}
+            <span style="font-size:12px;color:#888;margin-left:10px;"><abbr title="FX rate used for currency adjustment.">FX</abbr>: {{ "%.4f"|format(last.fx_rate) }}</span>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        {# ── Accuracy chart ── #}
+        <div class="chart-wrapper" style="margin-bottom:24px;">
+            <h3 style="color:#aaa;font-size:15px;margin-bottom:8px;">Prediction Accuracy Over Time</h3>
+            <div id="accuracy-chart" style="height:280px;"></div>
+        </div>
+
+        {# ── ETF composition ── #}
+        <div class="settings-panel border-left-purple" style="margin-bottom:24px;">
+            <h4 class="settings-panel-header text-purple">ETF Composition ({{ cfg.constituents|length }} constituents)</h4>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">
+                {% for h in cfg.constituents | sort(attribute='weight', reverse=True) %}
+                <span style="background:#1e1e1e;padding:4px 10px;border-radius:4px;font-size:13px;">
+                    <strong style="color:#00ffcc;">{{ h.ticker }}</strong>
+                    <span style="color:#888;margin-left:4px;">{{ "%.1f"|format(h.weight * 100) }}%</span>
+                </span>
+                {% endfor %}
+            </div>
+        </div>
+
+        {# ── Prediction history table ── #}
+        <div style="margin-bottom:40px;">
+            <h3 style="color:#aaa;font-size:15px;margin-bottom:10px;">Prediction History (last 30)</h3>
+            <div style="overflow-x:auto;">
+                <table class="data-table" style="font-size:13px;">
+                    <thead>
+                        <tr>
+                            <th>Target Date</th>
+                            <th>Predicted</th>
+                            <th>Actual</th>
+                            <th>Chg%</th>
+                            <th>Err%</th>
+                            <th>Direction</th>
+                            <th>Signal</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in accuracy.next_open.rows[:30] %}
+                        <tr>
+                            <td>{{ row.target_date }}</td>
+                            <td>{{ "%.4f"|format(row.predicted_price) if row.predicted_price else '—' }}</td>
+                            <td>{% if row.actual_open %}{{ "%.4f"|format(row.actual_open) }}{% else %}<span style="color:#666;">pending</span>{% endif %}</td>
+                            <td>{% if row.predicted_change_pct is not none %}
+                                <span class="{% if row.predicted_change_pct >= 0 %}text-green{% else %}text-red{% endif %}">{{ "%+.2f"|format(row.predicted_change_pct) }}%</span>
+                                {% else %}—{% endif %}
+                            </td>
+                            <td>{% if row.pct_error is not none %}{{ "%.2f"|format(row.pct_error) }}%{% else %}—{% endif %}</td>
+                            <td style="text-align:center;">
+                                {% if row.direction_correct is not none %}
+                                    {% if row.direction_correct == 1 %}<span style="color:#00ff00;">&#10003;</span>
+                                    {% else %}<span style="color:#ff4d4d;">&#10007;</span>{% endif %}
+                                {% else %}—{% endif %}
+                            </td>
+                            <td style="color:#888;font-size:11px;">{{ row.signal_source or '—' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <script>
+    (function () {
+        const accuracy = {{ accuracy_json | safe }};
+        const rows = (accuracy.next_open || {}).rows || [];
+        const resolved = rows.filter(r => r.actual_open !== null && r.pct_error !== null);
+        if (resolved.length < 2) return;
+
+        const dates = resolved.map(r => r.target_date).reverse();
+        const errors = resolved.map(r => r.pct_error).reverse();
+        const directions = resolved.map(r => r.direction_correct).reverse();
+
+        const colours = directions.map(d => d === 1 ? '#00ff00' : d === 0 ? '#ff4d4d' : '#666');
+
+        Plotly.newPlot('accuracy-chart', [
+            {
+                x: dates, y: errors, type: 'scatter', mode: 'lines+markers',
+                line: { color: '#4da6ff', width: 1.5 },
+                marker: { color: colours, size: 7 },
+                name: 'Abs % Error',
+            }
+        ], {
+            paper_bgcolor: 'transparent', plot_bgcolor: 'transparent',
+            font: { color: '#ccc', size: 11 },
+            xaxis: { gridcolor: '#2a2a2a', tickfont: { size: 10 } },
+            yaxis: { gridcolor: '#2a2a2a', ticksuffix: '%', title: 'Abs Error %' },
+            margin: { t: 10, r: 20, b: 50, l: 55 },
+            showlegend: false,
+        }, { responsive: true, displayModeBar: false });
+    })();
+
+    async function runNow() {
+        const btn = event.target;
+        const status = document.getElementById('run-status');
+        btn.disabled = true;
+        status.innerHTML = '<span class="msg-info">Running prediction...</span>';
+        try {
+            const r = await fetch('/api/etf-predictors/{{ cfg.id }}/run', { method: 'POST' });
+            const data = await r.json();
+            if (data.status === 'success') {
+                status.innerHTML = '<span class="msg-success">Prediction initiated — refresh in a moment.</span>';
+            } else {
+                status.innerHTML = `<span class="msg-error">${data.message || 'Failed'}</span>`;
+                btn.disabled = false;
+            }
+        } catch (e) {
+            status.innerHTML = `<span class="msg-error">${e.message}</span>`;
+            btn.disabled = false;
+        }
+    }
+    </script>
+
+</body>
+</html>

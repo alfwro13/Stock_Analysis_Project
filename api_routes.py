@@ -1512,6 +1512,189 @@ async def get_smgb_accuracy(request: Request):
         return JSONResponse(content={"rows": [], "summary": {}, "error": str(e)})
 
 
+class EtfConstituentItem(BaseModel):
+    ticker: str
+    weight: float
+
+
+class EtfPredictorConfigBody(BaseModel):
+    name: str
+    etf_ticker: str
+    constituents: List[EtfConstituentItem]
+    enabled: Optional[bool] = True
+    auto_schedule: Optional[bool] = False
+    pre_run_time: Optional[str] = "13:30"
+    post_run_time: Optional[str] = "22:00"
+
+
+def _normalise_constituents(items: List[EtfConstituentItem]) -> List[dict]:
+    total = sum(i.weight for i in items)
+    if total <= 0:
+        return []
+    return [{"ticker": i.ticker.upper().strip(), "weight": i.weight / total} for i in items]
+
+
+@api_router.get("/etf-predictors")
+@limiter.limit("20/minute")
+async def list_etf_predictors(request: Request):
+    try:
+        from database import get_etf_predictor_configs
+        configs = get_etf_predictor_configs()
+        return JSONResponse(content={"status": "success", "configs": configs})
+    except Exception as e:
+        logger.error("list_etf_predictors failed: %s", e)
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+
+@api_router.post("/etf-predictors")
+@limiter.limit("10/minute")
+async def create_etf_predictor(request: Request, body: EtfPredictorConfigBody):
+    try:
+        from database import create_etf_predictor_config
+        from scheduler_engine import register_etf_predictor_jobs
+        if not body.constituents:
+            return JSONResponse(status_code=422, content={"status": "error", "message": "At least one constituent required."})
+        constituents = _normalise_constituents(body.constituents)
+        if not constituents:
+            return JSONResponse(status_code=422, content={"status": "error", "message": "Constituent weights must sum to > 0."})
+        config_id = create_etf_predictor_config(
+            name=body.name,
+            etf_ticker=body.etf_ticker.upper().strip(),
+            constituents=constituents,
+            enabled=body.enabled,
+            auto_schedule=body.auto_schedule,
+            pre_run_time=body.pre_run_time,
+            post_run_time=body.post_run_time,
+        )
+        if config_id is None:
+            return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to save config."})
+        if body.auto_schedule and body.enabled:
+            register_etf_predictor_jobs({
+                "id": config_id, "enabled": True, "deleted_at": None,
+                "pre_run_time": body.pre_run_time, "post_run_time": body.post_run_time,
+            })
+        return JSONResponse(content={"status": "success", "message": "Predictor created.", "id": config_id})
+    except Exception as e:
+        logger.error("create_etf_predictor failed: %s", e)
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+
+@api_router.put("/etf-predictors/{config_id}")
+@limiter.limit("10/minute")
+async def update_etf_predictor(request: Request, config_id: int, body: EtfPredictorConfigBody):
+    try:
+        from database import update_etf_predictor_config, get_etf_predictor_config
+        from scheduler_engine import register_etf_predictor_jobs, unregister_etf_predictor_jobs
+        if get_etf_predictor_config(config_id) is None:
+            return JSONResponse(status_code=404, content={"status": "error", "message": "Config not found."})
+        constituents = _normalise_constituents(body.constituents) if body.constituents else None
+        if constituents is not None and not constituents:
+            return JSONResponse(status_code=422, content={"status": "error", "message": "Constituent weights must sum to > 0."})
+        fields: dict = {
+            "name": body.name,
+            "etf_ticker": body.etf_ticker.upper().strip(),
+            "enabled": body.enabled,
+            "auto_schedule": body.auto_schedule,
+            "pre_run_time": body.pre_run_time,
+            "post_run_time": body.post_run_time,
+        }
+        if constituents is not None:
+            fields["constituents"] = constituents
+        update_etf_predictor_config(config_id, **fields)
+        unregister_etf_predictor_jobs(config_id)
+        if body.auto_schedule and body.enabled:
+            register_etf_predictor_jobs({
+                "id": config_id, "enabled": True, "deleted_at": None,
+                "pre_run_time": body.pre_run_time, "post_run_time": body.post_run_time,
+            })
+        return JSONResponse(content={"status": "success", "message": "Predictor updated."})
+    except Exception as e:
+        logger.error("update_etf_predictor %s failed: %s", config_id, e)
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+
+@api_router.delete("/etf-predictors/{config_id}")
+@limiter.limit("10/minute")
+async def delete_etf_predictor(request: Request, config_id: int):
+    try:
+        from database import soft_delete_etf_predictor_config, get_etf_predictor_config
+        from scheduler_engine import unregister_etf_predictor_jobs
+        if get_etf_predictor_config(config_id) is None:
+            return JSONResponse(status_code=404, content={"status": "error", "message": "Config not found."})
+        unregister_etf_predictor_jobs(config_id)
+        soft_delete_etf_predictor_config(config_id)
+        return JSONResponse(content={"status": "success", "message": "Predictor deleted."})
+    except Exception as e:
+        logger.error("delete_etf_predictor %s failed: %s", config_id, e)
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+
+@api_router.post("/etf-predictors/{config_id}/run")
+@limiter.limit("5/minute")
+async def run_etf_predictor(request: Request, config_id: int, background_tasks: BackgroundTasks):
+    try:
+        from database import get_etf_predictor_config
+        if get_etf_predictor_config(config_id) is None:
+            return JSONResponse(status_code=404, content={"status": "error", "message": "Config not found."})
+
+        def _bg():
+            try:
+                from etf_predictor_engine import run_prediction
+                from scheduler_engine import log_sched_notification
+                result = run_prediction(config_id)
+                if result.get("status") != "success":
+                    log_sched_notification("Warning", f"ETF predictor [{config_id}] run: {result.get('error')}")
+                else:
+                    log_sched_notification("Success", f"ETF predictor [{config_id}] prediction complete.")
+            except Exception as exc:
+                from scheduler_engine import log_sched_notification
+                log_sched_notification("Error", f"ETF predictor [{config_id}] run failed: {exc}")
+
+        background_tasks.add_task(_bg)
+        return JSONResponse(content={"status": "success", "message": f"ETF predictor {config_id} run initiated."})
+    except Exception as e:
+        logger.error("run_etf_predictor %s failed: %s", config_id, e)
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+
+@api_router.post("/etf-predictors/{config_id}/fill-actuals")
+@limiter.limit("5/minute")
+async def fill_etf_predictor_actuals(request: Request, config_id: int, background_tasks: BackgroundTasks):
+    try:
+        from database import get_etf_predictor_config
+        if get_etf_predictor_config(config_id) is None:
+            return JSONResponse(status_code=404, content={"status": "error", "message": "Config not found."})
+
+        def _bg():
+            try:
+                from etf_predictor_engine import fill_actuals_for_config
+                fill_actuals_for_config(config_id)
+                from scheduler_engine import log_sched_notification
+                log_sched_notification("Success", f"ETF predictor [{config_id}] actuals filled.")
+            except Exception as exc:
+                from scheduler_engine import log_sched_notification
+                log_sched_notification("Error", f"ETF predictor [{config_id}] fill-actuals failed: {exc}")
+
+        background_tasks.add_task(_bg)
+        return JSONResponse(content={"status": "success", "message": f"ETF predictor {config_id} fill-actuals initiated."})
+    except Exception as e:
+        logger.error("fill_etf_predictor_actuals %s failed: %s", config_id, e)
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+
+@api_router.get("/etf-predictors/{config_id}/predictions")
+@limiter.limit("20/minute")
+async def get_etf_predictor_predictions(request: Request, config_id: int):
+    try:
+        from database import get_etf_accuracy, get_etf_predictor_config
+        if get_etf_predictor_config(config_id) is None:
+            return JSONResponse(status_code=404, content={"status": "error", "message": "Config not found."})
+        return JSONResponse(content={"status": "success", **get_etf_accuracy(config_id)})
+    except Exception as e:
+        logger.error("get_etf_predictor_predictions %s failed: %s", config_id, e)
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+
 @api_router.get("/ai-prompt/{ticker}")
 async def get_ai_prompt(ticker: str = PathParam(..., pattern=r"^[A-Z0-9.\-\^=]{1,20}$"), mode: str = "Quantamental Deep-Dive"):
     try:
