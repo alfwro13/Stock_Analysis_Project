@@ -373,3 +373,15 @@ class TestIntradayDipRadar:
             conn.execute("DELETE FROM intraday_monitors WHERE ticker = 'NVDA'")
             conn.commit()
             conn.close()
+
+
+# ── Market Trap & Recovery Monitor ────────────────────────────────────────────
+
+@pytest.mark.api
+def test_trap_monitor_run_returns_success(client):
+    """POST /api/trap-monitor/run must return 200 {status: success} immediately."""
+    with patch.object(_StarletteBackgroundTasks, "add_task", return_value=None):
+        resp = client.post("/api/trap-monitor/run")
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
+    data = resp.json()
+    assert data.get("status") == "success", f"Expected success, got: {data}"

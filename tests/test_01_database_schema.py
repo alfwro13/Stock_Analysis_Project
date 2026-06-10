@@ -72,6 +72,7 @@ EXPECTED_TABLES = [
     "news_articles",
     "smgb_predictions",
     "model_training_log",
+    "trap_monitor_results",
 ]
 
 
@@ -497,5 +498,45 @@ def test_smgb_predictions_unique_target_date():
         assert count == 1, f"UNIQUE(target_date) violated: expected 1 row, got {count}"
     finally:
         conn.execute("DELETE FROM smgb_predictions WHERE target_date = '2099-01-02'")
+        conn.commit()
+        conn.close()
+
+
+@pytest.mark.db
+def test_trap_monitor_results_has_required_columns():
+    """trap_monitor_results must expose all columns the API and engine read."""
+    cols = _columns("trap_monitor_results")
+    required = {
+        "ticker", "phase",
+        "bull_trap_level", "bull_trap_vol_ratio", "bull_trap_notes",
+        "bear_trap_level", "bear_trap_notes",
+        "cap_level", "cap_vol_zscore", "cap_notes",
+        "wyckoff_level", "wyckoff_bb_width", "wyckoff_notes",
+        "ema_distance", "rsi", "scan_ts",
+    }
+    missing = required - cols
+    assert not missing, f"trap_monitor_results missing columns: {missing}"
+
+
+@pytest.mark.db
+def test_trap_monitor_results_primary_key_is_ticker():
+    """ON CONFLICT(ticker) upsert must replace, not duplicate."""
+    conn = _db.get_connection()
+    try:
+        for phase in ("NEUTRAL", "BULL_TRAP_RISK"):
+            conn.execute(
+                "INSERT INTO trap_monitor_results (ticker, phase, bull_trap_level, bear_trap_level, "
+                "cap_level, wyckoff_level, scan_ts) VALUES (?, ?, 'SAFE', 'SAFE', 'NONE', 'NONE', '2026-01-01 00:00:00') "
+                "ON CONFLICT(ticker) DO UPDATE SET phase=excluded.phase",
+                ("PK_TEST_TRAP", phase),
+            )
+            conn.commit()
+        rows = conn.execute(
+            "SELECT COUNT(*) AS cnt, phase FROM trap_monitor_results WHERE ticker = 'PK_TEST_TRAP'"
+        ).fetchone()
+        assert rows["cnt"] == 1, "Upsert created a duplicate row"
+        assert rows["phase"] == "BULL_TRAP_RISK", "Phase was not updated by upsert"
+    finally:
+        conn.execute("DELETE FROM trap_monitor_results WHERE ticker = 'PK_TEST_TRAP'")
         conn.commit()
         conn.close()

@@ -197,6 +197,7 @@ def test_no_endpoint_returns_500(client):
         "/api/intraday-monitor/list",
         "/api/intraday-monitor/analysis/AAPL",
         "/api/smgb-prediction",
+        "/api/trap-monitor/results",
     ]
     failures = []
     for url in get_endpoints:
@@ -385,3 +386,26 @@ def test_smgb_accuracy_returns_200_with_summary_key(client):
         assert "summary" in section, f"Missing 'summary' in {section_key}"
         assert isinstance(section["rows"], list), f"'rows' must be a list in {section_key}"
         assert isinstance(section["summary"], dict), f"'summary' must be a dict in {section_key}"
+
+
+# ── Market Trap & Recovery Monitor ────────────────────────────────────────────
+
+@pytest.mark.api
+def test_trap_monitor_results_returns_200(client):
+    """GET /api/trap-monitor/results must return 200 with a 'results' list."""
+    resp = client.get("/api/trap-monitor/results")
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
+    data = _json(resp)
+    assert data.get("status") == "success", f"Expected success status: {data}"
+    assert "results" in data, f"Missing 'results' key: {data}"
+    assert isinstance(data["results"], list), "'results' must be a list"
+
+
+@pytest.mark.api
+def test_trap_monitor_results_empty_on_fresh_db(client):
+    """On a fresh test database, trap_monitor_results must be an empty list."""
+    resp = client.get("/api/trap-monitor/results")
+    data = _json(resp)
+    assert data["results"] == [], (
+        "Expected empty list on fresh DB, got: " + str(data["results"])
+    )

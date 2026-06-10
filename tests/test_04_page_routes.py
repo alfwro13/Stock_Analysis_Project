@@ -178,6 +178,7 @@ def test_no_page_route_returns_500(client):
         ("/news",               "News Feed"),
         ("/tools",              "Tools"),
         ("/uk-etf-forecast",    "UK ETF Forecast"),
+        ("/trap-monitor",       "Trap Monitor"),
     ]
     failures = []
     for url, label in pages:
@@ -190,3 +191,11 @@ def test_no_page_route_returns_500(client):
         + "\n".join(failures)
         + "\n\nThis means the page template or its database query threw an exception."
     )
+
+
+# ── Market Trap & Recovery Monitor ────────────────────────────────────────────
+
+@pytest.mark.pages
+def test_trap_monitor_page_loads(client):
+    """GET /trap-monitor must load with an empty results table without crashing."""
+    _assert_page_ok(client, "/trap-monitor", label="Trap Monitor")
