@@ -1332,6 +1332,8 @@ For methodology details see [`assets/ai_contagion_monitor.md`](ai_contagion_moni
 
 Detects four post-crash lifecycle phases from daily OHLCV data: Bull Trap (Dead Cat Bounce), Bear Trap (False Breakdown), Capitulation (Volume Climax), and Wyckoff Accumulation (BB Squeeze). Covers portfolio tickers plus a configurable proxy basket.
 
+For full methodology, configuration reference, and alerting details see [`assets/bull_bear_trap_monitor.md`](bull_bear_trap_monitor.md).
+
 ### `GET /trap-monitor`
 
 HTML page. Renders the unified Market Trap & Recovery Monitor with lifecycle arc diagram, active alert strip, and a full ticker status table showing all four signal columns.

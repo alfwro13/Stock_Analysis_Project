@@ -781,7 +781,7 @@
 
                     <div class="settings-panel border-left-cyan">
                         <h4 class="settings-panel-header text-cyan">📋 Proxy Ticker Basket</h4>
-                        <p class="settings-desc-sm">Additional tickers to scan beyond your portfolio. Comma-separated, e.g. QQQ, SMH, NVDA. Parquet history must exist for each ticker (run a data sync first if needed).</p>
+                        <p class="settings-desc-sm">Additional tickers to scan beyond your portfolio. Comma-separated, e.g. QQQ, SMH, NVDA. If a ticker has no local history it will be fetched automatically on the first scan.</p>
                         <div class="checkbox-group mb-10">
                             <input type="checkbox" id="TRAP_MONITOR_PORTFOLIO" {% if trap_sched.MONITOR_PORTFOLIO != false %}checked{% endif %}>
                             <label for="TRAP_MONITOR_PORTFOLIO">Monitor Portfolio Tickers</label>

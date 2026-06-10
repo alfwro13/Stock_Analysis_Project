@@ -11,6 +11,7 @@ import ta
 
 from config import HISTORICAL_DIR, PORTFOLIO_PATH
 from database import get_connection
+from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
 
@@ -422,13 +423,26 @@ class TrapEngine:
     def _load_history(self, ticker: str) -> Optional[pd.DataFrame]:
         path = HISTORICAL_DIR / f"{ticker}.parquet"
         if not path.exists():
-            logger.debug("TrapEngine: no parquet for %s — skipping.", ticker)
-            return None
+            logger.info("TrapEngine: no parquet for %s — fetching 2-year history.", ticker)
+            try:
+                data = yahoo_engine.get_price_history([ticker], period="2y", interval="1d")
+                df_fetched = data.get(ticker)
+                if df_fetched is None or df_fetched.empty:
+                    logger.warning("TrapEngine: no price data returned for %s — skipping.", ticker)
+                    return None
+                if df_fetched.index.tz is not None:
+                    df_fetched.index = df_fetched.index.tz_convert(None)
+                HISTORICAL_DIR.mkdir(parents=True, exist_ok=True)
+                df_fetched.to_parquet(path, engine="pyarrow")
+                logger.info("TrapEngine: fetched and saved history for %s (%d rows).", ticker, len(df_fetched))
+            except Exception as e:
+                logger.warning("TrapEngine: failed to fetch history for %s: %s", ticker, e)
+                return None
         try:
             df = pd.read_parquet(path, columns=["Open", "High", "Low", "Close", "Volume"])
             df = df.dropna(subset=["Close", "Volume"])
             df = df[df["Volume"] > 0]
-            return df.tail(60)  # 60 trading days — sufficient for all indicators
+            return df.tail(60)
         except Exception as e:
             logger.warning("TrapEngine: failed to load %s: %s", ticker, e)
             return None
