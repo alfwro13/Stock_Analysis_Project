@@ -1553,13 +1553,9 @@ Returns HTTP 400 if `scenario_id` is unknown or `custom_drop` is missing for a c
 
 Synthesises live macro signals (yield curve, CPI, HY credit spread, real yield, HMM state) into a named economic regime label and returns the historically optimal asset class allocation for that regime. Requires the Macro Data Engine to have run at least once (`POST /api/macro/run-pipeline`). Portfolio alignment requires Ghostfolio to be configured.
 
-### `GET /macro-allocator`
-
-HTML page. Renders the regime banner, signal cards, allocation bar chart (current vs ideal), alignment score, and 90-day regime history. Data is fetched client-side from `/api/macro-regime-allocation`.
-
 ### `GET /api/macro-regime-allocation`
 
-Returns the full regime allocation payload.
+Returns the full regime allocation payload. Consumed by the Portfolio X-ray panel (the standalone `/macro-allocator` page has been removed — regime content is now embedded in the X-ray view on `/portfolio`).
 
 **Response:**
 ```json

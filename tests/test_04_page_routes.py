@@ -179,7 +179,6 @@ def test_no_page_route_returns_500(client):
         ("/tools",              "Tools"),
         ("/uk-etf-forecast",    "UK ETF Forecast"),
         ("/trap-monitor",       "Trap Monitor"),
-        ("/macro-allocator",    "Macro Regime Allocator"),
     ]
     failures = []
     for url, label in pages:

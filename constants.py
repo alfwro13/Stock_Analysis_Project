@@ -62,7 +62,7 @@ MACRO_VIX_DEFAULT          = 20.0  # VIX fallback when market_regimes has no dat
 MACRO_SEVERE_VOL_THRESHOLD = 2.0   # predicted SPY gap % that triggers a warning log
 
 # ── Static asset versioning ───────────────────────────────────────────────────
-CSS_VERSION = "2.2"  # bump this whenever styles.css changes to bust browser caches
+CSS_VERSION = "2.3"  # bump this whenever styles.css changes to bust browser caches
 
 # ── FinBERT / NLP sentiment ────────────────────────────────────────────────────
 NLP_FINBERT_MAX_TOKENS     = 512   # HuggingFace token limit for ProsusAI/finbert

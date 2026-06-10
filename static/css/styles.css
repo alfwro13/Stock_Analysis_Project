@@ -801,3 +801,14 @@ details[open].xray-rec-group .xray-rec-group-summary::before { transform: rotate
 .ma-alloc-table td { padding: 8px 10px; border-bottom: 1px solid #1a1a1a; color: #ccc; }
 .ma-alloc-table tbody tr:hover { background: #161616; }
 .ma-note { font-size: 12px; color: #666; font-style: italic; margin: 8px 0 0 0; }
+.ma-traffic-strip { display: flex; gap: 8px; margin: 12px 0 18px 0; }
+.ma-traffic-box { flex: 1; padding: 8px 4px; border-radius: 6px; text-align: center; font-size: 0.73rem; font-weight: 600; border: 2px solid currentColor; opacity: 0.22; transition: opacity 0.2s; cursor: default; }
+.ma-traffic-box.active { opacity: 1; box-shadow: 0 0 10px currentColor; }
+.ma-cash-card { background: #111827; border: 1px solid #2a2a2a; border-radius: 8px; padding: 14px 16px; margin: 14px 0; }
+.ma-cash-row { display: flex; justify-content: space-between; margin: 4px 0; font-size: 0.85rem; color: #ccc; }
+.ma-cash-delta-short { color: #ff4444; font-weight: 600; }
+.ma-cash-delta-ok { color: #00ffcc; font-weight: 600; }
+.ma-cash-btn { padding: 6px 14px; border-radius: 4px; border: 1px solid #444; background: #1a1a1a; color: #888; cursor: pointer; font-size: 0.8rem; transition: border-color 0.15s, color 0.15s; }
+.ma-cash-btn:hover { border-color: #666; color: #ccc; }
+.ma-cash-btn.active { border-color: #00ffcc; color: #00ffcc; background: #0d1f1a; }
+.ma-cash-btn.active-no { border-color: #ff4444; color: #ff4444; background: #1f0d0d; }

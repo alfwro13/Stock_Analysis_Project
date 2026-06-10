@@ -417,14 +417,18 @@
             if (loadEl) { loadEl.style.display = 'flex'; loadEl.innerHTML = '<div class="xray-spinner"></div>Computing X-ray analysis&hellip;'; }
             if (contEl) contEl.style.display = 'none';
 
-            fetch('/api/xray?account_id=' + encodeURIComponent(accountId))
-                .then(function(r) { return r.json(); })
-                .then(function(data) {
+            Promise.all([
+                fetch('/api/xray?account_id=' + encodeURIComponent(accountId)).then(function(r) { return r.json(); }),
+                fetch('/api/macro-regime-allocation').then(function(r) { return r.json(); }).catch(function() { return null; })
+            ])
+                .then(function(results) {
+                    var data      = results[0];
+                    var macroData = results[1];
                     if (data.error) {
                         if (loadEl) loadEl.innerHTML = '<span class="xray-error-msg">&#9888; ' + data.error + '</span>';
                         return;
                     }
-                    _renderXray(data);
+                    _renderXray(data, macroData);
                     _updateSummaryRow(data);
                     if (loadEl) loadEl.style.display = 'none';
                     if (contEl) contEl.style.display = 'block';
@@ -473,15 +477,189 @@
         }
         var _PC = { displayModeBar: false, responsive: true };
 
+        // ── Cash status toggle (localStorage) ────────────────────────────────────
+        function _setCashStatus(val) {
+            localStorage.setItem('macro_cash_ok', val);
+            var btnYes = document.getElementById('ma-cash-btn-yes');
+            var btnNo  = document.getElementById('ma-cash-btn-no');
+            if (btnYes) btnYes.className = 'ma-cash-btn' + (val === 'yes' ? ' active'    : '');
+            if (btnNo)  btnNo.className  = 'ma-cash-btn' + (val === 'no'  ? ' active-no' : '');
+        }
+
+        // ── Macro regime section ──────────────────────────────────────────────────
+        function _renderMacroSection(macroData, xrayData) {
+            var REGIME_ORDER  = ['Risk-On', 'Recovery', 'Late Cycle', 'Stagflation', 'Contraction'];
+            var REGIME_COLORS = { 'Risk-On':'#00ffcc', 'Recovery':'#4499ff', 'Late Cycle':'#ffcc00', 'Stagflation':'#ff9900', 'Contraction':'#ff4444' };
+            var REGIME_DESC   = {
+                'Risk-On':     'Positive yield curve, contained inflation, tight spreads. Equities favoured.',
+                'Recovery':    'Cycle transitioning from contraction. Rebuilding equity exposure as spreads tighten.',
+                'Late Cycle':  'Flattening curve with rising inflation. Reduce equity overweights; add bonds and real assets.',
+                'Stagflation': 'High inflation meets financial stress or negative real yields. Hard assets and cash over bonds.',
+                'Contraction': 'Inverted curve and recession-mode macro. Defensive tilt: long bonds, reduce equity risk.'
+            };
+            var ASSET_ORDER  = ['equities', 'bonds', 'commodities'];
+            var ASSET_LABELS = { equities:'Equities', bonds:'Bonds', commodities:'Commodities' };
+
+            if (!macroData || macroData.status === 'no_data') {
+                return '<div class="xray-section">'
+                    + '<h3 class="xray-section-title">&#127759; Macro Regime &amp; Portfolio Alignment</h3>'
+                    + '<p class="ma-note">Run the Macro Data Engine in <a href="/settings#macro" style="color:#00ffcc">Settings &rarr; Macroeconomic Data</a> to populate regime data.</p>'
+                    + '</div>';
+            }
+
+            var cur   = (xrayData && xrayData.base_currency) || 'GBP';
+            var sym   = ({ GBP:'£', USD:'$', EUR:'€' })[cur] || (cur + ' ');
+            var label = macroData.regime_label || 'Risk-On';
+            var color = REGIME_COLORS[label] || '#aaaaaa';
+            var sigs  = macroData.key_signals || {};
+            var ideal = macroData.ideal_allocation || {};
+            var curr  = macroData.current_allocation;
+            var deltas = macroData.rebalance_deltas;
+            var ranges = macroData.regime_ranges || {};
+            var score  = macroData.alignment_score;
+            var history = macroData.regime_history || [];
+
+            var fN = function(v, dp) { return (v == null) ? '—' : parseFloat(v).toFixed(dp !== undefined ? dp : 2); };
+            var threatColor = function(lvl) { return lvl === 'RED' ? '#ff4444' : lvl === 'YELLOW' ? '#ffcc00' : '#00ffcc'; };
+
+            var html = '<div class="xray-section">'
+                + '<h3 class="xray-section-title">&#127759; Macro Regime &amp; Portfolio Alignment</h3>';
+
+            // 5-regime traffic light
+            html += '<div class="ma-traffic-strip">';
+            REGIME_ORDER.forEach(function(r) {
+                var rc = REGIME_COLORS[r] || '#aaa';
+                html += '<div class="ma-traffic-box' + (r === label ? ' active' : '') + '" style="color:' + rc + '">' + r + '</div>';
+            });
+            html += '</div>';
+
+            // Regime banner
+            html += '<div class="ma-regime-banner" style="border-color:' + color + '">'
+                + '<div><span class="ma-regime-badge" style="background:' + color + ';color:#111">' + label + '</span>'
+                + '<span class="ma-regime-date">as of ' + (macroData.regime_date || '—') + '</span></div>'
+                + '<div class="ma-regime-desc">' + (REGIME_DESC[label] || '') + '</div>'
+                + '<div class="ma-threat-row">'
+                + '<span>US yield threat: <strong style="color:' + threatColor(macroData.us_threat_level) + '">' + (macroData.us_threat_level || '—') + '</strong></span>'
+                + '&nbsp;|&nbsp;<span>UK yield threat: <strong style="color:' + threatColor(macroData.uk_threat_level) + '">' + (macroData.uk_threat_level || '—') + '</strong></span>'
+                + (macroData.yield_curve_inverted ? '&nbsp;|&nbsp;<span style="color:#ff4444">&#9888; Inverted ' + macroData.days_inverted + ' day' + (macroData.days_inverted !== 1 ? 's' : '') + '</span>' : '')
+                + '</div></div>';
+
+            // Two-col: driving signals | alignment score
+            var sigDefs = [
+                { label:'10y–2y Yield Curve', v: sigs.us_yield_curve,
+                  disp: sigs.us_yield_curve != null ? (sigs.us_yield_curve > 0 ? '+' : '') + fN(sigs.us_yield_curve) + '%' : '—',
+                  note: macroData.yield_curve_inverted ? 'Inverted' : 'Normal',
+                  color: macroData.yield_curve_inverted ? '#ff4444' : '#00ffcc',
+                  abbr: '10-year minus 2-year US Treasury spread. Negative = inverted. A sustained inversion has preceded every US recession since 1970.' },
+                { label:'US CPI Inflation', v: sigs.us_cpi_inflation,
+                  disp: sigs.us_cpi_inflation != null ? fN(sigs.us_cpi_inflation, 1) + '%' : '—',
+                  note: sigs.us_cpi_inflation > 4 ? 'High' : sigs.us_cpi_inflation > 3 ? 'Elevated' : 'Contained',
+                  color: sigs.us_cpi_inflation > 4 ? '#ff9900' : sigs.us_cpi_inflation > 3 ? '#ffcc00' : '#00ffcc',
+                  abbr: 'US Consumer Price Index YoY change from FRED. Above 4% = high inflationary pressure.' },
+                { label:'US HY Credit Spread', v: sigs.us_high_yield_spread,
+                  disp: sigs.us_high_yield_spread != null ? fN(sigs.us_high_yield_spread, 0) + ' bps' : '—',
+                  note: sigs.us_high_yield_spread > 600 ? 'Blown out' : sigs.us_high_yield_spread > 400 ? 'Widening' : 'Tight',
+                  color: sigs.us_high_yield_spread > 600 ? '#ff4444' : sigs.us_high_yield_spread > 400 ? '#ffcc00' : '#00ffcc',
+                  abbr: 'US High-Yield OAS spread. Above 600 bps = financial distress.' },
+                { label:'Real Yield (10y TIPS)', v: sigs.us_real_yield_10y,
+                  disp: sigs.us_real_yield_10y != null ? (sigs.us_real_yield_10y > 0 ? '+' : '') + fN(sigs.us_real_yield_10y) + '%' : '—',
+                  note: sigs.us_real_yield_10y != null && sigs.us_real_yield_10y < 0 ? 'Negative — stagflation' : 'Positive',
+                  color: sigs.us_real_yield_10y != null && sigs.us_real_yield_10y < 0 ? '#ff9900' : '#00ffcc',
+                  abbr: '10-year TIPS yield. Negative = bonds cannot keep pace with inflation — classic stagflation signal.' }
+            ];
+            var sigHtml = '<div class="ma-signals-grid">';
+            sigDefs.forEach(function(c) {
+                sigHtml += '<div class="ma-signal-card">'
+                    + '<div class="ma-signal-label"><abbr title="' + c.abbr + '">' + c.label + '</abbr></div>'
+                    + '<div class="ma-signal-value" style="color:' + c.color + '">' + c.disp + '</div>'
+                    + '<div class="ma-signal-note" style="color:' + c.color + '">' + c.note + '</div>'
+                    + '</div>';
+            });
+            sigHtml += '</div>';
+
+            var gaugeColor = score == null ? '#666' : score >= 75 ? '#00ffcc' : score >= 50 ? '#ffcc00' : '#ff4444';
+            var scoreHtml = score != null
+                ? '<div class="ma-score-value" style="color:' + gaugeColor + '">' + score + '<span class="ma-score-unit">/100</span></div>'
+                  + '<div class="ma-score-label">Portfolio alignment to regime ideal</div>'
+                : '<div class="ma-score-na">' + (macroData.portfolio_note || 'Portfolio data unavailable.') + '</div>';
+
+            html += '<div class="ma-two-col">'
+                + '<div class="ma-panel"><h3 class="ma-panel-title">Driving Signals</h3>' + sigHtml + '</div>'
+                + '<div class="ma-panel ma-score-panel"><h3 class="ma-panel-title">Alignment Score</h3>' + scoreHtml + '</div>'
+                + '</div>';
+
+            // Allocation panel: bar chart + cash card + rebalance table
+            html += '<div class="ma-panel"><h3 class="ma-panel-title">Asset Class Allocation: Current vs Regime Ideal</h3>'
+                + '<div id="xray-ma-alloc-chart" class="ma-chart-area"></div>';
+
+            // Cash card
+            var investedValue = 0;
+            if (xrayData && xrayData.holdings) { xrayData.holdings.forEach(function(h) { investedValue += (h.value || 0); }); }
+            var totalValue   = (xrayData && xrayData.portfolio_total_value) || 0;
+            var cashHeld     = Math.max(0, totalValue - investedValue);
+            var idealCashPct = ideal.cash || 0;
+            var idealCashAmt = totalValue * idealCashPct / 100;
+            var cashDelta    = cashHeld - idealCashAmt;
+            var fmtAmt       = function(v) { return sym + Math.round(v).toLocaleString(); };
+            var cashOkVal    = localStorage.getItem('macro_cash_ok');
+
+            html += '<div class="ma-cash-card"><div class="ma-cash-row"><span><strong>Cash Reserve</strong></span></div>';
+            if (totalValue > 0) {
+                html += '<div class="ma-cash-row"><span>You hold:</span><span>' + fmtAmt(cashHeld) + ' (' + (cashHeld / totalValue * 100).toFixed(1) + '%)</span></div>'
+                    + '<div class="ma-cash-row"><span>Regime target:</span><span>' + fmtAmt(idealCashAmt) + ' (' + idealCashPct.toFixed(1) + '%)</span></div>'
+                    + '<div class="ma-cash-row"><span>You are:</span><span class="' + (cashDelta < 0 ? 'ma-cash-delta-short' : 'ma-cash-delta-ok') + '">'
+                    + fmtAmt(Math.abs(cashDelta)) + (cashDelta < 0 ? ' SHORT' : ' SURPLUS') + '</span></div>';
+            } else {
+                html += '<div class="ma-cash-row"><span style="color:#888">Portfolio value unavailable — connect Ghostfolio to see cash guidance.</span></div>';
+            }
+            html += '<div style="margin-top:10px;display:flex;gap:8px;">'
+                + '<button class="ma-cash-btn' + (cashOkVal === 'yes' ? ' active'    : '') + '" onclick="_setCashStatus(\'yes\')" id="ma-cash-btn-yes">&#10003; I\'m on target</button>'
+                + '<button class="ma-cash-btn' + (cashOkVal === 'no'  ? ' active-no' : '') + '" onclick="_setCashStatus(\'no\')"  id="ma-cash-btn-no">&#10007; I\'m short on cash</button>'
+                + '</div></div>';
+
+            // Rebalance table (equities/bonds/commodities — cash has its own card above)
+            if (curr) {
+                var tRows = ASSET_ORDER.map(function(k) {
+                    var delta = deltas ? deltas[k] : null;
+                    var lo = ranges[k] ? ranges[k][0] : null;
+                    var hi = ranges[k] ? ranges[k][1] : null;
+                    var action = delta == null ? '—' : Math.abs(delta) < 2 ? 'On Target' : delta > 0 ? 'Underweight' : 'Overweight';
+                    var ac = action === 'On Target' ? '#00ffcc' : action === 'Underweight' ? '#4499ff' : '#ffcc00';
+                    return '<tr><td>' + ASSET_LABELS[k] + '</td>'
+                        + '<td>' + (curr[k] != null ? curr[k].toFixed(1) + '%' : '—') + '</td>'
+                        + '<td>' + (lo != null ? lo.toFixed(1) + '% – ' + hi.toFixed(1) + '%' : '—') + '</td>'
+                        + '<td>' + (delta != null ? (delta > 0 ? '+' : '') + delta.toFixed(1) + '%' : '—') + '</td>'
+                        + '<td style="color:' + ac + '">' + action + '</td></tr>';
+                }).join('');
+                html += '<table class="ma-alloc-table"><thead><tr><th>Asset Class</th><th>Current</th><th>Regime Range</th><th>Delta</th><th>Action</th></tr></thead>'
+                    + '<tbody>' + tRows + '</tbody></table>';
+            } else if (macroData.portfolio_note) {
+                html += '<p class="ma-note">' + macroData.portfolio_note + '</p>';
+            }
+            html += '</div>';
+
+            // Regime history
+            if (history.length > 1) {
+                html += '<div class="ma-panel"><h3 class="ma-panel-title">Regime History (last 90 days)</h3>'
+                    + '<div id="xray-ma-history-chart" class="ma-chart-area"></div></div>';
+            }
+
+            html += '</div>';
+            return { html: html, history: history, ideal: ideal, current: curr };
+        }
+
         // ── Full render ───────────────────────────────────────────────────────────
-        function _renderXray(data) {
+        function _renderXray(data, macroData) {
             var rm   = data.risk_metrics || {};
             var conc = data.concentration || {};
             var inc  = data.income || {};
             var tips = data.tooltips || {};
             var cur  = data.base_currency || 'GBP';
             var sym  = ({ GBP:'£', USD:'$', EUR:'€' })[cur] || (cur + ' ');
-            var html = '';
+
+            // Macro regime section first
+            var macroResult = _renderMacroSection(macroData, data);
+            var html = macroResult.html;
 
             // Warnings
             if (data.data_warnings && data.data_warnings.length) {
@@ -668,6 +846,14 @@
             if (mrcHoldings.length >= 2) { _plotMRC('xray-c-mrc', data.holdings); }
             if (cm.tickers && cm.tickers.length >= 2) { _plotCorrHeatmap('xray-c-corr', cm); }
             _plotPnL('xray-c-pnl', data.holdings, sym);
+
+            // Macro regime charts (render after DOM update)
+            if (macroData && macroData.status === 'ok') {
+                _plotMacroAlloc('xray-ma-alloc-chart', macroData.ideal_allocation, macroData.current_allocation);
+                if (macroResult.history && macroResult.history.length > 1) {
+                    _plotMacroHistory('xray-ma-history-chart', macroResult.history);
+                }
+            }
         }
 
         // ── Chart renderers ───────────────────────────────────────────────────────
@@ -802,6 +988,53 @@
                 margin: { t: 20, r: 100, b: 100, l: 80 },
                 xaxis: { color: '#aaa', tickangle: -45, automargin: true },
                 yaxis: { color: '#aaa', automargin: true, autorange: 'reversed' }
+            }), _PC);
+        }
+
+        function _plotMacroAlloc(elId, ideal, current) {
+            if (!ideal || !document.getElementById(elId)) return;
+            var ASSET_ORDER  = ['equities', 'bonds', 'commodities', 'cash'];
+            var ASSET_LABELS = ['Equities', 'Bonds', 'Commodities', 'Cash'];
+            var idealVals   = ASSET_ORDER.map(function(k) { return ideal[k] || 0; });
+            var traces = [{
+                name: 'Ideal (regime target)',
+                x: ASSET_LABELS, y: idealVals,
+                type: 'bar',
+                marker: { color: '#00ffcc', opacity: 0.85 }
+            }];
+            if (current) {
+                traces.push({
+                    name: 'Current portfolio',
+                    x: ASSET_LABELS,
+                    y: ASSET_ORDER.map(function(k) { return current[k] || 0; }),
+                    type: 'bar',
+                    marker: { color: '#4499ff', opacity: 0.85 }
+                });
+            }
+            Plotly.newPlot(elId, traces, _baseLayout({
+                barmode: 'group', height: 220,
+                margin: { t: 20, b: 60, l: 50, r: 20 },
+                showlegend: true,
+                legend: { orientation: 'h', y: -0.3, font: { size: 11 } },
+                yaxis: { title: { text: '%', font: { size: 11 } }, range: [0, 100] }
+            }), _PC);
+        }
+
+        function _plotMacroHistory(elId, history) {
+            if (!history || history.length < 2 || !document.getElementById(elId)) return;
+            var REGIME_COLORS = { 'Risk-On':'#00ffcc', 'Recovery':'#4499ff', 'Late Cycle':'#ffcc00', 'Stagflation':'#ff9900', 'Contraction':'#ff4444' };
+            var dates  = history.map(function(r) { return r.date; }).reverse();
+            var labels = history.map(function(r) { return r.regime_label; }).reverse();
+            Plotly.newPlot(elId, [{
+                x: dates, y: labels, type: 'scatter', mode: 'markers',
+                marker: { color: labels.map(function(l) { return REGIME_COLORS[l] || '#aaa'; }), size: 8 }
+            }], _baseLayout({
+                height: 180,
+                margin: { t: 10, b: 40, l: 110, r: 20 },
+                xaxis: { color: '#aaa' },
+                yaxis: { color: '#aaa', categoryorder: 'array',
+                         categoryarray: ['Contraction', 'Stagflation', 'Late Cycle', 'Recovery', 'Risk-On'] },
+                showlegend: false
             }), _PC);
         }
 
