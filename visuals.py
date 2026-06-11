@@ -1,6 +1,7 @@
+import hashlib
 import numpy as np
 import plotly.graph_objects as go
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta, date
 from plotly.subplots import make_subplots
 import pandas as pd
 import ta
@@ -708,8 +709,6 @@ def create_smgb_overlay_chart(
     now_utc: "datetime | None" = None,
     trading_date: "date | None" = None,
 ) -> str:
-    from datetime import timedelta as _td, date as _date
-
     if prediction is None:
         prediction = {}
     user_tz = time_engine.get_user_tz()
@@ -780,15 +779,13 @@ def create_smgb_overlay_chart(
             hovertemplate=f"{ticker}: %{{y:+.2f}}%<extra></extra>",
         ))
 
-    # Market-event vertical lines for every weekday that overlaps the visible window.
-    # Uses today's DST offsets — accurate unless a DST change falls within the 30h window.
+    # Market-event vertical lines — uses today's DST offsets; accurate unless DST change falls within the 30h window.
     _event_specs = [
         ("LSE",  True,  "LSE Open",   "#00cccc", "dot",  0.91, 1.2),
         ("LSE",  False, "LSE Close",  "#888888", "dash", 1.00, 1.5),
         ("NYSE", True,  "NYSE Open",  "#f6ad55", "dash", 0.97, 1.5),
         ("NYSE", False, "NYSE Close", "#f87171", "dot",  0.94, 1.2),
     ]
-    # Collect all weekday dates that might have events in the visible window
     _check_start = (x_start - pd.Timedelta(hours=2)).date()
     _check_end = (x_end + pd.Timedelta(hours=2)).date()
     _cur = _check_start
@@ -818,7 +815,7 @@ def create_smgb_overlay_chart(
                     )
                 except Exception:
                     pass
-        _cur += _td(days=1)
+        _cur += timedelta(days=1)
 
     # "Now" marker — thin white dotted line so the user always knows where current time is
     now_str = str(now_local)
@@ -836,7 +833,6 @@ def create_smgb_overlay_chart(
         xanchor="left", yanchor="top",
     )
 
-    # Prediction marker
     pred_price = prediction.get("predicted_price")
     pred_pct = prediction.get("predicted_change_pct", 0)
     signal_source = prediction.get("signal_source", "daily_close")
@@ -1078,9 +1074,6 @@ def create_etf_overlay_chart(
     session_relationship: str = "behind",
 ) -> str:
     """Generic time-aligned intraday overlay chart — structure mirrors create_smgb_overlay_chart."""
-    import hashlib as _hashlib
-    from datetime import timedelta as _td, date as _date
-
     if prediction is None:
         prediction = {}
     if not constituent_exchanges:
@@ -1136,7 +1129,7 @@ def create_etf_overlay_chart(
     def _exchange_colors(exchange: str) -> "tuple[str, str]":
         if exchange in _reserved_colors:
             return _reserved_colors[exchange]
-        idx = int(_hashlib.md5(exchange.encode()).hexdigest(), 16) % len(_open_palette)
+        idx = int(hashlib.md5(exchange.encode()).hexdigest(), 16) % len(_open_palette)
         return _open_palette[idx], _close_palette[idx]
 
     fig = go.Figure()
@@ -1172,8 +1165,7 @@ def create_etf_overlay_chart(
             hovertemplate=f"{ticker}: %{{y:+.2f}}%<extra></extra>",
         ))
 
-    # Build exchange marker specs: ETF exchange first, then each unique constituent exchange.
-    # Y-positions are staggered so labels don't collide when many exchanges are shown.
+    # Exchange marker specs: ETF first, then each constituent; y-positions staggered to prevent label collision.
     _open_y_positions  = [0.97, 0.91, 0.85, 0.79, 0.73, 0.67]
     _close_y_positions = [1.00, 0.94, 0.88, 0.82, 0.76, 0.70]
     _event_specs = []
@@ -1220,7 +1212,7 @@ def create_etf_overlay_chart(
                     )
                 except Exception:
                     pass
-        _cur += _td(days=1)
+        _cur += timedelta(days=1)
 
     now_str = str(now_local)
     fig.add_shape(
@@ -1234,8 +1226,7 @@ def create_etf_overlay_chart(
         xanchor="left", yanchor="top",
     )
 
-    # Prediction star — place at ETF open for "ahead"/"same" sessions,
-    # at constituent open for "behind" (US → UK) intraday signals.
+    # Prediction star — ETF open for ahead/same sessions; constituent open for behind (US → UK) intraday.
     pred_price = prediction.get("predicted_price")
     pred_pct = prediction.get("predicted_change_pct", 0)
     signal_source = prediction.get("signal_source", "daily_close")
@@ -1249,15 +1240,15 @@ def create_etf_overlay_chart(
             _now_c = datetime.now(timezone.utc).replace(tzinfo=None)
             _today_c = datetime.now(timezone.utc).date()
             if _today_c.weekday() == 5:
-                _c_target = _today_c + _td(days=2)
+                _c_target = _today_c + timedelta(days=2)
             elif _today_c.weekday() == 6:
-                _c_target = _today_c + _td(days=1)
+                _c_target = _today_c + timedelta(days=1)
             elif _now_c < datetime.combine(_today_c, _c_close_t):
                 _c_target = _today_c
             elif _today_c.weekday() == 4:
-                _c_target = _today_c + _td(days=3)
+                _c_target = _today_c + timedelta(days=3)
             else:
-                _c_target = _today_c + _td(days=1)
+                _c_target = _today_c + timedelta(days=1)
             pred_dt_utc = datetime.combine(_c_target, _c_open_t)
         else:
             # Star at ETF next open (Asia → UK, or post-close / daily-close signal)
