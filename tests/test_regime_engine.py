@@ -69,7 +69,9 @@ class TestCalculateMarketRegime:
     def test_high_vol_produces_crash_regime(self):
         spy_df, vix_df, ftse_df = _make_spy_vix_ftse(spy_daily_std=0.03)
         with patch("regime_engine.yahoo_engine.get_price_history",
-                   return_value={"SPY": spy_df, "^VIX": vix_df, "^FTSE": ftse_df}):
+                   return_value={"SPY": spy_df, "^VIX": vix_df, "^FTSE": ftse_df}), \
+             patch("regime_engine.run_price_regime_hmm", return_value={}), \
+             patch("regime_engine.run_market_stress_if", return_value={}):
             calculate_market_regime()
         row = get_latest_regime()
         assert row is not None
@@ -79,7 +81,9 @@ class TestCalculateMarketRegime:
     def test_low_vol_produces_normal_regime(self):
         spy_df, vix_df, ftse_df = _make_spy_vix_ftse(spy_daily_std=0.004)
         with patch("regime_engine.yahoo_engine.get_price_history",
-                   return_value={"SPY": spy_df, "^VIX": vix_df, "^FTSE": ftse_df}):
+                   return_value={"SPY": spy_df, "^VIX": vix_df, "^FTSE": ftse_df}), \
+             patch("regime_engine.run_price_regime_hmm", return_value={}), \
+             patch("regime_engine.run_market_stress_if", return_value={}):
             calculate_market_regime()
         row = get_latest_regime()
         assert row is not None
