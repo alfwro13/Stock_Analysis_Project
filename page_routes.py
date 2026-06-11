@@ -1436,6 +1436,9 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
     
     if stock_data:
         stock_data = dict(stock_data)
+        _cp = stock_data.get("current_price") or 0.0
+        stock_data["trend_50d"] = "UP" if stock_data.get("sma_50") and _cp > stock_data["sma_50"] else "DOWN"
+        stock_data["trend_200d"] = "UP" if stock_data.get("sma_200") and _cp > stock_data["sma_200"] else "DOWN"
         # Resolve best available display name — mutual funds often have no shortName
         # from yfinance; fall back through asset_profiles → market_universe
         stock_data['company_name'] = (
