@@ -37,13 +37,13 @@ logger = logging.getLogger(__name__)
 scheduler = BackgroundScheduler(job_defaults={"coalesce": True, "max_instances": 1, "misfire_grace_time": 60})
 
 import threading as _threading
-from datetime import datetime as _dt
+from datetime import datetime as _dt, timezone as _tz
 _active_jobs: dict[str, str] = {}
 _active_jobs_lock = _threading.Lock()
 
 def _mark_job_started(name: str) -> None:
     with _active_jobs_lock:
-        _active_jobs[name] = _dt.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+        _active_jobs[name] = _dt.now(_tz.utc).strftime("%Y-%m-%dT%H:%M:%S")
 
 def _mark_job_done(name: str) -> None:
     with _active_jobs_lock:
@@ -148,8 +148,7 @@ def run_update_pipeline():
                 orch = IntradayOrchestrator()
                 conn_alert = None
                 try:
-                    from database import get_connection as _gc
-                    conn_alert = _gc()
+                    conn_alert = get_connection()
                     suppress = orch._evaluate_alert_gate(
                         "HMM", "SPY", None, f"REGIME_{hmm['label']}", conn_alert
                     )
@@ -188,8 +187,7 @@ def run_update_pipeline():
                 orch = IntradayOrchestrator()
                 conn_alert = None
                 try:
-                    from database import get_connection as _gc
-                    conn_alert = _gc()
+                    conn_alert = get_connection()
                     suppress = orch._evaluate_alert_gate(
                         "MarketStress", "MARKET", None, "STRESS_ELEVATED", conn_alert
                     )
@@ -701,7 +699,6 @@ def run_ai_contagion_job():
 
 
 def run_trap_monitor_job():
-    """Scans portfolio + proxy tickers for bull/bear trap, capitulation, and Wyckoff accumulation signals."""
     from bull_bear_trap_engine import TrapEngine
     from intraday_orchestrator import IntradayOrchestrator
     from nextcloud_talk import send_text_message
@@ -818,7 +815,6 @@ def run_smgb_actual_fill():
 
 
 def run_smgb_predictor_job():
-    """Runs the SMGB.L prediction and logs it; optionally dispatches to Nextcloud Talk."""
     from smgb_predictor import run_smgb_prediction
     log_sched_notification("Scheduler", "Started SMGB.L Price Predictor job...")
     try:
@@ -887,7 +883,6 @@ def _run_etf_predictor_job(config_id: int, fill_actuals: bool = False) -> None:
 
 
 def register_etf_predictor_jobs(config: dict) -> None:
-    """Register or replace pre/post APScheduler jobs for a single ETF predictor config."""
     config_id = config["id"]
     if not config.get("enabled") or config.get("deleted_at"):
         return
