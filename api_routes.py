@@ -1447,6 +1447,172 @@ async def run_trap_monitor(request: Request, background_tasks: BackgroundTasks):
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 
+@api_router.get("/market-regime/current")
+@limiter.limit("30/minute")
+async def get_market_regime_current(request: Request):
+    """Returns the latest HMM price regime state and the most recent regime transition."""
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT date, price_hmm_state, price_hmm_label, price_hmm_prob "
+            "FROM market_regimes WHERE price_hmm_state IS NOT NULL ORDER BY date DESC LIMIT 1"
+        )
+        row = cursor.fetchone()
+        if not row:
+            return JSONResponse(content={"status": "success", "current": None, "last_change": None})
+
+        current = {
+            "state": row["price_hmm_state"],
+            "label": row["price_hmm_label"],
+            "probability": row["price_hmm_prob"],
+            "as_of": row["date"],
+        }
+
+        # Find the most recent day the label changed
+        cursor.execute(
+            "SELECT date, price_hmm_label FROM market_regimes "
+            "WHERE price_hmm_label IS NOT NULL ORDER BY date DESC LIMIT 60"
+        )
+        history = cursor.fetchall()
+        last_change = None
+        current_label = current["label"]
+        for i, h in enumerate(history[1:], 1):
+            if h["price_hmm_label"] != current_label:
+                last_change = {
+                    "date": history[i - 1]["date"],
+                    "from_label": h["price_hmm_label"],
+                    "to_label": current_label,
+                }
+                break
+
+        return JSONResponse(content={"status": "success", "current": current, "last_change": last_change})
+    except Exception as e:
+        logger.error("market-regime/current failed: %s", e)
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+    finally:
+        if conn:
+            conn.close()
+
+
+@api_router.get("/market-regime")
+@limiter.limit("10/minute")
+async def get_market_regime_full(request: Request):
+    """Returns full HMM regime history, transition matrix, and per-state statistics."""
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        # Current state
+        cursor.execute(
+            "SELECT date, price_hmm_state, price_hmm_label, price_hmm_prob "
+            "FROM market_regimes WHERE price_hmm_state IS NOT NULL ORDER BY date DESC LIMIT 1"
+        )
+        cur_row = cursor.fetchone()
+        if not cur_row:
+            return JSONResponse(content={"status": "success", "current": None, "history": [], "transition_matrix": None, "regime_stats": {}})
+
+        current = {
+            "state": cur_row["price_hmm_state"],
+            "label": cur_row["price_hmm_label"],
+            "probability": cur_row["price_hmm_prob"],
+            "as_of": cur_row["date"],
+        }
+
+        # Full history from price_hmm_states
+        cursor.execute("SELECT date, state, label, probability FROM price_hmm_states ORDER BY date ASC")
+        history = [dict(r) for r in cursor.fetchall()]
+
+        # Last regime change
+        last_change = None
+        current_label = current["label"]
+        for i in range(len(history) - 2, -1, -1):
+            if history[i]["label"] != current_label:
+                last_change = {
+                    "date": history[i + 1]["date"],
+                    "from_label": history[i]["label"],
+                    "to_label": current_label,
+                }
+                break
+
+        # Transition matrix (empirical counts from consecutive state pairs)
+        n_states = 3
+        counts = [[0] * n_states for _ in range(n_states)]
+        for i in range(len(history) - 1):
+            s_from = history[i]["state"]
+            s_to = history[i + 1]["state"]
+            if 0 <= s_from < n_states and 0 <= s_to < n_states:
+                counts[s_from][s_to] += 1
+        transition_matrix = []
+        for row_counts in counts:
+            total = sum(row_counts)
+            transition_matrix.append(
+                [round(c / total, 3) if total > 0 else 0.0 for c in row_counts]
+            )
+
+        # Regime statistics — join price_hmm_states with SPY close from market_regimes
+        cursor.execute(
+            "SELECT h.date, h.state, h.label, r.spy_volatility "
+            "FROM price_hmm_states h "
+            "LEFT JOIN market_regimes r ON h.date = r.date "
+            "ORDER BY h.date ASC"
+        )
+        stat_rows = cursor.fetchall()
+
+        # Also fetch SPY returns from the Parquet cache for mean return calc
+        import pandas as pd
+        import numpy as np
+        from config import HISTORICAL_DIR
+        hmm_cache = HISTORICAL_DIR / "SPY_hmm.parquet"
+        spy_returns: dict = {}
+        if hmm_cache.exists():
+            df_spy = pd.read_parquet(hmm_cache)
+            log_ret = np.log(df_spy["Close"] / df_spy["Close"].shift(1)).dropna()
+            spy_returns = {d.strftime("%Y-%m-%d"): float(v) for d, v in log_ret.items()}
+
+        regime_stats: dict = {}
+        for label in ("Bull", "Chop", "Crash"):
+            label_rows = [r for r in stat_rows if r["label"] == label]
+            days = len(label_rows)
+            vols = [r["spy_volatility"] for r in label_rows if r["spy_volatility"] is not None]
+            rets = [spy_returns[r["date"]] for r in label_rows if r["date"] in spy_returns]
+            regime_stats[label] = {
+                "days": days,
+                "mean_daily_return": round(float(np.mean(rets)), 5) if rets else None,
+                "mean_vol": round(float(np.mean(vols)), 2) if vols else None,
+            }
+
+        return JSONResponse(content={
+            "status": "success",
+            "current": current,
+            "last_change": last_change,
+            "history": history,
+            "transition_matrix": transition_matrix,
+            "regime_stats": regime_stats,
+        })
+    except Exception as e:
+        logger.error("market-regime full endpoint failed: %s", e)
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+    finally:
+        if conn:
+            conn.close()
+
+
+@api_router.post("/market-regime/run")
+@limiter.limit("4/minute")
+async def run_market_regime_now(request: Request, background_tasks: BackgroundTasks):
+    """Manually triggers the HMM price regime calculation in the background."""
+    try:
+        from regime_engine import run_price_regime_hmm
+        background_tasks.add_task(run_price_regime_hmm)
+        return JSONResponse(content={"status": "success", "message": "HMM regime calculation triggered."})
+    except Exception as e:
+        logger.error("market-regime/run failed: %s", e)
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+
 class StressTestRequest(BaseModel):
     account_id: str = "all"
     scenario_id: str

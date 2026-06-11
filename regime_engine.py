@@ -8,11 +8,168 @@ import pandas as pd
 from database import get_connection
 from config import HISTORICAL_DIR
 from yahoo_engine import yahoo_engine
-from constants import REGIME_CRASH_VOL, REGIME_VOLATILE_VOL
+from constants import MACRO_HMM_N_ITER, MACRO_HMM_N_STATES, REGIME_CRASH_VOL, REGIME_VOLATILE_VOL
 
 logger = logging.getLogger(__name__)
 
-def calculate_market_regime() -> None:
+_HMM_CACHE_PATH = HISTORICAL_DIR / "SPY_hmm.parquet"
+_HMM_LABEL_MAP = {0: "Bull", 1: "Chop", 2: "Crash"}
+_HMM_EWMA_LAMBDA = 0.94
+
+
+def run_price_regime_hmm() -> dict:
+    """
+    Fits a 3-state GaussianHMM on 5-year daily SPY log-returns + EWMA vol.
+    States are remapped ascending by mean EWMA vol: 0=Bull, 1=Chop, 2=Crash.
+    Maintains an incremental Parquet cache at data/historical/SPY_hmm.parquet so
+    only a 1-month tail is fetched on subsequent daily runs.
+    Returns {state, label, probability, previous_state, previous_label, date}.
+    """
+    from hmmlearn import hmm as hmmlib
+    from sklearn.preprocessing import StandardScaler
+
+    # --- Load / incrementally update the 5-year SPY cache ---
+    try:
+        if _HMM_CACHE_PATH.exists():
+            df_cached = pd.read_parquet(_HMM_CACHE_PATH)
+            tail_dfs = yahoo_engine.get_price_history(["SPY"], period="1mo", interval="1d")
+            if tail_dfs and "SPY" in tail_dfs and not tail_dfs["SPY"].empty:
+                df_tail = tail_dfs["SPY"][["Close"]].copy()
+                df_spy = pd.concat([df_cached[["Close"]], df_tail])
+                df_spy = df_spy[~df_spy.index.duplicated(keep="last")].sort_index()
+            else:
+                df_spy = df_cached[["Close"]].copy()
+            logger.info("HMM: merged cache (%d rows) with 1-month tail", len(df_cached))
+        else:
+            full_dfs = yahoo_engine.get_price_history(["SPY"], period="5y", interval="1d")
+            if not full_dfs or "SPY" not in full_dfs or full_dfs["SPY"].empty:
+                logger.error("HMM: 5y SPY bootstrap fetch failed.")
+                return {}
+            df_spy = full_dfs["SPY"][["Close"]].copy()
+            logger.info("HMM: bootstrapped 5y SPY cache (%d rows)", len(df_spy))
+
+        df_spy.to_parquet(_HMM_CACHE_PATH, engine="pyarrow")
+
+    except Exception as e:
+        logger.error("HMM: Parquet cache update failed: %s", e)
+        return {}
+
+    # --- Compute features: daily log returns + 20-day EWMA annualised vol ---
+    df_spy = df_spy.dropna(subset=["Close"])
+    log_returns = np.log(df_spy["Close"] / df_spy["Close"].shift(1))
+    ewma_vol = (log_returns ** 2).ewm(
+        alpha=(1 - _HMM_EWMA_LAMBDA), adjust=False
+    ).mean().apply(lambda v: np.sqrt(v) * np.sqrt(252) * 100.0)
+
+    features = pd.DataFrame({"returns": log_returns, "vol": ewma_vol}).dropna()
+
+    if len(features) < 60:
+        logger.warning("HMM: only %d feature rows — insufficient to fit.", len(features))
+        return {}
+
+    # --- Fit GaussianHMM ---
+    scaler = StandardScaler()
+    X = scaler.fit_transform(features.values)
+
+    model = hmmlib.GaussianHMM(
+        n_components=MACRO_HMM_N_STATES,
+        covariance_type="full",
+        n_iter=MACRO_HMM_N_ITER,
+        random_state=42,
+    )
+    model.fit(X)
+
+    # Canonical ordering: sort states ascending by mean EWMA vol (feature col 1)
+    state_order = np.argsort(model.means_[:, 1])
+    remap = np.empty(len(state_order), dtype=int)
+    remap[state_order] = np.arange(len(state_order))
+
+    raw_states = model.predict(X)
+    canonical_states = remap[raw_states]
+    posterior_probs = model.predict_proba(X)  # shape (n_obs, n_components)
+
+    today_raw = int(raw_states[-1])
+    today_canonical = int(remap[today_raw])
+    today_prob = float(posterior_probs[-1, today_raw])
+    today_label = _HMM_LABEL_MAP[today_canonical]
+    today_date = features.index[-1].strftime("%Y-%m-%d")
+
+    # --- Persist to DB ---
+    conn = None
+    prev_state, prev_label = None, None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            "SELECT price_hmm_state, price_hmm_label FROM market_regimes "
+            "WHERE date < ? AND price_hmm_state IS NOT NULL ORDER BY date DESC LIMIT 1",
+            (today_date,)
+        )
+        prev_row = cursor.fetchone()
+        if prev_row:
+            prev_state = prev_row["price_hmm_state"]
+            prev_label = prev_row["price_hmm_label"]
+
+        cursor.execute(
+            """INSERT INTO market_regimes (date, price_hmm_state, price_hmm_label, price_hmm_prob)
+               VALUES (?, ?, ?, ?)
+               ON CONFLICT(date) DO UPDATE SET
+                   price_hmm_state = excluded.price_hmm_state,
+                   price_hmm_label = excluded.price_hmm_label,
+                   price_hmm_prob  = excluded.price_hmm_prob""",
+            (today_date, today_canonical, today_label, round(today_prob, 4))
+        )
+
+        # Backfill full Viterbi path (INSERT OR IGNORE to avoid clobbering historical runs)
+        history_rows = [
+            (
+                features.index[i].strftime("%Y-%m-%d"),
+                int(canonical_states[i]),
+                _HMM_LABEL_MAP[int(canonical_states[i])],
+                round(float(posterior_probs[i, int(raw_states[i])]), 4),
+            )
+            for i in range(len(features))
+        ]
+        cursor.executemany(
+            "INSERT OR IGNORE INTO price_hmm_states (date, state, label, probability) VALUES (?, ?, ?, ?)",
+            history_rows,
+        )
+        # Always update today's row (state can shift as new data arrives)
+        cursor.execute(
+            """INSERT INTO price_hmm_states (date, state, label, probability) VALUES (?, ?, ?, ?)
+               ON CONFLICT(date) DO UPDATE SET
+                   state = excluded.state,
+                   label = excluded.label,
+                   probability = excluded.probability""",
+            (today_date, today_canonical, today_label, round(today_prob, 4))
+        )
+
+        conn.commit()
+        logger.info(
+            "HMM regime: %s (state %d, conf %.0f%%) | prev: %s | %s",
+            today_label, today_canonical, today_prob * 100, prev_label or "—", today_date,
+        )
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        logger.error("HMM: DB write failed: %s", e)
+        return {}
+    finally:
+        if conn:
+            conn.close()
+
+    return {
+        "state": today_canonical,
+        "label": today_label,
+        "probability": today_prob,
+        "previous_state": prev_state,
+        "previous_label": prev_label,
+        "date": today_date,
+    }
+
+
+def calculate_market_regime() -> dict:
     """Fetches 1y of SPY/VIX/FTSE, computes RiskMetrics EWMA vol, classifies regimes, and persists to market_regimes."""
     logger.info("Initiating daily Dual-Region Market Regime calculation...")
 
@@ -95,6 +252,9 @@ def calculate_market_regime() -> None:
 
     except Exception as e:
         logger.error("Fatal error calculating market regime: %s", e)
+
+    hmm_result = run_price_regime_hmm()
+    return {"hmm": hmm_result}
 
 def _classify_regime(
     us_yield_curve: Optional[float],

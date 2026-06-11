@@ -554,6 +554,15 @@ def init_db() -> None:
             )
         ''')
 
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS price_hmm_states (
+                date      TEXT PRIMARY KEY,
+                state     INTEGER NOT NULL,
+                label     TEXT NOT NULL,
+                probability REAL NOT NULL
+            )
+        ''')
+
         conn.commit()
 
         migrate_db(conn, cursor)
@@ -718,7 +727,10 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
         'ftse_volatility': 'REAL',
         'uk_turbulence': 'REAL',
         'uk_regime_label': 'TEXT',
-        'ai_hmm_state': 'INTEGER'  # Surface standalone HMM clustering to UI
+        'ai_hmm_state': 'INTEGER',
+        'price_hmm_state': 'INTEGER',
+        'price_hmm_label': 'TEXT',
+        'price_hmm_prob': 'REAL',
     }
 
     for col_name, data_type in required_regime_columns.items():
@@ -805,6 +817,19 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
         conn.commit()
     except Exception as e:
         logger.error("[MIGRATION ERROR] news_articles sentiment columns: %s", e)
+
+    # price_hmm_states (guard for pre-feature DBs)
+    try:
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS price_hmm_states (
+                date        TEXT PRIMARY KEY,
+                state       INTEGER NOT NULL,
+                label       TEXT NOT NULL,
+                probability REAL NOT NULL
+            )
+        ''')
+    except Exception as e:
+        logger.error("[MIGRATION ERROR] Failed to create price_hmm_states: %s", e)
 
     # ai_contagion_snapshots (guard for pre-feature DBs)
     try:

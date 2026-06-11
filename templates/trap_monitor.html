@@ -55,6 +55,19 @@
             </div>
         </div>
 
+        {# ── HMM Market Regime panel ── #}
+        <div class="sentiment-module module-cyan" id="hmm-regime-panel" style="margin-bottom:16px;display:none;">
+            <div style="padding:12px 20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+                <span style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;white-space:nowrap;">
+                    <abbr title="5-year Hidden Markov Model on SPY daily log-returns and EWMA volatility. States: 0=Bull (low vol), 1=Chop (elevated vol), 2=Crash (high vol). Updated daily.">Market Regime (HMM)</abbr>
+                </span>
+                <span id="hmm-state-pill" class="status-pill" style="font-size:13px;font-weight:700;padding:4px 14px;"></span>
+                <span id="hmm-confidence" style="font-size:12px;color:#888;"></span>
+                <span id="hmm-last-change" style="font-size:11px;color:#555;margin-left:auto;"></span>
+                <a href="/market-regime" style="font-size:11px;color:#4da6ff;white-space:nowrap;">Full history &#8594;</a>
+            </div>
+        </div>
+
         {# ── Toolbar ── #}
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
             <button id="run-now-btn" class="btn btn-update" onclick="runScanNow()">&#9654; Run Scan Now</button>
@@ -350,7 +363,40 @@
                 });
         };
 
+        var HMM_PILL_STYLE = {
+            'Bull':  { bg: 'rgba(0,255,0,.15)',       color: '#00ff00',  border: '#00cc00' },
+            'Chop':  { bg: 'rgba(255,170,0,.15)',      color: '#ffaa00',  border: '#cc8800' },
+            'Crash': { bg: 'rgba(255,77,77,.18)',      color: '#ff4d4d',  border: '#cc2222' },
+        };
+
+        function fetchRegime() {
+            fetch('/api/market-regime/current')
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    if (!data || data.status !== 'success' || !data.current || !data.current.label) return;
+                    var cur = data.current;
+                    var pill = document.getElementById('hmm-state-pill');
+                    var conf = document.getElementById('hmm-confidence');
+                    var chg  = document.getElementById('hmm-last-change');
+                    var panel = document.getElementById('hmm-regime-panel');
+                    var sty = HMM_PILL_STYLE[cur.label] || {};
+                    pill.textContent = cur.label.toUpperCase();
+                    pill.style.background = sty.bg || '';
+                    pill.style.color = sty.color || '';
+                    pill.style.borderColor = sty.border || '';
+                    conf.textContent = 'confidence ' + Math.round(cur.probability * 100) + '%';
+                    if (data.last_change && data.last_change.date) {
+                        chg.textContent = 'Changed from ' + data.last_change.from_label + ' on ' + data.last_change.date;
+                    } else {
+                        chg.textContent = 'as of ' + (cur.as_of || '—');
+                    }
+                    panel.style.display = '';
+                })
+                .catch(function () {});
+        }
+
         fetchResults();
+        fetchRegime();
         startCountdown();
     })();
     </script>

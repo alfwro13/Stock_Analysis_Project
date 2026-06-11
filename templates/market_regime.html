@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="color-scheme" content="dark">
+    <title>Quantamental - Market Regime (HMM)</title>
+    <link rel="stylesheet" href="/static/css/styles.css?v={{ css_version }}">
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+</head>
+<body class="body-watchlist">
+
+    <div class="header-container">
+        <div>
+            <div class="title-wrapper">
+                <a href="https://github.com/alfwro13/Stock_Analysis_Project" target="_blank" class="logo-link">
+                    <img src="/assets/logo_small.png" alt="Quantamental Logo" class="logo-img">
+                </a>
+                <h1>&#128200; Market Regime (HMM)</h1>
+            </div>
+            <p class="page-subtitle">
+                5-year
+                <abbr title="Hidden Markov Model trained on SPY daily log-returns and EWMA volatility. States are sorted by mean volatility: 0=Bull (low vol), 1=Chop (elevated vol), 2=Crash (high vol). Updated daily as part of the quant pipeline.">Hidden Markov Model</abbr>
+                on SPY returns and volatility — classifies the market into Bull, Chop, or Crash states with transition probabilities.
+            </p>
+            {% set active_page = 'tools' %}
+            {% include 'navbar.html' %}
+        </div>
+    </div>
+
+    <div class="report-container report-container-wide">
+
+        <a href="/tools" class="btn-back">&#8592; Back to Tools</a>
+
+        {# ── Toolbar ── #}
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
+            <button id="run-now-btn" class="btn btn-update" onclick="runNow()">&#9654; Run Now</button>
+            <span id="run-status" style="font-size:12px;color:#888;"></span>
+            <span id="last-updated" style="margin-left:auto;font-size:12px;color:#555;"></span>
+        </div>
+
+        {# ── Current state banner ── #}
+        <div id="current-state-banner" class="sentiment-module module-cyan" style="margin-bottom:16px;display:none;">
+            <div style="padding:16px 24px;display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
+                <div>
+                    <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Current Regime</div>
+                    <div style="display:flex;align-items:center;gap:10px;">
+                        <span id="cur-state-pill" class="status-pill" style="font-size:16px;font-weight:700;padding:5px 18px;"></span>
+                        <span id="cur-confidence" style="font-size:13px;color:#888;"></span>
+                    </div>
+                </div>
+                <div id="cur-change-block" style="border-left:1px solid #333;padding-left:20px;display:none;">
+                    <div style="font-size:11px;color:#888;margin-bottom:2px;">Last regime change</div>
+                    <div id="cur-change-text" style="font-size:13px;color:#ccc;"></div>
+                </div>
+                <div style="margin-left:auto;text-align:right;">
+                    <div style="font-size:11px;color:#555;">as of</div>
+                    <div id="cur-as-of" style="font-size:12px;color:#888;"></div>
+                </div>
+            </div>
+        </div>
+
+        {# ── Regime history chart ── #}
+        <div class="sentiment-module module-cyan" style="margin-bottom:16px;">
+            <div style="padding:14px 20px 4px 20px;">
+                <h3 style="margin:0;color:#00ffcc;font-size:13px;text-transform:uppercase;letter-spacing:1px;">
+                    SPY Regime History
+                    <span style="font-size:11px;color:#555;font-weight:normal;margin-left:8px;">(5-year Viterbi path)</span>
+                </h3>
+            </div>
+            <div id="regime-chart" style="height:280px;padding:0 8px 8px 8px;"></div>
+            <div id="regime-chart-placeholder" style="height:280px;display:flex;align-items:center;justify-content:center;color:#555;font-size:13px;">
+                Loading chart…
+            </div>
+        </div>
+
+        {# ── Transition matrix + regime stats side by side ── #}
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+
+            <div class="sentiment-module module-cyan">
+                <div style="padding:14px 16px 0 16px;">
+                    <h3 style="margin:0 0 10px 0;color:#00ffcc;font-size:13px;text-transform:uppercase;letter-spacing:1px;">
+                        <abbr title="Empirical probability of transitioning from one regime state to another, computed from consecutive daily state pairs in the Viterbi path. Row = from state, column = to state. Diagonal = self-persistence (high values mean states are stable).">Transition Probabilities</abbr>
+                    </h3>
+                </div>
+                <div style="padding:0 16px 16px 16px;overflow-x:auto;">
+                    <table id="transition-table" style="width:100%;border-collapse:collapse;font-size:12px;display:none;">
+                        <thead>
+                            <tr>
+                                <th style="padding:6px 10px;color:#555;font-weight:600;text-align:left;">From \ To</th>
+                                <th style="padding:6px 10px;color:#00ff00;font-weight:600;text-align:center;">Bull</th>
+                                <th style="padding:6px 10px;color:#ffaa00;font-weight:600;text-align:center;">Chop</th>
+                                <th style="padding:6px 10px;color:#ff4d4d;font-weight:600;text-align:center;">Crash</th>
+                            </tr>
+                        </thead>
+                        <tbody id="transition-tbody"></tbody>
+                    </table>
+                    <div id="transition-placeholder" style="padding:20px 0;color:#555;font-size:12px;">No transition data yet.</div>
+                </div>
+            </div>
+
+            <div class="sentiment-module module-cyan">
+                <div style="padding:14px 16px 0 16px;">
+                    <h3 style="margin:0 0 10px 0;color:#00ffcc;font-size:13px;text-transform:uppercase;letter-spacing:1px;">Regime Statistics</h3>
+                </div>
+                <div style="padding:0 16px 16px 16px;overflow-x:auto;">
+                    <table id="stats-table" style="width:100%;border-collapse:collapse;font-size:12px;display:none;">
+                        <thead>
+                            <tr style="border-bottom:1px solid #333;">
+                                <th style="padding:6px 8px;color:#555;font-weight:600;text-align:left;">Regime</th>
+                                <th style="padding:6px 8px;color:#4da6ff;font-weight:600;text-align:center;"><abbr title="Number of trading days spent in this regime state across the full 5-year history.">Days</abbr></th>
+                                <th style="padding:6px 8px;color:#4da6ff;font-weight:600;text-align:center;"><abbr title="Average daily log-return of SPY while in this regime state.">Avg Daily Ret</abbr></th>
+                                <th style="padding:6px 8px;color:#4da6ff;font-weight:600;text-align:center;"><abbr title="Mean EWMA annualised volatility (%) while in this state.">Avg Vol %</abbr></th>
+                            </tr>
+                        </thead>
+                        <tbody id="stats-tbody"></tbody>
+                    </table>
+                    <div id="stats-placeholder" style="padding:20px 0;color:#555;font-size:12px;">No statistics yet.</div>
+                </div>
+            </div>
+
+        </div>
+
+        {# ── Signal legend ── #}
+        <details style="margin-top:8px;">
+            <summary style="cursor:pointer;color:#4da6ff;font-size:13px;font-weight:600;padding:8px 0;">&#9432; How the HMM works</summary>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-top:12px;">
+
+                <div class="sentiment-module module-cyan" style="margin-bottom:0;">
+                    <div style="padding:14px 16px;">
+                        <h4 style="color:#00ff00;margin:0 0 8px 0;font-size:12px;text-transform:uppercase;">&#128994; State 0 — Bull</h4>
+                        <p style="margin:0;font-size:11px;color:#aaa;line-height:1.6;">Low EWMA annualised volatility. SPY returns are positive on average. The market is trending calmly upward. Institutions are accumulating. Low VIX environment.</p>
+                    </div>
+                </div>
+
+                <div class="sentiment-module module-cyan" style="margin-bottom:0;border-left-color:#ffaa00;">
+                    <div style="padding:14px 16px;">
+                        <h4 style="color:#ffaa00;margin:0 0 8px 0;font-size:12px;text-transform:uppercase;">&#128992; State 1 — Chop</h4>
+                        <p style="margin:0;font-size:11px;color:#aaa;line-height:1.6;">Elevated volatility with near-zero average returns. The market is indecisive — often corresponds to post-crash base-building, rate-uncertainty periods, or sideways consolidation. Can precede Bull <em>or</em> Crash transitions.</p>
+                    </div>
+                </div>
+
+                <div class="sentiment-module module-red" style="margin-bottom:0;">
+                    <div style="padding:14px 16px;">
+                        <h4 style="color:#ff4d4d;margin:0 0 8px 0;font-size:12px;text-transform:uppercase;">&#128308; State 2 — Crash</h4>
+                        <p style="margin:0;font-size:11px;color:#aaa;line-height:1.6;">High EWMA volatility with negative average daily returns. The market is in a sustained risk-off move. Historical examples: COVID crash (2020), 2022 bear market. The transition matrix diagonal entry shows how long these states typically persist.</p>
+                    </div>
+                </div>
+
+                <div class="sentiment-module module-cyan" style="margin-bottom:0;border-left-color:#4da6ff;">
+                    <div style="padding:14px 16px;">
+                        <h4 style="color:#4da6ff;margin:0 0 8px 0;font-size:12px;text-transform:uppercase;">&#9881; Model Details</h4>
+                        <p style="margin:0;font-size:11px;color:#aaa;line-height:1.6;">
+                            <strong>Algorithm:</strong> <code style="color:#00ffcc;">GaussianHMM</code> (hmmlearn, full covariance).<br>
+                            <strong>Features:</strong> SPY daily log-return + 20-day EWMA annualised vol (&#955;=0.94).<br>
+                            <strong>Training:</strong> 5-year rolling window, refitted daily. State labels assigned by mean vol ascending so ordering is stable across retrains.<br>
+                            <strong>Caveat:</strong> HMM states are statistical constructs — treat them as a probabilistic context layer, not a trading signal.
+                        </p>
+                    </div>
+                </div>
+
+            </div>
+        </details>
+
+    </div>
+
+    <script>
+    (function () {
+        var HMM_COLORS = { Bull: '#00ff00', Chop: '#ffaa00', Crash: '#ff4d4d' };
+        var HMM_BG    = { Bull: 'rgba(0,255,0,.08)', Chop: 'rgba(255,170,0,.10)', Crash: 'rgba(255,77,77,.13)' };
+        var HMM_PILL  = {
+            Bull:  { bg: 'rgba(0,255,0,.15)',      color: '#00ff00', border: '#00cc00' },
+            Chop:  { bg: 'rgba(255,170,0,.15)',     color: '#ffaa00', border: '#cc8800' },
+            Crash: { bg: 'rgba(255,77,77,.18)',     color: '#ff4d4d', border: '#cc2222' },
+        };
+        var STATE_LABEL = ['Bull', 'Chop', 'Crash'];
+
+        function renderCurrentBanner(data) {
+            var cur = data.current;
+            if (!cur) return;
+            var pill  = document.getElementById('cur-state-pill');
+            var conf  = document.getElementById('cur-confidence');
+            var asOf  = document.getElementById('cur-as-of');
+            var banner = document.getElementById('current-state-banner');
+            var sty = HMM_PILL[cur.label] || {};
+            pill.textContent = cur.label.toUpperCase();
+            pill.style.background = sty.bg || '';
+            pill.style.color = sty.color || '';
+            pill.style.borderColor = sty.border || '';
+            conf.textContent = 'confidence ' + Math.round((cur.probability || 0) * 100) + '%';
+            asOf.textContent = cur.as_of || '—';
+            banner.style.display = '';
+            if (data.last_change) {
+                var chg = data.last_change;
+                document.getElementById('cur-change-text').textContent =
+                    chg.from_label + ' → ' + chg.to_label + ' on ' + chg.date;
+                document.getElementById('cur-change-block').style.display = '';
+            }
+        }
+
+        function renderChart(history) {
+            var placeholder = document.getElementById('regime-chart-placeholder');
+            var chartDiv    = document.getElementById('regime-chart');
+            if (!history || history.length === 0) { return; }
+            placeholder.style.display = 'none';
+            chartDiv.style.display    = '';
+
+            var dates  = history.map(function (h) { return h.date; });
+            var states = history.map(function (h) { return h.state; });
+            var probs  = history.map(function (h) { return Math.round((h.probability || 0) * 100); });
+            var labels = history.map(function (h) { return h.label; });
+
+            // Build background shapes — one rectangle per consecutive run of the same state
+            var shapes = [];
+            var i = 0;
+            while (i < history.length) {
+                var runLabel = labels[i];
+                var j = i;
+                while (j < history.length && labels[j] === runLabel) { j++; }
+                shapes.push({
+                    type: 'rect', xref: 'x', yref: 'paper',
+                    x0: dates[i], x1: dates[j - 1],
+                    y0: 0, y1: 1,
+                    fillcolor: HMM_BG[runLabel] || 'rgba(128,128,128,.05)',
+                    line: { width: 0 },
+                    layer: 'below',
+                });
+                i = j;
+            }
+
+            var stateTrace = {
+                x: dates,
+                y: states,
+                mode: 'lines',
+                line: { color: '#00ffcc', width: 1.5, shape: 'hv' },
+                name: 'State (0=Bull 1=Chop 2=Crash)',
+                hovertemplate: '%{x}<br>State: %{y} (' + '%{text}' + ')<extra></extra>',
+                text: labels,
+            };
+
+            var probTrace = {
+                x: dates,
+                y: probs,
+                mode: 'lines',
+                line: { color: '#4da6ff', width: 1, dash: 'dot' },
+                name: 'Confidence %',
+                yaxis: 'y2',
+                hovertemplate: '%{x}<br>Conf: %{y}%<extra></extra>',
+                opacity: 0.6,
+            };
+
+            var layout = {
+                paper_bgcolor: 'transparent',
+                plot_bgcolor:  'transparent',
+                margin: { t: 10, r: 60, b: 30, l: 40 },
+                xaxis: {
+                    color: '#555', gridcolor: '#222', linecolor: '#333',
+                    type: 'date',
+                },
+                yaxis: {
+                    color: '#555', gridcolor: '#222',
+                    tickvals: [0, 1, 2], ticktext: ['Bull', 'Chop', 'Crash'],
+                    range: [-0.3, 2.5],
+                },
+                yaxis2: {
+                    color: '#4da6ff', overlaying: 'y', side: 'right',
+                    range: [0, 105], showgrid: false,
+                    ticksuffix: '%',
+                },
+                legend: { x: 0, y: 1.02, orientation: 'h', font: { size: 10, color: '#888' } },
+                shapes: shapes,
+                font: { family: 'monospace', size: 11, color: '#888' },
+            };
+
+            Plotly.newPlot('regime-chart', [stateTrace, probTrace], layout, { responsive: true, displayModeBar: false });
+        }
+
+        function renderTransitionMatrix(matrix) {
+            var tbody  = document.getElementById('transition-tbody');
+            var table  = document.getElementById('transition-table');
+            var ph     = document.getElementById('transition-placeholder');
+            if (!matrix || matrix.length === 0) { return; }
+            tbody.innerHTML = '';
+            var labels = ['Bull', 'Chop', 'Crash'];
+            for (var r = 0; r < labels.length; r++) {
+                var tr = document.createElement('tr');
+                tr.style.borderBottom = '1px solid #1a1a1a';
+                var fromLabel = labels[r];
+                var td0 = document.createElement('td');
+                td0.style.cssText = 'padding:6px 10px;color:' + HMM_COLORS[fromLabel] + ';font-weight:600;';
+                td0.textContent = fromLabel;
+                tr.appendChild(td0);
+                for (var c = 0; c < labels.length; c++) {
+                    var val = matrix[r] ? (matrix[r][c] || 0) : 0;
+                    var pct = Math.round(val * 100);
+                    var td = document.createElement('td');
+                    td.style.cssText = 'padding:6px 10px;text-align:center;';
+                    if (r === c) {
+                        td.style.color = HMM_COLORS[labels[c]];
+                        td.style.fontWeight = '700';
+                    } else {
+                        td.style.color = '#666';
+                    }
+                    td.textContent = pct + '%';
+                    tr.appendChild(td);
+                }
+                tbody.appendChild(tr);
+            }
+            ph.style.display = 'none';
+            table.style.display = '';
+        }
+
+        function renderStats(stats) {
+            var tbody  = document.getElementById('stats-tbody');
+            var table  = document.getElementById('stats-table');
+            var ph     = document.getElementById('stats-placeholder');
+            if (!stats) { return; }
+            tbody.innerHTML = '';
+            var labels = ['Bull', 'Chop', 'Crash'];
+            for (var i = 0; i < labels.length; i++) {
+                var lbl = labels[i];
+                var s = stats[lbl];
+                if (!s) { continue; }
+                var tr = document.createElement('tr');
+                tr.style.borderBottom = '1px solid #1a1a1a';
+                var ret = s.mean_daily_return !== null
+                    ? (s.mean_daily_return >= 0 ? '+' : '') + (s.mean_daily_return * 100).toFixed(3) + '%'
+                    : '—';
+                var retColor = s.mean_daily_return !== null
+                    ? (s.mean_daily_return >= 0 ? '#00ff00' : '#ff4d4d')
+                    : '#555';
+                var vol = s.mean_vol !== null ? s.mean_vol.toFixed(1) + '%' : '—';
+                tr.innerHTML =
+                    '<td style="padding:6px 8px;color:' + HMM_COLORS[lbl] + ';font-weight:600;">' + lbl + '</td>' +
+                    '<td style="padding:6px 8px;text-align:center;color:#ccc;">' + (s.days || 0) + '</td>' +
+                    '<td style="padding:6px 8px;text-align:center;color:' + retColor + ';">' + ret + '</td>' +
+                    '<td style="padding:6px 8px;text-align:center;color:#888;">' + vol + '</td>';
+                tbody.appendChild(tr);
+            }
+            ph.style.display = 'none';
+            table.style.display = '';
+        }
+
+        function loadData() {
+            fetch('/api/market-regime')
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    if (!data || data.status !== 'success') { return; }
+                    renderCurrentBanner(data);
+                    renderChart(data.history);
+                    renderTransitionMatrix(data.transition_matrix);
+                    renderStats(data.regime_stats);
+                    var lu = document.getElementById('last-updated');
+                    if (data.current && data.current.as_of) {
+                        lu.textContent = 'Last calculated: ' + data.current.as_of;
+                    }
+                })
+                .catch(function () {});
+        }
+
+        window.runNow = function () {
+            var btn = document.getElementById('run-now-btn');
+            var status = document.getElementById('run-status');
+            btn.disabled = true;
+            btn.textContent = 'Running…';
+            status.textContent = '';
+            fetch('/api/market-regime/run', { method: 'POST' })
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    status.textContent = data.message || 'Triggered.';
+                    setTimeout(function () {
+                        loadData();
+                        btn.disabled = false;
+                        btn.textContent = '▶ Run Now';
+                        status.textContent = 'Done.';
+                    }, 6000);
+                })
+                .catch(function () {
+                    btn.disabled = false;
+                    btn.textContent = '▶ Run Now';
+                    status.textContent = 'Error — check notifications.';
+                });
+        };
+
+        loadData();
+    })();
+    </script>
+
+</body>
+</html>

@@ -1404,7 +1404,36 @@ Triggers a background scan immediately. Returns `{"status": "success"}` immediat
 
 ---
 
-## 19. News Feed
+## 19. Market Regime (HMM)
+
+Price-action Hidden Markov Model (3 states: Bull / Chop / Crash) fitted on 5-year SPY returns and EWMA volatility. Updated daily as part of the quant pipeline; can also be triggered on demand.
+
+### `GET /api/market-regime/current`
+
+Returns the latest HMM regime state and the most recent regime transition. Lightweight; used by the Trap Monitor panel.
+
+**Response:**
+```json
+{
+  "status": "success",
+  "current": { "state": 0, "label": "Bull", "probability": 0.87, "as_of": "2026-06-11" },
+  "last_change": { "date": "2026-05-14", "from_label": "Chop", "to_label": "Bull" }
+}
+```
+
+### `GET /api/market-regime`
+
+Returns full Viterbi history, empirical transition matrix, and per-regime return/vol statistics.
+
+**Response fields:** `current`, `last_change`, `history` (array of `{date, state, label, probability}`), `transition_matrix` (3×3 array), `regime_stats` (`{Bull, Chop, Crash}` each with `days`, `mean_daily_return`, `mean_vol`).
+
+### `POST /api/market-regime/run`
+
+Triggers `run_price_regime_hmm()` as a background task. Returns `{"status": "success"}` immediately.
+
+---
+
+## 20. News Feed
 
 Stores and retrieves news articles for portfolio and watchlist tickers. Articles are fetched via yfinance, full-text extracted via trafilatura, and sentiment-scored via FinBERT. Results are stored in the `news_articles` table.
 

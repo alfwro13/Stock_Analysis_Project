@@ -124,10 +124,51 @@ def run_update_pipeline():
         DataEngine().update_all_data()
         from regime_engine import calculate_systemic_macro_threat, calculate_market_regime
         calculate_systemic_macro_threat()
-        calculate_market_regime()
+        regime_result = calculate_market_regime()
         QuantEngine().run_all()
         logger.info("Background update complete.")
         log_sched_notification("Success", "Update Pipeline completed successfully.")
+
+        # Fire Nextcloud alert when HMM regime transitions to a new state
+        hmm = (regime_result or {}).get("hmm", {})
+        if (
+            hmm
+            and hmm.get("state") is not None
+            and hmm.get("previous_state") is not None
+            and hmm["state"] != hmm["previous_state"]
+        ):
+            config = load_config()
+            notif_cfg = config.get("NOTIFICATIONS", {}).get("HMM_ALERTS", {})
+            msg = (
+                f"HMM REGIME CHANGE: {hmm['previous_label']} → {hmm['label']} "
+                f"(confidence: {hmm['probability']:.0%}) | {hmm['date']}"
+            )
+            log_sched_notification("HMM Regime", msg)
+            if notif_cfg.get("NEXTCLOUD_ENABLED", False):
+                orch = IntradayOrchestrator()
+                conn_alert = None
+                try:
+                    from database import get_connection as _gc
+                    conn_alert = _gc()
+                    suppress = orch._evaluate_alert_gate(
+                        "HMM", "SPY", None, f"REGIME_{hmm['label']}", conn_alert
+                    )
+                    if not suppress:
+                        try:
+                            ok = send_text_message(msg, config)
+                        except Exception as _e:
+                            logger.error("HMM: Nextcloud dispatch failed: %s", _e)
+                            ok = False
+                        if ok:
+                            orch.record_alert_fired(
+                                "HMM", "SPY", None, f"REGIME_{hmm['label']}", conn_alert
+                            )
+                except Exception as _e:
+                    logger.error("HMM alert gate error: %s", _e)
+                finally:
+                    if conn_alert:
+                        conn_alert.close()
+
     except Exception as e:
         log_sched_notification("Error", f"Update Pipeline failed: {e}")
     finally:
