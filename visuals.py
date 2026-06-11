@@ -952,9 +952,10 @@ def create_etf_correlation_chart(
     fig.update_layout(
         title=dict(text=f"{etf_ticker} vs Constituent Basket — Normalised Performance & Correlation",
                    x=0.5, xanchor="center", font=dict(size=14), y=0.98),
-        template="plotly_dark", height=680,
-        margin=dict(l=20, r=20, t=130, b=20), hovermode="x unified",
-        legend=dict(orientation="h", yanchor="top", y=1.12, xanchor="right", x=1, font=dict(size=10)),
+        template="plotly_dark", height=720,
+        margin=dict(l=20, r=20, t=130, b=160), hovermode="x unified",
+        legend=dict(orientation="h", yanchor="top", y=-0.06, xanchor="left", x=0,
+                    font=dict(size=9), tracegroupgap=2),
     )
     fig.update_yaxes(title_text="Indexed (100 = start)", row=1, col=1, showgrid=True, gridcolor="#333333")
     fig.update_yaxes(title_text="Pearson r", row=2, col=1, showgrid=True, gridcolor="#333333", range=[-1.1, 1.1])
@@ -1018,9 +1019,10 @@ def create_etf_prediction_chart(
     fig.update_layout(
         title=dict(text=f"{etf_ticker} — Historical Close + Predicted Next Open ({ccy})",
                    x=0.5, xanchor="center"),
-        template="plotly_dark", height=420,
-        margin=dict(l=20, r=20, t=90, b=20), hovermode="x unified",
-        legend=dict(orientation="h", yanchor="top", y=1.10, xanchor="right", x=1),
+        template="plotly_dark", height=450,
+        margin=dict(l=20, r=20, t=90, b=100), hovermode="x unified",
+        legend=dict(orientation="h", yanchor="top", y=-0.08, xanchor="left", x=0,
+                    font=dict(size=9), tracegroupgap=2),
     )
     fig.update_yaxes(title_text=ccy, showgrid=True, gridcolor="#333333")
     return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
@@ -1086,7 +1088,14 @@ def create_etf_overlay_chart(
 
     now_local = pd.Timestamp(now_utc).tz_localize("UTC").tz_convert(user_tz).tz_localize(None)
     x_start = now_local - pd.Timedelta(hours=20)
-    x_end = now_local + pd.Timedelta(hours=10)
+    # Extend x_end to always show the constituent exchange close (important for UTC+2 users)
+    _c_open_utc, _c_close_utc = time_engine.market_window_utc(constituent_exchange)
+    _today_utc = datetime.now(timezone.utc).date()
+    _c_close_local = (
+        pd.Timestamp(datetime.combine(_today_utc, _c_close_utc))
+        .tz_localize("UTC").tz_convert(user_tz).tz_localize(None)
+    )
+    x_end = max(now_local + pd.Timedelta(hours=10), _c_close_local + pd.Timedelta(hours=2))
 
     def _to_local(s):
         if s.empty:
@@ -1195,8 +1204,22 @@ def create_etf_overlay_chart(
     if pred_price and etf_last_close > 0 and next_open_date is not None:
         is_intraday = signal_source in ("intraday_premarket", "intraday_live")
         if is_intraday:
-            _c_open_t, _ = time_engine.market_window_utc(constituent_exchange)
-            pred_dt_utc = datetime.combine(trading_date or next_open_date, _c_open_t)
+            # Place star at constituent exchange's next open — NOT trading_date (which can be
+            # yesterday when the ETF exchange hasn't opened yet today).
+            _c_open_t, _c_cl_t = time_engine.market_window_utc(constituent_exchange)
+            _now_check = datetime.now(timezone.utc).replace(tzinfo=None)
+            _today_c = datetime.now(timezone.utc).date()
+            if _today_c.weekday() == 5:
+                _c_target = _today_c + _td(days=2)
+            elif _today_c.weekday() == 6:
+                _c_target = _today_c + _td(days=1)
+            elif _now_check < datetime.combine(_today_c, _c_cl_t):
+                _c_target = _today_c  # constituent exchange hasn't closed today yet
+            elif _today_c.weekday() == 4:
+                _c_target = _today_c + _td(days=3)
+            else:
+                _c_target = _today_c + _td(days=1)
+            pred_dt_utc = datetime.combine(_c_target, _c_open_t)
         else:
             _e_open_t, _ = time_engine.market_window_utc(etf_exchange)
             pred_dt_utc = datetime.combine(next_open_date, _e_open_t)
@@ -1211,11 +1234,12 @@ def create_etf_overlay_chart(
         ))
 
     fig.update_layout(
-        title=dict(text=f"{etf_ticker} Intraday vs {constituent_exchange} Constituents — Time-Aligned",
+        title=dict(text=f"{etf_ticker} Intraday vs Constituents — Time-Aligned",
                    x=0.5, xanchor="center", font=dict(size=13)),
-        template="plotly_dark", height=520,
-        margin=dict(l=20, r=20, t=80, b=20), hovermode="x unified",
-        legend=dict(orientation="h", yanchor="top", y=1.09, xanchor="right", x=1, font=dict(size=10)),
+        template="plotly_dark", height=580,
+        margin=dict(l=20, r=20, t=80, b=160), hovermode="x unified",
+        legend=dict(orientation="h", yanchor="top", y=-0.06, xanchor="left", x=0,
+                    font=dict(size=9), tracegroupgap=2),
     )
     fig.update_yaxes(title_text="% Change from Previous Close", ticksuffix="%",
                      zeroline=True, zerolinecolor="#555555", zerolinewidth=1.5,

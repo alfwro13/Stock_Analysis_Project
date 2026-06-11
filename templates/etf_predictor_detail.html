@@ -61,10 +61,11 @@
                 <div class="xray-metric-label">Last Close ({{ etf_info.currency }})</div>
                 <div class="xray-metric-value">{{ prediction.last_etf_close }}</div>
             </div>
-            {% if prediction.fx_pair and prediction.fx_rate and prediction.fx_rate != 1.0 %}
+            {% if prediction.fx_pair %}
             <div class="xray-metric-card">
                 <div class="xray-metric-label"><abbr title="{{ prediction.fx_pair }} spot rate used for FX adjustment between ETF and constituent currencies.">{{ prediction.fx_pair }}</abbr></div>
                 <div class="xray-metric-value">{{ prediction.fx_rate }}</div>
+                {% if not prediction.fx_rate or prediction.fx_rate == 1.0 %}<span class="badge-warn">FX data unavailable &mdash; adjustment skipped</span>{% endif %}
             </div>
             {% endif %}
             <div class="xray-metric-card">
