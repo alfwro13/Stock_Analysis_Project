@@ -1496,6 +1496,47 @@ async def get_market_regime_current(request: Request):
             conn.close()
 
 
+@api_router.get("/market-stress")
+@limiter.limit("30/minute")
+async def get_market_stress(request: Request):
+    """Returns the latest market-wide Isolation Forest stress score and the last 30 daily values."""
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT date, market_stress_score, market_stress_features "
+            "FROM market_regimes WHERE market_stress_score IS NOT NULL ORDER BY date DESC LIMIT 30"
+        )
+        rows = cursor.fetchall()
+        if not rows:
+            return JSONResponse(content={"status": "success", "current": None, "history": []})
+
+        latest = rows[0]
+        try:
+            import json as _json
+            features = _json.loads(latest["market_stress_features"] or "{}")
+        except Exception:
+            features = {}
+
+        current = {
+            "score": round(float(latest["market_stress_score"]), 4),
+            "features": features,
+            "date": latest["date"],
+        }
+        history = [
+            {"date": r["date"], "score": round(float(r["market_stress_score"]), 4)}
+            for r in reversed(rows)
+        ]
+        return JSONResponse(content={"status": "success", "current": current, "history": history})
+    except Exception as e:
+        logger.error("market-stress endpoint failed: %s", e)
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+    finally:
+        if conn:
+            conn.close()
+
+
 @api_router.get("/market-regime")
 @limiter.limit("10/minute")
 async def get_market_regime_full(request: Request):

@@ -68,6 +68,35 @@
             </div>
         </div>
 
+        {# ── Market Stress IF panel ── #}
+        <div class="sentiment-module module-cyan" id="msi-panel" style="margin-bottom:16px;display:none;">
+            <div style="padding:14px 20px 10px 20px;">
+                <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:2px;">
+                    <span style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;white-space:nowrap;">
+                        <abbr title="Market-wide Isolation Forest trained on 6 daily macro features: VIX level, VIX/20-day-MA ratio, HYG credit return, 10Y yield change, SPY volume z-score, and SPY daily return. Score 0–1; values above 0.75 for two consecutive days trigger an alert.">Market Stress Score</abbr>
+                    </span>
+                    <span id="msi-score-value" style="font-size:22px;font-weight:700;font-family:monospace;"></span>
+                    <span id="msi-status-pill" class="status-pill" style="font-size:11px;font-weight:700;padding:3px 10px;"></span>
+                    <span id="msi-date" style="font-size:11px;color:#555;margin-left:auto;"></span>
+                </div>
+                <div class="msi-gauge-track"><div id="msi-gauge-fill" class="msi-gauge-fill"></div></div>
+                <div style="display:flex;justify-content:space-between;font-size:9px;color:#444;margin-bottom:10px;">
+                    <span>0.00 Normal</span><span>0.50 Elevated</span><span>0.75 Alert</span><span>1.00</span>
+                </div>
+                <div style="display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap;">
+                    <div style="flex:0 0 auto;">
+                        <div style="font-size:10px;color:#666;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">30-day history</div>
+                        <svg id="msi-sparkline" width="200" height="36" viewBox="0 0 200 36" style="display:block;overflow:visible;">
+                            <line x1="0" y1="27" x2="200" y2="27" stroke="#1a1a1a" stroke-width="1"/>
+                        </svg>
+                    </div>
+                    <div style="flex:1;min-width:220px;">
+                        <div id="msi-features" class="msi-feature-grid"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         {# ── Toolbar ── #}
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
             <button id="run-now-btn" class="btn btn-update" onclick="runScanNow()">&#9654; Run Scan Now</button>
@@ -310,6 +339,110 @@
             });
         }
 
+        var MSI_THRESHOLDS = { alert: 0.75, elevated: 0.50 };
+        var MSI_COLORS = { alert: '#ff4d4d', elevated: '#ffaa00', normal: '#00ff00' };
+
+        function msiColor(score) {
+            if (score >= MSI_THRESHOLDS.alert)    return MSI_COLORS.alert;
+            if (score >= MSI_THRESHOLDS.elevated) return MSI_COLORS.elevated;
+            return MSI_COLORS.normal;
+        }
+
+        function msiStatusLabel(score) {
+            if (score >= MSI_THRESHOLDS.alert)    return 'STRESS ALERT';
+            if (score >= MSI_THRESHOLDS.elevated) return 'ELEVATED';
+            return 'NORMAL';
+        }
+
+        function msiFeatureColor(key, val) {
+            if (val == null) return '#888';
+            if (key === 'vix_level')      return val > 30 ? '#ff4d4d' : val > 20 ? '#ffaa00' : '#4caf50';
+            if (key === 'vix_ma_ratio')   return val > 1.5 ? '#ff4d4d' : val > 1.2 ? '#ffaa00' : '#aaa';
+            if (key === 'hyg_return')     return val < -1.0 ? '#ff4d4d' : val < -0.3 ? '#ffaa00' : '#aaa';
+            if (key === 'tnx_change')     return Math.abs(val) > 0.1 ? '#ffaa00' : '#aaa';
+            if (key === 'spy_vol_zscore') return val > 2 ? '#ff4d4d' : val > 1 ? '#ffaa00' : '#aaa';
+            if (key === 'spy_return')     return val < -1.5 ? '#ff4d4d' : val < -0.5 ? '#ffaa00' : '#aaa';
+            return '#aaa';
+        }
+
+        var MSI_FEATURE_LABELS = {
+            vix_level:     'VIX Level',
+            vix_ma_ratio:  'VIX / MA',
+            hyg_return:    'HYG Return',
+            tnx_change:    '10Y Δ (pts)',
+            spy_vol_zscore:'SPY Vol Z',
+            spy_return:    'SPY Return'
+        };
+
+        function msiFeatureDisplay(key, val) {
+            if (val == null) return '—';
+            if (key === 'hyg_return' || key === 'spy_return') return (val >= 0 ? '+' : '') + val.toFixed(2) + '%';
+            if (key === 'vix_ma_ratio') return val.toFixed(2) + '×';
+            return (val >= 0 && key !== 'vix_level' && key !== 'vix_ma_ratio' ? '+' : '') + val.toFixed(2);
+        }
+
+        function renderSparkline(history) {
+            var svg = document.getElementById('msi-sparkline');
+            if (!history || history.length < 2) { svg.innerHTML = '<line x1="0" y1="27" x2="200" y2="27" stroke="#1a1a1a" stroke-width="1"/>'; return; }
+            var n = history.length;
+            var scores = history.map(function (h) { return h.score; });
+            var W = 200, H = 30, pad = 3;
+            var points = scores.map(function (s, i) {
+                var x = Math.round(pad + (i / (n - 1)) * (W - pad * 2));
+                var y = Math.round(H - pad - s * (H - pad * 2));
+                return x + ',' + y;
+            }).join(' ');
+            var lastScore = scores[scores.length - 1];
+            var col = msiColor(lastScore);
+            svg.innerHTML =
+                '<line x1="0" y1="' + Math.round(H - pad - 0.75 * (H - pad * 2)) + '" x2="' + W + '" y2="' + Math.round(H - pad - 0.75 * (H - pad * 2)) + '" stroke="rgba(255,77,77,.25)" stroke-width="1" stroke-dasharray="3 3"/>' +
+                '<polyline points="' + points + '" fill="none" stroke="' + col + '" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" opacity="0.85"/>';
+        }
+
+        function fetchStress() {
+            fetch('/api/market-stress')
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    if (!data || data.status !== 'success' || !data.current) return;
+                    var cur = data.current;
+                    var score = cur.score;
+                    var col = msiColor(score);
+                    var panel = document.getElementById('msi-panel');
+
+                    document.getElementById('msi-score-value').textContent = score.toFixed(2);
+                    document.getElementById('msi-score-value').style.color = col;
+
+                    var pill = document.getElementById('msi-status-pill');
+                    pill.textContent = msiStatusLabel(score);
+                    pill.style.background = col === '#ff4d4d' ? 'rgba(255,77,77,.15)' : col === '#ffaa00' ? 'rgba(255,170,0,.12)' : 'rgba(0,255,0,.1)';
+                    pill.style.color = col;
+                    pill.style.borderColor = col;
+
+                    document.getElementById('msi-date').textContent = 'as of ' + (cur.date || '—');
+
+                    var fill = document.getElementById('msi-gauge-fill');
+                    fill.style.width = Math.round(score * 100) + '%';
+                    fill.style.background = col;
+
+                    renderSparkline(data.history);
+
+                    var feats = cur.features || {};
+                    var keys = ['vix_level', 'vix_ma_ratio', 'hyg_return', 'tnx_change', 'spy_vol_zscore', 'spy_return'];
+                    var html = '';
+                    keys.forEach(function (k) {
+                        var v = feats[k] != null ? feats[k] : null;
+                        var fc = msiFeatureColor(k, v);
+                        html += '<div>' +
+                            '<div class="msi-feature-label">' + MSI_FEATURE_LABELS[k] + '</div>' +
+                            '<div class="msi-feature-value" style="color:' + fc + ';">' + msiFeatureDisplay(k, v) + '</div>' +
+                            '</div>';
+                    });
+                    document.getElementById('msi-features').innerHTML = html;
+                    panel.style.display = '';
+                })
+                .catch(function () {});
+        }
+
         function fetchResults() {
             fetch('/api/trap-monitor/results')
                 .then(function (r) { return r.json(); })
@@ -397,6 +530,7 @@
 
         fetchResults();
         fetchRegime();
+        fetchStress();
         startCountdown();
     })();
     </script>

@@ -1431,6 +1431,27 @@ Returns full Viterbi history, empirical transition matrix, and per-regime return
 
 Triggers `run_price_regime_hmm()` as a background task. Returns `{"status": "success"}` immediately.
 
+### `GET /api/market-stress`
+
+Returns the latest market-wide Isolation Forest stress score and the last 30 daily values. Used by the Market Stress panel on `/trap-monitor`.
+
+**Response:**
+```json
+{
+  "status": "success",
+  "current": {
+    "score": 0.42,
+    "features": {
+      "vix_level": 18.4, "vix_ma_ratio": 0.92, "hyg_return": -0.12,
+      "tnx_change": 0.02, "spy_vol_zscore": 0.8, "spy_return": -0.31
+    },
+    "date": "2026-06-11"
+  },
+  "history": [{ "date": "2026-05-13", "score": 0.38 }, "..."]
+}
+```
+`current` is `null` when no score has been computed yet (first run pending). `history` is ordered oldest-first, up to 30 entries.
+
 ---
 
 ## 20. News Feed
