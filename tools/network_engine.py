@@ -60,6 +60,24 @@ def _maybe_restore_latch() -> None:
         logger.debug("Could not restore IPv6 latch from flag file: %s", e)
 
 
+def _clear_yfinance_crumb() -> None:
+    """Clear yfinance's singleton crumb/cookie so the next fetch re-authenticates with the current session's cookies.
+
+    Required whenever the underlying curl_cffi session is replaced mid-use: the YfData singleton keeps the old
+    crumb (tied to the old session's cookies) and every subsequent Yahoo request returns 401 Invalid Crumb,
+    which yfinance misreports as "possibly delisted" for every ticker.
+    """
+    try:
+        from yfinance.data import YfData
+        for inst in YfData._instances.values():
+            with inst._cookie_lock:
+                inst._crumb = None
+                inst._cookie = None
+        logger.debug("Cleared yfinance crumb cache after session change.")
+    except Exception as e:
+        logger.debug("Could not clear yfinance crumb cache: %s", e)
+
+
 def _trigger_fallback_alert(ipv6_address: str, action_context: str, error_summary: str, detailed_trace: str, config: dict) -> None:
     # Atomically check-and-set ensures only the first concurrent caller fires the alert; all others see is_failing=True and return.
     with _ipv6_status_lock:
@@ -197,6 +215,7 @@ def create_failover_session(ipv6_address: str, action_context: str, config: dict
                     logger.warning(f"Closed session detected. Rebuilding IPv6 session for '{action_context}' ({ipv6_address})...")
                     session = cffi_requests.Session(impersonate="chrome", interface=ipv6_address)
                     original_request = session.request
+                    _clear_yfinance_crumb()
                     continue
                 
                 # If we already fell back to standard routing and it STILL failed, we are completely offline or hard-banned.
@@ -231,6 +250,7 @@ def create_failover_session(ipv6_address: str, action_context: str, config: dict
                 # Build fresh unbound session — mutating session.interface on a live curl_cffi is undocumented and may be silently ignored by libcurl.
                 logger.warning(f"Exhausted IPv6 recovery options. Dropping custom interface {ipv6_address} and reverting to OS default routing (IPv4)...")
                 session.fallback_triggered = True
+                _clear_yfinance_crumb()
                 fallback_session = cffi_requests.Session(impersonate="chrome")
                 try:
                     return fallback_session.request(method, url, **kwargs)

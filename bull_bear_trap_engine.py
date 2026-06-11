@@ -412,7 +412,8 @@ class TrapEngine:
                 if PORTFOLIO_PATH.exists():
                     with open(PORTFOLIO_PATH) as f:
                         portfolio = json.load(f)
-                    for item in portfolio:
+                    items = portfolio.values() if isinstance(portfolio, dict) else portfolio
+                    for item in items:
                         t = item.get("ticker") or item.get("symbol")
                         if t:
                             tickers.add(t.upper())
