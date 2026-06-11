@@ -481,3 +481,49 @@ class TestConfirmToken:
     def test_test_nextcloud_message_invalid_token_returns_403(self, client):
         resp = client.post("/api/test-nextcloud-message", headers={"X-Confirm-Token": "wrong"})
         assert resp.status_code == 403
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 7.  _secret() auto-generation when APP_SECRET_KEY is missing
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestSecretGeneration:
+
+    def test_returns_valid_bytes_when_unset(self, monkeypatch):
+        monkeypatch.delenv("APP_SECRET_KEY", raising=False)
+        with patch("dotenv.set_key"):
+            from auth import _secret
+            result = _secret()
+        assert isinstance(result, bytes)
+        assert len(result) == 64  # token_hex(32) → 64 hex chars
+        assert result != b"fallback-insecure"
+
+    def test_sets_env_var_after_generation(self, monkeypatch):
+        monkeypatch.delenv("APP_SECRET_KEY", raising=False)
+        with patch("dotenv.set_key"):
+            from auth import _secret
+            _secret()
+        assert os.environ.get("APP_SECRET_KEY"), "APP_SECRET_KEY must be cached in env after _secret()"
+
+    def test_calls_dotenv_set_key_to_persist(self, monkeypatch):
+        monkeypatch.delenv("APP_SECRET_KEY", raising=False)
+        with patch("dotenv.set_key") as mock_set:
+            from auth import _secret
+            _secret()
+        mock_set.assert_called_once()
+
+    def test_graceful_when_dotenv_raises(self, monkeypatch):
+        monkeypatch.delenv("APP_SECRET_KEY", raising=False)
+        with patch("dotenv.set_key", side_effect=OSError("permission denied")):
+            from auth import _secret
+            result = _secret()
+        assert isinstance(result, bytes)
+        assert len(result) == 64
+
+    def test_idempotent_second_call_returns_same_key(self, monkeypatch):
+        monkeypatch.delenv("APP_SECRET_KEY", raising=False)
+        with patch("dotenv.set_key"):
+            from auth import _secret
+            first = _secret()
+            second = _secret()
+        assert first == second
