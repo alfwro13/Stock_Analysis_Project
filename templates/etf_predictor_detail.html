@@ -3,9 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="color-scheme" content="dark">
-    <title>Quantamental - {{ cfg.etf_ticker }} Predictor</title>
+    <title>Quantamental - {{ cfg.etf_ticker }} Price Predictor</title>
     <link rel="stylesheet" href="/static/css/styles.css?v={{ css_version }}">
-    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
 </head>
 <body class="body-watchlist">
 
@@ -15,13 +14,13 @@
                 <a href="https://github.com/alfwro13/Stock_Analysis_Project" target="_blank" class="logo-link">
                     <img src="/assets/logo_small.png" alt="Quantamental Logo" class="logo-img">
                 </a>
-                <h1>&#128202; {{ cfg.etf_ticker }} — {{ cfg.name }}</h1>
+                <h1>&#128202; {{ cfg.etf_ticker }} Price Predictor</h1>
             </div>
             <p class="page-subtitle">
                 ETF Price Predictor &mdash;
-                <abbr title="Exchange: where the ETF is listed.">{{ etf_info.exchange }}</abbr> &middot;
-                {{ etf_info.currency }}
-                {% if etf_info.name and etf_info.name != cfg.etf_ticker %}&middot; {{ etf_info.name }}{% endif %}
+                <abbr title="Exchange: where this ETF is listed.">{{ etf_info.exchange }}</abbr>
+                &middot; {{ etf_info.currency }}
+                {% if cfg.name %}&middot; {{ cfg.name }}{% endif %}
             </p>
             {% set active_page = 'tools' %}
             {% include 'navbar.html' %}
@@ -31,205 +30,353 @@
     <div class="report-container report-container-wide">
 
         <div class="flex-gap-15 mb-20" style="align-items:center;">
-            <a href="/etf-predictor" style="color:#aaa;font-size:13px;">← Back to ETF Predictors</a>
-            <button type="button" class="btn-test" style="font-size:12px;padding:5px 12px;" onclick="runNow()">▶ Run Now</button>
+            <a href="/etf-predictor" class="btn-back">&#8592; Back to ETF Predictors</a>
+            <button type="button" class="btn-test" onclick="runNow(event)">&#9654; Run Now</button>
             <span id="run-status" class="status-msg-sm"></span>
         </div>
 
-        {# Use next_open if available, fall back to us_open_impact #}
-        {% set has_next_open = accuracy.next_open.rows | length > 0 %}
-        {% set has_us_impact = accuracy.us_open_impact.rows | length > 0 %}
-        {% set no_data = not has_next_open and not has_us_impact %}
-        {% set active_type = 'next_open' if has_next_open else 'us_open_impact' %}
-        {% set last = accuracy[active_type].rows[0] if not no_data else none %}
-        {% set summ = accuracy[active_type].summary %}
-
-        {% if no_data %}
-        <div class="settings-panel border-left-purple" style="text-align:center;padding:30px;">
-            <h4 class="text-purple">No predictions yet</h4>
-            <p style="color:#aaa;">Click "Run Now" above or wait for the scheduled job to generate the first prediction.</p>
+        {% if prediction.status == 'error' %}
+        <div class="sentiment-module module-red">
+            <div class="xray-metric-card">
+                <p class="xray-metric-label">Data Unavailable</p>
+                <p class="risk-summary-text">{{ prediction.error }}</p>
+                <p class="risk-summary-text">Price data could not be retrieved from Yahoo Finance. Try again later or click Run Now.</p>
+            </div>
         </div>
+
         {% else %}
 
-        {% if not has_next_open and has_us_impact %}
-        <div style="margin-bottom:12px;padding:8px 12px;background:#1a2a1a;border-left:3px solid #00aa66;border-radius:4px;font-size:12px;color:#aaa;">
-            Showing <strong style="color:#00aa66;">US-open-impact</strong> predictions (intraday signal — ETF and constituents on the same exchange or same-session data).
-        </div>
-        {% endif %}
-
-        {# ── Summary metric cards ── #}
-        <div class="xray-cards-row" style="margin-bottom:24px;">
+        {# ── Prediction summary tiles ── #}
+        <div class="xray-cards-row">
             <div class="xray-metric-card xray-metric-card--purple">
-                <div class="xray-metric-label"><abbr title="Most recent predicted opening price for this ETF.">Latest Predicted Open</abbr></div>
-                <div class="prediction-hero">{{ "%.4f"|format(last.predicted_price) if last.predicted_price else '—' }}</div>
-                {% if last.predicted_change_pct is not none %}
-                <div class="{% if last.predicted_change_pct >= 0 %}prediction-change-pos{% else %}prediction-change-neg{% endif %}">
-                    {{ "%+.2f"|format(last.predicted_change_pct) }}%
+                <div class="xray-metric-label"><abbr title="Predicted {{ cfg.etf_ticker }} opening price based on constituent close prices.">Predicted Open</abbr></div>
+                <div class="prediction-hero">{{ prediction.predicted_price }}</div>
+                {% if prediction.predicted_change_pct is not none %}
+                <div class="{% if prediction.predicted_change_pct >= 0 %}prediction-change-pos{% else %}prediction-change-neg{% endif %}">
+                    {{ "%+.2f"|format(prediction.predicted_change_pct) }}%
                 </div>
                 {% endif %}
-                <div style="color:#666;font-size:11px;margin-top:4px;">target: {{ last.target_date }}</div>
             </div>
             <div class="xray-metric-card">
-                <div class="xray-metric-label">Last ETF Close</div>
-                <div class="xray-metric-value">{{ "%.4f"|format(last.last_etf_close) if last.last_etf_close else '—' }}</div>
+                <div class="xray-metric-label">Last Close ({{ etf_info.currency }})</div>
+                <div class="xray-metric-value">{{ prediction.last_etf_close }}</div>
             </div>
+            {% if prediction.fx_pair and prediction.fx_rate and prediction.fx_rate != 1.0 %}
             <div class="xray-metric-card">
-                <div class="xray-metric-label"><abbr title="Direction accuracy — percentage of predictions where the predicted direction (up/down) matched actual.">Direction Accuracy</abbr></div>
-                {% if summ.direction_accuracy_pct is not none %}
-                <div class="xray-metric-value" style="color:{% if summ.direction_accuracy_pct >= 60 %}#00ff00{% elif summ.direction_accuracy_pct >= 50 %}#ffaa00{% else %}#ff4d4d{% endif %};">
-                    {{ summ.direction_accuracy_pct }}%
-                </div>
-                <div class="xray-metric-label xray-metric-sublabel">{{ summ.resolved_count }} resolved of {{ summ.total_predictions }}</div>
-                {% else %}
-                <div class="xray-metric-value">—</div>
-                {% endif %}
-            </div>
-            <div class="xray-metric-card">
-                <div class="xray-metric-label"><abbr title="Mean Absolute Error — average absolute difference between predicted and actual open price.">MAE</abbr></div>
-                <div class="xray-metric-value">{{ "%.4f"|format(summ.mae) if summ.mae else '—' }}</div>
-            </div>
-            <div class="xray-metric-card">
-                <div class="xray-metric-label"><abbr title="Mean Absolute Percentage Error — average percentage difference between predicted and actual open price.">MAPE</abbr></div>
-                <div class="xray-metric-value">{{ "%.2f"|format(summ.mape_pct) ~ '%' if summ.mape_pct else '—' }}</div>
-            </div>
-            {% if summ.last_10_direction_pct is not none %}
-            <div class="xray-metric-card">
-                <div class="xray-metric-label">Last 10 Direction</div>
-                <div class="xray-metric-value" style="color:{% if summ.last_10_direction_pct >= 60 %}#00ff00{% elif summ.last_10_direction_pct >= 50 %}#ffaa00{% else %}#ff4d4d{% endif %};">
-                    {{ summ.last_10_direction_pct }}%
-                </div>
+                <div class="xray-metric-label"><abbr title="{{ prediction.fx_pair }} spot rate used for FX adjustment between ETF and constituent currencies.">{{ prediction.fx_pair }}</abbr></div>
+                <div class="xray-metric-value">{{ prediction.fx_rate }}</div>
             </div>
             {% endif %}
+            <div class="xray-metric-card">
+                <div class="xray-metric-label">Model</div>
+                <div class="xray-metric-value xray-metric-value--sm">
+                    {% if prediction.data_source == 'holdings' %}
+                    <span class="badge-source">Live Holdings Weights</span>
+                    {% elif prediction.data_source == 'known_weights_fallback' %}
+                    <span class="badge-source">Known ETF Weights</span>
+                    {% else %}
+                    <span class="badge-source-fallback">Regression Only</span>
+                    {% endif %}
+                </div>
+                {% if prediction.n_holdings_used > 0 %}
+                <div class="xray-metric-label xray-metric-sublabel">{{ prediction.n_holdings_used }} constituents used</div>
+                {% endif %}
+            </div>
+            {% if prediction.regression_engine %}
+            <div class="xray-metric-card">
+                <div class="xray-metric-label"><abbr title="OLS regression R² — measures how much of {{ cfg.etf_ticker }}'s morning return variance is explained by the constituent basket's prior close.">Regression R&sup2;</abbr></div>
+                <div class="xray-metric-value">{{ "%.3f"|format(prediction.regression_engine.r_squared) }}</div>
+                <div class="xray-metric-label xray-metric-sublabel">&beta; = {{ "%.3f"|format(prediction.regression_engine.beta) }} &nbsp;|&nbsp; n={{ prediction.regression_engine.n_observations }}</div>
+            </div>
+            <div class="xray-metric-card">
+                <div class="xray-metric-label"><abbr title="95% confidence interval from the OLS regression model.">95% CI (Regression)</abbr></div>
+                <div class="xray-metric-value xray-metric-value--sm">{{ prediction.regression_engine.lower_bound }} &ndash; {{ prediction.regression_engine.upper_bound }}</div>
+            </div>
+            {% endif %}
+            <div class="xray-metric-card">
+                <div class="xray-metric-label">As Of</div>
+                <div class="xray-metric-value xray-metric-value--xs">{{ prediction.as_of_local }}</div>
+            </div>
         </div>
 
         {# ── Signal source badge ── #}
-        {% if last.signal_source %}
-        <div style="margin-bottom:20px;">
-            <span style="font-size:12px;color:#888;">Signal source: </span>
-            <span class="badge-source" style="font-size:12px;">{{ last.signal_source }}</span>
-            {% if last.data_source %}
-            <span style="font-size:12px;color:#888;margin-left:10px;">Data: </span>
-            <span class="badge-source" style="font-size:12px;">{{ last.data_source }}</span>
+        {% if prediction.signal_source %}
+        <p class="risk-summary-text">
+            <strong>Signal source:</strong>
+            {% if prediction.signal_source == 'intraday_post_close' %}
+            <span class="badge-source">Post-{{ etf_info.exchange }}-close intraday</span> &mdash; using constituent prices after the ETF exchange closed. Predicting tomorrow&rsquo;s open.
+            {% elif prediction.signal_source == 'intraday_live' %}
+            <span class="badge-source">Live constituent session</span> &mdash; using live constituent prices to project {{ cfg.etf_ticker }} impact at constituent market open.
+            {% elif prediction.signal_source == 'intraday_premarket' %}
+            <span class="badge-source">Pre-market</span> &mdash; using pre-market constituent prices to project {{ cfg.etf_ticker }} impact at constituent market open.
+            {% else %}
+            <span class="badge-source-fallback">Prior daily closes</span> &mdash; live intraday data unavailable.
             {% endif %}
-            {% if last.fx_rate and last.fx_rate != 1.0 %}
-            <span style="font-size:12px;color:#888;margin-left:10px;"><abbr title="FX rate used for currency adjustment.">FX</abbr>: {{ "%.4f"|format(last.fx_rate) }}</span>
+            {% if prediction.next_open_date %}
+            Predicting for <strong>{{ prediction.next_open_date }}</strong>.
             {% endif %}
-        </div>
+        </p>
         {% endif %}
 
-        {# ── Accuracy chart ── #}
-        <div class="chart-wrapper" style="margin-bottom:24px;">
-            <h3 style="color:#aaa;font-size:15px;margin-bottom:8px;">Prediction Accuracy Over Time</h3>
-            <div id="accuracy-chart" style="height:280px;"></div>
-        </div>
+        {# ── Methodology note ── #}
+        <p class="risk-summary-text">
+            <strong>How this works:</strong>
+            Tracks {{ cfg.constituents | length }} configured constituents for <strong>{{ cfg.etf_ticker }}</strong>.
+            The <strong>Holdings model</strong> computes a weighted sum of each constituent&rsquo;s return using the configured weights{% if prediction.fx_pair and prediction.fx_rate and prediction.fx_rate != 1.0 %}, then applies a <abbr title="{{ prediction.fx_pair }} exchange rate adjustment for the currency difference between ETF and constituent prices.">{{ prediction.fx_pair }} FX adjustment</abbr>{% endif %}.
+            In parallel, a <strong>60-day <abbr title="Ordinary Least Squares regression — fits a linear model: ETF morning return = α + β × constituent basket return.">OLS</abbr> regression</strong> provides a 95% confidence interval.
+            All prices in {{ etf_info.currency }}.
+        </p>
 
-        {# ── ETF composition ── #}
-        <div class="settings-panel border-left-purple" style="margin-bottom:24px;">
-            <h4 class="settings-panel-header text-purple">ETF Composition ({{ cfg.constituents|length }} constituents)</h4>
-            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">
-                {% for h in cfg.constituents | sort(attribute='weight', reverse=True) %}
-                <span style="background:#1e1e1e;padding:4px 10px;border-radius:4px;font-size:13px;">
-                    <strong style="color:#00ffcc;">{{ h.ticker }}</strong>
-                    <span style="color:#888;margin-left:4px;">{{ "%.1f"|format(h.weight * 100) }}%</span>
-                </span>
-                {% endfor %}
+        {# ── Time-aligned intraday overlay chart ── #}
+        <div class="sentiment-module module-cyan sentiment-module--spaced">
+            <div class="chart-wrapper">
+                <button class="fullscreen-btn" onclick="toggleFullscreen('etf-overlay-wrapper')">&#9638; Fullscreen</button>
+                <div id="etf-overlay-wrapper">
+                    {{ overlay_chart_html | safe }}
+                </div>
+            </div>
+            <div class="sentiment-footer">
+                <strong>Reading this chart:</strong>
+                All lines show <abbr title="% change vs each ticker's previous daily close — puts the ETF and its constituents on the same scale so moves are directly comparable.">% change from previous close</abbr>.
+                Cyan = {{ cfg.etf_ticker }} intraday. Coloured lines = constituent tickers.
+                Dotted lines = market opens. Dashed lines = market closes. White dotted = Now. Purple star = predicted move.
+                {% if prediction.signal_source == 'intraday_post_close' %}The star sits at the next ETF session open &mdash; prediction uses post-close moves.{% elif prediction.signal_source in ('intraday_live', 'intraday_premarket') %}The star sits on the constituent open line &mdash; prediction projects {{ cfg.etf_ticker }}&rsquo;s reaction when constituents open.{% endif %}
             </div>
         </div>
 
-        {# ── Prediction history table ── #}
-        <div style="margin-bottom:40px;">
-            <h3 style="color:#aaa;font-size:15px;margin-bottom:10px;">Prediction History (last 30)</h3>
-            <div style="overflow-x:auto;">
-                <table class="data-table" style="font-size:13px;">
-                    <thead>
-                        <tr>
-                            <th>Target Date</th>
-                            <th>Predicted</th>
-                            <th>Actual</th>
-                            <th>Chg%</th>
-                            <th>Err%</th>
-                            <th>Direction</th>
-                            <th>Signal</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for row in accuracy[active_type].rows[:30] %}
-                        <tr>
-                            <td>{{ row.target_date }}</td>
-                            <td>{{ "%.4f"|format(row.predicted_price) if row.predicted_price else '—' }}</td>
-                            <td>{% if row.actual_open %}{{ "%.4f"|format(row.actual_open) }}{% else %}<span style="color:#666;">pending</span>{% endif %}</td>
-                            <td>{% if row.predicted_change_pct is not none %}
-                                <span class="{% if row.predicted_change_pct >= 0 %}text-green{% else %}text-red{% endif %}">{{ "%+.2f"|format(row.predicted_change_pct) }}%</span>
-                                {% else %}—{% endif %}
-                            </td>
-                            <td>{% if row.pct_error is not none %}{{ "%.2f"|format(row.pct_error) }}%{% else %}—{% endif %}</td>
-                            <td style="text-align:center;">
-                                {% if row.direction_correct is not none %}
-                                    {% if row.direction_correct == 1 %}<span style="color:#00ff00;">&#10003;</span>
-                                    {% else %}<span style="color:#ff4d4d;">&#10007;</span>{% endif %}
-                                {% else %}—{% endif %}
-                            </td>
-                            <td style="color:#888;font-size:11px;">{{ row.signal_source or '—' }}</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+        {# ── Prediction chart ── #}
+        <div class="sentiment-module module-purple sentiment-module--spaced">
+            <div class="chart-wrapper">
+                <button class="fullscreen-btn" onclick="toggleFullscreen('etf-pred-wrapper')">&#9638; Fullscreen</button>
+                <div id="etf-pred-wrapper">
+                    {{ prediction_chart_html | safe }}
+                </div>
+            </div>
+            <div class="sentiment-footer">
+                <strong>Reading this chart:</strong> The cyan line shows {{ cfg.etf_ticker }}&rsquo;s recent daily closes in {{ etf_info.currency }}.
+                The purple star marks the predicted next-morning open.
+                {% if prediction.regression_engine %}The shaded band shows the 95% confidence interval from the OLS regression model.{% endif %}
+                The dashed horizontal line marks the last close for reference.
+            </div>
+        </div>
+
+        {# ── Holdings contributions chart ── #}
+        {% if prediction.holdings_engine and prediction.holdings_engine.contributions and contributions_chart_html %}
+        <div class="sentiment-module module-yellow sentiment-module--spaced">
+            <div class="chart-wrapper">
+                <button class="fullscreen-btn" onclick="toggleFullscreen('etf-contrib-wrapper')">&#9638; Fullscreen</button>
+                <div id="etf-contrib-wrapper">
+                    {{ contributions_chart_html | safe }}
+                </div>
+            </div>
+            <div class="sentiment-footer">
+                <strong>Reading this chart:</strong> Each bar shows one constituent&rsquo;s weighted contribution to the predicted {{ cfg.etf_ticker }} move.
+                Green = positive contributor (constituent up). Red = negative contributor (constituent down).
+                Bar length = weight &times; return.
+                {% if prediction.holdings_engine.fx_adjustment_pct is not none %}
+                FX adjustment of {{ "%+.3f"|format(prediction.holdings_engine.fx_adjustment_pct) }}% applied separately.
+                {% endif %}
             </div>
         </div>
         {% endif %}
+
+        {# ── Correlation chart ── #}
+        <div class="sentiment-module module-cyan sentiment-module--spaced">
+            <div class="chart-wrapper">
+                <button class="fullscreen-btn" onclick="toggleFullscreen('etf-corr-wrapper')">&#9638; Fullscreen</button>
+                <div id="etf-corr-wrapper">
+                    {{ correlation_chart_html | safe }}
+                </div>
+            </div>
+            <div class="sentiment-footer">
+                <strong>Reading this chart:</strong> Top panel shows all series normalised to 100 at the start of the window &mdash; compare relative performance.
+                Cyan = {{ cfg.etf_ticker }}; coloured lines = constituents; yellow = FX pair (if applicable).
+                Bottom panel shows the rolling 30-day <abbr title="Pearson correlation coefficient — measures linear co-movement. 1 = perfect positive, -1 = perfect negative, 0 = no linear relationship.">Pearson correlation</abbr> between {{ cfg.etf_ticker }} and the equal-weighted average of the {{ cfg.constituents | length }} constituents.
+                Green dashed = 0.7 (strong positive). Red dashed = &minus;0.7.
+            </div>
+        </div>
+
+        {% endif %}
+
+        {# ── Prediction Accuracy Tracker ── #}
+        <div class="sentiment-module module-purple sentiment-module--spaced" id="etf-accuracy-section">
+            <div class="sentiment-module-header" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;" onclick="toggleAccuracy()">
+                <strong>Prediction Accuracy Tracker</strong>
+                <span id="accuracy-toggle-icon" style="font-size:1.1em;">&#9660;</span>
+            </div>
+            <div id="accuracy-body">
+
+                <p style="margin:1rem 0 0.4rem;font-size:0.85rem;color:#aaa;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">Next-Day Open Predictions</p>
+                <div id="accuracy-summary-next" class="xray-cards-row">
+                    <div class="xray-metric-card"><div class="xray-metric-label">Loading&hellip;</div></div>
+                </div>
+                <div style="margin-top:0.75rem;overflow-x:auto;">
+                    <table style="width:100%;border-collapse:collapse;font-size:0.82rem;">
+                        <thead>
+                            <tr style="border-bottom:1px solid #444;">
+                                <th style="text-align:left;padding:4px 8px;">Date</th>
+                                <th style="text-align:right;padding:4px 8px;">Predicted</th>
+                                <th style="text-align:right;padding:4px 8px;">Actual Open</th>
+                                <th style="text-align:right;padding:4px 8px;">Error</th>
+                                <th style="text-align:right;padding:4px 8px;">Pred %</th>
+                                <th style="text-align:right;padding:4px 8px;">Actual %</th>
+                                <th style="text-align:center;padding:4px 8px;">Dir</th>
+                                <th style="text-align:left;padding:4px 8px;">Source</th>
+                            </tr>
+                        </thead>
+                        <tbody id="accuracy-tbody-next">
+                            <tr><td colspan="8" style="text-align:center;padding:12px;color:#888;">Loading&hellip;</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <p style="margin:1.5rem 0 0.4rem;font-size:0.85rem;color:#aaa;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">Intraday Impact Predictions</p>
+                <div id="accuracy-summary-impact" class="xray-cards-row">
+                    <div class="xray-metric-card"><div class="xray-metric-label">Loading&hellip;</div></div>
+                </div>
+                <div style="margin-top:0.75rem;overflow-x:auto;">
+                    <table style="width:100%;border-collapse:collapse;font-size:0.82rem;">
+                        <thead>
+                            <tr style="border-bottom:1px solid #444;">
+                                <th style="text-align:left;padding:4px 8px;">Date</th>
+                                <th style="text-align:right;padding:4px 8px;">Predicted</th>
+                                <th style="text-align:right;padding:4px 8px;">Actual Close</th>
+                                <th style="text-align:right;padding:4px 8px;">Error</th>
+                                <th style="text-align:right;padding:4px 8px;">Pred %</th>
+                                <th style="text-align:right;padding:4px 8px;">Actual %</th>
+                                <th style="text-align:center;padding:4px 8px;">Dir</th>
+                                <th style="text-align:left;padding:4px 8px;">Source</th>
+                            </tr>
+                        </thead>
+                        <tbody id="accuracy-tbody-impact">
+                            <tr><td colspan="8" style="text-align:center;padding:12px;color:#888;">Loading&hellip;</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="sentiment-footer" style="margin-top:1rem;">
+                    <strong>Next-Day Open:</strong> predicted vs actual {{ cfg.etf_ticker }} opening price the following morning. Filled daily at ~09:15 UTC.<br>
+                    <strong>Intraday Impact:</strong> predicted vs actual {{ cfg.etf_ticker }} closing price on the same day. Filled the following morning at ~09:15 UTC.
+                    Direction = whether the predicted up/down move matched reality. Unresolved rows shown in grey.
+                </div>
+            </div>
+        </div>
+
     </div>
 
     <script>
-    (function () {
-        const accuracy = {{ accuracy_json | safe }};
-        const nextOpenRows = (accuracy.next_open || {}).rows || [];
-        const usImpactRows = (accuracy.us_open_impact || {}).rows || [];
-        const rows = nextOpenRows.length >= usImpactRows.length ? nextOpenRows : usImpactRows;
-        const resolved = rows.filter(r => r.actual_open !== null && r.pct_error !== null);
-        if (resolved.length < 2) return;
+    const _configId = {{ cfg.id }};
+    const _currency = {{ etf_info.currency | tojson }};
+    let _accuracyLoaded = false;
+    let _accuracyVisible = true;
 
-        const dates = resolved.map(r => r.target_date).reverse();
-        const errors = resolved.map(r => r.pct_error).reverse();
-        const directions = resolved.map(r => r.direction_correct).reverse();
+    function toggleAccuracy() {
+        const body = document.getElementById('accuracy-body');
+        const icon = document.getElementById('accuracy-toggle-icon');
+        _accuracyVisible = !_accuracyVisible;
+        body.style.display = _accuracyVisible ? '' : 'none';
+        icon.innerHTML = _accuracyVisible ? '&#9660;' : '&#9654;';
+        if (_accuracyVisible && !_accuracyLoaded) loadAccuracy();
+    }
 
-        const colours = directions.map(d => d === 1 ? '#00ff00' : d === 0 ? '#ff4d4d' : '#666');
+    function loadAccuracy() {
+        fetch('/api/etf-predictors/' + _configId + '/predictions')
+            .then(r => r.json())
+            .then(data => {
+                _accuracyLoaded = true;
+                const no = data.next_open || {};
+                const ui = data.us_open_impact || {};
+                renderSummaryTiles(no.summary || {}, 'accuracy-summary-next');
+                renderSummaryTiles(ui.summary || {}, 'accuracy-summary-impact');
+                renderAccuracyTable(no.rows || [], 'accuracy-tbody-next');
+                renderAccuracyTable(ui.rows || [], 'accuracy-tbody-impact');
+            })
+            .catch(() => {
+                ['accuracy-tbody-next', 'accuracy-tbody-impact'].forEach(id => {
+                    document.getElementById(id).innerHTML =
+                        '<tr><td colspan="8" style="text-align:center;color:#f88;">Failed to load accuracy data.</td></tr>';
+                });
+            });
+    }
 
-        Plotly.newPlot('accuracy-chart', [
-            {
-                x: dates, y: errors, type: 'scatter', mode: 'lines+markers',
-                line: { color: '#4da6ff', width: 1.5 },
-                marker: { color: colours, size: 7 },
-                name: 'Abs % Error',
-            }
-        ], {
-            paper_bgcolor: 'transparent', plot_bgcolor: 'transparent',
-            font: { color: '#ccc', size: 11 },
-            xaxis: { gridcolor: '#2a2a2a', tickfont: { size: 10 } },
-            yaxis: { gridcolor: '#2a2a2a', ticksuffix: '%', title: 'Abs Error %' },
-            margin: { t: 10, r: 20, b: 50, l: 55 },
-            showlegend: false,
-        }, { responsive: true, displayModeBar: false });
-    })();
+    function renderSummaryTiles(s, containerId) {
+        const fmt = (v, suffix='') => v !== null && v !== undefined ? v + suffix : '—';
+        const maeVal = s.mae != null ? s.mae.toFixed(4) + ' ' + _currency : '—';
+        const tiles = [
+            { label: 'Direction Accuracy', value: fmt(s.direction_accuracy_pct, '%'), sub: 'All time' },
+            { label: 'Last 30 Days', value: fmt(s.last_30_direction_pct, '%'), sub: 'Direction' },
+            { label: 'Last 10 Days', value: fmt(s.last_10_direction_pct, '%'), sub: 'Direction' },
+            { label: 'Mean Abs Error', value: maeVal, sub: 'MAE' },
+            { label: 'Mean Abs % Error', value: fmt(s.mape_pct, '%'), sub: 'MAPE' },
+            { label: 'Predictions', value: (s.resolved_count || 0) + ' / ' + (s.total_predictions || 0), sub: 'Resolved / Total' },
+        ];
+        document.getElementById(containerId).innerHTML = tiles.map(t =>
+            `<div class="xray-metric-card">
+                <div class="xray-metric-label">${t.label}</div>
+                <div class="xray-metric-value">${t.value}</div>
+                <div class="xray-metric-label xray-metric-sublabel">${t.sub}</div>
+             </div>`
+        ).join('');
+    }
 
-    async function runNow() {
-        const btn = event.target;
+    function renderAccuracyTable(rows, tbodyId) {
+        if (!rows.length) {
+            document.getElementById(tbodyId).innerHTML =
+                '<tr><td colspan="8" style="text-align:center;color:#888;">No predictions recorded yet.</td></tr>';
+            return;
+        }
+        document.getElementById(tbodyId).innerHTML = rows.map(r => {
+            const resolved = r.actual_open !== null;
+            const correct = r.direction_correct;
+            let rowColor = '';
+            if (!resolved) rowColor = 'color:#888;';
+            else if (correct === 1) rowColor = 'color:#4fd1a5;';
+            else if (correct === 0) rowColor = 'color:#f87171;';
+            const dirIcon = !resolved ? '&#9203;' : correct === 1 ? '&#10003;' : '&#10007;';
+            return `<tr style="${rowColor}border-bottom:1px solid #2a2a2a;">
+                <td style="padding:4px 8px;">${r.target_date}</td>
+                <td style="text-align:right;padding:4px 8px;">${r.predicted_price != null ? r.predicted_price.toFixed(4) : '—'}</td>
+                <td style="text-align:right;padding:4px 8px;">${r.actual_open != null ? r.actual_open.toFixed(4) : '—'}</td>
+                <td style="text-align:right;padding:4px 8px;">${r.absolute_error != null ? r.absolute_error.toFixed(4) : '—'}</td>
+                <td style="text-align:right;padding:4px 8px;">${r.predicted_change_pct != null ? (r.predicted_change_pct >= 0 ? '+' : '') + r.predicted_change_pct.toFixed(2) + '%' : '—'}</td>
+                <td style="text-align:right;padding:4px 8px;">${r.actual_change_pct != null ? (r.actual_change_pct >= 0 ? '+' : '') + r.actual_change_pct.toFixed(2) + '%' : '—'}</td>
+                <td style="text-align:center;padding:4px 8px;">${dirIcon}</td>
+                <td style="padding:4px 8px;">${r.signal_source || '—'}</td>
+            </tr>`;
+        }).join('');
+    }
+
+    function toggleFullscreen(wrapperId) {
+        const el = document.getElementById(wrapperId);
+        if (!el) return;
+        if (!document.fullscreenElement) {
+            el.requestFullscreen().catch(() => {});
+        } else {
+            document.exitFullscreen();
+        }
+    }
+
+    async function runNow(e) {
+        const btn = e.target;
         const status = document.getElementById('run-status');
         btn.disabled = true;
-        status.innerHTML = '<span class="msg-info">Running prediction...</span>';
+        status.innerHTML = '<span class="msg-info">Running prediction&hellip;</span>';
         try {
-            const r = await fetch('/api/etf-predictors/{{ cfg.id }}/run', { method: 'POST' });
+            const r = await fetch('/api/etf-predictors/' + _configId + '/run', { method: 'POST' });
             const data = await r.json();
             if (data.status === 'success') {
-                status.innerHTML = '<span class="msg-success">Prediction initiated — refresh in a moment.</span>';
+                status.innerHTML = '<span class="msg-success">Prediction initiated &mdash; refresh in a moment.</span>';
             } else {
                 status.innerHTML = `<span class="msg-error">${data.message || 'Failed'}</span>`;
                 btn.disabled = false;
             }
-        } catch (e) {
-            status.innerHTML = `<span class="msg-error">${e.message}</span>`;
+        } catch (err) {
+            status.innerHTML = `<span class="msg-error">${err.message}</span>`;
             btn.disabled = false;
         }
     }
+
+    loadAccuracy();
     </script>
 
 </body>

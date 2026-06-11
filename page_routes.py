@@ -50,6 +50,10 @@ from visuals import (
     create_smgb_overlay_chart,
     create_ai_contagion_performance_chart,
     create_ai_contagion_correlation_heatmap,
+    create_etf_correlation_chart,
+    create_etf_prediction_chart,
+    create_etf_contributions_chart,
+    create_etf_overlay_chart,
 )
 from portfolio_service import get_rate_to_base, get_rate_from_base
 from quant_signals import get_candlestick_patterns
@@ -1128,8 +1132,11 @@ async def etf_predictor_index_page(request: Request):
 
 @page_router.get("/etf-predictor/{config_id}", response_class=HTMLResponse)
 async def etf_predictor_detail_page(request: Request, config_id: int):
-    from database import get_etf_predictor_config, get_etf_accuracy
-    import json as _json
+    from database import get_etf_predictor_config
+    from etf_predictor_engine import (
+        detect_etf_info, run_prediction,
+        get_etf_correlation_data, get_etf_intraday_overlay_data,
+    )
     cfg = get_etf_predictor_config(config_id)
     if cfg is None:
         return templates.TemplateResponse(
@@ -1138,17 +1145,78 @@ async def etf_predictor_detail_page(request: Request, config_id: int):
             context={"unread_count": get_unread_count()},
             status_code=404,
         )
-    accuracy = get_etf_accuracy(config_id)
-    from etf_predictor_engine import detect_etf_info
+
+    error_html = "<p class='error-text'>Data unavailable — please try again later.</p>"
     etf_info = detect_etf_info(cfg["etf_ticker"])
+    constituent_tickers = [h["ticker"] for h in cfg["constituents"]]
+
+    try:
+        prediction = run_prediction(config_id)
+    except Exception as exc:
+        logger.error("etf_predictor_detail run_prediction failed: %s", exc)
+        prediction = {"status": "error", "error": str(exc), "predicted_price": None}
+
+    correlation_chart_html = error_html
+    prediction_chart_html = error_html
+    contributions_chart_html = ""
+    overlay_chart_html = error_html
+
+    try:
+        corr_data = get_etf_correlation_data(cfg, days=60)
+        if not corr_data["normalized_df"].empty:
+            correlation_chart_html = create_etf_correlation_chart(
+                cfg["etf_ticker"],
+                constituent_tickers,
+                corr_data["normalized_df"],
+                corr_data["rolling_corr"],
+            )
+    except Exception as exc:
+        logger.warning("etf_predictor_detail corr chart failed: %s", exc)
+
+    try:
+        raw_df = corr_data.get("raw_df", pd.DataFrame())
+        etf_hist = None
+        if not raw_df.empty and cfg["etf_ticker"] in raw_df.columns:
+            etf_hist = raw_df[cfg["etf_ticker"]].dropna().tail(25)
+        prediction_chart_html = create_etf_prediction_chart(
+            cfg["etf_ticker"], etf_info["currency"], etf_hist, prediction
+        )
+        if prediction.get("holdings_engine") and prediction["holdings_engine"].get("contributions"):
+            contributions_chart_html = create_etf_contributions_chart(
+                cfg["etf_ticker"], prediction["holdings_engine"]["contributions"]
+            )
+    except Exception as exc:
+        logger.warning("etf_predictor_detail pred charts failed: %s", exc)
+
+    try:
+        overlay_data = get_etf_intraday_overlay_data(cfg, prediction)
+        overlay_chart_html = create_etf_overlay_chart(
+            cfg["etf_ticker"],
+            etf_info["exchange"],
+            overlay_data["constituent_exchange"],
+            overlay_data["etf_series"],
+            overlay_data["constituent_series"],
+            overlay_data["etf_last_close"],
+            prediction=overlay_data["prediction"],
+            next_open_date=overlay_data["next_open_date"],
+            constituent_prev_closes=overlay_data.get("constituent_prev_closes"),
+            now_utc=overlay_data.get("now_utc"),
+            trading_date=overlay_data.get("trading_date"),
+        )
+    except Exception as exc:
+        logger.warning("etf_predictor_detail overlay chart failed: %s", exc)
+
     return templates.TemplateResponse(
         request=request,
         name="etf_predictor_detail.html",
         context={
             "cfg": cfg,
             "etf_info": etf_info,
-            "accuracy": accuracy,
-            "accuracy_json": _json.dumps(accuracy),
+            "prediction": prediction,
+            "correlation_chart_html": correlation_chart_html,
+            "prediction_chart_html": prediction_chart_html,
+            "contributions_chart_html": contributions_chart_html,
+            "overlay_chart_html": overlay_chart_html,
             "unread_count": get_unread_count(),
             "config": load_config(),
         },

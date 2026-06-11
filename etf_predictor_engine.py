@@ -476,6 +476,116 @@ def run_prediction(config_id: int) -> dict:
     return result
 
 
+def get_etf_correlation_data(config: dict, days: int = 60) -> dict:
+    """Rolling 30-day Pearson correlation between ETF and equal-weighted constituent basket."""
+    constituent_tickers = [h["ticker"] for h in config["constituents"]]
+    etf_ticker = config["etf_ticker"]
+    etf_info = detect_etf_info(etf_ticker)
+    constituent_ccys = _constituent_currencies(constituent_tickers)
+    fx_pair = detect_fx_pair(etf_info["currency"], constituent_ccys)
+
+    all_tickers = constituent_tickers + [etf_ticker]
+    if fx_pair:
+        all_tickers.append(fx_pair)
+
+    ticker_dfs = yahoo_engine.get_price_history(all_tickers, period=f"{days + 5}d", interval="1d")
+    if not ticker_dfs:
+        return {"normalized_df": pd.DataFrame(), "rolling_corr": pd.Series(dtype=float), "error": "No data"}
+
+    df = pd.DataFrame({t: d["Close"] for t, d in ticker_dfs.items() if "Close" in d.columns})
+    df = df.sort_index().dropna(how="all").tail(days)
+
+    if df.empty:
+        return {"normalized_df": pd.DataFrame(), "rolling_corr": pd.Series(dtype=float), "error": "No data"}
+
+    valid_starts = [v for v in df.apply(lambda col: col.first_valid_index()) if v is not None]
+    if valid_starts:
+        df = df.loc[max(valid_starts):]
+
+    normalized = df.div(df.iloc[0]) * 100
+
+    us_cols = [t for t in constituent_tickers if t in normalized.columns]
+    rolling_corr = pd.Series(dtype=float)
+    if us_cols and etf_ticker in normalized.columns:
+        us_basket = normalized[us_cols].mean(axis=1)
+        rolling_corr = (
+            normalized[etf_ticker].pct_change()
+            .rolling(window=30, min_periods=15)
+            .corr(us_basket.pct_change())
+        )
+
+    return {"normalized_df": normalized, "raw_df": df, "rolling_corr": rolling_corr, "error": None}
+
+
+def get_etf_intraday_overlay_data(config: dict, prediction: dict | None = None) -> dict:
+    """Assembles intraday chart data for the time-aligned overlay chart."""
+    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+    etf_ticker = config["etf_ticker"]
+    constituent_tickers = [h["ticker"] for h in config["constituents"]]
+    etf_info = detect_etf_info(etf_ticker)
+    etf_exchange = etf_info["exchange"]
+    trading_date = _last_trading_date_for_exchange(etf_exchange)
+
+    window_start = now_utc - timedelta(hours=25)
+
+    all_tickers = [etf_ticker] + constituent_tickers
+    intraday = yahoo_engine.get_intraday(all_tickers, period="5d", interval="5m", prepost=True)
+
+    def _strip_tz(df: pd.DataFrame) -> pd.DataFrame:
+        df = df.copy()
+        if df.index.tz is not None:
+            df.index = df.index.tz_convert("UTC").tz_localize(None)
+        return df
+
+    etf_series = pd.Series(dtype=float)
+    etf_df = intraday.get(etf_ticker)
+    if etf_df is not None and not etf_df.empty and "Close" in etf_df.columns:
+        etf_df = _strip_tz(etf_df)
+        etf_series = etf_df.loc[etf_df.index >= window_start, "Close"].dropna()
+
+    constituent_series: dict[str, pd.Series] = {}
+    for ticker in constituent_tickers:
+        df = intraday.get(ticker)
+        if df is None or df.empty or "Close" not in df.columns:
+            continue
+        df = _strip_tz(df)
+        bars = df[df.index >= window_start]["Close"].dropna()
+        if not bars.empty:
+            constituent_series[ticker] = bars
+
+    daily_dfs = yahoo_engine.get_price_history([etf_ticker] + constituent_tickers, period="10d", interval="1d")
+    daily_df = pd.DataFrame(
+        {t: d["Close"] for t, d in (daily_dfs or {}).items() if "Close" in d.columns}
+    )
+
+    etf_last_close = 0.0
+    if etf_ticker in daily_df.columns:
+        s = daily_df[etf_ticker].dropna()
+        if not s.empty:
+            etf_last_close = float(s.iloc[-1])
+
+    prev_closes = {}
+    for t in constituent_tickers:
+        if t in daily_df.columns:
+            s = daily_df[t].dropna()
+            if not s.empty:
+                prev_closes[t] = float(s.iloc[-1])
+
+    constituent_exchange = _infer_constituent_exchange(constituent_tickers) if constituent_tickers else etf_exchange
+
+    return {
+        "etf_series": etf_series,
+        "constituent_series": constituent_series,
+        "now_utc": now_utc,
+        "trading_date": trading_date,
+        "etf_last_close": etf_last_close,
+        "constituent_prev_closes": prev_closes,
+        "prediction": prediction or {},
+        "next_open_date": get_next_open_date(etf_exchange),
+        "constituent_exchange": constituent_exchange,
+    }
+
+
 def fill_actuals_for_config(config_id: int) -> None:
     """Fetch current ETF price and fill unresolved predictions for this config."""
     config = get_etf_predictor_config(config_id)
