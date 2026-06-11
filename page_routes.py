@@ -1206,6 +1206,30 @@ async def etf_predictor_detail_page(request: Request, config_id: int):
     except Exception as exc:
         logger.warning("etf_predictor_detail overlay chart failed: %s", exc)
 
+    etf_pnl = None
+    try:
+        portfolio = get_json_data(PORTFOLIO_PATH)
+        position = next((v for v in portfolio.values() if v.get("ticker") == cfg["etf_ticker"]), None)
+        if position and prediction.get("status") == "success":
+            shares = float(position.get("global_shares", 0))
+            avg_buy = float(position.get("global_buy_price", 0))
+            last_close = prediction.get("last_etf_close", 0)
+            pred_price = prediction.get("predicted_price", 0)
+            if shares > 0 and pred_price and last_close:
+                predicted_value = shares * pred_price
+                current_value = shares * last_close
+                cost_basis = shares * avg_buy
+                etf_pnl = {
+                    "shares": round(shares, 4),
+                    "avg_buy_price": round(avg_buy, 4),
+                    "current_value": round(current_value, 2),
+                    "predicted_value": round(predicted_value, 2),
+                    "predicted_pnl_open": round(predicted_value - current_value, 2),
+                    "total_unrealised_pnl": round(predicted_value - cost_basis, 2),
+                }
+    except Exception:
+        pass
+
     return templates.TemplateResponse(
         request=request,
         name="etf_predictor_detail.html",
@@ -1217,6 +1241,7 @@ async def etf_predictor_detail_page(request: Request, config_id: int):
             "prediction_chart_html": prediction_chart_html,
             "contributions_chart_html": contributions_chart_html,
             "overlay_chart_html": overlay_chart_html,
+            "etf_pnl": etf_pnl,
             "unread_count": get_unread_count(),
             "config": load_config(),
         },
