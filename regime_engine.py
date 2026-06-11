@@ -1,20 +1,32 @@
+import json
 import logging
 from datetime import datetime
 from typing import Dict, Any, Optional
 
+import joblib
 import numpy as np
 import pandas as pd
+from sklearn.ensemble import IsolationForest
 
 from database import get_connection
 from config import HISTORICAL_DIR
 from yahoo_engine import yahoo_engine
-from constants import MACRO_HMM_N_ITER, MACRO_HMM_N_STATES, REGIME_CRASH_VOL, REGIME_VOLATILE_VOL
+from constants import (
+    MACRO_HMM_N_ITER, MACRO_HMM_N_STATES, REGIME_CRASH_VOL, REGIME_VOLATILE_VOL,
+    IF_STRESS_N_ESTIMATORS, IF_STRESS_CONTAMINATION, IF_STRESS_MIN_ROWS,
+    IF_STRESS_VOL_WINDOW, IF_STRESS_ALERT_THRESHOLD, IF_STRESS_ALERT_DAYS,
+)
 
 logger = logging.getLogger(__name__)
 
 _HMM_CACHE_PATH = HISTORICAL_DIR / "SPY_hmm.parquet"
 _HMM_LABEL_MAP = {0: "Bull", 1: "Chop", 2: "Crash"}
 _HMM_EWMA_LAMBDA = 0.94
+
+_IF_CACHE_PATH = HISTORICAL_DIR / "market_stress_if.parquet"
+_IF_MODEL_PATH = HISTORICAL_DIR / "market_stress_if.joblib"
+_IF_TICKERS = ["^VIX", "HYG", "^TNX", "SPY"]
+_IF_FEATURE_COLS = ["vix_level", "vix_ma_ratio", "hyg_return", "tnx_change", "spy_vol_zscore", "spy_return"]
 
 
 def run_price_regime_hmm() -> dict:
@@ -169,6 +181,171 @@ def run_price_regime_hmm() -> dict:
     }
 
 
+def _build_if_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Compute the 6 market-stress feature columns from a merged OHLCV DataFrame.
+
+    Expected input columns: vix_close, hyg_close, tnx_close, spy_close, spy_volume.
+    Returns a DataFrame indexed by date with _IF_FEATURE_COLS columns; rows with any
+    NaN are dropped by the caller.
+    """
+    out = pd.DataFrame(index=df.index)
+    vix_ma = df["vix_close"].rolling(IF_STRESS_VOL_WINDOW).mean()
+    out["vix_level"]     = df["vix_close"]
+    out["vix_ma_ratio"]  = df["vix_close"] / vix_ma.replace(0, np.nan)
+    out["hyg_return"]    = df["hyg_close"].pct_change() * 100.0
+    out["tnx_change"]    = df["tnx_close"].diff()
+    spy_vol_mean = df["spy_volume"].rolling(IF_STRESS_VOL_WINDOW).mean()
+    spy_vol_std  = df["spy_volume"].rolling(IF_STRESS_VOL_WINDOW).std()
+    out["spy_vol_zscore"] = (df["spy_volume"] - spy_vol_mean) / spy_vol_std.replace(0, np.nan)
+    out["spy_return"]    = df["spy_close"].pct_change() * 100.0
+    return out[_IF_FEATURE_COLS]
+
+
+def run_market_stress_if() -> dict:
+    """
+    Fits a market-wide IsolationForest on 2 years of daily macro features and scores
+    today's observation. Features: VIX level, VIX/20-day-MA ratio, HYG daily return,
+    10Y yield daily change, SPY volume z-score, SPY daily return.
+
+    Uses an incremental Parquet cache at data/historical/market_stress_if.parquet so
+    only a 1-month tail is fetched on subsequent daily runs.
+
+    Returns a dict:
+        score        float in [0.0, 1.0] — 1.0 is maximally anomalous
+        features     dict[str, float] — the 6 raw feature values for today
+        alert        bool — True when score >= threshold on IF_STRESS_ALERT_DAYS
+                     consecutive calendar days (checked via market_regimes DB)
+        date         str  — YYYY-MM-DD of the scored observation
+    Returns {} on any unrecoverable failure.
+    """
+    # ── 1. Load / incrementally update the 2-year raw-price cache ──────────────
+    try:
+        if _IF_CACHE_PATH.exists():
+            df_cached = pd.read_parquet(_IF_CACHE_PATH)
+            tail_dfs = yahoo_engine.get_price_history(_IF_TICKERS, period="1mo", interval="1d")
+            if tail_dfs and all(t in tail_dfs for t in _IF_TICKERS):
+                pieces = []
+                for t in _IF_TICKERS:
+                    s = tail_dfs[t][["Close"]].rename(columns={"Close": t})
+                    if "Volume" in tail_dfs[t].columns and t == "SPY":
+                        s["SPY_Vol"] = tail_dfs[t]["Volume"]
+                    pieces.append(s)
+                df_tail = pieces[0].join(pieces[1:], how="outer")
+                df_raw = pd.concat([df_cached, df_tail])
+                df_raw = df_raw[~df_raw.index.duplicated(keep="last")].sort_index()
+            else:
+                df_raw = df_cached.copy()
+            logger.info("Market stress IF: merged cache (%d rows) with 1-month tail", len(df_cached))
+        else:
+            full_dfs = yahoo_engine.get_price_history(_IF_TICKERS, period="2y", interval="1d")
+            if not full_dfs or not all(t in full_dfs for t in _IF_TICKERS):
+                logger.error("Market stress IF: 2y bootstrap fetch failed — missing tickers.")
+                return {}
+            pieces = []
+            for t in _IF_TICKERS:
+                s = full_dfs[t][["Close"]].rename(columns={"Close": t})
+                if "Volume" in full_dfs[t].columns and t == "SPY":
+                    s["SPY_Vol"] = full_dfs[t]["Volume"]
+                pieces.append(s)
+            df_raw = pieces[0].join(pieces[1:], how="outer")
+            df_raw = df_raw.sort_index()
+            logger.info("Market stress IF: bootstrapped 2y cache (%d rows)", len(df_raw))
+
+        df_raw.to_parquet(_IF_CACHE_PATH, engine="pyarrow")
+    except Exception as e:
+        logger.error("Market stress IF: cache update failed: %s", e)
+        return {}
+
+    # ── 2. Rename raw columns and build features ────────────────────────────────
+    rename = {"^VIX": "vix_close", "HYG": "hyg_close", "^TNX": "tnx_close",
+              "SPY": "spy_close", "SPY_Vol": "spy_volume"}
+    df_raw = df_raw.rename(columns=rename)
+    required = list(rename.values())
+    if not all(c in df_raw.columns for c in required):
+        missing = [c for c in required if c not in df_raw.columns]
+        logger.error("Market stress IF: missing raw columns after rename: %s", missing)
+        return {}
+
+    feature_df = _build_if_features(df_raw).dropna()
+    if len(feature_df) < IF_STRESS_MIN_ROWS:
+        logger.warning(
+            "Market stress IF: only %d clean rows after NaN-drop (need %d).",
+            len(feature_df), IF_STRESS_MIN_ROWS,
+        )
+        return {}
+
+    # ── 3. Fit IsolationForest on full history, score today ─────────────────────
+    X = feature_df.values
+    model = IsolationForest(
+        n_estimators=IF_STRESS_N_ESTIMATORS,
+        contamination=IF_STRESS_CONTAMINATION,
+        random_state=42,
+        n_jobs=-1,
+    )
+    model.fit(X)
+    raw_scores = model.decision_function(X)
+    score_min, score_max = float(raw_scores.min()), float(raw_scores.max())
+
+    if score_max == score_min:
+        logger.warning("Market stress IF: degenerate score range — skipping.")
+        return {}
+
+    # Normalise: raw decision_function higher = more normal → invert to [0,1] anomaly scale
+    norm_scores = np.clip(1.0 - (raw_scores - score_min) / (score_max - score_min), 0.0, 1.0)
+    today_score = float(norm_scores[-1])
+    today_date  = feature_df.index[-1].strftime("%Y-%m-%d")
+    today_features = {col: round(float(feature_df.iloc[-1][col]), 4) for col in _IF_FEATURE_COLS}
+
+    joblib.dump({"model": model, "score_min": score_min, "score_max": score_max,
+                 "trained_at": datetime.utcnow().isoformat()}, _IF_MODEL_PATH)
+
+    # ── 4. Upsert score into market_regimes ─────────────────────────────────────
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """INSERT INTO market_regimes (date, market_stress_score, market_stress_features)
+               VALUES (?, ?, ?)
+               ON CONFLICT(date) DO UPDATE SET
+                   market_stress_score    = excluded.market_stress_score,
+                   market_stress_features = excluded.market_stress_features""",
+            (today_date, round(today_score, 4), json.dumps(today_features)),
+        )
+
+        # ── 5. Check IF_STRESS_ALERT_DAYS consecutive days above threshold ───────
+        cursor.execute(
+            "SELECT market_stress_score FROM market_regimes "
+            "WHERE market_stress_score IS NOT NULL ORDER BY date DESC LIMIT ?",
+            (IF_STRESS_ALERT_DAYS,),
+        )
+        recent_scores = [r["market_stress_score"] for r in cursor.fetchall()]
+        alert = (
+            len(recent_scores) >= IF_STRESS_ALERT_DAYS
+            and all(s >= IF_STRESS_ALERT_THRESHOLD for s in recent_scores)
+        )
+        conn.commit()
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        logger.error("Market stress IF: DB write failed: %s", e)
+        return {}
+    finally:
+        if conn:
+            conn.close()
+
+    logger.info(
+        "Market stress IF: score=%.3f | alert=%s | %s",
+        today_score, alert, today_date,
+    )
+    return {
+        "score": today_score,
+        "features": today_features,
+        "alert": alert,
+        "date": today_date,
+    }
+
+
 def calculate_market_regime() -> dict:
     """Fetches 1y of SPY/VIX/FTSE, computes RiskMetrics EWMA vol, classifies regimes, and persists to market_regimes."""
     logger.info("Initiating daily Dual-Region Market Regime calculation...")
@@ -254,7 +431,8 @@ def calculate_market_regime() -> dict:
         logger.error("Fatal error calculating market regime: %s", e)
 
     hmm_result = run_price_regime_hmm()
-    return {"hmm": hmm_result}
+    stress_result = run_market_stress_if()
+    return {"hmm": hmm_result, "market_stress": stress_result}
 
 def _classify_regime(
     us_yield_curve: Optional[float],

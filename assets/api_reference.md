@@ -1404,9 +1404,9 @@ Triggers a background scan immediately. Returns `{"status": "success"}` immediat
 
 ---
 
-## 19. Market Regime (HMM)
+## 19. Market Regime (HMM + Market Stress IF)
 
-Price-action Hidden Markov Model (3 states: Bull / Chop / Crash) fitted on 5-year SPY returns and EWMA volatility. Updated daily as part of the quant pipeline; can also be triggered on demand.
+Price-action Hidden Markov Model (3 states: Bull / Chop / Crash) fitted on 5-year SPY returns and EWMA volatility, plus a market-wide Isolation Forest stress score. Both are updated daily as part of the quant pipeline. The IF score (`market_stress_score`, REAL [0,1]) and contributing features (`market_stress_features`, JSON) are stored in the `market_regimes` table alongside the HMM columns.
 
 ### `GET /api/market-regime/current`
 

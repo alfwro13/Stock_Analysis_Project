@@ -731,6 +731,8 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
         'price_hmm_state': 'INTEGER',
         'price_hmm_label': 'TEXT',
         'price_hmm_prob': 'REAL',
+        'market_stress_score': 'REAL',
+        'market_stress_features': 'TEXT',
     }
 
     for col_name, data_type in required_regime_columns.items():

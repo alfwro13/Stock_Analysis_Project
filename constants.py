@@ -61,6 +61,14 @@ MACRO_CV_N_SPLITS          = 3     # TimeSeriesSplit folds for supervised CV
 MACRO_VIX_DEFAULT          = 20.0  # VIX fallback when market_regimes has no data
 MACRO_SEVERE_VOL_THRESHOLD = 2.0   # predicted SPY gap % that triggers a warning log
 
+# ── Market Stress Isolation Forest ───────────────────────────────────────────
+IF_STRESS_N_ESTIMATORS    = 200    # trees in the market-wide IsolationForest
+IF_STRESS_CONTAMINATION   = 0.05   # expected anomalous fraction of training data
+IF_STRESS_MIN_ROWS        = 100    # minimum aligned rows required to fit/score
+IF_STRESS_VOL_WINDOW      = 20     # rolling window for VIX MA and SPY volume z-score
+IF_STRESS_ALERT_THRESHOLD = 0.75   # score in [0,1] above which the alert check runs
+IF_STRESS_ALERT_DAYS      = 2      # consecutive days above threshold before firing
+
 # ── Static asset versioning ───────────────────────────────────────────────────
 CSS_VERSION = "2.5"  # bump this whenever styles.css changes to bust browser caches
 

@@ -96,6 +96,17 @@
                     <div class="rule">KEY DISTINCTION: This is an early-warning layer, not a crash detector. A score above 0.70 while the price is flat or rising often indicates silent institutional repositioning — accumulation or distribution at scale — before the price reaction is visible.</div>
                     <p>Models are retrained nightly at 18:30 (Mon–Fri) after market close and are stored as per-ticker <code>.joblib</code> files. Historical scores are backfilled across the full <code>quant_signals</code> history so the 90-day chart on each stock detail page is populated immediately after training.</p>
                 </div>
+                <div class="term-box">
+                    <span class="term-title">Market Stress Score</span>
+                    <p>A market-wide <strong>Isolation Forest</strong> trained daily on 2 years of six macro features: VIX level, VIX relative to its 20-day average (spike detector), HYG credit ETF daily return, US 10-year yield daily change, SPY volume z-score, and SPY daily return. Unlike the per-ticker anomaly score — which asks "is this stock unusual?" — the Market Stress Score asks "is the <em>market structure itself</em> unusual?" A score near 1.0 means the joint distribution of these six signals is in territory that only occurred in roughly 5% of all trading days over the past two years.</p>
+                    <p>The output is a score between <strong>0.00 and 1.00</strong>:</p>
+                    <ul>
+                        <li><strong>0.00 – 0.50 (Normal):</strong> The macro environment is operating within its typical multivariate range.</li>
+                        <li><strong>0.50 – 0.75 (Elevated):</strong> One or more macro signals are stretched; monitor for follow-through.</li>
+                        <li><strong>0.75 – 1.00 (Stress Alert):</strong> The combination of signals is statistically rare. A Nextcloud alert fires if the score remains above 0.75 for two consecutive trading days.</li>
+                    </ul>
+                    <div class="rule">COMPLEMENTARY TO HMM: The HMM classifies <em>which regime</em> the market is in (Bull / Chop / Crash). The Market Stress Score measures <em>how anomalous</em> the current regime environment is relative to its own history. A Crash-regime day with a low stress score is a routine bad day; a Chop-regime day with a high stress score may precede a regime transition.</div>
+                </div>
             </details>
 
             <details class="settings-card" id="quant-screener">

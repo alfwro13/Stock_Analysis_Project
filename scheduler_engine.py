@@ -169,6 +169,46 @@ def run_update_pipeline():
                     if conn_alert:
                         conn_alert.close()
 
+        # Fire notification when market stress IF detects sustained systemic anomaly
+        stress = (regime_result or {}).get("market_stress", {})
+        if stress and stress.get("alert"):
+            config = load_config()
+            stress_cfg = config.get("NOTIFICATIONS", {}).get("MARKET_STRESS_ALERTS", {})
+            feats = stress.get("features", {})
+            msg = (
+                f"MARKET STRESS ALERT: Multivariate anomaly score {stress['score']:.2f}/1.00 "
+                f"— systemic conditions are statistically abnormal. "
+                f"VIX: {feats.get('vix_level', 0):.1f} | "
+                f"SPY: {feats.get('spy_return', 0):+.2f}% | "
+                f"HYG: {feats.get('hyg_return', 0):+.2f}% | "
+                f"10Y Δ: {feats.get('tnx_change', 0):+.2f}bps | {stress['date']}"
+            )
+            log_sched_notification("Market Stress", msg)
+            if stress_cfg.get("NEXTCLOUD_ENABLED", False):
+                orch = IntradayOrchestrator()
+                conn_alert = None
+                try:
+                    from database import get_connection as _gc
+                    conn_alert = _gc()
+                    suppress = orch._evaluate_alert_gate(
+                        "MarketStress", "MARKET", None, "STRESS_ELEVATED", conn_alert
+                    )
+                    if not suppress:
+                        try:
+                            ok = send_text_message(msg, config)
+                        except Exception as _e:
+                            logger.error("Market stress: Nextcloud dispatch failed: %s", _e)
+                            ok = False
+                        if ok:
+                            orch.record_alert_fired(
+                                "MarketStress", "MARKET", None, "STRESS_ELEVATED", conn_alert
+                            )
+                except Exception as _e:
+                    logger.error("Market stress alert gate error: %s", _e)
+                finally:
+                    if conn_alert:
+                        conn_alert.close()
+
     except Exception as e:
         log_sched_notification("Error", f"Update Pipeline failed: {e}")
     finally:
