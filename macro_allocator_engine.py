@@ -17,7 +17,6 @@ _INSTRUMENT_TO_CLASS = {
 
 
 def get_current_regime_state() -> Optional[Dict[str, Any]]:
-    """Returns the latest regime label plus the key signals that drove it."""
     conn = None
     try:
         conn = get_connection()
@@ -126,7 +125,6 @@ def get_rebalance_deltas(current: Dict[str, float], ideal: Dict[str, float]) -> 
 
 
 def get_regime_history(days: int = 90) -> List[Dict[str, Any]]:
-    """Returns daily regime_label for the last N days."""
     conn = None
     try:
         conn = get_connection()
@@ -147,7 +145,6 @@ def get_regime_history(days: int = 90) -> List[Dict[str, Any]]:
 
 
 def get_macro_allocation_data() -> Dict[str, Any]:
-    """Aggregates all regime + allocation data for the API endpoint."""
     regime = get_current_regime_state()
     if not regime:
         return {"status": "no_data", "message": "Run the macro data engine to populate regime data."}
