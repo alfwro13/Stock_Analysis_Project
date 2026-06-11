@@ -81,6 +81,7 @@ We offload heavy time-series math and unstructured payload caching to local file
 * 📄 **`data/watchlist.json`**: Active watchlist tickers.
 * 📄 **`data/freetrade_blacklist.json`**: Self-healing ledger of permanently banned tickers.
 * 📄 **`data/isin_ticker_cache.json`**: Mapping of European ISINs to Yahoo Finance symbols.
+* 📄 **`data/exchange_hours.json`**: Per-exchange open/close times, timezones, currencies, and ticker suffixes. Auto-seeded with defaults for 28 exchanges on first boot. Edit this file to customise or add exchange definitions; read at runtime by `time_engine.py` and `etf_predictor_engine.py`.
 
 ---
 
@@ -180,7 +181,7 @@ Tables added after initial schema creation. All managed via `database.py:init_db
 
 #### `intraday_monitors`
 * **Purpose:** Active dip-radar watch list — one row per ticker armed for today's session.
-* **Key Columns:** `ticker` (PK), `date_added`, `is_active`, `activated_by`.
+* **Key Columns:** `ticker` (PK), `date_added`, `expire_date`, `is_active`, `activated_by`.
 
 #### `intraday_monitor_results`
 * **Purpose:** Latest scan result per ticker so the dip-radar UI can poll without waiting for the next orchestrator cycle.
