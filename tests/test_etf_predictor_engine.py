@@ -10,8 +10,13 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from etf_predictor_engine import (
     detect_fx_pair,
+    find_unknown_exchange_tickers,
     get_next_open_date,
     _compute_holdings_prediction,
+    _filter_pre_constituent_open,
+    _infer_constituent_exchanges,
+    _session_relationship,
+    _ticker_exchange_explicit,
 )
 
 
@@ -179,3 +184,117 @@ class TestComputeHoldingsPrediction:
         contribs = result["contributions"]
         abs_contribs = [abs(c["contribution_pct"]) for c in contribs]
         assert abs_contribs == sorted(abs_contribs, reverse=True)
+
+
+# ── _ticker_exchange_explicit ─────────────────────────────────────────────────
+
+class TestTickerExchangeExplicit:
+    def test_plain_ticker_defaults_to_nyse(self):
+        assert _ticker_exchange_explicit("AAPL") == "NYSE"
+
+    def test_dot_l_suffix_maps_to_lse(self):
+        assert _ticker_exchange_explicit("VWRL.L") == "LSE"
+
+    def test_dot_de_suffix_maps_to_xetra(self):
+        assert _ticker_exchange_explicit("BMW.DE") == "XETRA"
+
+    def test_dot_t_suffix_maps_to_tse(self):
+        assert _ticker_exchange_explicit("7203.T") == "TSE"
+
+    def test_unknown_suffix_defaults_to_nyse(self):
+        assert _ticker_exchange_explicit("XYZ.UNKNOWN") == "NYSE"
+
+    def test_three_letter_suffix_two(self):
+        assert _ticker_exchange_explicit("2330.TWO") == "TWSE"
+
+
+# ── _infer_constituent_exchanges ──────────────────────────────────────────────
+
+class TestInferConstituentExchanges:
+    def test_empty_list_returns_nyse(self):
+        assert _infer_constituent_exchanges([]) == ["NYSE"]
+
+    def test_all_plain_tickers_returns_nyse(self):
+        result = _infer_constituent_exchanges(["AAPL", "MSFT", "NVDA"])
+        assert result == ["NYSE"]
+
+    def test_majority_exchange_is_first(self):
+        result = _infer_constituent_exchanges(["VWRL.L", "SMGB.L", "AAPL"])
+        assert result[0] == "LSE"
+        assert "NYSE" in result
+
+    def test_single_ticker(self):
+        result = _infer_constituent_exchanges(["AAPL"])
+        assert result == ["NYSE"]
+
+
+# ── _session_relationship ─────────────────────────────────────────────────────
+
+class TestSessionRelationship:
+    def test_nyse_constituents_behind_lse_etf(self):
+        # NYSE closes ~21:00 UTC, LSE closes ~16:30 UTC → constituents extend past ETF close
+        assert _session_relationship("LSE", "NYSE") == "behind"
+
+    def test_tse_constituents_ahead_of_nyse_etf(self):
+        # TSE closes ~06:00 UTC, NYSE opens ~14:30 UTC → constituents finish before ETF opens
+        assert _session_relationship("NYSE", "TSE") == "ahead"
+
+    def test_same_exchange_is_same(self):
+        assert _session_relationship("NYSE", "NYSE") == "same"
+
+    def test_lse_constituents_behind_lse_etf_is_same(self):
+        assert _session_relationship("LSE", "LSE") == "same"
+
+
+# ── find_unknown_exchange_tickers ─────────────────────────────────────────────
+
+class TestFindUnknownExchangeTickers:
+    def test_plain_ticker_never_flagged(self):
+        assert find_unknown_exchange_tickers(["AAPL", "MSFT"]) == []
+
+    def test_known_suffix_not_flagged(self):
+        assert find_unknown_exchange_tickers(["VWRL.L", "BMW.DE"]) == []
+
+    def test_unknown_suffix_flagged(self):
+        result = find_unknown_exchange_tickers(["VWRL.UNKNOWN"])
+        assert result == ["VWRL.UNKNOWN"]
+
+    def test_mixed_known_unknown(self):
+        result = find_unknown_exchange_tickers(["AAPL", "VWRL.L", "XYZ.ZZZ"])
+        assert result == ["XYZ.ZZZ"]
+
+    def test_empty_list(self):
+        assert find_unknown_exchange_tickers([]) == []
+
+
+# ── _filter_pre_constituent_open ──────────────────────────────────────────────
+
+class TestFilterPreConstituentOpen:
+    def _make_intraday(self, timestamps):
+        idx = pd.to_datetime(timestamps)
+        return pd.DataFrame({"Close": [100.0] * len(idx)}, index=idx)
+
+    def test_empty_df_returns_empty(self):
+        df = pd.DataFrame()
+        result = _filter_pre_constituent_open(df, "NYSE")
+        assert result.empty
+
+    def test_lse_has_no_premarket_returns_empty(self):
+        df = self._make_intraday(["2026-01-06 07:00:00", "2026-01-06 07:30:00"])
+        result = _filter_pre_constituent_open(df, "LSE", ref_date=date(2026, 1, 6))
+        assert result.empty
+
+    def test_nyse_premarket_bar_included(self):
+        # NYSE opens 14:30 UTC, premarket starts 04:00 UTC on 2026-01-06
+        df = self._make_intraday([
+            "2026-01-06 04:30:00",
+            "2026-01-06 14:45:00",
+        ])
+        result = _filter_pre_constituent_open(df, "NYSE", ref_date=date(2026, 1, 6))
+        assert len(result) == 1
+        assert result.index[0] == pd.Timestamp("2026-01-06 04:30:00")
+
+    def test_nyse_regular_session_bar_excluded(self):
+        df = self._make_intraday(["2026-01-06 15:00:00"])
+        result = _filter_pre_constituent_open(df, "NYSE", ref_date=date(2026, 1, 6))
+        assert result.empty
