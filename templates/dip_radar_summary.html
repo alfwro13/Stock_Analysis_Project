@@ -30,6 +30,14 @@
             <input type="text" id="drs-ticker-input" class="filter-input drs-ticker-input"
                    placeholder="e.g. NVDA" maxlength="20"
                    onkeydown="if(event.key==='Enter') drAddTicker()">
+            <select id="drs-days-input" class="filter-input drs-days-select">
+                <option value="1">1 day</option>
+                <option value="2">2 days</option>
+                <option value="3">3 days</option>
+                <option value="5">5 days</option>
+                <option value="7">7 days</option>
+                <option value="14">14 days</option>
+            </select>
             <button class="btn btn-update" onclick="drAddTicker()">+ Arm Ticker</button>
             <span id="drs-add-status" class="drs-add-status"></span>
             <span class="drs-countdown-label">Next refresh in <span id="drs-countdown" class="drs-countdown">2:00</span></span>
@@ -46,6 +54,11 @@
         var POLL_MS = 120000;
         var countdown = POLL_MS / 1000;
         var countdownTimer = null;
+
+        function getDaysLeft(expireDate) {
+            var today = new Date().toISOString().slice(0, 10);
+            return Math.round((new Date(expireDate) - new Date(today)) / 86400000);
+        }
 
         function startCountdown() {
             if (countdownTimer) clearInterval(countdownTimer);
@@ -89,8 +102,13 @@
             var score = mon.reversal_score;
 
             if (score == null) {
+                var dLeft = mon.expire_date ? getDaysLeft(mon.expire_date) : null;
+                var expiryStr = dLeft !== null ? (dLeft > 0 ? ' · ' + dLeft + 'd left' : ' · last day') : '';
                 return '<div style="background:#1e1e1e;border-radius:8px;padding:14px;border-left:4px solid #333;">' +
-                    '<div style="font-size:16px;font-weight:bold;color:#e8e8e8;margin-bottom:8px;">' + mon.ticker + '</div>' +
+                    '<div style="display:flex;justify-content:space-between;align-items:baseline;">' +
+                        '<div style="font-size:16px;font-weight:bold;color:#e8e8e8;margin-bottom:8px;">' + mon.ticker + '</div>' +
+                        (expiryStr ? '<div style="color:#555;font-size:11px;">' + expiryStr + '</div>' : '') +
+                    '</div>' +
                     '<div style="color:#555;font-size:12px;">Waiting for first scan…</div>' +
                     '<div style="color:#444;font-size:11px;margin-top:4px;">Scans run every 2 min during market hours</div>' +
                     '<button onclick="drRemoveTicker(\'' + mon.ticker + '\')" style="margin-top:10px;background:none;border:1px solid #333;color:#666;border-radius:4px;padding:3px 8px;font-size:11px;cursor:pointer;">Remove</button>' +
@@ -116,6 +134,8 @@
             var TIP_VOL  = 'Volume climax: down-candle volume 3+ SD above 20-bar mean. +25 pts.';
 
             var scanTime = mon.scan_ts ? mon.scan_ts.replace('T', ' ').slice(0, 16) : '—';
+            var dLeft = mon.expire_date ? getDaysLeft(mon.expire_date) : null;
+            var expiryStr = dLeft !== null ? (dLeft > 0 ? dLeft + 'd left' : 'last day') : '';
 
             return '<div style="background:#1e1e1e;border-radius:8px;padding:14px;border-left:4px solid ' + bdrClr + ';">' +
                 '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;">' +
@@ -136,7 +156,10 @@
                     '<span>Price: <span style="color:#bbb;">' + (price != null ? price.toFixed(2) : '—') + '</span></span>' +
                     '<button onclick="drRemoveTicker(\'' + mon.ticker + '\')" style="background:none;border:1px solid #333;color:#555;border-radius:4px;padding:2px 6px;font-size:10px;cursor:pointer;">Remove</button>' +
                 '</div>' +
-                '<div style="color:#444;font-size:10px;margin-top:3px;">Scan: ' + scanTime + '</div>' +
+                '<div style="color:#444;font-size:10px;margin-top:3px;display:flex;justify-content:space-between;">' +
+                    '<span>Scan: ' + scanTime + '</span>' +
+                    (expiryStr ? '<span>' + expiryStr + '</span>' : '') +
+                '</div>' +
             '</div>';
         }
 
@@ -160,9 +183,11 @@
         }
 
         window.drAddTicker = async function () {
-            var input  = document.getElementById('drs-ticker-input');
-            var status = document.getElementById('drs-add-status');
+            var input     = document.getElementById('drs-ticker-input');
+            var daysInput = document.getElementById('drs-days-input');
+            var status    = document.getElementById('drs-add-status');
             var ticker = (input.value || '').trim().toUpperCase();
+            var days   = parseInt(daysInput ? daysInput.value : '1', 10) || 1;
             if (!ticker) return;
             status.textContent = 'Arming…';
             status.style.color = '#aaa';
@@ -170,7 +195,7 @@
                 var resp = await fetch('/api/intraday-monitor/add', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ ticker: ticker })
+                    body: JSON.stringify({ ticker: ticker, days: days })
                 });
                 if (resp.ok) {
                     input.value = '';

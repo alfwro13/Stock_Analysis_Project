@@ -31,7 +31,7 @@ class IntradayBottomEngine:
         try:
             conn = self._get_connection()
             rows = conn.execute(
-                "SELECT ticker FROM intraday_monitors WHERE is_active = 1 AND date_added = ?",
+                "SELECT ticker FROM intraday_monitors WHERE is_active = 1 AND expire_date >= ?",
                 (today,),
             ).fetchall()
             return [r["ticker"] for r in rows]
@@ -149,10 +149,11 @@ class IntradayBottomEngine:
         typical = (df["High"] + df["Low"] + df["Close"]) / 3
         return (typical * df["Volume"]).cumsum() / df["Volume"].cumsum()
 
-    def analyze_ticker(self, ticker: str) -> Optional[Dict]:
+    def analyze_ticker(self, ticker: str, data: Optional[pd.DataFrame] = None) -> Optional[Dict]:
         try:
-            _result = yahoo_engine.get_intraday([ticker], period="1d", interval="1m")
-            data = _result.get(ticker, pd.DataFrame())
+            if data is None:
+                _result = yahoo_engine.get_intraday([ticker], period="1d", interval="1m")
+                data = _result.get(ticker, pd.DataFrame())
             if data.empty or len(data) < 32:
                 logger.warning("DipRadar: insufficient 1m data for %s (%d bars)", ticker, len(data))
                 return None
@@ -291,15 +292,29 @@ class IntradayBottomEngine:
         if not tickers:
             return []
 
-        hits = []
+        open_tickers = []
         for ticker in tickers:
             exchange = time_engine.ticker_exchange(ticker)
-            # US exchanges include pre-market; LSE and others use regular hours only
             premarket = exchange in ("NYSE",)
-            if not time_engine.is_market_open(exchange, include_premarket=premarket):
+            if time_engine.is_market_open(exchange, include_premarket=premarket):
+                open_tickers.append(ticker)
+            else:
                 logger.debug("DipRadar: %s — %s market closed, skipping.", ticker, exchange)
-                continue
-            result = self.analyze_ticker(ticker)
+
+        if not open_tickers:
+            return []
+
+        # Batch-fetch 1m data for all open tickers in one yfinance call to avoid per-ticker rate limits
+        batch_data: dict = {}
+        try:
+            batch_data = yahoo_engine.get_intraday(open_tickers, period="1d", interval="1m")
+        except Exception as e:
+            logger.error("DipRadar: batch 1m fetch failed: %s", e)
+
+        hits = []
+        for ticker in open_tickers:
+            df = batch_data.get(ticker)
+            result = self.analyze_ticker(ticker, data=df)
             if result and result["is_bottoming"]:
                 if self._should_alert(ticker):
                     self._fire_alert(result)
@@ -307,15 +322,17 @@ class IntradayBottomEngine:
         return hits
 
     def deactivate_all_today(self) -> None:
+        """Deactivate monitors whose monitoring period has ended (expire_date <= today)."""
         today = datetime.now(timezone.utc).date().isoformat()
         conn = None
         try:
             conn = self._get_connection()
             conn.execute(
-                "UPDATE intraday_monitors SET is_active = 0 WHERE date_added = ?", (today,)
+                "UPDATE intraday_monitors SET is_active = 0 WHERE is_active = 1 AND expire_date <= ?",
+                (today,),
             )
             conn.commit()
-            self._log_notification("DipRadar", "Session ended — all Dip Radar monitors deactivated.")
+            self._log_notification("DipRadar", "Session ended — expired Dip Radar monitors deactivated.")
         except Exception as e:
             logger.error("DipRadar: failed to deactivate monitors: %s", e)
         finally:
@@ -323,13 +340,13 @@ class IntradayBottomEngine:
                 conn.close()
 
     def deactivate_exchange_today(self, exchange: str) -> None:
-        """Deactivate only monitors whose ticker belongs to *exchange*, leaving others running."""
+        """Deactivate monitors for *exchange* whose monitoring period ends today, leaving multi-day monitors running."""
         today = datetime.now(timezone.utc).date().isoformat()
         conn = None
         try:
             conn = self._get_connection()
             rows = conn.execute(
-                "SELECT ticker FROM intraday_monitors WHERE is_active = 1 AND date_added = ?",
+                "SELECT ticker FROM intraday_monitors WHERE is_active = 1 AND expire_date <= ?",
                 (today,),
             ).fetchall()
             tickers = [r["ticker"] for r in rows]
@@ -347,14 +364,13 @@ class IntradayBottomEngine:
                 return
             placeholders = ",".join("?" * len(to_deactivate))
             conn.execute(
-                f"UPDATE intraday_monitors SET is_active = 0 "
-                f"WHERE ticker IN ({placeholders}) AND date_added = ?",
-                (*to_deactivate, today),
+                f"UPDATE intraday_monitors SET is_active = 0 WHERE ticker IN ({placeholders})",
+                to_deactivate,
             )
             conn.commit()
             self._log_notification(
                 "DipRadar",
-                f"{exchange} session ended — {len(to_deactivate)} Dip Radar monitor(s) deactivated.",
+                f"{exchange} session ended — {len(to_deactivate)} Dip Radar monitor(s) completed.",
             )
         except Exception as e:
             logger.error("DipRadar: failed to deactivate %s monitors: %s", exchange, e)

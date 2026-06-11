@@ -480,6 +480,7 @@ def init_db() -> None:
             CREATE TABLE IF NOT EXISTS intraday_monitors (
                 ticker       TEXT PRIMARY KEY,
                 date_added   DATE NOT NULL,
+                expire_date  DATE NOT NULL DEFAULT (date('now')),
                 is_active    INTEGER NOT NULL DEFAULT 1,
                 activated_by TEXT
             )
@@ -905,6 +906,7 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
             CREATE TABLE IF NOT EXISTS intraday_monitors (
                 ticker       TEXT PRIMARY KEY,
                 date_added   DATE NOT NULL,
+                expire_date  DATE NOT NULL DEFAULT (date('now')),
                 is_active    INTEGER NOT NULL DEFAULT 1,
                 activated_by TEXT
             )
@@ -927,6 +929,17 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
         ''')
     except Exception as e:
         logger.error("[MIGRATION ERROR] Failed to create intraday dip radar tables: %s", e)
+
+    # intraday_monitors — add expire_date if missing (pre-feature DBs)
+    cursor.execute("PRAGMA table_info(intraday_monitors)")
+    _im_cols = [r['name'] for r in cursor.fetchall()]
+    if 'expire_date' not in _im_cols:
+        try:
+            cursor.execute("ALTER TABLE intraday_monitors ADD COLUMN expire_date DATE")
+            cursor.execute("UPDATE intraday_monitors SET expire_date = date_added WHERE expire_date IS NULL")
+            logger.info("[MIGRATION] Added expire_date to intraday_monitors.")
+        except Exception as e:
+            logger.error("[MIGRATION ERROR] Failed adding expire_date to intraday_monitors: %s", e)
 
     # intraday_monitor_results — add bb_lower, vwap_lower, vol_climax if missing
     cursor.execute("PRAGMA table_info(intraday_monitor_results)")

@@ -308,6 +308,10 @@ IMPORT_DIR = BASE_DIR / "tools" / "data" / "imports"
 class TickerRequest(BaseModel):
     ticker: str
 
+class DipRadarAddRequest(BaseModel):
+    ticker: str
+    days: int = 1
+
 class OptionLeg(BaseModel):
     type: str
     strike: float
@@ -2374,21 +2378,25 @@ async def run_news_feed_now(background_tasks: BackgroundTasks):
 # ---------------------------------------------------------------------------
 
 @api_router.post("/intraday-monitor/add")
-async def intraday_monitor_add(req: TickerRequest):
+async def intraday_monitor_add(req: DipRadarAddRequest):
     ticker = req.ticker.upper().strip()
     if not ticker:
         raise HTTPException(status_code=400, detail="ticker is required")
-    today = time_engine.now_local().date().isoformat()
+    days = max(1, min(30, req.days or 1))
+    today = datetime.now(timezone.utc).date()
+    today_str = today.isoformat()
+    expire_date = (today + timedelta(days=days - 1)).isoformat()
     conn = get_connection()
     try:
         conn.execute(
-            """INSERT INTO intraday_monitors (ticker, date_added, is_active, activated_by)
-               VALUES (?, ?, 1, 'user')
+            """INSERT INTO intraday_monitors (ticker, date_added, expire_date, is_active, activated_by)
+               VALUES (?, ?, ?, 1, 'user')
                ON CONFLICT(ticker) DO UPDATE SET
                    date_added   = excluded.date_added,
+                   expire_date  = excluded.expire_date,
                    is_active    = 1,
                    activated_by = 'user'""",
-            (ticker, today),
+            (ticker, today_str, expire_date),
         )
         conn.commit()
         _cur_row = conn.execute(
@@ -2399,16 +2407,19 @@ async def intraday_monitor_add(req: TickerRequest):
         conn.close()
     engine = IntradayBottomEngine()
     await asyncio.to_thread(engine.arm_alert, ticker)
-    # One-time notification confirming monitoring is active for this session
     from database import log_notification
-    from zoneinfo import ZoneInfo
-    from datetime import time as _t
     _exch = time_engine.ticker_exchange(ticker, _currency)
-    _params = time_engine.reset_cron_trigger_params(_exch)
-    _reset_dt = datetime.combine(time_engine.now_local().date(), _t(_params["hour"], _params["minute"]), tzinfo=ZoneInfo(_params["timezone"]))
-    _reset_str = time_engine.fmt_time(_reset_dt)
-    log_notification("DipRadar", f"🎯 Dip Radar enabled for {ticker} — scanning every 2 min until {_reset_str}. You will be notified if a bottoming zone is detected.")
-    return JSONResponse(content={"status": "ok", "ticker": ticker})
+    if days == 1:
+        from zoneinfo import ZoneInfo
+        from datetime import time as _t
+        _params = time_engine.reset_cron_trigger_params(_exch)
+        _reset_dt = datetime.combine(time_engine.now_local().date(), _t(_params["hour"], _params["minute"]), tzinfo=ZoneInfo(_params["timezone"]))
+        _reset_str = time_engine.fmt_time(_reset_dt)
+        log_notification("DipRadar", f"🎯 Dip Radar enabled for {ticker} — scanning every 2 min until {_reset_str}. You will be notified if a bottoming zone is detected.")
+    else:
+        expire_display = (today + timedelta(days=days - 1)).strftime("%b %d")
+        log_notification("DipRadar", f"🎯 Dip Radar enabled for {ticker} — scanning every 2 min during market hours for {days} days (until {expire_display}).")
+    return JSONResponse(content={"status": "ok", "ticker": ticker, "expire_date": expire_date})
 
 
 @api_router.post("/intraday-monitor/remove")
@@ -2427,11 +2438,11 @@ async def intraday_monitor_remove(req: TickerRequest):
 
 @api_router.get("/intraday-monitor/list")
 async def intraday_monitor_list():
-    today = time_engine.now_local().date().isoformat()
+    today = datetime.now(timezone.utc).date().isoformat()
     conn = get_connection()
     try:
         rows = conn.execute(
-            "SELECT ticker, date_added, is_active FROM intraday_monitors WHERE date_added = ? ORDER BY ticker",
+            "SELECT ticker, date_added, expire_date, is_active FROM intraday_monitors WHERE is_active = 1 AND expire_date >= ? ORDER BY ticker",
             (today,),
         ).fetchall()
         return JSONResponse(content={"monitors": [dict(r) for r in rows]})
@@ -2460,18 +2471,18 @@ async def intraday_monitor_analysis(ticker: str = PathParam(..., pattern=r"^[A-Z
 
 @api_router.get("/intraday-monitor/summary")
 async def intraday_monitor_summary():
-    today = time_engine.now_local().date().isoformat()
+    today = datetime.now(timezone.utc).date().isoformat()
     conn = get_connection()
     try:
         rows = conn.execute(
             """
-            SELECT m.ticker, m.date_added, m.activated_by,
+            SELECT m.ticker, m.date_added, m.expire_date, m.activated_by,
                    r.scan_ts, r.current_price, r.reversal_score,
                    r.is_bottoming, r.rsi, r.bb_lower,
                    r.vwap, r.vwap_lower, r.vwap_deviation, r.vol_climax
             FROM intraday_monitors m
             LEFT JOIN intraday_monitor_results r ON m.ticker = r.ticker
-            WHERE m.date_added = ? AND m.is_active = 1
+            WHERE m.is_active = 1 AND m.expire_date >= ?
             ORDER BY COALESCE(r.reversal_score, -1) DESC
             """,
             (today,),
