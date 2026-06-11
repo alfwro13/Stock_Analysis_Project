@@ -61,12 +61,7 @@ def _maybe_restore_latch() -> None:
 
 
 def _clear_yfinance_crumb() -> None:
-    """Clear yfinance's singleton crumb/cookie so the next fetch re-authenticates with the current session's cookies.
-
-    Required whenever the underlying curl_cffi session is replaced mid-use: the YfData singleton keeps the old
-    crumb (tied to the old session's cookies) and every subsequent Yahoo request returns 401 Invalid Crumb,
-    which yfinance misreports as "possibly delisted" for every ticker.
-    """
+    # YfData singleton binds crumb to old session cookies; clear it so the next fetch re-authenticates.
     try:
         from yfinance.data import YfData
         for inst in YfData._instances.values():
