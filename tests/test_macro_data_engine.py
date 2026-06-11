@@ -279,6 +279,38 @@ class TestUpdateMacroIndicators:
             update_macro_indicators()
             mock_conn.assert_not_called()
 
+    def test_cpi_yoy_conversion_stores_percentage_not_raw_index(self):
+        """13 months of raw CPI index values (~310-322) must be stored as YoY % (~3.9), not the index."""
+        dates = pd.date_range("2022-01-31", periods=13, freq="ME")
+        cpi_df = pd.DataFrame({"CPIAUCSL": [310.0 + i for i in range(13)]}, index=dates)
+
+        def fred_side_effect(session, series_id, *args, **kwargs):
+            return cpi_df if series_id == "CPIAUCSL" else pd.DataFrame()
+
+        try:
+            with patch("macro_data_engine.load_config", return_value={"FRED_API_KEY": "key"}), \
+                 patch("macro_data_engine.get_retry_session"), \
+                 patch("macro_data_engine.fetch_fred_api", side_effect=fred_side_effect), \
+                 patch("macro_data_engine.fetch_boe_data", return_value=pd.DataFrame()), \
+                 patch("macro_data_engine.fetch_ons_taxonomy_data", return_value=pd.DataFrame()):
+                update_macro_indicators()
+
+            conn = _db_module.get_connection()
+            row = conn.execute(
+                "SELECT us_cpi_inflation FROM macro_indicators WHERE date='2023-01-31'"
+            ).fetchone()
+            conn.close()
+            assert row is not None and row["us_cpi_inflation"] is not None
+            val = row["us_cpi_inflation"]
+            # 322/310 - 1 = ~3.87%: must be small %, not the raw index ~322
+            assert abs(val) < 50, f"Expected YoY %%, got raw index value {val}"
+            assert abs(val) > 0.5
+        finally:
+            cleanup = _db_module.get_connection()
+            cleanup.execute("DELETE FROM macro_indicators WHERE date BETWEEN '2022-01-01' AND '2023-02-01'")
+            cleanup.commit()
+            cleanup.close()
+
     def test_insert_or_ignore_does_not_overwrite_existing_rows(self):
         """
         The pipeline uses INSERT OR IGNORE to preserve point-in-time data.
