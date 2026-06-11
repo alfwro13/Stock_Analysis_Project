@@ -1750,6 +1750,9 @@ def _normalise_constituents(items: List[EtfConstituentItem]) -> List[dict]:
 @limiter.limit("10/minute")
 async def validate_etf_predictor_config(request: Request, body: EtfValidateBody):
     try:
+        from etf_predictor_engine import _ticker_exchange_explicit, find_unknown_exchange_tickers
+        import time_engine as _te
+
         etf_ticker = body.etf_ticker.upper().strip()
         etf_info = yahoo_engine.get_ticker_info(etf_ticker)
         etf_result = {
@@ -1760,16 +1763,32 @@ async def validate_etf_predictor_config(request: Request, body: EtfValidateBody)
 
         constituent_results = []
         total_weight = 0.0
+        constituent_tickers = []
         for item in body.constituents:
             t = item.ticker.upper().strip()
+            constituent_tickers.append(t)
             info = yahoo_engine.get_ticker_info(t)
+            exchange = _ticker_exchange_explicit(t)
+            exchange_known = exchange in _te.EXCHANGE_HOURS
             constituent_results.append({
                 "ticker": t,
                 "weight": item.weight,
                 "valid": info is not None,
                 "name": (info.get("longName") or info.get("shortName", "")) if info else None,
+                "exchange": exchange,
+                "exchange_known": exchange_known,
             })
             total_weight += item.weight
+
+        unknown_tickers = find_unknown_exchange_tickers(constituent_tickers)
+        unknown_warning = None
+        if unknown_tickers:
+            unknown_warning = (
+                f"The following tickers have suffixes not found in the exchange registry "
+                f"(data/exchange_hours.json): {', '.join(unknown_tickers)}. "
+                f"Exchange open/close markers will default to NYSE. "
+                f"Add the exchange definition to fix."
+            )
 
         return JSONResponse(content={
             "status": "success",
@@ -1777,6 +1796,8 @@ async def validate_etf_predictor_config(request: Request, body: EtfValidateBody)
             "constituents": constituent_results,
             "total_weight": round(total_weight, 4),
             "weight_ok": abs(total_weight - 100.0) < 1.0 or abs(total_weight - 1.0) < 0.01,
+            "unknown_exchange_tickers": unknown_tickers,
+            "unknown_exchange_warning": unknown_warning,
         })
     except Exception as e:
         logger.error("validate_etf_predictor_config failed: %s", e)

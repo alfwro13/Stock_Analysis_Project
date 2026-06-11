@@ -1,5 +1,6 @@
 # database.py
 import json
+import os
 import sqlite3
 import logging
 from typing import List, Optional
@@ -7,6 +8,54 @@ from typing import List, Optional
 from config import DB_PATH, load_config
 
 logger = logging.getLogger(__name__)
+
+_EXCHANGE_HOURS_PATH = os.path.join(os.path.dirname(__file__), "data", "exchange_hours.json")
+
+_DEFAULT_EXCHANGE_HOURS = {
+    "NYSE":    {"open":"09:30","close":"16:00","tz":"America/New_York",     "currency":"USD","suffixes":[],"premarket_open":"04:00"},
+    "LSE":     {"open":"08:00","close":"16:30","tz":"Europe/London",        "currency":"GBP","suffixes":[".L"]},
+    "XETRA":   {"open":"09:00","close":"17:30","tz":"Europe/Berlin",        "currency":"EUR","suffixes":[".DE",".F"]},
+    "TSE":     {"open":"09:00","close":"15:30","tz":"Asia/Tokyo",           "currency":"JPY","suffixes":[".T"]},
+    "ASX":     {"open":"10:00","close":"16:00","tz":"Australia/Sydney",     "currency":"AUD","suffixes":[".AX"]},
+    "KRX":     {"open":"09:00","close":"15:30","tz":"Asia/Seoul",           "currency":"KRW","suffixes":[".KS",".KQ"]},
+    "HKEX":    {"open":"09:30","close":"16:00","tz":"Asia/Hong_Kong",       "currency":"HKD","suffixes":[".HK"]},
+    "SGX":     {"open":"09:00","close":"17:00","tz":"Asia/Singapore",       "currency":"SGD","suffixes":[".SI"]},
+    "NSE":     {"open":"09:15","close":"15:30","tz":"Asia/Kolkata",         "currency":"INR","suffixes":[".NS"]},
+    "BSE":     {"open":"09:15","close":"15:30","tz":"Asia/Kolkata",         "currency":"INR","suffixes":[".BO"]},
+    "SSE":     {"open":"09:30","close":"15:00","tz":"Asia/Shanghai",        "currency":"CNY","suffixes":[".SS"]},
+    "SZSE":    {"open":"09:30","close":"15:00","tz":"Asia/Shanghai",        "currency":"CNY","suffixes":[".SZ"]},
+    "TWSE":    {"open":"09:00","close":"13:30","tz":"Asia/Taipei",          "currency":"TWD","suffixes":[".TW",".TWO"]},
+    "NZX":     {"open":"10:00","close":"16:45","tz":"Pacific/Auckland",     "currency":"NZD","suffixes":[".NZ"]},
+    "TSX":     {"open":"09:30","close":"16:00","tz":"America/Toronto",      "currency":"CAD","suffixes":[".TO",".V"]},
+    "BOVESPA": {"open":"10:00","close":"17:55","tz":"America/Sao_Paulo",    "currency":"BRL","suffixes":[".SA"]},
+    "BMV":     {"open":"08:30","close":"15:00","tz":"America/Mexico_City",  "currency":"MXN","suffixes":[".MX"]},
+    "Euronext":{"open":"09:00","close":"17:30","tz":"Europe/Paris",         "currency":"EUR","suffixes":[".PA",".AS",".BR",".LS"]},
+    "SIX":     {"open":"09:00","close":"17:30","tz":"Europe/Zurich",        "currency":"CHF","suffixes":[".SW"]},
+    "MIL":     {"open":"09:00","close":"17:30","tz":"Europe/Rome",          "currency":"EUR","suffixes":[".MI"]},
+    "BME":     {"open":"09:00","close":"17:30","tz":"Europe/Madrid",        "currency":"EUR","suffixes":[".MC"]},
+    "OMXS":    {"open":"09:00","close":"17:30","tz":"Europe/Stockholm",     "currency":"SEK","suffixes":[".ST"]},
+    "OMXH":    {"open":"09:00","close":"18:30","tz":"Europe/Helsinki",      "currency":"EUR","suffixes":[".HE"]},
+    "OMXC":    {"open":"09:00","close":"17:00","tz":"Europe/Copenhagen",    "currency":"DKK","suffixes":[".CO"]},
+    "OSE":     {"open":"09:00","close":"16:30","tz":"Europe/Oslo",          "currency":"NOK","suffixes":[".OL"]},
+    "WBAG":    {"open":"09:00","close":"17:30","tz":"Europe/Vienna",        "currency":"EUR","suffixes":[".VI"]},
+    "WSE":     {"open":"09:00","close":"17:00","tz":"Europe/Warsaw",        "currency":"PLN","suffixes":[".WA"]},
+    "JSE":     {"open":"09:00","close":"17:00","tz":"Africa/Johannesburg",  "currency":"ZAR","suffixes":[".JO"]},
+    "TASE":    {"open":"09:59","close":"17:25","tz":"Asia/Jerusalem",       "currency":"ILS","suffixes":[".TA"]},
+    "Tadawul": {"open":"10:00","close":"15:00","tz":"Asia/Riyadh",          "currency":"SAR","suffixes":[".SR"]},
+}
+
+
+def _seed_exchange_hours_json() -> None:
+    """Create data/exchange_hours.json with defaults if it does not exist."""
+    if os.path.exists(_EXCHANGE_HOURS_PATH):
+        return
+    try:
+        os.makedirs(os.path.dirname(_EXCHANGE_HOURS_PATH), exist_ok=True)
+        with open(_EXCHANGE_HOURS_PATH, "w", encoding="utf-8") as f:
+            json.dump(_DEFAULT_EXCHANGE_HOURS, f, indent=2)
+        logger.info("Created default exchange_hours.json at %s", _EXCHANGE_HOURS_PATH)
+    except Exception as exc:
+        logger.warning("Could not write exchange_hours.json: %s", exc)
 
 
 def get_connection() -> sqlite3.Connection:
@@ -566,6 +615,7 @@ def init_db() -> None:
         conn.commit()
 
         migrate_db(conn, cursor)
+        _seed_exchange_hours_json()
 
         logger.info("Database connection verified and schema is fully up-to-date.")
 

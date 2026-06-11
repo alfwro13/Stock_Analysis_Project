@@ -1205,7 +1205,7 @@ async def etf_predictor_detail_page(request: Request, config_id: int):
         overlay_chart_html = create_etf_overlay_chart(
             cfg["etf_ticker"],
             etf_info["exchange"],
-            overlay_data["constituent_exchange"],
+            overlay_data["constituent_exchanges"],
             overlay_data["etf_series"],
             overlay_data["constituent_series"],
             overlay_data["etf_last_close"],
@@ -1214,6 +1214,7 @@ async def etf_predictor_detail_page(request: Request, config_id: int):
             constituent_prev_closes=overlay_data.get("constituent_prev_closes"),
             now_utc=overlay_data.get("now_utc"),
             trading_date=overlay_data.get("trading_date"),
+            session_relationship=overlay_data.get("session_relationship", "behind"),
         )
     except Exception as exc:
         logger.warning("etf_predictor_detail overlay chart failed: %s", exc)

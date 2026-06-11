@@ -1,36 +1,110 @@
 """Central time utility. USER_TIMEZONE + HOME_EXCHANGE in config.json drive all tz-aware behaviour."""
 from __future__ import annotations
 
+import json
+import logging
+import os
 from datetime import datetime, time as dtime, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from typing import Optional
 
-EXCHANGE_HOURS: dict[str, dict] = {
+logger = logging.getLogger(__name__)
+
+_EXCHANGE_HOURS_PATH = os.path.join(os.path.dirname(__file__), "data", "exchange_hours.json")
+
+# Hardcoded fallback used when the JSON file is absent or malformed
+_BUILTIN_EXCHANGE_HOURS: dict[str, dict] = {
     "NYSE": {
         "open":           "09:30",
         "close":          "16:00",
         "tz":             "America/New_York",
+        "currency":       "USD",
+        "suffixes":       [],
         "premarket_open": "04:00",
     },
     "LSE": {
-        "open":  "08:00",
-        "close": "16:30",
-        "tz":    "Europe/London",
-        # LSE has no recognised pre-market session
+        "open":     "08:00",
+        "close":    "16:30",
+        "tz":       "Europe/London",
+        "currency": "GBP",
+        "suffixes": [".L"],
     },
     "XETRA": {
-        "open":  "09:00",
-        "close": "17:30",
-        "tz":    "Europe/Berlin",
+        "open":     "09:00",
+        "close":    "17:30",
+        "tz":       "Europe/Berlin",
+        "currency": "EUR",
+        "suffixes": [".DE", ".F"],
     },
     "TSE": {
-        "open":  "09:00",
-        "close": "15:30",
-        "tz":    "Asia/Tokyo",
+        "open":     "09:00",
+        "close":    "15:30",
+        "tz":       "Asia/Tokyo",
+        "currency": "JPY",
+        "suffixes": [".T"],
     },
 }
 
 _FALLBACK_EXCHANGE = "NYSE"
+
+_registry_cache: dict | None = None
+_suffix_cache: dict[str, str] | None = None
+
+
+def _load_exchange_registry() -> dict[str, dict]:
+    global _registry_cache
+    if _registry_cache is not None:
+        return _registry_cache
+    try:
+        with open(_EXCHANGE_HOURS_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict) and data:
+            _registry_cache = data
+            return _registry_cache
+    except Exception as exc:
+        logger.warning("exchange_hours.json load failed (%s); using built-in defaults", exc)
+    _registry_cache = _BUILTIN_EXCHANGE_HOURS
+    return _registry_cache
+
+
+def _build_suffix_lookup() -> dict[str, str]:
+    global _suffix_cache
+    if _suffix_cache is not None:
+        return _suffix_cache
+    registry = _load_exchange_registry()
+    mapping: dict[str, str] = {}
+    for exchange, info in registry.items():
+        for suffix in info.get("suffixes", []):
+            if suffix:
+                mapping[suffix.upper()] = exchange
+    _suffix_cache = mapping
+    return _suffix_cache
+
+
+# Public: populated at module import time; re-read after reload_exchange_registry()
+EXCHANGE_HOURS: dict[str, dict] = {}
+
+
+def _refresh_globals() -> None:
+    global EXCHANGE_HOURS, _registry_cache, _suffix_cache
+    _registry_cache = None
+    _suffix_cache = None
+    EXCHANGE_HOURS.clear()
+    EXCHANGE_HOURS.update(_load_exchange_registry())
+
+
+_refresh_globals()
+
+# Module-level suffix → exchange map (public for etf_predictor_engine)
+_SUFFIX_TO_EXCHANGE: dict[str, str] = _build_suffix_lookup()
+
+
+def reload_exchange_registry() -> None:
+    """Force a re-read of exchange_hours.json. Call after editing the file at runtime."""
+    global _SUFFIX_TO_EXCHANGE
+    _refresh_globals()
+    _SUFFIX_TO_EXCHANGE = _build_suffix_lookup()
+
 
 def _load_config() -> dict:
     from config import load_config as _lc   # lazy import avoids circular-import issues
@@ -40,6 +114,7 @@ def _load_config() -> dict:
 def _parse_hm(hm: str) -> dtime:
     h, m = map(int, hm.split(":"))
     return dtime(h, m)
+
 
 def get_user_tz() -> ZoneInfo:
     tz_name = _load_config().get("USER_TIMEZONE", "Europe/London")
@@ -69,17 +144,28 @@ def fmt_datetime(dt: datetime) -> str:
     """Format as '2026-06-05 16:05 GMT'."""
     return to_local(dt).strftime("%Y-%m-%d %H:%M %Z")
 
+
 def ticker_exchange(ticker: str, currency: str = "") -> str:
-    """Infer exchange from ticker suffix or currency; ambiguous USD-less tickers fall back to HOME_EXCHANGE."""
-    if ticker.endswith(".L") or currency in ("GBp", "GBP"):
+    """Infer exchange from ticker suffix (JSON registry) or currency fallback."""
+    suffix_map = _build_suffix_lookup()
+    # Check longest matching suffix first to handle multi-part suffixes like .TWO
+    for length in (4, 3, 2):
+        dot_pos = -(length + 1)
+        if len(ticker) > length and ticker[dot_pos] == ".":
+            candidate = ticker[dot_pos:].upper()
+            if candidate in suffix_map:
+                return suffix_map[candidate]
+    # Currency fallbacks for plain tickers (no recognised suffix)
+    if currency in ("GBp", "GBP"):
         return "LSE"
-    if ticker.endswith(".DE") or currency == "EUR":
+    if currency == "EUR":
         return "XETRA"
-    if ticker.endswith(".T"):
+    if currency == "JPY":
         return "TSE"
     if currency == "USD":
-        return "NYSE"   # USD without exchange suffix → US market
+        return "NYSE"
     return _load_config().get("HOME_EXCHANGE", _FALLBACK_EXCHANGE)
+
 
 def market_window_utc(
     exchange: Optional[str] = None,
