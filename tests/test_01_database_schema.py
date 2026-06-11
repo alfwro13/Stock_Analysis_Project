@@ -74,6 +74,8 @@ EXPECTED_TABLES = [
     "model_training_log",
     "trap_monitor_results",
     "price_hmm_states",
+    "etf_predictor_configs",
+    "etf_predictor_predictions",
 ]
 
 
