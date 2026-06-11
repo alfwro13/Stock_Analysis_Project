@@ -45,7 +45,6 @@ _DEFAULT_EXCHANGE_HOURS = {
 
 
 def _seed_exchange_hours_json() -> None:
-    """Create data/exchange_hours.json with defaults if it does not exist."""
     if os.path.exists(_EXCHANGE_HOURS_PATH):
         return
     try:
@@ -63,8 +62,8 @@ def get_connection() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH, timeout=20.0)
     conn.execute('PRAGMA journal_mode=WAL;')   # concurrent reads + writes
     conn.execute('PRAGMA synchronous=NORMAL;')  # significant write-perf gain in WAL mode
-    conn.execute('PRAGMA temp_store=MEMORY;')
-    conn.execute('PRAGMA mmap_size=134217728;')
+    conn.execute('PRAGMA temp_store=MEMORY;')   # keeps temp tables in RAM; avoids disk I/O under heavy scans
+    conn.execute('PRAGMA mmap_size=134217728;') # 128 MB memory-map; cuts read latency for warm pages
     conn.row_factory = sqlite3.Row
     return conn
 
