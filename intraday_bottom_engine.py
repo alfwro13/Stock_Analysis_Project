@@ -287,14 +287,37 @@ class IntradayBottomEngine:
 
         self._disarm_alert(ticker)
 
+    def _get_currency_map(self, tickers: List[str]) -> dict:
+        """Batch-fetch currency from stock_signals so ticker_exchange() can resolve plain US tickers correctly."""
+        if not tickers:
+            return {}
+        conn = None
+        try:
+            conn = self._get_connection()
+            placeholders = ",".join("?" * len(tickers))
+            rows = conn.execute(
+                f"SELECT ticker, currency FROM stock_signals WHERE ticker IN ({placeholders})",
+                tickers,
+            ).fetchall()
+            return {r["ticker"]: r["currency"] for r in rows}
+        except Exception as e:
+            logger.error("DipRadar: currency lookup failed: %s", e)
+            return {}
+        finally:
+            if conn:
+                conn.close()
+
     def run_scan(self) -> List[Dict]:
         tickers = self.get_active_monitors()
         if not tickers:
             return []
 
+        currency_map = self._get_currency_map(tickers)
+
         open_tickers = []
         for ticker in tickers:
-            exchange = time_engine.ticker_exchange(ticker)
+            currency = currency_map.get(ticker, "")
+            exchange = time_engine.ticker_exchange(ticker, currency)
             premarket = exchange in ("NYSE",)
             if time_engine.is_market_open(exchange, include_premarket=premarket):
                 open_tickers.append(ticker)
