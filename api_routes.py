@@ -608,11 +608,7 @@ async def trigger_macro_run_endpoint(request: Request, background_tasks: Backgro
 @api_router.get("/macro-regime-allocation")
 @limiter.limit("30/minute")
 async def get_macro_regime_allocation(request: Request):
-    """
-    Returns the current macro regime label, key driving signals, ideal asset class
-    allocation for that regime, current portfolio allocation (requires Ghostfolio),
-    an alignment score 0–100, and the last 90 days of regime history.
-    """
+    """Returns regime label, ideal allocation, portfolio alignment score (0–100), and 90-day history."""
     from macro_allocator_engine import get_macro_allocation_data
     try:
         data = get_macro_allocation_data()
@@ -1478,7 +1474,6 @@ async def get_market_regime_current(request: Request):
             "as_of": row["date"],
         }
 
-        # Find the most recent day the label changed
         cursor.execute(
             "SELECT date, price_hmm_label FROM market_regimes "
             "WHERE price_hmm_label IS NOT NULL ORDER BY date DESC LIMIT 60"
@@ -1554,7 +1549,6 @@ async def get_market_regime_full(request: Request):
         conn = get_connection()
         cursor = conn.cursor()
 
-        # Current state
         cursor.execute(
             "SELECT date, price_hmm_state, price_hmm_label, price_hmm_prob "
             "FROM market_regimes WHERE price_hmm_state IS NOT NULL ORDER BY date DESC LIMIT 1"
@@ -1570,11 +1564,9 @@ async def get_market_regime_full(request: Request):
             "as_of": cur_row["date"],
         }
 
-        # Full history from price_hmm_states
         cursor.execute("SELECT date, state, label, probability FROM price_hmm_states ORDER BY date ASC")
         history = [dict(r) for r in cursor.fetchall()]
 
-        # Last regime change
         last_change = None
         current_label = current["label"]
         for i in range(len(history) - 2, -1, -1):
@@ -1601,7 +1593,6 @@ async def get_market_regime_full(request: Request):
                 [round(c / total, 3) if total > 0 else 0.0 for c in row_counts]
             )
 
-        # Regime statistics — join price_hmm_states with SPY close from market_regimes
         cursor.execute(
             "SELECT h.date, h.state, h.label, r.spy_volatility "
             "FROM price_hmm_states h "
@@ -1610,7 +1601,6 @@ async def get_market_regime_full(request: Request):
         )
         stat_rows = cursor.fetchall()
 
-        # Also fetch SPY returns from the Parquet cache for mean return calc
         import pandas as pd
         import numpy as np
         from config import HISTORICAL_DIR
@@ -2506,8 +2496,9 @@ async def get_intraday_chart(ticker: str = PathParam(..., pattern=r"^[A-Z0-9.\-\
     df_macro = pd.DataFrame()
 
     # Derive exchange metadata for timezone + delay
-    conn_meta = get_connection()
+    conn_meta = None
     try:
+        conn_meta = get_connection()
         row = conn_meta.execute(
             "SELECT currency FROM stock_signals WHERE ticker = ? LIMIT 1", (ticker,)
         ).fetchone()
@@ -2515,7 +2506,8 @@ async def get_intraday_chart(ticker: str = PathParam(..., pattern=r"^[A-Z0-9.\-\
     except Exception:
         currency = "USD"
     finally:
-        conn_meta.close()
+        if conn_meta:
+            conn_meta.close()
 
     mkt_tz = _intraday_market_tz(ticker, currency)
     delay_min = _EXCHANGE_DELAYS.get(currency, 0)
@@ -2573,8 +2565,9 @@ async def refresh_intraday_chart(req: TickerRequest):
     """Fetch fresh intraday data from Yahoo Finance, persist to parquet, return re-rendered chart HTML."""
     ticker = req.ticker.upper()
 
-    conn_meta = get_connection()
+    conn_meta = None
     try:
+        conn_meta = get_connection()
         row = conn_meta.execute(
             "SELECT currency FROM stock_signals WHERE ticker = ? LIMIT 1", (ticker,)
         ).fetchone()
@@ -2582,7 +2575,8 @@ async def refresh_intraday_chart(req: TickerRequest):
     except Exception:
         currency = "USD"
     finally:
-        conn_meta.close()
+        if conn_meta:
+            conn_meta.close()
 
     try:
         with yahoo_engine._lock:
