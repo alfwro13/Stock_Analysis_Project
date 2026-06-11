@@ -1066,7 +1066,7 @@ def create_etf_contributions_chart(etf_ticker: str, contributions: list) -> str:
 def create_etf_overlay_chart(
     etf_ticker: str,
     etf_exchange: str,
-    constituent_exchange: str,
+    constituent_exchanges: "list[str]",
     etf_series: "pd.Series",
     constituent_series: "dict[str, pd.Series]",
     etf_last_close: float,
@@ -1075,12 +1075,16 @@ def create_etf_overlay_chart(
     constituent_prev_closes: "dict[str, float] | None" = None,
     now_utc: "datetime | None" = None,
     trading_date: "date | None" = None,
+    session_relationship: str = "behind",
 ) -> str:
     """Generic time-aligned intraday overlay chart — structure mirrors create_smgb_overlay_chart."""
+    import hashlib as _hashlib
     from datetime import timedelta as _td, date as _date
 
     if prediction is None:
         prediction = {}
+    if not constituent_exchanges:
+        constituent_exchanges = ["NYSE"]
     user_tz = time_engine.get_user_tz()
 
     if now_utc is None:
@@ -1121,6 +1125,20 @@ def create_etf_overlay_chart(
         "#f06292", "#4dd0e1", "#aed581", "#7986cb", "#ffb74d",
     ]
 
+    # Reserved exchange colours; all others get a deterministic hash-picked colour pair
+    _reserved_colors = {
+        "LSE":  ("#00cccc", "#888888"),
+        "NYSE": ("#f6ad55", "#f87171"),
+    }
+    _open_palette  = ["#84cc16", "#c084fc", "#f472b6", "#fde047", "#60a5fa", "#2dd4bf", "#fb923c", "#a78bfa", "#34d399"]
+    _close_palette = ["#4d7c0f", "#7e22ce", "#9d174d", "#b45309", "#1e3a8a", "#0f766e", "#c2410c", "#6d28d9", "#065f46"]
+
+    def _exchange_colors(exchange: str) -> "tuple[str, str]":
+        if exchange in _reserved_colors:
+            return _reserved_colors[exchange]
+        idx = int(_hashlib.md5(exchange.encode()).hexdigest(), 16) % len(_open_palette)
+        return _open_palette[idx], _close_palette[idx]
+
     fig = go.Figure()
 
     etf_local = _to_local(etf_series)
@@ -1154,19 +1172,27 @@ def create_etf_overlay_chart(
             hovertemplate=f"{ticker}: %{{y:+.2f}}%<extra></extra>",
         ))
 
-    # Market-event vertical lines — ETF exchange (cyan/grey) and constituent exchange (orange/red)
-    # Colours and dash styles mirror the hardcoded SMGB chart (LSE=cyan/grey, NYSE=orange/red)
-    etf_open_color, etf_close_color = "#00cccc", "#888888"
-    con_open_color, con_close_color = "#f6ad55", "#f87171"
-    _event_specs = [
-        (etf_exchange,          True,  f"{etf_exchange} Open",          etf_open_color,  "dot",  0.91, 1.2),
-        (etf_exchange,          False, f"{etf_exchange} Close",         etf_close_color, "dash", 1.00, 1.5),
-        (constituent_exchange,  True,  f"{constituent_exchange} Open",  con_open_color,  "dash", 0.97, 1.5),
-        (constituent_exchange,  False, f"{constituent_exchange} Close", con_close_color, "dot",  0.94, 1.2),
-    ]
-    # Remove duplicate entries when both exchanges are the same
-    if etf_exchange == constituent_exchange:
-        _event_specs = _event_specs[:2]
+    # Build exchange marker specs: ETF exchange first, then each unique constituent exchange.
+    # Y-positions are staggered so labels don't collide when many exchanges are shown.
+    _open_y_positions  = [0.97, 0.91, 0.85, 0.79, 0.73, 0.67]
+    _close_y_positions = [1.00, 0.94, 0.88, 0.82, 0.76, 0.70]
+    _event_specs = []
+    _seen_exchanges: list[str] = []
+
+    def _add_exchange_spec(exchange: str) -> None:
+        if exchange in _seen_exchanges:
+            return
+        _seen_exchanges.append(exchange)
+        idx = len(_seen_exchanges) - 1
+        open_col, close_col = _exchange_colors(exchange)
+        y_open  = _open_y_positions[min(idx, len(_open_y_positions) - 1)]
+        y_close = _close_y_positions[min(idx, len(_close_y_positions) - 1)]
+        _event_specs.append((exchange, True,  f"{exchange} Open",  open_col,  "dot",  y_open,  1.2))
+        _event_specs.append((exchange, False, f"{exchange} Close", close_col, "dash", y_close, 1.5))
+
+    _add_exchange_spec(etf_exchange)
+    for _con_exch in constituent_exchanges:
+        _add_exchange_spec(_con_exch)
 
     _check_start = (x_start - pd.Timedelta(hours=2)).date()
     _check_end = (x_end + pd.Timedelta(hours=2)).date()
@@ -1208,16 +1234,18 @@ def create_etf_overlay_chart(
         xanchor="left", yanchor="top",
     )
 
-    # Prediction star — place at the correct future market open
+    # Prediction star — place at ETF open for "ahead"/"same" sessions,
+    # at constituent open for "behind" (US → UK) intraday signals.
     pred_price = prediction.get("predicted_price")
     pred_pct = prediction.get("predicted_change_pct", 0)
     signal_source = prediction.get("signal_source", "daily_close")
     if pred_price and etf_last_close > 0 and next_open_date is not None:
         is_intraday = signal_source in ("intraday_premarket", "intraday_live")
-        if is_intraday:
-            # Star goes at constituent exchange open. Use constituent's OWN next-open logic
-            # (not trading_date, which may be yesterday if the ETF exchange hasn't opened yet).
-            _c_open_t, _c_close_t = time_engine.market_window_utc(constituent_exchange)
+        use_constituent_open = session_relationship == "behind" and is_intraday
+        if use_constituent_open:
+            # Star at primary constituent exchange open (SMGB.L / US → UK case)
+            _primary = constituent_exchanges[0]
+            _c_open_t, _c_close_t = time_engine.market_window_utc(_primary)
             _now_c = datetime.now(timezone.utc).replace(tzinfo=None)
             _today_c = datetime.now(timezone.utc).date()
             if _today_c.weekday() == 5:
@@ -1232,6 +1260,7 @@ def create_etf_overlay_chart(
                 _c_target = _today_c + _td(days=1)
             pred_dt_utc = datetime.combine(_c_target, _c_open_t)
         else:
+            # Star at ETF next open (Asia → UK, or post-close / daily-close signal)
             etf_open_t, _ = time_engine.market_window_utc(etf_exchange)
             pred_dt_utc = datetime.combine(next_open_date, etf_open_t)
         pred_dt = pd.Timestamp(pred_dt_utc).tz_localize("UTC").tz_convert(user_tz).tz_localize(None)

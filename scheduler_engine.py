@@ -124,10 +124,91 @@ def run_update_pipeline():
         DataEngine().update_all_data()
         from regime_engine import calculate_systemic_macro_threat, calculate_market_regime
         calculate_systemic_macro_threat()
-        calculate_market_regime()
+        regime_result = calculate_market_regime()
         QuantEngine().run_all()
         logger.info("Background update complete.")
         log_sched_notification("Success", "Update Pipeline completed successfully.")
+
+        # Fire Nextcloud alert when HMM regime transitions to a new state
+        hmm = (regime_result or {}).get("hmm", {})
+        if (
+            hmm
+            and hmm.get("state") is not None
+            and hmm.get("previous_state") is not None
+            and hmm["state"] != hmm["previous_state"]
+        ):
+            config = load_config()
+            notif_cfg = config.get("NOTIFICATIONS", {}).get("HMM_ALERTS", {})
+            msg = (
+                f"HMM REGIME CHANGE: {hmm['previous_label']} → {hmm['label']} "
+                f"(confidence: {hmm['probability']:.0%}) | {hmm['date']}"
+            )
+            log_sched_notification("HMM Regime", msg)
+            if notif_cfg.get("NEXTCLOUD_ENABLED", False):
+                orch = IntradayOrchestrator()
+                conn_alert = None
+                try:
+                    from database import get_connection as _gc
+                    conn_alert = _gc()
+                    suppress = orch._evaluate_alert_gate(
+                        "HMM", "SPY", None, f"REGIME_{hmm['label']}", conn_alert
+                    )
+                    if not suppress:
+                        try:
+                            ok = send_text_message(msg, config)
+                        except Exception as _e:
+                            logger.error("HMM: Nextcloud dispatch failed: %s", _e)
+                            ok = False
+                        if ok:
+                            orch.record_alert_fired(
+                                "HMM", "SPY", None, f"REGIME_{hmm['label']}", conn_alert
+                            )
+                except Exception as _e:
+                    logger.error("HMM alert gate error: %s", _e)
+                finally:
+                    if conn_alert:
+                        conn_alert.close()
+
+        # Fire notification when market stress IF detects sustained systemic anomaly
+        stress = (regime_result or {}).get("market_stress", {})
+        if stress and stress.get("alert"):
+            config = load_config()
+            stress_cfg = config.get("NOTIFICATIONS", {}).get("MARKET_STRESS_ALERTS", {})
+            feats = stress.get("features", {})
+            msg = (
+                f"MARKET STRESS ALERT: Multivariate anomaly score {stress['score']:.2f}/1.00 "
+                f"— systemic conditions are statistically abnormal. "
+                f"VIX: {feats.get('vix_level', 0):.1f} | "
+                f"SPY: {feats.get('spy_return', 0):+.2f}% | "
+                f"HYG: {feats.get('hyg_return', 0):+.2f}% | "
+                f"10Y Δ: {feats.get('tnx_change', 0):+.2f}bps | {stress['date']}"
+            )
+            log_sched_notification("Market Stress", msg)
+            if stress_cfg.get("NEXTCLOUD_ENABLED", False):
+                orch = IntradayOrchestrator()
+                conn_alert = None
+                try:
+                    from database import get_connection as _gc
+                    conn_alert = _gc()
+                    suppress = orch._evaluate_alert_gate(
+                        "MarketStress", "MARKET", None, "STRESS_ELEVATED", conn_alert
+                    )
+                    if not suppress:
+                        try:
+                            ok = send_text_message(msg, config)
+                        except Exception as _e:
+                            logger.error("Market stress: Nextcloud dispatch failed: %s", _e)
+                            ok = False
+                        if ok:
+                            orch.record_alert_fired(
+                                "MarketStress", "MARKET", None, "STRESS_ELEVATED", conn_alert
+                            )
+                except Exception as _e:
+                    logger.error("Market stress alert gate error: %s", _e)
+                finally:
+                    if conn_alert:
+                        conn_alert.close()
+
     except Exception as e:
         log_sched_notification("Error", f"Update Pipeline failed: {e}")
     finally:

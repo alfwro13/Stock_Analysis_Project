@@ -1931,11 +1931,11 @@
                         </div>
                         <div style="margin-top:12px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
                             <div class="form-group mb-0">
-                                <label>Pre-run time (UTC)</label>
+                                <label>Pre-run time (<span class="etf-tz-label"></span>)</label>
                                 <input type="time" id="etf-new-pre-time" value="13:30">
                             </div>
                             <div class="form-group mb-0">
-                                <label>Post-run time (UTC)</label>
+                                <label>Post-run time (<span class="etf-tz-label"></span>)</label>
                                 <input type="time" id="etf-new-post-time" value="22:00">
                             </div>
                             <div class="form-group mb-0" style="justify-content:flex-end;padding-bottom:2px;">
@@ -2532,6 +2532,30 @@
         // ── ETF Predictor settings JS ─────────────────────────────────────────
         let _etfConfigCache = {};
 
+        const _etfUserTz = "{{ config.USER_TIMEZONE | default('Europe/London') }}";
+        function _etfOffsetMin() {
+            const ref = new Date(); ref.setUTCHours(12, 0, 0, 0);
+            const parts = new Intl.DateTimeFormat('en', {timeZone: _etfUserTz, hour:'numeric', minute:'numeric', hour12:false}).formatToParts(ref);
+            const h = +parts.find(p => p.type === 'hour').value;
+            const m = +parts.find(p => p.type === 'minute').value;
+            let off = (h - 12) * 60 + m;
+            if (off < -660) off += 1440;
+            return off;
+        }
+        function _etfTzAbbr() {
+            return new Intl.DateTimeFormat('en', {timeZone: _etfUserTz, timeZoneName:'short'}).formatToParts(new Date()).find(p => p.type === 'timeZoneName')?.value || 'local';
+        }
+        function _utcHhmToLocal(hhmm) {
+            const [h, m] = hhmm.split(':').map(Number);
+            const t = ((h * 60 + m + _etfOffsetMin()) % 1440 + 1440) % 1440;
+            return String(Math.floor(t / 60)).padStart(2,'0') + ':' + String(t % 60).padStart(2,'0');
+        }
+        function _localHhmToUtc(hhmm) {
+            const [h, m] = hhmm.split(':').map(Number);
+            const t = ((h * 60 + m - _etfOffsetMin()) % 1440 + 1440) % 1440;
+            return String(Math.floor(t / 60)).padStart(2,'0') + ':' + String(t % 60).padStart(2,'0');
+        }
+
         function _etfConstituentRowHtml(ticker = '', weight = '') {
             const t = ticker ? ` value="${ticker}"` : '';
             const w = weight !== '' ? ` value="${weight}"` : '';
@@ -2581,12 +2605,12 @@
                 </div>
                 <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
                     <div class="form-group mb-0">
-                        <label>Pre-run (UTC)</label>
-                        <input type="time" id="etf-edit-pre-${cfg.id}" value="${cfg.pre_run_time}">
+                        <label>Pre-run (${_etfTzAbbr()})</label>
+                        <input type="time" id="etf-edit-pre-${cfg.id}" value="${_utcHhmToLocal(cfg.pre_run_time)}">
                     </div>
                     <div class="form-group mb-0">
-                        <label>Post-run (UTC)</label>
-                        <input type="time" id="etf-edit-post-${cfg.id}" value="${cfg.post_run_time}">
+                        <label>Post-run (${_etfTzAbbr()})</label>
+                        <input type="time" id="etf-edit-post-${cfg.id}" value="${_utcHhmToLocal(cfg.post_run_time)}">
                     </div>
                     <div class="form-group mb-0" style="justify-content:flex-end;padding-bottom:2px;">
                         <label>&nbsp;</label>
@@ -2645,7 +2669,7 @@
                             </div>
                         </div>
                         <div style="margin-top:8px;font-size:12px;color:#888;">
-                            Pre: ${cfg.pre_run_time} UTC &nbsp;|&nbsp; Post: ${cfg.post_run_time} UTC
+                            Pre: ${_utcHhmToLocal(cfg.pre_run_time)} ${_etfTzAbbr()} &nbsp;|&nbsp; Post: ${_utcHhmToLocal(cfg.post_run_time)} ${_etfTzAbbr()}
                             &nbsp;|&nbsp; ${cfg.constituents.map(h => h.ticker).join(', ')}
                         </div>
                         <div id="etf-status-${cfg.id}" class="status-msg-sm" style="margin-top:6px;"></div>
@@ -2778,8 +2802,8 @@
                         name, etf_ticker: ticker, constituents,
                         enabled: document.getElementById('etf-new-enabled').checked,
                         auto_schedule: document.getElementById('etf-new-auto-schedule').checked,
-                        pre_run_time: document.getElementById('etf-new-pre-time').value,
-                        post_run_time: document.getElementById('etf-new-post-time').value,
+                        pre_run_time: _localHhmToUtc(document.getElementById('etf-new-pre-time').value),
+                        post_run_time: _localHhmToUtc(document.getElementById('etf-new-post-time').value),
                     })
                 });
                 const data = await r.json();
@@ -2808,8 +2832,8 @@
                         name, etf_ticker: ticker, constituents,
                         enabled: document.getElementById(`etf-edit-en-${id}`)?.checked ?? true,
                         auto_schedule: document.getElementById(`etf-edit-sched-${id}`)?.checked ?? false,
-                        pre_run_time: document.getElementById(`etf-edit-pre-${id}`)?.value || '13:30',
-                        post_run_time: document.getElementById(`etf-edit-post-${id}`)?.value || '22:00',
+                        pre_run_time: _localHhmToUtc(document.getElementById(`etf-edit-pre-${id}`)?.value || '13:30'),
+                        post_run_time: _localHhmToUtc(document.getElementById(`etf-edit-post-${id}`)?.value || '22:00'),
                     })
                 });
                 const data = await r.json();
@@ -2888,6 +2912,11 @@
                 });
                 if (toolsDetails.open) loadEtfPredictors();
             }
+            document.querySelectorAll('.etf-tz-label').forEach(el => el.textContent = _etfTzAbbr());
+            const _preEl = document.getElementById('etf-new-pre-time');
+            const _postEl = document.getElementById('etf-new-post-time');
+            if (_preEl) _preEl.value = _utcHhmToLocal('13:30');
+            if (_postEl) _postEl.value = _utcHhmToLocal('22:00');
         });
 
         async function triggerLunchBriefing() {

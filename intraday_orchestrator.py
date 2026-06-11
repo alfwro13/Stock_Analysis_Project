@@ -176,6 +176,8 @@ class IntradayOrchestrator:
             key = "ANOMALY_ALERTS"
         elif engine == "AIContagion":
             key = "AI_CONTAGION"
+        elif engine == "MarketStress":
+            key = "MARKET_STRESS_ALERTS"
         else:  # Macro and any future engines
             key = "MACRO_ALERTS"
         block = self.config.get("NOTIFICATIONS", {}).get(key, {})

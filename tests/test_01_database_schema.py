@@ -73,6 +73,7 @@ EXPECTED_TABLES = [
     "smgb_predictions",
     "model_training_log",
     "trap_monitor_results",
+    "price_hmm_states",
 ]
 
 

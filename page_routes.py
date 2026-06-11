@@ -1106,6 +1106,18 @@ async def trap_monitor_page(request: Request):
     )
 
 
+@page_router.get("/market-regime", response_class=HTMLResponse)
+async def market_regime_page(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="market_regime.html",
+        context={
+            "unread_count": get_unread_count(),
+            "config": load_config(),
+        },
+    )
+
+
 @page_router.get("/etf-predictor", response_class=HTMLResponse)
 async def etf_predictor_index_page(request: Request):
     from database import get_etf_predictor_configs, get_etf_accuracy
@@ -1193,7 +1205,7 @@ async def etf_predictor_detail_page(request: Request, config_id: int):
         overlay_chart_html = create_etf_overlay_chart(
             cfg["etf_ticker"],
             etf_info["exchange"],
-            overlay_data["constituent_exchange"],
+            overlay_data["constituent_exchanges"],
             overlay_data["etf_series"],
             overlay_data["constituent_series"],
             overlay_data["etf_last_close"],
@@ -1202,6 +1214,7 @@ async def etf_predictor_detail_page(request: Request, config_id: int):
             constituent_prev_closes=overlay_data.get("constituent_prev_closes"),
             now_utc=overlay_data.get("now_utc"),
             trading_date=overlay_data.get("trading_date"),
+            session_relationship=overlay_data.get("session_relationship", "behind"),
         )
     except Exception as exc:
         logger.warning("etf_predictor_detail overlay chart failed: %s", exc)
@@ -1448,6 +1461,9 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
     
     if stock_data:
         stock_data = dict(stock_data)
+        _cp = stock_data.get("current_price") or 0.0
+        stock_data["trend_50d"] = "UP" if stock_data.get("sma_50") and _cp > stock_data["sma_50"] else "DOWN"
+        stock_data["trend_200d"] = "UP" if stock_data.get("sma_200") and _cp > stock_data["sma_200"] else "DOWN"
         # Resolve best available display name — mutual funds often have no shortName
         # from yfinance; fall back through asset_profiles → market_universe
         stock_data['company_name'] = (

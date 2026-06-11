@@ -40,8 +40,12 @@ The SQLite database acts as the central brain of the dashboard. It uses a star-l
 ### System, Macro & AI Models Tables
 
 #### `market_regimes`
-* **Purpose:** Tracks broad market volatility regimes and surface states for the AI Hidden Markov Model (HMM).
-* **Key Columns:** `date` (PK), `vix_close`, `spy_volatility`, `us_turbulence`, `us_regime_label`, `uk_turbulence`, `uk_regime_label`, `ai_hmm_state`.
+* **Purpose:** Tracks broad market volatility regimes, the HMM surface state, and the market-wide Isolation Forest stress score.
+* **Key Columns:** `date` (PK), `vix_close`, `spy_volatility`, `us_turbulence`, `us_regime_label`, `uk_turbulence`, `uk_regime_label`, `ai_hmm_state`, `price_hmm_state` (0=Bull/1=Chop/2=Crash), `price_hmm_label` (text label), `price_hmm_prob` (posterior probability of current state), `market_stress_score` (REAL [0,1] — 1.0 = maximally anomalous), `market_stress_features` (TEXT — JSON blob of the 6 raw feature values: `vix_level`, `vix_ma_ratio`, `hyg_return`, `tnx_change`, `spy_vol_zscore`, `spy_return`).
+
+#### `price_hmm_states`
+* **Purpose:** Full Viterbi-decoded state history from the price-action HMM — one row per trading day. Used by the `/market-regime` page and the `/api/market-regime` endpoint.
+* **Key Columns:** `date` (PK), `state` (INTEGER 0/1/2), `label` (TEXT: Bull/Chop/Crash), `probability` (REAL posterior confidence).
 
 #### `macro_regimes`
 * **Purpose:** Dual-region tracker for systemic threat levels derived from sovereign bond yields and exchange rates. Also stores the synthesised macro regime label computed by `regime_engine.classify_macro_regime()`.

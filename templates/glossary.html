@@ -71,6 +71,11 @@
                     <p>A macro filter using EWMA realized volatility of SPY and FTSE. VIX is shown alongside for reference but is not part of the regime signal. Classifies market into Normal, Volatile, or Crash regimes.</p>
                 </div>
                 <div class="term-box">
+                    <span class="term-title">Market Regime — Price HMM</span>
+                    <p>A 3-state <strong>Hidden Markov Model</strong> trained on 5 years of SPY daily log-returns and 20-day EWMA annualised volatility (λ=0.94). States are sorted by mean volatility so the ordering is stable across daily retrains: <strong>State 0 = Bull</strong> (low vol, positive returns), <strong>State 1 = Chop</strong> (elevated vol, indecisive), <strong>State 2 = Crash</strong> (high vol, negative returns). The current state and confidence probability are shown on the Trap Monitor page; the full Viterbi history, transition matrix, and per-regime statistics are at <code>/market-regime</code>. When the regime transitions, a Nextcloud alert fires.</p>
+                    <div class="rule">Distinct from the <em>Macro HMM</em> in <code>macro_ai_engine.py</code> (which is trained on M2, jobless claims, HY spread, and yield curve to predict macro calendar event impacts). This one operates on price and volatility only — it is a market-microstructure signal, not a macro-fundamental one.</div>
+                </div>
+                <div class="term-box">
                     <span class="term-title">🌍 Macro Regime Label (Yield Curve Allocator)</span>
                     <p>A single named state synthesised from yield curve shape, CPI inflation, high-yield credit spreads, the 10-year TIPS real yield, and the HMM hidden state. Five labels are defined: <strong>Risk-On</strong> (positive curve, low inflation, tight spreads), <strong>Late Cycle</strong> (flattening curve, rising CPI), <strong>Stagflation</strong> (high CPI with financial stress or negative real yield), <strong>Contraction</strong> (inverted curve plus recession-mode HMM), and <strong>Recovery</strong> (transitioning out of contraction with improving HMM).</p>
                     <div class="rule">Computed by <code>regime_engine.classify_macro_regime()</code> each time the systemic threat calculator runs. Stored as <code>regime_label</code> in <code>macro_regimes</code>. Powers the Macro Regime Allocator tool at <code>/macro-allocator</code>.</div>
@@ -90,6 +95,17 @@
                     </ul>
                     <div class="rule">KEY DISTINCTION: This is an early-warning layer, not a crash detector. A score above 0.70 while the price is flat or rising often indicates silent institutional repositioning — accumulation or distribution at scale — before the price reaction is visible.</div>
                     <p>Models are retrained nightly at 18:30 (Mon–Fri) after market close and are stored as per-ticker <code>.joblib</code> files. Historical scores are backfilled across the full <code>quant_signals</code> history so the 90-day chart on each stock detail page is populated immediately after training.</p>
+                </div>
+                <div class="term-box">
+                    <span class="term-title">Market Stress Score</span>
+                    <p>A market-wide <strong>Isolation Forest</strong> trained daily on 2 years of six macro features: VIX level, VIX relative to its 20-day average (spike detector), HYG credit ETF daily return, US 10-year yield daily change, SPY volume z-score, and SPY daily return. Unlike the per-ticker anomaly score — which asks "is this stock unusual?" — the Market Stress Score asks "is the <em>market structure itself</em> unusual?" A score near 1.0 means the joint distribution of these six signals is in territory that only occurred in roughly 5% of all trading days over the past two years.</p>
+                    <p>The output is a score between <strong>0.00 and 1.00</strong>:</p>
+                    <ul>
+                        <li><strong>0.00 – 0.50 (Normal):</strong> The macro environment is operating within its typical multivariate range.</li>
+                        <li><strong>0.50 – 0.75 (Elevated):</strong> One or more macro signals are stretched; monitor for follow-through.</li>
+                        <li><strong>0.75 – 1.00 (Stress Alert):</strong> The combination of signals is statistically rare. A Nextcloud alert fires if the score remains above 0.75 for two consecutive trading days.</li>
+                    </ul>
+                    <div class="rule">COMPLEMENTARY TO HMM: The HMM classifies <em>which regime</em> the market is in (Bull / Chop / Crash). The Market Stress Score measures <em>how anomalous</em> the current regime environment is relative to its own history. A Crash-regime day with a low stress score is a routine bad day; a Chop-regime day with a high stress score may precede a regime transition.</div>
                 </div>
             </details>
 

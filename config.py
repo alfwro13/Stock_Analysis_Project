@@ -300,6 +300,10 @@ DEFAULT_CONFIG = {
             "CAPITULATION_VOL_ZSCORE": 3.0,
             "WYCKOFF_BB_SQUEEZE_PCT": 2.0,
             "PROXY_TICKERS": ["QQQ", "SMH", "NVDA", "MSFT", "AAPL"]
+        },
+        "MARKET_STRESS_ALERTS": {
+            "NEXTCLOUD_ENABLED": False,
+            "COOLDOWN_MINUTES": 1440
         }
     },
     "XRAY_TARGETS": {

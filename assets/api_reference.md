@@ -1404,7 +1404,57 @@ Triggers a background scan immediately. Returns `{"status": "success"}` immediat
 
 ---
 
-## 19. News Feed
+## 19. Market Regime (HMM + Market Stress IF)
+
+Price-action Hidden Markov Model (3 states: Bull / Chop / Crash) fitted on 5-year SPY returns and EWMA volatility, plus a market-wide Isolation Forest stress score. Both are updated daily as part of the quant pipeline. The IF score (`market_stress_score`, REAL [0,1]) and contributing features (`market_stress_features`, JSON) are stored in the `market_regimes` table alongside the HMM columns.
+
+### `GET /api/market-regime/current`
+
+Returns the latest HMM regime state and the most recent regime transition. Lightweight; used by the Trap Monitor panel.
+
+**Response:**
+```json
+{
+  "status": "success",
+  "current": { "state": 0, "label": "Bull", "probability": 0.87, "as_of": "2026-06-11" },
+  "last_change": { "date": "2026-05-14", "from_label": "Chop", "to_label": "Bull" }
+}
+```
+
+### `GET /api/market-regime`
+
+Returns full Viterbi history, empirical transition matrix, and per-regime return/vol statistics.
+
+**Response fields:** `current`, `last_change`, `history` (array of `{date, state, label, probability}`), `transition_matrix` (3×3 array), `regime_stats` (`{Bull, Chop, Crash}` each with `days`, `mean_daily_return`, `mean_vol`).
+
+### `POST /api/market-regime/run`
+
+Triggers `run_price_regime_hmm()` as a background task. Returns `{"status": "success"}` immediately.
+
+### `GET /api/market-stress`
+
+Returns the latest market-wide Isolation Forest stress score and the last 30 daily values. Used by the Market Stress panel on `/trap-monitor`.
+
+**Response:**
+```json
+{
+  "status": "success",
+  "current": {
+    "score": 0.42,
+    "features": {
+      "vix_level": 18.4, "vix_ma_ratio": 0.92, "hyg_return": -0.12,
+      "tnx_change": 0.02, "spy_vol_zscore": 0.8, "spy_return": -0.31
+    },
+    "date": "2026-06-11"
+  },
+  "history": [{ "date": "2026-05-13", "score": 0.38 }, "..."]
+}
+```
+`current` is `null` when no score has been computed yet (first run pending). `history` is ordered oldest-first, up to 30 entries.
+
+---
+
+## 20. News Feed
 
 Stores and retrieves news articles for portfolio and watchlist tickers. Articles are fetched via yfinance, full-text extracted via trafilatura, and sentiment-scored via FinBERT. Results are stored in the `news_articles` table.
 
