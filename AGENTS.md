@@ -84,6 +84,11 @@ Stock_Analysis_Project/
 │
 ├── templates/                # Jinja2 HTML templates
 ├── static/                   # CSS, JS, images
+│   ├── css/styles.css        # Global stylesheet (single source of truth for all styles)
+│   └── js/
+│       ├── csrf.js           # CSRF token helper
+│       ├── position_sizing.js
+│       └── settings.js       # Settings page JS (2100 lines, extracted from settings.html)
 ├── data/                     # Runtime data (SQLite, Parquet, JSON)
 │   ├── analysis.db
 │   ├── historical/*.parquet  # 2-year daily OHLCV per ticker
@@ -218,6 +223,7 @@ Every code change that adds, removes, or significantly alters a feature **must**
 - **Run `./run_tests.sh`** after every change and fix failures before marking work done.
 - **Tooltips:** Use `<abbr title="Explanation text.">Label</abbr>` — wrap the label itself, no custom JS tooltip systems, no icon, no `style` attribute on the `<abbr>`. The global CSS in `static/css/styles.css` already applies `text-decoration: underline dotted #666`, `cursor: pointer`, and `color: inherit` to all `abbr` elements. Never override these inline. Keep tooltip text to 1–2 sentences matching existing examples (e.g. Support 1, RSI, ATR).
 - **Styles belong in `static/css/styles.css`:** Do not write inline `style="..."` attributes. Check whether a CSS class already exists before adding anything. Only use inline styles in JS-generated HTML (e.g. dynamic `innerHTML`) where class-based styling is impractical, and even then keep it minimal.
+- **Large JS blocks belong in `static/js/`:** If a template `<script>` block exceeds ~50 lines, extract it to a `.js` file (see `settings.html` / `settings.js` as the reference). Use a small inline bootstrap to expose any Jinja-derived values as `window.*` globals, then load the external file with `<script src="/static/js/file.js?v={{ css_version }}">`. Never put `{{ ... }}` Jinja interpolations inside `.js` files.
 - **UK market quirks:** LSE-listed stocks may have prices quoted in pence (GBX), not pounds (GBP). The codebase handles this explicitly — do not remove or simplify that logic.
 - **Secrets:** All credentials live in `.env` (loaded via `python-dotenv`). Never hard-code tokens or API keys. Never commit `.env`.
 - **Port:** Default is `8090`. Do not change it without updating `config.json` and `config.py`.
