@@ -17,3 +17,4 @@ ml_pipeline_results.json
 .env
 *.env
 audit*.md
+task_prompt.md

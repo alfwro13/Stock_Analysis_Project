@@ -17,11 +17,16 @@ import pytest
 PROJECT_ROOT = Path(__file__).parent.parent
 
 # Files that are allowed to import yfinance directly (with reason):
-#   yahoo_engine.py — the gateway itself; it must import yfinance
-#   api_routes.py   — IPv6/network diagnostic endpoint that tests the raw session
+#   yahoo_engine.py    — the gateway itself; it must import yfinance
+#   api_routes.py      — IPv6/network diagnostic endpoint that tests the raw session
+#   network_engine.py  — lazy `from yfinance.data import YfData` inside a function body
+#                        to clear the singleton crumb cache after a session replacement;
+#                        can't move to yahoo_engine because yahoo_engine already imports
+#                        yahoo_connection_boundary from this module (circular import).
 ALLOWED_EXCEPTIONS = {
     "yahoo_engine.py",
     "api_routes.py",
+    "network_engine.py",
 }
 
 

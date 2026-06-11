@@ -358,3 +358,194 @@ class TestLoadHistoryAutoFetch:
         ):
             result = self.engine._load_history("FAIL")
         assert result is None
+
+
+# ── _detect_bear_trap() ────────────────────────────────────────────────────────
+
+def _make_bear_trap_df(
+    n: int = 30,
+    support: float = 90.0,
+    intraday_breach: float = 0.5,  # how far below support the low goes
+    close_recovery: float = 1.0,   # how far above support the close is
+    vol_ratio: float = 0.8,        # today's vol as multiple of 20d avg
+) -> pd.DataFrame:
+    """Rising prices plateau at ~100, then one breakdown bar below support that closes back above."""
+    prices = np.linspace(85.0, 100.0, n - 1)
+    avg_vol = 1_000_000.0
+    vols = np.full(n - 1, avg_vol)
+    # Append breakdown bar: low < support, close > support
+    breakdown_close = support + close_recovery
+    breakdown_low   = support - intraday_breach
+    prices = np.append(prices, breakdown_close)
+    vols   = np.append(vols, avg_vol * vol_ratio)
+    return pd.DataFrame({
+        "Open":   prices,
+        "High":   prices + 1.0,
+        "Low":    np.append(prices[:-1] - 0.5, breakdown_low),
+        "Close":  prices,
+        "Volume": vols,
+    })
+
+
+class TestDetectBearTrap:
+    def setup_method(self):
+        self.engine = TrapEngine(_CFG)
+
+    def _run(self, df: pd.DataFrame) -> dict:
+        close = df["Close"]
+        vol   = df["Volume"]
+        low   = df["Low"]
+        bb    = ta.volatility.BollingerBands(close=close, window=20, window_dev=2)
+        rsi14 = ta.momentum.RSIIndicator(close=close, window=14).rsi()
+        return self.engine._detect_bear_trap(df, close, vol, low, bb, rsi14)
+
+    def test_safe_when_no_support_breach(self):
+        # Rising prices, low always above prior 20-day low → no breakdown
+        result = self._run(_make_rising_df(n=35))
+        assert result["level"] == "SAFE"
+
+    def test_safe_with_insufficient_data(self):
+        df = _make_rising_df(n=15)
+        result = self._run(df)
+        assert result["level"] == "SAFE"
+
+    def test_confirmed_bear_trap_on_very_low_volume(self):
+        # vol_ratio=0.5, below default bear_vol_ratio=1.20 → CONFIRMED
+        result = self._run(_make_bear_trap_df(vol_ratio=0.5))
+        assert result["level"] == "CONFIRMED_BEAR_TRAP"
+
+    def test_possible_bear_trap_on_moderate_volume(self):
+        # vol_ratio=1.5, above 1.20 threshold → POSSIBLE
+        result = self._run(_make_bear_trap_df(vol_ratio=1.5))
+        assert result["level"] == "POSSIBLE_BEAR_TRAP"
+
+    def test_safe_when_close_did_not_recover_above_support(self):
+        # close = support - 0.5 (still below support)
+        result = self._run(_make_bear_trap_df(close_recovery=-0.5))
+        assert result["level"] == "SAFE"
+
+    def test_notes_present_on_confirmed(self):
+        result = self._run(_make_bear_trap_df(vol_ratio=0.5))
+        assert result.get("notes"), "Expected notes string on CONFIRMED_BEAR_TRAP"
+
+
+# ── _detect_capitulation() ─────────────────────────────────────────────────────
+
+def _make_capitulation_df(
+    n: int = 40,
+    vol_multiplier: float = 5.0,  # today's vol vs 20d mean
+    rsi_seed_low: bool = True,     # drive RSI below 30 via big decline
+    close_in_upper_half: bool = True,
+) -> pd.DataFrame:
+    """Declining prices ending in a volume-climax bar with extreme RSI."""
+    # Big decline to force RSI deeply oversold
+    prices = np.linspace(100.0, 60.0, n - 1) if rsi_seed_low else np.linspace(95.0, 90.0, n - 1)
+    base_vol = 1_000_000.0
+    vols = np.full(n - 1, base_vol)
+    # Capitulation bar
+    cap_high  = prices[-1] + 5.0
+    cap_low   = prices[-1] - 10.0
+    cap_close = (cap_high if close_in_upper_half else prices[-1] - 4.0)
+    prices = np.append(prices, cap_close)
+    vols   = np.append(vols, base_vol * vol_multiplier)
+    highs  = np.append(prices[:-1] + 1.0, cap_high)
+    lows   = np.append(prices[:-1] - 1.0, cap_low)
+    return pd.DataFrame({
+        "Open": prices, "High": highs, "Low": lows,
+        "Close": prices, "Volume": vols,
+    })
+
+
+class TestDetectCapitulation:
+    def setup_method(self):
+        self.engine = TrapEngine(_CFG)
+
+    def _run(self, df: pd.DataFrame) -> dict:
+        close = df["Close"]
+        high  = df["High"]
+        low   = df["Low"]
+        vol   = df["Volume"]
+        ema20 = ta.trend.EMAIndicator(close=close, window=20).ema_indicator()
+        rsi14 = ta.momentum.RSIIndicator(close=close, window=14).rsi()
+        return self.engine._detect_capitulation(df, close, high, low, vol, ema20, rsi14)
+
+    def test_none_on_insufficient_data(self):
+        df = _make_capitulation_df(n=20)
+        result = self._run(df)
+        assert result["level"] == "NONE"
+
+    def test_none_when_volume_not_elevated(self):
+        # vol_multiplier=1 → z-score near 0, gate_vol fails
+        result = self._run(_make_capitulation_df(vol_multiplier=1.0))
+        assert result["level"] == "NONE"
+
+    def test_capitulation_forming_on_all_gates_met_upper_close(self):
+        # Large volume spike + oversold RSI + close in upper half of range
+        result = self._run(_make_capitulation_df(vol_multiplier=5.0, close_in_upper_half=True))
+        assert result["level"] == "CAPITULATION_FORMING"
+
+    def test_watch_when_close_in_lower_half(self):
+        result = self._run(_make_capitulation_df(vol_multiplier=5.0, close_in_upper_half=False))
+        assert result["level"] == "WATCH"
+
+    def test_vol_zscore_present_in_result(self):
+        result = self._run(_make_capitulation_df(vol_multiplier=5.0))
+        assert "vol_zscore" in result
+
+
+# ── _detect_wyckoff() ─────────────────────────────────────────────────────────
+
+def _make_wyckoff_df(n: int = 50) -> pd.DataFrame:
+    """
+    Downtrend for 2/3 of bars, then low-volatility consolidation (prices barely move,
+    volume dries up, BB width contracts) — designed to trigger all three severity gates.
+    """
+    decline = np.linspace(100.0, 75.0, n // 2)
+    base_p  = 75.0
+    # Tight sideways: prices jitter ±0.1 so BB squeeze is extreme
+    consolidate = base_p + np.sin(np.linspace(0, np.pi, n - n // 2)) * 0.1
+    prices  = np.concatenate([decline, consolidate])
+    # Volume: high during decline, very low during consolidation
+    vols    = np.concatenate([
+        np.full(n // 2, 2_000_000.0),
+        np.full(n - n // 2, 200_000.0),
+    ])
+    return pd.DataFrame({
+        "Open": prices, "High": prices + 0.05,
+        "Low":  prices - 0.05, "Close": prices,
+        "Volume": vols,
+    })
+
+
+class TestDetectWyckoff:
+    def setup_method(self):
+        self.engine = TrapEngine(_CFG)
+
+    def _run(self, df: pd.DataFrame) -> dict:
+        close = df["Close"]
+        vol   = df["Volume"]
+        bb    = ta.volatility.BollingerBands(close=close, window=20, window_dev=2)
+        atr   = ta.volatility.AverageTrueRange(
+            high=df["High"], low=df["Low"], close=close, window=14
+        ).average_true_range()
+        return self.engine._detect_wyckoff(df, close, vol, bb, atr)
+
+    def test_none_on_insufficient_data(self):
+        df = _make_rising_df(n=20)
+        result = self._run(df)
+        assert result["level"] == "NONE"
+
+    def test_none_when_prices_rising_and_volatile(self):
+        # Rising prices → BB width not at historical minimum → gate fails
+        result = self._run(_make_rising_df(n=50))
+        assert result["level"] == "NONE"
+
+    def test_accumulation_phase_on_tight_consolidation_after_downtrend(self):
+        result = self._run(_make_wyckoff_df())
+        assert result["level"] in ("ACCUMULATION_PHASE", "SQUEEZE_FORMING"), (
+            f"Expected accumulation signal, got {result['level']!r}"
+        )
+
+    def test_bb_width_present_in_result(self):
+        result = self._run(_make_wyckoff_df())
+        assert "bb_width" in result
