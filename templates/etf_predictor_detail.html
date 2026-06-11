@@ -63,8 +63,12 @@
             </div>
             <div class="xray-metric-card">
                 <div class="xray-metric-label"><abbr title="FX spot rate used for currency adjustment between ETF and constituent prices.">{{ prediction.fx_pair if prediction.fx_pair else 'FX Rate' }}</abbr></div>
-                <div class="xray-metric-value">{{ prediction.fx_rate if prediction.fx_rate else '—' }}</div>
-                {% if not prediction.fx_pair or not prediction.fx_rate or prediction.fx_rate == 1.0 %}<span class="badge-warn">FX data unavailable &mdash; adjustment skipped</span>{% endif %}
+                <div class="xray-metric-value">{{ prediction.fx_rate if (prediction.fx_rate and prediction.fx_rate != 1.0) else '—' }}</div>
+                {% if prediction.fx_pair and prediction.fx_rate == 1.0 %}
+                <span class="badge-warn">FX rate unavailable &mdash; adjustment skipped</span>
+                {% elif not prediction.fx_pair %}
+                <span class="xray-metric-sublabel xray-metric-label">No FX adjustment (same currency)</span>
+                {% endif %}
             </div>
             <div class="xray-metric-card">
                 <div class="xray-metric-label">Model</div>

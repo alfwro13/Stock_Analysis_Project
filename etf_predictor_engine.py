@@ -133,11 +133,23 @@ def _filter_pre_constituent_open(
     return df[(df.index >= premarket_start) & (df.index < constituent_open)]
 
 
+def _ticker_exchange_explicit(ticker: str) -> str:
+    """Exchange from ticker suffix only — never falls back to HOME_EXCHANGE.
+    Plain tickers (no recognised suffix) are assumed NYSE/USD."""
+    if ticker.endswith(".L"):
+        return "LSE"
+    if ticker.endswith(".DE"):
+        return "XETRA"
+    if ticker.endswith(".T"):
+        return "TSE"
+    return "NYSE"
+
+
 def _infer_constituent_exchange(tickers: list) -> str:
     """Returns the most common exchange inferred from ticker suffixes."""
     counts: dict[str, int] = {}
     for t in tickers:
-        ex = time_engine.ticker_exchange(t)
+        ex = _ticker_exchange_explicit(t)
         counts[ex] = counts.get(ex, 0) + 1
     if not counts:
         return "NYSE"
@@ -146,7 +158,7 @@ def _infer_constituent_exchange(tickers: list) -> str:
 
 def _constituent_currencies(tickers: list) -> list:
     return [
-        _EXCHANGE_TO_CURRENCY.get(time_engine.ticker_exchange(t), "USD")
+        _EXCHANGE_TO_CURRENCY.get(_ticker_exchange_explicit(t), "USD")
         for t in tickers
     ]
 

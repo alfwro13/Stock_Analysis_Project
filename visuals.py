@@ -1,6 +1,6 @@
 import numpy as np
 import plotly.graph_objects as go
-from datetime import datetime
+from datetime import datetime, timezone
 from plotly.subplots import make_subplots
 import pandas as pd
 import ta
