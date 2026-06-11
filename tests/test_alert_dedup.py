@@ -185,6 +185,18 @@ class TestDedupSettings:
         assert s["cooldown_minutes"] == 240.0
         assert s["retrigger_percent"] == 1.5
 
+    def test_market_stress_reads_market_stress_alerts_block(self, orch):
+        orch.config = {
+            "NOTIFICATIONS": {
+                "MARKET_STRESS_ALERTS": {"COOLDOWN_MINUTES": 60.0, "RETRIGGER_PERCENT": 1.0, "REARM_PERCENT": 1.5},
+                "MACRO_ALERTS": {"COOLDOWN_MINUTES": 999.0},  # must NOT be used
+            }
+        }
+        s = orch._dedup_settings("MarketStress")
+        assert s["cooldown_minutes"] == 60.0
+        assert s["retrigger_percent"] == 1.0
+        assert s["rearm_percent"] == 1.5
+
     def test_missing_key_uses_safe_fallback(self, orch):
         orch.config = {"NOTIFICATIONS": {"CRASH_ALERTS": {}}}
         s = orch._dedup_settings("Crash")
