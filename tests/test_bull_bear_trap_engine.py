@@ -364,26 +364,24 @@ class TestLoadHistoryAutoFetch:
 
 def _make_bear_trap_df(
     n: int = 30,
-    support: float = 90.0,
-    intraday_breach: float = 0.5,  # how far below support the low goes
-    close_recovery: float = 1.0,   # how far above support the close is
-    vol_ratio: float = 0.8,        # today's vol as multiple of 20d avg
+    breakdown_low: float = 97.0,
+    breakdown_close: float = 100.5,
+    vol_ratio: float = 0.8,
 ) -> pd.DataFrame:
-    """Rising prices plateau at ~100, then one breakdown bar below support that closes back above."""
-    prices = np.linspace(85.0, 100.0, n - 1)
-    avg_vol = 1_000_000.0
-    vols = np.full(n - 1, avg_vol)
-    # Append breakdown bar: low < support, close > support
-    breakdown_close = support + close_recovery
-    breakdown_low   = support - intraday_breach
-    prices = np.append(prices, breakdown_close)
-    vols   = np.append(vols, avg_vol * vol_ratio)
+    """
+    Prices flat at 100 for n-1 bars (lows at 99.9); one breakdown bar where the low
+    clearly breaches the prior-20-day low (99.9) and the close recovers above it.
+    The BB lower band (~99.8) serves as the computed support level.
+    """
+    base_vol      = 1_000_000.0
+    stable_prices = np.full(n - 1, 100.0)
+    stable_lows   = np.full(n - 1, 99.9)
+    prices = np.append(stable_prices, breakdown_close)
+    lows   = np.append(stable_lows, breakdown_low)
+    vols   = np.append(np.full(n - 1, base_vol), base_vol * vol_ratio)
     return pd.DataFrame({
-        "Open":   prices,
-        "High":   prices + 1.0,
-        "Low":    np.append(prices[:-1] - 0.5, breakdown_low),
-        "Close":  prices,
-        "Volume": vols,
+        "Open": prices, "High": prices + 0.1,
+        "Low":  lows, "Close": prices, "Volume": vols,
     })
 
 
