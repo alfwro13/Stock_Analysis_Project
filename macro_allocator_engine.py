@@ -4,6 +4,7 @@ from typing import Dict, List, Optional, Any
 
 from config import load_config, GHOSTFOLIO_URL, GHOSTFOLIO_TOKEN
 from database import get_connection
+from xray_engine import GhostfolioXRayClient, _get_instrument_type
 
 logger = logging.getLogger(__name__)
 
@@ -75,15 +76,9 @@ def get_ideal_allocation(regime_label: str) -> Dict[str, float]:
 
 
 def _get_portfolio_asset_class_weights() -> tuple:
-    """
-    Fetches live portfolio holdings via GhostfolioXRayClient (handles two-step auth)
-    and maps them to the four macro asset classes.
-    Returns (weights_dict, None) on success, (None, error_message) on failure.
-    """
+    """Returns (weights_dict, None) on success or (None, error_message) when Ghostfolio is unavailable."""
     if not GHOSTFOLIO_URL or not GHOSTFOLIO_TOKEN:
         return None, "Ghostfolio is not configured — add your URL and access token in Settings."
-
-    from xray_engine import GhostfolioXRayClient, _get_instrument_type
 
     config = load_config()
     active_ids: List[str] = config.get("GHOSTFOLIO_ACCOUNTS", {}).get("active", [])
@@ -112,10 +107,7 @@ def _get_portfolio_asset_class_weights() -> tuple:
 
 
 def score_portfolio_alignment(current: Dict[str, float], ideal: Dict[str, float]) -> int:
-    """
-    Cosine-similarity-based alignment score 0–100.
-    100 = perfect match to ideal regime allocation.
-    """
+    """Cosine-similarity alignment score 0–100; 100 = perfect match to ideal regime weights."""
     keys = list(ideal.keys())
     a = [current.get(k, 0.0) for k in keys]
     b = [ideal.get(k, 0.0) for k in keys]
