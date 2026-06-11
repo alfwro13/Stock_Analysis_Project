@@ -25,7 +25,6 @@ _DEFAULT_EXCHANGE_HOURS = {
     "SSE":     {"open":"09:30","close":"15:00","tz":"Asia/Shanghai",        "currency":"CNY","suffixes":[".SS"]},
     "SZSE":    {"open":"09:30","close":"15:00","tz":"Asia/Shanghai",        "currency":"CNY","suffixes":[".SZ"]},
     "TWSE":    {"open":"09:00","close":"13:30","tz":"Asia/Taipei",          "currency":"TWD","suffixes":[".TW",".TWO"]},
-    "NZX":     {"open":"10:00","close":"16:45","tz":"Pacific/Auckland",     "currency":"NZD","suffixes":[".NZ"]},
     "TSX":     {"open":"09:30","close":"16:00","tz":"America/Toronto",      "currency":"CAD","suffixes":[".TO",".V"]},
     "BOVESPA": {"open":"10:00","close":"17:55","tz":"America/Sao_Paulo",    "currency":"BRL","suffixes":[".SA"]},
     "BMV":     {"open":"08:30","close":"15:00","tz":"America/Mexico_City",  "currency":"MXN","suffixes":[".MX"]},

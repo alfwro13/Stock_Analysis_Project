@@ -135,7 +135,7 @@ def _ticker_exchange_explicit(ticker: str) -> str:
     Uses the JSON-loaded suffix map; plain tickers (no dot) default to NYSE."""
     suffix_map = time_engine._SUFFIX_TO_EXCHANGE
     # Try longest suffix first to handle multi-part suffixes like .TWO
-    for length in (4, 3, 2):
+    for length in (4, 3, 2, 1):
         dot_pos = -(length + 1)
         if len(ticker) > length and ticker[dot_pos] == ".":
             candidate = ticker[dot_pos:].upper()

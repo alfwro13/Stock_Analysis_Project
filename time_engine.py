@@ -149,7 +149,7 @@ def ticker_exchange(ticker: str, currency: str = "") -> str:
     """Infer exchange from ticker suffix (JSON registry) or currency fallback."""
     suffix_map = _build_suffix_lookup()
     # Check longest matching suffix first to handle multi-part suffixes like .TWO
-    for length in (4, 3, 2):
+    for length in (4, 3, 2, 1):
         dot_pos = -(length + 1)
         if len(ticker) > length and ticker[dot_pos] == ".":
             candidate = ticker[dot_pos:].upper()
