@@ -29,14 +29,7 @@ _PHASE_ORDER = [
 
 
 class TrapEngine:
-    """
-    Detects four post-crash lifecycle phases from daily OHLCV Parquet data:
-
-    1. Bull Trap   — Dead Cat Bounce: price recovers on low volume while below 20-EMA.
-    2. Bear Trap   — False breakdown: support breaks on low volume then closes back above.
-    3. Capitulation — Volume climax with extreme oversold RSI; possible true bottom.
-    4. Wyckoff     — Bollinger Band squeeze + ATR contraction; accumulation base building.
-    """
+    # Detects Bull Trap / Bear Trap / Capitulation / Wyckoff Accumulation phases from daily Parquet data.
 
     def __init__(self, config: dict) -> None:
         cfg = config.get("NOTIFICATIONS", {}).get("TRAP_MONITOR_ALERTS", {})
@@ -53,13 +46,7 @@ class TrapEngine:
         self.wyckoff_enabled: bool = sched_cfg.get("WYCKOFF", True)
         self.monitor_portfolio: bool = sched_cfg.get("MONITOR_PORTFOLIO", True)
 
-    # ── public API ─────────────────────────────────────────────────────────────
-
     def run_scan(self) -> list[dict]:
-        """
-        Runs all enabled detectors against each monitored ticker. Persists results
-        to trap_monitor_results (one row per ticker, upserted) and returns the list.
-        """
         tickers = self._get_ticker_list()
         results = []
         for ticker in tickers:
@@ -73,8 +60,6 @@ class TrapEngine:
         if results:
             self._save_results(results)
         return results
-
-    # ── per-ticker analysis ────────────────────────────────────────────────────
 
     def _analyse_ticker(self, ticker: str, df: pd.DataFrame) -> Optional[dict]:
         try:
@@ -126,8 +111,6 @@ class TrapEngine:
             logger.error("TrapEngine: analysis failed for %s: %s", ticker, e)
             return None
 
-    # ── detectors ─────────────────────────────────────────────────────────────
-
     def _detect_bull_trap(
         self,
         df: pd.DataFrame,
@@ -136,11 +119,7 @@ class TrapEngine:
         ema20: pd.Series,
         rsi14: pd.Series,
     ) -> dict:
-        """
-        Bull Trap / Dead Cat Bounce: price bounces on low volume while still below 20-EMA.
-        Volume on up-days must be substantially lower than volume on down-days — the classic
-        sign of short-covering rather than genuine institutional buying.
-        """
+        # Bull Trap: low-volume bounce below 20-EMA signals short-covering rather than institutional buying.
         lookback = min(15, len(close))
         recent_close = close.iloc[-lookback:]
         recent_vol   = vol.iloc[-lookback:]
@@ -199,10 +178,7 @@ class TrapEngine:
         bb: ta.volatility.BollingerBands,
         rsi14: pd.Series,
     ) -> dict:
-        """
-        Bear Trap / False Breakdown: price intraday breaches the lower Bollinger Band or
-        20-day low but closes back above it on low volume — short sellers are trapped.
-        """
+        # Bear Trap: intraday breach of BB lower / 20-day low that closes back above on low-conviction volume.
         if len(close) < 21:
             return {"level": "SAFE"}
 
@@ -221,13 +197,11 @@ class TrapEngine:
         if actual_support <= 0:
             return {"level": "SAFE"}
 
-        # Breakdown requires intraday low breached support, close recovered above
         if recent_low >= actual_support:
             return {"level": "SAFE"}
         if recent_close <= actual_support:
             return {"level": "SAFE"}
 
-        # Low conviction breakdown = volume below threshold multiple of 20d avg
         if avg_vol <= 0:
             return {"level": "SAFE"}
 
@@ -241,7 +215,6 @@ class TrapEngine:
             level = "POSSIBLE_BEAR_TRAP"
             notes_parts.append(f"Support breached and recovered; vol {vol_ratio:.2f}× avg — monitor for follow-through.")
 
-        # RSI divergence: price at new low but RSI higher than prior trough (bullish divergence)
         if len(rsi14) >= 10:
             prior_rsi_trough = float(rsi14.iloc[-11:-1].min())
             current_rsi      = float(rsi14.iloc[-1]) if not pd.isna(rsi14.iloc[-1]) else 50.0
@@ -260,11 +233,7 @@ class TrapEngine:
         ema20: pd.Series,
         rsi14: pd.Series,
     ) -> dict:
-        """
-        Capitulation (Final Flush): volume climax spike (>3σ above 20-day mean) combined
-        with extreme RSI oversold readings. A long lower wick closing in the upper half of
-        the day's range signals institutional absorption of panic selling.
-        """
+        # Capitulation: volume climax (>3σ) + extreme RSI oversold; long lower wick signals institutional absorption.
         if len(vol) < 22:
             return {"level": "NONE"}
 
@@ -319,10 +288,7 @@ class TrapEngine:
         bb: ta.volatility.BollingerBands,
         atr: pd.Series,
     ) -> dict:
-        """
-        Wyckoff Accumulation / VCP: Bollinger Bands contract to historically narrow width
-        while ATR declines and volume dries up — classic institutional base-building.
-        """
+        # Wyckoff Accumulation: BB squeeze + ATR contraction + volume dry-up after a downtrend.
         if len(close) < 25:
             return {"level": "NONE"}
 
@@ -350,7 +316,6 @@ class TrapEngine:
         notes_parts = [f"Bollinger width {bb_width*100:.1f}% — 20-day low; bands squeezing."]
         severity_score = 0
 
-        # ATR contraction
         if len(atr) >= 21:
             atr_now   = float(atr.iloc[-1])
             atr_20avg = float(atr.iloc[-21:-1].mean())
@@ -358,14 +323,12 @@ class TrapEngine:
                 notes_parts.append(f"ATR contracted to {atr_now/atr_20avg*100:.0f}% of 20-day avg — volatility drying up.")
                 severity_score += 1
 
-        # Volume contraction
         vol_5d  = float(vol.iloc[-5:].mean())
         vol_20d = float(vol.iloc[-25:-5].mean())
         if vol_20d > 0 and vol_5d < vol_20d * 0.7:
             notes_parts.append(f"5-day avg vol {vol_5d/vol_20d*100:.0f}% of 20-day avg — supply exhaustion.")
             severity_score += 1
 
-        # Confirm post-downtrend context
         prior_change = (float(close.iloc[-1]) - float(close.iloc[-21])) / float(close.iloc[-21]) * 100
         if prior_change < -5:
             notes_parts.append(f"Preceded by {prior_change:.1f}% decline — base forming after downtrend.")
@@ -373,8 +336,6 @@ class TrapEngine:
 
         level = "ACCUMULATION_PHASE" if severity_score >= 2 else "SQUEEZE_FORMING"
         return {"level": level, "bb_width": round(bb_width * 100, 2), "notes": " ".join(notes_parts)}
-
-    # ── phase derivation ───────────────────────────────────────────────────────
 
     def _derive_phase(
         self,
@@ -402,8 +363,6 @@ class TrapEngine:
         if cap_level == "WATCH" or wyk_level == "SQUEEZE_FORMING":
             return "CAUTION"
         return "NEUTRAL"
-
-    # ── data loading ───────────────────────────────────────────────────────────
 
     def _get_ticker_list(self) -> list[str]:
         tickers: set[str] = set(self.proxy_tickers)
@@ -447,8 +406,6 @@ class TrapEngine:
         except Exception as e:
             logger.warning("TrapEngine: failed to load %s: %s", ticker, e)
             return None
-
-    # ── persistence ────────────────────────────────────────────────────────────
 
     def _save_results(self, results: list[dict]) -> None:
         conn = None
@@ -499,7 +456,6 @@ class TrapEngine:
                 conn.close()
 
 
-# ── helpers ────────────────────────────────────────────────────────────────────
 
 def _neutral_result() -> dict:
     return {"level": "SAFE"}
