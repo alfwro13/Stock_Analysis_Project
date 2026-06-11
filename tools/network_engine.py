@@ -138,9 +138,11 @@ def _patch_session_with_retries(
                 return response
             except Exception as e:
                 error_str = str(e)
-                is_transient = any(
-                    term in error_str.lower()
-                    for term in ["timeout", "connection reset", "code: 28"]
+                is_transient = (
+                    type(e).__name__.lower() in {"timeout", "connectiontimeout", "connectionerror"}
+                    or any(term in error_str.lower() for term in [
+                        "timeout", "timed out", "connection reset", "curl: (28)", "(28)",
+                    ])
                 )
                 if is_transient and attempt < max_retries:
                     sleep_time = (base_delay ** attempt) + random.uniform(0.5, 1.5)
@@ -202,10 +204,13 @@ def create_failover_session(ipv6_address: str, action_context: str, config: dict
                     raise e
                 
                 # bind errors (errno 99) are a startup race — IPv6 interface may still be in DAD; retry before hard-faulting.
-                is_transient = any(term in error_str.lower() for term in [
-                    "timeout", "connection reset", "code: 28",
-                    "bind failed", "cannot assign requested address", "errno 99",
-                ])
+                is_transient = (
+                    type(e).__name__.lower() in {"timeout", "connectiontimeout", "connectionerror"}
+                    or any(term in error_str.lower() for term in [
+                        "timeout", "timed out", "connection reset", "curl: (28)", "(28)",
+                        "bind failed", "cannot assign requested address", "errno 99",
+                    ])
+                )
                 if is_transient and attempt < max_retries:
                     sleep_time = (base_delay ** attempt) + random.uniform(0.5, 1.5)
                     logger.warning(f"Transient network error on IPv6 '{ipv6_address}': {error_str}. Retrying in {sleep_time:.2f}s (Attempt {attempt + 1}/{max_retries}).")
