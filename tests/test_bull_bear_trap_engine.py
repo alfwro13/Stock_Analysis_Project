@@ -418,8 +418,8 @@ class TestDetectBearTrap:
         assert result["level"] == "POSSIBLE_BEAR_TRAP"
 
     def test_safe_when_close_did_not_recover_above_support(self):
-        # close = support - 0.5 (still below support)
-        result = self._run(_make_bear_trap_df(close_recovery=-0.5))
+        # breakdown_close=99.0 stays below the computed support (~99.8)
+        result = self._run(_make_bear_trap_df(breakdown_close=99.0))
         assert result["level"] == "SAFE"
 
     def test_notes_present_on_confirmed(self):
@@ -431,19 +431,23 @@ class TestDetectBearTrap:
 
 def _make_capitulation_df(
     n: int = 40,
-    vol_multiplier: float = 5.0,  # today's vol vs 20d mean
-    rsi_seed_low: bool = True,     # drive RSI below 30 via big decline
+    vol_multiplier: float = 5.0,
+    rsi_seed_low: bool = True,
     close_in_upper_half: bool = True,
 ) -> pd.DataFrame:
-    """Declining prices ending in a volume-climax bar with extreme RSI."""
-    # Big decline to force RSI deeply oversold
-    prices = np.linspace(100.0, 60.0, n - 1) if rsi_seed_low else np.linspace(95.0, 90.0, n - 1)
+    """
+    Declining prices (to drive RSI below 30) ending in a volume-climax bar.
+    Historical volumes vary slightly so rolling std is non-zero (avoids the
+    vol_std==0 guard that returns NONE before the gates are evaluated).
+    """
+    prices   = np.linspace(100.0, 60.0, n - 1) if rsi_seed_low else np.linspace(95.0, 90.0, n - 1)
     base_vol = 1_000_000.0
-    vols = np.full(n - 1, base_vol)
-    # Capitulation bar
+    rng      = np.random.default_rng(42)
+    vols     = base_vol + rng.normal(0, 100_000, n - 1)
+    vols     = np.clip(vols, 500_000, 2_000_000)
     cap_high  = prices[-1] + 5.0
     cap_low   = prices[-1] - 10.0
-    cap_close = (cap_high if close_in_upper_half else prices[-1] - 4.0)
+    cap_close = cap_high if close_in_upper_half else prices[-1] - 4.0
     prices = np.append(prices, cap_close)
     vols   = np.append(vols, base_vol * vol_multiplier)
     highs  = np.append(prices[:-1] + 1.0, cap_high)
@@ -493,20 +497,23 @@ class TestDetectCapitulation:
 
 # ── _detect_wyckoff() ─────────────────────────────────────────────────────────
 
-def _make_wyckoff_df(n: int = 50) -> pd.DataFrame:
+def _make_wyckoff_df() -> pd.DataFrame:
     """
-    Downtrend for 2/3 of bars, then low-volatility consolidation (prices barely move,
-    volume dries up, BB width contracts) — designed to trigger all three severity gates.
+    Three-phase series (n=60):
+      Phase 1 (bars 0-29):  downtrend 100→75 — seeds the prior-downtrend gate.
+      Phase 2 (bars 30-39): moderate consolidation ±1.5 — widens BB to ~5% so the
+                             20-day max BB used by gate_squeeze is clearly larger.
+      Phase 3 (bars 40-59): tight squeeze ±0.1 — BB width drops to ~0.3%, well below
+                             both the 2% threshold and 70% of the phase-2 max.
     """
-    decline = np.linspace(100.0, 75.0, n // 2)
-    base_p  = 75.0
-    # Tight sideways: prices jitter ±0.1 so BB squeeze is extreme
-    consolidate = base_p + np.sin(np.linspace(0, np.pi, n - n // 2)) * 0.1
-    prices  = np.concatenate([decline, consolidate])
-    # Volume: high during decline, very low during consolidation
-    vols    = np.concatenate([
-        np.full(n // 2, 2_000_000.0),
-        np.full(n - n // 2, 200_000.0),
+    phase1 = np.linspace(100.0, 75.0, 30)
+    phase2 = 75.0 + np.sin(np.linspace(0, 2 * np.pi, 10)) * 1.5
+    phase3 = 75.0 + np.sin(np.linspace(0, np.pi, 20)) * 0.1
+    prices = np.concatenate([phase1, phase2, phase3])
+    vols   = np.concatenate([
+        np.full(30, 2_000_000.0),
+        np.full(10,   800_000.0),
+        np.full(20,   200_000.0),
     ])
     return pd.DataFrame({
         "Open": prices, "High": prices + 0.05,
