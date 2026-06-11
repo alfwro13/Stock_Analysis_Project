@@ -11,8 +11,9 @@
 <script>
     let marketPulseInterval;
     let isFastPolling = false;
-    const REFRESH_RATE_MS = (window.REFRESH_RATE_MS || 60000); 
-    const FAST_POLL_MS = 3000; // Check every 3 seconds while waiting for background refresh
+    let fastPollDelayMs = 3000;
+    const REFRESH_RATE_MS = (window.REFRESH_RATE_MS || 60000);
+    const FAST_POLL_BASE_MS = 3000;
 
     async function fetchMarketPulse() {
         try {
@@ -71,14 +72,21 @@
                 // --- DYNAMIC POLLING LOGIC ---
                 if (anyStale && !isFastPolling) {
                     // Enter fast-polling mode while backend is fetching
+                    fastPollDelayMs = FAST_POLL_BASE_MS;
                     clearInterval(marketPulseInterval);
-                    marketPulseInterval = setInterval(fetchMarketPulse, FAST_POLL_MS);
+                    marketPulseInterval = setInterval(fetchMarketPulse, fastPollDelayMs);
                     isFastPolling = true;
+                } else if (anyStale && isFastPolling) {
+                    // Still stale — back off with doubling delay capped at REFRESH_RATE_MS
+                    fastPollDelayMs = Math.min(fastPollDelayMs * 2, REFRESH_RATE_MS);
+                    clearInterval(marketPulseInterval);
+                    marketPulseInterval = setInterval(fetchMarketPulse, fastPollDelayMs);
                 } else if (!anyStale && isFastPolling) {
-                    // Background fetch completed! Return to the user's standard slow refresh rate
+                    // Background fetch completed — return to standard slow refresh rate
                     clearInterval(marketPulseInterval);
                     marketPulseInterval = setInterval(fetchMarketPulse, REFRESH_RATE_MS);
                     isFastPolling = false;
+                    fastPollDelayMs = FAST_POLL_BASE_MS;
                 }
                 
             } else {

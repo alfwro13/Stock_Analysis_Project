@@ -4,6 +4,7 @@ import hmac
 import json
 import logging
 import os
+import secrets
 import time
 
 logger = logging.getLogger(__name__)
@@ -15,8 +16,16 @@ _REMEMBER_MAX_AGE = 30 * 24 * 3600  # 30 days
 def _secret() -> bytes:
     key = os.environ.get("APP_SECRET_KEY", "")
     if not key:
-        logger.warning("APP_SECRET_KEY is not set — using insecure fallback; set it in .env")
-        return b"fallback-insecure"
+        key = secrets.token_hex(32)
+        try:
+            from dotenv import set_key
+            from config import BASE_DIR
+            env_path = str(BASE_DIR / ".env")
+            set_key(env_path, "APP_SECRET_KEY", key)
+            logger.info("APP_SECRET_KEY was not set — generated and persisted a new secret to .env")
+        except Exception as e:
+            logger.warning("APP_SECRET_KEY not set and could not persist to .env (%s) — session is ephemeral this restart", e)
+        os.environ["APP_SECRET_KEY"] = key
     return key.encode()
 
 

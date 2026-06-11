@@ -10,6 +10,7 @@ from typing import Dict
 
 from config import load_config
 from database import get_connection, init_db
+import time_engine
 
 logger = logging.getLogger(__name__)
 
@@ -168,7 +169,7 @@ def update_macro_indicators() -> None:
     if not fred_api_key:
         logger.error("FRED_API_KEY is not configured in settings. Aborting FRED API fetch.")
 
-    end_dt = datetime.now()
+    end_dt = time_engine.now_local().replace(tzinfo=None)
     start_dt = end_dt - timedelta(days=730) 
     session = get_retry_session()
     

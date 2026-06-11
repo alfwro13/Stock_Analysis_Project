@@ -182,9 +182,13 @@ class TestScanTsTimezone:
 class TestTemplateTimezoneHygiene:
 
     TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
+    STATIC_DIR = Path(__file__).parent.parent / "static"
 
     def _read(self, name: str) -> str:
         return (self.TEMPLATES_DIR / name).read_text(encoding="utf-8")
+
+    def _read_static(self, name: str) -> str:
+        return (self.STATIC_DIR / name).read_text(encoding="utf-8")
 
     def test_stock_detail_dip_radar_uses_dynamic_span(self):
         """The dip-radar description in stock_detail.html must use .dip-reset-time span."""
@@ -208,10 +212,10 @@ class TestTemplateTimezoneHygiene:
         )
 
     def test_settings_has_format_reset_time_js_function(self):
-        """settings.html must include the JS helper that computes local reset time."""
-        content = self._read("settings.html")
+        """settings.js must include the JS helper that computes local reset time."""
+        content = self._read_static("js/settings.js")
         assert "formatDipResetLocalTime" in content, (
-            "settings.html is missing the formatDipResetLocalTime JS function"
+            "static/js/settings.js is missing the formatDipResetLocalTime JS function"
         )
 
     def test_glossary_mentions_both_timezones(self):

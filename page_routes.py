@@ -863,7 +863,7 @@ async def news_page(request: Request):
 
 @page_router.get("/earnings-volatility", response_class=HTMLResponse)
 async def earnings_volatility_page(request: Request):
-    today_str = datetime.now().strftime('%Y-%m-%d')
+    today_str = time_engine.now_local().strftime('%Y-%m-%d')
     
     conn = get_connection()
     cursor = conn.cursor()
@@ -893,7 +893,7 @@ async def earnings_volatility_page(request: Request):
 @page_router.get("/quant-screener", response_class=HTMLResponse)
 async def quant_screener_page(request: Request):
     import os as _os
-    today = datetime.now()
+    today = time_engine.now_local()
     target_date = today.strftime('%Y-%m-%d')
 
     reports_dir = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "reports")
@@ -1666,7 +1666,7 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
     if stock_data and stock_data.get('next_earnings_date') and stock_data['next_earnings_date'] != 'Unknown':
         try:
             e_date = datetime.strptime(stock_data['next_earnings_date'], '%Y-%m-%d').date()
-            today = datetime.now().date()
+            today = time_engine.now_local().date()
             days_to_earnings = (e_date - today).days
             volatility_date = (e_date - timedelta(days=7)).strftime('%Y-%m-%d')
         except Exception:

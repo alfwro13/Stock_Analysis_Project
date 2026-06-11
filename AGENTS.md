@@ -213,7 +213,7 @@ Every code change that adds, removes, or significantly alters a feature **must**
 
 - **Do not add comments** unless the why is genuinely non-obvious.
 - **Do not add error handling** for scenarios that cannot happen — trust framework guarantees.
-- **Do not create new files** unless strictly necessary; prefer editing existing modules.
+- **Do not create new files** unless strictly necessary; prefer editing existing modules unless the existing files have grown to big in which case consider all options for splitting them into smaler ones
 - **Do not introduce abstractions** beyond what the task requires.
 - **Run `./run_tests.sh`** after every change and fix failures before marking work done.
 - **Tooltips:** Use `<abbr title="Explanation text.">Label</abbr>` — wrap the label itself, no custom JS tooltip systems, no icon, no `style` attribute on the `<abbr>`. The global CSS in `static/css/styles.css` already applies `text-decoration: underline dotted #666`, `cursor: pointer`, and `color: inherit` to all `abbr` elements. Never override these inline. Keep tooltip text to 1–2 sentences matching existing examples (e.g. Support 1, RSI, ATR).

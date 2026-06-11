@@ -63,6 +63,8 @@ def get_connection() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH, timeout=20.0)
     conn.execute('PRAGMA journal_mode=WAL;')   # concurrent reads + writes
     conn.execute('PRAGMA synchronous=NORMAL;')  # significant write-perf gain in WAL mode
+    conn.execute('PRAGMA temp_store=MEMORY;')
+    conn.execute('PRAGMA mmap_size=134217728;')
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -971,15 +973,22 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
     except Exception as e:
         logger.error("[MIGRATION ERROR] Failed to create model_training_log: %s", e)
 
-    # covering index on quant_signals for efficient latest-date lookups
+    # idx_qs_ticker_date exactly duplicates the quant_signals(ticker, date) PK index — drop it
+    try:
+        cursor.execute("DROP INDEX IF EXISTS idx_qs_ticker_date")
+        logger.info("[MIGRATION] Dropped redundant index idx_qs_ticker_date (duplicates PK).")
+    except Exception as e:
+        logger.error("[MIGRATION ERROR] Failed to drop idx_qs_ticker_date: %s", e)
+
+    # macro_calendar: event_date is range-filtered in 6+ call sites and was unindexed
     try:
         cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_qs_ticker_date
-            ON quant_signals(ticker, date)
+            CREATE INDEX IF NOT EXISTS idx_macro_event_date
+            ON macro_calendar(event_date)
         """)
-        logger.info("[MIGRATION] Verified index idx_qs_ticker_date on quant_signals(ticker, date).")
+        logger.info("[MIGRATION] Verified index idx_macro_event_date on macro_calendar(event_date).")
     except Exception as e:
-        logger.error("[MIGRATION ERROR] Failed to create idx_qs_ticker_date: %s", e)
+        logger.error("[MIGRATION ERROR] Failed to create idx_macro_event_date: %s", e)
 
     # smgb_predictions: add prediction_type column + composite unique (target_date, prediction_type)
     try:

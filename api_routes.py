@@ -88,6 +88,10 @@ def require_confirm_token(x_confirm_token: str = Header(..., alias="X-Confirm-To
         raise HTTPException(status_code=403, detail="Invalid or missing confirmation token.")
 
 
+def _error_500(e: Exception) -> JSONResponse:
+    return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+
 class LoginRequest(BaseModel):
     username: str
     password: str
@@ -176,7 +180,7 @@ async def save_nextcloud_settings(body: SaveNextcloudSettingsRequest):
 
 
 @api_router.post("/test-nextcloud-message", dependencies=[Depends(require_confirm_token)])
-async def test_nextcloud_message():
+def test_nextcloud_message():
     from nextcloud_talk import send_text_message
     url = os.environ.get("NEXTCLOUD_URL", "")
     token = os.environ.get("NEXTCLOUD_CONVERSATION_TOKEN", "")
@@ -241,7 +245,7 @@ class TestHFTokenRequest(BaseModel):
 
 
 @api_router.post("/test-hf-token", dependencies=[Depends(require_confirm_token)])
-async def test_hf_token(body: TestHFTokenRequest):
+def test_hf_token(body: TestHFTokenRequest):
     token = body.HF_TOKEN.strip() or os.environ.get("HF_TOKEN", "")
     if not token:
         from fastapi import HTTPException
@@ -713,7 +717,7 @@ async def get_profiler_status():
         })
     except Exception as e:
         logger.error(f"Failed to compute profiler status: {e}")
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+        return _error_500(e)
 
 @api_router.post("/universe/sync-indices")
 @limiter.limit("10/minute")
@@ -876,7 +880,7 @@ async def trigger_maintenance_dry_run(request: Request):
         return JSONResponse(content={"status": "success", "results": results})
     except Exception as e:
         logger.exception("Maintenance dry-run failed")
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+        return _error_500(e)
 
 @api_router.post("/ghostfolio/discover")
 async def trigger_discovery():
@@ -891,7 +895,7 @@ async def trigger_discovery():
         return JSONResponse(status_code=500, content={"status": "error", "message": "No accounts discovered or network error occurred."})
     except Exception as e:
         logger.exception("Ghostfolio account discovery failed")
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+        return _error_500(e)
 
 @api_router.post("/market-pulse")
 async def api_market_pulse(request: PulseRequest, background_tasks: BackgroundTasks):
@@ -933,7 +937,7 @@ async def test_insider_alert():
 
 # --- NEW: IPv6 DIAGNOSTIC ENDPOINT (cURL CFFI IMPLEMENTATION) ---
 @api_router.post("/settings/test-yahoo-ipv6")
-async def test_yahoo_ipv6(request: IPv6TestRequest):
+def test_yahoo_ipv6(request: IPv6TestRequest):
     """
     Diagnostic endpoint to safely verify an IPv6 socket binding.
     Executes a low-latency price fetch against Yahoo Finance edge nodes using curl_cffi.
@@ -1242,7 +1246,7 @@ async def get_system_metrics():
         })
     except Exception as e:
         logger.error(f"Failed to fetch system metrics: {e}")
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+        return _error_500(e)
     finally:
         if conn:
             conn.close()
@@ -1262,7 +1266,7 @@ async def git_pull_update():
         else:
             return JSONResponse(status_code=500, content={"status": "error", "message": f"Git Pull Failed:\n{result.stderr}"})
     except Exception as e:
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+        return _error_500(e)
 
 @api_router.get("/system/active-jobs")
 async def get_active_jobs_status():
@@ -1292,7 +1296,7 @@ async def save_settings(config: SettingsConfig):
         configure_file_logging(load_config())
         return JSONResponse(content={"status": "success", "message": "Settings saved successfully."})
     except Exception as e:
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+        return _error_500(e)
 
 @api_router.get("/notifications/latest")
 async def get_latest_notifications(last_id: int = 0):
@@ -1322,7 +1326,7 @@ async def get_latest_notifications(last_id: int = 0):
             })
         return JSONResponse(content={"status": "success", "notifications": notifications})
     except Exception as e:
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+        return _error_500(e)
     finally:
         if conn:
             conn.close()
@@ -1337,7 +1341,7 @@ async def mark_notifications_read():
         conn.commit()
         return JSONResponse(content={"status": "success", "message": "All notifications marked as read."})
     except Exception as e:
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+        return _error_500(e)
     finally:
         if conn:
             conn.close()
@@ -1356,7 +1360,7 @@ async def purge_all_notifications():
         return JSONResponse(content={"status": "success", "message": "All notifications purged successfully."})
     except Exception as e:
         logger.error(f"Failed to purge notifications: {e}")
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+        return _error_500(e)
     finally:
         if conn:
             conn.close()
@@ -1394,7 +1398,7 @@ async def get_ai_contagion_status():
         return JSONResponse(content={"status": "success", "snapshots": snapshots})
     except Exception as e:
         logger.error(f"ai-contagion/status failed: {e}")
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+        return _error_500(e)
     finally:
         if conn:
             conn.close()
@@ -1410,7 +1414,7 @@ async def trigger_ai_contagion(request: Request, background_tasks: BackgroundTas
         return JSONResponse(content={"status": "success", "message": "AI Contagion scan triggered."})
     except Exception as e:
         logger.error(f"Failed to trigger AI Contagion scan: {e}")
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+        return _error_500(e)
 
 
 @api_router.get("/trap-monitor/results")
@@ -1428,7 +1432,7 @@ async def get_trap_monitor_results(request: Request):
         return JSONResponse(content={"status": "success", "results": rows})
     except Exception as e:
         logger.error("trap-monitor/results failed: %s", e)
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+        return _error_500(e)
     finally:
         if conn:
             conn.close()
@@ -1444,7 +1448,7 @@ async def run_trap_monitor(request: Request, background_tasks: BackgroundTasks):
         return JSONResponse(content={"status": "success", "message": "Trap Monitor scan triggered."})
     except Exception as e:
         logger.error("Failed to trigger Trap Monitor scan: %s", e)
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+        return _error_500(e)
 
 
 @api_router.get("/market-regime/current")
@@ -1490,7 +1494,7 @@ async def get_market_regime_current(request: Request):
         return JSONResponse(content={"status": "success", "current": current, "last_change": last_change})
     except Exception as e:
         logger.error("market-regime/current failed: %s", e)
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+        return _error_500(e)
     finally:
         if conn:
             conn.close()
@@ -1531,7 +1535,7 @@ async def get_market_stress(request: Request):
         return JSONResponse(content={"status": "success", "current": current, "history": history})
     except Exception as e:
         logger.error("market-stress endpoint failed: %s", e)
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+        return _error_500(e)
     finally:
         if conn:
             conn.close()
@@ -1635,7 +1639,7 @@ async def get_market_regime_full(request: Request):
         })
     except Exception as e:
         logger.error("market-regime full endpoint failed: %s", e)
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+        return _error_500(e)
     finally:
         if conn:
             conn.close()
@@ -1651,7 +1655,7 @@ async def run_market_regime_now(request: Request, background_tasks: BackgroundTa
         return JSONResponse(content={"status": "success", "message": "HMM regime calculation triggered."})
     except Exception as e:
         logger.error("market-regime/run failed: %s", e)
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+        return _error_500(e)
 
 
 class StressTestRequest(BaseModel):
@@ -1672,7 +1676,7 @@ async def get_stress_test_scenarios(request: Request):
         return JSONResponse(content={"status": "success", "scenarios": out})
     except Exception as e:
         logger.error("stress-test/scenarios failed: %s", e)
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+        return _error_500(e)
 
 
 @api_router.post("/stress-test/run")
@@ -1691,7 +1695,7 @@ async def run_stress_test(request: Request, body: StressTestRequest):
         return JSONResponse(status_code=400, content={"status": "error", "message": str(e)})
     except Exception as e:
         logger.error("stress-test/run failed: %s", e)
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+        return _error_500(e)
 
 
 @api_router.get("/smgb-prediction")
@@ -1801,7 +1805,7 @@ async def validate_etf_predictor_config(request: Request, body: EtfValidateBody)
         })
     except Exception as e:
         logger.error("validate_etf_predictor_config failed: %s", e)
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+        return _error_500(e)
 
 
 @api_router.get("/etf-predictors")
@@ -1813,7 +1817,7 @@ async def list_etf_predictors(request: Request):
         return JSONResponse(content={"status": "success", "configs": configs})
     except Exception as e:
         logger.error("list_etf_predictors failed: %s", e)
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+        return _error_500(e)
 
 
 @api_router.post("/etf-predictors")
@@ -1846,7 +1850,7 @@ async def create_etf_predictor(request: Request, body: EtfPredictorConfigBody):
         return JSONResponse(content={"status": "success", "message": "Predictor created.", "id": config_id})
     except Exception as e:
         logger.error("create_etf_predictor failed: %s", e)
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+        return _error_500(e)
 
 
 @api_router.put("/etf-predictors/{config_id}")
@@ -1880,7 +1884,7 @@ async def update_etf_predictor(request: Request, config_id: int, body: EtfPredic
         return JSONResponse(content={"status": "success", "message": "Predictor updated."})
     except Exception as e:
         logger.error("update_etf_predictor %s failed: %s", config_id, e)
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+        return _error_500(e)
 
 
 @api_router.delete("/etf-predictors/{config_id}")
@@ -1896,7 +1900,7 @@ async def delete_etf_predictor(request: Request, config_id: int):
         return JSONResponse(content={"status": "success", "message": "Predictor deleted."})
     except Exception as e:
         logger.error("delete_etf_predictor %s failed: %s", config_id, e)
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+        return _error_500(e)
 
 
 @api_router.post("/etf-predictors/{config_id}/run")
@@ -1933,7 +1937,7 @@ async def run_etf_predictor(request: Request, config_id: int, background_tasks: 
         return JSONResponse(content={"status": "success", "message": f"ETF predictor {config_id} run initiated."})
     except Exception as e:
         logger.error("run_etf_predictor %s failed: %s", config_id, e)
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+        return _error_500(e)
 
 
 @api_router.post("/etf-predictors/{config_id}/fill-actuals")
@@ -1958,7 +1962,7 @@ async def fill_etf_predictor_actuals(request: Request, config_id: int, backgroun
         return JSONResponse(content={"status": "success", "message": f"ETF predictor {config_id} fill-actuals initiated."})
     except Exception as e:
         logger.error("fill_etf_predictor_actuals %s failed: %s", config_id, e)
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+        return _error_500(e)
 
 
 @api_router.get("/etf-predictors/{config_id}/predictions")
@@ -1971,7 +1975,7 @@ async def get_etf_predictor_predictions(request: Request, config_id: int):
         return JSONResponse(content={"status": "success", **get_etf_accuracy(config_id)})
     except Exception as e:
         logger.error("get_etf_predictor_predictions %s failed: %s", config_id, e)
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+        return _error_500(e)
 
 
 @api_router.get("/ai-prompt/{ticker}")
@@ -1984,7 +1988,7 @@ async def get_ai_prompt(ticker: str = PathParam(..., pattern=r"^[A-Z0-9.\-\^=]{1
             return JSONResponse(status_code=404, content={"status": "error", "message": "Stock data not found in local database."})
         return JSONResponse(content={"status": "success", "prompt": prompt})
     except Exception as e:
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+        return _error_500(e)
 
 @api_router.post("/watchlist/add")
 async def api_watchlist_add(req: TickerRequest):
@@ -2020,7 +2024,7 @@ async def api_data_refresh_single(req: TickerRequest):
         return JSONResponse(content={"status": "success"})
     except Exception as e:
         logger.exception("refresh-single failed for %s", req.ticker)
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+        return _error_500(e)
 
 
 @api_router.post("/index/refresh")
@@ -2039,7 +2043,7 @@ async def api_index_refresh(req: TickerRequest):
         return JSONResponse(content={"status": "success"})
     except Exception as e:
         logger.exception("index/refresh failed for %s", ticker)
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+        return _error_500(e)
 
 
 @api_router.get("/options/chain/{ticker}")
@@ -2060,7 +2064,7 @@ async def api_options_payoff(req: PayoffRequest):
         return JSONResponse(status_code=422, content={"status": "error", "message": str(e)})
     except Exception as e:
         logger.exception("Payoff matrix calculation failed")
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+        return _error_500(e)
 
 @api_router.get("/screener-data")
 @limiter.limit("20/minute")
@@ -2147,7 +2151,7 @@ async def api_reports_quality_compounders(request: Request):
         return JSONResponse(content={"data": data})
     except Exception as e:
         logger.exception("quality-compounders report failed")
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+        return _error_500(e)
 
 @api_router.get("/reports/quality-on-sale")
 @limiter.limit("10/minute")
@@ -2157,7 +2161,7 @@ async def api_reports_quality_on_sale(request: Request):
         return JSONResponse(content={"data": data})
     except Exception as e:
         logger.exception("quality-on-sale report failed")
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+        return _error_500(e)
 
 @api_router.get("/reports/garp-tenbaggers")
 @limiter.limit("10/minute")
@@ -2167,7 +2171,7 @@ async def api_reports_garp_tenbaggers(request: Request):
         return JSONResponse(content={"data": data})
     except Exception as e:
         logger.exception("garp-tenbaggers report failed")
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+        return _error_500(e)
 
 @api_router.get("/reports/sectors")
 @limiter.limit("10/minute")
@@ -2177,7 +2181,7 @@ async def api_reports_sectors(request: Request):
         return JSONResponse(content={"data": data})
     except Exception as e:
         logger.exception("sectors report failed")
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+        return _error_500(e)
 
 @api_router.get("/reports/mean-reversion")
 @limiter.limit("10/minute")
@@ -2191,7 +2195,7 @@ async def api_reports_mean_reversion(
         return JSONResponse(content={"data": data})
     except Exception as e:
         logger.exception("mean-reversion report failed")
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+        return _error_500(e)
 
 @api_router.get("/reports/leaders")
 @limiter.limit("10/minute")
@@ -2201,7 +2205,7 @@ async def api_reports_leaders(request: Request):
         return JSONResponse(content={"data": data})
     except Exception as e:
         logger.exception("leaders report failed")
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+        return _error_500(e)
 
 @api_router.get("/reports/dividends")
 @limiter.limit("10/minute")
@@ -2215,7 +2219,7 @@ async def api_reports_dividends(
         return JSONResponse(content={"data": data})
     except Exception as e:
         logger.exception("dividends report failed")
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+        return _error_500(e)
 
 
 @api_router.get("/freshness")

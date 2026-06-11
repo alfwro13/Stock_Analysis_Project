@@ -61,6 +61,15 @@ The SQLite database acts as the central brain of the dashboard. It uses a star-l
 
 ---
 
+## 1b. Indexes
+
+| Index | Table | Columns | Notes |
+|---|---|---|---|
+| `idx_macro_event_date` | `macro_calendar` | `event_date` | Range-filtered by 6+ call sites; added June 2026. |
+| *(PK)* | `quant_signals` | `ticker, date` | Composite PK; covers all ticker+date lookups. The redundant `idx_qs_ticker_date` explicit index was dropped June 2026. |
+
+---
+
 ## 2. Local File Storage (`data/` Directory)
 
 We offload heavy time-series math and unstructured payload caching to local file storage.

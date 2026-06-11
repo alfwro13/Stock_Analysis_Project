@@ -34,7 +34,7 @@ from intraday_bottom_engine import IntradayBottomEngine
 
 logger = logging.getLogger(__name__)
 
-scheduler = BackgroundScheduler()
+scheduler = BackgroundScheduler(job_defaults={"coalesce": True, "max_instances": 1, "misfire_grace_time": 60})
 
 import threading as _threading
 from datetime import datetime as _dt
