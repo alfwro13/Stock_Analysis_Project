@@ -1,5 +1,8 @@
 import logging
+from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+import joblib
 
 from config import load_config
 from database import get_connection
@@ -14,8 +17,6 @@ def _time_to_minutes(time_str: str) -> int:
 
 def _load_train_universe_size() -> Optional[int]:
     try:
-        import joblib
-        from pathlib import Path
         stats = joblib.load(Path("models/feature_stats.joblib"))
         return stats.get("_meta", {}).get("train_universe_size")
     except Exception:
