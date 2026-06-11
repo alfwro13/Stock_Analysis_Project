@@ -1076,8 +1076,8 @@ def create_etf_overlay_chart(
     now_utc: "datetime | None" = None,
     trading_date: "date | None" = None,
 ) -> str:
-    """Generic time-aligned intraday overlay chart for any ETF + constituents."""
-    from datetime import timedelta as _td
+    """Generic time-aligned intraday overlay chart — structure mirrors create_smgb_overlay_chart."""
+    from datetime import timedelta as _td, date as _date
 
     if prediction is None:
         prediction = {}
@@ -1088,16 +1088,9 @@ def create_etf_overlay_chart(
 
     now_local = pd.Timestamp(now_utc).tz_localize("UTC").tz_convert(user_tz).tz_localize(None)
     x_start = now_local - pd.Timedelta(hours=20)
-    # Extend x_end to always show the constituent exchange close (important for UTC+2 users)
-    _c_open_utc, _c_close_utc = time_engine.market_window_utc(constituent_exchange)
-    _today_utc = datetime.now(timezone.utc).date()
-    _c_close_local = (
-        pd.Timestamp(datetime.combine(_today_utc, _c_close_utc))
-        .tz_localize("UTC").tz_convert(user_tz).tz_localize(None)
-    )
-    x_end = max(now_local + pd.Timedelta(hours=10), _c_close_local + pd.Timedelta(hours=2))
+    x_end = now_local + pd.Timedelta(hours=10)
 
-    def _to_local(s):
+    def _to_local(s: "pd.Series") -> "pd.Series":
         if s.empty:
             return s
         idx = pd.DatetimeIndex(s.index)
@@ -1105,15 +1098,15 @@ def create_etf_overlay_chart(
             idx = idx.tz_localize("UTC")
         return s.set_axis(idx.tz_convert(user_tz).tz_localize(None))
 
-    def _to_pct(s, ref):
+    def _to_pct(s: "pd.Series", ref: float) -> "pd.Series":
         return (s / ref - 1) * 100
 
-    def _break_overnight_gaps(s, gap_hours=1.5):
+    def _break_overnight_gaps(s: "pd.Series", gap_hours: float = 1.5) -> "pd.Series":
         if len(s) < 2:
             return s
         parts = []
         for i in range(len(s) - 1):
-            parts.append(s.iloc[i:i + 1])
+            parts.append(s.iloc[i : i + 1])
             gap = (s.index[i + 1] - s.index[i]).total_seconds() / 3600
             if gap > gap_hours:
                 mid = s.index[i] + (s.index[i + 1] - s.index[i]) / 2
@@ -1136,8 +1129,10 @@ def create_etf_overlay_chart(
         fig.add_trace(go.Scatter(
             x=etf_gapped.index,
             y=_to_pct(etf_gapped, etf_last_close).values,
-            name=etf_ticker, line=dict(color="#00ffff", width=2.5),
-            connectgaps=False, hovertemplate=f"{etf_ticker}: %{{y:+.2f}}%<extra></extra>",
+            name=etf_ticker,
+            line=dict(color="#00ffff", width=2.5),
+            connectgaps=False,
+            hovertemplate=f"{etf_ticker}: %{{y:+.2f}}%<extra></extra>",
         ))
 
     for i, (ticker, series) in enumerate(constituent_series.items()):
@@ -1150,28 +1145,35 @@ def create_etf_overlay_chart(
         color = palette[i % len(palette)]
         c_gapped = _break_overnight_gaps(c_local)
         fig.add_trace(go.Scatter(
-            x=c_gapped.index, y=_to_pct(c_gapped, ref).values,
-            name=ticker, line=dict(color=color, width=1.2),
-            opacity=0.75, connectgaps=False,
+            x=c_gapped.index,
+            y=_to_pct(c_gapped, ref).values,
+            name=ticker,
+            line=dict(color=color, width=1.2),
+            opacity=0.75,
+            connectgaps=False,
             hovertemplate=f"{ticker}: %{{y:+.2f}}%<extra></extra>",
         ))
 
-    # Market event lines for both exchanges
-    exchanges_to_draw = list({etf_exchange, constituent_exchange})
-    event_specs = []
-    for exch in exchanges_to_draw:
-        label_prefix = exch
-        event_specs += [
-            (exch, True,  f"{label_prefix} Open",  "#00cccc" if exch == etf_exchange else "#f6ad55", "dot",  0.91, 1.2),
-            (exch, False, f"{label_prefix} Close", "#888888" if exch == etf_exchange else "#f87171", "dash", 1.00, 1.5),
-        ]
+    # Market-event vertical lines — ETF exchange (cyan/grey) and constituent exchange (orange/red)
+    # Colours and dash styles mirror the hardcoded SMGB chart (LSE=cyan/grey, NYSE=orange/red)
+    etf_open_color, etf_close_color = "#00cccc", "#888888"
+    con_open_color, con_close_color = "#f6ad55", "#f87171"
+    _event_specs = [
+        (etf_exchange,          True,  f"{etf_exchange} Open",          etf_open_color,  "dot",  0.91, 1.2),
+        (etf_exchange,          False, f"{etf_exchange} Close",         etf_close_color, "dash", 1.00, 1.5),
+        (constituent_exchange,  True,  f"{constituent_exchange} Open",  con_open_color,  "dash", 0.97, 1.5),
+        (constituent_exchange,  False, f"{constituent_exchange} Close", con_close_color, "dot",  0.94, 1.2),
+    ]
+    # Remove duplicate entries when both exchanges are the same
+    if etf_exchange == constituent_exchange:
+        _event_specs = _event_specs[:2]
 
     _check_start = (x_start - pd.Timedelta(hours=2)).date()
     _check_end = (x_end + pd.Timedelta(hours=2)).date()
     _cur = _check_start
     while _cur <= _check_end:
         if _cur.weekday() < 5:
-            for _exch, _is_open, _label, _color, _dash, _y, _width in event_specs:
+            for _exch, _is_open, _label, _color, _dash, _y, _width in _event_specs:
                 try:
                     _open_t, _close_t = time_engine.market_window_utc(_exch)
                     _t = _open_t if _is_open else _close_t
@@ -1180,70 +1182,89 @@ def create_etf_overlay_chart(
                     if not (x_start <= _local_dt <= x_end):
                         continue
                     _dt_str = str(_local_dt)
-                    fig.add_shape(type="line", x0=_dt_str, x1=_dt_str, y0=0, y1=1, yref="paper",
-                                  line=dict(dash=_dash, color=_color, width=_width))
-                    fig.add_annotation(x=_dt_str, y=_y, yref="paper",
-                                       text=f"{_label} {_local_dt.strftime('%H:%M')}",
-                                       showarrow=False, font=dict(color=_color, size=10),
-                                       xanchor="left", yanchor="top")
+                    fig.add_shape(
+                        type="line", x0=_dt_str, x1=_dt_str, y0=0, y1=1, yref="paper",
+                        line=dict(dash=_dash, color=_color, width=_width),
+                    )
+                    fig.add_annotation(
+                        x=_dt_str, y=_y, yref="paper",
+                        text=f"{_label} {_local_dt.strftime('%H:%M')}",
+                        showarrow=False, font=dict(color=_color, size=10),
+                        xanchor="left", yanchor="top",
+                    )
                 except Exception:
                     pass
         _cur += _td(days=1)
 
     now_str = str(now_local)
-    fig.add_shape(type="line", x0=now_str, x1=now_str, y0=0, y1=1, yref="paper",
-                  line=dict(dash="dot", color="rgba(255,255,255,0.35)", width=1.0))
-    fig.add_annotation(x=now_str, y=0.85, yref="paper",
-                       text=f"Now {now_local.strftime('%H:%M')}",
-                       showarrow=False, font=dict(color="rgba(255,255,255,0.5)", size=10),
-                       xanchor="left", yanchor="top")
+    fig.add_shape(
+        type="line", x0=now_str, x1=now_str, y0=0, y1=1, yref="paper",
+        line=dict(dash="dot", color="rgba(255,255,255,0.35)", width=1.0),
+    )
+    fig.add_annotation(
+        x=now_str, y=0.85, yref="paper",
+        text=f"Now {now_local.strftime('%H:%M')}",
+        showarrow=False, font=dict(color="rgba(255,255,255,0.5)", size=10),
+        xanchor="left", yanchor="top",
+    )
 
+    # Prediction star — place at the correct future market open
     pred_price = prediction.get("predicted_price")
     pred_pct = prediction.get("predicted_change_pct", 0)
     signal_source = prediction.get("signal_source", "daily_close")
     if pred_price and etf_last_close > 0 and next_open_date is not None:
         is_intraday = signal_source in ("intraday_premarket", "intraday_live")
         if is_intraday:
-            # Place star at constituent exchange's next open — NOT trading_date (which can be
-            # yesterday when the ETF exchange hasn't opened yet today).
-            _c_open_t, _c_cl_t = time_engine.market_window_utc(constituent_exchange)
-            _now_check = datetime.now(timezone.utc).replace(tzinfo=None)
+            # Star goes at constituent exchange open. Use constituent's OWN next-open logic
+            # (not trading_date, which may be yesterday if the ETF exchange hasn't opened yet).
+            _c_open_t, _c_close_t = time_engine.market_window_utc(constituent_exchange)
+            _now_c = datetime.now(timezone.utc).replace(tzinfo=None)
             _today_c = datetime.now(timezone.utc).date()
             if _today_c.weekday() == 5:
                 _c_target = _today_c + _td(days=2)
             elif _today_c.weekday() == 6:
                 _c_target = _today_c + _td(days=1)
-            elif _now_check < datetime.combine(_today_c, _c_cl_t):
-                _c_target = _today_c  # constituent exchange hasn't closed today yet
+            elif _now_c < datetime.combine(_today_c, _c_close_t):
+                _c_target = _today_c
             elif _today_c.weekday() == 4:
                 _c_target = _today_c + _td(days=3)
             else:
                 _c_target = _today_c + _td(days=1)
             pred_dt_utc = datetime.combine(_c_target, _c_open_t)
         else:
-            _e_open_t, _ = time_engine.market_window_utc(etf_exchange)
-            pred_dt_utc = datetime.combine(next_open_date, _e_open_t)
+            etf_open_t, _ = time_engine.market_window_utc(etf_exchange)
+            pred_dt_utc = datetime.combine(next_open_date, etf_open_t)
         pred_dt = pd.Timestamp(pred_dt_utc).tz_localize("UTC").tz_convert(user_tz).tz_localize(None)
         fig.add_trace(go.Scatter(
-            x=[pred_dt], y=[pred_pct], mode="markers+text",
+            x=[pred_dt],
+            y=[pred_pct],
+            mode="markers+text",
             name=f"Predicted: {pred_price:.4f}",
             marker=dict(color="#bb86fc", size=18, symbol="star"),
             text=[f"{pred_price:.4f} ({pred_pct:+.2f}%)"],
-            textposition="top right", textfont=dict(color="#bb86fc", size=11),
+            textposition="top right",
+            textfont=dict(color="#bb86fc", size=11),
             hovertemplate=f"Predicted: {pred_price:.4f} ({pred_pct:+.2f}%)<extra></extra>",
         ))
 
     fig.update_layout(
-        title=dict(text=f"{etf_ticker} Intraday vs Constituents — Time-Aligned",
-                   x=0.5, xanchor="center", font=dict(size=13)),
-        template="plotly_dark", height=580,
-        margin=dict(l=20, r=20, t=80, b=160), hovermode="x unified",
+        title=dict(
+            text=f"{etf_ticker} Intraday vs Constituents — Time-Aligned",
+            x=0.5, xanchor="center", font=dict(size=13),
+        ),
+        template="plotly_dark",
+        height=580,
+        margin=dict(l=20, r=20, t=80, b=160),
+        hovermode="x unified",
         legend=dict(orientation="h", yanchor="top", y=-0.06, xanchor="left", x=0,
                     font=dict(size=9), tracegroupgap=2),
     )
-    fig.update_yaxes(title_text="% Change from Previous Close", ticksuffix="%",
-                     zeroline=True, zerolinecolor="#555555", zerolinewidth=1.5,
-                     showgrid=True, gridcolor="#333333")
+    fig.update_yaxes(
+        title_text="% Change from Previous Close",
+        ticksuffix="%",
+        zeroline=True, zerolinecolor="#555555", zerolinewidth=1.5,
+        showgrid=True, gridcolor="#333333",
+    )
     fig.update_xaxes(range=[str(x_start), str(x_end)], showgrid=True, gridcolor="#333333")
     return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
 
