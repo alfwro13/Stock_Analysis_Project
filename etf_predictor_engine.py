@@ -1,6 +1,6 @@
 import json
 import logging
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time as dtime, timedelta, timezone
 
 import numpy as np
 import pandas as pd
@@ -12,6 +12,7 @@ from database import (
     get_etf_predictor_config,
     get_etf_predictor_configs,
     log_etf_prediction,
+    log_notification,
 )
 from yahoo_engine import yahoo_engine
 
@@ -42,9 +43,7 @@ def detect_etf_info(etf_ticker: str) -> dict:
 
 
 def detect_fx_pair(etf_currency: str, constituent_currencies: list) -> str | None:
-    """Returns Yahoo FX pair string (e.g. 'GBPUSD=X') or None when no conversion needed.
-    Pair expressed as {etf_currency}{most_common_constituent_currency}=X so that
-    fx_adjustment = -(fx_rate/fx_prev - 1.0) preserves the same sign as smgb_predictor."""
+    """Returns Yahoo FX pair or None; pair as {etf_ccy}{constituent_ccy}=X so fx_adjustment sign matches smgb_predictor."""
     normalised_etf = "GBP" if etf_currency in ("GBp", "GBX") else etf_currency
     normalised_constituents = [
         "GBP" if c in ("GBp", "GBX") else c for c in constituent_currencies
@@ -61,7 +60,6 @@ def detect_fx_pair(etf_currency: str, constituent_currencies: list) -> str | Non
 
 
 def get_next_open_date(etf_exchange: str) -> date:
-    """Returns the prediction target date using the given ETF exchange's close time."""
     now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
     today = datetime.now(timezone.utc).date()
     if today.weekday() == 5:
@@ -77,7 +75,6 @@ def get_next_open_date(etf_exchange: str) -> date:
 
 
 def _last_trading_date_for_exchange(exchange: str) -> date:
-    """Most recent weekday whose session has started or completed for the given exchange."""
     now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
     today = datetime.now(timezone.utc).date()
     if today.weekday() == 5:
@@ -114,8 +111,7 @@ def _filter_pre_constituent_open(
     constituent_exchange: str,
     ref_date: date | None = None,
 ) -> pd.DataFrame:
-    """Returns pre-market bars before constituent_exchange opens.
-    Returns empty df if constituent exchange has no defined premarket_open (e.g. LSE)."""
+    """Pre-market bars before constituent_exchange opens; empty df when exchange has no premarket_open (e.g. LSE)."""
     if df.empty:
         return df
     exchange_info = time_engine.EXCHANGE_HOURS.get(constituent_exchange, {})
@@ -125,14 +121,12 @@ def _filter_pre_constituent_open(
     ref = ref_date or datetime.now(timezone.utc).date()
     premarket_open_str = exchange_info["premarket_open"]
     h, m = map(int, premarket_open_str.split(":"))
-    from datetime import time as dtime
     premarket_start = datetime.combine(ref, dtime(h, m))
     return df[(df.index >= premarket_start) & (df.index < constituent_open)]
 
 
 def _ticker_exchange_explicit(ticker: str) -> str:
-    """Exchange from ticker suffix only — never falls back to HOME_EXCHANGE.
-    Uses the JSON-loaded suffix map; plain tickers (no dot) default to NYSE."""
+    """Exchange from ticker suffix only — never falls back to HOME_EXCHANGE; plain tickers default to NYSE."""
     suffix_map = time_engine._SUFFIX_TO_EXCHANGE
     # Try longest suffix first to handle multi-part suffixes like .TWO
     for length in (4, 3, 2, 1):
@@ -145,8 +139,7 @@ def _ticker_exchange_explicit(ticker: str) -> str:
 
 
 def _infer_constituent_exchanges(tickers: list) -> list[str]:
-    """Returns all distinct exchanges ordered by constituent count (descending).
-    First element is the primary exchange used for signal timing and FX logic."""
+    """Distinct exchanges ordered by constituent count; first element drives signal timing and FX."""
     counts: dict[str, int] = {}
     for t in tickers:
         ex = _ticker_exchange_explicit(t)
@@ -161,10 +154,7 @@ def _constituent_currencies(tickers: list) -> list[str]:
 
 
 def _session_relationship(etf_exchange: str, primary_constituent_exchange: str) -> str:
-    """Classify temporal relationship between ETF and primary constituent exchange.
-    'ahead': constituents finish before ETF opens (Asian markets → UK ETF).
-    'behind': constituents extend past ETF close (US markets → UK ETF).
-    'same': overlapping or contained session."""
+    """'ahead': constituents close before ETF opens; 'behind': extend past ETF close; 'same': overlapping."""
     etf_open, etf_close = time_engine.market_window_utc(etf_exchange)
     con_open, con_close = time_engine.market_window_utc(primary_constituent_exchange)
     if con_close <= etf_open:
@@ -175,8 +165,7 @@ def _session_relationship(etf_exchange: str, primary_constituent_exchange: str) 
 
 
 def find_unknown_exchange_tickers(tickers: list) -> list[str]:
-    """Returns tickers whose suffix is not in the exchange registry.
-    Plain tickers (no dot) are never flagged — only .XX-style unknowns."""
+    """Tickers with unrecognised .XX suffixes; plain tickers (no dot) never flagged."""
     suffix_map = time_engine._SUFFIX_TO_EXCHANGE
     unknown = []
     for ticker in tickers:
@@ -220,8 +209,7 @@ def _compute_intraday_returns(
     ref_date: date | None = None,
     daily_df: pd.DataFrame | None = None,
 ) -> tuple[dict[str, float], str]:
-    """Priority: post-ETF-close → intraday → daily closes.
-    Returns ({ticker: return_fraction}, signal_source)."""
+    """Returns ({ticker: return_fraction}, signal_source) with priority: post-ETF-close → intraday → daily."""
     primary_exchange = constituent_exchanges[0] if constituent_exchanges else "NYSE"
     trading_date = ref_date or _last_trading_date_for_exchange(etf_exchange)
     etf_close = _exchange_close_utc_dt(etf_exchange, trading_date)
@@ -248,7 +236,6 @@ def _compute_intraday_returns(
                         found_post = True
                         continue
 
-        # Intraday fallback: use this ticker's own exchange trading date
         ticker_trading_date = _last_trading_date_for_exchange(ticker_exchange)
         if daily_df is not None and ticker in daily_df.columns:
             daily_series = daily_df[ticker].dropna()
@@ -401,7 +388,6 @@ def _compute_regression_prediction(
 
 
 def run_prediction(config_id: int) -> dict:
-    """Main orchestrator: load config, run dual engines, log result."""
     config = get_etf_predictor_config(config_id)
     if config is None:
         return {"status": "error", "error": f"Config {config_id} not found", "predicted_price": None}
@@ -485,17 +471,14 @@ def run_prediction(config_id: int) -> dict:
     primary_constituent = constituent_exchanges[0] if constituent_exchanges else etf_exchange
     session_rel = _session_relationship(etf_exchange, primary_constituent)
 
-    # "us_open_impact" applies when constituents trade *after* the ETF closes ("behind").
-    # For "ahead" (Asian → UK) or same-session configs use "next_open".
+    # "us_open_impact" when constituents trade after ETF close ("behind"); otherwise "next_open".
     if session_rel == "behind" and signal_source in ("intraday_premarket", "intraday_live"):
         prediction_type = "us_open_impact"
     else:
         prediction_type = "next_open"
 
-    # Warn if any constituent has an unrecognised exchange suffix
     unknown = find_unknown_exchange_tickers(constituent_tickers)
     if unknown:
-        from database import log_notification
         log_notification(
             "etf_unknown_exchange",
             f"{etf_ticker}: constituent tickers {unknown} use suffixes not found in "
@@ -532,7 +515,6 @@ def run_prediction(config_id: int) -> dict:
 
 
 def get_etf_correlation_data(config: dict, days: int = 60) -> dict:
-    """Rolling 30-day Pearson correlation between ETF and equal-weighted constituent basket."""
     constituent_tickers = [h["ticker"] for h in config["constituents"]]
     etf_ticker = config["etf_ticker"]
     etf_info = detect_etf_info(etf_ticker)
@@ -573,7 +555,6 @@ def get_etf_correlation_data(config: dict, days: int = 60) -> dict:
 
 
 def get_etf_intraday_overlay_data(config: dict, prediction: dict | None = None) -> dict:
-    """Assembles intraday chart data for the time-aligned overlay chart."""
     now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
     etf_ticker = config["etf_ticker"]
     constituent_tickers = [h["ticker"] for h in config["constituents"]]
@@ -645,7 +626,6 @@ def get_etf_intraday_overlay_data(config: dict, prediction: dict | None = None) 
 
 
 def fill_actuals_for_config(config_id: int) -> None:
-    """Fetch current ETF price and fill unresolved predictions for this config."""
     config = get_etf_predictor_config(config_id)
     if config is None:
         return
