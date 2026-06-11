@@ -7,7 +7,11 @@ from scheduler_engine import (
     log_sched_notification,
     record_job_run,
     get_all_job_last_runs,
+    _mark_job_started,
+    _mark_job_done,
+    get_active_jobs,
 )
+import scheduler_engine as _sched_module
 
 
 # ---------------------------------------------------------------------------
@@ -150,3 +154,53 @@ class TestDbHelpers:
     def test_get_all_job_last_runs_empty_db(self):
         result = get_all_job_last_runs()
         assert result == {}
+
+
+# ---------------------------------------------------------------------------
+# Active-jobs tracking: _mark_job_started / _mark_job_done / get_active_jobs
+# ---------------------------------------------------------------------------
+
+class TestActiveJobsTracking:
+    def setup_method(self):
+        """Reset the shared _active_jobs dict before each test."""
+        with _sched_module._active_jobs_lock:
+            _sched_module._active_jobs.clear()
+
+    def test_mark_job_started_adds_entry(self):
+        _mark_job_started("my_job")
+        jobs = get_active_jobs()
+        assert "my_job" in jobs
+
+    def test_mark_job_started_stores_utc_iso_timestamp(self):
+        _mark_job_started("ts_job")
+        ts = get_active_jobs()["ts_job"]
+        # Must parse as a valid ISO datetime string (no timezone suffix — stored as naive UTC)
+        from datetime import datetime
+        parsed = datetime.fromisoformat(ts)
+        assert parsed.year >= 2024
+
+    def test_mark_job_done_removes_entry(self):
+        _mark_job_started("remove_me")
+        _mark_job_done("remove_me")
+        assert "remove_me" not in get_active_jobs()
+
+    def test_mark_job_done_on_missing_key_does_not_raise(self):
+        _mark_job_done("never_started")  # must not raise
+
+    def test_get_active_jobs_returns_snapshot_copy(self):
+        _mark_job_started("snap_job")
+        snapshot = get_active_jobs()
+        # Mutating the returned dict must not affect internal state
+        snapshot["snap_job"] = "tampered"
+        assert get_active_jobs()["snap_job"] != "tampered"
+
+    def test_multiple_jobs_tracked_independently(self):
+        _mark_job_started("job_a")
+        _mark_job_started("job_b")
+        _mark_job_done("job_a")
+        jobs = get_active_jobs()
+        assert "job_a" not in jobs
+        assert "job_b" in jobs
+
+    def test_get_active_jobs_empty_when_no_jobs_running(self):
+        assert get_active_jobs() == {}
