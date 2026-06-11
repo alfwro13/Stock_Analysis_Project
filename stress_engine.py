@@ -4,12 +4,11 @@ from typing import Dict, List, Optional
 
 from config import load_config
 from database import get_connection
+from xray_engine import GhostfolioXRayClient
 
 logger = logging.getLogger(__name__)
 
-# Sector multipliers represent how much more/less than the market a sector moved during
-# the crash. 1.0 = moved with the market; 1.7 = 70% worse; -0.6 = actually gained
-# (e.g. Energy in 2022). Formula: holding_drop = market_drop × beta × sector_mult.
+# holding_drop = market_drop × beta × sector_mult; 1.0 = market; >1 = worse; <0 = gained (e.g. Energy 2022).
 SCENARIOS: Dict[str, Dict] = {
     "gfc_2008": {
         "name": "Global Financial Crisis (2008–09)",
@@ -146,7 +145,6 @@ def run_stress_test(
     if not scope_ids:
         raise RuntimeError("No active Ghostfolio accounts configured.")
 
-    from xray_engine import GhostfolioXRayClient
     client = GhostfolioXRayClient()
     if not client.is_configured:
         raise RuntimeError("Ghostfolio is not configured (check GHOSTFOLIO_URL / GHOSTFOLIO_TOKEN).")
