@@ -59,7 +59,7 @@
                 {{ summary_math.pnl }} ({{ summary_math.pnl_pct }}%)
             </strong>
         </div>
-        <div class="summary-label xray-link-container">
+        <div class="summary-label xray-link-container portfolio-action-links">
             <a href="#" id="xray-link" class="xray-link-btn" onclick="toggleXray(); return false;">&#128302; X-ray</a>
             <a href="/score-history?filter=portfolio&ref=/portfolio" class="xray-link-btn" style="margin-left:8px;">&#128200; Score History</a>
         </div>
@@ -124,24 +124,24 @@
         <thead>
             <tr>
                 <th>Ticker</th>
-                <th>Company Name</th>
+                <th class="col-mob-hide">Company Name</th>
                 <th>Price</th>
                 <th>Daily Change</th>
                 <th><abbr title="Current market value across all accounts (in base currency)">Global Value</abbr></th>
                 <th><abbr title="Unrealized P&amp;L across all accounts (in base currency)">Global P&amp;L</abbr></th>
-                <th>50D</th>
-                <th>200D</th>
-                <th><abbr title="Standard PEG Ratio">PEG</abbr></th>
-                <th><abbr title="Peter Lynch Fair Value">PL PEG</abbr></th>
-                <th>Stop-Loss</th>
-                <th>RSI</th>
-                <th><abbr title="Machine Learning Ensemble confidence score predicting a >3% return over the next 10 days.">ML Conf</abbr></th>
-                <th>VaR (95%)</th>
-                <th>Sentiment</th>
-                <th>Earnings</th>
-                <th>Score</th>
-                <th>Setups & Tags</th>
-                <th>Signal</th>
+                <th class="col-mob-hide">50D</th>
+                <th class="col-mob-hide">200D</th>
+                <th class="col-mob-hide"><abbr title="Standard PEG Ratio">PEG</abbr></th>
+                <th class="col-mob-hide"><abbr title="Peter Lynch Fair Value">PL PEG</abbr></th>
+                <th class="col-mob-hide">Stop-Loss</th>
+                <th class="col-mob-hide">RSI</th>
+                <th class="col-mob-hide"><abbr title="Machine Learning Ensemble confidence score predicting a >3% return over the next 10 days.">ML Conf</abbr></th>
+                <th class="col-mob-hide">VaR (95%)</th>
+                <th class="col-mob-hide">Sentiment</th>
+                <th class="col-mob-hide">Earnings</th>
+                <th class="col-mob-hide">Score</th>
+                <th class="col-mob-hide">Setups &amp; Tags</th>
+                <th class="col-mob-hide">Signal</th>
             </tr>
         </thead>
         <tbody>
@@ -150,7 +150,7 @@
                 <td data-sort="{{ item.ticker }}" class="num-cell">
                     <a href="/stock/{{ item.ticker }}{% if embed %}?embed=true{% endif %}" class="ticker-link">{{ item.ticker }}</a>
                 </td>
-                <td data-sort="{{ item.company_name }}">
+                <td data-sort="{{ item.company_name }}" class="col-mob-hide">
                     {{ item.company_name }}
                 </td>
                 
@@ -196,19 +196,19 @@
                         {% endif %}
                     {% else %}N/A{% endif %}
                 </td>
-                <td data-sort="{{ 1 if item.trend_50d == 'UP' else 0 }}"><span class="{% if item.trend_50d == 'UP' %}trend-up{% else %}trend-down{% endif %}">{{ item.trend_50d }}</span></td>
-                <td data-sort="{{ 1 if item.trend_200d == 'UP' else 0 }}"><span class="{% if item.trend_200d == 'UP' %}trend-up{% else %}trend-down{% endif %}">{{ item.trend_200d }}</span></td>
-                <td data-sort="{{ item.peg_ratio if item.peg_ratio is not none else 999 }}" class="num-cell">{% if item.peg_ratio is not none %}{{ "{:,.2f}".format(item.peg_ratio) }}{% else %}N/A{% endif %}</td>
-                <td data-sort="{{ item.peter_lynch_peg if item.peter_lynch_peg is not none else 999 }}" class="num-cell">{% if item.peter_lynch_peg is not none %}{{ "{:,.2f}".format(item.peter_lynch_peg) }}{% else %}N/A{% endif %}</td>
-                <td data-sort="{{ item.atr_stop_loss if item.atr_stop_loss is not none else -999 }}" class="text-warning num-cell">
+                <td data-sort="{{ 1 if item.trend_50d == 'UP' else 0 }}" class="col-mob-hide"><span class="{% if item.trend_50d == 'UP' %}trend-up{% else %}trend-down{% endif %}">{{ item.trend_50d }}</span></td>
+                <td data-sort="{{ 1 if item.trend_200d == 'UP' else 0 }}" class="col-mob-hide"><span class="{% if item.trend_200d == 'UP' %}trend-up{% else %}trend-down{% endif %}">{{ item.trend_200d }}</span></td>
+                <td data-sort="{{ item.peg_ratio if item.peg_ratio is not none else 999 }}" class="num-cell col-mob-hide">{% if item.peg_ratio is not none %}{{ "{:,.2f}".format(item.peg_ratio) }}{% else %}N/A{% endif %}</td>
+                <td data-sort="{{ item.peter_lynch_peg if item.peter_lynch_peg is not none else 999 }}" class="num-cell col-mob-hide">{% if item.peter_lynch_peg is not none %}{{ "{:,.2f}".format(item.peter_lynch_peg) }}{% else %}N/A{% endif %}</td>
+                <td data-sort="{{ item.atr_stop_loss if item.atr_stop_loss is not none else -999 }}" class="text-warning num-cell col-mob-hide">
                     {% if item.atr_stop_loss is not none %}
                         {% set atr_val = (item.atr_stop_loss / 100.0) if item.currency == 'GBp' else item.atr_stop_loss %}
                         {{ "{:,.2f}".format(atr_val) }}
                     {% else %}N/A{% endif %}
                 </td>
-                <td data-sort="{{ item.rsi_14 if item.rsi_14 is not none else -999 }}" class="num-cell">{% if item.rsi_14 is not none %}{{ "{:,.1f}".format(item.rsi_14) }}{% else %}N/A{% endif %}</td>
+                <td data-sort="{{ item.rsi_14 if item.rsi_14 is not none else -999 }}" class="num-cell col-mob-hide">{% if item.rsi_14 is not none %}{{ "{:,.1f}".format(item.rsi_14) }}{% else %}N/A{% endif %}</td>
 
-                <td data-sort="{{ item.ml_confidence_score if item.ml_confidence_score is not none else -999 }}" class="num-cell">
+                <td data-sort="{{ item.ml_confidence_score if item.ml_confidence_score is not none else -999 }}" class="num-cell col-mob-hide">
                     {% if item.ml_confidence_score is not none %}
                         {% set ml_class = 'metric-excellent' if item.ml_confidence_score > 40 else ('metric-poor' if item.ml_confidence_score < 20 else 'metric-neutral') %}
                         <span class="{{ ml_class }}">{{ "{:,.1f}".format(item.ml_confidence_score) }}%</span>
@@ -217,7 +217,7 @@
                     {% endif %}
                 </td>
 
-                <td data-sort="{{ item.var_95 if item.var_95 is not none else -999 }}" class="num-cell">
+                <td data-sort="{{ item.var_95 if item.var_95 is not none else -999 }}" class="num-cell col-mob-hide">
                     {% if item.var_95 is not none %}
                         {% set var_class = 'metric-poor' if item.var_95 > 0.05 else 'metric-neutral' %}
                         {% set cvar_pct = '{:,.2f}'.format(item.cvar_95 * 100) ~ '%' if item.cvar_95 is not none else 'N/A' %}
@@ -238,7 +238,7 @@
                     {% endif %}
                 </td>
                 
-                <td data-sort="{{ item.sentiment_score if item.sentiment_score is not none else -999 }}">
+                <td data-sort="{{ item.sentiment_score if item.sentiment_score is not none else -999 }}" class="col-mob-hide">
                     {% if item.sentiment_score is not none %}
                         {% if item.sentiment_score > 0.6 %}
                             <span class="sent-badge sent-euphoria">Euphoria ({{ "{:,.3f}".format(item.sentiment_score) }})</span>
@@ -256,9 +256,9 @@
                     {% endif %}
                 </td>
 
-                <td data-sort="{{ item.next_earnings_date or '9999-12-31' }}" class="num-cell">{% if item.next_earnings_date %}{{ item.next_earnings_date }}{% else %}N/A{% endif %}</td>
-                <td data-sort="{{ item.composite_score }}" class="num-cell">{{ item.composite_score }}</td>
-                <td class="max-w-150">
+                <td data-sort="{{ item.next_earnings_date or '9999-12-31' }}" class="num-cell col-mob-hide">{% if item.next_earnings_date %}{{ item.next_earnings_date }}{% else %}N/A{% endif %}</td>
+                <td data-sort="{{ item.composite_score }}" class="num-cell col-mob-hide">{{ item.composite_score }}</td>
+                <td class="max-w-150 col-mob-hide">
                     {% for tag in item.setup_tags_list %}
                         <div class="inline-block">
                             <abbr title="{{ tag.tooltip }}" class="no-decoration-abbr">
@@ -284,7 +284,7 @@
                         {% endif %}
                     {% endif %}
                 </td>
-                <td class="{{ item.overall_signal | replace(' ', '-') | replace('/', '-') }}">{{ item.overall_signal }}</td>
+                <td class="{{ item.overall_signal | replace(' ', '-') | replace('/', '-') }} col-mob-hide">{{ item.overall_signal }}</td>
             </tr>
             {% endfor %}
         </tbody>
@@ -1095,6 +1095,7 @@
                 dom: 'lrtip',
                 order: []
             });
+            window._portfolioTable = table;
 
             $('#customSearchInput').on('keyup', function () {
                 table.search(this.value).draw();
@@ -1113,5 +1114,6 @@
             });
         });
     </script>
+    <script src="/static/js/portfolio.js?v={{ css_version }}"></script>
 </body>
 </html>

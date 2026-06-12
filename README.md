@@ -100,6 +100,10 @@ To start the server, simply run the main application file. The system will autom
 * **Update Data:** Click **"↻ Update Analysis"** to trigger the background data engine manually, or rely on your configured APScheduler rules.  
 * **Deep Dive:** Click on any ticker to view the detailed Quantamental analysis, interactive Plotly charts, and live algorithmic candlestick pattern overlays.
 
+## **📱 Mobile-Responsive Portfolio**
+
+The portfolio page adapts automatically to narrow screens (≤ 768 px). On mobile: the macro-index cards collapse to two compact rows of four (hiding UK 10Y Gilt and US 30Y Yield); the summary strip shows Total Investment, Market Value, and P&L in a three-column grid; the yield-threat bar stacks US above UK; and the holdings table shows only the five most essential columns (Ticker, Price, Change, Global Value, Global P&L). Tapping any row slides open a detail panel with Company Name, 50-day and 200-day trends, Sentiment, Score, Setups/Tags, and Signal — one row at a time.
+
 ## **🏠 Home Assistant & iFrame Integration (Embed Mode)**
 
 If you want to display your Portfolio or Watchlist on an external dashboard (such as Home Assistant, MagicMirror, or Grafana), you can use the built-in **Embed Mode**.
