@@ -325,21 +325,22 @@ table.dataTable.display tbody tr.even > .sorting_1, table.dataTable.order-column
   .filter-input, .filter-select { width: 100%; }
 }
 @media (max-width: 768px) {
+  /* Macro cards: hide UK gilt + US 30Y yield; 4-per-row using explicit flex sizing */
   .macro-card-link[data-ticker="UK10YG"],
   .macro-card-link[data-ticker="^TYX"] { display: none; }
-  .macro-container { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
-  .macro-card { min-width: 0; padding: 6px 4px; }
-  .macro-title { font-size: 10px; }
+  .macro-card-link { display: flex; flex: 0 0 calc(25% - 3px); max-width: calc(25% - 3px); }
+  .macro-container { gap: 4px; }
+  .macro-card { min-width: 0; width: 100%; padding: 6px 2px; }
+  .macro-title { font-size: 9px; word-break: break-word; }
   .macro-price { font-size: 12px; }
   .macro-change { font-size: 10px; }
+  /* Summary row: 3-column grid, hide action links */
   .summary-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 10px; }
   .portfolio-action-links { display: none; }
-  #dataTable th.col-mob-hide,
-  #dataTable td.col-mob-hide { display: none; }
-  #dataTable { font-size: 12px; }
-  #dataTable td, #dataTable th { padding: 6px 4px; white-space: nowrap; }
+  /* Table rows are tappable */
   tr.live-asset-row { cursor: pointer; }
   tr.row-expanded > td { border-bottom: none; }
+  /* Accordion detail panel */
   .mob-detail { padding: 10px 12px; background: #151f2d; font-size: 12px; }
   .mob-detail-company { font-weight: 600; margin-bottom: 6px; color: #e0e0e0; }
   .mob-detail-row { margin-bottom: 4px; }
