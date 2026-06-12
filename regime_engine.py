@@ -1,6 +1,6 @@
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 
 import joblib
@@ -30,17 +30,10 @@ _IF_FEATURE_COLS = ["vix_level", "vix_ma_ratio", "hyg_return", "tnx_change", "sp
 
 
 def run_price_regime_hmm() -> dict:
-    """
-    Fits a 3-state GaussianHMM on 5-year daily SPY log-returns + EWMA vol.
-    States are remapped ascending by mean EWMA vol: 0=Bull, 1=Chop, 2=Crash.
-    Maintains an incremental Parquet cache at data/historical/SPY_hmm.parquet so
-    only a 1-month tail is fetched on subsequent daily runs.
-    Returns {state, label, probability, previous_state, previous_label, date}.
-    """
+    # 3-state GaussianHMM on SPY log-returns + EWMA vol; incremental Parquet cache; returns {state, label, probability, previous_state, previous_label, date}
     from hmmlearn import hmm as hmmlib
     from sklearn.preprocessing import StandardScaler
 
-    # --- Load / incrementally update the 5-year SPY cache ---
     try:
         if _HMM_CACHE_PATH.exists():
             df_cached = pd.read_parquet(_HMM_CACHE_PATH)
@@ -66,7 +59,6 @@ def run_price_regime_hmm() -> dict:
         logger.error("HMM: Parquet cache update failed: %s", e)
         return {}
 
-    # --- Compute features: daily log returns + 20-day EWMA annualised vol ---
     df_spy = df_spy.dropna(subset=["Close"])
     log_returns = np.log(df_spy["Close"] / df_spy["Close"].shift(1))
     ewma_vol = (log_returns ** 2).ewm(
@@ -79,7 +71,6 @@ def run_price_regime_hmm() -> dict:
         logger.warning("HMM: only %d feature rows — insufficient to fit.", len(features))
         return {}
 
-    # --- Fit GaussianHMM ---
     scaler = StandardScaler()
     X = scaler.fit_transform(features.values)
 
@@ -106,7 +97,6 @@ def run_price_regime_hmm() -> dict:
     today_label = _HMM_LABEL_MAP[today_canonical]
     today_date = features.index[-1].strftime("%Y-%m-%d")
 
-    # --- Persist to DB ---
     conn = None
     prev_state, prev_label = None, None
     try:
@@ -182,12 +172,7 @@ def run_price_regime_hmm() -> dict:
 
 
 def _build_if_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Compute the 6 market-stress feature columns from a merged OHLCV DataFrame.
-
-    Expected input columns: vix_close, hyg_close, tnx_close, spy_close, spy_volume.
-    Returns a DataFrame indexed by date with _IF_FEATURE_COLS columns; rows with any
-    NaN are dropped by the caller.
-    """
+    # Input: vix_close, hyg_close, tnx_close, spy_close, spy_volume; output: _IF_FEATURE_COLS (NaN rows dropped by caller)
     out = pd.DataFrame(index=df.index)
     vix_ma = df["vix_close"].rolling(IF_STRESS_VOL_WINDOW).mean()
     out["vix_level"]     = df["vix_close"]
@@ -202,23 +187,7 @@ def _build_if_features(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def run_market_stress_if() -> dict:
-    """
-    Fits a market-wide IsolationForest on 2 years of daily macro features and scores
-    today's observation. Features: VIX level, VIX/20-day-MA ratio, HYG daily return,
-    10Y yield daily change, SPY volume z-score, SPY daily return.
-
-    Uses an incremental Parquet cache at data/historical/market_stress_if.parquet so
-    only a 1-month tail is fetched on subsequent daily runs.
-
-    Returns a dict:
-        score        float in [0.0, 1.0] — 1.0 is maximally anomalous
-        features     dict[str, float] — the 6 raw feature values for today
-        alert        bool — True when score >= threshold on IF_STRESS_ALERT_DAYS
-                     consecutive calendar days (checked via market_regimes DB)
-        date         str  — YYYY-MM-DD of the scored observation
-    Returns {} on any unrecoverable failure.
-    """
-    # ── 1. Load / incrementally update the 2-year raw-price cache ──────────────
+    # IsolationForest on 2y daily macro features (VIX, HYG, TNX, SPY vol/return); returns {score [0–1], features, alert, date} or {} on failure
     try:
         if _IF_CACHE_PATH.exists():
             df_cached = pd.read_parquet(_IF_CACHE_PATH)
@@ -256,7 +225,6 @@ def run_market_stress_if() -> dict:
         logger.error("Market stress IF: cache update failed: %s", e)
         return {}
 
-    # ── 2. Rename raw columns and build features ────────────────────────────────
     rename = {"^VIX": "vix_close", "HYG": "hyg_close", "^TNX": "tnx_close",
               "SPY": "spy_close", "SPY_Vol": "spy_volume"}
     df_raw = df_raw.rename(columns=rename)
@@ -274,7 +242,6 @@ def run_market_stress_if() -> dict:
         )
         return {}
 
-    # ── 3. Fit IsolationForest on full history, score today ─────────────────────
     X = feature_df.values
     model = IsolationForest(
         n_estimators=IF_STRESS_N_ESTIMATORS,
@@ -297,9 +264,8 @@ def run_market_stress_if() -> dict:
     today_features = {col: round(float(feature_df.iloc[-1][col]), 4) for col in _IF_FEATURE_COLS}
 
     joblib.dump({"model": model, "score_min": score_min, "score_max": score_max,
-                 "trained_at": datetime.utcnow().isoformat()}, _IF_MODEL_PATH)
+                 "trained_at": datetime.now(timezone.utc).isoformat()}, _IF_MODEL_PATH)
 
-    # ── 4. Upsert score into market_regimes ─────────────────────────────────────
     conn = None
     try:
         conn = get_connection()
@@ -313,7 +279,6 @@ def run_market_stress_if() -> dict:
             (today_date, round(today_score, 4), json.dumps(today_features)),
         )
 
-        # ── 5. Check IF_STRESS_ALERT_DAYS consecutive days above threshold ───────
         cursor.execute(
             "SELECT market_stress_score FROM market_regimes "
             "WHERE market_stress_score IS NOT NULL ORDER BY date DESC LIMIT ?",
@@ -492,7 +457,7 @@ def classify_macro_regime() -> None:
         hmm_row = cursor.fetchone()
         ai_hmm_state = hmm_row['ai_hmm_state'] if hmm_row and hmm_row['ai_hmm_state'] is not None else None
 
-        # Count consecutive days with inverted yield curve (most recent streak)
+        # most recent inversion streak
         cursor.execute(
             "SELECT us_yield_curve FROM macro_indicators "
             "WHERE us_yield_curve IS NOT NULL ORDER BY date DESC LIMIT 365"
