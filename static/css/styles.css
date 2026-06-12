@@ -337,6 +337,15 @@ table.dataTable.display tbody tr.even > .sorting_1, table.dataTable.order-column
   /* Summary row: 3-column grid, hide action links */
   .summary-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 10px; }
   .portfolio-action-links { display: none; }
+  /* Table: contain width within viewport, scroll internally rather than overflowing the page */
+  #dataTable_wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  /* Override DataTables' own generous padding (it loads after styles.css and needs !important) */
+  table.dataTable thead th,
+  table.dataTable tbody td { padding: 6px 4px !important; font-size: 12px !important; }
+  /* Remove sort-arrow icons on mobile — they consume ~14px right padding per header */
+  table.dataTable thead .sorting,
+  table.dataTable thead .sorting_asc,
+  table.dataTable thead .sorting_desc { background-image: none !important; }
   /* Table rows are tappable */
   tr.live-asset-row { cursor: pointer; }
   tr.row-expanded > td { border-bottom: none; }
