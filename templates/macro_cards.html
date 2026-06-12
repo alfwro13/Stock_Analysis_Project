@@ -150,8 +150,19 @@
             if (index.ticker === 'BZ=F') formattedPrice = '$' + formattedPrice;
             const formattedChange = Number(index.change_pct).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 
+            // On mobile, force layout via inline styles — CSS overrides of display:contents
+            // are unreliable in Safari/WebKit and cannot be trusted on real devices.
+            const isMobile = window.innerWidth <= 768;
+            const mobileHidden = ['UK10YG', '^TYX'];
+            let linkStyle = '';
+            if (isMobile) {
+                linkStyle = mobileHidden.includes(index.ticker)
+                    ? 'display:none'
+                    : 'display:flex;flex:0 0 calc(25% - 3px);max-width:calc(25% - 3px)';
+            }
+
             const cardHTML = `
-                <a href="/index/${encodeURIComponent(index.ticker)}" class="macro-card-link" data-ticker="${index.ticker}">
+                <a href="/index/${encodeURIComponent(index.ticker)}" class="macro-card-link" data-ticker="${index.ticker}"${linkStyle ? ` style="${linkStyle}"` : ''}>
                     <div class="macro-card ${cardClass} ${staleClass}">
                         <div class="macro-title ${staleText}">${index.name}</div>
                         <div class="macro-price ${staleText}">${formattedPrice}</div>

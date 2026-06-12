@@ -147,7 +147,18 @@
         </thead>
         <tbody>
             {% for item in portfolio %}
-            <tr class="live-asset-row" data-ticker="{{ item.ticker }}" data-currency="{{ item.currency }}" data-signal="{{ item.overall_signal | upper }}" data-tags="{% for tag in item.setup_tags_list %}{{ tag.name }} {% endfor %}">
+            <tr class="live-asset-row"
+                data-ticker="{{ item.ticker }}"
+                data-currency="{{ item.currency }}"
+                data-signal="{{ item.overall_signal | upper }}"
+                data-tags="{% for tag in item.setup_tags_list %}{{ tag.name }} {% endfor %}"
+                data-detail-company="{{ item.company_name | e }}"
+                data-detail-trend50="{{ item.trend_50d or '' }}"
+                data-detail-trend200="{{ item.trend_200d or '' }}"
+                data-detail-score="{{ item.composite_score if item.composite_score is not none else '' }}"
+                data-detail-signal="{{ item.overall_signal or '' }}"
+                data-detail-sentiment="{{ item.sentiment_score if item.sentiment_score is not none else '' }}"
+                data-detail-ml="{{ item.ml_confidence_score if item.ml_confidence_score is not none else '' }}">
                 <td data-sort="{{ item.ticker }}" class="num-cell">
                     <a href="/stock/{{ item.ticker }}{% if embed %}?embed=true{% endif %}" class="ticker-link">{{ item.ticker }}</a>
                 </td>
