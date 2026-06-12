@@ -417,8 +417,16 @@
                                    {% if is_dip_monitored %}checked{% endif %}
                                    onchange="toggleDipRadar('{{ stock.ticker }}', this.checked)">
                             <label for="dip-radar-toggle" class="text-orange font-bold">
-                                Monitor {{ stock.ticker }} for today's session
+                                Monitor {{ stock.ticker }}
                             </label>
+                            <select id="dip-radar-days" class="drs-days-select" {% if is_dip_monitored %}disabled{% endif %}>
+                                <option value="1">1 day</option>
+                                <option value="2">2 days</option>
+                                <option value="3">3 days</option>
+                                <option value="5">5 days</option>
+                                <option value="7">7 days</option>
+                                <option value="14">14 days</option>
+                            </select>
                         </div>
                         <div id="dip-radar-result" style="display:{% if is_dip_monitored %}block{% else %}none{% endif %};">
                             <div id="dip-score-display" style="color:#888;font-size:13px;">Waiting for first scan (runs every 2 minutes during market hours)...</div>
@@ -430,13 +438,16 @@
                 (function() {
                     async function toggleDipRadar(ticker, enable) {
                         const endpoint = enable ? '/api/intraday-monitor/add' : '/api/intraday-monitor/remove';
+                        const daysEl = document.getElementById('dip-radar-days');
+                        const days = daysEl ? (parseInt(daysEl.value, 10) || 1) : 1;
                         try {
                             await fetch(endpoint, {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ ticker: ticker })
+                                body: JSON.stringify(enable ? { ticker: ticker, days: days } : { ticker: ticker })
                             });
                         } catch(e) { console.error('DipRadar toggle error:', e); }
+                        if (daysEl) daysEl.disabled = enable;
                         const resultDiv = document.getElementById('dip-radar-result');
                         resultDiv.style.display = enable ? 'block' : 'none';
                         if (enable) {

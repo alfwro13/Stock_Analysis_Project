@@ -1836,17 +1836,20 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
         pass  # fallback placeholder already set
 
     is_dip_monitored = False
+    conn_dip = None
     try:
-        from datetime import date as _date
         conn_dip = get_connection()
+        _today = datetime.now(timezone.utc).date().isoformat()
         dip_row = conn_dip.execute(
-            "SELECT is_active FROM intraday_monitors WHERE ticker = ? AND date_added = ?",
-            (ticker, _date.today().isoformat()),
+            "SELECT 1 FROM intraday_monitors WHERE ticker = ? AND is_active = 1 AND expire_date >= ?",
+            (ticker, _today),
         ).fetchone()
-        conn_dip.close()
-        is_dip_monitored = bool(dip_row and dip_row["is_active"])
+        is_dip_monitored = bool(dip_row)
     except Exception:
         pass
+    finally:
+        if conn_dip:
+            conn_dip.close()
 
     return templates.TemplateResponse(
         request=request, name="stock_detail.html",
