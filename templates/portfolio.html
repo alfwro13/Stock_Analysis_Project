@@ -1115,14 +1115,14 @@
 
             $('#signalFilter').on('change', function() {
                 var val = $(this).val();
-                if(val === 'ALL') { table.column(17).search('').draw(); }
-                else { table.column(17).search('^' + val + '$', true, false).draw(); }
+                if(val === 'ALL') { table.column(18).search('').draw(); }
+                else { table.column(18).search('^' + val + '$', true, false).draw(); }
             });
 
             $('#tagFilter').on('change', function() {
                 var val = $(this).val();
-                if(val === 'ALL') { table.column(16).search('').draw(); }
-                else { table.column(16).search(val).draw(); }
+                if(val === 'ALL') { table.column(17).search('').draw(); }
+                else { table.column(17).search(val).draw(); }
             });
         });
     </script>
