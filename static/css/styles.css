@@ -337,8 +337,12 @@ table.dataTable.display tbody tr.even > .sorting_1, table.dataTable.order-column
   /* Summary row: 3-column grid, hide action links */
   .summary-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 10px; }
   .portfolio-action-links { display: none; }
-  /* Table: contain width within viewport, scroll internally rather than overflowing the page */
-  #dataTable_wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  /* Header: shrink logo + title so freshness badge (Model/Prices) no longer clashes */
+  .logo-img { height: 28px; }
+  .header-container h1 { font-size: 15px; }
+  .freshness-badge { font-size: 10px; line-height: 1.4; top: 6px; right: 10px; }
+  /* Table: bleed wrapper to viewport edges, cancelling body's 20px left/right padding */
+  #dataTable_wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; margin-left: -20px; margin-right: -20px; }
   /* Override DataTables' own generous padding (it loads after styles.css and needs !important) */
   table.dataTable thead th,
   table.dataTable tbody td { padding: 6px 4px !important; font-size: 12px !important; }
