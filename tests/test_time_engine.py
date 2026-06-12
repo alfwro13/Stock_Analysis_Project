@@ -1,4 +1,5 @@
 """Tests for time_engine public API."""
+import json
 import pytest
 from datetime import datetime, time as dtime, timezone
 from unittest.mock import patch
@@ -10,6 +11,9 @@ from time_engine import (
     is_market_open,
     reset_cron_trigger_params,
     EXCHANGE_HOURS,
+    _load_exchange_registry,
+    reload_exchange_registry,
+    _BUILTIN_EXCHANGE_HOURS,
 )
 
 
@@ -165,3 +169,87 @@ class TestResetCronTriggerParams:
         with patch("time_engine._load_config", return_value={"HOME_EXCHANGE": "LSE"}):
             params = reset_cron_trigger_params(None)
         assert params["timezone"] == "Europe/London"
+
+
+# ---------------------------------------------------------------------------
+# _load_exchange_registry — self-healing fallback
+# ---------------------------------------------------------------------------
+
+class TestLoadExchangeRegistry:
+
+    def _reset_cache(self):
+        """Force next _load_exchange_registry() call to re-read from disk."""
+        orig = time_engine._registry_cache
+        time_engine._registry_cache = None
+        return orig
+
+    def test_missing_file_falls_back_to_builtin(self, tmp_path):
+        with patch("time_engine._EXCHANGE_HOURS_PATH", str(tmp_path / "nonexistent.json")):
+            saved = self._reset_cache()
+            try:
+                result = _load_exchange_registry()
+            finally:
+                time_engine._registry_cache = saved
+        assert "NYSE" in result
+        assert result == _BUILTIN_EXCHANGE_HOURS
+
+    def test_malformed_json_falls_back_to_builtin(self, tmp_path):
+        bad = tmp_path / "bad.json"
+        bad.write_text("NOT JSON {{{")
+        with patch("time_engine._EXCHANGE_HOURS_PATH", str(bad)):
+            saved = self._reset_cache()
+            try:
+                result = _load_exchange_registry()
+            finally:
+                time_engine._registry_cache = saved
+        assert result == _BUILTIN_EXCHANGE_HOURS
+
+    def test_valid_json_file_is_loaded(self, tmp_path):
+        custom = {"CUSTOM_X": {"open": "10:00", "close": "18:00", "tz": "UTC"}}
+        p = tmp_path / "exchange_hours.json"
+        p.write_text(json.dumps(custom))
+        with patch("time_engine._EXCHANGE_HOURS_PATH", str(p)):
+            saved = self._reset_cache()
+            try:
+                result = _load_exchange_registry()
+            finally:
+                time_engine._registry_cache = saved
+        assert "CUSTOM_X" in result
+
+    def test_reload_exchange_registry_invalidates_suffix_cache(self, tmp_path):
+        custom = {
+            "CUSTOM_EXCH": {
+                "open": "09:00", "close": "17:00", "tz": "UTC",
+                "currency": "XXX", "suffixes": [".XX"],
+            }
+        }
+        p = tmp_path / "exchange_hours.json"
+        p.write_text(json.dumps(custom))
+        # Reload so the new registry and suffix map are active
+        with patch("time_engine._EXCHANGE_HOURS_PATH", str(p)):
+            reload_exchange_registry()
+            result = ticker_exchange("TICKER.XX")
+        # Reload back to real file for subsequent tests
+        reload_exchange_registry()
+        assert result == "CUSTOM_EXCH"
+
+
+# ---------------------------------------------------------------------------
+# ticker_exchange — multi-part suffix matching
+# ---------------------------------------------------------------------------
+
+class TestTickerExchangeMultiSuffix:
+
+    def test_four_char_suffix_matched(self):
+        # Inject a 4-char suffix directly into the suffix map for isolation
+        fake_map = {".TWOO": "CUSTOM_EX", **{k: v for k, v in time_engine._SUFFIX_TO_EXCHANGE.items()}}
+        with patch("time_engine._suffix_cache", fake_map):
+            assert ticker_exchange("TICKER.TWOO") == "CUSTOM_EX"
+
+    def test_two_char_suffix_still_works(self):
+        # .DE is 2 chars — must still resolve via new length-priority loop
+        assert ticker_exchange("SAP.DE") == "XETRA"
+
+    def test_unknown_suffix_falls_through_to_currency(self):
+        # .ZZ not in registry → should fall through to currency USD → NYSE
+        assert ticker_exchange("FOO.ZZ", currency="USD") == "NYSE"

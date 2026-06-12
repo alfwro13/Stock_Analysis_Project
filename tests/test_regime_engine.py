@@ -12,8 +12,12 @@ from regime_engine import (
     calculate_systemic_macro_threat,
     _classify_regime,
     classify_macro_regime,
+    _build_if_features,
+    run_price_regime_hmm,
+    run_market_stress_if,
+    _IF_FEATURE_COLS,
 )
-from constants import REGIME_CRASH_VOL, REGIME_VOLATILE_VOL
+from constants import REGIME_CRASH_VOL, REGIME_VOLATILE_VOL, IF_STRESS_MIN_ROWS
 
 pytestmark = pytest.mark.regime
 
@@ -298,3 +302,196 @@ class TestClassifyMacroRegime:
         finally:
             conn.close()
         classify_macro_regime()  # must not raise
+
+
+def _make_if_raw(n=60):
+    """Build a minimal merged raw-price DataFrame suitable for _build_if_features."""
+    dates = pd.date_range("2024-01-01", periods=n, freq="B")
+    np.random.seed(7)
+    return pd.DataFrame({
+        "vix_close": np.random.uniform(12, 30, n),
+        "hyg_close": np.random.uniform(70, 80, n),
+        "tnx_close": np.random.uniform(3.5, 5.0, n),
+        "spy_close": 400 * np.cumprod(1 + np.random.normal(0.0003, 0.008, n)),
+        "spy_volume": np.random.uniform(50e6, 120e6, n),
+    }, index=dates)
+
+
+def _make_spy_df(n=300):
+    dates = pd.date_range("2023-01-01", periods=n, freq="B")
+    np.random.seed(42)
+    prices = 100 * np.cumprod(1 + np.random.normal(0.0003, 0.01, n))
+    return pd.DataFrame({"Close": prices}, index=dates)
+
+
+def _make_if_ticker_dfs(n=300):
+    """Build mock Yahoo Finance response for _IF_TICKERS."""
+    dates = pd.date_range("2023-01-01", periods=n, freq="B")
+    np.random.seed(99)
+    return {
+        "^VIX": pd.DataFrame({"Close": np.random.uniform(12, 30, n)}, index=dates),
+        "HYG": pd.DataFrame({"Close": np.random.uniform(70, 80, n)}, index=dates),
+        "^TNX": pd.DataFrame({"Close": np.random.uniform(3.5, 5.0, n)}, index=dates),
+        "SPY": pd.DataFrame({
+            "Close": 400 * np.cumprod(1 + np.random.normal(0.0003, 0.008, n)),
+            "Volume": np.random.uniform(50e6, 120e6, n),
+        }, index=dates),
+    }
+
+
+class TestBuildIfFeatures:
+
+    def test_output_has_all_feature_cols(self):
+        df = _make_if_raw()
+        out = _build_if_features(df)
+        assert list(out.columns) == _IF_FEATURE_COLS
+
+    def test_vix_level_passthrough(self):
+        df = _make_if_raw()
+        out = _build_if_features(df)
+        pd.testing.assert_series_equal(out["vix_level"], df["vix_close"], check_names=False)
+
+    def test_hyg_return_is_pct_change(self):
+        df = _make_if_raw(n=5)
+        out = _build_if_features(df)
+        expected = df["hyg_close"].pct_change() * 100.0
+        pd.testing.assert_series_equal(out["hyg_return"], expected, check_names=False)
+
+    def test_spy_return_is_pct_change(self):
+        df = _make_if_raw(n=5)
+        out = _build_if_features(df)
+        expected = df["spy_close"].pct_change() * 100.0
+        pd.testing.assert_series_equal(out["spy_return"], expected, check_names=False)
+
+    def test_tnx_change_is_diff(self):
+        df = _make_if_raw(n=5)
+        out = _build_if_features(df)
+        expected = df["tnx_close"].diff()
+        pd.testing.assert_series_equal(out["tnx_change"], expected, check_names=False)
+
+    def test_output_index_matches_input(self):
+        df = _make_if_raw(n=40)
+        out = _build_if_features(df)
+        pd.testing.assert_index_equal(out.index, df.index)
+
+
+class TestRunPriceRegimeHmm:
+
+    def test_failed_fetch_returns_empty_dict(self):
+        with patch("regime_engine.yahoo_engine.get_price_history", return_value={}), \
+             patch("regime_engine._HMM_CACHE_PATH", new=Path(tempfile.mkdtemp()) / "spy_hmm.parquet"):
+            result = run_price_regime_hmm()
+        assert result == {}
+
+    def test_insufficient_data_returns_empty_dict(self):
+        # Only 30 rows — below the 60-row minimum
+        spy_df = _make_spy_df(n=30)
+        with patch("regime_engine.yahoo_engine.get_price_history",
+                   return_value={"SPY": spy_df}), \
+             patch("regime_engine._HMM_CACHE_PATH",
+                   new=Path(tempfile.mkdtemp()) / "spy_hmm.parquet"):
+            result = run_price_regime_hmm()
+        assert result == {}
+
+    def test_success_returns_expected_keys(self):
+        spy_df = _make_spy_df(n=300)
+        tmp = Path(tempfile.mkdtemp()) / "spy_hmm.parquet"
+        with patch("regime_engine.yahoo_engine.get_price_history",
+                   return_value={"SPY": spy_df}), \
+             patch("regime_engine._HMM_CACHE_PATH", new=tmp):
+            result = run_price_regime_hmm()
+        assert set(result.keys()) == {"state", "label", "probability", "previous_state", "previous_label", "date"}
+
+    def test_state_is_valid(self):
+        spy_df = _make_spy_df(n=300)
+        tmp = Path(tempfile.mkdtemp()) / "spy_hmm.parquet"
+        with patch("regime_engine.yahoo_engine.get_price_history",
+                   return_value={"SPY": spy_df}), \
+             patch("regime_engine._HMM_CACHE_PATH", new=tmp):
+            result = run_price_regime_hmm()
+        assert result["state"] in (0, 1, 2)
+        assert result["label"] in ("Bull", "Chop", "Crash")
+
+    def test_probability_in_unit_interval(self):
+        spy_df = _make_spy_df(n=300)
+        tmp = Path(tempfile.mkdtemp()) / "spy_hmm.parquet"
+        with patch("regime_engine.yahoo_engine.get_price_history",
+                   return_value={"SPY": spy_df}), \
+             patch("regime_engine._HMM_CACHE_PATH", new=tmp):
+            result = run_price_regime_hmm()
+        assert 0.0 <= result["probability"] <= 1.0
+
+    def test_writes_to_price_hmm_states_table(self):
+        spy_df = _make_spy_df(n=300)
+        tmp = Path(tempfile.mkdtemp()) / "spy_hmm.parquet"
+        conn = database.get_connection()
+        try:
+            conn.execute("DELETE FROM price_hmm_states")
+            conn.commit()
+        finally:
+            conn.close()
+        with patch("regime_engine.yahoo_engine.get_price_history",
+                   return_value={"SPY": spy_df}), \
+             patch("regime_engine._HMM_CACHE_PATH", new=tmp):
+            run_price_regime_hmm()
+        conn = database.get_connection()
+        try:
+            count = conn.execute("SELECT COUNT(*) FROM price_hmm_states").fetchone()[0]
+        finally:
+            conn.close()
+        assert count > 0
+
+
+class TestRunMarketStressIf:
+
+    def test_failed_fetch_missing_tickers_returns_empty_dict(self):
+        with patch("regime_engine.yahoo_engine.get_price_history", return_value={}), \
+             patch("regime_engine._IF_CACHE_PATH", new=Path(tempfile.mkdtemp()) / "if.parquet"):
+            result = run_market_stress_if()
+        assert result == {}
+
+    def test_insufficient_rows_returns_empty_dict(self):
+        # Only 5 rows of data — well below IF_STRESS_MIN_ROWS
+        ticker_dfs = _make_if_ticker_dfs(n=5)
+        tmp = Path(tempfile.mkdtemp()) / "if.parquet"
+        with patch("regime_engine.yahoo_engine.get_price_history", return_value=ticker_dfs), \
+             patch("regime_engine._IF_CACHE_PATH", new=tmp), \
+             patch("regime_engine._IF_MODEL_PATH", new=tmp.with_suffix(".joblib")):
+            result = run_market_stress_if()
+        assert result == {}
+
+    def test_success_returns_expected_keys(self):
+        ticker_dfs = _make_if_ticker_dfs(n=300)
+        tmp_dir = Path(tempfile.mkdtemp())
+        with patch("regime_engine.yahoo_engine.get_price_history", return_value=ticker_dfs), \
+             patch("regime_engine._IF_CACHE_PATH", new=tmp_dir / "if.parquet"), \
+             patch("regime_engine._IF_MODEL_PATH", new=tmp_dir / "if.joblib"):
+            result = run_market_stress_if()
+        assert set(result.keys()) == {"score", "features", "alert", "date"}
+
+    def test_score_in_unit_interval(self):
+        ticker_dfs = _make_if_ticker_dfs(n=300)
+        tmp_dir = Path(tempfile.mkdtemp())
+        with patch("regime_engine.yahoo_engine.get_price_history", return_value=ticker_dfs), \
+             patch("regime_engine._IF_CACHE_PATH", new=tmp_dir / "if.parquet"), \
+             patch("regime_engine._IF_MODEL_PATH", new=tmp_dir / "if.joblib"):
+            result = run_market_stress_if()
+        assert 0.0 <= result["score"] <= 1.0
+
+    def test_features_has_all_if_feature_cols(self):
+        ticker_dfs = _make_if_ticker_dfs(n=300)
+        tmp_dir = Path(tempfile.mkdtemp())
+        with patch("regime_engine.yahoo_engine.get_price_history", return_value=ticker_dfs), \
+             patch("regime_engine._IF_CACHE_PATH", new=tmp_dir / "if.parquet"), \
+             patch("regime_engine._IF_MODEL_PATH", new=tmp_dir / "if.joblib"):
+            result = run_market_stress_if()
+        assert set(result["features"].keys()) == set(_IF_FEATURE_COLS)
+
+    def test_alert_is_bool(self):
+        ticker_dfs = _make_if_ticker_dfs(n=300)
+        tmp_dir = Path(tempfile.mkdtemp())
+        with patch("regime_engine.yahoo_engine.get_price_history", return_value=ticker_dfs), \
+             patch("regime_engine._IF_CACHE_PATH", new=tmp_dir / "if.parquet"), \
+             patch("regime_engine._IF_MODEL_PATH", new=tmp_dir / "if.joblib"):
+            result = run_market_stress_if()
+        assert isinstance(result["alert"], bool)
