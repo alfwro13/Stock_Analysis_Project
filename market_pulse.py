@@ -235,6 +235,10 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
                 change_pts: float = current_price - prev_close
                 change_pct: float = (change_pts / prev_close) * 100.0 if not pd.isna(prev_close) and prev_close != 0 else 0.0
 
+                if abs(change_pct) > 50.0:
+                    logger.warning("Skipping %s: implausible daily change %.1f%% (possible split mismatch)", ticker, change_pct)
+                    continue
+
                 name: str = INDEX_TICKERS.get(ticker, ticker)
                 is_positive: int = int(change_pts >= 0)
                 

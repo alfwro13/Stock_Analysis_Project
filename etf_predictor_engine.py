@@ -232,7 +232,10 @@ def _compute_intraday_returns(
                 if ref_price > 0:
                     post_close = closes[closes.index > etf_close]
                     if not post_close.empty:
-                        returns[ticker] = float(post_close.iloc[-1]) / ref_price - 1.0
+                        r = float(post_close.iloc[-1]) / ref_price - 1.0
+                        if abs(r) > 0.5:
+                            continue
+                        returns[ticker] = r
                         found_post = True
                         continue
 
@@ -244,8 +247,10 @@ def _compute_intraday_returns(
                 if yesterday_close > 0:
                     today_bars = closes[closes.index.normalize() == pd.Timestamp(ticker_trading_date)]
                     if not today_bars.empty:
-                        returns[ticker] = float(today_bars.iloc[-1]) / yesterday_close - 1.0
-                        found_intraday = True
+                        r = float(today_bars.iloc[-1]) / yesterday_close - 1.0
+                        if abs(r) <= 0.5:
+                            returns[ticker] = r
+                            found_intraday = True
 
     if found_post:
         signal_source = "intraday_post_close"
@@ -296,6 +301,10 @@ def _compute_holdings_prediction(
             if len(series) < 2:
                 continue
             constituent_return = float(series.iloc[-1]) / float(series.iloc[-2]) - 1.0
+
+        if abs(constituent_return) > 0.5:
+            logger.warning("Skipping %s from prediction: implausible daily return %.1f%% (possible split mismatch)", ticker, constituent_return * 100)
+            continue
 
         contribution = weight * constituent_return
         contributions.append({
@@ -540,6 +549,8 @@ def get_etf_correlation_data(config: dict, days: int = 60) -> dict:
         df = df.loc[max(valid_starts):]
 
     normalized = df.div(df.iloc[0]) * 100
+    valid_cols = [c for c in normalized.columns if 50.0 <= float(normalized[c].dropna().iloc[-1]) <= 150.0] if not normalized.empty else []
+    normalized = normalized[valid_cols]
 
     us_cols = [t for t in constituent_tickers if t in normalized.columns]
     rolling_corr = pd.Series(dtype=float)
