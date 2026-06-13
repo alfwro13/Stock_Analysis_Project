@@ -49,7 +49,7 @@ def _engine(**overrides) -> MoonshotEngine:
 def _make_hist(prices: list[float], volume: float = 1_000_000) -> pd.DataFrame:
     """Build a df_hist with DatetimeIndex (required for 52w DateOffset calculation)."""
     n = len(prices)
-    dates = pd.date_range(end=datetime.now(timezone.utc), periods=n, freq="B", tz="UTC")
+    dates = pd.date_range(end=datetime.now(timezone.utc), periods=n, freq="D", tz="UTC")
     return pd.DataFrame({"Close": prices, "Volume": [volume] * n}, index=dates)
 
 
