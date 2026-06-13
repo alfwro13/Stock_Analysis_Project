@@ -18,7 +18,7 @@ function _wfBuildMermaid(nodes, edges) {
         lines.push(`  ${e.from} --> ${e.to}`);
     });
     lines.push("classDef green fill:#1b5e20,stroke:#43a047,color:#e8f5e9;");
-    lines.push("classDef amber fill:#5d4037,stroke:#ffb300,color:#fff8e1;");
+    lines.push("classDef amber fill:#8a6d00,stroke:#ffb300,color:#fff8e1;");
     lines.push("classDef red fill:#7f1d1d,stroke:#ef5350,color:#ffebee;");
     lines.push("classDef disabled fill:#2a2a2a,stroke:#555,color:#888;");
     return lines.join("\n");
@@ -60,6 +60,24 @@ async function loadWorkflowMonitor() {
         _workflowLoaded = true;
     } catch (e) {
         container.innerHTML = `<p class="text-red text-sm">Failed to load workflow graph: ${e.message}</p>`;
+    }
+}
+
+async function openWorkflowGraphTab() {
+    const win = window.open("", "_blank");
+    if (!win) return;
+    win.document.write('<!doctype html><title>Workflow Graph</title><body style="margin:0;background:#0e0e0e;color:#aaa;font-family:sans-serif;padding:16px;">Loading…</body>');
+    try {
+        const resp = await fetch("/api/workflow-monitor/status");
+        const data = await resp.json();
+        if (data.status !== "success") throw new Error(data.message || "request failed");
+        const def = _wfBuildMermaid(data.nodes || [], data.edges || []);
+        const { svg } = await mermaid.render(`wfGraphTab${++_workflowRenderSeq}`, def);
+        win.document.open();
+        win.document.write(`<!doctype html><html><head><title>Workflow Graph</title><meta charset="utf-8"><style>html,body{margin:0;background:#0e0e0e;}svg{display:block;margin:auto;}</style></head><body>${svg}</body></html>`);
+        win.document.close();
+    } catch (e) {
+        win.document.body.innerHTML = `<p style="color:#ef5350">Failed to render graph: ${e.message}</p>`;
     }
 }
 
