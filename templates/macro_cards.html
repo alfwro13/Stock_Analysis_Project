@@ -56,7 +56,7 @@
                 if (pulseDot && pulseText) {
                     pulseDot.classList.remove('offline');
                     if (anyStale) {
-                        pulseText.innerText = "Loaded cached data. Fetching fresh data in background...";
+                        pulseText.innerText = "Market data refresh delayed. Retrying...";
                         pulseDot.classList.remove('pulse-dot-live');
                         pulseDot.classList.add('pulse-dot-stale');
                     } else {

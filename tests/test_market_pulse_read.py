@@ -4,10 +4,11 @@ tests/test_market_pulse_read.py — MARKET PULSE READ FUNCTIONS
 Covers get_cached_pulse_from_db() and get_all_cached_pulse():
   - index/asset split is determined by INDEX_TICKERS membership
   - de-duplication: same ticker in portfolio and watchlist appears once in assets
-  - staleness flag: is_stale when age > refresh_rate
-  - sentinel row for missing cache entry (price=0, is_stale=True)
+  - staleness flag: is_stale only when age > refresh_rate * 2 AND market is open
+  - sentinel row for missing cache entry (price=0, is_stale=True when market open)
   - IGNORED_TICKERS filtering
-  - get_all_cached_pulse staleness flag via refresh rate
+  - needs_refresh flag: True when age > refresh_rate AND market is open
+  - closed-market: is_stale=False, needs_refresh=False even for old data
 """
 
 import sys
@@ -103,14 +104,16 @@ class TestGetCachedPulseFromDb:
         assert asset["is_stale"] is False
 
     def test_is_stale_true_when_old(self):
-        _seed_pulse(ASSET_TICKER, last_updated=time.time() - 120)  # 2 min ago
-        result = _mp.get_cached_pulse_from_db([ASSET_TICKER], refresh_rate=60)
+        _seed_pulse(ASSET_TICKER, last_updated=time.time() - 130)  # > refresh_rate * 2
+        with patch("market_pulse.is_trading_session", return_value=True):
+            result = _mp.get_cached_pulse_from_db([ASSET_TICKER], refresh_rate=60)
         asset = next(r for r in result["assets"] if r["ticker"] == ASSET_TICKER)
         assert asset["is_stale"] is True
 
     def test_missing_cache_entry_produces_stale_sentinel(self):
         _clear(ASSET_TICKER)
-        result = _mp.get_cached_pulse_from_db([ASSET_TICKER], refresh_rate=60)
+        with patch("market_pulse.is_trading_session", return_value=True):
+            result = _mp.get_cached_pulse_from_db([ASSET_TICKER], refresh_rate=60)
         asset = next((r for r in result["assets"] if r["ticker"] == ASSET_TICKER), None)
         assert asset is not None
         assert asset["price"] == 0.0
@@ -178,7 +181,8 @@ class TestGetAllCachedPulse:
     def test_is_stale_true_when_old(self):
         _seed_pulse(ASSET_TICKER, last_updated=time.time() - 3600)
         config_patch = {"UI_PREFERENCES": {"REFRESH_RATE": 60}}
-        with patch("market_pulse.load_config", return_value=config_patch):
+        with patch("market_pulse.load_config", return_value=config_patch), \
+             patch("market_pulse.is_trading_session", return_value=True):
             result = _mp.get_all_cached_pulse()
         assert result[ASSET_TICKER]["is_stale"] is True
 
@@ -186,3 +190,58 @@ class TestGetAllCachedPulse:
         _clear(ASSET_TICKER)
         result = _mp.get_all_cached_pulse()
         assert ASSET_TICKER not in result
+
+
+# ── closed-market / needs_refresh behaviour ───────────────────────────────────
+
+class TestClosedMarketStaleness:
+    """When is_trading_session() is False, cached data should never go grey."""
+
+    def teardown_method(self):
+        _clear(ASSET_TICKER)
+
+    def test_old_data_not_stale_when_market_closed(self):
+        _seed_pulse(ASSET_TICKER, last_updated=time.time() - 3600)
+        with patch("market_pulse.is_trading_session", return_value=False):
+            result = _mp.get_cached_pulse_from_db([ASSET_TICKER], refresh_rate=60)
+        asset = next(r for r in result["assets"] if r["ticker"] == ASSET_TICKER)
+        assert asset["is_stale"] is False
+
+    def test_needs_refresh_false_when_market_closed(self):
+        _seed_pulse(ASSET_TICKER, last_updated=time.time() - 3600)
+        with patch("market_pulse.is_trading_session", return_value=False):
+            result = _mp.get_cached_pulse_from_db([ASSET_TICKER], refresh_rate=60)
+        asset = next(r for r in result["assets"] if r["ticker"] == ASSET_TICKER)
+        assert asset["needs_refresh"] is False
+
+    def test_within_refresh_rate_not_stale_and_no_refresh(self):
+        _seed_pulse(ASSET_TICKER, last_updated=time.time() - 30)
+        with patch("market_pulse.is_trading_session", return_value=True):
+            result = _mp.get_cached_pulse_from_db([ASSET_TICKER], refresh_rate=60)
+        asset = next(r for r in result["assets"] if r["ticker"] == ASSET_TICKER)
+        assert asset["is_stale"] is False
+        assert asset["needs_refresh"] is False
+
+    def test_between_refresh_rate_and_double_needs_refresh_but_not_stale(self):
+        _seed_pulse(ASSET_TICKER, last_updated=time.time() - 90)  # 90s > 60s but < 120s
+        with patch("market_pulse.is_trading_session", return_value=True):
+            result = _mp.get_cached_pulse_from_db([ASSET_TICKER], refresh_rate=60)
+        asset = next(r for r in result["assets"] if r["ticker"] == ASSET_TICKER)
+        assert asset["is_stale"] is False
+        assert asset["needs_refresh"] is True
+
+    def test_beyond_double_refresh_rate_is_stale(self):
+        _seed_pulse(ASSET_TICKER, last_updated=time.time() - 130)  # 130s > 60*2=120s
+        with patch("market_pulse.is_trading_session", return_value=True):
+            result = _mp.get_cached_pulse_from_db([ASSET_TICKER], refresh_rate=60)
+        asset = next(r for r in result["assets"] if r["ticker"] == ASSET_TICKER)
+        assert asset["is_stale"] is True
+        assert asset["needs_refresh"] is True
+
+    def test_get_all_cached_pulse_not_stale_when_market_closed(self):
+        _seed_pulse(ASSET_TICKER, last_updated=time.time() - 3600)
+        config_patch = {"UI_PREFERENCES": {"REFRESH_RATE": 60}}
+        with patch("market_pulse.load_config", return_value=config_patch), \
+             patch("market_pulse.is_trading_session", return_value=False):
+            result = _mp.get_all_cached_pulse()
+        assert result[ASSET_TICKER]["is_stale"] is False

@@ -9,6 +9,7 @@ from time_engine import (
     ticker_exchange,
     market_window_utc,
     is_market_open,
+    is_trading_session,
     reset_cron_trigger_params,
     EXCHANGE_HOURS,
     _load_exchange_registry,
@@ -253,3 +254,35 @@ class TestTickerExchangeMultiSuffix:
     def test_unknown_suffix_falls_through_to_currency(self):
         # .ZZ not in registry → should fall through to currency USD → NYSE
         assert ticker_exchange("FOO.ZZ", currency="USD") == "NYSE"
+
+
+# ---------------------------------------------------------------------------
+# is_trading_session
+# ---------------------------------------------------------------------------
+
+class TestIsTradingSession:
+    def test_returns_false_on_saturday(self):
+        # 2026-06-13 is a Saturday; 15:00 UTC is within NYSE summer hours
+        saturday_mid_session = datetime(2026, 6, 13, 15, 0, 0, tzinfo=timezone.utc)
+        with patch("time_engine.datetime", _fake_datetime(saturday_mid_session)):
+            assert is_trading_session("NYSE") is False
+
+    def test_returns_false_on_sunday(self):
+        sunday_mid_session = datetime(2026, 6, 14, 15, 0, 0, tzinfo=timezone.utc)
+        with patch("time_engine.datetime", _fake_datetime(sunday_mid_session)):
+            assert is_trading_session("NYSE") is False
+
+    def test_returns_true_weekday_during_session(self):
+        # 2026-06-11 is a Thursday; 17:00 UTC is mid-NYSE-session in summer
+        thursday_mid = datetime(2026, 6, 11, 17, 0, 0, tzinfo=timezone.utc)
+        with patch("time_engine.datetime", _fake_datetime(thursday_mid)):
+            assert is_trading_session("NYSE") is True
+
+    def test_returns_false_weekday_outside_session(self):
+        # 2026-06-11 Thursday; 10:00 UTC is before NYSE opens in summer
+        thursday_pre = datetime(2026, 6, 11, 10, 0, 0, tzinfo=timezone.utc)
+        with patch("time_engine.datetime", _fake_datetime(thursday_pre)):
+            assert is_trading_session("NYSE") is False
+
+    def test_returns_bool(self):
+        assert isinstance(is_trading_session("NYSE"), bool)

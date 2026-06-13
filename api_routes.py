@@ -1106,7 +1106,8 @@ async def api_market_pulse(request: PulseRequest, background_tasks: BackgroundTa
     config_data = load_config()
     refresh_rate = config_data.get("UI_PREFERENCES", {}).get("REFRESH_RATE", 60)
     pulse_data = get_cached_pulse_from_db(request.tickers, refresh_rate)
-    needs_fetch = [item['ticker'] for item in pulse_data['indexes'] + pulse_data['assets'] if item['is_stale']]
+    all_items = pulse_data['indexes'] + pulse_data['assets']
+    needs_fetch = [item['ticker'] for item in all_items if item.pop('needs_refresh', False)]
     if needs_fetch:
         background_tasks.add_task(fetch_and_save_pulse, needs_fetch)
     return JSONResponse(content={"status": "success", "data": pulse_data})
@@ -1116,7 +1117,7 @@ async def api_market_pulse_get(background_tasks: BackgroundTasks):
     config_data = load_config()
     refresh_rate = config_data.get("UI_PREFERENCES", {}).get("REFRESH_RATE", 60)
     pulse_data = get_cached_pulse_from_db([], refresh_rate)
-    needs_fetch = [item['ticker'] for item in pulse_data['indexes'] if item['is_stale']]
+    needs_fetch = [item['ticker'] for item in pulse_data['indexes'] if item.pop('needs_refresh', False)]
     if needs_fetch:
         background_tasks.add_task(fetch_and_save_pulse, needs_fetch)
     return JSONResponse(content={"status": "success", "data": pulse_data.get("indexes", [])})

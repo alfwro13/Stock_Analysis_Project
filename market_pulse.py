@@ -9,6 +9,7 @@ from database import get_connection
 from utils import normalize_ticker
 from gilt_engine import GiltDataService
 from yahoo_engine import yahoo_engine
+from time_engine import is_trading_session
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +39,7 @@ def get_all_cached_pulse() -> Dict[str, Dict[str, Any]]:
         cursor.execute("SELECT ticker, name, price, change_pts, change_pct, is_positive, last_updated FROM market_pulse_cache")
         rows = cursor.fetchall()
     except Exception as e:
-        logger.error(f"[MARKET PULSE] Failed to read pulse cache: {e}")
+        logger.error("[MARKET PULSE] Failed to read pulse cache: %s", e)
         return {}
     finally:
         conn.close()
@@ -46,10 +47,16 @@ def get_all_cached_pulse() -> Dict[str, Dict[str, Any]]:
     config_data = load_config()
     refresh_rate: int = int(config_data.get("UI_PREFERENCES", {}).get("REFRESH_RATE", 60))
     current_time: float = time.time()
-    
+    trading_now: bool = is_trading_session()
+
     cache: Dict[str, Dict[str, Any]] = {}
     for row in rows:
-        is_stale: bool = (current_time - row['last_updated']) > refresh_rate
+        age = current_time - row['last_updated']
+        has_data = row['last_updated'] > 0 and row['price'] != 0.0
+        if not trading_now:
+            is_stale: bool = not has_data
+        else:
+            is_stale = not has_data or age > refresh_rate * 2
         cache[row['ticker']] = {
             "ticker": row['ticker'],
             "name": row['name'],
@@ -109,20 +116,28 @@ def get_cached_pulse_from_db(asset_tickers: List[str], refresh_rate: int) -> Dic
             for s_row in sentiment_rows:
                 sentiment_scores[s_row['ticker']] = s_row['sentiment_score']
     except Exception as e:
-        logger.error(f"[MARKET PULSE] Failed to read pulse from DB: {e}")
+        logger.error("[MARKET PULSE] Failed to read pulse from DB: %s", e)
         return {"indexes": [], "assets": []}
     finally:
         conn.close()
 
     results: Dict[str, List[Dict[str, Any]]] = {"indexes": [], "assets": []}
     current_time: float = time.time()
-    
+    trading_now: bool = is_trading_session()
+
     db_map: Dict[str, Any] = {row['ticker']: row for row in rows}
 
     for t in all_tickers:
         if t in db_map:
             row = db_map[t]
-            is_stale: bool = (current_time - row['last_updated']) > int(refresh_rate)
+            age = current_time - row['last_updated']
+            has_data = row['last_updated'] > 0 and row['price'] != 0.0
+            if not trading_now:
+                is_stale: bool = not has_data
+                needs_refresh: bool = False
+            else:
+                is_stale = not has_data or age > refresh_rate * 2
+                needs_refresh = not has_data or age > int(refresh_rate)
             data_obj: Dict[str, Any] = {
                 "ticker": t,
                 "name": row['name'],
@@ -131,6 +146,7 @@ def get_cached_pulse_from_db(asset_tickers: List[str], refresh_rate: int) -> Dic
                 "change_pct": row['change_pct'],
                 "is_positive": bool(row['is_positive']),
                 "is_stale": is_stale,
+                "needs_refresh": needs_refresh,
                 "sentiment_score": sentiment_scores.get(t, None)
             }
         else:
@@ -141,7 +157,8 @@ def get_cached_pulse_from_db(asset_tickers: List[str], refresh_rate: int) -> Dic
                 "change_pts": 0.0,
                 "change_pct": 0.0,
                 "is_positive": True,
-                "is_stale": True,
+                "is_stale": trading_now,
+                "needs_refresh": trading_now,
                 "sentiment_score": sentiment_scores.get(t, None)
             }
             

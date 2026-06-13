@@ -198,6 +198,13 @@ def is_market_open(
     return open_utc <= now <= close_utc
 
 
+def is_trading_session(exchange: Optional[str] = None) -> bool:
+    """True only if today is Mon–Fri AND current UTC time falls within exchange trading hours."""
+    if datetime.now(timezone.utc).weekday() >= 5:
+        return False
+    return is_market_open(exchange)
+
+
 def reset_cron_trigger_params(exchange: Optional[str] = None) -> dict:
     """Return APScheduler CronTrigger kwargs for 5 min after exchange close; uses exchange tz so DST is automatic."""
     if exchange is None:
