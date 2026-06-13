@@ -135,8 +135,9 @@ Tables added after initial schema creation. All managed via `database.py:init_db
 * **Key Columns:** `id` (PK autoincrement), `timestamp`, `message_type`, `message_text`, `is_read`, `status`.
 
 #### `scheduler_run_log`
-* **Purpose:** Records the last-run timestamp per APScheduler job ID so jobs can guard against re-running within their minimum interval.
-* **Key Columns:** `job_id` (PK), `last_run`.
+* **Purpose:** Records the last-run timestamp per APScheduler job ID so jobs can guard against re-running within their minimum interval. Also stores per-job timing/outcome used by the Workflow Monitor.
+* **Key Columns:** `job_id` (PK), `last_run`, `last_started`, `last_duration_sec`, `avg_duration_sec` (EMA of run duration), `last_status` (`success`/`error`).
+* **Written by:** each job's `record_job_run()` (`last_run`) plus the APScheduler event listener `_on_job_event` (start, duration, status) registered in `start_scheduler()`.
 
 #### `score_history`
 * **Purpose:** Per-ticker daily score + signal + close price history. Accumulates over time to enable forward-returns analysis.
@@ -209,3 +210,15 @@ Tables added after initial schema creation. All managed via `database.py:init_db
 
 #### Historical Stress Tester (`stress_engine.py`)
 Results are computed on-demand and returned directly in the API response — **no table is written**. The engine reads per-ticker beta from `xray_risk_cache` and holdings from Ghostfolio's live API, applies pre-calibrated scenario shocks, and returns the monetary impact report. Run the X-ray nightly job first to ensure `xray_risk_cache` is populated with up-to-date betas.
+
+---
+
+## 5. Scheduler Job Dependency Map (Workflow Monitor)
+
+The Workflow Monitor (`scheduler_engine.py`, Settings UI) does not store a graph in the database — it is derived at request time from a **declarative manifest plus live state**.
+
+* **`JOB_GRAPH`** (`scheduler_engine.py`): one entry per `scheduler.add_job(... id=X)`. Each entry declares the data **artifacts** a job reads (`consumes`) and writes (`produces`) — e.g. `quant_signals`, `ml_model`, `ml_predictions`, `historical_parquet`, `portfolio`, `sentiment`. Dynamic per-config jobs (ETF predictors) are matched in `_resolve_manifest()`.
+* **Edges** are derived, never hand-listed: a dependency `A → B` exists iff `A.produces ∩ B.consumes ≠ ∅`. Adding a job with correct declarations auto-wires it into the graph.
+* **Live overlay:** `build_workflow_graph()` merges the manifest with `scheduler.get_jobs()` (enabled? next run?) and `scheduler_run_log` (last run, avg duration, last status) to colour each node and compute conflicts.
+* **Conflict engine** (`detect_workflow_conflicts()`): `overlap_risk` (consumer scheduled within the producer's average run duration), `backwards_ordering`, `disabled_upstream`, `stale_never_run`, `last_run_error`.
+* **Enforcement:** the manifest-completeness test fails CI if any registered job lacks a `JOB_GRAPH` entry, keeping the map in sync with the scheduler automatically.

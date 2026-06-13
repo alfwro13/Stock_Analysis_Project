@@ -919,3 +919,20 @@ details[open].xray-rec-group .xray-rec-group-summary::before { transform: rotate
 .lv-row-warning  .lv-msg { color: #fdd835; }
 .lv-row-error    .lv-msg { color: #ef5350; }
 .lv-row-critical .lv-msg { color: #ff1744; }
+
+/* Workflow Monitor */
+.workflow-legend { display: flex; gap: 18px; flex-wrap: wrap; margin: 4px 0 12px; font-size: 13px; color: #bbb; }
+.wf-legend-item { display: flex; align-items: center; gap: 6px; }
+.wf-dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; }
+.wf-dot.wf-green { background: #43a047; }
+.wf-dot.wf-amber { background: #ffb300; }
+.wf-dot.wf-red { background: #ef5350; }
+.wf-dot.wf-grey { background: #555; }
+.workflow-graph-container { margin-top: 8px; border: 1px solid #333; border-radius: 8px; padding: 12px; background: #0e0e0e; overflow: auto; max-height: 640px; }
+.workflow-graph-container svg { max-width: none; }
+.wf-conflict { display: flex; gap: 10px; align-items: baseline; padding: 8px 10px; border-radius: 6px; margin-bottom: 8px; background: #161616; border-left: 4px solid #555; }
+.wf-conflict-critical { border-left-color: #ef5350; }
+.wf-conflict-warning { border-left-color: #ffb300; }
+.wf-conflict-info { border-left-color: #4da6ff; }
+.wf-conflict-type { text-transform: uppercase; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; color: #ddd; white-space: nowrap; }
+.wf-conflict-msg { font-size: 13px; color: #ccc; }

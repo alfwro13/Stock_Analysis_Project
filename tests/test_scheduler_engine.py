@@ -293,3 +293,205 @@ class TestResumeInterruptedScans:
             resume_interrupted_scans()
             import time; time.sleep(0.05)
             mock_fn.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Workflow Monitor: manifest, graph, conflicts, status, duration listener
+# ---------------------------------------------------------------------------
+
+from scheduler_engine import (
+    JOB_GRAPH,
+    build_workflow_graph,
+    detect_workflow_conflicts,
+    reload_scheduler,
+    _resolve_manifest,
+    _job_status,
+    _on_job_event,
+)
+from apscheduler.events import EVENT_JOB_SUBMITTED, EVENT_JOB_EXECUTED, EVENT_JOB_ERROR
+
+
+def _wf_node(**kw):
+    base = {
+        "id": "x", "label": "X", "category": "quant", "engine": "e",
+        "produces": [], "consumes": [], "enabled": True,
+        "last_run": None, "last_status": None, "avg_duration_sec": None,
+        "next_run": None, "schedule": None, "status": "green", "status_reason": "ok",
+    }
+    base.update(kw)
+    return base
+
+
+class _Evt:
+    def __init__(self, code, job_id):
+        self.code = code
+        self.job_id = job_id
+
+
+class TestWorkflowManifest:
+    def test_every_static_entry_has_required_keys(self):
+        for job_id, meta in JOB_GRAPH.items():
+            for key in ("label", "category", "engine", "produces", "consumes"):
+                assert key in meta, f"{job_id} missing {key}"
+
+    def test_every_registered_job_is_in_manifest(self):
+        reload_scheduler()
+        live_ids = {j.id for j in _sched_module.scheduler.get_jobs()}
+        unmapped = [jid for jid in live_ids if _resolve_manifest(jid) is None]
+        assert unmapped == [], f"Scheduler jobs missing a JOB_GRAPH entry: {unmapped}"
+
+    def test_dynamic_etf_job_resolves(self):
+        assert _resolve_manifest("etf_predictor_7_pre_job") is not None
+        assert _resolve_manifest("etf_predictor_12_post_job") is not None
+
+    def test_dynamic_template_not_resolved_as_static(self):
+        assert _resolve_manifest("etf_predictor_dynamic") is None
+
+
+class TestBuildWorkflowGraph:
+    def test_returns_nodes_and_edges(self):
+        graph = build_workflow_graph()
+        assert isinstance(graph["nodes"], list) and graph["nodes"]
+        assert isinstance(graph["edges"], list) and graph["edges"]
+
+    def test_edges_derive_from_produces_consumes(self):
+        graph = build_workflow_graph()
+        pairs = {(e["from"], e["to"], e["via"]) for e in graph["edges"]}
+        assert ("overnight_quant_scan_job", "ml_inference_job", "quant_signals") in pairs
+        assert ("ml_training_job", "ml_inference_job", "ml_model") in pairs
+
+    def test_no_self_edges(self):
+        graph = build_workflow_graph()
+        assert all(e["from"] != e["to"] for e in graph["edges"])
+
+
+class TestWorkflowConflicts:
+    def test_backwards_ordering_flagged(self):
+        # Weekly producer fires 60 min AFTER the weekly consumer on the same day:
+        # the consumer can never use the same cycle's output (mirrors ml_backfill
+        # being mis-scheduled to run after ml_training).
+        graph = {
+            "nodes": [
+                _wf_node(id="P", label="Producer", produces=["a"], schedule={"weekdays": [6], "minute_of_day": 300}),
+                _wf_node(id="C", label="Consumer", consumes=["a"], schedule={"weekdays": [6], "minute_of_day": 240}),
+            ],
+            "edges": [{"from": "P", "to": "C", "via": "a"}],
+        }
+        types = {c["type"] for c in detect_workflow_conflicts(graph)}
+        assert "backwards_ordering" in types
+
+    def test_normal_overnight_to_morning_not_flagged(self):
+        # Producer runs daily 18:00; consumer daily 07:15 next morning uses the prior
+        # evening's output (~13h old). This is intended and must NOT be flagged.
+        graph = {
+            "nodes": [
+                _wf_node(id="P", label="Evening Quant", produces=["a"], avg_duration_sec=600,
+                         schedule={"weekdays": [0, 1, 2, 3, 4], "minute_of_day": 18 * 60}),
+                _wf_node(id="C", label="Morning Briefing", consumes=["a"],
+                         schedule={"weekdays": [0, 1, 2, 3, 4], "minute_of_day": 7 * 60 + 15}),
+            ],
+            "edges": [{"from": "P", "to": "C", "via": "a"}],
+        }
+        types = {c["type"] for c in detect_workflow_conflicts(graph)}
+        assert "backwards_ordering" not in types
+        assert "overlap_risk" not in types
+
+    def test_overlap_risk_flagged_with_known_duration(self):
+        graph = {
+            "nodes": [
+                _wf_node(id="P", produces=["a"], avg_duration_sec=1800, schedule={"weekdays": [0], "minute_of_day": 60}),
+                _wf_node(id="C", consumes=["a"], schedule={"weekdays": [0], "minute_of_day": 70}),
+            ],
+            "edges": [{"from": "P", "to": "C", "via": "a"}],
+        }
+        conflicts = detect_workflow_conflicts(graph)
+        assert any(c["type"] == "overlap_risk" and c["severity"] == "warning" for c in conflicts)
+
+    def test_overlap_unknown_duration_info(self):
+        graph = {
+            "nodes": [
+                _wf_node(id="P", produces=["a"], avg_duration_sec=None, schedule={"weekdays": [0], "minute_of_day": 60}),
+                _wf_node(id="C", consumes=["a"], schedule={"weekdays": [0], "minute_of_day": 70}),
+            ],
+            "edges": [{"from": "P", "to": "C", "via": "a"}],
+        }
+        assert any(c["type"] == "overlap_risk" and c["severity"] == "info" for c in detect_workflow_conflicts(graph))
+
+    def test_wide_gap_no_overlap(self):
+        graph = {
+            "nodes": [
+                _wf_node(id="P", produces=["a"], avg_duration_sec=600, schedule={"weekdays": [0], "minute_of_day": 60}),
+                _wf_node(id="C", consumes=["a"], schedule={"weekdays": [0], "minute_of_day": 600}),
+            ],
+            "edges": [{"from": "P", "to": "C", "via": "a"}],
+        }
+        assert not [c for c in detect_workflow_conflicts(graph) if c["type"] == "overlap_risk"]
+
+    def test_disabled_upstream_flagged(self):
+        graph = {
+            "nodes": [
+                _wf_node(id="P", produces=["a"], enabled=False, status="disabled", status_reason="disabled"),
+                _wf_node(id="C", consumes=["a"], schedule={"weekdays": [0], "minute_of_day": 70}),
+            ],
+            "edges": [{"from": "P", "to": "C", "via": "a"}],
+        }
+        assert any(c["type"] == "disabled_upstream" for c in detect_workflow_conflicts(graph))
+
+    def test_last_run_error_flagged(self):
+        graph = {"nodes": [_wf_node(id="E", status="red", status_reason="error")], "edges": []}
+        assert any(c["type"] == "last_run_error" for c in detect_workflow_conflicts(graph))
+
+    def test_overdue_flagged_as_stale(self):
+        graph = {"nodes": [_wf_node(id="S", status="red", status_reason="overdue", last_run="2020-01-01 00:00")], "edges": []}
+        assert any(c["type"] == "stale_never_run" for c in detect_workflow_conflicts(graph))
+
+    def test_no_conflict_when_no_shared_weekday(self):
+        graph = {
+            "nodes": [
+                _wf_node(id="P", produces=["a"], avg_duration_sec=3600, schedule={"weekdays": [5], "minute_of_day": 120}),
+                _wf_node(id="C", consumes=["a"], schedule={"weekdays": [0], "minute_of_day": 60}),
+            ],
+            "edges": [{"from": "P", "to": "C", "via": "a"}],
+        }
+        assert not [c for c in detect_workflow_conflicts(graph) if c["type"] in ("overlap_risk", "backwards_ordering")]
+
+
+class TestJobStatus:
+    def test_disabled(self):
+        assert _job_status(_wf_node(enabled=False))[0] == "disabled"
+
+    def test_error_is_red(self):
+        assert _job_status(_wf_node(enabled=True, last_status="error"))[0] == "red"
+
+    def test_never_run_is_amber(self):
+        status, reason = _job_status(_wf_node(enabled=True, last_run=None))
+        assert status == "amber" and reason == "never_run"
+
+    def test_recent_run_is_green(self):
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
+        status, _ = _job_status(_wf_node(enabled=True, last_run=now, schedule={"weekdays": [0, 1, 2, 3, 4], "minute_of_day": 60}))
+        assert status == "green"
+
+    def test_overdue_is_red(self):
+        status, reason = _job_status(_wf_node(enabled=True, last_run="2020-01-01 00:00", schedule={"weekdays": [0, 1, 2, 3, 4], "minute_of_day": 60}))
+        assert status == "red" and reason == "overdue"
+
+
+class TestDurationListener:
+    def test_executed_records_duration_and_success(self):
+        _on_job_event(_Evt(EVENT_JOB_SUBMITTED, "dur_job"))
+        _on_job_event(_Evt(EVENT_JOB_EXECUTED, "dur_job"))
+        runs = get_all_job_last_runs()
+        assert "dur_job" in runs
+        assert runs["dur_job"]["last_status"] == "success"
+        assert runs["dur_job"]["last_duration_sec"] is not None
+        assert runs["dur_job"]["avg_duration_sec"] is not None
+
+    def test_error_records_error_status(self):
+        _on_job_event(_Evt(EVENT_JOB_SUBMITTED, "err_job"))
+        _on_job_event(_Evt(EVENT_JOB_ERROR, "err_job"))
+        assert get_all_job_last_runs()["err_job"]["last_status"] == "error"
+
+    def test_executed_without_submitted_is_noop(self):
+        _on_job_event(_Evt(EVENT_JOB_EXECUTED, "ghost_job"))
+        assert "ghost_job" not in get_all_job_last_runs()

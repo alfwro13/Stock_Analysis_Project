@@ -1,7 +1,9 @@
 import logging
+import re
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
+from apscheduler.events import EVENT_JOB_SUBMITTED, EVENT_JOB_EXECUTED, EVENT_JOB_ERROR
 from config import load_config
 import time_engine
 from sentiment_engine import run_nextcloud_alert
@@ -89,14 +91,67 @@ def get_all_job_last_runs() -> dict:
     try:
         conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT job_id, last_run FROM scheduler_run_log")
+        cursor.execute("SELECT job_id, last_run, last_started, last_duration_sec, avg_duration_sec, last_status FROM scheduler_run_log")
         rows = cursor.fetchall()
-        return {row[0]: row[1] for row in rows}
+        return {
+            row[0]: {
+                "last_run": row[1],
+                "last_started": row[2],
+                "last_duration_sec": row[3],
+                "avg_duration_sec": row[4],
+                "last_status": row[5],
+            }
+            for row in rows
+        }
     except Exception:
         return {}
     finally:
         if conn:
             conn.close()
+
+
+_job_start_times: dict[str, float] = {}
+_DURATION_EMA_ALPHA = 0.3
+
+
+def _record_job_duration(job_id: str, started_iso: str, duration_sec: float, status: str) -> None:
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT avg_duration_sec FROM scheduler_run_log WHERE job_id = ?", (job_id,))
+        row = cursor.fetchone()
+        prev_avg = row[0] if row and row[0] is not None else None
+        new_avg = duration_sec if prev_avg is None else (_DURATION_EMA_ALPHA * duration_sec + (1 - _DURATION_EMA_ALPHA) * prev_avg)
+        cursor.execute(
+            "INSERT INTO scheduler_run_log (job_id, last_run, last_started, last_duration_sec, avg_duration_sec, last_status) "
+            "VALUES (?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(job_id) DO UPDATE SET last_started = excluded.last_started, "
+            "last_duration_sec = excluded.last_duration_sec, avg_duration_sec = excluded.avg_duration_sec, "
+            "last_status = excluded.last_status",
+            (job_id, started_iso, started_iso, duration_sec, new_avg, status),
+        )
+        conn.commit()
+    except Exception as e:
+        logger.error("Failed to record duration for %s: %s", job_id, e)
+    finally:
+        if conn:
+            conn.close()
+
+
+def _on_job_event(event) -> None:
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    if event.code == EVENT_JOB_SUBMITTED:
+        _job_start_times[event.job_id] = now.timestamp()
+        return
+    started_ts = _job_start_times.pop(event.job_id, None)
+    if started_ts is None:
+        return
+    duration = max(0.0, now.timestamp() - started_ts)
+    started_iso = datetime.fromtimestamp(started_ts, timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    status = "error" if event.code == EVENT_JOB_ERROR else "success"
+    _record_job_duration(event.job_id, started_iso, duration, status)
 
 
 def resume_interrupted_scans() -> None:
@@ -1603,8 +1658,306 @@ def reload_scheduler():
 
 
 def start_scheduler():
+    scheduler.add_listener(_on_job_event, EVENT_JOB_SUBMITTED | EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
     scheduler.start()
 
 
 def shutdown_scheduler():
     scheduler.shutdown()
+
+
+# ---------------------------------------------------------------------------
+# Workflow Monitor — declarative job manifest + dependency/conflict engine.
+#
+# Every scheduler.add_job(... id=X) MUST have a matching JOB_GRAPH entry. Edges
+# are derived from each job's declared `produces`/`consumes` data artifacts, so
+# a new job with correct declarations auto-wires into the dependency graph.
+# The manifest-completeness test enforces this — see tests/test_scheduler_engine.py.
+# ---------------------------------------------------------------------------
+
+JOB_GRAPH: dict[str, dict] = {
+    "ghostfolio_sync_job":          {"label": "Ghostfolio Sync",            "category": "data",        "engine": "ghostfolio_sync.py",            "produces": ["portfolio"],                                                  "consumes": []},
+    "freetrade_sync_job":           {"label": "Freetrade Sync",             "category": "data",        "engine": "freetrade_engine.py",           "produces": ["market_universe", "portfolio"],                               "consumes": []},
+    "index_scraper_job":            {"label": "Index Constituents Scraper", "category": "data",        "engine": "index_engine.py",               "produces": ["index_constituents"],                                         "consumes": []},
+    "universe_routine_job":         {"label": "Weekend Universe Routine",   "category": "universe",    "engine": "universe_engine.py",            "produces": ["market_universe", "quant_signals", "tail_risk", "sentiment", "ml_features"], "consumes": ["historical_parquet", "index_constituents"]},
+    "universe_deep_sync_job":       {"label": "Universe Deep Sync",         "category": "universe",    "engine": "universe_deep_sync_engine.py",  "produces": ["fundamentals", "ticker_metadata", "quant_signals", "ml_predictions"], "consumes": ["market_universe", "historical_parquet", "ml_model"]},
+    "fundamentals_profiler_job":    {"label": "Fundamentals Profiler",      "category": "data",        "engine": "profile_engine.py",             "produces": ["fundamentals", "asset_profiles"],                             "consumes": ["market_universe"]},
+    "overnight_quant_scan_job":     {"label": "Overnight Quant Scan",       "category": "quant",       "engine": "quant_engine.py",               "produces": ["quant_signals", "tail_risk"],                                 "consumes": ["historical_parquet"]},
+    "quant_analysis_job":           {"label": "Quant Analysis Pipeline",    "category": "quant",       "engine": "quant_signals.py",              "produces": ["historical_parquet", "stock_signals", "quant_signals", "market_regimes"], "consumes": ["portfolio"]},
+    "weekend_earnings_vol_scan_job":{"label": "Earnings Volatility Scan",   "category": "quant",       "engine": "earnings_vol_engine.py",        "produces": ["earnings_volatility"],                                        "consumes": ["historical_parquet"]},
+    "ml_backfill_job":              {"label": "ML Historical Backfill",     "category": "ml",          "engine": "ai_prediction_engine.py",       "produces": ["ml_features"],                                                "consumes": ["historical_parquet", "quant_signals"]},
+    "ml_training_job":              {"label": "ML Global Training",         "category": "ml",          "engine": "ai_prediction_engine.py",       "produces": ["ml_model"],                                                   "consumes": ["ml_features"]},
+    "ml_inference_job":             {"label": "Daily ML Inference",         "category": "ml",          "engine": "ai_prediction_engine.py",       "produces": ["ml_predictions"],                                             "consumes": ["quant_signals", "ml_model"]},
+    "anomaly_training_job":         {"label": "Anomaly Training",           "category": "ml",          "engine": "anomaly_engine.py",             "produces": ["anomaly_models"],                                             "consumes": ["historical_parquet"]},
+    "xray_risk_cache_job":          {"label": "X-ray Risk Cache",           "category": "risk",        "engine": "xray_engine.py",                "produces": ["xray_caches"],                                                "consumes": ["historical_parquet", "portfolio"]},
+    "sentiment_scan_job":           {"label": "Sentiment Scan",             "category": "sentiment",   "engine": "huggingface_engine.py",         "produces": ["sentiment"],                                                  "consumes": []},
+    "news_feed_job":                {"label": "News Feed",                  "category": "sentiment",   "engine": "news_feed_engine.py",           "produces": ["news_articles", "sentiment"],                                 "consumes": []},
+    "market_sentiment_job":         {"label": "Market Sentiment Alert",     "category": "alert",       "engine": "sentiment_engine.py",           "produces": [],                                                             "consumes": ["sentiment", "market_regimes"]},
+    "cb_nlp_alert_job":             {"label": "Central Bank NLP Alert",     "category": "alert",       "engine": "huggingface_engine.py",         "produces": [],                                                             "consumes": ["macro_calendar"]},
+    "macro_calendar_job":           {"label": "Macro Calendar Update",      "category": "macro",       "engine": "macro_calendar_engine.py",      "produces": ["macro_calendar"],                                             "consumes": []},
+    "macro_data_job":               {"label": "Macro Data Update",          "category": "macro",       "engine": "macro_data_engine.py",          "produces": ["macro_indicators"],                                           "consumes": []},
+    "earnings_alert_job":           {"label": "Earnings Alert",             "category": "alert",       "engine": "earnings_engine.py",            "produces": [],                                                             "consumes": ["portfolio"]},
+    "insider_alert_job":            {"label": "Insider Trading Alert",      "category": "alert",       "engine": "insider_engine.py",             "produces": [],                                                             "consumes": ["portfolio"]},
+    "morning_briefing_dispatch_job":{"label": "Morning Briefing",           "category": "briefing",    "engine": "report_dispatcher.py",          "produces": [],                                                             "consumes": ["quant_signals", "stock_signals", "market_regimes", "sentiment", "ml_predictions"]},
+    "lunchtime_briefing_dispatch_job":{"label": "Lunchtime Briefing",       "category": "briefing",    "engine": "report_dispatcher.py",          "produces": [],                                                             "consumes": ["quant_signals", "stock_signals", "market_regimes", "sentiment"]},
+    "intraday_orchestrator_job":    {"label": "Intraday Orchestrator",      "category": "intraday",    "engine": "intraday_orchestrator.py",      "produces": [],                                                             "consumes": ["intraday_parquet"]},
+    "intraday_dip_scan_job":        {"label": "Dip Radar Scan",             "category": "intraday",    "engine": "intraday_bottom_engine.py",     "produces": ["intraday_monitor_results"],                                   "consumes": ["intraday_parquet"]},
+    "intraday_dip_reset_lse_job":   {"label": "Dip Radar Reset (LSE)",      "category": "intraday",    "engine": "intraday_bottom_engine.py",     "produces": ["intraday_monitor_results"],                                   "consumes": []},
+    "intraday_dip_reset_nyse_job":  {"label": "Dip Radar Reset (NYSE)",     "category": "intraday",    "engine": "intraday_bottom_engine.py",     "produces": ["intraday_monitor_results"],                                   "consumes": []},
+    "ai_contagion_job":             {"label": "AI Contagion Monitor",       "category": "intraday",    "engine": "ai_contagion_engine.py",        "produces": ["ai_contagion_snapshots"],                                     "consumes": ["intraday_parquet"]},
+    "trap_monitor_job":             {"label": "Trap & Recovery Monitor",    "category": "intraday",    "engine": "bull_bear_trap_engine.py",      "produces": ["trap_monitor_results"],                                       "consumes": ["historical_parquet"]},
+    "smgb_predictor_job":           {"label": "SMGB Predictor (pre-open)",  "category": "predictor",   "engine": "smgb_predictor.py",             "produces": ["smgb_predictions"],                                           "consumes": []},
+    "smgb_predictor_post_job":      {"label": "SMGB Predictor (post-close)","category": "predictor",   "engine": "smgb_predictor.py",             "produces": ["smgb_predictions"],                                           "consumes": []},
+    "smgb_actual_fill_job":         {"label": "SMGB Actual Fill",           "category": "predictor",   "engine": "smgb_predictor.py",             "produces": ["smgb_predictions"],                                           "consumes": ["smgb_predictions"]},
+    "etf_predictor_actual_fill_job":{"label": "ETF Predictor Actual Fill",  "category": "predictor",   "engine": "etf_predictor_engine.py",       "produces": ["etf_predictions"],                                            "consumes": ["etf_predictions"]},
+    "maintenance_job":              {"label": "DB/File Maintenance",        "category": "maintenance", "engine": "maintenance_engine.py",         "produces": [],                                                             "consumes": []},
+    "system_check_job":             {"label": "System Configuration Check", "category": "maintenance", "engine": "system_check_engine.py",        "produces": [],                                                             "consumes": []},
+    "etf_predictor_dynamic":        {"label": "ETF Predictor",              "category": "predictor",   "engine": "etf_predictor_engine.py",       "produces": ["etf_predictions"],                                            "consumes": [], "dynamic": True},
+}
+
+_DYNAMIC_ETF_RE = re.compile(r"^etf_predictor_\d+_(pre|post)_job$")
+_OVERLAP_BUFFER_MIN = 2
+_UNKNOWN_GAP_MIN = 30
+_WEEK_MIN = 7 * 24 * 60
+_BACKWARDS_FOLLOW_MIN = 240
+_BACKWARDS_STALE_MIN = 24 * 60
+_WEEKDAY_TO_INT = {"mon": 0, "tue": 1, "wed": 2, "thu": 3, "fri": 4, "sat": 5, "sun": 6}
+
+
+def _fire_times(schedule: dict | None) -> list[int]:
+    """Minute-of-week slots a cron job fires at; empty for interval/non-cron triggers."""
+    if not schedule:
+        return []
+    return [wd * 1440 + schedule["minute_of_day"] for wd in schedule["weekdays"]]
+
+
+def _resolve_manifest(job_id: str) -> dict | None:
+    meta = JOB_GRAPH.get(job_id)
+    if meta is not None:
+        return None if meta.get("dynamic") else meta
+    if _DYNAMIC_ETF_RE.match(job_id):
+        return JOB_GRAPH["etf_predictor_dynamic"]
+    return None
+
+
+def _wd_to_int(token: str) -> int | None:
+    token = token.strip().lower()
+    if token in _WEEKDAY_TO_INT:
+        return _WEEKDAY_TO_INT[token]
+    if token.isdigit():
+        return int(token) % 7
+    return None
+
+
+def _weekdays_from_expr(expr: str) -> set[int]:
+    expr = expr.strip().lower()
+    if expr in ("*", "?", ""):
+        return set(range(7))
+    days: set[int] = set()
+    for part in expr.split(","):
+        part = part.strip()
+        if "-" in part:
+            a, _, b = part.partition("-")
+            ai, bi = _wd_to_int(a), _wd_to_int(b)
+            if ai is not None and bi is not None:
+                days.update(range(ai, bi + 1) if ai <= bi else list(range(ai, 7)) + list(range(0, bi + 1)))
+        else:
+            wi = _wd_to_int(part)
+            if wi is not None:
+                days.add(wi)
+    return days or set(range(7))
+
+
+def _first_int_from_expr(expr: str, default: int = 0) -> int:
+    token = expr.strip().split(",")[0].split("/")[0].split("-")[0]
+    if token in ("*", "?", ""):
+        return default
+    try:
+        return int(token)
+    except ValueError:
+        return default
+
+
+def _schedule_slot(trigger) -> tuple[set[int], int] | None:
+    try:
+        fields = {f.name: str(f) for f in trigger.fields}
+    except AttributeError:
+        return None
+    hour = _first_int_from_expr(fields.get("hour", "0"))
+    minute = _first_int_from_expr(fields.get("minute", "0"))
+    return _weekdays_from_expr(fields.get("day_of_week", "*")), hour * 60 + minute
+
+
+def _period_days(weekdays: set[int] | None) -> int:
+    return 1 if (weekdays is None or len(weekdays) >= 5) else 7
+
+
+def _parse_last_run(value):
+    if not value:
+        return None
+    from datetime import datetime, timezone
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+        try:
+            return datetime.strptime(value, fmt).replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+    return None
+
+
+def _job_status(node: dict) -> tuple[str, str]:
+    from datetime import datetime, timezone
+    if not node["enabled"]:
+        return "disabled", "disabled"
+    if node.get("last_status") == "error":
+        return "red", "error"
+    last_run = _parse_last_run(node.get("last_run"))
+    if last_run is None:
+        return "amber", "never_run"
+    weekdays = set(node["schedule"]["weekdays"]) if node.get("schedule") else None
+    period = _period_days(weekdays)
+    age_days = (datetime.now(timezone.utc) - last_run).total_seconds() / 86400.0
+    if age_days > period * 2 + 2:
+        return "red", "overdue"
+    if age_days > period + 1:
+        return "amber", "stale"
+    return "green", "ok"
+
+
+def _build_node(job_id: str, meta: dict, job, run_row: dict) -> dict:
+    from datetime import timezone
+    enabled = job is not None
+    schedule = None
+    if enabled:
+        slot = _schedule_slot(job.trigger)
+        if slot is not None:
+            weekdays, minute_of_day = slot
+            schedule = {"weekdays": sorted(weekdays), "minute_of_day": minute_of_day}
+    label = meta["label"]
+    if _DYNAMIC_ETF_RE.match(job_id):
+        cfg_id = job_id.split("_")[2]
+        phase = "pre-open" if job_id.endswith("pre_job") else "post-close"
+        label = f"ETF Predictor #{cfg_id} ({phase})"
+    runs = run_row or {}
+    next_run = None
+    next_run_time = getattr(job, "next_run_time", None) if enabled else None
+    if next_run_time is not None:
+        next_run = next_run_time.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    node = {
+        "id": job_id,
+        "label": label,
+        "category": meta["category"],
+        "engine": meta["engine"],
+        "produces": list(meta.get("produces", [])),
+        "consumes": list(meta.get("consumes", [])),
+        "enabled": enabled,
+        "last_run": runs.get("last_run"),
+        "last_status": runs.get("last_status"),
+        "avg_duration_sec": runs.get("avg_duration_sec"),
+        "next_run": next_run,
+        "schedule": schedule,
+    }
+    node["status"], node["status_reason"] = _job_status(node)
+    return node
+
+
+def build_workflow_graph() -> dict:
+    runs = get_all_job_last_runs()
+    live = {j.id: j for j in scheduler.get_jobs()}
+    nodes, seen = [], set()
+    for job_id, meta in JOB_GRAPH.items():
+        if meta.get("dynamic"):
+            continue
+        nodes.append(_build_node(job_id, meta, live.get(job_id), runs.get(job_id, {})))
+        seen.add(job_id)
+    for job_id, job in live.items():
+        if job_id in seen:
+            continue
+        meta = _resolve_manifest(job_id)
+        if meta is not None:
+            nodes.append(_build_node(job_id, meta, job, runs.get(job_id, {})))
+    edges = _derive_edges(nodes)
+    return {"nodes": nodes, "edges": edges}
+
+
+def _derive_edges(nodes: list[dict]) -> list[dict]:
+    from collections import defaultdict
+    producers = defaultdict(list)
+    for n in nodes:
+        for artifact in n["produces"]:
+            producers[artifact].append(n["id"])
+    edges, seen = [], set()
+    for n in nodes:
+        for artifact in n["consumes"]:
+            for producer_id in producers.get(artifact, []):
+                if producer_id == n["id"]:
+                    continue
+                key = (producer_id, n["id"], artifact)
+                if key in seen:
+                    continue
+                seen.add(key)
+                edges.append({"from": producer_id, "to": n["id"], "via": artifact})
+    return edges
+
+
+def detect_workflow_conflicts(graph: dict) -> list[dict]:
+    nodes = {n["id"]: n for n in graph["nodes"]}
+    conflicts = []
+    for edge in graph["edges"]:
+        producer, consumer = nodes.get(edge["from"]), nodes.get(edge["to"])
+        if not producer or not consumer:
+            continue
+        if not consumer["enabled"]:
+            continue
+        if not producer["enabled"]:
+            conflicts.append({
+                "type": "disabled_upstream", "severity": "warning",
+                "job_id": consumer["id"], "related": producer["id"],
+                "message": f"{consumer['label']} depends on {producer['label']} (via {edge['via']}), which is disabled — its inputs may be stale or missing.",
+            })
+            continue
+        p_fires, c_fires = _fire_times(producer.get("schedule")), _fire_times(consumer.get("schedule"))
+        if not p_fires or not c_fires:
+            continue
+        back_gap = min((cf - pf) % _WEEK_MIN for cf in c_fires for pf in p_fires)
+        fwd_gap = min((pf - cf) % _WEEK_MIN for cf in c_fires for pf in p_fires)
+        avg = producer.get("avg_duration_sec")
+        if avg is None:
+            if back_gap < _UNKNOWN_GAP_MIN:
+                conflicts.append({
+                    "type": "overlap_risk", "severity": "info",
+                    "job_id": consumer["id"], "related": producer["id"],
+                    "message": f"{consumer['label']} starts {back_gap} min after {producer['label']} (its source of {edge['via']}); the producer's typical runtime is not yet known, so overlap cannot be ruled out.",
+                })
+        elif back_gap < avg / 60.0 + _OVERLAP_BUFFER_MIN:
+            conflicts.append({
+                "type": "overlap_risk", "severity": "warning",
+                "job_id": consumer["id"], "related": producer["id"],
+                "message": f"{consumer['label']} starts {back_gap} min after {producer['label']} (its source of {edge['via']}), but {producer['label']} typically runs ~{avg / 60.0:.0f} min — it may still be running, so {consumer['label']} could read incomplete data.",
+            })
+        if fwd_gap <= _BACKWARDS_FOLLOW_MIN and back_gap >= _BACKWARDS_STALE_MIN:
+            conflicts.append({
+                "type": "backwards_ordering", "severity": "critical",
+                "job_id": consumer["id"], "related": producer["id"],
+                "message": f"{consumer['label']} runs {fwd_gap} min before {producer['label']}, the upstream producer of {edge['via']} — it cannot use the same cycle's output and falls back on data at least {back_gap // 60}h old.",
+            })
+    for node in graph["nodes"]:
+        reason = node.get("status_reason")
+        if reason == "error":
+            conflicts.append({
+                "type": "last_run_error", "severity": "critical",
+                "job_id": node["id"], "related": None,
+                "message": f"{node['label']} failed on its last run.",
+            })
+        elif reason == "overdue":
+            conflicts.append({
+                "type": "stale_never_run", "severity": "warning",
+                "job_id": node["id"], "related": None,
+                "message": f"{node['label']} is enabled but has not run recently (last run: {node.get('last_run') or 'never'}).",
+            })
+        elif reason == "never_run":
+            conflicts.append({
+                "type": "stale_never_run", "severity": "info",
+                "job_id": node["id"], "related": None,
+                "message": f"{node['label']} is enabled and scheduled but has never recorded a run.",
+            })
+    return conflicts

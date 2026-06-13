@@ -1083,6 +1083,55 @@ Admin emergency password reset — bypasses the old password requirement. Only w
 
 ## 14. System & Infrastructure
 
+### `GET /api/workflow-monitor/status`
+
+Returns the scheduled-job dependency graph and detected scheduling conflicts for the Settings → Workflow Monitor panel. Read-only.
+
+**Request body:** none
+
+**Response**
+
+```json
+{
+  "status": "success",
+  "nodes": [
+    {
+      "id": "ml_inference_job",
+      "label": "Daily ML Inference",
+      "category": "ml",
+      "engine": "ai_prediction_engine.py",
+      "produces": ["ml_predictions"],
+      "consumes": ["quant_signals", "ml_model"],
+      "enabled": true,
+      "status": "green",
+      "status_reason": "ok",
+      "last_run": "2026-06-13 01:30",
+      "last_run_display": "13 Jun 2026, 02:30",
+      "next_run_display": "14 Jun 2026, 02:30",
+      "avg_duration_sec": 92.4,
+      "last_status": "success",
+      "schedule": { "weekdays": [0, 1, 2, 3, 4], "minute_of_day": 90 }
+    }
+  ],
+  "edges": [
+    { "from": "overnight_quant_scan_job", "to": "ml_inference_job", "via": "quant_signals" }
+  ],
+  "conflicts": [
+    {
+      "type": "overlap_risk",
+      "severity": "warning",
+      "job_id": "ml_inference_job",
+      "related": "overnight_quant_scan_job",
+      "message": "Daily ML Inference starts 30 min after Overnight Quant Scan, but it typically runs ~45 min — it may still be running."
+    }
+  ]
+}
+```
+
+`status` per node is one of `green` / `amber` / `red` / `disabled`. `conflicts[].type` is one of `overlap_risk`, `backwards_ordering`, `disabled_upstream`, `stale_never_run`, `last_run_error`; `severity` is `critical` / `warning` / `info`.
+
+---
+
 ### `POST /api/maintenance/run`
 
 Triggers the weekly `MaintenanceEngine` as a background task. Returns immediately; progress is visible in the Notifications panel.

@@ -119,6 +119,15 @@ def test_system_notifications_has_required_columns():
 
 
 @pytest.mark.db
+def test_scheduler_run_log_has_duration_columns():
+    """scheduler_run_log must carry the Workflow Monitor duration/status columns."""
+    cols = _columns("scheduler_run_log")
+    required = {"job_id", "last_run", "last_started", "last_duration_sec", "avg_duration_sec", "last_status"}
+    missing = required - cols
+    assert not missing, f"scheduler_run_log missing columns: {missing}"
+
+
+@pytest.mark.db
 def test_alert_state_has_required_columns():
     """alert_state dedup ledger must have all columns the gate logic reads/writes."""
     cols = _columns("alert_state")

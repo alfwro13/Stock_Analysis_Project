@@ -11,6 +11,7 @@ static/briefing_charts/
 data/
 
 # Ignore specific files
+static/js/mermaid.min.js
 to_do*.txt
 config.json
 ml_pipeline_results.json

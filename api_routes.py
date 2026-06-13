@@ -40,7 +40,7 @@ from config import (
     INTRADAY_DIR
 )
 from database import get_connection, get_universe_tickers
-from scheduler_engine import run_update_pipeline, run_ghostfolio_sync, run_freetrade_sync, reload_scheduler, run_sentiment_scan, run_index_scraper, run_fundamentals_profiler, run_universe_deep_sync_job, get_all_job_last_runs, run_xray_risk_cache_job, run_anomaly_training_job, record_job_run, run_maintenance_engine
+from scheduler_engine import run_update_pipeline, run_ghostfolio_sync, run_freetrade_sync, reload_scheduler, run_sentiment_scan, run_index_scraper, run_fundamentals_profiler, run_universe_deep_sync_job, get_all_job_last_runs, run_xray_risk_cache_job, run_anomaly_training_job, record_job_run, run_maintenance_engine, build_workflow_graph, detect_workflow_conflicts
 from maintenance_engine import MaintenanceEngine
 from xray_engine import assemble_xray_report
 from ghostfolio_sync import GhostfolioSyncEngine
@@ -1411,7 +1411,7 @@ async def get_system_metrics():
             return ts
 
         scheduler_last_runs = {
-            cfg_key: _localise_ts(job_last_runs.get(job_id, "Never"))
+            cfg_key: _localise_ts((job_last_runs.get(job_id) or {}).get("last_run", "Never"))
             for cfg_key, job_id in config_key_to_job.items()
         }
 
@@ -1534,6 +1534,37 @@ async def get_latest_notifications(last_id: int = 0):
     finally:
         if conn:
             conn.close()
+
+@api_router.get("/workflow-monitor/status")
+async def get_workflow_monitor_status():
+    try:
+        graph = build_workflow_graph()
+        conflicts = detect_workflow_conflicts(graph)
+
+        def _localise(ts: str):
+            if not ts:
+                return None
+            from datetime import datetime as _dt
+            for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+                try:
+                    return time_engine.fmt_datetime(_dt.strptime(ts, fmt))
+                except ValueError:
+                    continue
+            return ts
+
+        for node in graph["nodes"]:
+            node["last_run_display"] = _localise(node.get("last_run"))
+            node["next_run_display"] = _localise(node.get("next_run"))
+
+        return JSONResponse(content={
+            "status": "success",
+            "nodes": graph["nodes"],
+            "edges": graph["edges"],
+            "conflicts": conflicts,
+        })
+    except Exception as e:
+        return _error_500(e)
+
 
 @api_router.post("/notifications/mark-read")
 async def mark_notifications_read():

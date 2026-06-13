@@ -1975,6 +1975,32 @@
 
             </details>
 
+            <details class="settings-card" id="workflow-monitor-card">
+                <summary>🔄 Workflow Monitor</summary>
+                <p class="settings-desc">Dependency flow-chart of every scheduled job, coloured by <abbr title="Green: ran recently. Amber: stale, never run, or due soon. Red: failed or overdue. Grey: disabled in config.">recency status</abbr>. The conflict engine flags jobs scheduled before or while the upstream job that feeds their data is still running, jobs whose upstream is disabled, and jobs that failed or have gone stale.</p>
+
+                <div class="settings-panel border-left-blue">
+                    <h4 class="settings-panel-header text-blue">Job Dependency Graph</h4>
+                    <div class="workflow-legend">
+                        <span class="wf-legend-item"><span class="wf-dot wf-green"></span>Recent</span>
+                        <span class="wf-legend-item"><span class="wf-dot wf-amber"></span>Stale / due</span>
+                        <span class="wf-legend-item"><span class="wf-dot wf-red"></span>Failed / overdue</span>
+                        <span class="wf-legend-item"><span class="wf-dot wf-grey"></span>Disabled</span>
+                    </div>
+                    <div id="workflow-graph-container" class="workflow-graph-container">
+                        <p class="text-muted text-sm">Loading workflow graph…</p>
+                    </div>
+                    <button type="button" class="btn-test mt-10" onclick="loadWorkflowMonitor()">🔄 Refresh</button>
+                </div>
+
+                <div class="settings-panel border-left-red">
+                    <h4 class="settings-panel-header text-red">Detected Conflicts</h4>
+                    <div id="workflow-conflicts">
+                        <p class="text-muted text-sm">Loading…</p>
+                    </div>
+                </div>
+            </details>
+
             <div class="system-updates-panel">
                 <h3 class="text-orange mb-5 mt-0">🔄 System Updates & Power</h3>
                 <p class="text-muted text-sm mt-0">Pull the latest code from the main GitHub repository, or manually restart the background service.</p>
@@ -2014,5 +2040,7 @@
         window.ETF_USER_TZ = "{{ config.USER_TIMEZONE | default('Europe/London') }}";
     </script>
     <script src="/static/js/settings.js?v={{ css_version }}"></script>
+    <script src="/static/js/mermaid.min.js?v={{ css_version }}"></script>
+    <script src="/static/js/workflow_monitor.js?v={{ css_version }}"></script>
 </body>
 </html>

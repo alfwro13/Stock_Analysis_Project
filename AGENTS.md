@@ -138,7 +138,7 @@ All tables join on `ticker` as the primary key unless noted.
 | `smgb_predictions` | SMGB.L morning price predictions + actuals + accuracy metrics |
 | `alert_state` | Dedup ledger for intraday alert engines (fingerprint + cooldown) |
 | `system_notifications` | Scheduler job log visible in the Settings notifications panel |
-| `scheduler_run_log` | Last-run timestamp per APScheduler job ID |
+| `scheduler_run_log` | Last-run timestamp per APScheduler job ID, plus last-start, last/avg run duration, and last status (success/error) — powers the Workflow Monitor |
 
 Schema changes must go through `database.py:init_db()`.
 
@@ -152,6 +152,7 @@ Schema changes must go through `database.py:init_db()`.
 4. **No LLM for sentiment:** Market sentiment uses FinBERT locally. `ai_engine.py` generates prompts for *external* LLMs but is not itself an LLM.
 5. **APScheduler only:** Do not introduce external cron jobs. All scheduled work lives in `scheduler_engine.py`.
 6. **CSRF + session auth:** All POST endpoints are protected. Session cookies only. See `auth.py`.
+7. **Workflow manifest:** Every `scheduler.add_job(... id=X)` must have a matching `JOB_GRAPH` entry in `scheduler_engine.py` declaring its `produces`/`consumes` data artifacts (dynamic ids matched in `_resolve_manifest`). The Workflow Monitor derives its dependency graph and conflict detection from these; the manifest-completeness test fails if a registered job is missing.
 
 ---
 
@@ -293,4 +294,5 @@ A dedicated page housing standalone analytical tools. Each tool is self-containe
 - **X-ray engine** (`xray_engine.py`): Portfolio risk diagnostics view, added June 2026. Runs as a scheduler job at 19:00. Served at `GET /api/xray`. Renders inline on `portfolio.html` as a same-page swap.
 - **Intraday orchestrator** (`intraday_orchestrator.py`): Runs every 5 minutes during market hours. Detects crash/moonshot conditions and fires Nextcloud alerts.
 - **Quant briefing** (`reports_engine.py`): Generates a markdown report dispatched each morning via Nextcloud Talk.
+- **Workflow Monitor** (`scheduler_engine.py`): Settings-page dependency flow-chart of every scheduled job, added June 2026. Built from the `JOB_GRAPH` manifest (each job declares `produces`/`consumes`; edges derive from artifact intersection) merged with live scheduler state and `scheduler_run_log` durations. Detects scheduling conflicts (overlap with a still-running upstream, backwards ordering, disabled upstream, stale/never-run, last-run error). Served at `GET /api/workflow-monitor/status`; rendered with vendored Mermaid.js (fetched on first boot, gitignored).
 - **Embed mode:** Append `?embed=true` to `/portfolio` or `/watchlist` to strip the navbar for iframe integration (e.g. Home Assistant).

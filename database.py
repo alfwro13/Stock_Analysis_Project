@@ -363,9 +363,19 @@ def init_db() -> None:
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS scheduler_run_log (
                 job_id TEXT PRIMARY KEY,
-                last_run TEXT NOT NULL
+                last_run TEXT NOT NULL,
+                last_started TEXT,
+                last_duration_sec REAL,
+                avg_duration_sec REAL,
+                last_status TEXT
             )
         ''')
+
+        cursor.execute("PRAGMA table_info(scheduler_run_log)")
+        sched_log_cols = {row[1] for row in cursor.fetchall()}
+        for col_name, data_type in (("last_started", "TEXT"), ("last_duration_sec", "REAL"), ("avg_duration_sec", "REAL"), ("last_status", "TEXT")):
+            if col_name not in sched_log_cols:
+                cursor.execute(f"ALTER TABLE scheduler_run_log ADD COLUMN {col_name} {data_type}")
 
         # --- X-RAY RISK CACHE (Tier C — yfinance pre-compute) ---
         # Per-ticker beta and annualised volatility vs the configured benchmark.

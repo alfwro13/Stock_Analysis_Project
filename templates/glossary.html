@@ -37,6 +37,7 @@
             <a href="#candlesticks" class="sidebar-link">🕯️ Candlestick Anatomy</a>
             <a href="#technicals" class="sidebar-link">📈 Technical Analysis</a>
             <a href="#dip-radar" class="sidebar-link">🎯 Dip Radar</a>
+            <a href="#workflow-monitor" class="sidebar-link">🔄 Workflow Monitor</a>
             <a href="#fundamentals" class="sidebar-link">🏢 Company Valuation</a>
             <a href="#methodology" class="sidebar-link">🧠 System Philosophy</a>
         </aside>
@@ -324,6 +325,30 @@
                 <div class="term-box">
                     <span class="term-title">Session-Scoped Monitoring</span>
                     <p>Dip Radar is deliberately not a persistent background monitor. It is activated on-demand per ticker from the stock detail page and automatically deactivates at 16:05 ET (21:05 BST in summer / 22:05 GMT in winter) each trading day. This design prevents alert fatigue and avoids scanning noise outside of active market hours. The deduplication system (alert_state table) ensures that only the first breach of the score threshold fires an alert — repeat scans at the same high score are silently suppressed until a new session arms the ticker again.</p>
+                </div>
+            </details>
+
+            <details class="settings-card" id="workflow-monitor">
+                <summary>🔄 Workflow Monitor</summary>
+                <div class="term-box">
+                    <span class="term-title">Workflow Monitor</span>
+                    <p>A dependency flow-chart (in Settings) of every scheduled background job. Each job is a box wired to the jobs that produce the data it depends on — tracing the pipeline from market-universe ingestion through the quant, machine-learning, sentiment, and dip-radar engines. It answers the question "why is this data missing?" by making the order and health of the whole job chain visible at a glance.</p>
+                </div>
+                <div class="term-box">
+                    <span class="term-title">Traffic-Light Status</span>
+                    <p>Each job box is coloured by how recently it ran relative to its expected schedule:</p>
+                    <div class="rule border-left-green"><strong>Green:</strong> ran within its expected cadence.</div>
+                    <div class="rule border-left-orange"><strong>Amber:</strong> mildly stale, due soon, or has never recorded a run.</div>
+                    <div class="rule border-left-red"><strong>Red:</strong> failed on its last run, or is overdue well beyond its schedule.</div>
+                    <div class="rule"><strong>Grey:</strong> disabled in the current configuration.</div>
+                </div>
+                <div class="term-box">
+                    <span class="term-title">Conflict Detection</span>
+                    <p>Because the scheduler runs different jobs concurrently (it never makes one job wait for another), a job can fire while the upstream job that feeds its data is still running — silently reading incomplete data. The conflict engine flags four situations:</p>
+                    <div class="rule"><strong>Overlap risk:</strong> a job starts within the upstream producer's typical run time (measured as a rolling average of past runs), so the producer may still be working.</div>
+                    <div class="rule"><strong>Backwards ordering:</strong> a job is scheduled to run <em>before</em> the upstream job that produces the data it consumes.</div>
+                    <div class="rule"><strong>Disabled upstream:</strong> an enabled job depends on data from a job that is currently switched off.</div>
+                    <div class="rule"><strong>Stale / failed:</strong> a job has not run when it should have, or errored on its last run.</div>
                 </div>
             </details>
 

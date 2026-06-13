@@ -48,6 +48,21 @@ def test_get_notifications_latest_returns_200(client):
 
 
 @pytest.mark.api
+def test_get_workflow_monitor_status_returns_200(client):
+    """GET /api/workflow-monitor/status must return nodes, edges and conflicts lists."""
+    resp = client.get("/api/workflow-monitor/status")
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
+    data = _json(resp)
+    assert data["status"] == "success"
+    for key in ("nodes", "edges", "conflicts"):
+        assert isinstance(data[key], list), f"'{key}' must be a list"
+    assert data["nodes"], "workflow graph must expose at least one job node"
+    sample = data["nodes"][0]
+    for key in ("id", "label", "category", "status", "produces", "consumes"):
+        assert key in sample, f"node missing '{key}'"
+
+
+@pytest.mark.api
 def test_get_notifications_with_last_id_filter(client):
     """GET /api/notifications/latest?last_id=9999 must return an empty list (no notifications above that ID)."""
     resp = client.get("/api/notifications/latest?last_id=9999999")

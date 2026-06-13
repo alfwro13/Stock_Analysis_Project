@@ -37,6 +37,8 @@ async def lifespan(app: FastAPI):
     import threading
     logger.info("Initializing application lifecycle...")
     init_db()
+    from utils import ensure_workflow_assets
+    ensure_workflow_assets()
     run_yfinance_smoke_test()
     start_scheduler()
     reload_scheduler()
