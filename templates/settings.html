@@ -25,7 +25,10 @@
     <div id="system-checks-banner" hidden></div>
 
     <div class="glossary-search-container settings-search-container">
-        <input type="text" id="settingsSearch" class="glossary-search-bar" placeholder="🔍 Search settings, schedulers, or configuration options..." autocomplete="off">
+        <div class="search-input-wrap">
+            <input type="text" id="settingsSearch" class="glossary-search-bar" placeholder="🔍 Search settings, schedulers, or configuration options..." autocomplete="off">
+            <button type="button" id="settingsSearchClear" class="search-clear-btn" aria-label="Clear search">✕</button>
+        </div>
     </div>
 
     <div id="noSettingsResults" class="glossary-empty-state" style="display:none; max-width:1400px; margin:0 auto; padding:0 20px;">

@@ -2118,12 +2118,15 @@
         // Settings search
         (function() {
             const searchInput = document.getElementById('settingsSearch');
+            const clearBtn = document.getElementById('settingsSearchClear');
             const cards = document.querySelectorAll('details.settings-card');
             const noResults = document.getElementById('noSettingsResults');
 
             searchInput.addEventListener('input', function() {
                 const query = this.value.toLowerCase().trim();
                 let found = 0;
+
+                if (clearBtn) clearBtn.style.display = this.value ? 'block' : 'none';
 
                 cards.forEach(card => {
                     const matches = query === '' || card.innerText.toLowerCase().includes(query);
@@ -2140,4 +2143,12 @@
 
                 noResults.style.display = (found === 0 && query !== '') ? 'block' : 'none';
             });
+
+            if (clearBtn) {
+                clearBtn.addEventListener('click', function() {
+                    searchInput.value = '';
+                    searchInput.dispatchEvent(new Event('input'));
+                    searchInput.focus();
+                });
+            }
         })();

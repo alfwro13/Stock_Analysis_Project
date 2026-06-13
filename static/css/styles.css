@@ -920,6 +920,11 @@ details[open].xray-rec-group .xray-rec-group-summary::before { transform: rotate
 .lv-row-error    .lv-msg { color: #ef5350; }
 .lv-row-critical .lv-msg { color: #ff1744; }
 
+.search-input-wrap { position: relative; }
+.search-input-wrap .glossary-search-bar { padding-right: 50px; }
+.search-clear-btn { display: none; position: absolute; right: 16px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #888; font-size: 18px; line-height: 1; cursor: pointer; padding: 6px 8px; }
+.search-clear-btn:hover { color: #fff; }
+
 .sortable-col { cursor: pointer; user-select: none; white-space: nowrap; }
 .sortable-col:hover { color: #fff; }
 #sched-sort-arrow { color: #888; font-size: 11px; }
