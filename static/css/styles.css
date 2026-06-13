@@ -870,13 +870,6 @@ details[open].xray-rec-group .xray-rec-group-summary::before { transform: rotate
 .news-font-btn { background: var(--card-bg, #1a1a1a); border: 1px solid var(--border-color, #333); color: var(--text-primary, #e0e0e0); padding: 6px 12px; cursor: pointer; font-size: 0.85em; font-weight: 700; border-radius: 4px; min-height: 36px; min-width: 44px; line-height: 1; transition: background 0.15s; }
 .news-font-btn:hover { background: rgba(255,255,255,0.07); }
 .news-font-btn:disabled { opacity: 0.35; cursor: default; }
-#articleReader[data-fs="1"] .reader-body { font-size: 0.76em; }
-#articleReader[data-fs="2"] .reader-body { font-size: 0.84em; }
-#articleReader[data-fs="3"] .reader-body { font-size: 0.92em; }
-#articleReader[data-fs="4"] .reader-body { font-size: 1.02em; }
-#articleReader[data-fs="5"] .reader-body { font-size: 1.12em; }
-#articleReader[data-fs="6"] .reader-body { font-size: 1.24em; }
-#articleReader[data-fs="7"] .reader-body { font-size: 1.38em; }
 
 /* ── News reader — article body typography ──────────────────────────────── */
 .reader-p { margin: 0 0 1em 0; }

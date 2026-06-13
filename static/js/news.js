@@ -3,6 +3,7 @@ let currentSource = 'portfolio';
 let selectedId = null;
 
 const FS_MIN = 1, FS_MAX = 7, FS_DEFAULT = 3;
+const FS_SIZES = ['', '0.76em', '0.84em', '0.92em', '1.02em', '1.12em', '1.24em', '1.38em'];
 
 function relTime(ts) {
     const diff = Math.floor(Date.now() / 1000) - ts;
@@ -60,7 +61,9 @@ function formatArticleBody(text, ticker) {
 }
 
 function applyFontSize(fs) {
-    document.getElementById('articleReader').dataset.fs = fs;
+    const el = document.getElementById('articleReader');
+    el.dataset.fs = fs;
+    el.style.setProperty('--reader-fs', FS_SIZES[fs]);
     document.getElementById('fontDecBtn').disabled = (fs <= FS_MIN);
     document.getElementById('fontIncBtn').disabled = (fs >= FS_MAX);
 }
