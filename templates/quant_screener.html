@@ -21,6 +21,7 @@
             
             <p class="page-subtitle">Signals Generated For: <strong>{{ target_date }}</strong></p>
             
+            <button class="nav-hamburger" id="nav-hamburger-btn" aria-label="Navigation menu">&#9776;</button>
             <div class="nav-links">
                 <a href="/portfolio">💼 Portfolio</a>
                 <a href="/watchlist">👀 Watchlist</a>
@@ -96,6 +97,13 @@
 
     <script>
         document.addEventListener("DOMContentLoaded", async function() {
+            const hamburger = document.getElementById('nav-hamburger-btn');
+            const navLinks = hamburger ? hamburger.nextElementSibling : null;
+            if (hamburger && navLinks) {
+                hamburger.addEventListener('click', (e) => { e.stopPropagation(); navLinks.classList.toggle('nav-open'); });
+                document.addEventListener('click', () => navLinks.classList.remove('nav-open'));
+            }
+
             // --- Freshness badge ---
             try {
                 const container = document.querySelector('.header-container');

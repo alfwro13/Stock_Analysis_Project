@@ -57,6 +57,7 @@ abbr { text-decoration: underline dotted #666; text-underline-offset: 3px; curso
 .nav-links a { margin-right: 20px; font-size: 16px; color: #4da6ff; text-decoration: none; font-weight: bold; }
 .nav-links a.active { color: #00ffcc; text-decoration: underline; }
 .nav-links a:hover { text-decoration: underline; }
+.nav-hamburger { display: none; background: transparent; border: 1px solid #4da6ff; border-radius: 4px; color: #4da6ff; font-size: 22px; line-height: 1; padding: 4px 10px; cursor: pointer; }
 .badge { background-color: #ff4d4d; color: white; padding: 2px 6px; border-radius: 10px; font-size: 12px; vertical-align: super; font-weight: bold; }
 .freshness-badge { position: absolute; top: 10px; right: 20px; text-align: right; font-size: 12px; line-height: 1.9; white-space: nowrap; }
 .freshness-fresh { color: #00cc88; }
@@ -337,10 +338,14 @@ table.dataTable.display tbody tr.even > .sorting_1, table.dataTable.order-column
   /* Summary row: 3-column grid, hide action links */
   .summary-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 10px; }
   .portfolio-action-links { display: none; }
-  /* Header: shrink logo + title so freshness badge (Model/Prices) no longer clashes */
+  /* Header: shrink logo + title; hamburger replaces freshness badge at top-right */
   .logo-img { height: 28px; }
   .header-container h1 { font-size: 15px; }
-  .freshness-badge { font-size: 10px; line-height: 1.4; top: 6px; right: 10px; }
+  .freshness-badge { display: none; }
+  .nav-hamburger { display: block; position: absolute; top: 6px; right: 10px; }
+  .nav-links { display: none; }
+  .nav-links.nav-open { display: flex; flex-direction: column; align-items: stretch; margin-top: 8px; }
+  .nav-links.nav-open a { margin-right: 0; padding: 12px 8px; font-size: 16px; border-bottom: 1px solid #2a2a2a; width: 100%; }
   /* Table: bleed wrapper to viewport edges, cancelling body's 20px left/right padding */
   #dataTable_wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; margin-left: -20px; margin-right: -20px; }
   /* Override DataTables' own generous padding (it loads after styles.css and needs !important) */

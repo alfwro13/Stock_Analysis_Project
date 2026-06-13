@@ -1,3 +1,4 @@
+<button class="nav-hamburger" id="nav-hamburger-btn" aria-label="Navigation menu">&#9776;</button>
 <div class="nav-links">
     <a href="/portfolio" class="{% if active_page == 'portfolio' %}active{% endif %}">💼 Portfolio</a>
     <a href="/watchlist" class="{% if active_page == 'watchlist' %}active{% endif %}">👀 Watchlist</a>
@@ -104,9 +105,15 @@
     document.addEventListener('DOMContentLoaded', () => {
         initGlobalBrowserNotifications();
         loadFreshnessBadge();
-        // Poll for new alerts exactly every 15 seconds in the background
         setInterval(pollGlobalSystemNotifications, 15000);
-        pollGlobalSystemNotifications(); // Run once immediately on load
+        pollGlobalSystemNotifications();
+
+        const hamburger = document.getElementById('nav-hamburger-btn');
+        const navLinks = hamburger ? hamburger.nextElementSibling : null;
+        if (hamburger && navLinks) {
+            hamburger.addEventListener('click', (e) => { e.stopPropagation(); navLinks.classList.toggle('nav-open'); });
+            document.addEventListener('click', () => navLinks.classList.remove('nav-open'));
+        }
     });
 </script>
 <script src="/static/js/csrf.js"></script>
