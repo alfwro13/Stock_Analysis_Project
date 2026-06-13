@@ -8,16 +8,24 @@ Covers pure/near-pure business logic:
       - negative trailing_pe → NaN (loss-making company signal)
       - cross-sectional median imputation per date
       - columns absent from FUNDAMENTAL_FEATURES are left untouched
+  • run_historical_backfill resume logic:
+      - resumes from next ticker after last_processed_ticker
+      - new run creates IN_PROGRESS state row
+      - completed run marks state COMPLETED
 """
 
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+import database as _db_module
 
 from ai_prediction_engine import (
     cross_sectional_zscore,
@@ -207,3 +215,103 @@ class TestWinsorizeAndImputeFundamentals:
         result = _winsorize_and_impute_fundamentals(df)
         # date2 has only one non-null value (100.0) → median = 100.0
         assert result['trailing_pe'].iloc[3] == 100.0
+
+
+# ---------------------------------------------------------------------------
+# run_historical_backfill resume logic
+# ---------------------------------------------------------------------------
+
+def _today():
+    return datetime.now(timezone.utc).strftime('%Y-%m-%d')
+
+
+@pytest.fixture(autouse=True)
+def clean_backfill_state():
+    """Wipe quant_scan_states before each test in this module."""
+    conn = _db_module.get_connection()
+    conn.execute("DELETE FROM quant_scan_states WHERE scan_type = 'ml_backfill'")
+    conn.commit()
+    conn.close()
+
+
+def _run_backfill_mocked(tickers):
+    """Run run_historical_backfill with all external I/O mocked out. Returns list of tickers fetched."""
+    from ai_prediction_engine import run_historical_backfill
+    fetched = []
+
+    def _fake_get_price(ticker_list, **_):
+        fetched.extend(ticker_list)
+        return {}
+
+    with (
+        patch("ai_prediction_engine.sync_ticker_metadata"),
+        patch("ai_prediction_engine._download_spy_benchmark", return_value=None),
+        patch("ai_prediction_engine._migrate_quant_signals_schema"),
+        patch("ai_prediction_engine.yahoo_engine") as mock_ye,
+        patch("ai_prediction_engine.time"),
+    ):
+        mock_ye.get_price_history.side_effect = _fake_get_price
+        run_historical_backfill(tickers)
+
+    return fetched
+
+
+class TestMLBackfillResume:
+
+    def test_fresh_run_creates_in_progress_state(self):
+        _run_backfill_mocked(["AAPL", "MSFT"])
+        conn = _db_module.get_connection()
+        row = conn.execute(
+            "SELECT status FROM quant_scan_states WHERE scan_type = 'ml_backfill'"
+        ).fetchone()
+        conn.close()
+        assert row is not None
+
+    def test_completed_run_marks_state_completed(self):
+        _run_backfill_mocked(["AAPL"])
+        conn = _db_module.get_connection()
+        row = conn.execute(
+            "SELECT status FROM quant_scan_states WHERE scan_type = 'ml_backfill'"
+        ).fetchone()
+        conn.close()
+        assert row["status"] == "COMPLETED"
+
+    def test_resume_skips_already_processed_tickers(self):
+        """Seed IN_PROGRESS with last_processed_ticker='MSFT'; only NVDA must be fetched."""
+        conn = _db_module.get_connection()
+        conn.execute(
+            "INSERT INTO quant_scan_states (scan_date, scan_type, last_processed_ticker, status) "
+            "VALUES (?, 'ml_backfill', 'MSFT', 'IN_PROGRESS')",
+            (_today(),),
+        )
+        conn.commit()
+        conn.close()
+
+        fetched = _run_backfill_mocked(["AAPL", "MSFT", "NVDA"])
+        assert "AAPL" not in fetched, "AAPL already processed — must be skipped"
+        assert "MSFT" not in fetched, "MSFT already processed — must be skipped"
+        assert "NVDA" in fetched
+
+    def test_resume_cross_day_finds_previous_in_progress(self):
+        """An IN_PROGRESS row from yesterday must still be found and resumed."""
+        conn = _db_module.get_connection()
+        conn.execute(
+            "INSERT INTO quant_scan_states (scan_date, scan_type, last_processed_ticker, status) "
+            "VALUES ('2026-01-01', 'ml_backfill', 'AAPL', 'IN_PROGRESS')",
+        )
+        conn.commit()
+        conn.close()
+
+        fetched = _run_backfill_mocked(["AAPL", "MSFT"])
+        assert "AAPL" not in fetched
+        assert "MSFT" in fetched
+
+    def test_empty_ticker_list_returns_without_state(self):
+        from ai_prediction_engine import run_historical_backfill
+        run_historical_backfill([])
+        conn = _db_module.get_connection()
+        row = conn.execute(
+            "SELECT 1 FROM quant_scan_states WHERE scan_type = 'ml_backfill'"
+        ).fetchone()
+        conn.close()
+        assert row is None

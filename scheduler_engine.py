@@ -98,6 +98,65 @@ def get_all_job_last_runs() -> dict:
         if conn:
             conn.close()
 
+
+def resume_interrupted_scans() -> None:
+    """Called once on startup; re-fires any scan that was IN_PROGRESS when the server last shut down."""
+    from datetime import datetime, timezone
+    today_str = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT scan_type, status FROM quant_scan_states WHERE scan_date = ?",
+            (today_str,)
+        )
+        today_states = {row['scan_type']: row['status'] for row in cursor.fetchall()}
+
+        cursor.execute(
+            "SELECT 1 FROM quant_scan_states WHERE scan_type = 'ml_backfill' AND status = 'IN_PROGRESS' "
+            "ORDER BY scan_date DESC LIMIT 1"
+        )
+        standalone_ml_in_progress = cursor.fetchone() is not None
+    finally:
+        if conn:
+            conn.close()
+
+    _deep_sync_keys = {'deep_sync_s1', 'deep_sync_s2', 'deep_sync_s4', 'deep_sync_s5', 'universe_deep_sync'}
+    deep_sync_active = any(k in today_states for k in _deep_sync_keys)
+    deep_sync_complete = today_states.get('deep_sync_s5') == 'COMPLETED'
+
+    dispatched = False
+
+    if deep_sync_active and not deep_sync_complete:
+        logger.info("Startup: detected interrupted Universe Deep Sync — resuming immediately.")
+        log_sched_notification("Info", "Resuming interrupted Universe Deep Sync pipeline after restart.")
+        _threading.Thread(target=run_universe_deep_sync_job, daemon=True).start()
+        dispatched = True
+
+    if today_states.get('daily') == 'IN_PROGRESS':
+        logger.info("Startup: detected interrupted Overnight Quant Scan — resuming immediately.")
+        log_sched_notification("Info", "Resuming interrupted Overnight Quant Scan after restart.")
+        _threading.Thread(target=run_overnight_quant_scan, daemon=True).start()
+        dispatched = True
+
+    if today_states.get('universe') == 'IN_PROGRESS':
+        logger.info("Startup: detected interrupted Weekend Universe Routine — resuming immediately.")
+        log_sched_notification("Info", "Resuming interrupted Weekend Universe Routine after restart.")
+        _threading.Thread(target=run_weekend_universe_routine, daemon=True).start()
+        dispatched = True
+
+    if standalone_ml_in_progress and not deep_sync_active:
+        logger.info("Startup: detected interrupted ML Backfill — resuming immediately.")
+        log_sched_notification("Info", "Resuming interrupted ML Historical Backfill after restart.")
+        _threading.Thread(target=run_ml_backfill, daemon=True).start()
+        dispatched = True
+
+    if not dispatched:
+        logger.info("Startup resume check: no interrupted scans found.")
+
+
 def trigger_sentiment_report():
     try:
         run_nextcloud_alert()

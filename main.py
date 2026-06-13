@@ -16,7 +16,7 @@ from config import PORT, SERVER_URL, load_config
 from auth import COOKIE_NAME, verify_session_token
 from api_routes import limiter
 from database import init_db
-from scheduler_engine import start_scheduler, shutdown_scheduler, reload_scheduler
+from scheduler_engine import start_scheduler, shutdown_scheduler, reload_scheduler, resume_interrupted_scans
 from log_config import configure_file_logging
 
 from api_routes import api_router
@@ -34,11 +34,13 @@ configure_file_logging(load_config())
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    import threading
     logger.info("Initializing application lifecycle...")
     init_db()
     run_yfinance_smoke_test()
     start_scheduler()
     reload_scheduler()
+    threading.Thread(target=resume_interrupted_scans, daemon=True).start()
     yield
     shutdown_scheduler()
     logger.info("Application lifecycle terminated safely.")

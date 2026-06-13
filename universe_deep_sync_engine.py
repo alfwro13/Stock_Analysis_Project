@@ -1,11 +1,43 @@
 # ML inference (Stage 5) requires fundamentals (Stage 1) + momentum backfill (Stage 4) + technicals (Stage 3) — order is mandatory.
 import logging
+from datetime import datetime, timezone
 from typing import List
 
 from config import load_config
 from database import get_connection, log_notification
 
 logger = logging.getLogger(__name__)
+
+
+def _stage_done(scan_date: str, scan_type: str) -> bool:
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT 1 FROM quant_scan_states WHERE scan_date = ? AND scan_type = ? AND status = 'COMPLETED'",
+            (scan_date, scan_type)
+        )
+        return cursor.fetchone() is not None
+    finally:
+        if conn:
+            conn.close()
+
+
+def _mark_stage_done(scan_date: str, scan_type: str) -> None:
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO quant_scan_states (scan_date, scan_type, last_processed_ticker, status) "
+            "VALUES (?, ?, '', 'COMPLETED') ON CONFLICT(scan_date, scan_type) DO UPDATE SET status = 'COMPLETED'",
+            (scan_date, scan_type)
+        )
+        conn.commit()
+    finally:
+        if conn:
+            conn.close()
 
 
 def _get_universe_target_tickers(freetrade_firewall: bool) -> List[str]:
@@ -46,6 +78,8 @@ def run_universe_deep_sync() -> None:
         log_notification("Warning", msg)
         return
 
+    today_str = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+
     firewall_note = (
         " (Freetrade firewall: ON)" if freetrade_firewall else " (Freetrade firewall: OFF)"
     )
@@ -64,80 +98,104 @@ def run_universe_deep_sync() -> None:
     }
 
     logger.info("[Stage 1/5] Universe fundamentals sync starting...")
-    try:
-        from universe_fundamentals_engine import run_universe_fundamentals_sync
-        # batch_size=2000 effectively means "process all pending" — queue bounded by universe size (~600 tickers).
-        run_universe_fundamentals_sync(
-            batch_size=2000,
-            freetrade_firewall=freetrade_firewall,
-        )
+    if _stage_done(today_str, 'deep_sync_s1'):
         stage_status["fundamentals"] = "OK"
-        logger.info("[Stage 1/5] Fundamentals sync completed.")
-    except Exception as e:
-        stage_status["fundamentals"] = f"FAILED ({type(e).__name__})"
-        logger.error("[Stage 1/5] Fundamentals stage FAILED: %s", e, exc_info=True)
-        log_notification(
-            "Error",
-            f"Universe Deep Sync — Stage 1 (Fundamentals) failed: {e}"
-        )
+        logger.info("[Stage 1/5] Fundamentals sync skipped (already completed today).")
+    else:
+        try:
+            from universe_fundamentals_engine import run_universe_fundamentals_sync
+            # batch_size=2000 effectively means "process all pending" — queue bounded by universe size (~600 tickers).
+            run_universe_fundamentals_sync(
+                batch_size=2000,
+                freetrade_firewall=freetrade_firewall,
+            )
+            _mark_stage_done(today_str, 'deep_sync_s1')
+            stage_status["fundamentals"] = "OK"
+            logger.info("[Stage 1/5] Fundamentals sync completed.")
+        except Exception as e:
+            stage_status["fundamentals"] = f"FAILED ({type(e).__name__})"
+            logger.error("[Stage 1/5] Fundamentals stage FAILED: %s", e, exc_info=True)
+            log_notification(
+                "Error",
+                f"Universe Deep Sync — Stage 1 (Fundamentals) failed: {e}"
+            )
 
     logger.info("[Stage 2/5] Ticker metadata sync starting...")
-    try:
-        from ai_prediction_engine import sync_ticker_metadata
-        sync_ticker_metadata(target_tickers)
+    if _stage_done(today_str, 'deep_sync_s2'):
         stage_status["metadata"] = "OK"
-        logger.info("[Stage 2/5] Metadata sync completed.")
-    except Exception as e:
-        stage_status["metadata"] = f"FAILED ({type(e).__name__})"
-        logger.error("[Stage 2/5] Metadata stage FAILED: %s", e, exc_info=True)
-        log_notification(
-            "Error",
-            f"Universe Deep Sync — Stage 2 (Metadata) failed: {e}"
-        )
+        logger.info("[Stage 2/5] Metadata sync skipped (already completed today).")
+    else:
+        try:
+            from ai_prediction_engine import sync_ticker_metadata
+            sync_ticker_metadata(target_tickers)
+            _mark_stage_done(today_str, 'deep_sync_s2')
+            stage_status["metadata"] = "OK"
+            logger.info("[Stage 2/5] Metadata sync completed.")
+        except Exception as e:
+            stage_status["metadata"] = f"FAILED ({type(e).__name__})"
+            logger.error("[Stage 2/5] Metadata stage FAILED: %s", e, exc_info=True)
+            log_notification(
+                "Error",
+                f"Universe Deep Sync — Stage 2 (Metadata) failed: {e}"
+            )
 
     logger.info("[Stage 3/5] Technicals quant scan starting...")
-    try:
-        from quant_engine import run_daily_quant_scan
-        # Distinct scan_type isolates this pipeline's resumability state from the daily scan (which uses 'daily').
-        run_daily_quant_scan(target_tickers, scan_type='universe_deep_sync')
+    if _stage_done(today_str, 'universe_deep_sync'):
         stage_status["technicals"] = "OK"
-        logger.info("[Stage 3/5] Technicals scan completed.")
-    except Exception as e:
-        stage_status["technicals"] = f"FAILED ({type(e).__name__})"
-        logger.error("[Stage 3/5] Technicals stage FAILED: %s", e, exc_info=True)
-        log_notification(
-            "Error",
-            f"Universe Deep Sync — Stage 3 (Technicals) failed: {e}"
-        )
+        logger.info("[Stage 3/5] Technicals scan skipped (already completed today).")
+    else:
+        try:
+            from quant_engine import run_daily_quant_scan
+            # Distinct scan_type isolates this pipeline's resumability state from the daily scan (which uses 'daily').
+            run_daily_quant_scan(target_tickers, scan_type='universe_deep_sync')
+            stage_status["technicals"] = "OK"
+            logger.info("[Stage 3/5] Technicals scan completed.")
+        except Exception as e:
+            stage_status["technicals"] = f"FAILED ({type(e).__name__})"
+            logger.error("[Stage 3/5] Technicals stage FAILED: %s", e, exc_info=True)
+            log_notification(
+                "Error",
+                f"Universe Deep Sync — Stage 3 (Technicals) failed: {e}"
+            )
 
     logger.info("[Stage 4/5] Momentum/Vol/RS backfill starting...")
-    try:
-        from ai_prediction_engine import run_historical_backfill
-        # Without this stage, Stage 5 silently skips every universe ticker because the 18-feature ML input set is incomplete.
-        run_historical_backfill(tickers=target_tickers)
+    if _stage_done(today_str, 'deep_sync_s4'):
         stage_status["momentum_backfill"] = "OK"
-        logger.info("[Stage 4/5] Momentum backfill completed.")
-    except Exception as e:
-        stage_status["momentum_backfill"] = f"FAILED ({type(e).__name__})"
-        logger.error("[Stage 4/5] Momentum backfill stage FAILED: %s", e, exc_info=True)
-        log_notification(
-            "Error",
-            f"Universe Deep Sync — Stage 4 (Momentum Backfill) failed: {e}"
-        )
+        logger.info("[Stage 4/5] Momentum backfill skipped (already completed today).")
+    else:
+        try:
+            from ai_prediction_engine import run_historical_backfill
+            # Without this stage, Stage 5 silently skips every universe ticker because the 18-feature ML input set is incomplete.
+            run_historical_backfill(tickers=target_tickers)
+            _mark_stage_done(today_str, 'deep_sync_s4')
+            stage_status["momentum_backfill"] = "OK"
+            logger.info("[Stage 4/5] Momentum backfill completed.")
+        except Exception as e:
+            stage_status["momentum_backfill"] = f"FAILED ({type(e).__name__})"
+            logger.error("[Stage 4/5] Momentum backfill stage FAILED: %s", e, exc_info=True)
+            log_notification(
+                "Error",
+                f"Universe Deep Sync — Stage 4 (Momentum Backfill) failed: {e}"
+            )
 
     logger.info("[Stage 5/5] ML inference starting...")
-    try:
-        from ai_prediction_engine import update_daily_ml_predictions
-        update_daily_ml_predictions(target_tickers)
+    if _stage_done(today_str, 'deep_sync_s5'):
         stage_status["ml_inference"] = "OK"
-        logger.info("[Stage 5/5] ML inference completed.")
-    except Exception as e:
-        stage_status["ml_inference"] = f"FAILED ({type(e).__name__})"
-        logger.error("[Stage 5/5] ML inference stage FAILED: %s", e, exc_info=True)
-        log_notification(
-            "Error",
-            f"Universe Deep Sync — Stage 5 (ML Inference) failed: {e}"
-        )
+        logger.info("[Stage 5/5] ML inference skipped (already completed today).")
+    else:
+        try:
+            from ai_prediction_engine import update_daily_ml_predictions
+            update_daily_ml_predictions(target_tickers)
+            _mark_stage_done(today_str, 'deep_sync_s5')
+            stage_status["ml_inference"] = "OK"
+            logger.info("[Stage 5/5] ML inference completed.")
+        except Exception as e:
+            stage_status["ml_inference"] = f"FAILED ({type(e).__name__})"
+            logger.error("[Stage 5/5] ML inference stage FAILED: %s", e, exc_info=True)
+            log_notification(
+                "Error",
+                f"Universe Deep Sync — Stage 5 (ML Inference) failed: {e}"
+            )
 
     summary_line = " | ".join(f"{k}={v}" for k, v in stage_status.items())
     all_ok: bool = all(v == "OK" for v in stage_status.values())

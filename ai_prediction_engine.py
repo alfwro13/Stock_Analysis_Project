@@ -3,6 +3,7 @@ import time
 import logging
 import sqlite3
 import psutil
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Tuple, Dict, Optional, Any
 
@@ -351,23 +352,7 @@ def sync_ticker_metadata(tickers: List[str]) -> None:
 
 
 def run_historical_backfill(tickers: Optional[List[str]] = None) -> None:
-    """
-    Downloads 2 years of daily OHLCV data per ticker, computes all technical,
-    momentum, volatility and relative strength features, and upserts into
-    quant_signals.
-
-    Args:
-        tickers: Optional explicit ticker list. When None (legacy behaviour),
-            falls back to get_target_tickers() which mixes portfolio/watchlist
-            with a random universe sample. When provided (e.g. from the
-            UNIVERSE_DEEP_SYNC orchestrator), processes exactly that list so
-            the ML model's required momentum features are populated for the
-            explicit target set.
-
-    NOTE: Fundamental features (trailing_pe, roe, etc.) are NOT stored in
-    quant_signals. They are joined from stock_signals at training and inference
-    time. No backfill changes are required for improvement #4.
-    """
+    """Fundamental features are NOT stored in quant_signals — joined from stock_signals at training/inference time."""
     if tickers is None:
         tickers = get_target_tickers()
     if not tickers:
@@ -376,21 +361,47 @@ def run_historical_backfill(tickers: Optional[List[str]] = None) -> None:
 
     sync_ticker_metadata(tickers)
 
-    conn   = get_connection()
-    cursor = conn.cursor()
-    _migrate_quant_signals_schema(cursor)
-    conn.commit()
+    today_str = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+    start_idx = 0
 
-    spy_df = _download_spy_benchmark(period="2y")
-
-    log_notification("Info", f"ML Historical Backfill initiated for {len(tickers)} assets.")
-
+    conn = None
     try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        _migrate_quant_signals_schema(cursor)
+        conn.commit()
+
+        cursor.execute(
+            "SELECT last_processed_ticker FROM quant_scan_states "
+            "WHERE scan_type = 'ml_backfill' AND status = 'IN_PROGRESS' "
+            "ORDER BY scan_date DESC LIMIT 1"
+        )
+        state = cursor.fetchone()
+
+        if state:
+            last_ticker = state['last_processed_ticker']
+            if last_ticker and last_ticker in tickers:
+                start_idx = tickers.index(last_ticker) + 1
+                resume_ticker = tickers[start_idx] if start_idx < len(tickers) else 'END'
+                logger.info("Resuming ML Backfill from %s (skipping %d already-processed tickers).", resume_ticker, start_idx)
+                log_notification("Info", f"Resuming ML Historical Backfill from {resume_ticker}.")
+        else:
+            cursor.execute(
+                "INSERT INTO quant_scan_states (scan_date, scan_type, last_processed_ticker, status) VALUES (?, ?, ?, ?)",
+                (today_str, 'ml_backfill', '', 'IN_PROGRESS')
+            )
+            conn.commit()
+
+        spy_df = _download_spy_benchmark(period="2y")
+
+        log_notification("Info", f"ML Historical Backfill initiated for {len(tickers)} assets.")
+
         total_inserted = 0
         total_tickers  = len(tickers)
 
-        for i, ticker in enumerate(tickers):
-            logger.info(f"[{i+1}/{total_tickers}] Processing 2y historical data for {ticker}...")
+        for i in range(start_idx, total_tickers):
+            ticker = tickers[i]
+            logger.info("[%d/%d] Processing 2y historical data for %s...", i + 1, total_tickers, ticker)
 
             try:
                 _result = yahoo_engine.get_price_history([ticker], period="2y", interval="1d")
@@ -402,12 +413,9 @@ def run_historical_backfill(tickers: Optional[List[str]] = None) -> None:
                 df.dropna(subset=['Close', 'Volume', 'High', 'Low'], inplace=True)
 
                 if len(df) < 252:
-                    logger.warning(
-                        f"Skipping {ticker}: insufficient data ({len(df)} rows < 252)."
-                    )
+                    logger.warning("Skipping %s: insufficient data (%d rows < 252).", ticker, len(df))
                     continue
 
-                # ── Technical Indicators ──────────────────────────────────────
                 df['rsi_14'] = compute_rsi(df['Close'])
                 df['macd'], df['macd_signal'], df['macd_hist'] = compute_macd(df['Close'])
                 _smas = compute_smas(df['Close'], [50, 200])
@@ -417,7 +425,6 @@ def run_historical_backfill(tickers: Optional[List[str]] = None) -> None:
                 df['volume_surge']  = compute_volume_surge(df['Volume'], df['vol_sma_20'])
                 df['bullish_cross'] = compute_bullish_cross(df['macd'], df['macd_signal'])
 
-                # ── Momentum Factors ──────────────────────────────────────────
                 df['mom_1m']  = df['Close'].pct_change(21)
                 df['mom_3m']  = df['Close'].pct_change(63)
                 df['mom_6m']  = df['Close'].pct_change(126)
@@ -425,14 +432,12 @@ def run_historical_backfill(tickers: Optional[List[str]] = None) -> None:
                 df['mom_12m_skip1m'] = df['mom_12m'] - df['mom_1m']
                 df.drop(columns=['mom_12m'], inplace=True)
 
-                # ── Volatility Regime ─────────────────────────────────────────
                 df['atr_raw'] = compute_atr(df['High'], df['Low'], df['Close'])
                 df['atr_pct'] = df['atr_raw'] / df['Close']
                 df.drop(columns=['atr_raw'], inplace=True)
                 log_returns       = np.log(df['Close'] / df['Close'].shift(1))
                 df['hist_vol_20'] = log_returns.rolling(window=20).std() * np.sqrt(252)
 
-                # ── Relative Strength vs SPY ──────────────────────────────────
                 if spy_df is not None:
                     ticker_ret_5d  = df['Close'].pct_change(5)
                     ticker_ret_20d = df['Close'].pct_change(20)
@@ -450,7 +455,6 @@ def run_historical_backfill(tickers: Optional[List[str]] = None) -> None:
                 if df.empty:
                     continue
 
-                # ── Build upsert records ──────────────────────────────────────
                 records: List[Tuple] = []
                 for index, row in df.iterrows():
                     records.append((
@@ -507,32 +511,37 @@ def run_historical_backfill(tickers: Optional[List[str]] = None) -> None:
                 conn.commit()
                 total_inserted += cursor.rowcount
 
+                cursor.execute(
+                    "UPDATE quant_scan_states SET last_processed_ticker = ? WHERE scan_type = 'ml_backfill' AND status = 'IN_PROGRESS'",
+                    (ticker,)
+                )
+                conn.commit()
+
             except Exception as e:
-                logger.error(f"Error processing ticker {ticker}: {e}")
+                logger.error("Error processing ticker %s: %s", ticker, e)
                 conn.rollback()
             finally:
                 time.sleep(0.5)
 
             processed = i + 1
-            if total_tickers >= 2 and processed == total_tickers // 2:
-                log_notification(
-                    "Info",
-                    f"ML Historical Backfill is 50% complete ({processed}/{total_tickers})."
-                )
+            if total_tickers >= 4 and processed % max(1, total_tickers // 4) == 0 and processed < total_tickers:
+                pct = int((processed / total_tickers) * 100)
+                log_notification("Info", f"ML Historical Backfill Progress: {pct}% ({processed}/{total_tickers} tickers processed).")
 
-        logger.info(
-            f"--- BACKFILL COMPLETE. Injected/Updated {total_inserted} historical rows. ---"
+        cursor.execute(
+            "UPDATE quant_scan_states SET status = 'COMPLETED' WHERE scan_type = 'ml_backfill' AND status = 'IN_PROGRESS'"
         )
-        log_notification(
-            "Success",
-            f"ML Backfill completed. Injected/Updated {total_inserted:,} data points."
-        )
+        conn.commit()
+
+        logger.info("ML Backfill complete. Injected/updated %d historical rows.", total_inserted)
+        log_notification("Success", f"ML Backfill completed. Injected/Updated {total_inserted:,} data points.")
 
     except Exception as e:
-        logger.error(f"Fatal error during historical backfill: {e}")
+        logger.error("Fatal error during historical backfill: %s", e)
         log_notification("Error", f"ML Historical Backfill failed: {str(e)}")
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 
 def train_global_ml_model() -> None:

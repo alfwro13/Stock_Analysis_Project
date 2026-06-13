@@ -30,8 +30,14 @@ The SQLite database acts as the central brain of the dashboard. It uses a star-l
 * **AI Interaction:** The `ai_prediction_engine` reads from this table, calculates ML probabilities, and writes the `ml_confidence_score` back into it daily.
 
 #### `quant_scan_states`
-* **Purpose:** Composite-key state tracker for resumability in long-running jobs to prevent data gaps upon unexpected interruptions.
+* **Purpose:** Composite-key state tracker for resumability in long-running jobs to prevent data gaps upon unexpected interruptions. On startup, `resume_interrupted_scans()` queries this table and re-fires any IN_PROGRESS scan automatically.
 * **Key Columns:** `scan_date`, `scan_type` (Composite PK), `last_processed_ticker`, `status`.
+* **`scan_type` values:**
+  - `'daily'` — overnight portfolio+watchlist quant scan (`quant_engine.py`)
+  - `'universe'` — weekend full-universe quant scan (`quant_engine.py`)
+  - `'universe_deep_sync'` — Stage 3 technicals within the deep sync pipeline (`quant_engine.py`)
+  - `'ml_backfill'` — ML historical feature backfill per ticker (`ai_prediction_engine.py`); date-agnostic lookup so cross-day restarts still resume
+  - `'deep_sync_s1'` … `'deep_sync_s5'` — per-stage checkpoints for the Universe Deep Sync pipeline (`universe_deep_sync_engine.py`); Stage 3 uses `'universe_deep_sync'` above
 
 #### `earnings_volatility`
 * **Purpose:** The options arbitrage ledger.

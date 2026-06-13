@@ -1,4 +1,8 @@
 """Tests for scheduler_engine pure-function helpers and DB utilities."""
+import threading
+from datetime import datetime, timezone
+from unittest.mock import patch, MagicMock
+
 import pytest
 import database as _db_module
 from scheduler_engine import (
@@ -7,6 +11,7 @@ from scheduler_engine import (
     log_sched_notification,
     record_job_run,
     get_all_job_last_runs,
+    resume_interrupted_scans,
     _mark_job_started,
     _mark_job_done,
     get_active_jobs,
@@ -24,6 +29,7 @@ def clean_tables():
     conn = _db_module.get_connection()
     conn.execute("DELETE FROM system_notifications")
     conn.execute("DELETE FROM scheduler_run_log")
+    conn.execute("DELETE FROM quant_scan_states")
     conn.commit()
     conn.close()
 
@@ -204,3 +210,86 @@ class TestActiveJobsTracking:
 
     def test_get_active_jobs_empty_when_no_jobs_running(self):
         assert get_active_jobs() == {}
+
+
+# ---------------------------------------------------------------------------
+# resume_interrupted_scans
+# ---------------------------------------------------------------------------
+
+def _today_str():
+    return datetime.now(timezone.utc).strftime('%Y-%m-%d')
+
+
+def _seed_scan_state(scan_type: str, status: str, last_ticker: str = '', scan_date: str = None):
+    conn = _db_module.get_connection()
+    conn.execute(
+        "INSERT INTO quant_scan_states (scan_date, scan_type, last_processed_ticker, status) VALUES (?, ?, ?, ?)",
+        (scan_date or _today_str(), scan_type, last_ticker, status),
+    )
+    conn.commit()
+    conn.close()
+
+
+class TestResumeInterruptedScans:
+
+    def test_no_interrupted_scans_dispatches_nothing(self):
+        threads_before = threading.active_count()
+        resume_interrupted_scans()
+        assert threading.active_count() == threads_before
+
+    def test_in_progress_daily_dispatches_overnight_scan(self):
+        _seed_scan_state('daily', 'IN_PROGRESS')
+        with patch("scheduler_engine.run_overnight_quant_scan") as mock_fn:
+            resume_interrupted_scans()
+            # Wait briefly for daemon thread to call the function
+            import time; time.sleep(0.1)
+            mock_fn.assert_called_once()
+
+    def test_in_progress_universe_dispatches_weekend_routine(self):
+        _seed_scan_state('universe', 'IN_PROGRESS')
+        with patch("scheduler_engine.run_weekend_universe_routine") as mock_fn:
+            resume_interrupted_scans()
+            import time; time.sleep(0.1)
+            mock_fn.assert_called_once()
+
+    def test_deep_sync_stage_present_dispatches_deep_sync(self):
+        _seed_scan_state('deep_sync_s1', 'COMPLETED')
+        _seed_scan_state('deep_sync_s2', 'COMPLETED')
+        _seed_scan_state('deep_sync_s4', 'IN_PROGRESS')
+        with patch("scheduler_engine.run_universe_deep_sync_job") as mock_fn:
+            resume_interrupted_scans()
+            import time; time.sleep(0.1)
+            mock_fn.assert_called_once()
+
+    def test_completed_deep_sync_does_not_redispatch(self):
+        _seed_scan_state('deep_sync_s5', 'COMPLETED')
+        with patch("scheduler_engine.run_universe_deep_sync_job") as mock_fn:
+            resume_interrupted_scans()
+            import time; time.sleep(0.05)
+            mock_fn.assert_not_called()
+
+    def test_standalone_ml_backfill_dispatches_when_no_deep_sync(self):
+        _seed_scan_state('ml_backfill', 'IN_PROGRESS')
+        with patch("scheduler_engine.run_ml_backfill") as mock_fn:
+            resume_interrupted_scans()
+            import time; time.sleep(0.1)
+            mock_fn.assert_called_once()
+
+    def test_ml_backfill_not_dispatched_standalone_when_deep_sync_active(self):
+        """ml_backfill IN_PROGRESS during a deep sync should not trigger a standalone resume."""
+        _seed_scan_state('deep_sync_s1', 'COMPLETED')
+        _seed_scan_state('ml_backfill', 'IN_PROGRESS')
+        with (
+            patch("scheduler_engine.run_ml_backfill") as mock_ml,
+            patch("scheduler_engine.run_universe_deep_sync_job"),
+        ):
+            resume_interrupted_scans()
+            import time; time.sleep(0.1)
+            mock_ml.assert_not_called()
+
+    def test_completed_daily_does_not_redispatch(self):
+        _seed_scan_state('daily', 'COMPLETED')
+        with patch("scheduler_engine.run_overnight_quant_scan") as mock_fn:
+            resume_interrupted_scans()
+            import time; time.sleep(0.05)
+            mock_fn.assert_not_called()
