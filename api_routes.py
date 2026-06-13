@@ -168,6 +168,197 @@ async def change_password(body: ChangePasswordRequest):
     return {"status": "ok"}
 
 
+class PasswordResetRequestBody(BaseModel):
+    email: str
+
+
+class PasswordResetBody(BaseModel):
+    token: str
+    new_password: str
+    confirm_password: str
+
+
+def _send_reset_notification(reset_url: str) -> bool:
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+
+    smtp_host = os.environ.get("SMTP_HOST", "")
+    account_email = os.environ.get("ACCOUNT_EMAIL", "")
+    if smtp_host and account_email:
+        smtp_port = int(os.environ.get("SMTP_PORT", "587"))
+        smtp_user = os.environ.get("SMTP_USER", "")
+        smtp_pass = os.environ.get("SMTP_PASS", "")
+        smtp_from = os.environ.get("SMTP_FROM", smtp_user) or "noreply@quantamental"
+        body_text = (
+            f"Click the link below to reset your Quantamental password.\n"
+            f"This link expires in 1 hour.\n\n{reset_url}\n\n"
+            f"If you did not request a reset, ignore this message."
+        )
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = "Quantamental — Password Reset"
+        msg["From"] = smtp_from
+        msg["To"] = account_email
+        msg.attach(MIMEText(body_text, "plain"))
+        try:
+            with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as s:
+                s.ehlo()
+                s.starttls()
+                if smtp_user and smtp_pass:
+                    s.login(smtp_user, smtp_pass)
+                s.sendmail(smtp_from, [account_email], msg.as_string())
+            logger.info("Password reset email sent to %s", account_email)
+            return True
+        except Exception as e:
+            logger.warning("SMTP send failed: %s", e)
+
+    nextcloud_url = os.environ.get("NEXTCLOUD_URL", "")
+    if nextcloud_url:
+        try:
+            from nextcloud_talk import send_nextcloud_message
+            send_nextcloud_message(f"Password reset link (expires 1h):\n{reset_url}")
+            logger.info("Password reset link sent via Nextcloud Talk")
+            return True
+        except Exception as e:
+            logger.warning("Nextcloud reset notification failed: %s", e)
+
+    return False
+
+
+@api_router.post("/request-password-reset")
+async def request_password_reset(body: PasswordResetRequestBody):
+    import hashlib as _hl
+    from datetime import datetime, timezone, timedelta
+    from database import get_connection
+
+    account_email = os.environ.get("ACCOUNT_EMAIL", "")
+    if not account_email or body.email.lower().strip() != account_email.lower().strip():
+        return {"status": "ok", "message": "If the email matches, a reset link has been sent."}
+
+    token = secrets.token_urlsafe(32)
+    token_hash = _hl.sha256(token.encode()).hexdigest()
+    expires_at = (datetime.now(timezone.utc) + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
+
+    conn = None
+    try:
+        conn = get_connection()
+        conn.execute(
+            "INSERT INTO password_reset_tokens (token_hash, expires_at, used) VALUES (?, ?, 0)",
+            (token_hash, expires_at),
+        )
+        conn.commit()
+    finally:
+        if conn:
+            conn.close()
+
+    from config import load_config
+    server_url = load_config().get("SERVER_URL", "http://localhost")
+    port = load_config().get("PORT", 8090)
+    base = server_url.rstrip("/")
+    if not (base.endswith(":8090") or base.endswith(f":{port}")):
+        base = f"{base}:{port}"
+    reset_url = f"{base}/reset-password?token={token}"
+
+    sent = _send_reset_notification(reset_url)
+    if not sent:
+        logger.info("Password reset URL (no delivery channel configured): %s", reset_url)
+        return {"status": "ok", "message": "Reset link logged to server — check application logs."}
+
+    return {"status": "ok", "message": "If the email matches, a reset link has been sent."}
+
+
+@api_router.post("/reset-password")
+async def reset_password(body: PasswordResetBody):
+    import hashlib as _hl
+    from datetime import datetime, timezone
+    from database import get_connection
+    from auth import hash_password as _hash
+    from dotenv import set_key
+    from config import BASE_DIR
+
+    if body.new_password != body.confirm_password:
+        raise HTTPException(status_code=400, detail="Passwords do not match.")
+    if len(body.new_password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters.")
+    if body.new_password == "changeme":
+        raise HTTPException(status_code=400, detail="Please choose a different password.")
+
+    token_hash = _hl.sha256(body.token.encode()).hexdigest()
+    now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+    conn = None
+    try:
+        conn = get_connection()
+        row = conn.execute(
+            "SELECT expires_at, used FROM password_reset_tokens WHERE token_hash = ?",
+            (token_hash,),
+        ).fetchone()
+        if not row or row["used"] or row["expires_at"] < now_utc:
+            raise HTTPException(status_code=400, detail="Reset link is invalid or has expired.")
+        conn.execute(
+            "UPDATE password_reset_tokens SET used = 1 WHERE token_hash = ?",
+            (token_hash,),
+        )
+        conn.commit()
+    finally:
+        if conn:
+            conn.close()
+
+    new_hash = _hash(body.new_password)
+    env_path = str(BASE_DIR / ".env")
+    set_key(env_path, "DASHBOARD_PASSWORD_HASH", new_hash)
+    set_key(env_path, "DASHBOARD_PASSWORD", "")
+    os.environ["DASHBOARD_PASSWORD_HASH"] = new_hash
+    os.environ["DASHBOARD_PASSWORD"] = ""
+    return {"status": "ok"}
+
+
+class SaveAccountEmailRequest(BaseModel):
+    email: str
+
+
+@api_router.post("/save-account-email", dependencies=[Depends(require_confirm_token)])
+async def save_account_email(body: SaveAccountEmailRequest):
+    from dotenv import set_key
+    from config import BASE_DIR
+    set_key(str(BASE_DIR / ".env"), "ACCOUNT_EMAIL", body.email.strip())
+    os.environ["ACCOUNT_EMAIL"] = body.email.strip()
+    return {"status": "ok"}
+
+
+class AdminResetPasswordBody(BaseModel):
+    new_password: str
+    confirm_password: str
+
+
+@api_router.post("/admin-reset-password")
+async def admin_reset_password(body: AdminResetPasswordBody):
+    from dotenv import set_key
+    from config import BASE_DIR, update_config_atomic, load_config
+    from auth import hash_password as _hash
+
+    cfg = load_config()
+    if not cfg.get("FORCE_PASSWORD_RESET", False):
+        raise HTTPException(status_code=403, detail="Admin reset is not enabled.")
+
+    if body.new_password != body.confirm_password:
+        raise HTTPException(status_code=400, detail="Passwords do not match.")
+    if len(body.new_password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters.")
+    if body.new_password == "changeme":
+        raise HTTPException(status_code=400, detail="Please choose a different password.")
+
+    new_hash = _hash(body.new_password)
+    env_path = str(BASE_DIR / ".env")
+    set_key(env_path, "DASHBOARD_PASSWORD_HASH", new_hash)
+    set_key(env_path, "DASHBOARD_PASSWORD", "")
+    os.environ["DASHBOARD_PASSWORD_HASH"] = new_hash
+    os.environ["DASHBOARD_PASSWORD"] = ""
+
+    update_config_atomic({"FORCE_PASSWORD_RESET": False})
+    return {"status": "ok"}
+
+
 class SaveNextcloudSettingsRequest(BaseModel):
     NEXTCLOUD_URL: str
     BOT_USERNAME: str

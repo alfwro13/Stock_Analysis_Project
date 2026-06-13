@@ -82,6 +82,21 @@ async def change_password_page(request: Request):
     return templates.TemplateResponse(request=request, name="change_password.html")
 
 
+@page_router.get("/reset-password", response_class=HTMLResponse)
+async def reset_password_page(request: Request):
+    token = request.query_params.get("token", "")
+    return templates.TemplateResponse(request=request, name="reset_password.html", context={"token": token})
+
+
+@page_router.get("/admin-reset-password", response_class=HTMLResponse)
+async def admin_reset_password_page(request: Request):
+    from config import load_config
+    if not load_config().get("FORCE_PASSWORD_RESET", False):
+        from fastapi.responses import RedirectResponse as _Redir
+        return _Redir("/login", status_code=302)
+    return templates.TemplateResponse(request=request, name="admin_reset_password.html")
+
+
 def get_json_data(filepath: str) -> Dict[str, Any]:
     try:
         with open(filepath, 'r') as f:
@@ -360,6 +375,7 @@ async def settings_page(request: Request):
             "ghostfolio_token": os.environ.get("GHOSTFOLIO_TOKEN", ""),
             "fred_api_key": os.environ.get("FRED_API_KEY", ""),
             "hf_token": os.environ.get("HF_TOKEN", ""),
+            "account_email": os.environ.get("ACCOUNT_EMAIL", ""),
         }
     )
 
