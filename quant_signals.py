@@ -18,6 +18,8 @@ from constants import (
 
 logger = logging.getLogger(__name__)
 
+# GUI name: "Quantamental Analysis Engine". Canonical scheduled-job names live in scheduler_engine.JOB_GRAPH.
+
 
 def get_candlestick_patterns(prev2: pd.Series, prev1: pd.Series, curr: pd.Series) -> List[Dict[str, Any]]:
     """Pattern recognition engine; patterns are non-exclusive to allow signal confluence."""

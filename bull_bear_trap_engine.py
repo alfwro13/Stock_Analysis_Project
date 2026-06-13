@@ -15,6 +15,8 @@ from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
 
+# GUI name: "Market Trap & Recovery Monitor". Canonical scheduled-job names live in scheduler_engine.JOB_GRAPH.
+
 _DEFAULT_PROXY_TICKERS = ["QQQ", "SMH", "NVDA", "MSFT", "AAPL"]
 
 # Lifecycle phase labels in severity order (most severe first)

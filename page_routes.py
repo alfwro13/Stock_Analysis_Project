@@ -357,12 +357,14 @@ def enrich_macro_events(events_list: List[Dict[str, Any]]) -> List[Dict[str, Any
 @page_router.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request):
     import os
+    from scheduler_engine import scheduler_display_names
     config_data = load_config()
     return templates.TemplateResponse(
         request=request,
         name="settings.html",
         context={
             "config": config_data,
+            "scheduler_job_labels": scheduler_display_names(),
             "unread_count": get_unread_count(),
             "dashboard_username": os.environ.get("DASHBOARD_USERNAME", "admin"),
             "api_key": os.environ.get("API_KEY", ""),

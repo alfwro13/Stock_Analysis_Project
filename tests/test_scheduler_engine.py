@@ -301,6 +301,10 @@ class TestResumeInterruptedScans:
 
 from scheduler_engine import (
     JOB_GRAPH,
+    CONFIG_KEY_TO_JOB,
+    job_label,
+    display_name_for_config_key,
+    scheduler_display_names,
     build_workflow_graph,
     detect_workflow_conflicts,
     reload_scheduler,
@@ -308,6 +312,7 @@ from scheduler_engine import (
     _job_status,
     _on_job_event,
 )
+import config as _config_module
 from apscheduler.events import EVENT_JOB_SUBMITTED, EVENT_JOB_EXECUTED, EVENT_JOB_ERROR
 
 
@@ -495,3 +500,50 @@ class TestDurationListener:
     def test_executed_without_submitted_is_noop(self):
         _on_job_event(_Evt(EVENT_JOB_EXECUTED, "ghost_job"))
         assert "ghost_job" not in get_all_job_last_runs()
+
+
+# ---------------------------------------------------------------------------
+# Canonical job naming — one name per job across all surfaces
+# ---------------------------------------------------------------------------
+
+# Code-style / title-cased variants that must NOT be a canonical display name.
+_FORBIDDEN_DISPLAY_NAMES = {
+    "Update Pipeline", "Intraday Orchestrator", "ML Global Training", "Anomaly Training",
+    "Overnight Quant Scan", "Weekend Universe Routine", "Ml Training", "Ml Backfill",
+    "Quant Engine", "Quant Analysis",
+}
+
+
+class TestCanonicalJobNames:
+    def test_every_config_key_maps_to_a_known_job(self):
+        bad = [k for k, jid in CONFIG_KEY_TO_JOB.items() if jid not in JOB_GRAPH]
+        assert bad == [], f"CONFIG_KEY_TO_JOB points at unknown job ids: {bad}"
+
+    def test_display_name_for_config_key_resolves(self):
+        assert display_name_for_config_key("ML_TRAINING") == "Global Model Training (Walk-Forward)"
+        assert display_name_for_config_key("QUANT_ENGINE") == "Daily Quant Screener (Portfolio & Watchlist)"
+        assert display_name_for_config_key("CRASH_ALERTS") == "Crash & Moonshot Alerts"
+
+    def test_scheduler_display_names_cover_all_scheduling_config_keys(self):
+        """Every SCHEDULING key in config resolves to a canonical name (no title-case fallback)."""
+        scheduling = _config_module.load_config().get("SCHEDULING", {})
+        names = scheduler_display_names()
+        unmapped = [k for k in scheduling if k not in names]
+        assert unmapped == [], f"SCHEDULING keys with no canonical display name: {unmapped}"
+
+    def test_no_forbidden_variant_is_a_canonical_label(self):
+        labels = {m["label"] for m in JOB_GRAPH.values()}
+        leaked = labels & _FORBIDDEN_DISPLAY_NAMES
+        assert leaked == set(), f"Code-style variants used as canonical labels: {leaked}"
+
+    def test_active_job_name_comes_from_job_graph(self):
+        """The Active-Jobs panel must show the canonical label, not a code-style literal."""
+        captured = {}
+
+        def _fake_training():
+            captured.update(get_active_jobs())
+
+        with patch("scheduler_engine.train_global_ml_model", _fake_training):
+            _sched_module.run_ml_training()
+        assert "Global Model Training (Walk-Forward)" in captured
+        assert "ML Global Training" not in captured

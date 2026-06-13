@@ -24,6 +24,8 @@ from utils import clamp_beta
 
 logger = logging.getLogger(__name__)
 
+# GUI name: "Crash & Moonshot Alerts". Canonical scheduled-job names live in scheduler_engine.JOB_GRAPH.
+
 _STALE_SECONDS        = 5400   # 90 min: market closed / asset halted circuit breaker
 _CORP_ACTION_GAP_PCT  = 10.0   # price gap % that triggers a corporate action lookup
 _MACRO_YIELD_SURGE_PCT = 1.5   # intraday yield spike % that fires a systemic macro alert

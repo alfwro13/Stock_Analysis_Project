@@ -1294,8 +1294,8 @@ Returns a snapshot of all scheduler jobs that are currently executing. The regis
   "status": "success",
   "busy": true,
   "active_jobs": {
-    "ML Global Training": "2026-06-10T14:32:01",
-    "Overnight Quant Scan": "2026-06-10T14:28:45"
+    "Global Model Training (Walk-Forward)": "2026-06-10T14:32:01",
+    "Daily Quant Screener (Portfolio & Watchlist)": "2026-06-10T14:28:45"
   }
 }
 ```
@@ -1326,7 +1326,7 @@ Returns HTTP **409** if any scheduler jobs are currently running (see `GET /api/
 ```json
 {
   "status": "busy",
-  "message": "Cannot restart: ML Global Training is currently running. Please wait for it to complete and try again."
+  "message": "Cannot restart: Global Model Training (Walk-Forward) is currently running. Please wait for it to complete and try again."
 }
 ```
 

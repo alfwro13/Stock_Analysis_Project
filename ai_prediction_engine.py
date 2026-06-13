@@ -36,6 +36,8 @@ from constants import PREDICTION_HORIZON_DAYS, PREDICTION_RETURN_THRESHOLD
 
 logger = logging.getLogger(__name__)
 
+# GUI name: "Historical Data Backfill & Sync / Global Model Training (Walk-Forward) / Daily ML Inference". Canonical scheduled-job names live in scheduler_engine.JOB_GRAPH.
+
 MODELS_DIR = BASE_DIR / "models"
 MODELS_DIR.mkdir(parents=True, exist_ok=True)
 MODEL_PATH         = MODELS_DIR / "ml_ensemble.joblib"

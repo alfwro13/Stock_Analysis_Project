@@ -311,7 +311,7 @@ Controls:
 **Diagnostics panel:** Settings → System Diagnostics → ML Artifacts & System Ledgers  
 Shows: `Isolation Forest Models — N Models` (count of `.joblib` files in `data/anomaly_models/`). Displayed in amber if zero.
 
-**Scheduler diagnostics table:** Shows `Isolation Forest Anomaly Training` row with `18:30 MON-FRI` schedule and last-run timestamp.
+**Scheduler diagnostics table:** Shows the `Isolation Forest Anomaly Detection` row with `18:30 MON-FRI` schedule and last-run timestamp.
 
 ---
 
@@ -319,7 +319,7 @@ Shows: `Isolation Forest Models — N Models` (count of `.joblib` files in `data
 
 | Job | Function | Schedule | Config key |
 |-----|----------|----------|-----------|
-| Anomaly Training + Backfill | `run_anomaly_training_job()` | Mon–Fri 18:30 | `NOTIFICATIONS.ANOMALY_ALERTS.ENABLED` |
+| Isolation Forest Anomaly Detection | `run_anomaly_training_job()` | Mon–Fri 18:30 | `NOTIFICATIONS.ANOMALY_ALERTS.ENABLED` |
 
 **Timing rationale:**  
 18:30 UTC is after the overnight `quant_analysis_job` at 18:00 (which writes fresh `quant_signals` rows) and before the `xray_risk_cache_job` at 19:00. This ensures models are trained on the most recent daily data.

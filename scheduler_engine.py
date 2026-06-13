@@ -231,7 +231,7 @@ def run_maintenance_engine():
         record_job_run('maintenance_job')
 
 def run_update_pipeline():
-    _mark_job_started("Update Pipeline")
+    _mark_job_started(job_label("quant_analysis_job"))
     try:
         log_sched_notification("Scheduler", "Started Update Pipeline...")
         logger.info("Background update initiated.")
@@ -324,11 +324,11 @@ def run_update_pipeline():
     except Exception as e:
         log_sched_notification("Error", f"Update Pipeline failed: {e}")
     finally:
-        _mark_job_done("Update Pipeline")
+        _mark_job_done(job_label("quant_analysis_job"))
         record_job_run('quant_analysis_job')
 
 def run_ghostfolio_sync():
-    _mark_job_started("Ghostfolio Sync")
+    _mark_job_started(job_label("ghostfolio_sync_job"))
     try:
         log_sched_notification("Scheduler", "Started Ghostfolio Sync...")
         sync_engine = GhostfolioSyncEngine()
@@ -337,11 +337,11 @@ def run_ghostfolio_sync():
     except Exception as e:
         log_sched_notification("Error", f"Ghostfolio Sync failed: {e}")
     finally:
-        _mark_job_done("Ghostfolio Sync")
+        _mark_job_done(job_label("ghostfolio_sync_job"))
         record_job_run('ghostfolio_sync_job')
 
 def run_freetrade_sync():
-    _mark_job_started("Freetrade Sync")
+    _mark_job_started(job_label("freetrade_sync_job"))
     try:
         log_sched_notification("Scheduler", "Started Freetrade Sync...")
         logger.info("Freetrade sync initiated.")
@@ -352,11 +352,11 @@ def run_freetrade_sync():
         logger.error("Freetrade Sync Failed: %s", e)
         log_sched_notification("Error", f"Freetrade Sync failed: {e}")
     finally:
-        _mark_job_done("Freetrade Sync")
+        _mark_job_done(job_label("freetrade_sync_job"))
         record_job_run('freetrade_sync_job')
 
 def run_sentiment_scan():
-    _mark_job_started("Sentiment Scan")
+    _mark_job_started(job_label("sentiment_scan_job"))
     try:
         log_sched_notification("Scheduler", "Started Sentiment Scan...")
         logger.info("Sentiment scan initiated.")
@@ -369,12 +369,12 @@ def run_sentiment_scan():
         logger.error("Sentiment Scan Failed: %s", e)
         log_sched_notification("Error", f"Sentiment Scan failed: {e}")
     finally:
-        _mark_job_done("Sentiment Scan")
+        _mark_job_done(job_label("sentiment_scan_job"))
         record_job_run('sentiment_scan_job')
 
 def run_overnight_quant_scan():
     """Portfolio + watchlist resumable quant scan followed by tail-risk computation."""
-    _mark_job_started("Overnight Quant Scan")
+    _mark_job_started(job_label("overnight_quant_scan_job"))
     try:
         log_sched_notification("Scheduler", "Started Overnight Quant Scan...")
         logger.info("Overnight quant scan initiated.")
@@ -389,11 +389,11 @@ def run_overnight_quant_scan():
         logger.error("Overnight Quant Scan Failed: %s", e)
         log_sched_notification("Error", f"Overnight Quant Scan failed: {e}")
     finally:
-        _mark_job_done("Overnight Quant Scan")
+        _mark_job_done(job_label("overnight_quant_scan_job"))
         record_job_run('overnight_quant_scan_job')
 
 def run_weekend_earnings_scan():
-    _mark_job_started("Earnings Volatility Scan")
+    _mark_job_started(job_label("weekend_earnings_vol_scan_job"))
     try:
         log_sched_notification("Scheduler", "Started Earnings Volatility Scan...")
         logger.info("Earnings volatility scan initiated.")
@@ -406,11 +406,11 @@ def run_weekend_earnings_scan():
         logger.error("Earnings Volatility Scan Failed: %s", e)
         log_sched_notification("Error", f"Earnings Volatility Scan failed: {e}")
     finally:
-        _mark_job_done("Earnings Volatility Scan")
+        _mark_job_done(job_label("weekend_earnings_vol_scan_job"))
         record_job_run('weekend_earnings_vol_scan_job')
 
 def run_morning_briefing_dispatch():
-    _mark_job_started("Morning Briefing Dispatch")
+    _mark_job_started(job_label("morning_briefing_dispatch_job"))
     try:
         log_sched_notification("Scheduler", "Started Morning Briefing Dispatch...")
         logger.info("Morning briefing dispatch initiated.")
@@ -421,12 +421,12 @@ def run_morning_briefing_dispatch():
         logger.error("Morning Briefing Dispatch Failed: %s", e)
         log_sched_notification("Error", f"Morning Briefing Dispatch failed: {e}")
     finally:
-        _mark_job_done("Morning Briefing Dispatch")
+        _mark_job_done(job_label("morning_briefing_dispatch_job"))
         record_job_run('morning_briefing_dispatch_job')
 
 
 def run_lunchtime_briefing_dispatch():
-    _mark_job_started("Lunchtime Briefing Dispatch")
+    _mark_job_started(job_label("lunchtime_briefing_dispatch_job"))
     try:
         log_sched_notification("Scheduler", "Started Lunchtime Briefing Dispatch...")
         logger.info("Lunchtime briefing dispatch initiated.")
@@ -437,11 +437,11 @@ def run_lunchtime_briefing_dispatch():
         logger.error("Lunchtime Briefing Dispatch Failed: %s", e)
         log_sched_notification("Error", f"Lunchtime Briefing Dispatch failed: {e}")
     finally:
-        _mark_job_done("Lunchtime Briefing Dispatch")
+        _mark_job_done(job_label("lunchtime_briefing_dispatch_job"))
         record_job_run('lunchtime_briefing_dispatch_job')
 
 def run_weekend_universe_routine():
-    _mark_job_started("Weekend Universe Routine")
+    _mark_job_started(job_label("universe_routine_job"))
     try:
         log_sched_notification("Scheduler", "Started Weekend Universe Routine...")
         logger.info("Weekend universe routine initiated.")
@@ -461,11 +461,11 @@ def run_weekend_universe_routine():
         logger.error("Weekend Universe Routine Failed: %s", e)
         log_sched_notification("Error", f"Weekend Universe Routine failed: {e}")
     finally:
-        _mark_job_done("Weekend Universe Routine")
+        _mark_job_done(job_label("universe_routine_job"))
         record_job_run('universe_routine_job')
 
 def run_index_scraper():
-    _mark_job_started("Index Constituents Scraper")
+    _mark_job_started(job_label("index_scraper_job"))
     try:
         log_sched_notification("Scheduler", "Started Index Constituents Scraper...")
         logger.info("Index scraper initiated.")
@@ -478,12 +478,12 @@ def run_index_scraper():
         logger.error("Index Scraper Failed: %s", e)
         log_sched_notification("Error", f"Index Scraper failed: {e}")
     finally:
-        _mark_job_done("Index Constituents Scraper")
+        _mark_job_done(job_label("index_scraper_job"))
         record_job_run('index_scraper_job')
 
 def run_fundamentals_profiler():
     """Batch size read from SCHEDULING.PROFILER_ENGINE.BATCH_SIZE in config."""
-    _mark_job_started("Fundamentals Profiler")
+    _mark_job_started(job_label("fundamentals_profiler_job"))
     try:
         log_sched_notification("Scheduler", "Started Fundamentals Profiler...")
         logger.info("Fundamentals profiler initiated.")
@@ -497,12 +497,12 @@ def run_fundamentals_profiler():
         logger.error("Fundamentals Profiler Failed: %s", e)
         log_sched_notification("Error", f"Fundamentals Profiler failed: {e}")
     finally:
-        _mark_job_done("Fundamentals Profiler")
+        _mark_job_done(job_label("fundamentals_profiler_job"))
         record_job_run('fundamentals_profiler_job')
 
 def run_universe_deep_sync_job():
     """Scheduler envelope for universe_deep_sync_engine; that engine emits its own per-stage notifications."""
-    _mark_job_started("Universe Deep Sync")
+    _mark_job_started(job_label("universe_deep_sync_job"))
     try:
         log_sched_notification("Scheduler", "Started Universe Deep Sync Pipeline...")
         run_universe_deep_sync()
@@ -511,12 +511,12 @@ def run_universe_deep_sync_job():
         logger.error("Universe Deep Sync Pipeline Failed: %s", e)
         log_sched_notification("Error", f"Universe Deep Sync Pipeline failed: {e}")
     finally:
-        _mark_job_done("Universe Deep Sync")
+        _mark_job_done(job_label("universe_deep_sync_job"))
         record_job_run('universe_deep_sync_job')
 
 
 def run_ml_backfill():
-    _mark_job_started("ML Historical Backfill")
+    _mark_job_started(job_label("ml_backfill_job"))
     try:
         log_sched_notification("Scheduler", "Started ML Historical Backfill...")
         logger.info("ML Historical Backfill initiated.")
@@ -527,11 +527,11 @@ def run_ml_backfill():
         logger.error("ML Historical Backfill Failed: %s", e)
         log_sched_notification("Error", f"ML Historical Backfill failed: {e}")
     finally:
-        _mark_job_done("ML Historical Backfill")
+        _mark_job_done(job_label("ml_backfill_job"))
         record_job_run('ml_backfill_job')
 
 def run_ml_training():
-    _mark_job_started("ML Global Training")
+    _mark_job_started(job_label("ml_training_job"))
     try:
         log_sched_notification("Scheduler", "Started ML Global Training...")
         logger.info("ML Global Training initiated.")
@@ -542,11 +542,11 @@ def run_ml_training():
         logger.error("ML Global Training Failed: %s", e)
         log_sched_notification("Error", f"ML Global Training failed: {e}")
     finally:
-        _mark_job_done("ML Global Training")
+        _mark_job_done(job_label("ml_training_job"))
         record_job_run('ml_training_job')
 
 def run_ml_inference():
-    _mark_job_started("Daily ML Inference")
+    _mark_job_started(job_label("ml_inference_job"))
     try:
         log_sched_notification("Scheduler", "Started Daily ML Inference...")
         logger.info("Daily ML Inference initiated.")
@@ -562,11 +562,11 @@ def run_ml_inference():
         logger.error("Daily ML Inference Failed: %s", e)
         log_sched_notification("Error", f"Daily ML Inference failed: {e}")
     finally:
-        _mark_job_done("Daily ML Inference")
+        _mark_job_done(job_label("ml_inference_job"))
         record_job_run('ml_inference_job')
 
 def run_macro_calendar_update():
-    _mark_job_started("Macro Calendar Update")
+    _mark_job_started(job_label("macro_calendar_job"))
     try:
         log_sched_notification("Scheduler", "Started Macro Calendar Update...")
         logger.info("Macro calendar update initiated.")
@@ -577,7 +577,7 @@ def run_macro_calendar_update():
         logger.error("Macro Calendar Update Failed: %s", e)
         log_sched_notification("Error", f"Macro Calendar Update failed: {e}")
     finally:
-        _mark_job_done("Macro Calendar Update")
+        _mark_job_done(job_label("macro_calendar_job"))
         record_job_run('macro_calendar_job')
 
 def run_central_bank_nlp_check():
@@ -626,7 +626,7 @@ def run_central_bank_nlp_check():
 
 
 def run_macro_data_update():
-    _mark_job_started("Macro Data Update")
+    _mark_job_started(job_label("macro_data_job"))
     try:
         log_sched_notification("Scheduler", "Started Macro Data Update...")
         logger.info("Macro data update initiated.")
@@ -637,12 +637,12 @@ def run_macro_data_update():
         logger.error("Macro Data Update Failed: %s", e)
         log_sched_notification("Error", f"Macro Data Update failed: {e}")
     finally:
-        _mark_job_done("Macro Data Update")
+        _mark_job_done(job_label("macro_data_job"))
         record_job_run('macro_data_job')
 
 def run_xray_risk_cache_job():
     """Pre-computes portfolio beta, vol, correlation, and dividend yields for the X-ray report."""
-    _mark_job_started("X-ray Risk Cache")
+    _mark_job_started(job_label("xray_risk_cache_job"))
     try:
         log_sched_notification("Scheduler", "Started X-ray Risk Cache job...")
         success = run_xray_precompute()
@@ -654,13 +654,13 @@ def run_xray_risk_cache_job():
         logger.error("X-ray Risk Cache job failed: %s", e)
         log_sched_notification("Error", f"X-ray Risk Cache job failed: {e}")
     finally:
-        _mark_job_done("X-ray Risk Cache")
+        _mark_job_done(job_label("xray_risk_cache_job"))
         record_job_run('xray_risk_cache_job')
 
 
 def run_anomaly_training_job():
     """Nightly retraining of per-ticker Isolation Forest anomaly models (Mon–Fri 18:30)."""
-    _mark_job_started("Anomaly Training")
+    _mark_job_started(job_label("anomaly_training_job"))
     try:
         log_sched_notification("Scheduler", "Started Anomaly Training job...")
         from anomaly_engine import AnomalyEngine
@@ -674,7 +674,7 @@ def run_anomaly_training_job():
         logger.error("Anomaly Training job failed: %s", e)
         log_sched_notification("Error", f"Anomaly Training job failed: {e}")
     finally:
-        _mark_job_done("Anomaly Training")
+        _mark_job_done(job_label("anomaly_training_job"))
         record_job_run('anomaly_training_job')
 
 
@@ -963,7 +963,7 @@ def run_smgb_predictor_job():
 def _run_etf_predictor_job(config_id: int, fill_actuals: bool = False) -> None:
     job_type = "post" if fill_actuals else "pre"
     job_id = f"etf_predictor_{config_id}_{job_type}_job"
-    job_name = f"ETF Predictor [{config_id}]"
+    job_name = f"ETF Price Predictor #{config_id} ({'post-close' if fill_actuals else 'pre-open'})"
     _mark_job_started(job_name)
     log_sched_notification("Scheduler", f"Started {job_name} ({job_type})...")
     try:
@@ -1718,6 +1718,61 @@ JOB_GRAPH: dict[str, dict] = {
     "etf_predictor_dynamic":        {"label": "ETF Price Predictors",                           "category": "predictor",   "engine": "etf_predictor_engine.py",       "produces": ["etf_predictions"],                                            "consumes": [], "dynamic": True},
 }
 
+# Canonical config-key → job-id map. `config.json` SCHEDULING/NOTIFICATIONS keys and code
+# identifiers are NOT user-facing; the one display name lives in JOB_GRAPH[...]["label"].
+# This map is the single bridge from a config key to that canonical name (used by the
+# Settings Master Matrix, the diagnostics panel, etc.). Several keys may share a job
+# (CRASH_ALERTS + MOONSHOT_ALERTS → the one orchestrator).
+CONFIG_KEY_TO_JOB: dict[str, str] = {
+    "GHOSTFOLIO_SYNC":    "ghostfolio_sync_job",
+    "QUANT_ANALYSIS":     "quant_analysis_job",
+    "SENTIMENT_ENGINE":   "sentiment_scan_job",
+    "CRASH_ALERTS":       "intraday_orchestrator_job",
+    "MOONSHOT_ALERTS":    "intraday_orchestrator_job",
+    "MAINTENANCE":        "maintenance_job",
+    "QUANT_ENGINE":       "overnight_quant_scan_job",
+    "EARNINGS_ENGINE":    "weekend_earnings_vol_scan_job",
+    "DISPATCHER":         "morning_briefing_dispatch_job",
+    "LUNCH_DISPATCHER":   "lunchtime_briefing_dispatch_job",
+    "UNIVERSE_ENGINE":    "universe_routine_job",
+    "ML_BACKFILL":        "ml_backfill_job",
+    "ML_TRAINING":        "ml_training_job",
+    "ML_INFERENCE":       "ml_inference_job",
+    "FREETRADE_SYNC":     "freetrade_sync_job",
+    "MACRO_ENGINE":       "macro_calendar_job",
+    "SYNC_INDICES":       "index_scraper_job",
+    "PROFILER_ENGINE":    "fundamentals_profiler_job",
+    "UNIVERSE_DEEP_SYNC": "universe_deep_sync_job",
+    "ANOMALY_ALERTS":     "anomaly_training_job",
+    "XRAY_RISK_CACHE":    "xray_risk_cache_job",
+    "AI_CONTAGION":       "ai_contagion_job",
+    "CB_NLP_ALERT":       "cb_nlp_alert_job",
+    "NEWS_FEED":          "news_feed_job",
+    "SYSTEM_CHECK":       "system_check_job",
+    "SMGB_PREDICTOR":     "smgb_predictor_job",
+    "TRAP_MONITORS":      "trap_monitor_job",
+    "MARKET_SENTIMENT":   "market_sentiment_job",
+    "EARNINGS_ALERTS":    "earnings_alert_job",
+    "INSIDER_TRADING":    "insider_alert_job",
+}
+
+
+def job_label(job_id: str) -> str:
+    """Canonical GUI display name for a job id — the single source of truth for naming."""
+    meta = JOB_GRAPH.get(job_id)
+    return meta["label"] if meta else job_id
+
+
+def display_name_for_config_key(config_key: str) -> str | None:
+    job_id = CONFIG_KEY_TO_JOB.get(config_key)
+    return job_label(job_id) if job_id else None
+
+
+def scheduler_display_names() -> dict[str, str]:
+    """config_key → canonical display name, for surfaces keyed by config key (e.g. the Matrix)."""
+    return {key: job_label(job_id) for key, job_id in CONFIG_KEY_TO_JOB.items()}
+
+
 _DYNAMIC_ETF_RE = re.compile(r"^etf_predictor_\d+_(pre|post)_job$")
 _OVERLAP_BUFFER_MIN = 2
 _UNKNOWN_GAP_MIN = 30
@@ -1839,7 +1894,7 @@ def _build_node(job_id: str, meta: dict, job, run_row: dict) -> dict:
     if _DYNAMIC_ETF_RE.match(job_id):
         cfg_id = job_id.split("_")[2]
         phase = "pre-open" if job_id.endswith("pre_job") else "post-close"
-        label = f"ETF Predictor #{cfg_id} ({phase})"
+        label = f"ETF Price Predictor #{cfg_id} ({phase})"
     runs = run_row or {}
     next_run = None
     next_run_time = getattr(job, "next_run_time", None) if enabled else None

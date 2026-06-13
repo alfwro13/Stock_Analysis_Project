@@ -20,6 +20,8 @@ from constants import (
 
 logger = logging.getLogger(__name__)
 
+# GUI name: "NLP Market Sentiment Engine / Central Bank NLP Alert". Canonical scheduled-job names live in scheduler_engine.JOB_GRAPH.
+
 _FINBERT_ANALYZER = None
 _MODEL_LOCK = threading.Lock()
 

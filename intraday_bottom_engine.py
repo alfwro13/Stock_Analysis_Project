@@ -12,6 +12,8 @@ from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
 
+# GUI name: "Dip Radar — Intraday Bottom Finder". Canonical scheduled-job names live in scheduler_engine.JOB_GRAPH.
+
 # Score threshold — at or above this, an alert fires and the session is flagged as bottoming.
 _BOTTOMING_THRESHOLD = 65
 

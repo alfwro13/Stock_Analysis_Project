@@ -24,6 +24,9 @@ def _load_train_universe_size() -> Optional[int]:
 
 
 def run_system_checks() -> List[Dict[str, Any]]:
+    from scheduler_engine import job_label
+    training_name = job_label("ml_training_job")
+    backfill_name = job_label("ml_backfill_job")
     issues: List[Dict[str, Any]] = []
     config = load_config()
     scheduling = config.get("SCHEDULING", {})
@@ -38,9 +41,9 @@ def run_system_checks() -> List[Dict[str, Any]]:
             "key": "ml_training_without_backfill",
             "level": "warning",
             "message": (
-                "ML Training is scheduled but ML Historical Backfill is disabled. "
+                f"{training_name} is scheduled but {backfill_name} is disabled. "
                 "Mid-week training runs will use stale momentum features. "
-                "Enable ML Backfill (Settings → Scheduling)."
+                f"Enable {backfill_name} (Settings → Machine Learning & AI Engine)."
             ),
         })
 
@@ -57,9 +60,9 @@ def run_system_checks() -> List[Dict[str, Any]]:
                     "key": "ml_training_before_backfill",
                     "level": "warning",
                     "message": (
-                        f"On {overlap_str}: ML Training runs at {ml_training.get('TIME')} "
-                        f"but ML Backfill is not until {ml_backfill.get('TIME')} — "
-                        "swap the times so Backfill completes first."
+                        f"On {overlap_str}: {training_name} runs at {ml_training.get('TIME')} "
+                        f"but {backfill_name} is not until {ml_backfill.get('TIME')} — "
+                        "swap the times so the backfill completes first."
                     ),
                 })
 

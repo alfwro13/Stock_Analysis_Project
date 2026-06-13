@@ -11,6 +11,8 @@ from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
 
+# GUI name: "Macroeconomic Automation Schedulers (Calendar)". Canonical scheduled-job names live in scheduler_engine.JOB_GRAPH.
+
 FEED_URL = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml"
 TARGET_CURRENCIES = {'USD', 'GBP'}
 TARGET_IMPACT = 'High'

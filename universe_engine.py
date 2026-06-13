@@ -8,6 +8,8 @@ from database import get_connection, log_notification
 
 logger = logging.getLogger(__name__)
 
+# GUI name: "Legacy File Sideloading & Nasdaq Sync". Canonical scheduled-job names live in scheduler_engine.JOB_GRAPH.
+
 def _download_ftp_files(filenames: dict) -> bool:
     logger.info("Connecting to ftp.nasdaqtrader.com...")
     try:

@@ -12,6 +12,8 @@ from nextcloud_talk import upload_file_webdav, share_file_to_talk, send_text_mes
 
 logger = logging.getLogger(__name__)
 
+# GUI name: "Quant Briefing Generator & Notifications". Canonical scheduled-job names live in scheduler_engine.JOB_GRAPH.
+
 
 def ensure_remote_directory(nc_url: str, nc_user: str, nc_pass: str, folder_name: str) -> None:
     """MKCOL the target folder on Nextcloud; 405 means it already exists (fine)."""

@@ -17,6 +17,8 @@ from utils import clamp_beta
 
 logger = logging.getLogger(__name__)
 
+# GUI name: "Isolation Forest Anomaly Detection". Canonical scheduled-job names live in scheduler_engine.JOB_GRAPH.
+
 _N_ESTIMATORS = 100
 _CONTAMINATION = 0.05
 _MIN_ROWS = 50

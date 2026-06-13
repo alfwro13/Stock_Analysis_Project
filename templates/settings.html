@@ -1024,7 +1024,7 @@
 
                     <div class="settings-panel border-left-cyan">
                         <h4 class="settings-panel-header text-cyan">🔮 Daily ML Inference</h4>
-                        <p class="settings-desc-sm">Loads the trained model and performs rapid daily predictions on your portfolio and the market universe. Should run shortly after the Overnight Quant Scan.</p>
+                        <p class="settings-desc-sm">Loads the trained model and performs rapid daily predictions on your portfolio and the market universe. Should run shortly after the Daily Quant Screener (Portfolio & Watchlist).</p>
                         
                         <div class="checkbox-group">
                             <input type="checkbox" id="ML_INFERENCE_ENABLED" {% if ml_inference.ENABLED %}checked{% endif %}>
@@ -1492,7 +1492,7 @@
                         <tbody>
                             {% for job_name, job_cfg in config.SCHEDULING.items() %}
                             <tr>
-                                <td class="font-bold">{{ job_name | replace('_', ' ') | title }}</td>
+                                <td class="font-bold">{{ scheduler_job_labels.get(job_name, job_name | replace('_', ' ') | title) }}</td>
                                 <td>
                                     {% if job_cfg.ENABLED %}
                                         <span class="status-pill status-enabled">ACTIVE</span>
@@ -1524,11 +1524,11 @@
                             </tr>
                             {% endfor %}
                             <tr>
-                                <td class="font-bold">Isolation Forest Anomaly Training</td>
+                                <td class="font-bold">Isolation Forest Anomaly Detection</td>
                                 <td><span class="status-pill status-scheduled">NOTIFICATIONS</span></td>
                                 <td>MON-FRI</td>
                                 <td class="font-monospace">18:30</td>
-                                <td class="text-muted font-monospace" data-sched-key="ANOMALY_TRAINING">—</td>
+                                <td class="text-muted font-monospace" data-sched-key="ANOMALY_ALERTS">—</td>
                             </tr>
                             <tr>
                                 <td class="font-bold">Portfolio X-ray Risk Cache</td>

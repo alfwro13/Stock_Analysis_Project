@@ -40,7 +40,7 @@ from config import (
     INTRADAY_DIR
 )
 from database import get_connection, get_universe_tickers
-from scheduler_engine import run_update_pipeline, run_ghostfolio_sync, run_freetrade_sync, reload_scheduler, run_sentiment_scan, run_index_scraper, run_fundamentals_profiler, run_universe_deep_sync_job, get_all_job_last_runs, run_xray_risk_cache_job, run_anomaly_training_job, record_job_run, run_maintenance_engine, build_workflow_graph, detect_workflow_conflicts
+from scheduler_engine import run_update_pipeline, run_ghostfolio_sync, run_freetrade_sync, reload_scheduler, run_sentiment_scan, run_index_scraper, run_fundamentals_profiler, run_universe_deep_sync_job, get_all_job_last_runs, run_xray_risk_cache_job, run_anomaly_training_job, record_job_run, run_maintenance_engine, build_workflow_graph, detect_workflow_conflicts, CONFIG_KEY_TO_JOB
 from maintenance_engine import MaintenanceEngine
 from xray_engine import assemble_xray_report
 from ghostfolio_sync import GhostfolioSyncEngine
@@ -1369,36 +1369,9 @@ async def get_system_metrics():
         pending_notes = get_cnt("SELECT COUNT(*) FROM system_notifications WHERE is_read = 0")
         sent_notes = get_cnt("SELECT COUNT(*) FROM system_notifications WHERE is_read = 1")
 
-        # 5. Scheduler Last Run Times (keyed by SCHEDULING config key)
+        # 5. Scheduler Last Run Times (keyed by SCHEDULING/NOTIFICATIONS config key)
         job_last_runs = get_all_job_last_runs()
-        config_key_to_job = {
-            "GHOSTFOLIO_SYNC":    "ghostfolio_sync_job",
-            "QUANT_ANALYSIS":     "quant_analysis_job",
-            "SENTIMENT_ENGINE":   "sentiment_scan_job",
-            "CRASH_ALERTS":       "intraday_orchestrator_job",
-            "MOONSHOT_ALERTS":    "intraday_orchestrator_job",
-            "MAINTENANCE":        "maintenance_job",
-            "QUANT_ENGINE":       "overnight_quant_scan_job",
-            "EARNINGS_ENGINE":    "weekend_earnings_vol_scan_job",
-            "DISPATCHER":         "morning_briefing_dispatch_job",
-            "UNIVERSE_ENGINE":    "universe_routine_job",
-            "ML_BACKFILL":        "ml_backfill_job",
-            "ML_TRAINING":        "ml_training_job",
-            "ML_INFERENCE":       "ml_inference_job",
-            "FREETRADE_SYNC":     "freetrade_sync_job",
-            "MACRO_ENGINE":       "macro_calendar_job",
-            "SYNC_INDICES":       "index_scraper_job",
-            "PROFILER_ENGINE":    "fundamentals_profiler_job",
-            "UNIVERSE_DEEP_SYNC": "universe_deep_sync_job",
-            "ANOMALY_TRAINING":   "anomaly_training_job",
-            "XRAY_RISK_CACHE":    "xray_risk_cache_job",
-            "AI_CONTAGION":       "ai_contagion_job",
-            "CB_NLP_ALERT":       "cb_nlp_alert_job",
-            "NEWS_FEED":          "news_feed_job",
-            "SYSTEM_CHECK":       "system_check_job",
-            "SMGB_PREDICTOR":     "smgb_predictor_job",
-            "TRAP_MONITORS":      "trap_monitor_job",
-        }
+        config_key_to_job = CONFIG_KEY_TO_JOB
         def _localise_ts(ts: str) -> str:
             if not ts or ts == "Never":
                 return "Never"

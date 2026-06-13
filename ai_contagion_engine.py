@@ -13,6 +13,8 @@ from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
 
+# GUI name: "AI Sector Contagion Monitor". Canonical scheduled-job names live in scheduler_engine.JOB_GRAPH.
+
 _DEFAULT_BELLWETHERS = ["NVDA", "AMD", "MSFT", "META", "GOOGL", "AAPL", "AVGO"]
 _DEFAULT_ETFS = ["SMH", "SOXX", "QQQ"]
 

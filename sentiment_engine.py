@@ -29,6 +29,8 @@ from config import (
 
 logger = logging.getLogger(__name__)
 
+# GUI name: "Market Sentiment (Fear & Greed)". Canonical scheduled-job names live in scheduler_engine.JOB_GRAPH.
+
 _CACHE_LOCK = threading.Lock()
 _IS_REFRESHING = False
 _LAST_CACHE_TIME = 0.0

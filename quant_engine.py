@@ -20,6 +20,8 @@ from database import get_connection, log_notification
 
 logger = logging.getLogger(__name__)
 
+# GUI name: "Daily Quant Screener (Portfolio & Watchlist)". Canonical scheduled-job names live in scheduler_engine.JOB_GRAPH.
+
 def run_daily_quant_scan(ticker_list: List[str], scan_type: str = 'daily') -> None:
     """Vectorised TA scan: downloads 2y OHLCV, computes indicators, upserts quant_signals; resumable via quant_scan_states."""
     total_tickers = len(ticker_list)
