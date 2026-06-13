@@ -9,6 +9,29 @@ import time
 
 logger = logging.getLogger(__name__)
 
+_PBKDF2_ITERS = 600_000
+
+
+def hash_password(password: str) -> str:
+    salt = os.urandom(32)
+    dk = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, _PBKDF2_ITERS)
+    return f"pbkdf2:sha256:{_PBKDF2_ITERS}:{salt.hex()}:{dk.hex()}"
+
+
+def verify_password(password: str, stored: str) -> bool:
+    try:
+        algo, hash_name, iters, salt_hex, hash_hex = stored.split(":")
+        if algo != "pbkdf2" or hash_name != "sha256":
+            return False
+        salt = bytes.fromhex(salt_hex)
+        expected = bytes.fromhex(hash_hex)
+        dk = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, int(iters))
+        return hmac.compare_digest(dk, expected)
+    except Exception:
+        return False
+
+logger = logging.getLogger(__name__)
+
 COOKIE_NAME = "session"
 _REMEMBER_MAX_AGE = 30 * 24 * 3600  # 30 days
 
