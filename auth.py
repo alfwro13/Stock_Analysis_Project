@@ -30,7 +30,6 @@ def verify_password(password: str, stored: str) -> bool:
     except Exception:
         return False
 
-logger = logging.getLogger(__name__)
 
 COOKIE_NAME = "session"
 _REMEMBER_MAX_AGE = 30 * 24 * 3600  # 30 days

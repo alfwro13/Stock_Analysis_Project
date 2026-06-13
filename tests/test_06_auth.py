@@ -397,8 +397,8 @@ class TestChangePassword:
             assert resp.status_code == 200
             assert resp.json().get("status") == "ok"
         finally:
-            # The handler mutates os.environ; restore it so subsequent tests are unaffected.
             os.environ["DASHBOARD_PASSWORD"] = original
+            os.environ.pop("DASHBOARD_PASSWORD_HASH", None)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

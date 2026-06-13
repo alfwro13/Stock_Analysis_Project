@@ -102,15 +102,19 @@ class LoginRequest(BaseModel):
 @limiter.limit("10/minute")
 async def login(request: Request, body: LoginRequest, response: Response):
     import secrets as _secrets
+    from auth import create_session_token, cookie_kwargs, verify_password
     valid_user = _secrets.compare_digest(
         body.username.encode(), os.environ.get("DASHBOARD_USERNAME", "").encode()
     )
-    valid_pass = _secrets.compare_digest(
-        body.password.encode(), os.environ.get("DASHBOARD_PASSWORD", "").encode()
-    )
+    stored_hash = os.environ.get("DASHBOARD_PASSWORD_HASH", "")
+    if stored_hash:
+        valid_pass = verify_password(body.password, stored_hash)
+    else:
+        valid_pass = _secrets.compare_digest(
+            body.password.encode(), os.environ.get("DASHBOARD_PASSWORD", "").encode()
+        )
     if not (valid_user and valid_pass):
         raise HTTPException(status_code=401, detail="Invalid username or password.")
-    from auth import create_session_token, cookie_kwargs
     token = create_session_token(body.username, body.remember_me)
     response.set_cookie(value=token, **cookie_kwargs(body.remember_me))
     return {"status": "ok"}
@@ -138,9 +142,15 @@ async def change_password(body: ChangePasswordRequest):
     import secrets as _secrets
     from dotenv import set_key
     from config import BASE_DIR
+    from auth import hash_password, verify_password
 
-    current = os.environ.get("DASHBOARD_PASSWORD", "")
-    if not _secrets.compare_digest(body.current_password.encode(), current.encode()):
+    stored_hash = os.environ.get("DASHBOARD_PASSWORD_HASH", "")
+    if stored_hash:
+        valid_current = verify_password(body.current_password, stored_hash)
+    else:
+        current_plain = os.environ.get("DASHBOARD_PASSWORD", "")
+        valid_current = _secrets.compare_digest(body.current_password.encode(), current_plain.encode())
+    if not valid_current:
         raise HTTPException(status_code=400, detail="Current password is incorrect.")
     if body.new_password != body.confirm_password:
         raise HTTPException(status_code=400, detail="Passwords do not match.")
@@ -149,9 +159,12 @@ async def change_password(body: ChangePasswordRequest):
     if body.new_password == "changeme":
         raise HTTPException(status_code=400, detail="Please choose a different password.")
 
+    new_hash = hash_password(body.new_password)
     env_path = str(BASE_DIR / ".env")
-    set_key(env_path, "DASHBOARD_PASSWORD", body.new_password)
-    os.environ["DASHBOARD_PASSWORD"] = body.new_password
+    set_key(env_path, "DASHBOARD_PASSWORD_HASH", new_hash)
+    set_key(env_path, "DASHBOARD_PASSWORD", "")
+    os.environ["DASHBOARD_PASSWORD_HASH"] = new_hash
+    os.environ["DASHBOARD_PASSWORD"] = ""
     return {"status": "ok"}
 
 

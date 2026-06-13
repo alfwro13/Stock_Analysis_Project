@@ -86,8 +86,12 @@ async def auth_middleware(request: Request, call_next):
         next_path = request.url.path
         return RedirectResponse(f"/login?next={next_path}", status_code=302)
 
-    # Force password change on first login
-    if path not in _CHANGE_PW_PATHS and os.environ.get("DASHBOARD_PASSWORD") == "changeme":
+    # Force password change when only the default "changeme" plaintext password is set
+    if (
+        path not in _CHANGE_PW_PATHS
+        and not os.environ.get("DASHBOARD_PASSWORD_HASH")
+        and os.environ.get("DASHBOARD_PASSWORD") == "changeme"
+    ):
         return RedirectResponse("/change-password", status_code=302)
 
     return await call_next(request)
