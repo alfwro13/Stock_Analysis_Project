@@ -188,12 +188,12 @@
             font-size: 0.92em;
             line-height: 1.7;
             color: #ccc;
-            white-space: pre-wrap;
             word-break: break-word;
         }
         .reader-body.summary-fallback {
             color: #aaa;
             font-style: italic;
+            white-space: pre-wrap;
         }
         .reader-headline-link {
             color: inherit;
@@ -251,6 +251,11 @@
             <button id="searchClearBtn" class="search-clear" onclick="clearSearch()" title="Clear search">✕</button>
         </div>
 
+        <div class="news-font-group">
+            <button class="news-font-btn" id="fontDecBtn" onclick="changeFontSize(-1)" title="Decrease text size">A−</button>
+            <button class="news-font-btn" id="fontIncBtn" onclick="changeFontSize(1)"  title="Increase text size">A+</button>
+        </div>
+
         <button class="btn-test btn-cyan" id="fetchNowBtn" onclick="fetchNow()" style="margin:0;">
             ▶ Fetch Now
         </button>
@@ -281,173 +286,7 @@
 
 </div><!-- #newsPageShell -->
 
-<script>
-    let allArticles = [];
-    let currentSource = 'portfolio';
-    let selectedId = null;
-
-    function relTime(ts) {
-        const diff = Math.floor(Date.now() / 1000) - ts;
-        if (diff < 60)    return `${diff}s ago`;
-        if (diff < 3600)  return `${Math.floor(diff / 60)}m ago`;
-        if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-        return `${Math.floor(diff / 86400)}d ago`;
-    }
-
-    function sourceBadge(src) {
-        const label = {portfolio: 'Portfolio', watchlist: 'Watchlist', both: 'Both'};
-        return `<span class="art-source-badge art-source-${src}">${label[src] || src}</span>`;
-    }
-
-    function sentimentBadge(label, score) {
-        if (!label) return '';
-        const icon = label === 'positive' ? '▲' : label === 'negative' ? '▼' : '●';
-        const pct = score != null ? ` ${Math.round(Math.abs(score) * 100)}%` : '';
-        return `<span class="sent-badge sent-${label}" title="Sentiment: ${label}${pct}">${icon}${pct}</span>`;
-    }
-
-    function escHtml(s) {
-        if (!s) return '';
-        return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-    }
-
-    function renderList(articles) {
-        const inner = document.getElementById('articleListInner');
-        const empty = document.getElementById('noArticles');
-        if (!articles.length) {
-            inner.innerHTML = '';
-            empty.style.display = 'block';
-            return;
-        }
-        empty.style.display = 'none';
-        inner.innerHTML = articles.map(a => `
-            <div class="article-item${a.id === selectedId ? ' selected' : ''}"
-                 id="art-${a.id}" onclick="selectArticle(${a.id})">
-                <div class="art-headline">${escHtml(a.headline)}</div>
-                <div class="art-meta">
-                    <span class="art-ticker-badge">${escHtml(a.ticker)}</span>
-                    ${sourceBadge(a.source_list)}
-                    ${sentimentBadge(a.sentiment_label, a.sentiment_score)}
-                    <span>${escHtml(a.publisher || '')}</span>
-                    <span>${relTime(a.published_at)}</span>
-                </div>
-            </div>
-        `).join('');
-    }
-
-    function filterArticles() {
-        const q = document.getElementById('newsSearchInput').value.toLowerCase();
-        const filtered = allArticles.filter(a => {
-            const matchSrc = currentSource === 'all' || a.source_list === currentSource || a.source_list === 'both';
-            const matchQ = !q
-                || a.headline.toLowerCase().includes(q)
-                || (a.ticker || '').toLowerCase().includes(q)
-                || (a.company_name || '').toLowerCase().includes(q)
-                || (a.publisher || '').toLowerCase().includes(q);
-            return matchSrc && matchQ;
-        });
-        renderList(filtered);
-    }
-
-    function onSearch() {
-        const q = document.getElementById('newsSearchInput').value;
-        document.getElementById('searchClearBtn').style.display = q ? 'block' : 'none';
-        filterArticles();
-    }
-
-    function clearSearch() {
-        const input = document.getElementById('newsSearchInput');
-        input.value = '';
-        document.getElementById('searchClearBtn').style.display = 'none';
-        filterArticles();
-        input.focus();
-    }
-
-    function setSource(src) {
-        currentSource = src;
-        document.querySelectorAll('.btn-filter').forEach(b => b.classList.toggle('active', b.dataset.source === src));
-        filterArticles();
-    }
-
-    function selectArticle(id) {
-        selectedId = id;
-        const a = allArticles.find(x => x.id === id);
-        if (!a) return;
-
-        document.querySelectorAll('.article-item').forEach(el => el.classList.remove('selected'));
-        const item = document.getElementById('art-' + id);
-        if (item) item.classList.add('selected');
-
-        document.getElementById('readerPlaceholder').style.display = 'none';
-        const reader = document.getElementById('readerContent');
-        reader.style.display = 'block';
-
-        // Scroll reader panel back to top whenever a new article is opened
-        document.getElementById('articleReader').scrollTop = 0;
-
-        const pubDate = new Date(a.published_at * 1000).toLocaleString();
-        const bodyHtml = a.body_fetched && a.full_text
-            ? `<div class="reader-body">${escHtml(a.full_text)}</div>`
-            : `<div class="reader-body summary-fallback">${escHtml(a.summary || 'No summary available.')}<br><em style="font-size:0.85em;color:#666;">(Full text unavailable — open original for the complete article)</em></div>`;
-
-        const headlineHtml = a.url
-            ? `<a href="${escHtml(a.url)}" target="_blank" rel="noopener" class="reader-headline-link">${escHtml(a.headline)}</a>`
-            : escHtml(a.headline);
-        reader.innerHTML = `
-            <h2>${headlineHtml}</h2>
-            <div class="reader-meta">
-                <span class="art-ticker-badge">${escHtml(a.ticker)}${a.company_name ? ' · ' + escHtml(a.company_name) : ''}</span>
-                ${sourceBadge(a.source_list)}
-                ${sentimentBadge(a.sentiment_label, a.sentiment_score)}
-                <span>${escHtml(a.publisher || '')}</span>
-                <span>${pubDate}</span>
-            </div>
-            ${bodyHtml}
-        `;
-    }
-
-    async function loadArticles() {
-        try {
-            const resp = await fetch('/api/news-feed?source=all&limit=200');
-            const data = await resp.json();
-            allArticles = data.articles || [];
-            document.getElementById('lastUpdated').textContent =
-                `${allArticles.length} articles · ${new Date().toLocaleTimeString()}`;
-            filterArticles();
-        } catch (e) {
-            console.error('Failed to load news feed:', e);
-        }
-    }
-
-    async function fetchNow() {
-        const btn = document.getElementById('fetchNowBtn');
-        btn.disabled = true;
-        btn.textContent = '⏳ Fetching...';
-        try {
-            await fetch('/api/news-feed/run-now', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
-            });
-            btn.textContent = '✓ Queued';
-            setTimeout(() => {
-                btn.textContent = '▶ Fetch Now';
-                btn.disabled = false;
-                loadArticles();
-            }, 3000);
-        } catch (e) {
-            btn.textContent = '✗ Error';
-            setTimeout(() => { btn.textContent = '▶ Fetch Now'; btn.disabled = false; }, 3000);
-        }
-    }
-
-    function getCsrfHeaders() {
-        const meta = document.querySelector('meta[name="csrf-token"]');
-        return meta ? { 'X-CSRF-Token': meta.content } : {};
-    }
-
-    document.addEventListener('DOMContentLoaded', loadArticles);
-</script>
-
 <script src="/static/js/csrf.js"></script>
+<script src="/static/js/news.js?v={{ css_version }}"></script>
 </body>
 </html>
