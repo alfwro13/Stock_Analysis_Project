@@ -1660,6 +1660,9 @@
                         <label><abbr title="Directory where log files are written, relative to the project root. Created automatically if it does not exist.">Log directory (relative path)</abbr></label>
                         <input type="text" id="FILE_LOGGING_LOG_DIR" value="{{ config.FILE_LOGGING.LOG_DIR | default('logs') if config.FILE_LOGGING else 'logs' }}" placeholder="logs">
                     </div>
+                    <div class="form-group mt-10">
+                        <a href="/log-viewer" target="_blank" rel="noopener" class="btn-test btn-cyan">📄 Open Log Viewer</a>
+                    </div>
                 </div>
             </details>
 

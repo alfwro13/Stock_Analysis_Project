@@ -410,3 +410,41 @@ def test_trap_monitor_results_empty_on_fresh_db(client):
     assert data["results"] == [], (
         "Expected empty list on fresh DB, got: " + str(data["results"])
     )
+
+
+# ── Log Viewer API ────────────────────────────────────────────────────────────
+
+@pytest.mark.api
+def test_logs_tail_returns_200(client):
+    """GET /api/logs/tail must return 200 regardless of whether logging is enabled."""
+    resp = client.get("/api/logs/tail")
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
+    data = _json(resp)
+    assert "status" in data, f"Missing 'status' key: {data}"
+
+
+@pytest.mark.api
+def test_logs_tail_returns_valid_shape(client):
+    """GET /api/logs/tail must return status=success with lines list, or status=error with message."""
+    resp = client.get("/api/logs/tail")
+    data = _json(resp)
+    assert data["status"] in ("success", "error"), f"Unexpected status value: {data}"
+    if data["status"] == "success":
+        assert "lines" in data, f"Missing 'lines' key in success response: {data}"
+        assert isinstance(data["lines"], list), "'lines' must be a list"
+    else:
+        assert "message" in data, f"Missing 'message' key in error response: {data}"
+
+
+@pytest.mark.api
+def test_logs_tail_lines_param_accepted(client):
+    """GET /api/logs/tail?lines=100 must not crash (invalid param boundary check)."""
+    resp = client.get("/api/logs/tail?lines=100")
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
+
+
+@pytest.mark.api
+def test_logs_tail_lines_param_below_min_rejected(client):
+    """GET /api/logs/tail?lines=0 must return 422 (below minimum of 1)."""
+    resp = client.get("/api/logs/tail?lines=0")
+    assert resp.status_code == 422, f"Expected 422 for lines=0, got {resp.status_code}"

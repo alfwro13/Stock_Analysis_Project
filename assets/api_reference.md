@@ -1283,7 +1283,63 @@ Returns HTTP **409** if any scheduler jobs are currently running (see `GET /api/
 
 ---
 
-## 15. Alert Testing
+## 15. Log Viewer
+
+These endpoints expose the active rotating log file (`app.log`) for the in-browser live viewer. Both endpoints require a valid session (same auth as all other routes).
+
+### `GET /api/logs/tail`
+
+Returns the last N lines of the active log file as a JSON array. Intended for the initial page load of the log viewer.
+
+**Query parameters**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `lines` | integer | `500` | Number of tail lines to return. Min 1, max 5 000. |
+
+**Response (logging enabled, file exists)**
+
+```json
+{
+  "status": "success",
+  "lines": [
+    "2026-06-13 10:23:45,123 - quant_engine - INFO - Scan complete for AAPL",
+    "2026-06-13 10:23:46,001 - api_routes - WARNING - Slow response: 3.2s"
+  ]
+}
+```
+
+**Response (logging disabled or log file missing)**
+
+```json
+{ "status": "error", "message": "File logging is disabled or log file not found." }
+```
+
+---
+
+### `GET /api/logs/stream`
+
+Server-Sent Events (SSE) endpoint that tails the active log file in real time, equivalent to `tail -f`. The client receives one `data:` event per new log line. A `: keep-alive` comment is sent every second when there are no new lines.
+
+**Media type:** `text/event-stream`
+
+**Event format**
+
+Each event carries a JSON-encoded log line string:
+
+```
+data: "2026-06-13 10:24:00,000 - scheduler_engine - INFO - Job started"
+```
+
+When file logging is disabled, a single error event is emitted and the stream closes:
+
+```
+data: {"error": "File logging is disabled or log file not found."}
+```
+
+---
+
+## 16. Alert Testing
 
 These endpoints fire real alerts to verify that external integrations (Nextcloud Talk, email) are working. They make live network calls.
 
@@ -1383,6 +1439,8 @@ Sends a test insider trading alert via Nextcloud Talk.
 | `POST` | `/api/test-insider-alert` | Test Nextcloud insider alert |
 | `GET` | `/api/news-feed` | Paginated news articles from local store |
 | `POST` | `/api/news-feed/run-now` | Trigger immediate news feed refresh |
+| `GET` | `/api/logs/tail` | Last N lines of the active log file as JSON |
+| `GET` | `/api/logs/stream` | Server-Sent Events live tail of the active log file |
 
 ---
 

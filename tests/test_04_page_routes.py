@@ -199,3 +199,11 @@ def test_no_page_route_returns_500(client):
 def test_trap_monitor_page_loads(client):
     """GET /trap-monitor must load with an empty results table without crashing."""
     _assert_page_ok(client, "/trap-monitor", label="Trap Monitor")
+
+
+# ── Log Viewer ────────────────────────────────────────────────────────────────
+
+@pytest.mark.pages
+def test_log_viewer_page_loads(client):
+    """GET /log-viewer must return 200 without crashing."""
+    _assert_page_ok(client, "/log-viewer", label="Log Viewer")

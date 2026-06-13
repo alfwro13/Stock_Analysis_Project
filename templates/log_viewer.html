@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="dark">
+    <title>Quantamental — Log Viewer</title>
+    <link rel="stylesheet" href="/static/css/styles.css?v={{ css_version }}">
+</head>
+<body class="lv-body">
+
+<div class="lv-container">
+    <div class="lv-header">
+        <h1 class="lv-title">📄 Log Viewer</h1>
+        <p class="lv-subtitle">Live tail of <code>app.log</code> &mdash; new lines appear automatically</p>
+    </div>
+
+    {% if not logging_enabled %}
+    <div class="lv-disabled-banner">
+        File logging is currently <strong>disabled</strong>. Enable it in Settings → Core System &amp; Currencies → File Logging, then reload this page.
+    </div>
+    {% endif %}
+
+    <div class="lv-toolbar">
+        <div class="lv-filter-group">
+            <span class="lv-filter-label">Severity:</span>
+            <label class="lv-chip lv-chip-debug">
+                <input type="checkbox" class="lv-level-chk" value="DEBUG" checked> DEBUG
+            </label>
+            <label class="lv-chip lv-chip-info">
+                <input type="checkbox" class="lv-level-chk" value="INFO" checked> INFO
+            </label>
+            <label class="lv-chip lv-chip-warning">
+                <input type="checkbox" class="lv-level-chk" value="WARNING" checked> WARNING
+            </label>
+            <label class="lv-chip lv-chip-error">
+                <input type="checkbox" class="lv-level-chk" value="ERROR" checked> ERROR
+            </label>
+            <label class="lv-chip lv-chip-critical">
+                <input type="checkbox" class="lv-level-chk" value="CRITICAL" checked> CRITICAL
+            </label>
+        </div>
+
+        <div class="lv-search-group">
+            <input type="search" id="lv-search" class="lv-search-input" placeholder="Search logs…" autocomplete="off">
+        </div>
+
+        <div class="lv-actions">
+            <label class="lv-autoscroll-label">
+                <input type="checkbox" id="lv-autoscroll" checked> Auto-scroll
+            </label>
+            <button class="lv-btn lv-btn-clear" id="lv-clear-btn">Clear</button>
+        </div>
+    </div>
+
+    <div class="lv-status-bar">
+        <span id="lv-status">Connecting…</span>
+        <span id="lv-line-count" class="lv-line-count"></span>
+    </div>
+
+    <div class="lv-output" id="lv-output" role="log" aria-live="polite" aria-label="Log output"></div>
+</div>
+
+<script>
+window.LV_LOGGING_ENABLED = {{ 'true' if logging_enabled else 'false' }};
+</script>
+<script src="/static/js/log_viewer.js?v={{ css_version }}"></script>
+</body>
+</html>

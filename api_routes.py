@@ -18,7 +18,7 @@ from typing import Any, List, Optional
 from pathlib import Path
 
 from fastapi import APIRouter, Request, BackgroundTasks, HTTPException, Query, Path as PathParam, Response, Depends, Header
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
@@ -2845,3 +2845,60 @@ async def refresh_intraday_chart(req: TickerRequest):
         data_delay_minutes=delay_min,
     )
     return JSONResponse(content={"html": html})
+
+def _active_log_path() -> Path | None:
+    cfg = load_config()
+    fl = cfg.get("FILE_LOGGING", {})
+    if not fl.get("ENABLED", False):
+        return None
+    log_dir = BASE_DIR / fl.get("LOG_DIR", "logs")
+    p = log_dir / "app.log"
+    return p if p.exists() else None
+
+
+@api_router.get("/logs/tail")
+async def logs_tail(lines: int = Query(default=500, ge=1, le=5000)):
+    p = _active_log_path()
+    if p is None:
+        return JSONResponse({"status": "error", "message": "File logging is disabled or log file not found."})
+    try:
+        with open(p, "r", encoding="utf-8", errors="replace") as f:
+            all_lines = f.readlines()
+        tail = [ln.rstrip("\n") for ln in all_lines[-lines:]]
+        return JSONResponse({"status": "success", "lines": tail})
+    except Exception as e:
+        logger.error("logs/tail failed: %s", e)
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+
+@api_router.get("/logs/stream")
+async def logs_stream():
+    p = _active_log_path()
+    if p is None:
+        async def _disabled():
+            yield "data: {\"error\": \"File logging is disabled or log file not found.\"}\n\n"
+        return StreamingResponse(_disabled(), media_type="text/event-stream")
+
+    async def _tail_f():
+        import json as _json
+        try:
+            with open(p, "r", encoding="utf-8", errors="replace") as f:
+                f.seek(0, 2)
+                while True:
+                    chunk = f.read(65536)
+                    if chunk:
+                        for line in chunk.splitlines():
+                            line = line.strip()
+                            if line:
+                                yield f"data: {_json.dumps(line)}\n\n"
+                    else:
+                        yield ": keep-alive\n\n"
+                        await asyncio.sleep(1)
+        except Exception as e:
+            logger.error("logs/stream failed: %s", e)
+
+    return StreamingResponse(
+        _tail_f(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

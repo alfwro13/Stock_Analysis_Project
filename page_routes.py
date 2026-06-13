@@ -1980,3 +1980,14 @@ async def rss_alerts_feed():
     )
 
     return Response(content=feed_xml, media_type="application/rss+xml")
+
+@page_router.get("/log-viewer", response_class=HTMLResponse)
+async def log_viewer_page(request: Request):
+    cfg = load_config()
+    fl = cfg.get("FILE_LOGGING", {})
+    logging_enabled = fl.get("ENABLED", False)
+    return templates.TemplateResponse(
+        request=request,
+        name="log_viewer.html",
+        context={"logging_enabled": logging_enabled},
+    )
