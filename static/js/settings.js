@@ -275,7 +275,7 @@
 
             const res = await fetch('/api/change-password', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', 'X-Confirm-Token': CONFIRM_TOKEN },
                 body: JSON.stringify({ current_password: current, new_password: newPw, confirm_password: confirm }),
             });
 
