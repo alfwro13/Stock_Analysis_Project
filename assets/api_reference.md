@@ -971,6 +971,116 @@ Returns the currently active Yahoo Finance routing mode and its health status.
 
 ---
 
+### `POST /api/change-password`
+
+Changes the dashboard login password. Requires `X-Confirm-Token` header. The new password is stored as a PBKDF2-SHA256 hash in `.env`; the plaintext `DASHBOARD_PASSWORD` key is cleared.
+
+**Headers:** `X-Confirm-Token: <token>`
+
+**Request body**
+
+```json
+{
+  "current_password": "current",
+  "new_password": "newpassword99",
+  "confirm_password": "newpassword99"
+}
+```
+
+**Validation:** new password must be ≥ 8 chars and not `"changeme"`.
+
+**Error responses**
+
+| Status | Condition |
+|--------|-----------|
+| `400` | Wrong current password, mismatched new passwords, too short, or forbidden value |
+| `403` | Invalid or missing `X-Confirm-Token` |
+
+---
+
+### `POST /api/save-account-email`
+
+Saves the account email address used for password-reset notifications. Requires `X-Confirm-Token` header. Stored as `ACCOUNT_EMAIL` in `.env`.
+
+**Headers:** `X-Confirm-Token: <token>`
+
+**Request body**
+
+```json
+{ "email": "admin@example.com" }
+```
+
+---
+
+### `POST /api/request-password-reset`
+
+Initiates a self-service password reset. No authentication required — accessible from the login page.
+
+If `email` matches `ACCOUNT_EMAIL` in `.env`, a one-time reset token (valid 1 hour) is generated and delivered via:
+1. SMTP email — if `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS` are set in `.env`
+2. Nextcloud Talk — if `NEXTCLOUD_URL` is configured and SMTP is not
+3. Server log (`INFO`) — if no delivery channel is configured
+
+The response is always `200 OK` regardless of whether the email matched (prevents email enumeration).
+
+**Request body**
+
+```json
+{ "email": "admin@example.com" }
+```
+
+**Response**
+
+```json
+{ "status": "ok", "message": "If the email matches, a reset link has been sent." }
+```
+
+---
+
+### `POST /api/reset-password`
+
+Completes a self-service password reset using a valid reset token. No authentication required.
+
+**Request body**
+
+```json
+{
+  "token": "<token from reset link>",
+  "new_password": "newpassword99",
+  "confirm_password": "newpassword99"
+}
+```
+
+**Error responses**
+
+| Status | Condition |
+|--------|-----------|
+| `400` | Invalid, expired, or already-used token; mismatched passwords; too short; forbidden value |
+
+---
+
+### `POST /api/admin-reset-password`
+
+Admin emergency password reset — bypasses the old password requirement. Only works when `FORCE_PASSWORD_RESET: true` is set in `config.json`. Clears the flag automatically on success.
+
+**Request body**
+
+```json
+{
+  "new_password": "newpassword99",
+  "confirm_password": "newpassword99"
+}
+```
+
+**Error responses**
+
+| Status | Condition |
+|--------|-----------|
+| `403` | `FORCE_PASSWORD_RESET` is not enabled in `config.json` |
+| `400` | Mismatched passwords; too short; forbidden value |
+
+---
+
 ## 14. System & Infrastructure
 
 ### `POST /api/maintenance/run`

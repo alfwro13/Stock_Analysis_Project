@@ -77,6 +77,17 @@ The Quantamental system features an automated configuration engine. You do not n
 The active log is always `logs/app.log`. Rotated files are named `app.log.YYYY-MM-DD` (or `.gz` if archive is enabled). Changes take effect immediately without a restart.
 
 
+### **Security — Dashboard Credentials**
+
+On first start, `config.py` writes default credentials (`admin` / `changeme`) to `.env` and immediately forces a password change on first login. Passwords are stored as PBKDF2-SHA256 hashes (`DASHBOARD_PASSWORD_HASH` in `.env`); the plaintext key is cleared after the first change.
+
+To configure email-based self-service password reset:
+1. Go to **Settings → User Account → Account Email** and save your email address.
+2. Add SMTP credentials to `.env`: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` (optional `SMTP_FROM`). If SMTP is not configured, reset links are delivered via Nextcloud Talk or logged to the server.
+3. The **Forgot password?** link on the login page initiates the flow. Reset links expire after 1 hour.
+
+If you are locked out entirely, see `assets/system_recovery_and_architecture.md` — *Password Reset Procedures* for three recovery methods including a console script (`python reset_admin_password.py`) and a `FORCE_PASSWORD_RESET` config-file flag.
+
 ### **4. Initial AI Training (Cold Start)**
 Before the system can provide Machine Learning predictions, it must build its historical training set.
 
