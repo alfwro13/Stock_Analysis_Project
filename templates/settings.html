@@ -1479,14 +1479,14 @@
 
                     <h4 class="settings-panel-header text-cyan mt-30">⏱️ Master APScheduler Matrix</h4>
                     <p class="settings-desc-sm mb-15">Overview of all background threads currently registered with the APScheduler engine.</p>
-                    <table class="scheduler-table">
+                    <table class="scheduler-table" id="scheduler-matrix">
                         <thead>
                             <tr>
                                 <th>Job Engine</th>
                                 <th>State</th>
                                 <th>Frequency / Days</th>
                                 <th>Execution Target</th>
-                                <th>Last Run</th>
+                                <th class="sortable-col" onclick="sortSchedulerMatrix()"><abbr title="Click to sort jobs by when they last ran.">Last Run</abbr> <span id="sched-sort-arrow"></span></th>
                             </tr>
                         </thead>
                         <tbody>

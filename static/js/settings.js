@@ -1461,9 +1461,11 @@
 
                     // 5. Scheduler Last Run
                     if (data.scheduler_last_runs) {
+                        const sortMap = data.scheduler_last_runs_sort || {};
                         document.querySelectorAll('[data-sched-key]').forEach(td => {
                             const key = td.getAttribute('data-sched-key');
                             const val = data.scheduler_last_runs[key];
+                            td.dataset.sort = sortMap[key] || '';
                             if (val && val !== 'Never') {
                                 td.innerText = val;
                                 td.style.color = '';
@@ -2094,6 +2096,23 @@
                 btn.disabled = false;
                 btn.innerText = '🧪 Send Test Message';
             }
+        }
+
+        let _schedSortAsc = true;
+        function sortSchedulerMatrix() {
+            const tbody = document.querySelector('#scheduler-matrix tbody');
+            if (!tbody) return;
+            _schedSortAsc = !_schedSortAsc;
+            const dir = _schedSortAsc ? 1 : -1;
+            Array.from(tbody.rows)
+                .sort((a, b) => {
+                    const av = a.querySelector('[data-sched-key]')?.dataset.sort || '';
+                    const bv = b.querySelector('[data-sched-key]')?.dataset.sort || '';
+                    return av === bv ? 0 : (av > bv ? dir : -dir);
+                })
+                .forEach(r => tbody.appendChild(r));
+            const arrow = document.getElementById('sched-sort-arrow');
+            if (arrow) arrow.textContent = _schedSortAsc ? '▲' : '▼';
         }
 
         // Settings search

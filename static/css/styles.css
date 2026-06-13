@@ -920,6 +920,10 @@ details[open].xray-rec-group .xray-rec-group-summary::before { transform: rotate
 .lv-row-error    .lv-msg { color: #ef5350; }
 .lv-row-critical .lv-msg { color: #ff1744; }
 
+.sortable-col { cursor: pointer; user-select: none; white-space: nowrap; }
+.sortable-col:hover { color: #fff; }
+#sched-sort-arrow { color: #888; font-size: 11px; }
+
 /* Workflow Monitor */
 .workflow-legend { display: flex; gap: 18px; flex-wrap: wrap; margin: 4px 0 12px; font-size: 13px; color: #bbb; }
 .wf-legend-item { display: flex; align-items: center; gap: 6px; }

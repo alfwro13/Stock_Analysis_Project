@@ -1387,6 +1387,11 @@ async def get_system_metrics():
             cfg_key: _localise_ts((job_last_runs.get(job_id) or {}).get("last_run", "Never"))
             for cfg_key, job_id in config_key_to_job.items()
         }
+        # Raw UTC "%Y-%m-%d %H:%M" sorts lexicographically = chronologically; drives column sort.
+        scheduler_last_runs_sort = {
+            cfg_key: (job_last_runs.get(job_id) or {}).get("last_run") or ""
+            for cfg_key, job_id in config_key_to_job.items()
+        }
 
         return JSONResponse(content={
             "status": "success",
@@ -1419,6 +1424,7 @@ async def get_system_metrics():
                 "notes_pending": pending_notes, "notes_sent": sent_notes
             },
             "scheduler_last_runs": scheduler_last_runs,
+            "scheduler_last_runs_sort": scheduler_last_runs_sort,
             "yahoo_cache": yahoo_engine.get_stats(),
         })
     except Exception as e:
