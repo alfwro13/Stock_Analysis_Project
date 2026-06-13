@@ -133,7 +133,7 @@ class ChangePasswordRequest(BaseModel):
     confirm_password: str
 
 
-@api_router.post("/change-password", dependencies=[Depends(require_confirm_token)])
+@api_router.post("/change-password")
 async def change_password(body: ChangePasswordRequest):
     import secrets as _secrets
     from dotenv import set_key
