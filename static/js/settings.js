@@ -1941,6 +1941,31 @@
             }
         }
 
+        async function saveAccountEmail() {
+            const btn = document.querySelector('button[onclick="saveAccountEmail()"]');
+            btn.disabled = true;
+            btn.innerText = '⏳ Saving…';
+            setStatus('ua-email-msg', 'info', 'Saving…');
+            try {
+                const res = await fetch('/api/save-account-email', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-Confirm-Token': CONFIRM_TOKEN },
+                    body: JSON.stringify({ email: document.getElementById('ua_account_email').value }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok) {
+                    setStatus('ua-email-msg', 'success', 'Email saved.');
+                } else {
+                    setStatus('ua-email-msg', 'error', data.detail || 'Failed to save email.');
+                }
+            } catch (e) {
+                setStatus('ua-email-msg', 'error', 'Network error while saving.');
+            } finally {
+                btn.disabled = false;
+                btn.innerText = '💾 Save Email';
+            }
+        }
+
         async function changeUsername() {
             const btn = document.querySelector('button[onclick="changeUsername()"]');
             btn.disabled = true;

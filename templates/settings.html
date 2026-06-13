@@ -1779,6 +1779,17 @@
                 </div>
 
                 <div class="settings-panel mt-20">
+                    <h4 class="settings-panel-header text-blue">Account Email</h4>
+                    <p class="settings-desc">Email address used for password reset links. Optional — if left blank, reset links are sent via Nextcloud Talk or logged to the server.</p>
+                    <div class="form-group">
+                        <label>Email address</label>
+                        <input type="email" id="ua_account_email" autocomplete="email" value="{{ account_email }}" placeholder="you@example.com">
+                    </div>
+                    <button type="button" class="btn-test mt-0" onclick="saveAccountEmail()">💾 Save Email</button>
+                    <div id="ua-email-msg"></div>
+                </div>
+
+                <div class="settings-panel mt-20">
                     <h4 class="settings-panel-header text-blue">Change Password</h4>
                     <p class="settings-desc">Update your dashboard login password. You will remain logged in after saving.</p>
 
