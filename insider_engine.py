@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from database import get_connection
 from config import PORTFOLIO_PATH, WATCHLIST_PATH, load_config
 from yahoo_engine import yahoo_engine
-from nextcloud_talk import send_text_message
+from notification_engine import notify
 
 logger = logging.getLogger(__name__)
 
@@ -165,14 +165,8 @@ def run_insider_alert():
                             f"{alignment_banner}"
                         )
 
-                        cursor.execute(
-                            "INSERT INTO system_notifications (message_type, message_text) VALUES (?, ?)",
-                            ("Insider", msg)
-                        )
-                        conn.commit()
-
-                        if send_text_message(msg, config):
-                            alerts_sent += 1
+                        notify("insider_alert", "Insider", msg, conn=conn)
+                        alerts_sent += 1
 
                 except Exception:
                     logger.exception("Error evaluating insider trades for %s.", ticker)

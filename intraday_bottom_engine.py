@@ -268,6 +268,7 @@ class IntradayBottomEngine:
         log_notification(msg_type, msg_text)
 
     def _fire_alert(self, result: dict) -> None:
+        from notification_engine import notify
         ticker = result["ticker"]
         price = result["current_price"]
         score = result["reversal_score"]
@@ -275,17 +276,8 @@ class IntradayBottomEngine:
 
         summary = f"🎯 Dip Radar | {ticker} @ {price} | Score: {score}/100"
         detail = " | ".join(reasons) if reasons else "Multiple conditions met"
-        self._log_notification("DipRadar", f"{summary} — {detail}")
-
-        if self.config.get("NOTIFICATIONS", {}).get("DIP_RADAR_NEXTCLOUD", False):
-            try:
-                from nextcloud_talk import send_text_message
-                msg = f"{summary}\n" + "\n".join(f"• {r}" for r in reasons)
-                ok = send_text_message(msg, self.config)
-                if not ok:
-                    logger.error("DipRadar: Nextcloud message not delivered for %s (check credentials in .env)", ticker)
-            except Exception as e:
-                logger.error("DipRadar: Nextcloud send failed for %s: %s", ticker, e)
+        nextcloud_msg = f"{summary}\n" + "\n".join(f"• {r}" for r in reasons)
+        notify("dip_radar_alert", "DipRadar", f"{summary} — {detail}", nextcloud_text=nextcloud_msg)
 
         self._disarm_alert(ticker)
 

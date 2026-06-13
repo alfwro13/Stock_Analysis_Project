@@ -75,6 +75,7 @@ Stock_Analysis_Project/
 ├── reports_engine.py         # Quant briefing report generation
 ├── morning_briefing.py       # Morning briefing assembly + dispatch
 ├── lunchtime_briefing.py     # Lunchtime briefing assembly + dispatch
+├── notification_engine.py    # Unified notification router (log / in-app / Nextcloud) + NOTIFICATION_ROUTING registry
 ├── report_dispatcher.py      # Nextcloud Talk / alert dispatch
 ├── nextcloud_talk.py         # Nextcloud Talk webhook client
 ├── portfolio_service.py      # Portfolio aggregation helpers
@@ -137,7 +138,7 @@ All tables join on `ticker` as the primary key unless noted.
 | `news_articles` | Full-text news articles with sentiment scores |
 | `smgb_predictions` | SMGB.L morning price predictions + actuals + accuracy metrics |
 | `alert_state` | Dedup ledger for intraday alert engines (fingerprint + cooldown) |
-| `system_notifications` | Scheduler job log visible in the Settings notifications panel |
+| `system_notifications` | In-app notification feed visible in the Settings notifications panel (written via the unified notification router) |
 | `scheduler_run_log` | Last-run timestamp per APScheduler job ID, plus last-start, last/avg run duration, and last status (success/error) — powers the Workflow Monitor |
 
 Schema changes must go through `database.py:init_db()`.
@@ -156,6 +157,8 @@ Schema changes must go through `database.py:init_db()`.
 8. **One canonical name per feature — no mixed terminology.** Every scheduled job, engine, page, tool, metric, signal, config option, and feature has exactly **one** user-facing name, and that *same* wording must be used everywhere it appears: the Settings UI (configuration panels **and** the Master APScheduler Matrix), the Workflow Monitor, the System Diagnostics panel, the glossary (`templates/glossary.html`), the asset docs (`assets/`), and the `README.md`. **Never invent a new display name in one place when the thing is already named elsewhere, and never show a code-derived name (e.g. a config key like `ML_TRAINING` rendered as "Ml Training") in one surface while a descriptive name is used in another.** When you add or rename anything user-facing, grep the whole app for the old/related wording and update every surface in the same change. If a single Settings panel controls several jobs (or one job spans several panels), that mismatch must be resolved — not papered over with ad-hoc per-place variants.
 
    **For scheduled jobs the single source of truth is `scheduler_engine.JOB_GRAPH[job_id]["label"]`** (it equals the Settings panel wording). Surfaces that are keyed by config key (the Master Matrix, the diagnostics last-run map) must resolve their display text through `scheduler_engine.CONFIG_KEY_TO_JOB` + `job_label()`/`scheduler_display_names()` — never by title-casing the config key. The Active-Jobs panel name comes from `_mark_job_started(job_label("<job_id>"))`, never a hardcoded literal. **Code identifiers (job ids, `run_*` functions, config keys, engine module/class names) are deliberately *not* renamed to match** — instead, every engine module whose code name differs from its GUI name carries a top-of-module comment `# GUI name: "<name>". Canonical scheduled-job names live in scheduler_engine.JOB_GRAPH.` so a reader knows what the user calls it. Add that comment whenever you create a job whose code name differs from its GUI label.
+
+9. **All notifications go through the unified router.** Every user-facing notification — scheduled-job status and all alerts — must be dispatched via `notification_engine.notify(source, message_type, message_text, ...)`. Do **not** call `nextcloud_talk.send_text_message()` or `INSERT` into `system_notifications` directly from a feature engine. Per-source channel routing (log file / in-app / Nextcloud Talk) lives in `NOTIFICATION_ROUTING` (`config.json`), is editable in the Settings **Notification Routing** panel, and falls back to each source's default in `notification_engine.NOTIFICATION_SOURCES`. A new alert source must be added to that registry (with a canonical `label` and parent `job_id`); a new scheduled job automatically gets a routable status row. Dedup/cooldown stays in the engines (`alert_state`) — the router only decides *where* a fired event goes. Exceptions: deep pipeline-progress chatter may still call `database.log_notification()` directly (in-app only), and file-attachment dispatches (briefings, the Fear & Greed chart) keep their own upload path gated by their enable toggle.
 
 ---
 

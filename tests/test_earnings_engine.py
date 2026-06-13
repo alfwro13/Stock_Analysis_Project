@@ -143,7 +143,8 @@ class TestDailyAlertType:
         with patch("earnings_engine.load_config", return_value=cfg), \
              patch("earnings_engine.PORTFOLIO_PATH", str(portfolio_path)), \
              patch("earnings_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("earnings_engine.send_text_message", return_value=True):
+             patch("notification_engine.load_config", return_value=cfg), \
+             patch("notification_engine.nextcloud_talk.send_text_message", return_value=True):
             return run_earnings_alert()
 
     def test_today_earnings_fires(self, tmp_path, db_path):
@@ -238,7 +239,8 @@ class TestOnceAlertType:
         with patch("earnings_engine.load_config", return_value=cfg), \
              patch("earnings_engine.PORTFOLIO_PATH", str(portfolio_path)), \
              patch("earnings_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("earnings_engine.send_text_message", return_value=True):
+             patch("notification_engine.load_config", return_value=cfg), \
+             patch("notification_engine.nextcloud_talk.send_text_message", return_value=True):
             return run_earnings_alert()
 
     def test_fires_exactly_on_days_ahead_day(self, tmp_path, db_path):
@@ -280,7 +282,8 @@ class TestReturnValues:
         with patch("earnings_engine.load_config", return_value=cfg), \
              patch("earnings_engine.PORTFOLIO_PATH", str(port)), \
              patch("earnings_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("earnings_engine.send_text_message", return_value=True):
+             patch("notification_engine.load_config", return_value=cfg), \
+             patch("notification_engine.nextcloud_talk.send_text_message", return_value=True):
             ok, msg = run_earnings_alert()
 
         assert ok is True
@@ -296,7 +299,8 @@ class TestReturnValues:
         with patch("earnings_engine.load_config", return_value=cfg), \
              patch("earnings_engine.PORTFOLIO_PATH", str(port)), \
              patch("earnings_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("earnings_engine.send_text_message", return_value=False):
+             patch("notification_engine.load_config", return_value=cfg), \
+             patch("notification_engine.nextcloud_talk.send_text_message", return_value=False):
             ok, msg = run_earnings_alert()
 
         assert ok is True

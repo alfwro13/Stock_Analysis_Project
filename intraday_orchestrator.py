@@ -19,12 +19,13 @@ from database import get_connection
 from crash_engine import CrashEngine
 from moonshot_engine import MoonshotEngine
 from anomaly_engine import AnomalyEngine
-from nextcloud_talk import send_text_message
+from notification_engine import notify
 from utils import clamp_beta
 
 logger = logging.getLogger(__name__)
 
 # GUI name: "Crash & Moonshot Alerts". Canonical scheduled-job names live in scheduler_engine.JOB_GRAPH.
+_ALERT_SOURCES = {"Crash": "crash_alert", "Moonshot": "moonshot_alert", "Anomaly": "anomaly_alert", "Macro": "macro_yield_alert"}
 
 _STALE_SECONDS        = 5400   # 90 min: market closed / asset halted circuit breaker
 _CORP_ACTION_GAP_PCT  = 10.0   # price gap % that triggers a corporate action lookup
@@ -369,18 +370,8 @@ class IntradayOrchestrator:
             var = f"{(meta.get('var_95') * 100):.2f}%" if meta.get('var_95') is not None else "N/A"
             sent = f"{meta.get('sentiment_score'):.3f}" if meta.get('sentiment_score') is not None else "N/A"
             msg = msg_builder(ticker, formatted_price, alert, ml_conf, var, sent, url)
-            try:
-                ok = send_text_message(msg, self.config)
-            except Exception as e:
-                logger.error(f"{engine} alert dispatch failed for {ticker}: {e}")
-                self.log_notification_feed(engine, feed_builder(ticker, formatted_price, alert), conn, status="failed")
-                continue
-            if not ok:
-                logger.error("%s alert Nextcloud send returned False for %s — credentials missing or network error. Alert will retry next scan.", engine, ticker)
-                self.log_notification_feed(engine, feed_builder(ticker, formatted_price, alert), conn, status="failed")
-                continue
-            self.record_alert_fired(engine, ticker, alert['price'], alert['reason'], conn)
-            self.log_notification_feed(engine, feed_builder(ticker, formatted_price, alert), conn)
+            if notify(_ALERT_SOURCES[engine], engine, feed_builder(ticker, formatted_price, alert), nextcloud_text=msg, conn=conn):
+                self.record_alert_fired(engine, ticker, alert['price'], alert['reason'], conn)
             time.sleep(_DISPATCH_SLEEP_SECONDS)
 
     def run(self) -> None:
@@ -498,22 +489,14 @@ class IntradayOrchestrator:
                             f"Expect immediate severe valuation compression across high-multiple and tech equities. "
                             f"Risk-Off environment detected."
                         )
-                        try:
-                            ok = send_text_message(msg, self.config)
-                        except Exception as e:
-                            logger.error(f"Macro alert dispatch failed for {m_ticker}: {e}")
-                            self.log_notification_feed("Macro", f"Systemic Yield Surge detected on {m_ticker} (+{m_spike:.2f}%)", conn, status="failed")
-                            continue
-                        if not ok:
-                            logger.error("Macro alert Nextcloud send returned False for %s — credentials missing or network error.", m_ticker)
-                            self.log_notification_feed("Macro", f"Systemic Yield Surge detected on {m_ticker} (+{m_spike:.2f}%)", conn, status="failed")
-                            continue
-                        self.record_alert_fired("Macro", m_ticker, m_curr, reason_macro, conn)
-                        self.log_notification_feed(
+                        if notify(
+                            _ALERT_SOURCES["Macro"],
                             "Macro",
                             f"Systemic Yield Surge detected on {m_ticker} (+{m_spike:.2f}%)",
-                            conn,
-                        )
+                            nextcloud_text=msg,
+                            conn=conn,
+                        ):
+                            self.record_alert_fired("Macro", m_ticker, m_curr, reason_macro, conn)
             except Exception:
                 logger.error("Macro eval failed for %s", m_ticker, exc_info=True)
 

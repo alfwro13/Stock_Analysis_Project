@@ -358,6 +358,7 @@ def enrich_macro_events(events_list: List[Dict[str, Any]]) -> List[Dict[str, Any
 async def settings_page(request: Request):
     import os
     from scheduler_engine import scheduler_display_names
+    from notification_engine import build_routing_panel
     config_data = load_config()
     return templates.TemplateResponse(
         request=request,
@@ -365,6 +366,7 @@ async def settings_page(request: Request):
         context={
             "config": config_data,
             "scheduler_job_labels": scheduler_display_names(),
+            "notification_routing": build_routing_panel(config_data),
             "unread_count": get_unread_count(),
             "dashboard_username": os.environ.get("DASHBOARD_USERNAME", "admin"),
             "api_key": os.environ.get("API_KEY", ""),

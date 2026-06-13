@@ -5,7 +5,7 @@ from datetime import datetime
 from database import get_connection
 from config import PORTFOLIO_PATH, load_config
 from time_engine import now_local
-from nextcloud_talk import send_text_message
+from notification_engine import notify
 
 def run_earnings_alert():
     try:
@@ -41,7 +41,6 @@ def run_earnings_alert():
 
             today = now_local().date()
             alerts_sent = 0
-            dispatch_failures = 0
 
             for row in rows:
                 ticker = row['ticker']
@@ -74,14 +73,8 @@ def run_earnings_alert():
 
                         msg = f"📅 *Upcoming Earnings Report*\n\nStock: {name} ({ticker})\nDate: {earnings_date_str} ({time_str})"
 
-                        cursor.execute(
-                            "INSERT INTO system_notifications (message_type, message_text) VALUES (?, ?)",
-                            ("Earnings", msg)
-                        )
+                        notify("earnings_alert", "Earnings", msg, conn=conn)
                         alerts_sent += 1
-
-                        if not send_text_message(msg, config):
-                            dispatch_failures += 1
 
                 except Exception as e:
                     print(f"[ERROR] Evaluating earnings date for {ticker}: {e}")

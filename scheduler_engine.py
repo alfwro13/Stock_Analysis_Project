@@ -11,7 +11,7 @@ from huggingface_engine import update_all_sentiment, run_central_bank_nlp_alert
 from earnings_engine import run_earnings_alert
 from insider_engine import run_insider_alert
 from intraday_orchestrator import IntradayOrchestrator
-from nextcloud_talk import send_text_message
+from notification_engine import notify, set_job_source, clear_job_source, current_job_source, SCHEDULER_STATUS_SOURCE
 from maintenance_engine import MaintenanceEngine
 from data_engine import DataEngine
 from quant_signals import QuantEngine
@@ -38,6 +38,31 @@ logger = logging.getLogger(__name__)
 
 scheduler = BackgroundScheduler(job_defaults={"coalesce": True, "max_instances": 1, "misfire_grace_time": 60})
 
+import functools as _functools
+
+
+def _with_job_source(job_id, fn):
+    """Tags the worker thread with its job id so log_sched_notification routes to that job's status source."""
+    @_functools.wraps(fn)
+    def _runner(*args, **kwargs):
+        set_job_source(job_id)
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            clear_job_source()
+    return _runner
+
+
+_orig_add_job = scheduler.add_job
+
+
+def _tracked_add_job(func, *args, **kwargs):
+    job_id = kwargs.get("id")
+    return _orig_add_job(_with_job_source(job_id, func) if job_id else func, *args, **kwargs)
+
+
+scheduler.add_job = _tracked_add_job
+
 import threading as _threading
 from datetime import datetime as _dt, timezone as _tz
 _active_jobs: dict[str, str] = {}
@@ -56,17 +81,8 @@ def get_active_jobs() -> dict[str, str]:
         return dict(_active_jobs)
 
 def log_sched_notification(msg_type: str, msg_text: str):
-    conn = None
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("INSERT INTO system_notifications (message_type, message_text) VALUES (?, ?)", (msg_type, msg_text))
-        conn.commit()
-    except Exception as e:
-        logger.error("Failed to log notification: %s", e)
-    finally:
-        if conn:
-            conn.close()
+    level = "error" if msg_type == "Error" else ("warning" if msg_type == "Warning" else "info")
+    notify(current_job_source() or SCHEDULER_STATUS_SOURCE, msg_type, msg_text, level=level)
 
 def record_job_run(job_id: str):
     from datetime import datetime, timezone
@@ -251,42 +267,26 @@ def run_update_pipeline():
             and hmm.get("previous_state") is not None
             and hmm["state"] != hmm["previous_state"]
         ):
-            config = load_config()
-            notif_cfg = config.get("NOTIFICATIONS", {}).get("HMM_ALERTS", {})
             msg = (
                 f"HMM REGIME CHANGE: {hmm['previous_label']} → {hmm['label']} "
                 f"(confidence: {hmm['probability']:.0%}) | {hmm['date']}"
             )
-            log_sched_notification("HMM Regime", msg)
-            if notif_cfg.get("NEXTCLOUD_ENABLED", False):
-                orch = IntradayOrchestrator()
-                conn_alert = None
-                try:
-                    conn_alert = get_connection()
-                    suppress = orch._evaluate_alert_gate(
-                        "HMM", "SPY", None, f"REGIME_{hmm['label']}", conn_alert
-                    )
-                    if not suppress:
-                        try:
-                            ok = send_text_message(msg, config)
-                        except Exception as _e:
-                            logger.error("HMM: Nextcloud dispatch failed: %s", _e)
-                            ok = False
-                        if ok:
-                            orch.record_alert_fired(
-                                "HMM", "SPY", None, f"REGIME_{hmm['label']}", conn_alert
-                            )
-                except Exception as _e:
-                    logger.error("HMM alert gate error: %s", _e)
-                finally:
-                    if conn_alert:
-                        conn_alert.close()
+            orch = IntradayOrchestrator()
+            conn_alert = None
+            try:
+                conn_alert = get_connection()
+                if not orch._evaluate_alert_gate("HMM", "SPY", None, f"REGIME_{hmm['label']}", conn_alert):
+                    if notify("hmm_regime_alert", "HMM Regime", msg, conn=conn_alert):
+                        orch.record_alert_fired("HMM", "SPY", None, f"REGIME_{hmm['label']}", conn_alert)
+            except Exception as _e:
+                logger.error("HMM alert gate error: %s", _e)
+            finally:
+                if conn_alert:
+                    conn_alert.close()
 
         # Fire notification when market stress IF detects sustained systemic anomaly
         stress = (regime_result or {}).get("market_stress", {})
         if stress and stress.get("alert"):
-            config = load_config()
-            stress_cfg = config.get("NOTIFICATIONS", {}).get("MARKET_STRESS_ALERTS", {})
             feats = stress.get("features", {})
             msg = (
                 f"MARKET STRESS ALERT: Multivariate anomaly score {stress['score']:.2f}/1.00 "
@@ -296,30 +296,18 @@ def run_update_pipeline():
                 f"HYG: {feats.get('hyg_return', 0):+.2f}% | "
                 f"10Y Δ: {feats.get('tnx_change', 0):+.2f}bps | {stress['date']}"
             )
-            log_sched_notification("Market Stress", msg)
-            if stress_cfg.get("NEXTCLOUD_ENABLED", False):
-                orch = IntradayOrchestrator()
-                conn_alert = None
-                try:
-                    conn_alert = get_connection()
-                    suppress = orch._evaluate_alert_gate(
-                        "MarketStress", "MARKET", None, "STRESS_ELEVATED", conn_alert
-                    )
-                    if not suppress:
-                        try:
-                            ok = send_text_message(msg, config)
-                        except Exception as _e:
-                            logger.error("Market stress: Nextcloud dispatch failed: %s", _e)
-                            ok = False
-                        if ok:
-                            orch.record_alert_fired(
-                                "MarketStress", "MARKET", None, "STRESS_ELEVATED", conn_alert
-                            )
-                except Exception as _e:
-                    logger.error("Market stress alert gate error: %s", _e)
-                finally:
-                    if conn_alert:
-                        conn_alert.close()
+            orch = IntradayOrchestrator()
+            conn_alert = None
+            try:
+                conn_alert = get_connection()
+                if not orch._evaluate_alert_gate("MarketStress", "MARKET", None, "STRESS_ELEVATED", conn_alert):
+                    if notify("market_stress_alert", "Market Stress", msg, conn=conn_alert):
+                        orch.record_alert_fired("MarketStress", "MARKET", None, "STRESS_ELEVATED", conn_alert)
+            except Exception as _e:
+                logger.error("Market stress alert gate error: %s", _e)
+            finally:
+                if conn_alert:
+                    conn_alert.close()
 
     except Exception as e:
         log_sched_notification("Error", f"Update Pipeline failed: {e}")
@@ -768,8 +756,6 @@ def run_ai_contagion_job():
             return
 
         orch = IntradayOrchestrator()
-        contagion_cfg = config.get("NOTIFICATIONS", {}).get("AI_CONTAGION", {})
-        nextcloud_enabled = contagion_cfg.get("ENABLED", False)
 
         for event in candidates:
             suppress = orch._evaluate_alert_gate(
@@ -779,30 +765,21 @@ def run_ai_contagion_job():
                 logger.info("AIContagion: alert suppressed by gate (cooldown/rearm).")
                 continue
 
-            if nextcloud_enabled:
-                msg = _build_contagion_message(event, config)
-                try:
-                    ok = send_text_message(msg, config)
-                except Exception as e:
-                    logger.error("AIContagion: Nextcloud dispatch failed: %s", e)
-                    ok = False
-            else:
-                ok = True  # record dedup state even when Nextcloud is disabled
-
-            if ok:
+            if notify(
+                "ai_contagion_alert",
+                "AIContagion",
+                _build_contagion_feed_text(event),
+                nextcloud_text=_build_contagion_message(event, config),
+                conn=conn,
+            ):
                 orch.record_alert_fired(
                     "AIContagion", event["ticker"], event["price"], event["reason"], conn
                 )
-                orch.log_notification_feed(
-                    "AIContagion",
-                    _build_contagion_feed_text(event),
-                    conn,
-                )
-                leaders_summary = ", ".join(
-                    f"{s['ticker']} ({s['intraday_pct']:+.2f}%)"
-                    for s in event.get("leader_shocks", [])
-                )
-                logger.warning("AIContagion: alert fired. Leaders: %s", leaders_summary)
+            leaders_summary = ", ".join(
+                f"{s['ticker']} ({s['intraday_pct']:+.2f}%)"
+                for s in event.get("leader_shocks", [])
+            )
+            logger.warning("AIContagion: alert fired. Leaders: %s", leaders_summary)
     except Exception as e:
         logger.error("AI Contagion job failed: %s", e)
         log_sched_notification("Error", f"AI Contagion job failed: {e}")
@@ -815,7 +792,6 @@ def run_ai_contagion_job():
 def run_trap_monitor_job():
     from bull_bear_trap_engine import TrapEngine
     from intraday_orchestrator import IntradayOrchestrator
-    from nextcloud_talk import send_text_message
     config = load_config()
     conn = None
     try:
@@ -825,9 +801,6 @@ def run_trap_monitor_job():
 
         if not results:
             return
-
-        trap_cfg = config.get("NOTIFICATIONS", {}).get("TRAP_MONITOR_ALERTS", {})
-        nextcloud_enabled = trap_cfg.get("NEXTCLOUD_ENABLED", False)
 
         # Only alert on high-severity phases
         alert_phases = {"ACTIVE_SELLOFF", "BULL_TRAP_RISK", "CAPITULATION_FORMING", "BEAR_TRAP_RISK"}
@@ -852,29 +825,18 @@ def run_trap_monitor_job():
                 f"**{ticker}** — Phase: {phase.replace('_', ' ')} | "
                 f"RSI {row.get('rsi', '—')} | EMA dist {row.get('ema_distance', '—')}% | {notes}"
             )
-
-            if nextcloud_enabled:
-                msg_lines = [
-                    f"🎭 **TRAP MONITOR: {ticker}** — {phase.replace('_', ' ')}",
-                    "",
-                    notes,
-                    "",
-                    f"RSI: {row.get('rsi', '—')} | EMA Distance: {row.get('ema_distance', '—')}%",
-                    f"Bull Trap: {row.get('bull_trap_level', '—')} | Bear Trap: {row.get('bear_trap_level', '—')}",
-                    f"Capitulation: {row.get('cap_level', '—')} | Wyckoff: {row.get('wyckoff_level', '—')}",
-                ]
-                try:
-                    ok = send_text_message("\n".join(msg_lines), config)
-                except Exception as e:
-                    logger.error("TrapMonitor: Nextcloud dispatch failed for %s: %s", ticker, e)
-                    ok = False
-            else:
-                ok = True
-
-            if ok:
+            msg_lines = [
+                f"🎭 **TRAP MONITOR: {ticker}** — {phase.replace('_', ' ')}",
+                "",
+                notes,
+                "",
+                f"RSI: {row.get('rsi', '—')} | EMA Distance: {row.get('ema_distance', '—')}%",
+                f"Bull Trap: {row.get('bull_trap_level', '—')} | Bear Trap: {row.get('bear_trap_level', '—')}",
+                f"Capitulation: {row.get('cap_level', '—')} | Wyckoff: {row.get('wyckoff_level', '—')}",
+            ]
+            if notify("trap_monitor_alert", "TrapMonitor", feed_text, nextcloud_text="\n".join(msg_lines), conn=conn):
                 orch.record_alert_fired("TrapMonitor", ticker, None, reason, conn)
-                orch.log_notification_feed("TrapMonitor", feed_text, conn)
-                logger.info("TrapMonitor: alert fired for %s (%s).", ticker, phase)
+            logger.info("TrapMonitor: alert fired for %s (%s).", ticker, phase)
 
     except Exception as e:
         logger.error("Trap Monitor job failed: %s", e)
@@ -946,13 +908,7 @@ def run_smgb_predictor_job():
             f"SMGB.L Price Predictor — {target}: "
             f"£{predicted:.4f} ({sign}{change:.2f}%) | signal: {signal}"
         )
-        log_sched_notification("Success", msg)
-
-        cfg = load_config()
-        smgb_cfg = cfg.get("SCHEDULING", {}).get("SMGB_PREDICTOR", {})
-        if smgb_cfg.get("SEND_NEXTCLOUD", False):
-            from nextcloud_talk import send_text_message
-            send_text_message(msg, cfg)
+        notify("smgb_prediction", "SMGB Prediction", msg)
     except Exception as e:
         logger.error("SMGB predictor job failed: %s", e)
         log_sched_notification("Error", f"SMGB predictor job failed: {e}")

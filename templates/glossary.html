@@ -352,6 +352,25 @@
                 </div>
             </details>
 
+            <details class="settings-card" id="notification-routing">
+                <summary>🔔 Notification Routing</summary>
+                <div class="term-box">
+                    <span class="term-title">Notification Routing</span>
+                    <p>A single control panel (in Settings) for every notification the app produces. Each scheduled job and each alert is a row, and for each you choose independently which channels it is delivered through. It replaces the scattered per-engine "send to Nextcloud" toggles with one place to see and control what goes where.</p>
+                </div>
+                <div class="term-box">
+                    <span class="term-title">Channels</span>
+                    <p>Three independent destinations per notification:</p>
+                    <div class="rule"><strong>Log file:</strong> written to the rotating application log (<code>logs/app.log</code>).</div>
+                    <div class="rule"><strong>In-app:</strong> shown in the in-app notification centre (the bell icon).</div>
+                    <div class="rule"><strong>Nextcloud Talk:</strong> pushed as a message to your Nextcloud Talk conversation.</div>
+                </div>
+                <div class="term-box">
+                    <span class="term-title">Job status vs. alert sources</span>
+                    <p>Each job exposes a <em>status</em> row covering its start / success / error messages, plus any distinct <em>alert</em> sub-rows it emits — so, for example, Crash, Moonshot, Anomaly and Macro Yield alerts (all produced by the one intraday job) can each route to different channels. The morning/lunchtime briefings and the Fear &amp; Greed chart upload file attachments to Talk and remain governed by their own enable toggles; they appear here for log/in-app routing only.</p>
+                </div>
+            </details>
+
             <details class="settings-card" id="etf-predictor">
                 <summary>📊 ETF Price Predictor</summary>
                 <div class="term-box">

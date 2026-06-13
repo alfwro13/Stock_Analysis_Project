@@ -508,17 +508,6 @@
                     <p class="settings-desc">On-demand session monitoring to detect capitulation bottoms on selected tickers. Enable monitoring from any stock detail page. All monitors deactivate automatically at <span class="dip-reset-time">16:05 ET</span> each trading day.</p>
 
                     <div class="settings-panel border-left-orange">
-                        <h4 class="settings-panel-header text-orange">Notifications</h4>
-                        <div class="checkbox-group mb-10">
-                            <input type="checkbox" id="DIP_RADAR_NEXTCLOUD"
-                                   {% if config.NOTIFICATIONS.DIP_RADAR_NEXTCLOUD %}checked{% endif %}
-                                   onchange="saveSettings(true)">
-                            <label for="DIP_RADAR_NEXTCLOUD" class="text-orange font-bold">Send Nextcloud Talk message when a bottom is detected</label>
-                        </div>
-                        <p class="settings-desc-sm" style="margin:0;color:#888;">In-app notification (bell icon) is always sent. Enable this to also receive a Nextcloud Talk message when the Reversal Score reaches ≥ 65.</p>
-                    </div>
-
-                    <div class="settings-panel border-left-orange">
                         <h4 class="settings-panel-header text-orange">Active Session Monitors</h4>
                         <p class="settings-desc-sm">Tickers currently armed for today's session. You can also disable them here without navigating back to the stock detail page.</p>
                         <div id="dip-radar-monitor-list" style="margin-top:10px;">
@@ -762,11 +751,8 @@
                     </div>
 
                     <div class="settings-panel border-left-cyan">
-                        <h4 class="settings-panel-header text-cyan">🔔 Notifications</h4>
-                        <div class="checkbox-group mb-10">
-                            <input type="checkbox" id="TRAP_NEXTCLOUD_ENABLED" {% if trap_cfg.NEXTCLOUD_ENABLED %}checked{% endif %}>
-                            <label for="TRAP_NEXTCLOUD_ENABLED">Send Nextcloud Talk alert when a high-severity phase is detected (default: in-app only)</label>
-                        </div>
+                        <h4 class="settings-panel-header text-cyan">🔔 Alert Dedup</h4>
+                        <p class="settings-desc-sm">Channel routing for trap alerts is set in the <strong>Notification Routing</strong> card below.</p>
                         <div class="flex-gap-15 mb-10">
                             <div class="form-group flex-1">
                                 <label>Alert cooldown (min)</label>
@@ -1406,6 +1392,41 @@
 
                 </details>
 
+                <details class="settings-card" id="notification-routing-card">
+                    <summary>🔔 Notification Routing</summary>
+                    <p class="settings-desc">Single pane of glass for every notification the app produces. For each job and alert, choose which channels it goes to: the rotating <strong>log file</strong>, the in-app <strong>notification centre</strong> (bell icon), and/or <strong>Nextcloud Talk</strong>. Briefings and the Fear &amp; Greed chart upload attachments to Talk and are governed by their own enable toggles, so they appear here for log/in-app routing only.</p>
+                    {% for group in notification_routing %}
+                    <div class="settings-panel border-left-cyan">
+                        <h4 class="settings-panel-header text-cyan">{{ group.category }}</h4>
+                        <table class="notif-routing-table">
+                            <thead>
+                                <tr>
+                                    <th>Notification</th>
+                                    <th><abbr title="Write to the rotating application log file (logs/app.log).">Log file</abbr></th>
+                                    <th><abbr title="Show in the in-app notification centre (bell icon).">In-app</abbr></th>
+                                    <th><abbr title="Push a message to your Nextcloud Talk conversation.">Talk</abbr></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for job in group.jobs %}
+                                {% for row in job %}
+                                <tr class="notif-routing-row{% if row.type == 'alert' %} notif-routing-alert{% endif %}">
+                                    <td class="notif-routing-label">{{ row.label }}</td>
+                                    {% for channel in ['log_file', 'in_app', 'nextcloud_talk'] %}
+                                    <td>
+                                        <input type="checkbox" data-notif-source="{{ row.source }}" data-notif-channel="{{ channel }}"
+                                               {% if row.channels[channel] %}checked{% endif %}>
+                                    </td>
+                                    {% endfor %}
+                                </tr>
+                                {% endfor %}
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% endfor %}
+                </details>
+
             </form>
         </div>
 
@@ -1685,12 +1706,6 @@
                         <input type="text" id="YAHOO_IPV6_ADDRESS" value="{{ config.YAHOO_IPV6_ADDRESS | default('') }}" placeholder="e.g., 2001:db8:1234:5678::1">
                     </div>
 
-                    <div class="form-group mb-10">
-                        <label class="checkbox-label">
-                            <input type="checkbox" id="NETWORK_FAULT_NOTIFY_NEXTCLOUD" {% if config.NETWORK_FAULT_NOTIFY_NEXTCLOUD %}checked{% endif %}>
-                            <abbr title="When enabled, a critical IPv6 socket failure also sends an alert to Nextcloud Talk. The notification centre always receives the alert regardless of this setting.">Send fault alerts to Nextcloud Talk</abbr>
-                        </label>
-                    </div>
 
                     <button type="button" class="btn-test mt-10 btn-cyan" id="testIpv6Btn" onclick="testYahooIPv6()">🧪 Test IPv6 Connection</button>
                     <div id="test-ipv6-msg" class="status-msg-sm d-none"></div>
@@ -1887,11 +1902,7 @@
                         </div>
                     </div>
 
-                    <div class="checkbox-group mt-10">
-                        <input type="checkbox" id="SMGB_PREDICTOR_SEND_NEXTCLOUD" {% if smgb_sched.SEND_NEXTCLOUD %}checked{% endif %}>
-                        <label for="SMGB_PREDICTOR_SEND_NEXTCLOUD">Send prediction to Nextcloud Talk</label>
-                    </div>
-                    <p class="settings-desc-sm">By default, predictions are only logged in the app notifications panel. Enable this to also push a message to your Nextcloud Talk conversation.</p>
+                    <p class="settings-desc-sm mt-10">Channel routing for predictions (in-app / Nextcloud Talk) is set in the <strong>Notification Routing</strong> card.</p>
 
                     <button type="button" class="btn-test mt-0 btn-cyan" onclick="triggerSMGBPredictor()">▶️ Run Prediction Now</button>
                     <div id="smgb-predictor-status" style="margin-top:6px; font-size:0.78rem; color:#aaa;"></div>

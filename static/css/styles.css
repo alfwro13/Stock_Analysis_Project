@@ -556,6 +556,13 @@ table.dataTable tbody tr td { color: #ccc; }
 .settings-panel-sm { background-color: #2c2c2c; padding: 15px; border-radius: 5px; margin-bottom: 5px; }
 .settings-panel-md { background-color: #2c2c2c; padding: 15px; border-radius: 5px; margin-bottom: 10px; }
 .settings-panel-header { margin-top: 0; }
+.notif-routing-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.notif-routing-table th { text-align: center; padding: 4px 6px; color: #aaa; font-weight: 600; border-bottom: 1px solid #444; }
+.notif-routing-table th:first-child { text-align: left; }
+.notif-routing-table td { padding: 4px 6px; text-align: center; border-bottom: 1px solid #383838; }
+.notif-routing-label { text-align: left; color: #ddd; }
+.notif-routing-alert .notif-routing-label { padding-left: 22px; color: #9fcaff; }
+.notif-routing-alert .notif-routing-label::before { content: "\21B3 "; color: #666; }
 .border-left-cyan { border-left: 3px solid #00ffcc; }
 .border-left-purple { border-left: 3px solid #b366ff; }
 .border-left-red { border-left: 3px solid #ff4d4d; }

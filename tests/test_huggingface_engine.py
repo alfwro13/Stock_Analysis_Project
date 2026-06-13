@@ -305,7 +305,7 @@ class TestRunCentralBankNlpAlert:
             patch("huggingface_engine._get_finbert_analyzer", return_value=_mock_analyzer()),
             patch("huggingface_engine.yahoo_engine") ,
             patch("huggingface_engine._score_text", return_value=avg_score),
-            patch("huggingface_engine.send_text_message"),
+            patch("notification_engine.nextcloud_talk.send_text_message"),
             patch("huggingface_engine.get_connection", return_value=mock_conn),
             patch("huggingface_engine.load_config", return_value={}),
         )
@@ -346,7 +346,7 @@ class TestRunCentralBankNlpAlert:
         with patch("huggingface_engine._get_finbert_analyzer", return_value=_mock_analyzer()), \
              patch("huggingface_engine.yahoo_engine") as mock_yf, \
              patch("huggingface_engine._score_text", return_value=0.0), \
-             patch("huggingface_engine.send_text_message"), \
+             patch("notification_engine.nextcloud_talk.send_text_message"), \
              patch("huggingface_engine.get_connection", return_value=mock_conn), \
              patch("huggingface_engine.load_config", return_value={}):
             mock_yf.get_news.return_value = news
@@ -362,7 +362,7 @@ class TestRunCentralBankNlpAlert:
         with patch("huggingface_engine._get_finbert_analyzer", return_value=_mock_analyzer()), \
              patch("huggingface_engine.yahoo_engine") as mock_yf, \
              patch("huggingface_engine._score_text", return_value=hawkish_score), \
-             patch("huggingface_engine.send_text_message",
+             patch("notification_engine.nextcloud_talk.send_text_message",
                    side_effect=lambda msg, cfg: dispatched.append(msg)), \
              patch("huggingface_engine.get_connection", return_value=mock_conn), \
              patch("huggingface_engine.load_config", return_value={}):
@@ -380,7 +380,7 @@ class TestRunCentralBankNlpAlert:
         with patch("huggingface_engine._get_finbert_analyzer", return_value=_mock_analyzer()), \
              patch("huggingface_engine.yahoo_engine") as mock_yf, \
              patch("huggingface_engine._score_text", return_value=dovish_score), \
-             patch("huggingface_engine.send_text_message",
+             patch("notification_engine.nextcloud_talk.send_text_message",
                    side_effect=lambda msg, cfg: dispatched.append(msg)), \
              patch("huggingface_engine.get_connection", return_value=mock_conn), \
              patch("huggingface_engine.load_config", return_value={}):
@@ -398,7 +398,7 @@ class TestRunCentralBankNlpAlert:
         with patch("huggingface_engine._get_finbert_analyzer", return_value=_mock_analyzer()), \
              patch("huggingface_engine.yahoo_engine") as mock_yf, \
              patch("huggingface_engine._score_text", return_value=neutral_score), \
-             patch("huggingface_engine.send_text_message",
+             patch("notification_engine.nextcloud_talk.send_text_message",
                    side_effect=lambda msg, cfg: dispatched.append(msg)), \
              patch("huggingface_engine.get_connection", return_value=mock_conn), \
              patch("huggingface_engine.load_config", return_value={}):
@@ -408,25 +408,31 @@ class TestRunCentralBankNlpAlert:
         assert "NEUTRAL" in dispatched[0]
 
     def test_dispatches_to_nextcloud_and_logs_to_db(self):
+        import database as _db
         news = [_cb_news("Bank of England rate decision", "BoE holds rate")]
-        mock_conn = MagicMock()
-        mock_cursor = MagicMock()
-        mock_conn.cursor.return_value = mock_cursor
+        conn = _db.get_connection()
+        conn.execute("DELETE FROM system_notifications WHERE message_type = 'Macro NLP'")
+        conn.commit()
+        conn.close()
         with patch("huggingface_engine._get_finbert_analyzer", return_value=_mock_analyzer()), \
              patch("huggingface_engine.yahoo_engine") as mock_yf, \
              patch("huggingface_engine._score_text", return_value=0.0), \
-             patch("huggingface_engine.send_text_message") as mock_send, \
-             patch("huggingface_engine.get_connection", return_value=mock_conn), \
+             patch("notification_engine.nextcloud_talk.send_text_message", return_value=True) as mock_send, \
+             patch("notification_engine.load_config", return_value={}), \
              patch("huggingface_engine.load_config", return_value={}):
             mock_yf.get_news.return_value = news
             result = run_central_bank_nlp_alert("BoE Decision", "GBP")
 
         assert result is True
+        # Nextcloud channel attempted (cb_nlp_alert default routing has Nextcloud on).
         mock_send.assert_called_once()
-        # DB INSERT should have been called
-        insert_calls = [c for c in mock_cursor.execute.call_args_list
-                        if "INSERT" in c.args[0].upper()]
-        assert len(insert_calls) == 1
+        # In-app channel wrote a 'Macro NLP' row to the database via the unified router.
+        conn = _db.get_connection()
+        rows = conn.execute(
+            "SELECT message_type FROM system_notifications WHERE message_type = 'Macro NLP'"
+        ).fetchall()
+        conn.close()
+        assert rows, "notify() must write a 'Macro NLP' in-app row through the router."
 
     def test_usd_uses_treasury_proxy(self):
         news = [_cb_news("Rate hike expected by Fed", "Federal Reserve decision")]
@@ -435,7 +441,7 @@ class TestRunCentralBankNlpAlert:
         with patch("huggingface_engine._get_finbert_analyzer", return_value=_mock_analyzer()), \
              patch("huggingface_engine.yahoo_engine") as mock_yf, \
              patch("huggingface_engine._score_text", return_value=0.0), \
-             patch("huggingface_engine.send_text_message"), \
+             patch("notification_engine.nextcloud_talk.send_text_message"), \
              patch("huggingface_engine.get_connection", return_value=mock_conn), \
              patch("huggingface_engine.load_config", return_value={}):
             mock_yf.get_news.return_value = news
@@ -449,7 +455,7 @@ class TestRunCentralBankNlpAlert:
         with patch("huggingface_engine._get_finbert_analyzer", return_value=_mock_analyzer()), \
              patch("huggingface_engine.yahoo_engine") as mock_yf, \
              patch("huggingface_engine._score_text", return_value=0.0), \
-             patch("huggingface_engine.send_text_message"), \
+             patch("notification_engine.nextcloud_talk.send_text_message"), \
              patch("huggingface_engine.get_connection", return_value=mock_conn), \
              patch("huggingface_engine.load_config", return_value={}):
             mock_yf.get_news.return_value = news

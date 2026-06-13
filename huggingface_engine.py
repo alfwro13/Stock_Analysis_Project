@@ -10,7 +10,7 @@ from typing import List, Any, Optional
 from transformers import pipeline
 
 from yahoo_engine import yahoo_engine
-from nextcloud_talk import send_text_message
+from notification_engine import notify
 from database import get_connection
 from config import load_config
 from constants import (
@@ -233,17 +233,7 @@ def run_central_bank_nlp_alert(event_name: str, currency: str) -> bool:
             f"*Top Headline Parsed:* {parsed_headlines[0]}"
         )
 
-        send_text_message(msg, config)
-
-        conn = None
-        try:
-            conn = get_connection()
-            cursor = conn.cursor()
-            cursor.execute("INSERT INTO system_notifications (message_type, message_text) VALUES (?, ?)", ("Macro NLP", msg))
-            conn.commit()
-        finally:
-            if conn:
-                conn.close()
+        notify("cb_nlp_alert", "Macro NLP", msg)
 
         logger.info(f"Central Bank NLP successfully dispatched: {tone}")
         return True

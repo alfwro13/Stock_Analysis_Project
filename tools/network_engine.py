@@ -9,9 +9,8 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from curl_cffi import requests as cffi_requests
 
-from database import get_connection
 from config import load_config, DATA_DIR
-from nextcloud_talk import send_text_message
+from notification_engine import notify
 
 _IPV6_FAULT_FLAG = DATA_DIR / "ipv6_fault.flag"
 
@@ -92,35 +91,19 @@ def _trigger_fallback_alert(ipv6_address: str, action_context: str, error_summar
     except Exception as flag_e:
         logger.debug("Could not write IPv6 fault flag: %s", flag_e)
 
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        msg = (
-            f"Critical Fault on {ipv6_address} while accessing Yahoo Finance for '{action_context}'.\n"
-            f"Summary: {error_summary}\n"
-            f"Details:\n{detailed_trace}"
-        )
-        cursor.execute(
-            "INSERT INTO system_notifications (message_type, message_text) VALUES (?, ?)",
-            ("Network Fault", msg)
-        )
-        conn.commit()
-        conn.close()
-    except Exception as db_e:
-        logger.error(f"Failed to log network fault to SQLite: {db_e}")
-
-    if config.get("NETWORK_FAULT_NOTIFY_NEXTCLOUD", False):
-        alert_msg = (
-            f"🚨 **CRITICAL NETWORK FAULT: YAHOO FINANCE** 🚨\n\n"
-            f"The custom IPv6 socket (`{ipv6_address}`) experienced a hard failure while fetching data for `{action_context}`.\n"
-            f"**Error:** {error_summary}\n\n"
-            f"🔄 *IPv6 interface permanently disabled for this session. All subsequent requests will use standard IPv4 routing.*\n\n"
-            f"*(Full stack trace has been written to the SQLite system_notifications table.)*"
-        )
-        try:
-            send_text_message(alert_msg, config)
-        except Exception as nc_e:
-            logger.error(f"Failed to dispatch Nextcloud alert for network fault: {nc_e}")
+    msg = (
+        f"Critical Fault on {ipv6_address} while accessing Yahoo Finance for '{action_context}'.\n"
+        f"Summary: {error_summary}\n"
+        f"Details:\n{detailed_trace}"
+    )
+    alert_msg = (
+        f"🚨 **CRITICAL NETWORK FAULT: YAHOO FINANCE** 🚨\n\n"
+        f"The custom IPv6 socket (`{ipv6_address}`) experienced a hard failure while fetching data for `{action_context}`.\n"
+        f"**Error:** {error_summary}\n\n"
+        f"🔄 *IPv6 interface permanently disabled for this session. All subsequent requests will use standard IPv4 routing.*\n\n"
+        f"*(Full stack trace has been written to the SQLite system_notifications table.)*"
+    )
+    notify("network_fault", "Network Fault", msg, nextcloud_text=alert_msg, level="error")
 
 
 def _patch_session_with_retries(

@@ -212,9 +212,7 @@ Written to `system_notifications` via `log_notification()` from `database.py`:
 Appears in the notification bell (orange `DipRadar` badge) and is visible on all pages.
 
 ### Nextcloud Talk (optional)
-Dispatched via `send_text_message()` from `nextcloud_talk.py` only when:
-- `config["NOTIFICATIONS"]["DIP_RADAR_NEXTCLOUD"]` is `True`
-- The alert is still armed (not already disarmed by a prior firing this session)
+Dispatched through `notification_engine.notify()` (source key `dip_radar_alert`) when the alert is still armed (not already disarmed by a prior firing this session) and the source's Nextcloud Talk channel is enabled. Nextcloud is off by default for this source.
 
 ```
 🎯 Dip Radar | AAPL @ 185.42 | Score: 75/100
@@ -223,7 +221,7 @@ Dispatched via `send_text_message()` from `nextcloud_talk.py` only when:
 ```
 
 **Enabling Nextcloud Talk alerts:**  
-Settings → 🎯 Dip Radar → "Send Nextcloud Talk message when a bottom is detected" checkbox.
+Settings → 🔔 Notification Routing → enable the *Nextcloud Talk* column on the **Dip Radar — Bottom Detected** row.
 
 ---
 
@@ -371,9 +369,7 @@ A collapsible "🎯 Dip Radar" panel is inserted between the **Intraday Pulse** 
 
 A new **"🎯 Dip Radar — Intraday Bottom Finder"** card is inserted in the intraday monitoring section (between Crash & Moonshot Alerts and News & RSS).
 
-The card contains two sub-panels:
-1. **Notifications** — the `DIP_RADAR_NEXTCLOUD` checkbox, wired into `saveSettings()` and persisted to `config.json`.
-2. **Active Session Monitors** — a dynamically loaded list of today's monitors with per-ticker Disable buttons, populated by polling `GET /api/intraday-monitor/list` on page load.
+The card contains **Active Session Monitors** — a dynamically loaded list of today's monitors with per-ticker Disable buttons, populated by polling `GET /api/intraday-monitor/list` on page load. Channel routing for the bottom-detected alert now lives in the dedicated **Notification Routing** card (source `dip_radar_alert`), not in this card.
 
 ---
 
@@ -447,17 +443,17 @@ SELECT * FROM alert_state WHERE engine = 'dip_radar';
 
 ## 14. Settings & Configuration
 
-**Config key:** `NOTIFICATIONS.DIP_RADAR_NEXTCLOUD` (boolean, default `false`)
+**Channel routing:** `NOTIFICATION_ROUTING.dip_radar_alert` (see the **Notification Routing** panel), e.g.
 
 ```json
 {
-  "NOTIFICATIONS": {
-    "DIP_RADAR_NEXTCLOUD": false
+  "NOTIFICATION_ROUTING": {
+    "dip_radar_alert": { "log_file": true, "in_app": true, "nextcloud_talk": false }
   }
 }
 ```
 
-This is the only persistent config for Dip Radar. All other behaviour (scan interval, threshold, session window) is hardcoded in `intraday_bottom_engine.py` as named constants:
+Routing is the only persistent config for Dip Radar. All other behaviour (scan interval, threshold, session window) is hardcoded in `intraday_bottom_engine.py` as named constants:
 
 | Constant | Value | Description |
 |----------|-------|-------------|

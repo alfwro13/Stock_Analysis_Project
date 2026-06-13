@@ -238,15 +238,36 @@ class TestSendTextMessageCredentials:
 
 class TestDispatchAlerts:
     """
-    _dispatch_alerts must check the bool returned by send_text_message.
-    A False return means the Nextcloud call failed; the alert must NOT be
-    recorded in alert_state (so it retries on the next scan cycle), and the
-    notification feed entry must carry status='failed'.
+    _dispatch_alerts now routes through notification_engine.notify(). The dedup
+    guarantee is preserved: notify() returns False when an enabled Nextcloud send
+    fails, and the alert must then NOT be recorded in alert_state (so it retries on
+    the next scan). The in-app feed row is an independent channel and is written
+    regardless of the Nextcloud outcome. Routing falls back to the registry default
+    (crash/moonshot → log+in-app+Nextcloud all on) since TEST_CONFIG has no
+    NOTIFICATION_ROUTING block.
     """
 
-    def test_successful_send_records_alert_and_logs_sent(self, orch, db_conn):
-        """Happy path: send succeeds → alert recorded, feed row status='sent'."""
-        with patch("intraday_orchestrator.send_text_message", return_value=True):
+    @staticmethod
+    def _patch(result=None, exc=None, side_effect=None):
+        from contextlib import contextmanager
+
+        @contextmanager
+        def _cm():
+            with patch("notification_engine.load_config", return_value=TEST_CONFIG):
+                kw = {}
+                if exc is not None:
+                    kw["side_effect"] = exc
+                elif side_effect is not None:
+                    kw["side_effect"] = side_effect
+                else:
+                    kw["return_value"] = result
+                with patch("notification_engine.nextcloud_talk.send_text_message", **kw):
+                    yield
+        return _cm()
+
+    def test_successful_send_records_alert_and_writes_feed(self, orch, db_conn):
+        """Happy path: Nextcloud send succeeds → alert recorded, in-app feed row written."""
+        with self._patch(result=True):
             orch._dispatch_alerts(
                 "Crash", _make_alert_tuple(), db_conn, _msg_builder, _feed_builder
             )
@@ -254,61 +275,44 @@ class TestDispatchAlerts:
         assert _read_alert_state("Crash", TEST_TICKER) is not None, (
             "record_alert_fired must be called on a successful send."
         )
-        rows = _read_notifications()
-        assert rows, "log_notification_feed must write a row on successful send."
-        assert rows[0]["status"] == "sent", (
-            f"Notification status must be 'sent' on success, got '{rows[0]['status']}'."
-        )
+        assert _read_notifications(), "notify() must write an in-app feed row on success."
 
     def test_failed_send_does_not_record_alert(self, orch, db_conn):
-        """send_text_message returns False → alert NOT recorded (retries next scan)."""
-        with patch("intraday_orchestrator.send_text_message", return_value=False):
+        """Nextcloud send returns False → alert NOT recorded (retries next scan)."""
+        with self._patch(result=False):
             orch._dispatch_alerts(
                 "Crash", _make_alert_tuple(), db_conn, _msg_builder, _feed_builder
             )
 
         assert _read_alert_state("Crash", TEST_TICKER) is None, (
-            "record_alert_fired must NOT be called when send_text_message returns False. "
+            "record_alert_fired must NOT be called when the Nextcloud send returns False. "
             "The alert must remain unrecorded so it retries on the next scan cycle."
         )
 
-    def test_failed_send_logs_notification_as_failed(self, orch, db_conn):
-        """send_text_message returns False → feed row written with status='failed'."""
-        with patch("intraday_orchestrator.send_text_message", return_value=False):
+    def test_failed_send_still_writes_in_app_feed(self, orch, db_conn):
+        """Nextcloud send returns False → in-app feed row still written (independent channel)."""
+        with self._patch(result=False):
             orch._dispatch_alerts(
                 "Crash", _make_alert_tuple(), db_conn, _msg_builder, _feed_builder
             )
 
-        rows = _read_notifications()
-        assert rows, "A feed row must still be written even when the send fails."
-        assert rows[0]["status"] == "failed", (
-            f"Notification status must be 'failed' on a failed send, got '{rows[0]['status']}'."
+        assert _read_notifications(), (
+            "The in-app feed row must still be written even when the Nextcloud send fails."
         )
 
     def test_exception_during_send_does_not_record_alert(self, orch, db_conn):
-        """Exception from send_text_message → alert NOT recorded."""
-        with patch("intraday_orchestrator.send_text_message", side_effect=RuntimeError("boom")):
+        """Exception from the Nextcloud send → alert NOT recorded."""
+        with self._patch(exc=RuntimeError("boom")):
             orch._dispatch_alerts(
                 "Crash", _make_alert_tuple(), db_conn, _msg_builder, _feed_builder
             )
 
         assert _read_alert_state("Crash", TEST_TICKER) is None, (
-            "record_alert_fired must NOT be called when send_text_message raises."
+            "record_alert_fired must NOT be called when the Nextcloud send raises."
         )
 
-    def test_exception_during_send_logs_notification_as_failed(self, orch, db_conn):
-        """Exception from send_text_message → feed row written with status='failed'."""
-        with patch("intraday_orchestrator.send_text_message", side_effect=RuntimeError("boom")):
-            orch._dispatch_alerts(
-                "Crash", _make_alert_tuple(), db_conn, _msg_builder, _feed_builder
-            )
-
-        rows = _read_notifications()
-        assert rows, "A feed row must still be written even when send raises."
-        assert rows[0]["status"] == "failed"
-
     def test_moonshot_failed_send_does_not_record_alert(self, orch, db_conn):
-        """Same return-value check applies for Moonshot engine."""
+        """Same return-value check applies for the Moonshot engine."""
         moonshot_tuple = [
             (TEST_TICKER, {"price": 200.0, "reason": f"SPIKE {MSG_MARKER}", "cautions": []}, "USD", {})
         ]
@@ -319,13 +323,13 @@ class TestDispatchAlerts:
         def moon_feed(t, p, a):
             return f"moonshot feed {MSG_MARKER}"
 
-        with patch("intraday_orchestrator.send_text_message", return_value=False):
+        with self._patch(result=False):
             orch._dispatch_alerts(
                 "Moonshot", moonshot_tuple, db_conn, moon_msg, moon_feed
             )
 
         assert _read_alert_state("Moonshot", TEST_TICKER) is None, (
-            "Moonshot: record_alert_fired must NOT be called when send returns False."
+            "Moonshot: record_alert_fired must NOT be called when the send returns False."
         )
 
     def test_multiple_tickers_partial_failure(self, orch, db_conn):
@@ -345,7 +349,7 @@ class TestDispatchAlerts:
             return call_count["n"] > 1  # first call fails, second succeeds
 
         try:
-            with patch("intraday_orchestrator.send_text_message", side_effect=send_side_effect):
+            with self._patch(side_effect=send_side_effect):
                 orch._dispatch_alerts("Crash", tuples, db_conn, _msg_builder, _feed_builder)
 
             assert _read_alert_state("Crash", ticker_a) is None, \

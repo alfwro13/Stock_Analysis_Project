@@ -1534,7 +1534,6 @@
                     "LOG_DIR": document.getElementById('FILE_LOGGING_LOG_DIR').value.trim() || 'logs'
                 },
                 "YAHOO_IPV6_ADDRESS": document.getElementById('YAHOO_IPV6_ADDRESS').value.trim(),
-                "NETWORK_FAULT_NOTIFY_NEXTCLOUD": document.getElementById('NETWORK_FAULT_NOTIFY_NEXTCLOUD').checked,
                 "GHOSTFOLIO_ACCOUNTS": {
                     "discovered": currentDiscoveredAccounts,
                     "active": activeAccounts
@@ -1682,8 +1681,7 @@
                     "SMGB_PREDICTOR": {
                         "ENABLED": document.getElementById('SMGB_PREDICTOR_ENABLED').checked,
                         "PRE_US_OPEN_TIME": document.getElementById('SMGB_PRE_US_OPEN_TIME').value,
-                        "POST_US_CLOSE_TIME": document.getElementById('SMGB_POST_US_CLOSE_TIME').value,
-                        "SEND_NEXTCLOUD": document.getElementById('SMGB_PREDICTOR_SEND_NEXTCLOUD').checked
+                        "POST_US_CLOSE_TIME": document.getElementById('SMGB_POST_US_CLOSE_TIME').value
                     },
                     "TRAP_MONITORS": {
                         "ENABLED": document.getElementById('TRAP_MONITOR_ENABLED').checked,
@@ -1748,15 +1746,21 @@
                         "REARM_PERCENT": parseFloat(document.getElementById('AI_CONTAGION_REARM').value)
                     },
                     "TRAP_MONITOR_ALERTS": {
-                        "NEXTCLOUD_ENABLED": document.getElementById('TRAP_NEXTCLOUD_ENABLED').checked,
                         "COOLDOWN_MINUTES": parseFloat(document.getElementById('TRAP_COOLDOWN').value),
                         "RETRIGGER_PERCENT": parseFloat(document.getElementById('TRAP_RETRIGGER').value),
                         "REARM_PERCENT": parseFloat(document.getElementById('TRAP_REARM').value),
                         "PROXY_TICKERS": document.getElementById('TRAP_PROXY_TICKERS').value
                             .split(/[,\s]+/).map(s => s.trim().toUpperCase()).filter(Boolean)
-                    },
-                    "DIP_RADAR_NEXTCLOUD": document.getElementById('DIP_RADAR_NEXTCLOUD').checked
+                    }
                 },
+                "NOTIFICATION_ROUTING": (function() {
+                    const routing = {};
+                    document.querySelectorAll('[data-notif-source]').forEach(cb => {
+                        const src = cb.dataset.notifSource;
+                        (routing[src] = routing[src] || {})[cb.dataset.notifChannel] = cb.checked;
+                    });
+                    return routing;
+                })(),
                 "XRAY_TARGETS": (function() {
                     function xt(id) {
                         const v = (document.getElementById(id)?.value ?? '').trim();

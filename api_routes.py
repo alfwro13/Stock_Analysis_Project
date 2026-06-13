@@ -574,7 +574,6 @@ class ScheduleItemConfig(BaseModel):
     MAX_AGE_DAYS: Optional[int] = None
     PRE_US_OPEN_TIME: Optional[str] = None
     POST_US_CLOSE_TIME: Optional[str] = None
-    SEND_NEXTCLOUD: Optional[bool] = None
     BULL_TRAP: Optional[bool] = None
     BEAR_TRAP: Optional[bool] = None
     CAPITULATION: Optional[bool] = None
@@ -636,7 +635,6 @@ class NotificationItemConfig(BaseModel):
     VOLUME_SPIKE_MULTIPLIER: Optional[float] = None
     BELLWETHER_TICKERS: Optional[List[str]] = None
     ETF_BASKET: Optional[List[str]] = None
-    NEXTCLOUD_ENABLED: Optional[bool] = None
     PROXY_TICKERS: Optional[List[str]] = None
 
 class NotificationsConfig(BaseModel):
@@ -650,7 +648,6 @@ class NotificationsConfig(BaseModel):
     RSS_FEED: Optional[NotificationItemConfig] = None
     AI_CONTAGION: Optional[NotificationItemConfig] = None
     TRAP_MONITOR_ALERTS: Optional[NotificationItemConfig] = None
-    DIP_RADAR_NEXTCLOUD: Optional[bool] = None
 
 class FreetradeMappingsConfig(BaseModel):
     US_MICS: Optional[List[str]] = None
@@ -669,7 +666,6 @@ class SettingsConfig(BaseModel):
 
     SERVER_URL: Optional[str] = None
     YAHOO_IPV6_ADDRESS: Optional[str] = None
-    NETWORK_FAULT_NOTIFY_NEXTCLOUD: Optional[bool] = None
     PORT: Optional[int] = None
     BASE_CURRENCY: Optional[str] = None
     USER_TIMEZONE: Optional[str] = None
@@ -682,6 +678,7 @@ class SettingsConfig(BaseModel):
     SCHEDULING: Optional[SchedulingConfig] = None
     REPORTS_DEFAULTS: Optional[ReportsDefaultsConfig] = None
     NOTIFICATIONS: Optional[NotificationsConfig] = None
+    NOTIFICATION_ROUTING: Optional[dict] = None
     XRAY_TARGETS: Optional[dict] = None
     FILE_LOGGING: Optional[FileLoggingConfig] = None
 

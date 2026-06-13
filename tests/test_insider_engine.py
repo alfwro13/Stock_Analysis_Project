@@ -247,7 +247,8 @@ class TestRunInsiderAlertFiltering:
         with patch("insider_engine.load_config", return_value=cfg), \
              patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
              patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("insider_engine.send_text_message", return_value=True), \
+             patch("notification_engine.load_config", return_value=cfg), \
+             patch("notification_engine.nextcloud_talk.send_text_message", return_value=True), \
              patch("insider_engine.yahoo_engine.get_insider_transactions", return_value=buy_df):
             ok, msg = run_insider_alert()
 
@@ -265,7 +266,8 @@ class TestRunInsiderAlertFiltering:
         with patch("insider_engine.load_config", return_value=cfg), \
              patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
              patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("insider_engine.send_text_message", return_value=True), \
+             patch("notification_engine.load_config", return_value=cfg), \
+             patch("notification_engine.nextcloud_talk.send_text_message", return_value=True), \
              patch("insider_engine.yahoo_engine.get_insider_transactions", return_value=buy_df):
             ok, msg = run_insider_alert()
 
@@ -312,7 +314,8 @@ class TestRunInsiderAlertFiltering:
         with patch("insider_engine.load_config", return_value=cfg), \
              patch("insider_engine.get_tickers_from_json", return_value=["BADFEED", "GOOD"]), \
              patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("insider_engine.send_text_message", return_value=True), \
+             patch("notification_engine.load_config", return_value=cfg), \
+             patch("notification_engine.nextcloud_talk.send_text_message", return_value=True), \
              patch("insider_engine.yahoo_engine.get_insider_transactions", side_effect=get_transactions_factory):
             ok, _ = run_insider_alert()
 
@@ -321,23 +324,24 @@ class TestRunInsiderAlertFiltering:
         rows = _read_all(db_path, "SELECT * FROM system_notifications")
         assert len(rows) == 1
 
-    def test_nextcloud_failure_does_not_increment_alerts_sent(self, db_path):
-        """Alert is written to DB even if Nextcloud POST fails, but count stays 0."""
+    def test_nextcloud_failure_still_writes_in_app_notification(self, db_path):
+        """The in-app row is an independent channel: it is written even if the Nextcloud send fails."""
         cfg = self._base_cfg(min_value=50_000)
         buy_df = _insider_df(days_ago=1, action="Purchase", value=200_000)
 
         with patch("insider_engine.load_config", return_value=cfg), \
              patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
              patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("insider_engine.send_text_message", return_value=False), \
+             patch("notification_engine.load_config", return_value=cfg), \
+             patch("notification_engine.nextcloud_talk.send_text_message", return_value=False), \
              patch("insider_engine.yahoo_engine.get_insider_transactions", return_value=buy_df):
             ok, msg = run_insider_alert()
 
-        # DB notification still written
+        # In-app notification is written regardless of the Nextcloud outcome.
         rows = _read_all(db_path, "SELECT * FROM system_notifications")
         assert len(rows) == 1
-        # Count in return message is 0 because Nextcloud returned False
-        assert "0" in msg
+        # The count now reflects alerts detected and routed (not Nextcloud delivery).
+        assert "1" in msg
 
 
 class TestRunInsiderAlertQuantamentalAlignment:
@@ -363,7 +367,8 @@ class TestRunInsiderAlertQuantamentalAlignment:
         with patch("insider_engine.load_config", return_value=self._base_cfg()), \
              patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
              patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("insider_engine.send_text_message", return_value=True), \
+             patch("notification_engine.load_config", return_value=self._base_cfg()), \
+             patch("notification_engine.nextcloud_talk.send_text_message", return_value=True), \
              patch("insider_engine.yahoo_engine.get_insider_transactions", return_value=buy_df):
             run_insider_alert()
 
@@ -385,7 +390,8 @@ class TestRunInsiderAlertQuantamentalAlignment:
         with patch("insider_engine.load_config", return_value=self._base_cfg()), \
              patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
              patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("insider_engine.send_text_message", return_value=True), \
+             patch("notification_engine.load_config", return_value=self._base_cfg()), \
+             patch("notification_engine.nextcloud_talk.send_text_message", return_value=True), \
              patch("insider_engine.yahoo_engine.get_insider_transactions", return_value=buy_df):
             run_insider_alert()
 
@@ -407,7 +413,8 @@ class TestRunInsiderAlertQuantamentalAlignment:
         with patch("insider_engine.load_config", return_value=self._base_cfg()), \
              patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
              patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("insider_engine.send_text_message", return_value=True), \
+             patch("notification_engine.load_config", return_value=self._base_cfg()), \
+             patch("notification_engine.nextcloud_talk.send_text_message", return_value=True), \
              patch("insider_engine.yahoo_engine.get_insider_transactions", return_value=buy_df):
             run_insider_alert()
 
@@ -471,7 +478,8 @@ class TestRunInsiderAlertConnectionLifecycle:
         with patch("insider_engine.load_config", return_value=cfg), \
              patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
              patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
-             patch("insider_engine.send_text_message", return_value=True), \
+             patch("notification_engine.load_config", return_value=cfg), \
+             patch("notification_engine.nextcloud_talk.send_text_message", return_value=True), \
              patch("insider_engine.yahoo_engine.get_insider_transactions", return_value=buy_df):
             ok, _ = run_insider_alert()
 

@@ -131,8 +131,9 @@ Tables added after initial schema creation. All managed via `database.py:init_db
 * **Key Columns:** `engine`, `ticker` (composite PK), `fingerprint`, `last_price`, `last_fired_utc`, `armed`, `fire_count`, `state_date`.
 
 #### `system_notifications`
-* **Purpose:** Scheduler job log surfaced in the Settings notifications panel.
+* **Purpose:** In-app notification feed surfaced in the Settings notifications panel.
 * **Key Columns:** `id` (PK autoincrement), `timestamp`, `message_type`, `message_text`, `is_read`, `status`.
+* **Written by:** all notifications now funnel through `notification_engine.notify()`, whose in-app channel writes this table (directly, or via `database.log_notification()`). Whether a given source reaches this table is controlled by `NOTIFICATION_ROUTING`. Deep pipeline-progress messages still call `database.log_notification()` directly (in-app only).
 
 #### `scheduler_run_log`
 * **Purpose:** Records the last-run timestamp per APScheduler job ID so jobs can guard against re-running within their minimum interval. Also stores per-job timing/outcome used by the Workflow Monitor.

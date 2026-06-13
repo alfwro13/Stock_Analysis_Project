@@ -136,6 +136,24 @@ def test_post_settings_with_valid_payload(client, confirm_token):
 
 
 @pytest.mark.api
+def test_post_settings_with_notification_routing(client, confirm_token):
+    """POST /api/settings with NOTIFICATION_ROUTING must persist and round-trip via load_config."""
+    import config as _config
+    payload = {
+        "NOTIFICATION_ROUTING": {
+            "crash_alert": {"log_file": True, "in_app": True, "nextcloud_talk": False},
+            "quant_analysis_job": {"log_file": False, "in_app": True, "nextcloud_talk": True},
+        }
+    }
+    resp = client.post("/api/settings", json=payload, headers={"X-Confirm-Token": confirm_token})
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}\n{resp.text}"
+    assert _json(resp).get("status") == "success"
+    routing = _config.load_config().get("NOTIFICATION_ROUTING", {})
+    assert routing.get("crash_alert", {}).get("nextcloud_talk") is False
+    assert routing.get("quant_analysis_job", {}).get("nextcloud_talk") is True
+
+
+@pytest.mark.api
 def test_post_settings_with_position_sizing(client, confirm_token):
     """POST /api/settings with position sizing values must return status=success."""
     payload = {

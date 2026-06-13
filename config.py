@@ -61,7 +61,6 @@ DEFAULT_CONFIG = {
     "SERVER_URL": "http://localhost",
     "FORCE_PASSWORD_RESET": False,
     "YAHOO_IPV6_ADDRESS": "",
-    "NETWORK_FAULT_NOTIFY_NEXTCLOUD": False,
     "PORT": 8090,
     "BASE_CURRENCY": "GBP",
     "USER_TIMEZONE": "Europe/London",   # IANA tz string — used for all display formatting
@@ -206,8 +205,7 @@ DEFAULT_CONFIG = {
         "SMGB_PREDICTOR": {
             "ENABLED": False,
             "PRE_US_OPEN_TIME": "13:30",
-            "POST_US_CLOSE_TIME": "22:00",
-            "SEND_NEXTCLOUD": False
+            "POST_US_CLOSE_TIME": "22:00"
         },
         "TRAP_MONITORS": {
             "ENABLED": False,
@@ -292,7 +290,6 @@ DEFAULT_CONFIG = {
             "REARM_PERCENT": 2.5
         },
         "TRAP_MONITOR_ALERTS": {
-            "NEXTCLOUD_ENABLED": False,
             "COOLDOWN_MINUTES": 120,
             "RETRIGGER_PERCENT": 3.0,
             "REARM_PERCENT": 5.0,
@@ -303,10 +300,10 @@ DEFAULT_CONFIG = {
             "PROXY_TICKERS": ["QQQ", "SMH", "NVDA", "MSFT", "AAPL"]
         },
         "MARKET_STRESS_ALERTS": {
-            "NEXTCLOUD_ENABLED": False,
             "COOLDOWN_MINUTES": 1440
         }
     },
+    "NOTIFICATION_ROUTING": {},
     "XRAY_TARGETS": {
         "market_development": {
             "Developed Markets": {"min": 80.0, "max": 95.0},

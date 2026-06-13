@@ -155,7 +155,7 @@ Last-run time is written to `scheduler_run_log` via `record_job_run('trap_monito
 The scheduler job fires an in-app notification for any ticker whose phase is `ACTIVE_SELLOFF`, `BULL_TRAP_RISK`, `CAPITULATION_FORMING`, or `BEAR_TRAP_RISK`. Tickers at `ACCUMULATION`, `CAUTION`, or `NEUTRAL` are scanned but do not generate alerts.
 
 ### Nextcloud Talk
-Sent only when `NOTIFICATIONS.TRAP_MONITOR_ALERTS.NEXTCLOUD_ENABLED` is `True` (default: `False` — in-app only by default). Message format:
+Channel delivery is controlled by the **Notification Routing** panel in Settings (source key `trap_monitor_alert`); Nextcloud Talk is off by default for this source. The dispatch is centralised through `notification_engine.notify()`. Message format:
 
 ```
 🎭 TRAP MONITOR: {TICKER} — {PHASE}
@@ -195,7 +195,6 @@ All keys live under `config.json` / `config.py:DEFAULT_CONFIG`.
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `NEXTCLOUD_ENABLED` | `false` | Send Nextcloud Talk alerts (in-app always fires) |
 | `COOLDOWN_MINUTES` | `120` | Minimum gap between repeated alerts for the same ticker |
 | `RETRIGGER_PERCENT` | `3.0` | Price move (%) that re-arms the alert within cooldown |
 | `REARM_PERCENT` | `5.0` | Price move (%) that fully resets the alert state |

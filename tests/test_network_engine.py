@@ -35,11 +35,9 @@ def reset_global_state():
 class TestTriggerFallbackAlert:
     def _call(self, tmp_path):
         ne._IPV6_FAULT_FLAG = tmp_path / "fault.flag"
-        mock_conn = MagicMock()
-        with patch("tools.network_engine.get_connection", return_value=mock_conn), \
-             patch("tools.network_engine.send_text_message"):
+        with patch("tools.network_engine.notify") as mock_notify:
             ne._trigger_fallback_alert("::1", "test-ctx", "err-summary", "trace-detail", {})
-        return mock_conn
+        return mock_notify
 
     def test_sets_is_failing_latch(self, tmp_path):
         self._call(tmp_path)
@@ -50,15 +48,14 @@ class TestTriggerFallbackAlert:
         assert ne.GLOBAL_IPV6_STATUS["last_error"] == "err-summary"
         assert ne.GLOBAL_IPV6_STATUS["last_fail_time"] > 0
 
-    def test_writes_notification_to_db(self, tmp_path):
-        mock_conn = self._call(tmp_path)
-        cursor = mock_conn.cursor.return_value
-        cursor.execute.assert_called_once()
-        sql, params = cursor.execute.call_args[0]
-        assert "system_notifications" in sql
-        assert params[0] == "Network Fault"
-        assert "test-ctx" in params[1]
-        assert "err-summary" in params[1]
+    def test_dispatches_notification_through_router(self, tmp_path):
+        mock_notify = self._call(tmp_path)
+        mock_notify.assert_called_once()
+        args, kwargs = mock_notify.call_args
+        assert args[0] == "network_fault"
+        assert args[1] == "Network Fault"
+        assert "test-ctx" in args[2]
+        assert "err-summary" in args[2]
 
     def test_writes_flag_file_with_timestamp(self, tmp_path):
         self._call(tmp_path)
@@ -71,11 +68,9 @@ class TestTriggerFallbackAlert:
     def test_second_call_is_noop(self, tmp_path):
         ne.GLOBAL_IPV6_STATUS["is_failing"] = True
         ne._IPV6_FAULT_FLAG = tmp_path / "fault.flag"
-        with patch("tools.network_engine.get_connection") as mock_get_conn, \
-             patch("tools.network_engine.send_text_message") as mock_nc:
+        with patch("tools.network_engine.notify") as mock_notify:
             ne._trigger_fallback_alert("::1", "ctx", "err", "trace", {})
-        mock_get_conn.assert_not_called()
-        mock_nc.assert_not_called()
+        mock_notify.assert_not_called()
 
 
 # ── _maybe_restore_latch ──────────────────────────────────────────────────────
