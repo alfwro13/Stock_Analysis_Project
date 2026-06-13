@@ -2,7 +2,7 @@ let allArticles = [];
 let currentSource = 'portfolio';
 let selectedId = null;
 
-const FS_MIN = 1, FS_MAX = 5, FS_DEFAULT = 3;
+const FS_MIN = 1, FS_MAX = 7, FS_DEFAULT = 3;
 
 function relTime(ts) {
     const diff = Math.floor(Date.now() / 1000) - ts;
@@ -41,7 +41,7 @@ function looksLikeHeading(text) {
 
 function formatArticleBody(text, ticker) {
     if (!text) return '';
-    const blocks = text.replace(/\r\n/g, '\n').split(/\n{2,}/);
+    const blocks = text.replace(/\r\n/g, '\n').split(/\n+/);
     let tickerRe = null;
     if (ticker) {
         const esc = ticker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -148,7 +148,7 @@ function selectArticle(id) {
     const pubDate = new Date(a.published_at * 1000).toLocaleString();
     const bodyHtml = a.body_fetched && a.full_text
         ? `<div class="reader-body">${formatArticleBody(a.full_text, a.ticker)}</div>`
-        : `<div class="reader-body summary-fallback">${escHtml(a.summary || 'No summary available.')}<br><em style="font-size:0.85em;color:#666;">(Full text unavailable — open original for the complete article)</em></div>`;
+        : `<div class="reader-body summary-fallback">${formatArticleBody(a.summary || 'No summary available.', a.ticker)}<p class="reader-p"><em style="font-size:0.85em;color:#666;">(Full text unavailable — open original for the complete article)</em></p></div>`;
 
     const headlineHtml = a.url
         ? `<a href="${escHtml(a.url)}" target="_blank" rel="noopener" class="reader-headline-link">${escHtml(a.headline)}</a>`
