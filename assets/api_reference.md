@@ -1122,7 +1122,7 @@ Returns the scheduled-job dependency graph and detected scheduling conflicts for
       "severity": "warning",
       "job_id": "ml_inference_job",
       "related": "overnight_quant_scan_job",
-      "message": "Daily ML Inference starts 30 min after Overnight Quant Scan, but it typically runs ~45 min — it may still be running."
+      "message": "Daily ML Inference starts 30 min after Daily Quant Screener (Portfolio & Watchlist), but it typically runs ~45 min — it may still be running."
     }
   ]
 }
