@@ -613,6 +613,14 @@ def init_db() -> None:
             )
         ''')
 
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                token_hash  TEXT PRIMARY KEY,
+                expires_at  TEXT NOT NULL,
+                used        INTEGER NOT NULL DEFAULT 0
+            )
+        ''')
+
         conn.commit()
 
         migrate_db(conn, cursor)

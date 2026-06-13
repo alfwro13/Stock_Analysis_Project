@@ -57,20 +57,26 @@ app.add_middleware(
 )
 
 # Paths that never require a session
-_EXEMPT = {"/login", "/api/login"}
+_EXEMPT = {"/login", "/api/login", "/reset-password", "/api/request-password-reset", "/api/reset-password"}
 _EXEMPT_PREFIXES = ("/static/", "/assets/", "/rss/")
 
 # Paths accessible with a valid session even when password is still default
-_CHANGE_PW_PATHS = {"/change-password", "/api/change-password"}
+_CHANGE_PW_PATHS = {"/change-password", "/api/change-password", "/admin-reset-password", "/api/admin-reset-password"}
 
 
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
     path = request.url.path
 
-    # Static files and login routes are always public
+    # Static files, login, and password-reset routes are always public
     if path in _EXEMPT or any(path.startswith(p) for p in _EXEMPT_PREFIXES):
         return await call_next(request)
+
+    # FORCE_PASSWORD_RESET flag in config.json allows unauthenticated access to the admin reset page
+    if path in _CHANGE_PW_PATHS:
+        from config import load_config
+        if load_config().get("FORCE_PASSWORD_RESET", False):
+            return await call_next(request)
 
     # API key authentication (for scripts / curl)
     api_key = request.headers.get("X-API-Key", "")
