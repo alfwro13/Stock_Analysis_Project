@@ -1072,6 +1072,21 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
     except Exception as e:
         logger.error("[MIGRATION ERROR] smgb_predictions rebuild failed: %s", e)
 
+    # DATA MIGRATION: nullify legacy raw CPIAUCSL index values stored in us_cpi_inflation.
+    # Commit c1761b3 introduced YoY% conversion but lacked 12-month lookback for the first
+    # ~12 months of the 730-day fetch window, leaving raw index values (~313-320) in those
+    # rows instead of YoY% (~2-4%). CPI YoY% has never exceeded 20% in the modern era;
+    # anything above 20 is a corrupt artefact. Rows nullified here are re-downloaded with
+    # correct values on the next macro_data_engine run.
+    try:
+        cursor.execute("SELECT COUNT(*) FROM macro_indicators WHERE us_cpi_inflation > 20")
+        bad_count = cursor.fetchone()[0]
+        if bad_count > 0:
+            logger.info("[MIGRATION] Nullifying %s corrupted us_cpi_inflation rows (raw index values > 20).", bad_count)
+            cursor.execute("UPDATE macro_indicators SET us_cpi_inflation=NULL WHERE us_cpi_inflation > 20")
+    except Exception as e:
+        logger.error("[MIGRATION ERROR] CPI corruption cleanup: %s", e)
+
     try:
         conn.commit()
     except Exception as e:

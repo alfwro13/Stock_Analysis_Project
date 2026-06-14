@@ -166,7 +166,7 @@ def create_macro_chart(df, df_baseline, ticker):
     return fig.to_html(full_html=False, include_plotlyjs='cdn', config=clean_config)
 
 def create_us_inflation_chart(df_spy: pd.DataFrame, df_cpi: pd.DataFrame) -> str:
-    # df_cpi['value'] is the RAW CPIAUCSL index level (not already-YoY); pct_change(12) applied after resampling to monthly.
+    # df_cpi['value'] is us_cpi_inflation from the DB, already stored as YoY% by macro_data_engine.
     fig = make_subplots(specs=[[{"secondary_y": True}]])
 
     if not df_spy.empty and 'Close' in df_spy.columns:
@@ -180,15 +180,12 @@ def create_us_inflation_chart(df_spy: pd.DataFrame, df_cpi: pd.DataFrame) -> str
 
     if not df_cpi.empty and 'value' in df_cpi.columns:
         df_cpi_local = df_cpi.copy().sort_index()
-        # Collapse daily forward-fill back to true monthly frequency
         monthly_series = df_cpi_local['value'].resample('MS').first().dropna()
-        # True 12-month YoY % change
-        yoy_series = (monthly_series.pct_change(periods=12) * 100.0).dropna()
 
-        if not yoy_series.empty:
+        if not monthly_series.empty:
             fig.add_trace(
                 go.Scatter(
-                    x=yoy_series.index, y=yoy_series.values, name="US CPI YoY %",
+                    x=monthly_series.index, y=monthly_series.values, name="US CPI YoY %",
                     line=dict(color="#ff8800", width=2, dash='dot'), connectgaps=True
                 ),
                 secondary_y=True

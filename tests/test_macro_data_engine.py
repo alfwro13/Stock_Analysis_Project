@@ -280,7 +280,11 @@ class TestUpdateMacroIndicators:
             mock_conn.assert_not_called()
 
     def test_cpi_yoy_conversion_stores_percentage_not_raw_index(self):
-        """13 months of raw CPI index values (~310-322) must be stored as YoY % (~3.9), not the index."""
+        """13 months of raw CPI index values (~310-322) must be stored as YoY % (~3.9), not the index.
+
+        now_local is fixed to 2023-12-31 so start_dt ≈ 2022-01-02, making the mock
+        data window (2022-01 to 2023-01) fall within the 730-day fetch range.
+        """
         dates = pd.date_range("2022-01-31", periods=13, freq="ME")
         cpi_df = pd.DataFrame({"CPIAUCSL": [310.0 + i for i in range(13)]}, index=dates)
 
@@ -292,7 +296,9 @@ class TestUpdateMacroIndicators:
                  patch("macro_data_engine.get_retry_session"), \
                  patch("macro_data_engine.fetch_fred_api", side_effect=fred_side_effect), \
                  patch("macro_data_engine.fetch_boe_data", return_value=pd.DataFrame()), \
-                 patch("macro_data_engine.fetch_ons_taxonomy_data", return_value=pd.DataFrame()):
+                 patch("macro_data_engine.fetch_ons_taxonomy_data", return_value=pd.DataFrame()), \
+                 patch("macro_data_engine.time_engine") as mock_te:
+                mock_te.now_local.return_value = datetime(2023, 12, 31)
                 update_macro_indicators()
 
             conn = _db_module.get_connection()
@@ -302,7 +308,7 @@ class TestUpdateMacroIndicators:
             conn.close()
             assert row is not None and row["us_cpi_inflation"] is not None
             val = row["us_cpi_inflation"]
-            # 322/310 - 1 = ~3.87%: must be small %, not the raw index ~322
+            # (322 - 310) / 310 * 100 ≈ 3.87%: must be small %, not the raw index ~322
             assert abs(val) < 50, f"Expected YoY %%, got raw index value {val}"
             assert abs(val) > 0.5
         finally:

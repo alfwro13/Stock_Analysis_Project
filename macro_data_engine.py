@@ -187,11 +187,23 @@ def update_macro_indicators() -> None:
         # rewrite of the existing >3.0% circuit breaker threshold logic.
         # Alternative Option: Another option could be to use `GBPUSD=X` divergence + UK Gilt spread 
         # as an intermarket proxy, but that would require heavier downstream cross-engine calculation.
-        fred_tickers = ['WM2NS', 'ICSA', 'BAMLH0A0HYM2', 'BAMLHE00EHYIOAS', 'T10Y2Y', 'CPIAUCSL', 'FEDFUNDS', 'DFII10']
+        fred_tickers = ['WM2NS', 'ICSA', 'BAMLH0A0HYM2', 'BAMLHE00EHYIOAS', 'T10Y2Y', 'FEDFUNDS', 'DFII10']
         for ticker in fred_tickers:
             df = fetch_fred_api(session, ticker, start_dt, end_dt, fred_api_key)
             if not df.empty:
                 dfs.append(df)
+
+        # Fetch CPIAUCSL with 13 extra months so pct_change(12) produces valid YoY for the full 730-day window.
+        # Without this, the first 12 months of the window would have NaN YoY, leaving old raw-index values
+        # (~313-320) in the DB that corrupt the chart when mixed with later YoY% rows (~2-4%).
+        cpi_start = start_dt - timedelta(days=395)
+        df_cpi_raw = fetch_fred_api(session, 'CPIAUCSL', cpi_start, end_dt, fred_api_key)
+        if not df_cpi_raw.empty and 'CPIAUCSL' in df_cpi_raw.columns:
+            monthly_cpi = df_cpi_raw['CPIAUCSL'].resample('ME').last().dropna()
+            cpi_yoy = (monthly_cpi.pct_change(periods=12) * 100).dropna()
+            cpi_yoy_window = cpi_yoy[cpi_yoy.index >= pd.Timestamp(start_dt.date())]
+            if not cpi_yoy_window.empty:
+                dfs.append(cpi_yoy_window.rename('CPIAUCSL').to_frame())
 
     logger.info("Fetching Bank of England IADB Data (2-Year History)...")
     df_boe = fetch_boe_data(session, 'LPMVWNM', start_dt, end_dt)
@@ -217,12 +229,6 @@ def update_macro_indicators() -> None:
     merged_df.ffill(inplace=True)
 
     # Phase 1 Remediation: Lookahead bias removed. No .bfill() is applied here.
-
-    # Convert CPIAUCSL raw index (~310-340) to YoY %: resample monthly, pct_change(12), ffill to daily.
-    if 'CPIAUCSL' in merged_df.columns and isinstance(merged_df.index, pd.DatetimeIndex):
-        monthly_cpi = merged_df['CPIAUCSL'].resample('ME').last().dropna()
-        cpi_yoy = monthly_cpi.pct_change(periods=12) * 100
-        merged_df['CPIAUCSL'] = cpi_yoy.reindex(merged_df.index).ffill()
 
     records = []
     for dt, row in merged_df.iterrows():
@@ -258,7 +264,11 @@ def update_macro_indicators() -> None:
         conn.commit()
         logger.info(f"Successfully bulk-inserted up to {cursor.rowcount} new Macro Regime historical days (ignoring existing to preserve PIT).")
 
-        # Patch rows where us_cpi_inflation stored the raw index (> 100); INSERT OR IGNORE preserved other columns.
+        # Nullify any rows where the raw CPIAUCSL index was previously stored instead of YoY%.
+        # CPI YoY never exceeds 20% in the modern era; any value > 20 is a legacy raw-index artefact.
+        cursor.execute("UPDATE macro_indicators SET us_cpi_inflation=NULL WHERE us_cpi_inflation > 20")
+
+        # Patch all rows in the current window with correctly computed YoY% values.
         if 'CPIAUCSL' in merged_df.columns:
             cpi_patch = [
                 (float(row['CPIAUCSL']) if pd.notna(row['CPIAUCSL']) else None, dt.strftime("%Y-%m-%d"))
@@ -268,7 +278,7 @@ def update_macro_indicators() -> None:
                 "UPDATE macro_indicators SET us_cpi_inflation=? WHERE date=?",
                 [(v, d) for v, d in cpi_patch if v is not None],
             )
-            conn.commit()
+        conn.commit()
     except sqlite3.Error as e:
         logger.error(f"Database bulk insertion failed: {e}")
         conn.rollback()
