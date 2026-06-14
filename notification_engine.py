@@ -1,4 +1,4 @@
-# GUI name: "Notification Routing". Canonical scheduled-job names live in scheduler_engine.JOB_GRAPH.
+# GUI name: "Notification Settings". Canonical scheduled-job names live in scheduler_engine.JOB_GRAPH.
 import logging
 import threading
 import sqlite3
@@ -132,7 +132,7 @@ def notify(
 
 
 def build_routing_panel(config: Optional[dict] = None) -> list:
-    """Grouped source list for the Settings 'Notification Routing' panel, keyed by JOB_GRAPH category."""
+    """Grouped source list for the Settings 'Notification Settings' panel, keyed by JOB_GRAPH category."""
     from scheduler_engine import JOB_GRAPH, job_label
 
     cfg = config if config is not None else load_config()

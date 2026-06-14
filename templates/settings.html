@@ -752,7 +752,7 @@
 
                     <div class="settings-panel border-left-cyan">
                         <h4 class="settings-panel-header text-cyan">🔔 Alert Dedup</h4>
-                        <p class="settings-desc-sm">Channel routing for trap alerts is set in the <strong>Notification Routing</strong> card below.</p>
+                        <p class="settings-desc-sm">Channel routing for trap alerts is set in the <strong>Notification Settings</strong> card (right-hand column).</p>
                         <div class="flex-gap-15 mb-10">
                             <div class="form-group flex-1">
                                 <label>Alert cooldown (min)</label>
@@ -1392,41 +1392,6 @@
 
                 </details>
 
-                <details class="settings-card" id="notification-routing-card">
-                    <summary>🔔 Notification Routing</summary>
-                    <p class="settings-desc">Single pane of glass for every notification the app produces. For each job and alert, choose which channels it goes to: the rotating <strong>log file</strong>, the in-app <strong>notification centre</strong> (bell icon), and/or <strong>Nextcloud Talk</strong>. Briefings and the Fear &amp; Greed chart upload attachments to Talk and are governed by their own enable toggles, so they appear here for log/in-app routing only.</p>
-                    {% for group in notification_routing %}
-                    <div class="settings-panel border-left-cyan">
-                        <h4 class="settings-panel-header text-cyan">{{ group.category }}</h4>
-                        <table class="notif-routing-table">
-                            <thead>
-                                <tr>
-                                    <th>Notification</th>
-                                    <th><abbr title="Write to the rotating application log file (logs/app.log).">Log file</abbr></th>
-                                    <th><abbr title="Show in the in-app notification centre (bell icon).">In-app</abbr></th>
-                                    <th><abbr title="Push a message to your Nextcloud Talk conversation.">Talk</abbr></th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for job in group.jobs %}
-                                {% for row in job %}
-                                <tr class="notif-routing-row{% if row.type == 'alert' %} notif-routing-alert{% endif %}">
-                                    <td class="notif-routing-label">{{ row.label }}</td>
-                                    {% for channel in ['log_file', 'in_app', 'nextcloud_talk'] %}
-                                    <td>
-                                        <input type="checkbox" data-notif-source="{{ row.source }}" data-notif-channel="{{ channel }}"
-                                               {% if row.channels[channel] %}checked{% endif %}>
-                                    </td>
-                                    {% endfor %}
-                                </tr>
-                                {% endfor %}
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                    {% endfor %}
-                </details>
-
             </form>
         </div>
 
@@ -1902,7 +1867,7 @@
                         </div>
                     </div>
 
-                    <p class="settings-desc-sm mt-10">Channel routing for predictions (in-app / Nextcloud Talk) is set in the <strong>Notification Routing</strong> card.</p>
+                    <p class="settings-desc-sm mt-10">Channel routing for predictions (in-app / Nextcloud Talk) is set in the <strong>Notification Settings</strong> card.</p>
 
                     <button type="button" class="btn-test mt-0 btn-cyan" onclick="triggerSMGBPredictor()">▶️ Run Prediction Now</button>
                     <div id="smgb-predictor-status" style="margin-top:6px; font-size:0.78rem; color:#aaa;"></div>
@@ -2015,6 +1980,47 @@
                     <div id="workflow-conflicts">
                         <p class="text-muted text-sm">Loading…</p>
                     </div>
+                </div>
+            </details>
+
+            <details class="settings-card" id="notification-settings-card">
+                <summary>🔔 Notification Settings</summary>
+                <p class="settings-desc">Single pane of glass for every notification the app produces. For each job and alert, choose which channels it goes to: the rotating <strong>log file</strong>, the in-app <strong>notification centre</strong> (bell icon), and/or <strong>Nextcloud Talk</strong>. Briefings and the Fear &amp; Greed chart upload attachments to Talk and are governed by their own enable toggles, so they appear here for log/in-app routing only.</p>
+                {% for group in notification_routing %}
+                <div class="settings-panel border-left-cyan">
+                    <h4 class="settings-panel-header text-cyan">{{ group.category }}</h4>
+                    <table class="notif-routing-table">
+                        <thead>
+                            <tr>
+                                <th>Notification</th>
+                                <th><abbr title="Write to the rotating application log file (logs/app.log).">Log file</abbr></th>
+                                <th><abbr title="Show in the in-app notification centre (bell icon).">In-app</abbr></th>
+                                <th><abbr title="Push a message to your Nextcloud Talk conversation.">Talk</abbr></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for job in group.jobs %}
+                            {% for row in job %}
+                            <tr class="notif-routing-row{% if row.type == 'alert' %} notif-routing-alert{% endif %}">
+                                <td class="notif-routing-label">{{ row.label }}</td>
+                                {% for channel in ['log_file', 'in_app', 'nextcloud_talk'] %}
+                                <td>
+                                    <input type="checkbox" data-notif-source="{{ row.source }}" data-notif-channel="{{ channel }}"
+                                           {% if row.channels[channel] %}checked{% endif %}>
+                                </td>
+                                {% endfor %}
+                            </tr>
+                            {% endfor %}
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% endfor %}
+
+                <div class="settings-panel border-left-cyan">
+                    <h4 class="settings-panel-header text-cyan">How to read this table</h4>
+                    <p class="settings-desc-sm">Each job has a non-indented <strong>status row</strong> that routes that job's start / success / error messages. Indented beneath it (marked <strong>↳</strong>) are the individual <strong>alerts</strong> that job fires; each routes independently. For example, the checkboxes on <strong>Crash &amp; Moonshot Alerts</strong> control the orchestrator job's status messages, while the <strong>↳ Crash Alert</strong> and <strong>↳ Moonshot Alert</strong> rows control those specific alerts. A status row and its alert can share a near-identical name (e.g. <em>Portfolio Earnings Alerts</em> vs. <em>↳ Portfolio Earnings Alert</em>) — that is expected, not a duplicate.</p>
+                    <p class="settings-desc-sm">The morning &amp; lunchtime briefings and the Fear &amp; Greed chart send <strong>file attachments</strong> to Nextcloud Talk through their own enable toggles (in their own Settings panels). Their row here routes only their log / in-app status messages — not the attachment itself.</p>
                 </div>
             </details>
 

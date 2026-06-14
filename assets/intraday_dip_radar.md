@@ -221,7 +221,7 @@ Dispatched through `notification_engine.notify()` (source key `dip_radar_alert`)
 ```
 
 **Enabling Nextcloud Talk alerts:**  
-Settings → 🔔 Notification Routing → enable the *Nextcloud Talk* column on the **Dip Radar — Bottom Detected** row.
+Settings → 🔔 Notification Settings → enable the *Nextcloud Talk* column on the **Dip Radar — Bottom Detected** row.
 
 ---
 
@@ -369,7 +369,7 @@ A collapsible "🎯 Dip Radar" panel is inserted between the **Intraday Pulse** 
 
 A new **"🎯 Dip Radar — Intraday Bottom Finder"** card is inserted in the intraday monitoring section (between Crash & Moonshot Alerts and News & RSS).
 
-The card contains **Active Session Monitors** — a dynamically loaded list of today's monitors with per-ticker Disable buttons, populated by polling `GET /api/intraday-monitor/list` on page load. Channel routing for the bottom-detected alert now lives in the dedicated **Notification Routing** card (source `dip_radar_alert`), not in this card.
+The card contains **Active Session Monitors** — a dynamically loaded list of today's monitors with per-ticker Disable buttons, populated by polling `GET /api/intraday-monitor/list` on page load. Channel routing for the bottom-detected alert now lives in the dedicated **Notification Settings** card (source `dip_radar_alert`), not in this card.
 
 ---
 
@@ -443,7 +443,7 @@ SELECT * FROM alert_state WHERE engine = 'dip_radar';
 
 ## 14. Settings & Configuration
 
-**Channel routing:** `NOTIFICATION_ROUTING.dip_radar_alert` (see the **Notification Routing** panel), e.g.
+**Channel routing:** `NOTIFICATION_ROUTING.dip_radar_alert` (see the **Notification Settings** panel), e.g.
 
 ```json
 {

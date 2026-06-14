@@ -894,7 +894,7 @@ After saving, the scheduler is reloaded to apply any changed schedule configurat
 }
 ```
 
-`NOTIFICATION_ROUTING` is keyed by notification source: a scheduled job id (its start/success/error status) or an alert source key (e.g. `crash_alert`, `moonshot_alert`, `earnings_alert`, `trap_monitor_alert`, `dip_radar_alert`, `cb_nlp_alert`, `network_fault`). Each value selects the delivery channels — `log_file`, `in_app`, `nextcloud_talk`. Any source omitted from this object falls back to its built-in default routing. This drives the **Notification Routing** panel in Settings and is consumed by `notification_engine.notify()`.
+`NOTIFICATION_ROUTING` is keyed by notification source: a scheduled job id (its start/success/error status) or an alert source key (e.g. `crash_alert`, `moonshot_alert`, `earnings_alert`, `trap_monitor_alert`, `dip_radar_alert`, `cb_nlp_alert`, `network_fault`). Each value selects the delivery channels — `log_file`, `in_app`, `nextcloud_talk`. Any source omitted from this object falls back to its built-in default routing. This drives the **Notification Settings** panel in Settings and is consumed by `notification_engine.notify()`.
 
 **Response**
 

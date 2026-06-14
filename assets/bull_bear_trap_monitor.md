@@ -155,7 +155,7 @@ Last-run time is written to `scheduler_run_log` via `record_job_run('trap_monito
 The scheduler job fires an in-app notification for any ticker whose phase is `ACTIVE_SELLOFF`, `BULL_TRAP_RISK`, `CAPITULATION_FORMING`, or `BEAR_TRAP_RISK`. Tickers at `ACCUMULATION`, `CAUTION`, or `NEUTRAL` are scanned but do not generate alerts.
 
 ### Nextcloud Talk
-Channel delivery is controlled by the **Notification Routing** panel in Settings (source key `trap_monitor_alert`); Nextcloud Talk is off by default for this source. The dispatch is centralised through `notification_engine.notify()`. Message format:
+Channel delivery is controlled by the **Notification Settings** panel in Settings (source key `trap_monitor_alert`); Nextcloud Talk is off by default for this source. The dispatch is centralised through `notification_engine.notify()`. Message format:
 
 ```
 🎭 TRAP MONITOR: {TICKER} — {PHASE}
