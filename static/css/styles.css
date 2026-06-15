@@ -351,6 +351,13 @@ table.dataTable.display tbody tr.even > .sorting_1, table.dataTable.order-column
   /* Stock detail: let portfolio stat row and h1 wrap instead of overflowing */
   .flex-gap-40 { flex-wrap: wrap; gap: 15px; }
   .body-detail h1 { flex-wrap: wrap; }
+  /* Sub-account breakdown rows overflow at ~710px (5 items × gap:40px); wrap them */
+  .sub-account-row { flex-wrap: wrap; gap: 10px; }
+  .sub-account-name { min-width: 0; }
+  /* Verdict header (h2 + Refresh + AI buttons) can overflow on narrow screens */
+  .flex-between-center { flex-wrap: wrap; gap: 8px; }
+  /* Clip any remaining horizontal overflow so the page never widens past the viewport */
+  .w-100-box { overflow-x: hidden; }
   /* Table: bleed wrapper to viewport edges, cancelling body's 20px left/right padding */
   #dataTable_wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; margin-left: -20px; margin-right: -20px; }
   /* Override DataTables' own generous padding (it loads after styles.css and needs !important) */
