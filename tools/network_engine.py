@@ -193,7 +193,6 @@ def create_failover_session(ipv6_address: str, action_context: str, config: dict
                     logger.warning(f"Closed session detected. Rebuilding IPv6 session for '{action_context}' ({ipv6_address})...")
                     session = cffi_requests.Session(impersonate="chrome", interface=ipv6_address)
                     original_request = session.request
-                    _clear_yfinance_crumb()
                     continue
                 
                 # If we already fell back to standard routing and it STILL failed, we are completely offline or hard-banned.

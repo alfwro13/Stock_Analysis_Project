@@ -11,6 +11,13 @@ from tools.network_engine import yahoo_connection_boundary
 
 logger = logging.getLogger(__name__)
 
+# Serialises all calls that touch the yfinance YfData singleton (session + crumb).
+# yf.Ticker(session=X) and yf.download(session=X) both write to a process-global
+# singleton; concurrent writes corrupt the session and trigger an infinite
+# "Session is closed" → _clear_yfinance_crumb → 401 → re-fetch cycle that
+# can hold yf.download's shared._LOCK for hours, blocking all intraday jobs.
+_yf_singleton_lock = threading.Lock()
+
 _CacheEntry = namedtuple("_CacheEntry", ["data", "expires_at"])
 
 _TTLS: dict[str, int] = {
@@ -95,12 +102,13 @@ class YahooEngine:
 
         if missing:
             try:
-                with yahoo_connection_boundary(f"Price History {period}/{interval}") as session:
-                    df_bulk = yf.download(
-                        missing, period=period, interval=interval,
-                        group_by="ticker", auto_adjust=True, progress=False,
-                        threads=False, session=session,
-                    )
+                with _yf_singleton_lock:
+                    with yahoo_connection_boundary(f"Price History {period}/{interval}") as session:
+                        df_bulk = yf.download(
+                            missing, period=period, interval=interval,
+                            group_by="ticker", auto_adjust=True, progress=False,
+                            session=session,
+                        )
                 if not df_bulk.empty:
                     is_single = len(missing) == 1
                     for t in missing:
@@ -130,12 +138,13 @@ class YahooEngine:
 
         if missing:
             try:
-                with yahoo_connection_boundary(f"Intraday {period}/{interval}") as session:
-                    df_bulk = yf.download(
-                        missing, period=period, interval=interval, prepost=prepost,
-                        group_by="ticker", auto_adjust=True, progress=False,
-                        threads=False, session=session,
-                    )
+                with _yf_singleton_lock:
+                    with yahoo_connection_boundary(f"Intraday {period}/{interval}") as session:
+                        df_bulk = yf.download(
+                            missing, period=period, interval=interval, prepost=prepost,
+                            group_by="ticker", auto_adjust=True, progress=False,
+                            session=session,
+                        )
                 if not df_bulk.empty:
                     is_single = len(missing) == 1
                     for t in missing:
@@ -154,8 +163,9 @@ class YahooEngine:
         if cached is not None:
             return cached
         try:
-            with yahoo_connection_boundary(f"Ticker Info: {ticker}") as session:
-                info = yf.Ticker(ticker, session=session).info
+            with _yf_singleton_lock:
+                with yahoo_connection_boundary(f"Ticker Info: {ticker}") as session:
+                    info = yf.Ticker(ticker, session=session).info
             if info:
                 self._set(key, info, _TTLS["info"])
                 return info
@@ -170,8 +180,9 @@ class YahooEngine:
         if cached is not None:
             return cached
         try:
-            with yahoo_connection_boundary(f"Options Expirations: {ticker}") as session:
-                expirations = yf.Ticker(ticker, session=session).options
+            with _yf_singleton_lock:
+                with yahoo_connection_boundary(f"Options Expirations: {ticker}") as session:
+                    expirations = yf.Ticker(ticker, session=session).options
             if expirations:
                 result = list(expirations)
                 self._set(key, result, _TTLS["options_expirations"])
@@ -189,8 +200,9 @@ class YahooEngine:
         if cached is not None:
             return cached
         try:
-            with yahoo_connection_boundary(f"Options Chain: {ticker} {expiry}") as session:
-                chain = yf.Ticker(ticker, session=session).option_chain(expiry)
+            with _yf_singleton_lock:
+                with yahoo_connection_boundary(f"Options Chain: {ticker} {expiry}") as session:
+                    chain = yf.Ticker(ticker, session=session).option_chain(expiry)
             result = (chain.calls, chain.puts)
             self._set(key, result, _TTLS["options_chain"])
             return result
@@ -205,8 +217,9 @@ class YahooEngine:
         if cached is not None:
             return cached
         try:
-            with yahoo_connection_boundary(f"News: {ticker}") as session:
-                news = yf.Ticker(ticker, session=session).news
+            with _yf_singleton_lock:
+                with yahoo_connection_boundary(f"News: {ticker}") as session:
+                    news = yf.Ticker(ticker, session=session).news
             if news is not None:
                 self._set(key, news, _TTLS["news"])
                 return news
@@ -221,12 +234,13 @@ class YahooEngine:
         if cached is not None:
             return cached
         try:
-            with yahoo_connection_boundary(f"Insider Transactions: {ticker}") as session:
-                tk = yf.Ticker(ticker, session=session)
-                try:
-                    df = tk.insider_transactions
-                except Exception:
-                    df = tk.get_insider_transactions()
+            with _yf_singleton_lock:
+                with yahoo_connection_boundary(f"Insider Transactions: {ticker}") as session:
+                    tk = yf.Ticker(ticker, session=session)
+                    try:
+                        df = tk.insider_transactions
+                    except Exception:
+                        df = tk.get_insider_transactions()
             if df is not None and not df.empty:
                 self._set(key, df, _TTLS["insider_transactions"])
                 return df
@@ -241,8 +255,9 @@ class YahooEngine:
         if cached is not None:
             return cached
         try:
-            with yahoo_connection_boundary(f"Earnings Dates: {ticker}") as session:
-                df = yf.Ticker(ticker, session=session).get_earnings_dates(limit=limit)
+            with _yf_singleton_lock:
+                with yahoo_connection_boundary(f"Earnings Dates: {ticker}") as session:
+                    df = yf.Ticker(ticker, session=session).get_earnings_dates(limit=limit)
             if df is not None and not df.empty:
                 self._set(key, df, _TTLS["earnings_dates"])
                 return df
@@ -257,8 +272,9 @@ class YahooEngine:
         if cached is not None:
             return cached
         try:
-            with yahoo_connection_boundary(f"Fund Holdings: {ticker}") as session:
-                funds_data = yf.Ticker(ticker, session=session).get_funds_data()
+            with _yf_singleton_lock:
+                with yahoo_connection_boundary(f"Fund Holdings: {ticker}") as session:
+                    funds_data = yf.Ticker(ticker, session=session).get_funds_data()
             if funds_data is not None:
                 df = funds_data.top_holdings
                 if df is not None and not df.empty:
@@ -275,8 +291,9 @@ class YahooEngine:
         if cached is not None:
             return cached
         try:
-            with yahoo_connection_boundary(f"Ticker Actions: {ticker}") as session:
-                actions = yf.Ticker(ticker, session=session).actions
+            with _yf_singleton_lock:
+                with yahoo_connection_boundary(f"Ticker Actions: {ticker}") as session:
+                    actions = yf.Ticker(ticker, session=session).actions
             if actions is not None:
                 self._set(key, actions, _TTLS["ticker_actions"])
                 return actions
@@ -291,8 +308,9 @@ class YahooEngine:
         if cached is not None:
             return cached
         try:
-            with yahoo_connection_boundary(f"FX Rate: {pair}") as session:
-                df = yf.Ticker(pair, session=session).history(period="1d")
+            with _yf_singleton_lock:
+                with yahoo_connection_boundary(f"FX Rate: {pair}") as session:
+                    df = yf.Ticker(pair, session=session).history(period="1d")
             if not df.empty:
                 rate = float(df["Close"].iloc[-1])
                 self._set(key, rate, _TTLS["fx_rate"])
