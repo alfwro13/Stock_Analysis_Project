@@ -1858,37 +1858,6 @@
             <details class="settings-card">
                 <summary>🔧 Tools</summary>
 
-                {% set smgb_sched = config.SCHEDULING.SMGB_PREDICTOR if config.SCHEDULING.SMGB_PREDICTOR else {} %}
-
-                <div class="settings-panel border-left-cyan">
-                    <h4 class="settings-panel-header text-cyan">🇬🇧 SMGB.L Price Predictor Schedule</h4>
-                    <p class="settings-desc">Automatically runs the SMGB.L Price Predictor at two key times each trading day — once before the US market opens (to capture pre-market signals) and once after the US market closes (to lock in the post-close prediction for the next UK open).</p>
-                    <p class="settings-desc-sm"><strong>Suggested times:</strong> Pre-US open at <strong>13:30</strong> (captures NYSE pre-market, ~1 h before open at 14:30 BST); post-US close at <strong>22:00</strong> (NYSE closes ~21:00 BST, 1 h buffer for late data). Adjust to your timezone if needed.</p>
-
-                    <div class="checkbox-group mb-10">
-                        <input type="checkbox" id="SMGB_PREDICTOR_ENABLED" {% if smgb_sched.ENABLED %}checked{% endif %}>
-                        <label for="SMGB_PREDICTOR_ENABLED">Enable automated SMGB.L prediction runs (Mon–Fri)</label>
-                    </div>
-
-                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:12px;">
-                        <div class="form-group mb-0">
-                            <label>Pre-US Open Run</label>
-                            <input type="time" id="SMGB_PRE_US_OPEN_TIME" value="{{ smgb_sched.PRE_US_OPEN_TIME | default('13:30') }}">
-                            <p class="settings-desc-sm" style="margin:4px 0 0;">Runs before NYSE opens — uses US pre-market signal.</p>
-                        </div>
-                        <div class="form-group mb-0">
-                            <label>Post-US Close Run</label>
-                            <input type="time" id="SMGB_POST_US_CLOSE_TIME" value="{{ smgb_sched.POST_US_CLOSE_TIME | default('22:00') }}">
-                            <p class="settings-desc-sm" style="margin:4px 0 0;">Runs after NYSE closes — uses post-close signal for next UK open.</p>
-                        </div>
-                    </div>
-
-                    <p class="settings-desc-sm mt-10">Channel routing for predictions (in-app / Nextcloud Talk) is set in the <strong>Notification Settings</strong> card.</p>
-
-                    <button type="button" class="btn-test mt-0 btn-cyan" onclick="triggerSMGBPredictor()">▶️ Run Prediction Now</button>
-                    <div id="smgb-predictor-status" style="margin-top:6px; font-size:0.78rem; color:#aaa;"></div>
-                </div>
-
                 <div class="settings-panel border-left-purple" id="etf-predictors-section">
                     <h4 class="settings-panel-header text-purple">&#128202; ETF Price Predictors</h4>
                     <p class="settings-desc">Configure generic ETF morning price predictors. Each predictor specifies an ETF ticker and its top 10–20 constituent tickers with weights. Predictions are logged and accuracy is tracked over time. Manage and view results under <a href="/etf-predictor" style="color:#b366ff;">Tools → ETF Price Predictor</a>.</p>

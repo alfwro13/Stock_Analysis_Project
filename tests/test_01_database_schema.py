@@ -70,7 +70,6 @@ EXPECTED_TABLES = [
     "macro_regimes",
     "scheduler_run_log",
     "news_articles",
-    "smgb_predictions",
     "model_training_log",
     "trap_monitor_results",
     "price_hmm_states",

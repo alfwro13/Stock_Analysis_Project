@@ -19,7 +19,7 @@ from ghostfolio_sync import GhostfolioSyncEngine
 from quant_engine import run_daily_quant_scan
 from earnings_vol_engine import run_earnings_vol_scan
 from report_dispatcher import push_morning_quant_briefing, push_lunchtime_quant_briefing
-from database import get_universe_tickers, get_connection, fill_smgb_actual
+from database import get_universe_tickers, get_connection
 from universe_engine import update_market_universe
 from profile_engine import run_profile_audit
 from regime_engine import calculate_market_regime
@@ -856,75 +856,6 @@ def run_trap_monitor_job():
         record_job_run('trap_monitor_job')
 
 
-def run_smgb_actual_fill():
-    """Fills actuals for both prediction types from today's open and yesterday's close."""
-    from datetime import datetime, timezone, timedelta
-    import pandas as pd
-    log_sched_notification("Scheduler", "Started SMGB actual-fill job...")
-    try:
-        target = datetime.now(timezone.utc).date()
-        while target.weekday() >= 5:
-            target -= timedelta(days=1)
-
-        from yahoo_engine import yahoo_engine as _ye
-        history = _ye.get_price_history(["SMGB.L"], period="5d", interval="1d")
-        df = history.get("SMGB.L")
-        if df is None or df.empty:
-            log_sched_notification("Warning", "SMGB actual-fill: no price data returned.")
-            return
-
-        df.index = df.index.normalize()
-
-        # next_open: today's actual opening price
-        target_ts = pd.Timestamp(target.isoformat())
-        if target_ts in df.index:
-            actual_open = float(df.loc[target_ts, "Open"])
-            fill_smgb_actual(target.isoformat(), actual_open, prediction_type='next_open')
-            log_sched_notification("Success", f"SMGB actual-fill (next_open): {target} at open £{actual_open:.4f}.")
-        else:
-            log_sched_notification("Warning", f"SMGB actual-fill: no data for {target}.")
-
-        # us_open_impact: yesterday's closing price (reflects full US session influence)
-        prev = target - timedelta(days=1)
-        while prev.weekday() >= 5:
-            prev -= timedelta(days=1)
-        prev_ts = pd.Timestamp(prev.isoformat())
-        if prev_ts in df.index:
-            actual_close = float(df.loc[prev_ts, "Close"])
-            fill_smgb_actual(prev.isoformat(), actual_close, prediction_type='us_open_impact')
-            log_sched_notification("Success", f"SMGB actual-fill (us_open_impact): {prev} at close £{actual_close:.4f}.")
-    except Exception as e:
-        log_sched_notification("Error", f"SMGB actual-fill failed: {e}")
-    finally:
-        record_job_run('smgb_actual_fill_job')
-
-
-def run_smgb_predictor_job():
-    from smgb_predictor import run_smgb_prediction
-    log_sched_notification("Scheduler", "Started SMGB.L Price Predictor job...")
-    try:
-        result = run_smgb_prediction()
-        if result.get("status") != "success":
-            log_sched_notification("Warning", f"SMGB predictor: {result.get('error', 'unknown error')}")
-            return
-
-        predicted = result.get("predicted_price")
-        change = result.get("predicted_change_pct", 0)
-        signal = result.get("signal_source", "")
-        target = result.get("next_open_date", "")
-        sign = "+" if change >= 0 else ""
-        msg = (
-            f"SMGB.L Price Predictor — {target}: "
-            f"£{predicted:.4f} ({sign}{change:.2f}%) | signal: {signal}"
-        )
-        notify("smgb_prediction", "SMGB Prediction", msg)
-    except Exception as e:
-        logger.error("SMGB predictor job failed: %s", e)
-        log_sched_notification("Error", f"SMGB predictor job failed: {e}")
-    finally:
-        record_job_run('smgb_predictor_job')
-
-
 def _run_etf_predictor_job(config_id: int, fill_actuals: bool = False) -> None:
     job_type = "post" if fill_actuals else "pre"
     job_id = f"etf_predictor_{config_id}_{job_type}_job"
@@ -1548,43 +1479,6 @@ def reload_scheduler():
     except Exception as e:
         logger.error("Failed to schedule X-ray Risk Cache job: %s", e)
 
-    smgb_pred_cfg = scheduling.get("SMGB_PREDICTOR", {})
-    if smgb_pred_cfg.get("ENABLED", False):
-        pre_time = smgb_pred_cfg.get("PRE_US_OPEN_TIME", "13:30")
-        post_time = smgb_pred_cfg.get("POST_US_CLOSE_TIME", "22:00")
-        try:
-            pre_h, pre_m = map(int, pre_time.split(':'))
-            scheduler.add_job(
-                run_smgb_predictor_job,
-                CronTrigger(day_of_week='mon-fri', hour=pre_h, minute=pre_m, timezone=user_tz),
-                id='smgb_predictor_job',
-            )
-            logger.info("SMGB predictor (pre-US-open) scheduled for mon-fri at %s.", pre_time)
-        except Exception as e:
-            logger.error("Failed to schedule SMGB predictor (pre-US-open): %s", e)
-        try:
-            post_h, post_m = map(int, post_time.split(':'))
-            scheduler.add_job(
-                run_smgb_predictor_job,
-                CronTrigger(day_of_week='mon-fri', hour=post_h, minute=post_m, timezone=user_tz),
-                id='smgb_predictor_post_job',
-            )
-            logger.info("SMGB predictor (post-US-close) scheduled for mon-fri at %s.", post_time)
-        except Exception as e:
-            logger.error("Failed to schedule SMGB predictor (post-US-close): %s", e)
-
-    # Always-on: SMGB.L Actual Fill — runs Mon–Fri at 09:15 GMT (45 min after LSE opens).
-    # Fetches the actual open price for that morning and resolves the previous prediction row.
-    try:
-        scheduler.add_job(
-            run_smgb_actual_fill,
-            CronTrigger(day_of_week='mon-fri', hour=9, minute=15, timezone=user_tz),
-            id='smgb_actual_fill_job',
-        )
-        logger.info("SMGB actual-fill job scheduled for mon-fri at 09:15.")
-    except Exception as e:
-        logger.error("Failed to schedule SMGB actual-fill job: %s", e)
-
     # Always-on: ETF Predictor actual-fill — runs Mon–Fri at 09:20 UTC.
     try:
         scheduler.add_job(
@@ -1674,9 +1568,6 @@ JOB_GRAPH: dict[str, dict] = {
     "intraday_dip_reset_nyse_job":  {"label": "Dip Radar — Intraday Bottom Finder (NYSE reset)","category": "intraday",    "engine": "intraday_bottom_engine.py",     "produces": ["intraday_monitor_results"],                                   "consumes": []},
     "ai_contagion_job":             {"label": "AI Sector Contagion Monitor",                    "category": "intraday",    "engine": "ai_contagion_engine.py",        "produces": ["ai_contagion_snapshots"],                                     "consumes": ["intraday_parquet"]},
     "trap_monitor_job":             {"label": "Market Trap & Recovery Monitor",                 "category": "intraday",    "engine": "bull_bear_trap_engine.py",      "produces": ["trap_monitor_results"],                                       "consumes": ["historical_parquet"]},
-    "smgb_predictor_job":           {"label": "SMGB.L Price Predictor Schedule (pre-open)",     "category": "predictor",   "engine": "smgb_predictor.py",             "produces": ["smgb_predictions"],                                           "consumes": []},
-    "smgb_predictor_post_job":      {"label": "SMGB.L Price Predictor Schedule (post-close)",   "category": "predictor",   "engine": "smgb_predictor.py",             "produces": ["smgb_predictions"],                                           "consumes": []},
-    "smgb_actual_fill_job":         {"label": "SMGB.L Price Predictor Schedule (actual fill)",  "category": "predictor",   "engine": "smgb_predictor.py",             "produces": ["smgb_predictions"],                                           "consumes": ["smgb_predictions"]},
     "etf_predictor_actual_fill_job":{"label": "ETF Price Predictors (actual fill)",             "category": "predictor",   "engine": "etf_predictor_engine.py",       "produces": ["etf_predictions"],                                            "consumes": ["etf_predictions"]},
     "maintenance_job":              {"label": "Database & File Maintenance",                    "category": "maintenance", "engine": "maintenance_engine.py",         "produces": [],                                                             "consumes": []},
     "system_check_job":             {"label": "System Configuration Check",                     "category": "maintenance", "engine": "system_check_engine.py",        "produces": [],                                                             "consumes": []},
@@ -1714,7 +1605,6 @@ CONFIG_KEY_TO_JOB: dict[str, str] = {
     "CB_NLP_ALERT":       "cb_nlp_alert_job",
     "NEWS_FEED":          "news_feed_job",
     "SYSTEM_CHECK":       "system_check_job",
-    "SMGB_PREDICTOR":     "smgb_predictor_job",
     "TRAP_MONITORS":      "trap_monitor_job",
     "MARKET_SENTIMENT":   "market_sentiment_job",
     "EARNINGS_ALERTS":    "earnings_alert_job",

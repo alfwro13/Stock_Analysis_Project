@@ -36,7 +36,6 @@ NOTIFICATION_SOURCES: dict[str, dict] = {
     "earnings_alert":        {"label": "Portfolio Earnings Alert",     "job_id": "earnings_alert_job",        "default": dict(_ON)},
     "insider_alert":         {"label": "Insider Trading Alert",        "job_id": "insider_alert_job",         "default": dict(_ON)},
     "cb_nlp_alert":          {"label": "Central Bank NLP Alert",       "job_id": "cb_nlp_alert_job",          "default": dict(_ON)},
-    "smgb_prediction":       {"label": "SMGB.L Price Prediction",      "job_id": "smgb_predictor_job",        "default": dict(_NO_TALK)},
     "network_fault":         {"label": "Network Fault Alert",          "job_id": None,                        "default": dict(_NO_TALK)},
 }
 

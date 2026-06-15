@@ -602,7 +602,6 @@ class SchedulingConfig(BaseModel):
     CB_NLP_ALERT: Optional[ScheduleItemConfig] = None
     AI_CONTAGION: Optional[ScheduleItemConfig] = None
     NEWS_FEED: Optional[ScheduleItemConfig] = None
-    SMGB_PREDICTOR: Optional[ScheduleItemConfig] = None
     TRAP_MONITORS: Optional[ScheduleItemConfig] = None
 
 class ReportsDefaultsConfig(BaseModel):
@@ -1915,31 +1914,6 @@ async def run_stress_test(request: Request, body: StressTestRequest):
     except Exception as e:
         logger.error("stress-test/run failed: %s", e)
         return _error_500(e)
-
-
-@api_router.get("/smgb-prediction")
-@limiter.limit("10/minute")
-async def get_smgb_prediction(request: Request):
-    """Returns SMGB.L predicted morning open based on US close prices. Prices in GBX (pence)."""
-    try:
-        from smgb_predictor import run_smgb_prediction
-        result = run_smgb_prediction()
-        return JSONResponse(content=result)
-    except Exception as e:
-        logger.error("smgb-prediction failed: %s", e)
-        return JSONResponse(content={"status": "error", "error": str(e), "predicted_price": None})
-
-
-@api_router.get("/smgb-accuracy")
-@limiter.limit("10/minute")
-async def get_smgb_accuracy(request: Request):
-    """Returns historical SMGB.L prediction accuracy: last 60 rows and summary stats."""
-    try:
-        from database import get_smgb_accuracy
-        return JSONResponse(content=get_smgb_accuracy())
-    except Exception as e:
-        logger.error("smgb-accuracy failed: %s", e)
-        return JSONResponse(content={"rows": [], "summary": {}, "error": str(e)})
 
 
 class EtfConstituentItem(BaseModel):

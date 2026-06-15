@@ -602,23 +602,6 @@
             }
         }
 
-        async function triggerSMGBPredictor() {
-            const statusEl = document.getElementById('smgb-predictor-status');
-            statusEl.textContent = "Running prediction… this may take 10–20 seconds.";
-            try {
-                const resp = await fetch('/api/smgb-prediction');
-                const data = await resp.json();
-                if (data.status === 'success') {
-                    const sign = data.predicted_change_pct >= 0 ? '+' : '';
-                    statusEl.textContent = `Done — £${data.predicted_price} (${sign}${data.predicted_change_pct?.toFixed(2)}%) | signal: ${data.signal_source}`;
-                } else {
-                    statusEl.textContent = data.error || "Prediction failed.";
-                }
-            } catch (error) {
-                statusEl.textContent = "Failed to run prediction. Network or server error.";
-            }
-        }
-
         // ── ETF Predictor settings JS ─────────────────────────────────────────
         let _etfConfigCache = {};
 
@@ -1764,11 +1747,6 @@
                         "START_TIME": document.getElementById('AI_CONTAGION_START').value,
                         "END_TIME": document.getElementById('AI_CONTAGION_END').value,
                         "INTERVAL_MINUTES": parseInt(document.getElementById('AI_CONTAGION_INTERVAL').value) || 15
-                    },
-                    "SMGB_PREDICTOR": {
-                        "ENABLED": document.getElementById('SMGB_PREDICTOR_ENABLED').checked,
-                        "PRE_US_OPEN_TIME": document.getElementById('SMGB_PRE_US_OPEN_TIME').value,
-                        "POST_US_CLOSE_TIME": document.getElementById('SMGB_POST_US_CLOSE_TIME').value
                     },
                     "TRAP_MONITORS": {
                         "ENABLED": document.getElementById('TRAP_MONITOR_ENABLED').checked,
