@@ -21,7 +21,7 @@ from indicators import (
     compute_bullish_cross,
 )
 
-from xgboost import XGBClassifier
+from xgboost import XGBClassifier, XGBRegressor
 from sklearn.ensemble import RandomForestClassifier, VotingClassifier
 from sklearn.metrics import accuracy_score, classification_report, average_precision_score
 from sklearn.base import clone
@@ -40,8 +40,10 @@ logger = logging.getLogger(__name__)
 
 MODELS_DIR = BASE_DIR / "models"
 MODELS_DIR.mkdir(parents=True, exist_ok=True)
-MODEL_PATH         = MODELS_DIR / "ml_ensemble.joblib"
-FEATURE_STATS_PATH = MODELS_DIR / "feature_stats.joblib"
+MODEL_PATH          = MODELS_DIR / "ml_ensemble.joblib"
+FEATURE_STATS_PATH  = MODELS_DIR / "feature_stats.joblib"
+QUANTILE_Q10_PATH   = MODELS_DIR / "quantile_q10.joblib"
+QUANTILE_Q90_PATH   = MODELS_DIR / "quantile_q90.joblib"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # FEATURE REGISTRY  (18 features — 6 fundamental features removed 2026-05-29)
@@ -1119,6 +1121,275 @@ def update_daily_ml_predictions(tickers: List[str]) -> None:
 
     except Exception as e:
         logger.error(f"Fatal error during ML inference: {e}")
+    finally:
+        if conn:
+            conn.close()
+
+
+def train_quantile_models() -> None:
+    """
+    Trains two XGBoost quantile regressors on the same 18-feature pipeline
+    as the binary classifier, with a continuous 10-day return target.
+
+    Q10 (quantile_alpha=0.10): pessimistic floor — 10th-percentile return.
+    Q90 (quantile_alpha=0.90): optimistic ceiling — 90th-percentile return.
+
+    Inference converts returns to prices:
+        price_qN = close_price * (1 + qN_predicted_return)
+
+    Models are saved to models/quantile_q10.joblib and quantile_q90.joblib.
+    """
+    logger.info("Initiating Quantile Regression model training (Q10 / Q90)...")
+
+    _mem = psutil.virtual_memory()
+    _avail_gb = _mem.available / (1024 ** 3)
+    if _avail_gb < 0.75:
+        msg = (
+            f"Quantile training aborted: only {_avail_gb:.1f} GB RAM available "
+            "(minimum 0.75 GB required)."
+        )
+        logger.error(msg)
+        log_notification("Error", msg)
+        return
+
+    try:
+        conn = get_connection()
+        query = """
+            SELECT qs.ticker, qs.date, qs.close_price, qs.volume,
+                   qs.rsi_14, qs.macd, qs.macd_signal, qs.macd_hist,
+                   qs.sma_50, qs.sma_200, qs.volume_surge, qs.bullish_cross,
+                   qs.mom_1m, qs.mom_3m, qs.mom_6m, qs.mom_12m_skip1m,
+                   qs.atr_pct, qs.hist_vol_20,
+                   qs.rel_strength_5d, qs.rel_strength_20d,
+                   ss.trailing_pe, ss.price_to_book, ss.profit_margin,
+                   ss.roe, ss.revenue_growth, ss.debt_to_equity,
+                   tm.sector
+            FROM quant_signals qs
+            LEFT JOIN stock_signals   ss ON qs.ticker = ss.ticker
+            LEFT JOIN ticker_metadata tm ON qs.ticker = tm.ticker
+            WHERE qs.mom_1m           IS NOT NULL
+              AND qs.mom_12m_skip1m   IS NOT NULL
+              AND qs.atr_pct          IS NOT NULL
+              AND qs.hist_vol_20      IS NOT NULL
+              AND qs.rel_strength_5d  IS NOT NULL
+              AND qs.rel_strength_20d IS NOT NULL
+            ORDER BY qs.date ASC
+        """
+        df = pd.read_sql_query(query, conn)
+        conn.close()
+
+        if df.empty:
+            logger.warning("No data found for quantile training. Aborting.")
+            return
+
+        # Feature engineering — identical to train_global_ml_model()
+        df['dist_sma_50']  = (df['close_price'] - df['sma_50'])  / df['sma_50']
+        df['dist_sma_200'] = (df['close_price'] - df['sma_200']) / df['sma_200']
+        df['macd_pct']        = df['macd']        / df['close_price']
+        df['macd_signal_pct'] = df['macd_signal'] / df['close_price']
+        df['macd_hist_pct']   = df['macd_hist']   / df['close_price']
+        df['volume_surge']  = df['volume_surge'].fillna(0).astype(int)
+        df['bullish_cross'] = df['bullish_cross'].fillna(0).astype(int)
+        df['sector_code']    = df['sector'].map(SECTOR_MAP).fillna(99).astype(int)
+        df['dollar_vol_log'] = np.log1p(df['close_price'] * df['volume'])
+
+        df = _winsorize_and_impute_fundamentals(df)
+        df.replace([np.inf, -np.inf], np.nan, inplace=True)
+
+        for col in CONTINUOUS_FEATURES:
+            df[f'{col}_z'] = df.groupby('date')[col].transform(cross_sectional_zscore)
+
+        df.dropna(subset=FEATURE_COLS, inplace=True)
+
+        # Continuous return target (not binary)
+        df['next_close']   = df.groupby('ticker')['close_price'].shift(-1)
+        df['future_close'] = df.groupby('ticker')['close_price'].shift(-PREDICTION_HORIZON_DAYS)
+        df.dropna(subset=['next_close', 'future_close'], inplace=True)
+        df['return_target'] = (
+            (df['future_close'] - df['next_close']) / df['next_close']
+        ).clip(-1.0, 1.0)
+
+        if len(df) < 1000:
+            logger.warning(f"Insufficient training samples ({len(df)}) for quantile training.")
+            return
+
+        df.sort_values('date', inplace=True)
+        df.reset_index(drop=True, inplace=True)
+
+        X_full = df[FEATURE_COLS]
+        y_full = df['return_target']
+
+        # 80/20 temporal split with embargo — no calibration step for regression
+        unique_dates = np.sort(df['date'].unique())
+        date_series  = df['date'].reset_index(drop=True)
+        n_dates      = len(unique_dates)
+        train_end    = int(n_dates * 0.80)
+        train_dates  = set(unique_dates[:train_end - PREDICTION_HORIZON_DAYS])
+        test_dates   = set(unique_dates[train_end:])
+
+        train_idx = date_series.index[date_series.isin(train_dates)].tolist()
+        test_idx  = date_series.index[date_series.isin(test_dates)].tolist()
+
+        X_train = X_full.iloc[train_idx]
+        y_train = y_full.iloc[train_idx]
+        X_test  = X_full.iloc[test_idx]
+        y_test  = y_full.iloc[test_idx]
+
+        logger.info(
+            f"Quantile temporal split — Train: {len(X_train):,} rows | "
+            f"Test: {len(X_test):,} rows"
+        )
+
+        _xgb_params = dict(
+            n_estimators=200, max_depth=5, learning_rate=0.05,
+            subsample=0.8, colsample_bytree=0.8,
+            random_state=42, n_jobs=1,
+        )
+
+        q10 = XGBRegressor(objective='reg:quantileerror', quantile_alpha=0.10, **_xgb_params)
+        q90 = XGBRegressor(objective='reg:quantileerror', quantile_alpha=0.90, **_xgb_params)
+        q10.fit(X_train, y_train)
+        q90.fit(X_train, y_train)
+
+        q10_preds = q10.predict(X_test)
+        q90_preds = q90.predict(X_test)
+        crossing_pct = float(np.mean(q10_preds >= q90_preds))
+        logger.info(
+            f"Test-set quantile diagnostics — "
+            f"Q10 median: {float(np.median(q10_preds)):.4f}, "
+            f"Q90 median: {float(np.median(q90_preds)):.4f}, "
+            f"crossing rate: {crossing_pct:.2%}"
+        )
+
+        # Refit on full dataset with fixed hyperparameters
+        final_q10 = XGBRegressor(objective='reg:quantileerror', quantile_alpha=0.10, **_xgb_params)
+        final_q90 = XGBRegressor(objective='reg:quantileerror', quantile_alpha=0.90, **_xgb_params)
+        final_q10.fit(X_full, y_full)
+        final_q90.fit(X_full, y_full)
+
+        joblib.dump(final_q10, QUANTILE_Q10_PATH)
+        joblib.dump(final_q90, QUANTILE_Q90_PATH)
+        logger.info(
+            f"✅ Quantile models saved — "
+            f"Q10: {QUANTILE_Q10_PATH}, Q90: {QUANTILE_Q90_PATH}"
+        )
+        log_notification(
+            "Success",
+            f"Quantile Regression models trained — Q10/Q90 price bands ready. "
+            f"Test crossing rate: {crossing_pct:.2%}."
+        )
+
+    except Exception as e:
+        logger.error(f"Fatal error during quantile training: {e}")
+        log_notification("Error", f"Quantile Regression Training failed: {str(e)}")
+
+
+def score_quantile_predictions(tickers: List[str]) -> None:
+    """
+    Loads the Q10/Q90 quantile regressors and writes price_q10 / price_q90
+    into quant_signals for each requested ticker.
+
+    price_q10 = close_price * (1 + Q10_return)  — pessimistic 10-day floor
+    price_q90 = close_price * (1 + Q90_return)  — optimistic 10-day ceiling
+    """
+    if not tickers:
+        return
+
+    if not QUANTILE_Q10_PATH.exists() or not QUANTILE_Q90_PATH.exists():
+        logger.info(
+            "Quantile models not found — skipping quantile scoring "
+            "(run ML training first to generate Q10/Q90 models)."
+        )
+        return
+
+    logger.info(f"Scoring quantile price bands for {len(tickers)} tickers...")
+
+    conn = None
+    try:
+        q10_model = joblib.load(QUANTILE_Q10_PATH)
+        q90_model = joblib.load(QUANTILE_Q90_PATH)
+        conn = get_connection()
+
+        query = """
+            SELECT qs.ticker, qs.date, qs.close_price, qs.volume,
+                   qs.rsi_14, qs.macd, qs.macd_signal, qs.macd_hist,
+                   qs.sma_50, qs.sma_200, qs.volume_surge, qs.bullish_cross,
+                   qs.mom_1m, qs.mom_3m, qs.mom_6m, qs.mom_12m_skip1m,
+                   qs.atr_pct, qs.hist_vol_20,
+                   qs.rel_strength_5d, qs.rel_strength_20d,
+                   ss.trailing_pe, ss.price_to_book, ss.profit_margin,
+                   ss.roe, ss.revenue_growth, ss.debt_to_equity,
+                   tm.sector
+            FROM quant_signals qs
+            LEFT JOIN stock_signals   ss ON qs.ticker = ss.ticker
+            LEFT JOIN ticker_metadata tm ON qs.ticker = tm.ticker
+            WHERE qs.mom_1m           IS NOT NULL
+              AND qs.atr_pct          IS NOT NULL
+              AND qs.rel_strength_5d  IS NOT NULL
+              AND qs.rel_strength_20d IS NOT NULL
+              AND qs.date = (
+                  SELECT MAX(qs2.date) FROM quant_signals qs2
+                  WHERE qs2.ticker          = qs.ticker
+                    AND qs2.mom_1m          IS NOT NULL
+                    AND qs2.atr_pct         IS NOT NULL
+                    AND qs2.rel_strength_5d  IS NOT NULL
+                    AND qs2.rel_strength_20d IS NOT NULL
+              )
+        """
+        df = pd.read_sql_query(query, conn)
+
+        if df.empty:
+            logger.warning("No data for quantile scoring. Re-run quant scan first.")
+            return
+
+        # Feature engineering — identical to training and binary inference
+        df['dist_sma_50']  = (df['close_price'] - df['sma_50'])  / df['sma_50']
+        df['dist_sma_200'] = (df['close_price'] - df['sma_200']) / df['sma_200']
+        df['macd_pct']        = df['macd']        / df['close_price']
+        df['macd_signal_pct'] = df['macd_signal'] / df['close_price']
+        df['macd_hist_pct']   = df['macd_hist']   / df['close_price']
+        df['volume_surge']  = df['volume_surge'].fillna(0).astype(int)
+        df['bullish_cross'] = df['bullish_cross'].fillna(0).astype(int)
+        df['sector_code']    = df['sector'].map(SECTOR_MAP).fillna(99).astype(int)
+        df['dollar_vol_log'] = np.log1p(df['close_price'] * df['volume'])
+
+        df = _winsorize_and_impute_fundamentals(df)
+        df.replace([np.inf, -np.inf], np.nan, inplace=True)
+
+        for col in CONTINUOUS_FEATURES:
+            df[f'{col}_z'] = df.groupby('date')[col].transform(cross_sectional_zscore)
+
+        target_set = set(tickers)
+        payloads: List[Tuple[float, float, str, str]] = []
+
+        for _, row in df.iterrows():
+            if row['ticker'] not in target_set:
+                continue
+            if pd.isna(row[FEATURE_COLS]).any():
+                continue
+
+            X_infer   = pd.DataFrame([row[FEATURE_COLS]])
+            q10_ret   = float(q10_model.predict(X_infer)[0])
+            q90_ret   = float(q90_model.predict(X_infer)[0])
+            close     = float(row['close_price'])
+            price_q10 = close * (1.0 + q10_ret)
+            price_q90 = close * (1.0 + q90_ret)
+            payloads.append((price_q10, price_q90, row['ticker'], row['date']))
+
+        if payloads:
+            cursor = conn.cursor()
+            cursor.executemany("""
+                UPDATE quant_signals
+                SET price_q10 = ?, price_q90 = ?
+                WHERE ticker = ? AND date = ?
+            """, payloads)
+            conn.commit()
+            logger.info(f"✅ Quantile price bands written for {len(payloads)} assets.")
+        else:
+            logger.warning("No valid quantile payloads generated.")
+
+    except Exception as e:
+        logger.error(f"Fatal error during quantile scoring: {e}")
     finally:
         if conn:
             conn.close()

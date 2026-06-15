@@ -27,7 +27,9 @@ The SQLite database acts as the central brain of the dashboard. It uses a star-l
 #### `quant_signals`
 * **Purpose:** Stores a daily historical log of technical and quantitative metrics for machine learning and mean-reversion analysis.
 * **Key Columns:** `ticker`, `date` (Composite PK), `close_price`, `rsi_14`, `macd_hist`, `sma_50`, `sma_200`, `volume_surge`, `bullish_cross`, `ml_confidence_score`, `sentiment_score`, `var_95`, `cvar_95`.
-* **AI Interaction:** The `ai_prediction_engine` reads from this table, calculates ML probabilities, and writes the `ml_confidence_score` back into it daily.
+* **Entry & Exit Zone Columns (added June 2026):** `vp_poc` (Volume Profile Point of Control price), `vp_val` (Value Area Low), `vp_vah` (Value Area High), `vp_entry_zone` (nearest HVN or VAL below current price — buy-entry support level), `vp_exit_zone` (nearest overhead HVN or VAH — take-profit resistance level), `kc_z_score` (Keltner Channel Z-score: (Close − EMA21) / ATR14 — negative = below EMA), `kc_entry_signal` (1 if Z-score ∈ (−3, −2) AND 200-day uptrend), `kc_exit_signal` (1 if Z-score > +3 AND RSI > 75).
+* **Quantile Price Band Columns (added June 2026):** `price_q10` (10th-percentile 10-day price floor from XGBoost quantile regression), `price_q90` (90th-percentile 10-day price ceiling — optimistic take-profit target). Written by `score_quantile_predictions()` in `ai_prediction_engine.py` during the daily ML inference job.
+* **AI Interaction:** The `ai_prediction_engine` reads from this table, calculates ML probabilities, and writes the `ml_confidence_score`, `price_q10`, and `price_q90` back into it daily.
 
 #### `quant_scan_states`
 * **Purpose:** Composite-key state tracker for resumability in long-running jobs to prevent data gaps upon unexpected interruptions. On startup, `resume_interrupted_scans()` queries this table and re-fires any IN_PROGRESS scan automatically.

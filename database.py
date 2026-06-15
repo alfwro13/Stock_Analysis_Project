@@ -751,6 +751,16 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
         'overall_signal': 'TEXT',
         'week52_pct': 'REAL',
         'anomaly_score': 'REAL',
+        'vp_poc': 'REAL',
+        'vp_val': 'REAL',
+        'vp_vah': 'REAL',
+        'vp_entry_zone': 'REAL',
+        'vp_exit_zone': 'REAL',
+        'kc_z_score': 'REAL',
+        'kc_entry_signal': 'INTEGER',
+        'kc_exit_signal': 'INTEGER',
+        'price_q10': 'REAL',
+        'price_q90': 'REAL',
     }
 
     for col_name, data_type in required_quant_columns.items():

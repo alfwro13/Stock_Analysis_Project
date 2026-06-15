@@ -287,6 +287,28 @@
                     <p>As long as the stock stays above the ATR stop, its uptrend is structurally intact. Any drop is just a "normal pullback" (a true dip).</p>
                     <p>If the stock drops below the ATR stop, it has mathematically violated its volatility envelope. It is no longer a normal pullback; the structural trend has broken, and the asset is in freefall.</p>
                 </div>
+                <div class="term-box">
+                    <span class="term-title">Volume Profile &amp; POC (Point of Control)</span>
+                    <p>A Volume Profile is a 180-day histogram of traded volume distributed across price levels rather than across time. The <strong>POC</strong> is the price bucket with the highest accumulated volume — the price where the most shares changed hands. Institutional participants tend to defend and re-enter near the POC because it represents collective agreement on fair value.</p>
+                    <p>The <strong>Value Area</strong> (VAL to VAH) is the price range covering 70% of total volume, expanding outward from the POC. It marks the zone where the majority of trading activity occurred — prices inside the Value Area are considered "fair"; prices outside it signal potential imbalance.</p>
+                    <p><strong>HVNs</strong> (High Volume Nodes) are local peaks in the histogram — price bands where volume was disproportionately concentrated. They act as support when approached from above and resistance when approached from below. <strong>LVNs</strong> (Low Volume Nodes) are the opposite: thin liquidity bands that price tends to slice through quickly.</p>
+                    <div class="rule">Entry Zone = highest HVN or VAL strictly below current price — a historically liquid support level.</div>
+                    <div class="rule">Exit Zone = lowest overhead HVN or VAH above current price — a historically liquid resistance level.</div>
+                </div>
+                <div class="term-box">
+                    <span class="term-title">Keltner Channel Z-Score</span>
+                    <p>A Keltner Channel is a volatility envelope centred on EMA(21) with band width set by ATR(14). Unlike Bollinger Bands (which use price standard deviation), Keltner Bands expand and contract with <em>true range volatility</em>, making them more stable during trending markets.</p>
+                    <p>The <strong>Z-Score</strong> measures how many ATRs the current close is above or below the EMA: <code>Z = (Close − EMA21) / ATR14</code>. A score of −2 means price is two ATRs below its trend centre — an oversold pullback. A score of −3 or lower signals an extreme extension rarely sustained.</p>
+                    <div class="rule">KC Entry Signal fires when Z-score ∈ (−3, −2) AND price is above the 200-day SMA (uptrend intact) — a mean-reversion buy setup inside a healthy trend.</div>
+                    <div class="rule">KC Exit Signal fires when Z-score &gt; +3 AND RSI &gt; 75 — price is overextended to the upside; risk of reversion is elevated.</div>
+                </div>
+                <div class="term-box">
+                    <span class="term-title">ML Quantile Price Bands (Q10 / Q90)</span>
+                    <p>Two XGBoost regressors trained with <code>objective='reg:quantileerror'</code> on the same 18-feature pipeline as the binary confidence score classifier, but predicting the <em>distribution</em> of 10-day returns rather than a single probability.</p>
+                    <p><strong>Q10 (Floor)</strong> is the 10th-percentile predicted return converted to a price: <code>price_q10 = close × (1 + Q10_return)</code>. In 90% of comparable historical setups, the stock did not fall below this level over the following 10 trading days — a statistically grounded worst-case scenario for limit-order placement.</p>
+                    <p><strong>Q90 (Ceiling)</strong> is the 90th-percentile predicted return converted to a price: <code>price_q90 = close × (1 + Q90_return)</code>. In 90% of comparable historical setups, the stock reached or exceeded this level — an optimistic take-profit target. For portfolio holdings, this is shown as the ML exit target alongside the Volume Profile Exit Zone.</p>
+                    <p>These are probabilistic bands, not exact forecasts. They quantify upside potential and downside floor simultaneously — more informative than a single confidence score for setting limit orders and position sizing.</p>
+                </div>
             </details>
 
             <details class="settings-card" id="dip-radar">

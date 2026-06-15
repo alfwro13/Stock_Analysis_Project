@@ -14,6 +14,8 @@ from indicators import (
     compute_volume_sma,
     compute_volume_surge,
     compute_bullish_cross,
+    compute_volume_profile,
+    compute_keltner_channel,
 )
 
 from database import get_connection, log_notification
@@ -121,10 +123,32 @@ def run_daily_quant_scan(ticker_list: List[str], scan_type: str = 'daily') -> No
                 vol_surge     = bool(compute_volume_surge(volume_s, vol_sma_20).iloc[-1])
                 bullish_cross = bool(compute_bullish_cross(macd_series, signal_series).iloc[-1])
 
+                vp = compute_volume_profile(df)
+                c_vp_poc        = vp["poc"]
+                c_vp_val        = vp["val"]
+                c_vp_vah        = vp["vah"]
+                c_vp_entry_zone = vp["entry_zone"]
+                c_vp_exit_zone  = vp["exit_zone"]
+
+                kc = compute_keltner_channel(df["High"], df["Low"], df["Close"])
+                c_kc_z_score = kc["z_score"]
+
+                trend_200d_up = c_sma200 is not None and c_price > c_sma200
+                c_kc_entry_signal = int(
+                    c_kc_z_score is not None and -3.0 < c_kc_z_score < -2.0 and trend_200d_up
+                )
+                c_kc_exit_signal = int(
+                    c_kc_z_score is not None and c_kc_z_score > 3.0
+                    and c_rsi is not None and c_rsi > 75
+                )
+
                 cursor.execute('''
                     INSERT INTO quant_signals
-                    (ticker, date, close_price, volume, rsi_14, macd, macd_signal, macd_hist, sma_50, sma_200, volume_surge, bullish_cross, atr_pct, week52_pct)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (ticker, date, close_price, volume, rsi_14, macd, macd_signal, macd_hist,
+                     sma_50, sma_200, volume_surge, bullish_cross, atr_pct, week52_pct,
+                     vp_poc, vp_val, vp_vah, vp_entry_zone, vp_exit_zone,
+                     kc_z_score, kc_entry_signal, kc_exit_signal)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(ticker, date) DO UPDATE SET
                         close_price=excluded.close_price,
                         volume=excluded.volume,
@@ -137,8 +161,21 @@ def run_daily_quant_scan(ticker_list: List[str], scan_type: str = 'daily') -> No
                         volume_surge=excluded.volume_surge,
                         bullish_cross=excluded.bullish_cross,
                         atr_pct=excluded.atr_pct,
-                        week52_pct=excluded.week52_pct
-                ''', (ticker, last_date, c_price, c_vol, c_rsi, c_macd, c_signal, c_hist, c_sma50, c_sma200, vol_surge, bullish_cross, c_atr_pct, c_week52_pct))
+                        week52_pct=excluded.week52_pct,
+                        vp_poc=excluded.vp_poc,
+                        vp_val=excluded.vp_val,
+                        vp_vah=excluded.vp_vah,
+                        vp_entry_zone=excluded.vp_entry_zone,
+                        vp_exit_zone=excluded.vp_exit_zone,
+                        kc_z_score=excluded.kc_z_score,
+                        kc_entry_signal=excluded.kc_entry_signal,
+                        kc_exit_signal=excluded.kc_exit_signal
+                ''', (
+                    ticker, last_date, c_price, c_vol, c_rsi, c_macd, c_signal, c_hist,
+                    c_sma50, c_sma200, vol_surge, bullish_cross, c_atr_pct, c_week52_pct,
+                    c_vp_poc, c_vp_val, c_vp_vah, c_vp_entry_zone, c_vp_exit_zone,
+                    c_kc_z_score, c_kc_entry_signal, c_kc_exit_signal,
+                ))
 
                 cursor.execute("UPDATE quant_scan_states SET last_processed_ticker = ? WHERE scan_date = ? AND scan_type = ?", (ticker, today_str, scan_type))
                 conn.commit()

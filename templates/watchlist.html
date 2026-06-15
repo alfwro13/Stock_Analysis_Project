@@ -101,6 +101,7 @@
                 <th><abbr title="Standard PEG Ratio">PEG</abbr></th>
                 <th><abbr title="Peter Lynch Fair Value">PL PEG</abbr></th>
                 <th>Stop-Loss</th>
+                <th><abbr title="Volume Profile entry zone: the nearest High Volume Node or Value Area Low below the current price — a candidate limit-order buy level.">Entry Zone</abbr></th>
                 <th>RSI</th>
                 <th><abbr title="Machine Learning Ensemble confidence score predicting a >3% return over the next 10 days.">ML Conf</abbr></th>
                 <th>VaR (95%)</th>
@@ -163,6 +164,12 @@
                     {% if item.atr_stop_loss is not none %}
                         {% set atr_val = (item.atr_stop_loss / 100.0) if item.currency == 'GBp' else item.atr_stop_loss %}
                         {{ "{:,.2f}".format(atr_val) }}
+                    {% else %}N/A{% endif %}
+                </td>
+                <td data-sort="{{ item.vp_entry_zone if item.vp_entry_zone is not none else -999 }}" class="num-cell">
+                    {% if item.vp_entry_zone is not none %}
+                        {% set ez_val = (item.vp_entry_zone / 100.0) if item.currency == 'GBp' else item.vp_entry_zone %}
+                        <span class="metric-excellent">{{ "{:,.2f}".format(ez_val) }}</span>
                     {% else %}N/A{% endif %}
                 </td>
                 <td data-sort="{{ item.rsi_14 if item.rsi_14 is not none else -999 }}" class="num-cell">{% if item.rsi_14 is not none %}{{ "{:,.1f}".format(item.rsi_14) }}{% else %}N/A{% endif %}</td>

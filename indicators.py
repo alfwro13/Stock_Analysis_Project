@@ -1,8 +1,9 @@
 """Pure, side-effect-free TA functions; callers must flatten yfinance MultiIndex columns before passing Series in."""
 from __future__ import annotations
 
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
+import numpy as np
 import pandas as pd
 import ta
 
@@ -75,3 +76,145 @@ def compute_bullish_cross(macd: pd.Series, signal: pd.Series) -> pd.Series:
     return (
         (macd > signal) & (macd.shift(1) <= signal.shift(1))
     ).astype(int)
+
+
+def compute_volume_profile(
+    df: pd.DataFrame,
+    bins: int = 50,
+    window: int = 180,
+) -> Dict[str, object]:
+    """
+    Volume-at-Price distribution over the last `window` daily bars.
+    Returns POC, Value Area Low/High, HVN/LVN lists, and pre-computed
+    entry_zone (highest support HVN/VAL below current price) and
+    exit_zone (lowest resistance HVN/VAH above current price).
+    All price values are None when data is insufficient.
+    """
+    _empty: Dict[str, object] = {
+        "poc": None, "val": None, "vah": None,
+        "hvns": [], "lvns": [], "entry_zone": None, "exit_zone": None,
+    }
+
+    subset = df.tail(window)
+    if len(subset) < 20:
+        return _empty
+
+    vol = subset["Volume"].fillna(0).values
+    if vol.sum() == 0:
+        return _empty
+
+    lo = float(subset["Low"].min())
+    hi = float(subset["High"].max())
+    if hi <= lo:
+        return _empty
+
+    edges = np.linspace(lo, hi, bins + 1)
+    centres = (edges[:-1] + edges[1:]) / 2.0
+
+    indices = np.searchsorted(edges[1:], subset["Close"].values, side="left")
+    indices = np.clip(indices, 0, bins - 1)
+
+    bucket_vol = np.zeros(bins)
+    for idx, v in zip(indices, vol):
+        bucket_vol[idx] += v
+
+    poc_idx = int(np.argmax(bucket_vol))
+    poc = float(centres[poc_idx])
+
+    # Value Area covers 70% of total volume, expanding outward from POC
+    total_vol = bucket_vol.sum()
+    target = 0.70 * total_vol
+    lo_idx = hi_idx = poc_idx
+    accumulated = bucket_vol[poc_idx]
+
+    while accumulated < target and (lo_idx > 0 or hi_idx < bins - 1):
+        can_lo = lo_idx > 0
+        can_hi = hi_idx < bins - 1
+        if can_lo and can_hi:
+            if bucket_vol[lo_idx - 1] >= bucket_vol[hi_idx + 1]:
+                lo_idx -= 1
+                accumulated += bucket_vol[lo_idx]
+            else:
+                hi_idx += 1
+                accumulated += bucket_vol[hi_idx]
+        elif can_lo:
+            lo_idx -= 1
+            accumulated += bucket_vol[lo_idx]
+        else:
+            hi_idx += 1
+            accumulated += bucket_vol[hi_idx]
+
+    val = float(edges[lo_idx])
+    vah = float(edges[hi_idx + 1])
+
+    nonzero = bucket_vol[bucket_vol > 0]
+    threshold = 1.5 * float(np.median(nonzero)) if len(nonzero) else 0.0
+
+    hvns: List[float] = []
+    lvns: List[float] = []
+    for i in range(bins):
+        left = bucket_vol[i - 1] if i > 0 else 0.0
+        right = bucket_vol[i + 1] if i < bins - 1 else 0.0
+        if bucket_vol[i] > left and bucket_vol[i] > right and bucket_vol[i] > threshold:
+            hvns.append(float(centres[i]))
+        elif bucket_vol[i] < left and bucket_vol[i] < right and bucket_vol[i] < threshold:
+            lvns.append(float(centres[i]))
+
+    current = float(subset["Close"].iloc[-1])
+
+    below = [p for p in hvns + [val] if p < current]
+    entry_zone: Optional[float] = float(max(below)) if below else None
+
+    above = [p for p in hvns + [vah] if p > current]
+    exit_zone: Optional[float] = float(min(above)) if above else None
+
+    return {
+        "poc": poc, "val": val, "vah": vah,
+        "hvns": hvns, "lvns": lvns,
+        "entry_zone": entry_zone, "exit_zone": exit_zone,
+    }
+
+
+def compute_keltner_channel(
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    ema_period: int = 21,
+) -> Dict[str, Optional[float]]:
+    """
+    Keltner Channel centred on EMA(21) with ATR(14) band width.
+    Returns last-bar scalar values for ema_21, the ±2/±3 ATR bands,
+    and z_score = (Close − EMA) / ATR (dimensionless deviation from centre).
+    All values are None when ATR is unavailable or zero.
+    """
+    if len(close) < ATR_WINDOW + 1:
+        return {
+            "ema_21": None, "upper_2": None, "upper_3": None,
+            "lower_2": None, "lower_3": None, "z_score": None,
+        }
+
+    ema = close.ewm(span=ema_period, adjust=False).mean()
+    atr = compute_atr(high, low, close)
+
+    last_ema = ema.iloc[-1]
+    last_atr = atr.iloc[-1]
+    last_close = close.iloc[-1]
+
+    if pd.isna(last_ema) or pd.isna(last_atr) or last_atr == 0:
+        return {
+            "ema_21": None if pd.isna(last_ema) else float(last_ema),
+            "upper_2": None, "upper_3": None,
+            "lower_2": None, "lower_3": None,
+            "z_score": None,
+        }
+
+    e = float(last_ema)
+    a = float(last_atr)
+    return {
+        "ema_21": e,
+        "upper_2": e + 2.0 * a,
+        "upper_3": e + 3.0 * a,
+        "lower_2": e - 2.0 * a,
+        "lower_3": e - 3.0 * a,
+        "z_score": (float(last_close) - e) / a,
+    }

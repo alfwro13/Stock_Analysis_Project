@@ -23,7 +23,10 @@ from database import get_universe_tickers, get_connection, fill_smgb_actual
 from universe_engine import update_market_universe
 from profile_engine import run_profile_audit
 from regime_engine import calculate_market_regime
-from ai_prediction_engine import train_global_ml_model, update_daily_ml_predictions, run_historical_backfill
+from ai_prediction_engine import (
+    train_global_ml_model, update_daily_ml_predictions, run_historical_backfill,
+    train_quantile_models, score_quantile_predictions,
+)
 from risk_engine import update_all_tail_risks
 from freetrade_engine import sync_freetrade_universe
 from universe_deep_sync_engine import run_universe_deep_sync
@@ -524,6 +527,7 @@ def run_ml_training():
         log_sched_notification("Scheduler", "Started ML Global Training...")
         logger.info("ML Global Training initiated.")
         train_global_ml_model()
+        train_quantile_models()
         logger.info("ML Global Training complete.")
         log_sched_notification("Success", "ML Global Training completed successfully.")
     except Exception as e:
@@ -544,6 +548,7 @@ def run_ml_inference():
             tickers = engine.get_all_tickers()
         if tickers:
             update_daily_ml_predictions(tickers)
+            score_quantile_predictions(tickers)
         logger.info("Daily ML Inference complete.")
         log_sched_notification("Success", "Daily ML Inference completed successfully.")
     except Exception as e:

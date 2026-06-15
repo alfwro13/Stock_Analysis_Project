@@ -647,6 +647,8 @@ async def portfolio_page(request: Request, account_id: str = "all", embed: bool 
                 ORDER BY date DESC LIMIT 1) AS sentiment_score,
                q.atr_pct,
                q.close_price as quant_close_price,
+               q.vp_entry_zone,
+               q.vp_exit_zone,
                COALESCE(
                    NULLIF(ap.company_name, s.ticker),
                    NULLIF(mu.company_name, s.ticker),
@@ -813,6 +815,8 @@ async def watchlist_page(request: Request, embed: bool = False):
                 ORDER BY date DESC LIMIT 1) AS sentiment_score,
                q.atr_pct,
                q.close_price as quant_close_price,
+               q.vp_entry_zone,
+               q.vp_exit_zone,
                m.is_freetrade
         FROM stock_signals s
         LEFT JOIN quant_signals q ON s.ticker = q.ticker
@@ -1463,6 +1467,9 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
                q.mom_1m, q.mom_3m, q.mom_6m, q.mom_12m_skip1m,
                q.hist_vol_20, q.rel_strength_5d, q.rel_strength_20d,
                q.anomaly_score,
+               q.vp_poc, q.vp_val, q.vp_vah, q.vp_entry_zone, q.vp_exit_zone,
+               q.kc_z_score, q.kc_entry_signal, q.kc_exit_signal,
+               q.price_q10, q.price_q90,
                mu.industry, mu.index_membership,
                COALESCE(
                    NULLIF(p.company_name, s.ticker),
@@ -1584,6 +1591,16 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
                 "anomaly_score": q_data.get("anomaly_score"),
                 "industry": q_data.get("industry"),
                 "index_membership": q_data.get("index_membership"),
+                "vp_poc": q_data.get("vp_poc"),
+                "vp_val": q_data.get("vp_val"),
+                "vp_vah": q_data.get("vp_vah"),
+                "vp_entry_zone": q_data.get("vp_entry_zone"),
+                "vp_exit_zone": q_data.get("vp_exit_zone"),
+                "kc_z_score": q_data.get("kc_z_score"),
+                "kc_entry_signal": q_data.get("kc_entry_signal"),
+                "kc_exit_signal": q_data.get("kc_exit_signal"),
+                "price_q10": q_data.get("price_q10"),
+                "price_q90": q_data.get("price_q90"),
             }
         else:
             stock_data = {
@@ -1638,6 +1655,10 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
                 "hist_vol_20": None, "rel_strength_5d": None, "rel_strength_20d": None,
                 "anomaly_score": None,
                 "industry": None, "index_membership": None,
+                "vp_poc": None, "vp_val": None, "vp_vah": None,
+                "vp_entry_zone": None, "vp_exit_zone": None,
+                "kc_z_score": None, "kc_entry_signal": None, "kc_exit_signal": None,
+                "price_q10": None, "price_q90": None,
             }
 
     # --- earnings_volatility enrichment ---

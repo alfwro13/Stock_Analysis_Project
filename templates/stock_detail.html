@@ -33,6 +33,7 @@
             <a href="#verdict">Verdict</a> <span class="divider">|</span>
             <a href="#intraday-section">Interactive Charts</a> <span class="divider">|</span>
             <a href="#price-action">Price Action</a> <span class="divider">|</span>
+            <a href="#entry-exit-zones">Entry & Exit</a> <span class="divider">|</span>
             <a href="#fundamentals">Fundamentals</a> <span class="divider">|</span>
             <a href="/glossary">📚 Glossary</a> <span class="divider">|</span>
             <a href="/notifications">🔔 Notifications {% if unread_count > 0 %}<span class="badge" id="nav-badge">{{ unread_count }}</span>{% endif %}</a>
@@ -623,6 +624,110 @@
                     </div>
                     {% else %}
                     <p>Not enough historical data to generate Price Action metrics.</p>
+                    {% endif %}
+                </div>
+
+                <div id="entry-exit-zones">
+                    <h2>Entry &amp; Exit Zones</h2>
+                    {% if stock.vp_entry_zone is not none or stock.kc_z_score is not none %}
+                    <div class="fundamentals-grid">
+
+                        <div class="data-card">
+                            <h3><abbr title="Volume-at-Price analysis identifies price levels with the highest historical trading activity over the last 180 days. High Volume Nodes (HVNs) act as institutional support below the current price and resistance above it.">Volume Profile</abbr></h3>
+                            <div class="data-row">
+                                <span class="data-label"><abbr title="Point of Control: the single price level with the highest traded volume. Institutions often defend this level when price revisits it.">POC:</abbr></span>
+                                <span class="data-value">{{ display_price(stock.vp_poc, stock.currency) }}</span>
+                            </div>
+                            <div class="data-row">
+                                <span class="data-label"><abbr title="Value Area Low: lower boundary of the price range that contained 70% of all traded volume. Functions as a structural buy-zone floor.">Value Area Low:</abbr></span>
+                                <span class="data-value">{{ display_price(stock.vp_val, stock.currency) }}</span>
+                            </div>
+                            <div class="data-row">
+                                <span class="data-label"><abbr title="Value Area High: upper boundary of the price range that contained 70% of all traded volume. Functions as a structural resistance ceiling.">Value Area High:</abbr></span>
+                                <span class="data-value">{{ display_price(stock.vp_vah, stock.currency) }}</span>
+                            </div>
+                            <div class="divider-line"></div>
+                            <div class="data-row">
+                                <span class="data-label"><abbr title="The highest High Volume Node or Value Area Low that sits strictly below the current price. This is the nearest institutional liquidity floor — a candidate limit-order entry zone.">Entry Zone:</abbr></span>
+                                <span class="data-value">
+                                    {% if stock.vp_entry_zone is not none %}
+                                        <span class="metric-excellent">{{ display_price(stock.vp_entry_zone, stock.currency) }}</span>
+                                    {% else %}N/A{% endif %}
+                                </span>
+                            </div>
+                            {% if portfolio_math %}
+                            <div class="data-row">
+                                <span class="data-label"><abbr title="The lowest High Volume Node or Value Area High strictly above the current price. Price typically stalls here as overhead supply enters — a take-profit target.">Exit Target:</abbr></span>
+                                <span class="data-value">
+                                    {% if stock.vp_exit_zone is not none %}
+                                        <span class="metric-poor">{{ display_price(stock.vp_exit_zone, stock.currency) }}</span>
+                                    {% else %}N/A{% endif %}
+                                </span>
+                            </div>
+                            {% endif %}
+                        </div>
+
+                        <div class="data-card">
+                            <h3><abbr title="Keltner Channel uses EMA(21) as the centre line with ATR(14) as the band width. The Z-score measures how far the current price has deviated from the EMA in ATR units. Values between −2 and −3 indicate a mean-reversion entry opportunity during an uptrend.">Keltner Channel</abbr></h3>
+                            <div class="data-row">
+                                <span class="data-label"><abbr title="(Close − EMA21) / ATR(14). Negative values indicate price is below the EMA baseline; −2 to −3 is the institutional pullback entry zone during an uptrend.">KC Z-Score:</abbr></span>
+                                <span class="data-value">
+                                    {% if stock.kc_z_score is not none %}
+                                        {% set kc_z = stock.kc_z_score %}
+                                        {% if kc_z <= -2.0 %}<span class="metric-excellent">{{ "{:.2f}".format(kc_z) }}σ</span>
+                                        {% elif kc_z >= 2.0 %}<span class="metric-poor">{{ "{:.2f}".format(kc_z) }}σ</span>
+                                        {% else %}<span class="metric-neutral">{{ "{:.2f}".format(kc_z) }}σ</span>{% endif %}
+                                    {% else %}N/A{% endif %}
+                                </span>
+                            </div>
+                            <div class="data-row">
+                                <span class="data-label"><abbr title="Active when close is between −2 and −3 ATRs below EMA21 and the 200-day trend is rising — a mean-reversion entry signal inside an institutional uptrend.">KC Entry Signal:</abbr></span>
+                                <span class="data-value">
+                                    {% if stock.kc_entry_signal %}
+                                        <span class="metric-excellent">Active — pullback entry zone</span>
+                                    {% else %}
+                                        <span class="metric-neutral">Not active</span>
+                                    {% endif %}
+                                </span>
+                            </div>
+                            {% if portfolio_math %}
+                            <div class="data-row">
+                                <span class="data-label"><abbr title="Active when close exceeds +3 ATRs above EMA21 and RSI is above 75 — momentum exhaustion warning. Consider scaling out of the position.">KC Exit Signal:</abbr></span>
+                                <span class="data-value">
+                                    {% if stock.kc_exit_signal %}
+                                        <span class="metric-poor">Active — overextension warning</span>
+                                    {% else %}
+                                        <span class="metric-neutral">Not active</span>
+                                    {% endif %}
+                                </span>
+                            </div>
+                            {% endif %}
+                        </div>
+
+                        {% if stock.price_q10 is not none and stock.price_q90 is not none %}
+                        <div class="data-card">
+                            <h3><abbr title="ML Quantile Regression estimates a statistical price range for the next 10 trading days using the same feature set as the binary ML ensemble. The floor (Q10) and ceiling (Q90) define a confidence corridor — not a guarantee.">ML Quantile Bands</abbr></h3>
+                            <div class="data-row">
+                                <span class="data-label"><abbr title="10th-percentile predicted price over the next 10 trading days. This is the model's pessimistic floor — a candidate limit-order entry price if you expect a short-term dip.">Floor (Q10):</abbr></span>
+                                <span class="data-value"><span class="metric-excellent">{{ display_price(stock.price_q10, stock.currency) }}</span></span>
+                            </div>
+                            <div class="data-row">
+                                <span class="data-label"><abbr title="90th-percentile predicted price over the next 10 trading days. This is the model's optimistic ceiling — a candidate take-profit level if you own the stock.">Ceiling (Q90):</abbr></span>
+                                <span class="data-value">
+                                    {% if portfolio_math %}
+                                        <span class="metric-poor">{{ display_price(stock.price_q90, stock.currency) }}</span>
+                                    {% else %}
+                                        {{ display_price(stock.price_q90, stock.currency) }}
+                                    {% endif %}
+                                </span>
+                            </div>
+                            <p class="text-muted-desc">10-day statistical range. Retrain via Settings → Initialize AI Engine.</p>
+                        </div>
+                        {% endif %}
+
+                    </div>
+                    {% else %}
+                    <p>Entry &amp; Exit Zone data will populate after the next Daily Quant Scan completes.</p>
                     {% endif %}
                 </div>
 
