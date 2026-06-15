@@ -202,11 +202,6 @@ DEFAULT_CONFIG = {
             "MAX_PER_TICKER": 5,
             "MAX_AGE_DAYS": 7
         },
-        "SMGB_PREDICTOR": {
-            "ENABLED": False,
-            "PRE_US_OPEN_TIME": "13:30",
-            "POST_US_CLOSE_TIME": "22:00"
-        },
         "TRAP_MONITORS": {
             "ENABLED": False,
             "BULL_TRAP": True,
