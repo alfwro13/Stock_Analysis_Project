@@ -549,7 +549,10 @@ def get_etf_correlation_data(config: dict, days: int = 60) -> dict:
         df = df.loc[max(valid_starts):]
 
     normalized = df.div(df.iloc[0]) * 100
-    valid_cols = [c for c in normalized.columns if 50.0 <= float(normalized[c].dropna().iloc[-1]) <= 150.0] if not normalized.empty else []
+    valid_cols = [
+        c for c in normalized.columns
+        if c == etf_ticker or (50.0 <= float(normalized[c].dropna().iloc[-1]) <= 150.0)
+    ] if not normalized.empty else []
     normalized = normalized[valid_cols]
 
     us_cols = [t for t in constituent_tickers if t in normalized.columns]
@@ -652,14 +655,12 @@ def fill_actuals_for_config(config_id: int) -> None:
 
         today = datetime.now(timezone.utc).date()
         today_str = today.isoformat()
-        yesterday = (today - timedelta(days=1)).isoformat()
 
-        # next_open: today's open fills yesterday's prediction
         today_row = etf_df[etf_df.index == pd.Timestamp(today)]
         if not today_row.empty:
             today_open = float(today_row["Open"].iloc[0])
             if today_open > 0:
-                fill_etf_actual(config_id, yesterday, today_open, "next_open")
+                fill_etf_actual(config_id, today_str, today_open, "next_open")
 
         # us_open_impact: close of reference day fills that day's impact prediction
         if len(etf_df) >= 1:
