@@ -29,6 +29,7 @@
             <a href="javascript:history.back()">← Back</a> 
             
             {% if not embed %}
+            <span class="sticky-nav-sections">
             <span class="divider">|</span>
             <a href="#verdict">Verdict</a> <span class="divider">|</span>
             <a href="#intraday-section">Interactive Charts</a> <span class="divider">|</span>
@@ -37,6 +38,7 @@
             <a href="#fundamentals">Fundamentals</a> <span class="divider">|</span>
             <a href="/glossary">📚 Glossary</a> <span class="divider">|</span>
             <a href="/notifications">🔔 Notifications {% if unread_count > 0 %}<span class="badge" id="nav-badge">{{ unread_count }}</span>{% endif %}</a>
+            </span>
             {% endif %}
         </div>
     </div>

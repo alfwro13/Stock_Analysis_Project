@@ -346,6 +346,11 @@ table.dataTable.display tbody tr.even > .sorting_1, table.dataTable.order-column
   .nav-links { display: none; }
   .nav-links.nav-open { display: flex; flex-direction: column; align-items: stretch; margin-top: 8px; }
   .nav-links.nav-open a { margin-right: 0; padding: 12px 8px; font-size: 16px; border-bottom: 1px solid #2a2a2a; width: 100%; }
+  /* Stock detail: hide section jump-links in sticky-nav; keep only ← Back */
+  .sticky-nav-sections { display: none; }
+  /* Stock detail: let portfolio stat row and h1 wrap instead of overflowing */
+  .flex-gap-40 { flex-wrap: wrap; gap: 15px; }
+  .body-detail h1 { flex-wrap: wrap; }
   /* Table: bleed wrapper to viewport edges, cancelling body's 20px left/right padding */
   #dataTable_wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; margin-left: -20px; margin-right: -20px; }
   /* Override DataTables' own generous padding (it loads after styles.css and needs !important) */
