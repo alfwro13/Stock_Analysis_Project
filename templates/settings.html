@@ -1579,6 +1579,22 @@
                     <button type="button" id="syncBtn" class="btn btn-sync flex-1" onclick="triggerGhostfolioSync()">⬇️ Sync Ghostfolio Data</button>
                     <button type="button" id="updateBtn" class="btn btn-update flex-1" onclick="triggerUpdate()">↻ Force Update Analysis Models</button>
                 </div>
+                <hr style="border-color:#333; margin: 20px 0;">
+                <p class="settings-desc"><strong>Service control</strong> — use these when a stuck job is blocking normal operations.</p>
+                <div class="flex-gap-15 mt-15">
+                    <button type="button" class="btn btn-orange flex-1" onclick="forceRestart()">⚡ Force Restart</button>
+                    <button type="button" class="btn btn-danger flex-1" onclick="showTerminateConfirm()">🛑 Terminate Jobs</button>
+                </div>
+                <div id="manual-actions-status" class="mt-15"></div>
+                <div id="terminate-confirm-panel" class="d-none mt-15" style="background:#1a1a1a; border:1px solid #ff4d4d; border-radius:6px; padding:15px;">
+                    <p style="color:#ff8080; font-weight:bold; margin:0 0 8px;">⚠️ Warning: terminated jobs will NOT resume automatically.</p>
+                    <p class="settings-desc" style="margin:0 0 12px;">The following jobs are currently running and will be forcibly cleared from the active-jobs registry. Any in-progress work (e.g. a partial data scan) will be abandoned mid-run.</p>
+                    <ul id="terminate-job-list" class="mt-5 mb-10" style="color:#e0e0e0; padding-left:20px;"></ul>
+                    <div class="flex-gap-15">
+                        <button type="button" class="btn btn-danger flex-1" onclick="confirmTerminate()">Confirm — Terminate All Listed Jobs</button>
+                        <button type="button" class="btn btn-update flex-1" onclick="cancelTerminate()">Cancel</button>
+                    </div>
+                </div>
             </details>
 
             <details class="settings-card">

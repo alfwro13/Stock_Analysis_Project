@@ -83,6 +83,10 @@ def get_active_jobs() -> dict[str, str]:
     with _active_jobs_lock:
         return dict(_active_jobs)
 
+def force_clear_active_jobs() -> None:
+    with _active_jobs_lock:
+        _active_jobs.clear()
+
 def log_sched_notification(msg_type: str, msg_text: str):
     level = "error" if msg_type == "Error" else ("warning" if msg_type == "Warning" else "info")
     notify(current_job_source() or SCHEDULER_STATUS_SOURCE, msg_type, msg_text, level=level)

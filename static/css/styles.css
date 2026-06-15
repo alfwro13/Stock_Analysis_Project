@@ -114,6 +114,8 @@ th:hover { background-color: #3d3d3d; }
 .btn-test:hover { background-color: #3388dd; }
 .btn-danger { background-color: #ff4d4d; padding: 10px 20px; font-size: 15px; color: #fff; }
 .btn-danger:hover { background-color: #cc0000; }
+.btn-orange { background-color: #ff8c00; color: #fff; }
+.btn-orange:hover { background-color: #cc7000; }
 .btn-read { background-color: #00ffcc; padding: 10px 20px; }
 .btn-read:hover { background-color: #00ccaa; }
 .btn-add { background-color: #4da6ff; padding: 4px 8px; border-radius: 4px; }

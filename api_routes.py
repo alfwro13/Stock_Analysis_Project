@@ -1468,6 +1468,19 @@ async def restart_system(background_tasks: BackgroundTasks):
     background_tasks.add_task(execute_restart)
     return JSONResponse(content={"status": "success", "message": "Restart signal sent. The dashboard will be back online in ~5-10 seconds."})
 
+@api_router.post("/system/force-restart", dependencies=[Depends(require_confirm_token)])
+async def force_restart_system(background_tasks: BackgroundTasks):
+    background_tasks.add_task(execute_restart)
+    return JSONResponse(content={"status": "success", "message": "Force restart signal sent. The dashboard will be back online in ~5-10 seconds."})
+
+@api_router.post("/system/terminate-jobs", dependencies=[Depends(require_confirm_token)])
+async def terminate_active_jobs():
+    from scheduler_engine import get_active_jobs, force_clear_active_jobs
+    cleared = get_active_jobs()
+    force_clear_active_jobs()
+    names = list(cleared.keys())
+    return JSONResponse(content={"status": "success", "terminated": names})
+
 @api_router.post("/settings", dependencies=[Depends(require_confirm_token)])
 async def save_settings(config: SettingsConfig):
     try:

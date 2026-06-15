@@ -448,6 +448,93 @@
             }
         }
 
+        async function forceRestart() {
+            const btn = document.querySelector('button[onclick="forceRestart()"]');
+            btn.disabled = true;
+            setStatus('manual-actions-status', 'warning', "Sending force restart signal...");
+            try {
+                const response = await fetch('/api/system/force-restart', { method: 'POST', headers: { 'X-Confirm-Token': CONFIRM_TOKEN } });
+                const result = await response.json();
+                if (response.ok) {
+                    setStatus('manual-actions-status', 'success', "Signal sent. Waiting for service to come back up...");
+                    await new Promise(resolve => setTimeout(resolve, 3000));
+                    const maxWait = 60000;
+                    const pollInterval = 2000;
+                    const started = Date.now();
+                    const poll = setInterval(async () => {
+                        const elapsed = Math.round((Date.now() - started) / 1000);
+                        setStatus('manual-actions-status', 'success', `Waiting for service to come back up... (${elapsed}s)`);
+                        try {
+                            const check = await fetch('/', { method: 'HEAD', cache: 'no-store' });
+                            if (check.status < 500) { clearInterval(poll); window.location.reload(); }
+                        } catch (_) {}
+                        if (Date.now() - started > maxWait) {
+                            clearInterval(poll);
+                            setStatus('manual-actions-status', 'error', "Service is taking longer than expected. Please refresh manually.");
+                            btn.disabled = false;
+                        }
+                    }, pollInterval);
+                } else {
+                    setStatus('manual-actions-status', 'error', result.message);
+                    btn.disabled = false;
+                }
+            } catch (_) {
+                setStatus('manual-actions-status', 'error', "Network error.");
+                btn.disabled = false;
+            }
+        }
+
+        async function showTerminateConfirm() {
+            const panel = document.getElementById('terminate-confirm-panel');
+            const list = document.getElementById('terminate-job-list');
+            try {
+                const resp = await fetch('/api/system/active-jobs', { cache: 'no-store' });
+                const data = await resp.json();
+                if (!data.busy) {
+                    setStatus('manual-actions-status', 'warning', "No active jobs to terminate.");
+                    return;
+                }
+                const now = Date.now();
+                list.innerHTML = Object.entries(data.active_jobs).map(([name, since]) => {
+                    const mins = Math.round((now - new Date(since + 'Z').getTime()) / 60000);
+                    return `<li><strong>${name}</strong> <span class="text-muted">(running ${mins} min)</span></li>`;
+                }).join('');
+            } catch (_) {
+                list.innerHTML = '<li>Could not retrieve job list.</li>';
+            }
+            panel.classList.remove('d-none');
+            document.getElementById('manual-actions-status').innerHTML = '';
+        }
+
+        function cancelTerminate() {
+            document.getElementById('terminate-confirm-panel').classList.add('d-none');
+        }
+
+        async function confirmTerminate() {
+            const btn = document.querySelector('button[onclick="confirmTerminate()"]');
+            btn.disabled = true;
+            btn.innerText = "Terminating...";
+            try {
+                const resp = await fetch('/api/system/terminate-jobs', { method: 'POST', headers: { 'X-Confirm-Token': CONFIRM_TOKEN } });
+                const data = await resp.json();
+                if (resp.ok) {
+                    const names = data.terminated || [];
+                    const msg = names.length
+                        ? `Cleared ${names.length} job(s): ${names.join(', ')}. They will not resume.`
+                        : "No active jobs found — registry was already empty.";
+                    document.getElementById('terminate-confirm-panel').classList.add('d-none');
+                    setStatus('manual-actions-status', 'success', msg);
+                    refreshActiveJobs();
+                } else {
+                    setStatus('manual-actions-status', 'error', data.message || "Failed to terminate jobs.");
+                }
+            } catch (_) {
+                setStatus('manual-actions-status', 'error', "Network error.");
+            }
+            btn.disabled = false;
+            btn.innerText = "Confirm — Terminate All Listed Jobs";
+        }
+
         async function testSentimentAlert() {
             const btn = document.querySelector('button[onclick="testSentimentAlert()"]');
             btn.disabled = true;
