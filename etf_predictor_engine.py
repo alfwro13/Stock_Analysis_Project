@@ -43,7 +43,7 @@ def detect_etf_info(etf_ticker: str) -> dict:
 
 
 def detect_fx_pair(etf_currency: str, constituent_currencies: list) -> str | None:
-    """Returns Yahoo FX pair or None; pair as {etf_ccy}{constituent_ccy}=X so fx_adjustment sign matches smgb_predictor."""
+    """Returns Yahoo FX pair or None; pair as {etf_ccy}{constituent_ccy}=X so fx_adjustment sign is positive when ETF currency is stronger."""
     normalised_etf = "GBP" if etf_currency in ("GBp", "GBX") else etf_currency
     normalised_constituents = [
         "GBP" if c in ("GBp", "GBX") else c for c in constituent_currencies

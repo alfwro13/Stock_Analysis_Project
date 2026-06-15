@@ -171,7 +171,7 @@ Tables added after initial schema creation. All managed via `database.py:init_db
 * **Key Columns:** `id` (PK autoincrement), `article_id` (UNIQUE), `ticker`, `source_list`, `headline`, `published_at`, `sentiment_score`, `sentiment_label`.
 
 #### `smgb_predictions`
-* **Purpose:** SMGB.L morning price predictions, actuals, and accuracy metrics.
+* **Purpose:** Orphaned table (retained for data preservation). Was used by the removed SMGB.L Morning Price Predictor (`smgb_predictor.py`). No code reads or writes to this table anymore.
 * **Key Columns:** `id` (PK autoincrement), `target_date` (UNIQUE), `predicted_price`, `actual_open`, `absolute_error`, `pct_error`, `direction_correct`.
 
 #### `etf_predictor_configs`

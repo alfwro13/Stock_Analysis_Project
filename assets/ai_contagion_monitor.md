@@ -21,7 +21,7 @@ Page route: `GET /ai-contagion`
 | AMZN | Amazon | Cloud (teal) |
 | TSLA | Tesla | AI-adjacent (orange) |
 
-These are intentionally distinct from the SMGB.L semiconductor basket. SMGB.L holds dedicated semiconductor companies (equipment, memory, foundry). This monitor adds hyperscalers and cloud companies that are major AI investors or infrastructure providers.
+The basket deliberately spans beyond pure semiconductors. It adds hyperscalers and cloud companies that are major AI investors or infrastructure providers alongside the semi names, to capture the full contagion surface.
 
 ---
 
@@ -49,10 +49,10 @@ High correlation across the full grid means the sector is moving as one: a drawd
 
 ## 3. Data Fetching
 
-`smgb_predictor.get_ai_contagion_data(days=30)` handles all data fetching (no separate module created):
+`ai_contagion_engine.get_ai_contagion_data(days=30)` handles all data fetching:
 
-- Daily: `yahoo_engine.get_price_history(_AI_TICKERS, period="35d", interval="1d")` truncated to `days`
-- Intraday: `yahoo_engine.get_intraday(_AI_TICKERS, period="1d", interval="5m", prepost=False)`
+- Daily: `yahoo_engine.get_price_history(_AI_PAGE_TICKERS, period="35d", interval="1d")` truncated to `days`
+- Intraday: `yahoo_engine.get_intraday(_AI_PAGE_TICKERS, period="1d", interval="5m", prepost=False)`
 
 Both calls use the existing `yahoo_engine` cache layer. Intraday failures are caught and the intraday chart section is silently omitted from the page.
 
@@ -62,7 +62,7 @@ Both calls use the existing `yahoo_engine` cache layer. Intraday failures are ca
 
 | File | Role |
 |------|------|
-| `smgb_predictor.py` | `get_ai_contagion_data()`, `_AI_TICKERS` constant |
+| `ai_contagion_engine.py` | `get_ai_contagion_data()`, `_AI_PAGE_TICKERS` constant, flash-crash detector |
 | `visuals.py` | `create_ai_contagion_performance_chart()`, `create_ai_contagion_correlation_heatmap()`, `_AI_COLORS` |
 | `page_routes.py` | `GET /ai-contagion` route |
 | `templates/ai_contagion.html` | Page template |

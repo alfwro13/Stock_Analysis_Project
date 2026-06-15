@@ -701,7 +701,7 @@ def create_etf_overlay_chart(
     trading_date: "date | None" = None,
     session_relationship: str = "behind",
 ) -> str:
-    """Generic time-aligned intraday overlay chart — structure mirrors create_smgb_overlay_chart."""
+    """Generic time-aligned intraday overlay chart."""
     if prediction is None:
         prediction = {}
     if not constituent_exchanges:
@@ -862,7 +862,7 @@ def create_etf_overlay_chart(
         is_intraday = signal_source in ("intraday_premarket", "intraday_live")
         use_constituent_open = session_relationship == "behind" and is_intraday
         if use_constituent_open:
-            # Star at primary constituent exchange open (SMGB.L / US → UK case)
+            # Star at primary constituent exchange open (LSE ETF with US constituents case)
             _primary = constituent_exchanges[0]
             _c_open_t, _c_close_t = time_engine.market_window_utc(_primary)
             _now_c = datetime.now(timezone.utc).replace(tzinfo=None)
