@@ -1,193 +1,115 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="color-scheme" content="dark">
-    <title>Quantamental - Earnings Volatility</title>
-    <link rel="stylesheet" href="/static/css/styles.css?v={{ css_version }}">
-</head>
-<body class="body-watchlist">
-    
-    <div class="header-container">
-        <div>
-            <div class="title-wrapper">
-                <a href="https://github.com/alfwro13/Stock_Analysis_Project" target="_blank" class="logo-link">
-                    <img src="/assets/logo_small.png" alt="Quantamental Logo" class="logo-img">
-                </a>
-                <h1><abbr title="Quantamental - a modern institutional strategy that combines Quantitative analysis with Fundamental analysis.">uantamental</abbr> Dashboard</h1>
+{% extends "base.html" %}
+
+{% block title %}Quantamental - Earnings Volatility{% endblock %}
+
+{% block content %}
+<h1 class="mb-1">Earnings Volatility</h1>
+<p class="text-secondary mb-3">Options Mispricing &amp; Volatility Arbitrage Scanner</p>
+
+<h2>Upcoming Earnings Volatility Edge</h2>
+<p>Quantitative options mispricing evaluation. A positive edge score indicates that the At-The-Money (ATM) Straddle implies a smaller move than historical averages (Options are mathematically underpriced).</p>
+
+<table id="dataTable" class="table table-hover w-100">
+    <thead>
+        <tr>
+            <th data-priority="1">Ticker</th>
+            <th data-priority="2">Next Earnings</th>
+            <th data-priority="4">Implied Move</th>
+            <th data-priority="5">Historical Avg Move</th>
+            <th data-priority="3">Edge Score</th>
+            <th data-priority="6">Options Volume</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for row in earnings_data %}
+        <tr>
+            <td><a href="/stock/{{ row.ticker }}" class="ticker-link">{{ row.ticker }}</a></td>
+            <td>{{ row.next_earnings_date }}</td>
+            <td>{{ "{:,.2f}".format(row.implied_move_pct) }}%</td>
+            <td>{{ "{:,.2f}".format(row.historical_avg_move_pct) }}%</td>
+            <td class="{% if row.edge_score > 0 %}text-success{% elif row.edge_score < 0 %}text-danger{% else %}text-neutral-bold{% endif %}">
+                {% if row.edge_score > 0 %}+{% endif %}{{ "{:,.2f}".format(row.edge_score) }}%
+            </td>
+            <td>{{ "{:,.0f}".format(row.options_volume) }}</td>
+        </tr>
+        {% else %}
+        <tr>
+            <td colspan="6" class="empty-table-msg">No upcoming earnings volatility data found. Ensure the background <code>weekend_earnings_vol_scan_job</code> has run successfully.</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<div class="manual-container">
+    <div class="manual-section">
+        <h2 class="manual-header text-accent-cyan">📖 How to Read This Report</h2>
+        <div class="manual-text">
+            <p>Trading around earnings is one of the most volatile events in the stock market. Because earnings reports are binary events (a company either beats expectations or misses them), stocks often gap up or down violently. This scanner acts as an <strong>Arbitrage Engine</strong>—it compares what the options market <em>thinks</em> will happen against what has <em>historically</em> happened, looking for mathematical mispricings.</p>
+        </div>
+
+        <div class="guide-grid">
+
+            <div class="guide-card border-top-blue">
+                <h4 class="text-accent-blue">1. What are Options?</h4>
+                <p>Options are financial derivative contracts that give you the right, but not the obligation, to buy (a <strong>Call</strong> option) or sell (a <strong>Put</strong> option) a stock at a specific price on a specific date. They are essentially bets on future price movement.</p>
+                <p>Right before an earnings report, options become incredibly expensive. This is because market makers know a massive price jump is coming, so they raise the "premiums" (the cost to buy the contract) to protect themselves. This inflation of price is called <strong>Implied Volatility (IV)</strong>.</p>
             </div>
-            
-            <p class="page-subtitle">Options Mispricing & Volatility Arbitrage Scanner</p>
-            
-            {% set active_page = 'earnings_volatility' %}
-            {% include 'navbar.html' %}
+
+            <div class="guide-card border-top-warning">
+                <h4 class="text-warning">2. The Implied Move</h4>
+                <p>The Implied Move tells us exactly how big of a jump the options market is pricing in. Our engine calculates this by looking at the cost of buying an At-The-Money (ATM) Call <em>and</em> an ATM Put expiring right after the earnings date (a strategy known as a Straddle).</p>
+                <div class="setup">
+                    Example:<br>
+                    Stock Price = $100<br>
+                    Call Cost = $3.00 | Put Cost = $3.00<br>
+                    Implied Move = 6.00%
+                </div>
+                <div class="why-use-it">
+                    In this example, the options market expects the stock to jump 6% up or down. If you buy options, the stock MUST move more than 6% just for you to break even.
+                </div>
+            </div>
+
+            <div class="guide-card border-top-purple">
+                <h4 class="text-accent-purple">3. Historical Avg Move</h4>
+                <p>While the Implied Move looks forward, the Historical Move looks backward to ground us in reality. The engine pulls the exact dates of the company's last 4 quarterly earnings reports (1 year of data).</p>
+                <p>It mathematically calculates the actual, real-world percentage moves the stock made over a <strong>2-trading-day window</strong> surrounding those reports (from the close before the report to the close after), and averages them together. This 2-session window ensures we capture the full price reaction regardless of whether the report was issued Before-Market-Open or After-Market-Close.</p>
+            </div>
+
+            <div class="guide-card border-top-success">
+                <h4 class="text-success">4. Edge Score (The Arbitrage)</h4>
+                <p>The Edge Score is our mathematical advantage. It is calculated simply: <strong>Historical Move - Implied Move</strong>.</p>
+                <div class="setup border-left-success">
+                    <strong>Positive Edge (Green)</strong><br>
+                    Implied: 5% | Historical: 10%<br>
+                    Options are UNDERPRICED. The market expects a small move, but historically this stock explodes. Buying options here offers a statistical edge.
+                </div>
+                <div class="setup border-left-danger mt-10">
+                    <strong>Negative Edge (Red)</strong><br>
+                    Implied: 15% | Historical: 3%<br>
+                    Options are OVERPRICED. The market expects chaos, but historically this stock barely moves. This is a setup for an "IV Crush"—selling options here offers an edge.
+                </div>
+            </div>
+
+            <div class="guide-card border-top-neutral">
+                <h4 class="text-muted">5. Options Volume</h4>
+                <p>This is the total number of Option contracts that have traded today for the specific strike prices we used in our calculation.</p>
+                <p><strong>Why it matters:</strong> If the volume is extremely low (e.g., under 100), the options are "illiquid." This means the Bid/Ask spread is incredibly wide, making the Implied Move calculation mathematically unreliable. Always look for high volume to ensure the Edge Score is based on trustworthy, highly traded market data.</p>
+            </div>
+
         </div>
     </div>
+</div>
+{% endblock %}
 
-    <div class="report-container report-container-wide">
-        <h2>Upcoming Earnings Volatility Edge</h2>
-        <p>Quantitative options mispricing evaluation. A positive edge score indicates that the At-The-Money (ATM) Straddle implies a smaller move than historical averages (Options are mathematically underpriced).</p>
-        
-        <table id="dataTable">
-            <thead>
-                <tr>
-                    <th onclick="sortTable('dataTable', 0)">Ticker ↕</th>
-                    <th onclick="sortTable('dataTable', 1)">Next Earnings ↕</th>
-                    <th onclick="sortTable('dataTable', 2)">Implied Move ↕</th>
-                    <th onclick="sortTable('dataTable', 3)">Historical Avg Move ↕</th>
-                    <th onclick="sortTable('dataTable', 4)">Edge Score ↕</th>
-                    <th onclick="sortTable('dataTable', 5)">Options Volume ↕</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for row in earnings_data %}
-                <tr>
-                    <td><a href="/stock/{{ row.ticker }}" class="ticker-link">{{ row.ticker }}</a></td>
-                    <td>{{ row.next_earnings_date }}</td>
-                    <td>{{ "{:,.2f}".format(row.implied_move_pct) }}%</td>
-                    <td>{{ "{:,.2f}".format(row.historical_avg_move_pct) }}%</td>
-                    <td class="{% if row.edge_score > 0 %}text-success{% elif row.edge_score < 0 %}text-danger{% else %}text-neutral-bold{% endif %}">
-                        {% if row.edge_score > 0 %}+{% endif %}{{ "{:,.2f}".format(row.edge_score) }}%
-                    </td>
-                    <td>{{ "{:,.0f}".format(row.options_volume) }}</td>
-                </tr>
-                {% else %}
-                <tr>
-                    <td colspan="6" class="empty-table-msg">No upcoming earnings volatility data found. Ensure the background <code>weekend_earnings_vol_scan_job</code> has run successfully.</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-
-    <div class="manual-container">
-        <div class="manual-section">
-            <h2 class="manual-header text-accent-cyan">📖 How to Read This Report</h2>
-            <div class="manual-text">
-                <p>Trading around earnings is one of the most volatile events in the stock market. Because earnings reports are binary events (a company either beats expectations or misses them), stocks often gap up or down violently. This scanner acts as an <strong>Arbitrage Engine</strong>—it compares what the options market <em>thinks</em> will happen against what has <em>historically</em> happened, looking for mathematical mispricings.</p>
-            </div>
-
-            <div class="guide-grid">
-                
-                <div class="guide-card border-top-blue">
-                    <h4 class="text-accent-blue">1. What are Options?</h4>
-                    <p>Options are financial derivative contracts that give you the right, but not the obligation, to buy (a <strong>Call</strong> option) or sell (a <strong>Put</strong> option) a stock at a specific price on a specific date. They are essentially bets on future price movement.</p>
-                    <p>Right before an earnings report, options become incredibly expensive. This is because market makers know a massive price jump is coming, so they raise the "premiums" (the cost to buy the contract) to protect themselves. This inflation of price is called <strong>Implied Volatility (IV)</strong>.</p>
-                </div>
-
-                <div class="guide-card border-top-warning">
-                    <h4 class="text-warning">2. The Implied Move</h4>
-                    <p>The Implied Move tells us exactly how big of a jump the options market is pricing in. Our engine calculates this by looking at the cost of buying an At-The-Money (ATM) Call <em>and</em> an ATM Put expiring right after the earnings date (a strategy known as a Straddle).</p>
-                    <div class="setup">
-                        Example:<br>
-                        Stock Price = $100<br>
-                        Call Cost = $3.00 | Put Cost = $3.00<br>
-                        Implied Move = 6.00%
-                    </div>
-                    <div class="why-use-it">
-                        In this example, the options market expects the stock to jump 6% up or down. If you buy options, the stock MUST move more than 6% just for you to break even.
-                    </div>
-                </div>
-
-                <div class="guide-card border-top-purple">
-                    <h4 class="text-accent-purple">3. Historical Avg Move</h4>
-                    <p>While the Implied Move looks forward, the Historical Move looks backward to ground us in reality. The engine pulls the exact dates of the company's last 4 quarterly earnings reports (1 year of data).</p>
-                    <p>It mathematically calculates the actual, real-world percentage moves the stock made over a <strong>2-trading-day window</strong> surrounding those reports (from the close before the report to the close after), and averages them together. This 2-session window ensures we capture the full price reaction regardless of whether the report was issued Before-Market-Open or After-Market-Close.</p>
-                </div>
-
-                <div class="guide-card border-top-success">
-                    <h4 class="text-success">4. Edge Score (The Arbitrage)</h4>
-                    <p>The Edge Score is our mathematical advantage. It is calculated simply: <strong>Historical Move - Implied Move</strong>.</p>
-                    <div class="setup border-left-success">
-                        <strong>Positive Edge (Green)</strong><br>
-                        Implied: 5% | Historical: 10%<br>
-                        Options are UNDERPRICED. The market expects a small move, but historically this stock explodes. Buying options here offers a statistical edge.
-                    </div>
-                    <div class="setup border-left-danger mt-10">
-                        <strong>Negative Edge (Red)</strong><br>
-                        Implied: 15% | Historical: 3%<br>
-                        Options are OVERPRICED. The market expects chaos, but historically this stock barely moves. This is a setup for an "IV Crush"—selling options here offers an edge.
-                    </div>
-                </div>
-
-                <div class="guide-card border-top-neutral">
-                    <h4 class="text-muted">5. Options Volume</h4>
-                    <p>This is the total number of Option contracts that have traded today for the specific strike prices we used in our calculation.</p>
-                    <p><strong>Why it matters:</strong> If the volume is extremely low (e.g., under 100), the options are "illiquid." This means the Bid/Ask spread is incredibly wide, making the Implied Move calculation mathematically unreliable. Always look for high volume to ensure the Edge Score is based on trustworthy, highly traded market data.</p>
-                </div>
-
-            </div>
-        </div>
-    </div>
-    <script>
-        // Leverage the existing table sorting logic from watchlist/portfolio
-        function sortTable(tableId, n) {
-            var table = document.getElementById(tableId);
-            var rows = table.rows;
-            var isNumericColumn = false;
-            var isDateColumn = false;
-
-            for (var i = 1; i < (rows.length - 1); i++) {
-                var cellText = (rows[i].getElementsByTagName("TD")[n].textContent || "").trim();
-                if (/^\d{4}-\d{2}-\d{2}/.test(cellText)) {
-                    isDateColumn = true;
-                    break;
-                }
-                var parsed = parseFloat(cellText.replace(/,/g, '').replace(/%/g, ''));
-                if (!isNaN(parsed)) {
-                    isNumericColumn = true;
-                    break;
-                }
-            }
-
-            var switching = true;
-            var dir = "asc";
-            var switchcount = 0;
-
-            while (switching) {
-                switching = false;
-                rows = table.rows;
-                for (var i = 1; i < (rows.length - 1); i++) {
-                    var shouldSwitch = false;
-                    var x = rows[i].getElementsByTagName("TD")[n];
-                    var y = rows[i + 1].getElementsByTagName("TD")[n];
-
-                    var textX = (x.textContent || x.innerText).trim();
-                    var textY = (y.textContent || y.innerText).trim();
-
-                    if (isDateColumn || !isNumericColumn) {
-                        if (dir == "asc") {
-                            if (textX.toLowerCase() > textY.toLowerCase()) { shouldSwitch = true; break; }
-                        } else if (dir == "desc") {
-                            if (textX.toLowerCase() < textY.toLowerCase()) { shouldSwitch = true; break; }
-                        }
-                    } else {
-                        var numX = parseFloat(textX.replace(/,/g, '').replace(/%/g, '').replace(/\+/g, ''));
-                        var numY = parseFloat(textY.replace(/,/g, '').replace(/%/g, '').replace(/\+/g, ''));
-
-                        if (isNaN(numX)) numX = -Infinity;
-                        if (isNaN(numY)) numY = -Infinity;
-
-                        if (dir == "asc") {
-                            if (numX > numY) { shouldSwitch = true; break; }
-                        } else if (dir == "desc") {
-                            if (numX < numY) { shouldSwitch = true; break; }
-                        }
-                    }
-                }
-                if (shouldSwitch) {
-                    rows[i].parentNode.insertBefore(rows[i + 1], rows[i]);
-                    switching = true;
-                    switchcount++;
-                } else {
-                    if (switchcount == 0 && dir == "asc") {
-                        dir = "desc";
-                        switching = true;
-                    }
-                }
-            }
-        }
-    </script>
-</body>
-</html>
+{% block scripts %}
+<script>
+$(function() {
+    $('#dataTable').DataTable({
+        responsive: true,
+        order: [[1, 'asc']],
+        pageLength: 25,
+        language: { search: '', searchPlaceholder: '🔍 Search…' }
+    });
+});
+</script>
+{% endblock %}

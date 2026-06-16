@@ -104,8 +104,8 @@ Status: ☐ todo · ◐ in progress · ☑ done
 - ☑ `watchlist` (`/watchlist`) — pilot / reference (`watchlist.js`)
 
 ### Stage 1 — Simple pages
-- ☑ `tools` (`/tools`) · ☑ `notifications` (`/notifications`) · ☐ `score_history` (`/score-history`)
-- ☐ `earnings_volatility` (`/earnings-volatility`) · ☐ `quant_screener` (`/quant-screener`)
+- ☑ `tools` (`/tools`) · ☑ `notifications` (`/notifications`) · ☑ `score_history` (`/score-history`)
+- ☑ `earnings_volatility` (`/earnings-volatility`) · ☐ `quant_screener` (`/quant-screener`)
 - ☐ `glossary` (`/glossary`, `glossary.js`) · ☐ `etf_predictor` (`/etf-predictor`)
 - ☐ `dip_radar_summary` (`/dip-radar`) · ☐ `bubble_radar` (`/bubble-radar`, `bubble_radar.js`)
 - ☐ `ai_contagion` (`/ai-contagion`) · ☐ `log_viewer` (`/log-viewer`, `log_viewer.js`)
