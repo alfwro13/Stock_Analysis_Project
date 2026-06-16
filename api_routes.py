@@ -1684,6 +1684,48 @@ async def get_trap_monitor_accuracy(request: Request):
     return JSONResponse(content={"status": "success", **data})
 
 
+@api_router.get("/bubble-radar/data")
+@limiter.limit("20/minute")
+async def get_bubble_radar_data(request: Request):
+    """Returns all currently-flagged tickers with their latest bubble metrics."""
+    from bubble_radar_engine import get_bubble_radar_data
+    data = get_bubble_radar_data()
+    return JSONResponse(content={"status": "success", "results": data})
+
+
+@api_router.get("/bubble-radar/ticker/{ticker}")
+@limiter.limit("20/minute")
+async def get_bubble_radar_ticker(request: Request, ticker: str):
+    """Returns the latest bubble metrics and per-metric score breakdown for a single ticker."""
+    from bubble_radar_engine import get_bubble_ticker_detail
+    data = get_bubble_ticker_detail(ticker)
+    if data is None:
+        return JSONResponse(content={"status": "success", "result": None})
+    return JSONResponse(content={"status": "success", "result": data})
+
+
+@api_router.get("/bubble-radar/history")
+@limiter.limit("10/minute")
+async def get_bubble_radar_history(request: Request):
+    """Returns historical bubble flag events with outcome tracking."""
+    from bubble_radar_engine import get_bubble_radar_history
+    data = get_bubble_radar_history()
+    return JSONResponse(content={"status": "success", "results": data})
+
+
+@api_router.post("/bubble-radar/run")
+@limiter.limit("4/minute")
+async def run_bubble_radar(request: Request, background_tasks: BackgroundTasks):
+    """Manually triggers a Bubble Radar scan in the background."""
+    try:
+        from scheduler_engine import run_bubble_radar_job
+        background_tasks.add_task(run_bubble_radar_job)
+        return JSONResponse(content={"status": "success", "message": "Bubble Radar scan triggered."})
+    except Exception as e:
+        logger.error("Failed to trigger Bubble Radar scan: %s", e)
+        return _error_500(e)
+
+
 @api_router.get("/market-regime/current")
 @limiter.limit("30/minute")
 async def get_market_regime_current(request: Request):

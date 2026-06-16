@@ -213,6 +213,13 @@ DEFAULT_CONFIG = {
             "START_TIME": "08:00",
             "END_TIME": "21:00",
             "INTERVAL_MINUTES": 30
+        },
+        "BUBBLE_RADAR": {
+            "ENABLED": False,
+            "DAYS": ["mon", "tue", "wed", "thu", "fri"],
+            "TIME": "19:30",
+            "WATCH_THRESHOLD": 70,
+            "FLAG_THRESHOLD": 85
         }
     },
     "REPORTS_DEFAULTS": {

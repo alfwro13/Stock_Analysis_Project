@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="dark">
+    <title>Quantamental - Bubble Radar</title>
+    <link rel="stylesheet" href="/static/css/styles.css?v={{ css_version }}">
+</head>
+<body class="body-watchlist">
+
+    <div class="header-container">
+        <div>
+            <div class="title-wrapper">
+                <a href="https://github.com/alfwro13/Stock_Analysis_Project" target="_blank" class="logo-link">
+                    <img src="/assets/logo_small.png" alt="Quantamental Logo" class="logo-img">
+                </a>
+                <h1>&#127968; Bubble Radar</h1>
+            </div>
+            <p class="page-subtitle">
+                Detects valuation euphoria across your portfolio and watchlist — flags tickers exhibiting stretched
+                <abbr title="Price/Sales ratio, PEG ratio, and FCF yield vs the risk-free rate (US real 10-year yield).">fundamentals</abbr>,
+                <abbr title="% deviation above the 200-day Simple Moving Average and 20-day average RSI.">technical overextension</abbr>,
+                <abbr title="Ratio of OTM call IV to OTM put IV — above 1.0 indicates call mania (upside lottery bidding).">options call skew</abbr>,
+                and narrow <abbr title="S&P 500 (cap-weighted) 20-day return minus Equal-Weight S&P 500 return. Positive spread means AI/mega-cap names are dragging the index while the average stock lags.">market breadth</abbr>.
+            </p>
+            {% set active_page = 'tools' %}
+            {% include 'navbar.html' %}
+        </div>
+    </div>
+
+    <div class="report-container report-container-wide">
+
+        <a href="/tools" class="btn-back">&#8592; Back to Tools</a>
+
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:18px;">
+            <div>
+                <span id="br-last-scan" style="font-size:12px;color:#555;"></span>
+            </div>
+            <button id="br-run-btn" class="btn-primary" style="font-size:12px;padding:6px 16px;">Run Scan</button>
+        </div>
+
+        <div class="bubble-tabs">
+            <button class="bubble-tab active" data-tab="flagged">Flagged Tickers</button>
+            <button class="bubble-tab" data-tab="history">Prediction History</button>
+        </div>
+
+        <div class="bubble-tab-panel active" data-panel="flagged">
+            <div id="br-flagged-empty" class="bubble-empty" style="display:none;">
+                No tickers currently flagged. Run a scan or wait for the scheduled post-market scan.
+            </div>
+            <table class="bubble-table">
+                <thead>
+                    <tr>
+                        <th>Ticker</th>
+                        <th><abbr title="Watch (≥{{ config.SCHEDULING.BUBBLE_RADAR.WATCH_THRESHOLD }}) or Bubble Risk (≥{{ config.SCHEDULING.BUBBLE_RADAR.FLAG_THRESHOLD }}).">Flag</abbr></th>
+                        <th><abbr title="Composite Bubble Risk Score 0–100, derived from 7 metrics: SMA Extension, RSI, P/S, PEG, FCF Yield gap, IV Call Skew, and SPY–RSP breadth spread.">Score</abbr></th>
+                        <th><abbr title="% above or below the 200-day Simple Moving Average. Values above 25% indicate significant overextension.">SMA-200 Ext%</abbr></th>
+                        <th><abbr title="Average RSI over the last 20 trading days. Sustained readings above 70–75 indicate prolonged overbought conditions.">RSI Avg (20d)</abbr></th>
+                        <th><abbr title="Price-to-Sales (trailing 12 months). High P/S ratios indicate investors are pricing in aggressive future growth.">P/S</abbr></th>
+                        <th><abbr title="PEG Ratio — P/E divided by earnings growth rate. Values above 2.5 suggest the stock is outrunning its earnings trajectory.">PEG</abbr></th>
+                        <th>Last Scan</th>
+                    </tr>
+                </thead>
+                <tbody id="br-flagged-body"></tbody>
+            </table>
+
+            <div id="br-detail-panel" class="bubble-detail-panel">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+                    <strong id="br-detail-ticker" style="font-size:14px;color:#e0e0e0;"></strong>
+                    <button id="br-detail-close" class="btn-secondary" style="font-size:11px;padding:3px 10px;">Close</button>
+                </div>
+                <div id="br-detail-body"></div>
+            </div>
+        </div>
+
+        <div class="bubble-tab-panel" data-panel="history">
+            <p style="font-size:12px;color:#666;margin-bottom:14px;">
+                Tracks every bubble flag event and records whether the price declined within 4, 8, and 12 weeks.
+                A <strong style="color:#4caf50;">✓</strong> means the ticker fell (prediction was correct);
+                <strong style="color:#ff4d4d;">✗</strong> means it did not.
+            </p>
+            <div id="br-history-empty" class="bubble-empty" style="display:none;">No flag history yet.</div>
+            <table class="bubble-table">
+                <thead>
+                    <tr>
+                        <th>Ticker</th>
+                        <th>Flag Level</th>
+                        <th>Flagged Date</th>
+                        <th>Price at Flag</th>
+                        <th><abbr title="Did the price fall within 4 weeks of the flag?">4-Week</abbr></th>
+                        <th><abbr title="Did the price fall within 8 weeks of the flag?">8-Week</abbr></th>
+                        <th><abbr title="Did the price fall within 12 weeks of the flag?">12-Week</abbr></th>
+                    </tr>
+                </thead>
+                <tbody id="br-history-body"></tbody>
+            </table>
+        </div>
+
+    </div>
+
+    <script>
+        window.BUBBLE_RADAR_CFG = {
+            watchThreshold: {{ config.SCHEDULING.BUBBLE_RADAR.WATCH_THRESHOLD }},
+            flagThreshold:  {{ config.SCHEDULING.BUBBLE_RADAR.FLAG_THRESHOLD }}
+        };
+    </script>
+    <script src="/static/js/csrf.js?v={{ css_version }}"></script>
+    <script src="/static/js/bubble_radar.js?v={{ css_version }}"></script>
+</body>
+</html>

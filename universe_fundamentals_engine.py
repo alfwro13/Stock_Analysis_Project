@@ -196,6 +196,8 @@ def _upsert_fundamentals(ticker: str, info: dict) -> None:
     forward_pe     = info.get('forwardPE')
     peg_ratio      = info.get('pegRatio')
     price_to_book  = info.get('priceToBook')
+    price_to_sales = info.get('priceToSalesTrailing12Months')
+    free_cash_flow = info.get('freeCashflow')
     profit_margin  = info.get('profitMargins')
     roe            = info.get('returnOnEquity')
     revenue_growth = info.get('revenueGrowth')
@@ -249,6 +251,7 @@ def _upsert_fundamentals(ticker: str, info: dict) -> None:
                 current_price,
                 fifty_two_week_low, fifty_two_week_high,
                 trailing_pe, forward_pe, peg_ratio, peter_lynch_peg, price_to_book,
+                price_to_sales, free_cash_flow,
                 profit_margin, roe, revenue_growth, debt_to_equity, current_ratio,
                 operating_cash_flow, dividend_yield, ex_dividend_date,
                 target_price, analyst_rating, next_earnings_date,
@@ -260,6 +263,7 @@ def _upsert_fundamentals(ticker: str, info: dict) -> None:
                 ?,
                 ?, ?,
                 ?, ?, ?, ?, ?,
+                ?, ?,
                 ?, ?, ?, ?, ?,
                 ?, ?, ?,
                 ?, ?, ?,
@@ -272,6 +276,7 @@ def _upsert_fundamentals(ticker: str, info: dict) -> None:
             _clean(current_price),
             _clean(fifty_two_week_low), _clean(fifty_two_week_high),
             _clean(trailing_pe), _clean(forward_pe), _clean(peg_ratio), _clean(peter_lynch_peg), _clean(price_to_book),
+            _clean(price_to_sales), _clean(free_cash_flow),
             _clean(profit_margin), _clean(roe), _clean(revenue_growth), _clean(debt_to_equity), _clean(current_ratio),
             _clean(operating_cash_flow), _clean(dividend_yield), ex_dividend_date,
             _clean(target_price), analyst_rating, next_earnings_date,

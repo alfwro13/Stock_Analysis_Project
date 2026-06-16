@@ -73,6 +73,19 @@
 
 
             <div class="guide-card">
+                <h4>&#127968; Bubble Radar</h4>
+                <p>Scans your portfolio and watchlist for tickers exhibiting signs of valuation euphoria: extreme
+                    <abbr title="% deviation above the 200-day Simple Moving Average. Values above 25–40% indicate significant overextension.">SMA-200 extension</abbr>,
+                    sustained overbought <abbr title="Average RSI over the last 20 trading days. Readings above 70–75 sustained over weeks signal prolonged overbought pressure.">RSI</abbr>,
+                    stretched <abbr title="Price-to-Sales (trailing 12 months) and PEG ratio — higher values indicate the stock is priced well ahead of its underlying fundamentals.">P/S and PEG</abbr> multiples,
+                    <abbr title="Options call skew — ratio of OTM call IV to OTM put IV. Values above 1.2 indicate the market is aggressively pricing in further upside (call mania).">IV call skew</abbr>,
+                    and narrow <abbr title="20-day return spread between the cap-weighted S&P 500 (SPY) and the equal-weight S&P 500 (RSP). A large positive spread means only a handful of mega-cap names are driving the index.">market breadth</abbr>.
+                    Tracks prediction accuracy over 4, 8, and 12 weeks to show how reliable the signals are historically.</p>
+                <div class="why-use-it">Use to identify tickers that may be mathematically detached from their fundamentals — before a mean-reversion trade, before adding to a position, or as a portfolio-level euphoria check.</div>
+                <a href="/bubble-radar" class="guide-card-link">Launch Tool →</a>
+            </div>
+
+            <div class="guide-card">
                 <h4>📊 ETF Price Predictor</h4>
                 <p>Generic morning price predictor for any <abbr title="Exchange-Traded Fund — a basket of securities traded on an exchange like a stock.">ETF</abbr>. Configure an ETF ticker and its top 10–20 constituent tickers with weights — the system predicts the ETF's next-session open using a holdings-weighted basket return engine and an <abbr title="Ordinary Least Squares regression — fits a linear model: ETF morning return = α + β × constituent basket return.">OLS</abbr> regression engine, with <abbr title="Foreign exchange adjustment — applied when the ETF and its constituents are denominated in different currencies.">FX</abbr> adjustment where needed. Tracks prediction accuracy over time.</p>
                 <div class="why-use-it">Use to build custom predictors for any ETF you hold — configure once, get daily predictions across multiple setups from the same tool.</div>

@@ -81,7 +81,9 @@ class DataEngine:
                 "^TYX": "TYX_BASELINE",
                 "^TNX": "TNX_BASELINE",
                 "DX-Y.NYB": "DXY_BASELINE",
-                "GBPUSD=X": "GBPUSD_BASELINE"
+                "GBPUSD=X": "GBPUSD_BASELINE",
+                "SPY": "SPY_BASELINE",
+                "RSP": "RSP_BASELINE",
             }
 
             ticker_dfs = yahoo_engine.get_price_history(list(baselines.keys()), period="2y", interval="1d")

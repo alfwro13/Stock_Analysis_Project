@@ -518,6 +518,8 @@ class QuantEngine:
             forward_pe = info.get('forwardPE', None)
             peg_ratio = info.get('pegRatio', None)
             price_to_book = info.get('priceToBook', None)
+            price_to_sales = info.get('priceToSalesTrailing12Months', None)
+            free_cash_flow = info.get('freeCashflow', None)
             profit_margin = info.get('profitMargins', None)
             roe = info.get('returnOnEquity', None)
             revenue_growth = info.get('revenueGrowth', None)
@@ -707,6 +709,7 @@ class QuantEngine:
                 current_price, ma5, ma10, ma21, ma50, ma200, trend_50d, trend_200d, rsi_val, stop_loss,
                 fifty_two_week_low, fifty_two_week_high,
                 trailing_pe, forward_pe, peg_ratio, peter_lynch_peg, price_to_book,
+                price_to_sales, free_cash_flow,
                 profit_margin, roe, revenue_growth, debt_to_equity, current_ratio, operating_cash_flow,
                 ytd_return, total_assets, nav_price, expense_ratio, top_holdings, sector_weightings,
                 dividend_yield, ex_dividend_date, target_price, analyst_rating, next_earnings_date,
@@ -726,14 +729,15 @@ class QuantEngine:
                    ma50: Optional[float], ma200: Optional[float],
                    trend_50d: str, trend_200d: str, rsi: Optional[float], stop_loss: Optional[float],
                    fifty_two_week_low: Optional[float], fifty_two_week_high: Optional[float],
-                   trailing_pe: Optional[float], forward_pe: Optional[float], peg_ratio: Optional[float], 
+                   trailing_pe: Optional[float], forward_pe: Optional[float], peg_ratio: Optional[float],
                    peter_lynch_peg: Optional[float], price_to_book: Optional[float],
-                   profit_margin: Optional[float], roe: Optional[float], revenue_growth: Optional[float], 
+                   price_to_sales: Optional[float], free_cash_flow: Optional[float],
+                   profit_margin: Optional[float], roe: Optional[float], revenue_growth: Optional[float],
                    debt_to_equity: Optional[float], current_ratio: Optional[float], operating_cash_flow: Optional[float],
-                   ytd_return: Optional[float], total_assets: Optional[float], nav_price: Optional[float], 
+                   ytd_return: Optional[float], total_assets: Optional[float], nav_price: Optional[float],
                    expense_ratio: Optional[float], top_holdings: str, sector_weightings: str,
-                   dividend_yield: Optional[float], ex_dividend_date: Optional[str], target_price: Optional[float], 
-                   analyst_rating: str, next_earnings_date: str, short_interest: Optional[float], 
+                   dividend_yield: Optional[float], ex_dividend_date: Optional[str], target_price: Optional[float],
+                   analyst_rating: str, next_earnings_date: str, short_interest: Optional[float],
                    institutional_ownership: Optional[float], beta: Optional[float], yield_correlation: Optional[float],
                    score: int, signal: str, notes: str, tags_json: str) -> None:
         
@@ -765,6 +769,7 @@ class QuantEngine:
                         current_price, ma_5_day, ma_10_day, ma_21_day, ma_50_day, ma_200_day, trend_50d, trend_200d, rsi_14, atr_stop_loss,
                         fifty_two_week_low, fifty_two_week_high,
                         trailing_pe, forward_pe, peg_ratio, peter_lynch_peg, price_to_book,
+                        price_to_sales, free_cash_flow,
                         profit_margin, roe, revenue_growth, debt_to_equity, current_ratio, operating_cash_flow,
                         ytd_return, total_assets, nav_price, expense_ratio, top_holdings, sector_weightings,
                         dividend_yield, ex_dividend_date, target_price, analyst_rating, next_earnings_date,
@@ -775,6 +780,7 @@ class QuantEngine:
                         ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                         ?, ?,
                         ?, ?, ?, ?, ?,
+                        ?, ?,
                         ?, ?, ?, ?, ?, ?,
                         ?, ?, ?, ?, ?, ?,
                         ?, ?, ?, ?, ?,
@@ -782,13 +788,14 @@ class QuantEngine:
                         ?, ?, ?, ?
                     )
                 '''
-                
+
                 timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
                 values = (
                     ticker, timestamp, company_name, sector, country, currency, quote_type,
                     _clean(price), _clean(ma5), _clean(ma10), _clean(ma21), _clean(ma50), _clean(ma200), trend_50d, trend_200d, _clean(rsi), _clean(stop_loss),
                     _clean(fifty_two_week_low), _clean(fifty_two_week_high),
                     _clean(trailing_pe), _clean(forward_pe), _clean(peg_ratio), _clean(peter_lynch_peg), _clean(price_to_book),
+                    _clean(price_to_sales), _clean(free_cash_flow),
                     _clean(profit_margin), _clean(roe), _clean(revenue_growth), _clean(debt_to_equity), _clean(current_ratio), _clean(operating_cash_flow),
                     _clean(ytd_return), _clean(total_assets), _clean(nav_price), _clean(expense_ratio), top_holdings, sector_weightings,
                     _clean(dividend_yield), ex_dividend_date, _clean(target_price), analyst_rating, next_earnings_date,

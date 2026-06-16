@@ -869,6 +869,27 @@ def run_trap_accuracy_fill_job():
         record_job_run("trap_accuracy_fill_job")
 
 
+def run_bubble_radar_job():
+    from bubble_radar_engine import run_bubble_scan
+    _mark_job_started(job_label("bubble_radar_job"))
+    try:
+        log_sched_notification("Scheduler", "Started Bubble Radar Scan...")
+        engine = DataEngine()
+        tickers = engine.get_all_tickers()
+        if not tickers:
+            log_sched_notification("Info", "Bubble Radar: no tickers to scan.")
+            return
+        results = run_bubble_scan(tickers)
+        flagged = sum(1 for v in results.values() if v.get("flag"))
+        log_sched_notification("Success", f"Bubble Radar Scan complete — {len(results)} tickers, {flagged} flagged.")
+    except Exception as e:
+        logger.error("Bubble Radar Scan failed: %s", e)
+        log_sched_notification("Error", f"Bubble Radar Scan failed: {e}")
+    finally:
+        _mark_job_done(job_label("bubble_radar_job"))
+        record_job_run("bubble_radar_job")
+
+
 def _run_etf_predictor_job(config_id: int, fill_actuals: bool = False) -> None:
     job_type = "post" if fill_actuals else "pre"
     job_id = f"etf_predictor_{config_id}_{job_type}_job"
@@ -1462,6 +1483,23 @@ def reload_scheduler():
         except Exception as e:
             logger.error("Failed to schedule News Feed job: %s", e)
 
+    bubble_cfg = scheduling.get("BUBBLE_RADAR", {})
+    if bubble_cfg.get("ENABLED", False):
+        try:
+            days = ",".join(bubble_cfg.get("DAYS", ["mon", "tue", "wed", "thu", "fri"]))
+            time_str = bubble_cfg.get("TIME", "19:30")
+            run_h, run_m = map(int, time_str.split(":"))
+            scheduler.add_job(
+                run_bubble_radar_job,
+                CronTrigger(day_of_week=days, hour=run_h, minute=run_m, timezone=user_tz),
+                id="bubble_radar_job",
+                replace_existing=True,
+                misfire_grace_time=600,
+            )
+            logger.info("Bubble Radar Scan scheduled for %s at %s.", days, time_str)
+        except Exception as e:
+            logger.error("Failed to schedule Bubble Radar Scan: %s", e)
+
     # Always-on: fast-exits silently if no tickers are armed
     try:
         scheduler.add_job(
@@ -1598,6 +1636,7 @@ JOB_GRAPH: dict[str, dict] = {
     "maintenance_job":              {"label": "Database & File Maintenance",                    "category": "maintenance", "engine": "maintenance_engine.py",         "produces": [],                                                             "consumes": []},
     "system_check_job":             {"label": "System Configuration Check",                     "category": "maintenance", "engine": "system_check_engine.py",        "produces": [],                                                             "consumes": []},
     "etf_predictor_dynamic":        {"label": "ETF Price Predictors",                           "category": "predictor",   "engine": "etf_predictor_engine.py",       "produces": ["etf_predictions"],                                            "consumes": [], "dynamic": True},
+    "bubble_radar_job":             {"label": "Bubble Radar Scan",                              "category": "quant",       "engine": "bubble_radar_engine.py",        "produces": ["bubble_radar_metrics", "bubble_radar_history"],               "consumes": ["quant_signals", "stock_signals", "macro_indicators"]},
 }
 
 # Canonical config-key → job-id map. `config.json` SCHEDULING/NOTIFICATIONS keys and code
@@ -1632,6 +1671,7 @@ CONFIG_KEY_TO_JOB: dict[str, str] = {
     "NEWS_FEED":          "news_feed_job",
     "SYSTEM_CHECK":       "system_check_job",
     "TRAP_MONITORS":      "trap_monitor_job",
+    "BUBBLE_RADAR":       "bubble_radar_job",
     "MARKET_SENTIMENT":   "market_sentiment_job",
     "EARNINGS_ALERTS":    "earnings_alert_job",
     "INSIDER_TRADING":    "insider_alert_job",

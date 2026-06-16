@@ -1199,6 +1199,40 @@
                     </div>
                     {% endif %}
                 </div>
+
+                {% if bubble_data and bubble_data.flag %}
+                <div id="bubble-risk-section">
+                    <h2>Bubble Risk Score</h2>
+                    <div class="bubble-widget {{ 'bubble-widget-bubble' if bubble_data.flag == 'bubble' else 'bubble-widget-watch' }}">
+                        <div style="display:flex;align-items:center;gap:14px;margin-bottom:12px;">
+                            <span class="{{ 'bubble-flag-bubble' if bubble_data.flag == 'bubble' else 'bubble-flag-watch' }}">
+                                {{ 'Bubble Risk' if bubble_data.flag == 'bubble' else 'Bubble Watch' }}
+                            </span>
+                            <span style="font-size:22px;font-weight:700;font-family:monospace;">
+                                {{ bubble_data.bubble_score | round | int }}<span style="font-size:13px;color:#666;">/100</span>
+                            </span>
+                            <span style="font-size:12px;color:#555;">as of {{ bubble_data.scan_date }}</span>
+                        </div>
+                        {% for key, m in bubble_data.metric_scores.items() %}
+                        <div class="bubble-metric-row">
+                            <span class="bubble-metric-label">{{ m.label }}</span>
+                            <span class="bubble-metric-val">
+                                {% if m.value is not none %}{{ "%.2f" | format(m.value) }}{% else %}—{% endif %}
+                            </span>
+                            <span class="bubble-score-bar" style="width:80px;display:inline-block;">
+                                <span class="bubble-score-fill {{ 'bubble-score-fill-bubble' if m.score >= 8 else ('bubble-score-fill-watch' if m.score >= 4 else 'bubble-score-fill-low') }}"
+                                      style="width:{{ [m.score * 4, 100] | min }}%;display:inline-block;"></span>
+                            </span>
+                            <span class="bubble-metric-score" style="color:{{ '#ffaa00' if m.score > 0 else '#444' }};">{{ m.score }}pts</span>
+                        </div>
+                        {% endfor %}
+                        <p style="font-size:11px;color:#555;margin-top:10px;margin-bottom:0;">
+                            <a href="/bubble-radar" style="color:#4da6ff;">View all flagged tickers →</a>
+                        </p>
+                    </div>
+                </div>
+                {% endif %}
+
             </div> </div> </div>
 
     <script>

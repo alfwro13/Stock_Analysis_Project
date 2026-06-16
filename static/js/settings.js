@@ -1293,6 +1293,24 @@
             }
         }
 
+        async function triggerBubbleRadarScan() {
+            const btn = document.querySelector('button[onclick="triggerBubbleRadarScan()"]');
+            const msgEl = document.getElementById('bubble-radar-msg');
+            btn.disabled = true;
+            btn.innerText = "⏳ Scanning...";
+            msgEl.innerHTML = '';
+            try {
+                const resp = await fetch('/api/bubble-radar/run', { method: 'POST' });
+                const data = await resp.json();
+                const color = data.status === 'success' ? '#4caf50' : '#f44336';
+                msgEl.innerHTML = `<span style="color:${color}; font-size:13px;">${data.message}</span>`;
+            } catch (err) {
+                msgEl.innerHTML = `<span style="color:#f44336; font-size:13px;">Request failed: ${err.message}</span>`;
+            } finally {
+                setTimeout(() => { btn.disabled = false; btn.innerText = "▶ Run Scan Now"; }, 3000);
+            }
+        }
+
         async function fetchNetworkStatus() {
             try {
                 const response = await fetch('/api/settings/network-status');
@@ -1759,6 +1777,15 @@
                         "START_TIME": document.getElementById('TRAP_MONITOR_START').value,
                         "END_TIME": document.getElementById('TRAP_MONITOR_END').value,
                         "INTERVAL_MINUTES": parseInt(document.getElementById('TRAP_MONITOR_INTERVAL').value) || 30
+                    },
+                    "BUBBLE_RADAR": {
+                        "ENABLED": document.getElementById('BUBBLE_RADAR_ENABLED').checked,
+                        "DAYS": document.getElementById('BUBBLE_RADAR_FREQ').value === 'mon-sun'
+                            ? ['mon','tue','wed','thu','fri','sat','sun']
+                            : ['mon','tue','wed','thu','fri'],
+                        "TIME": document.getElementById('BUBBLE_RADAR_TIME').value,
+                        "WATCH_THRESHOLD": parseInt(document.getElementById('BUBBLE_RADAR_WATCH_THRESHOLD').value) || 70,
+                        "FLAG_THRESHOLD": parseInt(document.getElementById('BUBBLE_RADAR_FLAG_THRESHOLD').value) || 85
                     }
                 },
                 "NOTIFICATIONS": {

@@ -439,6 +439,42 @@
                 </div>
             </details>
 
+            <details class="settings-card" id="bubble-radar">
+                <summary>&#127968; Bubble Radar — Valuation Euphoria Detection</summary>
+                <div class="term-box">
+                    <span class="term-title">Bubble Risk Score</span>
+                    <p>A composite 0–100 score derived from seven weighted metrics that collectively measure how far a ticker's price has detached from its fundamental anchor. It is computed per-ticker using fixed thresholds (bucket scoring), not cross-sectional Z-scores, so it is equally meaningful for a single ticker or a full portfolio batch. Scores are stored daily and used to assess prediction reliability over 4-, 8-, and 12-week horizons.</p>
+                    <div class="rule">Watch flag: score ≥ configurable Watch threshold (default 70). Bubble Risk flag: score ≥ configurable Bubble threshold (default 85).</div>
+                </div>
+                <div class="term-box">
+                    <span class="term-title">SMA-200 Extension</span>
+                    <p>The percentage by which the current closing price exceeds the 200-day Simple Moving Average. A durable bull market typically sees stocks trading 5–15% above their SMA-200. Extensions of 25% or more indicate the price has run far ahead of its long-term trend line and is statistically prone to mean reversion.</p>
+                    <div class="rule">Scoring: 0 pts &lt; 15% extension; 10 pts at 15–25%; 17 pts at 25–40%; 25 pts above 40%.</div>
+                </div>
+                <div class="term-box">
+                    <span class="term-title">Sustained RSI High</span>
+                    <p>The average daily RSI reading over the last 20 trading days. A single spike above 70 is a normal momentum signal. Prolonged averages above 70–75 sustained over weeks indicate persistent overbought pressure — the market is continuously pricing in further upside, leaving the ticker vulnerable to any negative surprise.</p>
+                </div>
+                <div class="term-box">
+                    <span class="term-title">FCF Yield vs Real 10-Year</span>
+                    <p>A fundamental sanity check comparing equity return to the risk-free rate. FCF yield is computed as <code>(Free Cash Flow / Market Cap) × 100</code>. The real risk-free rate is the US 10-year inflation-adjusted yield (FRED series DFII10). When FCF yield falls below the real 10-year, equity holders are accepting a lower return than risk-free bonds — a classic bubble condition. US stocks only.</p>
+                </div>
+                <div class="term-box">
+                    <span class="term-title">IV Call Skew</span>
+                    <p>The ratio of average <abbr title="Implied Volatility — the market's expectation of future price movement, derived from live option prices.">IV</abbr> for out-of-the-money (OTM) call options to average IV for OTM put options, using the nearest-expiry chain. A ratio above 1.0 means the market is paying more to bet on further upside than to hedge the downside — a sign of speculative call-buying euphoria. Applied to US-listed tickers only (LSE/XETRA options are not reliably available via the data provider).</p>
+                    <div class="rule">Neutral: ≤ 1.0. Elevated: 1.0–1.2. Extreme call mania: ≥ 1.2.</div>
+                </div>
+                <div class="term-box">
+                    <span class="term-title">SPY vs RSP Breadth Spread</span>
+                    <p>The difference between the 20-day return of the cap-weighted S&amp;P 500 (<strong>SPY</strong>) and the equal-weight S&amp;P 500 (<strong>RSP</strong>). When SPY significantly outperforms RSP, a handful of mega-cap stocks are carrying the index while the average stock lags — a hallmark of late-stage, narrow-breadth rallies that historically precede corrections.</p>
+                    <div class="rule">A spread above 5 percentage points is flagged as a breadth warning.</div>
+                </div>
+                <div class="term-box">
+                    <span class="term-title">Bubble Watch vs Bubble Risk</span>
+                    <p><strong>Bubble Watch</strong> (yellow flag) indicates a ticker is exhibiting early signs of valuation overextension but has not yet crossed the highest-conviction threshold. <strong>Bubble Risk</strong> (red flag) indicates the composite score exceeds the upper threshold and multiple independent metrics are simultaneously elevated. Both thresholds are configurable in Settings → Bubble Radar.</p>
+                </div>
+            </details>
+
             <details class="settings-card" id="fundamentals">
                 <summary>🏢 Fundamental Valuation (Company Health)</summary>
                 <div class="term-box">

@@ -195,6 +195,17 @@ Tables added after initial schema creation. All managed via `database.py:init_db
 * **Constraint:** `UNIQUE(ticker, scan_date)` — `INSERT OR IGNORE` keeps the first result of each day.
 * **Written by:** `bull_bear_trap_engine.TrapEngine._save_results()` → `database.log_trap_phase()`. Actuals filled daily by `trap_accuracy_fill_job` via `bull_bear_trap_engine.fill_trap_phase_actuals()`.
 
+#### `bubble_radar_metrics`
+* **Purpose:** Daily snapshot of the Bubble Risk Score and its seven component metrics for every ticker that has been scanned. One row per (ticker, scan_date); re-scans upsert the same row.
+* **Key Columns:** `ticker`, `scan_date` (YYYY-MM-DD UTC), `bubble_score` (REAL 0–100), `flag` (NULL / `'watch'` / `'bubble'`), `sma_ext_pct` (% above 200-day SMA), `rsi_avg_20d`, `ps_ratio`, `peg_ratio`, `fcf_yield` (FCF/market-cap × 100), `riskfree_rate` (DFII10 used at scan time), `iv_call_skew` (NULL for non-US tickers), `spy_rsp_spread` (20-day return spread).
+* **Written by:** `bubble_radar_engine.run_bubble_scan()`, called by the `bubble_radar_job` scheduler job.
+
+#### `bubble_radar_history`
+* **Purpose:** Append-only log of flag events (first time a ticker crosses a Watch or Bubble threshold) used to evaluate prediction reliability over 4-, 8-, and 12-week horizons.
+* **Key Columns:** `id` (PK autoincrement), `ticker`, `flagged_date` (YYYY-MM-DD UTC), `flag_level` (`'watch'` / `'bubble'`), `price_at_flag`, `price_4w` / `price_8w` / `price_12w` (back-filled), `outcome_4w` / `outcome_8w` / `outcome_12w` (NULL / `'correct'` / `'incorrect'`).
+* **Constraint:** `UNIQUE(ticker, flagged_date)` — only the first flag event per ticker per day is recorded.
+* **Back-fill:** `bubble_radar_engine._backfill_outcomes()` runs on every scan and fills forward prices once sufficient time has elapsed.
+
 #### `intraday_monitors`
 * **Purpose:** Active dip-radar watch list — one row per ticker armed for today's session.
 * **Key Columns:** `ticker` (PK), `date_added`, `expire_date`, `is_active`, `activated_by`.

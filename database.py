@@ -122,7 +122,9 @@ def init_db() -> None:
                 peg_ratio REAL,
                 peter_lynch_peg REAL,
                 price_to_book REAL,
-                
+                price_to_sales REAL,
+                free_cash_flow REAL,
+
                 -- Profitability & Health (Equities)
                 profit_margin REAL,
                 roe REAL,
@@ -642,6 +644,41 @@ def init_db() -> None:
         ''')
 
         cursor.execute('''
+            CREATE TABLE IF NOT EXISTS bubble_radar_metrics (
+                ticker          TEXT NOT NULL,
+                scan_date       TEXT NOT NULL,
+                bubble_score    REAL,
+                flag            TEXT,
+                sma_ext_pct     REAL,
+                rsi_avg_20d     REAL,
+                ps_ratio        REAL,
+                peg_ratio       REAL,
+                fcf_yield       REAL,
+                riskfree_rate   REAL,
+                iv_call_skew    REAL,
+                spy_rsp_spread  REAL,
+                PRIMARY KEY (ticker, scan_date)
+            )
+        ''')
+
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS bubble_radar_history (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                ticker          TEXT NOT NULL,
+                flagged_date    TEXT NOT NULL,
+                flag_level      TEXT NOT NULL,
+                price_at_flag   REAL,
+                price_4w        REAL,
+                price_8w        REAL,
+                price_12w       REAL,
+                outcome_4w      TEXT,
+                outcome_8w      TEXT,
+                outcome_12w     TEXT,
+                UNIQUE(ticker, flagged_date)
+            )
+        ''')
+
+        cursor.execute('''
             CREATE TABLE IF NOT EXISTS password_reset_tokens (
                 token_hash  TEXT PRIMARY KEY,
                 expires_at  TEXT NOT NULL,
@@ -729,6 +766,7 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
         'fifty_two_week_low': 'REAL', 'fifty_two_week_high': 'REAL',
         'trailing_pe': 'REAL', 'forward_pe': 'REAL', 'peg_ratio': 'REAL',
         'peter_lynch_peg': 'REAL', 'price_to_book': 'REAL',
+        'price_to_sales': 'REAL', 'free_cash_flow': 'REAL',
         'profit_margin': 'REAL', 'roe': 'REAL', 'revenue_growth': 'REAL',
         'debt_to_equity': 'REAL', 'current_ratio': 'REAL', 'operating_cash_flow': 'REAL',
         'ytd_return': 'REAL', 'total_assets': 'REAL', 'nav_price': 'REAL',

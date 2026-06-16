@@ -1044,6 +1044,18 @@ async def dip_radar_page(request: Request):
 
 
 
+@page_router.get("/bubble-radar", response_class=HTMLResponse)
+async def bubble_radar_page(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="bubble_radar.html",
+        context={
+            "unread_count": get_unread_count(),
+            "config": load_config(),
+        },
+    )
+
+
 @page_router.get("/trap-monitor", response_class=HTMLResponse)
 async def trap_monitor_page(request: Request):
     return templates.TemplateResponse(
@@ -1821,6 +1833,13 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
         if conn_dip:
             conn_dip.close()
 
+    bubble_data = None
+    try:
+        from bubble_radar_engine import get_bubble_ticker_detail
+        bubble_data = get_bubble_ticker_detail(ticker)
+    except Exception:
+        pass
+
     return templates.TemplateResponse(
         request=request, name="stock_detail.html",
         context={
@@ -1847,6 +1866,7 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
             "position_sizing": position_sizing_context,
             "earnings_vol": earnings_vol,
             "fundamentals_extra": fundamentals_extra,
+            "bubble_data": bubble_data,
         }
     )
 

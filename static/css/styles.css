@@ -1000,3 +1000,32 @@ details[open] > .trap-accuracy-summary::before { transform: rotate(90deg); }
 .trap-accuracy-table .acc-val { font-family: monospace; font-size: 12px; }
 .trap-accuracy-table .acc-bar { display: inline-block; height: 6px; border-radius: 3px; vertical-align: middle; margin-right: 6px; }
 .trap-accuracy-overall-row td { border-top: 1px solid #2a2a2a; color: #ddd; font-weight: 600; padding-top: 10px; }
+
+/* Bubble Radar */
+.bubble-flag-bubble { display: inline-block; padding: 2px 10px; border-radius: 4px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; background: #3a0000; color: #ff4d4d; border: 1px solid #ff4d4d; }
+.bubble-flag-watch  { display: inline-block; padding: 2px 10px; border-radius: 4px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; background: #2a1800; color: #ffaa00; border: 1px solid #ffaa00; }
+.bubble-score-bar   { display: inline-block; height: 6px; border-radius: 3px; vertical-align: middle; margin-right: 6px; background: #333; }
+.bubble-score-fill  { display: inline-block; height: 6px; border-radius: 3px; }
+.bubble-score-fill-watch  { background: #ffaa00; }
+.bubble-score-fill-bubble { background: #ff4d4d; }
+.bubble-score-fill-low    { background: #4caf50; }
+.bubble-metric-row  { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid #1a1a1a; font-size: 12px; }
+.bubble-metric-row:last-child { border-bottom: none; }
+.bubble-metric-label { flex: 1; color: #aaa; }
+.bubble-metric-val   { width: 80px; text-align: right; font-family: monospace; color: #ccc; }
+.bubble-metric-score { width: 60px; text-align: right; font-family: monospace; }
+.bubble-widget       { background: #0d0d0d; border-radius: 8px; padding: 14px 18px; margin-top: 16px; }
+.bubble-widget-bubble { border: 1px solid #ff4d4d; }
+.bubble-widget-watch  { border: 1px solid #ffaa00; }
+.bubble-detail-panel  { background: #0a0a0a; border: 1px solid #1e1e1e; border-radius: 8px; padding: 16px 18px; margin-top: 14px; display: none; }
+.bubble-tabs { display: flex; gap: 8px; margin-bottom: 18px; border-bottom: 1px solid #1e1e1e; padding-bottom: 0; }
+.bubble-tab  { padding: 6px 14px; font-size: 12px; font-weight: 600; color: #666; cursor: pointer; border-bottom: 2px solid transparent; background: none; border-top: none; border-left: none; border-right: none; text-transform: uppercase; letter-spacing: 0.5px; }
+.bubble-tab.active { color: #4da6ff; border-bottom-color: #4da6ff; }
+.bubble-tab-panel { display: none; }
+.bubble-tab-panel.active { display: block; }
+.bubble-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.bubble-table th { text-align: left; padding: 7px 10px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.8px; color: #555; border-bottom: 1px solid #1e1e1e; }
+.bubble-table td { padding: 9px 10px; border-bottom: 1px solid #141414; color: #aaa; vertical-align: middle; }
+.bubble-table tr:last-child td { border-bottom: none; }
+.bubble-table tr.clickable:hover td { background: #111; cursor: pointer; }
+.bubble-empty { text-align: center; padding: 40px 20px; color: #555; font-size: 13px; }

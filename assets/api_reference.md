@@ -1617,7 +1617,103 @@ Returns per-phase prediction accuracy at 14-day and 30-day forward-return horizo
 
 ---
 
-## 18. Market Regime (HMM + Market Stress IF)
+## 18. Bubble Radar
+
+Valuation-euphoria detector that scans the portfolio and watchlist for tickers exhibiting extreme overextension across seven metrics. Scores are stored daily in `bubble_radar_metrics`; flag history and prediction accuracy live in `bubble_radar_history`.
+
+### `GET /api/bubble-radar/data`
+
+Returns all tickers with an active bubble flag (`flag IN ('watch', 'bubble')`) from the most recent scan, ordered by `bubble_score DESC`.
+
+**Response:**
+```json
+{
+  "status": "success",
+  "results": [
+    {
+      "ticker": "NVDA",
+      "company_name": "NVIDIA Corporation",
+      "scan_date": "2026-06-16",
+      "bubble_score": 87.5,
+      "flag": "bubble",
+      "sma_ext_pct": 38.2,
+      "rsi_avg_20d": 76.1,
+      "ps_ratio": 24.3,
+      "peg_ratio": 3.1,
+      "fcf_yield": 1.2,
+      "riskfree_rate": 2.1,
+      "iv_call_skew": 1.31,
+      "spy_rsp_spread": 4.8
+    }
+  ]
+}
+```
+
+### `GET /api/bubble-radar/ticker/{ticker}`
+
+Returns the latest Bubble Risk Score row plus a per-metric breakdown for a single ticker.
+
+**Response:**
+```json
+{
+  "status": "success",
+  "result": {
+    "ticker": "NVDA",
+    "scan_date": "2026-06-16",
+    "bubble_score": 87.5,
+    "flag": "bubble",
+    "sma_ext_pct": 38.2,
+    "rsi_avg_20d": 76.1,
+    "metric_scores": {
+      "sma_ext": { "label": "SMA-200 Extension", "value": 38.2, "score": 17 },
+      "rsi":     { "label": "RSI (20d avg)",      "value": 76.1, "score": 15 },
+      "ps":      { "label": "Price/Sales",         "value": 24.3, "score": 12 },
+      "peg":     { "label": "PEG Ratio",           "value": 3.1,  "score": 15 },
+      "fcf_yield":{ "label": "FCF Yield Gap",      "value": -0.9, "score": 10 },
+      "iv_skew": { "label": "IV Call Skew",        "value": 1.31, "score": 8  },
+      "spy_rsp": { "label": "SPY–RSP Spread",      "value": 4.8,  "score": 0  }
+    }
+  }
+}
+```
+
+Returns `{"status": "success", "result": null}` if the ticker has not been scanned yet.
+
+### `GET /api/bubble-radar/history`
+
+Returns the last 200 flag events from `bubble_radar_history`, ordered by `flagged_date DESC`. Includes back-filled outcome fields once enough time has elapsed.
+
+**Response:**
+```json
+{
+  "status": "success",
+  "results": [
+    {
+      "ticker": "NVDA",
+      "company_name": "NVIDIA Corporation",
+      "flagged_date": "2026-05-01",
+      "flag_level": "bubble",
+      "price_at_flag": 950.00,
+      "price_4w": 880.00,
+      "outcome_4w": "correct",
+      "price_8w": null,
+      "outcome_8w": null,
+      "price_12w": null,
+      "outcome_12w": null
+    }
+  ]
+}
+```
+
+### `POST /api/bubble-radar/run`
+
+Triggers an immediate background Bubble Radar scan across all portfolio and watchlist tickers. Returns immediately; results are visible in `/api/bubble-radar/data` within a few seconds.
+
+**Response:** `{"status": "success", "message": "Bubble Radar scan started."}`
+
+---
+
+## 19. Market Regime (HMM + Market Stress IF)
 
 Price-action Hidden Markov Model (3 states: Bull / Chop / Crash) fitted on 5-year SPY returns and EWMA volatility, plus a market-wide Isolation Forest stress score. Both are updated daily as part of the quant pipeline. The IF score (`market_stress_score`, REAL [0,1]) and contributing features (`market_stress_features`, JSON) are stored in the `market_regimes` table alongside the HMM columns.
 

@@ -789,6 +789,65 @@
                 </details>
 
                 <details class="settings-card">
+                    <summary>&#127968; Bubble Radar</summary>
+                    <p class="settings-desc">
+                        Scans your portfolio and watchlist for tickers exhibiting valuation euphoria across seven metrics:
+                        <abbr title="% above the 200-day Simple Moving Average.">SMA-200 Extension</abbr>,
+                        <abbr title="20-day average RSI — sustained overbought pressure.">RSI high</abbr>,
+                        <abbr title="Price-to-Sales (trailing 12 months).">P/S</abbr>,
+                        <abbr title="PEG Ratio — P/E divided by earnings growth.">PEG</abbr>,
+                        <abbr title="Free Cash Flow yield vs the US real 10-year yield (DFII10). A negative gap means equity earns less cash than risk-free bonds.">FCF Yield vs Real 10Y</abbr>,
+                        <abbr title="OTM call IV ÷ OTM put IV. Values above 1.2 indicate call mania (US tickers only).">IV Call Skew</abbr>, and
+                        <abbr title="20-day SPY return minus 20-day RSP (equal-weight) return. A large positive spread signals narrow market breadth.">SPY vs RSP Breadth</abbr>.
+                        Results appear on each flagged stock's detail page and at the <a href="/bubble-radar" class="text-cyan">Bubble Radar tools page</a>.
+                    </p>
+
+                    {% set bubble_sched = config.SCHEDULING.BUBBLE_RADAR if config.SCHEDULING.BUBBLE_RADAR else {} %}
+
+                    <div class="settings-panel border-left-cyan">
+                        <h4 class="settings-panel-header text-cyan">⏱️ Scan Schedule</h4>
+                        <div class="checkbox-group mb-10">
+                            <input type="checkbox" id="BUBBLE_RADAR_ENABLED" {% if bubble_sched.ENABLED %}checked{% endif %}>
+                            <label for="BUBBLE_RADAR_ENABLED">Enable daily post-market Bubble Radar scan</label>
+                        </div>
+                        <div class="flex-gap-15 mb-10">
+                            <div class="form-group flex-1">
+                                <label>Active Days</label>
+                                <select id="BUBBLE_RADAR_FREQ">
+                                    {% set joined = bubble_sched.DAYS | join(',') if bubble_sched.DAYS else 'mon,tue,wed,thu,fri' %}
+                                    <option value="mon-fri" {% if joined == 'mon,tue,wed,thu,fri' %}selected{% endif %}>Mon–Fri</option>
+                                    <option value="mon-sun" {% if joined == 'mon,tue,wed,thu,fri,sat,sun' %}selected{% endif %}>Every Day</option>
+                                </select>
+                            </div>
+                            <div class="form-group flex-1">
+                                <label>Scan Time <span style="font-size:10px;color:#888;">(local tz)</span></label>
+                                <input type="time" id="BUBBLE_RADAR_TIME" value="{{ bubble_sched.TIME | default('19:30') }}">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-panel border-left-cyan">
+                        <h4 class="settings-panel-header text-cyan">🎯 Flag Thresholds</h4>
+                        <p class="settings-desc-sm">Tickers scoring at or above the Watch threshold are flagged yellow; at or above the Bubble threshold are flagged red.</p>
+                        <div class="flex-gap-15 mb-10">
+                            <div class="form-group flex-1">
+                                <label><abbr title="Score at or above this value triggers a 'Bubble Watch' (yellow) flag.">Watch threshold</abbr> (0–100)</label>
+                                <input type="number" id="BUBBLE_RADAR_WATCH_THRESHOLD" value="{{ bubble_sched.WATCH_THRESHOLD | default(70) }}" min="0" max="99" step="1">
+                            </div>
+                            <div class="form-group flex-1">
+                                <label><abbr title="Score at or above this value triggers a 'Bubble Risk' (red) flag. Must be above Watch threshold.">Bubble threshold</abbr> (0–100)</label>
+                                <input type="number" id="BUBBLE_RADAR_FLAG_THRESHOLD" value="{{ bubble_sched.FLAG_THRESHOLD | default(85) }}" min="1" max="100" step="1">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex-gap-15" style="margin-top:12px;">
+                        <button type="button" class="btn-test mt-0" onclick="triggerBubbleRadarScan()">&#9654; Run Scan Now</button>
+                    </div>
+                    <div id="bubble-radar-msg" class="mt-10"></div>
+                </details>
+
+                <details class="settings-card">
                     <summary>📊 Alerts, Reports & Quant Briefings</summary>
 
                     <div class="settings-panel">
