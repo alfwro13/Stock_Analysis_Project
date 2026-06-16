@@ -1,206 +1,55 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="color-scheme" content="dark">
-    <title>Quantamental - Notifications</title>
-    <link rel="stylesheet" href="/static/css/styles.css?v={{ css_version }}">
-</head>
-<body class="body-notifications">
+{% extends "base.html" %}
 
-    <div class="header-container">
-        <div>
-            <div class="title-wrapper">
-                <a href="https://github.com/alfwro13/Stock_Analysis_Project" target="_blank" class="logo-link">
-                    <img src="/assets/logo_small.png" alt="Quantamental Logo" class="logo-img">
-                </a>
-                <h1>System Notifications</h1>
+{% block title %}Quantamental - Notifications{% endblock %}
+
+{% block content %}
+<h1 class="mb-3">System Notifications</h1>
+
+<div class="d-flex justify-content-end gap-2 mb-2">
+    <button id="mark-read-btn" class="btn-read" onclick="markAllAsRead()">✓ Mark All as Read</button>
+    <button id="purge-btn" class="btn-danger" onclick="purgeAllNotifications()">🗑️ Purge All</button>
+</div>
+
+<div class="d-flex flex-wrap justify-content-end gap-2 mb-3">
+    <button class="filter-btn active" data-filter="all" onclick="setFilter(this)">All</button>
+    <button class="filter-btn" data-filter="Crash" onclick="setFilter(this)">Crash</button>
+    <button class="filter-btn" data-filter="Moonshot" onclick="setFilter(this)">Moonshot</button>
+    <button class="filter-btn" data-filter="Scheduler" onclick="setFilter(this)">Scheduler</button>
+    <button class="filter-btn" data-filter="Success" onclick="setFilter(this)">Success</button>
+    <button class="filter-btn" data-filter="Error" onclick="setFilter(this)">Error</button>
+    <button class="filter-btn" data-filter="Warning" onclick="setFilter(this)">Warning</button>
+    <button class="filter-btn" data-filter="Info" onclick="setFilter(this)">Info</button>
+</div>
+
+<div class="notification-list">
+    {% if notifications %}
+        {% for note in notifications %}
+        <div class="notification-card {% if not note.is_read %}unread{% endif %}" data-type="{{ note.message_type }}">
+            <div class="notification-header">
+                <span class="notification-type">{{ note.message_type }} Alert</span>
+                <div class="d-flex gap-2 align-items-center">
+                    {% if note.status == 'failed' %}
+                    <span class="text-danger small fw-semibold">⚠ Nextcloud send failed</span>
+                    {% endif %}
+                    <span>{{ note.timestamp }}</span>
+                </div>
             </div>
-
-            {% set active_page = 'notifications' %}
-            {% include 'navbar.html' %}
+            <div class="notification-body">{{ note.message_text }}</div>
         </div>
-    </div>
-
-    <div class="notification-actions-bar">
-        <button class="btn-read" onclick="markAllAsRead()">✓ Mark All as Read</button>
-        <button class="btn-danger" onclick="purgeAllNotifications()">🗑️ Purge All</button>
-    </div>
-
-    <div class="notification-filter-bar">
-        <button class="filter-btn active" data-filter="all" onclick="setFilter(this)">All</button>
-        <button class="filter-btn" data-filter="Crash" onclick="setFilter(this)">Crash</button>
-        <button class="filter-btn" data-filter="Moonshot" onclick="setFilter(this)">Moonshot</button>
-        <button class="filter-btn" data-filter="Scheduler" onclick="setFilter(this)">Scheduler</button>
-        <button class="filter-btn" data-filter="Success" onclick="setFilter(this)">Success</button>
-        <button class="filter-btn" data-filter="Error" onclick="setFilter(this)">Error</button>
-        <button class="filter-btn" data-filter="Warning" onclick="setFilter(this)">Warning</button>
-        <button class="filter-btn" data-filter="Info" onclick="setFilter(this)">Info</button>
-    </div>
-
-    <div class="notification-list">
-        {% if notifications %}
-            {% for note in notifications %}
-            <div class="notification-card {% if not note.is_read %}unread{% endif %}" data-type="{{ note.message_type }}">
-                <div class="notification-header">
-                    <span class="notification-type">{{ note.message_type }} Alert</span>
-                    <div style="display:flex;gap:10px;align-items:center;">
-                        {% if note.status == 'failed' %}
-                        <span style="color:#e74c3c;font-size:0.75rem;font-weight:600;">⚠ Nextcloud send failed</span>
-                        {% endif %}
-                        <span>{{ note.timestamp }}</span>
-                    </div>
-                </div>
-                <div class="notification-body">{{ note.message_text }}</div>
+        {% endfor %}
+    {% else %}
+        <div class="notification-card" id="empty-state-msg">
+            <div class="notification-body text-center text-muted-dark">
+                No notifications generated yet. Wait for a background scan to complete.
             </div>
-            {% endfor %}
-        {% else %}
-            <div class="notification-card" id="empty-state-msg">
-                <div class="notification-body text-center text-muted-dark">
-                    No notifications generated yet. Wait for a background scan to complete.
-                </div>
-            </div>
-        {% endif %}
-    </div>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}
 
-    <script>
-        // Store the highest ID generated on initial render so we only fetch exactly what's new.
-        let lastNotificationId = {% if notifications %}{{ notifications[0].id }}{% else %}0{% endif %};
-        let activeFilter = 'all';
-
-        function setFilter(btn) {
-            activeFilter = btn.dataset.filter;
-            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            document.querySelectorAll('.notification-list .notification-card').forEach(card => {
-                const type = card.dataset.type || '';
-                card.style.display = (activeFilter === 'all' || type === activeFilter) ? '' : 'none';
-            });
-        }
-
-        // Delta Auto-Refresh Polling Engine
-        setInterval(async () => {
-            try {
-                const response = await fetch(`/api/notifications/latest?last_id=${lastNotificationId}`);
-                const result = await response.json();
-
-                if (response.ok && result.status === 'success') {
-                    const notes = result.notifications;
-                    if (notes.length > 0) {
-                        const list = document.querySelector('.notification-list');
-
-                        // Clear out the empty state message dynamically if it exists
-                        const emptyMsg = document.getElementById('empty-state-msg');
-                        if (emptyMsg) emptyMsg.remove();
-
-                        notes.forEach(note => {
-                            const card = document.createElement('div');
-                            card.className = 'notification-card unread';
-                            card.dataset.type = note.type;
-                            if (activeFilter !== 'all' && note.type !== activeFilter) {
-                                card.style.display = 'none';
-                            }
-                            card.innerHTML = `
-                                <div class="notification-header">
-                                    <span class="notification-type">${note.type} Alert</span>
-                                    <span>${note.timestamp}</span>
-                                </div>
-                                <div class="notification-body">${note.text}</div>
-                            `;
-                            list.prepend(card);
-
-                            // Advance the marker to the newest ID
-                            lastNotificationId = Math.max(lastNotificationId, note.id);
-                        });
-
-                        // Dynamically increase the navbar badge if it exists
-                        const badge = document.getElementById('nav-badge');
-                        if (badge) {
-                            badge.innerText = parseInt(badge.innerText || '0') + notes.length;
-                            badge.classList.remove('d-none');
-                            badge.classList.add('d-inline-block');
-                        }
-                    }
-                }
-            } catch (error) {
-                console.error("Failed to poll notifications:", error);
-            }
-        }, 15000); // Checks for new database rows every 15 seconds
-
-        async function markAllAsRead() {
-            const btn = document.querySelector('.btn-read');
-            btn.disabled = true;
-            btn.innerText = "Processing...";
-
-            try {
-                const response = await fetch('/api/notifications/mark-read', { method: 'POST' });
-                
-                if (response.ok) {
-                    const unreadCards = document.querySelectorAll('.notification-card.unread');
-                    unreadCards.forEach(card => card.classList.remove('unread'));
-                    
-                    const badge = document.getElementById('nav-badge');
-                    if (badge) {
-                        badge.classList.remove('d-inline-block');
-                        badge.classList.add('d-none');
-                    }
-                    
-                    btn.innerText = "✓ All Caught Up";
-                } else {
-                    alert("Failed to mark notifications as read.");
-                    btn.innerText = "✓ Mark All as Read";
-                    btn.disabled = false;
-                }
-            } catch (error) {
-                alert("Network error occurred.");
-                btn.innerText = "✓ Mark All as Read";
-                btn.disabled = false;
-            }
-        }
-
-        async function purgeAllNotifications() {
-            if (!confirm("Are you sure you want to permanently delete all notifications? This action cannot be undone.")) {
-                return;
-            }
-
-            const btn = document.querySelector('.btn-danger');
-            const originalText = btn.innerText;
-            btn.disabled = true;
-            btn.innerText = "Processing...";
-
-            try {
-                const response = await fetch('/api/notifications/purge', { method: 'POST' });
-                
-                if (response.ok) {
-                    const list = document.querySelector('.notification-list');
-                    // Reset the DOM to the exact empty-state HTML to maintain layout integrity
-                    list.innerHTML = `
-                        <div class="notification-card" id="empty-state-msg">
-                            <div class="notification-body text-center text-muted-dark">
-                                No notifications generated yet. Wait for a background scan to complete.
-                            </div>
-                        </div>
-                    `;
-                    
-                    const badge = document.getElementById('nav-badge');
-                    if (badge) {
-                        badge.classList.remove('d-inline-block');
-                        badge.classList.add('d-none');
-                    }
-                    
-                    btn.innerText = "✓ Purged";
-                } else {
-                    alert("Failed to purge notifications.");
-                    btn.innerText = originalText;
-                    btn.disabled = false;
-                }
-            } catch (error) {
-                alert("Network error occurred.");
-                btn.innerText = originalText;
-                btn.disabled = false;
-            }
-        }
-    </script>
-</body>
-</html>
+{% block scripts %}
+<script>
+    window.LAST_NOTIFICATION_ID = {% if notifications %}{{ notifications[0].id }}{% else %}0{% endif %};
+</script>
+<script src="/static/js/notifications.js?v={{ css_version }}"></script>
+{% endblock %}
