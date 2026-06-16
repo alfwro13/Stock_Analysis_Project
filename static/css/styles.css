@@ -1135,6 +1135,7 @@ details[open] > .trap-accuracy-summary::before { transform: rotate(90deg); }
 .bubble-table tr:last-child td { border-bottom: none; }
 .bubble-table tr.clickable:hover td { background: #111; cursor: pointer; }
 .bubble-empty { text-align: center; padding: 40px 20px; color: #555; font-size: 13px; }
+.bubble-empty-hidden { display: none; }
 
 /* ── Score History page ──────────────────────────────────────────────────── */
 .filter-tabs { display: flex; gap: 8px; margin-bottom: 24px; flex-wrap: wrap; }
