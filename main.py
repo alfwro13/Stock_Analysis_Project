@@ -116,4 +116,4 @@ app.include_router(page_router)
 
 if __name__ == "__main__":
     logger.info(f"Starting Quantamental Web Server at {SERVER_URL}:{PORT}...")
-    uvicorn.run(app, host="0.0.0.0", port=PORT)
+    uvicorn.run(app, host="0.0.0.0", port=PORT, timeout_graceful_shutdown=15)

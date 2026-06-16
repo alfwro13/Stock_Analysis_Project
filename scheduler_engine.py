@@ -1585,7 +1585,7 @@ def start_scheduler():
 
 
 def shutdown_scheduler():
-    scheduler.shutdown()
+    scheduler.shutdown(wait=False)
 
 
 # ---------------------------------------------------------------------------
