@@ -146,17 +146,21 @@ Status: ☐ todo · ◐ in progress · ☑ done
 
 ---
 
-## Reusable per-page prompt (fill the `<…>` slots, hand to a fresh chat)
+## Reusable per-page prompt (fill ONE slot: the template filename)
 
 ```
-Migrate templates/<PAGE>.html (route <ROUTE>) to Bootstrap 5 + DataTables Responsive.
+Migrate templates/<PAGE>.html to Bootstrap 5 + DataTables Responsive.
 
 FIRST read, in full: AGENTS.md; assets/frontend_migration_plan.md; and the reference
 implementation templates/watchlist.html + static/js/watchlist.js. Follow the "Per-page
 migration recipe" in the migration guide exactly.
 
-This page uses: <DataTables? which table IDs / Plotly charts? / embed mode? / which
-static/js files / any included partials>.
+Discover the context yourself — do NOT rely on me to specify it:
+- Find the route(s) that render this template by grepping page_routes.py. Note if it is
+  instead an {% include %} partial with no direct route (e.g. macro_cards.html), or a route
+  with path params (e.g. /stock/{ticker}).
+- Inspect the file to see what it uses: DataTables (which table IDs), Plotly charts, embed
+  mode, which /static/js files, and any included partials.
 
 Constraints (from AGENTS.md):
 - Full component rewrite: extend base.html; no duplicated <head>/navbar; Bootstrap grid +
@@ -172,6 +176,6 @@ and fix failures; manually verify desktop + phone-width (~390px) + (portfolio/wa
 ?embed=true. Update the tracker row in assets/frontend_migration_plan.md and any docs this
 page affects.
 
-Report: files changed, tests run, docs updated, and any [NEEDS REVIEW] items. Do not touch
-any other page.
+Report: files changed, route(s) found, tests run, docs updated, and any [NEEDS REVIEW]
+items. Do not touch any other page.
 ```
