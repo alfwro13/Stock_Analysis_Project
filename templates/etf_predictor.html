@@ -1,95 +1,81 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="color-scheme" content="dark">
-    <title>Quantamental - ETF Price Predictor</title>
-    <link rel="stylesheet" href="/static/css/styles.css?v={{ css_version }}">
-</head>
-<body class="body-watchlist">
+{% extends "base.html" %}
 
-    <div class="header-container">
-        <div>
-            <div class="title-wrapper">
-                <a href="https://github.com/alfwro13/Stock_Analysis_Project" target="_blank" class="logo-link">
-                    <img src="/assets/logo_small.png" alt="Quantamental Logo" class="logo-img">
-                </a>
-                <h1>&#128202; ETF Price Predictor</h1>
-            </div>
-            <p class="page-subtitle">
-                Predict next-session open prices for configured <abbr title="Exchange-Traded Fund — a basket of securities traded on an exchange like a stock.">ETFs</abbr>
-                using holdings-weighted constituent returns and <abbr title="Ordinary Least Squares regression — fits a linear model: ETF morning return = α + β × constituent basket return.">OLS</abbr> regression.
-                Configure predictors in <a href="/settings" style="color:#00ffcc;">Settings → ETF Price Predictors</a>.
-            </p>
-            {% set active_page = 'tools' %}
-            {% include 'navbar.html' %}
-        </div>
-    </div>
+{% block title %}Quantamental - ETF Price Predictor{% endblock %}
 
-    <div class="report-container report-container-wide">
-        <div class="flex-gap-15 mb-20" style="align-items:center;">
-            <a href="/tools" style="color:#aaa;font-size:13px;">← Back to Tools</a>
-            <a href="/settings#etf-predictors-section" class="btn-test" style="font-size:12px;padding:5px 12px;">+ Add Predictor</a>
-        </div>
+{% block content %}
+<h1 class="mb-1">&#128202; ETF Price Predictor</h1>
+<p class="text-muted mb-3">
+    Predict next-session open prices for configured <abbr title="Exchange-Traded Fund — a basket of securities traded on an exchange like a stock.">ETFs</abbr>
+    using holdings-weighted constituent returns and <abbr title="Ordinary Least Squares regression — fits a linear model: ETF morning return = α + β × constituent basket return.">OLS</abbr> regression.
+    Configure predictors in <a href="/settings" class="text-accent-cyan">Settings → ETF Price Predictors</a>.
+</p>
 
-        {% if not tiles %}
-        <div class="settings-panel border-left-purple" style="text-align:center;padding:40px 20px;">
-            <h4 class="text-purple">No ETF predictors configured yet</h4>
-            <p style="color:#aaa;margin:10px 0;">Configure your first predictor in Settings — specify the ETF ticker and its top 10–20 constituents with weights.</p>
-            <a href="/settings#etf-predictors-section" class="btn-test mt-10" style="display:inline-block;">Open Settings →</a>
-        </div>
-        {% else %}
-        <div class="tools-grid">
-            {% for tile in tiles %}
-            {% set cfg = tile.config %}
-            {% set last = tile.last_prediction %}
-            {% set resolved = tile.last_resolved %}
-            {% set summ = tile.summary %}
-            <div class="guide-card" style="position:relative;">
-                {% if not cfg.enabled %}
-                <span style="position:absolute;top:10px;right:10px;font-size:11px;color:#888;background:#111;padding:2px 6px;border-radius:3px;">DISABLED</span>
-                {% endif %}
-                <h4>{{ cfg.etf_ticker }}</h4>
-                <p style="color:#aaa;font-size:13px;margin-bottom:4px;">{{ cfg.name }}</p>
-                <p style="color:#888;font-size:12px;margin-bottom:12px;">{{ cfg.constituents|length }} constituent{{ 's' if cfg.constituents|length != 1 else '' }}</p>
+<div class="d-flex gap-2 mb-3 align-items-center">
+    <a href="/tools" class="btn btn-outline-secondary btn-sm">← Back to Tools</a>
+    <a href="/settings#etf-predictors-section" class="btn btn-primary btn-sm">+ Add Predictor</a>
+</div>
 
-                {% if last %}
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
-                    <div style="background:#111;padding:8px;border-radius:4px;">
-                        <div style="color:#888;font-size:11px;">Last prediction</div>
-                        <div style="color:#00ffcc;font-size:15px;font-weight:bold;">
+{% if not tiles %}
+<div class="settings-panel border-left-purple text-center py-4">
+    <h4 class="text-purple">No ETF predictors configured yet</h4>
+    <p class="text-muted my-2">Configure your first predictor in Settings — specify the ETF ticker and its top 10–20 constituents with weights.</p>
+    <a href="/settings#etf-predictors-section" class="btn btn-primary mt-2">Open Settings →</a>
+</div>
+{% else %}
+<div class="row g-3">
+    {% for tile in tiles %}
+    {% set cfg = tile.config %}
+    {% set last = tile.last_prediction %}
+    {% set resolved = tile.last_resolved %}
+    {% set summ = tile.summary %}
+    <div class="col-12 col-md-6 col-xl-4">
+        <div class="guide-card position-relative h-100">
+            {% if not cfg.enabled %}
+            <span class="badge bg-secondary position-absolute top-0 end-0 mt-2 me-2">DISABLED</span>
+            {% endif %}
+            <h4>{{ cfg.etf_ticker }}</h4>
+            <p class="text-muted small mb-1">{{ cfg.name }}</p>
+            <p class="text-secondary small mb-3">{{ cfg.constituents|length }} constituent{{ 's' if cfg.constituents|length != 1 else '' }}</p>
+
+            {% if last %}
+            <div class="row g-2 mb-3">
+                <div class="col-6">
+                    <div class="bg-black p-2 rounded">
+                        <div class="text-muted text-xs">Last prediction</div>
+                        <div class="text-cyan fw-bold">
                             {{ "%.4f"|format(last.predicted_price) if last.predicted_price else '—' }}
                         </div>
-                        <div style="color:#666;font-size:11px;">{{ last.target_date or '—' }}</div>
+                        <div class="text-secondary text-xs">{{ last.target_date or '—' }}</div>
                     </div>
-                    <div style="background:#111;padding:8px;border-radius:4px;">
-                        <div style="color:#888;font-size:11px;">Last actual</div>
-                        <div style="color:{% if resolved and resolved.actual_open %}#fff{% else %}#666{% endif %};font-size:15px;font-weight:bold;">
+                </div>
+                <div class="col-6">
+                    <div class="bg-black p-2 rounded">
+                        <div class="text-muted text-xs">Last actual</div>
+                        <div class="{{ 'text-light' if resolved and resolved.actual_open else 'text-secondary' }} fw-bold">
                             {{ "%.4f"|format(resolved.actual_open) if resolved and resolved.actual_open else '—' }}
                         </div>
                         {% if resolved and resolved.pct_error is not none and resolved.actual_open %}
-                        <div style="color:#aaa;font-size:11px;">err: {{ "%.2f"|format(resolved.pct_error) }}%</div>
+                        <div class="text-muted text-xs">err: {{ "%.2f"|format(resolved.pct_error) }}%</div>
                         {% endif %}
                     </div>
                 </div>
-                {% if summ.direction_accuracy_pct is not none %}
-                <div style="color:#aaa;font-size:12px;margin-bottom:8px;">
-                    Direction accuracy: <span style="color:{% if summ.direction_accuracy_pct >= 60 %}#00ff00{% elif summ.direction_accuracy_pct >= 50 %}#ffaa00{% else %}#ff4d4d{% endif %};font-weight:bold;">{{ summ.direction_accuracy_pct }}%</span>
-                    ({{ summ.resolved_count }} resolved)
-                </div>
-                {% endif %}
-                {% else %}
-                <div style="color:#666;font-size:13px;margin-bottom:12px;">No predictions yet — run from Settings or wait for the scheduled job.</div>
-                {% endif %}
-
-                <div class="why-use-it">{{ cfg.constituents|map(attribute='ticker')|join(', ') }}</div>
-                <a href="/etf-predictor/{{ cfg.id }}" class="guide-card-link">View Results →</a>
             </div>
-            {% endfor %}
-        </div>
-        {% endif %}
-    </div>
+            {% if summ.direction_accuracy_pct is not none %}
+            <p class="text-muted small mb-2">
+                Direction accuracy:
+                <span class="fw-bold {% if summ.direction_accuracy_pct >= 60 %}metric-excellent{% elif summ.direction_accuracy_pct >= 50 %}metric-neutral{% else %}metric-poor{% endif %}">{{ summ.direction_accuracy_pct }}%</span>
+                ({{ summ.resolved_count }} resolved)
+            </p>
+            {% endif %}
+            {% else %}
+            <p class="text-secondary small mb-3">No predictions yet — run from Settings or wait for the scheduled job.</p>
+            {% endif %}
 
-</body>
-</html>
+            <div class="why-use-it">{{ cfg.constituents|map(attribute='ticker')|join(', ') }}</div>
+            <a href="/etf-predictor/{{ cfg.id }}" class="guide-card-link">View Results →</a>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+{% endblock %}
