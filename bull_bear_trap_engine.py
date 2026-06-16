@@ -56,6 +56,7 @@ class TrapEngine:
         self.cap_enabled: bool = sched_cfg.get("CAPITULATION", True)
         self.wyckoff_enabled: bool = sched_cfg.get("WYCKOFF", True)
         self.monitor_portfolio: bool = sched_cfg.get("MONITOR_PORTFOLIO", True)
+        self.ignored_tickers: set = {str(t).strip().upper() for t in config.get("IGNORED_TICKERS", [])}
 
     def run_scan(self) -> list[dict]:
         tickers = self._get_ticker_list()
@@ -390,6 +391,7 @@ class TrapEngine:
                             tickers.add(t.upper())
             except Exception as e:
                 logger.warning("TrapEngine: could not load portfolio tickers: %s", e)
+        tickers -= self.ignored_tickers
         return sorted(tickers)
 
     def _load_history(self, ticker: str) -> Optional[pd.DataFrame]:
