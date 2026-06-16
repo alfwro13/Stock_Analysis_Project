@@ -744,6 +744,16 @@ def _generate_xray_recommendations(
     return result
 
 
+def _sanitize_floats(obj):
+    # Recursively replace nan/inf with None so the report is always JSON-safe.
+    if isinstance(obj, float):
+        return None if not np.isfinite(obj) else obj
+    if isinstance(obj, dict):
+        return {k: _sanitize_floats(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize_floats(v) for v in obj]
+    return obj
+
 
 def assemble_xray_report(account_id: str) -> Dict:
     # Combines live Ghostfolio (Tier A) with SQLite risk cache (Tier C); account_id="all" for global scope.
@@ -1103,7 +1113,7 @@ def assemble_xray_report(account_id: str) -> Dict:
         targets=xray_targets,
     )
 
-    return {
+    report = {
         "account_id": account_id,
         "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "portfolio_total_value": round(total_value, 2),
@@ -1150,3 +1160,4 @@ def assemble_xray_report(account_id: str) -> Dict:
         "data_warnings": data_warnings,
         "recommendations": recommendations,
     }
+    return _sanitize_floats(report)

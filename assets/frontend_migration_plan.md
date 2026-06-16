@@ -112,7 +112,7 @@ Status: ☐ todo · ◐ in progress · ☑ done
 - ☑ `news` (`/news`, `news.js`) · ☑ `macro_cards.html` partial (consumed by portfolio/watchlist)
 
 ### Stage 2 — DataTables-heavy pages
-- ☐ `portfolio` (`/portfolio`, `portfolio.js`, embed mode, X-ray panel)
+- ☑ `portfolio` (`/portfolio`, `portfolio.js`, embed mode, X-ray panel)
 - ☐ `market_screener` (`/market-screener`) · ☐ `market_sentiment` (`/market-sentiment`)
 - ☐ `market_reports` (`/market-reports`, 6 tables + custom filter bars)
 
@@ -143,6 +143,7 @@ Status: ☐ todo · ◐ in progress · ☑ done
   off-by-one was corrected in `static/js/watchlist.js`: Signal `column(18)`, tags/candle
   `column(17)`, score range `data[16]`.
 - **Plotly vendoring** is deferred to Stage 3 (3.5 MB; only 8 chart pages need it).
+- **Portfolio signal/tag filter column indices — FIXED.** Entry Zone + Exit Target columns were added after the original `portfolio.js` was written, shifting Signal/Tags indices by 2. Corrected in Stage 2 migration: Signal → `column(20)`, Tags → `column(19)`.
 
 ---
 
