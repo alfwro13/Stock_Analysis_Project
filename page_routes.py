@@ -1051,10 +1051,13 @@ async def etf_predictor_index_page(request: Request):
     tiles = []
     for cfg in configs:
         accuracy = get_etf_accuracy(cfg["id"])
-        last_row = accuracy["next_open"]["rows"][0] if accuracy["next_open"]["rows"] else None
+        rows = accuracy["next_open"]["rows"]
+        last_row = rows[0] if rows else None
+        last_resolved = next((r for r in rows if r.get("actual_open") is not None), None)
         tiles.append({
             "config": cfg,
             "last_prediction": last_row,
+            "last_resolved": last_resolved,
             "summary": accuracy["next_open"]["summary"],
         })
     return templates.TemplateResponse(

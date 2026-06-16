@@ -44,6 +44,7 @@
             {% for tile in tiles %}
             {% set cfg = tile.config %}
             {% set last = tile.last_prediction %}
+            {% set resolved = tile.last_resolved %}
             {% set summ = tile.summary %}
             <div class="guide-card" style="position:relative;">
                 {% if not cfg.enabled %}
@@ -64,11 +65,11 @@
                     </div>
                     <div style="background:#111;padding:8px;border-radius:4px;">
                         <div style="color:#888;font-size:11px;">Last actual</div>
-                        <div style="color:{% if last.actual_open %}#fff{% else %}#666{% endif %};font-size:15px;font-weight:bold;">
-                            {{ "%.4f"|format(last.actual_open) if last.actual_open else '—' }}
+                        <div style="color:{% if resolved and resolved.actual_open %}#fff{% else %}#666{% endif %};font-size:15px;font-weight:bold;">
+                            {{ "%.4f"|format(resolved.actual_open) if resolved and resolved.actual_open else '—' }}
                         </div>
-                        {% if last.pct_error is not none and last.actual_open %}
-                        <div style="color:#aaa;font-size:11px;">err: {{ "%.2f"|format(last.pct_error) }}%</div>
+                        {% if resolved and resolved.pct_error is not none and resolved.actual_open %}
+                        <div style="color:#aaa;font-size:11px;">err: {{ "%.2f"|format(resolved.pct_error) }}%</div>
                         {% endif %}
                     </div>
                 </div>
