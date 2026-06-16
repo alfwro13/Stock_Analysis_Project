@@ -1,99 +1,74 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="color-scheme" content="dark">
-    <title>Quantamental - Tools</title>
-    <link rel="stylesheet" href="/static/css/styles.css?v={{ css_version }}">
-</head>
-<body class="body-watchlist">
+{% extends "base.html" %}
 
-    <div class="header-container">
-        <div>
-            <div class="title-wrapper">
-                <a href="https://github.com/alfwro13/Stock_Analysis_Project" target="_blank" class="logo-link">
-                    <img src="/assets/logo_small.png" alt="Quantamental Logo" class="logo-img">
-                </a>
-                <h1><abbr title="Quantamental - a modern institutional strategy that combines Quantitative analysis with Fundamental analysis.">Q</abbr>uantamental Tools</h1>
-            </div>
-            <p class="page-subtitle">Analytical tools and calculators — click a tool to launch it</p>
-            {% set active_page = 'tools' %}
-            {% include 'navbar.html' %}
-        </div>
+{% block title %}Quantamental - Tools{% endblock %}
+
+{% block content %}
+<h1 class="mb-1"><abbr title="Quantamental - a modern institutional strategy that combines Quantitative analysis with Fundamental analysis.">Q</abbr>uantamental Tools</h1>
+<p class="text-secondary mb-4">Standalone analytical tools for deeper investigation beyond the main dashboard. Each tool runs on demand — data is fetched live when you open it.</p>
+
+<div class="tools-grid">
+
+    <div class="guide-card">
+        <h4>🎯 Dip Radar Summary</h4>
+        <p>Live intraday <abbr title="Capitulation bottom — a sharp sell-off accompanied by exhaustion signals (RSI extreme oversold, Bollinger Band breach, VWAP dislocation, volume climax) that often precedes a short-term reversal.">capitulation detector</abbr> across all stocks you are monitoring today. Shows each ticker's reversal score (0–100), signal breakdown, and current price — all refreshed every 2 minutes.</p>
+        <div class="why-use-it">Use during market hours to spot potential bottoming zones across your watchlist without visiting each stock individually.</div>
+        <a href="/dip-radar" class="guide-card-link">Launch Tool →</a>
     </div>
 
-    <div class="report-container report-container-wide">
-        <h2>Available Tools</h2>
-        <p>Standalone analytical tools for deeper investigation beyond the main dashboard. Each tool runs on demand — data is fetched live when you open it.</p>
-
-        <div class="tools-grid">
-
-            <div class="guide-card">
-                <h4>🎯 Dip Radar Summary</h4>
-                <p>Live intraday <abbr title="Capitulation bottom — a sharp sell-off accompanied by exhaustion signals (RSI extreme oversold, Bollinger Band breach, VWAP dislocation, volume climax) that often precedes a short-term reversal.">capitulation detector</abbr> across all stocks you are monitoring today. Shows each ticker's reversal score (0–100), signal breakdown, and current price — all refreshed every 2 minutes.</p>
-                <div class="why-use-it">Use during market hours to spot potential bottoming zones across your watchlist without visiting each stock individually.</div>
-                <a href="/dip-radar" class="guide-card-link">Launch Tool →</a>
-            </div>
-
-            <div class="guide-card">
-                <h4>🎲 Options Sandbox</h4>
-                <p>Interactive options chain explorer. Fetch live calls and puts for any ticker, visualise the <abbr title="Implied Volatility — the market's expectation of future price movement, derived from option prices.">IV</abbr> smile, and inspect open interest and volume across expiries.</p>
-                <div class="why-use-it">Use to explore option pricing, compare expiries, and spot unusual activity before entering a position.</div>
-                <a href="/options-sandbox" class="guide-card-link">Launch Tool →</a>
-            </div>
-
-            <div class="guide-card">
-                <h4>🤖 AI Sector Contagion Monitor</h4>
-                <p>Tracks the broader <abbr title="AI ecosystem covered: NVDA, AMD, AVGO (semiconductors), GOOGL, MSFT, META, AAPL (hyperscalers), ORCL, AMZN (cloud), TSLA (AI-adjacent).">AI ecosystem</abbr> — not just semiconductors but also hyperscalers, cloud platforms, and AI-adjacent names. Shows a 30-day normalised performance chart, today's intraday session, and a rolling 20-day pairwise <abbr title="Pearson correlation coefficient — measures linear co-movement. Values near 1 mean stocks move together; values near -1 mean they move inversely.">correlation heatmap</abbr> across all 10 tickers.</p>
-                <div class="why-use-it">Use to detect sector-wide contagion — when one major AI name sells off, does the rest of the sector follow?</div>
-                <a href="/ai-contagion" class="guide-card-link">Launch Tool →</a>
-            </div>
-
-            <div class="guide-card">
-                <h4>🎭 Market Trap &amp; Recovery Monitor</h4>
-                <p>Tracks the full post-crash lifecycle across your portfolio and key market proxies: <abbr title="A false recovery after a sell-off where bounce volume is far below sell-off volume, typically preceding a secondary leg down. Detected when price is below the 20-EMA but up-day volume ratio vs down-days falls below 0.75–0.90.">Bull Trap</abbr>, <abbr title="A false support breakdown on low volume that reverses upward, trapping short sellers. Detected when price intraday breaches the lower Bollinger Band but closes back above on sub-average volume.">Bear Trap</abbr>, <abbr title="A high-volume panic-selling climax (volume &gt;3σ above the 20-day mean) combined with extreme RSI oversold readings — the statistical signature of institutional absorption and a possible true bottom.">Capitulation</abbr>, and <abbr title="Bollinger Band squeeze with ATR contraction and drying volume — Wyckoff's accumulation base, typically the final stage before a confirmed breakout.">Wyckoff Accumulation</abbr>. Each ticker shows its current lifecycle phase and individual signal levels.</p>
-                <div class="why-use-it">Use after any significant market crash — to assess whether a bounce is real, a trap is forming, and when the true bottom may be in.</div>
-                <a href="/trap-monitor" class="guide-card-link">Launch Tool →</a>
-            </div>
-
-            <div class="guide-card">
-                <h4>&#128200; Market Regime (HMM)</h4>
-                <p>Classifies the current market into one of three <abbr title="Hidden Markov Model — a probabilistic model where an observed sequence (SPY returns + volatility) is generated by a sequence of hidden states. The most likely state sequence is decoded using the Viterbi algorithm.">HMM</abbr> states — <strong>Bull</strong> (low vol, positive returns), <strong>Chop</strong> (elevated vol, indecisive), or <strong>Crash</strong> (high vol, negative returns) — by fitting a 5-year <abbr title="GaussianHMM with full covariance matrix, trained on SPY daily log-returns and 20-day EWMA annualised volatility (λ=0.94). States are sorted by mean volatility so ordering is stable across daily retrains.">Gaussian HMM</abbr> on SPY returns and EWMA volatility. Shows the full Viterbi history, empirical transition probabilities, and per-regime return/vol statistics. Alerts via Nextcloud when the regime changes.</p>
-                <div class="why-use-it">Use to understand the macro volatility context before acting on individual stock signals — a Bull Trap in a Crash regime is far more dangerous than the same signal in a Bull regime.</div>
-                <a href="/market-regime" class="guide-card-link">Launch Tool →</a>
-            </div>
-
-            <div class="guide-card">
-                <h4>📉 Historical Stress Tester</h4>
-                <p>Simulates your portfolio through the <abbr title="Global Financial Crisis 2008–09: S&P 500 fell 57% over 517 trading days. Financials and Real Estate were hardest hit.">GFC 2008</abbr>, <abbr title="Dot-com crash 2000–02: S&P fell 49% and NASDAQ fell 78% over 2.5 years. Technology and Communication Services were devastated.">Dot-com 2000</abbr>, <abbr title="COVID-19 crash Feb–Mar 2020: S&P fell 34% in just 33 trading days — the fastest 30% decline in market history. Energy was crushed; tech recovered quickly.">COVID-19 crash</abbr>, and <abbr title="2022 inflation shock: aggressive Fed rate tightening caused S&P to fall 25% over the year. Growth and tech stocks fell 50–70%; energy surged.">2022 inflation shock</abbr> using <abbr title="Beta-adjusted shock: each holding's expected drop = market crash % × its beta × a sector-specific multiplier calibrated to that crisis.">beta-adjusted scenario shocks</abbr>. Shows the estimated monetary loss per holding and by sector.</p>
-                <div class="why-use-it">Use it to see a concrete £X worst-case figure before the next crash — not after.</div>
-                <a href="/stress-test" class="guide-card-link">Launch Tool →</a>
-            </div>
-
-
-            <div class="guide-card">
-                <h4>&#127968; Bubble Radar</h4>
-                <p>Scans your portfolio and watchlist for tickers exhibiting signs of valuation euphoria: extreme
-                    <abbr title="% deviation above the 200-day Simple Moving Average. Values above 25–40% indicate significant overextension.">SMA-200 extension</abbr>,
-                    sustained overbought <abbr title="Average RSI over the last 20 trading days. Readings above 70–75 sustained over weeks signal prolonged overbought pressure.">RSI</abbr>,
-                    stretched <abbr title="Price-to-Sales (trailing 12 months) and PEG ratio — higher values indicate the stock is priced well ahead of its underlying fundamentals.">P/S and PEG</abbr> multiples,
-                    <abbr title="Options call skew — ratio of OTM call IV to OTM put IV. Values above 1.2 indicate the market is aggressively pricing in further upside (call mania).">IV call skew</abbr>,
-                    and narrow <abbr title="20-day return spread between the cap-weighted S&P 500 (SPY) and the equal-weight S&P 500 (RSP). A large positive spread means only a handful of mega-cap names are driving the index.">market breadth</abbr>.
-                    Tracks prediction accuracy over 4, 8, and 12 weeks to show how reliable the signals are historically.</p>
-                <div class="why-use-it">Use to identify tickers that may be mathematically detached from their fundamentals — before a mean-reversion trade, before adding to a position, or as a portfolio-level euphoria check.</div>
-                <a href="/bubble-radar" class="guide-card-link">Launch Tool →</a>
-            </div>
-
-            <div class="guide-card">
-                <h4>📊 ETF Price Predictor</h4>
-                <p>Generic morning price predictor for any <abbr title="Exchange-Traded Fund — a basket of securities traded on an exchange like a stock.">ETF</abbr>. Configure an ETF ticker and its top 10–20 constituent tickers with weights — the system predicts the ETF's next-session open using a holdings-weighted basket return engine and an <abbr title="Ordinary Least Squares regression — fits a linear model: ETF morning return = α + β × constituent basket return.">OLS</abbr> regression engine, with <abbr title="Foreign exchange adjustment — applied when the ETF and its constituents are denominated in different currencies.">FX</abbr> adjustment where needed. Tracks prediction accuracy over time.</p>
-                <div class="why-use-it">Use to build custom predictors for any ETF you hold — configure once, get daily predictions across multiple setups from the same tool.</div>
-                <a href="/etf-predictor" class="guide-card-link">Launch Tool →</a>
-            </div>
-
-        </div>
+    <div class="guide-card">
+        <h4>🎲 Options Sandbox</h4>
+        <p>Interactive options chain explorer. Fetch live calls and puts for any ticker, visualise the <abbr title="Implied Volatility — the market's expectation of future price movement, derived from option prices.">IV</abbr> smile, and inspect open interest and volume across expiries.</p>
+        <div class="why-use-it">Use to explore option pricing, compare expiries, and spot unusual activity before entering a position.</div>
+        <a href="/options-sandbox" class="guide-card-link">Launch Tool →</a>
     </div>
 
-</body>
-</html>
+    <div class="guide-card">
+        <h4>🤖 AI Sector Contagion Monitor</h4>
+        <p>Tracks the broader <abbr title="AI ecosystem covered: NVDA, AMD, AVGO (semiconductors), GOOGL, MSFT, META, AAPL (hyperscalers), ORCL, AMZN (cloud), TSLA (AI-adjacent).">AI ecosystem</abbr> — not just semiconductors but also hyperscalers, cloud platforms, and AI-adjacent names. Shows a 30-day normalised performance chart, today's intraday session, and a rolling 20-day pairwise <abbr title="Pearson correlation coefficient — measures linear co-movement. Values near 1 mean stocks move together; values near -1 mean they move inversely.">correlation heatmap</abbr> across all 10 tickers.</p>
+        <div class="why-use-it">Use to detect sector-wide contagion — when one major AI name sells off, does the rest of the sector follow?</div>
+        <a href="/ai-contagion" class="guide-card-link">Launch Tool →</a>
+    </div>
+
+    <div class="guide-card">
+        <h4>🎭 Market Trap &amp; Recovery Monitor</h4>
+        <p>Tracks the full post-crash lifecycle across your portfolio and key market proxies: <abbr title="A false recovery after a sell-off where bounce volume is far below sell-off volume, typically preceding a secondary leg down. Detected when price is below the 20-EMA but up-day volume ratio vs down-days falls below 0.75–0.90.">Bull Trap</abbr>, <abbr title="A false support breakdown on low volume that reverses upward, trapping short sellers. Detected when price intraday breaches the lower Bollinger Band but closes back above on sub-average volume.">Bear Trap</abbr>, <abbr title="A high-volume panic-selling climax (volume &gt;3σ above the 20-day mean) combined with extreme RSI oversold readings — the statistical signature of institutional absorption and a possible true bottom.">Capitulation</abbr>, and <abbr title="Bollinger Band squeeze with ATR contraction and drying volume — Wyckoff's accumulation base, typically the final stage before a confirmed breakout.">Wyckoff Accumulation</abbr>. Each ticker shows its current lifecycle phase and individual signal levels.</p>
+        <div class="why-use-it">Use after any significant market crash — to assess whether a bounce is real, a trap is forming, and when the true bottom may be in.</div>
+        <a href="/trap-monitor" class="guide-card-link">Launch Tool →</a>
+    </div>
+
+    <div class="guide-card">
+        <h4>&#128200; Market Regime (HMM)</h4>
+        <p>Classifies the current market into one of three <abbr title="Hidden Markov Model — a probabilistic model where an observed sequence (SPY returns + volatility) is generated by a sequence of hidden states. The most likely state sequence is decoded using the Viterbi algorithm.">HMM</abbr> states — <strong>Bull</strong> (low vol, positive returns), <strong>Chop</strong> (elevated vol, indecisive), or <strong>Crash</strong> (high vol, negative returns) — by fitting a 5-year <abbr title="GaussianHMM with full covariance matrix, trained on SPY daily log-returns and 20-day EWMA annualised volatility (λ=0.94). States are sorted by mean volatility so ordering is stable across daily retrains.">Gaussian HMM</abbr> on SPY returns and EWMA volatility. Shows the full Viterbi history, empirical transition probabilities, and per-regime return/vol statistics. Alerts via Nextcloud when the regime changes.</p>
+        <div class="why-use-it">Use to understand the macro volatility context before acting on individual stock signals — a Bull Trap in a Crash regime is far more dangerous than the same signal in a Bull regime.</div>
+        <a href="/market-regime" class="guide-card-link">Launch Tool →</a>
+    </div>
+
+    <div class="guide-card">
+        <h4>📉 Historical Stress Tester</h4>
+        <p>Simulates your portfolio through the <abbr title="Global Financial Crisis 2008–09: S&P 500 fell 57% over 517 trading days. Financials and Real Estate were hardest hit.">GFC 2008</abbr>, <abbr title="Dot-com crash 2000–02: S&P fell 49% and NASDAQ fell 78% over 2.5 years. Technology and Communication Services were devastated.">Dot-com 2000</abbr>, <abbr title="COVID-19 crash Feb–Mar 2020: S&P fell 34% in just 33 trading days — the fastest 30% decline in market history. Energy was crushed; tech recovered quickly.">COVID-19 crash</abbr>, and <abbr title="2022 inflation shock: aggressive Fed rate tightening caused S&P to fall 25% over the year. Growth and tech stocks fell 50–70%; energy surged.">2022 inflation shock</abbr> using <abbr title="Beta-adjusted shock: each holding's expected drop = market crash % × its beta × a sector-specific multiplier calibrated to that crisis.">beta-adjusted scenario shocks</abbr>. Shows the estimated monetary loss per holding and by sector.</p>
+        <div class="why-use-it">Use it to see a concrete £X worst-case figure before the next crash — not after.</div>
+        <a href="/stress-test" class="guide-card-link">Launch Tool →</a>
+    </div>
+
+    <div class="guide-card">
+        <h4>&#127968; Bubble Radar</h4>
+        <p>Scans your portfolio and watchlist for tickers exhibiting signs of valuation euphoria: extreme
+            <abbr title="% deviation above the 200-day Simple Moving Average. Values above 25–40% indicate significant overextension.">SMA-200 extension</abbr>,
+            sustained overbought <abbr title="Average RSI over the last 20 trading days. Readings above 70–75 sustained over weeks signal prolonged overbought pressure.">RSI</abbr>,
+            stretched <abbr title="Price-to-Sales (trailing 12 months) and PEG ratio — higher values indicate the stock is priced well ahead of its underlying fundamentals.">P/S and PEG</abbr> multiples,
+            <abbr title="Options call skew — ratio of OTM call IV to OTM put IV. Values above 1.2 indicate the market is aggressively pricing in further upside (call mania).">IV call skew</abbr>,
+            and narrow <abbr title="20-day return spread between the cap-weighted S&P 500 (SPY) and the equal-weight S&P 500 (RSP). A large positive spread means only a handful of mega-cap names are driving the index.">market breadth</abbr>.
+            Tracks prediction accuracy over 4, 8, and 12 weeks to show how reliable the signals are historically.</p>
+        <div class="why-use-it">Use to identify tickers that may be mathematically detached from their fundamentals — before a mean-reversion trade, before adding to a position, or as a portfolio-level euphoria check.</div>
+        <a href="/bubble-radar" class="guide-card-link">Launch Tool →</a>
+    </div>
+
+    <div class="guide-card">
+        <h4>📊 ETF Price Predictor</h4>
+        <p>Generic morning price predictor for any <abbr title="Exchange-Traded Fund — a basket of securities traded on an exchange like a stock.">ETF</abbr>. Configure an ETF ticker and its top 10–20 constituent tickers with weights — the system predicts the ETF's next-session open using a holdings-weighted basket return engine and an <abbr title="Ordinary Least Squares regression — fits a linear model: ETF morning return = α + β × constituent basket return.">OLS</abbr> regression engine, with <abbr title="Foreign exchange adjustment — applied when the ETF and its constituents are denominated in different currencies.">FX</abbr> adjustment where needed. Tracks prediction accuracy over time.</p>
+        <div class="why-use-it">Use to build custom predictors for any ETF you hold — configure once, get daily predictions across multiple setups from the same tool.</div>
+        <a href="/etf-predictor" class="guide-card-link">Launch Tool →</a>
+    </div>
+
+</div>
+{% endblock %}
