@@ -364,7 +364,22 @@ class XRayRiskComputer:
 
             available = [s for s in portfolio_symbols if s in returns_df.columns]
             if len(available) >= 2:
-                corr_df = returns_df[available].dropna(how="any").corr()
+                # Pairwise correlation — each pair uses its own overlapping window
+                # (min_periods=30 per pair; NaN means insufficient overlap for that pair).
+                corr_raw = returns_df[available].corr(min_periods=30).values
+                # Replace NaN pairs (insufficient overlap) with 0.0 (uncorrelated assumption).
+                corr_raw = np.where(np.isnan(corr_raw), 0.0, corr_raw)
+                np.fill_diagonal(corr_raw, 1.0)
+                # Project to nearest PSD by clipping negative eigenvalues so portfolio
+                # variance is always well-defined, regardless of how unequal the
+                # overlapping periods are across holdings.
+                eigvals, eigvecs = np.linalg.eigh(corr_raw)
+                eigvals = np.maximum(eigvals, 1e-8)
+                psd = eigvecs @ np.diag(eigvals) @ eigvecs.T
+                diag_sqrt = np.sqrt(np.diag(psd))
+                diag_sqrt[diag_sqrt == 0] = 1.0
+                psd = psd / np.outer(diag_sqrt, diag_sqrt)
+                np.fill_diagonal(psd, 1.0)
                 conn.execute(
                     """INSERT OR REPLACE INTO xray_correlation_matrix
                        (benchmark, last_updated, tickers_json, matrix_json)
@@ -372,7 +387,7 @@ class XRayRiskComputer:
                     (
                         BENCHMARK_SYMBOL, today,
                         json.dumps(available),
-                        json.dumps(corr_df.values.tolist()),
+                        json.dumps(psd.tolist()),
                     ),
                 )
 
@@ -860,7 +875,20 @@ def assemble_xray_report(account_id: str) -> Dict:
         ).fetchone()
         if corr_row:
             corr_tickers = json.loads(corr_row["tickers_json"])
-            corr_matrix = json.loads(corr_row["matrix_json"])
+            raw = json.loads(corr_row["matrix_json"])
+            # Defensive PSD fix for any stale matrix stored before the pairwise+PSD upgrade.
+            # None values (stored as JSON null) represent missing pairwise data → treat as 0.
+            arr = np.array([[0.0 if v is None else float(v) for v in row] for row in raw])
+            np.fill_diagonal(arr, 1.0)
+            eigvals, eigvecs = np.linalg.eigh(arr)
+            if float(eigvals.min()) < 0:
+                eigvals = np.maximum(eigvals, 1e-8)
+                arr = eigvecs @ np.diag(eigvals) @ eigvecs.T
+                diag_sqrt = np.sqrt(np.diag(arr))
+                diag_sqrt[diag_sqrt == 0] = 1.0
+                arr = arr / np.outer(diag_sqrt, diag_sqrt)
+                np.fill_diagonal(arr, 1.0)
+            corr_matrix = arr.tolist()
 
         div_rows = conn.execute(
             "SELECT ticker, dividend_yield_pct, dividend_in_base_currency "
