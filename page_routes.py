@@ -3,6 +3,9 @@ import ipaddress
 import json
 import logging
 import re
+from pathlib import Path
+
+import markdown as _markdown
 import pandas as pd
 
 logger = logging.getLogger(__name__)
@@ -604,6 +607,26 @@ async def notifications_page(request: Request):
     )
 
 
+_ASSETS_DIR = Path(__file__).parent / "assets"
+_MD = _markdown.Markdown(extensions=["tables", "fenced_code"])
+
+
+def _render_asset_docs() -> list[dict]:
+    docs = []
+    for md_path in sorted(_ASSETS_DIR.glob("*.md")):
+        raw = md_path.read_text(encoding="utf-8")
+        title = md_path.stem.replace("_", " ").title()
+        for line in raw.splitlines():
+            if line.startswith("# "):
+                title = line[2:].strip()
+                break
+        _MD.reset()
+        html = _MD.convert(raw)
+        slug = "doc-" + md_path.stem.lower().replace("_", "-")
+        docs.append({"title": title, "slug": slug, "html": html})
+    return docs
+
+
 @page_router.get("/glossary", response_class=HTMLResponse)
 async def glossary(request: Request):
     return templates.TemplateResponse(
@@ -613,6 +636,7 @@ async def glossary(request: Request):
             "unread_count": get_unread_count(),
             "prediction_horizon": PREDICTION_HORIZON_DAYS,
             "prediction_threshold_pct": int(PREDICTION_RETURN_THRESHOLD * 100),
+            "asset_docs": _render_asset_docs(),
         }
     )
 

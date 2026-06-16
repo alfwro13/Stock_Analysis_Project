@@ -40,6 +40,7 @@
             <a href="#workflow-monitor" class="sidebar-link">🔄 Workflow Monitor</a>
             <a href="#fundamentals" class="sidebar-link">🏢 Company Valuation</a>
             <a href="#methodology" class="sidebar-link">🧠 System Philosophy</a>
+            <a href="#asset-docs-divider" class="sidebar-link">📚 Technical Docs</a>
         </aside>
 
         <div class="glossary-content" id="glossaryContainer">
@@ -466,58 +467,27 @@
                 </div>
             </details>
 
+            {% if asset_docs %}
+            <div class="doc-section-divider" id="asset-docs-divider">
+                <h2>📚 Technical Documentation</h2>
+                <p>Internal system documentation from the <code>assets/</code> directory — auto-discovered on every page load.</p>
+            </div>
+            {% for doc in asset_docs %}
+            <details class="settings-card doc-section" id="{{ doc.slug }}">
+                <summary>📄 {{ doc.title }}</summary>
+                <div class="doc-content">{{ doc.html | safe }}</div>
+            </details>
+            {% endfor %}
+            {% endif %}
+
             <div id="noResults" class="glossary-empty-state">
-                <h3>No matching algorithmic terms found.</h3>
-                <p>Try searching for categories like "RSI", "MACD", or "VaR".</p>
+                <h3>No matching terms found.</h3>
+                <p>Try searching for categories like "RSI", "MACD", "VaR", or a system component name.</p>
             </div>
 
         </div>
     </div>
 
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            const searchInput = document.getElementById('glossarySearch');
-            const sections = document.querySelectorAll('.settings-card');
-            const terms = document.querySelectorAll('.term-box');
-            const noResults = document.getElementById('noResults');
-
-            searchInput.addEventListener('input', function() {
-                const query = this.value.toLowerCase().trim();
-                let sectionsFound = 0;
-
-                sections.forEach(section => {
-                    const sectionTerms = section.querySelectorAll('.term-box');
-                    let matchInSection = false;
-
-                    sectionTerms.forEach(term => {
-                        const title = term.querySelector('.term-title').innerText.toLowerCase();
-                        const content = term.innerText.toLowerCase();
-
-                        if (title.includes(query) || content.includes(query)) {
-                            term.style.display = 'block';
-                            term.classList.add('search-match');
-                            matchInSection = true;
-                        } else {
-                            term.style.display = 'none';
-                            term.classList.remove('search-match');
-                        }
-                    });
-
-                    if (matchInSection || query === "") {
-                        section.style.display = 'block';
-                        // Force open details if searching
-                        if (query !== "") {
-                            section.setAttribute('open', '');
-                        }
-                        sectionsFound++;
-                    } else {
-                        section.style.display = 'none';
-                    }
-                });
-
-                noResults.style.display = (sectionsFound === 0) ? 'block' : 'none';
-            });
-        });
-    </script>
+    <script src="/static/js/glossary.js?v={{ css_version }}"></script>
 </body>
 </html>
