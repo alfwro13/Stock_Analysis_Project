@@ -1044,8 +1044,8 @@ details[open].xray-rec-group .xray-rec-group-summary::before { transform: rotate
 .lv-status-bar { display: flex; justify-content: space-between; align-items: center; color: #555; font-size: 10px; margin-bottom: 4px; font-family: sans-serif; }
 .lv-status-err { color: #ef5350; }
 .lv-line-count { color: #555; }
-.lv-output { flex: 1; overflow-y: auto; background: #0a0a0a; border: 1px solid #1e1e1e; border-radius: 4px; padding: 6px 8px; margin-bottom: 8px; }
-.lv-row { display: flex; gap: 10px; padding: 1px 0; border-bottom: 1px solid rgba(255,255,255,0.02); white-space: pre-wrap; word-break: break-all; }
+.lv-output { flex: 1; overflow-y: auto; overflow-x: auto; background: #0a0a0a; border: 1px solid #1e1e1e; border-radius: 4px; padding: 6px 8px; margin-bottom: 8px; }
+.lv-row { display: flex; gap: 10px; padding: 1px 0; border-bottom: 1px solid rgba(255,255,255,0.02); white-space: pre-wrap; min-width: max-content; }
 .lv-row-unknown { color: #888; }
 .lv-ts  { color: #555; min-width: 180px; flex-shrink: 0; }
 .lv-mod { color: #666; min-width: 160px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1055,7 +1055,7 @@ details[open].xray-rec-group .xray-rec-group-summary::before { transform: rotate
 .lv-lvl-warning  { color: #fdd835; }
 .lv-lvl-error    { color: #ef5350; }
 .lv-lvl-critical { color: #ff1744; }
-.lv-msg { color: #c9d1d9; flex: 1; }
+.lv-msg { color: #c9d1d9; flex: 1; min-width: 200px; }
 .lv-row-debug    .lv-msg { color: #888; }
 .lv-row-warning  .lv-msg { color: #fdd835; }
 .lv-row-error    .lv-msg { color: #ef5350; }
