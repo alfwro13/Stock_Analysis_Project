@@ -980,3 +980,23 @@ details[open].xray-rec-group .xray-rec-group-summary::before { transform: rotate
 .wf-conflict-info { border-left-color: #4da6ff; }
 .wf-conflict-type { text-transform: uppercase; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; color: #ddd; white-space: nowrap; }
 .wf-conflict-msg { font-size: 13px; color: #ccc; }
+
+/* Trap Monitor — Prediction Accuracy */
+.text-muted { color: #666; }
+.trap-accuracy-section { background: #111; border: 1px solid #1e1e1e; border-radius: 8px; margin-bottom: 16px; }
+.trap-accuracy-summary { display: flex; align-items: center; gap: 12px; padding: 12px 18px; cursor: pointer; list-style: none; color: #aaa; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; }
+.trap-accuracy-summary::-webkit-details-marker { display: none; }
+.trap-accuracy-summary::before { content: '▶'; font-size: 10px; color: #555; transition: transform 0.15s; }
+details[open] > .trap-accuracy-summary::before { transform: rotate(90deg); }
+.trap-accuracy-title { color: #ccc; }
+.trap-accuracy-subtitle { font-size: 11px; font-weight: 400; color: #555; text-transform: none; letter-spacing: 0; }
+.trap-accuracy-badge { font-size: 11px; font-weight: 700; padding: 2px 10px; border-radius: 4px; background: #1a1a1a; margin-left: auto; }
+.trap-accuracy-body { padding: 0 18px 14px; }
+.trap-accuracy-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.trap-accuracy-table th { text-align: left; padding: 6px 10px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.8px; color: #555; border-bottom: 1px solid #1e1e1e; }
+.trap-accuracy-table td { padding: 7px 10px; border-bottom: 1px solid #141414; color: #aaa; }
+.trap-accuracy-table tr:last-child td { border-bottom: none; }
+.trap-accuracy-table .phase-label { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 3px; }
+.trap-accuracy-table .acc-val { font-family: monospace; font-size: 12px; }
+.trap-accuracy-table .acc-bar { display: inline-block; height: 6px; border-radius: 3px; vertical-align: middle; margin-right: 6px; }
+.trap-accuracy-overall-row td { border-top: 1px solid #2a2a2a; color: #ddd; font-weight: 600; padding-top: 10px; }

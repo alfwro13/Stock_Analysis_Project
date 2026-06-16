@@ -185,6 +185,11 @@
                     <div class="rule">SIGNAL: BB width &lt; 2% AND at 20-day low AND ATR now &lt; 70% of 20-day average AND 5-day avg vol &lt; 70% of 20-day average.</div>
                 </div>
                 <div class="term-box">
+                    <span class="term-title">📊 Trap Phase History &amp; Prediction Accuracy</span>
+                    <p>Every time the Trap Monitor scan runs, the assigned lifecycle phase for each ticker is appended to a persistent history table (<code>trap_phase_history</code>). A daily background job looks up the forward close price at two horizons — 14 and 30 calendar days after the scan date — and records whether the price moved in the direction the phase predicted. The aggregated accuracy is shown on the Trap Monitor page and available via <code>GET /api/trap-monitor/accuracy</code>. At least 5 resolved predictions per phase are required before an accuracy figure is displayed.</p>
+                    <div class="rule">Resolution: first available trading-day close on or after scan_date + N days. "Correct" = price lower for Bull Trap / Selloff; price higher for Bear Trap / Capitulation / Accumulation.</div>
+                </div>
+                <div class="term-box">
                     <span class="term-title">👑 Market Leader</span>
                     <p>Relative Strength (RS) compared to the S&P 500 Baseline.</p>
                 </div>

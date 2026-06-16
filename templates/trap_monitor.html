@@ -91,6 +91,18 @@
             </div>
         </div>
 
+        {# ── Prediction Accuracy ── #}
+        <details class="trap-accuracy-section" id="accuracy-section">
+            <summary class="trap-accuracy-summary">
+                <span class="trap-accuracy-title">Prediction Accuracy</span>
+                <span class="trap-accuracy-subtitle">Direction correct at T+14 and T+30 calendar days</span>
+                <span id="trap-acc-overall-badge" class="trap-accuracy-badge text-muted">Loading…</span>
+            </summary>
+            <div id="trap-accuracy-body" class="trap-accuracy-body">
+                <p class="text-muted">Loading…</p>
+            </div>
+        </details>
+
         {# ── Toolbar ── #}
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
             <button id="run-now-btn" class="btn btn-update" onclick="runScanNow()">&#9654; Run Scan Now</button>
@@ -678,6 +690,57 @@
                 .catch(function (e) { console.warn('trap-monitor fetch failed:', e); });
         }
 
+        function fetchAccuracy() {
+            fetch('/api/trap-monitor/accuracy')
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    if (data.status !== 'success') return;
+                    var badge = document.getElementById('trap-acc-overall-badge');
+                    var body  = document.getElementById('trap-accuracy-body');
+                    var ov    = data.overall || {};
+                    var PHASE_LABELS = {
+                        'BULL_TRAP_RISK':       'Bull Trap Risk',
+                        'CAPITULATION_FORMING': 'Capitulation',
+                        'BEAR_TRAP_RISK':       'Bear Trap Risk',
+                        'ACCUMULATION':         'Accumulation',
+                        'ACTIVE_SELLOFF':       'Active Selloff',
+                    };
+                    function accCell(acc, resolved) {
+                        if (resolved === 0 || resolved == null) return '<span class="text-muted acc-val">Pending</span>';
+                        var cls = acc >= 60 ? 'text-green' : acc >= 50 ? 'text-warning' : 'text-red';
+                        var bar = '<span class="acc-bar" style="width:' + Math.round(acc * 0.5) + 'px;background:currentColor;"></span>';
+                        return '<span class="' + cls + ' acc-val">' + bar + acc + '%</span>';
+                    }
+                    var ov14 = ov.resolved_14d || 0;
+                    var ov30 = ov.resolved_30d || 0;
+                    var ovAcc = ov14 > 0 ? ov.accuracy_14d : (ov30 > 0 ? ov.accuracy_30d : null);
+                    if (ovAcc != null) {
+                        var cls = ovAcc >= 60 ? 'text-green' : ovAcc >= 50 ? 'text-warning' : 'text-red';
+                        badge.className = 'trap-accuracy-badge ' + cls;
+                        badge.textContent = 'Overall ' + ovAcc + '% (14d)';
+                    } else {
+                        badge.textContent = 'Pending data';
+                    }
+                    var rows = (data.phases || []).map(function (p) {
+                        return '<tr><td><span class="phase-label">' + (PHASE_LABELS[p.phase] || p.phase) + '</span></td>' +
+                               '<td class="acc-val">' + (p.total || 0) + '</td>' +
+                               '<td>' + accCell(p.accuracy_14d, p.resolved_14d) + '</td>' +
+                               '<td class="acc-val text-muted">' + (p.resolved_14d || 0) + '</td>' +
+                               '<td>' + accCell(p.accuracy_30d, p.resolved_30d) + '</td>' +
+                               '<td class="acc-val text-muted">' + (p.resolved_30d || 0) + '</td></tr>';
+                    }).join('');
+                    body.innerHTML = '<table class="trap-accuracy-table">' +
+                        '<thead><tr><th>Phase</th><th>Calls</th><th>14d Accuracy</th><th>14d Resolved</th><th>30d Accuracy</th><th>30d Resolved</th></tr></thead>' +
+                        '<tbody>' + rows + '</tbody>' +
+                        '<tfoot><tr class="trap-accuracy-overall-row">' +
+                        '<td>Overall</td><td class="acc-val">' + (ov.total || 0) + '</td>' +
+                        '<td>' + accCell(ov.accuracy_14d, ov14) + '</td><td class="acc-val text-muted">' + ov14 + '</td>' +
+                        '<td>' + accCell(ov.accuracy_30d, ov30) + '</td><td class="acc-val text-muted">' + ov30 + '</td>' +
+                        '</tr></tfoot></table>';
+                })
+                .catch(function () {});
+        }
+
         // ── Countdown & scan ─────────────────────────────────────────────────────────────────
         function startCountdown() {
             if (countdownTimer) clearInterval(countdownTimer);
@@ -715,6 +778,7 @@
         fetchResults();
         fetchRegime();
         fetchStress();
+        fetchAccuracy();
         startCountdown();
     })();
     </script>

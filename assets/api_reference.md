@@ -1587,6 +1587,34 @@ Returns all rows from `trap_monitor_results`, sorted by phase severity (most sev
 
 Triggers a background scan immediately. Returns `{"status": "success"}` immediately; results appear in `/api/trap-monitor/results` within a few seconds.
 
+### `GET /api/trap-monitor/accuracy`
+
+Returns per-phase prediction accuracy at 14-day and 30-day forward-return horizons, aggregated from `trap_phase_history`. Phase entries with zero resolved predictions show `null` for `accuracy_*` fields.
+
+**Response:**
+```json
+{
+  "status": "success",
+  "phases": [
+    {
+      "phase": "BULL_TRAP_RISK",
+      "total": 42,
+      "resolved_14d": 35,
+      "accuracy_14d": 71.4,
+      "resolved_30d": 20,
+      "accuracy_30d": 75.0
+    }
+  ],
+  "overall": {
+    "total": 102,
+    "resolved_14d": 83,
+    "accuracy_14d": 72.3,
+    "resolved_30d": 45,
+    "accuracy_30d": 74.1
+  }
+}
+```
+
 ---
 
 ## 18. Market Regime (HMM + Market Stress IF)

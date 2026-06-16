@@ -615,6 +615,24 @@ def init_db() -> None:
         ''')
 
         cursor.execute('''
+            CREATE TABLE IF NOT EXISTS trap_phase_history (
+                id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+                ticker                TEXT NOT NULL,
+                phase                 TEXT NOT NULL,
+                scan_date             TEXT NOT NULL,
+                scan_ts               TEXT NOT NULL,
+                close_price           REAL,
+                actual_price_14d      REAL,
+                actual_date_14d       TEXT,
+                direction_correct_14d INTEGER,
+                actual_price_30d      REAL,
+                actual_date_30d       TEXT,
+                direction_correct_30d INTEGER,
+                UNIQUE(ticker, scan_date)
+            )
+        ''')
+
+        cursor.execute('''
             CREATE TABLE IF NOT EXISTS price_hmm_states (
                 date      TEXT PRIMARY KEY,
                 state     INTEGER NOT NULL,
@@ -1500,6 +1518,122 @@ def upsert_quant_signal(
     except Exception as e:
         logger.error("Database insertion failed for quant_signal (%s on %s): %s", ticker, date, e)
         return False
+    finally:
+        if conn:
+            conn.close()
+
+
+def log_trap_phase(
+    ticker: str,
+    phase: str,
+    scan_date: str,
+    close_price: Optional[float],
+    scan_ts: str,
+) -> None:
+    conn = None
+    try:
+        conn = get_connection()
+        conn.execute(
+            """INSERT OR IGNORE INTO trap_phase_history
+               (ticker, phase, scan_date, scan_ts, close_price)
+               VALUES (?, ?, ?, ?, ?)""",
+            (ticker, phase, scan_date, scan_ts, close_price),
+        )
+        conn.commit()
+    except Exception as e:
+        logger.error("log_trap_phase failed for %s on %s: %s", ticker, scan_date, e)
+    finally:
+        if conn:
+            conn.close()
+
+
+def get_unresolved_trap_phases(cutoff_14d: str, cutoff_30d: str) -> list:
+    conn = None
+    try:
+        conn = get_connection()
+        rows = conn.execute(
+            """SELECT id, ticker, phase, scan_date, close_price,
+                      direction_correct_14d, direction_correct_30d
+               FROM trap_phase_history
+               WHERE phase != 'NEUTRAL'
+                 AND (
+                   (direction_correct_14d IS NULL AND scan_date <= ?)
+                   OR (direction_correct_30d IS NULL AND scan_date <= ?)
+                 )
+               ORDER BY scan_date""",
+            (cutoff_14d, cutoff_30d),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        logger.error("get_unresolved_trap_phases failed: %s", e)
+        return []
+    finally:
+        if conn:
+            conn.close()
+
+
+def update_trap_phase_actual(
+    row_id: int,
+    horizon: int,
+    actual_price: float,
+    actual_date: str,
+    direction_correct: Optional[int],
+) -> None:
+    price_col   = f"actual_price_{horizon}d"
+    date_col    = f"actual_date_{horizon}d"
+    correct_col = f"direction_correct_{horizon}d"
+    conn = None
+    try:
+        conn = get_connection()
+        conn.execute(
+            f"UPDATE trap_phase_history SET {price_col}=?, {date_col}=?, {correct_col}=? WHERE id=?",
+            (actual_price, actual_date, direction_correct, row_id),
+        )
+        conn.commit()
+    except Exception as e:
+        logger.error("update_trap_phase_actual failed for id %s horizon %sd: %s", row_id, horizon, e)
+    finally:
+        if conn:
+            conn.close()
+
+
+def get_trap_phase_accuracy() -> dict:
+    conn = None
+    try:
+        conn = get_connection()
+        phases = [
+            dict(r) for r in conn.execute(
+                """SELECT
+                    phase,
+                    COUNT(*) AS total,
+                    SUM(CASE WHEN direction_correct_14d IS NOT NULL THEN 1 ELSE 0 END) AS resolved_14d,
+                    ROUND(AVG(CASE WHEN direction_correct_14d IS NOT NULL
+                              THEN direction_correct_14d END) * 100, 1) AS accuracy_14d,
+                    SUM(CASE WHEN direction_correct_30d IS NOT NULL THEN 1 ELSE 0 END) AS resolved_30d,
+                    ROUND(AVG(CASE WHEN direction_correct_30d IS NOT NULL
+                              THEN direction_correct_30d END) * 100, 1) AS accuracy_30d
+                   FROM trap_phase_history
+                   WHERE phase != 'NEUTRAL'
+                   GROUP BY phase
+                   ORDER BY phase"""
+            ).fetchall()
+        ]
+        overall = dict(conn.execute(
+            """SELECT
+                COUNT(*) AS total,
+                SUM(CASE WHEN direction_correct_14d IS NOT NULL THEN 1 ELSE 0 END) AS resolved_14d,
+                ROUND(AVG(CASE WHEN direction_correct_14d IS NOT NULL
+                          THEN direction_correct_14d END) * 100, 1) AS accuracy_14d,
+                SUM(CASE WHEN direction_correct_30d IS NOT NULL THEN 1 ELSE 0 END) AS resolved_30d,
+                ROUND(AVG(CASE WHEN direction_correct_30d IS NOT NULL
+                          THEN direction_correct_30d END) * 100, 1) AS accuracy_30d
+               FROM trap_phase_history
+               WHERE phase != 'NEUTRAL'"""
+        ).fetchone())
+        return {"phases": phases, "overall": overall}
+    except Exception as e:
+        logger.error("get_trap_phase_accuracy failed: %s", e)
+        return {"phases": [], "overall": {}}
     finally:
         if conn:
             conn.close()

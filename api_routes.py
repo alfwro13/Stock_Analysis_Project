@@ -1675,6 +1675,15 @@ async def run_trap_monitor(request: Request, background_tasks: BackgroundTasks):
         return _error_500(e)
 
 
+@api_router.get("/trap-monitor/accuracy")
+@limiter.limit("20/minute")
+async def get_trap_monitor_accuracy(request: Request):
+    """Returns per-phase prediction accuracy at 14-day and 30-day horizons."""
+    from database import get_trap_phase_accuracy
+    data = get_trap_phase_accuracy()
+    return JSONResponse(content={"status": "success", **data})
+
+
 @api_router.get("/market-regime/current")
 @limiter.limit("30/minute")
 async def get_market_regime_current(request: Request):

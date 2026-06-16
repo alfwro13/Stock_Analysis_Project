@@ -554,3 +554,123 @@ class TestDetectWyckoff:
     def test_bb_width_present_in_result(self):
         result = self._run(_make_wyckoff_df())
         assert "bb_width" in result
+
+
+# ── Trap Phase History DB functions ───────────────────────────────────────────
+
+class TestTrapPhaseHistoryDB:
+    def test_trap_phase_history_table_created(self):
+        conn = db.get_connection()
+        try:
+            row = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='trap_phase_history'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row is not None
+
+    def test_log_trap_phase_insert_and_ignore(self):
+        db.log_trap_phase("TESTIGN1", "BULL_TRAP_RISK", "2020-01-01", 100.0, "2020-01-01 10:00:00")
+        db.log_trap_phase("TESTIGN1", "NEUTRAL", "2020-01-01", 99.0, "2020-01-01 14:00:00")
+        conn = db.get_connection()
+        try:
+            rows = conn.execute(
+                "SELECT phase, close_price FROM trap_phase_history WHERE ticker='TESTIGN1' AND scan_date='2020-01-01'"
+            ).fetchall()
+        finally:
+            conn.close()
+        assert len(rows) == 1
+        assert rows[0]["phase"] == "BULL_TRAP_RISK"
+        assert rows[0]["close_price"] == 100.0
+
+    def test_get_unresolved_trap_phases_filters(self):
+        db.log_trap_phase("TESTFILT1", "BEAR_TRAP_RISK", "2019-01-01", 50.0, "2019-01-01 10:00:00")
+        db.log_trap_phase("TESTFILT2", "ACCUMULATION",  "2099-12-31", 80.0, "2099-12-31 10:00:00")
+        rows = db.get_unresolved_trap_phases("2020-01-01", "2020-01-01")
+        tickers = [r["ticker"] for r in rows]
+        assert "TESTFILT1" in tickers
+        assert "TESTFILT2" not in tickers
+
+    def test_update_trap_phase_actual_14d(self):
+        db.log_trap_phase("TESTUPD14", "CAPITULATION_FORMING", "2019-02-01", 60.0, "2019-02-01 09:00:00")
+        conn = db.get_connection()
+        try:
+            row_id = conn.execute(
+                "SELECT id FROM trap_phase_history WHERE ticker='TESTUPD14'"
+            ).fetchone()["id"]
+        finally:
+            conn.close()
+        db.update_trap_phase_actual(row_id, 14, 65.0, "2019-02-15", 1)
+        conn = db.get_connection()
+        try:
+            updated = dict(conn.execute(
+                "SELECT actual_price_14d, actual_date_14d, direction_correct_14d FROM trap_phase_history WHERE id=?",
+                (row_id,)
+            ).fetchone())
+        finally:
+            conn.close()
+        assert updated["actual_price_14d"] == 65.0
+        assert updated["actual_date_14d"] == "2019-02-15"
+        assert updated["direction_correct_14d"] == 1
+
+    def test_update_trap_phase_actual_30d(self):
+        db.log_trap_phase("TESTUPD30", "ACTIVE_SELLOFF", "2019-03-01", 100.0, "2019-03-01 09:00:00")
+        conn = db.get_connection()
+        try:
+            row_id = conn.execute(
+                "SELECT id FROM trap_phase_history WHERE ticker='TESTUPD30'"
+            ).fetchone()["id"]
+        finally:
+            conn.close()
+        db.update_trap_phase_actual(row_id, 30, 88.0, "2019-03-31", 1)
+        conn = db.get_connection()
+        try:
+            updated = dict(conn.execute(
+                "SELECT actual_price_30d, actual_date_30d, direction_correct_30d FROM trap_phase_history WHERE id=?",
+                (row_id,)
+            ).fetchone())
+        finally:
+            conn.close()
+        assert updated["actual_price_30d"] == 88.0
+        assert updated["actual_date_30d"] == "2019-03-31"
+        assert updated["direction_correct_30d"] == 1
+
+    def test_get_trap_phase_accuracy_empty(self):
+        result = db.get_trap_phase_accuracy()
+        assert "phases" in result
+        assert "overall" in result
+        assert isinstance(result["phases"], list)
+
+    def test_get_trap_phase_accuracy_aggregates(self):
+        conn = db.get_connection()
+        try:
+            conn.execute(
+                """INSERT OR IGNORE INTO trap_phase_history
+                   (ticker, phase, scan_date, scan_ts, close_price, direction_correct_14d, direction_correct_30d)
+                   VALUES (?,?,?,?,?,?,?)""",
+                ("TESTAGG1", "BULL_TRAP_RISK", "2018-01-01", "2018-01-01 10:00:00", 100.0, 1, 1),
+            )
+            conn.execute(
+                """INSERT OR IGNORE INTO trap_phase_history
+                   (ticker, phase, scan_date, scan_ts, close_price, direction_correct_14d, direction_correct_30d)
+                   VALUES (?,?,?,?,?,?,?)""",
+                ("TESTAGG2", "BULL_TRAP_RISK", "2018-01-02", "2018-01-02 10:00:00", 100.0, 0, 0),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        result = db.get_trap_phase_accuracy()
+        bt_row = next((r for r in result["phases"] if r["phase"] == "BULL_TRAP_RISK"), None)
+        assert bt_row is not None
+        assert bt_row["resolved_14d"] >= 2
+        assert bt_row["accuracy_14d"] == 50.0
+
+
+class TestTrapAccuracyAPIEndpoint:
+    def test_trap_accuracy_api_returns_200(self, client):
+        resp = client.get("/api/trap-monitor/accuracy", headers={"X-API-Key": "test-api-key-do-not-use-in-production"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "success"
+        assert "phases" in data
+        assert "overall" in data

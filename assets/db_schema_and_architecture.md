@@ -189,6 +189,12 @@ Tables added after initial schema creation. All managed via `database.py:init_db
 * **Key Columns:** `ticker` (PK), `phase` (lifecycle phase label), `bull_trap_level`, `bull_trap_vol_ratio`, `bear_trap_level`, `cap_level`, `cap_vol_zscore`, `wyckoff_level`, `wyckoff_bb_width`, `ema_distance`, `rsi`, `scan_ts`. Notes for each signal stored in `*_notes` text columns.
 * **Phase values:** `ACTIVE_SELLOFF` | `BULL_TRAP_RISK` | `CAPITULATION_FORMING` | `BEAR_TRAP_RISK` | `ACCUMULATION` | `CAUTION` | `NEUTRAL`.
 
+#### `trap_phase_history`
+* **Purpose:** Append-only log of trap phase assignments per ticker per day, used to evaluate prediction accuracy retroactively. One row per (ticker, scan_date) — the first scan of each day is kept.
+* **Key Columns:** `id` (PK autoincrement), `ticker`, `phase`, `scan_date` (YYYY-MM-DD), `scan_ts` (UTC ISO), `close_price` (reference price at scan time), `actual_price_14d` / `actual_date_14d` / `direction_correct_14d` (filled ~14 calendar days later), `actual_price_30d` / `actual_date_30d` / `direction_correct_30d` (filled ~30 calendar days later).
+* **Constraint:** `UNIQUE(ticker, scan_date)` — `INSERT OR IGNORE` keeps the first result of each day.
+* **Written by:** `bull_bear_trap_engine.TrapEngine._save_results()` → `database.log_trap_phase()`. Actuals filled daily by `trap_accuracy_fill_job` via `bull_bear_trap_engine.fill_trap_phase_actuals()`.
+
 #### `intraday_monitors`
 * **Purpose:** Active dip-radar watch list — one row per ticker armed for today's session.
 * **Key Columns:** `ticker` (PK), `date_added`, `expire_date`, `is_active`, `activated_by`.

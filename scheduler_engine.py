@@ -856,6 +856,19 @@ def run_trap_monitor_job():
         record_job_run('trap_monitor_job')
 
 
+def run_trap_accuracy_fill_job():
+    from bull_bear_trap_engine import fill_trap_phase_actuals
+    _mark_job_started(job_label("trap_accuracy_fill_job"))
+    try:
+        count = fill_trap_phase_actuals()
+        log_sched_notification("Scheduler", f"Trap accuracy fill: resolved {count} predictions.")
+    except Exception as e:
+        logger.error("Trap accuracy fill job failed: %s", e)
+        log_sched_notification("Error", f"Trap accuracy fill job failed: {e}")
+    finally:
+        record_job_run("trap_accuracy_fill_job")
+
+
 def _run_etf_predictor_job(config_id: int, fill_actuals: bool = False) -> None:
     job_type = "post" if fill_actuals else "pre"
     job_id = f"etf_predictor_{config_id}_{job_type}_job"
@@ -1418,6 +1431,18 @@ def reload_scheduler():
         except Exception as e:
             logger.error("Failed to schedule Trap Monitor: %s", e)
 
+        try:
+            scheduler.add_job(
+                run_trap_accuracy_fill_job,
+                CronTrigger(day_of_week="mon-sun", hour="20", minute="30", timezone=user_tz),
+                id="trap_accuracy_fill_job",
+                replace_existing=True,
+                misfire_grace_time=600,
+            )
+            logger.info("Trap accuracy fill job scheduled (daily 20:30).")
+        except Exception as e:
+            logger.error("Failed to schedule Trap accuracy fill job: %s", e)
+
     news_cfg = scheduling.get("NEWS_FEED", {})
     if news_cfg.get("ENABLED", False):
         news_freq = news_cfg.get("FREQUENCY", "mon-fri")
@@ -1568,6 +1593,7 @@ JOB_GRAPH: dict[str, dict] = {
     "intraday_dip_reset_nyse_job":  {"label": "Dip Radar — Intraday Bottom Finder (NYSE reset)","category": "intraday",    "engine": "intraday_bottom_engine.py",     "produces": ["intraday_monitor_results"],                                   "consumes": []},
     "ai_contagion_job":             {"label": "AI Sector Contagion Monitor",                    "category": "intraday",    "engine": "ai_contagion_engine.py",        "produces": ["ai_contagion_snapshots"],                                     "consumes": ["intraday_parquet"]},
     "trap_monitor_job":             {"label": "Market Trap & Recovery Monitor",                 "category": "intraday",    "engine": "bull_bear_trap_engine.py",      "produces": ["trap_monitor_results"],                                       "consumes": ["historical_parquet"]},
+    "trap_accuracy_fill_job":       {"label": "Market Trap & Recovery Monitor (accuracy fill)", "category": "intraday",    "engine": "bull_bear_trap_engine.py",      "produces": ["trap_phase_history"],                                         "consumes": ["trap_phase_history", "historical_parquet"]},
     "etf_predictor_actual_fill_job":{"label": "ETF Price Predictors (actual fill)",             "category": "predictor",   "engine": "etf_predictor_engine.py",       "produces": ["etf_predictions"],                                            "consumes": ["etf_predictions"]},
     "maintenance_job":              {"label": "Database & File Maintenance",                    "category": "maintenance", "engine": "maintenance_engine.py",         "produces": [],                                                             "consumes": []},
     "system_check_job":             {"label": "System Configuration Check",                     "category": "maintenance", "engine": "system_check_engine.py",        "produces": [],                                                             "consumes": []},

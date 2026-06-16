@@ -224,17 +224,37 @@ The page renders a unified view of all four signals per ticker:
 
 ---
 
-## 9. Key Files
+## 9. Prediction Accuracy Tracking
+
+Each time the scan runs, phase assignments are also appended to `trap_phase_history` (one row per ticker per day via `INSERT OR IGNORE`). A daily background job — `trap_accuracy_fill_job`, scheduled at 20:30 UTC whenever `TRAP_MONITORS.ENABLED` is true — resolves these rows by looking up the forward close price from each ticker's Parquet file.
+
+**Resolution logic:** For each unresolved row whose `scan_date` is at least N calendar days ago, the job finds the first available trading-day close at or after `scan_date + N` and computes `direction_correct_Nd` (1 = correct, 0 = incorrect) based on the expected directional outcome for each phase:
+
+| Phase | Expected outcome |
+|---|---|
+| `BULL_TRAP_RISK` | Price **lower** (false bounce plays out) |
+| `CAPITULATION_FORMING` | Price **higher** (selling climax → bounce) |
+| `BEAR_TRAP_RISK` | Price **higher** (false breakdown → recovery) |
+| `ACCUMULATION` | Price **higher** (Wyckoff markup phase begins) |
+| `ACTIVE_SELLOFF` | Price **lower** (trend continuation) |
+
+Both a 14-day and a 30-day horizon are resolved independently per row. `NEUTRAL` rows are never resolved.
+
+Aggregated accuracy stats are served by `GET /api/trap-monitor/accuracy` and displayed on the `/trap-monitor` page in a collapsible "Prediction Accuracy" section.
+
+---
+
+## 10. Key Files
 
 | File | Role |
 |------|------|
-| `bull_bear_trap_engine.py` | `TrapEngine` class: all four detectors, phase derivation, DB persistence |
-| `scheduler_engine.py` | `run_trap_monitor_job()` function; CronTrigger scheduling block |
-| `api_routes.py` | `GET /api/trap-monitor/results`, `POST /api/trap-monitor/run`; `config_key_to_job` mapping |
+| `bull_bear_trap_engine.py` | `TrapEngine` class: all four detectors, phase derivation, DB persistence; `fill_trap_phase_actuals()` for accuracy resolution |
+| `scheduler_engine.py` | `run_trap_monitor_job()`, `run_trap_accuracy_fill_job()`, CronTrigger scheduling blocks |
+| `api_routes.py` | `GET /api/trap-monitor/results`, `POST /api/trap-monitor/run`, `GET /api/trap-monitor/accuracy` |
 | `page_routes.py` | `GET /trap-monitor` route |
-| `templates/trap_monitor.html` | Page template: lifecycle arc, alert strip, ticker table, auto-refresh |
+| `templates/trap_monitor.html` | Page template: lifecycle arc, alert strip, ticker table, accuracy panel, auto-refresh |
 | `templates/tools.html` | Guide-card entry |
 | `templates/settings.html` | Settings card: enable toggle, detector toggles, portfolio checkbox, proxy tickers, notification config |
-| `templates/glossary.html` | Four term-box entries: Bull Trap, Bear Trap, Capitulation, Wyckoff Accumulation |
-| `database.py` | `trap_monitor_results` table in `init_db()` |
+| `templates/glossary.html` | Term-box entries: Bull Trap, Bear Trap, Capitulation, Wyckoff Accumulation, Trap Phase History |
+| `database.py` | `trap_monitor_results` and `trap_phase_history` tables in `init_db()`; `log_trap_phase()`, `get_unresolved_trap_phases()`, `update_trap_phase_actual()`, `get_trap_phase_accuracy()` |
 | `config.py` | `SCHEDULING.TRAP_MONITORS` and `NOTIFICATIONS.TRAP_MONITOR_ALERTS` in `DEFAULT_CONFIG` |

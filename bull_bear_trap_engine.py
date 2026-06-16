@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import numpy as np
@@ -10,7 +10,7 @@ import pandas as pd
 import ta
 
 from config import HISTORICAL_DIR, PORTFOLIO_PATH
-from database import get_connection
+from database import get_connection, log_trap_phase, get_unresolved_trap_phases, update_trap_phase_actual
 from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
@@ -18,6 +18,15 @@ logger = logging.getLogger(__name__)
 # GUI name: "Market Trap & Recovery Monitor". Canonical scheduled-job names live in scheduler_engine.JOB_GRAPH.
 
 _DEFAULT_PROXY_TICKERS = ["QQQ", "SMH", "NVDA", "MSFT", "AAPL"]
+
+_PHASE_EXPECTED_DIRECTION: dict[str, str] = {
+    "BULL_TRAP_RISK":       "down",
+    "CAPITULATION_FORMING": "up",
+    "BEAR_TRAP_RISK":       "up",
+    "ACCUMULATION":         "up",
+    "ACTIVE_SELLOFF":       "down",
+}
+_RESOLUTION_HORIZONS: tuple[int, ...] = (14, 30)
 
 # Lifecycle phase labels in severity order (most severe first)
 _PHASE_ORDER = [
@@ -94,6 +103,7 @@ class TrapEngine:
             return {
                 "ticker": ticker,
                 "phase": phase,
+                "close_price": round(latest_close, 4),
                 "bull_trap_level": bull["level"],
                 "bull_trap_vol_ratio": bull.get("vol_ratio"),
                 "bull_trap_notes": bull.get("notes"),
@@ -457,6 +467,16 @@ class TrapEngine:
             if conn:
                 conn.close()
 
+        scan_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        for row in results:
+            log_trap_phase(
+                row["ticker"],
+                row["phase"],
+                scan_date,
+                row.get("close_price"),
+                row["scan_ts"],
+            )
+
 
 
 def _neutral_result() -> dict:
@@ -469,3 +489,70 @@ def _phase_severity(phase: str) -> int:
         return _PHASE_ORDER.index(phase)
     except ValueError:
         return len(_PHASE_ORDER)
+
+
+def fill_trap_phase_actuals() -> int:
+    today = datetime.now(timezone.utc).date()
+    cutoff_14d = (today - timedelta(days=14)).strftime("%Y-%m-%d")
+    cutoff_30d = (today - timedelta(days=30)).strftime("%Y-%m-%d")
+
+    pending = get_unresolved_trap_phases(cutoff_14d, cutoff_30d)
+    if not pending:
+        return 0
+
+    by_ticker: dict[str, list] = {}
+    for row in pending:
+        by_ticker.setdefault(row["ticker"], []).append(row)
+
+    filled = 0
+    for ticker, rows in by_ticker.items():
+        path = HISTORICAL_DIR / f"{ticker}.parquet"
+        if not path.exists():
+            continue
+        try:
+            df = pd.read_parquet(path)
+        except Exception as e:
+            logger.error("fill_trap_phase_actuals: failed to load %s: %s", ticker, e)
+            continue
+        if df.empty or "Close" not in df.columns:
+            continue
+
+        date_strs = pd.to_datetime(df.index).normalize().strftime("%Y-%m-%d").tolist()
+        close_vals = df["Close"].tolist()
+        date_close = list(zip(date_strs, close_vals))
+
+        for row in rows:
+            expected = _PHASE_EXPECTED_DIRECTION.get(row["phase"])
+            if expected is None:
+                continue
+            ref_price = row.get("close_price")
+            if not ref_price or ref_price <= 0:
+                continue
+
+            for horizon in _RESOLUTION_HORIZONS:
+                col = f"direction_correct_{horizon}d"
+                if row.get(col) is not None:
+                    continue
+                cutoff = (today - timedelta(days=horizon)).strftime("%Y-%m-%d")
+                if row["scan_date"] > cutoff:
+                    continue
+
+                target = (
+                    datetime.strptime(row["scan_date"], "%Y-%m-%d") + timedelta(days=horizon)
+                ).strftime("%Y-%m-%d")
+
+                future = [(d, c) for d, c in date_close if d >= target]
+                if not future:
+                    continue
+
+                actual_date, actual_price = future[0]
+                actual_price = round(float(actual_price), 4)
+                direction_correct = (
+                    1 if (expected == "up" and actual_price > ref_price) or
+                         (expected == "down" and actual_price < ref_price)
+                    else 0
+                )
+                update_trap_phase_actual(row["id"], horizon, actual_price, actual_date, direction_correct)
+                filled += 1
+
+    return filled
