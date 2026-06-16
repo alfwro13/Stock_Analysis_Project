@@ -37,8 +37,9 @@ os.environ["ADMIN_CONFIRM_TOKEN"] = _TEST_CONFIRM_TOKEN
 
 _TEST_USERNAME = "testadmin"
 _TEST_PASSWORD = "TestPassword123"
-os.environ.setdefault("DASHBOARD_USERNAME", _TEST_USERNAME)
-os.environ.setdefault("DASHBOARD_PASSWORD", _TEST_PASSWORD)
+os.environ["DASHBOARD_USERNAME"] = _TEST_USERNAME
+os.environ["DASHBOARD_PASSWORD"] = _TEST_PASSWORD
+os.environ["DASHBOARD_PASSWORD_HASH"] = ""
 os.environ.setdefault("APP_SECRET_KEY", "test-app-secret-key-do-not-use-in-production")
 
 # ── 1. Make the project root importable ──────────────────────────────────────
