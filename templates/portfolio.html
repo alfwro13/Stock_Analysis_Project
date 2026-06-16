@@ -1,1145 +1,301 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="color-scheme" content="dark">
-    <title>Quantamental - Portfolio</title>
-    <link rel="stylesheet" href="/static/css/styles.css?v={{ css_version }}">
-    
-    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.7/css/jquery.dataTables.min.css">
-    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-    <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
-    <script src="/static/js/position_sizing.js"></script>
-    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
-</head>
-<body class="body-portfolio">
+{% extends "base.html" %}
 
-    <script>
-        window.POSITION_SIZING_CONFIG = {{ position_sizing.config | tojson }};
-        window.BASE_CURRENCY = "{{ position_sizing.base_currency }}";
-        window.FX_RATES = {{ position_sizing.fx_rates | tojson }};
-    </script>
-    
-    {% if not embed %}
-    <div class="header-container">
-        <div>
-            <div class="title-wrapper">
-                <a href="https://github.com/alfwro13/Stock_Analysis_Project" target="_blank" class="logo-link">
-                    <img src="/assets/logo_small.png" alt="Quantamental Logo" class="logo-img">
-                </a>
-                <h1><abbr title="Quantamental - a modern institutional strategy that combines Quantitative analysis with Fundamental analysis.">uantamental</abbr> Dashboard</h1>
-            </div>
-            {% set active_page = 'portfolio' %}
-            {% include 'navbar.html' %}
-        </div>
+{% block title %}Quantamental - Portfolio{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+{% endblock %}
+
+{% block body_class %}body-portfolio{% endblock %}
+
+{% block content %}
+<script>
+window.POSITION_SIZING_CONFIG = {{ position_sizing.config | tojson }};
+window.BASE_CURRENCY = "{{ position_sizing.base_currency }}";
+window.FX_RATES = {{ position_sizing.fx_rates | tojson }};
+window.ENABLE_LIVE_ASSETS = {% if not embed and config and config.UI_PREFERENCES and config.UI_PREFERENCES.LIVE_PORTFOLIO %}true{% else %}false{% endif %};
+window.REFRESH_RATE_MS = {% if not embed %}{{ config.UI_PREFERENCES.REFRESH_RATE | default(60) }} * 1000{% else %}60000{% endif %};
+</script>
+
+{% if not embed %}
+{% set show_indexes = True %}
+{% include 'macro_cards.html' %}
+{% endif %}
+
+{% if not embed and summary_math %}
+<div class="summary-row">
+    <div class="summary-label">
+        Total Investment:<br>
+        <strong id="summary-cost-val" class="summary-value">{{ summary_math.cost }}</strong>
     </div>
-    
-    <script>
-        window.ENABLE_LIVE_ASSETS = {% if config and config.UI_PREFERENCES and config.UI_PREFERENCES.LIVE_PORTFOLIO %}true{% else %}false{% endif %};
-        window.REFRESH_RATE_MS = {{ config.UI_PREFERENCES.REFRESH_RATE | default(60) }} * 1000;
-    </script>
-    {% set show_indexes = True %}
-    {% include 'macro_cards.html' %}
-    
-    {% endif %}
+    <div class="summary-label">
+        Market Value:<br>
+        <strong id="summary-mv-val" class="summary-value">{{ summary_math.value }}</strong>
+    </div>
+    <div class="summary-label">
+        Unrealized P&amp;L:<br>
+        <strong id="summary-pnl-val" class="summary-value-large {% if summary_math.is_positive %}pnl-positive{% else %}pnl-negative{% endif %}">
+            {{ summary_math.pnl }} ({{ summary_math.pnl_pct }}%)
+        </strong>
+    </div>
+    <div class="summary-label xray-link-container portfolio-action-links">
+        <a href="#" id="xray-link" class="xray-link-btn" onclick="toggleXray(); return false;">&#128302; X-ray</a>
+        <a href="/score-history?filter=portfolio&ref=/portfolio" class="xray-link-btn ms-2">&#128200; Score History</a>
+    </div>
+</div>
+{% endif %}
 
-    {% if not embed and summary_math %}
-    <div class="summary-row">
-        <div class="summary-label">
-            Total Investment:<br>
-            <strong id="summary-cost-val" class="summary-value">{{ summary_math.cost }}</strong>
-        </div>
-        <div class="summary-label">
-            Market Value:<br>
-            <strong id="summary-mv-val" class="summary-value">{{ summary_math.value }}</strong>
-        </div>
-        <div class="summary-label">
-            Unrealized P&L:<br>
-            <strong id="summary-pnl-val" class="summary-value-large {% if summary_math.is_positive %}pnl-positive{% else %}pnl-negative{% endif %}">
-                {{ summary_math.pnl }} ({{ summary_math.pnl_pct }}%)
-            </strong>
-        </div>
-        <div class="summary-label xray-link-container portfolio-action-links">
-            <a href="#" id="xray-link" class="xray-link-btn" onclick="toggleXray(); return false;">&#128302; X-ray</a>
-            <a href="/score-history?filter=portfolio&ref=/portfolio" class="xray-link-btn" style="margin-left:8px;">&#128200; Score History</a>
-        </div>
+{% if macro_regime %}
+    {% include 'partials/risk_summary.html' %}
+{% endif %}
+
+<div id="xray-panel">
+    {% if account_options and account_options | length > 1 %}
+    <div class="xray-account-bar">
+        <label class="xray-account-label">Account:</label>
+        <select class="context-selector xray-account-select" onchange="_loadXray(this.value)">
+            {% for opt in account_options %}
+            <option value="{{ opt.id }}" {% if selected_account == opt.id %}selected{% endif %}>{{ opt.name }}</option>
+            {% endfor %}
+        </select>
     </div>
     {% endif %}
+    <div id="xray-loading" class="xray-loading">
+        <div class="xray-spinner"></div>
+        Computing X-ray analysis&hellip;
+    </div>
+    <div id="xray-content"></div>
+</div>
 
-    {% if macro_regime %}
-        {% include 'partials/risk_summary.html' %}
+<div class="controls-container">
+    {% if account_options and account_options | length > 1 %}
+    <select class="context-selector" id="accountContextSelector" onchange="switchAccountContext()">
+        {% for opt in account_options %}
+        <option value="{{ opt.id }}" {% if selected_account == opt.id %}selected{% endif %}>{{ opt.name }}</option>
+        {% endfor %}
+    </select>
+    {% else %}
+    <select class="context-selector d-none" id="accountContextSelector" onchange="switchAccountContext()">
+        {% for opt in account_options %}
+        <option value="{{ opt.id }}" {% if selected_account == opt.id %}selected{% endif %}>{{ opt.name }}</option>
+        {% endfor %}
+    </select>
     {% endif %}
+    <input type="text" id="customSearchInput" class="filter-input" placeholder="🔍 Search ticker or name...">
+    <select id="signalFilter" class="filter-select">
+        <option value="ALL">All Signals</option>
+        <option value="STRONG BUY">Strong Buy</option>
+        <option value="BULLISH / HOLD">Bullish / Hold</option>
+        <option value="NEUTRAL">Neutral</option>
+        <option value="BEARISH / CAUTION">Bearish / Caution</option>
+    </select>
+    <select id="tagFilter" class="filter-select">
+        <option value="ALL">All Setup Tags</option>
+        <option value="⚡ MACD Reversal">⚡ MACD Reversals (Oversold)</option>
+        <option value="⚡ MACD Bullish Cross">⚡ MACD Bullish Cross (Trend)</option>
+        <option value="🔥 VCP Breakout">🔥 VCP Breakouts</option>
+        <option value="👑 Market Leader">👑 Market Leaders</option>
+        <option value="🚨 Divergence Warning">🚨 Divergence Warnings</option>
+    </select>
+</div>
 
-    <div id="xray-panel">
-        {% if account_options and account_options | length > 1 %}
-        <div class="xray-account-bar">
-            <label class="xray-account-label">Account:</label>
-            <select class="context-selector xray-account-select" onchange="_loadXray(this.value)">
-                {% for opt in account_options %}
-                <option value="{{ opt.id }}" {% if selected_account == opt.id %}selected{% endif %}>{{ opt.name }}</option>
+<table id="dataTable" class="table table-hover w-100">
+    <thead>
+        <tr>
+            <th>Ticker</th>
+            <th>Company Name</th>
+            <th>Price</th>
+            <th>Daily Change</th>
+            <th><abbr title="Current market value across all accounts (in base currency)">Global Value</abbr></th>
+            <th><abbr title="Unrealized P&amp;L across all accounts (in base currency)">Global P&amp;L</abbr></th>
+            <th>50D</th>
+            <th>200D</th>
+            <th><abbr title="Standard PEG Ratio">PEG</abbr></th>
+            <th><abbr title="Peter Lynch Fair Value">PL PEG</abbr></th>
+            <th>Stop-Loss</th>
+            <th><abbr title="Volume Profile entry zone: the nearest High Volume Node or Value Area Low below the current price — a candidate limit-order buy level.">Entry Zone</abbr></th>
+            <th><abbr title="Volume Profile exit target: the lowest High Volume Node or Value Area High above the current price — a candidate take-profit level.">Exit Target</abbr></th>
+            <th>RSI</th>
+            <th><abbr title="Machine Learning Ensemble confidence score predicting a >3% return over the next 10 days.">ML Conf</abbr></th>
+            <th>VaR (95%)</th>
+            <th>Sentiment</th>
+            <th>Earnings</th>
+            <th>Score</th>
+            <th>Setups &amp; Tags</th>
+            <th>Signal</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for item in portfolio %}
+        <tr class="live-asset-row"
+            data-ticker="{{ item.ticker }}"
+            data-currency="{{ item.currency }}"
+            data-signal="{{ item.overall_signal | upper }}"
+            data-tags="{% for tag in item.setup_tags_list %}{{ tag.name }} {% endfor %}"
+            data-detail-company="{{ item.company_name | e }}"
+            data-detail-trend50="{{ item.trend_50d or '' }}"
+            data-detail-trend200="{{ item.trend_200d or '' }}"
+            data-detail-score="{{ item.composite_score if item.composite_score is not none else '' }}"
+            data-detail-signal="{{ item.overall_signal or '' }}"
+            data-detail-sentiment="{{ item.sentiment_score if item.sentiment_score is not none else '' }}"
+            data-detail-ml="{{ item.ml_confidence_score if item.ml_confidence_score is not none else '' }}">
+            <td data-sort="{{ item.ticker }}" class="num-cell">
+                <a href="/stock/{{ item.ticker }}{% if embed %}?embed=true{% endif %}" class="ticker-link">{{ item.ticker }}</a>
+            </td>
+            <td data-sort="{{ item.company_name }}">
+                {{ item.company_name }}
+            </td>
+
+            {% set cp = cached_pulse.get(item.ticker) %}
+            <td data-sort="{{ cp.price if cp else (item.current_price or 0) }}" class="num-cell">
+                <span id="price-{{ item.ticker }}" class="{% if cp and cp.is_stale %}stale-text{% elif cp %}{% if cp.is_positive %}trend-up{% else %}trend-down{% endif %}{% endif %}">
+                    {% set display_price = cp.price|float if cp else (item.current_price if item.current_price is not none else none) %}
+                    {% if display_price is not none %}
+                        {% set sym = '£' if item.currency in ['GBP', 'GBp'] else ('€' if item.currency == 'EUR' else '$') %}
+                        {% set p_val = (display_price / 100.0) if item.currency == 'GBp' else display_price %}
+                        {{ sym }}{{ "{:,.2f}".format(p_val) }}{% if item.currency not in ['USD', 'GBP', 'GBp', 'EUR'] %} {{ item.currency }}{% endif %}
+                    {% else %}
+                        N/A
+                    {% endif %}
+                </span>
+            </td>
+
+            <td data-sort="{{ cp.change_pct if cp else 0 }}" class="num-cell">
+                <span id="change-{{ item.ticker }}" class="{% if cp and cp.is_stale %}stale-text{% elif cp %}{% if cp.is_positive %}trend-up{% else %}trend-down{% endif %}{% endif %}">
+                    {% if cp %}
+                        {% set sign = '+' if cp.is_positive else '' %}
+                        {{ sign }}{{ "{:,.2f}".format(cp.change_pct|float) }}%
+                    {% else %}
+                        -
+                    {% endif %}
+                </span>
+            </td>
+
+            <td data-sort="{{ item.global_market_value if item.global_market_value is not none else -999 }}" class="num-cell">
+                {% if item.global_market_value is not none %}
+                    {% set base_sym = '£' if config.BASE_CURRENCY == 'GBP' else ('€' if config.BASE_CURRENCY == 'EUR' else '$') %}
+                    {{ base_sym }}{{ "{:,.2f}".format(item.global_market_value) }}
+                {% else %}N/A{% endif %}
+            </td>
+            <td data-sort="{{ item.global_unrealized_pnl if item.global_unrealized_pnl is not none else -999999 }}" class="num-cell">
+                {% if item.global_unrealized_pnl is not none %}
+                    {% set base_sym = '£' if config.BASE_CURRENCY == 'GBP' else ('€' if config.BASE_CURRENCY == 'EUR' else '$') %}
+                    {% set pnl_class = 'trend-up' if item.global_unrealized_pnl >= 0 else 'trend-down' %}
+                    {% set pnl_sign = '+' if item.global_unrealized_pnl >= 0 else '' %}
+                    <span class="{{ pnl_class }}">{{ pnl_sign }}{{ base_sym }}{{ "{:,.2f}".format(item.global_unrealized_pnl) }}</span>
+                    {% if item.global_unrealized_pnl_pct is not none %}
+                        <br><small class="cell-sub">{{ pnl_sign }}{{ "{:,.2f}".format(item.global_unrealized_pnl_pct) }}%</small>
+                    {% endif %}
+                {% else %}N/A{% endif %}
+            </td>
+            <td data-sort="{{ 1 if item.trend_50d == 'UP' else 0 }}"><span class="{% if item.trend_50d == 'UP' %}trend-up{% else %}trend-down{% endif %}">{{ item.trend_50d }}</span></td>
+            <td data-sort="{{ 1 if item.trend_200d == 'UP' else 0 }}"><span class="{% if item.trend_200d == 'UP' %}trend-up{% else %}trend-down{% endif %}">{{ item.trend_200d }}</span></td>
+            <td data-sort="{{ item.peg_ratio if item.peg_ratio is not none else 999 }}" class="num-cell">{% if item.peg_ratio is not none %}{{ "{:,.2f}".format(item.peg_ratio) }}{% else %}N/A{% endif %}</td>
+            <td data-sort="{{ item.peter_lynch_peg if item.peter_lynch_peg is not none else 999 }}" class="num-cell">{% if item.peter_lynch_peg is not none %}{{ "{:,.2f}".format(item.peter_lynch_peg) }}{% else %}N/A{% endif %}</td>
+            <td data-sort="{{ item.atr_stop_loss if item.atr_stop_loss is not none else -999 }}" class="text-warning num-cell">
+                {% if item.atr_stop_loss is not none %}
+                    {% set atr_val = (item.atr_stop_loss / 100.0) if item.currency == 'GBp' else item.atr_stop_loss %}
+                    {{ "{:,.2f}".format(atr_val) }}
+                {% else %}N/A{% endif %}
+            </td>
+            <td data-sort="{{ item.vp_entry_zone if item.vp_entry_zone is not none else -999 }}" class="num-cell">
+                {% if item.vp_entry_zone is not none %}
+                    {% set ez_val = (item.vp_entry_zone / 100.0) if item.currency == 'GBp' else item.vp_entry_zone %}
+                    <span class="metric-excellent">{{ "{:,.2f}".format(ez_val) }}</span>
+                {% else %}N/A{% endif %}
+            </td>
+            <td data-sort="{{ item.vp_exit_zone if item.vp_exit_zone is not none else -999 }}" class="num-cell">
+                {% if item.vp_exit_zone is not none %}
+                    {% set xt_val = (item.vp_exit_zone / 100.0) if item.currency == 'GBp' else item.vp_exit_zone %}
+                    <span class="metric-poor">{{ "{:,.2f}".format(xt_val) }}</span>
+                {% else %}N/A{% endif %}
+            </td>
+            <td data-sort="{{ item.rsi_14 if item.rsi_14 is not none else -999 }}" class="num-cell">{% if item.rsi_14 is not none %}{{ "{:,.1f}".format(item.rsi_14) }}{% else %}N/A{% endif %}</td>
+
+            <td data-sort="{{ item.ml_confidence_score if item.ml_confidence_score is not none else -999 }}" class="num-cell">
+                {% if item.ml_confidence_score is not none %}
+                    {% set ml_class = 'metric-excellent' if item.ml_confidence_score > 40 else ('metric-poor' if item.ml_confidence_score < 20 else 'metric-neutral') %}
+                    <span class="{{ ml_class }}">{{ "{:,.1f}".format(item.ml_confidence_score) }}%</span>
+                {% else %}
+                    N/A
+                {% endif %}
+            </td>
+
+            <td data-sort="{{ item.var_95 if item.var_95 is not none else -999 }}" class="num-cell">
+                {% if item.var_95 is not none %}
+                    {% set var_class = 'metric-poor' if item.var_95 > 0.05 else 'metric-neutral' %}
+                    {% set cvar_pct = '{:,.2f}'.format(item.cvar_95 * 100) ~ '%' if item.cvar_95 is not none else 'N/A' %}
+                    {% set base_sym = '£' if config.BASE_CURRENCY == 'GBP' else ('€' if config.BASE_CURRENCY == 'EUR' else '$') %}
+                    {% if item.market_value_base %}
+                        {% set dar = item.var_95 * item.market_value_base %}
+                        {% set cdar = item.cvar_95 * item.market_value_base if item.cvar_95 is not none else none %}
+                        <abbr title="1-day 95% VaR: {{ base_sym }}{{ '{:,.2f}'.format(dar) }} · CVaR (Exp. Shortfall): {{ cvar_pct }}{% if cdar is not none %} / {{ base_sym }}{{ '{:,.2f}'.format(cdar) }}{% endif %}">
+                            <span class="{{ var_class }}">{{ "{:,.2f}".format(item.var_95 * 100) }}%<br><small class="cell-sub">{{ base_sym }}{{ '{:,.0f}'.format(dar) }}</small></span>
+                        </abbr>
+                    {% else %}
+                        <abbr title="Log-Return Expected Shortfall (CVaR): {{ cvar_pct }}">
+                            <span class="{{ var_class }}">{{ "{:,.2f}".format(item.var_95 * 100) }}%</span>
+                        </abbr>
+                    {% endif %}
+                {% else %}
+                    N/A
+                {% endif %}
+            </td>
+
+            <td data-sort="{{ item.sentiment_score if item.sentiment_score is not none else -999 }}">
+                {% if item.sentiment_score is not none %}
+                    {% if item.sentiment_score > 0.6 %}
+                        <span class="sent-badge sent-euphoria">Euphoria ({{ "{:,.3f}".format(item.sentiment_score) }})</span>
+                    {% elif item.sentiment_score > 0.2 %}
+                        <span class="sent-badge sent-bullish">Bullish ({{ "{:,.3f}".format(item.sentiment_score) }})</span>
+                    {% elif item.sentiment_score >= -0.2 %}
+                        <span class="sent-badge sent-neutral">Neutral ({{ "{:,.3f}".format(item.sentiment_score) }})</span>
+                    {% elif item.sentiment_score > -0.6 %}
+                        <span class="sent-badge sent-bearish">Bearish ({{ "{:,.3f}".format(item.sentiment_score) }})</span>
+                    {% else %}
+                        <span class="sent-badge sent-fear">Extreme Fear ({{ "{:,.3f}".format(item.sentiment_score) }})</span>
+                    {% endif %}
+                {% else %}
+                    N/A
+                {% endif %}
+            </td>
+
+            <td data-sort="{{ item.next_earnings_date or '9999-12-31' }}" class="num-cell">{% if item.next_earnings_date %}{{ item.next_earnings_date }}{% else %}N/A{% endif %}</td>
+            <td data-sort="{{ item.composite_score }}" class="num-cell">{{ item.composite_score }}</td>
+            <td class="max-w-150">
+                {% for tag in item.setup_tags_list %}
+                    <div class="inline-block">
+                        <abbr title="{{ tag.tooltip }}" class="no-decoration-abbr">
+                            <span class="setup-tag">{{ tag.name }}</span>
+                        </abbr>
+                    </div>
                 {% endfor %}
-            </select>
-        </div>
-        {% endif %}
-        <div id="xray-loading" class="xray-loading">
-            <div class="xray-spinner"></div>
-            Computing X-ray analysis&hellip;
-        </div>
-        <div id="xray-content"></div>
-    </div>
 
-    <div class="controls-container">
-        {% if account_options and account_options | length > 1 %}
-        <select class="context-selector" id="accountContextSelector" onchange="switchAccountContext()">
-            {% for opt in account_options %}
-            <option value="{{ opt.id }}" {% if selected_account == opt.id %}selected{% endif %}>{{ opt.name }}</option>
-            {% endfor %}
-        </select>
-        {% else %}
-        <select class="context-selector" id="accountContextSelector" onchange="switchAccountContext()" style="display:none">
-            {% for opt in account_options %}
-            <option value="{{ opt.id }}" {% if selected_account == opt.id %}selected{% endif %}>{{ opt.name }}</option>
-            {% endfor %}
-        </select>
-        {% endif %}
-        <input type="text" id="customSearchInput" class="filter-input" placeholder="🔍 Search ticker or name...">
-        <select id="signalFilter" class="filter-select">
-            <option value="ALL">All Signals</option>
-            <option value="STRONG BUY">Strong Buy</option>
-            <option value="BULLISH / HOLD">Bullish / Hold</option>
-            <option value="NEUTRAL">Neutral</option>
-            <option value="BEARISH / CAUTION">Bearish / Caution</option>
-        </select>
-        <select id="tagFilter" class="filter-select">
-            <option value="ALL">All Setup Tags</option>
-            <option value="⚡ MACD Reversal">⚡ MACD Reversals (Oversold)</option>
-            <option value="⚡ MACD Bullish Cross">⚡ MACD Bullish Cross (Trend)</option>
-            <option value="🔥 VCP Breakout">🔥 VCP Breakouts</option>
-            <option value="👑 Market Leader">👑 Market Leaders</option>
-            <option value="🚨 Divergence Warning">🚨 Divergence Warnings</option>
-        </select>
-    </div>
-
-    <table id="dataTable" class="display">
-        <thead>
-            <tr>
-                <th>Ticker</th>
-                <th class="col-mob-hide">Company Name</th>
-                <th>Price</th>
-                <th>Daily Change</th>
-                <th><abbr title="Current market value across all accounts (in base currency)">Global Value</abbr></th>
-                <th><abbr title="Unrealized P&amp;L across all accounts (in base currency)">Global P&amp;L</abbr></th>
-                <th class="col-mob-hide">50D</th>
-                <th class="col-mob-hide">200D</th>
-                <th class="col-mob-hide"><abbr title="Standard PEG Ratio">PEG</abbr></th>
-                <th class="col-mob-hide"><abbr title="Peter Lynch Fair Value">PL PEG</abbr></th>
-                <th class="col-mob-hide">Stop-Loss</th>
-                <th class="col-mob-hide"><abbr title="Volume Profile entry zone: the nearest High Volume Node or Value Area Low below the current price — a candidate limit-order buy level.">Entry Zone</abbr></th>
-                <th class="col-mob-hide"><abbr title="Volume Profile exit target: the lowest High Volume Node or Value Area High above the current price — a candidate take-profit level.">Exit Target</abbr></th>
-                <th class="col-mob-hide">RSI</th>
-                <th class="col-mob-hide"><abbr title="Machine Learning Ensemble confidence score predicting a >3% return over the next 10 days.">ML Conf</abbr></th>
-                <th class="col-mob-hide">VaR (95%)</th>
-                <th class="col-mob-hide">Sentiment</th>
-                <th class="col-mob-hide">Earnings</th>
-                <th class="col-mob-hide">Score</th>
-                <th class="col-mob-hide">Setups &amp; Tags</th>
-                <th class="col-mob-hide">Signal</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for item in portfolio %}
-            <tr class="live-asset-row"
-                data-ticker="{{ item.ticker }}"
-                data-currency="{{ item.currency }}"
-                data-signal="{{ item.overall_signal | upper }}"
-                data-tags="{% for tag in item.setup_tags_list %}{{ tag.name }} {% endfor %}"
-                data-detail-company="{{ item.company_name | e }}"
-                data-detail-trend50="{{ item.trend_50d or '' }}"
-                data-detail-trend200="{{ item.trend_200d or '' }}"
-                data-detail-score="{{ item.composite_score if item.composite_score is not none else '' }}"
-                data-detail-signal="{{ item.overall_signal or '' }}"
-                data-detail-sentiment="{{ item.sentiment_score if item.sentiment_score is not none else '' }}"
-                data-detail-ml="{{ item.ml_confidence_score if item.ml_confidence_score is not none else '' }}">
-                <td data-sort="{{ item.ticker }}" class="num-cell">
-                    <a href="/stock/{{ item.ticker }}{% if embed %}?embed=true{% endif %}" class="ticker-link">{{ item.ticker }}</a>
-                </td>
-                <td data-sort="{{ item.company_name }}" class="col-mob-hide">
-                    {{ item.company_name }}
-                </td>
-                
-                {% set cp = cached_pulse.get(item.ticker) %}
-                <td data-sort="{{ cp.price if cp else (item.current_price or 0) }}" class="num-cell">
-                    <span id="price-{{ item.ticker }}" class="{% if cp and cp.is_stale %}stale-text{% elif cp %}{% if cp.is_positive %}trend-up{% else %}trend-down{% endif %}{% endif %}">
-                        {% set display_price = cp.price|float if cp else (item.current_price if item.current_price is not none else none) %}
-                        {% if display_price is not none %}
-                            {% set sym = '£' if item.currency in ['GBP', 'GBp'] else ('€' if item.currency == 'EUR' else '$') %}
-                            {% set p_val = (display_price / 100.0) if item.currency == 'GBp' else display_price %}
-                            {{ sym }}{{ "{:,.2f}".format(p_val) }}{% if item.currency not in ['USD', 'GBP', 'GBp', 'EUR'] %} {{ item.currency }}{% endif %}
-                        {% else %}
-                            N/A
-                        {% endif %}
-                    </span>
-                </td>
-                
-                <td data-sort="{{ cp.change_pct if cp else 0 }}" class="num-cell">
-                    <span id="change-{{ item.ticker }}" class="{% if cp and cp.is_stale %}stale-text{% elif cp %}{% if cp.is_positive %}trend-up{% else %}trend-down{% endif %}{% endif %}">
-                        {% if cp %}
-                            {% set sign = '+' if cp.is_positive else '' %}
-                            {{ sign }}{{ "{:,.2f}".format(cp.change_pct|float) }}%
-                        {% else %}
-                            -
-                        {% endif %}
-                    </span>
-                </td>
-                
-                <td data-sort="{{ item.global_market_value if item.global_market_value is not none else -999 }}" class="num-cell">
-                    {% if item.global_market_value is not none %}
-                        {% set base_sym = '£' if config.BASE_CURRENCY == 'GBP' else ('€' if config.BASE_CURRENCY == 'EUR' else '$') %}
-                        {{ base_sym }}{{ "{:,.2f}".format(item.global_market_value) }}
-                    {% else %}N/A{% endif %}
-                </td>
-                <td data-sort="{{ item.global_unrealized_pnl if item.global_unrealized_pnl is not none else -999999 }}" class="num-cell">
-                    {% if item.global_unrealized_pnl is not none %}
-                        {% set base_sym = '£' if config.BASE_CURRENCY == 'GBP' else ('€' if config.BASE_CURRENCY == 'EUR' else '$') %}
-                        {% set pnl_class = 'trend-up' if item.global_unrealized_pnl >= 0 else 'trend-down' %}
-                        {% set pnl_sign = '+' if item.global_unrealized_pnl >= 0 else '' %}
-                        <span class="{{ pnl_class }}">{{ pnl_sign }}{{ base_sym }}{{ "{:,.2f}".format(item.global_unrealized_pnl) }}</span>
-                        {% if item.global_unrealized_pnl_pct is not none %}
-                            <br><small style="color:#aaa;font-size:0.8em;">{{ pnl_sign }}{{ "{:,.2f}".format(item.global_unrealized_pnl_pct) }}%</small>
-                        {% endif %}
-                    {% else %}N/A{% endif %}
-                </td>
-                <td data-sort="{{ 1 if item.trend_50d == 'UP' else 0 }}" class="col-mob-hide"><span class="{% if item.trend_50d == 'UP' %}trend-up{% else %}trend-down{% endif %}">{{ item.trend_50d }}</span></td>
-                <td data-sort="{{ 1 if item.trend_200d == 'UP' else 0 }}" class="col-mob-hide"><span class="{% if item.trend_200d == 'UP' %}trend-up{% else %}trend-down{% endif %}">{{ item.trend_200d }}</span></td>
-                <td data-sort="{{ item.peg_ratio if item.peg_ratio is not none else 999 }}" class="num-cell col-mob-hide">{% if item.peg_ratio is not none %}{{ "{:,.2f}".format(item.peg_ratio) }}{% else %}N/A{% endif %}</td>
-                <td data-sort="{{ item.peter_lynch_peg if item.peter_lynch_peg is not none else 999 }}" class="num-cell col-mob-hide">{% if item.peter_lynch_peg is not none %}{{ "{:,.2f}".format(item.peter_lynch_peg) }}{% else %}N/A{% endif %}</td>
-                <td data-sort="{{ item.atr_stop_loss if item.atr_stop_loss is not none else -999 }}" class="text-warning num-cell col-mob-hide">
-                    {% if item.atr_stop_loss is not none %}
-                        {% set atr_val = (item.atr_stop_loss / 100.0) if item.currency == 'GBp' else item.atr_stop_loss %}
-                        {{ "{:,.2f}".format(atr_val) }}
-                    {% else %}N/A{% endif %}
-                </td>
-                <td data-sort="{{ item.vp_entry_zone if item.vp_entry_zone is not none else -999 }}" class="num-cell col-mob-hide">
-                    {% if item.vp_entry_zone is not none %}
-                        {% set ez_val = (item.vp_entry_zone / 100.0) if item.currency == 'GBp' else item.vp_entry_zone %}
-                        <span class="metric-excellent">{{ "{:,.2f}".format(ez_val) }}</span>
-                    {% else %}N/A{% endif %}
-                </td>
-                <td data-sort="{{ item.vp_exit_zone if item.vp_exit_zone is not none else -999 }}" class="num-cell col-mob-hide">
-                    {% if item.vp_exit_zone is not none %}
-                        {% set xt_val = (item.vp_exit_zone / 100.0) if item.currency == 'GBp' else item.vp_exit_zone %}
-                        <span class="metric-poor">{{ "{:,.2f}".format(xt_val) }}</span>
-                    {% else %}N/A{% endif %}
-                </td>
-                <td data-sort="{{ item.rsi_14 if item.rsi_14 is not none else -999 }}" class="num-cell col-mob-hide">{% if item.rsi_14 is not none %}{{ "{:,.1f}".format(item.rsi_14) }}{% else %}N/A{% endif %}</td>
-
-                <td data-sort="{{ item.ml_confidence_score if item.ml_confidence_score is not none else -999 }}" class="num-cell col-mob-hide">
-                    {% if item.ml_confidence_score is not none %}
-                        {% set ml_class = 'metric-excellent' if item.ml_confidence_score > 40 else ('metric-poor' if item.ml_confidence_score < 20 else 'metric-neutral') %}
-                        <span class="{{ ml_class }}">{{ "{:,.1f}".format(item.ml_confidence_score) }}%</span>
-                    {% else %}
-                        N/A
-                    {% endif %}
-                </td>
-
-                <td data-sort="{{ item.var_95 if item.var_95 is not none else -999 }}" class="num-cell col-mob-hide">
-                    {% if item.var_95 is not none %}
-                        {% set var_class = 'metric-poor' if item.var_95 > 0.05 else 'metric-neutral' %}
-                        {% set cvar_pct = '{:,.2f}'.format(item.cvar_95 * 100) ~ '%' if item.cvar_95 is not none else 'N/A' %}
-                        {% set base_sym = '£' if config.BASE_CURRENCY == 'GBP' else ('€' if config.BASE_CURRENCY == 'EUR' else '$') %}
-                        {% if item.market_value_base %}
-                            {% set dar = item.var_95 * item.market_value_base %}
-                            {% set cdar = item.cvar_95 * item.market_value_base if item.cvar_95 is not none else none %}
-                            <abbr title="1-day 95% VaR: {{ base_sym }}{{ '{:,.2f}'.format(dar) }} · CVaR (Exp. Shortfall): {{ cvar_pct }}{% if cdar is not none %} / {{ base_sym }}{{ '{:,.2f}'.format(cdar) }}{% endif %}">
-                                <span class="{{ var_class }}">{{ "{:,.2f}".format(item.var_95 * 100) }}%<br><small style="color:#aaa;font-size:0.8em;">{{ base_sym }}{{ '{:,.0f}'.format(dar) }}</small></span>
-                            </abbr>
-                        {% else %}
-                            <abbr title="Log-Return Expected Shortfall (CVaR): {{ cvar_pct }}">
-                                <span class="{{ var_class }}">{{ "{:,.2f}".format(item.var_95 * 100) }}%</span>
-                            </abbr>
-                        {% endif %}
-                    {% else %}
-                        N/A
-                    {% endif %}
-                </td>
-                
-                <td data-sort="{{ item.sentiment_score if item.sentiment_score is not none else -999 }}" class="col-mob-hide">
-                    {% if item.sentiment_score is not none %}
-                        {% if item.sentiment_score > 0.6 %}
-                            <span class="sent-badge sent-euphoria">Euphoria ({{ "{:,.3f}".format(item.sentiment_score) }})</span>
-                        {% elif item.sentiment_score > 0.2 %}
-                            <span class="sent-badge sent-bullish">Bullish ({{ "{:,.3f}".format(item.sentiment_score) }})</span>
-                        {% elif item.sentiment_score >= -0.2 %}
-                            <span class="sent-badge sent-neutral">Neutral ({{ "{:,.3f}".format(item.sentiment_score) }})</span>
-                        {% elif item.sentiment_score > -0.6 %}
-                            <span class="sent-badge sent-bearish">Bearish ({{ "{:,.3f}".format(item.sentiment_score) }})</span>
-                        {% else %}
-                            <span class="sent-badge sent-fear">Extreme Fear ({{ "{:,.3f}".format(item.sentiment_score) }})</span>
-                        {% endif %}
-                    {% else %}
-                        N/A
-                    {% endif %}
-                </td>
-
-                <td data-sort="{{ item.next_earnings_date or '9999-12-31' }}" class="num-cell col-mob-hide">{% if item.next_earnings_date %}{{ item.next_earnings_date }}{% else %}N/A{% endif %}</td>
-                <td data-sort="{{ item.composite_score }}" class="num-cell col-mob-hide">{{ item.composite_score }}</td>
-                <td class="max-w-150 col-mob-hide">
-                    {% for tag in item.setup_tags_list %}
+                {% if item.ml_confidence_score is not none and item.composite_score is not none and item.composite_score != 'N/A' %}
+                    {% set comp = item.composite_score|int %}
+                    {% if comp >= 70 and item.ml_confidence_score < 20 %}
                         <div class="inline-block">
-                            <abbr title="{{ tag.tooltip }}" class="no-decoration-abbr">
-                                <span class="setup-tag">{{ tag.name }}</span>
+                            <abbr title="High Quant Score but Low AI Confidence. Technicals are bullish but Machine Learning predicts a drop." class="no-decoration-abbr">
+                                <span class="setup-tag">⚠️ AI Disconnect</span>
                             </abbr>
                         </div>
-                    {% endfor %}
-                    
-                    {% if item.ml_confidence_score is not none and item.composite_score is not none and item.composite_score != 'N/A' %}
-                        {% set comp = item.composite_score|int %}
-                        {% if comp >= 70 and item.ml_confidence_score < 20 %}
-                            <div class="inline-block">
-                                <abbr title="High Quant Score but Low AI Confidence. Technicals are bullish but Machine Learning predicts a drop." class="no-decoration-abbr">
-                                    <span class="setup-tag">⚠️ AI Disconnect</span>
-                                </abbr>
-                            </div>
-                        {% elif comp < 40 and item.ml_confidence_score >= 40 %}
-                            <div class="inline-block">
-                                <abbr title="Low Quant Score but High AI Confidence. Technicals are bearish but Machine Learning predicts a surge." class="no-decoration-abbr">
-                                    <span class="setup-tag">🤖 AI Buy</span>
-                                </abbr>
-                            </div>
-                        {% endif %}
+                    {% elif comp < 40 and item.ml_confidence_score >= 40 %}
+                        <div class="inline-block">
+                            <abbr title="Low Quant Score but High AI Confidence. Technicals are bearish but Machine Learning predicts a surge." class="no-decoration-abbr">
+                                <span class="setup-tag">🤖 AI Buy</span>
+                            </abbr>
+                        </div>
                     {% endif %}
-                </td>
-                <td class="{{ item.overall_signal | replace(' ', '-') | replace('/', '-') }} col-mob-hide">{{ item.overall_signal }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+                {% endif %}
+            </td>
+            <td class="{{ item.overall_signal | replace(' ', '-') | replace('/', '-') }}">{{ item.overall_signal }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}
 
-    <script>
-        // Render position sizing cells after DOM is ready and DataTable has rendered
-        function renderPositionSizing() {
-            document.querySelectorAll(".ps-cell").forEach(function(cell) {
-                const entryPrice = parseFloat(cell.dataset.entryPrice);
-                const atrPctRaw  = cell.dataset.atrPct;
-                const atrPct     = atrPctRaw === "" ? null : parseFloat(atrPctRaw);
-                const currency   = cell.dataset.currency || "USD";
-                
-                const result = window.PositionSizing.calculateForRow(entryPrice, atrPct, currency);
-                
-                if (result.positionValue != null && result.shares != null && result.shares > 0) {
-                    cell.textContent = window.PositionSizing.formatCurrency(
-                        result.positionValue, window.BASE_CURRENCY
-                    );
-                    cell.setAttribute("data-sort", result.positionValue);
-                    
-                    const sharesCell = cell.nextElementSibling;
-                    if (sharesCell && sharesCell.classList.contains("ps-cell-shares")) {
-                        sharesCell.textContent = result.shares.toLocaleString();
-                        sharesCell.setAttribute("data-sort", result.shares);
-                    }
-                } else {
-                    cell.textContent = "—";
-                    const sharesCell = cell.nextElementSibling;
-                    if (sharesCell && sharesCell.classList.contains("ps-cell-shares")) {
-                        sharesCell.textContent = "—";
-                    }
-                }
-            });
-        }
-        
-        document.addEventListener("DOMContentLoaded", renderPositionSizing);
-    </script>
-
-    <script>
-        // ── X-ray mode state ──────────────────────────────────────────────────────
-        window._xrayMode = false;
-        window._xraySummaryOriginal = null;
-
-        function _captureSummaryOriginal() {
-            var costEl = document.getElementById('summary-cost-val');
-            var mvEl   = document.getElementById('summary-mv-val');
-            var pnlEl  = document.getElementById('summary-pnl-val');
-            if (!costEl) return;
-            window._xraySummaryOriginal = {
-                cost:        costEl.textContent,
-                mv:          mvEl  ? mvEl.textContent  : '',
-                pnl:         pnlEl ? pnlEl.textContent : '',
-                pnlPositive: pnlEl ? pnlEl.classList.contains('pnl-positive') : true,
-            };
-        }
-
-        function _restoreSummaryOriginal() {
-            var orig = window._xraySummaryOriginal;
-            if (!orig) return;
-            var costEl = document.getElementById('summary-cost-val');
-            var mvEl   = document.getElementById('summary-mv-val');
-            var pnlEl  = document.getElementById('summary-pnl-val');
-            if (costEl) costEl.textContent = orig.cost;
-            if (mvEl)   mvEl.textContent   = orig.mv;
-            if (pnlEl) {
-                pnlEl.textContent = orig.pnl;
-                pnlEl.className   = 'summary-value-large ' + (orig.pnlPositive ? 'pnl-positive' : 'pnl-negative');
-            }
-        }
-
-        function _updateSummaryRow(data) {
-            var costEl = document.getElementById('summary-cost-val');
-            var mvEl   = document.getElementById('summary-mv-val');
-            var pnlEl  = document.getElementById('summary-pnl-val');
-            if (!costEl) return;
-            var cur    = data.base_currency || 'GBP';
-            var sym    = ({GBP:'£', USD:'$', EUR:'€'})[cur] || (cur + ' ');
-            var fmtAmt = function(v) {
-                return sym + (v || 0).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}) + ' ' + cur;
-            };
-            var mv   = data.portfolio_total_value       || 0;
-            var cost = data.portfolio_total_investment   || 0;
-            var pnl  = mv - cost;
-            var pct  = cost > 0 ? (pnl / cost * 100) : 0;
-            costEl.textContent = fmtAmt(cost);
-            if (mvEl)  mvEl.textContent  = fmtAmt(mv);
-            if (pnlEl) {
-                pnlEl.textContent = (pnl >= 0 ? '+' : '') + fmtAmt(pnl) + ' (' + pct.toFixed(2) + '%)';
-                pnlEl.className   = 'summary-value-large ' + (pnl >= 0 ? 'pnl-positive' : 'pnl-negative');
-            }
-        }
-
-        function toggleXray() {
-            if (!window._xrayMode) { _enterXrayMode(); } else { _exitXrayMode(); }
-        }
-
-        function _getTableContainer() {
-            return document.getElementById('dataTable_wrapper') || document.getElementById('dataTable');
-        }
-
-        function _enterXrayMode() {
-            _captureSummaryOriginal();
-            window._xrayMode = true;
-            var ctrl = document.querySelector('.controls-container');
-            var tbl  = _getTableContainer();
-            if (ctrl) ctrl.style.display = 'none';
-            if (tbl)  tbl.style.display  = 'none';
-            document.getElementById('xray-panel').style.display  = 'block';
-            document.getElementById('xray-loading').style.display = 'flex';
-            document.getElementById('xray-content').style.display = 'none';
-            var lnk = document.getElementById('xray-link');
-            if (lnk) lnk.innerHTML = '&larr; Back to Portfolio';
-            _loadXray(document.getElementById('accountContextSelector').value);
-        }
-
-        function _exitXrayMode() {
-            window._xrayMode = false;
-            var ctrl = document.querySelector('.controls-container');
-            var tbl  = _getTableContainer();
-            if (ctrl) ctrl.style.display = '';
-            if (tbl)  tbl.style.display  = '';
-            document.getElementById('xray-panel').style.display = 'none';
-            var lnk = document.getElementById('xray-link');
-            if (lnk) lnk.innerHTML = '&#128302; X-ray';
-            _restoreSummaryOriginal();
-        }
-
-        // Overrides the navbar's onchange handler; honours X-ray mode
-        function switchAccountContext() {
-            var selectedId = document.getElementById('accountContextSelector').value;
-            if (window._xrayMode) { _loadXray(selectedId); }
-            else { window.location.href = '/portfolio?account_id=' + selectedId; }
-        }
-
-        function _loadXray(accountId) {
-            var loadEl = document.getElementById('xray-loading');
-            var contEl = document.getElementById('xray-content');
-            if (loadEl) { loadEl.style.display = 'flex'; loadEl.innerHTML = '<div class="xray-spinner"></div>Computing X-ray analysis&hellip;'; }
-            if (contEl) contEl.style.display = 'none';
-
-            Promise.all([
-                fetch('/api/xray?account_id=' + encodeURIComponent(accountId)).then(function(r) { return r.json(); }),
-                fetch('/api/macro-regime-allocation').then(function(r) { return r.json(); }).catch(function() { return null; })
-            ])
-                .then(function(results) {
-                    var data      = results[0];
-                    var macroData = results[1];
-                    if (data.error) {
-                        if (loadEl) loadEl.innerHTML = '<span class="xray-error-msg">&#9888; ' + data.error + '</span>';
-                        return;
-                    }
-                    _renderXray(data, macroData);
-                    _updateSummaryRow(data);
-                    if (loadEl) loadEl.style.display = 'none';
-                    if (contEl) contEl.style.display = 'block';
-                    requestAnimationFrame(function() { window.dispatchEvent(new Event('resize')); });
-                })
-                .catch(function(err) {
-                    if (loadEl) loadEl.innerHTML = '<span class="xray-error-msg">&#9888; Failed to load X-ray data. Try again or check server logs.</span>';
-                });
-        }
-
-        // ── Render helpers ────────────────────────────────────────────────────────
-        function _tip(text) {
-            if (!text) return '';
-            return '<abbr title="' + text.replace(/"/g, '&quot;') + '" class="no-decoration-abbr"> &#9432;</abbr>';
-        }
-
-        function _card(label, value, tipText, colorClass) {
-            var labelHtml = tipText
-                ? '<abbr title="' + tipText.replace(/"/g, '&quot;') + '">' + label + '</abbr>'
-                : label;
-            return '<div class="xray-metric-card">'
-                + '<div class="xray-metric-label">' + labelHtml + '</div>'
-                + '<div class="xray-metric-value' + (colorClass ? ' ' + colorClass : '') + '">' + value + '</div>'
-                + '</div>';
-        }
-
-        function _pct(v, dec) {
-            if (v === null || v === undefined) return 'N/A';
-            return (v * 100).toFixed(dec !== undefined ? dec : 1) + '%';
-        }
-
-        function _num(v, dec) {
-            if (v === null || v === undefined) return 'N/A';
-            return v.toFixed(dec !== undefined ? dec : 2);
-        }
-
-        function _baseLayout(overrides) {
-            var base = {
-                paper_bgcolor: '#1e1e1e', plot_bgcolor: '#1e1e1e',
-                font: { color: '#e0e0e0', family: 'system-ui,-apple-system,sans-serif', size: 12 },
-                margin: { t: 30, r: 20, b: 40, l: 20 },
-                showlegend: false,
-                autosize: true
-            };
-            return Object.assign(base, overrides || {});
-        }
-        var _PC = { displayModeBar: false, responsive: true };
-
-        // ── Cash status toggle (localStorage) ────────────────────────────────────
-        function _setCashStatus(val) {
-            localStorage.setItem('macro_cash_ok', val);
-            var btnYes = document.getElementById('ma-cash-btn-yes');
-            var btnNo  = document.getElementById('ma-cash-btn-no');
-            if (btnYes) btnYes.className = 'ma-cash-btn' + (val === 'yes' ? ' active'    : '');
-            if (btnNo)  btnNo.className  = 'ma-cash-btn' + (val === 'no'  ? ' active-no' : '');
-            // Update cash delta text
-            var deltaEl = document.getElementById('ma-cash-delta-text');
-            if (deltaEl && window._macroAllocData && window._macroAllocData.fmtAmt) {
-                var d   = window._macroAllocData;
-                var fmt = d.fmtAmt;
-                if (val === 'yes') {
-                    deltaEl.className = 'ma-cash-delta-ok';
-                    deltaEl.textContent = 'On target ✓';
-                } else {
-                    var isShort = d.cashDelta < 0;
-                    deltaEl.className = isShort ? 'ma-cash-delta-short' : 'ma-cash-delta-ok';
-                    deltaEl.textContent = fmt(Math.abs(d.cashDelta)) + (isShort ? ' SHORT' : ' SURPLUS');
-                }
-            }
-            // Re-plot allocation chart: include cash at ideal level when user confirms on-target
-            if (window._macroAllocData) {
-                var c = window._macroAllocData.current
-                    ? Object.assign({}, window._macroAllocData.current)
-                    : null;
-                if (c && val === 'yes' && window._macroAllocData.ideal) {
-                    c.cash = window._macroAllocData.ideal.cash || 0;
-                } else if (c) {
-                    c.cash = window._macroAllocData.originalCash;
-                }
-                _plotMacroAlloc('xray-ma-alloc-chart', window._macroAllocData.ideal, c);
-            }
-        }
-
-        // ── Macro regime section ──────────────────────────────────────────────────
-        function _renderMacroSection(macroData, xrayData) {
-            var REGIME_ORDER  = ['Risk-On', 'Recovery', 'Late Cycle', 'Stagflation', 'Contraction'];
-            var REGIME_COLORS = { 'Risk-On':'#00ffcc', 'Recovery':'#4499ff', 'Late Cycle':'#ffcc00', 'Stagflation':'#ff9900', 'Contraction':'#ff4444' };
-            var REGIME_DESC   = {
-                'Risk-On':     'Positive yield curve, contained inflation, tight spreads. Equities favoured.',
-                'Recovery':    'Cycle transitioning from contraction. Rebuilding equity exposure as spreads tighten.',
-                'Late Cycle':  'Flattening curve with rising inflation. Reduce equity overweights; add bonds and real assets.',
-                'Stagflation': 'High inflation meets financial stress or negative real yields. Hard assets and cash over bonds.',
-                'Contraction': 'Inverted curve and recession-mode macro. Defensive tilt: long bonds, reduce equity risk.'
-            };
-            var ASSET_ORDER  = ['equities', 'bonds', 'commodities'];
-            var ASSET_LABELS = { equities:'Equities', bonds:'Bonds', commodities:'Commodities' };
-
-            if (!macroData || macroData.status === 'no_data') {
-                return '<div class="xray-section">'
-                    + '<h3 class="xray-section-title">&#127759; Macro Regime &amp; Portfolio Alignment</h3>'
-                    + '<p class="ma-note">Run the Macro Data Engine in <a href="/settings#macro" style="color:#00ffcc">Settings &rarr; Macroeconomic Data</a> to populate regime data.</p>'
-                    + '</div>';
-            }
-
-            var cur   = (xrayData && xrayData.base_currency) || 'GBP';
-            var sym   = ({ GBP:'£', USD:'$', EUR:'€' })[cur] || (cur + ' ');
-            var label = macroData.regime_label || 'Risk-On';
-            var color = REGIME_COLORS[label] || '#aaaaaa';
-            var sigs  = macroData.key_signals || {};
-            var ideal = macroData.ideal_allocation || {};
-            var curr  = macroData.current_allocation;
-            var deltas = macroData.rebalance_deltas;
-            var ranges = macroData.regime_ranges || {};
-            var score  = macroData.alignment_score;
-            var history = macroData.regime_history || [];
-
-            var fN = function(v, dp) { return (v == null) ? '—' : parseFloat(v).toFixed(dp !== undefined ? dp : 2); };
-            var threatColor = function(lvl) { return lvl === 'RED' ? '#ff4444' : lvl === 'YELLOW' ? '#ffcc00' : '#00ffcc'; };
-
-            var html = '<div class="xray-section">'
-                + '<h3 class="xray-section-title">&#127759; Macro Regime &amp; Portfolio Alignment</h3>';
-
-            // 5-regime traffic light
-            html += '<div class="ma-traffic-strip">';
-            REGIME_ORDER.forEach(function(r) {
-                var rc = REGIME_COLORS[r] || '#aaa';
-                html += '<div class="ma-traffic-box' + (r === label ? ' active' : '') + '" style="color:' + rc + '">' + r + '</div>';
-            });
-            html += '</div>';
-
-            // Regime banner
-            html += '<div class="ma-regime-banner" style="border-color:' + color + '">'
-                + '<div><span class="ma-regime-badge" style="background:' + color + ';color:#111">' + label + '</span>'
-                + '<span class="ma-regime-date">as of ' + (macroData.regime_date || '—') + '</span></div>'
-                + '<div class="ma-regime-desc">' + (REGIME_DESC[label] || '') + '</div>'
-                + '<div class="ma-threat-row">'
-                + '<span>US yield threat: <strong style="color:' + threatColor(macroData.us_threat_level) + '">' + (macroData.us_threat_level || '—') + '</strong></span>'
-                + '&nbsp;|&nbsp;<span>UK yield threat: <strong style="color:' + threatColor(macroData.uk_threat_level) + '">' + (macroData.uk_threat_level || '—') + '</strong></span>'
-                + (macroData.yield_curve_inverted ? '&nbsp;|&nbsp;<span style="color:#ff4444">&#9888; Inverted ' + macroData.days_inverted + ' day' + (macroData.days_inverted !== 1 ? 's' : '') + '</span>' : '')
-                + '</div></div>';
-
-            // Two-col: driving signals | alignment score
-            var sigDefs = [
-                { label:'10y–2y Yield Curve', v: sigs.us_yield_curve,
-                  disp: sigs.us_yield_curve != null ? (sigs.us_yield_curve > 0 ? '+' : '') + fN(sigs.us_yield_curve) + '%' : '—',
-                  note: macroData.yield_curve_inverted ? 'Inverted' : 'Normal',
-                  color: macroData.yield_curve_inverted ? '#ff4444' : '#00ffcc',
-                  abbr: '10-year minus 2-year US Treasury spread. Negative = inverted. A sustained inversion has preceded every US recession since 1970.' },
-                { label:'US CPI Inflation', v: sigs.us_cpi_inflation,
-                  disp: sigs.us_cpi_inflation != null ? fN(sigs.us_cpi_inflation, 1) + '%' : '—',
-                  note: sigs.us_cpi_inflation == null ? '—' : sigs.us_cpi_inflation > 4 ? 'High' : sigs.us_cpi_inflation > 3 ? 'Elevated' : 'Contained',
-                  color: sigs.us_cpi_inflation > 4 ? '#ff9900' : sigs.us_cpi_inflation > 3 ? '#ffcc00' : '#00ffcc',
-                  abbr: 'US Consumer Price Index YoY change from FRED. Above 4% = high inflationary pressure.' },
-                { label:'US HY Credit Spread', v: sigs.us_high_yield_spread,
-                  disp: sigs.us_high_yield_spread != null ? fN(sigs.us_high_yield_spread, 0) + ' bps' : '—',
-                  note: sigs.us_high_yield_spread == null ? '—' : sigs.us_high_yield_spread > 600 ? 'Blown out' : sigs.us_high_yield_spread > 400 ? 'Widening' : 'Tight',
-                  color: sigs.us_high_yield_spread > 600 ? '#ff4444' : sigs.us_high_yield_spread > 400 ? '#ffcc00' : '#00ffcc',
-                  abbr: 'US High-Yield OAS spread. Above 600 bps = financial distress.' },
-                { label:'Real Yield (10y TIPS)', v: sigs.us_real_yield_10y,
-                  disp: sigs.us_real_yield_10y != null ? (sigs.us_real_yield_10y > 0 ? '+' : '') + fN(sigs.us_real_yield_10y) + '%' : null,
-                  note: sigs.us_real_yield_10y == null ? null : sigs.us_real_yield_10y < 0 ? 'Negative — stagflation' : 'Positive',
-                  color: sigs.us_real_yield_10y != null && sigs.us_real_yield_10y < 0 ? '#ff9900' : '#00ffcc',
-                  abbr: '10-year TIPS yield. Negative = bonds cannot keep pace with inflation — classic stagflation signal.' }
-            ];
-            var sigHtml = '<div class="ma-signals-grid">';
-            sigDefs.forEach(function(c) {
-                if (c.disp == null) return;  // skip cards with no data
-                sigHtml += '<div class="ma-signal-card">'
-                    + '<div class="ma-signal-label"><abbr title="' + c.abbr + '">' + c.label + '</abbr></div>'
-                    + '<div class="ma-signal-value" style="color:' + c.color + '">' + c.disp + '</div>'
-                    + '<div class="ma-signal-note" style="color:' + c.color + '">' + c.note + '</div>'
-                    + '</div>';
-            });
-            sigHtml += '</div>';
-
-            var gaugeColor = score == null ? '#666' : score >= 75 ? '#00ffcc' : score >= 50 ? '#ffcc00' : '#ff4444';
-            var scoreHtml = score != null
-                ? '<div class="ma-score-value" style="color:' + gaugeColor + '">' + score + '<span class="ma-score-unit">/100</span></div>'
-                  + '<div class="ma-score-label">Portfolio alignment to regime ideal</div>'
-                : '<div class="ma-score-na">' + (macroData.portfolio_note || 'Portfolio data unavailable.') + '</div>';
-
-            html += '<div class="ma-two-col">'
-                + '<div class="ma-panel"><h3 class="ma-panel-title">Driving Signals</h3>' + sigHtml + '</div>'
-                + '<div class="ma-panel ma-score-panel"><h3 class="ma-panel-title">Alignment Score</h3>' + scoreHtml + '</div>'
-                + '</div>';
-
-            // Allocation panel: bar chart + cash card + rebalance table
-            html += '<div class="ma-panel"><h3 class="ma-panel-title">Asset Class Allocation: Current vs Regime Ideal</h3>'
-                + '<div id="xray-ma-alloc-chart" class="ma-chart-area"></div>';
-
-            // Cash card
-            var investedValue = 0;
-            if (xrayData && xrayData.holdings) { xrayData.holdings.forEach(function(h) { investedValue += (h.value || 0); }); }
-            var totalValue   = (xrayData && xrayData.portfolio_total_value) || 0;
-            var cashHeld     = Math.max(0, totalValue - investedValue);
-            var idealCashPct = ideal.cash || 0;
-            var idealCashAmt = totalValue * idealCashPct / 100;
-            var cashDelta    = cashHeld - idealCashAmt;
-            var fmtAmt       = function(v) { return sym + Math.round(v).toLocaleString(); };
-            var cashOkVal    = localStorage.getItem('macro_cash_ok');
-
-            html += '<div class="ma-cash-card"><div class="ma-cash-row"><span><strong>Cash Reserve</strong></span></div>';
-            if (totalValue > 0) {
-                html += '<div class="ma-cash-row"><span>You hold:</span><span>' + fmtAmt(cashHeld) + ' (' + (cashHeld / totalValue * 100).toFixed(1) + '%)</span></div>'
-                    + '<div class="ma-cash-row"><span>Regime target:</span><span>' + fmtAmt(idealCashAmt) + ' (' + idealCashPct.toFixed(1) + '%)</span></div>'
-                    + '<div class="ma-cash-row"><span>You are:</span><span id="ma-cash-delta-text" class="' + (cashDelta < 0 ? 'ma-cash-delta-short' : 'ma-cash-delta-ok') + '">'
-                    + fmtAmt(Math.abs(cashDelta)) + (cashDelta < 0 ? ' SHORT' : ' SURPLUS') + '</span></div>';
-            } else {
-                html += '<div class="ma-cash-row"><span style="color:#888">Portfolio value unavailable — connect Ghostfolio to see cash guidance.</span></div>';
-            }
-            html += '<div style="margin-top:10px;display:flex;gap:8px;">'
-                + '<button class="ma-cash-btn' + (cashOkVal === 'yes' ? ' active'    : '') + '" onclick="_setCashStatus(\'yes\')" id="ma-cash-btn-yes">&#10003; I\'m on target</button>'
-                + '<button class="ma-cash-btn' + (cashOkVal === 'no'  ? ' active-no' : '') + '" onclick="_setCashStatus(\'no\')"  id="ma-cash-btn-no">&#10007; I\'m short on cash</button>'
-                + '</div></div>';
-
-            // Rebalance table (equities/bonds/commodities — cash has its own card above)
-            if (curr) {
-                var tRows = ASSET_ORDER.map(function(k) {
-                    var delta = deltas ? deltas[k] : null;
-                    var lo = ranges[k] ? ranges[k][0] : null;
-                    var hi = ranges[k] ? ranges[k][1] : null;
-                    var action = delta == null ? '—' : Math.abs(delta) < 2 ? 'On Target' : delta > 0 ? 'Underweight' : 'Overweight';
-                    var ac = action === 'On Target' ? '#00ffcc' : action === 'Underweight' ? '#4499ff' : '#ffcc00';
-                    return '<tr><td>' + ASSET_LABELS[k] + '</td>'
-                        + '<td>' + (curr[k] != null ? curr[k].toFixed(1) + '%' : '—') + '</td>'
-                        + '<td>' + (lo != null ? lo.toFixed(1) + '% – ' + hi.toFixed(1) + '%' : '—') + '</td>'
-                        + '<td>' + (delta != null ? (delta > 0 ? '+' : '') + delta.toFixed(1) + '%' : '—') + '</td>'
-                        + '<td style="color:' + ac + '">' + action + '</td></tr>';
-                }).join('');
-                html += '<table class="ma-alloc-table"><thead><tr><th>Asset Class</th><th>Current</th><th>Regime Range</th><th>Delta</th><th>Action</th></tr></thead>'
-                    + '<tbody>' + tRows + '</tbody></table>';
-            } else if (macroData.portfolio_note) {
-                html += '<p class="ma-note">' + macroData.portfolio_note + '</p>';
-            }
-            html += '</div>';
-
-            // Regime history
-            if (history.length > 1) {
-                html += '<div class="ma-panel"><h3 class="ma-panel-title">Regime History (last 90 days)</h3>'
-                    + '<div id="xray-ma-history-chart" class="ma-chart-area"></div></div>';
-            }
-
-            html += '</div>';
-            // Store alloc data for cash-toggle chart update
-            window._macroAllocData = {
-                ideal: ideal,
-                current: curr,
-                originalCash: curr ? (curr.cash || 0) : 0,
-                cashDelta: cashDelta,
-                idealCashAmt: idealCashAmt,
-                fmtAmt: fmtAmt
-            };
-            return { html: html, history: history, ideal: ideal, current: curr };
-        }
-
-        // ── Full render ───────────────────────────────────────────────────────────
-        function _renderXray(data, macroData) {
-            var rm   = data.risk_metrics || {};
-            var conc = data.concentration || {};
-            var inc  = data.income || {};
-            var tips = data.tooltips || {};
-            var cur  = data.base_currency || 'GBP';
-            var sym  = ({ GBP:'£', USD:'$', EUR:'€' })[cur] || (cur + ' ');
-
-            // Macro regime section first
-            var macroResult = _renderMacroSection(macroData, data);
-            var html = macroResult.html;
-
-            // Warnings
-            if (data.data_warnings && data.data_warnings.length) {
-                html += '<div class="xray-warnings">';
-                data.data_warnings.forEach(function(w) { html += '<div class="xray-warning-item">&#9888; ' + w + '</div>'; });
-                html += '</div>';
-            }
-
-            // ── Row 1: Headline metric cards ──────────────────────────────────────
-            var bv = rm.portfolio_beta, bc = '';
-            if (bv !== null && bv !== undefined) bc = bv > 1.5 ? 'xray-val-red' : bv > 1.1 ? 'xray-val-amber' : '';
-            var hv = conc.hhi, hc = '';
-            if (hv !== undefined) hc = hv > 0.25 ? 'xray-val-red' : hv > 0.15 ? 'xray-val-amber' : 'xray-val-green';
-            var t5v = conc.top5_weight, t5c = '';
-            if (t5v !== undefined) t5c = t5v > 0.5 ? 'xray-val-red' : t5v > 0.35 ? 'xray-val-amber' : '';
-            var ddv = rm.max_drawdown, ddc = '';
-            if (ddv !== null && ddv !== undefined) ddc = ddv < -0.25 ? 'xray-val-red' : ddv < -0.15 ? 'xray-val-amber' : '';
-            var varAbs = (rm.var_95_1d !== null && rm.var_95_1d !== undefined)
-                ? sym + Math.abs(rm.var_95_1d).toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits:0})
-                : 'N/A';
-            var acv = rm.avg_pairwise_correlation, acc = '';
-            if (acv !== null && acv !== undefined) acc = acv > 0.7 ? 'xray-val-red' : acv > 0.5 ? 'xray-val-amber' : 'xray-val-green';
-
-            html += '<div class="xray-cards-row">';
-            html += _card('Portfolio Beta',     bv !== null && bv !== undefined ? _num(bv,2) : 'N/A', tips.beta,            bc);
-            html += _card('Ann. Volatility',    _pct(rm.annualized_vol, 1),                           tips.vol,             '');
-            html += _card('Max Drawdown',       ddv !== null && ddv !== undefined ? _pct(ddv,1) : 'N/A', tips.max_drawdown, ddc);
-            html += _card('VaR 95% (1-day)',    varAbs,                                               tips.var,             '');
-            html += _card('HHI Score',          hv !== undefined ? _num(hv,3) : 'N/A',               tips.hhi,             hc);
-            html += _card('Top-5 Weight',       t5v !== undefined ? _pct(t5v,1) : 'N/A',             tips.top5,            t5c);
-            html += _card('Avg Correlation',    acv !== null && acv !== undefined ? _num(acv,3) : 'N/A', tips.avg_correlation, acc);
-            html += '</div>';
-
-            // ── Row 2: Extended metrics (only when returns cache has data) ─────────
-            var hasExtended = rm.sharpe_ratio !== null && rm.sharpe_ratio !== undefined;
-            if (hasExtended) {
-                var sv = rm.sharpe_ratio, sc = '';
-                if (sv !== null && sv !== undefined) sc = sv > 1 ? 'xray-val-green' : sv > 0 ? 'xray-val-amber' : 'xray-val-red';
-                var hvarAbs = (rm.historical_var_95_1d !== null && rm.historical_var_95_1d !== undefined)
-                    ? sym + rm.historical_var_95_1d.toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits:0}) : 'N/A';
-                var cvarAbs = (rm.cvar_95_1d !== null && rm.cvar_95_1d !== undefined)
-                    ? sym + rm.cvar_95_1d.toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits:0}) : 'N/A';
-                var skv = rm.skewness, skc = '';
-                if (skv !== null && skv !== undefined) skc = skv < -0.5 ? 'xray-val-red' : skv < 0 ? 'xray-val-amber' : '';
-                html += '<div class="xray-cards-row xray-cards-row-secondary">';
-                html += _card('Sharpe Ratio',    sv !== null && sv !== undefined ? _num(sv,2) : 'N/A', tips.sharpe_ratio,   sc);
-                html += _card('Calmar Ratio',    rm.calmar_ratio !== null && rm.calmar_ratio !== undefined ? _num(rm.calmar_ratio,2) : 'N/A', tips.calmar_ratio, '');
-                html += _card('Hist. VaR 95%',   hvarAbs,                                              tips.historical_var, '');
-                html += _card('CVaR 95%',        cvarAbs,                                              tips.cvar,           '');
-                html += _card('Tracking Error',  _pct(rm.tracking_error, 1),                          tips.tracking_error, '');
-                html += _card('Return Skewness', skv !== null && skv !== undefined ? _num(skv,2) : 'N/A', tips.skewness,   skc);
-                html += '</div>';
-            }
-
-            // ── Allocation: 2x2 grid (Instrument, Sector, Geographic, FX) ──────────
-            var hasFX = data.fx_exposure && data.fx_exposure.length > 0;
-            html += '<div class="xray-section">'
-                + '<h3 class="xray-section-title">Allocation Overview ' + _tip(tips.weights_note) + '</h3>'
-                + '<div class="' + (hasFX ? 'xray-row-2x2' : 'xray-row-3col') + '">'
-                + '<div class="xray-chart-box"><div class="xray-chart-label">Instrument Type ' + _tip(tips.instrument_type) + '</div><div id="xray-c-assetclass" class="xray-chart-el"></div></div>'
-                + '<div class="xray-chart-box"><div class="xray-chart-label">True Sector Exposure <span class="xray-badge">look-through</span> ' + _tip(tips.sector_lookthrough) + '</div><div id="xray-c-sector" class="xray-chart-el"></div></div>'
-                + '<div class="xray-chart-box"><div class="xray-chart-label">Geographic Exposure</div><div id="xray-c-geo" class="xray-chart-el"></div></div>'
-                + (hasFX ? '<div class="xray-chart-box"><div class="xray-chart-label">FX / Currency Exposure ' + _tip(tips.fx_exposure) + '</div><div id="xray-c-fx" class="xray-chart-el"></div></div>' : '')
-                + '</div></div>';
-
-            // ── Position Concentration ────────────────────────────────────────────
-            html += '<div class="xray-section">'
-                + '<h3 class="xray-section-title">Position Concentration</h3>'
-                + '<div id="xray-c-concentration" class="xray-chart-el"></div>'
-                + '</div>';
-
-            // ── Risk Contribution (MRC) ───────────────────────────────────────────
-            var mrcHoldings = (data.holdings || []).filter(function(h){ return h.marginal_risk_contribution != null; });
-            if (mrcHoldings.length >= 2) {
-                html += '<div class="xray-section">'
-                    + '<h3 class="xray-section-title">Risk Contribution per Holding ' + _tip(tips.marginal_risk_contribution) + '</h3>'
-                    + '<div id="xray-c-mrc" class="xray-chart-el"></div>'
-                    + '</div>';
-            }
-
-            // ── Correlation Matrix ────────────────────────────────────────────────
-            var cm = data.correlation_matrix || {};
-            if (cm.tickers && cm.tickers.length >= 2) {
-                html += '<div class="xray-section">'
-                    + '<h3 class="xray-section-title">Correlation Matrix ' + _tip(tips.avg_correlation) + '</h3>'
-                    + '<div class="xray-corr-guide">'
-                    + '<strong>How to read this chart:</strong> Each cell shows the correlation between two holdings '
-                    + '&mdash; how closely they move together over the past year. '
-                    + 'A value near <strong>+1</strong> means the pair rises and falls in lockstep: holding both adds no diversification benefit, just doubled exposure. '
-                    + 'A value near <strong>0</strong> means the two holdings are essentially independent &mdash; what happens to one does not predict the other. '
-                    + 'A value near <strong>&minus;1</strong> means they move in opposite directions, acting as a natural hedge. '
-                    + 'The diagonal is always <strong>1.0</strong> (a holding is perfectly correlated with itself). '
-                    + '<br><br>'
-                    + '<strong>What to watch for:</strong> Red clusters between ETFs that are supposed to diversify you often reveal they hold the same underlying stocks '
-                    + '(e.g. a global tracker and a developed-market ETF). A fully red matrix means your portfolio reacts to market shocks as a single unit &mdash; when one falls, everything falls. '
-                    + 'Teal (low or negative correlation) holdings are your genuine shock absorbers.'
-                    + '<div class="xray-corr-legend">'
-                    + '<div class="xray-corr-legend-item"><div class="xray-corr-swatch" style="background:#ff4d4d"></div>Near +1 &mdash; move together, concentrated risk</div>'
-                    + '<div class="xray-corr-legend-item"><div class="xray-corr-swatch" style="background:#2c2c2c;border:1px solid #444"></div>Near 0 &mdash; independent, genuine diversification</div>'
-                    + '<div class="xray-corr-legend-item"><div class="xray-corr-swatch" style="background:#00ffcc"></div>Near &minus;1 &mdash; inverse movement, natural hedge</div>'
-                    + '</div>'
-                    + '</div>'
-                    + '<div id="xray-c-corr" class="xray-chart-el"></div>'
-                    + '</div>';
-            }
-
-            // ── Income & P&L ──────────────────────────────────────────────────────
-            html += '<div class="xray-section"><h3 class="xray-section-title">Income &amp; Unrealised P&amp;L</h3>'
-                + '<div class="xray-row-2col">'
-                + '<div class="xray-income-cards">'
-                + '<div class="xray-income-card"><div class="xray-income-label">Weighted Dividend Yield ' + _tip(tips.dividend_yield) + '</div>'
-                + '<div class="xray-income-value">' + _pct(inc.weighted_dividend_yield, 2) + '</div></div>'
-                + '<div class="xray-income-card"><div class="xray-income-label">Projected Annual Income ' + _tip(tips.projected_income) + '</div>'
-                + '<div class="xray-income-value">' + sym + (inc.projected_annual_income || 0).toLocaleString(undefined, {minimumFractionDigits:0,maximumFractionDigits:0}) + '</div></div>'
-                + '</div>'
-                + '<div id="xray-c-pnl" class="xray-chart-el"></div>'
-                + '</div></div>';
-
-            // ── Recommendations ───────────────────────────────────────────────────
-            var recs = data.recommendations || {};
-            var recGroups = [
-                { key: 'market_development',   label: 'Market Development',     icon: '🌍' },
-                { key: 'regional_clusters',     label: 'Regional Clusters',      icon: '🗺️' },
-                { key: 'country_concentration', label: 'Country Concentration',  icon: '🏳️' },
-                { key: 'sector',                label: 'Sector Exposure',         icon: '📊' },
-                { key: 'asset_class',           label: 'Asset Class',            icon: '🧩' },
-                { key: 'concentration',         label: 'Concentration',          icon: '⚖️' },
-                { key: 'risk_metrics',          label: 'Risk Metrics',           icon: '📉' },
-                { key: 'income',                label: 'Income',                 icon: '💰' }
-            ];
-            var statusBadge = {
-                'exceeds': '<span class="xray-rec-badge xray-rec-exceeds">Exceeds</span>',
-                'below':   '<span class="xray-rec-badge xray-rec-below">Below target</span>',
-                'within':  '<span class="xray-rec-badge xray-rec-within">Within range ✓</span>',
-                'ok':      '<span class="xray-rec-badge xray-rec-within">OK ✓</span>'
-            };
-            var hasAnyRec = recGroups.some(function(g){ return (recs[g.key] || []).length > 0; });
-            if (hasAnyRec) {
-                html += '<div class="xray-section"><h3 class="xray-section-title">Portfolio Recommendations</h3>';
-                html += '<p class="xray-rec-intro">Comparison of your current allocations against the configured MSCI ACWI-based targets. '
-                      + 'Targets can be customised in <a href="/settings" style="color:#00bcd4;">Settings → X-Ray Allocation Targets</a>.</p>';
-                recGroups.forEach(function(g) {
-                    var items = recs[g.key] || [];
-                    if (!items.length) return;
-                    html += '<details class="xray-rec-group" open>'
-                          + '<summary class="xray-rec-group-summary">' + g.icon + ' ' + g.label
-                          + ' <span class="xray-rec-count">' + items.length + '</span></summary>'
-                          + '<div class="xray-rec-list">';
-                    items.forEach(function(item) {
-                        var badge = statusBadge[item.status] || '';
-                        html += '<div class="xray-rec-item xray-rec-item-' + item.status + '">'
-                              + badge
-                              + '<span class="xray-rec-msg">' + item.message + '</span>'
-                              + '</div>';
-                    });
-                    html += '</div></details>';
-                });
-                html += '</div>';
-            }
-
-            // Footer
-            if (rm.cache_date) {
-                html += '<div class="xray-footer">Risk metrics as of ' + rm.cache_date
-                    + ' &middot; benchmark: ' + rm.benchmark
-                    + ' &middot; lookback: ' + rm.lookback_days + ' days ' + _tip(tips.benchmark)
-                    + ' &middot; all % = invested capital, cash excluded</div>';
-            }
-
-            document.getElementById('xray-content').innerHTML = html;
-
-            // ── Render all charts after DOM update ────────────────────────────────
-            _plotDonut('xray-c-assetclass', data.asset_class_allocation, 'By Type');
-            var sectorData = data.sector_allocation.slice(0, 10);
-            if (data.sector_allocation.length > 10) {
-                var rest = data.sector_allocation.slice(10).reduce(function(s,x){return s+x.weight;}, 0);
-                sectorData = sectorData.concat([{name:'Other', weight:rest}]);
-            }
-            _plotDonut('xray-c-sector', sectorData, 'Sectors');
-            _plotDonut('xray-c-geo', data.geographic_allocation, 'Regions');
-            if (hasFX) {
-                _plotDonut('xray-c-fx', data.fx_exposure.map(function(e){ return {name:e.currency, weight:e.weight}; }), 'Currency');
-            }
-            _plotConcentration('xray-c-concentration', data.holdings, conc);
-            if (mrcHoldings.length >= 2) { _plotMRC('xray-c-mrc', data.holdings); }
-            if (cm.tickers && cm.tickers.length >= 2) { _plotCorrHeatmap('xray-c-corr', cm); }
-            _plotPnL('xray-c-pnl', data.holdings, sym);
-
-            // Macro regime charts (render after DOM update)
-            if (macroData && macroData.status === 'ok') {
-                _plotMacroAlloc('xray-ma-alloc-chart', macroData.ideal_allocation, macroData.current_allocation);
-                if (macroResult.history && macroResult.history.length > 1) {
-                    _plotMacroHistory('xray-ma-history-chart', macroResult.history);
-                }
-                // Restore cash toggle state from localStorage (applies chart + text updates)
-                var savedCash = localStorage.getItem('macro_cash_ok');
-                if (savedCash) { _setCashStatus(savedCash); }
-            }
-        }
-
-        // ── Chart renderers ───────────────────────────────────────────────────────
-        var _DC = ['#4da6ff','#00ffcc','#ffd700','#ff6b6b','#bb86fc','#ff9800','#2196f3','#4caf50','#f44336','#9c27b0','#607d8b'];
-
-        function _plotDonut(elId, alloc, centerText) {
-            if (!alloc || !alloc.length) return;
-            Plotly.newPlot(elId, [{
-                type: 'pie', hole: 0.55,
-                values: alloc.map(function(a){return a.weight;}),
-                labels: alloc.map(function(a){return a.name;}),
-                textinfo: 'none',
-                hovertemplate: '<b>%{label}</b><br>%{percent}<extra></extra>',
-                marker: { colors: _DC }
-            }], _baseLayout({
-                height: 260,
-                margin: { t: 10, r: 20, b: 30, l: 20 },
-                showlegend: true,
-                legend: { font:{size:11,color:'#aaa'}, orientation:'h', y:-0.15, x:0.5, xanchor:'center' },
-                annotations: [{ text: centerText, showarrow: false, font: {color:'#888',size:11} }]
-            }), _PC);
-        }
-
-        function _plotConcentration(elId, holdings, conc) {
-            var top = holdings.slice(0, 20);
-            var labels = top.map(function(h){return h.symbol;}).reverse();
-            var values = top.map(function(h){return h.weight * 100;}).reverse();
-            var colors = values.map(function(v){return v > 20 ? '#ff4d4d' : v > 10 ? '#ffaa00' : '#4da6ff';});
-            var maxV   = Math.max.apply(null, values);
-            Plotly.newPlot(elId, [{
-                type: 'bar', orientation: 'h',
-                x: values, y: labels,
-                marker: { color: colors },
-                text: values.map(function(v){return v.toFixed(1)+'%';}),
-                textposition: 'outside',
-                hovertemplate: '<b>%{y}</b>: %{x:.1f}%<extra></extra>',
-                cliponaxis: false
-            }], _baseLayout({
-                height: Math.max(320, top.length * 30 + 100),
-                margin: { t: 20, r: 70, b: 40, l: 80 },
-                xaxis: { color:'#888', tickformat:'.0f', ticksuffix:'%', range:[0, Math.min(maxV * 1.25, 100)] },
-                yaxis: { color:'#aaa', automargin: true },
-                shapes: [
-                    { type:'line', x0:10, x1:10, y0:0, y1:1, yref:'paper', line:{color:'#ffaa00',width:1,dash:'dot'} },
-                    { type:'line', x0:20, x1:20, y0:0, y1:1, yref:'paper', line:{color:'#ff4d4d',width:1,dash:'dot'} }
-                ]
-            }), _PC);
-        }
-
-        function _plotPnL(elId, holdings, curSym) {
-            var withPnL = holdings.filter(function(h){return h.gross_perf !== 0;});
-            if (!withPnL.length) return;
-            withPnL.sort(function(a,b){return b.gross_perf - a.gross_perf;});
-            Plotly.newPlot(elId, [{
-                type: 'bar',
-                x: withPnL.map(function(h){return h.symbol;}),
-                y: withPnL.map(function(h){return h.gross_perf;}),
-                marker: { color: withPnL.map(function(h){return h.gross_perf >= 0 ? '#00ffcc' : '#ff4d4d';}) },
-                text: withPnL.map(function(h){
-                    var p = h.gross_perf_pct;
-                    return p !== undefined ? (h.gross_perf >= 0 ? '+' : '') + p.toFixed(1) + '%' : '';
-                }),
-                textposition: 'outside',
-                hovertemplate: '<b>%{x}</b><br>P&L: ' + curSym + '%{y:,.0f}<extra></extra>',
-                cliponaxis: false
-            }], _baseLayout({
-                height: 260,
-                margin: { t: 30, r: 20, b: 60, l: 80 },
-                xaxis: { color:'#aaa', tickangle:-45, automargin:true },
-                yaxis: { color:'#888', automargin:true, tickformat:',.0f' },
-                bargap: 0.3
-            }), _PC);
-        }
-
-        function _plotMRC(elId, holdings) {
-            var mrcH = holdings.filter(function(h){ return h.marginal_risk_contribution != null; });
-            if (!mrcH.length) return;
-            mrcH.sort(function(a,b){ return b.marginal_risk_contribution - a.marginal_risk_contribution; });
-            var top = mrcH.slice(0, 20).reverse();
-            var mrcPct = top.map(function(h){ return h.marginal_risk_contribution * 100; });
-            Plotly.newPlot(elId, [{
-                type: 'bar', orientation: 'h',
-                x: mrcPct,
-                y: top.map(function(h){ return h.symbol; }),
-                marker: { color: mrcPct.map(function(v){ return v > 5 ? '#ff4d4d' : v > 3 ? '#ffaa00' : '#bb86fc'; }) },
-                text: mrcPct.map(function(v){ return v.toFixed(2) + '%'; }),
-                textposition: 'outside',
-                customdata: top.map(function(h){ return (h.weight * 100).toFixed(1); }),
-                hovertemplate: '<b>%{y}</b><br>Risk contribution: %{x:.2f}%<br>Portfolio weight: %{customdata}%<extra></extra>',
-                cliponaxis: false
-            }], _baseLayout({
-                height: Math.max(300, top.length * 28 + 100),
-                margin: { t: 20, r: 80, b: 40, l: 80 },
-                xaxis: { color: '#888', tickformat: '.1f', ticksuffix: '%', title: { text: '% of total portfolio volatility', font: { size: 11, color: '#666' } } },
-                yaxis: { color: '#aaa', automargin: true }
-            }), _PC);
-        }
-
-        function _plotCorrHeatmap(elId, corrData) {
-            var tickers = corrData.tickers;
-            var matrix  = corrData.matrix;
-            if (!tickers || tickers.length < 2 || !matrix) return;
-            var textVals = matrix.map(function(row){
-                return row.map(function(v){ return (v !== null && v !== undefined) ? v.toFixed(2) : ''; });
-            });
-            Plotly.newPlot(elId, [{
-                type: 'heatmap',
-                z: matrix,
-                x: tickers,
-                y: tickers,
-                colorscale: [
-                    [0,   '#00ffcc'],
-                    [0.5, '#1e1e1e'],
-                    [1,   '#ff4d4d']
-                ],
-                zmin: -1, zmax: 1,
-                text: textVals,
-                texttemplate: '%{text}',
-                textfont: { size: 10, color: '#e0e0e0' },
-                hovertemplate: '<b>%{x} × %{y}</b><br>Correlation: %{z:.3f}<extra></extra>',
-                showscale: true,
-                colorbar: {
-                    tickvals: [-1, -0.5, 0, 0.5, 1],
-                    ticktext: ['-1', '-0.5', '0', '+0.5', '+1'],
-                    thickness: 12,
-                    len: 0.8,
-                    tickfont: { color: '#888', size: 10 },
-                    title: { text: 'r', font: { color: '#888', size: 11 } }
-                }
-            }], _baseLayout({
-                height: Math.max(320, tickers.length * 40 + 120),
-                margin: { t: 20, r: 100, b: 100, l: 80 },
-                xaxis: { color: '#aaa', tickangle: -45, automargin: true },
-                yaxis: { color: '#aaa', automargin: true, autorange: 'reversed' }
-            }), _PC);
-        }
-
-        function _plotMacroAlloc(elId, ideal, current) {
-            if (!ideal || !document.getElementById(elId)) return;
-            var ASSET_ORDER  = ['equities', 'bonds', 'commodities', 'cash'];
-            var ASSET_LABELS = ['Equities', 'Bonds', 'Commodities', 'Cash'];
-            var idealVals   = ASSET_ORDER.map(function(k) { return ideal[k] || 0; });
-            var traces = [{
-                name: 'Ideal (regime target)',
-                x: ASSET_LABELS, y: idealVals,
-                type: 'bar',
-                marker: { color: '#00ffcc', opacity: 0.85 }
-            }];
-            if (current) {
-                traces.push({
-                    name: 'Current portfolio',
-                    x: ASSET_LABELS,
-                    y: ASSET_ORDER.map(function(k) { return current[k] || 0; }),
-                    type: 'bar',
-                    marker: { color: '#4499ff', opacity: 0.85 }
-                });
-            }
-            Plotly.newPlot(elId, traces, _baseLayout({
-                barmode: 'group', height: 220,
-                margin: { t: 20, b: 60, l: 50, r: 20 },
-                showlegend: true,
-                legend: { orientation: 'h', y: -0.3, font: { size: 11 } },
-                yaxis: { title: { text: '%', font: { size: 11 } }, range: [0, 100] }
-            }), _PC);
-        }
-
-        function _plotMacroHistory(elId, history) {
-            if (!history || history.length < 2 || !document.getElementById(elId)) return;
-            var REGIME_COLORS = { 'Risk-On':'#00ffcc', 'Recovery':'#4499ff', 'Late Cycle':'#ffcc00', 'Stagflation':'#ff9900', 'Contraction':'#ff4444' };
-            var dates  = history.map(function(r) { return r.date; }).reverse();
-            var labels = history.map(function(r) { return r.regime_label; }).reverse();
-            Plotly.newPlot(elId, [{
-                x: dates, y: labels, type: 'scatter', mode: 'markers',
-                marker: { color: labels.map(function(l) { return REGIME_COLORS[l] || '#aaa'; }), size: 8 }
-            }], _baseLayout({
-                height: 180,
-                margin: { t: 10, b: 40, l: 110, r: 20 },
-                xaxis: { color: '#aaa' },
-                yaxis: { color: '#aaa', categoryorder: 'array',
-                         categoryarray: ['Contraction', 'Stagflation', 'Late Cycle', 'Recovery', 'Risk-On'] },
-                showlegend: false
-            }), _PC);
-        }
-
-        // ── DataTables init (unchanged) ───────────────────────────────────────────
-        $(document).ready(function() {
-            var table = $('#dataTable').DataTable({
-                pageLength: 50,
-                deferRender: true,
-                dom: 'lrtip',
-                order: []
-            });
-            window._portfolioTable = table;
-
-            $('#customSearchInput').on('keyup', function () {
-                table.search(this.value).draw();
-            });
-
-            $('#signalFilter').on('change', function() {
-                var val = $(this).val();
-                if(val === 'ALL') { table.column(18).search('').draw(); }
-                else { table.column(18).search('^' + val + '$', true, false).draw(); }
-            });
-
-            $('#tagFilter').on('change', function() {
-                var val = $(this).val();
-                if(val === 'ALL') { table.column(17).search('').draw(); }
-                else { table.column(17).search(val).draw(); }
-            });
-        });
-    </script>
-    <script src="/static/js/portfolio.js?v={{ css_version }}"></script>
-</body>
-</html>
+{% block scripts %}
+<script src="/static/js/position_sizing.js"></script>
+<script src="/static/js/portfolio.js?v={{ css_version }}"></script>
+{% endblock %}

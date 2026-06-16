@@ -535,6 +535,7 @@ table.dataTable tbody tr td { color: #ccc; }
 .summary-label { font-size: 14px; color: #aaa; }
 .summary-value { font-size: 18px; color: #fff; }
 .summary-value-large { font-size: 18px; }
+.cell-sub { color: #aaa; font-size: 0.8em; }
 .ticker-link { color: #4da6ff; font-weight: bold; }
 .text-warning { color: #ffaa00; }
 .text-muted-small { font-size: 12px; color: #bbb; }
