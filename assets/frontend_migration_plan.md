@@ -105,8 +105,8 @@ Status: ☐ todo · ◐ in progress · ☑ done
 
 ### Stage 1 — Simple pages
 - ☑ `tools` (`/tools`) · ☑ `notifications` (`/notifications`) · ☑ `score_history` (`/score-history`)
-- ☑ `earnings_volatility` (`/earnings-volatility`) · ☐ `quant_screener` (`/quant-screener`)
-- ☐ `glossary` (`/glossary`, `glossary.js`) · ☐ `etf_predictor` (`/etf-predictor`)
+- ☑ `earnings_volatility` (`/earnings-volatility`) · ☑ `quant_screener` (`/quant-screener`)
+- ☑ `glossary` (`/glossary`, `glossary.js`) · ☐ `etf_predictor` (`/etf-predictor`)
 - ☐ `dip_radar_summary` (`/dip-radar`) · ☐ `bubble_radar` (`/bubble-radar`, `bubble_radar.js`)
 - ☐ `ai_contagion` (`/ai-contagion`) · ☐ `log_viewer` (`/log-viewer`, `log_viewer.js`)
 - ☐ `news` (`/news`, `news.js`) · ☐ `macro_cards.html` partial (consumed by portfolio/watchlist)
@@ -174,7 +174,7 @@ Constraints (from AGENTS.md):
 Then: bump CSS_VERSION in constants.py; run `source venv/bin/activate && ./run_tests.sh`
 and fix failures; manually verify desktop + phone-width (~390px) + (portfolio/watchlist)
 ?embed=true. Update the tracker row in assets/frontend_migration_plan.md and any docs this
-page affects.
+page affects. Do not attempt to render the page yourself - ask operator to test it.
 
 Report: files changed, route(s) found, tests run, docs updated, and any [NEEDS REVIEW]
 items. Do not touch any other page.

@@ -1,8 +1,15 @@
 document.addEventListener('DOMContentLoaded', () => {
     const searchInput = document.getElementById('glossarySearch');
     const noResults = document.getElementById('noResults');
-    const termSections = document.querySelectorAll('.settings-card:not(.doc-section)');
+    const termSections = document.querySelectorAll('.glossary-section:not(.doc-section)');
     const docSections = document.querySelectorAll('.doc-section');
+
+    function expandSection(section) {
+        const collapseEl = section.querySelector('.accordion-collapse');
+        const btn = section.querySelector('.accordion-button');
+        if (collapseEl) collapseEl.classList.add('show');
+        if (btn) { btn.classList.remove('collapsed'); btn.setAttribute('aria-expanded', 'true'); }
+    }
 
     searchInput.addEventListener('input', function () {
         const query = this.value.toLowerCase().trim();
@@ -28,7 +35,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (matchInSection || query === '') {
                 section.style.display = 'block';
-                if (query !== '') section.setAttribute('open', '');
+                if (query !== '') expandSection(section);
                 sectionsFound++;
             } else {
                 section.style.display = 'none';
@@ -43,7 +50,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const text = section.innerText.toLowerCase();
                 if (text.includes(query)) {
                     section.style.display = 'block';
-                    section.setAttribute('open', '');
+                    expandSection(section);
                     section.classList.add('doc-section-match');
                     sectionsFound++;
                 } else {

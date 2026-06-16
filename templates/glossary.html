@@ -1,36 +1,20 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="color-scheme" content="dark">
-    <title>uantamental - Reference Hub</title>
-    <link rel="stylesheet" href="/static/css/styles.css?v={{ css_version }}">
-</head>
-<body class="body-glossary">
-    
-    <div class="header-container">
-        <div>
-            <div class="title-wrapper">
-                <a href="https://github.com/alfwro13/Stock_Analysis_Project" target="_blank" class="logo-link">
-                    <img src="/assets/logo_small.png" alt="Quantamental Logo" class="logo-img">
-                </a>
-                <h1><abbr title="Combining Quantitative and Fundamental Analysis">uantamental</abbr> System Reference</h1>
-            </div>
-           
-            {% set active_page = 'glossary' %}
-            {% include 'navbar.html' %}
-        </div>
-    </div>
+{% extends "base.html" %}
 
-    <div class="glossary-search-container">
-        <input type="text" id="glossarySearch" class="glossary-search-bar" placeholder="🔍 Search algorithms, candlestick patterns, or technical metrics..." autocomplete="off">
-    </div>
-    
-    <div class="glossary-wrapper">
-        <aside class="glossary-sidebar">
+{% block title %}Quantamental - Reference Hub{% endblock %}
+
+{% block content %}
+<h1 class="mb-3"><abbr title="Combining Quantitative and Fundamental Analysis">Quantamental</abbr> System Reference</h1>
+
+<div class="glossary-search-container mb-3">
+    <input type="text" id="glossarySearch" class="form-control glossary-search-bar"
+           placeholder="🔍 Search algorithms, candlestick patterns, or technical metrics..." autocomplete="off">
+</div>
+
+<div class="row g-4 align-items-start">
+    <div class="col-lg-3 d-none d-lg-block">
+        <div class="glossary-sidebar">
             <h3>Quick Jump</h3>
-            <a href="#machine-learning" class="sidebar-link">🤖 AI & Risk Metrics</a>
+            <a href="#machine-learning" class="sidebar-link">🤖 AI &amp; Risk Metrics</a>
             <a href="#quant-screener" class="sidebar-link">🕵️ Overnight Screener</a>
             <a href="#earnings-vol" class="sidebar-link">📅 Earnings Volatility</a>
             <a href="#strategies" class="sidebar-link">🎯 Trading Strategies</a>
@@ -41,494 +25,648 @@
             <a href="#fundamentals" class="sidebar-link">🏢 Company Valuation</a>
             <a href="#methodology" class="sidebar-link">🧠 System Philosophy</a>
             <a href="#asset-docs-divider" class="sidebar-link">📚 Technical Docs</a>
-        </aside>
-
-        <div class="glossary-content" id="glossaryContainer">
-
-            <details class="settings-card" id="machine-learning">
-                <summary>🤖 Machine Learning & Risk Metrics</summary>
-                <div class="term-box">
-                    <span class="term-title">ML Confidence Score</span>
-                    <p>The mathematical probability (0-100%) output by a Soft-Voting Ensemble (XGBoost + Random Forest) that the stock will generate a >3% return over the next 10 trading days (entry at T+1 close, exit at T+10 close).</p>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">Value at Risk — 1-day, 95% (Historical Simulation)</span>
-                    <p>An institutional metric for downside tail-risk that defines the worst-case scenario under normal market conditions.</p>
-                    <ul>
-                        <li><strong>The Safe Zone:</strong> There is a 95% probability that the asset will not lose more than the VaR percentage in a single trading day.</li>
-                        <li><strong>The Danger Zone:</strong> There is a 5% probability (roughly 1 out of every 20 days) that the asset will drop by the VaR amount <em>or worse</em>.</li>
-                    </ul>
-                    <div class="rule">EXAMPLE: On a $100,000 position with a 12.76% VaR, you are 95% confident your daily loss will not exceed $12,760.</div>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">Conditional VaR (CVaR)</span>
-                    <p>Also known as "Expected Shortfall". While VaR tells you where the cliff edge is, CVaR tells you how far the drop is once you fall off.</p>
-                    <p>It calculates the <strong>average expected loss</strong> on the specific days that the VaR threshold is actually breached (the 5% tail events). This measures the true severity of market shocks, flash crashes, or extreme sell-offs beyond the VaR boundary.</p>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">VADER Sentiment</span>
-                    <p>Natural Language Processing (NLP) engine that reads the latest news headlines and scores the narrative from -1.0 to +1.0.</p>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">Turbulence Index & Regimes</span>
-                    <p>A macro filter using EWMA realized volatility of SPY and FTSE. VIX is shown alongside for reference but is not part of the regime signal. Classifies market into Normal, Volatile, or Crash regimes.</p>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">Market Regime — Price HMM</span>
-                    <p>A 3-state <strong>Hidden Markov Model</strong> trained on 5 years of SPY daily log-returns and 20-day EWMA annualised volatility (λ=0.94). States are sorted by mean volatility so the ordering is stable across daily retrains: <strong>State 0 = Bull</strong> (low vol, positive returns), <strong>State 1 = Chop</strong> (elevated vol, indecisive), <strong>State 2 = Crash</strong> (high vol, negative returns). The current state and confidence probability are shown on the Trap Monitor page; the full Viterbi history, transition matrix, and per-regime statistics are at <code>/market-regime</code>. When the regime transitions, a Nextcloud alert fires.</p>
-                    <div class="rule">Distinct from the <em>Macro HMM</em> in <code>macro_ai_engine.py</code> (which is trained on M2, jobless claims, HY spread, and yield curve to predict macro calendar event impacts). This one operates on price and volatility only — it is a market-microstructure signal, not a macro-fundamental one.</div>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">🌍 Macro Regime Label (Yield Curve Allocator)</span>
-                    <p>A single named state synthesised from yield curve shape, CPI inflation, high-yield credit spreads, the 10-year TIPS real yield, and the HMM hidden state. Five labels are defined: <strong>Risk-On</strong> (positive curve, low inflation, tight spreads), <strong>Late Cycle</strong> (flattening curve, rising CPI), <strong>Stagflation</strong> (high CPI with financial stress or negative real yield), <strong>Contraction</strong> (inverted curve plus recession-mode HMM), and <strong>Recovery</strong> (transitioning out of contraction with improving HMM).</p>
-                    <div class="rule">Computed by <code>regime_engine.classify_macro_regime()</code> each time the systemic threat calculator runs. Stored as <code>regime_label</code> in <code>macro_regimes</code>. Powers the Macro Regime Allocator tool at <code>/macro-allocator</code>.</div>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">Portfolio Regime Alignment Score</span>
-                    <p>A 0–100 score measuring how closely your current asset class weights (equities, bonds, commodities, cash) match the historically optimal weights for the detected macro regime. Computed using cosine similarity between the current allocation vector and the ideal allocation midpoint vector. 100 = perfect match; below 50 = meaningfully misaligned. The score is informational — it does not account for individual conviction, tax, or liquidity constraints.</p>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">Isolation Forest Anomaly Score</span>
-                    <p>An unsupervised machine learning signal that detects when a stock is behaving in a statistically unusual way across <strong>six simultaneous dimensions</strong>: intraday volume relative to its 20-day average, RSI momentum, daily return percentage, distance from the 50-day SMA, 20-day historical volatility, and beta-adjusted market sensitivity. Unlike a single-threshold rule (e.g. "volume > 1.5×"), the Isolation Forest notices compound anomalies — for example, a volume spike that would be unremarkable on its own, but is occurring alongside an RSI divergence and an SMA break simultaneously.</p>
-                    <p>The model is trained separately for each ticker on approximately one year of daily data, so it learns what <em>normal</em> looks like specifically for that stock, not the broad market. The output is a score between <strong>0.00 and 1.00</strong>:</p>
-                    <ul>
-                        <li><strong>0.00 – 0.40 (Normal):</strong> The stock is trading within its typical multi-dimensional behaviour pattern. No action required.</li>
-                        <li><strong>0.40 – 0.70 (Elevated):</strong> Some unusual characteristics present but not outside normal market noise. Worth monitoring.</li>
-                        <li><strong>0.70 – 1.00 (Alert Zone):</strong> The combination of signals is statistically rare for this specific ticker. The system fires a pre-alert to Nextcloud. This does <em>not</em> predict direction — it flags that something structural is changing before a price threshold is breached.</li>
-                    </ul>
-                    <div class="rule">KEY DISTINCTION: This is an early-warning layer, not a crash detector. A score above 0.70 while the price is flat or rising often indicates silent institutional repositioning — accumulation or distribution at scale — before the price reaction is visible.</div>
-                    <p>Models are retrained nightly at 18:30 (Mon–Fri) after market close and are stored as per-ticker <code>.joblib</code> files. Historical scores are backfilled across the full <code>quant_signals</code> history so the 90-day chart on each stock detail page is populated immediately after training.</p>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">Market Stress Score</span>
-                    <p>A market-wide <strong>Isolation Forest</strong> trained daily on 2 years of six macro features: VIX level, VIX relative to its 20-day average (spike detector), HYG credit ETF daily return, US 10-year yield daily change, SPY volume z-score, and SPY daily return. Unlike the per-ticker anomaly score — which asks "is this stock unusual?" — the Market Stress Score asks "is the <em>market structure itself</em> unusual?" A score near 1.0 means the joint distribution of these six signals is in territory that only occurred in roughly 5% of all trading days over the past two years.</p>
-                    <p>The output is a score between <strong>0.00 and 1.00</strong>:</p>
-                    <ul>
-                        <li><strong>0.00 – 0.50 (Normal):</strong> The macro environment is operating within its typical multivariate range.</li>
-                        <li><strong>0.50 – 0.75 (Elevated):</strong> One or more macro signals are stretched; monitor for follow-through.</li>
-                        <li><strong>0.75 – 1.00 (Stress Alert):</strong> The combination of signals is statistically rare. A Nextcloud alert fires if the score remains above 0.75 for two consecutive trading days.</li>
-                    </ul>
-                    <div class="rule">COMPLEMENTARY TO HMM: The HMM classifies <em>which regime</em> the market is in (Bull / Chop / Crash). The Market Stress Score measures <em>how anomalous</em> the current regime environment is relative to its own history. A Crash-regime day with a low stress score is a routine bad day; a Chop-regime day with a high stress score may precede a regime transition.</div>
-                </div>
-            </details>
-
-            <details class="settings-card" id="quant-screener">
-                <summary>🕵️ Overnight Quant Screener (Automated Briefings)</summary>
-                <div class="term-box">
-                    <span class="term-title">Oversold Reversals</span>
-                    <p>Equities aggressively sold off but demonstrating early signs of recovery.</p>
-                    <div class="rule">TRIGGER: RSI < 30 AND MACD Histogram > 0</div>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">Golden MACD Crosses</span>
-                    <p>Momentum reversal indicating underlying institutional accumulation.</p>
-                    <div class="rule">TRIGGER: MACD Line crosses above the Signal Line.</div>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">Momentum & Volume Surges</span>
-                    <p>Explosive buying volume while operating in a healthy momentum band.</p>
-                    <div class="rule">TRIGGER: Volume > 1.5x Avg AND RSI 50-70.</div>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">Overbought Warnings</span>
-                    <p>Risk management alert for assets severely overextended.</p>
-                    <div class="rule border-left-red">TRIGGER: RSI > 70 AND MACD Histogram < 0</div>
-                </div>
-            </details>
-
-            <details class="settings-card" id="earnings-vol">
-                <summary>📅 Earnings Volatility & Options Mispricing</summary>
-                <div class="term-box">
-                    <span class="term-title">Implied Move (ATM Straddle)</span>
-                    <p>Percentage move the options market expects based on the cost of ATM Call + Put.</p>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">Historical Average Move</span>
-                    <p>The average absolute percentage price gap observed over the last 4 quarterly earnings events.</p>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">Mathematical Edge Score</span>
-                    <p>The variance between Historical Move and Implied Move. Positive means options are underpriced.</p>
-                </div>
-            </details>
-
-            <details class="settings-card" id="strategies">
-                <summary>🎯 The Multi-Regime Strategy (Scoring & Tags)</summary>
-                <div class="term-box">
-                    <span class="term-title">⚡ MACD Reversal</span>
-                    <p>Used for bottom-fishing when selling momentum has mathematically exhausted itself.</p>
-                    <div class="rule">TRIGGER: MACD line crosses above the Signal line.</div>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">🔥 VCP Breakout (Volatility Contraction)</span>
-                    <p>Coiled spring setup: institutions absorbing supply without causing price spikes.</p>
-                    <div class="rule">TRIGGER: Weekly variance < 2.5% AND volume dry-up > 20%.</div>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">🎭 Bull Trap / Dead Cat Bounce</span>
-                    <p>A false recovery after a sell-off where prices bounce on suspiciously low volume while still trading below the 20-day EMA. Retail buyers purchase the dip, but institutional conviction is absent — the bounce is driven by short-covering, not genuine demand. The second leg down typically follows.</p>
-                    <div class="rule">SIGNAL: Close &lt; 20-EMA AND recent up-days AND avg volume on up-days / avg volume on down-days &lt; 0.75–0.90.</div>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">🪤 Bear Trap / False Breakdown</span>
-                    <p>A false support breakdown: price briefly pierces the lower Bollinger Band or a key swing low intraday, enticing short sellers to open positions, but then reverses and closes back above support on low volume. The short sellers are &ldquo;trapped&rdquo; as the price rallies against them.</p>
-                    <div class="rule">SIGNAL: Intraday low &lt; Bollinger Lower Band AND close recovers above support AND breakdown volume &lt; 1.2× 20-day average.</div>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">💥 Capitulation (Final Flush)</span>
-                    <p>A violent, high-volume selling climax where leveraged funds and retail traders are forced to liquidate at any price. The statistical signature is volume more than 3 standard deviations above the 20-day mean, combined with an extremely oversold RSI. A candle closing in the upper half of its range (long lower wick) suggests institutions absorbed the panic — this is the potential true bottom.</p>
-                    <div class="rule">SIGNAL: Volume &gt; μ<sub>20</sub> + 3σ AND RSI &lt; 30 AND close in upper 50% of day&rsquo;s range.</div>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">🏗️ Wyckoff Accumulation Phase</span>
-                    <p>Named after Richard Wyckoff, this is the base-building period after capitulation where institutional buyers quietly absorb supply without moving the price. The quantitative fingerprint is a Bollinger Band squeeze (band width &lt; 2% of price, at a 20-day low) combined with declining ATR and drying volume. A high-volume breakout above the upper band confirms the accumulation phase is complete.</p>
-                    <div class="rule">SIGNAL: BB width &lt; 2% AND at 20-day low AND ATR now &lt; 70% of 20-day average AND 5-day avg vol &lt; 70% of 20-day average.</div>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">📊 Trap Phase History &amp; Prediction Accuracy</span>
-                    <p>Every time the Trap Monitor scan runs, the assigned lifecycle phase for each ticker is appended to a persistent history table (<code>trap_phase_history</code>). A daily background job looks up the forward close price at two horizons — 14 and 30 calendar days after the scan date — and records whether the price moved in the direction the phase predicted. The aggregated accuracy is shown on the Trap Monitor page and available via <code>GET /api/trap-monitor/accuracy</code>. At least 5 resolved predictions per phase are required before an accuracy figure is displayed.</p>
-                    <div class="rule">Resolution: first available trading-day close on or after scan_date + N days. "Correct" = price lower for Bull Trap / Selloff; price higher for Bear Trap / Capitulation / Accumulation.</div>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">👑 Market Leader</span>
-                    <p>Relative Strength (RS) compared to the S&P 500 Baseline.</p>
-                </div>
-            </details>
-
-            <details class="settings-card" id="candlesticks">
-                <summary>🕯️ Candlestick Anatomy Masterclass</summary>
-                <div class="term-box">
-                    <span class="term-title">🔨 The Hammer (Bullish Rejection)</span>
-                    <div class="candle-display">
-                        <div class="candle-group">
-                            <div class="candle">
-                                <div class="wick h-100 t-0"></div>
-                                <div class="body-green h-30 t-10"></div>
-                            </div>
-                        </div>
-                        <div class="candle-explanation">Sellers drove price down, but institutional buyers rejected the lows violently.</div>
-                    </div>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">🐂 Bullish Engulfing</span>
-                    <div class="candle-display">
-                        <div class="candle-group">
-                            <div class="candle">
-                                <div class="wick h-60 t-20"></div>
-                                <div class="body-red h-40 t-30"></div>
-                            </div>
-                            <div class="candle">
-                                <div class="wick h-100 t-0"></div>
-                                <div class="body-green h-80 t-10"></div>
-                            </div>
-                        </div>
-                        <div class="candle-explanation">Current day's green body completely overwhelms the previous red body.</div>
-                    </div>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">🌅 Morning Star (3-Candle)</span>
-                    <p>Crown jewel of bottom-fishing. Panic (D1), Indecision (D2), then violent Reversal (D3).</p>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">🪖 Three White Soldiers (3-Candle)</span>
-                    <div class="candle-display">
-                        <div class="candle-group">
-                            <div class="candle">
-                                <div class="wick h-20 t-0"></div>
-                                <div class="body-green h-50 t-20"></div>
-                                <div class="wick h-10 t-70"></div>
-                            </div>
-                            <div class="candle">
-                                <div class="wick h-15 t-0"></div>
-                                <div class="body-green h-65 t-15"></div>
-                                <div class="wick h-10 t-80"></div>
-                            </div>
-                            <div class="candle">
-                                <div class="wick h-10 t-0"></div>
-                                <div class="body-green h-80 t-10"></div>
-                                <div class="wick h-10 t-90"></div>
-                            </div>
-                        </div>
-                        <div class="candle-explanation">Three consecutive bullish candles, each opening inside the prior body and closing higher. Sustained institutional buying — not a one-day spike.</div>
-                    </div>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">🌱 Bullish Harami Cross / 🕸️ Bearish Harami Cross (2-Candle)</span>
-                    <p>A Doji that forms entirely inside the body of the prior large candle. More significant than a standalone Doji because the containment shows the dominant trend has stalled: on a Bullish Harami Cross, sellers have exhausted themselves inside a large red candle; on a Bearish Harami Cross, buyers have run out of momentum inside a large green one.</p>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">🗡️ Piercing Line (2-Candle)</span>
-                    <div class="candle-display">
-                        <div class="candle-group">
-                            <div class="candle">
-                                <div class="wick h-60 t-10"></div>
-                                <div class="body-red h-50 t-30"></div>
-                            </div>
-                            <div class="candle">
-                                <div class="wick h-20 t-0"></div>
-                                <div class="body-green h-60 t-20"></div>
-                                <div class="wick h-20 t-80"></div>
-                            </div>
-                        </div>
-                        <div class="candle-explanation">Bullish D2 opens below D1's close but fights back above D1's midpoint. Weaker than Engulfing, but buyers are clearly defending the low.</div>
-                    </div>
-                </div>
-            </details>
-
-            <details class="settings-card" id="technicals">
-                <summary>📈 Technical Analysis (Chart Momentum)</summary>
-                <div class="term-box">
-                    <span class="term-title">Moving Averages (5D, 10D, 21D, 50D, 200D)</span>
-                    <p>Smoothing price fluctuations to reveal trend. 50D is medium health; 200D is the institutional line.</p>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">RSI (Relative Strength Index)</span>
-                    <p>Measures velocity of price changes. Overbought > 70; Oversold < 30.</p>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">ATR Stop-Loss (Average True Range)</span>
-                    <p>Volatility-adjusted trailing stop dynamically pinned between 1.8× and 3.0× ATRs below the current price.</p>
-                    <p>The multiplier automatically adapts to the stock's historical volatility contraction/expansion (ATR Stability Ratio) and widens defensively during high-risk macro events to prevent noise whipsaws.</p>
-                    <p>This line isn't just an arbitrary number; it is the mathematical boundary of the stock's standard volatility envelope.</p>
-                    <p>As long as the stock stays above the ATR stop, its uptrend is structurally intact. Any drop is just a "normal pullback" (a true dip).</p>
-                    <p>If the stock drops below the ATR stop, it has mathematically violated its volatility envelope. It is no longer a normal pullback; the structural trend has broken, and the asset is in freefall.</p>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">Volume Profile &amp; POC (Point of Control)</span>
-                    <p>A Volume Profile is a 180-day histogram of traded volume distributed across price levels rather than across time. The <strong>POC</strong> is the price bucket with the highest accumulated volume — the price where the most shares changed hands. Institutional participants tend to defend and re-enter near the POC because it represents collective agreement on fair value.</p>
-                    <p>The <strong>Value Area</strong> (VAL to VAH) is the price range covering 70% of total volume, expanding outward from the POC. It marks the zone where the majority of trading activity occurred — prices inside the Value Area are considered "fair"; prices outside it signal potential imbalance.</p>
-                    <p><strong>HVNs</strong> (High Volume Nodes) are local peaks in the histogram — price bands where volume was disproportionately concentrated. They act as support when approached from above and resistance when approached from below. <strong>LVNs</strong> (Low Volume Nodes) are the opposite: thin liquidity bands that price tends to slice through quickly.</p>
-                    <div class="rule">Entry Zone = highest HVN or VAL strictly below current price — a historically liquid support level.</div>
-                    <div class="rule">Exit Zone = lowest overhead HVN or VAH above current price — a historically liquid resistance level.</div>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">Keltner Channel Z-Score</span>
-                    <p>A Keltner Channel is a volatility envelope centred on EMA(21) with band width set by ATR(14). Unlike Bollinger Bands (which use price standard deviation), Keltner Bands expand and contract with <em>true range volatility</em>, making them more stable during trending markets.</p>
-                    <p>The <strong>Z-Score</strong> measures how many ATRs the current close is above or below the EMA: <code>Z = (Close − EMA21) / ATR14</code>. A score of −2 means price is two ATRs below its trend centre — an oversold pullback. A score of −3 or lower signals an extreme extension rarely sustained.</p>
-                    <div class="rule">KC Entry Signal fires when Z-score ∈ (−3, −2) AND price is above the 200-day SMA (uptrend intact) — a mean-reversion buy setup inside a healthy trend.</div>
-                    <div class="rule">KC Exit Signal fires when Z-score &gt; +3 AND RSI &gt; 75 — price is overextended to the upside; risk of reversion is elevated.</div>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">ML Quantile Price Bands (Q10 / Q90)</span>
-                    <p>Two XGBoost regressors trained with <code>objective='reg:quantileerror'</code> on the same 18-feature pipeline as the binary confidence score classifier, but predicting the <em>distribution</em> of 10-day returns rather than a single probability.</p>
-                    <p><strong>Q10 (Floor)</strong> is the 10th-percentile predicted return converted to a price: <code>price_q10 = close × (1 + Q10_return)</code>. In 90% of comparable historical setups, the stock did not fall below this level over the following 10 trading days — a statistically grounded worst-case scenario for limit-order placement.</p>
-                    <p><strong>Q90 (Ceiling)</strong> is the 90th-percentile predicted return converted to a price: <code>price_q90 = close × (1 + Q90_return)</code>. In 90% of comparable historical setups, the stock reached or exceeded this level — an optimistic take-profit target. For portfolio holdings, this is shown as the ML exit target alongside the Volume Profile Exit Zone.</p>
-                    <p>These are probabilistic bands, not exact forecasts. They quantify upside potential and downside floor simultaneously — more informative than a single confidence score for setting limit orders and position sizing.</p>
-                </div>
-            </details>
-
-            <details class="settings-card" id="dip-radar">
-                <summary>🎯 Dip Radar — Intraday Capitulation Detection</summary>
-                <div class="term-box">
-                    <span class="term-title">Intraday Mean Reversion</span>
-                    <p>The quantitative principle underlying Dip Radar. Intraday prices frequently overshoot to the downside during sell-offs as panic, margin calls, and stop-loss cascades force sellers to hit bids indiscriminately. Once selling pressure is mathematically exhausted — a state called <em>capitulation</em> — price tends to snap back toward its fair intraday value (VWAP). Dip Radar measures four independent dimensions of this exhaustion and combines them into a single score.</p>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">Reversal Score (0–100)</span>
-                    <p>The composite signal output by the Dip Radar engine. Points are awarded for each confirmed exhaustion condition:</p>
-                    <div class="rule">+30 pts: RSI &lt; 25 (extreme oversold) — or +15 pts: RSI &lt; 30 (oversold)</div>
-                    <div class="rule">+25 pts: Price below the Lower Bollinger Band at 2.5σ deviation</div>
-                    <div class="rule">+20 pts: Price more than 2.5σ below the intraday VWAP</div>
-                    <div class="rule">+25 pts: Volume Capitulation — current down-candle's volume exceeds the 20-candle SMA by more than 3 standard deviations</div>
-                    <div class="rule border-left-orange"><strong>Alert threshold: Score ≥ 65.</strong> Below this, selling pressure is still present. Above this, the system has detected a high-probability exhaustion zone.</div>
-                    <p>The maximum score is 100 (all four conditions simultaneously active). A score of 65–80 indicates a likely short-term bottom. A score of 80–100 indicates a potential capitulation washout — the highest-probability reversal setup.</p>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">VWAP (Volume Weighted Average Price)</span>
-                    <p>The intraday "true fair value" of a stock, calculated by weighting each minute's price by the trading volume at that time. Unlike a simple moving average, VWAP gives more weight to the prices where the most money changed hands — it is the benchmark institutional traders use to evaluate execution quality.</p>
-                    <p>Dip Radar uses the intraday VWAP anchored from the market open (09:30 ET) and calculates a rolling 30-bar standard deviation band around it. A price trading 2.5σ below VWAP means it has deviated so far from fair value that a statistical mean-reversion is likely.</p>
-                    <div class="rule">VWAP = Σ(Typical Price × Volume) / Σ(Volume), reset at each market open.</div>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">Bollinger Bands (2.5σ Extreme Variant)</span>
-                    <p>Standard Bollinger Bands use 2 standard deviations (σ). Dip Radar deliberately uses a wider 2.5σ band over a 20-candle window to filter out routine volatility and identify only <em>statistically extreme</em> price dislocations. A price piercing the 2.5σ lower band on 1-minute data occurs in less than 1% of candles under normal distribution — when it does, it signals that momentum has overextended to the downside.</p>
-                    <div class="rule">BB Lower = 20-period SMA − (2.5 × 20-period Std Dev)</div>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">Volume Capitulation (Climax Volume)</span>
-                    <p>The most powerful single signal in the Dip Radar algorithm. Capitulation occurs when panicking sellers all exit at the same time, producing a down-candle with a volume spike that is 3 or more standard deviations above the 20-candle rolling average. This is the quantitative fingerprint of "weak hands washing out" — forced sellers (margin calls, stop-loss orders, retail panic) exhausting their supply of stock.</p>
-                    <p>After capitulation, there are no more forced sellers left in the short term, removing the primary source of downward pressure. The remaining participants are either long-term holders or new buyers looking for value — setting up a sharp reversal.</p>
-                    <div class="rule border-left-red">Condition: Volume &gt; (20-candle Volume SMA) + (3 × 20-candle Volume Std Dev) — AND — current candle closes lower than the prior candle.</div>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">Session-Scoped Monitoring</span>
-                    <p>Dip Radar is deliberately not a persistent background monitor. It is activated on-demand per ticker from the stock detail page and automatically deactivates at 16:05 ET (21:05 BST in summer / 22:05 GMT in winter) each trading day. This design prevents alert fatigue and avoids scanning noise outside of active market hours. The deduplication system (alert_state table) ensures that only the first breach of the score threshold fires an alert — repeat scans at the same high score are silently suppressed until a new session arms the ticker again.</p>
-                </div>
-            </details>
-
-            <details class="settings-card" id="workflow-monitor">
-                <summary>🔄 Workflow Monitor</summary>
-                <div class="term-box">
-                    <span class="term-title">Workflow Monitor</span>
-                    <p>A dependency flow-chart (in Settings) of every scheduled background job. Each job is a box wired to the jobs that produce the data it depends on — tracing the pipeline from market-universe ingestion through the quant, machine-learning, sentiment, and dip-radar engines. It answers the question "why is this data missing?" by making the order and health of the whole job chain visible at a glance.</p>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">Traffic-Light Status</span>
-                    <p>Each job box is coloured by how recently it ran relative to its expected schedule:</p>
-                    <div class="rule border-left-green"><strong>Green:</strong> ran within its expected cadence.</div>
-                    <div class="rule border-left-orange"><strong>Amber:</strong> mildly stale, due soon, or has never recorded a run.</div>
-                    <div class="rule border-left-red"><strong>Red:</strong> failed on its last run, or is overdue well beyond its schedule.</div>
-                    <div class="rule"><strong>Grey:</strong> disabled in the current configuration.</div>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">Conflict Detection</span>
-                    <p>Because the scheduler runs different jobs concurrently (it never makes one job wait for another), a job can fire while the upstream job that feeds its data is still running — silently reading incomplete data. The conflict engine flags four situations:</p>
-                    <div class="rule"><strong>Overlap risk:</strong> a job starts within the upstream producer's typical run time (measured as a rolling average of past runs), so the producer may still be working.</div>
-                    <div class="rule"><strong>Backwards ordering:</strong> a job is scheduled to run <em>before</em> the upstream job that produces the data it consumes.</div>
-                    <div class="rule"><strong>Disabled upstream:</strong> an enabled job depends on data from a job that is currently switched off.</div>
-                    <div class="rule"><strong>Stale / failed:</strong> a job has not run when it should have, or errored on its last run.</div>
-                </div>
-            </details>
-
-            <details class="settings-card" id="notification-routing">
-                <summary>🔔 Notification Settings</summary>
-                <div class="term-box">
-                    <span class="term-title">Notification Settings</span>
-                    <p>A single control panel (in Settings) for every notification the app produces. Each scheduled job and each alert is a row, and for each you choose independently which channels it is delivered through. It replaces the scattered per-engine "send to Nextcloud" toggles with one place to see and control what goes where.</p>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">Channels</span>
-                    <p>Three independent destinations per notification:</p>
-                    <div class="rule"><strong>Log file:</strong> written to the rotating application log (<code>logs/app.log</code>).</div>
-                    <div class="rule"><strong>In-app:</strong> shown in the in-app notification centre (the bell icon).</div>
-                    <div class="rule"><strong>Nextcloud Talk:</strong> pushed as a message to your Nextcloud Talk conversation.</div>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">Job status vs. alert sources</span>
-                    <p>Each job exposes a <em>status</em> row covering its start / success / error messages, plus any distinct <em>alert</em> sub-rows it emits — so, for example, Crash, Moonshot, Anomaly and Macro Yield alerts (all produced by the one intraday job) can each route to different channels. The morning/lunchtime briefings and the Fear &amp; Greed chart upload file attachments to Talk and remain governed by their own enable toggles; they appear here for log/in-app routing only.</p>
-                </div>
-            </details>
-
-            <details class="settings-card" id="etf-predictor">
-                <summary>📊 ETF Price Predictor</summary>
-                <div class="term-box">
-                    <span class="term-title">ETF Price Predictor</span>
-                    <p>A configurable tool that estimates an ETF's next-session opening price by weighting the after-hours returns of its top constituent holdings. Users configure the ETF ticker and up to 20 constituent tickers with weights in Settings. The system normalises weights to 100% and runs two engines: a holdings-weighted basket return engine (primary) and an OLS regression engine (fallback).</p>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">Holdings Engine</span>
-                    <p>The primary prediction engine. For each constituent, the engine measures the price change since the ETF's home-exchange close (post-close intraday signal) or since the prior daily close (daily signal). It then weights these returns by each constituent's portfolio weight to compute a weighted basket return, applies an FX adjustment if the ETF and its constituents are denominated in different currencies, and projects the ETF's next open from its last close.</p>
-                    <div class="rule">Predicted Price = Last Close × (1 + Weighted Return + FX Adjustment)</div>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">Regression Engine</span>
-                    <p>The fallback prediction engine. Uses 60+ days of history to fit an OLS regression model: ETF next-morning return = α + β × average constituent daily return. When fewer than 3 constituents have usable data (holdings engine returns None), the regression engine is used instead. Reports R², beta, and a 95% confidence interval derived from regression residuals.</p>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">Constituent Weights</span>
-                    <p>The percentage allocation each ticker represents within the configured ETF prediction basket. Weights are automatically normalised to sum to 100% regardless of input values. Weights at the time of each prediction are saved as a snapshot so editing the config later does not distort historical accuracy records.</p>
-                </div>
-            </details>
-
-            <details class="settings-card" id="stress-tester">
-                <summary>📉 Historical Stress Tester</summary>
-                <div class="term-box">
-                    <span class="term-title">Beta-Adjusted Scenario Shock</span>
-                    <p>The core formula used by the stress tester to estimate each holding's loss during a historical crash. Beta measures how much a stock amplifies (or dampens) the market's move: a stock with β=1.5 is expected to fall 50% more than the market on a down day.</p>
-                    <div class="rule">Holding Drop (%) = Market Crash % × Beta × Sector Multiplier</div>
-                    <p>The result is then multiplied by the holding's current value to produce a concrete monetary loss estimate in your base currency. Drops are capped at −95% to reflect that equity rarely goes to zero in a systemic crash.</p>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">Sector Multiplier</span>
-                    <p>A per-sector adjustment that reflects how much more or less a given sector fell compared to the broad market during a specific historical crisis. A multiplier above 1.0 means the sector was hit harder than the index; below 1.0 means it held up better. A negative multiplier means the sector actually <em>gained</em> during the crash (e.g. Energy in the 2022 inflation shock).</p>
-                    <p>Examples from the Dot-com crash: Technology ×2.2 (NASDAQ fell 78% vs S&P's 49%), Consumer Defensive ×0.4 (fell far less than the market), Energy ×0.5.</p>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">Why Not Historical Replay?</span>
-                    <p>The stress tester uses a parametric model rather than replaying actual historical prices for two reasons: (1) local price data only covers the past 2 years — the GFC, Dot-com crash, COVID crash, and 2022 shock are all outside this window; (2) many holdings (newer ETFs, recently-listed stocks) simply did not exist during those crashes. The beta-shock approach works for any holding regardless of listing date, and is transparent about its assumptions.</p>
-                </div>
-            </details>
-
-            <details class="settings-card" id="bubble-radar">
-                <summary>&#127968; Bubble Radar — Valuation Euphoria Detection</summary>
-                <div class="term-box">
-                    <span class="term-title">Bubble Risk Score</span>
-                    <p>A composite 0–100 score derived from seven weighted metrics that collectively measure how far a ticker's price has detached from its fundamental anchor. It is computed per-ticker using fixed thresholds (bucket scoring), not cross-sectional Z-scores, so it is equally meaningful for a single ticker or a full portfolio batch. Scores are stored daily and used to assess prediction reliability over 4-, 8-, and 12-week horizons.</p>
-                    <div class="rule">Watch flag: score ≥ configurable Watch threshold (default 70). Bubble Risk flag: score ≥ configurable Bubble threshold (default 85).</div>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">SMA-200 Extension</span>
-                    <p>The percentage by which the current closing price exceeds the 200-day Simple Moving Average. A durable bull market typically sees stocks trading 5–15% above their SMA-200. Extensions of 25% or more indicate the price has run far ahead of its long-term trend line and is statistically prone to mean reversion.</p>
-                    <div class="rule">Scoring: 0 pts &lt; 15% extension; 10 pts at 15–25%; 17 pts at 25–40%; 25 pts above 40%.</div>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">Sustained RSI High</span>
-                    <p>The average daily RSI reading over the last 20 trading days. A single spike above 70 is a normal momentum signal. Prolonged averages above 70–75 sustained over weeks indicate persistent overbought pressure — the market is continuously pricing in further upside, leaving the ticker vulnerable to any negative surprise.</p>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">FCF Yield vs Real 10-Year</span>
-                    <p>A fundamental sanity check comparing equity return to the risk-free rate. FCF yield is computed as <code>(Free Cash Flow / Market Cap) × 100</code>. The real risk-free rate is the US 10-year inflation-adjusted yield (FRED series DFII10). When FCF yield falls below the real 10-year, equity holders are accepting a lower return than risk-free bonds — a classic bubble condition. US stocks only.</p>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">IV Call Skew</span>
-                    <p>The ratio of average <abbr title="Implied Volatility — the market's expectation of future price movement, derived from live option prices.">IV</abbr> for out-of-the-money (OTM) call options to average IV for OTM put options, using the nearest-expiry chain. A ratio above 1.0 means the market is paying more to bet on further upside than to hedge the downside — a sign of speculative call-buying euphoria. Applied to US-listed tickers only (LSE/XETRA options are not reliably available via the data provider).</p>
-                    <div class="rule">Neutral: ≤ 1.0. Elevated: 1.0–1.2. Extreme call mania: ≥ 1.2.</div>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">SPY vs RSP Breadth Spread</span>
-                    <p>The difference between the 20-day return of the cap-weighted S&amp;P 500 (<strong>SPY</strong>) and the equal-weight S&amp;P 500 (<strong>RSP</strong>). When SPY significantly outperforms RSP, a handful of mega-cap stocks are carrying the index while the average stock lags — a hallmark of late-stage, narrow-breadth rallies that historically precede corrections.</p>
-                    <div class="rule">A spread above 5 percentage points is flagged as a breadth warning.</div>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">Bubble Watch vs Bubble Risk</span>
-                    <p><strong>Bubble Watch</strong> (yellow flag) indicates a ticker is exhibiting early signs of valuation overextension but has not yet crossed the highest-conviction threshold. <strong>Bubble Risk</strong> (red flag) indicates the composite score exceeds the upper threshold and multiple independent metrics are simultaneously elevated. Both thresholds are configurable in Settings → Bubble Radar.</p>
-                </div>
-            </details>
-
-            <details class="settings-card" id="fundamentals">
-                <summary>🏢 Fundamental Valuation (Company Health)</summary>
-                <div class="term-box">
-                    <span class="term-title">Peter Lynch Fair Value PEG</span>
-                    <p>Adaptation comparing Trailing P/E to actual YoY earnings growth.</p>
-                    <div class="rule">PEG < 1.0 = Undervalued; PEG > 2.0 = Overvalued.</div>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">Financial Safety (Debt & Liquidity)</span>
-                    <p>Debt-to-Equity > 2.0 suggests bankruptcy risk in high-rate environments.</p>
-                </div>
-            </details>
-
-            <details class="settings-card" id="methodology">
-                <summary>🧠 System Methodology (The "Why")</summary>
-                <div class="term-box">
-                    <span class="term-title">Quantamental "Dual-Lens" Architecture</span>
-                    <p>Fundamentals decide WHAT to buy; Quantitative technicals decide WHEN to buy.</p>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">Hierarchical Signal Purity</span>
-                    <p>Strict evaluation priority: 3-candle patterns override 2-candle patterns to prevent contradictions.</p>
-                </div>
-                <div class="term-box">
-                    <span class="term-title">FinBERT NLP Sentiment Engine</span>
-                    <p>An institutional-grade Natural Language Processing model powered by HuggingFace's <code>ProsusAI/finbert</code>. It continuously ingests the latest financial news, truncates the text to fit strict BERT token limits, and processes Wall Street narratives to output a standardized sentiment score.</p>
-                    <p>The raw float scores are mapped into five distinct emotional states: Euphoria, Bullish, Neutral, Bearish, and Extreme Fear.</p>
-                    <div class="rule border-left-red">
-                        <strong>Architectural Note (The Yield Trap):</strong> Sovereign bond yields (e.g., US 30Y or UK Gilt) are strictly excluded from NLP scoring. NLP models natively interpret words like "surging" or "breaking out" as positive. However, surging risk-free yields are fundamentally toxic for equities. Excluding them prevents critical inverse-logic UI errors.
-                    </div>
-                </div>
-            </details>
-
-            {% if asset_docs %}
-            <div class="doc-section-divider" id="asset-docs-divider">
-                <h2>📚 Technical Documentation</h2>
-                <p>Internal system documentation from the <code>assets/</code> directory — auto-discovered on every page load.</p>
-            </div>
-            {% for doc in asset_docs %}
-            <details class="settings-card doc-section" id="{{ doc.slug }}">
-                <summary>📄 {{ doc.title }}</summary>
-                <div class="doc-content">{{ doc.html | safe }}</div>
-            </details>
-            {% endfor %}
-            {% endif %}
-
-            <div id="noResults" class="glossary-empty-state">
-                <h3>No matching terms found.</h3>
-                <p>Try searching for categories like "RSI", "MACD", "VaR", or a system component name.</p>
-            </div>
-
         </div>
     </div>
 
-    <script src="/static/js/glossary.js?v={{ css_version }}"></script>
-</body>
-</html>
+    <div class="col-12 col-lg-9" id="glossaryContainer">
+        <div class="accordion" id="glossaryAccordion">
+
+            <div class="accordion-item glossary-section" id="machine-learning">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button"
+                            data-bs-toggle="collapse" data-bs-target="#collapse-ml"
+                            aria-expanded="false" aria-controls="collapse-ml">
+                        🤖 Machine Learning &amp; Risk Metrics
+                    </button>
+                </h2>
+                <div id="collapse-ml" class="accordion-collapse collapse">
+                    <div class="accordion-body">
+                        <div class="term-box">
+                            <span class="term-title">ML Confidence Score</span>
+                            <p>The mathematical probability (0-100%) output by a Soft-Voting Ensemble (XGBoost + Random Forest) that the stock will generate a >3% return over the next 10 trading days (entry at T+1 close, exit at T+10 close).</p>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">Value at Risk — 1-day, 95% (Historical Simulation)</span>
+                            <p>An institutional metric for downside tail-risk that defines the worst-case scenario under normal market conditions.</p>
+                            <ul>
+                                <li><strong>The Safe Zone:</strong> There is a 95% probability that the asset will not lose more than the VaR percentage in a single trading day.</li>
+                                <li><strong>The Danger Zone:</strong> There is a 5% probability (roughly 1 out of every 20 days) that the asset will drop by the VaR amount <em>or worse</em>.</li>
+                            </ul>
+                            <div class="rule">EXAMPLE: On a $100,000 position with a 12.76% VaR, you are 95% confident your daily loss will not exceed $12,760.</div>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">Conditional VaR (CVaR)</span>
+                            <p>Also known as "Expected Shortfall". While VaR tells you where the cliff edge is, CVaR tells you how far the drop is once you fall off.</p>
+                            <p>It calculates the <strong>average expected loss</strong> on the specific days that the VaR threshold is actually breached (the 5% tail events). This measures the true severity of market shocks, flash crashes, or extreme sell-offs beyond the VaR boundary.</p>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">VADER Sentiment</span>
+                            <p>Natural Language Processing (NLP) engine that reads the latest news headlines and scores the narrative from -1.0 to +1.0.</p>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">Turbulence Index &amp; Regimes</span>
+                            <p>A macro filter using EWMA realized volatility of SPY and FTSE. VIX is shown alongside for reference but is not part of the regime signal. Classifies market into Normal, Volatile, or Crash regimes.</p>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">Market Regime — Price HMM</span>
+                            <p>A 3-state <strong>Hidden Markov Model</strong> trained on 5 years of SPY daily log-returns and 20-day EWMA annualised volatility (λ=0.94). States are sorted by mean volatility so the ordering is stable across daily retrains: <strong>State 0 = Bull</strong> (low vol, positive returns), <strong>State 1 = Chop</strong> (elevated vol, indecisive), <strong>State 2 = Crash</strong> (high vol, negative returns). The current state and confidence probability are shown on the Trap Monitor page; the full Viterbi history, transition matrix, and per-regime statistics are at <code>/market-regime</code>. When the regime transitions, a Nextcloud alert fires.</p>
+                            <div class="rule">Distinct from the <em>Macro HMM</em> in <code>macro_ai_engine.py</code> (which is trained on M2, jobless claims, HY spread, and yield curve to predict macro calendar event impacts). This one operates on price and volatility only — it is a market-microstructure signal, not a macro-fundamental one.</div>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">🌍 Macro Regime Label (Yield Curve Allocator)</span>
+                            <p>A single named state synthesised from yield curve shape, CPI inflation, high-yield credit spreads, the 10-year TIPS real yield, and the HMM hidden state. Five labels are defined: <strong>Risk-On</strong> (positive curve, low inflation, tight spreads), <strong>Late Cycle</strong> (flattening curve, rising CPI), <strong>Stagflation</strong> (high CPI with financial stress or negative real yield), <strong>Contraction</strong> (inverted curve plus recession-mode HMM), and <strong>Recovery</strong> (transitioning out of contraction with improving HMM).</p>
+                            <div class="rule">Computed by <code>regime_engine.classify_macro_regime()</code> each time the systemic threat calculator runs. Stored as <code>regime_label</code> in <code>macro_regimes</code>. Powers the Macro Regime Allocator tool at <code>/macro-allocator</code>.</div>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">Portfolio Regime Alignment Score</span>
+                            <p>A 0–100 score measuring how closely your current asset class weights (equities, bonds, commodities, cash) match the historically optimal weights for the detected macro regime. Computed using cosine similarity between the current allocation vector and the ideal allocation midpoint vector. 100 = perfect match; below 50 = meaningfully misaligned. The score is informational — it does not account for individual conviction, tax, or liquidity constraints.</p>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">Isolation Forest Anomaly Score</span>
+                            <p>An unsupervised machine learning signal that detects when a stock is behaving in a statistically unusual way across <strong>six simultaneous dimensions</strong>: intraday volume relative to its 20-day average, RSI momentum, daily return percentage, distance from the 50-day SMA, 20-day historical volatility, and beta-adjusted market sensitivity. Unlike a single-threshold rule (e.g. "volume > 1.5×"), the Isolation Forest notices compound anomalies — for example, a volume spike that would be unremarkable on its own, but is occurring alongside an RSI divergence and an SMA break simultaneously.</p>
+                            <p>The model is trained separately for each ticker on approximately one year of daily data, so it learns what <em>normal</em> looks like specifically for that stock, not the broad market. The output is a score between <strong>0.00 and 1.00</strong>:</p>
+                            <ul>
+                                <li><strong>0.00 – 0.40 (Normal):</strong> The stock is trading within its typical multi-dimensional behaviour pattern. No action required.</li>
+                                <li><strong>0.40 – 0.70 (Elevated):</strong> Some unusual characteristics present but not outside normal market noise. Worth monitoring.</li>
+                                <li><strong>0.70 – 1.00 (Alert Zone):</strong> The combination of signals is statistically rare for this specific ticker. The system fires a pre-alert to Nextcloud. This does <em>not</em> predict direction — it flags that something structural is changing before a price threshold is breached.</li>
+                            </ul>
+                            <div class="rule">KEY DISTINCTION: This is an early-warning layer, not a crash detector. A score above 0.70 while the price is flat or rising often indicates silent institutional repositioning — accumulation or distribution at scale — before the price reaction is visible.</div>
+                            <p>Models are retrained nightly at 18:30 (Mon–Fri) after market close and are stored as per-ticker <code>.joblib</code> files. Historical scores are backfilled across the full <code>quant_signals</code> history so the 90-day chart on each stock detail page is populated immediately after training.</p>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">Market Stress Score</span>
+                            <p>A market-wide <strong>Isolation Forest</strong> trained daily on 2 years of six macro features: VIX level, VIX relative to its 20-day average (spike detector), HYG credit ETF daily return, US 10-year yield daily change, SPY volume z-score, and SPY daily return. Unlike the per-ticker anomaly score — which asks "is this stock unusual?" — the Market Stress Score asks "is the <em>market structure itself</em> unusual?" A score near 1.0 means the joint distribution of these six signals is in territory that only occurred in roughly 5% of all trading days over the past two years.</p>
+                            <p>The output is a score between <strong>0.00 and 1.00</strong>:</p>
+                            <ul>
+                                <li><strong>0.00 – 0.50 (Normal):</strong> The macro environment is operating within its typical multivariate range.</li>
+                                <li><strong>0.50 – 0.75 (Elevated):</strong> One or more macro signals are stretched; monitor for follow-through.</li>
+                                <li><strong>0.75 – 1.00 (Stress Alert):</strong> The combination of signals is statistically rare. A Nextcloud alert fires if the score remains above 0.75 for two consecutive trading days.</li>
+                            </ul>
+                            <div class="rule">COMPLEMENTARY TO HMM: The HMM classifies <em>which regime</em> the market is in (Bull / Chop / Crash). The Market Stress Score measures <em>how anomalous</em> the current regime environment is relative to its own history. A Crash-regime day with a low stress score is a routine bad day; a Chop-regime day with a high stress score may precede a regime transition.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="accordion-item glossary-section" id="quant-screener">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button"
+                            data-bs-toggle="collapse" data-bs-target="#collapse-screener"
+                            aria-expanded="false" aria-controls="collapse-screener">
+                        🕵️ Overnight Quant Screener (Automated Briefings)
+                    </button>
+                </h2>
+                <div id="collapse-screener" class="accordion-collapse collapse">
+                    <div class="accordion-body">
+                        <div class="term-box">
+                            <span class="term-title">Oversold Reversals</span>
+                            <p>Equities aggressively sold off but demonstrating early signs of recovery.</p>
+                            <div class="rule">TRIGGER: RSI &lt; 30 AND MACD Histogram &gt; 0</div>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">Golden MACD Crosses</span>
+                            <p>Momentum reversal indicating underlying institutional accumulation.</p>
+                            <div class="rule">TRIGGER: MACD Line crosses above the Signal Line.</div>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">Momentum &amp; Volume Surges</span>
+                            <p>Explosive buying volume while operating in a healthy momentum band.</p>
+                            <div class="rule">TRIGGER: Volume &gt; 1.5x Avg AND RSI 50-70.</div>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">Overbought Warnings</span>
+                            <p>Risk management alert for assets severely overextended.</p>
+                            <div class="rule border-left-red">TRIGGER: RSI &gt; 70 AND MACD Histogram &lt; 0</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="accordion-item glossary-section" id="earnings-vol">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button"
+                            data-bs-toggle="collapse" data-bs-target="#collapse-earnings-vol"
+                            aria-expanded="false" aria-controls="collapse-earnings-vol">
+                        📅 Earnings Volatility &amp; Options Mispricing
+                    </button>
+                </h2>
+                <div id="collapse-earnings-vol" class="accordion-collapse collapse">
+                    <div class="accordion-body">
+                        <div class="term-box">
+                            <span class="term-title">Implied Move (ATM Straddle)</span>
+                            <p>Percentage move the options market expects based on the cost of ATM Call + Put.</p>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">Historical Average Move</span>
+                            <p>The average absolute percentage price gap observed over the last 4 quarterly earnings events.</p>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">Mathematical Edge Score</span>
+                            <p>The variance between Historical Move and Implied Move. Positive means options are underpriced.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="accordion-item glossary-section" id="strategies">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button"
+                            data-bs-toggle="collapse" data-bs-target="#collapse-strategies"
+                            aria-expanded="false" aria-controls="collapse-strategies">
+                        🎯 The Multi-Regime Strategy (Scoring &amp; Tags)
+                    </button>
+                </h2>
+                <div id="collapse-strategies" class="accordion-collapse collapse">
+                    <div class="accordion-body">
+                        <div class="term-box">
+                            <span class="term-title">⚡ MACD Reversal</span>
+                            <p>Used for bottom-fishing when selling momentum has mathematically exhausted itself.</p>
+                            <div class="rule">TRIGGER: MACD line crosses above the Signal line.</div>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">🔥 VCP Breakout (Volatility Contraction)</span>
+                            <p>Coiled spring setup: institutions absorbing supply without causing price spikes.</p>
+                            <div class="rule">TRIGGER: Weekly variance &lt; 2.5% AND volume dry-up &gt; 20%.</div>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">🎭 Bull Trap / Dead Cat Bounce</span>
+                            <p>A false recovery after a sell-off where prices bounce on suspiciously low volume while still trading below the 20-day EMA. Retail buyers purchase the dip, but institutional conviction is absent — the bounce is driven by short-covering, not genuine demand. The second leg down typically follows.</p>
+                            <div class="rule">SIGNAL: Close &lt; 20-EMA AND recent up-days AND avg volume on up-days / avg volume on down-days &lt; 0.75–0.90.</div>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">🪤 Bear Trap / False Breakdown</span>
+                            <p>A false support breakdown: price briefly pierces the lower Bollinger Band or a key swing low intraday, enticing short sellers to open positions, but then reverses and closes back above support on low volume. The short sellers are &ldquo;trapped&rdquo; as the price rallies against them.</p>
+                            <div class="rule">SIGNAL: Intraday low &lt; Bollinger Lower Band AND close recovers above support AND breakdown volume &lt; 1.2× 20-day average.</div>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">💥 Capitulation (Final Flush)</span>
+                            <p>A violent, high-volume selling climax where leveraged funds and retail traders are forced to liquidate at any price. The statistical signature is volume more than 3 standard deviations above the 20-day mean, combined with an extremely oversold RSI. A candle closing in the upper half of its range (long lower wick) suggests institutions absorbed the panic — this is the potential true bottom.</p>
+                            <div class="rule">SIGNAL: Volume &gt; μ<sub>20</sub> + 3σ AND RSI &lt; 30 AND close in upper 50% of day&rsquo;s range.</div>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">🏗️ Wyckoff Accumulation Phase</span>
+                            <p>Named after Richard Wyckoff, this is the base-building period after capitulation where institutional buyers quietly absorb supply without moving the price. The quantitative fingerprint is a Bollinger Band squeeze (band width &lt; 2% of price, at a 20-day low) combined with declining ATR and drying volume. A high-volume breakout above the upper band confirms the accumulation phase is complete.</p>
+                            <div class="rule">SIGNAL: BB width &lt; 2% AND at 20-day low AND ATR now &lt; 70% of 20-day average AND 5-day avg vol &lt; 70% of 20-day average.</div>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">📊 Trap Phase History &amp; Prediction Accuracy</span>
+                            <p>Every time the Trap Monitor scan runs, the assigned lifecycle phase for each ticker is appended to a persistent history table (<code>trap_phase_history</code>). A daily background job looks up the forward close price at two horizons — 14 and 30 calendar days after the scan date — and records whether the price moved in the direction the phase predicted. The aggregated accuracy is shown on the Trap Monitor page and available via <code>GET /api/trap-monitor/accuracy</code>. At least 5 resolved predictions per phase are required before an accuracy figure is displayed.</p>
+                            <div class="rule">Resolution: first available trading-day close on or after scan_date + N days. "Correct" = price lower for Bull Trap / Selloff; price higher for Bear Trap / Capitulation / Accumulation.</div>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">👑 Market Leader</span>
+                            <p>Relative Strength (RS) compared to the S&amp;P 500 Baseline.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="accordion-item glossary-section" id="candlesticks">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button"
+                            data-bs-toggle="collapse" data-bs-target="#collapse-candlesticks"
+                            aria-expanded="false" aria-controls="collapse-candlesticks">
+                        🕯️ Candlestick Anatomy Masterclass
+                    </button>
+                </h2>
+                <div id="collapse-candlesticks" class="accordion-collapse collapse">
+                    <div class="accordion-body">
+                        <div class="term-box">
+                            <span class="term-title">🔨 The Hammer (Bullish Rejection)</span>
+                            <div class="candle-display">
+                                <div class="candle-group">
+                                    <div class="candle">
+                                        <div class="wick h-100 t-0"></div>
+                                        <div class="body-green h-30 t-10"></div>
+                                    </div>
+                                </div>
+                                <div class="candle-explanation">Sellers drove price down, but institutional buyers rejected the lows violently.</div>
+                            </div>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">🐂 Bullish Engulfing</span>
+                            <div class="candle-display">
+                                <div class="candle-group">
+                                    <div class="candle">
+                                        <div class="wick h-60 t-20"></div>
+                                        <div class="body-red h-40 t-30"></div>
+                                    </div>
+                                    <div class="candle">
+                                        <div class="wick h-100 t-0"></div>
+                                        <div class="body-green h-80 t-10"></div>
+                                    </div>
+                                </div>
+                                <div class="candle-explanation">Current day's green body completely overwhelms the previous red body.</div>
+                            </div>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">🌅 Morning Star (3-Candle)</span>
+                            <p>Crown jewel of bottom-fishing. Panic (D1), Indecision (D2), then violent Reversal (D3).</p>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">🪖 Three White Soldiers (3-Candle)</span>
+                            <div class="candle-display">
+                                <div class="candle-group">
+                                    <div class="candle">
+                                        <div class="wick h-20 t-0"></div>
+                                        <div class="body-green h-50 t-20"></div>
+                                        <div class="wick h-10 t-70"></div>
+                                    </div>
+                                    <div class="candle">
+                                        <div class="wick h-15 t-0"></div>
+                                        <div class="body-green h-65 t-15"></div>
+                                        <div class="wick h-10 t-80"></div>
+                                    </div>
+                                    <div class="candle">
+                                        <div class="wick h-10 t-0"></div>
+                                        <div class="body-green h-80 t-10"></div>
+                                        <div class="wick h-10 t-90"></div>
+                                    </div>
+                                </div>
+                                <div class="candle-explanation">Three consecutive bullish candles, each opening inside the prior body and closing higher. Sustained institutional buying — not a one-day spike.</div>
+                            </div>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">🌱 Bullish Harami Cross / 🕸️ Bearish Harami Cross (2-Candle)</span>
+                            <p>A Doji that forms entirely inside the body of the prior large candle. More significant than a standalone Doji because the containment shows the dominant trend has stalled: on a Bullish Harami Cross, sellers have exhausted themselves inside a large red candle; on a Bearish Harami Cross, buyers have run out of momentum inside a large green one.</p>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">🗡️ Piercing Line (2-Candle)</span>
+                            <div class="candle-display">
+                                <div class="candle-group">
+                                    <div class="candle">
+                                        <div class="wick h-60 t-10"></div>
+                                        <div class="body-red h-50 t-30"></div>
+                                    </div>
+                                    <div class="candle">
+                                        <div class="wick h-20 t-0"></div>
+                                        <div class="body-green h-60 t-20"></div>
+                                        <div class="wick h-20 t-80"></div>
+                                    </div>
+                                </div>
+                                <div class="candle-explanation">Bullish D2 opens below D1's close but fights back above D1's midpoint. Weaker than Engulfing, but buyers are clearly defending the low.</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="accordion-item glossary-section" id="technicals">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button"
+                            data-bs-toggle="collapse" data-bs-target="#collapse-technicals"
+                            aria-expanded="false" aria-controls="collapse-technicals">
+                        📈 Technical Analysis (Chart Momentum)
+                    </button>
+                </h2>
+                <div id="collapse-technicals" class="accordion-collapse collapse">
+                    <div class="accordion-body">
+                        <div class="term-box">
+                            <span class="term-title">Moving Averages (5D, 10D, 21D, 50D, 200D)</span>
+                            <p>Smoothing price fluctuations to reveal trend. 50D is medium health; 200D is the institutional line.</p>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">RSI (Relative Strength Index)</span>
+                            <p>Measures velocity of price changes. Overbought &gt; 70; Oversold &lt; 30.</p>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">ATR Stop-Loss (Average True Range)</span>
+                            <p>Volatility-adjusted trailing stop dynamically pinned between 1.8× and 3.0× ATRs below the current price.</p>
+                            <p>The multiplier automatically adapts to the stock's historical volatility contraction/expansion (ATR Stability Ratio) and widens defensively during high-risk macro events to prevent noise whipsaws.</p>
+                            <p>This line isn't just an arbitrary number; it is the mathematical boundary of the stock's standard volatility envelope.</p>
+                            <p>As long as the stock stays above the ATR stop, its uptrend is structurally intact. Any drop is just a "normal pullback" (a true dip).</p>
+                            <p>If the stock drops below the ATR stop, it has mathematically violated its volatility envelope. It is no longer a normal pullback; the structural trend has broken, and the asset is in freefall.</p>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">Volume Profile &amp; POC (Point of Control)</span>
+                            <p>A Volume Profile is a 180-day histogram of traded volume distributed across price levels rather than across time. The <strong>POC</strong> is the price bucket with the highest accumulated volume — the price where the most shares changed hands. Institutional participants tend to defend and re-enter near the POC because it represents collective agreement on fair value.</p>
+                            <p>The <strong>Value Area</strong> (VAL to VAH) is the price range covering 70% of total volume, expanding outward from the POC. It marks the zone where the majority of trading activity occurred — prices inside the Value Area are considered "fair"; prices outside it signal potential imbalance.</p>
+                            <p><strong>HVNs</strong> (High Volume Nodes) are local peaks in the histogram — price bands where volume was disproportionately concentrated. They act as support when approached from above and resistance when approached from below. <strong>LVNs</strong> (Low Volume Nodes) are the opposite: thin liquidity bands that price tends to slice through quickly.</p>
+                            <div class="rule">Entry Zone = highest HVN or VAL strictly below current price — a historically liquid support level.</div>
+                            <div class="rule">Exit Zone = lowest overhead HVN or VAH above current price — a historically liquid resistance level.</div>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">Keltner Channel Z-Score</span>
+                            <p>A Keltner Channel is a volatility envelope centred on EMA(21) with band width set by ATR(14). Unlike Bollinger Bands (which use price standard deviation), Keltner Bands expand and contract with <em>true range volatility</em>, making them more stable during trending markets.</p>
+                            <p>The <strong>Z-Score</strong> measures how many ATRs the current close is above or below the EMA: <code>Z = (Close − EMA21) / ATR14</code>. A score of −2 means price is two ATRs below its trend centre — an oversold pullback. A score of −3 or lower signals an extreme extension rarely sustained.</p>
+                            <div class="rule">KC Entry Signal fires when Z-score ∈ (−3, −2) AND price is above the 200-day SMA (uptrend intact) — a mean-reversion buy setup inside a healthy trend.</div>
+                            <div class="rule">KC Exit Signal fires when Z-score &gt; +3 AND RSI &gt; 75 — price is overextended to the upside; risk of reversion is elevated.</div>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">ML Quantile Price Bands (Q10 / Q90)</span>
+                            <p>Two XGBoost regressors trained with <code>objective='reg:quantileerror'</code> on the same 18-feature pipeline as the binary confidence score classifier, but predicting the <em>distribution</em> of 10-day returns rather than a single probability.</p>
+                            <p><strong>Q10 (Floor)</strong> is the 10th-percentile predicted return converted to a price: <code>price_q10 = close × (1 + Q10_return)</code>. In 90% of comparable historical setups, the stock did not fall below this level over the following 10 trading days — a statistically grounded worst-case scenario for limit-order placement.</p>
+                            <p><strong>Q90 (Ceiling)</strong> is the 90th-percentile predicted return converted to a price: <code>price_q90 = close × (1 + Q90_return)</code>. In 90% of comparable historical setups, the stock reached or exceeded this level — an optimistic take-profit target. For portfolio holdings, this is shown as the ML exit target alongside the Volume Profile Exit Zone.</p>
+                            <p>These are probabilistic bands, not exact forecasts. They quantify upside potential and downside floor simultaneously — more informative than a single confidence score for setting limit orders and position sizing.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="accordion-item glossary-section" id="dip-radar">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button"
+                            data-bs-toggle="collapse" data-bs-target="#collapse-dip-radar"
+                            aria-expanded="false" aria-controls="collapse-dip-radar">
+                        🎯 Dip Radar — Intraday Capitulation Detection
+                    </button>
+                </h2>
+                <div id="collapse-dip-radar" class="accordion-collapse collapse">
+                    <div class="accordion-body">
+                        <div class="term-box">
+                            <span class="term-title">Intraday Mean Reversion</span>
+                            <p>The quantitative principle underlying Dip Radar. Intraday prices frequently overshoot to the downside during sell-offs as panic, margin calls, and stop-loss cascades force sellers to hit bids indiscriminately. Once selling pressure is mathematically exhausted — a state called <em>capitulation</em> — price tends to snap back toward its fair intraday value (VWAP). Dip Radar measures four independent dimensions of this exhaustion and combines them into a single score.</p>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">Reversal Score (0–100)</span>
+                            <p>The composite signal output by the Dip Radar engine. Points are awarded for each confirmed exhaustion condition:</p>
+                            <div class="rule">+30 pts: RSI &lt; 25 (extreme oversold) — or +15 pts: RSI &lt; 30 (oversold)</div>
+                            <div class="rule">+25 pts: Price below the Lower Bollinger Band at 2.5σ deviation</div>
+                            <div class="rule">+20 pts: Price more than 2.5σ below the intraday VWAP</div>
+                            <div class="rule">+25 pts: Volume Capitulation — current down-candle's volume exceeds the 20-candle SMA by more than 3 standard deviations</div>
+                            <div class="rule border-left-orange"><strong>Alert threshold: Score ≥ 65.</strong> Below this, selling pressure is still present. Above this, the system has detected a high-probability exhaustion zone.</div>
+                            <p>The maximum score is 100 (all four conditions simultaneously active). A score of 65–80 indicates a likely short-term bottom. A score of 80–100 indicates a potential capitulation washout — the highest-probability reversal setup.</p>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">VWAP (Volume Weighted Average Price)</span>
+                            <p>The intraday "true fair value" of a stock, calculated by weighting each minute's price by the trading volume at that time. Unlike a simple moving average, VWAP gives more weight to the prices where the most money changed hands — it is the benchmark institutional traders use to evaluate execution quality.</p>
+                            <p>Dip Radar uses the intraday VWAP anchored from the market open (09:30 ET) and calculates a rolling 30-bar standard deviation band around it. A price trading 2.5σ below VWAP means it has deviated so far from fair value that a statistical mean-reversion is likely.</p>
+                            <div class="rule">VWAP = Σ(Typical Price × Volume) / Σ(Volume), reset at each market open.</div>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">Bollinger Bands (2.5σ Extreme Variant)</span>
+                            <p>Standard Bollinger Bands use 2 standard deviations (σ). Dip Radar deliberately uses a wider 2.5σ band over a 20-candle window to filter out routine volatility and identify only <em>statistically extreme</em> price dislocations. A price piercing the 2.5σ lower band on 1-minute data occurs in less than 1% of candles under normal distribution — when it does, it signals that momentum has overextended to the downside.</p>
+                            <div class="rule">BB Lower = 20-period SMA − (2.5 × 20-period Std Dev)</div>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">Volume Capitulation (Climax Volume)</span>
+                            <p>The most powerful single signal in the Dip Radar algorithm. Capitulation occurs when panicking sellers all exit at the same time, producing a down-candle with a volume spike that is 3 or more standard deviations above the 20-candle rolling average. This is the quantitative fingerprint of "weak hands washing out" — forced sellers (margin calls, stop-loss orders, retail panic) exhausting their supply of stock.</p>
+                            <p>After capitulation, there are no more forced sellers left in the short term, removing the primary source of downward pressure. The remaining participants are either long-term holders or new buyers looking for value — setting up a sharp reversal.</p>
+                            <div class="rule border-left-red">Condition: Volume &gt; (20-candle Volume SMA) + (3 × 20-candle Volume Std Dev) — AND — current candle closes lower than the prior candle.</div>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">Session-Scoped Monitoring</span>
+                            <p>Dip Radar is deliberately not a persistent background monitor. It is activated on-demand per ticker from the stock detail page and automatically deactivates at 16:05 ET (21:05 BST in summer / 22:05 GMT in winter) each trading day. This design prevents alert fatigue and avoids scanning noise outside of active market hours. The deduplication system (alert_state table) ensures that only the first breach of the score threshold fires an alert — repeat scans at the same high score are silently suppressed until a new session arms the ticker again.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="accordion-item glossary-section" id="workflow-monitor">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button"
+                            data-bs-toggle="collapse" data-bs-target="#collapse-workflow"
+                            aria-expanded="false" aria-controls="collapse-workflow">
+                        🔄 Workflow Monitor
+                    </button>
+                </h2>
+                <div id="collapse-workflow" class="accordion-collapse collapse">
+                    <div class="accordion-body">
+                        <div class="term-box">
+                            <span class="term-title">Workflow Monitor</span>
+                            <p>A dependency flow-chart (in Settings) of every scheduled background job. Each job is a box wired to the jobs that produce the data it depends on — tracing the pipeline from market-universe ingestion through the quant, machine-learning, sentiment, and dip-radar engines. It answers the question "why is this data missing?" by making the order and health of the whole job chain visible at a glance.</p>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">Traffic-Light Status</span>
+                            <p>Each job box is coloured by how recently it ran relative to its expected schedule:</p>
+                            <div class="rule border-left-green"><strong>Green:</strong> ran within its expected cadence.</div>
+                            <div class="rule border-left-orange"><strong>Amber:</strong> mildly stale, due soon, or has never recorded a run.</div>
+                            <div class="rule border-left-red"><strong>Red:</strong> failed on its last run, or is overdue well beyond its schedule.</div>
+                            <div class="rule"><strong>Grey:</strong> disabled in the current configuration.</div>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">Conflict Detection</span>
+                            <p>Because the scheduler runs different jobs concurrently (it never makes one job wait for another), a job can fire while the upstream job that feeds its data is still running — silently reading incomplete data. The conflict engine flags four situations:</p>
+                            <div class="rule"><strong>Overlap risk:</strong> a job starts within the upstream producer's typical run time (measured as a rolling average of past runs), so the producer may still be working.</div>
+                            <div class="rule"><strong>Backwards ordering:</strong> a job is scheduled to run <em>before</em> the upstream job that produces the data it consumes.</div>
+                            <div class="rule"><strong>Disabled upstream:</strong> an enabled job depends on data from a job that is currently switched off.</div>
+                            <div class="rule"><strong>Stale / failed:</strong> a job has not run when it should have, or errored on its last run.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="accordion-item glossary-section" id="notification-routing">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button"
+                            data-bs-toggle="collapse" data-bs-target="#collapse-notifications"
+                            aria-expanded="false" aria-controls="collapse-notifications">
+                        🔔 Notification Settings
+                    </button>
+                </h2>
+                <div id="collapse-notifications" class="accordion-collapse collapse">
+                    <div class="accordion-body">
+                        <div class="term-box">
+                            <span class="term-title">Notification Settings</span>
+                            <p>A single control panel (in Settings) for every notification the app produces. Each scheduled job and each alert is a row, and for each you choose independently which channels it is delivered through. It replaces the scattered per-engine "send to Nextcloud" toggles with one place to see and control what goes where.</p>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">Channels</span>
+                            <p>Three independent destinations per notification:</p>
+                            <div class="rule"><strong>Log file:</strong> written to the rotating application log (<code>logs/app.log</code>).</div>
+                            <div class="rule"><strong>In-app:</strong> shown in the in-app notification centre (the bell icon).</div>
+                            <div class="rule"><strong>Nextcloud Talk:</strong> pushed as a message to your Nextcloud Talk conversation.</div>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">Job status vs. alert sources</span>
+                            <p>Each job exposes a <em>status</em> row covering its start / success / error messages, plus any distinct <em>alert</em> sub-rows it emits — so, for example, Crash, Moonshot, Anomaly and Macro Yield alerts (all produced by the one intraday job) can each route to different channels. The morning/lunchtime briefings and the Fear &amp; Greed chart upload file attachments to Talk and remain governed by their own enable toggles; they appear here for log/in-app routing only.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="accordion-item glossary-section" id="etf-predictor">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button"
+                            data-bs-toggle="collapse" data-bs-target="#collapse-etf"
+                            aria-expanded="false" aria-controls="collapse-etf">
+                        📊 ETF Price Predictor
+                    </button>
+                </h2>
+                <div id="collapse-etf" class="accordion-collapse collapse">
+                    <div class="accordion-body">
+                        <div class="term-box">
+                            <span class="term-title">ETF Price Predictor</span>
+                            <p>A configurable tool that estimates an ETF's next-session opening price by weighting the after-hours returns of its top constituent holdings. Users configure the ETF ticker and up to 20 constituent tickers with weights in Settings. The system normalises weights to 100% and runs two engines: a holdings-weighted basket return engine (primary) and an OLS regression engine (fallback).</p>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">Holdings Engine</span>
+                            <p>The primary prediction engine. For each constituent, the engine measures the price change since the ETF's home-exchange close (post-close intraday signal) or since the prior daily close (daily signal). It then weights these returns by each constituent's portfolio weight to compute a weighted basket return, applies an FX adjustment if the ETF and its constituents are denominated in different currencies, and projects the ETF's next open from its last close.</p>
+                            <div class="rule">Predicted Price = Last Close × (1 + Weighted Return + FX Adjustment)</div>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">Regression Engine</span>
+                            <p>The fallback prediction engine. Uses 60+ days of history to fit an OLS regression model: ETF next-morning return = α + β × average constituent daily return. When fewer than 3 constituents have usable data (holdings engine returns None), the regression engine is used instead. Reports R², beta, and a 95% confidence interval derived from regression residuals.</p>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">Constituent Weights</span>
+                            <p>The percentage allocation each ticker represents within the configured ETF prediction basket. Weights are automatically normalised to sum to 100% regardless of input values. Weights at the time of each prediction are saved as a snapshot so editing the config later does not distort historical accuracy records.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="accordion-item glossary-section" id="stress-tester">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button"
+                            data-bs-toggle="collapse" data-bs-target="#collapse-stress"
+                            aria-expanded="false" aria-controls="collapse-stress">
+                        📉 Historical Stress Tester
+                    </button>
+                </h2>
+                <div id="collapse-stress" class="accordion-collapse collapse">
+                    <div class="accordion-body">
+                        <div class="term-box">
+                            <span class="term-title">Beta-Adjusted Scenario Shock</span>
+                            <p>The core formula used by the stress tester to estimate each holding's loss during a historical crash. Beta measures how much a stock amplifies (or dampens) the market's move: a stock with β=1.5 is expected to fall 50% more than the market on a down day.</p>
+                            <div class="rule">Holding Drop (%) = Market Crash % × Beta × Sector Multiplier</div>
+                            <p>The result is then multiplied by the holding's current value to produce a concrete monetary loss estimate in your base currency. Drops are capped at −95% to reflect that equity rarely goes to zero in a systemic crash.</p>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">Sector Multiplier</span>
+                            <p>A per-sector adjustment that reflects how much more or less a given sector fell compared to the broad market during a specific historical crisis. A multiplier above 1.0 means the sector was hit harder than the index; below 1.0 means it held up better. A negative multiplier means the sector actually <em>gained</em> during the crash (e.g. Energy in the 2022 inflation shock).</p>
+                            <p>Examples from the Dot-com crash: Technology ×2.2 (NASDAQ fell 78% vs S&amp;P's 49%), Consumer Defensive ×0.4 (fell far less than the market), Energy ×0.5.</p>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">Why Not Historical Replay?</span>
+                            <p>The stress tester uses a parametric model rather than replaying actual historical prices for two reasons: (1) local price data only covers the past 2 years — the GFC, Dot-com crash, COVID crash, and 2022 shock are all outside this window; (2) many holdings (newer ETFs, recently-listed stocks) simply did not exist during those crashes. The beta-shock approach works for any holding regardless of listing date, and is transparent about its assumptions.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="accordion-item glossary-section" id="bubble-radar">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button"
+                            data-bs-toggle="collapse" data-bs-target="#collapse-bubble"
+                            aria-expanded="false" aria-controls="collapse-bubble">
+                        &#127968; Bubble Radar — Valuation Euphoria Detection
+                    </button>
+                </h2>
+                <div id="collapse-bubble" class="accordion-collapse collapse">
+                    <div class="accordion-body">
+                        <div class="term-box">
+                            <span class="term-title">Bubble Risk Score</span>
+                            <p>A composite 0–100 score derived from seven weighted metrics that collectively measure how far a ticker's price has detached from its fundamental anchor. It is computed per-ticker using fixed thresholds (bucket scoring), not cross-sectional Z-scores, so it is equally meaningful for a single ticker or a full portfolio batch. Scores are stored daily and used to assess prediction reliability over 4-, 8-, and 12-week horizons.</p>
+                            <div class="rule">Watch flag: score ≥ configurable Watch threshold (default 70). Bubble Risk flag: score ≥ configurable Bubble threshold (default 85).</div>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">SMA-200 Extension</span>
+                            <p>The percentage by which the current closing price exceeds the 200-day Simple Moving Average. A durable bull market typically sees stocks trading 5–15% above their SMA-200. Extensions of 25% or more indicate the price has run far ahead of its long-term trend line and is statistically prone to mean reversion.</p>
+                            <div class="rule">Scoring: 0 pts &lt; 15% extension; 10 pts at 15–25%; 17 pts at 25–40%; 25 pts above 40%.</div>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">Sustained RSI High</span>
+                            <p>The average daily RSI reading over the last 20 trading days. A single spike above 70 is a normal momentum signal. Prolonged averages above 70–75 sustained over weeks indicate persistent overbought pressure — the market is continuously pricing in further upside, leaving the ticker vulnerable to any negative surprise.</p>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">FCF Yield vs Real 10-Year</span>
+                            <p>A fundamental sanity check comparing equity return to the risk-free rate. FCF yield is computed as <code>(Free Cash Flow / Market Cap) × 100</code>. The real risk-free rate is the US 10-year inflation-adjusted yield (FRED series DFII10). When FCF yield falls below the real 10-year, equity holders are accepting a lower return than risk-free bonds — a classic bubble condition. US stocks only.</p>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">IV Call Skew</span>
+                            <p>The ratio of average <abbr title="Implied Volatility — the market's expectation of future price movement, derived from live option prices.">IV</abbr> for out-of-the-money (OTM) call options to average IV for OTM put options, using the nearest-expiry chain. A ratio above 1.0 means the market is paying more to bet on further upside than to hedge the downside — a sign of speculative call-buying euphoria. Applied to US-listed tickers only (LSE/XETRA options are not reliably available via the data provider).</p>
+                            <div class="rule">Neutral: ≤ 1.0. Elevated: 1.0–1.2. Extreme call mania: ≥ 1.2.</div>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">SPY vs RSP Breadth Spread</span>
+                            <p>The difference between the 20-day return of the cap-weighted S&amp;P 500 (<strong>SPY</strong>) and the equal-weight S&amp;P 500 (<strong>RSP</strong>). When SPY significantly outperforms RSP, a handful of mega-cap stocks are carrying the index while the average stock lags — a hallmark of late-stage, narrow-breadth rallies that historically precede corrections.</p>
+                            <div class="rule">A spread above 5 percentage points is flagged as a breadth warning.</div>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">Bubble Watch vs Bubble Risk</span>
+                            <p><strong>Bubble Watch</strong> (yellow flag) indicates a ticker is exhibiting early signs of valuation overextension but has not yet crossed the highest-conviction threshold. <strong>Bubble Risk</strong> (red flag) indicates the composite score exceeds the upper threshold and multiple independent metrics are simultaneously elevated. Both thresholds are configurable in Settings → Bubble Radar.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="accordion-item glossary-section" id="fundamentals">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button"
+                            data-bs-toggle="collapse" data-bs-target="#collapse-fundamentals"
+                            aria-expanded="false" aria-controls="collapse-fundamentals">
+                        🏢 Fundamental Valuation (Company Health)
+                    </button>
+                </h2>
+                <div id="collapse-fundamentals" class="accordion-collapse collapse">
+                    <div class="accordion-body">
+                        <div class="term-box">
+                            <span class="term-title">Peter Lynch Fair Value PEG</span>
+                            <p>Adaptation comparing Trailing P/E to actual YoY earnings growth.</p>
+                            <div class="rule">PEG &lt; 1.0 = Undervalued; PEG &gt; 2.0 = Overvalued.</div>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">Financial Safety (Debt &amp; Liquidity)</span>
+                            <p>Debt-to-Equity &gt; 2.0 suggests bankruptcy risk in high-rate environments.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="accordion-item glossary-section" id="methodology">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button"
+                            data-bs-toggle="collapse" data-bs-target="#collapse-methodology"
+                            aria-expanded="false" aria-controls="collapse-methodology">
+                        🧠 System Methodology (The "Why")
+                    </button>
+                </h2>
+                <div id="collapse-methodology" class="accordion-collapse collapse">
+                    <div class="accordion-body">
+                        <div class="term-box">
+                            <span class="term-title">Quantamental "Dual-Lens" Architecture</span>
+                            <p>Fundamentals decide WHAT to buy; Quantitative technicals decide WHEN to buy.</p>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">Hierarchical Signal Purity</span>
+                            <p>Strict evaluation priority: 3-candle patterns override 2-candle patterns to prevent contradictions.</p>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">FinBERT NLP Sentiment Engine</span>
+                            <p>An institutional-grade Natural Language Processing model powered by HuggingFace's <code>ProsusAI/finbert</code>. It continuously ingests the latest financial news, truncates the text to fit strict BERT token limits, and processes Wall Street narratives to output a standardized sentiment score.</p>
+                            <p>The raw float scores are mapped into five distinct emotional states: Euphoria, Bullish, Neutral, Bearish, and Extreme Fear.</p>
+                            <div class="rule border-left-red">
+                                <strong>Architectural Note (The Yield Trap):</strong> Sovereign bond yields (e.g., US 30Y or UK Gilt) are strictly excluded from NLP scoring. NLP models natively interpret words like "surging" or "breaking out" as positive. However, surging risk-free yields are fundamentally toxic for equities. Excluding them prevents critical inverse-logic UI errors.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        {% if asset_docs %}
+        <div class="doc-section-divider" id="asset-docs-divider">
+            <h2>📚 Technical Documentation</h2>
+            <p>Internal system documentation from the <code>assets/</code> directory — auto-discovered on every page load.</p>
+        </div>
+        <div class="accordion" id="glossaryDocAccordion">
+            {% for doc in asset_docs %}
+            <div class="accordion-item glossary-section doc-section" id="{{ doc.slug }}">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button"
+                            data-bs-toggle="collapse" data-bs-target="#collapse-doc-{{ doc.slug }}"
+                            aria-expanded="false" aria-controls="collapse-doc-{{ doc.slug }}">
+                        📄 {{ doc.title }}
+                    </button>
+                </h2>
+                <div id="collapse-doc-{{ doc.slug }}" class="accordion-collapse collapse">
+                    <div class="accordion-body doc-content">{{ doc.html | safe }}</div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <div id="noResults" class="glossary-empty-state">
+            <h3>No matching terms found.</h3>
+            <p>Try searching for categories like "RSI", "MACD", "VaR", or a system component name.</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/glossary.js?v={{ css_version }}"></script>
+{% endblock %}
