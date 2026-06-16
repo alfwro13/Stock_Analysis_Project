@@ -652,15 +652,19 @@ def fill_actuals_for_config(config_id: int) -> None:
 
         etf_df = etf_df.copy()
         etf_df.index = etf_df.index.normalize()
+        if etf_df.index.tz is not None:
+            etf_df.index = etf_df.index.tz_localize(None)
 
         today = datetime.now(timezone.utc).date()
         today_str = today.isoformat()
 
-        today_row = etf_df[etf_df.index == pd.Timestamp(today)]
-        if not today_row.empty:
-            today_open = float(today_row["Open"].iloc[0])
-            if today_open > 0:
-                fill_etf_actual(config_id, today_str, today_open, "next_open")
+        for idx_ts in etf_df.index:
+            row_date = idx_ts.date()
+            if row_date > today:
+                continue
+            open_val = etf_df.loc[idx_ts, "Open"]
+            if open_val and float(open_val) > 0:
+                fill_etf_actual(config_id, row_date.isoformat(), float(open_val), "next_open")
 
         # us_open_impact: close of reference day fills that day's impact prediction
         if len(etf_df) >= 1:

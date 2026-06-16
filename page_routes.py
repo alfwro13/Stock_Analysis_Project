@@ -618,7 +618,7 @@ def _render_asset_docs() -> list[dict]:
         title = md_path.stem.replace("_", " ").title()
         for line in raw.splitlines():
             if line.startswith("# "):
-                title = line[2:].strip()
+                title = line[2:].strip().strip("*").strip()
                 break
         _MD.reset()
         html = _MD.convert(raw)
