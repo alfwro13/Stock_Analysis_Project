@@ -1,62 +1,38 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="color-scheme" content="dark">
-    <title>Quantamental - Watchlist</title>
-    <link rel="stylesheet" href="/static/css/styles.css?v={{ css_version }}">
-    
-    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.7/css/jquery.dataTables.min.css">
-    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-    <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
-    <script src="/static/js/position_sizing.js"></script>
-</head>
-<body class="body-watchlist">
+{% extends "base.html" %}
 
-    <script>
-        window.POSITION_SIZING_CONFIG = {{ position_sizing.config | tojson }};
-        window.BASE_CURRENCY = "{{ position_sizing.base_currency }}";
-        window.FX_RATES = {{ position_sizing.fx_rates | tojson }};
-    </script>
+{% block title %}Quantamental - Watchlist{% endblock %}
 
-    {% if not embed %}
-    <div class="header-container">
-        <div>
-            <div class="title-wrapper">
-                <a href="https://github.com/alfwro13/Stock_Analysis_Project" target="_blank" class="logo-link">
-                    <img src="/assets/logo_small.png" alt="Quantamental Logo" class="logo-img">
-                </a>
-                <h1><abbr title="Assets you are actively monitoring for potential entry.">Watchlist</abbr> Signals</h1>
-            </div>
-            {% set active_page = 'watchlist' %}
-            {% include 'navbar.html' %}
-        </div>
+{% block content %}
+{% if not embed %}
+<h1 class="mb-3"><abbr title="Assets you are actively monitoring for potential entry.">Watchlist</abbr> Signals</h1>
+
+<script>
+    window.ENABLE_LIVE_ASSETS = {% if config and config.UI_PREFERENCES and config.UI_PREFERENCES.LIVE_WATCHLIST %}true{% else %}false{% endif %};
+    window.REFRESH_RATE_MS = {{ config.UI_PREFERENCES.REFRESH_RATE | default(60) }} * 1000;
+</script>
+{% set show_indexes = True %}
+{% include 'macro_cards.html' %}
+{% endif %}
+
+{% if macro_regime %}
+    {% include 'partials/risk_summary.html' %}
+{% endif %}
+
+<div class="row g-2 mb-3 align-items-center">
+    <div class="col-12 col-md">
+        <input type="text" id="customSearchInput" class="form-control" placeholder="🔍 Search ticker or name...">
     </div>
-    
-    <script>
-        window.ENABLE_LIVE_ASSETS = {% if config and config.UI_PREFERENCES and config.UI_PREFERENCES.LIVE_WATCHLIST %}true{% else %}false{% endif %};
-        window.REFRESH_RATE_MS = {{ config.UI_PREFERENCES.REFRESH_RATE | default(60) }} * 1000;
-    </script>
-    {% set show_indexes = True %}
-    {% include 'macro_cards.html' %}
-    
-    {% endif %}
-
-    {% if macro_regime %}
-        {% include 'partials/risk_summary.html' %}
-    {% endif %}
-
-    <div class="controls-container">
-        <input type="text" id="customSearchInput" class="filter-input" placeholder="🔍 Search ticker or name...">
-        <select id="signalFilter" class="filter-select">
+    <div class="col-6 col-md-auto">
+        <select id="signalFilter" class="form-select">
             <option value="ALL">All Signals</option>
             <option value="STRONG BUY">Strong Buy</option>
             <option value="BULLISH / HOLD">Bullish / Hold</option>
             <option value="NEUTRAL">Neutral</option>
             <option value="BEARISH / CAUTION">Bearish / Caution</option>
         </select>
-        <select id="tagFilter" class="filter-select">
+    </div>
+    <div class="col-6 col-md-auto">
+        <select id="tagFilter" class="form-select">
             <option value="ALL">All Setup Tags</option>
             <option value="⚡ MACD Reversal">⚡ MACD Reversals (Oversold)</option>
             <option value="⚡ MACD Bullish Cross">⚡ MACD Bullish Cross (Trend)</option>
@@ -64,7 +40,9 @@
             <option value="👑 Market Leader">👑 Market Leaders</option>
             <option value="🚨 Divergence Warning">🚨 Divergence Warnings</option>
         </select>
-        <select id="candleFilter" class="filter-select">
+    </div>
+    <div class="col-6 col-md-auto">
+        <select id="candleFilter" class="form-select">
             <option value="ALL">All Candle Patterns</option>
             <option value="🌅 Morning Star">🌅 Morning Star</option>
             <option value="🌇 Evening Star">🌇 Evening Star</option>
@@ -78,267 +56,186 @@
             <option value="🌠 Shooting Star">🌠 Shooting Star</option>
             <option value="⚖️ Doji">⚖️ Doji</option>
         </select>
-        <select id="scoreFilter" class="filter-select">
+    </div>
+    <div class="col-6 col-md-auto">
+        <select id="scoreFilter" class="form-select">
             <option value="ALL">All Scores</option>
             <option value="75">75+ (Strong)</option>
             <option value="60">60–74 (Good)</option>
             <option value="40">40–59 (Neutral)</option>
             <option value="0">Below 40 (Weak)</option>
         </select>
-        <a href="/score-history?filter=watchlist&ref=/watchlist" class="xray-link-btn">&#128200; Score History</a>
     </div>
+    <div class="col-12 col-md-auto ms-md-auto">
+        <a href="/score-history?filter=watchlist&ref=/watchlist" class="btn btn-outline-info w-100">&#128200; Score History</a>
+    </div>
+</div>
 
-    <table id="dataTable" class="display">
-        <thead>
-            <tr>
-                <th>Ticker</th>
-                <th>Company Name</th>
-                <th>Price</th>
-                <th>Daily Change</th>
-                <th>Target</th>
-                <th>50D</th>
-                <th>200D</th>
-                <th><abbr title="Standard PEG Ratio">PEG</abbr></th>
-                <th><abbr title="Peter Lynch Fair Value">PL PEG</abbr></th>
-                <th>Stop-Loss</th>
-                <th><abbr title="Volume Profile entry zone: the nearest High Volume Node or Value Area Low below the current price — a candidate limit-order buy level.">Entry Zone</abbr></th>
-                <th>RSI</th>
-                <th><abbr title="Machine Learning Ensemble confidence score predicting a >3% return over the next 10 days.">ML Conf</abbr></th>
-                <th>VaR (95%)</th>
-                <th>Sentiment</th>
-                <th>Earnings</th>
-                <th>Score</th>
-                <th>Setups & Tags</th>
-                <th>Signal</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for item in watchlist %}
-            <tr class="live-asset-row" data-ticker="{{ item.ticker }}" data-currency="{{ item.currency }}" data-signal="{{ item.overall_signal | upper }}" data-tags="{% for tag in item.setup_tags_list %}{{ tag.name }} {% endfor %}">
-                <td data-sort="{{ item.ticker }}" class="num-cell">
-                    <a href="/stock/{{ item.ticker }}{% if embed %}?embed=true{% endif %}" class="ticker-link">{{ item.ticker }}</a>
-                    {% if freetrade_only and not item.is_freetrade %}
-                    <br><span class="badge badge-freetrade">Not on Freetrade</span>
-                    {% endif %}
-                </td>
-                <td data-sort="{{ item.company_name }}">
-                    {{ item.company_name }}
-                </td>
-                
-                {% set cp = cached_pulse.get(item.ticker) %}
-                <td data-sort="{{ cp.price if cp else (item.current_price or 0) }}" class="num-cell">
-                    <span id="price-{{ item.ticker }}" class="{% if cp and cp.is_stale %}stale-text{% elif cp %}{% if cp.is_positive %}trend-up{% else %}trend-down{% endif %}{% endif %}">
-                        {% set display_price = cp.price|float if cp else (item.current_price if item.current_price is not none else none) %}
-                        {% if display_price is not none %}
-                            {% set sym = '£' if item.currency in ['GBP', 'GBp'] else ('€' if item.currency == 'EUR' else '$') %}
-                            {% set p_val = (display_price / 100.0) if item.currency == 'GBp' else display_price %}
-                            {{ sym }}{{ "{:,.2f}".format(p_val) }}{% if item.currency not in ['USD', 'GBP', 'GBp', 'EUR'] %} {{ item.currency }}{% endif %}
-                        {% else %}
-                            N/A
-                        {% endif %}
-                    </span>
-                </td>
-                
-                <td data-sort="{{ cp.change_pct if cp else 0 }}" class="num-cell">
-                    <span id="change-{{ item.ticker }}" class="{% if cp and cp.is_stale %}stale-text{% elif cp %}{% if cp.is_positive %}trend-up{% else %}trend-down{% endif %}{% endif %}">
-                        {% if cp %}
-                            {% set sign = '+' if cp.is_positive else '' %}
-                            {{ sign }}{{ "{:,.2f}".format(cp.change_pct|float) }}%
-                        {% else %}
-                            -
-                        {% endif %}
-                    </span>
-                </td>
-                
-                <td data-sort="{{ item.target_price if item.target_price is not none else -999 }}" class="num-cell">
-                    {% if item.target_price is not none %}
-                        {% set t_val = (item.target_price / 100.0) if item.currency == 'GBp' else item.target_price %}
-                        {{ "{:,.2f}".format(t_val) }}
-                    {% else %}N/A{% endif %}
-                </td>
-                <td data-sort="{{ 1 if item.trend_50d == 'UP' else 0 }}"><span class="{% if item.trend_50d == 'UP' %}trend-up{% else %}trend-down{% endif %}">{{ item.trend_50d }}</span></td>
-                <td data-sort="{{ 1 if item.trend_200d == 'UP' else 0 }}"><span class="{% if item.trend_200d == 'UP' %}trend-up{% else %}trend-down{% endif %}">{{ item.trend_200d }}</span></td>
-                <td data-sort="{{ item.peg_ratio if item.peg_ratio is not none else 999 }}" class="num-cell">{% if item.peg_ratio is not none %}{{ "{:,.2f}".format(item.peg_ratio) }}{% else %}N/A{% endif %}</td>
-                <td data-sort="{{ item.peter_lynch_peg if item.peter_lynch_peg is not none else 999 }}" class="num-cell">{% if item.peter_lynch_peg is not none %}{{ "{:,.2f}".format(item.peter_lynch_peg) }}{% else %}N/A{% endif %}</td>
-                <td data-sort="{{ item.atr_stop_loss if item.atr_stop_loss is not none else -999 }}" class="text-warning num-cell">
-                    {% if item.atr_stop_loss is not none %}
-                        {% set atr_val = (item.atr_stop_loss / 100.0) if item.currency == 'GBp' else item.atr_stop_loss %}
-                        {{ "{:,.2f}".format(atr_val) }}
-                    {% else %}N/A{% endif %}
-                </td>
-                <td data-sort="{{ item.vp_entry_zone if item.vp_entry_zone is not none else -999 }}" class="num-cell">
-                    {% if item.vp_entry_zone is not none %}
-                        {% set ez_val = (item.vp_entry_zone / 100.0) if item.currency == 'GBp' else item.vp_entry_zone %}
-                        <span class="metric-excellent">{{ "{:,.2f}".format(ez_val) }}</span>
-                    {% else %}N/A{% endif %}
-                </td>
-                <td data-sort="{{ item.rsi_14 if item.rsi_14 is not none else -999 }}" class="num-cell">{% if item.rsi_14 is not none %}{{ "{:,.1f}".format(item.rsi_14) }}{% else %}N/A{% endif %}</td>
+<table id="dataTable" class="table table-hover w-100">
+    <thead>
+        <tr>
+            <th>Ticker</th>
+            <th>Company Name</th>
+            <th>Price</th>
+            <th>Daily Change</th>
+            <th>Target</th>
+            <th>50D</th>
+            <th>200D</th>
+            <th><abbr title="Standard PEG Ratio">PEG</abbr></th>
+            <th><abbr title="Peter Lynch Fair Value">PL PEG</abbr></th>
+            <th>Stop-Loss</th>
+            <th><abbr title="Volume Profile entry zone: the nearest High Volume Node or Value Area Low below the current price — a candidate limit-order buy level.">Entry Zone</abbr></th>
+            <th>RSI</th>
+            <th><abbr title="Machine Learning Ensemble confidence score predicting a >3% return over the next 10 days.">ML Conf</abbr></th>
+            <th>VaR (95%)</th>
+            <th>Sentiment</th>
+            <th>Earnings</th>
+            <th>Score</th>
+            <th>Setups & Tags</th>
+            <th>Signal</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for item in watchlist %}
+        <tr class="live-asset-row" data-ticker="{{ item.ticker }}" data-currency="{{ item.currency }}" data-signal="{{ item.overall_signal | upper }}" data-tags="{% for tag in item.setup_tags_list %}{{ tag.name }} {% endfor %}">
+            <td data-sort="{{ item.ticker }}" class="num-cell">
+                <a href="/stock/{{ item.ticker }}{% if embed %}?embed=true{% endif %}" class="ticker-link">{{ item.ticker }}</a>
+                {% if freetrade_only and not item.is_freetrade %}
+                <br><span class="badge badge-freetrade">Not on Freetrade</span>
+                {% endif %}
+            </td>
+            <td data-sort="{{ item.company_name }}">
+                {{ item.company_name }}
+            </td>
 
-                <td data-sort="{{ item.ml_confidence_score if item.ml_confidence_score is not none else -999 }}" class="num-cell">
-                    {% if item.ml_confidence_score is not none %}
-                        {% set ml_class = 'metric-excellent' if item.ml_confidence_score > 40 else ('metric-poor' if item.ml_confidence_score < 20 else 'metric-neutral') %}
-                        <span class="{{ ml_class }}">{{ "{:,.1f}".format(item.ml_confidence_score) }}%</span>
+            {% set cp = cached_pulse.get(item.ticker) %}
+            <td data-sort="{{ cp.price if cp else (item.current_price or 0) }}" class="num-cell">
+                <span id="price-{{ item.ticker }}" class="{% if cp and cp.is_stale %}stale-text{% elif cp %}{% if cp.is_positive %}trend-up{% else %}trend-down{% endif %}{% endif %}">
+                    {% set display_price = cp.price|float if cp else (item.current_price if item.current_price is not none else none) %}
+                    {% if display_price is not none %}
+                        {% set sym = '£' if item.currency in ['GBP', 'GBp'] else ('€' if item.currency == 'EUR' else '$') %}
+                        {% set p_val = (display_price / 100.0) if item.currency == 'GBp' else display_price %}
+                        {{ sym }}{{ "{:,.2f}".format(p_val) }}{% if item.currency not in ['USD', 'GBP', 'GBp', 'EUR'] %} {{ item.currency }}{% endif %}
                     {% else %}
                         N/A
                     {% endif %}
-                </td>
+                </span>
+            </td>
 
-                <td data-sort="{{ item.var_95 if item.var_95 is not none else -999 }}" class="num-cell">
-                    {% if item.var_95 is not none %}
-                        {% set var_class = 'metric-poor' if item.var_95 > 0.05 else 'metric-neutral' %}
-                        <abbr title="Log-Return Expected Shortfall (CVaR): {% if item.cvar_95 is not none %}{{ '{:,.2f}'.format(item.cvar_95 * 100) }}%{% else %}N/A{% endif %}">
-                            <span class="{{ var_class }}">{{ "{:,.2f}".format(item.var_95 * 100) }}%</span>
+            <td data-sort="{{ cp.change_pct if cp else 0 }}" class="num-cell">
+                <span id="change-{{ item.ticker }}" class="{% if cp and cp.is_stale %}stale-text{% elif cp %}{% if cp.is_positive %}trend-up{% else %}trend-down{% endif %}{% endif %}">
+                    {% if cp %}
+                        {% set sign = '+' if cp.is_positive else '' %}
+                        {{ sign }}{{ "{:,.2f}".format(cp.change_pct|float) }}%
+                    {% else %}
+                        -
+                    {% endif %}
+                </span>
+            </td>
+
+            <td data-sort="{{ item.target_price if item.target_price is not none else -999 }}" class="num-cell">
+                {% if item.target_price is not none %}
+                    {% set t_val = (item.target_price / 100.0) if item.currency == 'GBp' else item.target_price %}
+                    {{ "{:,.2f}".format(t_val) }}
+                {% else %}N/A{% endif %}
+            </td>
+            <td data-sort="{{ 1 if item.trend_50d == 'UP' else 0 }}"><span class="{% if item.trend_50d == 'UP' %}trend-up{% else %}trend-down{% endif %}">{{ item.trend_50d }}</span></td>
+            <td data-sort="{{ 1 if item.trend_200d == 'UP' else 0 }}"><span class="{% if item.trend_200d == 'UP' %}trend-up{% else %}trend-down{% endif %}">{{ item.trend_200d }}</span></td>
+            <td data-sort="{{ item.peg_ratio if item.peg_ratio is not none else 999 }}" class="num-cell">{% if item.peg_ratio is not none %}{{ "{:,.2f}".format(item.peg_ratio) }}{% else %}N/A{% endif %}</td>
+            <td data-sort="{{ item.peter_lynch_peg if item.peter_lynch_peg is not none else 999 }}" class="num-cell">{% if item.peter_lynch_peg is not none %}{{ "{:,.2f}".format(item.peter_lynch_peg) }}{% else %}N/A{% endif %}</td>
+            <td data-sort="{{ item.atr_stop_loss if item.atr_stop_loss is not none else -999 }}" class="text-warning num-cell">
+                {% if item.atr_stop_loss is not none %}
+                    {% set atr_val = (item.atr_stop_loss / 100.0) if item.currency == 'GBp' else item.atr_stop_loss %}
+                    {{ "{:,.2f}".format(atr_val) }}
+                {% else %}N/A{% endif %}
+            </td>
+            <td data-sort="{{ item.vp_entry_zone if item.vp_entry_zone is not none else -999 }}" class="num-cell">
+                {% if item.vp_entry_zone is not none %}
+                    {% set ez_val = (item.vp_entry_zone / 100.0) if item.currency == 'GBp' else item.vp_entry_zone %}
+                    <span class="metric-excellent">{{ "{:,.2f}".format(ez_val) }}</span>
+                {% else %}N/A{% endif %}
+            </td>
+            <td data-sort="{{ item.rsi_14 if item.rsi_14 is not none else -999 }}" class="num-cell">{% if item.rsi_14 is not none %}{{ "{:,.1f}".format(item.rsi_14) }}{% else %}N/A{% endif %}</td>
+
+            <td data-sort="{{ item.ml_confidence_score if item.ml_confidence_score is not none else -999 }}" class="num-cell">
+                {% if item.ml_confidence_score is not none %}
+                    {% set ml_class = 'metric-excellent' if item.ml_confidence_score > 40 else ('metric-poor' if item.ml_confidence_score < 20 else 'metric-neutral') %}
+                    <span class="{{ ml_class }}">{{ "{:,.1f}".format(item.ml_confidence_score) }}%</span>
+                {% else %}
+                    N/A
+                {% endif %}
+            </td>
+
+            <td data-sort="{{ item.var_95 if item.var_95 is not none else -999 }}" class="num-cell">
+                {% if item.var_95 is not none %}
+                    {% set var_class = 'metric-poor' if item.var_95 > 0.05 else 'metric-neutral' %}
+                    <abbr title="Log-Return Expected Shortfall (CVaR): {% if item.cvar_95 is not none %}{{ '{:,.2f}'.format(item.cvar_95 * 100) }}%{% else %}N/A{% endif %}">
+                        <span class="{{ var_class }}">{{ "{:,.2f}".format(item.var_95 * 100) }}%</span>
+                    </abbr>
+                {% else %}
+                    N/A
+                {% endif %}
+            </td>
+
+            <td data-sort="{{ item.sentiment_score if item.sentiment_score is not none else -999 }}">
+                {% if item.sentiment_score is not none %}
+                    {% if item.sentiment_score > 0.6 %}
+                        <span class="sent-badge sent-euphoria">Euphoria ({{ "{:,.3f}".format(item.sentiment_score) }})</span>
+                    {% elif item.sentiment_score > 0.2 %}
+                        <span class="sent-badge sent-bullish">Bullish ({{ "{:,.3f}".format(item.sentiment_score) }})</span>
+                    {% elif item.sentiment_score >= -0.2 %}
+                        <span class="sent-badge sent-neutral">Neutral ({{ "{:,.3f}".format(item.sentiment_score) }})</span>
+                    {% elif item.sentiment_score > -0.6 %}
+                        <span class="sent-badge sent-bearish">Bearish ({{ "{:,.3f}".format(item.sentiment_score) }})</span>
+                    {% else %}
+                        <span class="sent-badge sent-fear">Extreme Fear ({{ "{:,.3f}".format(item.sentiment_score) }})</span>
+                    {% endif %}
+                {% else %}
+                    N/A
+                {% endif %}
+            </td>
+
+            <td data-sort="{{ item.next_earnings_date or '9999-12-31' }}" class="num-cell">{% if item.next_earnings_date %}{{ item.next_earnings_date }}{% else %}N/A{% endif %}</td>
+            <td data-sort="{{ item.composite_score }}" class="num-cell">{{ item.composite_score }}</td>
+            <td class="max-w-150">
+                {% for tag in item.setup_tags_list %}
+                    <div class="inline-block">
+                        <abbr title="{{ tag.tooltip }}" class="no-decoration-abbr">
+                            <span class="setup-tag">{{ tag.name }}</span>
                         </abbr>
-                    {% else %}
-                        N/A
-                    {% endif %}
-                </td>
-                
-                <td data-sort="{{ item.sentiment_score if item.sentiment_score is not none else -999 }}">
-                    {% if item.sentiment_score is not none %}
-                        {% if item.sentiment_score > 0.6 %}
-                            <span class="sent-badge sent-euphoria">Euphoria ({{ "{:,.3f}".format(item.sentiment_score) }})</span>
-                        {% elif item.sentiment_score > 0.2 %}
-                            <span class="sent-badge sent-bullish">Bullish ({{ "{:,.3f}".format(item.sentiment_score) }})</span>
-                        {% elif item.sentiment_score >= -0.2 %}
-                            <span class="sent-badge sent-neutral">Neutral ({{ "{:,.3f}".format(item.sentiment_score) }})</span>
-                        {% elif item.sentiment_score > -0.6 %}
-                            <span class="sent-badge sent-bearish">Bearish ({{ "{:,.3f}".format(item.sentiment_score) }})</span>
-                        {% else %}
-                            <span class="sent-badge sent-fear">Extreme Fear ({{ "{:,.3f}".format(item.sentiment_score) }})</span>
-                        {% endif %}
-                    {% else %}
-                        N/A
-                    {% endif %}
-                </td>
+                    </div>
+                {% endfor %}
 
-                <td data-sort="{{ item.next_earnings_date or '9999-12-31' }}" class="num-cell">{% if item.next_earnings_date %}{{ item.next_earnings_date }}{% else %}N/A{% endif %}</td>
-                <td data-sort="{{ item.composite_score }}" class="num-cell">{{ item.composite_score }}</td>
-                <td class="max-w-150">
-                    {% for tag in item.setup_tags_list %}
+                {% if item.ml_confidence_score is not none and item.composite_score is not none and item.composite_score != 'N/A' %}
+                    {% set comp = item.composite_score|int %}
+                    {% if comp >= 70 and item.ml_confidence_score < 20 %}
                         <div class="inline-block">
-                            <abbr title="{{ tag.tooltip }}" class="no-decoration-abbr">
-                                <span class="setup-tag">{{ tag.name }}</span>
+                            <abbr title="High Quant Score but Low AI Confidence. Technicals are bullish but Machine Learning predicts a drop." class="no-decoration-abbr">
+                                <span class="setup-tag">⚠️ AI Disconnect</span>
                             </abbr>
                         </div>
-                    {% endfor %}
-                    
-                    {% if item.ml_confidence_score is not none and item.composite_score is not none and item.composite_score != 'N/A' %}
-                        {% set comp = item.composite_score|int %}
-                        {% if comp >= 70 and item.ml_confidence_score < 20 %}
-                            <div class="inline-block">
-                                <abbr title="High Quant Score but Low AI Confidence. Technicals are bullish but Machine Learning predicts a drop." class="no-decoration-abbr">
-                                    <span class="setup-tag">⚠️ AI Disconnect</span>
-                                </abbr>
-                            </div>
-                        {% elif comp < 40 and item.ml_confidence_score >= 40 %}
-                            <div class="inline-block">
-                                <abbr title="Low Quant Score but High AI Confidence. Technicals are bearish but Machine Learning predicts a surge." class="no-decoration-abbr">
-                                    <span class="setup-tag">🤖 AI Buy</span>
-                                </abbr>
-                            </div>
-                        {% endif %}
+                    {% elif comp < 40 and item.ml_confidence_score >= 40 %}
+                        <div class="inline-block">
+                            <abbr title="Low Quant Score but High AI Confidence. Technicals are bearish but Machine Learning predicts a surge." class="no-decoration-abbr">
+                                <span class="setup-tag">🤖 AI Buy</span>
+                            </abbr>
+                        </div>
                     {% endif %}
-                </td>
-                <td class="{{ item.overall_signal | replace(' ', '-') | replace('/', '-') }}">{{ item.overall_signal }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+                {% endif %}
+            </td>
+            <td class="{{ item.overall_signal | replace(' ', '-') | replace('/', '-') }}">{{ item.overall_signal }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}
 
-    <script>
-        // Render position sizing cells after DOM is ready and DataTable has rendered
-        function renderPositionSizing() {
-            document.querySelectorAll(".ps-cell").forEach(function(cell) {
-                const entryPrice = parseFloat(cell.dataset.entryPrice);
-                const atrPctRaw  = cell.dataset.atrPct;
-                const atrPct     = atrPctRaw === "" ? null : parseFloat(atrPctRaw);
-                const currency   = cell.dataset.currency || "USD";
-                
-                const result = window.PositionSizing.calculateForRow(entryPrice, atrPct, currency);
-                
-                if (result.positionValue != null && result.shares != null && result.shares > 0) {
-                    cell.textContent = window.PositionSizing.formatCurrency(
-                        result.positionValue, window.BASE_CURRENCY
-                    );
-                    cell.setAttribute("data-sort", result.positionValue);
-                    
-                    const sharesCell = cell.nextElementSibling;
-                    if (sharesCell && sharesCell.classList.contains("ps-cell-shares")) {
-                        sharesCell.textContent = result.shares.toLocaleString();
-                        sharesCell.setAttribute("data-sort", result.shares);
-                    }
-                } else {
-                    cell.textContent = "—";
-                    const sharesCell = cell.nextElementSibling;
-                    if (sharesCell && sharesCell.classList.contains("ps-cell-shares")) {
-                        sharesCell.textContent = "—";
-                    }
-                }
-            });
-        }
-        
-        document.addEventListener("DOMContentLoaded", renderPositionSizing);
-    </script>
-
-    <script>
-        $(document).ready(function() {
-            // Initialize DataTables
-            var table = $('#dataTable').DataTable({
-                pageLength: 50,
-                deferRender: true,
-                dom: 'lrtip', // Hides the default DataTables search box since we map our custom one
-                order: [] // Preserves your initial backend sorting
-            });
-            
-            // Map Custom Search Box
-            $('#customSearchInput').on('keyup', function () {
-                table.search(this.value).draw();
-            });
-
-            // Signal is column 17
-            $('#signalFilter').on('change', function() {
-                var val = $(this).val();
-                if(val === 'ALL') { table.column(17).search('').draw(); }
-                else { table.column(17).search('^' + val + '$', true, false).draw(); }
-            });
-
-            // Setups & Tags is column 16 — tag and candle filters share this column
-            $('#tagFilter').on('change', function() {
-                $('#candleFilter').val('ALL');
-                var val = $(this).val();
-                if(val === 'ALL') { table.column(16).search('').draw(); }
-                else { table.column(16).search(val).draw(); }
-            });
-
-            // Candlestick patterns are also in column 16
-            $('#candleFilter').on('change', function() {
-                $('#tagFilter').val('ALL');
-                var val = $(this).val();
-                if(val === 'ALL') { table.column(16).search('').draw(); }
-                else { table.column(16).search(val, false, false).draw(); }
-            });
-
-            // Score range filter on column 15
-            var scoreMin = null, scoreMax = null;
-            $.fn.dataTable.ext.search.push(function(settings, data) {
-                if (settings.nTable.id !== 'dataTable') return true;
-                if (scoreMin === null) return true;
-                var score = parseFloat(data[15]);
-                if (isNaN(score)) return false;
-                return score >= scoreMin && (scoreMax === null || score <= scoreMax);
-            });
-
-            $('#scoreFilter').on('change', function() {
-                var val = $(this).val();
-                if (val === 'ALL')  { scoreMin = null; scoreMax = null; }
-                else if (val === '75') { scoreMin = 75;  scoreMax = null; }
-                else if (val === '60') { scoreMin = 60;  scoreMax = 74;   }
-                else if (val === '40') { scoreMin = 40;  scoreMax = 59;   }
-                else if (val === '0')  { scoreMin = 0;   scoreMax = 39;   }
-                table.draw();
-            });
-        });
-    </script>
-</body>
-</html>
+{% block scripts %}
+<script>
+    window.POSITION_SIZING_CONFIG = {{ position_sizing.config | tojson }};
+    window.BASE_CURRENCY = "{{ position_sizing.base_currency }}";
+    window.FX_RATES = {{ position_sizing.fx_rates | tojson }};
+</script>
+<script src="/static/js/position_sizing.js"></script>
+<script src="/static/js/watchlist.js?v={{ css_version }}"></script>
+{% endblock %}

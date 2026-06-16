@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="dark">
+    <title>{% block title %}Quantamental{% endblock %}</title>
+    <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
+    <link rel="stylesheet" href="/static/vendor/datatables/dataTables.bootstrap5.min.css">
+    <link rel="stylesheet" href="/static/vendor/datatables/responsive.bootstrap5.min.css">
+    <link rel="stylesheet" href="/static/css/styles.css?v={{ css_version }}">
+    {% block extra_head %}{% endblock %}
+</head>
+<body class="{% block body_class %}body-app{% endblock %}">
+
+    {% if not embed %}
+    {% set p = request.url.path %}
+    <nav class="navbar navbar-expand-lg app-navbar sticky-top">
+        <div class="container-fluid">
+            <a class="navbar-brand p-0" href="https://github.com/alfwro13/Stock_Analysis_Project" target="_blank" rel="noopener">
+                <img src="/assets/logo_small.png" alt="Quantamental Logo" class="logo-img">
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#appNav" aria-controls="appNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="appNav">
+                <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                    <li class="nav-item"><a class="nav-link{% if p.startswith('/portfolio') %} active{% endif %}" href="/portfolio">💼 Portfolio</a></li>
+                    <li class="nav-item"><a class="nav-link{% if p.startswith('/watchlist') %} active{% endif %}" href="/watchlist">👀 Watchlist</a></li>
+                    <li class="nav-item"><a class="nav-link{% if p.startswith('/news') %} active{% endif %}" href="/news">📰 News</a></li>
+                    <li class="nav-item"><a class="nav-link{% if p.startswith('/quant-screener') %} active{% endif %}" href="/quant-screener">📊 Quant Screener</a></li>
+                    <li class="nav-item"><a class="nav-link{% if p.startswith('/earnings-volatility') %} active{% endif %}" href="/earnings-volatility">📅 Earnings Volatility</a></li>
+                    <li class="nav-item"><a class="nav-link{% if p.startswith('/market-sentiment') %} active{% endif %}" href="/market-sentiment">🌡️ Market Sentiment</a></li>
+                    <li class="nav-item"><a class="nav-link{% if p.startswith('/market-screener') %} active{% endif %}" href="/market-screener">🌐 Market Screener</a></li>
+                    <li class="nav-item"><a class="nav-link{% if p.startswith('/market-reports') %} active{% endif %}" href="/market-reports">📈 Market Reports</a></li>
+                    <li class="nav-item"><a class="nav-link{% if p.startswith('/tools') %} active{% endif %}" href="/tools">🔧 Tools</a></li>
+                    <li class="nav-item"><a class="nav-link{% if p.startswith('/settings') %} active{% endif %}" href="/settings">⚙️ Settings</a></li>
+                    <li class="nav-item"><a class="nav-link{% if p.startswith('/glossary') %} active{% endif %}" href="/glossary">📚 Glossary</a></li>
+                    <li class="nav-item"><a class="nav-link{% if p.startswith('/notifications') %} active{% endif %}" href="/notifications">🔔 Notifications {% if unread_count | default(0) > 0 %}<span class="badge" id="nav-badge">{{ unread_count }}</span>{% endif %}</a></li>
+                </ul>
+                <span class="navbar-text freshness-badge-nav" id="freshness-badge-slot"></span>
+            </div>
+        </div>
+    </nav>
+    {% endif %}
+
+    <main class="{% block container_class %}app-page{% endblock %}">
+        {% block content %}{% endblock %}
+    </main>
+
+    <script src="/static/vendor/jquery/jquery-3.7.1.min.js"></script>
+    <script src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
+    <script src="/static/vendor/datatables/dataTables.min.js"></script>
+    <script src="/static/vendor/datatables/dataTables.bootstrap5.min.js"></script>
+    <script src="/static/vendor/datatables/dataTables.responsive.min.js"></script>
+    <script src="/static/vendor/datatables/responsive.bootstrap5.min.js"></script>
+    <script src="/static/js/csrf.js"></script>
+    {% if not embed %}<script src="/static/js/navbar.js"></script>{% endif %}
+    {% block scripts %}{% endblock %}
+</body>
+</html>

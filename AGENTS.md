@@ -83,10 +83,13 @@ Stock_Analysis_Project/
 ├── utils.py                  # Shared utilities
 │
 ├── templates/                # Jinja2 HTML templates
+│   └── base.html             # Shared Bootstrap 5 shell — migrated pages {% extends %} it
 ├── static/                   # CSS, JS, images
 │   ├── css/styles.css        # Global stylesheet (single source of truth for all styles)
+│   ├── vendor/               # Vendored front-end libs (Bootstrap 5, jQuery, DataTables + Responsive) — no CDN at runtime
 │   └── js/
 │       ├── csrf.js           # CSRF token helper
+│       ├── navbar.js         # base.html navbar: notification poller + freshness badge
 │       ├── position_sizing.js
 │       └── settings.js       # Settings page JS (2100 lines, extracted from settings.html)
 ├── data/                     # Runtime data (SQLite, Parquet, JSON)
@@ -159,6 +162,8 @@ Schema changes must go through `database.py:init_db()`.
 
 9. **All notifications go through the unified router.** Every user-facing notification — scheduled-job status and all alerts — must be dispatched via `notification_engine.notify(source, message_type, message_text, ...)`. Do **not** call `nextcloud_talk.send_text_message()` or `INSERT` into `system_notifications` directly from a feature engine. Per-source channel routing (log file / in-app / Nextcloud Talk) lives in `NOTIFICATION_ROUTING` (`config.json`), is editable in the Settings **Notification Settings** panel, and falls back to each source's default in `notification_engine.NOTIFICATION_SOURCES`. A new alert source must be added to that registry (with a canonical `label` and parent `job_id`); a new scheduled job automatically gets a routable status row. Dedup/cooldown stays in the engines (`alert_state`) — the router only decides *where* a fired event goes. Exceptions: deep pipeline-progress chatter may still call `database.log_notification()` directly (in-app only), and file-attachment dispatches (briefings, the Fear & Greed chart) keep their own upload path gated by their enable toggle.
 
+10. **Bootstrap 5 front-end on `base.html`.** New and migrated pages must `{% extends "base.html" %}` — never duplicate the `<!DOCTYPE>`/`<head>`/navbar boilerplate. The UI is Bootstrap 5.3 (dark via `data-bs-theme="dark"` plus CSS-variable overrides in the theme layer at the top of `static/css/styles.css` — no Sass build). Front-end libraries (Bootstrap, jQuery, DataTables + Responsive, and later Plotly) are **vendored** under `static/vendor/` and served locally; do not add CDN `<script>`/`<link>` tags. The migration is page-at-a-time — see `assets/frontend_migration_plan.md` for the staged tracker, coexistence rules, and the canonical reference page (`templates/watchlist.html`). Until a page is migrated it keeps its self-contained `<head>` and the legacy `templates/navbar.html` include; do not delete shared legacy CSS classes while any un-migrated page still uses them.
+
 ---
 
 ## Running the App
@@ -230,6 +235,7 @@ Every code change that adds, removes, or significantly alters a feature **must**
 - **Tooltips:** Use `<abbr title="Explanation text.">Label</abbr>` — wrap the label itself, no custom JS tooltip systems, no icon, no `style` attribute on the `<abbr>`. The global CSS in `static/css/styles.css` already applies `text-decoration: underline dotted #666`, `cursor: pointer`, and `color: inherit` to all `abbr` elements. Never override these inline. Keep tooltip text to 1–2 sentences matching existing examples (e.g. Support 1, RSI, ATR).
 - **Styles belong in `static/css/styles.css`:** Do not write inline `style="..."` attributes. Check whether a CSS class already exists before adding anything. Only use inline styles in JS-generated HTML (e.g. dynamic `innerHTML`) where class-based styling is impractical, and even then keep it minimal.
 - **Large JS blocks belong in `static/js/`:** If a template `<script>` block exceeds ~50 lines, extract it to a `.js` file (see `settings.html` / `settings.js` as the reference). Use a small inline bootstrap to expose any Jinja-derived values as `window.*` globals, then load the external file with `<script src="/static/js/file.js?v={{ css_version }}">`. Never put `{{ ... }}` Jinja interpolations inside `.js` files.
+- **Tables use DataTables Responsive:** New or migrated data tables initialise DataTables with `responsive: true` and explicit per-column `responsivePriority` so the full column set shows on desktop and only the essentials survive on a phone (collapsed columns move to the expandable child row). Keep the client-side full-array data load — do not switch to server-side processing. See `static/js/watchlist.js`.
 - **UK market quirks:** LSE-listed stocks may have prices quoted in pence (GBX), not pounds (GBP). The codebase handles this explicitly — do not remove or simplify that logic.
 - **Secrets:** All credentials live in `.env` (loaded via `python-dotenv`). Never hard-code tokens or API keys. Never commit `.env`.
 - **Port:** Default is `8090`. Do not change it without updating `config.json` and `config.py`.

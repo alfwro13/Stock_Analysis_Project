@@ -1,5 +1,102 @@
 /* ────────────────────────────────────────────────────────────────────────── QUANTAMENTAL DASHBOARD - INTEGRATED PRODUCTION STYLESHEET ────────────────────────────────────────────────────────────────────────── */
 /* CACHE BUSTING: When updating this file, bump CSS_VERSION in constants.py so all templates serve the new version. */
+/* ============================================================================
+   BOOTSTRAP 5 THEME LAYER  (frontend migration — see assets/frontend_migration_plan.md)
+   Reproduces the dashboard dark palette by overriding Bootstrap's CSS variables,
+   so no Sass build is needed. styles.css is loaded last in base.html, so these win.
+   Only pages that extend base.html carry data-bs-theme="dark"; legacy self-contained
+   pages do not load Bootstrap and are unaffected by this block.
+   ============================================================================ */
+[data-bs-theme="dark"] {
+  --bs-body-bg: #121212;
+  --bs-body-color: #e0e0e0;
+  --bs-emphasis-color: #ffffff;
+  --bs-secondary-bg: #1e1e1e;
+  --bs-tertiary-bg: #2c2c2c;
+  --bs-border-color: #333333;
+  --bs-primary: #4da6ff;
+  --bs-primary-rgb: 77, 166, 255;
+  --bs-link-color: #4da6ff;
+  --bs-link-color-rgb: 77, 166, 255;
+  --bs-link-hover-color: #00ffcc;
+  --bs-link-hover-color-rgb: 0, 255, 204;
+  --bs-heading-color: #ffffff;
+}
+[data-bs-theme="dark"] .card {
+  --bs-card-bg: #1e1e1e;
+  --bs-card-border-color: #333333;
+  --bs-card-cap-bg: #2c2c2c;
+  --bs-card-color: #e0e0e0;
+}
+[data-bs-theme="dark"] .table {
+  --bs-table-bg: #1e1e1e;
+  --bs-table-color: #e0e0e0;
+  --bs-table-border-color: #333333;
+  --bs-table-striped-bg: #262626;
+  --bs-table-striped-color: #e0e0e0;
+  --bs-table-hover-bg: #1a2636;
+  --bs-table-hover-color: #ffffff;
+}
+[data-bs-theme="dark"] .btn-primary {
+  --bs-btn-bg: #4da6ff; --bs-btn-border-color: #4da6ff; --bs-btn-color: #121212;
+  --bs-btn-hover-bg: #3388dd; --bs-btn-hover-border-color: #3388dd; --bs-btn-hover-color: #121212;
+  --bs-btn-active-bg: #3388dd; --bs-btn-active-border-color: #3388dd; --bs-btn-active-color: #121212;
+  --bs-btn-disabled-bg: #4da6ff; --bs-btn-disabled-border-color: #4da6ff; --bs-btn-disabled-color: #121212;
+}
+[data-bs-theme="dark"] .btn-success {
+  --bs-btn-bg: #00ffcc; --bs-btn-border-color: #00ffcc; --bs-btn-color: #121212;
+  --bs-btn-hover-bg: #00ccaa; --bs-btn-hover-border-color: #00ccaa; --bs-btn-hover-color: #121212;
+}
+[data-bs-theme="dark"] .form-control,
+[data-bs-theme="dark"] .form-select {
+  background-color: #1e1e1e; border-color: #444444; color: #ffffff;
+}
+[data-bs-theme="dark"] .form-control:focus,
+[data-bs-theme="dark"] .form-select:focus {
+  background-color: #1e1e1e; border-color: #4da6ff; color: #ffffff;
+  box-shadow: 0 0 0 0.2rem rgba(77, 166, 255, 0.25);
+}
+[data-bs-theme="dark"] .accordion {
+  --bs-accordion-bg: #1e1e1e; --bs-accordion-color: #e0e0e0; --bs-accordion-border-color: #333333;
+  --bs-accordion-btn-color: #ffffff; --bs-accordion-btn-bg: #1e1e1e;
+  --bs-accordion-active-bg: #1a2636; --bs-accordion-active-color: #4da6ff;
+  --bs-accordion-btn-focus-box-shadow: none;
+}
+[data-bs-theme="dark"] .dropdown-menu {
+  --bs-dropdown-bg: #1e1e1e; --bs-dropdown-border-color: #333333;
+  --bs-dropdown-link-color: #e0e0e0; --bs-dropdown-link-hover-bg: #2c2c2c; --bs-dropdown-link-hover-color: #00ffcc;
+}
+[data-bs-theme="dark"] .modal {
+  --bs-modal-bg: #1e1e1e; --bs-modal-border-color: #333333; --bs-modal-color: #e0e0e0;
+}
+[data-bs-theme="dark"] .pagination {
+  --bs-pagination-bg: #1e1e1e; --bs-pagination-color: #4da6ff; --bs-pagination-border-color: #333333;
+  --bs-pagination-hover-bg: #2c2c2c; --bs-pagination-hover-color: #ffffff; --bs-pagination-hover-border-color: #333333;
+  --bs-pagination-focus-bg: #2c2c2c;
+  --bs-pagination-active-bg: #4da6ff; --bs-pagination-active-border-color: #4da6ff; --bs-pagination-active-color: #121212;
+  --bs-pagination-disabled-bg: #1e1e1e; --bs-pagination-disabled-color: #666666; --bs-pagination-disabled-border-color: #333333;
+}
+/* App shell layout for pages that extend base.html */
+.body-app { margin: 0; padding: 0; }
+.app-page { padding: 20px 30px; }
+.app-navbar {
+  background-color: rgba(18, 18, 18, 0.95);
+  border-bottom: 1px solid #333;
+  backdrop-filter: blur(5px);
+  --bs-navbar-color: #4da6ff;
+  --bs-navbar-hover-color: #00ffcc;
+  --bs-navbar-active-color: #00ffcc;
+}
+.app-navbar .nav-link { font-weight: bold; }
+.app-navbar .nav-link.active { text-decoration: underline; }
+.freshness-badge-nav { font-size: 12px; line-height: 1.4; text-align: right; white-space: nowrap; display: flex; flex-direction: column; }
+@media (max-width: 768px) {
+  .app-page { padding: 12px; }
+  .freshness-badge-nav { text-align: left; margin-top: 8px; }
+  /* DataTables Responsive collapses columns instead of scrolling, so cancel the
+     legacy viewport-bleed negative margins on base.html pages. */
+  .body-app #dataTable_wrapper { margin-left: 0; margin-right: 0; }
+}
 /* --- AI, Sentiment, and Risk Metrics --- */
 .metric-excellent { color: #4caf50; font-weight: bold; }
 .metric-poor { color: #f44336; font-weight: bold; }
@@ -102,8 +199,7 @@ th:hover { background-color: #3d3d3d; }
 .checkbox-group input { margin-right: 10px; width: 18px; height: 18px; cursor: pointer; }
 .checkbox-group label { margin-bottom: 0; cursor: pointer; color: #e0e0e0; font-size: 16px; }
 /* --- 6. Reusable Buttons --- */
-.btn, .btn-save, .btn-test, .btn-danger, .btn-read, .btn-add, .btn-remove { color: #121212; font-weight: bold; border: none; border-radius: 5px; cursor: pointer; transition: background-color 0.3s ease; }
-.btn { padding: 10px 20px; }
+.btn-save, .btn-test, .btn-danger, .btn-read, .btn-add, .btn-remove { color: #121212; font-weight: bold; border: none; border-radius: 5px; cursor: pointer; transition: background-color 0.3s ease; }
 .btn-sync { background-color: #00ffcc; }
 .btn-sync:hover { background-color: #00ccaa; }
 .btn-update { background-color: #4da6ff; }
