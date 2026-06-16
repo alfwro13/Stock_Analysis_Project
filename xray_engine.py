@@ -759,6 +759,49 @@ def _generate_xray_recommendations(
     return result
 
 
+def _psd_fix_corr(raw: List) -> List[List[float]]:
+    """
+    Convert a stored correlation matrix (which may contain JSON null → None values
+    from pairwise gaps) to a valid positive-semidefinite float matrix.
+
+    Strategy:
+    1. Replace None / NaN with 0.0 (uncorrelated assumption for missing pairs).
+    2. Ensure diagonal is exactly 1.0.
+    3. If min eigenvalue < 0, clip it to 1e-8 and rebuild (Higham nearest-PSD).
+    4. Re-normalise to a proper correlation matrix (diagonal = 1.0).
+    """
+    n = len(raw)
+    arr = np.zeros((n, n), dtype=float)
+    for i, row in enumerate(raw):
+        for j, v in enumerate(row):
+            if v is None or (isinstance(v, float) and not np.isfinite(v)):
+                arr[i, j] = 0.0
+            else:
+                arr[i, j] = float(v)
+    np.fill_diagonal(arr, 1.0)
+
+    try:
+        eigvals, eigvecs = np.linalg.eigh(arr)
+    except np.linalg.LinAlgError:
+        logger.warning("eigh failed on stored correlation matrix; using identity fallback.")
+        return np.eye(n).tolist()
+
+    if float(eigvals.min()) < 0:
+        logger.warning(
+            "Stored correlation matrix is non-PSD (min eigenvalue %.4f). "
+            "Projecting to nearest valid matrix.",
+            float(eigvals.min()),
+        )
+        eigvals = np.maximum(eigvals, 1e-8)
+        arr = eigvecs @ np.diag(eigvals) @ eigvecs.T
+        diag_sqrt = np.sqrt(np.diag(arr))
+        diag_sqrt[diag_sqrt == 0] = 1.0
+        arr = arr / np.outer(diag_sqrt, diag_sqrt)
+        np.fill_diagonal(arr, 1.0)
+
+    return arr.tolist()
+
+
 def _sanitize_floats(obj):
     # Recursively replace nan/inf with None so the report is always JSON-safe.
     if isinstance(obj, float):
@@ -841,6 +884,7 @@ def assemble_xray_report(account_id: str) -> Dict:
     risk_cache: Dict[str, Dict] = {}
     corr_tickers: List[str] = []
     corr_matrix: List[List[float]] = []
+    _raw_matrix: Optional[List] = None
     cache_date: Optional[str] = None
     div_cache: Dict[str, Dict] = {}
     port_rets_series: Optional[List[float]] = None
@@ -875,20 +919,7 @@ def assemble_xray_report(account_id: str) -> Dict:
         ).fetchone()
         if corr_row:
             corr_tickers = json.loads(corr_row["tickers_json"])
-            raw = json.loads(corr_row["matrix_json"])
-            # Defensive PSD fix for any stale matrix stored before the pairwise+PSD upgrade.
-            # None values (stored as JSON null) represent missing pairwise data → treat as 0.
-            arr = np.array([[0.0 if v is None else float(v) for v in row] for row in raw])
-            np.fill_diagonal(arr, 1.0)
-            eigvals, eigvecs = np.linalg.eigh(arr)
-            if float(eigvals.min()) < 0:
-                eigvals = np.maximum(eigvals, 1e-8)
-                arr = eigvecs @ np.diag(eigvals) @ eigvecs.T
-                diag_sqrt = np.sqrt(np.diag(arr))
-                diag_sqrt[diag_sqrt == 0] = 1.0
-                arr = arr / np.outer(diag_sqrt, diag_sqrt)
-                np.fill_diagonal(arr, 1.0)
-            corr_matrix = arr.tolist()
+            _raw_matrix = json.loads(corr_row["matrix_json"])
 
         div_rows = conn.execute(
             "SELECT ticker, dividend_yield_pct, dividend_in_base_currency "
@@ -916,6 +947,12 @@ def assemble_xray_report(account_id: str) -> Dict:
     finally:
         if conn:
             conn.close()
+
+    # --- PSD fix for stored correlation matrix -----------------------------------
+    # Runs outside the DB try/except so numpy LinAlgError is never swallowed by
+    # the "X-ray DB read failed" handler.
+    if _raw_matrix is not None:
+        corr_matrix = _psd_fix_corr(_raw_matrix)
 
     for h in holdings_sorted:
         sym = h["symbol"]
