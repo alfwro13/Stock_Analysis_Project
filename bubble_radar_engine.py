@@ -275,60 +275,89 @@ def run_bubble_scan(tickers: list[str]) -> dict:
     scan_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     spy_rsp = _get_spy_rsp_spread()
 
-    results = {}
-    conn = None
+    # Phase 1: back-fill outcomes — short write transaction, connection released immediately.
+    try:
+        conn = get_connection()
+        _backfill_outcomes(conn)
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error("Bubble radar back-fill failed: %s", e)
+
+    # Phase 2: read all per-ticker data from DB — connection released before any network I/O.
+    ticker_data: dict[str, dict] = {}
+    real_yield: Optional[float] = None
     try:
         conn = get_connection()
         real_yield = _get_real_yield(conn)
-
-        _backfill_outcomes(conn)
-
         for ticker in tickers:
             try:
                 sma_ext, rsi_avg = _get_quant_signals(ticker, conn)
                 ps, fcf_yield_pct, peg, price = _get_fundamentals(ticker, conn)
-
-                iv_skew: Optional[float] = None
-                if _is_us_ticker(ticker, conn):
-                    iv_skew = _compute_iv_skew(ticker)
-
-                score = min(100, (
-                    _score_sma_ext(sma_ext)
-                    + _score_rsi(rsi_avg)
-                    + _score_ps(ps)
-                    + _score_peg(peg)
-                    + _score_fcf_yield_gap(fcf_yield_pct, real_yield)
-                    + _score_iv_skew(iv_skew)
-                    + _score_spy_rsp(spy_rsp)
-                ))
-
-                flag = _flag_from_score(score, watch_threshold, flag_threshold)
-
-                conn.execute(
-                    """INSERT OR REPLACE INTO bubble_radar_metrics
-                       (ticker, scan_date, bubble_score, flag, sma_ext_pct, rsi_avg_20d,
-                        ps_ratio, peg_ratio, fcf_yield, riskfree_rate, iv_call_skew, spy_rsp_spread)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
-                    (ticker, scan_date, score, flag, sma_ext, rsi_avg,
-                     ps, peg, fcf_yield_pct, real_yield, iv_skew, spy_rsp),
-                )
-
-                if flag:
-                    _record_history(ticker, scan_date, flag, price, conn)
-
-                results[ticker] = {"score": score, "flag": flag}
-
+                is_us = _is_us_ticker(ticker, conn)
+                ticker_data[ticker] = {
+                    "sma_ext": sma_ext, "rsi_avg": rsi_avg,
+                    "ps": ps, "fcf_yield_pct": fcf_yield_pct,
+                    "peg": peg, "price": price, "is_us": is_us,
+                }
             except Exception as e:
-                logger.error("Bubble scan failed for %s: %s", ticker, e)
-
-        conn.commit()
+                logger.error("Bubble scan read failed for %s: %s", ticker, e)
+        conn.close()
     except Exception as e:
-        logger.error("Bubble radar scan aborted: %s", e)
-    finally:
-        if conn:
-            conn.close()
+        logger.error("Bubble radar read phase aborted: %s", e)
+        return {}
 
-    flagged = sum(1 for v in results.values() if v["flag"])
+    # Phase 3: network I/O — options chain fetches — no DB connection held.
+    for ticker, data in ticker_data.items():
+        data["iv_skew"] = _compute_iv_skew(ticker) if data.get("is_us") else None
+
+    # Phase 4: compute scores (pure CPU, no I/O).
+    results: dict[str, dict] = {}
+    metric_rows: list[tuple] = []
+    history_rows: list[tuple] = []
+    for ticker, data in ticker_data.items():
+        try:
+            score = min(100, (
+                _score_sma_ext(data["sma_ext"])
+                + _score_rsi(data["rsi_avg"])
+                + _score_ps(data["ps"])
+                + _score_peg(data["peg"])
+                + _score_fcf_yield_gap(data["fcf_yield_pct"], real_yield)
+                + _score_iv_skew(data["iv_skew"])
+                + _score_spy_rsp(spy_rsp)
+            ))
+            flag = _flag_from_score(score, watch_threshold, flag_threshold)
+            metric_rows.append((
+                ticker, scan_date, score, flag,
+                data["sma_ext"], data["rsi_avg"],
+                data["ps"], data["peg"], data["fcf_yield_pct"],
+                real_yield, data["iv_skew"], spy_rsp,
+            ))
+            if flag:
+                history_rows.append((ticker, scan_date, flag, data["price"]))
+            results[ticker] = {"score": score, "flag": flag}
+        except Exception as e:
+            logger.error("Bubble scan score failed for %s: %s", ticker, e)
+
+    # Phase 5: write all results in one short transaction — connection held only for the commit.
+    try:
+        conn = get_connection()
+        for row in metric_rows:
+            conn.execute(
+                """INSERT OR REPLACE INTO bubble_radar_metrics
+                   (ticker, scan_date, bubble_score, flag, sma_ext_pct, rsi_avg_20d,
+                    ps_ratio, peg_ratio, fcf_yield, riskfree_rate, iv_call_skew, spy_rsp_spread)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                row,
+            )
+        for ticker, scan_date_, flag, price in history_rows:
+            _record_history(ticker, scan_date_, flag, price, conn)
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error("Bubble radar write phase failed: %s", e)
+
+    flagged = sum(1 for v in results.values() if v.get("flag"))
     logger.info("Bubble radar scan complete — %s tickers, %s flagged.", len(results), flagged)
     return results
 
