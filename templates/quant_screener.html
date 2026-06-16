@@ -1,303 +1,40 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="color-scheme" content="dark">
-    <title>Quantamental - Quant Screener</title>
-    <link rel="stylesheet" href="/static/css/styles.css?v={{ css_version }}">
-    
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-</head>
-<body class="body-watchlist">
-    
-    <div class="header-container">
-        <div>
-            <div class="title-wrapper">
-                <a href="https://github.com/alfwro13/Stock_Analysis_Project" target="_blank" class="logo-link">
-                    <img src="/assets/logo_small.png" alt="Quantamental Logo" class="logo-img">
-                </a>
-                <h1><abbr title="Quantamental - a modern institutional strategy that combines Quantitative analysis with Fundamental analysis.">uantamental</abbr> Dashboard</h1>
-            </div>
-            
-            <p class="page-subtitle">Signals Generated For: <strong>{{ target_date }}</strong></p>
-            
-            <button class="nav-hamburger" id="nav-hamburger-btn" aria-label="Navigation menu">&#9776;</button>
-            <div class="nav-links">
-                <a href="/portfolio">💼 Portfolio</a>
-                <a href="/watchlist">👀 Watchlist</a>
-                <a href="/quant-screener" class="active">📊 Quant Screener</a>
-                <a href="/earnings-volatility">📅 Earnings Volatility</a>
-                <a href="/options-sandbox">🎲 Options Sandbox</a>
-                <a href="/market-sentiment">Market Sentiment</a>
-                <a href="/market-screener">🌐 Market Screener</a>
-                <a href="/market-reports">📈 Market Reports</a>
-                <a href="/settings">⚙️ Settings</a>
-                <a href="/glossary">📚 Glossary</a>
-                <a href="/notifications">🔔 Notifications {% if unread_count > 0 %}<span class="badge" id="nav-badge">{{ unread_count }}</span>{% endif %}</a>
-            </div>
+{% extends "base.html" %}
+
+{% block title %}Quantamental - Quant Screener{% endblock %}
+
+{% block extra_head %}
+<script src="/static/vendor/marked/marked.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<h1 class="mb-1">Quant Screener</h1>
+<p class="text-secondary mb-3">Signals Generated For: <strong>{{ target_date }}</strong></p>
+
+<div class="report-container" id="markdown-render-area"></div>
+
+<div class="report-container mt-4" id="screener-table-panel">
+    <h2>📊 Signal Explorer</h2>
+    <p class="text-muted-desc">Live view of all tracked signals. Click column headers to sort. Quality: A=high-quality compounder, B=solid, C=average, D=avoid.</p>
+    <div class="row g-2 mb-3">
+        <div class="col-12 col-md">
+            <input type="text" id="se-text-filter" class="form-control" placeholder="Filter ticker or name…">
+        </div>
+        <div class="col-12 col-sm-auto">
+            <input type="number" id="se-score-filter" class="form-control" placeholder="Min score (e.g. 20)" step="1">
+        </div>
+        <div class="col-12 col-sm-auto">
+            <button id="se-reset" class="btn btn-outline-secondary w-100">Reset</button>
         </div>
     </div>
-
-    <div class="report-container" id="markdown-render-area">
+    <div id="se-table-container" class="table-responsive">
+        <p class="text-muted-desc">Loading…</p>
     </div>
+</div>
+{% endblock %}
 
-    <!-- Signal Explorer: interactive sortable/filterable table -->
-    <div class="report-container" id="screener-table-panel" style="margin-top:2rem;">
-        <h2>📊 Signal Explorer</h2>
-        <p style="color:#aaa;font-size:0.9rem;">Live view of all tracked signals. Click column headers to sort. Quality: A=high-quality compounder, B=solid, C=average, D=avoid.</p>
-        <div style="display:flex;gap:0.75rem;flex-wrap:wrap;margin-bottom:1rem;">
-            <input type="text"   id="se-text-filter"  placeholder="Filter ticker or name…"    style="padding:0.4rem 0.6rem;background:#1e1e1e;color:#eee;border:1px solid #444;border-radius:4px;flex:1;min-width:160px;">
-            <input type="number" id="se-score-filter" placeholder="Min score (e.g. 20)"       style="padding:0.4rem 0.6rem;background:#1e1e1e;color:#eee;border:1px solid #444;border-radius:4px;width:160px;" step="1">
-            <button id="se-reset" style="padding:0.4rem 0.8rem;background:#333;color:#eee;border:1px solid #555;border-radius:4px;cursor:pointer;">Reset</button>
-        </div>
-        <div id="se-table-container" style="overflow-x:auto;">
-            <p style="color:#888;">Loading…</p>
-        </div>
-    </div>
-
-    <style>
-        #se-table-container table { width:100%; border-collapse:collapse; font-size:0.85rem; }
-        #se-table-container th { background:#1a1a2e; color:#ccc; padding:0.5rem 0.6rem; text-align:left; cursor:pointer; white-space:nowrap; user-select:none; }
-        #se-table-container th:hover { background:#252545; }
-        #se-table-container td { padding:0.45rem 0.6rem; border-bottom:1px solid #2a2a2a; vertical-align:middle; }
-        #se-table-container tr:hover td { background:#1c1c1c; }
-        .se-badge { display:inline-block; padding:0.15rem 0.45rem; border-radius:4px; font-weight:600; font-size:0.8rem; }
-        .se-score-strongbuy  { background:#1b4332; color:#6fcf97; }
-        .se-score-bullish    { background:#003333; color:#4dd0e1; }
-        .se-score-neutral    { background:#2a2a2a; color:#bbb; }
-        .se-score-bearish    { background:#3d2000; color:#ffb74d; }
-        .se-score-sell       { background:#3b0000; color:#ef9a9a; }
-        .se-qual-a { background:#3d3000; color:#ffd54f; }
-        .se-qual-b { background:#1b3a2a; color:#81c784; }
-        .se-qual-c { background:#2a2a2a; color:#aaa; }
-        .se-qual-d { background:#3b0000; color:#ef9a9a; }
-        .se-earnings-warn { color:#ffb74d; font-weight:600; }
-        #se-sort-indicator { color:#4dd0e1; margin-left:4px; }
-        .se-pagebar { display:flex; align-items:center; gap:1rem; margin-top:0.75rem; }
-        .se-pagebar button { padding:0.35rem 0.8rem; background:#2a2a2a; color:#ccc; border:1px solid #444; border-radius:4px; cursor:pointer; }
-        .se-pagebar button:disabled { opacity:0.35; cursor:default; }
-        .se-pagebar button:not(:disabled):hover { background:#3a3a3a; }
-        .se-pagebar span { color:#888; font-size:0.85rem; }
-        /* Column header tooltips */
-        #se-table-container th[data-tip] { position:relative; }
-        #se-table-container th[data-tip]::after {
-            content: attr(data-tip);
-            position:absolute; bottom:calc(100% + 6px); left:50%; transform:translateX(-50%);
-            background:#111; color:#ddd; font-size:0.75rem; font-weight:400;
-            padding:0.4rem 0.6rem; border-radius:5px; border:1px solid #444;
-            width:220px; white-space:normal; line-height:1.4;
-            pointer-events:none; opacity:0; transition:opacity 0.15s;
-            z-index:100;
-        }
-        #se-table-container th[data-tip]:hover::after { opacity:1; }
-        /* Clickable ticker link */
-        .se-ticker-link { color:#4dd0e1; text-decoration:none; font-weight:600; }
-        .se-ticker-link:hover { text-decoration:underline; }
-    </style>
-
-    <script>
-        document.addEventListener("DOMContentLoaded", async function() {
-            const hamburger = document.getElementById('nav-hamburger-btn');
-            const navLinks = hamburger ? hamburger.nextElementSibling : null;
-            if (hamburger && navLinks) {
-                hamburger.addEventListener('click', (e) => { e.stopPropagation(); navLinks.classList.toggle('nav-open'); });
-                document.addEventListener('click', () => navLinks.classList.remove('nav-open'));
-            }
-
-            // --- Freshness badge ---
-            try {
-                const container = document.querySelector('.header-container');
-                if (container) {
-                    const el = document.createElement('div');
-                    el.id = 'freshness-badge';
-                    el.className = 'freshness-badge';
-                    el.innerHTML = '<span class="freshness-warn">Loading…</span>';
-                    container.appendChild(el);
-                    const resp = await fetch('/api/freshness');
-                    if (resp.ok) {
-                        const d = await resp.json();
-                        const modelLabel  = d.model_date
-                            ? `Model: ${d.model_date} (${d.model_days_ago}d ago)`
-                            : 'Model: not trained';
-                        const pricesLabel = d.prices_date ? `Prices: ${d.prices_date}` : 'Prices: no data';
-                        el.innerHTML =
-                            `<span class="${d.model_state}">${modelLabel}</span><br>` +
-                            `<span class="${d.prices_state}">${pricesLabel}</span>`;
-                    } else { el.style.display = 'none'; }
-                }
-            } catch (e) { /* fail silently */ }
-
-            // --- Markdown briefing ---
-            const rawMarkdown = {{ markdown_content | tojson | safe }};
-            document.getElementById('markdown-render-area').innerHTML = marked.parse(rawMarkdown);
-
-            // --- Signal Explorer table ---
-            let allRows = [];
-            let sortCol = 'composite_score';
-            let sortAsc = false;
-            let currentPage = 1;
-            const PAGE_SIZE = 10;
-
-            const TOOLTIPS = {
-                ticker:          null,
-                company_name:    null,
-                composite_score: 'Composite score from −100 to +100. Combines moving averages, RSI health, volume, candlestick patterns, VCP breakout, relative strength, and fundamentals. ≥40 = Strong Buy, ≥20 = Bullish, <0 = Caution.',
-                overall_signal:  'Signal label derived from the composite score: Strong Buy / Bullish / Neutral / Bearish / Strong Sell / Toxic.',
-                quality_grade:   'Fundamental quality grade. A = ROE >15%, low debt, fair PE/PEG. B = ROE >10%, manageable debt. C = Average or missing data. D = Loss-making (ROE <0%) or dangerously leveraged (D/E >2×). Avoid D-grade entries.',
-                rsi_14:          'Relative Strength Index (14-day). Measures momentum on a 0–100 scale. Below 30 = oversold / potential reversal. Above 70 = overbought / distribution risk. 40–60 = healthy trend zone — ideal for long-term entries.',
-                week52_pct:      'Position within the 52-week price range. 0% = at the 52-week low, 100% = at the 52-week high. Values above 70% indicate the stock is trading near its highs (breakout territory).',
-                atr_pct:         'Average True Range as a % of price (14-day). Measures daily price volatility. <1.5% = calm/low-risk. 1.5–3% = normal. >3% = highly volatile — wider stop-losses required. Long-term entry setups target <2.5%.',
-                earnings_days:   'Days until the next scheduled earnings release. Entering a long-term position just before earnings adds significant gap risk. Highlighted in orange when ≤7 days away.',
-            };
-
-            const COLS = [
-                { key: 'ticker',          label: 'Ticker',    render: r => `<a class="se-ticker-link" href="/stock/${encodeURIComponent(r.ticker||'')}">${r.ticker||''}</a>` },
-                { key: 'company_name',    label: 'Name',      render: r => `<span style="color:#bbb">${(r.company_name||'').slice(0,28)}</span>` },
-                { key: 'composite_score', label: 'Score',     render: r => scoreBadge(r.composite_score) },
-                { key: 'overall_signal',  label: 'Signal',    render: r => `<span style="color:#ccc;font-size:0.8rem">${r.overall_signal||'—'}</span>` },
-                { key: 'quality_grade',   label: 'Quality',   render: r => qualBadge(r.quality_grade) },
-                { key: 'rsi_14',          label: 'RSI',       render: r => fmt1(r.rsi_14) },
-                { key: 'week52_pct',      label: '52W%',      render: r => r.week52_pct != null ? `${(r.week52_pct*100).toFixed(0)}%` : '—' },
-                { key: 'atr_pct',         label: 'ATR%',      render: r => r.atr_pct != null ? `${(r.atr_pct*100).toFixed(1)}%` : '—' },
-                { key: 'earnings_days',   label: 'Earnings',  render: r => earningsCell(r.earnings_days) },
-            ];
-
-            function scoreBadge(v) {
-                if (v == null) return '<span style="color:#666">—</span>';
-                let cls = v >= 40 ? 'se-score-strongbuy' : v >= 20 ? 'se-score-bullish' : v >= 0 ? 'se-score-neutral' : v >= -30 ? 'se-score-bearish' : 'se-score-sell';
-                return `<span class="se-badge ${cls}">${v}</span>`;
-            }
-            function qualBadge(g) {
-                if (!g) return '—';
-                const cls = {A:'se-qual-a',B:'se-qual-b',C:'se-qual-c',D:'se-qual-d'}[g] || 'se-qual-c';
-                return `<span class="se-badge ${cls}">${g}</span>`;
-            }
-            function earningsCell(d) {
-                if (d == null) return '<span style="color:#555">—</span>';
-                const cls = d <= 7 ? 'se-earnings-warn' : 'style="color:#ccc"';
-                return `<span ${d <= 7 ? 'class="se-earnings-warn"' : 'style="color:#ccc"'}>${d}d</span>`;
-            }
-            function fmt1(v) { return v != null ? parseFloat(v).toFixed(1) : '—'; }
-
-            function qualOrder(g) { return {A:0,B:1,C:2,D:3}[g] ?? 4; }
-
-            function sortValue(row, col) {
-                const v = row[col];
-                if (col === 'quality_grade') return qualOrder(v);
-                if (typeof v === 'string') return v.toLowerCase();
-                return v ?? -Infinity;
-            }
-
-            function applyFilters() {
-                const text  = document.getElementById('se-text-filter').value.toLowerCase();
-                const minSc = parseFloat(document.getElementById('se-score-filter').value);
-                return allRows.filter(r => {
-                    if (text && !(r.ticker||'').toLowerCase().includes(text) && !(r.company_name||'').toLowerCase().includes(text)) return false;
-                    if (!isNaN(minSc) && (r.composite_score == null || r.composite_score < minSc)) return false;
-                    return true;
-                });
-            }
-
-            function renderTable() {
-                const filtered = applyFilters();
-                filtered.sort((a, b) => {
-                    const va = sortValue(a, sortCol), vb = sortValue(b, sortCol);
-                    if (va < vb) return sortAsc ? -1 : 1;
-                    if (va > vb) return sortAsc ? 1 : -1;
-                    return 0;
-                });
-
-                const container = document.getElementById('se-table-container');
-                if (!filtered.length) { container.innerHTML = '<p style="color:#888;padding:1rem">No rows match the current filters.</p>'; return; }
-
-                const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
-                if (currentPage > totalPages) currentPage = totalPages;
-                const pageRows = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
-
-                const table = document.createElement('table');
-                const thead = document.createElement('thead');
-                const hrow  = document.createElement('tr');
-                COLS.forEach(col => {
-                    const th = document.createElement('th');
-                    th.textContent = col.label;
-                    if (col.key === sortCol) th.innerHTML += ` <span id="se-sort-indicator">${sortAsc ? '▲' : '▼'}</span>`;
-                    if (TOOLTIPS[col.key]) th.dataset.tip = TOOLTIPS[col.key];
-                    th.addEventListener('click', () => {
-                        if (sortCol === col.key) sortAsc = !sortAsc;
-                        else { sortCol = col.key; sortAsc = col.key !== 'composite_score'; }
-                        currentPage = 1;
-                        renderTable();
-                    });
-                    hrow.appendChild(th);
-                });
-                thead.appendChild(hrow);
-                table.appendChild(thead);
-
-                const tbody = document.createElement('tbody');
-                pageRows.forEach(row => {
-                    const tr = document.createElement('tr');
-                    COLS.forEach(col => {
-                        const td = document.createElement('td');
-                        td.innerHTML = col.render(row);
-                        tr.appendChild(td);
-                    });
-                    tbody.appendChild(tr);
-                });
-                table.appendChild(tbody);
-
-                // Summary line
-                const start = (currentPage - 1) * PAGE_SIZE + 1;
-                const end   = Math.min(currentPage * PAGE_SIZE, filtered.length);
-                const summary = document.createElement('p');
-                summary.style.cssText = 'color:#888;font-size:0.8rem;margin-bottom:0.5rem';
-                summary.textContent = `Showing ${start}–${end} of ${filtered.length} signals (${allRows.length} total)`;
-
-                // Pagination bar
-                const pagebar = document.createElement('div');
-                pagebar.className = 'se-pagebar';
-                const btnPrev = document.createElement('button');
-                btnPrev.textContent = '← Prev';
-                btnPrev.disabled = currentPage === 1;
-                btnPrev.addEventListener('click', () => { currentPage--; renderTable(); });
-
-                const pageInfo = document.createElement('span');
-                pageInfo.textContent = `Page ${currentPage} of ${totalPages}`;
-
-                const btnNext = document.createElement('button');
-                btnNext.textContent = 'Next →';
-                btnNext.disabled = currentPage === totalPages;
-                btnNext.addEventListener('click', () => { currentPage++; renderTable(); });
-
-                pagebar.appendChild(btnPrev);
-                pagebar.appendChild(pageInfo);
-                pagebar.appendChild(btnNext);
-
-                container.innerHTML = '';
-                container.appendChild(summary);
-                container.appendChild(table);
-                container.appendChild(pagebar);
-            }
-
-            document.getElementById('se-text-filter').addEventListener('input', () => { currentPage = 1; renderTable(); });
-            document.getElementById('se-score-filter').addEventListener('input', () => { currentPage = 1; renderTable(); });
-            document.getElementById('se-reset').addEventListener('click', () => {
-                document.getElementById('se-text-filter').value = '';
-                document.getElementById('se-score-filter').value = '';
-                currentPage = 1;
-                renderTable();
-            });
-
-            try {
-                const resp = await fetch('/api/screener-data');
-                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-                const json = await resp.json();
-                allRows = json.data || [];
-                renderTable();
-            } catch (e) {
-                document.getElementById('se-table-container').innerHTML = `<p style="color:#e57373">Failed to load signal data: ${e.message}</p>`;
-            }
-        });
-    </script>
-</body>
-</html>
+{% block scripts %}
+<script>
+    window.MARKDOWN_CONTENT = {{ markdown_content | tojson | safe }};
+</script>
+<script src="/static/js/quant_screener.js?v={{ css_version }}"></script>
+{% endblock %}
