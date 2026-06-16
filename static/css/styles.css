@@ -1018,8 +1018,8 @@ details[open].xray-rec-group .xray-rec-group-summary::before { transform: rotate
 .reader-ticker { background: rgba(0,180,216,0.15); color: #00b4d8; border-radius: 2px; padding: 0 3px; font-weight: 600; }
 
 /* ── Log Viewer ─────────────────────────────────────────────────────────── */
-.lv-body { background: #0d0d0d; color: #c9d1d9; font-family: monospace; font-size: 12px; margin: 0; padding: 0; min-height: 100vh; }
-.lv-container { display: flex; flex-direction: column; height: 100vh; padding: 12px 16px 0; box-sizing: border-box; }
+.lv-body { background: #0d0d0d; color: #c9d1d9; font-family: monospace; font-size: 12px; margin: 0; padding: 0; min-height: 100vh; display: flex; flex-direction: column; }
+.lv-container { display: flex; flex-direction: column; flex: 1; min-height: 0; padding: 12px 16px 0; box-sizing: border-box; }
 .lv-header { margin-bottom: 10px; }
 .lv-title { font-size: 1.1rem; font-weight: 700; margin: 0 0 2px 0; color: #e0e0e0; font-family: sans-serif; }
 .lv-subtitle { margin: 0; color: #666; font-size: 11px; font-family: sans-serif; }

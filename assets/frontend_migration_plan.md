@@ -108,7 +108,7 @@ Status: ☐ todo · ◐ in progress · ☑ done
 - ☑ `earnings_volatility` (`/earnings-volatility`) · ☑ `quant_screener` (`/quant-screener`)
 - ☑ `glossary` (`/glossary`, `glossary.js`) · ☑ `etf_predictor` (`/etf-predictor`)
 - ☑ `dip_radar_summary` (`/dip-radar`) · ☑ `bubble_radar` (`/bubble-radar`, `bubble_radar.js`)
-- ☑ `ai_contagion` (`/ai-contagion`) · ☐ `log_viewer` (`/log-viewer`, `log_viewer.js`)
+- ☑ `ai_contagion` (`/ai-contagion`) · ☑ `log_viewer` (`/log-viewer`, `log_viewer.js`)
 - ☐ `news` (`/news`, `news.js`) · ☐ `macro_cards.html` partial (consumed by portfolio/watchlist)
 
 ### Stage 2 — DataTables-heavy pages
