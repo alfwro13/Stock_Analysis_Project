@@ -1,102 +1,81 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="color-scheme" content="dark">
-    <title>Quantamental - AI Sector Contagion Monitor</title>
-    <link rel="stylesheet" href="/static/css/styles.css?v={{ css_version }}">
-</head>
-<body class="body-watchlist">
+{% extends "base.html" %}
 
-    <div class="header-container">
-        <div>
-            <div class="title-wrapper">
-                <a href="https://github.com/alfwro13/Stock_Analysis_Project" target="_blank" class="logo-link">
-                    <img src="/assets/logo_small.png" alt="Quantamental Logo" class="logo-img">
-                </a>
-                <h1>AI Sector Contagion Monitor</h1>
-            </div>
-            <p class="page-subtitle">Tracks the broader <abbr title="AI ecosystem: semiconductors (NVDA, AMD, AVGO), hyperscalers (GOOGL, MSFT, META, AAPL), cloud (ORCL, AMZN), and AI-adjacent (TSLA).">AI ecosystem</abbr> &mdash; normalised performance and rolling pairwise correlation</p>
-            {% set active_page = 'tools' %}
-            {% include 'navbar.html' %}
+{% block title %}Quantamental - AI Sector Contagion Monitor{% endblock %}
+
+{% block content %}
+<h1 class="mb-1">AI Sector Contagion Monitor</h1>
+<p class="text-muted mb-3">Tracks the broader <abbr title="AI ecosystem: semiconductors (NVDA, AMD, AVGO), hyperscalers (GOOGL, MSFT, META, AAPL), cloud (ORCL, AMZN), and AI-adjacent (TSLA).">AI ecosystem</abbr> &mdash; normalised performance and rolling pairwise correlation</p>
+
+<a href="/tools" class="btn btn-outline-secondary btn-sm mb-3">&#8592; Back to Tools</a>
+
+<p class="risk-summary-text mb-4">
+    <strong>Tickers monitored:</strong>
+    <strong>NVDA</strong>, <strong>AMD</strong>, <strong>AVGO</strong> (semiconductors &mdash; red) &nbsp;|&nbsp;
+    <strong>GOOGL</strong>, <strong>MSFT</strong>, <strong>META</strong>, <strong>AAPL</strong> (hyperscalers &mdash; blue) &nbsp;|&nbsp;
+    <strong>ORCL</strong>, <strong>AMZN</strong> (cloud &mdash; teal) &nbsp;|&nbsp;
+    <strong>TSLA</strong> (AI-adjacent &mdash; orange).
+    Use to spot contagion: when one AI stock drops sharply, do the others follow?
+</p>
+
+{# ── 30-day normalised performance ── #}
+<div class="sentiment-module module-cyan sentiment-module--spaced">
+    <div class="chart-wrapper">
+        <button class="fullscreen-btn" onclick="toggleFullscreen('ai-perf-daily-wrapper')">&#x26F6; Fullscreen</button>
+        <div id="ai-perf-daily-wrapper">
+            {{ perf_daily_html | safe }}
         </div>
     </div>
-
-    <div class="report-container report-container-wide">
-
-        <a href="/tools" class="btn-back">← Back to Tools</a>
-
-        <p class="risk-summary-text">
-            <strong>Tickers monitored:</strong>
-            <strong>NVDA</strong>, <strong>AMD</strong>, <strong>AVGO</strong> (semiconductors &mdash; red) &nbsp;|&nbsp;
-            <strong>GOOGL</strong>, <strong>MSFT</strong>, <strong>META</strong>, <strong>AAPL</strong> (hyperscalers &mdash; blue) &nbsp;|&nbsp;
-            <strong>ORCL</strong>, <strong>AMZN</strong> (cloud &mdash; teal) &nbsp;|&nbsp;
-            <strong>TSLA</strong> (AI-adjacent &mdash; orange).
-            Use to spot contagion: when one AI stock drops sharply, do the others follow?
-        </p>
-
-        {# ── 30-day normalised performance ── #}
-        <div class="sentiment-module module-cyan sentiment-module--spaced">
-            <div class="chart-wrapper">
-                <button class="fullscreen-btn" onclick="toggleFullscreen('ai-perf-daily-wrapper')">⛶ Fullscreen</button>
-                <div id="ai-perf-daily-wrapper">
-                    {{ perf_daily_html | safe }}
-                </div>
-            </div>
-            <div class="sentiment-footer">
-                <strong>Reading this chart:</strong>
-                All series normalised to 100 at the start of the 30-day window &mdash; a value of 110 means the stock is up 10% over that period.
-                Divergence between lines indicates the sector is fragmenting; convergence toward a single direction indicates <abbr title="Contagion — a sharp move in one major AI stock that rapidly spreads to the rest of the sector, typically via risk-off sentiment, forced selling, or sector rotation.">contagion</abbr>.
-            </div>
-        </div>
-
-        {# ── Intraday normalised performance (hidden when market is closed) ── #}
-        {% if perf_intraday_html %}
-        <div class="sentiment-module module-purple sentiment-module--spaced">
-            <div class="chart-wrapper">
-                <button class="fullscreen-btn" onclick="toggleFullscreen('ai-perf-intraday-wrapper')">⛶ Fullscreen</button>
-                <div id="ai-perf-intraday-wrapper">
-                    {{ perf_intraday_html | safe }}
-                </div>
-            </div>
-            <div class="sentiment-footer">
-                <strong>Reading this chart:</strong>
-                Today's intraday session normalised to 100 at the NYSE open (09:30 ET / 14:30 BST).
-                Large intraday gaps between lines may signal news-driven single-stock moves rather than sector-wide contagion.
-            </div>
-        </div>
-        {% endif %}
-
-        {# ── Pairwise correlation heatmap ── #}
-        <div class="sentiment-module module-yellow sentiment-module--spaced">
-            <div class="chart-wrapper">
-                <button class="fullscreen-btn" onclick="toggleFullscreen('ai-corr-wrapper')">⛶ Fullscreen</button>
-                <div id="ai-corr-wrapper">
-                    {{ corr_html | safe }}
-                </div>
-            </div>
-            <div class="sentiment-footer">
-                <strong>Reading this chart:</strong>
-                <abbr title="Pearson correlation coefficient — measures linear co-movement. 1 = perfect positive, -1 = perfect negative, 0 = no linear relationship.">Pearson correlation</abbr> computed over the trailing 20 trading days of daily returns.
-                Deep blue = strongly correlated (stocks move together). Deep red = strongly inverse. White/pale = low relationship.
-                High correlation across the grid means the sector is moving as one &mdash; a drop in any single name is likely to drag the others.
-            </div>
-        </div>
-
+    <div class="sentiment-footer">
+        <strong>Reading this chart:</strong>
+        All series normalised to 100 at the start of the 30-day window &mdash; a value of 110 means the stock is up 10% over that period.
+        Divergence between lines indicates the sector is fragmenting; convergence toward a single direction indicates <abbr title="Contagion — a sharp move in one major AI stock that rapidly spreads to the rest of the sector, typically via risk-off sentiment, forced selling, or sector rotation.">contagion</abbr>.
     </div>
+</div>
 
-    <script>
-    function toggleFullscreen(wrapperId) {
-        const el = document.getElementById(wrapperId);
-        if (!el) return;
-        if (!document.fullscreenElement) {
-            el.requestFullscreen().catch(() => {});
-        } else {
-            document.exitFullscreen();
-        }
+{# ── Intraday normalised performance (hidden when market is closed) ── #}
+{% if perf_intraday_html %}
+<div class="sentiment-module module-purple sentiment-module--spaced">
+    <div class="chart-wrapper">
+        <button class="fullscreen-btn" onclick="toggleFullscreen('ai-perf-intraday-wrapper')">&#x26F6; Fullscreen</button>
+        <div id="ai-perf-intraday-wrapper">
+            {{ perf_intraday_html | safe }}
+        </div>
+    </div>
+    <div class="sentiment-footer">
+        <strong>Reading this chart:</strong>
+        Today's intraday session normalised to 100 at the NYSE open (09:30 ET / 14:30 BST).
+        Large intraday gaps between lines may signal news-driven single-stock moves rather than sector-wide contagion.
+    </div>
+</div>
+{% endif %}
+
+{# ── Pairwise correlation heatmap ── #}
+<div class="sentiment-module module-yellow sentiment-module--spaced">
+    <div class="chart-wrapper">
+        <button class="fullscreen-btn" onclick="toggleFullscreen('ai-corr-wrapper')">&#x26F6; Fullscreen</button>
+        <div id="ai-corr-wrapper">
+            {{ corr_html | safe }}
+        </div>
+    </div>
+    <div class="sentiment-footer">
+        <strong>Reading this chart:</strong>
+        <abbr title="Pearson correlation coefficient — measures linear co-movement. 1 = perfect positive, -1 = perfect negative, 0 = no linear relationship.">Pearson correlation</abbr> computed over the trailing 20 trading days of daily returns.
+        Deep blue = strongly correlated (stocks move together). Deep red = strongly inverse. White/pale = low relationship.
+        High correlation across the grid means the sector is moving as one &mdash; a drop in any single name is likely to drag the others.
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleFullscreen(wrapperId) {
+    const el = document.getElementById(wrapperId);
+    if (!el) return;
+    if (!document.fullscreenElement) {
+        el.requestFullscreen().catch(() => {});
+    } else {
+        document.exitFullscreen();
     }
-    </script>
-
-</body>
-</html>
+}
+</script>
+{% endblock %}
