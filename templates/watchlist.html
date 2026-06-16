@@ -4,7 +4,7 @@
 
 {% block content %}
 {% if not embed %}
-<h1 class="mb-3"><abbr title="Assets you are actively monitoring for potential entry.">Watchlist</abbr> Signals</h1>
+<h1 class="mb-3">Watchlist Signals</h1>
 
 <script>
     window.ENABLE_LIVE_ASSETS = {% if config and config.UI_PREFERENCES and config.UI_PREFERENCES.LIVE_WATCHLIST %}true{% else %}false{% endif %};
