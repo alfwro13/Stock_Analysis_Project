@@ -131,7 +131,7 @@ abbr { text-decoration: underline dotted #666; text-underline-offset: 3px; curso
 .filter-btn:hover { background-color: #3a3a3a; color: #fff; border-color: #666; }
 .filter-btn.active { background-color: #4da6ff; color: #121212; border-color: #4da6ff; }
 .body-notifications .notification-list { max-width: 1400px; margin: 0 auto; padding: 0 20px 40px; }
-.body-portfolio, .body-watchlist, .body-detail, .body-screener, .body-sentiment { margin: 0; padding: 20px; }
+.body-portfolio, .body-watchlist, .body-detail, .body-screener, .body-sentiment { margin: 0; padding: 0; }
 .body-detail { padding-bottom: 50px; }
 .body-settings { margin: 0; padding: 0; }
 .body-settings .header-container { padding-left: 40px; padding-right: 40px; }
@@ -465,7 +465,7 @@ table.dataTable.display tbody tr.even > .sorting_1, table.dataTable.order-column
   .mob-detail-tags { margin-top: 6px; }
 }
 /* --- 17. Systemic Risk Summary Banner --- */
-.risk-summary-row { margin-bottom: 25px; border-left: 5px solid; }
+.risk-summary-row { margin-bottom: 25px; border-left: 5px solid; padding: 18px 20px; border-radius: 8px; }
 .risk-summary-red { border-left-color: #ff4d4d; background: linear-gradient(90deg, rgba(30,30,30,1) 0%, rgba(77,0,0,0.5) 100%); }
 .risk-summary-yellow { border-left-color: #ffaa00; background: linear-gradient(90deg, rgba(30,30,30,1) 0%, rgba(51,43,0,0.5) 100%); }
 .risk-summary-green { border-left-color: #00ff00; background: linear-gradient(90deg, rgba(30,30,30,1) 0%, rgba(0,51,17,0.5) 100%); }
@@ -938,6 +938,22 @@ details[open].xray-rec-group .xray-rec-group-summary::before { transform: rotate
 .xray-metric-value--xs { font-size: 13px; }
 .xray-metric-sublabel { margin-top: 6px; }
 .sentiment-module--spaced { margin-top: 24px; }
+/* ── Market Sentiment page — contagion card ─────────────────────────────── */
+.risk-summary-contagion-flex { align-items: center; }
+.contagion-mini-table-wrapper { margin-top: 10px; overflow-x: auto; }
+.contagion-mini-table { border-collapse: collapse; font-size: 12px; width: auto; min-width: 340px; }
+.contagion-mini-table th { padding: 3px 12px 3px 0; color: #888; font-weight: normal; text-align: left; }
+.contagion-mini-table td { padding: 2px 12px 2px 0; }
+.contagion-mini-table td:last-child { padding-right: 0; }
+.contagion-etf { color: #ff9800; }
+.contagion-leader { color: #f44336; }
+.contagion-ticker-cell { font-weight: 600; }
+.contagion-type-label { color: #888; font-size: 11px; font-family: sans-serif; font-weight: normal; }
+.contagion-scan-count { font-size: 11px; color: #666; }
+.contagion-severity-high { color: #f44336; font-weight: 700; }
+.contagion-severity-med { color: #ff9800; font-weight: 700; }
+.contagion-severity-low { color: #4caf50; font-weight: 700; }
+.contagion-alert-text { color: #f44336; font-weight: 600; }
 
 /* ── Stress Test tool ────────────────────────────────────────────────────── */
 .stress-scenarios-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; margin-bottom: 24px; }
