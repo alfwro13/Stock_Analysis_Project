@@ -941,7 +941,7 @@ details[open].xray-rec-group .xray-rec-group-summary::before { transform: rotate
 /* ── Market Regime page ──────────────────────────────────────────────────── */
 .module-head { padding: 14px 20px 4px 20px; }
 .module-title { margin: 0; color: #00ffcc; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; }
-.module-title-note { font-size: 11px; color: #555; font-weight: normal; margin-left: 8px; }
+.module-title-note { font-size: 11px; color: #555; font-weight: normal; margin-left: 8px; text-transform: none; letter-spacing: normal; }
 .regime-meta-label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
 .regime-state-pill { font-size: 16px !important; font-weight: 700; padding: 5px 18px !important; border: 1px solid transparent; }
 .regime-change-block { border-left: 1px solid #333; padding-left: 20px; }
@@ -994,6 +994,18 @@ details[open].xray-rec-group .xray-rec-group-summary::before { transform: rotate
 .stress-sector-bar-track { flex: 1; height: 12px; background: #111; border-radius: 4px; overflow: hidden; }
 .stress-sector-bar-fill { height: 100%; border-radius: 4px; transition: width 0.4s; }
 .stress-sector-loss-amt { width: 90px; font-size: 11px; text-align: right; font-family: monospace; flex-shrink: 0; }
+/* ── Stress Tester page ─────────────────────────────────────────────────── */
+.custom-drop-row { margin-top: 4px; padding: 12px 16px; background: #111; border-radius: 6px; border: 1px solid #2a2a2a; }
+.custom-drop-input { width: 80px; background: #1a1a1a; border: 1px solid #333; color: #fff; padding: 6px 8px; border-radius: 4px; font-size: 13px; font-family: monospace; }
+.stress-account-select { min-width: 220px; }
+.stress-portfolio-value { font-size: 18px; font-family: monospace; color: #aaa; }
+.stress-scenario-meta-label { font-size: 11px; color: #555; margin-top: 12px; }
+.stress-scenario-meta-value { font-size: 13px; color: #888; font-weight: 600; }
+.stress-recovery-row { margin-top: 18px; padding-top: 14px; border-top: 1px solid rgba(255,77,77,0.2); }
+.stress-recovery-value { font-size: 13px; color: #ffaa00; font-weight: 600; }
+.stress-recovery-duration { font-size: 13px; color: #aaa; font-weight: 600; }
+.stress-warnings-header { font-size: 12px; color: #ffaa00; font-weight: 600; }
+.stress-warnings-list { padding-left: 18px; font-size: 12px; color: #aaa; line-height: 1.7; }
 
 /* ── Macro Regime Allocator ──────────────────────────────────────────────── */
 .ma-loading-state { padding: 40px; text-align: center; color: #888; }

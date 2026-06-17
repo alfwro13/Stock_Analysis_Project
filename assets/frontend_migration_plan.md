@@ -117,7 +117,7 @@ Status: ☐ todo · ◐ in progress · ☑ done
 - ☑ `market_reports` (`/market-reports`, `market_reports.js`, 7 tables + custom filter bars)
 
 ### Stage 3 — Chart-heavy pages (vendor Plotly into `static/vendor/plotly/` here)
-- ☑ `market_regime` (`/market-regime`, `market_regime.js`) · ☐ `stress_test` (`/stress-test`)
+- ☑ `market_regime` (`/market-regime`, `market_regime.js`) · ☑ `stress_test` (`/stress-test`, `stress_test.js`)
 - ☐ `options_sandbox` (`/options-sandbox`) · ☐ `etf_predictor_detail` (`/etf-predictor/{id}`)
 - ☐ `index_detail` (`/index/{ticker}`)
 
