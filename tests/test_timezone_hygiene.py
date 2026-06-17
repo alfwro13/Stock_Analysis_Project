@@ -205,10 +205,10 @@ class TestTemplateTimezoneHygiene:
         )
 
     def test_stock_detail_has_format_reset_time_js_function(self):
-        """stock_detail.html must include the JS helper that computes local reset time."""
-        content = self._read("stock_detail.html")
+        """stock_detail.js must include the JS helper that computes local reset time."""
+        content = self._read_static("js/stock_detail.js")
         assert "formatDipResetLocalTime" in content, (
-            "stock_detail.html is missing the formatDipResetLocalTime JS function"
+            "static/js/stock_detail.js is missing the formatDipResetLocalTime JS function"
         )
 
     def test_settings_has_format_reset_time_js_function(self):

@@ -1229,6 +1229,29 @@ details[open] > .trap-accuracy-summary::before { transform: rotate(90deg); }
 .bubble-widget       { background: #0d0d0d; border-radius: 8px; padding: 14px 18px; margin-top: 16px; }
 .bubble-widget-bubble { border: 1px solid #ff4d4d; }
 .bubble-widget-watch  { border: 1px solid #ffaa00; }
+.bubble-header-row   { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; }
+.bubble-score-num    { font-size: 22px; font-weight: 700; font-family: monospace; }
+.bubble-score-denom  { font-size: 13px; color: #666; }
+.bubble-scan-date    { font-size: 12px; color: #555; }
+.bubble-footer-note  { font-size: 11px; color: #555; margin-top: 10px; margin-bottom: 0; }
+.bubble-metric-score-nonzero { color: #ffaa00; }
+.bubble-metric-score-zero    { color: #444; }
+.bubble-widget a     { color: #4da6ff; }
+
+/* Stock Detail — Bootstrap 5 migration */
+.ps-details          { background: rgba(20,30,45,.65); border: 1px solid rgba(100,150,200,.25); border-radius: 8px; margin: 25px 0; padding: 0; }
+.ps-panel-header     { padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,.05); cursor: pointer; color: #4da6ff; font-weight: bold; outline: none; user-select: none; }
+.ps-panel-title      { font-size: 18px; color: #fff; margin: 0; border: none; padding: 0; }
+.ps-panel-body       { padding: 15px 20px 20px 20px; }
+.ps-hint-primary     { color: #4da6ff; font-size: 12px; font-weight: normal; }
+.anomaly-radar-flex  { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; margin-top: 16px; }
+.anomaly-radar-chart { flex: 0 0 320px; }
+.anomaly-radar-desc  { flex: 1; min-width: 220px; font-size: 0.82rem; color: #aaa; line-height: 1.7; padding-top: 8px; }
+.anomaly-pct-badge      { font-size: 0.75rem; font-weight: 400; margin-left: 10px; padding: 3px 9px; border-radius: 12px; }
+.anomaly-pct-badge-high { background: rgba(255,77,77,.25); color: #ff4d4d; }
+.anomaly-pct-badge-mid  { background: rgba(255,170,0,.2); color: #ffaa00; }
+.anomaly-pct-badge-low  { background: rgba(0,255,204,.15); color: #00ffcc; }
+.sd-anchor-nav a     { color: #4da6ff; }
 .bubble-detail-panel  { background: #0a0a0a; border: 1px solid #1e1e1e; border-radius: 8px; padding: 16px 18px; margin-top: 14px; display: none; }
 .bubble-tabs { display: flex; gap: 8px; margin-bottom: 18px; border-bottom: 1px solid #1e1e1e; padding-bottom: 0; }
 .bubble-tab  { padding: 6px 14px; font-size: 12px; font-weight: 600; color: #666; cursor: pointer; border-bottom: 2px solid transparent; background: none; border-top: none; border-left: none; border-right: none; text-transform: uppercase; letter-spacing: 0.5px; }

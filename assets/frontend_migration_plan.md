@@ -122,7 +122,7 @@ Status: ☐ todo · ◐ in progress · ☑ done
 - ☑ `index_detail` (`/index/{ticker}`, `index_detail.js`)
 
 ### Stage 4 — Large/complex pages (one chat each)
-- ☐ `stock_detail` (`/stock/{ticker}`, 1,495 lines, sticky sidebar, charts)
+- ☑ `stock_detail` (`/stock/{ticker}`, `stock_detail.js`) — Bootstrap grid, sticky right column, position-sizing panel, dip radar, all charts preserved; JS extracted to `static/js/stock_detail.js`
 - ☐ `settings` (`/settings`, 2,101-line template + `settings.js`; cards → accordion, Master
   Matrix, Workflow Monitor/Mermaid, Notification Settings)
 
