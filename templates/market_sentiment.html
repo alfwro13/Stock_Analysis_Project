@@ -1,492 +1,421 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="color-scheme" content="dark">
-    <title>Quantamental - Market Sentiment</title>
-    <link rel="stylesheet" href="/static/css/styles.css?v={{ css_version }}">
-    <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.css">
-</head>
-<body class="body-sentiment">
+{% extends "base.html" %}
 
-    <div class="header-container">
-        <div>
-            <div class="title-wrapper">
-                <a href="https://github.com/alfwro13/Stock_Analysis_Project" target="_blank" class="logo-link">
-                    <img src="/assets/logo_small.png" alt="Quantamental Logo" class="logo-img">
-                </a>
-                <h1>Market Sentiment</h1>
-            </div>
-            {% set active_page = 'market_sentiment' %}
-            {% include 'navbar.html' %}
-        </div>
-    </div>
+{% block title %}Quantamental - Market Sentiment{% endblock %}
 
-    <div class="regime-callout">
-        <div class="regime-callout-title">🌍 Market Regime Context (Volatility)</div>
-        <p class="regime-callout-text">
-            <strong>🇺🇸 US Classification:</strong> 
-            <abbr title="Regime state. Normal = Safe, Volatile = Choppy/Elevated Risk, Crash = Panic." class="text-help">{{ regime_data.us_regime_label }}</abbr> 
-            (Turbulence Index: <abbr title="EWMA Realized Volatility metric. < 20 is Normal, 20-30 is Volatile, > 35 is Crash." class="text-help">{{ "%.2f"|format(regime_data.us_turbulence) }}</abbr>) 
-            {% if regime_data.ai_hmm_state is not none %} | 
-            <abbr title="Time-Series AI structural cluster. 0: Expansion/Normal. 1: Transition/Choppy. 2: Contraction/Crisis." class="text-help">🤖 HMM Hidden Macro State: {{ regime_data.ai_hmm_state }}</abbr>
-            {% endif %}<br>
-            
-            <strong>🇬🇧 UK Classification:</strong> 
-            <abbr title="Regime state. Normal = Safe, Volatile = Choppy/Elevated Risk, Crash = Panic." class="text-help">{{ regime_data.uk_regime_label }}</abbr> 
-            (Turbulence Index: <abbr title="EWMA Realized Volatility metric. < 20 is Normal, 20-30 is Volatile, > 35 is Crash." class="text-help">{{ "%.2f"|format(regime_data.uk_turbulence) }}</abbr>)
-        </p>
-        <p class="regime-callout-text">
-            Market conditions are currently 
-            <strong>{% if regime_data.us_regime_label in ['Crash', 'Volatile'] or regime_data.uk_regime_label in ['Crash', 'Volatile'] %}highly turbulent{% else %}normal and stable{% endif %}</strong>. 
-            Standard quantitative thresholds {% if regime_data.us_regime_label in ['Crash', 'Volatile'] or regime_data.uk_regime_label in ['Crash', 'Volatile'] %}are aggressively filtered for Flight to Safety{% else %}apply{% endif %}.
-        </p>
-    </div>
+{% block content %}
+<h1 class="mb-3">Market Sentiment</h1>
 
-    {% if macro_regime %}
-        {% set global_threat = 'GREEN' %}
-        {% if macro_regime.us_threat_level == 'RED' or macro_regime.uk_threat_level == 'RED' %}
-            {% set global_threat = 'RED' %}
-        {% elif macro_regime.us_threat_level == 'YELLOW' or macro_regime.uk_threat_level == 'YELLOW' %}
-            {% set global_threat = 'YELLOW' %}
-        {% endif %}
-    {% else %}
-        {% set global_threat = 'GREEN' %}
+<div class="regime-callout">
+    <div class="regime-callout-title">🌍 Market Regime Context (Volatility)</div>
+    <p class="regime-callout-text">
+        <strong>🇺🇸 US Classification:</strong>
+        <abbr title="Regime state. Normal = Safe, Volatile = Choppy/Elevated Risk, Crash = Panic." class="text-help">{{ regime_data.us_regime_label }}</abbr>
+        (Turbulence Index: <abbr title="EWMA Realized Volatility metric. < 20 is Normal, 20-30 is Volatile, > 35 is Crash." class="text-help">{{ "%.2f"|format(regime_data.us_turbulence) }}</abbr>)
+        {% if regime_data.ai_hmm_state is not none %} |
+        <abbr title="Time-Series AI structural cluster. 0: Expansion/Normal. 1: Transition/Choppy. 2: Contraction/Crisis." class="text-help">🤖 HMM Hidden Macro State: {{ regime_data.ai_hmm_state }}</abbr>
+        {% endif %}<br>
+        <strong>🇬🇧 UK Classification:</strong>
+        <abbr title="Regime state. Normal = Safe, Volatile = Choppy/Elevated Risk, Crash = Panic." class="text-help">{{ regime_data.uk_regime_label }}</abbr>
+        (Turbulence Index: <abbr title="EWMA Realized Volatility metric. < 20 is Normal, 20-30 is Volatile, > 35 is Crash." class="text-help">{{ "%.2f"|format(regime_data.uk_turbulence) }}</abbr>)
+    </p>
+    <p class="regime-callout-text">
+        Market conditions are currently
+        <strong>{% if regime_data.us_regime_label in ['Crash', 'Volatile'] or regime_data.uk_regime_label in ['Crash', 'Volatile'] %}highly turbulent{% else %}normal and stable{% endif %}</strong>.
+        Standard quantitative thresholds {% if regime_data.us_regime_label in ['Crash', 'Volatile'] or regime_data.uk_regime_label in ['Crash', 'Volatile'] %}are aggressively filtered for Flight to Safety{% else %}apply{% endif %}.
+    </p>
+</div>
+
+{% if macro_regime %}
+    {% set global_threat = 'GREEN' %}
+    {% if macro_regime.us_threat_level == 'RED' or macro_regime.uk_threat_level == 'RED' %}
+        {% set global_threat = 'RED' %}
+    {% elif macro_regime.us_threat_level == 'YELLOW' or macro_regime.uk_threat_level == 'YELLOW' %}
+        {% set global_threat = 'YELLOW' %}
     {% endif %}
+{% else %}
+    {% set global_threat = 'GREEN' %}
+{% endif %}
 
-    {% if urgent_events %}
-    <div class="macro-banner {% if global_threat == 'RED' %}macro-banner-red{% else %}macro-banner-yellow{% endif %}">
-        <div class="urgent-banner-title {% if global_threat == 'RED' %}red{% else %}yellow{% endif %}">
-            ⚠️ URGENT TIER-1 MACRO EVENTS (Next 48 Hours)
-        </div>
-        <div class="flex-col">
-            {% for evt in urgent_events %}
-            <div class="urgent-event-row">
-                <span class="ue-date font-monospace text-sm">[{{ evt.display_date }}]</span>
-                <span class="ue-name">
-                    {% if evt.context %}
-                        <abbr title="{{ evt.context }}" class="text-help text-white">{{ evt.event_name }}</abbr>
-                    {% else %}
-                        {{ evt.event_name }}
-                    {% endif %}
-                </span>
-                <span class="ue-insight">
-                    <span>Est: <span class="text-white">{{ evt.forecast_val }}</span> | Prev: <span class="text-white">{{ evt.previous_val }}</span></span>
-                    {% if evt.insight %}
-                    <span class="text-accent-cyan">{{ evt.insight }}</span>
-                    {% endif %}
-                    {% if evt.ai_consensus_miss_prob is not none %}
-                    <span class="text-warning font-bold">| 🤖 Surprise Prob: {{ "{:.1%}".format(evt.ai_consensus_miss_prob) }}</span>
-                    {% endif %}
-                </span>
-            </div>
-            {% endfor %}
-        </div>
+{% if urgent_events %}
+<div class="macro-banner {% if global_threat == 'RED' %}macro-banner-red{% else %}macro-banner-yellow{% endif %}">
+    <div class="urgent-banner-title {% if global_threat == 'RED' %}red{% else %}yellow{% endif %}">
+        ⚠️ URGENT TIER-1 MACRO EVENTS (Next 48 Hours)
     </div>
-    {% endif %}
-
-    {% if macro_regime %}
-        {% include 'partials/risk_summary.html' %}
-    {% endif %}
-
-    {% if cb_nlp_latest %}
-    <div class="risk-summary-row {{ cb_nlp_latest.css_class }}" style="padding: 18px 20px; border-radius: 8px; margin-bottom: 25px;">
-        <div class="risk-summary-flex" style="align-items: center; gap: 30px;">
-            <div>
-                <h3 class="risk-summary-header {{ cb_nlp_latest.header_class }}" style="margin-bottom: 4px;">
-                    🏛️ Latest Central Bank NLP — {{ cb_nlp_latest.event_name }}
-                    <span style="font-size: 12px; font-weight: normal; color: #888; margin-left: 10px;">{{ cb_nlp_latest.timestamp }}</span>
-                </h3>
-                <p class="risk-summary-text">
-                    <strong>Tone:</strong> <span class="risk-summary-header {{ cb_nlp_latest.header_class }}">{{ cb_nlp_latest.tone }}</span>
-                    &nbsp;&nbsp;|&nbsp;&nbsp;
-                    <strong>Equity Impact:</strong> {{ cb_nlp_latest.equity_impact }}
-                    &nbsp;&nbsp;|&nbsp;&nbsp;
-                    <strong>FinBERT Score:</strong> <span class="font-monospace">{{ cb_nlp_latest.score }}</span>
-                    &nbsp;&nbsp;|&nbsp;&nbsp;
-                    <strong>Currency:</strong> {{ cb_nlp_latest.currency }}
-                </p>
-            </div>
-        </div>
-    </div>
-    {% endif %}
-
-    {% if ai_contagion_status %}
-    {% set latest = ai_contagion_status[0] %}
-    {% if latest.severity_score >= 0.66 %}{% set sev_label = "HIGH" %}{% set sev_color = "#f44336" %}
-    {% elif latest.severity_score >= 0.33 %}{% set sev_label = "MED" %}{% set sev_color = "#ff9800" %}
-    {% else %}{% set sev_label = "LOW" %}{% set sev_color = "#4caf50" %}{% endif %}
-    <div class="risk-summary-row {% if latest.alert_fired %}risk-summary-red{% endif %}" style="padding: 18px 20px; border-radius: 8px; margin-bottom: 25px;">
-        <div class="risk-summary-flex" style="align-items: center; gap: 30px;">
-            <div style="flex: 1;">
-                <h3 class="risk-summary-header {% if latest.alert_fired %}red{% else %}text-cyan{% endif %}" style="margin-bottom: 4px;">
-                    🤖 AI Sector Contagion Monitor
-                    <span style="font-size: 12px; font-weight: normal; color: #888; margin-left: 10px;">Last scan: {{ latest.scan_ts }}</span>
-                </h3>
-                {% if latest.alert_fired %}
-                <p class="risk-summary-text" style="color: #f44336; font-weight: 600;">
-                    CONTAGION SIGNAL ACTIVE &mdash; Leader shocks: {{ latest.leader_count }} &nbsp;|&nbsp; ETF confirmations: {{ latest.etf_count }}
-                    &nbsp;|&nbsp; Severity: <span style="color: {{ sev_color }}; font-weight: 700;">{{ sev_label }}</span>
-                    <span style="font-size: 11px; color: #aaa;">({{ "%.2f"|format(latest.severity_score) }})</span>
-                </p>
+    <div class="flex-col">
+        {% for evt in urgent_events %}
+        <div class="urgent-event-row">
+            <span class="ue-date font-monospace text-sm">[{{ evt.display_date }}]</span>
+            <span class="ue-name">
+                {% if evt.context %}
+                    <abbr title="{{ evt.context }}" class="text-help text-white">{{ evt.event_name }}</abbr>
                 {% else %}
-                <p class="risk-summary-text">
-                    No contagion signal &mdash; Leader shocks detected: {{ latest.leader_count }} &nbsp;|&nbsp; ETF hits: {{ latest.etf_count }}
-                </p>
+                    {{ evt.event_name }}
                 {% endif %}
-                {% if latest.tickers %}
-                <div style="margin-top: 10px; overflow-x: auto;">
-                    <table style="border-collapse: collapse; font-size: 12px; width: auto; min-width: 340px;">
-                        <thead>
-                            <tr style="color: #888; text-align: left;">
-                                <th style="padding: 3px 12px 3px 0;">Ticker</th>
-                                <th style="padding: 3px 12px 3px 0;">Intraday %</th>
-                                <th style="padding: 3px 12px 3px 0;">Vol Spike</th>
-                                <th style="padding: 3px 0;">Type</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for t in latest.tickers %}
-                            {% set row_color = "#ff9800" if t.is_etf else "#f44336" %}
-                            <tr>
-                                <td style="padding: 2px 12px 2px 0; color: {{ row_color }}; font-weight: 600;">{{ t.ticker }}</td>
-                                <td style="padding: 2px 12px 2px 0; font-family: monospace; color: {{ row_color }};">{{ "%+.2f"|format(t.pct) }}%</td>
-                                <td style="padding: 2px 12px 2px 0;">{% if t.vol_spike %}<span title="Volume spike detected">⚡</span>{% else %}&mdash;{% endif %}</td>
-                                <td style="padding: 2px 0; color: #888; font-size: 11px;">{{ "ETF" if t.is_etf else "Leader" }}</td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
+            </span>
+            <span class="ue-insight">
+                <span>Est: <span class="text-white">{{ evt.forecast_val }}</span> | Prev: <span class="text-white">{{ evt.previous_val }}</span></span>
+                {% if evt.insight %}
+                <span class="text-accent-cyan">{{ evt.insight }}</span>
                 {% endif %}
-            </div>
-            <div style="text-align: right; flex-shrink: 0;">
-                <span style="font-size: 11px; color: #666;">{{ ai_contagion_status | length }} scan(s) loaded</span>
-            </div>
+                {% if evt.ai_consensus_miss_prob is not none %}
+                <span class="text-warning font-bold">| 🤖 Surprise Prob: {{ "{:.1%}".format(evt.ai_consensus_miss_prob) }}</span>
+                {% endif %}
+            </span>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{% if macro_regime %}
+    {% include 'partials/risk_summary.html' %}
+{% endif %}
+
+{% if cb_nlp_latest %}
+<div class="risk-summary-row {{ cb_nlp_latest.css_class }}">
+    <div class="risk-summary-flex risk-summary-contagion-flex">
+        <div>
+            <h3 class="risk-summary-header {{ cb_nlp_latest.header_class }} mb-1">
+                🏛️ Latest Central Bank NLP — {{ cb_nlp_latest.event_name }}
+                <span class="text-xs text-dim ms-2 fw-normal">{{ cb_nlp_latest.timestamp }}</span>
+            </h3>
+            <p class="risk-summary-text">
+                <strong>Tone:</strong> <span class="risk-summary-header {{ cb_nlp_latest.header_class }}">{{ cb_nlp_latest.tone }}</span>
+                &nbsp;&nbsp;|&nbsp;&nbsp;
+                <strong>Equity Impact:</strong> {{ cb_nlp_latest.equity_impact }}
+                &nbsp;&nbsp;|&nbsp;&nbsp;
+                <strong>FinBERT Score:</strong> <span class="font-monospace">{{ cb_nlp_latest.score }}</span>
+                &nbsp;&nbsp;|&nbsp;&nbsp;
+                <strong>Currency:</strong> {{ cb_nlp_latest.currency }}
+            </p>
         </div>
     </div>
-    {% endif %}
+</div>
+{% endif %}
 
-    <div class="sentiment-split-grid">
-        
-        <div class="sentiment-column">
-            <h2 class="us-market-header">🇺🇸 US Market Context</h2>
-
-            <div class="sentiment-module module-red">
-                <div id="us-fg-wrapper" class="chart-wrapper">
-                    <button class="fullscreen-btn" onclick="toggleFullscreen('us-fg-wrapper')">⛶ Fullscreen</button>
-                    {{ sentiment_html | safe }}
-                </div>
-                <div class="sentiment-footer">
-                    <span class="sentiment-footer-title">How to read this chart:</span>
-                    <div class="sentiment-footer-text">
-                        This visualization tracks the stock market's "Health" (S&P 500) against Wall Street's "Emotion" (Fear & Greed Index). When the red dotted line crashes below 25, the market is panicking—which is historically the safest time to buy. When it spikes above 75, investors are overly greedy, meaning a sell-off is highly likely.
-                    </div>
-                </div>
-            </div>
-
-            <div class="sentiment-module module-yellow">
-                <div id="us-vix-wrapper" class="chart-wrapper">
-                    <button class="fullscreen-btn" onclick="toggleFullscreen('us-vix-wrapper')">⛶ Fullscreen</button>
-                    {{ vix_spy_html | safe }}
-                </div>
-                <div class="sentiment-footer">
-                    <span class="sentiment-footer-title">How to read this chart:</span>
-                    <div class="sentiment-footer-text">
-                        The VIX is Wall Street's "Fear Gauge". It measures how much money investors are spending on crash insurance. If the VIX stays below 20, the market is calm and safe. If it spikes above 20, conditions are choppy and unpredictable. A spike above 30 means pure panic and high risk.
-                    </div>
-                </div>
-            </div>
-
-            <div class="sentiment-module module-default">
-                <div id="us-yield-wrapper" class="chart-wrapper">
-                    <button class="fullscreen-btn" onclick="toggleFullscreen('us-yield-wrapper')">⛶ Fullscreen</button>
-                    {{ yield_equity_html | safe }}
-                </div>
-                <div class="sentiment-footer">
-                    <span class="sentiment-footer-title">US Cost of Capital Explained:</span>
-                    <div class="sentiment-footer-text">
-                        Think of the 30-Year Treasury Yield as the ultimate "interest rate" for the economy. When this red line spikes, borrowing money becomes expensive for companies and consumers, which suffocates economic growth and crushes stock prices. Conversely, falling yields act as rocket fuel for bull markets.
-                    </div>
-                </div>
-            </div>
-
-            <div class="sentiment-module module-default">
-                <div id="us-yield-curve-wrapper" class="chart-wrapper">
-                    <button class="fullscreen-btn" onclick="toggleFullscreen('us-yield-curve-wrapper')">⛶ Fullscreen</button>
-                    {{ yield_curve_html | safe }}
-                </div>
-                <div class="sentiment-footer">
-                    <span class="sentiment-footer-title">Yield Curve Radar (T10Y2Y) Explained:</span>
-                    <div class="sentiment-footer-text">
-                        Normally, locking your money up in a 10-Year bond pays more interest than a 2-Year bond. However, when investors panic about a near-term economic crash, they rush to the 10-Year safety, driving its payout below the 2-Year. When this line drops below zero into the red zone, it is Wall Street's ultimate recession warning.
-                    </div>
-                </div>
-            </div>
-
-            <div class="sentiment-module module-default">
-                <div id="us-liquidity-wrapper" class="chart-wrapper">
-                    <button class="fullscreen-btn" onclick="toggleFullscreen('us-liquidity-wrapper')">⛶ Fullscreen</button>
-                    {{ us_liquidity_html | safe }}
-                </div>
-                <div class="sentiment-footer">
-                    <span class="sentiment-footer-title">US Liquidity (M2) Explained:</span>
-                    <div class="sentiment-footer-text">
-                        M2 Money Supply represents the raw "fuel" in the economy—literally the amount of cash sitting in bank accounts and circulation. Expanding liquidity makes it incredibly easy for the stock market to rise. If the stock market is rising while this yellow line is falling, the rally is running on empty fumes.
-                    </div>
-                </div>
-            </div>
-
-            <div class="sentiment-module module-default">
-                <div id="us-inflation-wrapper" class="chart-wrapper">
-                    <button class="fullscreen-btn" onclick="toggleFullscreen('us-inflation-wrapper')">⛶ Fullscreen</button>
-                    {{ us_inflation_html | safe }}
-                </div>
-                <div class="sentiment-footer">
-                    <span class="sentiment-footer-title">US Inflation (CPI YoY) Explained:</span>
-                    <div class="sentiment-footer-text">
-                        Inflation is the rate at which everything around you is becoming more expensive. The Federal Reserve targets 2% as the healthy "sweet spot". When CPI spikes above 5%, the Fed panics and aggressively raises interest rates to cool the economy — which historically crushes the stock market. A falling CPI line is rocket fuel for risk assets.
-                    </div>
-                </div>
-            </div>
-
-            <div class="sentiment-module module-default">
-                <div id="us-credit-wrapper" class="chart-wrapper">
-                    <button class="fullscreen-btn" onclick="toggleFullscreen('us-credit-wrapper')">⛶ Fullscreen</button>
-                    {{ us_credit_html | safe }}
-                </div>
-                <div class="sentiment-footer">
-                    <span class="sentiment-footer-title">US High Yield Spread Explained:</span>
-                    <div class="sentiment-footer-text">
-                        "ICE BofA" is just the data provider. The "High Yield Spread" simply measures the penalty interest rate that risky companies have to pay to get loans. If this red line spikes into the Danger Zone (>5.0%), banks are terrified of bankruptcies and are refusing to lend. The stock market rarely survives when credit markets panic.
-                    </div>
-                </div>
-            </div>
-
-            <div class="calendar-table-wrapper">
-                <h3>🇺🇸 US Economic Events (7-Day Horizon)</h3>
-                <table id="usCalendarTable" class="display w-100">
+{% if ai_contagion_status %}
+{% set latest = ai_contagion_status[0] %}
+{% if latest.severity_score >= 0.66 %}{% set sev_label = "HIGH" %}
+{% elif latest.severity_score >= 0.33 %}{% set sev_label = "MED" %}
+{% else %}{% set sev_label = "LOW" %}{% endif %}
+<div class="risk-summary-row {% if latest.alert_fired %}risk-summary-red{% endif %}">
+    <div class="risk-summary-flex risk-summary-contagion-flex">
+        <div class="flex-grow-1">
+            <h3 class="risk-summary-header {% if latest.alert_fired %}red{% else %}text-cyan{% endif %} mb-1">
+                🤖 AI Sector Contagion Monitor
+                <span class="text-xs text-dim ms-2 fw-normal">Last scan: {{ latest.scan_ts }}</span>
+            </h3>
+            {% if latest.alert_fired %}
+            <p class="risk-summary-text contagion-alert-text">
+                CONTAGION SIGNAL ACTIVE &mdash; Leader shocks: {{ latest.leader_count }} &nbsp;|&nbsp; ETF confirmations: {{ latest.etf_count }}
+                &nbsp;|&nbsp; Severity: <span class="contagion-severity-{{ sev_label | lower }}">{{ sev_label }}</span>
+                <span class="text-xs text-secondary">({{ "%.2f"|format(latest.severity_score) }})</span>
+            </p>
+            {% else %}
+            <p class="risk-summary-text">
+                No contagion signal &mdash; Leader shocks detected: {{ latest.leader_count }} &nbsp;|&nbsp; ETF hits: {{ latest.etf_count }}
+            </p>
+            {% endif %}
+            {% if latest.tickers %}
+            <div class="contagion-mini-table-wrapper">
+                <table class="contagion-mini-table">
                     <thead>
                         <tr>
-                            <th>Date ({{ user_tz_label }})</th>
-                            <th>Event</th>
-                            <th>Forecast</th>
-                            <th>Previous</th>
-                            <th>Market Insight</th>
+                            <th>Ticker</th>
+                            <th>Intraday %</th>
+                            <th>Vol Spike</th>
+                            <th>Type</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {% for row in us_events %}
+                        {% for t in latest.tickers %}
                         <tr>
-                            <td class="font-monospace text-sm">{{ row.display_date }}</td>
-                            <td class="font-bold">
-                                {% if row.context %}
-                                    <abbr title="{{ row.context }}" class="text-help text-white">{{ row.event_name }}</abbr>
-                                {% else %}
-                                    {{ row.event_name }}
-                                {% endif %}
-                            </td>
-                            <td class="{% if row.forecast_val and row.previous_val and row.forecast_val > row.previous_val %}warning-text{% endif %}">
-                                {{ row.forecast_val }}
-                            </td>
-                            <td>{{ row.previous_val }}</td>
-                            <td class="text-sm text-accent-cyan">
-                                {{ row.insight }}
-                                {% if row.ai_consensus_miss_prob is not none %}
-                                    <br><span class="text-warning text-xs font-bold">🤖 Surprise Prob: {{ "{:.1%}".format(row.ai_consensus_miss_prob) }}</span>
-                                {% endif %}
-                                {% if row.ai_volatility_warning is not none and row.ai_volatility_warning > 0 %}
-                                    <br><span class="text-danger text-xs font-bold">💥 Stacked Vol Forecast: {{ "{:,.2f}".format(row.ai_volatility_warning) }}%</span>
-                                {% endif %}
-                            </td>
+                            <td class="contagion-ticker-cell {% if t.is_etf %}contagion-etf{% else %}contagion-leader{% endif %}">{{ t.ticker }}</td>
+                            <td class="font-monospace {% if t.is_etf %}contagion-etf{% else %}contagion-leader{% endif %}">{{ "%+.2f"|format(t.pct) }}%</td>
+                            <td>{% if t.vol_spike %}<span title="Volume spike detected">⚡</span>{% else %}&mdash;{% endif %}</td>
+                            <td class="contagion-type-label">{{ "ETF" if t.is_etf else "Leader" }}</td>
                         </tr>
                         {% endfor %}
                     </tbody>
                 </table>
-                <div class="footer-notes">
-                    <span class="sentiment-footer-title">How to read this data:</span>
-                    <div class="sentiment-footer-text">
-                        <strong>🤖 Surprise Prob:</strong> Our Random Forest model's calculated probability that the actual data release will significantly deviate from Wall Street's forecast.<br>
-                        <strong>💥 Stacked Vol Forecast:</strong> Our XGBoost AI's prediction of the absolute percentage move (Volatility Gap) the S&P 500 will make within 30 minutes of the event. A forecast > 2.0% triggers an automated AI Volatility Defense mechanism across the dashboard.
-                    </div>
+            </div>
+            {% endif %}
+        </div>
+        <div class="text-end flex-shrink-0">
+            <span class="contagion-scan-count">{{ ai_contagion_status | length }} scan(s) loaded</span>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="row g-4">
+
+    <div class="col-12 col-lg-6">
+        <h2 class="us-market-header">🇺🇸 US Market Context</h2>
+
+        <div class="sentiment-module module-red">
+            <div id="us-fg-wrapper" class="chart-wrapper">
+                <button class="fullscreen-btn" onclick="toggleFullscreen('us-fg-wrapper')">⛶ Fullscreen</button>
+                {{ sentiment_html | safe }}
+            </div>
+            <div class="sentiment-footer">
+                <span class="sentiment-footer-title">How to read this chart:</span>
+                <div class="sentiment-footer-text">
+                    This visualization tracks the stock market's "Health" (S&P 500) against Wall Street's "Emotion" (Fear & Greed Index). When the red dotted line crashes below 25, the market is panicking—which is historically the safest time to buy. When it spikes above 75, investors are overly greedy, meaning a sell-off is highly likely.
                 </div>
             </div>
         </div>
 
-        <div class="sentiment-column">
-            <h2 class="uk-market-header">🇬🇧 UK Market Context</h2>
-
-            <div class="sentiment-module module-cyan">
-                <div id="uk-gbp-wrapper" class="chart-wrapper">
-                    <button class="fullscreen-btn" onclick="toggleFullscreen('uk-gbp-wrapper')">⛶ Fullscreen</button>
-                    {{ ftse_gbp_html | safe }}
-                </div>
-                <div class="sentiment-footer">
-                    <span class="sentiment-footer-title">How to read this chart:</span>
-                    <div class="sentiment-footer-text">
-                        Because the biggest UK companies make most of their money overseas in Dollars and Euros, a weak Pound (GBP) is actually great for the FTSE 100. Their foreign profits look much bigger when converted back to a weak home currency. Look for the blue and green lines to move in opposite directions.
-                    </div>
+        <div class="sentiment-module module-yellow">
+            <div id="us-vix-wrapper" class="chart-wrapper">
+                <button class="fullscreen-btn" onclick="toggleFullscreen('us-vix-wrapper')">⛶ Fullscreen</button>
+                {{ vix_spy_html | safe }}
+            </div>
+            <div class="sentiment-footer">
+                <span class="sentiment-footer-title">How to read this chart:</span>
+                <div class="sentiment-footer-text">
+                    The VIX is Wall Street's "Fear Gauge". It measures how much money investors are spending on crash insurance. If the VIX stays below 20, the market is calm and safe. If it spikes above 20, conditions are choppy and unpredictable. A spike above 30 means pure panic and high risk.
                 </div>
             </div>
+        </div>
 
-            <div class="sentiment-module module-purple">
-                <div id="uk-yield-wrapper" class="chart-wrapper">
-                    <button class="fullscreen-btn" onclick="toggleFullscreen('uk-yield-wrapper')">⛶ Fullscreen</button>
-                    {{ uk_yield_equity_html | safe }}
-                </div>
-                <div class="sentiment-footer">
-                    <span class="sentiment-footer-title">UK Cost of Capital Explained:</span>
-                    <div class="sentiment-footer-text">
-                        Just like the US, rising borrowing costs (the 10-Year Gilt Yield) act as gravity on the UK stock market. High yields mean expensive mortgages for consumers and expensive loans for businesses, which drags down the FTSE 100.
-                    </div>
+        <div class="sentiment-module module-default">
+            <div id="us-yield-wrapper" class="chart-wrapper">
+                <button class="fullscreen-btn" onclick="toggleFullscreen('us-yield-wrapper')">⛶ Fullscreen</button>
+                {{ yield_equity_html | safe }}
+            </div>
+            <div class="sentiment-footer">
+                <span class="sentiment-footer-title">US Cost of Capital Explained:</span>
+                <div class="sentiment-footer-text">
+                    Think of the 30-Year Treasury Yield as the ultimate "interest rate" for the economy. When this red line spikes, borrowing money becomes expensive for companies and consumers, which suffocates economic growth and crushes stock prices. Conversely, falling yields act as rocket fuel for bull markets.
                 </div>
             </div>
+        </div>
 
-            <div class="sentiment-module module-cyan">
-                <div id="uk-liquidity-wrapper" class="chart-wrapper">
-                    <button class="fullscreen-btn" onclick="toggleFullscreen('uk-liquidity-wrapper')">⛶ Fullscreen</button>
-                    {{ uk_liquidity_html | safe }}
-                </div>
-                <div class="sentiment-footer">
-                    <span class="sentiment-footer-title">UK Liquidity (M4) Explained:</span>
-                    <div class="sentiment-footer-text">
-                        M4 represents the total cash flowing through the UK economy. A growing money supply acts as a safety net, supporting business expansion and stock market rallies. A contracting money supply pulls that safety net away, making it very hard for the market to grow.
-                    </div>
+        <div class="sentiment-module module-default">
+            <div id="us-yield-curve-wrapper" class="chart-wrapper">
+                <button class="fullscreen-btn" onclick="toggleFullscreen('us-yield-curve-wrapper')">⛶ Fullscreen</button>
+                {{ yield_curve_html | safe }}
+            </div>
+            <div class="sentiment-footer">
+                <span class="sentiment-footer-title">Yield Curve Radar (T10Y2Y) Explained:</span>
+                <div class="sentiment-footer-text">
+                    Normally, locking your money up in a 10-Year bond pays more interest than a 2-Year bond. However, when investors panic about a near-term economic crash, they rush to the 10-Year safety, driving its payout below the 2-Year. When this line drops below zero into the red zone, it is Wall Street's ultimate recession warning.
                 </div>
             </div>
+        </div>
 
-            <div class="sentiment-module module-default">
-                <div id="uk-inflation-wrapper" class="chart-wrapper">
-                    <button class="fullscreen-btn" onclick="toggleFullscreen('uk-inflation-wrapper')">⛶ Fullscreen</button>
-                    {{ uk_inflation_html | safe }}
-                </div>
-                <div class="sentiment-footer">
-                    <span class="sentiment-footer-title">UK Inflation (CPI YoY) Explained:</span>
-                    <div class="sentiment-footer-text">
-                        CPI tracks the average rise in UK consumer prices — from groceries to energy bills. The Bank of England's mandate is to keep this at 2%. When inflation breaks above 5%, the BoE is forced to hike rates aggressively, increasing borrowing costs for UK households and businesses, which acts as a major drag on the FTSE 100. Falling inflation gives the BoE room to cut rates and fuel equity rallies.
-                    </div>
+        <div class="sentiment-module module-default">
+            <div id="us-liquidity-wrapper" class="chart-wrapper">
+                <button class="fullscreen-btn" onclick="toggleFullscreen('us-liquidity-wrapper')">⛶ Fullscreen</button>
+                {{ us_liquidity_html | safe }}
+            </div>
+            <div class="sentiment-footer">
+                <span class="sentiment-footer-title">US Liquidity (M2) Explained:</span>
+                <div class="sentiment-footer-text">
+                    M2 Money Supply represents the raw "fuel" in the economy—literally the amount of cash sitting in bank accounts and circulation. Expanding liquidity makes it incredibly easy for the stock market to rise. If the stock market is rising while this yellow line is falling, the rally is running on empty fumes.
                 </div>
             </div>
+        </div>
 
-            <div class="sentiment-module module-purple">
-                <div id="uk-credit-wrapper" class="chart-wrapper">
-                    <button class="fullscreen-btn" onclick="toggleFullscreen('uk-credit-wrapper')">⛶ Fullscreen</button>
-                    {{ uk_credit_html | safe }}
-                </div>
-                <div class="sentiment-footer">
-                    <span class="sentiment-footer-title">UK IG Spread Explained:</span>
-                    <div class="sentiment-footer-text">
-                        This measures the financial stress of high-quality UK corporations. If this line crosses into the Danger Zone (>3.0%), it means investors are demanding massive premiums to lend money to even the safest UK companies. This signals a severe economic freeze.
-                    </div>
+        <div class="sentiment-module module-default">
+            <div id="us-inflation-wrapper" class="chart-wrapper">
+                <button class="fullscreen-btn" onclick="toggleFullscreen('us-inflation-wrapper')">⛶ Fullscreen</button>
+                {{ us_inflation_html | safe }}
+            </div>
+            <div class="sentiment-footer">
+                <span class="sentiment-footer-title">US Inflation (CPI YoY) Explained:</span>
+                <div class="sentiment-footer-text">
+                    Inflation is the rate at which everything around you is becoming more expensive. The Federal Reserve targets 2% as the healthy "sweet spot". When CPI spikes above 5%, the Fed panics and aggressively raises interest rates to cool the economy — which historically crushes the stock market. A falling CPI line is rocket fuel for risk assets.
                 </div>
             </div>
+        </div>
 
-            <div class="calendar-table-wrapper">
-                <h3>🇬🇧 UK Economic Events (7-Day Horizon)</h3>
-                <table id="ukCalendarTable" class="display w-100">
-                    <thead>
-                        <tr>
-                            <th>Date ({{ user_tz_label }})</th>
-                            <th>Event</th>
-                            <th>Forecast</th>
-                            <th>Previous</th>
-                            <th>Market Insight</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for row in uk_events %}
-                        <tr>
-                            <td class="font-monospace text-sm">{{ row.display_date }}</td>
-                            <td class="font-bold">
-                                {% if row.context %}
-                                    <abbr title="{{ row.context }}" class="text-help text-white">{{ row.event_name }}</abbr>
-                                {% else %}
-                                    {{ row.event_name }}
-                                {% endif %}
-                            </td>
-                            <td class="{% if row.forecast_val and row.previous_val and row.forecast_val > row.previous_val %}warning-text{% endif %}">
-                                {{ row.forecast_val }}
-                            </td>
-                            <td>{{ row.previous_val }}</td>
-                            <td class="text-sm text-accent-cyan">
-                                {{ row.insight }}
-                                {% if row.ai_consensus_miss_prob is not none %}
-                                    <br><span class="text-warning text-xs font-bold">🤖 Surprise Prob: {{ "{:.1%}".format(row.ai_consensus_miss_prob) }}</span>
-                                {% endif %}
-                                {% if row.ai_volatility_warning is not none and row.ai_volatility_warning > 0 %}
-                                    <br><span class="text-danger text-xs font-bold">💥 Stacked Vol Forecast: {{ "{:,.2f}".format(row.ai_volatility_warning) }}%</span>
-                                {% endif %}
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-                <div class="footer-notes">
-                    <span class="sentiment-footer-title">How to read this data:</span>
-                    <div class="sentiment-footer-text">
-                        <strong>🤖 Surprise Prob:</strong> Our Random Forest model's calculated probability that the actual data release will significantly deviate from Wall Street's forecast.<br>
-                        <strong>💥 Stacked Vol Forecast:</strong> Our XGBoost AI's prediction of the absolute percentage move (Volatility Gap) the S&P 500 will make within 30 minutes of the event. A forecast > 2.0% triggers an automated AI Volatility Defense mechanism across the dashboard.
-                    </div>
+        <div class="sentiment-module module-default">
+            <div id="us-credit-wrapper" class="chart-wrapper">
+                <button class="fullscreen-btn" onclick="toggleFullscreen('us-credit-wrapper')">⛶ Fullscreen</button>
+                {{ us_credit_html | safe }}
+            </div>
+            <div class="sentiment-footer">
+                <span class="sentiment-footer-title">US High Yield Spread Explained:</span>
+                <div class="sentiment-footer-text">
+                    "ICE BofA" is just the data provider. The "High Yield Spread" simply measures the penalty interest rate that risky companies have to pay to get loans. If this red line spikes into the Danger Zone (>5.0%), banks are terrified of bankruptcies and are refusing to lend. The stock market rarely survives when credit markets panic.
                 </div>
             </div>
+        </div>
 
+        <div class="calendar-table-wrapper">
+            <h3>🇺🇸 US Economic Events (7-Day Horizon)</h3>
+            <table id="usCalendarTable" class="table table-hover w-100">
+                <thead>
+                    <tr>
+                        <th>Date ({{ user_tz_label }})</th>
+                        <th>Event</th>
+                        <th>Forecast</th>
+                        <th>Previous</th>
+                        <th>Market Insight</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in us_events %}
+                    <tr>
+                        <td class="font-monospace text-sm">{{ row.display_date }}</td>
+                        <td class="font-bold">
+                            {% if row.context %}
+                                <abbr title="{{ row.context }}" class="text-help text-white">{{ row.event_name }}</abbr>
+                            {% else %}
+                                {{ row.event_name }}
+                            {% endif %}
+                        </td>
+                        <td class="{% if row.forecast_val and row.previous_val and row.forecast_val > row.previous_val %}warning-text{% endif %}">
+                            {{ row.forecast_val }}
+                        </td>
+                        <td>{{ row.previous_val }}</td>
+                        <td class="text-sm text-accent-cyan">
+                            {{ row.insight }}
+                            {% if row.ai_consensus_miss_prob is not none %}
+                                <br><span class="text-warning text-xs font-bold">🤖 Surprise Prob: {{ "{:.1%}".format(row.ai_consensus_miss_prob) }}</span>
+                            {% endif %}
+                            {% if row.ai_volatility_warning is not none and row.ai_volatility_warning > 0 %}
+                                <br><span class="text-danger text-xs font-bold">💥 Stacked Vol Forecast: {{ "{:,.2f}".format(row.ai_volatility_warning) }}%</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <div class="footer-notes">
+                <span class="sentiment-footer-title">How to read this data:</span>
+                <div class="sentiment-footer-text">
+                    <strong>🤖 Surprise Prob:</strong> Our Random Forest model's calculated probability that the actual data release will significantly deviate from Wall Street's forecast.<br>
+                    <strong>💥 Stacked Vol Forecast:</strong> Our XGBoost AI's prediction of the absolute percentage move (Volatility Gap) the S&P 500 will make within 30 minutes of the event. A forecast > 2.0% triggers an automated AI Volatility Defense mechanism across the dashboard.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-lg-6">
+        <h2 class="uk-market-header">🇬🇧 UK Market Context</h2>
+
+        <div class="sentiment-module module-cyan">
+            <div id="uk-gbp-wrapper" class="chart-wrapper">
+                <button class="fullscreen-btn" onclick="toggleFullscreen('uk-gbp-wrapper')">⛶ Fullscreen</button>
+                {{ ftse_gbp_html | safe }}
+            </div>
+            <div class="sentiment-footer">
+                <span class="sentiment-footer-title">How to read this chart:</span>
+                <div class="sentiment-footer-text">
+                    Because the biggest UK companies make most of their money overseas in Dollars and Euros, a weak Pound (GBP) is actually great for the FTSE 100. Their foreign profits look much bigger when converted back to a weak home currency. Look for the blue and green lines to move in opposite directions.
+                </div>
+            </div>
+        </div>
+
+        <div class="sentiment-module module-purple">
+            <div id="uk-yield-wrapper" class="chart-wrapper">
+                <button class="fullscreen-btn" onclick="toggleFullscreen('uk-yield-wrapper')">⛶ Fullscreen</button>
+                {{ uk_yield_equity_html | safe }}
+            </div>
+            <div class="sentiment-footer">
+                <span class="sentiment-footer-title">UK Cost of Capital Explained:</span>
+                <div class="sentiment-footer-text">
+                    Just like the US, rising borrowing costs (the 10-Year Gilt Yield) act as gravity on the UK stock market. High yields mean expensive mortgages for consumers and expensive loans for businesses, which drags down the FTSE 100.
+                </div>
+            </div>
+        </div>
+
+        <div class="sentiment-module module-cyan">
+            <div id="uk-liquidity-wrapper" class="chart-wrapper">
+                <button class="fullscreen-btn" onclick="toggleFullscreen('uk-liquidity-wrapper')">⛶ Fullscreen</button>
+                {{ uk_liquidity_html | safe }}
+            </div>
+            <div class="sentiment-footer">
+                <span class="sentiment-footer-title">UK Liquidity (M4) Explained:</span>
+                <div class="sentiment-footer-text">
+                    M4 represents the total cash flowing through the UK economy. A growing money supply acts as a safety net, supporting business expansion and stock market rallies. A contracting money supply pulls that safety net away, making it very hard for the market to grow.
+                </div>
+            </div>
+        </div>
+
+        <div class="sentiment-module module-default">
+            <div id="uk-inflation-wrapper" class="chart-wrapper">
+                <button class="fullscreen-btn" onclick="toggleFullscreen('uk-inflation-wrapper')">⛶ Fullscreen</button>
+                {{ uk_inflation_html | safe }}
+            </div>
+            <div class="sentiment-footer">
+                <span class="sentiment-footer-title">UK Inflation (CPI YoY) Explained:</span>
+                <div class="sentiment-footer-text">
+                    CPI tracks the average rise in UK consumer prices — from groceries to energy bills. The Bank of England's mandate is to keep this at 2%. When inflation breaks above 5%, the BoE is forced to hike rates aggressively, increasing borrowing costs for UK households and businesses, which acts as a major drag on the FTSE 100. Falling inflation gives the BoE room to cut rates and fuel equity rallies.
+                </div>
+            </div>
+        </div>
+
+        <div class="sentiment-module module-purple">
+            <div id="uk-credit-wrapper" class="chart-wrapper">
+                <button class="fullscreen-btn" onclick="toggleFullscreen('uk-credit-wrapper')">⛶ Fullscreen</button>
+                {{ uk_credit_html | safe }}
+            </div>
+            <div class="sentiment-footer">
+                <span class="sentiment-footer-title">UK IG Spread Explained:</span>
+                <div class="sentiment-footer-text">
+                    This measures the financial stress of high-quality UK corporations. If this line crosses into the Danger Zone (>3.0%), it means investors are demanding massive premiums to lend money to even the safest UK companies. This signals a severe economic freeze.
+                </div>
+            </div>
+        </div>
+
+        <div class="calendar-table-wrapper">
+            <h3>🇬🇧 UK Economic Events (7-Day Horizon)</h3>
+            <table id="ukCalendarTable" class="table table-hover w-100">
+                <thead>
+                    <tr>
+                        <th>Date ({{ user_tz_label }})</th>
+                        <th>Event</th>
+                        <th>Forecast</th>
+                        <th>Previous</th>
+                        <th>Market Insight</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in uk_events %}
+                    <tr>
+                        <td class="font-monospace text-sm">{{ row.display_date }}</td>
+                        <td class="font-bold">
+                            {% if row.context %}
+                                <abbr title="{{ row.context }}" class="text-help text-white">{{ row.event_name }}</abbr>
+                            {% else %}
+                                {{ row.event_name }}
+                            {% endif %}
+                        </td>
+                        <td class="{% if row.forecast_val and row.previous_val and row.forecast_val > row.previous_val %}warning-text{% endif %}">
+                            {{ row.forecast_val }}
+                        </td>
+                        <td>{{ row.previous_val }}</td>
+                        <td class="text-sm text-accent-cyan">
+                            {{ row.insight }}
+                            {% if row.ai_consensus_miss_prob is not none %}
+                                <br><span class="text-warning text-xs font-bold">🤖 Surprise Prob: {{ "{:.1%}".format(row.ai_consensus_miss_prob) }}</span>
+                            {% endif %}
+                            {% if row.ai_volatility_warning is not none and row.ai_volatility_warning > 0 %}
+                                <br><span class="text-danger text-xs font-bold">💥 Stacked Vol Forecast: {{ "{:,.2f}".format(row.ai_volatility_warning) }}%</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <div class="footer-notes">
+                <span class="sentiment-footer-title">How to read this data:</span>
+                <div class="sentiment-footer-text">
+                    <strong>🤖 Surprise Prob:</strong> Our Random Forest model's calculated probability that the actual data release will significantly deviate from Wall Street's forecast.<br>
+                    <strong>💥 Stacked Vol Forecast:</strong> Our XGBoost AI's prediction of the absolute percentage move (Volatility Gap) the S&P 500 will make within 30 minutes of the event. A forecast > 2.0% triggers an automated AI Volatility Defense mechanism across the dashboard.
+                </div>
+            </div>
         </div>
 
     </div>
 
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script type="text/javascript" charset="utf8" src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.js"></script>
-    <script>
-        $(document).ready(function() {
-            $('#usCalendarTable').DataTable({
-                "deferRender": true,
-                "order": [[ 0, "asc" ]],
-                "pageLength": 10,
-                "lengthChange": false,
-                "searching": false,
-                "info": false
-            });
+</div>
+{% endblock %}
 
-            $('#ukCalendarTable').DataTable({
-                "deferRender": true,
-                "order": [[ 0, "asc" ]],
-                "pageLength": 10,
-                "lengthChange": false,
-                "searching": false,
-                "info": false
-            });
-        });
-
-        function toggleFullscreen(wrapperId) {
-            const elem = document.getElementById(wrapperId);
-            if (!elem) return;
-
-            if (!document.fullscreenElement && !document.mozFullScreenElement && 
-                !document.webkitFullscreenElement && !document.msFullscreenElement) {
-                if (elem.requestFullscreen) {
-                    elem.requestFullscreen();
-                } else if (elem.msRequestFullscreen) {
-                    elem.msRequestFullscreen();
-                } else if (elem.mozRequestFullScreen) {
-                    elem.mozRequestFullScreen();
-                } else if (elem.webkitRequestFullscreen) {
-                    elem.webkitRequestFullscreen(Element.ALLOW_KEYBOARD_INPUT);
-                }
-                elem.classList.add('is-fullscreen');
-            } else {
-                if (document.exitFullscreen) {
-                    document.exitFullscreen();
-                } else if (document.msExitFullscreen) {
-                    document.msExitFullscreen();
-                } else if (document.mozCancelFullScreen) {
-                    document.mozCancelFullScreen();
-                } else if (document.webkitExitFullscreen) {
-                    document.webkitExitFullscreen();
-                }
-                elem.classList.remove('is-fullscreen');
-            }
-        }
-    </script>
-</body>
-</html>
+{% block scripts %}
+<script src="/static/js/market_sentiment.js?v={{ css_version }}"></script>
+{% endblock %}

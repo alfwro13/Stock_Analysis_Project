@@ -954,6 +954,7 @@ details[open].xray-rec-group .xray-rec-group-summary::before { transform: rotate
 .contagion-severity-med { color: #ff9800; font-weight: 700; }
 .contagion-severity-low { color: #4caf50; font-weight: 700; }
 .contagion-alert-text { color: #f44336; font-weight: 600; }
+.text-dim { color: #888; }
 
 /* ── Stress Test tool ────────────────────────────────────────────────────── */
 .stress-scenarios-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; margin-bottom: 24px; }
