@@ -1,41 +1,18 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="color-scheme" content="dark">
-    <title>Quantamental - Market Screener</title>
-    <link rel="stylesheet" href="/static/css/styles.css?v={{ css_version }}">
-    
-    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.7/css/jquery.dataTables.min.css">
-    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-    <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
-</head>
-<body class="body-watchlist">
+{% extends "base.html" %}
 
-    <div class="header-container">
-        <div>
-            <div class="title-wrapper">
-                <a href="https://github.com/alfwro13/Stock_Analysis_Project" target="_blank" class="logo-link">
-                    <img src="/assets/logo_small.png" alt="Quantamental Logo" class="logo-img">
-                </a>
-                <h1><abbr title="Quantamental - a modern institutional strategy that combines Quantitative analysis with Fundamental analysis.">uantamental</abbr> Dashboard</h1>
-            </div>
-            
-            <p class="page-subtitle">Market Screener: Scanning 4,000+ US Equities & ETFs</p>
-            
-            {% set active_page = 'market_screener' %}
-            {% include 'navbar.html' %}
-        </div>
-    </div>
+{% block title %}Quantamental - Market Screener{% endblock %}
 
-    <div class="bg-dark-panel">
+{% block content %}
+<h1 class="mb-1">Market Screener</h1>
+<p class="text-secondary mb-3">Scanning 4,000+ US Equities &amp; ETFs</p>
 
-        <div class="controls-container filter-panel">
-            
-            <div class="form-group mb-0">
+<div class="card mb-3">
+    <div class="card-body">
+        <div class="row g-2 align-items-end">
+
+            <div class="col-6 col-md-auto">
                 <label class="filter-label">Asset Type</label>
-                <select id="typeFilter" class="filter-select">
+                <select id="typeFilter" class="form-select">
                     <option value="ALL">All Types</option>
                     <option value="EQUITY">Equities</option>
                     <option value="ETF">ETFs</option>
@@ -43,383 +20,95 @@
                 </select>
             </div>
 
-            <div class="form-group mb-0">
+            <div class="col-6 col-md-auto">
                 <label class="filter-label">Exchange</label>
-                <select id="exchangeFilter" class="filter-select">
+                <select id="exchangeFilter" class="form-select">
                     <option value="ALL">All Exchanges</option>
                 </select>
             </div>
 
-            <div class="form-group mb-0">
+            <div class="col-6 col-md-auto">
                 <label class="filter-label">Sector</label>
-                <select id="sectorFilter" class="filter-select">
+                <select id="sectorFilter" class="form-select">
                     <option value="ALL">All Sectors</option>
                 </select>
             </div>
 
-            <div class="form-group mb-0">
-                <label class="filter-label">RSI (14)</label>
-                <div class="flex-gap-5">
-                    <select id="rsiOp" class="filter-select filter-select-sm">
+            <div class="col-6 col-md-auto">
+                <label class="filter-label"><abbr title="Relative Strength Index, 14-day period. Above 70 = Overbought, below 30 = Oversold.">RSI (14)</abbr></label>
+                <div class="d-flex gap-1">
+                    <select id="rsiOp" class="form-select filter-select-sm">
                         <option value="any">--</option>
                         <option value="gt">&gt;</option>
                         <option value="lt">&lt;</option>
                     </select>
-                    <input type="number" id="rsiVal" class="filter-input filter-input-sm" placeholder="Val">
+                    <input type="number" id="rsiVal" class="form-control filter-input-sm" placeholder="Val">
                 </div>
             </div>
 
-            <div class="form-group mb-0">
-                <label class="filter-label">MACD Hist</label>
-                <div class="flex-gap-5">
-                    <select id="macdOp" class="filter-select filter-select-sm">
+            <div class="col-6 col-md-auto">
+                <label class="filter-label"><abbr title="Moving Average Convergence Divergence histogram. Positive = bullish momentum, negative = bearish.">MACD Hist</abbr></label>
+                <div class="d-flex gap-1">
+                    <select id="macdOp" class="form-select filter-select-sm">
                         <option value="any">--</option>
                         <option value="gt">&gt;</option>
                         <option value="lt">&lt;</option>
                     </select>
-                    <input type="number" id="macdVal" class="filter-input filter-input-sm" placeholder="Val">
+                    <input type="number" id="macdVal" class="form-control filter-input-sm" placeholder="Val">
                 </div>
             </div>
 
-            <button id="clearFiltersBtn" class="btn btn-danger btn-clear-filters">✖ Clear Filters</button>
-        </div>
+            <div class="col-6 col-md-auto ms-md-auto">
+                <button id="clearFiltersBtn" class="btn btn-danger w-100">✖ Clear Filters</button>
+            </div>
 
-        <table id="screenerTable" class="display w-100">
-            <thead>
-                <tr>
-                    <th>Ticker</th>
-                    <th>Company Name</th>
-                    <th>Subtitle</th>
-                    <th>Sector</th>
-                    <th>Exchange</th>
-                    <th>Quote Type</th>
-                    <th>Close Price</th>
-                    <th>Volume</th>
-                    <th>RSI (14)</th>
-                    <th>MACD Hist</th>
-                    <th>50D SMA</th>
-                    <th>200D SMA</th>
-                    <th>Volume Surge</th>
-                    <th>Golden Cross</th>
-                    <th>ML Conf</th>
-                    <th>VaR (95%)</th>
-                    <th>Sentiment</th>
-                    <th>Expense Ratio</th>
-                    <th>Freetrade Link</th>
-                </tr>
-            </thead>
-            <tbody></tbody>
-        </table>
-
-        <div class="footer-notes">
-            <strong class="text-light">Key Metrics Explained:</strong>
-            <ul class="explanation-list">
-                <li><strong class="text-accent-blue">Volume:</strong> Total shares traded today. High volume indicates "Smart Money" conviction, validating price action. Low volume moves are often "traps" lacking institutional backing.</li>
-                <li><strong class="text-accent-blue"><abbr title="Relative Strength Index">RSI</abbr> (14-Day):</strong> Oscillates 0-100. Values above 70 are "Overbought" (mean reversion risk); values below 30 are "Oversold" (potential accumulation zone).</li>
-                <li><strong class="text-accent-blue"><abbr title="Moving Average Convergence Divergence">MACD</abbr> Histogram:</strong> Measures momentum velocity. Expanding green bars confirm acceleration; red or shrinking bars signal momentum decay or a trend pivot.</li>
-                <li><strong class="text-accent-blue">50D <abbr title="Simple Moving Average">SMA</abbr>:</strong> The "Health Line" representing the 10-week price mean. Trading above it confirms a medium-term uptrend; falling below suggests a structural loss of strength.</li>
-                <li><strong class="text-accent-blue">200D <abbr title="Simple Moving Average">SMA</abbr>:</strong> The "Institutional Floor." Banks and funds use this as the ultimate line in the sand; breaking below it often marks the shift into a primary bear market.</li>
-                <li><strong class="text-accent-blue">ML Conf:</strong> Machine Learning Ensemble confidence score predicting a >3% return over the next 10 days. >40% is highly actionable.</li>
-                <li><strong class="text-accent-blue">VaR (95%):</strong> 1-day 95% Value at Risk (historical simulation). The expected maximum percentage loss in a single trading day with 95% confidence. <em>(Hover over for Conditional VaR / Expected Shortfall).</em></li>
-                <li><strong class="text-accent-blue">Sentiment:</strong> FinBERT NLP compound score generated from the latest news headlines. Positive values indicate bullish media framing.</li>
-                <li><strong class="text-accent-blue">Golden Cross:</strong> Occurs when the 50-Day SMA crosses <em>above</em> the 200-Day SMA. Widely regarded as a primary long-term bullish signal, indicating that near-term momentum has overtaken the long-term trend and often attracting institutional buying. The inverse — the 50D crossing below the 200D — is the <strong>Death Cross</strong>, a bearish signal.</li>
-            </ul>
         </div>
     </div>
+</div>
 
-    <script>
-        function formatCurrency(value, currencyCode) {
-            if (value === null || value === undefined) return 'N/A';
-            let num = parseFloat(value);
-            if (isNaN(num)) return 'N/A';
+<table id="screenerTable" class="table table-hover w-100">
+    <thead>
+        <tr>
+            <th>Ticker</th>
+            <th>Company Name</th>
+            <th>Subtitle</th>
+            <th>Sector</th>
+            <th>Exchange</th>
+            <th>Quote Type</th>
+            <th>Close Price</th>
+            <th>Volume</th>
+            <th><abbr title="Relative Strength Index, 14-day period. Above 70 = Overbought, below 30 = Oversold.">RSI (14)</abbr></th>
+            <th><abbr title="Moving Average Convergence Divergence histogram. Expanding positive bars confirm bullish acceleration; negative or shrinking bars signal momentum decay.">MACD Hist</abbr></th>
+            <th><abbr title="50-Day Simple Moving Average — the medium-term health line. Trading above it confirms an uptrend.">50D SMA</abbr></th>
+            <th><abbr title="200-Day Simple Moving Average — the institutional floor. Breaking below marks a shift into a primary bear market.">200D SMA</abbr></th>
+            <th>Volume Surge</th>
+            <th>Golden Cross</th>
+            <th><abbr title="Machine Learning Ensemble confidence score predicting a >3% return over the next 10 days. Above 40% is highly actionable.">ML Conf</abbr></th>
+            <th><abbr title="1-day 95% Value at Risk (historical simulation). The expected maximum percentage loss in a single trading day with 95% confidence. Hover for CVaR.">VaR (95%)</abbr></th>
+            <th>Sentiment</th>
+            <th>Expense Ratio</th>
+            <th>Freetrade Link</th>
+        </tr>
+    </thead>
+    <tbody></tbody>
+</table>
 
-            let symbol = '$';
-            if (currencyCode === 'GBp') {
-                num = num / 100.0;
-                symbol = '£';
-            } else if (currencyCode === 'GBP') {
-                symbol = '£';
-            } else if (currencyCode === 'EUR') {
-                symbol = '€';
-            } else if (currencyCode && currencyCode !== 'USD') {
-                return num.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' ' + currencyCode;
-            }
-            
-            return symbol + num.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-        }
+<div class="footer-notes mt-3">
+    <strong class="text-light">Key Metrics Explained:</strong>
+    <ul class="explanation-list">
+        <li><strong class="text-accent-blue">Volume:</strong> Total shares traded today. High volume indicates "Smart Money" conviction, validating price action. Low volume moves are often "traps" lacking institutional backing.</li>
+        <li><strong class="text-accent-blue"><abbr title="Relative Strength Index">RSI</abbr> (14-Day):</strong> Oscillates 0-100. Values above 70 are "Overbought" (mean reversion risk); values below 30 are "Oversold" (potential accumulation zone).</li>
+        <li><strong class="text-accent-blue"><abbr title="Moving Average Convergence Divergence">MACD</abbr> Histogram:</strong> Measures momentum velocity. Expanding green bars confirm acceleration; red or shrinking bars signal momentum decay or a trend pivot.</li>
+        <li><strong class="text-accent-blue">50D <abbr title="Simple Moving Average">SMA</abbr>:</strong> The "Health Line" representing the 10-week price mean. Trading above it confirms a medium-term uptrend; falling below suggests a structural loss of strength.</li>
+        <li><strong class="text-accent-blue">200D <abbr title="Simple Moving Average">SMA</abbr>:</strong> The "Institutional Floor." Banks and funds use this as the ultimate line in the sand; breaking below it often marks the shift into a primary bear market.</li>
+        <li><strong class="text-accent-blue">ML Conf:</strong> Machine Learning Ensemble confidence score predicting a >3% return over the next 10 days. >40% is highly actionable.</li>
+        <li><strong class="text-accent-blue">VaR (95%):</strong> 1-day 95% Value at Risk (historical simulation). The expected maximum percentage loss in a single trading day with 95% confidence. <em>(Hover over for Conditional VaR / Expected Shortfall).</em></li>
+        <li><strong class="text-accent-blue">Sentiment:</strong> FinBERT NLP compound score generated from the latest news headlines. Positive values indicate bullish media framing.</li>
+        <li><strong class="text-accent-blue">Golden Cross:</strong> Occurs when the 50-Day SMA crosses <em>above</em> the 200-Day SMA. Widely regarded as a primary long-term bullish signal, indicating that near-term momentum has overtaken the long-term trend and often attracting institutional buying. The inverse — the 50D crossing below the 200D — is the <strong>Death Cross</strong>, a bearish signal.</li>
+    </ul>
+</div>
+{% endblock %}
 
-        $(document).ready(function() {
-            const urlParams = new URLSearchParams(window.location.search);
-            const targetSector = urlParams.get('sector');
-            const reqBullishCross = urlParams.get('bullish_cross') === 'true';
-            const reqAbove50d = urlParams.get('above_50d') === 'true';
-
-            if (targetSector || reqBullishCross || reqAbove50d) {
-                let filterLabels = [];
-                if (targetSector) filterLabels.push(`Sector: ${targetSector}`);
-                if (reqBullishCross) filterLabels.push('Golden MACD Crosses Only');
-                if (reqAbove50d) filterLabels.push('Price > 50D SMA');
-                
-                const bannerHtml = `
-                    <div class="active-filters-banner" id="activeFiltersBanner">
-                        <div>
-                            <strong class="text-accent-cyan">Active Deep-Link Filters:</strong> 
-                            <span class="text-light ml-10 font-bold">${filterLabels.join(' &nbsp;|&nbsp; ')}</span>
-                        </div>
-                        <button class="btn-remove btn-clear-filters" onclick="window.location.href='/market-screener'">✖ Clear Filters</button>
-                    </div>
-                `;
-                $('#screenerTable').parent().prepend(bannerHtml);
-            }
-
-            // Core Multi-Filtering Engine
-            $.fn.dataTable.ext.search.push(
-                function(settings, data, dataIndex, rowData) {
-                    // Legacy URL Params Override
-                    if (targetSector && rowData.sector !== targetSector) return false;
-                    if (reqBullishCross && rowData.bullish_cross !== 1 && rowData.bullish_cross !== true) return false;
-                    if (reqAbove50d) {
-                        const price = parseFloat(rowData.close_price);
-                        const sma50 = parseFloat(rowData.sma_50);
-                        if (isNaN(price) || isNaN(sma50) || price <= sma50) return false;
-                    }
-
-                    // --- Dynamic UI Filters ---
-                    const typeVal = $('#typeFilter').val();
-                    if (typeVal !== 'ALL' && rowData.quote_type !== typeVal) return false;
-
-                    const exchVal = $('#exchangeFilter').val();
-                    if (exchVal !== 'ALL' && rowData.exchange !== exchVal) return false;
-
-                    const secVal = $('#sectorFilter').val();
-                    if (secVal !== 'ALL' && rowData.sector !== secVal) return false;
-
-                    // RSI Logic
-                    const rsiOp = $('#rsiOp').val();
-                    const rsiVal = parseFloat($('#rsiVal').val());
-                    const rsiData = parseFloat(rowData.rsi_14);
-                    if (rsiOp !== 'any' && !isNaN(rsiVal)) {
-                        if (isNaN(rsiData)) return false;
-                        if (rsiOp === 'gt' && rsiData <= rsiVal) return false;
-                        if (rsiOp === 'lt' && rsiData >= rsiVal) return false;
-                    }
-
-                    // MACD Logic
-                    const macdOp = $('#macdOp').val();
-                    const macdVal = parseFloat($('#macdVal').val());
-                    const macdData = parseFloat(rowData.macd_hist);
-                    if (macdOp !== 'any' && !isNaN(macdVal)) {
-                        if (isNaN(macdData)) return false;
-                        if (macdOp === 'gt' && macdData <= macdVal) return false;
-                        if (macdOp === 'lt' && macdData >= macdVal) return false;
-                    }
-
-                    return true; 
-                }
-            );
-
-            var table = $('#screenerTable').DataTable({
-                ajax: '/api/screener-data',
-                deferRender: true,
-                pageLength: 25,
-                order: [[0, 'asc']], 
-                language: { search: "🔍 Search Everything:" },
-                // Custom DOM to pin Search top-left, and Length/Info bottom-left
-                dom: '<"top-controls"f>rt<"bottom-controls"<"bottom-left-controls"li>p>',
-                
-                initComplete: function () {
-                    var exchCol = this.api().column(4); 
-                    var secCol = this.api().column(3); 
-                    
-                    var exchSelect = $('#exchangeFilter');
-                    var secSelect = $('#sectorFilter');
-                    
-                    exchCol.data().unique().sort().each( function ( d, j ) {
-                        if(d && d !== 'N/A') {
-                            exchSelect.append( '<option value="'+d+'">'+d+'</option>' );
-                        }
-                    });
-
-                    secCol.data().unique().sort().each( function ( d, j ) {
-                        if(d && d !== 'N/A' && d !== 'Unclassified') {
-                            secSelect.append( '<option value="'+d+'">'+d+'</option>' );
-                        }
-                    });
-
-                    // --- LOAD DEFAULTS ---
-                    // 1. Set Asset Type to Equity and hide fund columns
-                    $('#typeFilter').val('EQUITY');
-                    table.column(17).visible(false); // Hide Expense Ratio
-                    table.column(18).visible(false); // Hide FT Link
-
-                    // 2. Set Exchange (from URL or fallback to ALL)
-                    const defaultExchange = urlParams.get('exchange') || 'ALL'; 
-                    if (defaultExchange !== 'ALL' && exchSelect.find('option[value="' + defaultExchange + '"]').length > 0) {
-                        exchSelect.val(defaultExchange);
-                    } else {
-                        exchSelect.val('ALL');
-                    }
-
-                    // 3. Set Sector Default (Technology)
-                    const defaultSector = urlParams.get('sector') || 'Technology';
-                    // Check if 'Technology' exists in the options before selecting
-                    if (defaultSector !== 'ALL' && secSelect.find('option[value="' + defaultSector + '"]').length > 0) {
-                        secSelect.val(defaultSector);
-                    }
-
-                    // Trigger the final draw to apply the combined default filters
-                    table.draw();
-                },
-                
-                columns: [
-                    { data: 'ticker', render: function(data) { return '<a href="/stock/' + data + '" class="ticker-link">' + data + '</a>'; } },
-                    { data: 'company_name', render: function(data) { return data || 'N/A'; } },
-                    { data: 'subtitle', render: function(data) { return data || 'N/A'; } },
-                    { data: 'sector', render: function(data) { return data || 'N/A'; } },
-                    { data: 'exchange', render: function(data) { return data || 'US'; } },
-                    { data: 'quote_type', visible: false }, // Hidden strictly for filter logic
-                    { 
-                        data: 'close_price', 
-                        render: function(data, type, row) { 
-                            return type === 'display' ? formatCurrency(data, row.currency) : data;
-                        } 
-                    },
-                    { data: 'volume', render: $.fn.dataTable.render.number(',', '.', 0, '') },
-                    { 
-                        data: 'rsi_14', 
-                        render: function(data) { 
-                            if (data === null || data === undefined) return 'N/A';
-                            let cssClass = data > 70 ? 'negative-val' : (data < 30 ? 'positive-val' : '');
-                            return `<span class="${cssClass}">${data.toFixed(2)}</span>`;
-                        } 
-                    },
-                    { 
-                        data: 'macd_hist', 
-                        render: function(data) { 
-                            if (data === null || data === undefined) return 'N/A';
-                            let cssClass = data > 0 ? 'positive-val' : 'negative-val';
-                            return `<span class="${cssClass}">${data.toFixed(3)}</span>`;
-                        } 
-                    },
-                    { 
-                        data: 'sma_50', 
-                        render: function(data, type, row) { 
-                            return type === 'display' ? formatCurrency(data, row.currency) : data;
-                        } 
-                    },
-                    { 
-                        data: 'sma_200', 
-                        render: function(data, type, row) { 
-                            return type === 'display' ? formatCurrency(data, row.currency) : data;
-                        } 
-                    },
-                    { data: 'volume_surge', render: function(data) { return data ? '<span class="badge-yes">YES</span>' : '<span class="badge-no">No</span>'; } },
-                    { data: 'bullish_cross', render: function(data) { return data ? '<span class="badge-yes">YES</span>' : '<span class="badge-no">No</span>'; } },
-                    {
-                        data: 'ml_confidence_score',
-                        render: function(data, type, row) {
-                            if (data === null || data === undefined) return 'N/A';
-                            
-                            if (type === 'display') {
-                                let cssClass = data >= 40 ? 'metric-excellent' : (data < 20 ? 'metric-poor' : 'metric-neutral');
-                                let html = `<span class="${cssClass}">${data.toFixed(1)}%</span>`;
-                                
-                                if (row.composite_score !== undefined && row.composite_score !== null && row.composite_score !== 'N/A') {
-                                    let comp = parseInt(row.composite_score);
-                                    if (!isNaN(comp)) {
-                                        if (comp >= 70 && data < 20) {
-                                            html += ` <div class="d-inline-block"><abbr title="High Quant Score but Low AI Confidence" class="no-decoration-abbr"><span class="setup-tag">⚠️ Divergence</span></abbr></div>`;
-                                        } else if (comp < 40 && data >= 40) {
-                                            html += ` <div class="d-inline-block"><abbr title="Low Quant Score but High AI Confidence" class="no-decoration-abbr"><span class="setup-tag">🤖 AI Buy</span></abbr></div>`;
-                                        }
-                                    }
-                                }
-                                return html;
-                            }
-                            return data;
-                        }
-                    },
-                                        {
-                        data: 'var_95',
-                        render: function(data, type, row) {
-                            if (data === null || data === undefined) return 'N/A';
-                            
-                            if (type === 'display') {
-                                let cssClass = data > 0.05 ? 'metric-poor' : 'metric-neutral';
-                                let cvarText = row.cvar_95 !== null && row.cvar_95 !== undefined ? `Log-Return Expected Shortfall (CVaR): ${(row.cvar_95 * 100).toFixed(2)}%` : 'CVaR: N/A';
-                                return `<abbr title="${cvarText}" class="help-abbr"><span class="${cssClass}">${(data * 100).toFixed(2)}%</span></abbr>`;
-                            }
-                            return data;
-                        }
-                    },
-                    {
-                        data: 'sentiment_score',
-                        render: function(data, type) {
-                            if (data === null || data === undefined) return 'N/A';
-                            
-                            if (type === 'display') {
-                                let sScore = parseFloat(data);
-                                let sClass = '';
-                                let sText = '';
-
-                                if (sScore > 0.6) { sClass = 'sent-euphoria'; sText = 'Euphoria'; }
-                                else if (sScore > 0.2) { sClass = 'sent-bullish'; sText = 'Bullish'; }
-                                else if (sScore >= -0.2) { sClass = 'sent-neutral'; sText = 'Neutral'; }
-                                else if (sScore > -0.6) { sClass = 'sent-bearish'; sText = 'Bearish'; }
-                                else { sClass = 'sent-fear'; sText = 'Extreme Fear'; }
-
-                                return `<span class="sent-badge ${sClass}">${sText} (${sScore.toFixed(3)})</span>`;
-                            }
-                            return data;
-                        }
-                    },
-                    { data: 'expense_ratio', render: function(data) { return data ? data + '%' : 'N/A'; } },
-                    { data: 'freetrade_link', render: function(data) { return data && data !== 'N/A' ? '<a href="' + data + '" target="_blank" class="text-accent-purple">KIID Document</a>' : 'N/A'; } }
-                ]
-            });
-
-            // Live event listeners to trigger instant filtering
-            $('#typeFilter, #exchangeFilter, #sectorFilter, #rsiOp, #macdOp').on('change', function() { 
-                // Toggle columns visibility based on Asset Type Dropdown
-                if (this.id === 'typeFilter') {
-                    var val = $(this).val();
-                    if (val === 'EQUITY') {
-                        table.column(17).visible(false); // Hide Expense Ratio
-                        table.column(18).visible(false); // Hide FT Link
-                    } else if (val === 'ETF' || val === 'MUTUALFUND') {
-                        table.column(17).visible(true);  // Show Expense Ratio
-                        table.column(18).visible(true);  // Show FT Link
-                    } else { // ALL
-                        table.column(17).visible(true); 
-                        table.column(18).visible(true); 
-                    }
-                }
-                table.draw(); 
-            });
-
-            $('#rsiVal, #macdVal').on('keyup change', function() { 
-                table.draw(); 
-            });
-
-            // Reset mechanism: Reverts to your custom "Home" defaults
-            $('#clearFiltersBtn').on('click', function() {
-                $('#typeFilter').val('EQUITY');
-                $('#exchangeFilter').val('ALL');
-                $('#sectorFilter').val('Technology');
-                
-                $('#rsiOp').val('any');
-                $('#rsiVal').val('');
-                $('#macdOp').val('any');
-                $('#macdVal').val('');
-                
-                // Hide fund columns because we reset to EQUITY
-                table.column(17).visible(false);
-                table.column(18).visible(false);
-                
-                table.search(''); // Reset main search box
-                table.draw();
-            });
-        });
-    </script>
-</body>
-</html>
+{% block scripts %}
+<script src="/static/js/market_screener.js?v={{ css_version }}"></script>
+{% endblock %}
