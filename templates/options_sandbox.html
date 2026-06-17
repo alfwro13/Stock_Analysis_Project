@@ -1,31 +1,21 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="color-scheme" content="dark">
-    <title>Quantamental - Options Sandbox</title>
-    <link rel="stylesheet" href="/static/css/styles.css?v={{ css_version }}">
-    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
-</head>
-<body class="body-settings">
+{% extends "base.html" %}
 
-    <div class="header-container header-container-wide">
-        <div>
-            <div class="title-wrapper">
-                <a href="/" class="logo-link"><img src="/assets/logo_small.png" alt="Logo" class="logo-img"></a>
-                <h1><abbr title="Quantamental">uantamental</abbr> Options Sandbox</h1>
-            </div>
-            {% set active_page = 'options_sandbox' %}
-                {% include 'navbar.html' %}
-        </div>
-    </div>
+{% block title %}Quantamental - Options Sandbox{% endblock %}
 
-    <div style="max-width:1400px;margin:20px auto 0;padding:0 20px;">
-        <a href="/tools" class="btn-back">← Back to Tools</a>
-    </div>
+{% block extra_head %}
+<script src="/static/vendor/plotly/plotly-2.27.0.min.js"></script>
+{% endblock %}
 
-    <div class="sandbox-container">
+{% block content %}
+<h1 class="mb-1">&#127922; Options Sandbox</h1>
+
+<a href="/tools" class="btn btn-outline-secondary btn-sm mb-3">&#8592; Back to Tools</a>
+
+{# ── Main two-panel layout ── #}
+<div class="row g-3 mt-1">
+
+    {# Data panel — chain tables + payoff chart #}
+    <div class="col-12 col-xl-9">
         <div class="panel data-panel">
             <div class="controls-container mb-20">
                 <input type="text" id="tickerInput" class="filter-input w-200" placeholder="Enter Ticker (e.g., SPY, AAPL)">
@@ -36,8 +26,8 @@
 
             <div id="payoff-chart" class="chart-container-dark"></div>
 
-            <div class="flex-gap-20">
-                <div class="flex-1">
+            <div class="row g-3 mt-1">
+                <div class="col-12 col-md-6">
                     <h3 class="text-accent-cyan">Calls</h3>
                     <div class="chain-table-container">
                         <table class="chain-table" id="callsTable">
@@ -46,7 +36,7 @@
                         </table>
                     </div>
                 </div>
-                <div class="flex-1">
+                <div class="col-12 col-md-6">
                     <h3 class="text-danger">Puts</h3>
                     <div class="chain-table-container">
                         <table class="chain-table" id="putsTable">
@@ -57,335 +47,160 @@
                 </div>
             </div>
         </div>
+    </div>
 
+    {# Strategy builder panel #}
+    <div class="col-12 col-xl-3">
         <div class="panel strategy-panel">
             <h2 class="mt-0">Strategy Builder</h2>
             <p class="text-muted-small">Add legs from the chain. Default calculation uses the Mid Price.</p>
-            
+
             <div id="strategyLegs"></div>
 
             <button class="btn btn-save btn-save-sm" onclick="calculatePayoff()">Plot Payoff</button>
         </div>
     </div>
 
-    <div class="manual-container">
+</div>
 
-        <div class="manual-section">
-            <h2 class="manual-header text-warning">Who is This Tool For?</h2>
-            <div class="manual-text">
-                <p>This sandbox is heavily aimed at <strong>short-term, swing, and event-driven trading</strong> (such as trading around upcoming Earnings Reports or Fed announcements). </p>
-                <p>Because these binary events rely heavily on immediate volatility spikes, the Python backend of this tool is specifically designed to only fetch the <strong>nearest upcoming expiration dates</strong>. Near-term options are the most mathematically sensitive to sudden price changes (Gamma) and volatility crushes (Vega), making them the ideal instruments for catching short-to-medium-term momentum shifts.</p>
-            </div>
+{# ── Educational manual ── #}
+<div class="manual-container">
+
+    <div class="manual-section">
+        <h2 class="manual-header text-warning">Who is This Tool For?</h2>
+        <div class="manual-text">
+            <p>This sandbox is heavily aimed at <strong>short-term, swing, and event-driven trading</strong> (such as trading around upcoming Earnings Reports or Fed announcements). </p>
+            <p>Because these binary events rely heavily on immediate volatility spikes, the Python backend of this tool is specifically designed to only fetch the <strong>nearest upcoming expiration dates</strong>. Near-term options are the most mathematically sensitive to sudden price changes (Gamma) and volatility crushes (Vega), making them the ideal instruments for catching short-to-medium-term momentum shifts.</p>
+        </div>
+    </div>
+
+    <div class="manual-section">
+        <h2 class="manual-header">Options 101: What is an Option?</h2>
+        <div class="manual-text">
+            <p>At its core, a financial Option is a legally binding derivative contract. It gives the buyer the <strong>right, but not the obligation</strong>, to buy or sell an underlying asset (like a stock or ETF) at a strictly agreed-upon price, on or before a specific date. Because you are buying a "right" rather than the underlying stock itself, options offer tremendous leverage and capital efficiency.</p>
+
+            <h3 class="text-white mt-20">The Two Types of Options</h3>
+            <ul class="pl-20 mb-20">
+                <li class="mb-10"><strong>The Call Option (Bullish):</strong> Gives you the right to <em>buy</em> the stock at a specific price. You buy a Call when you expect the stock price to surge upward.</li>
+                <li><strong>The Put Option (Bearish):</strong> Gives you the right to <em>sell</em> the stock at a specific price. You buy a Put when you expect the stock price to crash (acting like an insurance policy).</li>
+            </ul>
+
+            <h3 class="text-white mt-20">The 4 Anatomy Parts of a Contract</h3>
+            <p>Every option traded in this sandbox relies on four required variables:</p>
+            <ul class="pl-20">
+                <li class="mb-10"><strong>1. Underlying Asset:</strong> The specific stock the contract is tied to (e.g., AAPL, NVDA, SPY).</li>
+                <li class="mb-10"><strong>2. Strike Price:</strong> The agreed-upon target price. If you buy a Call with a $150 Strike, you lock in the right to buy the stock at exactly $150, even if the real market price moons to $300.</li>
+                <li class="mb-10"><strong>3. Expiration Date:</strong> Options are time-bound contracts. The expiration date is the exact day the contract ceases to exist. Because time is constantly running out, options suffer from "time decay" (Theta). If the stock doesn't reach your target before this ticking clock hits zero, the contract expires worthless.</li>
+                <li class="mb-10"><strong>4. Premium:</strong> The actual cash price you pay to purchase the contract. This represents the maximum possible risk/loss for an options buyer. <em>Note: In standard US equity markets, one contract always controls 100 shares. A $2.00 premium listed in the chain will actually cost $200 in real cash.</em></li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="manual-section">
+        <h2 class="manual-header">How to Use the Sandbox</h2>
+        <div class="manual-text">
+            <ol class="pl-20">
+                <li class="mb-10"><strong>Load the Chain:</strong> Enter a valid stock or ETF ticker (e.g., AAPL, SPY) and click "Fetch Chain" to retrieve live market data and the nearest options expirations.</li>
+                <li class="mb-10"><strong>Select Expiration Date:</strong> Use the dropdown menu to select the specific day your contract will expire.</li>
+                <li class="mb-10"><strong>Build Your Strategy:</strong> Click the <strong>"+"</strong> button next to any Call or Put to add it to your Strategy Builder panel. You can toggle between going <strong>Long (Buy)</strong> or <strong>Short (Sell)</strong>, and adjust your contract quantity.</li>
+                <li class="mb-10"><strong>Analyze the Payoff Chart:</strong> Click "Plot Payoff".
+                    <ul class="mt-5">
+                        <li>The <strong>X-axis</strong> represents the Underlying Stock Price at Expiration.</li>
+                        <li>The <strong>Y-axis</strong> represents your Net Profit/Loss (P&L) in dollars.</li>
+                        <li>The <strong>Zero-line</strong> is your Breakeven point. Green areas indicate profit, while red areas indicate loss.</li>
+                    </ul>
+                </li>
+            </ol>
+        </div>
+    </div>
+
+    <div class="manual-section">
+        <h2 class="manual-header">Common Options Strategies</h2>
+        <div class="manual-text">
+            Understanding multi-leg options strategies is key to managing risk and taking advantage of different market conditions (directional moves, high volatility, or sideways chop). Here is a guide to standard setups you can build in the Sandbox.
         </div>
 
-        <div class="manual-section">
-            <h2 class="manual-header">Options 101: What is an Option?</h2>
-            <div class="manual-text">
-                <p>At its core, a financial Option is a legally binding derivative contract. It gives the buyer the <strong>right, but not the obligation</strong>, to buy or sell an underlying asset (like a stock or ETF) at a strictly agreed-upon price, on or before a specific date. Because you are buying a "right" rather than the underlying stock itself, options offer tremendous leverage and capital efficiency.</p>
-                
-                <h3 class="text-white mt-20">The Two Types of Options</h3>
-                <ul class="pl-20 mb-20">
-                    <li class="mb-10"><strong>The Call Option (Bullish):</strong> Gives you the right to <em>buy</em> the stock at a specific price. You buy a Call when you expect the stock price to surge upward.</li>
-                    <li><strong>The Put Option (Bearish):</strong> Gives you the right to <em>sell</em> the stock at a specific price. You buy a Put when you expect the stock price to crash (acting like an insurance policy).</li>
-                </ul>
-
-                <h3 class="text-white mt-20">The 4 Anatomy Parts of a Contract</h3>
-                <p>Every option traded in this sandbox relies on four required variables:</p>
-                <ul class="pl-20">
-                    <li class="mb-10"><strong>1. Underlying Asset:</strong> The specific stock the contract is tied to (e.g., AAPL, NVDA, SPY).</li>
-                    <li class="mb-10"><strong>2. Strike Price:</strong> The agreed-upon target price. If you buy a Call with a $150 Strike, you lock in the right to buy the stock at exactly $150, even if the real market price moons to $300.</li>
-                    <li class="mb-10"><strong>3. Expiration Date:</strong> Options are time-bound contracts. The expiration date is the exact day the contract ceases to exist. Because time is constantly running out, options suffer from "time decay" (Theta). If the stock doesn't reach your target before this ticking clock hits zero, the contract expires worthless.</li>
-                    <li class="mb-10"><strong>4. Premium:</strong> The actual cash price you pay to purchase the contract. This represents the maximum possible risk/loss for an options buyer. <em>Note: In standard US equity markets, one contract always controls 100 shares. A $2.00 premium listed in the chain will actually cost $200 in real cash.</em></li>
-                </ul>
-            </div>
-        </div>
-
-        <div class="manual-section">
-            <h2 class="manual-header">How to Use the Sandbox</h2>
-            <div class="manual-text">
-                <ol class="pl-20">
-                    <li class="mb-10"><strong>Load the Chain:</strong> Enter a valid stock or ETF ticker (e.g., AAPL, SPY) and click "Fetch Chain" to retrieve live market data and the nearest options expirations.</li>
-                    <li class="mb-10"><strong>Select Expiration Date:</strong> Use the dropdown menu to select the specific day your contract will expire.</li>
-                    <li class="mb-10"><strong>Build Your Strategy:</strong> Click the <strong>"+"</strong> button next to any Call or Put to add it to your Strategy Builder panel. You can toggle between going <strong>Long (Buy)</strong> or <strong>Short (Sell)</strong>, and adjust your contract quantity.</li>
-                    <li class="mb-10"><strong>Analyze the Payoff Chart:</strong> Click "Plot Payoff". 
-                        <ul class="mt-5">
-                            <li>The <strong>X-axis</strong> represents the Underlying Stock Price at Expiration.</li>
-                            <li>The <strong>Y-axis</strong> represents your Net Profit/Loss (P&L) in dollars.</li>
-                            <li>The <strong>Zero-line</strong> is your Breakeven point. Green areas indicate profit, while red areas indicate loss.</li>
-                        </ul>
-                    </li>
-                </ol>
-            </div>
-        </div>
-
-        <div class="manual-section">
-            <h2 class="manual-header">Common Options Strategies</h2>
-            <div class="manual-text">
-                Understanding multi-leg options strategies is key to managing risk and taking advantage of different market conditions (directional moves, high volatility, or sideways chop). Here is a guide to standard setups you can build in the Sandbox.
+        <div class="guide-grid">
+            <div class="guide-card">
+                <h4>Long Call / Long Put</h4>
+                <p>The simplest directional bets. You are buying the right (but not the obligation) to buy or sell the stock at a specific strike price.</p>
+                <div class="setup">
+                    <strong>Bullish:</strong> Buy 1 Call<br>
+                    <strong>Bearish:</strong> Buy 1 Put
+                </div>
+                <div class="why-use-it">
+                    Use when you have high conviction in a large directional move. Risk is strictly limited to the premium paid, while reward is theoretically unlimited (for calls).
+                </div>
             </div>
 
-            <div class="guide-grid">
-                <div class="guide-card">
-                    <h4>Long Call / Long Put</h4>
-                    <p>The simplest directional bets. You are buying the right (but not the obligation) to buy or sell the stock at a specific strike price.</p>
-                    <div class="setup">
-                        <strong>Bullish:</strong> Buy 1 Call<br>
-                        <strong>Bearish:</strong> Buy 1 Put
-                    </div>
-                    <div class="why-use-it">
-                        Use when you have high conviction in a large directional move. Risk is strictly limited to the premium paid, while reward is theoretically unlimited (for calls).
-                    </div>
+            <div class="guide-card">
+                <h4>Straddle</h4>
+                <p>A delta-neutral volatility strategy. You make money if the stock makes a massive, explosive move in <em>either</em> direction.</p>
+                <div class="setup">
+                    Buy 1 ATM Call<br>
+                    Buy 1 ATM Put<br>
+                    (Same Strike, Same Expiry)
                 </div>
-
-                <div class="guide-card">
-                    <h4>Straddle</h4>
-                    <p>A delta-neutral volatility strategy. You make money if the stock makes a massive, explosive move in <em>either</em> direction.</p>
-                    <div class="setup">
-                        Buy 1 ATM Call<br>
-                        Buy 1 ATM Put<br>
-                        (Same Strike, Same Expiry)
-                    </div>
-                    <div class="why-use-it">
-                        Use right before major binary events (like Earnings Reports or Fed announcements) when you expect extreme volatility but are unsure of the direction.
-                    </div>
+                <div class="why-use-it">
+                    Use right before major binary events (like Earnings Reports or Fed announcements) when you expect extreme volatility but are unsure of the direction.
                 </div>
+            </div>
 
-                <div class="guide-card">
-                    <h4>Strangle</h4>
-                    <p>Similar to a Straddle, but uses Out-of-The-Money (OTM) options. It is much cheaper to construct but requires a substantially larger move to become profitable.</p>
-                    <div class="setup">
-                        Buy 1 OTM Call<br>
-                        Buy 1 OTM Put
-                    </div>
-                    <div class="why-use-it">
-                        Use when you expect an even more violently explosive move than a straddle prices in, and want to risk less initial capital on the premium.
-                    </div>
+            <div class="guide-card">
+                <h4>Strangle</h4>
+                <p>Similar to a Straddle, but uses Out-of-The-Money (OTM) options. It is much cheaper to construct but requires a substantially larger move to become profitable.</p>
+                <div class="setup">
+                    Buy 1 OTM Call<br>
+                    Buy 1 OTM Put
                 </div>
-
-                <div class="guide-card">
-                    <h4>Vertical Spread (Debit)</h4>
-                    <p>A directional bet that artificially caps both your maximum loss AND your maximum profit. Cheaper than buying a naked call or put.</p>
-                    <div class="setup">
-                        <strong>Bull Call Spread:</strong><br>
-                        Buy 1 ATM Call<br>
-                        Sell 1 OTM Call (Higher Strike)
-                    </div>
-                    <div class="why-use-it">
-                        Use when you are moderately bullish/bearish but want to mitigate the effects of Theta (time decay) and IV crush by financing your long leg with a short leg.
-                    </div>
+                <div class="why-use-it">
+                    Use when you expect an even more violently explosive move than a straddle prices in, and want to risk less initial capital on the premium.
                 </div>
+            </div>
 
-                <div class="guide-card">
-                    <h4>Iron Condor</h4>
-                    <p>A non-directional, income-generating strategy. You are betting that the stock will remain flat and stay trapped between two outer boundaries.</p>
-                    <div class="setup">
-                        Sell 1 OTM Put Spread<br>
-                        Sell 1 OTM Call Spread<br>
-                        (Creates a "Profit Tent")
-                    </div>
-                    <div class="why-use-it">
-                        Use when you expect low volatility and sideways market chop. You collect premium upfront and keep it if the stock expires between your short strikes.
-                    </div>
+            <div class="guide-card">
+                <h4>Vertical Spread (Debit)</h4>
+                <p>A directional bet that artificially caps both your maximum loss AND your maximum profit. Cheaper than buying a naked call or put.</p>
+                <div class="setup">
+                    <strong>Bull Call Spread:</strong><br>
+                    Buy 1 ATM Call<br>
+                    Sell 1 OTM Call (Higher Strike)
                 </div>
+                <div class="why-use-it">
+                    Use when you are moderately bullish/bearish but want to mitigate the effects of Theta (time decay) and IV crush by financing your long leg with a short leg.
+                </div>
+            </div>
 
-                <div class="guide-card">
-                    <h4>Covered Call</h4>
-                    <p>An income-generating strategy where you sell someone else the right to buy your stock at a higher price.</p>
-                    <div class="setup">
-                        Own 100 Shares of Stock<br>
-                        Sell 1 OTM Call
-                    </div>
-                    <div class="why-use-it">
-                        Use when you are neutral to slightly bullish on a stock you already own. You collect premium, which lowers your cost basis, but cap your upside if the stock moons.
-                    </div>
+            <div class="guide-card">
+                <h4>Iron Condor</h4>
+                <p>A non-directional, income-generating strategy. You are betting that the stock will remain flat and stay trapped between two outer boundaries.</p>
+                <div class="setup">
+                    Sell 1 OTM Put Spread<br>
+                    Sell 1 OTM Call Spread<br>
+                    (Creates a "Profit Tent")
+                </div>
+                <div class="why-use-it">
+                    Use when you expect low volatility and sideways market chop. You collect premium upfront and keep it if the stock expires between your short strikes.
+                </div>
+            </div>
+
+            <div class="guide-card">
+                <h4>Covered Call</h4>
+                <p>An income-generating strategy where you sell someone else the right to buy your stock at a higher price.</p>
+                <div class="setup">
+                    Own 100 Shares of Stock<br>
+                    Sell 1 OTM Call
+                </div>
+                <div class="why-use-it">
+                    Use when you are neutral to slightly bullish on a stock you already own. You collect premium, which lowers your cost basis, but cap your upside if the stock moons.
                 </div>
             </div>
         </div>
     </div>
 
-    <script>
-        let currentChainData = {};
-        let strategyLegs = [];
-        let underlyingPrice = 0;
+</div>
+{% endblock %}
 
-        async function fetchChain() {
-            const ticker = document.getElementById('tickerInput').value.toUpperCase();
-            if (!ticker) return;
-
-            document.getElementById('currentPriceDisplay').innerText = "Fetching...";
-            
-            try {
-                const response = await fetch(`/api/options/chain/${ticker}`);
-                const data = await response.json();
-                
-                if (data.error) {
-                    alert(data.error);
-                    document.getElementById('currentPriceDisplay').innerText = "";
-                    return;
-                }
-
-                currentChainData = data;
-                underlyingPrice = data.current_price;
-                
-                document.getElementById('currentPriceDisplay').innerText = `Current Price: $${underlyingPrice.toFixed(2)}`;
-                
-                const expSelect = document.getElementById('expSelect');
-                expSelect.innerHTML = '';
-                data.expirations.forEach(exp => {
-                    const opt = document.createElement('option');
-                    opt.value = exp;
-                    opt.innerText = exp;
-                    expSelect.appendChild(opt);
-                });
-                expSelect.classList.remove('d-none');
-                expSelect.classList.add('d-inline-block');
-                
-                renderTables();
-
-            } catch (err) {
-                alert("Failed to fetch options chain.");
-            }
-        }
-
-        function renderTables() {
-            const exp = document.getElementById('expSelect').value;
-            if (!exp || !currentChainData.chains) return;
-
-            const chain = currentChainData.chains[exp];
-            
-            const buildRows = (type, data) => {
-                let html = '';
-                data.forEach(opt => {
-                    // Calculate Mid Price
-                    let mid = opt.lastPrice;
-                    if (opt.bid > 0 && opt.ask > 0) { mid = (opt.bid + opt.ask) / 2; }
-                    
-                    html += `<tr>
-                        <td><strong>${opt.strike.toFixed(2)}</strong></td>
-                        <td>${opt.lastPrice.toFixed(2)}</td>
-                        <td>${opt.bid.toFixed(2)}</td>
-                        <td>${opt.ask.toFixed(2)}</td>
-                        <td><button class="btn-add" onclick="addLeg('${type}', ${opt.strike}, ${mid})">+</button></td>
-                    </tr>`;
-                });
-                return html;
-            };
-
-            document.querySelector('#callsTable tbody').innerHTML = buildRows('call', chain.calls);
-            document.querySelector('#putsTable tbody').innerHTML = buildRows('put', chain.puts);
-        }
-
-        function addLeg(type, strike, premium) {
-            strategyLegs.push({
-                id: Date.now(),
-                type: type,
-                strike: strike,
-                premium: premium,
-                position: 'long',
-                quantity: 1
-            });
-            renderLegs();
-            calculatePayoff();
-        }
-
-        function removeLeg(id) {
-            strategyLegs = strategyLegs.filter(leg => leg.id !== id);
-            renderLegs();
-            calculatePayoff();
-        }
-
-        function togglePosition(id) {
-            const leg = strategyLegs.find(l => l.id === id);
-            if(leg) { leg.position = leg.position === 'long' ? 'short' : 'long'; }
-            renderLegs();
-            calculatePayoff();
-        }
-
-        function updateQuantity(id, val) {
-            const leg = strategyLegs.find(l => l.id === id);
-            if(leg) { leg.quantity = parseInt(val) || 1; }
-            calculatePayoff();
-        }
-
-        function renderLegs() {
-            const container = document.getElementById('strategyLegs');
-            container.innerHTML = '';
-            
-            strategyLegs.forEach(leg => {
-                const isLong = leg.position === 'long';
-                const tagClass = isLong ? 'leg-long' : 'leg-short';
-                const btnClass = isLong ? 'btn-add-long' : 'btn-add-short';
-                
-                container.innerHTML += `
-                    <div class="leg-item ${tagClass}">
-                        <div class="flex-1">
-                            <button class="btn-add ${btnClass}" onclick="togglePosition(${leg.id})">${leg.position.toUpperCase()}</button>
-                            <span class="leg-strike-text">${leg.strike} ${leg.type.toUpperCase()}</span>
-                        </div>
-                        <div class="flex-1">
-                            <input type="number" value="${leg.quantity}" min="1" class="leg-qty-input" onchange="updateQuantity(${leg.id}, this.value)">
-                            <span class="leg-premium-text">@ $${leg.premium.toFixed(2)}</span>
-                        </div>
-                        <button class="btn-remove" onclick="removeLeg(${leg.id})">X</button>
-                    </div>
-                `;
-            });
-        }
-
-        async function calculatePayoff() {
-            if (strategyLegs.length === 0) {
-                Plotly.purge('payoff-chart');
-                return;
-            }
-
-            const payload = {
-                current_price: underlyingPrice,
-                legs: strategyLegs
-            };
-
-            const response = await fetch('/api/options/payoff', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-
-            const data = await response.json();
-            plotChart(data.prices, data.payoffs);
-        }
-
-        function plotChart(prices, payoffs) {
-            // Split traces for Red/Green conditional coloring
-            const posPayoffs = payoffs.map(y => y >= 0 ? y : null);
-            const negPayoffs = payoffs.map(y => y <= 0 ? y : null);
-
-            const tracePos = {
-                x: prices, y: posPayoffs,
-                mode: 'lines', name: 'Profit',
-                line: { color: '#00ff00', width: 3 },
-                fill: 'tozeroy', fillcolor: 'rgba(0, 255, 0, 0.1)'
-            };
-
-            const traceNeg = {
-                x: prices, y: negPayoffs,
-                mode: 'lines', name: 'Loss',
-                line: { color: '#ff4d4d', width: 3 },
-                fill: 'tozeroy', fillcolor: 'rgba(255, 77, 77, 0.1)'
-            };
-
-            const layout = {
-                title: 'Strategy Payoff at Expiration',
-                template: 'plotly_dark',
-                paper_bgcolor: '#121212',
-                plot_bgcolor: '#121212',
-                margin: { l: 40, r: 20, t: 40, b: 30 },
-                xaxis: { title: 'Underlying Price at Expiration' },
-                yaxis: { title: 'Net P&L ($)', zeroline: true, zerolinecolor: '#888', zerolinewidth: 2 },
-                showlegend: false,
-                hovermode: 'x unified'
-            };
-
-            Plotly.newPlot('payoff-chart', [tracePos, traceNeg], layout, {responsive: true, displayModeBar: false});
-        }
-    </script>
-</body>
-</html>
+{% block scripts %}
+<script src="/static/js/options_sandbox.js?v={{ css_version }}"></script>
+{% endblock %}
