@@ -117,7 +117,7 @@ Status: ☐ todo · ◐ in progress · ☑ done
 - ☑ `market_reports` (`/market-reports`, `market_reports.js`, 7 tables + custom filter bars)
 
 ### Stage 3 — Chart-heavy pages (vendor Plotly into `static/vendor/plotly/` here)
-- ☐ `market_regime` (`/market-regime`) · ☐ `stress_test` (`/stress-test`)
+- ☑ `market_regime` (`/market-regime`, `market_regime.js`) · ☐ `stress_test` (`/stress-test`)
 - ☐ `options_sandbox` (`/options-sandbox`) · ☐ `etf_predictor_detail` (`/etf-predictor/{id}`)
 - ☐ `index_detail` (`/index/{ticker}`)
 
@@ -139,6 +139,7 @@ Status: ☐ todo · ◐ in progress · ☑ done
 
 ## Open items / NEEDS REVIEW
 
+- **Plotly vendored (Stage 3 start).** `static/vendor/plotly/plotly-2.27.0.min.js` added. Remaining Stage 3 pages (`stress_test`, `options_sandbox`, `etf_predictor_detail`, `index_detail`) should load it via `{% block extra_head %}<script src="/static/vendor/plotly/plotly-2.27.0.min.js"></script>{% endblock %}` — do NOT add CDN `<script>` tags.
 - **Watchlist filter column indices — FIXED (operator-approved).** The pre-existing
   off-by-one was corrected in `static/js/watchlist.js`: Signal `column(18)`, tags/candle
   `column(17)`, score range `data[16]`.

@@ -938,6 +938,19 @@ details[open].xray-rec-group .xray-rec-group-summary::before { transform: rotate
 .xray-metric-value--xs { font-size: 13px; }
 .xray-metric-sublabel { margin-top: 6px; }
 .sentiment-module--spaced { margin-top: 24px; }
+/* ── Market Regime page ──────────────────────────────────────────────────── */
+.module-head { padding: 14px 20px 4px 20px; }
+.module-title { margin: 0; color: #00ffcc; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; }
+.module-title-note { font-size: 11px; color: #555; font-weight: normal; margin-left: 8px; }
+.regime-meta-label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+.regime-state-pill { font-size: 16px !important; font-weight: 700; padding: 5px 18px !important; border: 1px solid transparent; }
+.regime-change-block { border-left: 1px solid #333; padding-left: 20px; }
+.regime-chart-area { height: 280px; padding: 0 8px 8px; }
+.regime-chart-placeholder { height: 280px; display: flex; align-items: center; justify-content: center; color: #555; font-size: 13px; }
+.col-bull { color: #00ff00; font-weight: 600; }
+.col-chop { color: #ffaa00; font-weight: 600; }
+.col-crash { color: #ff4d4d; font-weight: 600; }
+.hmm-state-label { font-size: 12px; text-transform: uppercase; font-weight: 700; margin-bottom: 8px; }
 /* ── Market Sentiment page — contagion card ─────────────────────────────── */
 .risk-summary-contagion-flex { align-items: center; }
 .contagion-mini-table-wrapper { margin-top: 10px; overflow-x: auto; }
