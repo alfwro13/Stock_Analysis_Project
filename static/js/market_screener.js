@@ -150,7 +150,7 @@ $(document).ready(function() {
         columns: [
             { data: 'ticker', render: function(data) { return '<a href="/stock/' + data + '" class="ticker-link">' + data + '</a>'; } },
             { data: 'company_name', render: function(data) { return data || 'N/A'; } },
-            { data: 'subtitle', render: function(data) { return data || 'N/A'; } },
+            { data: 'freetrade_subtitle', render: function(data) { return data || 'N/A'; } },
             { data: 'sector', render: function(data) { return data || 'N/A'; } },
             { data: 'exchange', render: function(data) { return data || 'US'; } },
             { data: 'quote_type', visible: false },
@@ -250,7 +250,7 @@ $(document).ready(function() {
                 }
             },
             { data: 'expense_ratio', render: function(data) { return data ? data + '%' : 'N/A'; } },
-            { data: 'freetrade_link', render: function(data) { return data && data !== 'N/A' ? '<a href="' + data + '" target="_blank" class="text-accent-purple">KIID Document</a>' : 'N/A'; } }
+            { data: 'freetrade_url', render: function(data) { return data && data !== 'N/A' ? '<a href="' + data + '" target="_blank" class="text-accent-purple">KIID Document</a>' : 'N/A'; } }
         ]
     });
 
