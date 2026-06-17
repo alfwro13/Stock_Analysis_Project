@@ -1,115 +1,98 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="color-scheme" content="dark">
-    <title>{{ display_name }} ({{ ticker }}) — Market Pulse Detail</title>
-    <link rel="stylesheet" href="/static/css/styles.css?v={{ css_version }}">
-</head>
-<body class="body-detail">
+{% extends "base.html" %}
+
+{% block title %}{{ display_name }} ({{ ticker }}) — Market Pulse Detail{% endblock %}
+
+{% block extra_head %}
+<script src="/static/vendor/plotly/plotly-2.27.0.min.js"></script>
+{% endblock %}
 
 {% macro fmt(v) %}{% if v is not none %}{{ "{:,.2f}".format(v|float) }}{% else %}N/A{% endif %}{% endmacro %}
 
-<div class="sticky-nav">
-    <div class="flex-center-wrap w-100-box p-0">
-        <a href="https://github.com/alfwro13/Stock_Analysis_Project" target="_blank" class="mr-15 border-none">
-            <img src="/assets/logo_small.png" alt="Logo" class="logo-sm">
-        </a>
-        <a href="javascript:history.back()">← Back</a>
-        <span class="divider">|</span>
-        <a href="#overview">Overview</a> <span class="divider">|</span>
-        <a href="#intraday-section">Charts</a> <span class="divider">|</span>
-        <a href="#price-action">Price Action</a> <span class="divider">|</span>
-        <a href="#technicals">Technicals</a> <span class="divider">|</span>
-        <a href="/glossary">📚 Glossary</a> <span class="divider">|</span>
-        <a href="/notifications">🔔 Notifications {% if unread_count > 0 %}<span class="badge" id="nav-badge">{{ unread_count }}</span>{% endif %}</a>
+{% block content %}
+{% set yield_tickers = ['^TYX', '^TNX', 'UK10YG'] %}
+{% set commodity_tickers = ['BZ=F'] %}
+{% set forex_tickers = ['GBPUSD=X'] %}
+{% set fx_index_tickers = ['DX-Y.NYB'] %}
+{% if ticker in yield_tickers %}{% set type_label = 'Government Yield' %}
+{% elif ticker in forex_tickers %}{% set type_label = 'FX Pair' %}
+{% elif ticker in commodity_tickers %}{% set type_label = 'Commodity Future' %}
+{% elif ticker in fx_index_tickers %}{% set type_label = 'Currency Index' %}
+{% else %}{% set type_label = 'Market Index' %}{% endif %}
+
+<div class="d-flex align-items-center gap-2 mb-1">
+    <h1 class="mb-0">{{ display_name }} ({{ ticker }})</h1>
+    {% if ticker != 'UK10YG' %}
+    <a href="https://finance.yahoo.com/quote/{{ ticker }}" target="_blank" class="yahoo-link ms-auto">&#8599; View on Yahoo Finance</a>
+    {% else %}
+    <a href="https://markets.ft.com/data/rates-bonds/tearsheet/uk-sovereign?s=UK10YGBP:GOV:GBP" target="_blank" class="yahoo-link ms-auto">&#8599; View on FT.com</a>
+    {% endif %}
+</div>
+<p class="text-muted mb-3">Type: {{ type_label }} | Currency: {{ currency }}</p>
+
+{# ── Market Snapshot ── #}
+<div id="overview" class="summary-box mb-3">
+    <div class="d-flex justify-content-between align-items-center">
+        <h2 class="m-0 border-0 p-0">Market Snapshot</h2>
+        <button id="refreshDataBtn" onclick="refreshIndexData()" class="btn-refresh">
+            <span class="btn-icon">&#8635;</span> Refresh
+        </button>
     </div>
+    <div class="d-flex flex-wrap gap-4 mt-3 mb-3 font-16">
+        <div>
+            <span class="text-muted">Current Level:</span>
+            <strong id="pulse-price" class="{% if pulse.is_positive %}trend-up{% elif pulse.is_positive == false %}trend-down{% endif %}">
+                {% if pulse.price is not none %}{{ "{:,.2f}".format(pulse.price) }}{% else %}N/A{% endif %}
+            </strong>
+        </div>
+        <div>
+            <span class="text-muted">Change %:</span>
+            <strong id="pulse-change" class="{% if pulse.is_positive %}trend-up{% elif pulse.is_positive == false %}trend-down{% endif %}">
+                {% if pulse.change_pct is not none %}
+                    {% if pulse.is_positive %}+{% endif %}{{ "{:.2f}".format(pulse.change_pct) }}%
+                {% else %}N/A{% endif %}
+            </strong>
+        </div>
+        <div>
+            <span class="text-muted">Change Pts:</span>
+            <strong id="pulse-change-pts" class="{% if pulse.is_positive %}trend-up{% elif pulse.is_positive == false %}trend-down{% endif %}">
+                {% if pulse.change_pts is not none %}
+                    {% if pulse.change_pts >= 0 %}+{% endif %}{{ "{:.2f}".format(pulse.change_pts) }}
+                {% else %}N/A{% endif %}
+            </strong>
+        </div>
+        {% if quant.composite_score is not none %}
+        <div>
+            <span class="text-muted">Quant Score:</span>
+            <strong>{{ quant.composite_score }}/100</strong>
+        </div>
+        {% endif %}
+    </div>
+    {% if context_blurb %}
+    <p class="bg-dark-panel-sm mb-0">{{ context_blurb }}</p>
+    {% endif %}
 </div>
 
-<div class="w-100-box">
+{# ── Main split layout ── #}
+<div class="row g-3 align-items-start">
 
-    <h1 class="flex-center-gap-10 relative">
-        {{ display_name }} ({{ ticker }})
-        {% if ticker != 'UK10YG' %}
-        <a href="https://finance.yahoo.com/quote/{{ ticker }}" target="_blank" class="yahoo-link ml-auto">↗ View on Yahoo Finance</a>
-        {% else %}
-        <a href="https://markets.ft.com/data/rates-bonds/tearsheet/uk-sovereign?s=UK10YGBP:GOV:GBP" target="_blank" class="yahoo-link ml-auto">↗ View on FT.com</a>
-        {% endif %}
-    </h1>
+    {# ── Left column ── #}
+    <div class="col-12 col-lg-8">
 
-    {% set yield_tickers = ['^TYX', '^TNX', 'UK10YG'] %}
-    {% set commodity_tickers = ['BZ=F'] %}
-    {% set forex_tickers = ['GBPUSD=X'] %}
-    {% set fx_index_tickers = ['DX-Y.NYB'] %}
-    {% if ticker in yield_tickers %}{% set type_label = 'Government Yield' %}
-    {% elif ticker in forex_tickers %}{% set type_label = 'FX Pair' %}
-    {% elif ticker in commodity_tickers %}{% set type_label = 'Commodity Future' %}
-    {% elif ticker in fx_index_tickers %}{% set type_label = 'Currency Index' %}
-    {% else %}{% set type_label = 'Market Index' %}{% endif %}
-
-    <p class="subtitle">Type: {{ type_label }} | Currency: {{ currency }}</p>
-
-    <div id="overview">
-        <div class="summary-box">
-            <div class="flex-between-center">
-                <h2 class="m-0 border-none p-0">Market Snapshot</h2>
-                <button id="refreshDataBtn" onclick="refreshIndexData('{{ ticker }}')" class="btn-refresh">
-                    <span class="btn-icon">↻</span> Refresh
-                </button>
+        {# Intraday chart #}
+        <div id="intraday-section" class="mb-4">
+            <h2>Intraday Pulse</h2>
+            <div class="chart-wrapper" id="intraday-wrapper">
+                <button class="fullscreen-btn" onclick="toggleFullscreen('intraday-wrapper')">&#9638; Fullscreen</button>
+                {{ intraday_html | safe }}
             </div>
-            <div class="flex-gap-40 font-16 mt-15 mb-20">
-                <div>
-                    <span class="text-muted">Current Level:</span>
-                    <strong id="pulse-price" class="{% if pulse.is_positive %}trend-up{% elif pulse.is_positive == false %}trend-down{% endif %}">
-                        {% if pulse.price is not none %}{{ "{:,.2f}".format(pulse.price) }}{% else %}N/A{% endif %}
-                    </strong>
-                </div>
-                <div>
-                    <span class="text-muted">Change %:</span>
-                    <strong id="pulse-change" class="{% if pulse.is_positive %}trend-up{% elif pulse.is_positive == false %}trend-down{% endif %}">
-                        {% if pulse.change_pct is not none %}
-                            {% if pulse.is_positive %}+{% endif %}{{ "{:.2f}".format(pulse.change_pct) }}%
-                        {% else %}N/A{% endif %}
-                    </strong>
-                </div>
-                <div>
-                    <span class="text-muted">Change Pts:</span>
-                    <strong id="pulse-change-pts" class="{% if pulse.is_positive %}trend-up{% elif pulse.is_positive == false %}trend-down{% endif %}">
-                        {% if pulse.change_pts is not none %}
-                            {% if pulse.change_pts >= 0 %}+{% endif %}{{ "{:.2f}".format(pulse.change_pts) }}
-                        {% else %}N/A{% endif %}
-                    </strong>
-                </div>
-                {% if quant.composite_score is not none %}
-                <div>
-                    <span class="text-muted">Quant Score:</span>
-                    <strong>{{ quant.composite_score }}/100</strong>
-                </div>
-                {% endif %}
-            </div>
-            {% if context_blurb %}
-            <p class="bg-dark-panel-sm">{{ context_blurb }}</p>
-            {% endif %}
         </div>
-    </div>
 
-    <div class="detail-split-grid">
-
-        <div class="detail-left-column">
-
-            <div id="intraday-section">
-                <h2>Intraday Pulse</h2>
-                <div class="chart-wrapper" id="intraday-wrapper">
-                    <button class="fullscreen-btn" onclick="toggleFullscreen('intraday-wrapper')">⛶ Fullscreen</button>
-                    {{ intraday_html | safe }}
-                </div>
-            </div>
-
-            <div id="price-action">
-                <h2>Price Action & Pivot Levels</h2>
-                {% if price_action %}
-                <div class="fundamentals-grid">
+        {# Price Action #}
+        <div id="price-action" class="mb-4">
+            <h2>Price Action &amp; Pivot Levels</h2>
+            {% if price_action %}
+            <div class="row g-3">
+                <div class="col-12 col-sm-6 col-xl-4">
                     <div class="data-card">
                         <h3>Trading Ranges</h3>
                         <div class="data-row"><span class="data-label">Daily Low:</span> <span class="data-value">{{ fmt(price_action.day_low) }}</span></div>
@@ -118,7 +101,8 @@
                         <div class="data-row"><span class="data-label">1-Month Low:</span> <span class="data-value">{{ fmt(price_action.month_low) }}</span></div>
                         <div class="data-row"><span class="data-label">1-Month High:</span> <span class="data-value">{{ fmt(price_action.month_high) }}</span></div>
                     </div>
-
+                </div>
+                <div class="col-12 col-sm-6 col-xl-4">
                     <div class="data-card">
                         <h3>Pivot Points (Daily Floors)</h3>
                         <p class="text-muted-desc">Calculated from the previous day's close. These lines act as algorithmic intraday support levels.</p>
@@ -131,7 +115,8 @@
                             <span class="text-accent-18">{{ fmt(price_action.s2) }}</span>
                         </div>
                     </div>
-
+                </div>
+                <div class="col-12 col-sm-6 col-xl-4">
                     <div class="data-card">
                         <h3>Technical Levels</h3>
                         <div class="data-row">
@@ -139,8 +124,8 @@
                             <span class="data-value">
                                 {% if quant.rsi_14 is not none %}
                                     {% set rsi_val = quant.rsi_14 %}
-                                    {% if rsi_val >= 70 %}<span class="metric-poor">{{ "{:.1f}".format(rsi_val) }} ⚠ Overbought</span>
-                                    {% elif rsi_val <= 30 %}<span class="metric-excellent">{{ "{:.1f}".format(rsi_val) }} ★ Oversold</span>
+                                    {% if rsi_val >= 70 %}<span class="metric-poor">{{ "{:.1f}".format(rsi_val) }} &#9888; Overbought</span>
+                                    {% elif rsi_val <= 30 %}<span class="metric-excellent">{{ "{:.1f}".format(rsi_val) }} &#9733; Oversold</span>
                                     {% else %}<span class="metric-neutral">{{ "{:.1f}".format(rsi_val) }}</span>{% endif %}
                                 {% else %}N/A{% endif %}
                             </span>
@@ -152,8 +137,8 @@
                                 {% if quant.sma_50 is not none %}
                                     {{ fmt(quant.sma_50) }}
                                     {% if pulse.price is not none %}
-                                        {% if pulse.price > quant.sma_50 %}<span class="metric-excellent"> ▲ Above</span>
-                                        {% else %}<span class="metric-poor"> ▼ Below</span>{% endif %}
+                                        {% if pulse.price > quant.sma_50 %}<span class="metric-excellent"> &#9650; Above</span>
+                                        {% else %}<span class="metric-poor"> &#9660; Below</span>{% endif %}
                                     {% endif %}
                                 {% else %}N/A{% endif %}
                             </span>
@@ -164,8 +149,8 @@
                                 {% if quant.sma_200 is not none %}
                                     {{ fmt(quant.sma_200) }}
                                     {% if pulse.price is not none %}
-                                        {% if pulse.price > quant.sma_200 %}<span class="metric-excellent"> ▲ Above</span>
-                                        {% else %}<span class="metric-poor"> ▼ Below</span>{% endif %}
+                                        {% if pulse.price > quant.sma_200 %}<span class="metric-excellent"> &#9650; Above</span>
+                                        {% else %}<span class="metric-poor"> &#9660; Below</span>{% endif %}
                                     {% endif %}
                                 {% else %}N/A{% endif %}
                             </span>
@@ -176,21 +161,23 @@
                             <span class="data-value">
                                 {% if quant.volume is not none %}
                                     {{ "{:,.0f}".format(quant.volume) }}
-                                    {% if quant.volume_surge %}<span class="metric-excellent"> ★ Surge</span>{% endif %}
+                                    {% if quant.volume_surge %}<span class="metric-excellent"> &#9733; Surge</span>{% endif %}
                                 {% else %}N/A{% endif %}
                             </span>
                         </div>
                     </div>
                 </div>
-                {% else %}
-                <p>Not enough historical data to generate Price Action metrics.</p>
-                {% endif %}
             </div>
+            {% else %}
+            <p>Not enough historical data to generate Price Action metrics.</p>
+            {% endif %}
+        </div>
 
-            <div id="technicals">
-                <h2>Technicals & Risk</h2>
-                <div class="fundamentals-grid">
-
+        {# Technicals & Risk #}
+        <div id="technicals" class="mb-4">
+            <h2>Technicals &amp; Risk</h2>
+            <div class="row g-3">
+                <div class="col-12 col-md-6">
                     <div class="data-card">
                         <h3>Technical Momentum</h3>
                         <div class="data-row">
@@ -207,7 +194,7 @@
                             </span>
                         </div>
                         {% if quant.volume_surge %}
-                        <div class="data-row"><span class="data-label">Volume Surge:</span><span class="data-value metric-excellent">★ Today</span></div>
+                        <div class="data-row"><span class="data-label">Volume Surge:</span><span class="data-value metric-excellent">&#9733; Today</span></div>
                         {% endif %}
                         <div class="divider-line"></div>
                         <div class="data-row">
@@ -235,9 +222,10 @@
                             </span>
                         </div>
                     </div>
-
+                </div>
+                <div class="col-12 col-md-6">
                     <div class="data-card card-risk">
-                        <h3>Volatility & Risk</h3>
+                        <h3>Volatility &amp; Risk</h3>
                         <div class="data-row">
                             <span class="data-label"><abbr title="20-day historical price volatility (annualised). Higher = more uncertain near-term price action.">Hist. Vol (20d):</abbr></span>
                             <span class="data-value">
@@ -292,123 +280,30 @@
                             </span>
                         </div>
                     </div>
-
-                </div>
-            </div>
-
-        </div>
-
-        <div class="detail-right-column">
-            <div id="macro-section">
-                <h2>Macro Trend</h2>
-                <div class="chart-wrapper" id="macro-wrapper">
-                    <button class="fullscreen-btn" onclick="toggleFullscreen('macro-wrapper')">⛶ Fullscreen</button>
-                    {{ macro_html | safe }}
                 </div>
             </div>
         </div>
 
     </div>
+
+    {# ── Right column — Macro chart ── #}
+    <div class="col-12 col-lg-4">
+        <div id="macro-section">
+            <h2>Macro Trend</h2>
+            <div class="chart-wrapper" id="macro-wrapper">
+                <button class="fullscreen-btn" onclick="toggleFullscreen('macro-wrapper')">&#9638; Fullscreen</button>
+                {{ macro_html | safe }}
+            </div>
+        </div>
+    </div>
+
 </div>
+{% endblock %}
 
+{% block scripts %}
 <script>
-    window.REFRESH_RATE_MS = {{ config.UI_PREFERENCES.REFRESH_RATE | default(60) }} * 1000;
-
-    async function refreshIndexData(ticker) {
-        const btn = document.getElementById('refreshDataBtn');
-        btn.disabled = true;
-        btn.innerHTML = `<span class="btn-icon spin-icon">↻</span> Crunching...`;
-        try {
-            const response = await fetch('/api/index/refresh', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ticker: ticker })
-            });
-            const data = await response.json();
-            if (response.ok && data.status === 'success') {
-                window.location.reload();
-            } else {
-                alert("Failed to refresh data: " + (data.message || "Unknown error"));
-                btn.disabled = false;
-                btn.innerHTML = `<span class="btn-icon">↻</span> Refresh`;
-            }
-        } catch (e) {
-            alert("Network error refreshing data.");
-            btn.disabled = false;
-            btn.innerHTML = `<span class="btn-icon">↻</span> Refresh`;
-        }
-    }
-
-    function toggleFullscreen(wrapperId) {
-        const wrapper = document.getElementById(wrapperId);
-        const isFullscreen = wrapper.classList.contains('is-fullscreen');
-        if (isFullscreen) {
-            wrapper.classList.remove('is-fullscreen');
-            wrapper.querySelector('.fullscreen-btn').innerText = "⛶ Fullscreen";
-        } else {
-            wrapper.classList.add('is-fullscreen');
-            wrapper.querySelector('.fullscreen-btn').innerText = "✖ Exit Fullscreen";
-        }
-        window.dispatchEvent(new Event('resize'));
-    }
-
-    (function () {
-        const TICKER = {{ ticker | tojson }};
-        const refreshRate = (window.REFRESH_RATE_MS || 60000);
-        let interval;
-
-        async function fetchPrice() {
-            try {
-                const res = await fetch('/api/market-pulse', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ tickers: [] })
-                });
-                const data = await res.json();
-                if (!res.ok || data.status !== 'success') return;
-
-                const all = [...(data.data.indexes || []), ...(data.data.assets || [])];
-                const item = all.find(d => d.ticker === TICKER);
-                if (!item) return;
-
-                const priceEl = document.getElementById('pulse-price');
-                const changeEl = document.getElementById('pulse-change');
-                const changePtsEl = document.getElementById('pulse-change-pts');
-                const trendClass = item.is_stale ? 'stale-text' : (item.is_positive ? 'trend-up' : 'trend-down');
-
-                if (priceEl) {
-                    priceEl.innerText = Number(item.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                    priceEl.className = trendClass;
-                }
-                if (changeEl) {
-                    const sign = item.is_positive ? '+' : '';
-                    changeEl.innerText = `${sign}${Number(item.change_pct).toFixed(2)}%`;
-                    changeEl.className = trendClass;
-                }
-                if (changePtsEl) {
-                    const sign = item.change_pts >= 0 ? '+' : '';
-                    changePtsEl.innerText = `${sign}${Number(item.change_pts).toFixed(2)}`;
-                    changePtsEl.className = trendClass;
-                }
-            } catch (e) { }
-        }
-
-        document.addEventListener('DOMContentLoaded', function () {
-            fetchPrice();
-            interval = setInterval(fetchPrice, refreshRate);
-        });
-
-        document.addEventListener('visibilitychange', function () {
-            if (document.visibilityState === 'hidden') {
-                clearInterval(interval);
-            } else {
-                fetchPrice();
-                interval = setInterval(fetchPrice, refreshRate);
-            }
-        });
-    })();
+    window.INDEX_TICKER = {{ ticker | tojson }};
+    window.INDEX_REFRESH_RATE_MS = {{ config.UI_PREFERENCES.REFRESH_RATE | default(60) }} * 1000;
 </script>
-
-<script src="/static/js/csrf.js"></script>
-</body>
-</html>
+<script src="/static/js/index_detail.js?v={{ css_version }}"></script>
+{% endblock %}

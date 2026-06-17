@@ -70,7 +70,7 @@ IF_STRESS_ALERT_THRESHOLD = 0.75   # score in [0,1] above which the alert check 
 IF_STRESS_ALERT_DAYS      = 2      # consecutive days above threshold before firing
 
 # ── Static asset versioning ───────────────────────────────────────────────────
-CSS_VERSION = "5.24"  # bump this whenever styles.css changes to bust browser caches
+CSS_VERSION = "5.25"  # bump this whenever styles.css changes to bust browser caches
 
 # ── FinBERT / NLP sentiment ────────────────────────────────────────────────────
 NLP_FINBERT_MAX_TOKENS     = 512   # HuggingFace token limit for ProsusAI/finbert

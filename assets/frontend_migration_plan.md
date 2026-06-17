@@ -119,7 +119,7 @@ Status: ☐ todo · ◐ in progress · ☑ done
 ### Stage 3 — Chart-heavy pages (vendor Plotly into `static/vendor/plotly/` here)
 - ☑ `market_regime` (`/market-regime`, `market_regime.js`) · ☑ `stress_test` (`/stress-test`, `stress_test.js`)
 - ☑ `options_sandbox` (`/options-sandbox`, `options_sandbox.js`) · ☑ `etf_predictor_detail` (`/etf-predictor/{id}`, `etf_predictor_detail.js`)
-- ☐ `index_detail` (`/index/{ticker}`)
+- ☑ `index_detail` (`/index/{ticker}`, `index_detail.js`)
 
 ### Stage 4 — Large/complex pages (one chat each)
 - ☐ `stock_detail` (`/stock/{ticker}`, 1,495 lines, sticky sidebar, charts)
