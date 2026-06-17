@@ -934,12 +934,13 @@ details[open].xray-rec-group .xray-rec-group-summary::before { transform: rotate
 .xray-metric-card--purple { border-top-color: #bb86fc; }
 .xray-metric-card--cyan   { border-top-color: #00ffff; }
 .xray-metric-card--red    { border-top-color: #f44336; }
-/* ── ETF Predictor Detail page ──────────────────────────────────────────── */
+/* ── ETF Predictor Detail page ─────────────────────────────────────────── */
 .sentiment-module-header { display: flex; align-items: center; justify-content: space-between; cursor: pointer; padding: 14px 20px; }
 .accuracy-toggle-icon { font-size: 1.1em; }
 .etf-accuracy-section-label { margin: 1rem 0 0.4rem; font-size: 0.85rem; color: #aaa; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
 .etf-accuracy-loading-cell { text-align: center; padding: 12px; color: #888; }
 .etf-accuracy-table { font-size: 0.82rem; }
+.etf-pnl-value { font-size: 1.8rem; font-weight: 700; line-height: 1.1; }
 .xray-metric-value--sm { font-size: 14px; padding-top: 4px; }
 .xray-metric-value--xs { font-size: 13px; }
 .xray-metric-sublabel { margin-top: 6px; }

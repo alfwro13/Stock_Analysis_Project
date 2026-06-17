@@ -83,25 +83,6 @@
         <div class="xray-metric-label">As Of</div>
         <div class="xray-metric-value xray-metric-value--xs">{{ prediction.as_of_local }}</div>
     </div>
-    {% if etf_pnl %}
-    <div class="xray-metric-card {% if etf_pnl.predicted_pnl_open >= 0 %}xray-metric-card--cyan{% else %}xray-metric-card--red{% endif %}">
-        <div class="xray-metric-label"><abbr title="Your {{ cfg.etf_ticker }} portfolio position — {{ etf_pnl.shares }} shares at avg buy price {{ etf_pnl.avg_buy_price }} {{ etf_info.currency }}.">Portfolio Impact</abbr></div>
-        <div class="xray-metric-value xray-metric-value--sm">
-            {{ "%+.2f"|format(etf_pnl.predicted_pnl_open) }} {{ etf_info.currency }}
-        </div>
-        <div class="{% if etf_pnl.predicted_pnl_open >= 0 %}prediction-change-pos{% else %}prediction-change-neg{% endif %}">
-            at next open vs last close
-        </div>
-        <div class="xray-metric-label xray-metric-sublabel">
-            {{ etf_pnl.shares }} shares &nbsp;|&nbsp;
-            Current: {{ "%.2f"|format(etf_pnl.current_value) }} &nbsp;&rarr;&nbsp;
-            Predicted: {{ "%.2f"|format(etf_pnl.predicted_value) }} {{ etf_info.currency }}
-        </div>
-        <div class="xray-metric-label xray-metric-sublabel">
-            Total unrealised P&amp;L at open: {{ "%+.2f"|format(etf_pnl.total_unrealised_pnl) }} {{ etf_info.currency }}
-        </div>
-    </div>
-    {% endif %}
 </div>
 
 {# ── Signal source badge ── #}
@@ -131,6 +112,35 @@
     In parallel, a <strong>60-day <abbr title="Ordinary Least Squares regression — fits a linear model: ETF morning return = α + β × constituent basket return.">OLS</abbr> regression</strong> provides a 95% confidence interval.
     All prices in {{ etf_info.currency }}.
 </p>
+
+{# ── Portfolio Impact banner ── #}
+{% if etf_pnl %}
+<div class="sentiment-module {% if etf_pnl.predicted_pnl_open >= 0 %}module-cyan{% else %}module-red{% endif %} mb-3">
+    <div class="p-3 d-flex align-items-center gap-4 flex-wrap">
+        <div>
+            <div class="regime-meta-label mb-1">
+                <abbr title="Your {{ cfg.etf_ticker }} portfolio position — {{ etf_pnl.shares }} shares at avg buy price {{ etf_pnl.avg_buy_price }} {{ etf_info.currency }}.">Portfolio Impact</abbr>
+            </div>
+            <div class="{% if etf_pnl.predicted_pnl_open >= 0 %}prediction-change-pos{% else %}prediction-change-neg{% endif %} etf-pnl-value">
+                {{ "%+.2f"|format(etf_pnl.predicted_pnl_open) }} {{ etf_info.currency }}
+            </div>
+            <div class="small text-muted">at next open vs last close</div>
+        </div>
+        <div class="regime-change-block">
+            <div class="small text-muted mb-1">{{ etf_pnl.shares }} shares</div>
+            <div class="small">
+                Current: <span class="font-monospace">{{ "%.2f"|format(etf_pnl.current_value) }}</span>
+                &nbsp;&rarr;&nbsp;
+                Predicted: <span class="font-monospace">{{ "%.2f"|format(etf_pnl.predicted_value) }} {{ etf_info.currency }}</span>
+            </div>
+            <div class="small text-muted mt-1">
+                Total unrealised P&amp;L at open:
+                <span class="{% if etf_pnl.total_unrealised_pnl >= 0 %}prediction-change-pos{% else %}prediction-change-neg{% endif %} font-monospace">{{ "%+.2f"|format(etf_pnl.total_unrealised_pnl) }} {{ etf_info.currency }}</span>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
 
 {# ── Time-aligned intraday overlay chart ── #}
 <div class="sentiment-module module-cyan sentiment-module--spaced">
