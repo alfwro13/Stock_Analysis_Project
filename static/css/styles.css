@@ -955,6 +955,11 @@ details[open].xray-rec-group .xray-rec-group-summary::before { transform: rotate
 .contagion-severity-low { color: #4caf50; font-weight: 700; }
 .contagion-alert-text { color: #f44336; font-weight: 600; }
 .text-dim { color: #888; }
+/* market_reports — dynamic filter elements injected by DataTables initComplete */
+.rpt-filter-bar { margin-right: 12px; display: inline-flex; align-items: center; gap: 8px; }
+.rpt-ml-wrapper { display: inline-flex; align-items: center; gap: 4px; font-size: 0.8rem; color: #aaa; white-space: nowrap; }
+.rpt-ml-label { cursor: default; }
+.table-error-cell { text-align: center; padding: 20px; color: #ff6b6b; }
 
 /* ── Stress Test tool ────────────────────────────────────────────────────── */
 .stress-scenarios-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; margin-bottom: 24px; }
