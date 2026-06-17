@@ -45,14 +45,14 @@
 <div class="row g-3 mt-1">
 
     {# ══════════════════ LEFT COLUMN ══════════════════ #}
-    <div class="col-12 col-lg-8">
+    <div class="col-12 col-lg-6">
 
         {# ─── Verdict ─── #}
         <div id="verdict">
             {% if portfolio_math %}
             <div class="portfolio-box mb-3">
                 <h2 class="m-0 border-none p-0">Your Position (Global Aggregation)</h2>
-                <div class="flex-gap-40 font-16 mt-15 mb-20">
+                <div class="d-flex flex-wrap gap-3 font-16 mt-15 mb-20">
                     <div><span class="text-muted">Shares Owned:</span> <strong>{{ portfolio_math.global.shares }}</strong></div>
                     <div><span class="text-muted">Avg VWAP Cost:</span> <strong>{{ display_price(portfolio_math.global.buy_price, stock.currency) }}</strong></div>
                     <div><span class="text-muted">Current Value:</span> <strong>{{ display_price(portfolio_math.global.current_value, stock.currency) }}</strong></div>
@@ -67,7 +67,7 @@
                 {% if portfolio_math.accounts|length > 1 %}
                 <h3 class="text-sm-caps">Account Breakdown</h3>
                 {% for acc in portfolio_math.accounts %}
-                <div class="sub-account-row">
+                <div class="sub-account-row flex-wrap">
                     <div class="sub-account-name">{{ acc.name }}</div>
                     <div><span class="text-muted">Shares:</span> {{ acc.shares }}</div>
                     <div><span class="text-muted">Cost Basis:</span> {{ display_price(acc.buy_price, stock.currency) }}</div>
@@ -85,7 +85,7 @@
             {% endif %}
 
             <div class="summary-box mb-3">
-                <div class="flex-between-center">
+                <div class="flex-between-center flex-wrap gap-2">
                     <h2 class="m-0 border-none p-0">System Verdict: {{ stock.overall_signal }} ({{ stock.composite_score }}/100)</h2>
                     <div class="inline-flex-gap-10">
                         <button id="refreshDataBtn" onclick="refreshSingleData()" class="btn-refresh {{ data_status }}" title="Data Last Updated: {{ last_updated_str }}">
@@ -922,7 +922,7 @@
     </div>{# end col-12 col-lg-8 #}
 
     {# ══════════════════ RIGHT COLUMN ══════════════════ #}
-    <div class="col-12 col-lg-4 detail-right-column">
+    <div class="col-12 col-lg-6 detail-right-column">
 
         <div id="macro-section">
             <h2>Macro Trend</h2>
