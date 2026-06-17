@@ -291,15 +291,27 @@
     window.refreshSingleData = refreshSingleData;
 
     // ─── Fullscreen Toggle ────────────────────────────────────────────────────────
+    // On desktop the chart wrapper lives inside .detail-right-column which has
+    // position:sticky. Sticky elements form a CSS stacking context with z-index:auto
+    // (paint step 7), so Bootstrap's navbar (z-index:1020, step 8) always paints on
+    // top — making the fullscreen chart partially obscured. Fix: hide the navbar for
+    // the duration of fullscreen mode. Also elevate the sticky column's z-index so the
+    // fixed wrapper is above any other root-level stacking contexts.
     function toggleFullscreen(wrapperId) {
         const wrapper = document.getElementById(wrapperId);
         const isFullscreen = wrapper.classList.contains('is-fullscreen');
+        const navbar = document.querySelector('.app-navbar');
+        const stickyCol = wrapper.closest('.detail-right-column');
         if (isFullscreen) {
             wrapper.classList.remove('is-fullscreen');
             wrapper.querySelector('.fullscreen-btn').innerText = "⧆ Fullscreen";
+            if (navbar) navbar.style.display = '';
+            if (stickyCol) stickyCol.style.zIndex = '';
         } else {
             wrapper.classList.add('is-fullscreen');
             wrapper.querySelector('.fullscreen-btn').innerText = "✖ Exit Fullscreen";
+            if (navbar) navbar.style.display = 'none';
+            if (stickyCol) stickyCol.style.zIndex = '10000';
         }
         window.dispatchEvent(new Event('resize'));
     }

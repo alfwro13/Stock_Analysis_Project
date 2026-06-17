@@ -74,16 +74,21 @@ def create_intraday_chart(df, ticker, s1=None, s2=None, live_pattern_name=None, 
 
 
 def create_macro_chart(df, df_baseline, ticker):
+    # Compute long-window indicators on the full history before truncating so
+    # MA_200 (needs 200 rows) and OBV (cumulative, benefits from full context)
+    # always have valid values in the 126-day display window.
+    df['MA_200'] = df['Close'].rolling(window=200).mean()
+    df['OBV'] = ta.volume.OnBalanceVolumeIndicator(close=df['Close'], volume=df['Volume']).on_balance_volume()
+
     df = df.tail(126).copy()
-    
+
     df['MA_21'] = df['Close'].rolling(window=21).mean()
     df['MA_50'] = df['Close'].rolling(window=50).mean()
-    df['MA_200'] = df['Close'].rolling(window=200).mean()
-    
+
     indicator_bb = ta.volatility.BollingerBands(close=df["Close"], window=20, window_dev=2)
     df['BB_High'] = indicator_bb.bollinger_hband()
     df['BB_Low'] = indicator_bb.bollinger_lband()
-    
+
     if df_baseline is not None:
         baseline_aligned = df_baseline['Close'].reindex(df.index, method='ffill')
         df['RS_Line'] = df['Close'] / baseline_aligned
@@ -91,7 +96,6 @@ def create_macro_chart(df, df_baseline, ticker):
         df['RS_Normalized'] = df['RS_Line'] * normalization_factor
 
     df['RSI'] = ta.momentum.RSIIndicator(close=df['Close'], window=14).rsi()
-    df['OBV'] = ta.volume.OnBalanceVolumeIndicator(close=df['Close'], volume=df['Volume']).on_balance_volume()
     
     macd = ta.trend.MACD(close=df['Close'])
     df['MACD_Line'] = macd.macd()
