@@ -761,7 +761,7 @@ function _plotMacroHistory(elId, history) {
 // ── DataTables init ───────────────────────────────────────────────────────────
 $(document).ready(function () {
     var table = $('#dataTable').DataTable({
-        responsive: { details: { target: 'tr' } },
+        responsive: true,
         pageLength: 50,
         deferRender: true,
         dom: 'lrtip',
@@ -778,6 +778,14 @@ $(document).ready(function () {
         ]
     });
     window._portfolioTable = table;
+
+    // Tap anywhere on a row (except the ticker link or the expand triangle itself)
+    // to expand/collapse the responsive child row.
+    $('#dataTable tbody').on('click', 'tr:not(.child)', function (e) {
+        if ($(e.target).closest('a').length) return;
+        if ($(e.target).closest('.dtr-control').length) return;
+        $(this).find('.dtr-control').trigger('click');
+    });
 
     $('#customSearchInput').on('keyup', function () {
         table.search(this.value).draw();
