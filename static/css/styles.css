@@ -1037,7 +1037,7 @@ details[open].xray-rec-group .xray-rec-group-summary::before { transform: rotate
 .reader-ticker { background: rgba(0,180,216,0.15); color: #00b4d8; border-radius: 2px; padding: 0 3px; font-weight: 600; }
 
 /* ── News Feed page ──────────────────────────────────────────────────────── */
-.news-body { height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+.news-body { margin: 0; padding: 0; height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
 .news-main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; padding: 0; }
 #newsControls { flex-shrink: 0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 16px; border-bottom: 1px solid #2a2a2a; }
 #newsLayout { flex: 1; min-height: 0; display: flex; overflow: hidden; }
