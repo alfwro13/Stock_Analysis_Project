@@ -2351,7 +2351,7 @@ async def get_screener_data(request: Request):
             q.week52_pct,
             qs_sent.sentiment_score,
             s.composite_score, s.overall_signal,
-            s.roe, s.peg_ratio, s.trailing_pe, s.debt_to_equity,
+            s.roe, s.peg_ratio, s.trailing_pe, s.debt_to_equity, s.expense_ratio,
             COALESCE(s.next_earnings_date, ev.next_earnings_date) AS next_earnings_date,
             m.is_freetrade, m.freetrade_subtitle, m.freetrade_url,
             COALESCE(p.quote_type, s.quote_type, m.quote_type, 'EQUITY') as quote_type
