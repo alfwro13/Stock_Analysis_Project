@@ -132,7 +132,7 @@ abbr { text-decoration: underline dotted #666; text-underline-offset: 3px; curso
 .filter-btn.active { background-color: #4da6ff; color: #121212; border-color: #4da6ff; }
 .body-notifications .notification-list { max-width: 1400px; margin: 0 auto; padding: 0 20px 40px; }
 .body-portfolio, .body-watchlist, .body-detail, .body-screener, .body-sentiment { margin: 0; padding: 0; }
-.body-detail { padding-bottom: 50px; min-width: 640px; }
+.body-detail { padding-bottom: 50px; }
 .body-settings { margin: 0; padding: 0; }
 .body-settings .header-container { padding-left: 40px; padding-right: 40px; }
 .body-settings .header-container-wide { max-width: none; margin: 0; }
