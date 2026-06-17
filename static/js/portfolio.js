@@ -761,14 +761,14 @@ function _plotMacroHistory(elId, history) {
 // ── DataTables init ───────────────────────────────────────────────────────────
 $(document).ready(function () {
     var table = $('#dataTable').DataTable({
-        responsive: true,
+        responsive: { details: { target: 'tr' } },
         pageLength: 50,
         deferRender: true,
         dom: 'lrtip',
         order: [],
         columnDefs: [
-            { responsivePriority: 1, targets: [0, 2, 20] },
-            { responsivePriority: 2, targets: [3, 4, 5] },
+            { responsivePriority: 1, targets: [0, 2, 5] },
+            { responsivePriority: 2, targets: [3, 4, 20] },
             { responsivePriority: 3, targets: [18, 19] },
             { responsivePriority: 4, targets: [16] },
             { responsivePriority: 5, targets: [13, 14, 15] },
