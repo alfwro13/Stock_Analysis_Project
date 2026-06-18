@@ -41,14 +41,15 @@ function _wfRenderConflicts(conflicts) {
 
 async function loadWorkflowMonitor() {
     const container = document.getElementById("workflow-graph-container");
-    if (!container) return;
-    container.innerHTML = '<p class="text-muted text-sm">Loading workflow graph…</p>';
+    if (container) container.innerHTML = '<p class="text-muted text-sm">Loading workflow graph…</p>';
     try {
         const resp = await fetch("/api/workflow-monitor/status");
         const data = await resp.json();
         if (data.status !== "success") throw new Error(data.message || "request failed");
 
         _wfRenderConflicts(data.conflicts || []);
+
+        if (!container) { _workflowLoaded = true; return; }
 
         if (!window.mermaid) {
             container.innerHTML = '<p class="text-red text-sm">Mermaid library not loaded — the graph bundle has not been fetched yet.</p>';
@@ -59,7 +60,7 @@ async function loadWorkflowMonitor() {
         container.innerHTML = svg;
         _workflowLoaded = true;
     } catch (e) {
-        container.innerHTML = `<p class="text-red text-sm">Failed to load workflow graph: ${e.message}</p>`;
+        if (container) container.innerHTML = `<p class="text-red text-sm">Failed to load workflow graph: ${e.message}</p>`;
     }
 }
 

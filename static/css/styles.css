@@ -1317,3 +1317,8 @@ details[open] > .trap-accuracy-summary::before { transform: rotate(90deg); }
 .se-pagebar button:disabled { opacity: 0.35; cursor: default; }
 .se-pagebar button:not(:disabled):hover { background: #3a3a3a; }
 .se-pagebar span { color: #888; font-size: 0.85rem; }
+/* --- Settings page Bootstrap 5 migration --- */
+.settings-briefing-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px; }
+.settings-briefing-box { border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 12px; }
+.settings-readonly { background: #1a1a1a !important; color: #888 !important; border-color: #333 !important; cursor: default; }
+@media (max-width: 576px) { .settings-briefing-grid { grid-template-columns: 1fr; } }

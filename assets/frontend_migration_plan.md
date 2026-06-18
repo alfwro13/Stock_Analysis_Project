@@ -123,8 +123,7 @@ Status: ☐ todo · ◐ in progress · ☑ done
 
 ### Stage 4 — Large/complex pages (one chat each)
 - ☑ `stock_detail` (`/stock/{ticker}`, `stock_detail.js`) — Bootstrap grid, sticky right column, position-sizing panel, dip radar, all charts preserved; JS extracted to `static/js/stock_detail.js`
-- ☐ `settings` (`/settings`, 2,101-line template + `settings.js`; cards → accordion, Master
-  Matrix, Workflow Monitor/Mermaid, Notification Settings)
+- ☑ `settings` (`/settings`, `settings.js`) — Bootstrap grid `.col-12.col-xl-6`, all inputs Bootstrap form classes, uniform `.btn.btn-primary` buttons, Workflow Monitor conflicts-only (graph in new tab), Bubble Radar persist fix
 
 ### Stage 5 — Auth pages (navbar suppressed, centered card layout)
 - ☐ `login` · ☐ `change_password` · ☐ `reset_password` · ☐ `admin_reset_password`
