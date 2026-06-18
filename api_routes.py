@@ -137,7 +137,7 @@ class ChangePasswordRequest(BaseModel):
     confirm_password: str
 
 
-@api_router.post("/change-password", dependencies=[Depends(require_confirm_token)])
+@api_router.post("/change-password")
 async def change_password(body: ChangePasswordRequest):
     import secrets as _secrets
     from dotenv import set_key
@@ -579,6 +579,8 @@ class ScheduleItemConfig(BaseModel):
     CAPITULATION: Optional[bool] = None
     WYCKOFF: Optional[bool] = None
     MONITOR_PORTFOLIO: Optional[bool] = None
+    WATCH_THRESHOLD: Optional[int] = None
+    FLAG_THRESHOLD: Optional[int] = None
 
 class SchedulingConfig(BaseModel):
     SYNC_INDICES: Optional[ScheduleItemConfig] = None
@@ -603,6 +605,8 @@ class SchedulingConfig(BaseModel):
     AI_CONTAGION: Optional[ScheduleItemConfig] = None
     NEWS_FEED: Optional[ScheduleItemConfig] = None
     TRAP_MONITORS: Optional[ScheduleItemConfig] = None
+    BUBBLE_RADAR: Optional[ScheduleItemConfig] = None
+    LUNCH_DISPATCHER: Optional[ScheduleItemConfig] = None
 
 class ReportsDefaultsConfig(BaseModel):
     MR_MAX_RSI: Optional[int] = None

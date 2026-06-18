@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import secrets
 import uvicorn
 from fastapi import FastAPI, Request
@@ -56,6 +57,7 @@ app.add_middleware(
     CSRFMiddleware,
     secret=os.environ.get("APP_SECRET_KEY") or secrets.token_hex(32),
     sensitive_cookies={"session"},   # only enforce when a session cookie is present
+    exempt_urls=[re.compile(r"^/api/(login|request-password-reset|reset-password|admin-reset-password)$")],
     cookie_httponly=False,           # JS must be able to read it
     cookie_samesite="lax",
 )
