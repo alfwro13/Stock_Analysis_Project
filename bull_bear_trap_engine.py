@@ -10,7 +10,7 @@ import pandas as pd
 import ta
 
 from config import HISTORICAL_DIR, PORTFOLIO_PATH
-from database import get_connection, log_trap_phase, get_unresolved_trap_phases, update_trap_phase_actual
+from database import get_connection, log_trap_phase, get_unresolved_trap_phases, update_trap_phase_actual, batch_update_trap_phase_actuals
 from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
@@ -506,7 +506,7 @@ def fill_trap_phase_actuals() -> int:
     for row in pending:
         by_ticker.setdefault(row["ticker"], []).append(row)
 
-    filled = 0
+    batch: list[tuple[int, int, float, str, int]] = []
     for ticker, rows in by_ticker.items():
         path = HISTORICAL_DIR / f"{ticker}.parquet"
         if not path.exists():
@@ -554,7 +554,7 @@ def fill_trap_phase_actuals() -> int:
                          (expected == "down" and actual_price < ref_price)
                     else 0
                 )
-                update_trap_phase_actual(row["id"], horizon, actual_price, actual_date, direction_correct)
-                filled += 1
+                batch.append((row["id"], horizon, actual_price, actual_date, direction_correct))
 
-    return filled
+    batch_update_trap_phase_actuals(batch)
+    return len(batch)

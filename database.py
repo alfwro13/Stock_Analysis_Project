@@ -1635,6 +1635,36 @@ def update_trap_phase_actual(
             conn.close()
 
 
+def batch_update_trap_phase_actuals(
+    payloads: list[tuple[int, int, float, str, int]],
+) -> None:
+    """Execute all trap-phase actual updates in a single transaction.
+
+    Each payload is (row_id, horizon, actual_price, actual_date, direction_correct).
+    """
+    if not payloads:
+        return
+    conn = None
+    try:
+        conn = get_connection()
+        for row_id, horizon, actual_price, actual_date, direction_correct in payloads:
+            price_col   = f"actual_price_{horizon}d"
+            date_col    = f"actual_date_{horizon}d"
+            correct_col = f"direction_correct_{horizon}d"
+            conn.execute(
+                f"UPDATE trap_phase_history SET {price_col}=?, {date_col}=?, {correct_col}=? WHERE id=?",
+                (actual_price, actual_date, direction_correct, row_id),
+            )
+        conn.commit()
+    except Exception as e:
+        logger.error("batch_update_trap_phase_actuals failed (%d rows): %s", len(payloads), e)
+        if conn:
+            conn.rollback()
+    finally:
+        if conn:
+            conn.close()
+
+
 def get_trap_phase_accuracy() -> dict:
     conn = None
     try:
