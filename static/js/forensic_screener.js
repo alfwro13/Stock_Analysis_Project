@@ -73,7 +73,7 @@
 
         tbody.innerHTML = results.map(r => `
             <tr>
-                <td><strong>${r.ticker}</strong></td>
+                <td><a href="/stock/${r.ticker}" class="text-decoration-none fw-bold">${r.ticker}</a></td>
                 <td>${r.company_name}</td>
                 <td><span class="text-secondary small">${r.sector}</span></td>
                 <td>${fscoreBadge(r.piotroski_f_score)}</td>

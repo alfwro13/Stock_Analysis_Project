@@ -9,7 +9,7 @@
     Flags structural insolvency risk (<abbr title="9-point scoring model evaluating profitability, leverage, liquidity, and operating efficiency. Score &lt; 4 signals fundamental decay.">Piotroski F-Score</abbr>),
     bankruptcy risk (<abbr title="Altman Z' (non-manufacturer model). Zones: &gt;2.6 safe, 1.1–2.6 grey area, &lt;1.1 distress. Uses working capital, retained earnings, EBIT, and book equity.">Altman Z-Score</abbr>),
     and earnings manipulation (<abbr title="8-variable Beneish M-Score. M &gt; −1.78 flags possible earnings manipulation. Requires two years of annual financial statements.">Beneish M-Score</abbr>).
-    Scores are computed monthly from annual financial statements via yfinance.
+    Scores are computed monthly from annual financial statements via Yahoo Finance. Run the <strong>Fetch</strong> job first, then <strong>Score</strong>.
 </p>
 
 <a href="/tools" class="btn btn-outline-secondary btn-sm mb-3">&#8592; Back to Tools</a>
@@ -18,7 +18,7 @@
     <div class="col-12 col-lg-6">
         <div class="card h-100">
             <div class="card-body">
-                <h6 class="card-title mb-3">Forensic Quarterly Data Fetch</h6>
+                <h6 class="card-title mb-3">Step 1 — Forensic Quarterly Data Fetch</h6>
                 <p class="text-muted small mb-2">Downloads annual financial statements from Yahoo Finance for all portfolio and watchlist tickers. Caches results to disk; skips tickers refreshed within the last 30 days.</p>
                 <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
                     <span class="text-secondary small">Last run: <strong id="fetch-last-run">{{ fetch_last_run or 'Never' }}</strong></span>
@@ -30,7 +30,7 @@
     <div class="col-12 col-lg-6">
         <div class="card h-100">
             <div class="card-body">
-                <h6 class="card-title mb-3">Forensic Accounting Scores</h6>
+                <h6 class="card-title mb-3">Step 2 — Forensic Accounting Scores</h6>
                 <p class="text-muted small mb-2">Computes Piotroski F-Score, Altman Z-Score, and Beneish M-Score from the cached statements, writes results to the database, and fires alerts for distress thresholds.</p>
                 <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
                     <span class="text-secondary small">Last run: <strong id="score-last-run">{{ score_last_run or 'Never' }}</strong></span>
@@ -48,7 +48,7 @@
 </div>
 
 <div id="forensic-loading" class="text-secondary small mb-2">Loading scores…</div>
-<div id="forensic-empty" class="text-secondary small mb-2" style="display:none">No data yet — run the Forensic Quarterly Data Fetch followed by Forensic Accounting Scores to populate this table.</div>
+<div id="forensic-empty" class="text-secondary small mb-2" style="display:none">No data yet — click <strong>Step 1: Run Now</strong> to download financial data, then <strong>Step 2: Run Now</strong> to compute scores.</div>
 
 <table id="forensic-table" class="table table-hover w-100" style="display:none">
     <thead>
@@ -65,6 +65,140 @@
     </thead>
     <tbody id="forensic-tbody"></tbody>
 </table>
+
+<hr class="my-5">
+
+<section id="how-to-read">
+    <h3 class="mb-3">How to Read This Table</h3>
+    <p class="text-muted mb-4">
+        The Forensic Screener applies three independent models from academic accounting research to your holdings' annual financial statements.
+        Each model asks a different question: <em>Is this company getting fundamentally stronger or weaker?</em> (Piotroski),
+        <em>Is it at risk of insolvency?</em> (Altman), and <em>Are its reported earnings trustworthy?</em> (Beneish).
+        These are lagging signals — they reflect the past year's filings, not today's price — which makes them ideal for catching slow-moving structural deterioration
+        that doesn't show up in a price chart until it's too late.
+    </p>
+
+    <div class="row g-4 mb-4">
+
+        <div class="col-12 col-lg-4">
+            <div class="card h-100 border-success">
+                <div class="card-header text-success fw-semibold">Piotroski F-Score (0–9)</div>
+                <div class="card-body">
+                    <p class="small mb-2">
+                        Developed by Stanford professor Joseph Piotroski in 2000, the F-Score is a 9-point checklist
+                        that awards 1 point for each criterion met and 0 for each failed. It tests three dimensions of
+                        financial health using the most recent annual report vs. the prior year:
+                    </p>
+                    <ul class="small mb-3">
+                        <li><strong>Profitability (4 points):</strong> Positive return on assets, positive operating cash flow, improving ROA year-on-year, cash earnings exceeding accounting earnings (quality of profit).</li>
+                        <li><strong>Leverage &amp; Liquidity (3 points):</strong> Long-term debt ratio declining, current ratio improving, no new shares issued (dilution test).</li>
+                        <li><strong>Operating Efficiency (2 points):</strong> Gross margin improving, asset turnover (revenue / assets) improving.</li>
+                    </ul>
+                    <table class="table table-sm small mb-0">
+                        <thead><tr><th>Score</th><th>Signal</th><th>Colour</th></tr></thead>
+                        <tbody>
+                            <tr><td>7–9</td><td>Strong fundamentals</td><td><span class="badge bg-success">green</span></td></tr>
+                            <tr><td>4–6</td><td>Neutral / mixed</td><td><span class="badge bg-warning text-dark">amber</span></td></tr>
+                            <tr><td>0–3</td><td>Fundamental decay — flag</td><td><span class="badge bg-danger">red</span></td></tr>
+                        </tbody>
+                    </table>
+                    <p class="small text-muted mt-2 mb-0">N/A = insufficient annual data (ETFs, newly listed stocks, or tickers where Yahoo Finance does not provide balance sheet data).</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-lg-4">
+            <div class="card h-100 border-warning">
+                <div class="card-header text-warning fw-semibold">Altman Z-Score</div>
+                <div class="card-body">
+                    <p class="small mb-2">
+                        Created by NYU professor Edward Altman in 1968 and refined for non-manufacturers, the Z-Score
+                        predicts the probability of corporate bankruptcy within two years. The Z' (prime) formula used
+                        here applies to service companies, retailers, and financials:
+                    </p>
+                    <p class="small mb-3 font-monospace text-muted">
+                        Z' = 6.56·(Working Capital / Assets)<br>
+                        &nbsp;&nbsp;&nbsp;+ 3.26·(Retained Earnings / Assets)<br>
+                        &nbsp;&nbsp;&nbsp;+ 6.72·(EBIT / Assets)<br>
+                        &nbsp;&nbsp;&nbsp;+ 1.05·(Book Equity / Total Liabilities)
+                    </p>
+                    <table class="table table-sm small mb-0">
+                        <thead><tr><th>Zone</th><th>Z' value</th><th>Meaning</th></tr></thead>
+                        <tbody>
+                            <tr class="text-success"><td>Safe</td><td>&gt; 2.6</td><td>Low insolvency risk</td></tr>
+                            <tr class="text-warning"><td>Grey</td><td>1.1 – 2.6</td><td>Elevated risk, monitor</td></tr>
+                            <tr class="text-danger"><td>Distress</td><td>&lt; 1.1</td><td>Statistically similar to companies that filed for bankruptcy within 2 years</td></tr>
+                        </tbody>
+                    </table>
+                    <p class="small text-muted mt-2 mb-0">The alert threshold is &lt; 1.81 (entry into the lower half of the grey zone). N/A is common for UK and German-listed stocks where book equity data is not returned by yfinance.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-lg-4">
+            <div class="card h-100 border-danger">
+                <div class="card-header text-danger fw-semibold">Beneish M-Score</div>
+                <div class="card-body">
+                    <p class="small mb-2">
+                        Developed by Messod Beneish in 1999, the M-Score is an 8-variable statistical model that detects
+                        whether a company's reported earnings are likely to have been manipulated. It compares two consecutive
+                        annual filings and looks for patterns that preceded known accounting frauds:
+                    </p>
+                    <ul class="small mb-3">
+                        <li><strong>DSRI</strong> — Days Sales Receivables Index: receivables growing faster than revenue signals inflated revenue.</li>
+                        <li><strong>GMI</strong> — Gross Margin Index: declining margins can incentivise manipulation.</li>
+                        <li><strong>AQI</strong> — Asset Quality Index: rising intangibles or deferred costs vs. assets.</li>
+                        <li><strong>SGI</strong> — Sales Growth Index: high-growth firms face more pressure to maintain growth.</li>
+                        <li><strong>DEPI</strong> — Depreciation Index: slowing depreciation rate inflates reported income.</li>
+                        <li><strong>SGAI</strong> — SG&amp;A expense Index: rising overheads relative to revenue.</li>
+                        <li><strong>LVGI</strong> — Leverage Index: increasing debt pressure.</li>
+                        <li><strong>TATA</strong> — Total Accruals to Total Assets: high accruals relative to cash earnings.</li>
+                    </ul>
+                    <table class="table table-sm small mb-0">
+                        <thead><tr><th>M-Score</th><th>Signal</th><th>Colour</th></tr></thead>
+                        <tbody>
+                            <tr class="text-danger"><td>&gt; −1.78</td><td>Possible manipulation — flag</td><td><span class="badge bg-danger">red</span></td></tr>
+                            <tr class="text-warning"><td>−2.22 to −1.78</td><td>Moderate concern</td><td><span class="badge bg-warning text-dark">amber</span></td></tr>
+                            <tr class="text-success"><td>&lt; −2.22</td><td>Low manipulation probability</td><td><span class="badge bg-success">green</span></td></tr>
+                        </tbody>
+                    </table>
+                    <p class="small text-muted mt-2 mb-0">Detected ~76% of confirmed manipulators in Beneish's original research. Requires two consecutive annual reports — ETFs and newly listed companies always return N/A.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card border-secondary mb-4">
+        <div class="card-body">
+            <h6 class="card-title">The Flags Column</h6>
+            <p class="small mb-2">
+                A ticker shows a flag when it breaches at least one distress threshold.
+                Multiple flags on the same holding are a stronger signal — a company with a low F-Score
+                <em>and</em> a high M-Score is both structurally weakening and potentially misrepresenting its finances.
+            </p>
+            <div class="d-flex flex-wrap gap-2">
+                <span><span class="badge bg-danger">F&lt;4</span> — Piotroski below 4: fundamental decay across multiple criteria.</span>
+                <span><span class="badge bg-danger">Z&lt;1.81</span> — Altman in or below the grey zone: elevated insolvency probability.</span>
+                <span><span class="badge bg-warning text-dark">M&gt;-1.78</span> — Beneish above the manipulation threshold: statistical earnings quality concern.</span>
+                <span><span class="text-success">✓ Clean</span> — No thresholds breached on the current annual data.</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="card border-secondary">
+        <div class="card-body">
+            <h6 class="card-title">Important Limitations</h6>
+            <ul class="small mb-0">
+                <li><strong>Annual data only.</strong> These models use annual financial statements. A company can deteriorate significantly between filings without the scores updating.</li>
+                <li><strong>Lagging signal.</strong> The models reflect what has already happened, not what will happen. A low F-Score or high M-Score does not guarantee further decline, and a high F-Score does not guarantee safety.</li>
+                <li><strong>ETFs and funds always return N/A</strong> — they publish portfolio holdings, not income statements or balance sheets in the standard form these models require.</li>
+                <li><strong>UK and European stocks (e.g. .L, .DE) often return N/A for Altman Z</strong> — Yahoo Finance does not reliably return book equity data for non-US tickers, making the Z' formula impossible to compute.</li>
+                <li><strong>Not a recommendation.</strong> These are screening signals. A manipulation flag means "investigate the annual report", not "sell immediately". Always verify against the actual filings.</li>
+                <li><strong>Update frequency.</strong> Data is refreshed monthly on the 1st. Scores only update when a new annual filing period is available from Yahoo Finance.</li>
+            </ul>
+        </div>
+    </div>
+</section>
 {% endblock %}
 
 {% block scripts %}

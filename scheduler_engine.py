@@ -1079,6 +1079,7 @@ def run_forensic_scores_job():
                 altman    = calculate_altman_z_score(info, bs, fin)
                 beneish   = calculate_beneish_m_score(bs, fin, cf)
 
+                company_name = ticker
                 conn = None
                 try:
                     conn = get_connection()
@@ -1093,26 +1094,53 @@ def run_forensic_scores_job():
                             (ticker, piotroski, altman, beneish, now_ts),
                         )
                     conn.commit()
+                    row = conn.execute("SELECT company_name FROM stock_signals WHERE ticker=?", (ticker,)).fetchone()
+                    if row and row[0]:
+                        company_name = row[0]
                 finally:
                     if conn:
                         conn.close()
 
                 scored += 1
 
-                flags = []
+                flag_lines = []
                 if piotroski is not None and piotroski < 4:
-                    flags.append(f"Piotroski={piotroski}/9 (decay risk)")
+                    flag_lines.append(
+                        f"  • Piotroski F-Score: {int(piotroski)}/9 — scored below 4, indicating deterioration "
+                        f"across profitability, leverage, or efficiency metrics. "
+                        f"A score under 4 historically precedes fundamental decline."
+                    )
                 if altman is not None and altman < 1.81:
-                    flags.append(f"Altman Z={altman} (distress zone)")
+                    zone = "distress zone (< 1.1)" if altman < 1.1 else "grey zone (1.1–1.81)"
+                    flag_lines.append(
+                        f"  • Altman Z-Score: {altman:.2f} — in the {zone}. "
+                        f"This bankruptcy-prediction model flags elevated insolvency risk. "
+                        f"Scores below 1.81 require monitoring; below 1.1 indicate acute distress."
+                    )
                 if beneish is not None and beneish > -1.78:
-                    flags.append(f"Beneish M={beneish} (manipulation risk)")
+                    flag_lines.append(
+                        f"  • Beneish M-Score: {beneish:.3f} — above the −1.78 manipulation threshold. "
+                        f"The Beneish model detects statistical patterns in annual filings consistent with "
+                        f"earnings manipulation (e.g. inflated receivables, margin compression, aggressive accruals). "
+                        f"This is a statistical signal, not a confirmed finding — review the annual report."
+                    )
 
-                if flags:
-                    msg = f"{ticker}: " + " | ".join(flags)
+                if flag_lines:
+                    alert_lines = [
+                        f"⚠️ Forensic Accounting Alert — {company_name} ({ticker})",
+                        f"The monthly Forensic Accounting Scores engine has flagged this holding:",
+                        "",
+                    ] + flag_lines + [
+                        "",
+                        f"Scores are derived from annual financial statements via Yahoo Finance. "
+                        f"Review the latest annual report before acting. "
+                        f"Source: Forensic Accounting Scores engine.",
+                    ]
+                    alert_msg = "\n".join(alert_lines)
                     alert_conn = None
                     try:
                         alert_conn = get_connection()
-                        notify("forensic_alert", "Forensic Alert", msg, conn=alert_conn)
+                        notify("forensic_alert", "Forensic Alert", alert_msg, conn=alert_conn)
                     finally:
                         if alert_conn:
                             alert_conn.close()
