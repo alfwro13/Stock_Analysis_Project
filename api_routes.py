@@ -1780,11 +1780,13 @@ async def get_forensic_scores(request: Request):
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT ticker, company_name, sector,
-                   piotroski_f_score, altman_z_score, beneish_m_score, forensic_last_updated
-            FROM stock_signals
-            WHERE score_method != 'UNIVERSE_FUNDAMENTALS' OR score_method IS NULL
-            ORDER BY ticker
+            SELECT ss.ticker, ss.company_name, ss.sector,
+                   ss.piotroski_f_score, ss.altman_z_score, ss.beneish_m_score, ss.forensic_last_updated
+            FROM stock_signals ss
+            LEFT JOIN asset_profiles ap ON ap.ticker = ss.ticker
+            WHERE (ss.score_method != 'UNIVERSE_FUNDAMENTALS' OR ss.score_method IS NULL)
+              AND (ap.quote_type = 'EQUITY' OR ap.quote_type IS NULL OR ap.quote_type = 'NONE')
+            ORDER BY ss.ticker
         """)
         rows = cursor.fetchall()
         results = []

@@ -993,8 +993,24 @@ def run_forensic_quarterly_fetch_job():
             return
         FORENSIC_DIR.mkdir(parents=True, exist_ok=True)
         now_utc = datetime.now(timezone.utc)
+
+        # Build a set of non-equity quote types from asset_profiles so we can skip funds/ETFs.
+        non_equity_tickers: set = set()
+        try:
+            _pconn = get_connection()
+            _rows = _pconn.execute(
+                "SELECT ticker FROM asset_profiles WHERE quote_type NOT IN ('EQUITY', 'NONE') AND quote_type IS NOT NULL"
+            ).fetchall()
+            non_equity_tickers = {r[0] for r in _rows}
+            _pconn.close()
+        except Exception:
+            pass
+
         fetched = skipped = errors = 0
         for ticker in tickers:
+            if ticker in non_equity_tickers:
+                skipped += 1
+                continue
             cache_path = FORENSIC_DIR / f"{ticker}.json"
             if cache_path.exists():
                 try:
