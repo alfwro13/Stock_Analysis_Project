@@ -1714,12 +1714,12 @@ def reload_scheduler():
             day_of_month = forensic_fetch_cfg.get("DAY_OF_MONTH", 1)
             scheduler.add_job(
                 run_forensic_quarterly_fetch_job,
-                CronTrigger(day=day_of_month, hour=run_h, minute=run_m, timezone="UTC"),
+                CronTrigger(day=day_of_month, hour=run_h, minute=run_m, timezone=time_engine.get_user_tz()),
                 id="forensic_quarterly_fetch_job",
                 replace_existing=True,
                 misfire_grace_time=3600,
             )
-            logger.info("Forensic Quarterly Data Fetch scheduled for day %s at %s UTC.", day_of_month, time_str)
+            logger.info("Forensic Quarterly Data Fetch scheduled for day %s at %s local.", day_of_month, time_str)
         except Exception as e:
             logger.error("Failed to schedule Forensic Quarterly Data Fetch: %s", e)
 
@@ -1731,12 +1731,12 @@ def reload_scheduler():
             day_of_month = forensic_scores_cfg.get("DAY_OF_MONTH", 1)
             scheduler.add_job(
                 run_forensic_scores_job,
-                CronTrigger(day=day_of_month, hour=run_h, minute=run_m, timezone="UTC"),
+                CronTrigger(day=day_of_month, hour=run_h, minute=run_m, timezone=time_engine.get_user_tz()),
                 id="forensic_scores_job",
                 replace_existing=True,
                 misfire_grace_time=3600,
             )
-            logger.info("Forensic Accounting Scores scheduled for day %s at %s UTC.", day_of_month, time_str)
+            logger.info("Forensic Accounting Scores scheduled for day %s at %s local.", day_of_month, time_str)
         except Exception as e:
             logger.error("Failed to schedule Forensic Accounting Scores: %s", e)
 

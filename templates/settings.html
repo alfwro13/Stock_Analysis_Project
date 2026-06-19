@@ -2015,11 +2015,11 @@
 
                 <div class="checkbox-group mb-10">
                     <input type="checkbox" id="FORENSIC_QUARTERLY_FETCH_ENABLED" {% if forensic_fetch_cfg.ENABLED %}checked{% endif %}>
-                    <label for="FORENSIC_QUARTERLY_FETCH_ENABLED">Enable scheduled Forensic Quarterly Data Fetch (day 1 of month, 06:00 UTC)</label>
+                    <label for="FORENSIC_QUARTERLY_FETCH_ENABLED">Enable scheduled Forensic Quarterly Data Fetch (day 1 of month, 06:00 local time)</label>
                 </div>
                 <div class="checkbox-group mb-10">
                     <input type="checkbox" id="FORENSIC_SCORES_ENABLED" {% if forensic_score_cfg.ENABLED %}checked{% endif %}>
-                    <label for="FORENSIC_SCORES_ENABLED">Enable scheduled Forensic Accounting Scores (day 1 of month, 07:00 UTC)</label>
+                    <label for="FORENSIC_SCORES_ENABLED">Enable scheduled Forensic Accounting Scores (day 1 of month, 07:00 local time)</label>
                 </div>
                 <div class="flex-gap-15">
                     <button type="button" class="btn btn-primary mt-0" onclick="triggerForensicFetch()">&#9654; Run Fetch Now</button>

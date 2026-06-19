@@ -60,16 +60,16 @@
         const table   = document.getElementById('forensic-table');
         const tbody   = document.getElementById('forensic-tbody');
 
-        if (loading) loading.style.display = 'none';
+        if (loading) loading.classList.add('d-none');
 
         if (!results || !results.length) {
-            if (empty) empty.style.display = '';
-            if (table) table.style.display = 'none';
+            if (empty) empty.classList.remove('d-none');
+            if (table) table.classList.add('d-none');
             return;
         }
 
-        if (empty) empty.style.display = 'none';
-        if (table) table.style.display = '';
+        if (empty) empty.classList.add('d-none');
+        if (table) table.classList.remove('d-none');
 
         tbody.innerHTML = results.map(r => `
             <tr>
