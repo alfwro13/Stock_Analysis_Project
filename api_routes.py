@@ -613,6 +613,8 @@ class SchedulingConfig(BaseModel):
     TRAP_MONITORS: Optional[ScheduleItemConfig] = None
     BUBBLE_RADAR: Optional[ScheduleItemConfig] = None
     LUNCH_DISPATCHER: Optional[ScheduleItemConfig] = None
+    FORENSIC_QUARTERLY_FETCH: Optional[ScheduleItemConfig] = None
+    FORENSIC_SCORES: Optional[ScheduleItemConfig] = None
 
 class ReportsDefaultsConfig(BaseModel):
     MR_MAX_RSI: Optional[int] = None
@@ -1803,8 +1805,8 @@ async def get_forensic_scores(request: Request):
 async def trigger_forensic_fetch(request: Request, background_tasks: BackgroundTasks):
     """Manually triggers the Forensic Quarterly Data Fetch in the background."""
     try:
-        from scheduler_engine import run_forensic_quarterly_fetch_job
-        background_tasks.add_task(run_forensic_quarterly_fetch_job)
+        from scheduler_engine import run_forensic_quarterly_fetch_job, _with_job_source
+        background_tasks.add_task(_with_job_source("forensic_quarterly_fetch_job", run_forensic_quarterly_fetch_job))
         return JSONResponse(content={"status": "success", "message": "Forensic Quarterly Data Fetch triggered."})
     except Exception as e:
         logger.error("Failed to trigger Forensic Quarterly Data Fetch: %s", e)
@@ -1816,8 +1818,8 @@ async def trigger_forensic_fetch(request: Request, background_tasks: BackgroundT
 async def trigger_forensic_scores(request: Request, background_tasks: BackgroundTasks):
     """Manually triggers the Forensic Accounting Scores computation in the background."""
     try:
-        from scheduler_engine import run_forensic_scores_job
-        background_tasks.add_task(run_forensic_scores_job)
+        from scheduler_engine import run_forensic_scores_job, _with_job_source
+        background_tasks.add_task(_with_job_source("forensic_scores_job", run_forensic_scores_job))
         return JSONResponse(content={"status": "success", "message": "Forensic Accounting Scores triggered."})
     except Exception as e:
         logger.error("Failed to trigger Forensic Accounting Scores: %s", e)
