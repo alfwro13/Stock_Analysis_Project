@@ -22,6 +22,7 @@
             <a href="#technicals" class="sidebar-link">📈 Technical Analysis</a>
             <a href="#dip-radar" class="sidebar-link">🎯 Dip Radar</a>
             <a href="#workflow-monitor" class="sidebar-link">🔄 Workflow Monitor</a>
+            <a href="#fx-drag" class="sidebar-link">💷 FX Drag Analyzer</a>
             <a href="#fundamentals" class="sidebar-link">🏢 Company Valuation</a>
             <a href="#methodology" class="sidebar-link">🧠 System Philosophy</a>
             <a href="#asset-docs-divider" class="sidebar-link">📚 Technical Docs</a>
@@ -576,6 +577,38 @@
                         <div class="term-box">
                             <span class="term-title">Bubble Watch vs Bubble Risk</span>
                             <p><strong>Bubble Watch</strong> (yellow flag) indicates a ticker is exhibiting early signs of valuation overextension but has not yet crossed the highest-conviction threshold. <strong>Bubble Risk</strong> (red flag) indicates the composite score exceeds the upper threshold and multiple independent metrics are simultaneously elevated. Both thresholds are configurable in Settings → Bubble Radar.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="accordion-item glossary-section" id="fx-drag">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button"
+                            data-bs-toggle="collapse" data-bs-target="#collapse-fx-drag"
+                            aria-expanded="false" aria-controls="collapse-fx-drag">
+                        &#128177; FX Drag Analyzer — Return Decomposition for UK Investors
+                    </button>
+                </h2>
+                <div id="collapse-fx-drag" class="accordion-collapse collapse">
+                    <div class="accordion-body">
+                        <div class="term-box">
+                            <span class="term-title">FX Drag</span>
+                            <p>The portion of a GBP-denominated investment return that comes from exchange rate movement rather than the underlying asset's price change. For a UK investor in US stocks, a strengthening pound reduces the GBP value of dollar-denominated holdings even when the stock itself rises — the currency "drags" the net return downward. Conversely, a weakening pound (strengthening dollar) inflates GBP returns beyond the stock's true performance.</p>
+                            <div class="rule">FX drag can be positive (USD tailwind) or negative (GBP headwind). The FX Drag Analyzer makes this visible per position.</div>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">Equity Return (USD)</span>
+                            <p>The stock's own price appreciation or depreciation in US dollars over the selected reference period, calculated as <code>(price_now / price_ref − 1) × 100</code>. This is the return you would realise if there were no currency conversion — the "pure stock" performance.</p>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">FX Effect</span>
+                            <p>The contribution of GBP/USD exchange rate movement to your GBP return, calculated as <code>(GBPUSD_ref / GBPUSD_now − 1) × 100</code>. A positive value means USD strengthened vs GBP over the period (tailwind — your USD assets are worth more pounds). A negative value means GBP strengthened (headwind — your USD assets bought fewer pounds).</p>
+                            <div class="rule">Reference period is measured from the first available trading day on or after the selected start date (Jan 1 for YTD).</div>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">Total GBP Return</span>
+                            <p>The combined GBP return a UK investor actually realises, accounting for both equity performance and currency movement. Computed multiplicatively: <code>(1 + equity_return) × (1 + fx_effect) − 1</code>. The difference between this and the simple sum of equity + FX is the cross-term (equity × FX), which is small but non-zero when both components are large.</p>
                         </div>
                     </div>
                 </div>

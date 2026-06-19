@@ -55,6 +55,7 @@ from visuals import (
     create_etf_overlay_chart,
 )
 from portfolio_service import get_rate_to_base, get_rate_from_base
+from fx_drag_engine import compute_fx_breakdown, portfolio_fx_breakdown
 from quant_signals import get_candlestick_patterns
 from quant_screener import fetch_latest_signals, generate_markdown_briefing
 from constants import PREDICTION_HORIZON_DAYS, PREDICTION_RETURN_THRESHOLD, CSS_VERSION
@@ -1082,6 +1083,24 @@ async def trap_monitor_page(request: Request):
     )
 
 
+@page_router.get("/fx-drag", response_class=HTMLResponse)
+async def fx_drag_page(request: Request):
+    now = datetime.now(timezone.utc)
+    ytd_days = (now.date() - now.date().replace(month=1, day=1)).days or 1
+    initial_data = portfolio_fx_breakdown(ytd_days)
+    return templates.TemplateResponse(
+        request=request,
+        name="fx_drag.html",
+        context={
+            "unread_count": get_unread_count(),
+            "config": load_config(),
+            "initial_data": initial_data,
+            "initial_period": "ytd",
+            "css_version": CSS_VERSION,
+        },
+    )
+
+
 @page_router.get("/market-regime", response_class=HTMLResponse)
 async def market_regime_page(request: Request):
     return templates.TemplateResponse(
@@ -1713,6 +1732,12 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
         if global_math:
             portfolio_math = {"global": global_math, "accounts": account_maths}
 
+    fx_breakdown = None
+    if portfolio_math and stock_data and stock_data.get("currency") == "USD":
+        now = datetime.now(timezone.utc)
+        ytd_days = (now.date() - now.date().replace(month=1, day=1)).days or 1
+        fx_breakdown = compute_fx_breakdown(ticker, ytd_days)
+
     price_action = None
     try:
         df_macro = pd.read_parquet(HISTORICAL_DIR / f"{ticker}.parquet")
@@ -1874,6 +1899,7 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
             "anomaly_radar_html": anomaly_radar_html,
             "anomaly_percentile": anomaly_percentile,
             "portfolio_math": portfolio_math,
+            "fx_breakdown": fx_breakdown,
             "days_to_earnings": days_to_earnings,
             "volatility_date": volatility_date,
             "price_action": price_action,

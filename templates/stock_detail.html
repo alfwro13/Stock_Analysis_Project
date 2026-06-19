@@ -78,6 +78,31 @@
                     </div>
                 </div>
 
+                {% if fx_breakdown %}
+                <div class="d-flex flex-wrap gap-3 mt-10 pt-2 border-top">
+                    <span class="text-muted small">FX Breakdown (YTD):</span>
+                    <div>
+                        <span class="text-muted small"><abbr title="Stock price move in USD since Jan 1 of the current year.">Equity (USD):</abbr></span>
+                        <strong class="small {% if fx_breakdown.equity_pct >= 0 %}positive-val{% else %}negative-val{% endif %}">
+                            {% if fx_breakdown.equity_pct >= 0 %}+{% endif %}{{ fx_breakdown.equity_pct }}%
+                        </strong>
+                    </div>
+                    <div>
+                        <span class="text-muted small"><abbr title="GBP/USD move since Jan 1. Positive = USD strengthened = tailwind for UK investors.">FX Effect:</abbr></span>
+                        <strong class="small {% if fx_breakdown.fx_pct >= 0 %}positive-val{% else %}negative-val{% endif %}">
+                            {% if fx_breakdown.fx_pct >= 0 %}+{% endif %}{{ fx_breakdown.fx_pct }}%
+                        </strong>
+                    </div>
+                    <div>
+                        <span class="text-muted small"><abbr title="Combined GBP return year-to-date: equity return × FX effect.">Total GBP (YTD):</abbr></span>
+                        <strong class="small {% if fx_breakdown.total_gbp_pct >= 0 %}positive-val{% else %}negative-val{% endif %}">
+                            {% if fx_breakdown.total_gbp_pct >= 0 %}+{% endif %}{{ fx_breakdown.total_gbp_pct }}%
+                        </strong>
+                    </div>
+                    <a href="/fx-drag" class="text-muted small ms-auto">Full breakdown &#8599;</a>
+                </div>
+                {% endif %}
+
                 {% if portfolio_math.accounts|length > 1 %}
                 <h3 class="text-sm-caps">Account Breakdown</h3>
                 {% for acc in portfolio_math.accounts %}

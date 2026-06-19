@@ -43,6 +43,7 @@ from database import get_connection, get_universe_tickers
 from scheduler_engine import run_update_pipeline, run_ghostfolio_sync, run_freetrade_sync, reload_scheduler, run_sentiment_scan, run_index_scraper, run_fundamentals_profiler, run_universe_deep_sync_job, get_all_job_last_runs, run_xray_risk_cache_job, run_anomaly_training_job, record_job_run, run_maintenance_engine, build_workflow_graph, detect_workflow_conflicts, CONFIG_KEY_TO_JOB
 from maintenance_engine import MaintenanceEngine
 from xray_engine import assemble_xray_report
+from fx_drag_engine import portfolio_fx_breakdown
 from ghostfolio_sync import GhostfolioSyncEngine
 from market_pulse import get_cached_pulse_from_db, fetch_and_save_pulse
 from sentiment_engine import run_nextcloud_alert
@@ -2589,6 +2590,22 @@ async def trigger_xray_risk_cache(background_tasks: BackgroundTasks):
         "status": "queued",
         "message": "X-ray risk cache job queued. Check system notifications for completion.",
     })
+
+
+@api_router.get("/fx-drag")
+async def get_fx_drag(
+    request: Request,
+    period: str = Query(default="ytd", pattern=r"^(ytd|1y|2y)$"),
+):
+    now = datetime.now(timezone.utc)
+    if period == "ytd":
+        days = (now.date() - now.date().replace(month=1, day=1)).days or 1
+    elif period == "1y":
+        days = 365
+    else:
+        days = 730
+    data = portfolio_fx_breakdown(days)
+    return JSONResponse(content={"status": "success", "period": period, "data": data})
 
 
 @api_router.get("/news-feed")

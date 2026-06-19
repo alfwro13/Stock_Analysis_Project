@@ -64,6 +64,13 @@
     </div>
 
     <div class="guide-card">
+        <h4>&#128177; FX Drag Analyzer</h4>
+        <p>Decomposes each US stock position's <abbr title="Return measured in GBP — the number you actually bank as a UK investor.">GBP return</abbr> into two components: the stock's own <abbr title="Price appreciation or depreciation in USD, independent of any currency movement.">equity return in USD</abbr> and the <abbr title="The contribution from GBP/USD rate movement. Positive = USD strengthened = tailwind; negative = GBP strengthened = headwind.">FX effect</abbr>. Shows which positions are genuinely outperforming and which are just riding dollar strength. Covers YTD, 1-year, and 2-year windows.</p>
+        <div class="why-use-it">Use to separate real alpha from currency illusion — especially useful after periods of significant GBP/USD movement.</div>
+        <a href="/fx-drag" class="guide-card-link">Launch Tool →</a>
+    </div>
+
+    <div class="guide-card">
         <h4>📊 ETF Price Predictor</h4>
         <p>Generic morning price predictor for any <abbr title="Exchange-Traded Fund — a basket of securities traded on an exchange like a stock.">ETF</abbr>. Configure an ETF ticker and its top 10–20 constituent tickers with weights — the system predicts the ETF's next-session open using a holdings-weighted basket return engine and an <abbr title="Ordinary Least Squares regression — fits a linear model: ETF morning return = α + β × constituent basket return.">OLS</abbr> regression engine, with <abbr title="Foreign exchange adjustment — applied when the ETF and its constituents are denominated in different currencies.">FX</abbr> adjustment where needed. Tracks prediction accuracy over time.</p>
         <div class="why-use-it">Use to build custom predictors for any ETF you hold — configure once, get daily predictions across multiple setups from the same tool.</div>

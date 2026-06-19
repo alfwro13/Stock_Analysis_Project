@@ -430,3 +430,40 @@ def test_logs_tail_lines_param_below_min_rejected(client):
     """GET /api/logs/tail?lines=0 must return 422 (below minimum of 1)."""
     resp = client.get("/api/logs/tail?lines=0")
     assert resp.status_code == 422, f"Expected 422 for lines=0, got {resp.status_code}"
+
+
+# ── FX Drag API ───────────────────────────────────────────────────────────────
+
+@pytest.mark.api
+def test_fx_drag_returns_200(client):
+    """GET /api/fx-drag must return 200."""
+    resp = client.get("/api/fx-drag")
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text[:300]}"
+
+
+@pytest.mark.api
+def test_fx_drag_response_shape(client):
+    """GET /api/fx-drag must return JSON with 'status', 'period', and 'data' (list)."""
+    resp = client.get("/api/fx-drag")
+    data = _json(resp)
+    assert data.get("status") == "success", f"Unexpected status: {data}"
+    assert "period" in data, f"Missing 'period' key: {data}"
+    assert "data" in data, f"Missing 'data' key: {data}"
+    assert isinstance(data["data"], list), "'data' must be a list"
+
+
+@pytest.mark.api
+def test_fx_drag_period_variants_accepted(client):
+    """GET /api/fx-drag?period=ytd|1y|2y must all return 200."""
+    for period in ("ytd", "1y", "2y"):
+        resp = client.get(f"/api/fx-drag?period={period}")
+        assert resp.status_code == 200, (
+            f"period={period} returned HTTP {resp.status_code}: {resp.text[:200]}"
+        )
+
+
+@pytest.mark.api
+def test_fx_drag_invalid_period_rejected(client):
+    """GET /api/fx-drag?period=invalid must return 422."""
+    resp = client.get("/api/fx-drag?period=invalid")
+    assert resp.status_code == 422, f"Expected 422 for invalid period, got {resp.status_code}"

@@ -1520,6 +1520,7 @@ Sends a test insider trading alert via Nextcloud Talk.
 | `POST` | `/api/test-sentiment-alert` | Test Nextcloud sentiment alert |
 | `POST` | `/api/test-earnings-alert` | Test Nextcloud earnings alert |
 | `POST` | `/api/test-insider-alert` | Test Nextcloud insider alert |
+| `GET` | `/api/fx-drag` | FX-decomposed return breakdown for all USD portfolio positions |
 | `GET` | `/api/news-feed` | Paginated news articles from local store |
 | `POST` | `/api/news-feed/run-now` | Trigger immediate news feed refresh |
 | `GET` | `/api/logs/tail` | Last N lines of the active log file as JSON |
@@ -1790,7 +1791,51 @@ Returns the latest market-wide Isolation Forest stress score and the last 30 dai
 
 ---
 
-## 20. News Feed
+## 20. FX Drag Analyzer
+
+Decomposes each USD portfolio position's GBP return into equity (USD price move) and FX (GBP/USD rate move) components. Uses existing 2-year daily Parquet data — no additional data source required.
+
+### `GET /api/fx-drag`
+
+Returns an FX-decomposed return breakdown for all USD positions in `portfolio.json`.
+
+**Query parameters**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `period` | string | `"ytd"` | Lookback period: `"ytd"` (year-to-date), `"1y"` (365 days), `"2y"` (730 days) |
+
+**Response**
+
+```json
+{
+  "status": "success",
+  "period": "ytd",
+  "data": [
+    {
+      "ticker": "AAPL",
+      "period_days": 170,
+      "equity_pct": 12.34,
+      "fx_pct": -2.10,
+      "total_gbp_pct": 9.98,
+      "ref_date": "2026-01-02",
+      "gbpusd_ref": 1.2520,
+      "gbpusd_now": 1.2786,
+      "gbp_exposure": 4231.00
+    }
+  ]
+}
+```
+
+`equity_pct`: stock price change in USD since the reference date.  
+`fx_pct`: GBP/USD rate change — positive means USD strengthened (tailwind), negative means GBP strengthened (headwind).  
+`total_gbp_pct`: `(1 + equity_pct/100) × (1 + fx_pct/100) − 1`, expressed as a percentage.  
+`gbp_exposure`: current GBP market value of the position (null if price data unavailable).  
+Tickers with no Parquet data for the requested period are omitted from the list.
+
+---
+
+## 21. News Feed
 
 Stores and retrieves news articles for portfolio and watchlist tickers. Articles are fetched via yfinance, full-text extracted via trafilatura, and sentiment-scored via FinBERT. Results are stored in the `news_articles` table.
 
