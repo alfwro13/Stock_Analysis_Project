@@ -26,7 +26,7 @@
     <div class="col-12 col-xl-6 settings-col">
         <form id="settingsForm">
 
-            <details class="settings-card">
+            <details class="settings-card" id="market-universe-card">
                 <summary>🌍 Market Universe Pipeline</summary>
                 <p class="settings-desc">Manage all data ingestion sources, Freetrade filtering, Wikipedia index scraping, and fundamental downloading.</p>
 
@@ -237,7 +237,7 @@
                 </div>
             </details>
 
-            <details class="settings-card">
+            <details class="settings-card" id="automation-schedulers-card">
                 <summary>🤖 Background Automation Schedulers</summary>
 
                 <div class="settings-panel">
@@ -352,7 +352,7 @@
 
             </details>
 
-            <details class="settings-card">
+            <details class="settings-card" id="crash-moonshot-card">
                 <summary>🚨 Crash &amp; Moonshot Alerts</summary>
                 <p class="settings-desc">Configure the intraday crash and moonshot scanning engines, their market-hours schedules, and the signal thresholds that trigger Nextcloud Talk alerts.</p>
 
@@ -484,7 +484,7 @@
                 </div>
             </details>
 
-            <details class="settings-card">
+            <details class="settings-card" id="news-rss-card">
                 <summary>📰 News &amp; RSS</summary>
 
                 <div class="settings-panel border-left-blue">
@@ -548,7 +548,7 @@
                 </div>
             </details>
 
-            <details class="settings-card">
+            <details class="settings-card" id="ai-contagion-card">
                 <summary>🤖 AI Sector Contagion Monitor</summary>
                 <p class="settings-desc">
                     Monitors AI bellwether stocks and semiconductor ETFs for intraday flash crashes using
@@ -652,7 +652,7 @@
                 <div id="ai-contagion-scan-msg" class="mt-10"></div>
             </details>
 
-            <details class="settings-card">
+            <details class="settings-card" id="trap-monitor-card">
                 <summary>🎭 Market Trap &amp; Recovery Monitor</summary>
                 <p class="settings-desc">
                     Scans your portfolio and a configurable AI proxy basket for four post-crash lifecycle signals:
@@ -754,7 +754,7 @@
                 <div id="trap-monitor-msg" class="mt-10"></div>
             </details>
 
-            <details class="settings-card">
+            <details class="settings-card" id="alerts-briefings-card">
                 <summary>📊 Alerts, Reports &amp; Quant Briefings</summary>
 
                 <div class="settings-panel">
@@ -907,7 +907,7 @@
                 </div>
             </details>
 
-            <details class="settings-card">
+            <details class="settings-card" id="ml-ai-card">
                 <summary>🧠 Machine Learning &amp; AI Engine</summary>
 
                 {% set ml_backfill = config.SCHEDULING.ML_BACKFILL if config.SCHEDULING.ML_BACKFILL else {} %}
@@ -1056,7 +1056,7 @@
 
             </details>
 
-            <details class="settings-card">
+            <details class="settings-card" id="macro-data-card">
                 <summary>🏦 Macroeconomic Data</summary>
                 <p class="settings-desc">The Federal Reserve Economic Data (FRED) API is required to fetch structural macroeconomic indicators like M2 Money Supply and High Yield Spreads. Get a free API key at <a href="https://fred.stlouisfed.org/docs/api/api_key.html" target="_blank" class="text-cyan">fred.stlouisfed.org</a>.</p>
                 <div class="form-group mb-25">
@@ -1792,7 +1792,7 @@
 
         </details>
 
-        <details class="settings-card">
+        <details class="settings-card" id="tools-card">
             <summary>🔧 Tools</summary>
 
             <div class="settings-panel border-left-purple" id="etf-predictors-section">
@@ -2016,6 +2016,14 @@
 <script>
 window.CONFIRM_TOKEN = "{{ confirm_token }}";
 window.ETF_USER_TZ = "{{ config.USER_TIMEZONE | default('Europe/London') }}";
+</script>
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    if (location.hash) {
+        const el = document.getElementById(location.hash.slice(1));
+        if (el && el.tagName === "DETAILS") { el.open = true; el.scrollIntoView({ behavior: "smooth" }); }
+    }
+});
 </script>
 <script src="/static/js/settings.js?v={{ css_version }}"></script>
 <script src="/static/js/mermaid.min.js?v={{ css_version }}"></script>
