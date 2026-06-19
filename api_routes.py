@@ -2283,6 +2283,32 @@ async def api_data_refresh_single(req: TickerRequest):
         return _error_500(e)
 
 
+class NameOverrideRequest(BaseModel):
+    display_name: str
+
+@api_router.post("/ticker/{ticker}/name-override")
+async def api_set_name_override(ticker: str, req: NameOverrideRequest):
+    ticker = normalize_ticker(ticker)
+    conn = None
+    try:
+        conn = get_connection()
+        name = req.display_name.strip()
+        if name:
+            conn.execute(
+                "INSERT OR REPLACE INTO company_name_overrides (ticker, display_name, updated_at) VALUES (?, ?, ?)",
+                (ticker, name, datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"))
+            )
+        else:
+            conn.execute("DELETE FROM company_name_overrides WHERE ticker = ?", (ticker,))
+        conn.commit()
+        return JSONResponse(content={"status": "success"})
+    except Exception as e:
+        return _error_500(e)
+    finally:
+        if conn:
+            conn.close()
+
+
 @api_router.post("/index/refresh")
 async def api_index_refresh(req: TickerRequest):
     ticker = normalize_ticker(req.ticker)

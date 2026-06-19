@@ -1373,3 +1373,9 @@ details[open] > .trap-accuracy-summary::before { transform: rotate(90deg); }
 .tm-signal-head-cyan  { color: #00ffcc; }
 .status-pill-severe   { background: rgba(255, 77, 77, .15); color: #ff4d4d; border: 1px solid #ff4d4d; }
 .status-pill-elevated { background: rgba(255, 170, 0, .1);  color: #ffaa00; border: 1px solid #ffaa00; }
+
+.btn-name-edit { background: none; border: none; cursor: pointer; color: var(--bs-secondary); font-size: 0.7em; padding: 0 0.25rem; vertical-align: middle; opacity: 0.5; line-height: 1; }
+.btn-name-edit:hover { opacity: 1; color: var(--bs-primary); }
+.name-edit-form { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; flex-wrap: wrap; }
+.name-edit-input { max-width: 320px; }
+.name-override-badge { font-size: 0.55em; color: var(--bs-warning); vertical-align: super; }

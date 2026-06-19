@@ -20,8 +20,20 @@
     <span id="watchlist-star" class="star-icon relative" title="Toggle Watchlist" onclick="toggleWatchlist()">
         {% if is_in_watchlist %}★{% else %}☆{% endif %}
     </span>
-    <h1 class="mb-0 flex-grow-1">{{ stock.company_name }} ({{ stock.ticker }})</h1>
+    <h1 class="mb-0 flex-grow-1">
+        <span id="company-name-display">{{ stock.company_name }}</span>
+        {% if stock.has_name_override %}<span class="name-override-badge" title="Custom display name is active">&#9998;</span>{% endif %}
+        <button class="btn-name-edit" id="name-edit-btn" title="Edit display name" onclick="startNameEdit()">&#9998;</button>
+    </h1>
     <a href="https://finance.yahoo.com/quote/{{ stock.ticker }}" target="_blank" class="yahoo-link">&#8599; View on Yahoo Finance</a>
+</div>
+<div id="name-edit-form" class="name-edit-form" hidden>
+    <input type="text" id="name-edit-input" class="form-control name-edit-input">
+    <button class="btn btn-sm btn-primary" onclick="saveNameOverride()">Save</button>
+    <button class="btn btn-sm btn-outline-secondary" onclick="cancelNameEdit()">Cancel</button>
+    {% if stock.has_name_override %}
+    <button class="btn btn-sm btn-outline-danger" onclick="saveNameOverride(true)">Reset to default</button>
+    {% endif %}
 </div>
 <p class="text-muted mb-2">Type: {{ stock.quote_type }}{% if stock.industry %} | Industry: {{ stock.industry }}{% endif %} | Sector/Category: {{ stock.sector }} | Currency: {{ stock.currency }} | Country: {{ stock.country }}{% if stock.index_membership %} | Index: {{ stock.index_membership }}{% endif %}</p>
 
@@ -1016,7 +1028,8 @@
 
 {% block scripts %}
 <script>
-    window.IS_IN_WATCHLIST   = {{ 'true' if is_in_watchlist else 'false' }};
+    window.IS_IN_WATCHLIST        = {{ 'true' if is_in_watchlist else 'false' }};
+    window.STOCK_HAS_NAME_OVERRIDE = {{ 'true' if stock.has_name_override else 'false' }};
     window.STOCK_TICKER      = "{{ stock.ticker }}";
     window.STOCK_QUOTE_TYPE  = "{{ stock.quote_type }}";
     window.IS_DIP_MONITORED  = {{ 'true' if is_dip_monitored else 'false' }};

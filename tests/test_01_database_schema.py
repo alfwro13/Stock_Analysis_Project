@@ -64,6 +64,7 @@ EXPECTED_TABLES = [
     "market_universe",
     "asset_profiles",
     "ticker_metadata",
+    "company_name_overrides",
     "market_regimes",
     "intraday_monitors",
     "intraday_monitor_results",

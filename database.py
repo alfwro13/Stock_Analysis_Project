@@ -304,6 +304,14 @@ def init_db() -> None:
         ''')
 
         cursor.execute('''
+            CREATE TABLE IF NOT EXISTS company_name_overrides (
+                ticker       TEXT PRIMARY KEY,
+                display_name TEXT NOT NULL,
+                updated_at   TIMESTAMP
+            )
+        ''')
+
+        cursor.execute('''
             CREATE TABLE IF NOT EXISTS market_regimes (
                 date TEXT PRIMARY KEY,
                 vix_close REAL,

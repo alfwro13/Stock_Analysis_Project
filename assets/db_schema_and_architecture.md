@@ -20,6 +20,11 @@ The SQLite database acts as the central brain of the dashboard. It uses a star-l
 * **Purpose:** Static, slow-moving corporate metadata. Stored separately (3NF normalization) to prevent querying Yahoo Finance for static data.
 * **Key Columns:** `ticker` (PK), `company_name`, `sector`, `quote_type`, `business_summary`, `last_verified_date`.
 
+#### `company_name_overrides`
+* **Purpose:** Stores user-defined display name overrides per ticker. When present, the override takes precedence over `asset_profiles.company_name` and `market_universe.company_name` in the portfolio, watchlist, and stock detail pages.
+* **Key Columns:** `ticker` (PK), `display_name` (user-supplied name, NOT NULL), `updated_at` (UTC timestamp).
+* **Write path:** `POST /api/ticker/{ticker}/name-override`. Sending an empty `display_name` deletes the row (clears override). Read-path is a `LEFT JOIN` in the portfolio, watchlist, and stock detail SQL queries.
+
 #### `stock_signals`
 * **Purpose:** The primary aggregation table for the Portfolio & Watchlist UI. It houses the final System Verdicts and Fundamental Health snapshots.
 * **Key Columns:** `ticker` (PK), `current_price`, `trend_50d`, `trend_200d`, `atr_stop_loss`, `trailing_pe`, `debt_to_equity`, `peter_lynch_peg`, `yield_correlation`, `composite_score`, `overall_signal`, `setup_tags`.

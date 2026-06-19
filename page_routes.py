@@ -672,6 +672,7 @@ async def portfolio_page(request: Request, account_id: str = "all", embed: bool 
                q.vp_entry_zone,
                q.vp_exit_zone,
                COALESCE(
+                   cno.display_name,
                    NULLIF(ap.company_name, s.ticker),
                    NULLIF(mu.company_name, s.ticker),
                    s.company_name,
@@ -680,6 +681,7 @@ async def portfolio_page(request: Request, account_id: str = "all", embed: bool 
         FROM stock_signals s
         LEFT JOIN asset_profiles ap ON s.ticker = ap.ticker
         LEFT JOIN market_universe mu ON s.ticker = mu.ticker
+        LEFT JOIN company_name_overrides cno ON s.ticker = cno.ticker
         LEFT JOIN quant_signals q ON s.ticker = q.ticker
         AND q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = s.ticker)
     """)
@@ -835,11 +837,20 @@ async def watchlist_page(request: Request, embed: bool = False):
                q.close_price as quant_close_price,
                q.vp_entry_zone,
                q.vp_exit_zone,
-               m.is_freetrade
+               m.is_freetrade,
+               COALESCE(
+                   cno.display_name,
+                   NULLIF(ap.company_name, s.ticker),
+                   NULLIF(m.company_name, s.ticker),
+                   s.company_name,
+                   s.ticker
+               ) as resolved_company_name
         FROM stock_signals s
         LEFT JOIN quant_signals q ON s.ticker = q.ticker
         AND q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = s.ticker)
         LEFT JOIN market_universe m ON s.ticker = m.ticker
+        LEFT JOIN asset_profiles ap ON s.ticker = ap.ticker
+        LEFT JOIN company_name_overrides cno ON s.ticker = cno.ticker
     """)
     db_rows = cursor.fetchall()
     
@@ -859,10 +870,15 @@ async def watchlist_page(request: Request, embed: bool = False):
     for row in db_rows:
         row_dict = dict(row)
         if row_dict['ticker'] in watchlist_tickers:
+            row_dict['company_name'] = (
+                row_dict.get('resolved_company_name')
+                or row_dict.get('company_name')
+                or row_dict['ticker']
+            )
             if row_dict.get('setup_tags'):
-                try: 
+                try:
                     row_dict['setup_tags_list'] = json.loads(row_dict['setup_tags'])
-                except Exception: 
+                except Exception:
                     row_dict['setup_tags_list'] = []
             else:
                 row_dict['setup_tags_list'] = []
@@ -1410,7 +1426,9 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
                q.kc_z_score, q.kc_entry_signal, q.kc_exit_signal,
                q.price_q10, q.price_q90,
                mu.industry, mu.index_membership,
+               cno.display_name as name_override,
                COALESCE(
+                   cno.display_name,
                    NULLIF(p.company_name, s.ticker),
                    NULLIF(mu.company_name, s.ticker),
                    s.company_name,
@@ -1419,6 +1437,7 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
         FROM stock_signals s
         LEFT JOIN asset_profiles p ON s.ticker = p.ticker
         LEFT JOIN market_universe mu ON s.ticker = mu.ticker
+        LEFT JOIN company_name_overrides cno ON s.ticker = cno.ticker
         LEFT JOIN quant_signals q ON s.ticker = q.ticker
             AND q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = s.ticker)
         WHERE s.ticker = ?
@@ -1443,10 +1462,12 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
             .replace(" Common Stock", "")
             .strip()
         )
+        stock_data['has_name_override'] = bool(stock_data.get('name_override'))
     else:
         cursor.execute('''
             SELECT q.*,
-                   COALESCE(p.company_name, m.company_name, q.ticker) as company_name,
+                   cno.display_name as name_override,
+                   COALESCE(cno.display_name, p.company_name, m.company_name, q.ticker) as company_name,
                    COALESCE(p.sector, 'Unclassified') as sector,
                    COALESCE(p.currency, 'USD') as currency,
                    COALESCE(p.quote_type, 'EQUITY') as quote_type,
@@ -1455,11 +1476,12 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
             FROM quant_signals q
             LEFT JOIN market_universe m ON q.ticker = m.ticker
             LEFT JOIN asset_profiles p ON q.ticker = p.ticker
+            LEFT JOIN company_name_overrides cno ON q.ticker = cno.ticker
             WHERE q.ticker = ? ORDER BY q.date DESC LIMIT 1
         ''', (ticker,))
         q_data = cursor.fetchone()
-        
-        if q_data: 
+
+        if q_data:
             q_data = dict(q_data)
             company_name = q_data.get("company_name") or ticker
             company_name = company_name.replace(" - Common Stock", "").replace(" Common Stock", "").strip()
@@ -1530,6 +1552,7 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
                 "anomaly_score": q_data.get("anomaly_score"),
                 "industry": q_data.get("industry"),
                 "index_membership": q_data.get("index_membership"),
+                "has_name_override": bool(q_data.get("name_override")),
                 "vp_poc": q_data.get("vp_poc"),
                 "vp_val": q_data.get("vp_val"),
                 "vp_vah": q_data.get("vp_vah"),
@@ -1545,6 +1568,7 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
             stock_data = {
                 "ticker": ticker,
                 "company_name": ticker,
+                "has_name_override": False,
                 "sector": "Unknown",
                 "quote_type": "UNKNOWN",
                 "currency": "USD",

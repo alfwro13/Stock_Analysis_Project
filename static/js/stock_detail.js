@@ -445,3 +445,31 @@
     });
 
 })();
+
+function startNameEdit() {
+    document.getElementById('name-edit-input').value =
+        document.getElementById('company-name-display').textContent.trim();
+    document.getElementById('name-edit-form').hidden = false;
+    document.getElementById('name-edit-btn').hidden = true;
+    document.getElementById('name-edit-input').focus();
+}
+
+function cancelNameEdit() {
+    document.getElementById('name-edit-form').hidden = true;
+    document.getElementById('name-edit-btn').hidden = false;
+}
+
+function saveNameOverride(reset) {
+    var name = reset ? '' : document.getElementById('name-edit-input').value.trim();
+    fetch('/api/ticker/' + window.STOCK_TICKER + '/name-override', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ display_name: name })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.status === 'success') {
+            location.reload();
+        }
+    });
+}

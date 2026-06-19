@@ -277,6 +277,32 @@ Fetches fresh price history, runs a full quant analysis, ML inference, tail risk
 
 ---
 
+### `POST /api/ticker/{ticker}/name-override`
+
+Sets or clears a user-defined display name for the given ticker. The override is shown instead of the system name in the portfolio table, watchlist table, and stock detail page heading. Sending an empty `display_name` deletes the override and restores the system name.
+
+**URL parameters**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `ticker` | string | Ticker symbol (normalised, e.g. `LLOY.L`) |
+
+**Request body**
+
+```json
+{ "display_name": "Lloyds Bank" }
+```
+
+Pass `"display_name": ""` to clear an existing override.
+
+**Response (success)**
+
+```json
+{ "status": "success" }
+```
+
+---
+
 ### `POST /api/intraday-chart/refresh`
 
 Fetches fresh 5-minute intraday data from Yahoo Finance for a single ticker, persists it to parquet, then returns re-rendered chart HTML. Used by the Stock Detail page auto-refresh timer to keep the Intraday Pulse chart current without a full page reload.
@@ -1446,6 +1472,7 @@ Sends a test insider trading alert via Nextcloud Talk.
 | `POST` | `/api/ghostfolio/discover` | Discover Ghostfolio accounts |
 | `POST` | `/api/watchlist/add` | Add ticker to watchlist |
 | `POST` | `/api/watchlist/remove` | Remove ticker from watchlist |
+| `POST` | `/api/ticker/{ticker}/name-override` | Set or clear a user display name override |
 | `POST` | `/api/trigger-freetrade-sync` | Sync Freetrade securities |
 | `POST` | `/api/data/refresh-single` | Deep refresh one ticker |
 | `GET` | `/api/freshness` | Model and price data freshness |
