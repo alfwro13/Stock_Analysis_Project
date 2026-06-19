@@ -1007,6 +1007,7 @@ def run_forensic_quarterly_fetch_job():
             try:
                 bs, fin, cf = _yengine.get_annual_financials(ticker)
                 if bs is None:
+                    log_sched_notification("Warning", f"Forensic fetch: no annual balance sheet returned for {ticker} — likely an ETF, fund, or ticker with no Yahoo Finance coverage. Skipping.")
                     errors += 1
                     continue
                 payload = {
@@ -1021,7 +1022,7 @@ def run_forensic_quarterly_fetch_job():
                 fetched += 1
                 _time.sleep(0.5)
             except Exception as e:
-                logger.warning("Forensic fetch failed for %s: %s", ticker, e)
+                log_sched_notification("Warning", f"Forensic fetch failed for {ticker}: {e}")
                 errors += 1
         log_sched_notification("Success", f"Forensic Quarterly Data Fetch complete — {fetched} fetched, {skipped} skipped (fresh), {errors} errors.")
     except Exception as e:
@@ -1147,7 +1148,7 @@ def run_forensic_scores_job():
                     alerts += 1
 
             except Exception as e:
-                logger.warning("Forensic scoring failed for %s: %s", ticker, e)
+                log_sched_notification("Warning", f"Forensic scoring failed for {ticker}: {e}")
                 errors += 1
 
         log_sched_notification("Success", f"Forensic Accounting Scores complete — {scored} scored, {alerts} alerts fired, {errors} errors.")
