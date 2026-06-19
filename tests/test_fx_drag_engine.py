@@ -146,3 +146,94 @@ class TestComputeFxBreakdown:
         assert result is not None
         expected = ((1 + result["equity_pct"] / 100) * (1 + result["fx_pct"] / 100) - 1) * 100
         assert abs(result["total_gbp_pct"] - expected) < 0.01
+
+
+def _make_activity(
+    ticker: str,
+    qty: float,
+    usd_price: float,
+    gbp_price: float,
+    date_str: str = "2023-01-10",
+    act_type: str = "BUY",
+    is_draft: bool = False,
+    currency: str = "USD",
+    data_source: str = "YAHOO",
+) -> dict:
+    return {
+        "type": act_type,
+        "isDraft": is_draft,
+        "quantity": qty,
+        "unitPrice": gbp_price,
+        "unitPriceInAssetProfileCurrency": usd_price,
+        "date": f"{date_str}T00:00:00.000Z",
+        "SymbolProfile": {"symbol": ticker, "currency": currency, "dataSource": data_source},
+    }
+
+
+class TestComputeActivitiesGbpusd:
+    def test_single_buy_correct_gbpusd(self):
+        acts = [_make_activity("AAPL", qty=10.0, usd_price=150.0, gbp_price=100.0)]
+        result = fx_drag_engine._compute_activities_gbpusd(acts, "AAPL")
+        assert result is not None
+        vwap_usd, gbpusd_buy, count, earliest = result
+        assert abs(vwap_usd - 150.0) < 0.01
+        # total_usd=1500, total_gbp=1000 → GBPUSD=1.5
+        assert abs(gbpusd_buy - 1.5) < 0.001
+        assert count == 1
+        assert earliest == "2023-01-10"
+
+    def test_two_buys_weighted_correctly(self):
+        acts = [
+            _make_activity("MSFT", qty=5.0, usd_price=200.0, gbp_price=160.0, date_str="2022-06-01"),
+            _make_activity("MSFT", qty=10.0, usd_price=220.0, gbp_price=180.0, date_str="2023-03-15"),
+        ]
+        result = fx_drag_engine._compute_activities_gbpusd(acts, "MSFT")
+        assert result is not None
+        vwap_usd, gbpusd_buy, count, earliest = result
+        # total_usd = 5*200 + 10*220 = 3200, total_gbp = 5*160 + 10*180 = 2600
+        assert abs(vwap_usd - 3200 / 15) < 0.01
+        assert abs(gbpusd_buy - 3200 / 2600) < 0.001
+        assert count == 2
+        assert earliest == "2022-06-01"
+
+    def test_draft_activities_excluded(self):
+        acts = [_make_activity("AAPL", qty=10.0, usd_price=150.0, gbp_price=100.0, is_draft=True)]
+        result = fx_drag_engine._compute_activities_gbpusd(acts, "AAPL")
+        assert result is None
+
+    def test_non_usd_excluded(self):
+        acts = [_make_activity("VOD.L", qty=100.0, usd_price=150.0, gbp_price=100.0, currency="GBP")]
+        result = fx_drag_engine._compute_activities_gbpusd(acts, "VOD.L")
+        assert result is None
+
+    def test_sell_activities_excluded(self):
+        acts = [_make_activity("TSLA", qty=5.0, usd_price=250.0, gbp_price=200.0, act_type="SELL")]
+        result = fx_drag_engine._compute_activities_gbpusd(acts, "TSLA")
+        assert result is None
+
+    def test_no_activities_returns_none(self):
+        result = fx_drag_engine._compute_activities_gbpusd([], "GOOG")
+        assert result is None
+
+    def test_wrong_ticker_excluded(self):
+        acts = [_make_activity("AAPL", qty=10.0, usd_price=150.0, gbp_price=100.0)]
+        result = fx_drag_engine._compute_activities_gbpusd(acts, "NVDA")
+        assert result is None
+
+    def test_equity_fx_total_relationship(self):
+        # Buy at GBPUSD=1.4, current GBPUSD=1.4 (flat FX), stock +20% USD
+        # expected: equity≈20%, fx≈0%, total≈20%
+        acts = [_make_activity("AMD", qty=10.0, usd_price=100.0, gbp_price=100.0 / 1.4)]
+        result = fx_drag_engine._compute_activities_gbpusd(acts, "AMD")
+        assert result is not None
+        vwap_usd, gbpusd_buy, count, _ = result
+        assert abs(gbpusd_buy - 1.4) < 0.001
+        # Simulate: current price = 120 USD, GBPUSD now = 1.4
+        current_usd = 120.0
+        gbpusd_now = 1.4
+        equity_pct = (current_usd / vwap_usd - 1) * 100
+        fx_pct = (gbpusd_buy / gbpusd_now - 1) * 100
+        total_pct = ((1 + equity_pct / 100) * (1 + fx_pct / 100) - 1) * 100
+        assert abs(equity_pct - 20.0) < 0.01
+        assert abs(fx_pct) < 0.01
+        assert abs(total_pct - 20.0) < 0.1

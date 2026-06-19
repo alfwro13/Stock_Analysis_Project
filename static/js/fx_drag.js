@@ -1,7 +1,7 @@
 (function () {
     "use strict";
 
-    const PERIOD_LABELS = { ytd: "YTD", "1y": "1 Year", "2y": "2 Years" };
+    const PERIOD_LABELS = { ytd: "YTD", "1y": "1 Year", "2y": "2 Years", lifetime: "Lifetime" };
 
     function pct(v) {
         if (v == null) return "—";
@@ -37,7 +37,7 @@
     function renderSummary(data) {
         const totalExposure = data.reduce((s, d) => s + (d.gbp_exposure || 0), 0);
         const avgEquity = weightedAvg(data, "equity_pct");
-        const avgFx = data.length > 0 ? data[0].fx_pct : null;
+        const avgFx = weightedAvg(data, "fx_pct");
         const avgGbp = weightedAvg(data, "total_gbp_pct");
 
         document.getElementById("fxd-total-exposure").textContent = gbp(totalExposure || null);
@@ -55,10 +55,18 @@
         gbpEl.className = "xray-metric-value " + valClass(avgGbp);
     }
 
-    function renderTable(data) {
+    function renderTable(data, period) {
+        const fromHeader = document.querySelector("#fxd-table thead th:last-child");
+        if (fromHeader) {
+            fromHeader.textContent = period === "lifetime" ? "Earliest Buy" : "From";
+            fromHeader.title = period === "lifetime"
+                ? "Date of the earliest BUY trade used to derive the weighted-average purchase FX rate."
+                : "Date of the first trading day in the selected period used as the reference price.";
+        }
         const tbody = document.getElementById("fxd-tbody");
         tbody.innerHTML = "";
         data.forEach(function (d) {
+            const dateVal = d.earliest_buy || d.ref_date || "—";
             const tr = document.createElement("tr");
             tr.innerHTML =
                 "<td><a href=\"/stock/" + d.ticker + "\">" + d.ticker + "</a></td>" +
@@ -66,7 +74,7 @@
                 "<td class=\"" + valClass(d.fx_pct) + "\">" + pct(d.fx_pct) + "</td>" +
                 "<td class=\"" + valClass(d.total_gbp_pct) + "\">" + pct(d.total_gbp_pct) + "</td>" +
                 "<td>" + gbp(d.gbp_exposure) + "</td>" +
-                "<td class=\"text-muted small\">" + (d.ref_date || "—") + "</td>";
+                "<td class=\"text-muted small\">" + dateVal + "</td>";
             tbody.appendChild(tr);
         });
     }
@@ -122,7 +130,7 @@
         chart.style.display = "";
         summary.style.display = "";
         renderSummary(data);
-        renderTable(data);
+        renderTable(data, period);
         renderChart(data, period);
     }
 

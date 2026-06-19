@@ -610,6 +610,11 @@
                             <span class="term-title">Total GBP Return</span>
                             <p>The combined GBP return a UK investor actually realises, accounting for both equity performance and currency movement. Computed multiplicatively: <code>(1 + equity_return) × (1 + fx_effect) − 1</code>. The difference between this and the simple sum of equity + FX is the cross-term (equity × FX), which is small but non-zero when both components are large.</p>
                         </div>
+                        <div class="term-box">
+                            <span class="term-title">Lifetime Mode</span>
+                            <p>An FX Drag Analyzer mode that uses the actual weighted-average GBP/USD rate at which each position was purchased, rather than a shared reference date. The buy-rate is derived from Ghostfolio trade history: each BUY activity stores the USD price (<code>unitPriceInAssetProfileCurrency</code>) and the GBP paid (<code>unitPrice</code>), so the implied GBP/USD rate at purchase is <code>total_usd / total_gbp</code> across all BUY trades — no external exchange-rate API required.</p>
+                            <div class="rule">Requires Ghostfolio to be configured. Returns an empty list if Ghostfolio is unreachable.</div>
+                        </div>
                     </div>
                 </div>
             </div>

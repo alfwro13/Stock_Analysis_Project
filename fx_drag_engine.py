@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from config import HISTORICAL_DIR, PORTFOLIO_PATH, BASE_CURRENCY
+from config import HISTORICAL_DIR, PORTFOLIO_PATH, BASE_CURRENCY, GHOSTFOLIO_URL, GHOSTFOLIO_TOKEN
 from database import get_connection
 from yahoo_engine import yahoo_engine
 
@@ -148,6 +148,123 @@ def portfolio_fx_breakdown(period_days: int) -> list[dict]:
             "period_days": period_days,
             "gbp_exposure": gbp_exposure,
             **breakdown,
+        })
+
+    results.sort(key=lambda x: abs(x.get("fx_pct", 0)), reverse=True)
+    return results
+
+
+def _compute_activities_gbpusd(
+    activities: list[dict], ticker: str
+) -> tuple[float, float, int] | None:
+    total_usd = 0.0
+    total_gbp = 0.0
+    total_qty = 0.0
+    buy_count = 0
+    earliest_buy: str | None = None
+
+    for act in activities:
+        profile = act.get("SymbolProfile") or {}
+        if (
+            profile.get("symbol") != ticker
+            or profile.get("currency") != "USD"
+            or act.get("type") != "BUY"
+            or act.get("isDraft")
+        ):
+            continue
+        qty = float(act.get("quantity") or 0)
+        usd_price = float(act.get("unitPriceInAssetProfileCurrency") or 0)
+        gbp_price = float(act.get("unitPrice") or 0)
+        if qty <= 0 or usd_price <= 0 or gbp_price <= 0:
+            continue
+        total_usd += qty * usd_price
+        total_gbp += qty * gbp_price
+        total_qty += qty
+        buy_count += 1
+        date_str = (act.get("date") or "")[:10]
+        if date_str and (earliest_buy is None or date_str < earliest_buy):
+            earliest_buy = date_str
+
+    if buy_count == 0 or total_gbp == 0 or total_qty == 0:
+        return None
+
+    vwap_buy_usd = total_usd / total_qty
+    weighted_avg_gbpusd_buy = total_usd / total_gbp
+    return vwap_buy_usd, weighted_avg_gbpusd_buy, buy_count, earliest_buy
+
+
+def portfolio_lifetime_fx_breakdown() -> list[dict]:
+    if BASE_CURRENCY != "GBP":
+        return []
+
+    if not GHOSTFOLIO_URL or not GHOSTFOLIO_TOKEN:
+        return []
+
+    from ghostfolio_sync import GhostfolioSyncEngine
+
+    engine = GhostfolioSyncEngine()
+    if not engine.is_configured:
+        return []
+
+    activities = engine.fetch_activities()
+    if not activities:
+        return []
+
+    try:
+        with open(PORTFOLIO_PATH) as f:
+            portfolio = json.load(f)
+    except Exception as e:
+        logger.error("Failed to read portfolio.json: %s", e)
+        return []
+
+    all_tickers = [v["ticker"] for v in portfolio.values() if v.get("ticker")]
+    usd_tickers = _get_usd_tickers_from_db(all_tickers)
+
+    gbpusd_series = _load_gbpusd_series()
+    if gbpusd_series.empty:
+        return []
+    gbpusd_now = float(gbpusd_series.iloc[-1])
+
+    results = []
+    for entry in portfolio.values():
+        ticker = entry.get("ticker")
+        if not ticker or ticker not in usd_tickers:
+            continue
+
+        act_result = _compute_activities_gbpusd(activities, ticker)
+        if act_result is None:
+            continue
+        vwap_buy_usd, weighted_avg_gbpusd_buy, buy_count, earliest_buy = act_result
+
+        parquet_path = HISTORICAL_DIR / f"{ticker}.parquet"
+        try:
+            df = pd.read_parquet(parquet_path)
+            current_price_usd = float(df["Close"].iloc[-1])
+        except Exception:
+            continue
+
+        if vwap_buy_usd == 0 or gbpusd_now == 0:
+            continue
+
+        equity_pct = (current_price_usd / vwap_buy_usd - 1) * 100
+        fx_pct = (weighted_avg_gbpusd_buy / gbpusd_now - 1) * 100
+        total_gbp_pct = ((1 + equity_pct / 100) * (1 + fx_pct / 100) - 1) * 100
+
+        shares = entry.get("global_shares", 0)
+        gbp_exposure = round((shares * current_price_usd) / gbpusd_now, 2) if shares else None
+
+        results.append({
+            "ticker": ticker,
+            "period_days": None,
+            "equity_pct": round(equity_pct, 2),
+            "fx_pct": round(fx_pct, 2),
+            "total_gbp_pct": round(total_gbp_pct, 2),
+            "gbpusd_buy": round(weighted_avg_gbpusd_buy, 4),
+            "gbpusd_now": round(gbpusd_now, 4),
+            "earliest_buy": earliest_buy,
+            "buy_count": buy_count,
+            "gbp_exposure": gbp_exposure,
+            "ref_date": earliest_buy,
         })
 
     results.sort(key=lambda x: abs(x.get("fx_pct", 0)), reverse=True)

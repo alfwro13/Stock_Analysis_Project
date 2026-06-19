@@ -1803,9 +1803,9 @@ Returns an FX-decomposed return breakdown for all USD positions in `portfolio.js
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `period` | string | `"ytd"` | Lookback period: `"ytd"` (year-to-date), `"1y"` (365 days), `"2y"` (730 days) |
+| `period` | string | `"ytd"` | Lookback period: `"ytd"` (year-to-date), `"1y"` (365 days), `"2y"` (730 days), `"lifetime"` (purchase-date FX via Ghostfolio) |
 
-**Response**
+**Reference-period response** (`ytd` / `1y` / `2y`):
 
 ```json
 {
@@ -1827,11 +1827,37 @@ Returns an FX-decomposed return breakdown for all USD positions in `portfolio.js
 }
 ```
 
-`equity_pct`: stock price change in USD since the reference date.  
+**Lifetime response** (`lifetime`):
+
+```json
+{
+  "status": "success",
+  "period": "lifetime",
+  "data": [
+    {
+      "ticker": "AAPL",
+      "period_days": null,
+      "equity_pct": 45.20,
+      "fx_pct": -8.10,
+      "total_gbp_pct": 33.46,
+      "gbpusd_buy": 1.3680,
+      "gbpusd_now": 1.2786,
+      "earliest_buy": "2021-01-02",
+      "buy_count": 3,
+      "gbp_exposure": 4231.00,
+      "ref_date": "2021-01-02"
+    }
+  ]
+}
+```
+
+`equity_pct`: stock price change in USD since the reference date / purchase VWAP.  
 `fx_pct`: GBP/USD rate change — positive means USD strengthened (tailwind), negative means GBP strengthened (headwind).  
 `total_gbp_pct`: `(1 + equity_pct/100) × (1 + fx_pct/100) − 1`, expressed as a percentage.  
 `gbp_exposure`: current GBP market value of the position (null if price data unavailable).  
-Tickers with no Parquet data for the requested period are omitted from the list.
+`gbpusd_buy` (lifetime only): quantity-weighted average GBP/USD rate across all BUY trades, derived from `unitPrice` / `unitPriceInAssetProfileCurrency` in Ghostfolio activities.  
+`earliest_buy` / `buy_count` (lifetime only): date of earliest BUY trade and total BUY trade count.  
+Tickers with no Parquet data or no Ghostfolio BUY activities are omitted from the list.
 
 ---
 

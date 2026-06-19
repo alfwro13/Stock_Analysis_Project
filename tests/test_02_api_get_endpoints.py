@@ -454,8 +454,8 @@ def test_fx_drag_response_shape(client):
 
 @pytest.mark.api
 def test_fx_drag_period_variants_accepted(client):
-    """GET /api/fx-drag?period=ytd|1y|2y must all return 200."""
-    for period in ("ytd", "1y", "2y"):
+    """GET /api/fx-drag?period=ytd|1y|2y|lifetime must all return 200."""
+    for period in ("ytd", "1y", "2y", "lifetime"):
         resp = client.get(f"/api/fx-drag?period={period}")
         assert resp.status_code == 200, (
             f"period={period} returned HTTP {resp.status_code}: {resp.text[:200]}"

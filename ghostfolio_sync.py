@@ -231,6 +231,23 @@ class GhostfolioSyncEngine:
             logger.error(f"Exception removing {symbol} from Watchlist: {e}")
             return False
 
+    def fetch_activities(self) -> list[dict]:
+        if not self.headers:
+            if not self.authenticate():
+                return []
+        try:
+            response = requests.get(
+                f"{self.url}/api/v1/activities",
+                headers=self.headers,
+                verify=False,
+                timeout=15,
+            )
+            response.raise_for_status()
+            return response.json().get("activities", [])
+        except Exception as e:
+            logger.error("Failed to fetch activities from Ghostfolio: %s", e)
+            return []
+
     def run_full_sync(self) -> bool:
         logger.info("Ghostfolio sync starting...")
 

@@ -13,7 +13,8 @@
     <abbr title="The stock's own price appreciation or depreciation in USD, independent of currency moves.">equity return (USD)</abbr>
     and
     <abbr title="The GBP/USD exchange rate move over the period. Positive means the dollar strengthened vs sterling — a tailwind for UK investors in US stocks.">FX effect</abbr>.
-    Reference period is measured from the first available trading day on or after the selected start date.
+    Reference periods (YTD / 1Y / 2Y) measure from the first available trading day on or after the selected start date.
+    <abbr title="Lifetime mode uses the actual weighted-average GBPUSD rate at which each position was bought, derived from Ghostfolio trade history — no exchange-rate API required.">Lifetime</abbr> mode uses your real purchase-date FX rate from Ghostfolio.
 </p>
 
 <a href="/tools" class="btn btn-outline-secondary btn-sm mb-4">&#8592; Back to Tools</a>
@@ -23,6 +24,7 @@
     <button class="btn btn-sm btn-primary fxd-period-btn" data-period="ytd">YTD</button>
     <button class="btn btn-sm btn-outline-secondary fxd-period-btn" data-period="1y">1 Year</button>
     <button class="btn btn-sm btn-outline-secondary fxd-period-btn" data-period="2y">2 Years</button>
+    <button class="btn btn-sm btn-outline-secondary fxd-period-btn" data-period="lifetime">Lifetime</button>
 </div>
 
 <div id="fxd-summary" class="d-flex flex-wrap gap-3 mb-4">
