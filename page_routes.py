@@ -78,7 +78,9 @@ async def logout():
 
 @page_router.get("/change-password", response_class=HTMLResponse)
 async def change_password_page(request: Request):
-    return templates.TemplateResponse(request=request, name="change_password.html")
+    import os as _os
+    return templates.TemplateResponse(request=request, name="change_password.html",
+                                      context={"confirm_token": _os.environ.get("ADMIN_CONFIRM_TOKEN", "")})
 
 
 @page_router.get("/reset-password", response_class=HTMLResponse)
