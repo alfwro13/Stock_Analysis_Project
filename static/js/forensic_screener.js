@@ -2,6 +2,9 @@
 (function () {
     'use strict';
 
+    let _allResults = [];
+    let _activeFilter = 'portfolio';
+
     function fmt(v, dp) {
         if (v === null || v === undefined) return '<span class="text-secondary">N/A</span>';
         return parseFloat(v).toFixed(dp !== undefined ? dp : 2);
@@ -36,6 +39,21 @@
         return badges.length ? badges.join('') : '<span class="text-success small">&#10003; Clean</span>';
     }
 
+    function applyFilter(results, filter) {
+        if (filter === 'all') return results;
+        return results.filter(r => r.source === filter);
+    }
+
+    function updateFilterButtons(active) {
+        ['portfolio', 'watchlist', 'all'].forEach(f => {
+            const btn = document.getElementById('filter-' + f);
+            if (!btn) return;
+            btn.classList.toggle('active', f === active);
+            btn.classList.toggle('btn-secondary', f === active);
+            btn.classList.toggle('btn-outline-secondary', f !== active);
+        });
+    }
+
     function renderTable(results) {
         const loading = document.getElementById('forensic-loading');
         const empty   = document.getElementById('forensic-empty');
@@ -46,6 +64,7 @@
 
         if (!results || !results.length) {
             if (empty) empty.style.display = '';
+            if (table) table.style.display = 'none';
             return;
         }
 
@@ -65,10 +84,20 @@
             </tr>`).join('');
     }
 
+    window.setFilter = function (filter) {
+        _activeFilter = filter;
+        updateFilterButtons(filter);
+        renderTable(applyFilter(_allResults, filter));
+    };
+
     function loadScores() {
         fetch('/api/forensic-scores')
             .then(r => r.json())
-            .then(d => renderTable(d.results || []))
+            .then(d => {
+                _allResults = d.results || [];
+                updateFilterButtons(_activeFilter);
+                renderTable(applyFilter(_allResults, _activeFilter));
+            })
             .catch(() => {
                 const loading = document.getElementById('forensic-loading');
                 if (loading) loading.textContent = 'Failed to load scores.';
@@ -78,8 +107,7 @@
     function triggerJob(endpoint, btnId, label) {
         const btn = document.getElementById(btnId);
         if (btn) { btn.disabled = true; btn.textContent = 'Running…'; }
-        const csrf = window.getCSRFToken ? window.getCSRFToken() : '';
-        fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf } })
+        fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' } })
             .then(r => r.json())
             .then(d => {
                 if (btn) { btn.disabled = false; btn.textContent = label; }
@@ -93,6 +121,7 @@
     }
 
     document.addEventListener('DOMContentLoaded', function () {
+        updateFilterButtons(_activeFilter);
         loadScores();
 
         const btnFetch = document.getElementById('btn-run-fetch');

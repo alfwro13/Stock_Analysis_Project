@@ -41,6 +41,12 @@
     </div>
 </div>
 
+<div class="btn-group mb-3" role="group" aria-label="Source filter">
+    <button type="button" class="btn btn-sm btn-outline-secondary" id="filter-portfolio" onclick="setFilter('portfolio')">Portfolio</button>
+    <button type="button" class="btn btn-sm btn-outline-secondary" id="filter-watchlist" onclick="setFilter('watchlist')">Watchlist</button>
+    <button type="button" class="btn btn-sm btn-outline-secondary" id="filter-all" onclick="setFilter('all')">All</button>
+</div>
+
 <div id="forensic-loading" class="text-secondary small mb-2">Loading scores…</div>
 <div id="forensic-empty" class="text-secondary small mb-2" style="display:none">No data yet — run the Forensic Quarterly Data Fetch followed by Forensic Accounting Scores to populate this table.</div>
 

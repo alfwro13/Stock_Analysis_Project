@@ -1764,6 +1764,19 @@ async def get_forensic_scores(request: Request):
     """Returns Piotroski F-Score, Altman Z-Score, and Beneish M-Score for all portfolio and watchlist tickers."""
     conn = None
     try:
+        from data_engine import DataEngine
+        engine = DataEngine()
+        portfolio_tickers = {
+            normalize_ticker(v["ticker"])
+            for v in engine.portfolio.values()
+            if isinstance(v, dict) and v.get("ticker")
+        }
+        watchlist_tickers = {
+            normalize_ticker(t)
+            for t in (engine.watchlist.get("watchlist") or [])
+            if t
+        }
+
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute("""
@@ -1779,9 +1792,13 @@ async def get_forensic_scores(request: Request):
             f = r['piotroski_f_score']
             z = r['altman_z_score']
             m = r['beneish_m_score']
+            t = r['ticker']
+            in_portfolio = t in portfolio_tickers
+            in_watchlist  = t in watchlist_tickers
+            source = "portfolio" if in_portfolio else ("watchlist" if in_watchlist else "other")
             results.append({
-                "ticker":               r['ticker'],
-                "company_name":         r['company_name'] or r['ticker'],
+                "ticker":               t,
+                "company_name":         r['company_name'] or t,
                 "sector":               r['sector'] or 'Unknown',
                 "piotroski_f_score":    f,
                 "altman_z_score":       z,
@@ -1790,6 +1807,7 @@ async def get_forensic_scores(request: Request):
                 "flag_piotroski":       f is not None and f < 4,
                 "flag_altman":          z is not None and z < 1.81,
                 "flag_beneish":         m is not None and m > -1.78,
+                "source":               source,
             })
         return JSONResponse(content={"status": "success", "results": results})
     except Exception as e:
