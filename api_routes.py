@@ -2367,6 +2367,7 @@ _SENTIMENT_UK_MODES = frozenset([
     "This Week's UK Risk Events",
     "Pound & Gilt Impact",
     "UK vs US Comparison",
+    "UK Investor in US Exposure",
 ])
 
 

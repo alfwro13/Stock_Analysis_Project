@@ -21,6 +21,7 @@ _ALLOWED_UK_MODES = frozenset([
     "This Week's UK Risk Events",
     "Pound & Gilt Impact",
     "UK vs US Comparison",
+    "UK Investor in US Exposure",
 ])
 
 _US_PERSONA = {
@@ -66,6 +67,16 @@ _UK_PERSONA = {
         "Global macro strategist. "
         "Given the US and UK data below, compare both markets side by side and explain in plain "
         "English which looks more attractive for a long-only equity investor and why."
+    ),
+    "UK Investor in US Exposure": (
+        "FX-aware portfolio strategist advising a UK-based investor who holds or is considering "
+        "US equity exposure. In 3 plain-English bullets explain: "
+        "(a) how GBP/USD movement at the current rate affects their USD-denominated returns "
+        "when converted back to pounds — and whether the pound is likely to work for or against them; "
+        "(b) whether current US market conditions (regime, VIX, yields) favour holding or trimming "
+        "US exposure; "
+        "(c) one concrete, practical action to consider given both the FX and the US equity picture. "
+        "No jargon."
     ),
 }
 
@@ -337,7 +348,7 @@ Upcoming UK Macro Events (next 7 days, ranked by surprise probability):
         uk_data = self._gather_uk_data()
         data_block = self._build_uk_block(uk_data)
 
-        if mode == "UK vs US Comparison":
+        if mode in ("UK vs US Comparison", "UK Investor in US Exposure"):
             us_data = self._gather_us_data()
             data_block = self._build_us_block(us_data) + "\n\n" + data_block
 

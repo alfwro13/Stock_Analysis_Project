@@ -923,7 +923,7 @@ Compiles an AI-consumable prompt using live UK market sentiment data: regime lab
 
 | Parameter | Type | Default | Allowed values |
 |-----------|------|---------|----------------|
-| `mode` | string | `UK Market Health Check` | `UK Market Health Check`, `This Week's UK Risk Events`, `Pound & Gilt Impact`, `UK vs US Comparison` |
+| `mode` | string | `UK Market Health Check` | `UK Market Health Check`, `This Week's UK Risk Events`, `Pound & Gilt Impact`, `UK vs US Comparison`, `UK Investor in US Exposure` |
 
 **Response (success)**
 
