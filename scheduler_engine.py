@@ -1023,7 +1023,7 @@ def run_forensic_quarterly_fetch_job():
             try:
                 bs, fin, cf = _yengine.get_annual_financials(ticker)
                 if bs is None:
-                    log_sched_notification("Warning", f"Forensic fetch: no annual balance sheet returned for {ticker} — likely an ETF, fund, or ticker with no Yahoo Finance coverage. Skipping.")
+                    log_sched_notification("Warning", f"Forensic fetch: {ticker} — Yahoo Finance returned no annual balance sheet (sparse coverage or newly listed). Skipping.")
                     errors += 1
                     continue
                 payload = {
