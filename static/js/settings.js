@@ -1631,7 +1631,12 @@
                     "LIVE_WATCHLIST": document.getElementById('LIVE_WATCHLIST').checked,
                     "LIVE_DETAILS": document.getElementById('LIVE_DETAILS').checked,
                     "FREETRADE_ONLY_MODE": document.getElementById('FREETRADE_ONLY_MODE').checked,
-                    "REFRESH_RATE": parseInt(document.getElementById('REFRESH_RATE').value) || 60
+                    "REFRESH_RATE": parseInt(document.getElementById('REFRESH_RATE').value) || 60,
+                    "FONT_SIZE_NAV": parseInt(document.getElementById('FONT_SIZE_NAV').value) || 16,
+                    "FONT_SIZE_TABLE": parseInt(document.getElementById('FONT_SIZE_TABLE').value) || 14,
+                    "FONT_SIZE_FORM": parseInt(document.getElementById('FONT_SIZE_FORM').value) || 14,
+                    "FONT_SIZE_BTN": parseInt(document.getElementById('FONT_SIZE_BTN').value) || 14,
+                    "FONT_SIZE_SECTION": parseInt(document.getElementById('FONT_SIZE_SECTION').value) || 20
                 },
                 "POSITION_SIZING": {
                     "ACCOUNT_VALUE": parseFloat(document.getElementById('POSITION_SIZING_ACCOUNT_VALUE').value) || 10000,

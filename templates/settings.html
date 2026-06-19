@@ -1578,6 +1578,82 @@
             </div>
 
             <div class="settings-panel border-left-cyan">
+                <strong>🔤 Font Sizes</strong>
+                <p class="settings-desc">Adjust font sizes for major UI elements. Changes take effect after saving — no restart needed.</p>
+                <div class="form-group">
+                    <label><abbr title="Font size for the navbar links (Portfolio, Watchlist, News, etc.).">Navigation menu items</abbr></label>
+                    <select id="FONT_SIZE_NAV" class="form-select">
+                        {% set fsn = config.UI_PREFERENCES.FONT_SIZE_NAV | default(16) %}
+                        <option value="11" {% if fsn == 11 %}selected{% endif %}>11 px</option>
+                        <option value="12" {% if fsn == 12 %}selected{% endif %}>12 px</option>
+                        <option value="13" {% if fsn == 13 %}selected{% endif %}>13 px</option>
+                        <option value="14" {% if fsn == 14 %}selected{% endif %}>14 px</option>
+                        <option value="15" {% if fsn == 15 %}selected{% endif %}>15 px</option>
+                        <option value="16" {% if fsn == 16 %}selected{% endif %}>16 px (default)</option>
+                        <option value="17" {% if fsn == 17 %}selected{% endif %}>17 px</option>
+                        <option value="18" {% if fsn == 18 %}selected{% endif %}>18 px</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label><abbr title="Font size for all data table cells across Portfolio, Watchlist, Quant Screener, and similar pages.">Data table cells</abbr></label>
+                    <select id="FONT_SIZE_TABLE" class="form-select">
+                        {% set fst = config.UI_PREFERENCES.FONT_SIZE_TABLE | default(14) %}
+                        <option value="11" {% if fst == 11 %}selected{% endif %}>11 px</option>
+                        <option value="12" {% if fst == 12 %}selected{% endif %}>12 px</option>
+                        <option value="13" {% if fst == 13 %}selected{% endif %}>13 px</option>
+                        <option value="14" {% if fst == 14 %}selected{% endif %}>14 px (default)</option>
+                        <option value="15" {% if fst == 15 %}selected{% endif %}>15 px</option>
+                        <option value="16" {% if fst == 16 %}selected{% endif %}>16 px</option>
+                        <option value="17" {% if fst == 17 %}selected{% endif %}>17 px</option>
+                        <option value="18" {% if fst == 18 %}selected{% endif %}>18 px</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label><abbr title="Font size for form labels, text inputs, and select dropdowns throughout the app.">Form controls (labels &amp; inputs)</abbr></label>
+                    <select id="FONT_SIZE_FORM" class="form-select">
+                        {% set fsf = config.UI_PREFERENCES.FONT_SIZE_FORM | default(14) %}
+                        <option value="11" {% if fsf == 11 %}selected{% endif %}>11 px</option>
+                        <option value="12" {% if fsf == 12 %}selected{% endif %}>12 px</option>
+                        <option value="13" {% if fsf == 13 %}selected{% endif %}>13 px</option>
+                        <option value="14" {% if fsf == 14 %}selected{% endif %}>14 px (default)</option>
+                        <option value="15" {% if fsf == 15 %}selected{% endif %}>15 px</option>
+                        <option value="16" {% if fsf == 16 %}selected{% endif %}>16 px</option>
+                        <option value="17" {% if fsf == 17 %}selected{% endif %}>17 px</option>
+                        <option value="18" {% if fsf == 18 %}selected{% endif %}>18 px</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label><abbr title="Font size for action buttons (Save, Refresh, Test, etc.) throughout the app.">Action buttons</abbr></label>
+                    <select id="FONT_SIZE_BTN" class="form-select">
+                        {% set fsb = config.UI_PREFERENCES.FONT_SIZE_BTN | default(14) %}
+                        <option value="11" {% if fsb == 11 %}selected{% endif %}>11 px</option>
+                        <option value="12" {% if fsb == 12 %}selected{% endif %}>12 px</option>
+                        <option value="13" {% if fsb == 13 %}selected{% endif %}>13 px</option>
+                        <option value="14" {% if fsb == 14 %}selected{% endif %}>14 px (default)</option>
+                        <option value="15" {% if fsb == 15 %}selected{% endif %}>15 px</option>
+                        <option value="16" {% if fsb == 16 %}selected{% endif %}>16 px</option>
+                        <option value="17" {% if fsb == 17 %}selected{% endif %}>17 px</option>
+                        <option value="18" {% if fsb == 18 %}selected{% endif %}>18 px</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label><abbr title="Font size for collapsible section titles on this Settings page (the bold clickable headers).">Section / panel headers</abbr></label>
+                    <select id="FONT_SIZE_SECTION" class="form-select">
+                        {% set fss = config.UI_PREFERENCES.FONT_SIZE_SECTION | default(20) %}
+                        <option value="14" {% if fss == 14 %}selected{% endif %}>14 px</option>
+                        <option value="15" {% if fss == 15 %}selected{% endif %}>15 px</option>
+                        <option value="16" {% if fss == 16 %}selected{% endif %}>16 px</option>
+                        <option value="17" {% if fss == 17 %}selected{% endif %}>17 px</option>
+                        <option value="18" {% if fss == 18 %}selected{% endif %}>18 px</option>
+                        <option value="19" {% if fss == 19 %}selected{% endif %}>19 px</option>
+                        <option value="20" {% if fss == 20 %}selected{% endif %}>20 px (default)</option>
+                        <option value="22" {% if fss == 22 %}selected{% endif %}>22 px</option>
+                        <option value="24" {% if fss == 24 %}selected{% endif %}>24 px</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="settings-panel border-left-cyan">
                 <strong>📄 File Logging</strong>
                 <p class="settings-desc">Write all console log output to a rotating daily log file. Each day's file is kept for the configured number of days, then deleted automatically on the next rotation.</p>
                 <div class="form-group">

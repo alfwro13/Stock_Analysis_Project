@@ -18,7 +18,7 @@ from typing import Any, List, Optional
 from pathlib import Path
 
 from fastapi import APIRouter, Request, BackgroundTasks, HTTPException, Query, Path as PathParam, Response, Depends, Header
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
@@ -547,6 +547,11 @@ class UIPreferencesConfig(BaseModel):
     LIVE_DETAILS: Optional[bool] = None
     REFRESH_RATE: Optional[int] = None
     FREETRADE_ONLY_MODE: Optional[bool] = None
+    FONT_SIZE_NAV: Optional[int] = None
+    FONT_SIZE_TABLE: Optional[int] = None
+    FONT_SIZE_FORM: Optional[int] = None
+    FONT_SIZE_BTN: Optional[int] = None
+    FONT_SIZE_SECTION: Optional[int] = None
 
 class PositionSizingConfig(BaseModel):
     ACCOUNT_VALUE: Optional[float] = None
@@ -1208,6 +1213,18 @@ def test_yahoo_ipv6(request: IPv6TestRequest):
         
     finally:
         test_session.close()
+
+@api_router.get("/ui-theme.css", response_class=PlainTextResponse)
+async def ui_theme_css():
+    ui = load_config().get("UI_PREFERENCES", {})
+    props = " ".join([
+        f"--font-size-nav: {ui.get('FONT_SIZE_NAV', 16)}px;",
+        f"--font-size-table: {ui.get('FONT_SIZE_TABLE', 14)}px;",
+        f"--font-size-form: {ui.get('FONT_SIZE_FORM', 14)}px;",
+        f"--font-size-btn: {ui.get('FONT_SIZE_BTN', 14)}px;",
+        f"--font-size-section: {ui.get('FONT_SIZE_SECTION', 20)}px;",
+    ])
+    return PlainTextResponse(f":root {{{props}}}", media_type="text/css")
 
 @api_router.get("/settings/network-status")
 async def get_network_status():

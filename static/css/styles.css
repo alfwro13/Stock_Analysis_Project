@@ -7,6 +7,13 @@
    Only pages that extend base.html carry data-bs-theme="dark"; legacy self-contained
    pages do not load Bootstrap and are unaffected by this block.
    ============================================================================ */
+:root {
+  --font-size-nav: 16px;
+  --font-size-table: 14px;
+  --font-size-form: 14px;
+  --font-size-btn: 14px;
+  --font-size-section: 20px;
+}
 [data-bs-theme="dark"] {
   --bs-body-bg: #121212;
   --bs-body-color: #e0e0e0;
@@ -91,7 +98,7 @@
   --bs-navbar-hover-color: #00ffcc;
   --bs-navbar-active-color: #00ffcc;
 }
-.app-navbar .nav-link { font-weight: bold; }
+.app-navbar .nav-link { font-weight: bold; font-size: var(--font-size-nav); }
 .app-navbar .nav-link.active { text-decoration: underline; }
 .freshness-badge-nav { font-size: 12px; line-height: 1.4; text-align: right; white-space: nowrap; display: flex; flex-direction: column; }
 @media (max-width: 768px) {
@@ -154,7 +161,7 @@ th[title] { text-decoration: underline dotted #666; text-underline-offset: 3px; 
 .yahoo-link:hover { background-color: rgba(77, 166, 255, 0.1); text-decoration: none; }
 .badge-freetrade { background-color: #ff4d4d; font-size: 10px; vertical-align: middle; margin-top: 4px; display: inline-block; }
 /* --- 4. Interactive Tables & Badges --- */
-table { width: 100%; border-collapse: collapse; margin-bottom: 40px; background-color: #1e1e1e; font-size: 14px; box-shadow: 0 2px 4px rgba(0,0,0,0.3); }
+table { width: 100%; border-collapse: collapse; margin-bottom: 40px; background-color: #1e1e1e; font-size: var(--font-size-table); box-shadow: 0 2px 4px rgba(0,0,0,0.3); }
 th, td { padding: 6px 10px; text-align: left; border-bottom: 1px solid #333; vertical-align: middle; }
 th { background-color: #2c2c2c; cursor: pointer; user-select: none; }
 th:hover { background-color: #3d3d3d; }
@@ -171,15 +178,15 @@ th:hover { background-color: #3d3d3d; }
 .setup-tag { display: inline-block; background-color: #333; color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 11px; margin-right: 4px; margin-bottom: 4px; border: 1px solid #555; cursor: default; }
 /* --- 5. Form Controls & Buttons --- */
 .controls-container { display: flex; gap: 15px; margin-bottom: 15px; }
-.filter-input { padding: 8px; border-radius: 5px; border: 1px solid #444; background-color: #1e1e1e; color: #fff; width: 250px; font-size: 14px; }
-.filter-select { padding: 8px; border-radius: 5px; border: 1px solid #444; background-color: #1e1e1e; color: #fff; font-size: 14px; cursor: pointer; }
+.filter-input { padding: 8px; border-radius: 5px; border: 1px solid #444; background-color: #1e1e1e; color: #fff; width: 250px; font-size: var(--font-size-form); }
+.filter-select { padding: 8px; border-radius: 5px; border: 1px solid #444; background-color: #1e1e1e; color: #fff; font-size: var(--font-size-form); cursor: pointer; }
 .context-selector { padding: 8px 12px; border-radius: 5px; border: 1px solid #4da6ff; background-color: #1a2636; color: #fff; font-weight: bold; font-size: 14px; cursor: pointer; outline: none; transition: border-color 0.3s; }
 .context-selector:hover { border-color: #00ffcc; }
 .action-buttons { display: flex; gap: 15px; }
 .notification-actions { display: flex; gap: 15px; }
 .form-group { margin-bottom: 15px; display: flex; flex-direction: column; }
-.form-group label { margin-bottom: 5px; font-weight: bold; color: #aaa; font-size: 14px; }
-.form-group input, .form-group select { padding: 10px; border-radius: 5px; border: 1px solid #444; background-color: #121212; color: #fff; font-size: 15px; }
+.form-group label { margin-bottom: 5px; font-weight: bold; color: #aaa; font-size: var(--font-size-form); }
+.form-group input, .form-group select { padding: 10px; border-radius: 5px; border: 1px solid #444; background-color: #121212; color: #fff; font-size: var(--font-size-form); }
 .form-group input:focus, .form-group select:focus { outline: none; border-color: #4da6ff; }
 .checkbox-group { display: flex; flex-direction: row; align-items: center; margin-bottom: 15px; }
 .checkbox-group input { margin-right: 10px; width: 18px; height: 18px; cursor: pointer; }
@@ -190,11 +197,11 @@ th:hover { background-color: #3d3d3d; }
 .btn-sync:hover { background-color: #00ccaa; }
 .btn-update { background-color: #4da6ff; }
 .btn-update:hover { background-color: #3388dd; }
-.btn-save { background-color: #00ffcc; padding: 15px 25px; font-size: 18px; width: 100%; margin-top: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+.btn-save { background-color: #00ffcc; padding: 15px 25px; font-size: var(--font-size-btn); width: 100%; margin-top: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
 .btn-save:hover { background-color: #00ccaa; }
-.btn-test { background-color: #4da6ff; padding: 8px 15px; font-size: 14px; margin-top: 15px; }
+.btn-test { background-color: #4da6ff; padding: 8px 15px; font-size: var(--font-size-btn); margin-top: 15px; }
 .btn-test:hover { background-color: #3388dd; }
-.btn-danger { background-color: #ff4d4d; padding: 10px 20px; font-size: 15px; color: #fff; }
+.btn-danger { background-color: #ff4d4d; padding: 10px 20px; font-size: var(--font-size-btn); color: #fff; }
 .btn-danger:hover { background-color: #cc0000; }
 .btn-orange { background-color: #ff8c00; color: #fff; }
 .btn-orange:hover { background-color: #cc7000; }
@@ -204,7 +211,7 @@ th:hover { background-color: #3d3d3d; }
 .btn-remove { background-color: #ff4d4d; color: #fff; padding: 4px 8px; border-radius: 4px; }
 /* --- 7. Structural Cards, Sections & AI Integration --- */
 details.settings-card { background-color: #1e1e1e; padding: 20px 25px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); border-left: 4px solid #4da6ff; transition: background-color 0.3s ease; }
-details.settings-card > summary { font-size: 20px; font-weight: bold; color: #fff; cursor: pointer; list-style: none; outline: none; margin: -20px -25px; padding: 20px 25px; display: flex; justify-content: space-between; align-items: center; border-radius: 8px; }
+details.settings-card > summary { font-size: var(--font-size-section); font-weight: bold; color: #fff; cursor: pointer; list-style: none; outline: none; margin: -20px -25px; padding: 20px 25px; display: flex; justify-content: space-between; align-items: center; border-radius: 8px; }
 details.settings-card > summary::-webkit-details-marker { display: none; }
 details.settings-card > summary::after { content: '▼'; color: #4da6ff; transition: transform 0.3s ease; font-size: 14px; }
 details.settings-card[open] > summary::after { transform: rotate(180deg); }

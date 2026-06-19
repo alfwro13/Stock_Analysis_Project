@@ -75,7 +75,12 @@ DEFAULT_CONFIG = {
         "LIVE_WATCHLIST": False,
         "LIVE_DETAILS": False,
         "REFRESH_RATE": 60,
-        "FREETRADE_ONLY_MODE": False
+        "FREETRADE_ONLY_MODE": False,
+        "FONT_SIZE_NAV": 16,
+        "FONT_SIZE_TABLE": 14,
+        "FONT_SIZE_FORM": 14,
+        "FONT_SIZE_BTN": 14,
+        "FONT_SIZE_SECTION": 20
     },
     "POSITION_SIZING": {
         "ACCOUNT_VALUE": 500,

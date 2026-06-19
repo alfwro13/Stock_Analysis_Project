@@ -902,7 +902,12 @@ After saving, the scheduler is reloaded to apply any changed schedule configurat
     "LIVE_WATCHLIST": true,
     "LIVE_DETAILS": false,
     "REFRESH_RATE": 30,
-    "FREETRADE_ONLY_MODE": false
+    "FREETRADE_ONLY_MODE": false,
+    "FONT_SIZE_NAV": 16,
+    "FONT_SIZE_TABLE": 14,
+    "FONT_SIZE_FORM": 14,
+    "FONT_SIZE_BTN": 14,
+    "FONT_SIZE_SECTION": 20
   },
   "POSITION_SIZING": {
     "ACCOUNT_VALUE": 50000.0,
@@ -962,6 +967,18 @@ Tests whether a given IPv6 address can successfully reach Yahoo Finance edge nod
 | `400` | IPv6 address is empty |
 | `502` | Socket binding failed, network unreachable, or connection refused |
 | `504` | Connection timed out |
+
+---
+
+### `GET /api/ui-theme.css`
+
+Returns a CSS stylesheet fragment that sets the five user-configurable font-size custom properties at `:root` level, driven by the values stored in `UI_PREFERENCES` in `config.json`. Loaded automatically via `<link>` in `base.html` on every page; no auth required.
+
+**Response** — `Content-Type: text/css`
+
+```css
+:root {--font-size-nav: 16px; --font-size-table: 14px; --font-size-form: 14px; --font-size-btn: 14px; --font-size-section: 20px;}
+```
 
 ---
 
@@ -1512,6 +1529,7 @@ Sends a test insider trading alert via Nextcloud Talk.
 | `POST` | `/api/settings` | Save configuration |
 | `POST` | `/api/settings/test-yahoo-ipv6` | Test IPv6 connection |
 | `GET` | `/api/settings/network-status` | Current routing health |
+| `GET` | `/api/ui-theme.css` | Dynamic font-size CSS variables |
 | `GET` | `/api/system/metrics` | System diagnostic data |
 | `GET` | `/api/system/checks` | Active scheduling health warnings/errors |
 | `GET` | `/api/system/active-jobs` | Currently executing scheduler jobs (busy indicator) |
