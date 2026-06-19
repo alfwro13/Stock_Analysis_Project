@@ -119,8 +119,9 @@ body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif, "Apple Colo
 h1, h2, h3, h4, h5, h6 { color: #ffffff; margin: 0; }
 a { color: #4da6ff; text-decoration: none; font-weight: bold; }
 a:hover { text-decoration: underline; }
-abbr { text-decoration: underline dotted #666; text-underline-offset: 3px; cursor: pointer; color: inherit; }
-th[title] { text-decoration: underline dotted #666; text-underline-offset: 3px; cursor: help; }
+abbr { text-decoration: underline dotted #666; text-underline-offset: 3px; color: inherit; }
+abbr[title] { cursor: default; }
+th[title] { text-decoration: underline dotted #666; text-underline-offset: 3px; cursor: default; }
 /* --- 2. Layout & Containers --- */
 .container { max-width: 1400px; margin: auto; padding: 0 20px; }
 .container-fluid { width: 100%; max-width: none; margin: auto; padding: 0 30px; box-sizing: border-box; }
@@ -521,7 +522,7 @@ table.dataTable tbody tr td { color: #ccc; }
 .text-muted-small { font-size: 12px; color: #bbb; }
 .inline-block { display: inline-block; }
 .no-decoration-abbr { text-decoration: none; }
-.help-abbr { text-decoration: underline dotted; cursor: help; }
+.help-abbr { text-decoration: underline dotted; cursor: default; }
 .max-w-150 { max-width: 150px; }
 .num-cell { font-size: 16px; }
 .text-danger { color: #ff4d4d; }
@@ -560,7 +561,7 @@ table.dataTable tbody tr td { color: #ccc; }
 .leg-strike-text { font-weight: bold; margin-left: 10px; }
 .btn-add-long { background: #00ff00; color: #121212; padding: 2px 5px; }
 .btn-add-short { background: #ff4d4d; color: #121212; padding: 2px 5px; }
-.text-help { text-decoration: underline dotted #666; cursor: help; }
+.text-help { text-decoration: underline dotted #666; cursor: default; }
 .font-monospace { font-family: monospace; }
 .font-bold { font-weight: bold; }
 .text-sm { font-size: 13px; }
