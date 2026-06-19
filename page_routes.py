@@ -290,11 +290,13 @@ def _load_fundamentals_extra(ticker: str) -> dict:
 
 
 def _utc_str_to_local(s: str) -> str:
-    try:
-        dt = datetime.strptime(s, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
-        return time_engine.fmt_datetime(dt)
-    except Exception:
-        return s
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+        try:
+            dt = datetime.strptime(s, fmt).replace(tzinfo=timezone.utc)
+            return time_engine.fmt_datetime(dt)
+        except ValueError:
+            continue
+    return s
 
 
 def enrich_macro_events(events_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

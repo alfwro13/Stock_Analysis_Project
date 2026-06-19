@@ -100,7 +100,7 @@ def record_job_run(job_id: str):
         cursor.execute(
             "INSERT INTO scheduler_run_log (job_id, last_run) VALUES (?, ?) "
             "ON CONFLICT(job_id) DO UPDATE SET last_run = excluded.last_run",
-            (job_id, datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M'))
+            (job_id, datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S'))
         )
         conn.commit()
     except Exception as e:
