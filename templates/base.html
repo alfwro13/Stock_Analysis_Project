@@ -13,6 +13,7 @@
 </head>
 <body class="{% block body_class %}body-app{% endblock %}">
 
+    {% block navbar %}
     {% if not embed %}
     {% set p = request.url.path %}
     <nav class="navbar navbar-expand-lg app-navbar sticky-top">
@@ -43,6 +44,7 @@
         </div>
     </nav>
     {% endif %}
+    {% endblock %}
 
     <main class="{% block container_class %}app-page{% endblock %}">
         {% block content %}{% endblock %}

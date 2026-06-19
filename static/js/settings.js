@@ -559,7 +559,7 @@
         }
 
         async function gitPull() {
-            const btn = document.querySelector('.btn-danger');
+            const btn = document.querySelector('button[onclick="gitPull()"]');
             btn.disabled = true;
             btn.innerText = "Pulling repository...";
             document.getElementById('git-status-msg').innerText = "";

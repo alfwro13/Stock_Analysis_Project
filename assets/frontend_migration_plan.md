@@ -126,7 +126,7 @@ Status: ☐ todo · ◐ in progress · ☑ done
 - ☑ `settings` (`/settings`, `settings.js`) — Bootstrap grid `.col-12.col-xl-6`, all inputs Bootstrap form classes, uniform `.btn.btn-primary` buttons, Workflow Monitor conflicts-only (graph in new tab), Bubble Radar persist fix
 
 ### Stage 5 — Auth pages (navbar suppressed, centered card layout)
-- ☐ `login` · ☐ `change_password` · ☐ `reset_password` · ☐ `admin_reset_password`
+- ☑ `login` (`/login`) — Bootstrap card, no navbar (`{% block navbar %}{% endblock %}`), `.auth-card-wrapper` CSS · ☐ `change_password` · ☐ `reset_password` · ☐ `admin_reset_password`
 
 ### Stage 6 — Cleanup
 - ☐ Delete `templates/navbar.html` once no page includes it; consolidate navbar.

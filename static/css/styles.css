@@ -79,6 +79,10 @@
 /* App shell layout for pages that extend base.html */
 .body-app { margin: 0; padding: 0; }
 .app-page { padding: 20px 30px; }
+/* ── Auth pages (login, change-password, reset-password) ── */
+.auth-card-wrapper { width: 100%; max-width: 400px; padding: 0 1rem; }
+.auth-logo-img { width: 36px; height: 36px; }
+.auth-brand-name { font-size: 1.2rem; font-weight: 600; letter-spacing: 0.01em; }
 .app-navbar {
   background-color: rgba(18, 18, 18, 0.95);
   border-bottom: 1px solid #333;
