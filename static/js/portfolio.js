@@ -152,9 +152,8 @@ function _loadXray(accountId) {
 }
 
 // ── Render helpers ────────────────────────────────────────────────────────────
-function _tip(text) {
-    if (!text) return '';
-    return '<abbr title="' + text.replace(/"/g, '&quot;') + '" class="no-decoration-abbr"> &#9432;</abbr>';
+function _abbr(label, tip) {
+    return tip ? '<abbr title="' + tip.replace(/"/g, '&quot;') + '">' + label + '</abbr>' : label;
 }
 
 function _card(label, value, tipText, colorClass) {
@@ -450,12 +449,12 @@ function _renderXray(data, macroData) {
 
     var hasFX = data.fx_exposure && data.fx_exposure.length > 0;
     html += '<div class="xray-section">'
-        + '<h3 class="xray-section-title">Allocation Overview ' + _tip(tips.weights_note) + '</h3>'
+        + '<h3 class="xray-section-title">' + _abbr('Allocation Overview', tips.weights_note) + '</h3>'
         + '<div class="' + (hasFX ? 'xray-row-2x2' : 'xray-row-3col') + '">'
-        + '<div class="xray-chart-box"><div class="xray-chart-label">Instrument Type ' + _tip(tips.instrument_type) + '</div><div id="xray-c-assetclass" class="xray-chart-el"></div></div>'
-        + '<div class="xray-chart-box"><div class="xray-chart-label">True Sector Exposure <span class="xray-badge">look-through</span> ' + _tip(tips.sector_lookthrough) + '</div><div id="xray-c-sector" class="xray-chart-el"></div></div>'
+        + '<div class="xray-chart-box"><div class="xray-chart-label">' + _abbr('Instrument Type', tips.instrument_type) + '</div><div id="xray-c-assetclass" class="xray-chart-el"></div></div>'
+        + '<div class="xray-chart-box"><div class="xray-chart-label">' + _abbr('True Sector Exposure', tips.sector_lookthrough) + ' <span class="xray-badge">look-through</span></div><div id="xray-c-sector" class="xray-chart-el"></div></div>'
         + '<div class="xray-chart-box"><div class="xray-chart-label">Geographic Exposure</div><div id="xray-c-geo" class="xray-chart-el"></div></div>'
-        + (hasFX ? '<div class="xray-chart-box"><div class="xray-chart-label">FX / Currency Exposure ' + _tip(tips.fx_exposure) + '</div><div id="xray-c-fx" class="xray-chart-el"></div></div>' : '')
+        + (hasFX ? '<div class="xray-chart-box"><div class="xray-chart-label">' + _abbr('FX / Currency Exposure', tips.fx_exposure) + '</div><div id="xray-c-fx" class="xray-chart-el"></div></div>' : '')
         + '</div></div>';
 
     html += '<div class="xray-section">'
@@ -466,7 +465,7 @@ function _renderXray(data, macroData) {
     var mrcHoldings = (data.holdings || []).filter(function (h) { return h.marginal_risk_contribution != null; });
     if (mrcHoldings.length >= 2) {
         html += '<div class="xray-section">'
-            + '<h3 class="xray-section-title">Risk Contribution per Holding ' + _tip(tips.marginal_risk_contribution) + '</h3>'
+            + '<h3 class="xray-section-title">' + _abbr('Risk Contribution per Holding', tips.marginal_risk_contribution) + '</h3>'
             + '<div id="xray-c-mrc" class="xray-chart-el"></div>'
             + '</div>';
     }
@@ -474,7 +473,7 @@ function _renderXray(data, macroData) {
     var cm = data.correlation_matrix || {};
     if (cm.tickers && cm.tickers.length >= 2) {
         html += '<div class="xray-section">'
-            + '<h3 class="xray-section-title">Correlation Matrix ' + _tip(tips.avg_correlation) + '</h3>'
+            + '<h3 class="xray-section-title">' + _abbr('Correlation Matrix', tips.avg_correlation) + '</h3>'
             + '<div class="xray-corr-guide">'
             + '<strong>How to read this chart:</strong> Each cell shows the correlation between two holdings '
             + '&mdash; how closely they move together over the past year. '
@@ -499,9 +498,9 @@ function _renderXray(data, macroData) {
     html += '<div class="xray-section"><h3 class="xray-section-title">Income &amp; Unrealised P&amp;L</h3>'
         + '<div class="xray-row-2col">'
         + '<div class="xray-income-cards">'
-        + '<div class="xray-income-card"><div class="xray-income-label">Weighted Dividend Yield ' + _tip(tips.dividend_yield) + '</div>'
+        + '<div class="xray-income-card"><div class="xray-income-label">' + _abbr('Weighted Dividend Yield', tips.dividend_yield) + '</div>'
         + '<div class="xray-income-value">' + _pct(inc.weighted_dividend_yield, 2) + '</div></div>'
-        + '<div class="xray-income-card"><div class="xray-income-label">Projected Annual Income ' + _tip(tips.projected_income) + '</div>'
+        + '<div class="xray-income-card"><div class="xray-income-label">' + _abbr('Projected Annual Income', tips.projected_income) + '</div>'
         + '<div class="xray-income-value">' + sym + (inc.projected_annual_income || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + '</div></div>'
         + '</div>'
         + '<div id="xray-c-pnl" class="xray-chart-el"></div>'
@@ -551,7 +550,7 @@ function _renderXray(data, macroData) {
     if (rm.cache_date) {
         html += '<div class="xray-footer">Risk metrics as of ' + rm.cache_date
             + ' &middot; benchmark: ' + rm.benchmark
-            + ' &middot; lookback: ' + rm.lookback_days + ' days ' + _tip(tips.benchmark)
+            + ' &middot; ' + _abbr('lookback: ' + rm.lookback_days + ' days', tips.benchmark)
             + ' &middot; all % = invested capital, cash excluded</div>';
     }
 
