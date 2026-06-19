@@ -1998,6 +1998,36 @@
                 <div id="bubble-radar-msg" class="mt-10"></div>
             </div>
 
+            <div class="settings-panel border-left-cyan" id="forensic-screener-card">
+                <h4 class="settings-panel-header text-cyan">&#128269; Forensic Screener</h4>
+                <p class="settings-desc">
+                    Monthly forensic accounting analysis for your portfolio and watchlist.
+                    Runs two jobs on the 1st of each month: first downloads annual financial statements from Yahoo Finance,
+                    then computes <abbr title="9-point model: profitability, leverage, liquidity, efficiency. Score &lt; 4 flags decay risk.">Piotroski F-Score</abbr>,
+                    <abbr title="Altman Z' bankruptcy model. Zones: &gt;2.6 safe, 1.1–2.6 grey, &lt;1.1 distress.">Altman Z-Score</abbr>, and
+                    <abbr title="8-variable earnings manipulation model. M &gt; −1.78 flags possible manipulation.">Beneish M-Score</abbr>.
+                    Alerts are dispatched via the Notification Router when distress thresholds are breached.
+                    Full results at the <a href="/forensic-screener" class="text-cyan">Forensic Screener tools page</a>.
+                </p>
+
+                {% set forensic_fetch_cfg = config.SCHEDULING.FORENSIC_QUARTERLY_FETCH if config.SCHEDULING.FORENSIC_QUARTERLY_FETCH else {} %}
+                {% set forensic_score_cfg = config.SCHEDULING.FORENSIC_SCORES if config.SCHEDULING.FORENSIC_SCORES else {} %}
+
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="FORENSIC_QUARTERLY_FETCH_ENABLED" {% if forensic_fetch_cfg.ENABLED %}checked{% endif %}>
+                    <label for="FORENSIC_QUARTERLY_FETCH_ENABLED">Enable scheduled Forensic Quarterly Data Fetch (day 1 of month, 06:00 UTC)</label>
+                </div>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="FORENSIC_SCORES_ENABLED" {% if forensic_score_cfg.ENABLED %}checked{% endif %}>
+                    <label for="FORENSIC_SCORES_ENABLED">Enable scheduled Forensic Accounting Scores (day 1 of month, 07:00 UTC)</label>
+                </div>
+                <div class="flex-gap-15">
+                    <button type="button" class="btn btn-primary mt-0" onclick="triggerForensicFetch()">&#9654; Run Fetch Now</button>
+                    <button type="button" class="btn btn-primary mt-0" onclick="triggerForensicScore()">&#9654; Run Scores Now</button>
+                </div>
+                <div id="forensic-msg" class="mt-10"></div>
+            </div>
+
         </details>
 
         <details class="settings-card" id="workflow-monitor-card">

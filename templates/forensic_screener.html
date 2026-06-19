@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block title %}Quantamental - Forensic Screener{% endblock %}
+
+{% block content %}
+<h1 class="mb-1">&#128269; Forensic Screener</h1>
+<p class="text-muted mb-3">
+    Institutional-grade accounting forensics for your portfolio and watchlist.
+    Flags structural insolvency risk (<abbr title="9-point scoring model evaluating profitability, leverage, liquidity, and operating efficiency. Score &lt; 4 signals fundamental decay.">Piotroski F-Score</abbr>),
+    bankruptcy risk (<abbr title="Altman Z' (non-manufacturer model). Zones: &gt;2.6 safe, 1.1–2.6 grey area, &lt;1.1 distress. Uses working capital, retained earnings, EBIT, and book equity.">Altman Z-Score</abbr>),
+    and earnings manipulation (<abbr title="8-variable Beneish M-Score. M &gt; −1.78 flags possible earnings manipulation. Requires two years of annual financial statements.">Beneish M-Score</abbr>).
+    Scores are computed monthly from annual financial statements via yfinance.
+</p>
+
+<a href="/tools" class="btn btn-outline-secondary btn-sm mb-3">&#8592; Back to Tools</a>
+
+<div class="row g-3 mb-4">
+    <div class="col-12 col-lg-6">
+        <div class="card h-100">
+            <div class="card-body">
+                <h6 class="card-title mb-3">Forensic Quarterly Data Fetch</h6>
+                <p class="text-muted small mb-2">Downloads annual financial statements from Yahoo Finance for all portfolio and watchlist tickers. Caches results to disk; skips tickers refreshed within the last 30 days.</p>
+                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                    <span class="text-secondary small">Last run: <strong id="fetch-last-run">{{ fetch_last_run or 'Never' }}</strong></span>
+                    <button id="btn-run-fetch" class="btn btn-outline-primary btn-sm">Run Now</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-lg-6">
+        <div class="card h-100">
+            <div class="card-body">
+                <h6 class="card-title mb-3">Forensic Accounting Scores</h6>
+                <p class="text-muted small mb-2">Computes Piotroski F-Score, Altman Z-Score, and Beneish M-Score from the cached statements, writes results to the database, and fires alerts for distress thresholds.</p>
+                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                    <span class="text-secondary small">Last run: <strong id="score-last-run">{{ score_last_run or 'Never' }}</strong></span>
+                    <button id="btn-run-score" class="btn btn-outline-primary btn-sm">Run Now</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="forensic-loading" class="text-secondary small mb-2">Loading scores…</div>
+<div id="forensic-empty" class="text-secondary small mb-2" style="display:none">No data yet — run the Forensic Quarterly Data Fetch followed by Forensic Accounting Scores to populate this table.</div>
+
+<table id="forensic-table" class="table table-hover w-100" style="display:none">
+    <thead>
+        <tr>
+            <th>Ticker</th>
+            <th>Company</th>
+            <th>Sector</th>
+            <th><abbr title="Piotroski F-Score (0–9): evaluates profitability, leverage, liquidity, and operating efficiency. Score &lt; 4 flags fundamental decay.">F-Score</abbr></th>
+            <th><abbr title="Altman Z' Score: &gt;2.6 safe, 1.1–2.6 grey zone, &lt;1.81 distress. Predicts bankruptcy risk.">Altman Z</abbr></th>
+            <th><abbr title="Beneish M-Score: M &gt; −1.78 may indicate earnings manipulation. Requires 2 years of financial statements.">Beneish M</abbr></th>
+            <th>Flags</th>
+            <th>Last Updated</th>
+        </tr>
+    </thead>
+    <tbody id="forensic-tbody"></tbody>
+</table>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    window.FORENSIC_CFG = {
+        fetchLastRun: {{ fetch_last_run | tojson }},
+        scoreLastRun: {{ score_last_run | tojson }}
+    };
+</script>
+<script src="/static/js/forensic_screener.js?v={{ css_version }}"></script>
+{% endblock %}

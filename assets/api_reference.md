@@ -2246,4 +2246,57 @@ HTML page. Renders the detail view for a single predictor: accuracy metrics, pre
 
 ---
 
+## 23. Forensic Screener
+
+Monthly accounting forensics across portfolio and watchlist tickers. Computes Piotroski F-Score (0–9), Altman Z-Score (bankruptcy risk), and Beneish M-Score (earnings manipulation) from annual financial statements. Scores are stored in the `stock_signals` table and displayed at `/forensic-screener`.
+
+### `GET /api/forensic-scores`
+
+Returns the latest forensic scores for all portfolio and watchlist tickers.
+
+**Response:**
+```json
+{
+  "status": "success",
+  "results": [
+    {
+      "ticker": "AAPL",
+      "company_name": "Apple Inc.",
+      "sector": "Technology",
+      "piotroski_f_score": 7,
+      "altman_z_score": 4.21,
+      "beneish_m_score": -2.45,
+      "forensic_last_updated": "2026-06-01 07:12:00",
+      "flag_piotroski": false,
+      "flag_altman": false,
+      "flag_beneish": false
+    }
+  ]
+}
+```
+
+Flag thresholds: `flag_piotroski` = true when score < 4; `flag_altman` = true when Z < 1.81; `flag_beneish` = true when M > −1.78.
+
+---
+
+### `POST /api/forensic-scores/run-fetch`
+
+Triggers an immediate background run of the **Forensic Quarterly Data Fetch** job, which downloads annual financial statements from Yahoo Finance and caches them to `data/fundamentals/quarterly/`. Incremental — skips tickers with a cache file younger than 30 days.
+
+**Auth:** Required (session cookie + CSRF token).
+
+**Response:** `{"status": "success", "message": "Forensic Quarterly Data Fetch started."}`
+
+---
+
+### `POST /api/forensic-scores/run-score`
+
+Triggers an immediate background run of the **Forensic Accounting Scores** job, which loads cached annual statements, computes all three forensic scores, writes them to `stock_signals`, and fires Nextcloud alerts for any holding breaching distress thresholds.
+
+**Auth:** Required (session cookie + CSRF token).
+
+**Response:** `{"status": "success", "message": "Forensic Accounting Scores started."}`
+
+---
+
 *Generated: 2026-06-06 · Quantamental Dashboard*

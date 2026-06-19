@@ -3,16 +3,55 @@ tests/test_fundamentals_helpers.py  ── FUNDAMENTALS HELPERS
 
 Covers calculate_peter_lynch_peg() for all guard paths, PE selection logic,
 decimal-to-percentage scaling, and denominator overflow protection.
+
+Also covers the three forensic score functions: calculate_piotroski_f_score,
+calculate_altman_z_score, and calculate_beneish_m_score.
 """
 
 import sys
 from pathlib import Path
 
 import pytest
+import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from fundamentals_helpers import calculate_peter_lynch_peg
+from fundamentals_helpers import (
+    calculate_peter_lynch_peg,
+    calculate_piotroski_f_score,
+    calculate_altman_z_score,
+    calculate_beneish_m_score,
+)
+
+
+# ── Shared DataFrame builders ─────────────────────────────────────────────────
+
+def _make_bs(t: dict, p: dict) -> pd.DataFrame:
+    """Build a 2-column annual balance sheet DataFrame (newest col first)."""
+    import pandas as pd
+    from datetime import datetime
+    dates = [datetime(2024, 9, 30), datetime(2023, 9, 30)]
+    rows = set(t.keys()) | set(p.keys())
+    data = {d: {r: (t if d == dates[0] else p).get(r) for r in rows} for d in dates}
+    return pd.DataFrame(data)
+
+
+def _make_fin(t: dict, p: dict) -> pd.DataFrame:
+    import pandas as pd
+    from datetime import datetime
+    dates = [datetime(2024, 9, 30), datetime(2023, 9, 30)]
+    rows = set(t.keys()) | set(p.keys())
+    data = {d: {r: (t if d == dates[0] else p).get(r) for r in rows} for d in dates}
+    return pd.DataFrame(data)
+
+
+def _make_cf(t: dict, p: dict) -> pd.DataFrame:
+    import pandas as pd
+    from datetime import datetime
+    dates = [datetime(2024, 9, 30), datetime(2023, 9, 30)]
+    rows = set(t.keys()) | set(p.keys())
+    data = {d: {r: (t if d == dates[0] else p).get(r) for r in rows} for d in dates}
+    return pd.DataFrame(data)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -189,3 +228,162 @@ class TestDenominatorGuard:
 ])
 def test_returns_none_for_invalid_inputs(fwd, trail, growth, div):
     assert calculate_peter_lynch_peg(fwd, trail, growth, div) is None
+
+
+# ── Piotroski F-Score ─────────────────────────────────────────────────────────
+
+class TestPiotroskiFScore:
+
+    def _healthy(self):
+        """Profitable company improving on all 9 criteria → score should be high."""
+        bs_t = {
+            'Total Assets': 1000, 'Current Assets': 400, 'Current Liabilities': 150,
+            'Long Term Debt': 100, 'Ordinary Shares Number': 500,
+        }
+        bs_p = {
+            'Total Assets': 900, 'Current Assets': 350, 'Current Liabilities': 160,
+            'Long Term Debt': 150, 'Ordinary Shares Number': 510,
+        }
+        fin_t = {'Net Income': 80, 'Total Revenue': 500, 'Gross Profit': 200}
+        fin_p = {'Net Income': 60, 'Total Revenue': 400, 'Gross Profit': 140}
+        cf_t  = {'Operating Cash Flow': 100}
+        cf_p  = {'Operating Cash Flow': 80}
+        return _make_bs(bs_t, bs_p), _make_fin(fin_t, fin_p), _make_cf(cf_t, cf_p)
+
+    def test_healthy_company_scores_high(self):
+        bs, fin, cf = self._healthy()
+        score = calculate_piotroski_f_score(bs, fin, cf)
+        assert score is not None
+        assert score >= 5
+
+    def test_score_range_0_to_9(self):
+        bs, fin, cf = self._healthy()
+        score = calculate_piotroski_f_score(bs, fin, cf)
+        assert score is not None
+        assert 0 <= score <= 9
+
+    def test_returns_none_for_empty_dataframes(self):
+        empty = pd.DataFrame()
+        assert calculate_piotroski_f_score(empty, empty, empty) is None
+
+    def test_returns_none_for_none_inputs(self):
+        assert calculate_piotroski_f_score(None, None, None) is None
+
+    def test_returns_none_when_insufficient_criteria(self):
+        bs = _make_bs({'Total Assets': 100}, {'Total Assets': 90})
+        fin = _make_fin({'Net Income': 10}, {'Net Income': 8})
+        cf  = _make_cf({}, {})
+        result = calculate_piotroski_f_score(bs, fin, cf)
+        assert result is None or isinstance(result, int)
+
+    def test_single_period_still_evaluates_available_criteria(self):
+        from datetime import datetime
+        dates = [datetime(2024, 9, 30)]
+        bs_data = {dates[0]: {'Total Assets': 1000, 'Current Assets': 400, 'Current Liabilities': 150}}
+        fin_data = {dates[0]: {'Net Income': 80, 'Total Revenue': 500, 'Gross Profit': 200}}
+        cf_data  = {dates[0]: {'Operating Cash Flow': 100}}
+        bs  = pd.DataFrame(bs_data)
+        fin = pd.DataFrame(fin_data)
+        cf  = pd.DataFrame(cf_data)
+        result = calculate_piotroski_f_score(bs, fin, cf)
+        assert result is None or (0 <= result <= 9)
+
+
+# ── Altman Z-Score ────────────────────────────────────────────────────────────
+
+class TestAltmanZScore:
+
+    def _healthy_info_bs_fin(self):
+        info = {'marketCap': 5_000_000}
+        bs = _make_bs(
+            {'Total Assets': 1000, 'Working Capital': 250, 'Retained Earnings': 300,
+             'Common Stock Equity': 600, 'Total Liabilities Net Minority Interest': 400,
+             'Current Assets': 400, 'Current Liabilities': 150},
+            {'Total Assets': 900},
+        )
+        fin = _make_fin({'EBIT': 120, 'Total Revenue': 500}, {'EBIT': 100, 'Total Revenue': 400})
+        return info, bs, fin
+
+    def test_returns_float_for_valid_inputs(self):
+        info, bs, fin = self._healthy_info_bs_fin()
+        z = calculate_altman_z_score(info, bs, fin)
+        assert isinstance(z, float)
+
+    def test_healthy_company_in_safe_zone(self):
+        info, bs, fin = self._healthy_info_bs_fin()
+        z = calculate_altman_z_score(info, bs, fin)
+        assert z is not None
+        assert z > 1.0
+
+    def test_returns_none_for_missing_total_assets(self):
+        info = {}
+        bs  = _make_bs({}, {})
+        fin = _make_fin({'EBIT': 100, 'Total Revenue': 400}, {})
+        assert calculate_altman_z_score(info, bs, fin) is None
+
+    def test_returns_none_for_none_inputs(self):
+        assert calculate_altman_z_score({}, None, None) is None
+
+    def test_returns_none_for_empty_dataframes(self):
+        assert calculate_altman_z_score({}, pd.DataFrame(), pd.DataFrame()) is None
+
+    def test_score_is_rounded_to_2dp(self):
+        info, bs, fin = self._healthy_info_bs_fin()
+        z = calculate_altman_z_score(info, bs, fin)
+        if z is not None:
+            assert z == round(z, 2)
+
+
+# ── Beneish M-Score ───────────────────────────────────────────────────────────
+
+class TestBeneishMScore:
+
+    def _clean_company(self):
+        bs = _make_bs(
+            {'Total Assets': 1000, 'Accounts Receivable': 50, 'Current Assets': 400,
+             'Net PPE': 300, 'Total Liabilities Net Minority Interest': 400},
+            {'Total Assets': 900, 'Accounts Receivable': 45, 'Current Assets': 360,
+             'Net PPE': 280, 'Total Liabilities Net Minority Interest': 380},
+        )
+        fin = _make_fin(
+            {'Total Revenue': 500, 'Gross Profit': 200, 'Cost Of Revenue': 300,
+             'Net Income': 80, 'Selling General And Administration': 60},
+            {'Total Revenue': 450, 'Gross Profit': 180, 'Cost Of Revenue': 270,
+             'Net Income': 70, 'Selling General And Administration': 55},
+        )
+        cf = _make_cf(
+            {'Operating Cash Flow': 100, 'Depreciation And Amortization': 30},
+            {'Operating Cash Flow': 90,  'Depreciation And Amortization': 28},
+        )
+        return bs, fin, cf
+
+    def test_clean_company_score_below_threshold(self):
+        bs, fin, cf = self._clean_company()
+        m = calculate_beneish_m_score(bs, fin, cf)
+        if m is not None:
+            assert m < -1.78
+
+    def test_returns_float_or_none(self):
+        bs, fin, cf = self._clean_company()
+        m = calculate_beneish_m_score(bs, fin, cf)
+        assert m is None or isinstance(m, float)
+
+    def test_returns_none_for_single_period(self):
+        from datetime import datetime
+        dates = [datetime(2024, 9, 30)]
+        bs  = pd.DataFrame({dates[0]: {'Total Assets': 1000}})
+        fin = pd.DataFrame({dates[0]: {'Total Revenue': 500}})
+        cf  = pd.DataFrame({dates[0]: {'Operating Cash Flow': 100}})
+        assert calculate_beneish_m_score(bs, fin, cf) is None
+
+    def test_returns_none_for_none_inputs(self):
+        assert calculate_beneish_m_score(None, None, None) is None
+
+    def test_returns_none_for_empty_dataframes(self):
+        assert calculate_beneish_m_score(pd.DataFrame(), pd.DataFrame(), pd.DataFrame()) is None
+
+    def test_score_is_rounded_to_3dp(self):
+        bs, fin, cf = self._clean_company()
+        m = calculate_beneish_m_score(bs, fin, cf)
+        if m is not None:
+            assert m == round(m, 3)

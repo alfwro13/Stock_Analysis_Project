@@ -37,6 +37,7 @@ _TTLS: dict[str, int] = {
     "fund_holdings":         86400,
     "ticker_actions":        86400,
     "fx_rate":                 600,  # 10 min
+    "annual_financials":     86400,  # 24 h — annual statements change quarterly
 }
 
 
@@ -300,6 +301,33 @@ class YahooEngine:
         except Exception:
             logger.error("get_ticker_actions failed for %s", ticker, exc_info=True)
         return None
+
+    def get_annual_financials(
+        self, ticker: str
+    ) -> tuple[Optional[pd.DataFrame], Optional[pd.DataFrame], Optional[pd.DataFrame]]:
+        """Annual balance sheet, income statement, and cash flow DataFrames. Cached 24 h.
+        Returns (balance_sheet, income_stmt, cash_flow); any element may be None on failure."""
+        key = f"annual_financials:{ticker}"
+        cached = self._get(key)
+        if cached is not None:
+            return cached
+        try:
+            with _yf_singleton_lock:
+                with yahoo_connection_boundary(f"Annual Financials: {ticker}") as session:
+                    tk  = yf.Ticker(ticker, session=session)
+                    bs  = tk.balance_sheet
+                    fin = tk.income_stmt
+                    cf  = tk.cash_flow
+            result = (
+                bs  if bs  is not None and not bs.empty  else None,
+                fin if fin is not None and not fin.empty else None,
+                cf  if cf  is not None and not cf.empty  else None,
+            )
+            self._set(key, result, _TTLS["annual_financials"])
+            return result
+        except Exception:
+            logger.error("get_annual_financials failed for %s", ticker, exc_info=True)
+        return (None, None, None)
 
     def get_fx_rate(self, pair: str) -> Optional[float]:
         # Returns None on failure; callers should use their own stale-cache fallback.

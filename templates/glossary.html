@@ -582,6 +582,35 @@
                 </div>
             </div>
 
+            <div class="accordion-item glossary-section" id="forensic-screener">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button"
+                            data-bs-toggle="collapse" data-bs-target="#collapse-forensic"
+                            aria-expanded="false" aria-controls="collapse-forensic">
+                        &#128269; Forensic Screener — Accounting Forensics &amp; Structural Health
+                    </button>
+                </h2>
+                <div id="collapse-forensic" class="accordion-collapse collapse">
+                    <div class="accordion-body">
+                        <div class="term-box">
+                            <span class="term-title">Piotroski F-Score</span>
+                            <p>A 0–9 point scoring model that assesses a company's structural financial health across three dimensions: profitability (positive ROA, positive operating cash flow, improving ROA, accruals quality), leverage and liquidity (declining long-term debt ratio, improving current ratio, no new share issuance), and operating efficiency (improving gross margin, improving asset turnover). Each criterion scores 1 if met, 0 if not. Higher is better.</p>
+                            <div class="rule">Score ≥ 7: strong fundamentals. 4–6: neutral. &lt; 4: flags structural decay — the company is deteriorating across multiple financial dimensions simultaneously.</div>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">Altman Z-Score</span>
+                            <p>A bankruptcy prediction model using four financial ratios: working capital / total assets (X1), retained earnings / total assets (X2), EBIT / total assets (X3), and book equity / total liabilities (X4). The Z' variant (non-manufacturer formula: <code>6.56·X1 + 3.26·X2 + 6.72·X3 + 1.05·X4</code>) is used here as it applies to service companies, retailers, and financial firms as well as manufacturers. Derived from annual financial statements.</p>
+                            <div class="rule">Z &gt; 2.6: safe zone. 1.1–2.6: grey zone (elevated risk). &lt; 1.1: distress zone — statistically similar to companies that filed for bankruptcy within 2 years of measurement.</div>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">Beneish M-Score</span>
+                            <p>An 8-variable model that detects the statistical signature of earnings manipulation in reported financial statements. The eight indices are: Days Sales in Receivables (DSRI), Gross Margin (GMI), Asset Quality (AQI), Sales Growth (SGI), Depreciation (DEPI), Sales, General &amp; Administrative expenses (SGAI), Leverage (LVGI), and Total Accruals to Total Assets (TATA). Requires two consecutive annual reporting periods. ETFs and newly listed stocks with fewer than two annual periods return N/A.</p>
+                            <div class="rule">M &gt; −1.78: possible earnings manipulation flagged. M between −1.78 and −2.22: moderate risk. M &lt; −2.22: low manipulation probability. The model has an ~76% detection rate on confirmed manipulators.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div class="accordion-item glossary-section" id="fx-drag">
                 <h2 class="accordion-header">
                     <button class="accordion-button collapsed" type="button"

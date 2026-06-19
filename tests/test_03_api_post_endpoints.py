@@ -403,3 +403,25 @@ def test_trap_monitor_run_returns_success(client):
     assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
     data = resp.json()
     assert data.get("status") == "success", f"Expected success, got: {data}"
+
+
+# ── Forensic Screener ──────────────────────────────────────────────────────────
+
+@pytest.mark.api
+def test_forensic_run_fetch_returns_success(client):
+    """POST /api/forensic-scores/run-fetch must return 200 {status: success} immediately."""
+    with patch.object(_StarletteBackgroundTasks, "add_task", return_value=None):
+        resp = client.post("/api/forensic-scores/run-fetch")
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
+    data = resp.json()
+    assert data.get("status") == "success", f"Expected success, got: {data}"
+
+
+@pytest.mark.api
+def test_forensic_run_score_returns_success(client):
+    """POST /api/forensic-scores/run-score must return 200 {status: success} immediately."""
+    with patch.object(_StarletteBackgroundTasks, "add_task", return_value=None):
+        resp = client.post("/api/forensic-scores/run-score")
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
+    data = resp.json()
+    assert data.get("status") == "success", f"Expected success, got: {data}"

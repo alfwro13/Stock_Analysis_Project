@@ -1293,6 +1293,42 @@
             }
         }
 
+        async function triggerForensicFetch() {
+            const btn = document.querySelector('button[onclick="triggerForensicFetch()"]');
+            const msgEl = document.getElementById('forensic-msg');
+            btn.disabled = true;
+            btn.innerText = "⏳ Running...";
+            msgEl.innerHTML = '';
+            try {
+                const resp = await fetch('/api/forensic-scores/run-fetch', { method: 'POST' });
+                const data = await resp.json();
+                const color = data.status === 'success' ? '#4caf50' : '#f44336';
+                msgEl.innerHTML = `<span style="color:${color}; font-size:13px;">${data.message}</span>`;
+            } catch (err) {
+                msgEl.innerHTML = `<span style="color:#f44336; font-size:13px;">Request failed: ${err.message}</span>`;
+            } finally {
+                setTimeout(() => { btn.disabled = false; btn.innerText = "▶ Run Fetch Now"; }, 3000);
+            }
+        }
+
+        async function triggerForensicScore() {
+            const btn = document.querySelector('button[onclick="triggerForensicScore()"]');
+            const msgEl = document.getElementById('forensic-msg');
+            btn.disabled = true;
+            btn.innerText = "⏳ Running...";
+            msgEl.innerHTML = '';
+            try {
+                const resp = await fetch('/api/forensic-scores/run-score', { method: 'POST' });
+                const data = await resp.json();
+                const color = data.status === 'success' ? '#4caf50' : '#f44336';
+                msgEl.innerHTML = `<span style="color:${color}; font-size:13px;">${data.message}</span>`;
+            } catch (err) {
+                msgEl.innerHTML = `<span style="color:#f44336; font-size:13px;">Request failed: ${err.message}</span>`;
+            } finally {
+                setTimeout(() => { btn.disabled = false; btn.innerText = "▶ Run Scores Now"; }, 3000);
+            }
+        }
+
         async function triggerBubbleRadarScan() {
             const btn = document.querySelector('button[onclick="triggerBubbleRadarScan()"]');
             const msgEl = document.getElementById('bubble-radar-msg');
@@ -1791,6 +1827,16 @@
                         "TIME": document.getElementById('BUBBLE_RADAR_TIME').value,
                         "WATCH_THRESHOLD": parseInt(document.getElementById('BUBBLE_RADAR_WATCH_THRESHOLD').value) || 70,
                         "FLAG_THRESHOLD": parseInt(document.getElementById('BUBBLE_RADAR_FLAG_THRESHOLD').value) || 85
+                    },
+                    "FORENSIC_QUARTERLY_FETCH": {
+                        "ENABLED": document.getElementById('FORENSIC_QUARTERLY_FETCH_ENABLED').checked,
+                        "DAY_OF_MONTH": 1,
+                        "TIME": "06:00"
+                    },
+                    "FORENSIC_SCORES": {
+                        "ENABLED": document.getElementById('FORENSIC_SCORES_ENABLED').checked,
+                        "DAY_OF_MONTH": 1,
+                        "TIME": "07:00"
                     }
                 },
                 "NOTIFICATIONS": {

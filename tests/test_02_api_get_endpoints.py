@@ -467,3 +467,14 @@ def test_fx_drag_invalid_period_rejected(client):
     """GET /api/fx-drag?period=invalid must return 422."""
     resp = client.get("/api/fx-drag?period=invalid")
     assert resp.status_code == 422, f"Expected 422 for invalid period, got {resp.status_code}"
+
+
+@pytest.mark.api
+def test_get_forensic_scores_returns_200(client):
+    """GET /api/forensic-scores must return 200 with a results list."""
+    resp = client.get("/api/forensic-scores")
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
+    data = _json(resp)
+    assert data["status"] == "success"
+    assert "results" in data
+    assert isinstance(data["results"], list)

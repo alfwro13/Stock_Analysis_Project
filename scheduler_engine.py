@@ -976,6 +976,161 @@ def unregister_etf_predictor_jobs(config_id: int) -> None:
             pass
 
 
+def run_forensic_quarterly_fetch_job():
+    # GUI name: "Forensic Quarterly Data Fetch". Canonical scheduled-job name lives in scheduler_engine.JOB_GRAPH.
+    import json
+    import time as _time
+    from datetime import datetime, timezone
+    from yahoo_engine import yahoo_engine as _yengine
+    from config import FORENSIC_DIR
+    _mark_job_started(job_label("forensic_quarterly_fetch_job"))
+    try:
+        log_sched_notification("Scheduler", "Forensic Quarterly Data Fetch started...")
+        engine = DataEngine()
+        tickers = engine.get_all_tickers()
+        if not tickers:
+            log_sched_notification("Info", "Forensic Quarterly Data Fetch: no tickers found.")
+            return
+        FORENSIC_DIR.mkdir(parents=True, exist_ok=True)
+        now_utc = datetime.now(timezone.utc)
+        fetched = skipped = errors = 0
+        for ticker in tickers:
+            cache_path = FORENSIC_DIR / f"{ticker}.json"
+            if cache_path.exists():
+                try:
+                    age_days = (now_utc.timestamp() - cache_path.stat().st_mtime) / 86400
+                    if age_days < 30:
+                        skipped += 1
+                        continue
+                except OSError:
+                    pass
+            try:
+                bs, fin, cf = _yengine.get_annual_financials(ticker)
+                if bs is None:
+                    errors += 1
+                    continue
+                payload = {
+                    "ticker": ticker,
+                    "fetched_utc": now_utc.strftime("%Y-%m-%d %H:%M:%S"),
+                    "balance_sheet": {str(k): v for k, v in bs.to_dict().items()},
+                    "financials":    {str(k): v for k, v in fin.to_dict().items()} if fin is not None else {},
+                    "cashflow":      {str(k): v for k, v in cf.to_dict().items()}  if cf is not None else {},
+                }
+                with open(cache_path, 'w') as f:
+                    json.dump(payload, f, default=str)
+                fetched += 1
+                _time.sleep(0.5)
+            except Exception as e:
+                logger.warning("Forensic fetch failed for %s: %s", ticker, e)
+                errors += 1
+        log_sched_notification("Success", f"Forensic Quarterly Data Fetch complete — {fetched} fetched, {skipped} skipped (fresh), {errors} errors.")
+    except Exception as e:
+        logger.error("Forensic Quarterly Data Fetch failed: %s", e)
+        log_sched_notification("Error", f"Forensic Quarterly Data Fetch failed: {e}")
+    finally:
+        _mark_job_done(job_label("forensic_quarterly_fetch_job"))
+        record_job_run("forensic_quarterly_fetch_job")
+
+
+def run_forensic_scores_job():
+    # GUI name: "Forensic Accounting Scores". Canonical scheduled-job name lives in scheduler_engine.JOB_GRAPH.
+    import json
+    from datetime import datetime, timezone
+    import pandas as pd
+    from config import FORENSIC_DIR
+    from fundamentals_helpers import calculate_piotroski_f_score, calculate_altman_z_score, calculate_beneish_m_score
+    from universe_fundamentals_engine import _fetch_info
+    _mark_job_started(job_label("forensic_scores_job"))
+    try:
+        log_sched_notification("Scheduler", "Forensic Accounting Scores started...")
+        engine = DataEngine()
+        tickers = engine.get_all_tickers()
+        if not tickers:
+            log_sched_notification("Info", "Forensic Accounting Scores: no tickers found.")
+            return
+
+        scored = alerts = errors = 0
+        now_ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+        for ticker in tickers:
+            cache_path = FORENSIC_DIR / f"{ticker}.json"
+            if not cache_path.exists():
+                continue
+            try:
+                with open(cache_path, 'r') as f:
+                    data = json.load(f)
+
+                bs  = pd.DataFrame.from_dict(data.get('balance_sheet', {}))
+                fin = pd.DataFrame.from_dict(data.get('financials', {}))
+                cf  = pd.DataFrame.from_dict(data.get('cashflow', {}))
+
+                if not bs.empty:
+                    bs.columns  = pd.to_datetime(bs.columns)
+                    bs  = bs.sort_index(axis=1, ascending=False)
+                if not fin.empty:
+                    fin.columns = pd.to_datetime(fin.columns)
+                    fin = fin.sort_index(axis=1, ascending=False)
+                if not cf.empty:
+                    cf.columns  = pd.to_datetime(cf.columns)
+                    cf  = cf.sort_index(axis=1, ascending=False)
+
+                info = _fetch_info(ticker)
+                piotroski = calculate_piotroski_f_score(bs, fin, cf)
+                altman    = calculate_altman_z_score(info, bs, fin)
+                beneish   = calculate_beneish_m_score(bs, fin, cf)
+
+                conn = None
+                try:
+                    conn = get_connection()
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "UPDATE stock_signals SET piotroski_f_score=?, altman_z_score=?, beneish_m_score=?, forensic_last_updated=? WHERE ticker=?",
+                        (piotroski, altman, beneish, now_ts, ticker),
+                    )
+                    if cursor.rowcount == 0:
+                        cursor.execute(
+                            "INSERT OR IGNORE INTO stock_signals (ticker, piotroski_f_score, altman_z_score, beneish_m_score, forensic_last_updated, score_method) VALUES (?,?,?,?,?,'FORENSIC')",
+                            (ticker, piotroski, altman, beneish, now_ts),
+                        )
+                    conn.commit()
+                finally:
+                    if conn:
+                        conn.close()
+
+                scored += 1
+
+                flags = []
+                if piotroski is not None and piotroski < 4:
+                    flags.append(f"Piotroski={piotroski}/9 (decay risk)")
+                if altman is not None and altman < 1.81:
+                    flags.append(f"Altman Z={altman} (distress zone)")
+                if beneish is not None and beneish > -1.78:
+                    flags.append(f"Beneish M={beneish} (manipulation risk)")
+
+                if flags:
+                    msg = f"{ticker}: " + " | ".join(flags)
+                    alert_conn = None
+                    try:
+                        alert_conn = get_connection()
+                        notify("forensic_alert", "Forensic Alert", msg, conn=alert_conn)
+                    finally:
+                        if alert_conn:
+                            alert_conn.close()
+                    alerts += 1
+
+            except Exception as e:
+                logger.warning("Forensic scoring failed for %s: %s", ticker, e)
+                errors += 1
+
+        log_sched_notification("Success", f"Forensic Accounting Scores complete — {scored} scored, {alerts} alerts fired, {errors} errors.")
+    except Exception as e:
+        logger.error("Forensic Accounting Scores failed: %s", e)
+        log_sched_notification("Error", f"Forensic Accounting Scores failed: {e}")
+    finally:
+        _mark_job_done(job_label("forensic_scores_job"))
+        record_job_run("forensic_scores_job")
+
+
 def run_etf_actual_fill_job() -> None:
     """Always-on: fills actuals for all active ETF predictor configs."""
     log_sched_notification("Scheduler", "Started ETF Predictor actual-fill job...")
@@ -1506,6 +1661,40 @@ def reload_scheduler():
         except Exception as e:
             logger.error("Failed to schedule Bubble Radar Scan: %s", e)
 
+    forensic_fetch_cfg = scheduling.get("FORENSIC_QUARTERLY_FETCH", {})
+    if forensic_fetch_cfg.get("ENABLED", False):
+        try:
+            time_str = forensic_fetch_cfg.get("TIME", "06:00")
+            run_h, run_m = map(int, time_str.split(":"))
+            day_of_month = forensic_fetch_cfg.get("DAY_OF_MONTH", 1)
+            scheduler.add_job(
+                run_forensic_quarterly_fetch_job,
+                CronTrigger(day=day_of_month, hour=run_h, minute=run_m, timezone="UTC"),
+                id="forensic_quarterly_fetch_job",
+                replace_existing=True,
+                misfire_grace_time=3600,
+            )
+            logger.info("Forensic Quarterly Data Fetch scheduled for day %s at %s UTC.", day_of_month, time_str)
+        except Exception as e:
+            logger.error("Failed to schedule Forensic Quarterly Data Fetch: %s", e)
+
+    forensic_scores_cfg = scheduling.get("FORENSIC_SCORES", {})
+    if forensic_scores_cfg.get("ENABLED", False):
+        try:
+            time_str = forensic_scores_cfg.get("TIME", "07:00")
+            run_h, run_m = map(int, time_str.split(":"))
+            day_of_month = forensic_scores_cfg.get("DAY_OF_MONTH", 1)
+            scheduler.add_job(
+                run_forensic_scores_job,
+                CronTrigger(day=day_of_month, hour=run_h, minute=run_m, timezone="UTC"),
+                id="forensic_scores_job",
+                replace_existing=True,
+                misfire_grace_time=3600,
+            )
+            logger.info("Forensic Accounting Scores scheduled for day %s at %s UTC.", day_of_month, time_str)
+        except Exception as e:
+            logger.error("Failed to schedule Forensic Accounting Scores: %s", e)
+
     # Always-on: fast-exits silently if no tickers are armed
     try:
         scheduler.add_job(
@@ -1646,6 +1835,8 @@ JOB_GRAPH: dict[str, dict] = {
     "system_check_job":               {"label": "System Configuration Check",                     "category": "maintenance", "engine": "system_check_engine.py",        "produces": [],                                                             "consumes": [],                                                                   "settings_anchor": "diagnostics-panel"},
     "etf_predictor_dynamic":          {"label": "ETF Price Predictors",                           "category": "predictor",   "engine": "etf_predictor_engine.py",       "produces": ["etf_predictions"],                                            "consumes": [],                        "dynamic": True,                          "settings_anchor": "tools-card"},
     "bubble_radar_job":               {"label": "Bubble Radar Scan",                              "category": "quant",       "engine": "bubble_radar_engine.py",        "produces": ["bubble_radar_metrics", "bubble_radar_history"],               "consumes": ["quant_signals", "stock_signals", "macro_indicators"],               "settings_anchor": "tools-card"},
+    "forensic_quarterly_fetch_job":   {"label": "Forensic Quarterly Data Fetch",                  "category": "quant",       "engine": "fundamentals_helpers.py",       "produces": ["forensic_quarterly_cache"],                                   "consumes": ["portfolio", "yahoo_price_data"],                                    "settings_anchor": "forensic-screener-card"},
+    "forensic_scores_job":            {"label": "Forensic Accounting Scores",                     "category": "quant",       "engine": "fundamentals_helpers.py",       "produces": ["stock_signals", "forensic_scores"],                           "consumes": ["forensic_quarterly_cache", "fundamentals"],                         "settings_anchor": "forensic-screener-card"},
 }
 
 # Canonical config-key → job-id map. `config.json` SCHEDULING/NOTIFICATIONS keys and code
@@ -1682,8 +1873,10 @@ CONFIG_KEY_TO_JOB: dict[str, str] = {
     "TRAP_MONITORS":      "trap_monitor_job",
     "BUBBLE_RADAR":       "bubble_radar_job",
     "MARKET_SENTIMENT":   "market_sentiment_job",
-    "EARNINGS_ALERTS":    "earnings_alert_job",
-    "INSIDER_TRADING":    "insider_alert_job",
+    "EARNINGS_ALERTS":          "earnings_alert_job",
+    "INSIDER_TRADING":          "insider_alert_job",
+    "FORENSIC_QUARTERLY_FETCH": "forensic_quarterly_fetch_job",
+    "FORENSIC_SCORES":          "forensic_scores_job",
 }
 
 

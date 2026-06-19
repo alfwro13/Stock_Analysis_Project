@@ -1756,6 +1756,74 @@ async def run_bubble_radar(request: Request, background_tasks: BackgroundTasks):
         return _error_500(e)
 
 
+@api_router.get("/forensic-scores")
+@limiter.limit("20/minute")
+async def get_forensic_scores(request: Request):
+    """Returns Piotroski F-Score, Altman Z-Score, and Beneish M-Score for all portfolio and watchlist tickers."""
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT ticker, company_name, sector,
+                   piotroski_f_score, altman_z_score, beneish_m_score, forensic_last_updated
+            FROM stock_signals
+            WHERE score_method != 'UNIVERSE_FUNDAMENTALS' OR score_method IS NULL
+            ORDER BY ticker
+        """)
+        rows = cursor.fetchall()
+        results = []
+        for r in rows:
+            f = r['piotroski_f_score']
+            z = r['altman_z_score']
+            m = r['beneish_m_score']
+            results.append({
+                "ticker":               r['ticker'],
+                "company_name":         r['company_name'] or r['ticker'],
+                "sector":               r['sector'] or 'Unknown',
+                "piotroski_f_score":    f,
+                "altman_z_score":       z,
+                "beneish_m_score":      m,
+                "forensic_last_updated": r['forensic_last_updated'],
+                "flag_piotroski":       f is not None and f < 4,
+                "flag_altman":          z is not None and z < 1.81,
+                "flag_beneish":         m is not None and m > -1.78,
+            })
+        return JSONResponse(content={"status": "success", "results": results})
+    except Exception as e:
+        logger.error("Failed to fetch forensic scores: %s", e)
+        return _error_500(e)
+    finally:
+        if conn:
+            conn.close()
+
+
+@api_router.post("/forensic-scores/run-fetch")
+@limiter.limit("4/minute")
+async def trigger_forensic_fetch(request: Request, background_tasks: BackgroundTasks):
+    """Manually triggers the Forensic Quarterly Data Fetch in the background."""
+    try:
+        from scheduler_engine import run_forensic_quarterly_fetch_job
+        background_tasks.add_task(run_forensic_quarterly_fetch_job)
+        return JSONResponse(content={"status": "success", "message": "Forensic Quarterly Data Fetch triggered."})
+    except Exception as e:
+        logger.error("Failed to trigger Forensic Quarterly Data Fetch: %s", e)
+        return _error_500(e)
+
+
+@api_router.post("/forensic-scores/run-score")
+@limiter.limit("4/minute")
+async def trigger_forensic_scores(request: Request, background_tasks: BackgroundTasks):
+    """Manually triggers the Forensic Accounting Scores computation in the background."""
+    try:
+        from scheduler_engine import run_forensic_scores_job
+        background_tasks.add_task(run_forensic_scores_job)
+        return JSONResponse(content={"status": "success", "message": "Forensic Accounting Scores triggered."})
+    except Exception as e:
+        logger.error("Failed to trigger Forensic Accounting Scores: %s", e)
+        return _error_500(e)
+
+
 @api_router.get("/market-regime/current")
 @limiter.limit("30/minute")
 async def get_market_regime_current(request: Request):

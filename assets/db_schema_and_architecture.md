@@ -28,6 +28,7 @@ The SQLite database acts as the central brain of the dashboard. It uses a star-l
 #### `stock_signals`
 * **Purpose:** The primary aggregation table for the Portfolio & Watchlist UI. It houses the final System Verdicts and Fundamental Health snapshots.
 * **Key Columns:** `ticker` (PK), `current_price`, `trend_50d`, `trend_200d`, `atr_stop_loss`, `trailing_pe`, `debt_to_equity`, `peter_lynch_peg`, `yield_correlation`, `composite_score`, `overall_signal`, `setup_tags`.
+* **Forensic Columns (added June 2026):** `piotroski_f_score` (REAL, 0–9 integer stored as real), `altman_z_score` (REAL), `beneish_m_score` (REAL), `forensic_last_updated` (TEXT UTC). Written monthly by the Forensic Accounting Scores job. NULL until first run.
 
 #### `quant_signals`
 * **Purpose:** Stores a daily historical log of technical and quantitative metrics for machine learning and mean-reversion analysis.
@@ -90,6 +91,7 @@ We offload heavy time-series math and unstructured payload caching to local file
 * 📁 **`data/historical/` (`.parquet`)**: 2 years of daily OHLCV data. Used by `ta` to calculate moving averages and by `plotly` to render interactive charts.
 * 📁 **`data/intraday/` (`.parquet`)**: 1 day of 5-minute interval OHLCV data. Used by the `intraday_orchestrator` to detect flash crashes.
 * 📁 **`data/fundamentals/` (`.json`)**: Raw, unadulterated `.info` dictionary dump directly from Yahoo Finance.
+* 📁 **`data/fundamentals/quarterly/` (`.json`)**: Annual financial statement cache used by the Forensic Screener. One JSON file per ticker (`{TICKER}.json`) containing `balance_sheet`, `financials`, and `cashflow` DataFrames serialised to dict. Incremental — files younger than 30 days are skipped on re-fetch. Exempt from maintenance pruning (the maintenance engine only processes files directly in `data/fundamentals/`, not subdirectories).
 * 📄 **`data/portfolio.json`**: Contains positions, shares, and VWAP synced from Ghostfolio (both Macro and Micro ledgers).
 * 📄 **`data/watchlist.json`**: Active watchlist tickers.
 * 📄 **`data/freetrade_blacklist.json`**: Self-healing ledger of permanently banned tickers.

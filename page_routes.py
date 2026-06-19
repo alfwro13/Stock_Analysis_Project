@@ -1083,6 +1083,22 @@ async def trap_monitor_page(request: Request):
     )
 
 
+@page_router.get("/forensic-screener", response_class=HTMLResponse)
+async def forensic_screener_page(request: Request):
+    from scheduler_engine import get_all_job_last_runs
+    job_last_runs = get_all_job_last_runs()
+    return templates.TemplateResponse(
+        request=request,
+        name="forensic_screener.html",
+        context={
+            "unread_count": get_unread_count(),
+            "config": load_config(),
+            "fetch_last_run": (job_last_runs.get("forensic_quarterly_fetch_job") or {}).get("last_run", "Never"),
+            "score_last_run": (job_last_runs.get("forensic_scores_job") or {}).get("last_run", "Never"),
+        },
+    )
+
+
 @page_router.get("/fx-drag", response_class=HTMLResponse)
 async def fx_drag_page(request: Request):
     now = datetime.now(timezone.utc)

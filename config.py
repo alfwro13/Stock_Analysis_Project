@@ -36,6 +36,7 @@ DATA_DIR = BASE_DIR / "data"
 HISTORICAL_DIR = DATA_DIR / "historical"
 INTRADAY_DIR = DATA_DIR / "intraday"
 FUNDAMENTALS_DIR = DATA_DIR / "fundamentals"
+FORENSIC_DIR = DATA_DIR / "fundamentals" / "quarterly"
 ANOMALY_MODELS_DIR = DATA_DIR / "anomaly_models"
 
 DB_PATH = DATA_DIR / "analysis.db"
@@ -46,6 +47,7 @@ SECRETS_PATH = BASE_DIR / "config.json"
 HISTORICAL_DIR.mkdir(parents=True, exist_ok=True)
 INTRADAY_DIR.mkdir(parents=True, exist_ok=True)
 FUNDAMENTALS_DIR.mkdir(parents=True, exist_ok=True)
+FORENSIC_DIR.mkdir(parents=True, exist_ok=True)
 ANOMALY_MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
 PORT = 8090
@@ -225,6 +227,16 @@ DEFAULT_CONFIG = {
             "TIME": "19:30",
             "WATCH_THRESHOLD": 70,
             "FLAG_THRESHOLD": 85
+        },
+        "FORENSIC_QUARTERLY_FETCH": {
+            "ENABLED": False,
+            "DAY_OF_MONTH": 1,
+            "TIME": "06:00"
+        },
+        "FORENSIC_SCORES": {
+            "ENABLED": False,
+            "DAY_OF_MONTH": 1,
+            "TIME": "07:00"
         }
     },
     "REPORTS_DEFAULTS": {

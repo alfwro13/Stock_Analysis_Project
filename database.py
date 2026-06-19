@@ -158,7 +158,12 @@ def init_db() -> None:
                 educational_notes TEXT,
                 setup_tags TEXT,
                 ml_confidence REAL,
-                score_method TEXT DEFAULT 'HARDCODED'
+                score_method TEXT DEFAULT 'HARDCODED',
+
+                piotroski_f_score REAL,
+                altman_z_score REAL,
+                beneish_m_score REAL,
+                forensic_last_updated TEXT
             )
         ''')
 
@@ -783,7 +788,9 @@ def migrate_db(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
         'analyst_rating': 'TEXT', 'next_earnings_date': 'TEXT',
         'short_interest': 'REAL', 'institutional_ownership': 'REAL', 'beta': 'REAL',
         'yield_correlation': 'REAL', 'setup_tags': 'TEXT',
-        'ml_confidence': 'REAL', 'score_method': 'TEXT DEFAULT "HARDCODED"'
+        'ml_confidence': 'REAL', 'score_method': 'TEXT DEFAULT "HARDCODED"',
+        'piotroski_f_score': 'REAL', 'altman_z_score': 'REAL',
+        'beneish_m_score': 'REAL', 'forensic_last_updated': 'TEXT'
     }
 
     for col_name, data_type in required_stock_columns.items():
