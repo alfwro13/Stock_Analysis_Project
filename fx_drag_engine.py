@@ -155,8 +155,16 @@ def portfolio_fx_breakdown(period_days: int) -> list[dict]:
 
 
 def _compute_activities_gbpusd(
-    activities: list[dict], ticker: str
-) -> tuple[float, float, int] | None:
+    activities: list[dict], ticker: str, gbpusd_series: pd.Series
+) -> tuple[float, float, int, str] | None:
+    """
+    Returns (vwap_buy_usd, weighted_avg_gbpusd_buy, buy_count, earliest_buy).
+
+    When the activity's account currency is GBP, the implied GBPUSD at purchase
+    is derived directly from unitPriceInAssetProfileCurrency / unitPrice.
+    When the account currency is non-GBP (e.g. USD), unitPrice is in USD, so
+    the actual GBPUSD rate at the trade date is looked up from gbpusd_series.
+    """
     total_usd = 0.0
     total_gbp = 0.0
     total_qty = 0.0
@@ -174,14 +182,35 @@ def _compute_activities_gbpusd(
             continue
         qty = float(act.get("quantity") or 0)
         usd_price = float(act.get("unitPriceInAssetProfileCurrency") or 0)
-        gbp_price = float(act.get("unitPrice") or 0)
-        if qty <= 0 or usd_price <= 0 or gbp_price <= 0:
+        if qty <= 0 or usd_price <= 0:
             continue
+
+        date_str = (act.get("date") or "")[:10]
+        act_currency = act.get("currency") or ""
+
+        if act_currency == "GBP":
+            gbp_price = float(act.get("unitPrice") or 0)
+            if gbp_price <= 0:
+                continue
+            gbp_cost = qty * gbp_price
+        else:
+            # Account denominated in USD (or other non-GBP): unitPrice is in USD.
+            # Look up the actual GBPUSD rate at the trade date from our Parquet series.
+            if gbpusd_series.empty or not date_str:
+                continue
+            trade_ts = pd.Timestamp(date_str)
+            available = gbpusd_series[gbpusd_series.index <= trade_ts]
+            if available.empty:
+                continue
+            gbpusd_at_buy = float(available.iloc[-1])
+            if gbpusd_at_buy <= 0:
+                continue
+            gbp_cost = (qty * usd_price) / gbpusd_at_buy
+
         total_usd += qty * usd_price
-        total_gbp += qty * gbp_price
+        total_gbp += gbp_cost
         total_qty += qty
         buy_count += 1
-        date_str = (act.get("date") or "")[:10]
         if date_str and (earliest_buy is None or date_str < earliest_buy):
             earliest_buy = date_str
 
@@ -231,7 +260,7 @@ def portfolio_lifetime_fx_breakdown() -> list[dict]:
         if not ticker or ticker not in usd_tickers:
             continue
 
-        act_result = _compute_activities_gbpusd(activities, ticker)
+        act_result = _compute_activities_gbpusd(activities, ticker, gbpusd_series)
         if act_result is None:
             continue
         vwap_buy_usd, weighted_avg_gbpusd_buy, buy_count, earliest_buy = act_result
