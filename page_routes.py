@@ -1093,8 +1093,8 @@ async def forensic_screener_page(request: Request):
         context={
             "unread_count": get_unread_count(),
             "config": load_config(),
-            "fetch_last_run": (job_last_runs.get("forensic_quarterly_fetch_job") or {}).get("last_run", "Never"),
-            "score_last_run": (job_last_runs.get("forensic_scores_job") or {}).get("last_run", "Never"),
+            "fetch_last_run": _utc_str_to_local((job_last_runs.get("forensic_quarterly_fetch_job") or {}).get("last_run", "")),
+            "score_last_run": _utc_str_to_local((job_last_runs.get("forensic_scores_job") or {}).get("last_run", "")),
         },
     )
 
