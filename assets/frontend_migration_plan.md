@@ -126,13 +126,15 @@ Status: ☐ todo · ◐ in progress · ☑ done
 - ☑ `settings` (`/settings`, `settings.js`) — Bootstrap grid `.col-12.col-xl-6`, all inputs Bootstrap form classes, uniform `.btn.btn-primary` buttons, Workflow Monitor conflicts-only (graph in new tab), Bubble Radar persist fix
 
 ### Stage 5 — Auth pages (navbar suppressed, centered card layout)
-- ☑ `login` (`/login`) — Bootstrap card, no navbar (`{% block navbar %}{% endblock %}`), `.auth-card-wrapper` CSS · ☐ `change_password` · ☐ `reset_password` · ☐ `admin_reset_password`
+- ☑ `login` (`/login`) — Bootstrap card, no navbar (`{% block navbar %}{% endblock %}`), `.auth-card-wrapper` CSS · ☑ `change_password` (`/change-password`) — same pattern; inline script retains `{{ confirm_token }}` Jinja · ☑ `reset_password` (`/reset-password`) — dual-mode (request/set) via `{% if token %}`; Jinja in script keeps it inline · ☑ `admin_reset_password` (`/admin-reset-password`) — `.alert.alert-warning` replaces custom warning banner
 
 ### Stage 6 — Cleanup
-- ☐ Delete `templates/navbar.html` once no page includes it; consolidate navbar.
-- ☐ Dead-CSS sweep: grep every remaining custom class across `templates/`; delete unreferenced rules.
-- ☐ Remove redundant legacy `@media` blocks superseded by Bootstrap breakpoints.
-- ☐ Final `./run_tests.sh` + full desktop/mobile pass; final `CSS_VERSION` bump.
+- ☑ `trap_monitor` (`/trap-monitor`, `trap_monitor.js`) — Bootstrap grid + custom CSS classes; 570-line IIFE extracted to `static/js/trap_monitor.js`; `d-none` used for JS-toggled situation card; signal cards use `.module-blue` / `.module-salmon` variants; arc-step modifiers converted to CSS classes
+- ☑ Delete `templates/navbar.html` (no page included it after trap_monitor migration)
+- ☑ Dead-CSS sweep: removed `.nav-links`, `.nav-hamburger`, `.header-container`, `.title-wrapper`, `.logo-link`, `.freshness-badge`, `.body-glossary` block, `.body-notifications` scoped rules, `.body-settings .header-container*`, `.header-container-wide`, plus legacy hamburger media-query rules
+- ☑ Final `./run_tests.sh` — 1990 passed, 3 skipped · `CSS_VERSION` bumped to 5.32
+
+**Note on partials:** `templates/partials/risk_summary.html` was not listed in the plan but was already Bootstrap-compatible (pure Jinja + existing CSS classes); it requires no migration.
 
 ---
 
