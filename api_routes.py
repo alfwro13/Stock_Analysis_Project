@@ -1027,9 +1027,16 @@ async def import_server_csv(request: ImportRequest, background_tasks: Background
         conn = get_connection()
         cursor = conn.cursor()
         cursor.executemany('''
-            INSERT OR REPLACE INTO market_universe
+            INSERT INTO market_universe
             (ticker, company_name, sector, industry, country, exchange, last_updated)
             VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(ticker) DO UPDATE SET
+                company_name = excluded.company_name,
+                sector       = excluded.sector,
+                industry     = excluded.industry,
+                country      = excluded.country,
+                exchange     = excluded.exchange,
+                last_updated = excluded.last_updated
         ''', records)
         conn.commit()
         background_tasks.add_task(bg_execute_universe_quant_scan_subset, [r[0] for r in records])

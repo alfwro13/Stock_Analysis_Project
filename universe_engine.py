@@ -107,8 +107,15 @@ def update_market_universe() -> None:
         conn = get_connection()
         cursor = conn.cursor()
         cursor.executemany('''
-            INSERT OR REPLACE INTO market_universe (ticker, company_name, sector, industry, country, exchange, last_updated)
+            INSERT INTO market_universe (ticker, company_name, sector, industry, country, exchange, last_updated)
             VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(ticker) DO UPDATE SET
+                company_name  = excluded.company_name,
+                sector        = excluded.sector,
+                industry      = excluded.industry,
+                country       = excluded.country,
+                exchange      = excluded.exchange,
+                last_updated  = excluded.last_updated
         ''', tickers_to_insert)
         conn.commit()
         logger.info("Database bulk insert complete.")
