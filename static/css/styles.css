@@ -120,6 +120,7 @@ h1, h2, h3, h4, h5, h6 { color: #ffffff; margin: 0; }
 a { color: #4da6ff; text-decoration: none; font-weight: bold; }
 a:hover { text-decoration: underline; }
 abbr { text-decoration: underline dotted #666; text-underline-offset: 3px; cursor: pointer; color: inherit; }
+th[title] { text-decoration: underline dotted #666; text-underline-offset: 3px; cursor: help; }
 /* --- 2. Layout & Containers --- */
 .container { max-width: 1400px; margin: auto; padding: 0 20px; }
 .container-fluid { width: 100%; max-width: none; margin: auto; padding: 0 30px; box-sizing: border-box; }
