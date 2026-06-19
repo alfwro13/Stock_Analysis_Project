@@ -82,7 +82,9 @@ DEFAULT_CONFIG = {
         "FONT_SIZE_TABLE": 14,
         "FONT_SIZE_FORM": 14,
         "FONT_SIZE_BTN": 14,
-        "FONT_SIZE_SECTION": 20
+        "FONT_SIZE_SECTION": 20,
+        "FONT_SIZE_BODY": 16,
+        "FONT_SIZE_HEADING": 32
     },
     "POSITION_SIZING": {
         "ACCOUNT_VALUE": 500,

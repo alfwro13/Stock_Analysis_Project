@@ -1651,6 +1651,33 @@
                         <option value="24" {% if fss == 24 %}selected{% endif %}>24 px</option>
                     </select>
                 </div>
+                <div class="form-group">
+                    <label><abbr title="Base font size for general page content — paragraphs, data labels, and inline text throughout the app.">Body text</abbr></label>
+                    <select id="FONT_SIZE_BODY" class="form-select">
+                        {% set fsbo = config.UI_PREFERENCES.FONT_SIZE_BODY | default(16) %}
+                        <option value="12" {% if fsbo == 12 %}selected{% endif %}>12 px</option>
+                        <option value="13" {% if fsbo == 13 %}selected{% endif %}>13 px</option>
+                        <option value="14" {% if fsbo == 14 %}selected{% endif %}>14 px</option>
+                        <option value="15" {% if fsbo == 15 %}selected{% endif %}>15 px</option>
+                        <option value="16" {% if fsbo == 16 %}selected{% endif %}>16 px (default)</option>
+                        <option value="17" {% if fsbo == 17 %}selected{% endif %}>17 px</option>
+                        <option value="18" {% if fsbo == 18 %}selected{% endif %}>18 px</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label><abbr title="Controls page and card heading sizes. The h2 heading is set to this value; h1 scales to 1.25×, h3 to 0.875×, and smaller headings proportionally. Default (32 px) matches Bootstrap's built-in heading sizes.">Page headings (h1 / h2 / h3)</abbr></label>
+                    <select id="FONT_SIZE_HEADING" class="form-select">
+                        {% set fsh = config.UI_PREFERENCES.FONT_SIZE_HEADING | default(32) %}
+                        <option value="14" {% if fsh == 14 %}selected{% endif %}>14 px — very compact (h2=14, h1=17, h3=12)</option>
+                        <option value="16" {% if fsh == 16 %}selected{% endif %}>16 px — compact (h2=16, h1=20, h3=14)</option>
+                        <option value="18" {% if fsh == 18 %}selected{% endif %}>18 px — small (h2=18, h1=22, h3=16)</option>
+                        <option value="20" {% if fsh == 20 %}selected{% endif %}>20 px — reduced (h2=20, h1=25, h3=17)</option>
+                        <option value="22" {% if fsh == 22 %}selected{% endif %}>22 px — medium (h2=22, h1=27, h3=19)</option>
+                        <option value="24" {% if fsh == 24 %}selected{% endif %}>24 px — standard (h2=24, h1=30, h3=21)</option>
+                        <option value="28" {% if fsh == 28 %}selected{% endif %}>28 px — large (h2=28, h1=35, h3=24)</option>
+                        <option value="32" {% if fsh == 32 %}selected{% endif %}>32 px — Bootstrap default (h2=32, h1=40, h3=28)</option>
+                    </select>
+                </div>
             </div>
 
             <div class="settings-panel border-left-cyan">

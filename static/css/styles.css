@@ -13,6 +13,8 @@
   --font-size-form: 14px;
   --font-size-btn: 14px;
   --font-size-section: 20px;
+  --font-size-body: 16px;
+  --font-size-heading: 32px;
 }
 [data-bs-theme="dark"] {
   --bs-body-bg: #121212;
@@ -122,8 +124,14 @@
 .sent-fear { background-color: #ff4d4d; color: #ffffff; box-shadow: 0 0 8px rgba(255, 77, 77, 0.4); }
 /* --- 1. Base Elements & Typography --- */
 html { scroll-behavior: smooth; }
-body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"; background-color: #121212; color: #e0e0e0; margin: 0; padding: 20px; }
+body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"; background-color: #121212; color: #e0e0e0; margin: 0; padding: 20px; font-size: var(--font-size-body); }
 h1, h2, h3, h4, h5, h6 { color: #ffffff; margin: 0; }
+h1 { font-size: calc(var(--font-size-heading) * 1.25); }
+h2 { font-size: var(--font-size-heading); }
+h3 { font-size: calc(var(--font-size-heading) * 0.875); }
+h4 { font-size: calc(var(--font-size-heading) * 0.75); }
+h5 { font-size: calc(var(--font-size-heading) * 0.625); }
+h6 { font-size: calc(var(--font-size-heading) * 0.5); }
 a { color: #4da6ff; text-decoration: none; font-weight: bold; }
 a:hover { text-decoration: underline; }
 abbr { text-decoration: underline dotted #666; text-underline-offset: 3px; color: inherit; }

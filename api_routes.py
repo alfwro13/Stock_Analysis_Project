@@ -554,6 +554,8 @@ class UIPreferencesConfig(BaseModel):
     FONT_SIZE_FORM: Optional[int] = None
     FONT_SIZE_BTN: Optional[int] = None
     FONT_SIZE_SECTION: Optional[int] = None
+    FONT_SIZE_BODY: Optional[int] = None
+    FONT_SIZE_HEADING: Optional[int] = None
 
 class PositionSizingConfig(BaseModel):
     ACCOUNT_VALUE: Optional[float] = None
@@ -1227,6 +1229,8 @@ async def ui_theme_css():
         f"--font-size-form: {ui.get('FONT_SIZE_FORM', 14)}px;",
         f"--font-size-btn: {ui.get('FONT_SIZE_BTN', 14)}px;",
         f"--font-size-section: {ui.get('FONT_SIZE_SECTION', 20)}px;",
+        f"--font-size-body: {ui.get('FONT_SIZE_BODY', 16)}px;",
+        f"--font-size-heading: {ui.get('FONT_SIZE_HEADING', 32)}px;",
     ])
     return PlainTextResponse(f":root {{{props}}}", media_type="text/css")
 
