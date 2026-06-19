@@ -318,68 +318,6 @@
 
     window.toggleFullscreen = toggleFullscreen;
 
-    // ─── AI Dropdown ──────────────────────────────────────────────────────────────
-    function toggleAIDropdown() {
-        document.getElementById("aiDropdown").classList.toggle("show");
-    }
-
-    window.onclick = function (event) {
-        if (!event.target.matches('.ai-btn')) {
-            var dropdowns = document.getElementsByClassName("ai-dropdown-content");
-            for (var i = 0; i < dropdowns.length; i++) {
-                if (dropdowns[i].classList.contains('show')) {
-                    dropdowns[i].classList.remove('show');
-                }
-            }
-        }
-    };
-
-    async function fetchAndCopyAIPrompt(ticker, mode) {
-        const btn = document.querySelector('.ai-btn');
-        const originalText = btn.innerHTML;
-        btn.innerText = "⏳ Generating...";
-        btn.style.backgroundColor = "#ffaa00";
-        btn.style.color = "#121212";
-        btn.style.borderColor = "#ffaa00";
-        try {
-            const response = await fetch('/api/ai-prompt/' + ticker + '?mode=' + encodeURIComponent(mode));
-            const data = await response.json();
-            if (response.ok) {
-                if (navigator.clipboard && window.isSecureContext) {
-                    await navigator.clipboard.writeText(data.prompt);
-                } else {
-                    const textArea = document.createElement("textarea");
-                    textArea.value = data.prompt;
-                    textArea.style.position = "fixed";
-                    document.body.appendChild(textArea);
-                    textArea.focus();
-                    textArea.select();
-                    document.execCommand('copy');
-                    document.body.removeChild(textArea);
-                }
-                btn.innerText = "✅ Copied!";
-                btn.style.backgroundColor = "#00ff00";
-            } else {
-                alert("Failed to generate AI prompt: " + data.message);
-                btn.innerText = "❌ Error";
-                btn.style.backgroundColor = "#ff4d4d";
-            }
-        } catch (err) {
-            alert("Network/Clipboard error occurred: " + err.message);
-            btn.innerText = "❌ Error";
-            btn.style.backgroundColor = "#ff4d4d";
-        }
-        setTimeout(function () {
-            btn.innerHTML = originalText;
-            btn.style.backgroundColor = "";
-            btn.style.color = "";
-            btn.style.borderColor = "";
-        }, 3000);
-    }
-
-    window.toggleAIDropdown = toggleAIDropdown;
-    window.fetchAndCopyAIPrompt = fetchAndCopyAIPrompt;
-
     // ─── Position Sizing ──────────────────────────────────────────────────────────
     function recalc() {
         const ticker        = window.STOCK_TICKER;

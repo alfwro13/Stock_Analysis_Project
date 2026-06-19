@@ -130,12 +130,12 @@
                         <button id="refreshDataBtn" onclick="refreshSingleData()" class="btn-refresh {{ data_status }}" title="Data Last Updated: {{ last_updated_str }}">
                             <span class="btn-icon">&#8635;</span> Refresh
                         </button>
-                        <button onclick="toggleAIDropdown()" class="ai-btn">&#10024; AI</button>
+                        <button id="stockAIBtn" onclick="toggleAIDropdown('aiDropdown')" class="ai-btn">&#10024; AI</button>
                         <div id="aiDropdown" class="ai-dropdown-content">
-                            <a href="javascript:void(0)" onclick="fetchAndCopyAIPrompt('{{ stock.ticker }}', 'The Devil\'s Advocate analysis')">The Devil's Advocate analysis</a>
-                            <a href="javascript:void(0)" onclick="fetchAndCopyAIPrompt('{{ stock.ticker }}', 'Risk/Reward Audit')">Risk/Reward Audit</a>
-                            <a href="javascript:void(0)" onclick="fetchAndCopyAIPrompt('{{ stock.ticker }}', 'Quantamental Deep-Dive')">Quantamental Deep-Dive</a>
-                            <a href="javascript:void(0)" onclick="fetchAndCopyAIPrompt('{{ stock.ticker }}', 'Earnings Strategy')">Earnings Strategy</a>
+                            <a href="javascript:void(0)" onclick="fetchAndCopyAIPrompt('/api/ai-prompt/{{ stock.ticker }}', &quot;The Devil's Advocate analysis&quot;, document.getElementById('stockAIBtn'))">The Devil's Advocate analysis</a>
+                            <a href="javascript:void(0)" onclick="fetchAndCopyAIPrompt('/api/ai-prompt/{{ stock.ticker }}', 'Risk/Reward Audit', document.getElementById('stockAIBtn'))">Risk/Reward Audit</a>
+                            <a href="javascript:void(0)" onclick="fetchAndCopyAIPrompt('/api/ai-prompt/{{ stock.ticker }}', 'Quantamental Deep-Dive', document.getElementById('stockAIBtn'))">Quantamental Deep-Dive</a>
+                            <a href="javascript:void(0)" onclick="fetchAndCopyAIPrompt('/api/ai-prompt/{{ stock.ticker }}', 'Earnings Strategy', document.getElementById('stockAIBtn'))">Earnings Strategy</a>
                         </div>
                     </div>
                 </div>
@@ -1067,6 +1067,7 @@
     window.BASE_CURRENCY     = "{{ position_sizing.base_currency }}";
     window.FX_RATES          = {{ position_sizing.fx_rates | tojson }};
 </script>
+<script src="/static/js/ai_prompt_btn.js?v={{ css_version }}"></script>
 <script src="/static/js/position_sizing.js"></script>
 <script src="/static/js/stock_detail.js?v={{ css_version }}"></script>
 {% endblock %}

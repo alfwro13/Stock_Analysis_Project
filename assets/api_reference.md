@@ -873,6 +873,66 @@ Designed to be pasted directly into an LLM (e.g. Claude) for AI-assisted investm
 
 ---
 
+### `GET /api/ai-prompt/market-regime`
+
+Compiles an AI-consumable prompt using live Market Regime HMM data: current HMM state, confidence, days in state, VIX, SPY volatility, empirical 3×3 transition matrix, and macro threat context.
+
+**Query parameters**
+
+| Parameter | Type | Default | Allowed values |
+|-----------|------|---------|----------------|
+| `mode` | string | `Plain English Briefing` | `Plain English Briefing`, `What Happens Next?`, `How Should I Position?`, `Red Flags Check` |
+
+**Response (success)**
+
+```json
+{ "status": "success", "prompt": "You are a Patient financial educator..." }
+```
+
+**Response (bad mode)**
+
+```json
+{ "status": "error", "message": "Unrecognised mode: ..." }
+```
+
+---
+
+### `GET /api/ai-prompt/market-sentiment/us`
+
+Compiles an AI-consumable prompt using live US market sentiment data: regime label, turbulence index, VIX, HMM macro state, CPI, yield curve, high-yield spread, M2, macro threat, 10/30-year yields, DXY, upcoming USD macro events (ranked by AI surprise probability), and AI sector contagion status.
+
+**Query parameters**
+
+| Parameter | Type | Default | Allowed values |
+|-----------|------|---------|----------------|
+| `mode` | string | `US Market Health Check` | `US Market Health Check`, `This Week's US Risk Events`, `Recession Radar`, `Inflation & Rate Impact` |
+
+**Response (success)**
+
+```json
+{ "status": "success", "prompt": "You are a Senior market strategist..." }
+```
+
+---
+
+### `GET /api/ai-prompt/market-sentiment/uk`
+
+Compiles an AI-consumable prompt using live UK market sentiment data: regime label, turbulence, FTSE volatility, UK CPI, corporate spread, M4, 10-year gilt yield, GBP/USD, macro threat, and upcoming GBP macro events. The `UK vs US Comparison` mode also includes all US data for side-by-side context.
+
+**Query parameters**
+
+| Parameter | Type | Default | Allowed values |
+|-----------|------|---------|----------------|
+| `mode` | string | `UK Market Health Check` | `UK Market Health Check`, `This Week's UK Risk Events`, `Pound & Gilt Impact`, `UK vs US Comparison` |
+
+**Response (success)**
+
+```json
+{ "status": "success", "prompt": "You are a Senior UK market strategist..." }
+```
+
+---
+
 ## 13. Settings & Configuration
 
 ### `POST /api/settings`
@@ -1525,7 +1585,10 @@ Sends a test insider trading alert via Nextcloud Talk.
 | `POST` | `/api/universe/import/server` | Import universe from CSV |
 | `GET` | `/api/options/chain/{ticker}` | Live options chain |
 | `POST` | `/api/options/payoff` | Options payoff matrix |
-| `GET` | `/api/ai-prompt/{ticker}` | AI-consumable analysis prompt |
+| `GET` | `/api/ai-prompt/market-regime` | AI prompt for Market Regime HMM page |
+| `GET` | `/api/ai-prompt/market-sentiment/us` | AI prompt for US Market Sentiment |
+| `GET` | `/api/ai-prompt/market-sentiment/uk` | AI prompt for UK Market Sentiment |
+| `GET` | `/api/ai-prompt/{ticker}` | AI-consumable analysis prompt (stock) |
 | `POST` | `/api/settings` | Save configuration |
 | `POST` | `/api/settings/test-yahoo-ipv6` | Test IPv6 connection |
 | `GET` | `/api/settings/network-status` | Current routing health |

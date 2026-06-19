@@ -478,3 +478,32 @@ def test_get_forensic_scores_returns_200(client):
     assert data["status"] == "success"
     assert "results" in data
     assert isinstance(data["results"], list)
+
+
+# ── AI Prompt — market-level endpoints ────────────────────────────────────────
+
+@pytest.mark.api
+def test_ai_prompt_market_regime(client):
+    resp = client.get("/api/ai-prompt/market-regime")
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
+    data = _json(resp)
+    assert data["status"] == "success"
+    assert isinstance(data.get("prompt"), str) and len(data["prompt"]) > 0
+
+
+@pytest.mark.api
+def test_ai_prompt_sentiment_us(client):
+    resp = client.get("/api/ai-prompt/market-sentiment/us")
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
+    data = _json(resp)
+    assert data["status"] == "success"
+    assert isinstance(data.get("prompt"), str) and len(data["prompt"]) > 0
+
+
+@pytest.mark.api
+def test_ai_prompt_sentiment_uk(client):
+    resp = client.get("/api/ai-prompt/market-sentiment/uk")
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
+    data = _json(resp)
+    assert data["status"] == "success"
+    assert isinstance(data.get("prompt"), str) and len(data["prompt"]) > 0

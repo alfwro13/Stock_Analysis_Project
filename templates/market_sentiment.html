@@ -151,7 +151,18 @@
 <div class="row g-4">
 
     <div class="col-12 col-lg-6">
-        <h2 class="us-market-header">🇺🇸 US Market Context</h2>
+        <div class="d-flex align-items-center gap-3 mb-2">
+            <h2 class="us-market-header mb-0">🇺🇸 US Market Context</h2>
+            <div class="position-relative">
+                <button id="usAIBtn" onclick="toggleAIDropdown('usAIDropdown')" class="ai-btn">&#10024; AI</button>
+                <div id="usAIDropdown" class="ai-dropdown-content">
+                    <a href="javascript:void(0)" onclick="fetchAndCopyAIPrompt('/api/ai-prompt/market-sentiment/us', 'US Market Health Check', document.getElementById('usAIBtn'))">US Market Health Check</a>
+                    <a href="javascript:void(0)" onclick="fetchAndCopyAIPrompt('/api/ai-prompt/market-sentiment/us', &quot;This Week's US Risk Events&quot;, document.getElementById('usAIBtn'))">This Week's US Risk Events</a>
+                    <a href="javascript:void(0)" onclick="fetchAndCopyAIPrompt('/api/ai-prompt/market-sentiment/us', 'Recession Radar', document.getElementById('usAIBtn'))">Recession Radar</a>
+                    <a href="javascript:void(0)" onclick="fetchAndCopyAIPrompt('/api/ai-prompt/market-sentiment/us', 'Inflation &amp; Rate Impact', document.getElementById('usAIBtn'))">Inflation &amp; Rate Impact</a>
+                </div>
+            </div>
+        </div>
 
         <div class="sentiment-module module-red">
             <div id="us-fg-wrapper" class="chart-wrapper">
@@ -295,7 +306,18 @@
     </div>
 
     <div class="col-12 col-lg-6">
-        <h2 class="uk-market-header">🇬🇧 UK Market Context</h2>
+        <div class="d-flex align-items-center gap-3 mb-2">
+            <h2 class="uk-market-header mb-0">🇬🇧 UK Market Context</h2>
+            <div class="position-relative">
+                <button id="ukAIBtn" onclick="toggleAIDropdown('ukAIDropdown')" class="ai-btn">&#10024; AI</button>
+                <div id="ukAIDropdown" class="ai-dropdown-content">
+                    <a href="javascript:void(0)" onclick="fetchAndCopyAIPrompt('/api/ai-prompt/market-sentiment/uk', 'UK Market Health Check', document.getElementById('ukAIBtn'))">UK Market Health Check</a>
+                    <a href="javascript:void(0)" onclick="fetchAndCopyAIPrompt('/api/ai-prompt/market-sentiment/uk', &quot;This Week's UK Risk Events&quot;, document.getElementById('ukAIBtn'))">This Week's UK Risk Events</a>
+                    <a href="javascript:void(0)" onclick="fetchAndCopyAIPrompt('/api/ai-prompt/market-sentiment/uk', 'Pound &amp; Gilt Impact', document.getElementById('ukAIBtn'))">Pound &amp; Gilt Impact</a>
+                    <a href="javascript:void(0)" onclick="fetchAndCopyAIPrompt('/api/ai-prompt/market-sentiment/uk', 'UK vs US Comparison', document.getElementById('ukAIBtn'))">UK vs US Comparison</a>
+                </div>
+            </div>
+        </div>
 
         <div class="sentiment-module module-cyan">
             <div id="uk-gbp-wrapper" class="chart-wrapper">
@@ -417,5 +439,6 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="/static/js/ai_prompt_btn.js?v={{ css_version }}"></script>
 <script src="/static/js/market_sentiment.js?v={{ css_version }}"></script>
 {% endblock %}

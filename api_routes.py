@@ -52,6 +52,8 @@ from earnings_engine import run_earnings_alert
 from report_dispatcher import push_morning_quant_briefing, push_lunchtime_quant_briefing
 from insider_engine import run_insider_alert
 from ai_engine import AIPromptEngine
+from ai_regime_engine import AIRegimePromptEngine
+from ai_sentiment_engine import AISentimentPromptEngine
 from news_feed_engine import run_news_feed_job
 from intraday_bottom_engine import IntradayBottomEngine
 from data_engine import DataEngine
@@ -2343,6 +2345,64 @@ async def get_etf_predictor_predictions(request: Request, config_id: int):
         return JSONResponse(content={"status": "success", **get_etf_accuracy(config_id)})
     except Exception as e:
         logger.error("get_etf_predictor_predictions %s failed: %s", config_id, e)
+        return _error_500(e)
+
+
+_REGIME_MODES = frozenset([
+    "Plain English Briefing",
+    "What Happens Next?",
+    "How Should I Position?",
+    "Red Flags Check",
+])
+
+_SENTIMENT_US_MODES = frozenset([
+    "US Market Health Check",
+    "This Week's US Risk Events",
+    "Recession Radar",
+    "Inflation & Rate Impact",
+])
+
+_SENTIMENT_UK_MODES = frozenset([
+    "UK Market Health Check",
+    "This Week's UK Risk Events",
+    "Pound & Gilt Impact",
+    "UK vs US Comparison",
+])
+
+
+@api_router.get("/ai-prompt/market-regime")
+async def get_ai_prompt_market_regime(mode: str = "Plain English Briefing"):
+    if mode not in _REGIME_MODES:
+        return JSONResponse(status_code=400, content={"status": "error", "message": f"Unrecognised mode: {mode}"})
+    try:
+        engine = AIRegimePromptEngine()
+        prompt = engine.generate_prompt(mode)
+        return JSONResponse(content={"status": "success", "prompt": prompt})
+    except Exception as e:
+        return _error_500(e)
+
+
+@api_router.get("/ai-prompt/market-sentiment/us")
+async def get_ai_prompt_sentiment_us(mode: str = "US Market Health Check"):
+    if mode not in _SENTIMENT_US_MODES:
+        return JSONResponse(status_code=400, content={"status": "error", "message": f"Unrecognised mode: {mode}"})
+    try:
+        engine = AISentimentPromptEngine()
+        prompt = engine.generate_us_prompt(mode)
+        return JSONResponse(content={"status": "success", "prompt": prompt})
+    except Exception as e:
+        return _error_500(e)
+
+
+@api_router.get("/ai-prompt/market-sentiment/uk")
+async def get_ai_prompt_sentiment_uk(mode: str = "UK Market Health Check"):
+    if mode not in _SENTIMENT_UK_MODES:
+        return JSONResponse(status_code=400, content={"status": "error", "message": f"Unrecognised mode: {mode}"})
+    try:
+        engine = AISentimentPromptEngine()
+        prompt = engine.generate_uk_prompt(mode)
+        return JSONResponse(content={"status": "success", "prompt": prompt})
+    except Exception as e:
         return _error_500(e)
 
 

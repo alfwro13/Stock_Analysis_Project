@@ -21,6 +21,15 @@
     <button id="run-now-btn" class="btn btn-primary btn-sm" onclick="runNow()">&#9654; Run Now</button>
     <span id="run-status" class="text-muted small"></span>
     <span id="last-updated" class="ms-auto text-muted small"></span>
+    <div class="position-relative">
+        <button id="regimeAIBtn" onclick="toggleAIDropdown('regimeAIDropdown')" class="ai-btn">&#10024; AI</button>
+        <div id="regimeAIDropdown" class="ai-dropdown-content">
+            <a href="javascript:void(0)" onclick="fetchAndCopyAIPrompt('/api/ai-prompt/market-regime', 'Plain English Briefing', document.getElementById('regimeAIBtn'))">Plain English Briefing</a>
+            <a href="javascript:void(0)" onclick="fetchAndCopyAIPrompt('/api/ai-prompt/market-regime', 'What Happens Next?', document.getElementById('regimeAIBtn'))">What Happens Next?</a>
+            <a href="javascript:void(0)" onclick="fetchAndCopyAIPrompt('/api/ai-prompt/market-regime', 'How Should I Position?', document.getElementById('regimeAIBtn'))">How Should I Position?</a>
+            <a href="javascript:void(0)" onclick="fetchAndCopyAIPrompt('/api/ai-prompt/market-regime', 'Red Flags Check', document.getElementById('regimeAIBtn'))">Red Flags Check</a>
+        </div>
+    </div>
 </div>
 
 {# Current state banner #}
@@ -160,5 +169,6 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="/static/js/ai_prompt_btn.js?v={{ css_version }}"></script>
 <script src="/static/js/market_regime.js?v={{ css_version }}"></script>
 {% endblock %}
