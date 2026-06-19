@@ -771,19 +771,15 @@ async def portfolio_page(request: Request, account_id: str = "all", embed: bool 
             summary_math["value"] += val_in_base
             summary_math["cost"] += cost_in_base
 
-            # Global aggregation — use live pulse price (same source as Price column)
-            # to avoid stale DB price diverging from what the user sees
             pulse_entry = live_pulse.get(row_dict['ticker'])
             live_price = (pulse_entry['price'] if pulse_entry and pulse_entry['price'] > 0
                           else row_dict['current_price'])
-            global_shares = asset.get('global_shares', 0)
-            global_buy_price = asset.get('global_buy_price', 0)
-            global_cost = global_shares * global_buy_price
-            global_val = (global_shares * live_price) * exchange_rate
-            row_dict['global_market_value'] = round(global_val, 2)
-            global_pnl = global_val - global_cost
-            row_dict['global_unrealized_pnl'] = round(global_pnl, 2)
-            row_dict['global_unrealized_pnl_pct'] = round((global_pnl / global_cost) * 100, 2) if global_cost else None
+            display_cost = shares * buy_price_base
+            display_val = (shares * live_price) * exchange_rate
+            row_dict['global_market_value'] = round(display_val, 2)
+            display_pnl = display_val - display_cost
+            row_dict['global_unrealized_pnl'] = round(display_pnl, 2)
+            row_dict['global_unrealized_pnl_pct'] = round((display_pnl / display_cost) * 100, 2) if display_cost else None
 
     if summary_math["cost"] > 0:
         summary_math["pnl"] = summary_math["value"] - summary_math["cost"]
