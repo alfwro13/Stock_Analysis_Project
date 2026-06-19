@@ -1131,6 +1131,7 @@ async def test_sentiment_alert():
 @api_router.post("/test-earnings-alert")
 async def test_earnings_alert():
     success, msg = await asyncio.to_thread(run_earnings_alert)
+    record_job_run('earnings_alert_job')
     if success: return JSONResponse(content={"status": "success", "message": msg})
     else: return JSONResponse(status_code=500, content={"status": "error", "message": msg})
 

@@ -253,6 +253,12 @@ def run_maintenance_engine():
     finally:
         record_job_run('maintenance_job')
 
+def run_earnings_alert_job():
+    try:
+        run_earnings_alert()
+    finally:
+        record_job_run('earnings_alert_job')
+
 def run_update_pipeline():
     _mark_job_started(job_label("quant_analysis_job"))
     try:
@@ -1044,7 +1050,7 @@ def reload_scheduler():
         try:
             hour, minute = map(int, time_str.split(':'))
             scheduler.add_job(
-                run_earnings_alert,
+                run_earnings_alert_job,
                 CronTrigger(day_of_week='mon-fri', hour=hour, minute=minute, timezone=user_tz),
                 id='earnings_alert_job'
             )
