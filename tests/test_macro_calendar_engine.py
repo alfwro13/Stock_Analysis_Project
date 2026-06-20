@@ -22,9 +22,9 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from datetime import datetime, timezone
-from zoneinfo import ZoneInfo
 
-from macro_calendar_engine import clean_value, generate_event_id, upsert_calendar_events, _ET
+from macro_calendar_engine import clean_value, generate_event_id, upsert_calendar_events
+from time_engine import localize_naive_to_utc
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -91,30 +91,27 @@ class TestGenerateEventId:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# 3. ET → UTC timezone conversion (_ET constant)
+# 3. ET → UTC timezone conversion (via localize_naive_to_utc)
 # ──────────────────────────────────────────────────────────────────────────────
 
 class TestEasternToUTC:
 
-    def test_et_constant_is_new_york(self):
-        assert str(_ET) == "America/New_York"
-
     def test_08_30_et_becomes_12_30_utc_during_edt(self):
         # During EDT (UTC-4): 08:30 ET == 12:30 UTC
         naive = datetime(2026, 6, 7, 8, 30, 0)   # summer — EDT
-        utc_str = naive.replace(tzinfo=_ET).astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        utc_str = localize_naive_to_utc(naive, "NYSE").strftime("%Y-%m-%d %H:%M:%S")
         assert utc_str == "2026-06-07 12:30:00"
 
     def test_08_30_et_becomes_13_30_utc_during_est(self):
         # During EST (UTC-5): 08:30 ET == 13:30 UTC
         naive = datetime(2026, 1, 7, 8, 30, 0)   # winter — EST
-        utc_str = naive.replace(tzinfo=_ET).astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        utc_str = localize_naive_to_utc(naive, "NYSE").strftime("%Y-%m-%d %H:%M:%S")
         assert utc_str == "2026-01-07 13:30:00"
 
     def test_midnight_et_date_only_event_is_offset(self):
         # A date-only event (no time) is stored as midnight ET → UTC offset applied
         naive = datetime(2026, 6, 7, 0, 0, 0)
-        utc_str = naive.replace(tzinfo=_ET).astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        utc_str = localize_naive_to_utc(naive, "NYSE").strftime("%Y-%m-%d %H:%M:%S")
         assert utc_str == "2026-06-07 04:00:00"   # EDT offset
 
 
