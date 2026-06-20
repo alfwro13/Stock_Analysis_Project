@@ -344,7 +344,7 @@
                     </select>
                 </div>
                 <div id="dip-radar-result" class="{{ '' if is_dip_monitored else 'd-none' }}">
-                    <div id="dip-score-display" class="text-muted" style="font-size:13px;">Waiting for first scan (runs every 2 minutes during market hours)...</div>
+                    <div id="dip-score-display" class="text-muted dip-score-status">Waiting for first scan (runs every 2 minutes during market hours)...</div>
                 </div>
             </div>
         </details>
@@ -1031,9 +1031,9 @@
                     <span class="bubble-metric-val">
                         {% if m.value is not none %}{{ "%.2f" | format(m.value) }}{% else %}—{% endif %}
                     </span>
-                    <span class="bubble-score-bar" style="width:80px;display:inline-block;">
+                    <span class="bubble-score-bar">
                         <span class="bubble-score-fill {{ 'bubble-score-fill-bubble' if m.score >= 8 else ('bubble-score-fill-watch' if m.score >= 4 else 'bubble-score-fill-low') }}"
-                              style="width:{{ [m.score * 4, 100] | min }}%;display:inline-block;"></span>
+                              style="--fill: {{ [m.score * 4, 100] | min }}%"></span>
                     </span>
                     <span class="bubble-metric-score {{ 'bubble-metric-score-nonzero' if m.score > 0 else 'bubble-metric-score-zero' }}">{{ m.score }}pts</span>
                 </div>
@@ -1068,6 +1068,6 @@
     window.FX_RATES          = {{ position_sizing.fx_rates | tojson }};
 </script>
 <script src="/static/js/ai_prompt_btn.js?v={{ css_version }}"></script>
-<script src="/static/js/position_sizing.js"></script>
+<script src="/static/js/position_sizing.js?v={{ css_version }}"></script>
 <script src="/static/js/stock_detail.js?v={{ css_version }}"></script>
 {% endblock %}
