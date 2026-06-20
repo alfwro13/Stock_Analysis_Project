@@ -146,7 +146,7 @@ def fetch_ons_taxonomy_data(session: requests.Session, series_id: str, start_dat
             val = obs.get('value')
             if raw_date and val:
                 try:
-                    # [LOOKAHEAD BIAS RESOLVED] Shift to end of month + 30 day publication lag
+                    # End-of-month + 30-day publication lag avoids using data before it was publicly available.
                     dt = pd.to_datetime(raw_date, format='%Y %b') + pd.offsets.MonthEnd(1) + pd.DateOffset(days=30)
                     if dt >= start_date:
                         records.append({'DATE': dt, series_id: float(val)})
@@ -180,22 +180,16 @@ def update_macro_indicators() -> None:
     if fred_api_key:
         logger.info("Fetching FRED Institutional Data (2-Year History)...")
         
-        # Why this approach: There is no direct UK corporate spread on FRED. The Euro High Yield
-        # OAS (BAMLHE00EHY2EY) is highly correlated with UK corporate credit stress and shares a 
-        # similar structural baseline. A blowout in Euro High Yield accurately reflects a localized 
-        # systemic liquidity drain impacting LSE-listed equities, without requiring a complete schema 
-        # rewrite of the existing >3.0% circuit breaker threshold logic.
-        # Alternative Option: Another option could be to use `GBPUSD=X` divergence + UK Gilt spread 
-        # as an intermarket proxy, but that would require heavier downstream cross-engine calculation.
+        # No direct UK corporate spread exists on FRED; Euro HY OAS (BAMLHE00EHYIOAS) is used as a
+        # UK credit-stress proxy — highly correlated and shares the existing >3.0% circuit-breaker threshold.
         fred_tickers = ['WM2NS', 'ICSA', 'BAMLH0A0HYM2', 'BAMLHE00EHYIOAS', 'T10Y2Y', 'FEDFUNDS', 'DFII10']
         for ticker in fred_tickers:
             df = fetch_fred_api(session, ticker, start_dt, end_dt, fred_api_key)
             if not df.empty:
                 dfs.append(df)
 
-        # Fetch CPIAUCSL with 13 extra months so pct_change(12) produces valid YoY for the full 730-day window.
-        # Without this, the first 12 months of the window would have NaN YoY, leaving old raw-index values
-        # (~313-320) in the DB that corrupt the chart when mixed with later YoY% rows (~2-4%).
+        # Fetch 13 extra months: pct_change(12) needs a full year of history before the window start;
+        # without it NaN YoY rows leave legacy raw-index values (~313-320) that corrupt the chart.
         cpi_start = start_dt - timedelta(days=395)
         df_cpi_raw = fetch_fred_api(session, 'CPIAUCSL', cpi_start, end_dt, fred_api_key)
         if not df_cpi_raw.empty and 'CPIAUCSL' in df_cpi_raw.columns:
@@ -228,7 +222,7 @@ def update_macro_indicators() -> None:
     merged_df.sort_index(inplace=True)
     merged_df.ffill(inplace=True)
 
-    # Phase 1 Remediation: Lookahead bias removed. No .bfill() is applied here.
+    # No .bfill(): forward-fill only preserves point-in-time knowledge; back-fill would reintroduce lookahead bias.
 
     records = []
     for dt, row in merged_df.iterrows():
@@ -251,9 +245,7 @@ def update_macro_indicators() -> None:
     conn = get_connection()
     try:
         cursor = conn.cursor()
-        # Use INSERT OR IGNORE to prevent lookahead bias.
-        # This preserves the exact point-in-time (PIT) knowledge the system had on that day,
-        # preventing backward revisions or late-released monthly data from corrupting historical training rows.
+        # INSERT OR IGNORE: preserves the point-in-time value recorded on each date; late revisions must not overwrite historical training rows.
         cursor.executemany('''
             INSERT OR IGNORE INTO macro_indicators (
                 date, us_m2, us_jobless_claims, us_high_yield_spread, us_yield_curve,
@@ -264,8 +256,7 @@ def update_macro_indicators() -> None:
         conn.commit()
         logger.info(f"Successfully bulk-inserted up to {cursor.rowcount} new Macro Regime historical days (ignoring existing to preserve PIT).")
 
-        # Nullify any rows where the raw CPIAUCSL index was previously stored instead of YoY%.
-        # CPI YoY never exceeds 20% in the modern era; any value > 20 is a legacy raw-index artefact.
+        # CPI YoY never exceeds 20% in modern history; values > 20 are legacy raw-index artefacts, nullify them.
         cursor.execute("UPDATE macro_indicators SET us_cpi_inflation=NULL WHERE us_cpi_inflation > 20")
 
         # Patch all rows in the current window with correctly computed YoY% values.
