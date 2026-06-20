@@ -67,13 +67,13 @@ def _tracked_add_job(func, *args, **kwargs):
 scheduler.add_job = _tracked_add_job
 
 import threading as _threading
-from datetime import datetime as _dt, timezone as _tz
+from datetime import datetime, timezone
 _active_jobs: dict[str, str] = {}
 _active_jobs_lock = _threading.Lock()
 
 def _mark_job_started(name: str) -> None:
     with _active_jobs_lock:
-        _active_jobs[name] = _dt.now(_tz.utc).strftime("%Y-%m-%dT%H:%M:%S")
+        _active_jobs[name] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
 
 def _mark_job_done(name: str) -> None:
     with _active_jobs_lock:
@@ -92,7 +92,6 @@ def log_sched_notification(msg_type: str, msg_text: str):
     notify(current_job_source() or SCHEDULER_STATUS_SOURCE, msg_type, msg_text, level=level)
 
 def record_job_run(job_id: str):
-    from datetime import datetime, timezone
     conn = None
     try:
         conn = get_connection()
@@ -163,7 +162,6 @@ def _record_job_duration(job_id: str, started_iso: str, duration_sec: float, sta
 
 
 def _on_job_event(event) -> None:
-    from datetime import datetime, timezone
     now = datetime.now(timezone.utc)
     if event.code == EVENT_JOB_SUBMITTED:
         _job_start_times[event.job_id] = now.timestamp()
@@ -179,7 +177,6 @@ def _on_job_event(event) -> None:
 
 def resume_interrupted_scans() -> None:
     """Called once on startup; re-fires any scan that was IN_PROGRESS when the server last shut down."""
-    from datetime import datetime, timezone
     today_str = datetime.now(timezone.utc).strftime('%Y-%m-%d')
 
     conn = None
@@ -999,7 +996,6 @@ def run_forensic_quarterly_fetch_job():
     # GUI name: "Forensic Quarterly Data Fetch". Canonical scheduled-job name lives in scheduler_engine.JOB_GRAPH.
     import json
     import time as _time
-    from datetime import datetime, timezone
     from yahoo_engine import yahoo_engine as _yengine
     from config import FORENSIC_DIR
     _mark_job_started(job_label("forensic_quarterly_fetch_job"))
@@ -1071,7 +1067,6 @@ def run_forensic_quarterly_fetch_job():
 def run_forensic_scores_job():
     # GUI name: "Forensic Accounting Scores". Canonical scheduled-job name lives in scheduler_engine.JOB_GRAPH.
     import json
-    from datetime import datetime, timezone
     import pandas as pd
     from config import FORENSIC_DIR
     from fundamentals_helpers import calculate_piotroski_f_score, calculate_altman_z_score, calculate_beneish_m_score
@@ -2040,7 +2035,6 @@ def _period_days(weekdays: set[int] | None) -> int:
 def _parse_last_run(value):
     if not value:
         return None
-    from datetime import datetime, timezone
     for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
         try:
             return datetime.strptime(value, fmt).replace(tzinfo=timezone.utc)
@@ -2050,7 +2044,6 @@ def _parse_last_run(value):
 
 
 def _job_status(node: dict) -> tuple[str, str]:
-    from datetime import datetime, timezone
     if not node["enabled"]:
         return "disabled", "disabled"
     if node.get("last_status") == "error":
@@ -2069,7 +2062,6 @@ def _job_status(node: dict) -> tuple[str, str]:
 
 
 def _build_node(job_id: str, meta: dict, job, run_row: dict) -> dict:
-    from datetime import timezone
     if meta.get("category") == "external":
         return {
             "id": job_id,
