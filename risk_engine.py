@@ -73,15 +73,90 @@ def calculate_tail_risk(ticker: str, target_date: Optional[str] = None) -> None:
     except Exception as e:
         logger.error("Fatal error calculating tail risk for %s: %s", ticker, e)
 
-def update_all_tail_risks(tickers: list) -> None:
+def update_all_tail_risks(tickers: list, scan_type: str = None) -> None:
     if not tickers:
         logger.warning("Ticker list is empty. Aborting tail risk scan.")
         return
 
-    logger.info("Initiating Tail Risk (VaR) Scan for %s assets...", len(tickers))
-    for ticker in tickers:
+    process_tickers = tickers
+    today_str = None
+
+    if scan_type:
+        from datetime import datetime, timezone
+        today_str = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+        resume_from = None
+
+        conn = None
+        try:
+            conn = get_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT last_processed_ticker, status FROM quant_scan_states WHERE scan_date = ? AND scan_type = ?",
+                (today_str, scan_type),
+            )
+            row = cursor.fetchone()
+            if row:
+                if row['status'] == 'COMPLETED':
+                    logger.info("Tail risk scan '%s' for %s already completed. Skipping.", scan_type, today_str)
+                    return
+                if row['status'] == 'IN_PROGRESS' and row['last_processed_ticker'] in tickers:
+                    resume_from = row['last_processed_ticker']
+                    logger.info("Resuming tail risk scan '%s' from after %s.", scan_type, resume_from)
+                else:
+                    cursor.execute(
+                        "UPDATE quant_scan_states SET last_processed_ticker = '', status = 'IN_PROGRESS'"
+                        " WHERE scan_date = ? AND scan_type = ?",
+                        (today_str, scan_type),
+                    )
+            else:
+                cursor.execute(
+                    "INSERT INTO quant_scan_states (scan_date, scan_type, last_processed_ticker, status)"
+                    " VALUES (?, ?, ?, ?)",
+                    (today_str, scan_type, '', 'IN_PROGRESS'),
+                )
+            conn.commit()
+        finally:
+            if conn:
+                conn.close()
+
+        if resume_from:
+            idx = tickers.index(resume_from)
+            process_tickers = tickers[idx + 1:]
+        else:
+            process_tickers = tickers
+
+    logger.info("Initiating Tail Risk (VaR) Scan for %s assets...", len(process_tickers))
+    for ticker in process_tickers:
         calculate_tail_risk(ticker)
         time.sleep(random.uniform(0.5, 1.5))
+        if scan_type:
+            conn = None
+            try:
+                conn = get_connection()
+                cursor = conn.cursor()
+                cursor.execute(
+                    "UPDATE quant_scan_states SET last_processed_ticker = ? WHERE scan_date = ? AND scan_type = ?",
+                    (ticker, today_str, scan_type),
+                )
+                conn.commit()
+            finally:
+                if conn:
+                    conn.close()
+
+    if scan_type:
+        conn = None
+        try:
+            conn = get_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE quant_scan_states SET status = 'COMPLETED' WHERE scan_date = ? AND scan_type = ?",
+                (today_str, scan_type),
+            )
+            conn.commit()
+        finally:
+            if conn:
+                conn.close()
+
     logger.info("Tail Risk Scan completed successfully.")
 
 if __name__ == "__main__":

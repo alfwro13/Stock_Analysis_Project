@@ -231,6 +231,24 @@ def resume_interrupted_scans() -> None:
         _threading.Thread(target=run_ml_backfill, daemon=True).start()
         dispatched = True
 
+    # Resume tail risk scans only when the parent quant scan already completed; if the quant scan is
+    # itself IN_PROGRESS its resume will call update_all_tail_risks at its end.
+    if today_states.get('daily') != 'IN_PROGRESS' and today_states.get('tail_risk_daily') == 'IN_PROGRESS':
+        logger.info("Startup: detected interrupted Tail Risk (daily) — resuming immediately.")
+        log_sched_notification("Info", "Resuming interrupted Tail Risk (daily) scan after restart.")
+        def _run_daily_tr():
+            update_all_tail_risks(DataEngine().get_all_tickers(), scan_type='tail_risk_daily')
+        _threading.Thread(target=_run_daily_tr, daemon=True).start()
+        dispatched = True
+
+    if today_states.get('universe') != 'IN_PROGRESS' and today_states.get('tail_risk_universe') == 'IN_PROGRESS':
+        logger.info("Startup: detected interrupted Tail Risk (universe) — resuming immediately.")
+        log_sched_notification("Info", "Resuming interrupted Tail Risk (universe) scan after restart.")
+        def _run_universe_tr():
+            update_all_tail_risks(get_universe_tickers(), scan_type='tail_risk_universe')
+        _threading.Thread(target=_run_universe_tr, daemon=True).start()
+        dispatched = True
+
     if not dispatched:
         logger.info("Startup resume check: no interrupted scans found.")
 
@@ -383,7 +401,7 @@ def run_overnight_quant_scan():
         all_tickers = engine.get_all_tickers()
         run_daily_quant_scan(all_tickers)
         logger.info("Overnight tail risk computation initiated.")
-        update_all_tail_risks(all_tickers)
+        update_all_tail_risks(all_tickers, scan_type='tail_risk_daily')
         logger.info("Overnight quant scan complete.")
         log_sched_notification("Success", "Overnight Quant Scan completed successfully.")
     except Exception as e:
@@ -451,7 +469,7 @@ def run_weekend_universe_routine():
         if all_tickers:
             run_daily_quant_scan(all_tickers, scan_type='universe')
             logger.info("Universe Technicals complete. Proceeding to heavy metric crunch (VaR, Sentiment)...")
-            update_all_tail_risks(all_tickers)
+            update_all_tail_risks(all_tickers, scan_type='tail_risk_universe')
             update_all_sentiment(all_tickers)
             run_historical_backfill(tickers=all_tickers)
         else:

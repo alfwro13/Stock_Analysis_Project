@@ -294,6 +294,46 @@ class TestResumeInterruptedScans:
             import time; time.sleep(0.05)
             mock_fn.assert_not_called()
 
+    def test_tail_risk_daily_in_progress_dispatches_when_daily_completed(self):
+        _seed_scan_state('daily', 'COMPLETED')
+        _seed_scan_state('tail_risk_daily', 'IN_PROGRESS', last_ticker='AAPL')
+        with patch("scheduler_engine.update_all_tail_risks") as mock_fn:
+            resume_interrupted_scans()
+            import time; time.sleep(0.1)
+            mock_fn.assert_called_once()
+            _, kwargs = mock_fn.call_args
+            assert kwargs.get('scan_type') == 'tail_risk_daily'
+
+    def test_tail_risk_daily_not_dispatched_when_daily_in_progress(self):
+        """If the parent quant scan is still IN_PROGRESS, its own resume will handle tail risk."""
+        _seed_scan_state('daily', 'IN_PROGRESS')
+        _seed_scan_state('tail_risk_daily', 'IN_PROGRESS', last_ticker='AAPL')
+        with (
+            patch("scheduler_engine.run_overnight_quant_scan"),
+            patch("scheduler_engine.update_all_tail_risks") as mock_tr,
+        ):
+            resume_interrupted_scans()
+            import time; time.sleep(0.1)
+            mock_tr.assert_not_called()
+
+    def test_tail_risk_universe_in_progress_dispatches_when_universe_completed(self):
+        _seed_scan_state('universe', 'COMPLETED')
+        _seed_scan_state('tail_risk_universe', 'IN_PROGRESS', last_ticker='VOD.L')
+        with patch("scheduler_engine.update_all_tail_risks") as mock_fn:
+            resume_interrupted_scans()
+            import time; time.sleep(0.1)
+            mock_fn.assert_called_once()
+            _, kwargs = mock_fn.call_args
+            assert kwargs.get('scan_type') == 'tail_risk_universe'
+
+    def test_tail_risk_daily_completed_does_not_redispatch(self):
+        _seed_scan_state('daily', 'COMPLETED')
+        _seed_scan_state('tail_risk_daily', 'COMPLETED')
+        with patch("scheduler_engine.update_all_tail_risks") as mock_fn:
+            resume_interrupted_scans()
+            import time; time.sleep(0.05)
+            mock_fn.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # Workflow Monitor: manifest, graph, conflicts, status, duration listener
