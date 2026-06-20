@@ -10,6 +10,7 @@
 :root {
   --font-size-nav: 16px;
   --font-size-table: 14px;
+  --font-size-dt-table: 12px;
   --font-size-form: 14px;
   --font-size-btn: 14px;
   --font-size-section: 20px;
@@ -334,7 +335,8 @@ details.settings-card[open] > summary { border-bottom: 1px solid #333; margin-bo
 .dataTables_wrapper .dataTables_filter input, .dataTables_wrapper .dataTables_length select { background-color: #121212 !important; border: 1px solid #444 !important; color: #fff !important; padding: 6px; border-radius: 4px; }
 .dataTables_wrapper .dataTables_length select { padding-right: 28px !important; min-width: 65px !important; }
 table.dataTable { border-collapse: collapse; background-color: #1e1e1e; width: 100% !important; }
-table.dataTable thead th, table.dataTable thead td { background-color: #2c2c2c; color: #4da6ff; border-bottom: 2px solid #333; padding: 10px; }
+table.dataTable thead th, table.dataTable thead td { background-color: #2c2c2c; color: #4da6ff; border-bottom: 2px solid #333; padding: 10px; font-size: var(--font-size-dt-table); }
+table.dataTable tbody td { font-size: var(--font-size-dt-table); }
 table.dataTable tbody tr { background-color: #1e1e1e !important; border-bottom: 1px solid #333; color: #e0e0e0; }
 table.dataTable tbody tr:hover { background-color: #1a2636 !important; }
 table.dataTable.display tbody tr.odd > .sorting_1, table.dataTable.order-column.stripe tbody tr.odd > .sorting_1 { background-color: #262626 !important; }
@@ -444,7 +446,7 @@ table.dataTable.display tbody tr.even > .sorting_1, table.dataTable.order-column
   #dataTable_wrapper .dtr-details { padding-left: 12px; }
   /* Override DataTables' own generous padding (it loads after styles.css and needs !important) */
   table.dataTable thead th,
-  table.dataTable tbody td { padding: 6px 4px !important; font-size: 12px !important; }
+  table.dataTable tbody td { padding: 6px 4px !important; font-size: var(--font-size-dt-table) !important; }
   /* Remove sort-arrow icons on mobile — they consume ~14px right padding per header */
   table.dataTable thead .sorting,
   table.dataTable thead .sorting_asc,

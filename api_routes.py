@@ -551,6 +551,7 @@ class UIPreferencesConfig(BaseModel):
     FREETRADE_ONLY_MODE: Optional[bool] = None
     FONT_SIZE_NAV: Optional[int] = None
     FONT_SIZE_TABLE: Optional[int] = None
+    FONT_SIZE_DT_TABLE: Optional[int] = None
     FONT_SIZE_FORM: Optional[int] = None
     FONT_SIZE_BTN: Optional[int] = None
     FONT_SIZE_SECTION: Optional[int] = None
@@ -1228,6 +1229,7 @@ async def ui_theme_css():
     props = " ".join([
         f"--font-size-nav: {ui.get('FONT_SIZE_NAV', 12)}px;",
         f"--font-size-table: {ui.get('FONT_SIZE_TABLE', 12)}px;",
+        f"--font-size-dt-table: {ui.get('FONT_SIZE_DT_TABLE', 12)}px;",
         f"--font-size-form: {ui.get('FONT_SIZE_FORM', 12)}px;",
         f"--font-size-btn: {ui.get('FONT_SIZE_BTN', 12)}px;",
         f"--font-size-section: {ui.get('FONT_SIZE_SECTION', 13)}px;",

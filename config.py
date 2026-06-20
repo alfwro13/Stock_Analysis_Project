@@ -80,6 +80,7 @@ DEFAULT_CONFIG = {
         "FREETRADE_ONLY_MODE": False,
         "FONT_SIZE_NAV": 12,
         "FONT_SIZE_TABLE": 12,
+        "FONT_SIZE_DT_TABLE": 12,
         "FONT_SIZE_FORM": 12,
         "FONT_SIZE_BTN": 12,
         "FONT_SIZE_SECTION": 13,

@@ -1592,9 +1592,16 @@
                         </select>
                     </div>
                     <div>
-                        <label class="form-label form-label-sm d-block mb-1"><abbr title="Font size for all data table cells.">Table cells</abbr></label>
+                        <label class="form-label form-label-sm d-block mb-1"><abbr title="Font size for screener, reports, and other non-DataTables tables.">Screener tables</abbr></label>
                         <select id="FONT_SIZE_TABLE" class="form-select form-select-sm font-size-select">
                             {% set v = config.UI_PREFERENCES.FONT_SIZE_TABLE | default(12) %}
+                            {% for px in _px_opts %}<option value="{{ px }}" {% if v == px %}selected{% endif %}>{{ px }} px</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="form-label form-label-sm d-block mb-1"><abbr title="Font size for Portfolio and Watchlist DataTables (uses a direct cell rule to ensure the setting takes effect).">Portfolio / Watchlist</abbr></label>
+                        <select id="FONT_SIZE_DT_TABLE" class="form-select form-select-sm font-size-select">
+                            {% set v = config.UI_PREFERENCES.FONT_SIZE_DT_TABLE | default(12) %}
                             {% for px in _px_opts %}<option value="{{ px }}" {% if v == px %}selected{% endif %}>{{ px }} px</option>{% endfor %}
                         </select>
                     </div>
