@@ -171,6 +171,7 @@ def test_no_page_route_returns_500(client):
         ("/options-sandbox",    "Options Sandbox"),
         ("/news",               "News Feed"),
         ("/tools",              "Tools"),
+        ("/stress-test",        "Historical Stress Tester"),
         ("/trap-monitor",       "Trap Monitor"),
     ]
     failures = []
