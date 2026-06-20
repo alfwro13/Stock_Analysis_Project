@@ -22,10 +22,8 @@ class MoonshotEngine:
         self.sma_gap_percent = float(self.moon_cfg.get("SMA_GAP_PERCENT", 3.0))
         # Minervini/O'Neil: institutional breakouts require volume >= this multiple of 50d avg
         self.volume_confirmation_ratio = float(self.moon_cfg.get("VOLUME_CONFIRMATION_RATIO", 1.5))
-        # Minimum % above the 52-week closing high required for is_ath to fire.
-        # A 0% margin triggers on any day a stock is flat at its prior high, producing
-        # false moonshots with zero momentum. 0.25% filters that noise while still
-        # catching genuine breakouts on the same 5-minute scan they happen.
+        # Minimum % above 52w closing high for is_ath: 0% margin triggers false moonshots (flat at prior high);
+        # 0.25% filters that noise while still catching genuine breakouts on the same 5-min scan.
         self.ath_margin_pct = float(self.moon_cfg.get("ATH_MARGIN_PCT", 0.25))
 
     def evaluate(
@@ -38,13 +36,11 @@ class MoonshotEngine:
         current_volume: float | None = None,
     ) -> dict[str, Any] | None:
         """Returns alert dict if moonshot signature detected, else None. current_volume must be a projected full-day estimate (orchestrator normalises by session-elapsed fraction); df_combined must be Close-only."""
-        # Exclude the live intraday tick from indicator calculations — it is a partially-formed
-        # bar mid-session and skews RSI/Bollinger on volatile open days.
+        # Exclude the live (partially-formed) intraday tick — it skews RSI/Bollinger on volatile opens.
         df_settled = df_combined.iloc[:-1]
 
-        # Guard on df_hist length (stable baseline) rather than df_settled, which loses one row
-        # on same-day re-runs due to the orchestrator's overwrite stitching path. Requiring 21
-        # historical rows guarantees df_settled always has >= 20 bars for Bollinger regardless.
+        # Guard on df_hist (stable) not df_settled: df_settled loses one row on same-day re-runs
+        # due to the orchestrator's overwrite-stitch path; 21 rows ensures >= 20 Bollinger bars.
         if len(df_hist) < 21:
             return None
 
@@ -68,12 +64,8 @@ class MoonshotEngine:
         latest_sma = sma_series.iloc[-1]
         above_sma_pct = ((current_price - latest_sma) / latest_sma) * 100.0 if latest_sma else 0.0
 
-        # 52-Week High Check
-        # NOTE — intentional semantic: this is a 52-week CLOSING high, not an intraday high.
-        # Using Close keeps the comparison homogeneous (live close vs historical close) and avoids
-        # false ATH triggers where a stock briefly pierces its intraday high on the open then fades.
-        # Trade-off: a stock can trade above its true intraday 52w high during a session without
-        # firing is_ath — it only fires once a closing price confirms the breakout.
+        # 52-week CLOSING high (not intraday): avoids false ATH triggers where a stock briefly
+        # pierces its intraday high on the open then fades; breakout only fires on a confirmed close.
         cutoff_52w = df_hist.index[-1] - pd.DateOffset(weeks=52)
         recent_52w = df_hist[df_hist.index >= cutoff_52w]
         fifty_two_wk_high = recent_52w['Close'].max()
