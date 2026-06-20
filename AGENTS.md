@@ -372,6 +372,12 @@ A dedicated page housing standalone analytical tools. Each tool is self-containe
 | Options Sandbox | `/options-sandbox` | Interactive options chain explorer; live calls/puts, IV smile, open interest and volume across expiries |
 | AI Sector Contagion Monitor | `/ai-contagion` | Tracks 10-ticker AI ecosystem (semis + hyperscalers + cloud); 30-day normalised performance, intraday session, rolling 20-day correlation heatmap |
 | Market Trap & Recovery Monitor | `/trap-monitor` | Post-crash lifecycle monitor: Bull Trap / Dead Cat Bounce, Bear Trap, Capitulation volume climax, and Wyckoff Accumulation detection across portfolio + proxy basket |
+| Market Regime (HMM) | `/market-regime` | Classifies the market into Bull / Chop / Crash via a 5-year GaussianHMM on SPY returns and EWMA volatility; shows Viterbi history, transition probabilities, and per-regime return/vol statistics |
+| Historical Stress Tester | `/stress-test` | Simulates the portfolio through GFC 2008, Dot-com 2000, COVID-19 crash, and 2022 inflation shock using beta-adjusted scenario shocks; shows estimated monetary loss per holding and by sector |
+| Bubble Radar | `/bubble-radar` | Scans portfolio and watchlist for valuation euphoria: SMA-200 extension, sustained overbought RSI, stretched P/S and PEG, IV call skew, and market breadth; tracks prediction accuracy at 4, 8, and 12 weeks |
+| Forensic Screener | `/forensic-screener` | Monthly institutional-grade accounting forensics: Piotroski F-Score, Altman Z-Score, and Beneish M-Score from annual financials; fires Nextcloud alerts when holdings breach distress thresholds |
+| FX Drag Analyzer | `/fx-drag` | Decomposes each US stock position's GBP return into equity return (USD) and FX effect (GBP/USD movement) across YTD, 1-year, and 2-year windows |
+| ETF Price Predictor | `/etf-predictor` | Generic morning price predictor for any ETF; configure constituent tickers and weights, predicts next-session open via holdings-weighted basket return and OLS regression with FX adjustment; tracks accuracy over time |
 
 ---
 
