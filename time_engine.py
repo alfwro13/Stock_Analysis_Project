@@ -167,6 +167,12 @@ def ticker_exchange(ticker: str, currency: str = "") -> str:
     return _load_config().get("HOME_EXCHANGE", _FALLBACK_EXCHANGE)
 
 
+def exchange_tz(exchange: str) -> str:
+    """Return the IANA timezone string for *exchange*, falling back to the default exchange."""
+    info = EXCHANGE_HOURS.get(exchange, EXCHANGE_HOURS[_FALLBACK_EXCHANGE])
+    return info["tz"]
+
+
 def market_window_utc(
     exchange: Optional[str] = None,
     include_premarket: bool = False,
