@@ -57,8 +57,8 @@
     <script src="/static/vendor/datatables/dataTables.bootstrap5.min.js"></script>
     <script src="/static/vendor/datatables/dataTables.responsive.min.js"></script>
     <script src="/static/vendor/datatables/responsive.bootstrap5.min.js"></script>
-    <script src="/static/js/csrf.js"></script>
-    {% if not embed %}<script src="/static/js/navbar.js"></script>{% endif %}
+    <script src="/static/js/csrf.js?v={{ css_version }}"></script>
+    {% if not embed %}<script src="/static/js/navbar.js?v={{ css_version }}"></script>{% endif %}
     {% block scripts %}{% endblock %}
 </body>
 </html>
