@@ -1,6 +1,7 @@
 import logging
 import time
 import random
+from datetime import datetime, timezone
 import numpy as np
 import pandas as pd
 from typing import Optional
@@ -82,7 +83,6 @@ def update_all_tail_risks(tickers: list, scan_type: str = None) -> None:
     today_str = None
 
     if scan_type:
-        from datetime import datetime, timezone
         today_str = datetime.now(timezone.utc).strftime('%Y-%m-%d')
         resume_from = None
 
