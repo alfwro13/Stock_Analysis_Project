@@ -1,4 +1,3 @@
-# intraday_orchestrator.py
 import hashlib
 import ipaddress
 import os
@@ -314,10 +313,10 @@ class IntradayOrchestrator:
     @staticmethod
     def _seconds_since(ts: pd.Timestamp) -> float:
         """Elapsed seconds to now (UTC); treats naive ts as UTC to match yfinance's stripped-zone convention and avoid BST-offset errors."""
-        now_utc = pd.Timestamp.now(tz="UTC")
+        now_utc = pd.Timestamp.now(tz=timezone.utc)
         if ts.tzinfo is not None:
-            return (now_utc - ts.tz_convert("UTC")).total_seconds()
-        return (now_utc - ts.tz_localize("UTC")).total_seconds()
+            return (now_utc - ts.tz_convert(timezone.utc)).total_seconds()
+        return (now_utc - ts.tz_localize(timezone.utc)).total_seconds()
 
     def _prune_alert_state(self, conn: sqlite3.Connection) -> None:
         """Deletes alert_state rows older than 7 days; only delisted/removed tickers accumulate; conn is caller-scoped."""
