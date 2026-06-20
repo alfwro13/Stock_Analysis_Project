@@ -1,4 +1,3 @@
-# intraday_bottom_engine.py
 import json
 import logging
 from datetime import datetime, timezone
@@ -185,7 +184,7 @@ class IntradayBottomEngine:
             # Last bar within 2 min is still forming during live hours — use iloc[-2] to avoid partial data.
             try:
                 last_ts = df.index[-1]
-                now_utc = pd.Timestamp.now(tz="UTC")
+                now_utc = pd.Timestamp.now(tz=timezone.utc)
                 last_ts_utc = last_ts.tz_convert("UTC") if last_ts.tzinfo is not None else last_ts.tz_localize("UTC")
                 still_forming = (now_utc - last_ts_utc) < pd.Timedelta(minutes=2)
             except Exception:
@@ -232,11 +231,11 @@ class IntradayBottomEngine:
 
             try:
                 exchange = time_engine.ticker_exchange(ticker)
-                mkt_tz = time_engine.EXCHANGE_HOURS.get(exchange, {}).get("tz", "America/New_York")
+                mkt_tz = time_engine.exchange_tz(exchange)
                 ts = cur.name
                 # yfinance returns tz-aware; parquet strips TZ (naive UTC) — localize only if naive.
                 if ts.tzinfo is None:
-                    ts = ts.tz_localize('UTC')
+                    ts = ts.tz_localize(timezone.utc)
                 ts_local = ts.tz_convert(mkt_tz)
                 scan_ts = ts_local.strftime("%Y-%m-%d %H:%M %Z")
             except Exception:
