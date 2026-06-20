@@ -21,7 +21,7 @@ import fx_drag_engine
 def _make_price_series(start_price: float, end_price: float, n_days: int = 30) -> pd.Series:
     today = pd.Timestamp.today().normalize()
     idx = pd.date_range(end=today, periods=n_days, freq="B")
-    prices = [start_price] * n_days
+    prices = [start_price] * len(idx)
     prices[-1] = end_price
     return pd.Series(prices, index=idx, name="Close")
 
