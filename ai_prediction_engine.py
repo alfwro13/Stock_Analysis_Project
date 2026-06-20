@@ -1,7 +1,6 @@
 # ai_prediction_engine.py
 import time
 import logging
-import sqlite3
 import psutil
 from datetime import datetime, timezone
 from pathlib import Path
@@ -228,30 +227,6 @@ def _winsorize_and_impute_fundamentals(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def _migrate_quant_signals_schema(cursor: sqlite3.Cursor) -> None:
-    """
-    Idempotent schema migration. Adds all computed feature columns to
-    quant_signals if they do not already exist. Safe to run on every backfill.
-    """
-    new_columns = [
-        ("mom_1m",           "REAL"),
-        ("mom_3m",           "REAL"),
-        ("mom_6m",           "REAL"),
-        ("mom_12m_skip1m",   "REAL"),
-        ("atr_pct",          "REAL"),
-        ("hist_vol_20",      "REAL"),
-        ("rel_strength_5d",  "REAL"),
-        ("rel_strength_20d", "REAL"),
-    ]
-    for col_name, col_type in new_columns:
-        try:
-            cursor.execute(
-                f"ALTER TABLE quant_signals ADD COLUMN {col_name} {col_type}"
-            )
-            logger.info(f"Schema migration: added column '{col_name}' to quant_signals.")
-        except sqlite3.OperationalError:
-            pass  # Column already exists
-
 
 def _download_spy_benchmark(period: str = "2y") -> Optional[pd.DataFrame]:
     """
@@ -372,9 +347,6 @@ def run_historical_backfill(tickers: Optional[List[str]] = None) -> None:
     try:
         conn = get_connection()
         cursor = conn.cursor()
-        _migrate_quant_signals_schema(cursor)
-        conn.commit()
-
         cursor.execute(
             "SELECT last_processed_ticker FROM quant_scan_states "
             "WHERE scan_type = 'ml_backfill' AND status = 'IN_PROGRESS' "
