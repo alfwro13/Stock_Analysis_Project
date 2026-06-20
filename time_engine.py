@@ -173,6 +173,12 @@ def exchange_tz(exchange: str) -> str:
     return info["tz"]
 
 
+def localize_naive_to_utc(dt_naive: datetime, exchange: str) -> datetime:
+    """Attach the exchange local timezone to a naive datetime and convert to UTC."""
+    tz = ZoneInfo(exchange_tz(exchange))
+    return dt_naive.replace(tzinfo=tz).astimezone(timezone.utc)
+
+
 def market_window_utc(
     exchange: Optional[str] = None,
     include_premarket: bool = False,
