@@ -376,3 +376,87 @@ class TestFilterAiVetoes:
         assert len(approved) == 1
         assert approved[0]['ticker'] == 'A'
         assert len(vetoed) == 2
+
+
+# ------------------------------------------------------------------ #
+#  filter_macro_vetoes                                                 #
+# ------------------------------------------------------------------ #
+
+from unittest.mock import patch, MagicMock
+from quant_screener import filter_macro_vetoes
+
+
+def _mock_conn(us_spread=0.0, uk_spread=0.0):
+    """Return a mock connection whose cursor().fetchone() yields the given spreads."""
+    row = {"us_high_yield_spread": us_spread, "uk_corporate_spread": uk_spread}
+    cursor = MagicMock()
+    cursor.fetchone.return_value = row
+    conn = MagicMock()
+    conn.cursor.return_value = cursor
+    return conn
+
+
+class TestFilterMacroVetoes:
+    def _us_row(self, pe=18.0, debt=0.5, corr=0.1, **kw):
+        return _make_row(country="US", currency="USD", trailing_pe=pe,
+                         debt_to_equity=debt, yield_correlation=corr, **kw)
+
+    def _uk_row(self, pe=18.0, debt=0.5, corr=0.1, **kw):
+        return _make_row(country="UK", currency="GBP", trailing_pe=pe,
+                         debt_to_equity=debt, yield_correlation=corr, **kw)
+
+    def test_green_regime_approves_all(self):
+        with patch("quant_screener.get_connection", return_value=_mock_conn()):
+            approved, vetoed = filter_macro_vetoes([self._us_row()], "GREEN")
+        assert len(approved) == 1 and vetoed == []
+
+    def test_red_regime_high_pe_neg_corr_vetoed(self):
+        with patch("quant_screener.get_connection", return_value=_mock_conn()):
+            row = self._us_row(pe=35, corr=-0.5)
+            approved, vetoed = filter_macro_vetoes([row], "RED")
+        assert vetoed and not approved
+
+    def test_red_regime_low_pe_approved_despite_neg_corr(self):
+        with patch("quant_screener.get_connection", return_value=_mock_conn()):
+            row = self._us_row(pe=15, corr=-0.5)
+            approved, vetoed = filter_macro_vetoes([row], "RED")
+        assert approved and not vetoed
+
+    def test_red_regime_positive_corr_approved_despite_high_pe(self):
+        with patch("quant_screener.get_connection", return_value=_mock_conn()):
+            row = self._us_row(pe=40, corr=0.4)
+            approved, vetoed = filter_macro_vetoes([row], "RED")
+        assert approved and not vetoed
+
+    def test_yellow_regime_behaves_same_as_red(self):
+        with patch("quant_screener.get_connection", return_value=_mock_conn()):
+            row = self._us_row(pe=35, corr=-0.5)
+            approved, vetoed = filter_macro_vetoes([row], "YELLOW")
+        assert vetoed and not approved
+
+    def test_us_credit_circuit_breaker_overrides_green_regime(self):
+        # US HY spread >6.5% → vetoed regardless of regime
+        with patch("quant_screener.get_connection", return_value=_mock_conn(us_spread=7.0)):
+            row = self._us_row(pe=10, corr=0.9)  # would normally pass all filters
+            approved, vetoed = filter_macro_vetoes([row], "GREEN")
+        assert vetoed and not approved
+
+    def test_uk_credit_circuit_breaker(self):
+        with patch("quant_screener.get_connection", return_value=_mock_conn(uk_spread=3.5)):
+            row = self._uk_row(pe=10, corr=0.9)
+            approved, vetoed = filter_macro_vetoes([row], "GREEN")
+        assert vetoed and not approved
+
+    def test_us_circuit_breaker_does_not_affect_uk_asset(self):
+        # High US spread should NOT trip for a UK-currency asset
+        with patch("quant_screener.get_connection", return_value=_mock_conn(us_spread=7.0, uk_spread=1.0)):
+            row = self._uk_row(pe=10, corr=0.9)
+            approved, vetoed = filter_macro_vetoes([row], "GREEN")
+        assert approved and not vetoed
+
+    def test_missing_yield_correlation_vetoed_in_red(self):
+        # None correlation is treated as risk → vetoed in RED+high-multiple
+        with patch("quant_screener.get_connection", return_value=_mock_conn()):
+            row = self._us_row(pe=35, corr=None)
+            approved, vetoed = filter_macro_vetoes([row], "RED")
+        assert vetoed and not approved
