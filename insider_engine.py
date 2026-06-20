@@ -1,4 +1,3 @@
-# insider_engine.py
 import logging
 import os
 import json
