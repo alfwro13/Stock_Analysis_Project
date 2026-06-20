@@ -374,3 +374,10 @@ class YahooEngine:
 
 
 yahoo_engine = YahooEngine()
+
+
+def fetch_diagnostic_history(session) -> "pd.DataFrame":
+    """Fetch 1-day SPY history using a caller-supplied session (e.g. curl_cffi for IPv6 tests).
+    Kept here so yfinance stays confined to yahoo_engine.py."""
+    import yfinance as yf
+    return yf.Ticker("SPY", session=session).history(period="1d")
