@@ -77,7 +77,7 @@ class CrashEngine:
             if vol_data is None:
                 _result = yahoo_engine.get_price_history([ticker], period="1mo", interval="1d")
                 vol_data = _result.get(ticker)
-            if not vol_data.empty and 'Volume' in vol_data.columns:
+            if vol_data is not None and not vol_data.empty and 'Volume' in vol_data.columns:
                 current_vol = vol_data['Volume'].iloc[-1]
                 valid_vol = vol_data['Volume'].dropna()
 
@@ -121,16 +121,15 @@ class CrashEngine:
                     )
                     try:
                         if isinstance(pub_time_raw, str):
-                            # ISO strings from yfinance are UTC; parse with utc=True then strip tz
-                            pub_time = pd.to_datetime(pub_time_raw, utc=True).tz_convert(None)
+                            pub_time = pd.to_datetime(pub_time_raw, utc=True)
                         else:
                             # UNIX timestamps are always UTC seconds since epoch
-                            pub_time = datetime.fromtimestamp(float(pub_time_raw), tz=timezone.utc).replace(tzinfo=None)
+                            pub_time = datetime.fromtimestamp(float(pub_time_raw), tz=timezone.utc)
                         parsed.append((pub_time, publisher, headline))
                     except Exception as dt_e:
                         logger.debug(f"Date parsing failed for news item on {ticker}: {dt_e}")
 
-                cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=2)
+                cutoff = datetime.now(timezone.utc) - timedelta(days=2)
                 recent = sorted(
                     (entry for entry in parsed if entry[0] >= cutoff),
                     key=lambda x: x[0],
@@ -215,8 +214,8 @@ class CrashEngine:
         atr_is_fresh = False
         if atr_last_updated is not None:
             try:
-                updated_dt = pd.to_datetime(atr_last_updated)
-                now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+                updated_dt = pd.to_datetime(atr_last_updated, utc=True)
+                now_utc = datetime.now(timezone.utc)
                 atr_is_fresh = (now_utc - updated_dt.to_pydatetime()) <= timedelta(days=3)
             except Exception:
                 logger.debug("Could not parse ATR last_updated timestamp '%s', treating as stale", atr_last_updated)
