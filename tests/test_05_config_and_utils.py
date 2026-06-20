@@ -178,6 +178,36 @@ def test_load_config_migrates_et_as_utc_defaults(tmp_path):
 
 
 @pytest.mark.config
+def test_load_config_fills_missing_xray_and_file_logging_sub_keys_from_defaults(tmp_path):
+    """load_config() must 2-level-merge XRAY_TARGETS, REGIME_TARGETS, FILE_LOGGING, and
+    REPORTS_DEFAULTS so that a partial stored value does not silently discard unmentioned
+    defaults (regression guard for the fix that added these keys to the merge list)."""
+    import config as _config
+    original_path = _config.SECRETS_PATH
+    partial_path = tmp_path / "partial.json"
+    partial_path.write_text(json.dumps({
+        "FILE_LOGGING": {"ENABLED": True},
+        "REPORTS_DEFAULTS": {"MR_MAX_RSI": 25},
+        "XRAY_TARGETS": {"concentration_targets": {"max_single_position_pct": 20.0}},
+    }))
+    try:
+        _config.SECRETS_PATH = partial_path
+        result = _config.load_config()
+        fl = result["FILE_LOGGING"]
+        assert fl.get("ENABLED") is True, "Stored FILE_LOGGING.ENABLED must be applied"
+        assert "LEVEL" in fl, "Default FILE_LOGGING.LEVEL must be preserved"
+        assert "DAYS_TO_KEEP" in fl, "Default FILE_LOGGING.DAYS_TO_KEEP must be preserved"
+        rd = result["REPORTS_DEFAULTS"]
+        assert rd.get("MR_MAX_RSI") == 25, "Stored REPORTS_DEFAULTS.MR_MAX_RSI must be applied"
+        assert "DIV_MIN_YIELD" in rd, "Default REPORTS_DEFAULTS.DIV_MIN_YIELD must be preserved"
+        xt = result["XRAY_TARGETS"]
+        assert xt["concentration_targets"]["max_single_position_pct"] == 20.0
+        assert "sector_targets" in xt, "Default XRAY_TARGETS.sector_targets must be preserved"
+    finally:
+        _config.SECRETS_PATH = original_path
+
+
+@pytest.mark.config
 def test_load_config_fills_missing_scheduling_sub_keys_from_defaults(tmp_path):
     """load_config() must fill in missing keys within a SCHEDULING sub-block from defaults.
 
