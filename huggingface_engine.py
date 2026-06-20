@@ -1,4 +1,3 @@
-# huggingface_engine.py
 import os
 import time
 import random
@@ -165,8 +164,7 @@ def update_all_sentiment(tickers: List[str]) -> None:
     logger.info("FinBERT NLP Analysis completed successfully.")
 
 
-# Triggered by run_central_bank_nlp_check() in scheduler_engine.py, which polls
-# macro_calendar every 30 min (mon-fri 12:00-21:00 UTC) for same-day CB events.
+# Triggered by run_central_bank_nlp_check() in scheduler_engine.py, polling macro_calendar every 30 min (mon–fri 12:00–21:00 UTC) for same-day CB events.
 def run_central_bank_nlp_alert(event_name: str, currency: str) -> bool:
     """Classify FOMC/BoE tone as Hawkish/Dovish/Neutral and dispatch to Nextcloud Talk."""
     logger.info(f"Intercepting Central Bank Event for NLP Analysis: {event_name}")
