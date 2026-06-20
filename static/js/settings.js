@@ -1673,8 +1673,10 @@
                     "FONT_SIZE_FORM": parseInt(document.getElementById('FONT_SIZE_FORM').value) || 14,
                     "FONT_SIZE_BTN": parseInt(document.getElementById('FONT_SIZE_BTN').value) || 14,
                     "FONT_SIZE_SECTION": parseInt(document.getElementById('FONT_SIZE_SECTION').value) || 20,
-                    "FONT_SIZE_BODY": parseInt(document.getElementById('FONT_SIZE_BODY').value) || 16,
-                    "FONT_SIZE_HEADING": parseInt(document.getElementById('FONT_SIZE_HEADING').value) || 32
+                    "FONT_SIZE_BODY": parseInt(document.getElementById('FONT_SIZE_BODY').value) || 12,
+                    "FONT_SIZE_H1": parseInt(document.getElementById('FONT_SIZE_H1').value) || 17,
+                    "FONT_SIZE_H2": parseInt(document.getElementById('FONT_SIZE_H2').value) || 14,
+                    "FONT_SIZE_H3": parseInt(document.getElementById('FONT_SIZE_H3').value) || 12
                 },
                 "POSITION_SIZING": {
                     "ACCOUNT_VALUE": parseFloat(document.getElementById('POSITION_SIZING_ACCOUNT_VALUE').value) || 10000,

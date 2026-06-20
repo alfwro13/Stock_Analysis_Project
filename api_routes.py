@@ -555,7 +555,9 @@ class UIPreferencesConfig(BaseModel):
     FONT_SIZE_BTN: Optional[int] = None
     FONT_SIZE_SECTION: Optional[int] = None
     FONT_SIZE_BODY: Optional[int] = None
-    FONT_SIZE_HEADING: Optional[int] = None
+    FONT_SIZE_H1: Optional[int] = None
+    FONT_SIZE_H2: Optional[int] = None
+    FONT_SIZE_H3: Optional[int] = None
 
 class PositionSizingConfig(BaseModel):
     ACCOUNT_VALUE: Optional[float] = None
@@ -1224,13 +1226,15 @@ def test_yahoo_ipv6(request: IPv6TestRequest):
 async def ui_theme_css():
     ui = load_config().get("UI_PREFERENCES", {})
     props = " ".join([
-        f"--font-size-nav: {ui.get('FONT_SIZE_NAV', 16)}px;",
-        f"--font-size-table: {ui.get('FONT_SIZE_TABLE', 14)}px;",
-        f"--font-size-form: {ui.get('FONT_SIZE_FORM', 14)}px;",
-        f"--font-size-btn: {ui.get('FONT_SIZE_BTN', 14)}px;",
-        f"--font-size-section: {ui.get('FONT_SIZE_SECTION', 20)}px;",
-        f"--font-size-body: {ui.get('FONT_SIZE_BODY', 16)}px;",
-        f"--font-size-heading: {ui.get('FONT_SIZE_HEADING', 32)}px;",
+        f"--font-size-nav: {ui.get('FONT_SIZE_NAV', 12)}px;",
+        f"--font-size-table: {ui.get('FONT_SIZE_TABLE', 12)}px;",
+        f"--font-size-form: {ui.get('FONT_SIZE_FORM', 12)}px;",
+        f"--font-size-btn: {ui.get('FONT_SIZE_BTN', 12)}px;",
+        f"--font-size-section: {ui.get('FONT_SIZE_SECTION', 13)}px;",
+        f"--font-size-body: {ui.get('FONT_SIZE_BODY', 12)}px;",
+        f"--font-size-h1: {ui.get('FONT_SIZE_H1', 17)}px;",
+        f"--font-size-h2: {ui.get('FONT_SIZE_H2', 14)}px;",
+        f"--font-size-h3: {ui.get('FONT_SIZE_H3', 12)}px;",
     ])
     return PlainTextResponse(f":root {{{props}}}", media_type="text/css")
 

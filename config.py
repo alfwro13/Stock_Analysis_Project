@@ -78,13 +78,15 @@ DEFAULT_CONFIG = {
         "LIVE_DETAILS": False,
         "REFRESH_RATE": 60,
         "FREETRADE_ONLY_MODE": False,
-        "FONT_SIZE_NAV": 16,
-        "FONT_SIZE_TABLE": 14,
-        "FONT_SIZE_FORM": 14,
-        "FONT_SIZE_BTN": 14,
-        "FONT_SIZE_SECTION": 20,
-        "FONT_SIZE_BODY": 16,
-        "FONT_SIZE_HEADING": 32
+        "FONT_SIZE_NAV": 12,
+        "FONT_SIZE_TABLE": 12,
+        "FONT_SIZE_FORM": 12,
+        "FONT_SIZE_BTN": 12,
+        "FONT_SIZE_SECTION": 13,
+        "FONT_SIZE_BODY": 12,
+        "FONT_SIZE_H1": 17,
+        "FONT_SIZE_H2": 14,
+        "FONT_SIZE_H3": 12
     },
     "POSITION_SIZING": {
         "ACCOUNT_VALUE": 500,
