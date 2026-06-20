@@ -218,3 +218,14 @@ def reset_cron_trigger_params(exchange: Optional[str] = None) -> dict:
         "minute": total_min % 60,
         "timezone": info["tz"],
     }
+
+
+def fmt_reset_time(exchange: Optional[str] = None) -> str:
+    """Return the formatted (user-tz) time at which the daily reset fires for *exchange*."""
+    params = reset_cron_trigger_params(exchange)
+    reset_dt = datetime.combine(
+        now_local().date(),
+        dtime(params["hour"], params["minute"]),
+        tzinfo=ZoneInfo(params["timezone"]),
+    )
+    return fmt_time(reset_dt)
