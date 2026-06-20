@@ -54,7 +54,7 @@ def update_market_universe() -> None:
             with open(filepath, "r", encoding="utf-8") as file_reader:
                 for i, line in enumerate(file_reader):
                     if i == 0:
-                        continue # Skip header
+                        continue
                     
                     line_data = line.strip().split("|")
                     if len(line_data) < 2:
