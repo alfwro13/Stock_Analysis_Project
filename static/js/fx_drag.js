@@ -119,13 +119,13 @@
         const chart = document.getElementById("fxd-chart-wrapper");
         const summary = document.getElementById("fxd-summary");
         if (!data || !data.length) {
-            empty.style.display = "";
+            empty.classList.remove("d-none");
             table.style.display = "none";
             chart.style.display = "none";
             summary.style.display = "none";
             return;
         }
-        empty.style.display = "none";
+        empty.classList.add("d-none");
         table.style.display = "";
         chart.style.display = "";
         summary.style.display = "";
