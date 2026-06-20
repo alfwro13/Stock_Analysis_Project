@@ -872,6 +872,7 @@ def run_trap_accuracy_fill_job():
         logger.error("Trap accuracy fill job failed: %s", e)
         log_sched_notification("Error", f"Trap accuracy fill job failed: {e}")
     finally:
+        _mark_job_done(job_label("trap_accuracy_fill_job"))
         record_job_run("trap_accuracy_fill_job")
 
 
