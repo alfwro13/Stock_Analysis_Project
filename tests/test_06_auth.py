@@ -574,3 +574,48 @@ class TestSecretGeneration:
             first = _secret()
             second = _secret()
         assert first == second
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 8.  POST /api/admin-reset-password
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestAdminResetPassword:
+
+    def _post(self, client, new_password: str, confirm_password: str):
+        return client.post(
+            "/api/admin-reset-password",
+            json={"new_password": new_password, "confirm_password": confirm_password},
+        )
+
+    def test_returns_403_when_flag_disabled(self, client):
+        with patch("api_routes_auth.load_config", return_value={"FORCE_PASSWORD_RESET": False}):
+            resp = self._post(client, "StrongPass1!", "StrongPass1!")
+        assert resp.status_code == 403
+
+    def test_returns_400_on_password_mismatch(self, client):
+        with patch("api_routes_auth.load_config", return_value={"FORCE_PASSWORD_RESET": True}):
+            resp = self._post(client, "StrongPass1!", "DifferentPass!")
+        assert resp.status_code == 400
+        assert "match" in resp.json()["detail"].lower()
+
+    def test_returns_400_when_password_too_short(self, client):
+        with patch("api_routes_auth.load_config", return_value={"FORCE_PASSWORD_RESET": True}):
+            resp = self._post(client, "short", "short")
+        assert resp.status_code == 400
+        assert "8" in resp.json()["detail"]
+
+    def test_returns_400_for_changeme_password(self, client):
+        with patch("api_routes_auth.load_config", return_value={"FORCE_PASSWORD_RESET": True}):
+            resp = self._post(client, "changeme", "changeme")
+        assert resp.status_code == 400
+
+    def test_happy_path_returns_ok(self, client):
+        with (
+            patch("api_routes_auth.load_config", return_value={"FORCE_PASSWORD_RESET": True}),
+            patch("dotenv.set_key"),
+            patch("api_routes_auth.update_config_atomic"),
+        ):
+            resp = self._post(client, "NewSecurePass1!", "NewSecurePass1!")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "ok"

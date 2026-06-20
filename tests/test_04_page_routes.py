@@ -201,3 +201,25 @@ def test_trap_monitor_page_loads(client):
 def test_log_viewer_page_loads(client):
     """GET /log-viewer must return 200 without crashing."""
     _assert_page_ok(client, "/log-viewer", label="Log Viewer")
+
+
+# ── Admin Password Reset ──────────────────────────────────────────────────────
+
+@pytest.mark.pages
+def test_admin_reset_password_page_renders_when_flag_enabled(client):
+    """When FORCE_PASSWORD_RESET is True the page must render (not 500)."""
+    from unittest.mock import patch
+    with patch("page_routes.load_config", return_value={"FORCE_PASSWORD_RESET": True}):
+        resp = client.get("/admin-reset-password", follow_redirects=False)
+    assert resp.status_code == 200
+    assert b"Admin Password Reset" in resp.content
+
+
+@pytest.mark.pages
+def test_admin_reset_password_page_redirects_when_flag_disabled(client):
+    """When FORCE_PASSWORD_RESET is False the page must redirect to /login."""
+    from unittest.mock import patch
+    with patch("page_routes.load_config", return_value={"FORCE_PASSWORD_RESET": False}):
+        resp = client.get("/admin-reset-password", follow_redirects=False)
+    assert resp.status_code == 302
+    assert "/login" in resp.headers["location"]
