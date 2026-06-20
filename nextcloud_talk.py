@@ -1,4 +1,3 @@
-# nextcloud_talk.py
 import logging
 import os
 import requests
@@ -73,9 +72,8 @@ def share_file_to_talk(remote_path, conversation_token, nextcloud_url, bot_usern
         return False
 
 def send_text_message(message_text: str, config_data: dict) -> bool:
-    # Env vars take precedence — credentials are sensitive and are never written to
-    # config.json, only to .env / os.environ. config_data (from load_config()) is
-    # kept as a fallback for callers that resolve credentials themselves.
+    # Env vars take precedence: credentials are never written to config.json, only .env/os.environ;
+    # config_data is a fallback for callers that resolve credentials themselves.
     url = os.environ.get("NEXTCLOUD_URL") or config_data.get("NEXTCLOUD_URL", "")
     token = os.environ.get("NEXTCLOUD_CONVERSATION_TOKEN") or config_data.get("CONVERSATION_TOKEN", "")
     user = os.environ.get("NEXTCLOUD_BOT_USERNAME") or config_data.get("BOT_USERNAME", "")
