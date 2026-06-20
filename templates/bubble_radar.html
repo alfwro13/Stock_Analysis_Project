@@ -32,12 +32,12 @@
         <thead>
             <tr>
                 <th>Ticker</th>
-                <th title="Watch (≥{{ config.SCHEDULING.BUBBLE_RADAR.WATCH_THRESHOLD }}) or Bubble Risk (≥{{ config.SCHEDULING.BUBBLE_RADAR.FLAG_THRESHOLD }}).">Flag</th>
-                <th title="Composite Bubble Risk Score 0–100, derived from 7 metrics: SMA Extension, RSI, P/S, PEG, FCF Yield gap, IV Call Skew, and SPY–RSP breadth spread.">Score</th>
-                <th title="% above or below the 200-day Simple Moving Average. Values above 25% indicate significant overextension.">SMA-200 Ext%</th>
-                <th title="Average RSI over the last 20 trading days. Sustained readings above 70–75 indicate prolonged overbought conditions.">RSI Avg (20d)</th>
-                <th title="Price-to-Sales (trailing 12 months). High P/S ratios indicate investors are pricing in aggressive future growth.">P/S</th>
-                <th title="PEG Ratio — P/E divided by earnings growth rate. Values above 2.5 suggest the stock is outrunning its earnings trajectory.">PEG</th>
+                <th><abbr title="Watch (≥{{ config.SCHEDULING.BUBBLE_RADAR.WATCH_THRESHOLD }}) or Bubble Risk (≥{{ config.SCHEDULING.BUBBLE_RADAR.FLAG_THRESHOLD }}).">Flag</abbr></th>
+                <th><abbr title="Composite Bubble Risk Score 0–100, derived from 7 metrics: SMA Extension, RSI, P/S, PEG, FCF Yield gap, IV Call Skew, and SPY–RSP breadth spread.">Score</abbr></th>
+                <th><abbr title="% above or below the 200-day Simple Moving Average. Values above 25% indicate significant overextension.">SMA-200 Ext%</abbr></th>
+                <th><abbr title="Average RSI over the last 20 trading days. Sustained readings above 70–75 indicate prolonged overbought conditions.">RSI Avg (20d)</abbr></th>
+                <th><abbr title="Price-to-Sales (trailing 12 months). High P/S ratios indicate investors are pricing in aggressive future growth.">P/S</abbr></th>
+                <th><abbr title="PEG Ratio — P/E divided by earnings growth rate. Values above 2.5 suggest the stock is outrunning its earnings trajectory.">PEG</abbr></th>
                 <th>Last Scan</th>
             </tr>
         </thead>
@@ -67,9 +67,9 @@
                 <th>Flag Level</th>
                 <th>Flagged Date</th>
                 <th>Price at Flag</th>
-                <th title="Did the price fall within 4 weeks of the flag?">4-Week</th>
-                <th title="Did the price fall within 8 weeks of the flag?">8-Week</th>
-                <th title="Did the price fall within 12 weeks of the flag?">12-Week</th>
+                <th><abbr title="Did the price fall within 4 weeks of the flag?">4-Week</abbr></th>
+                <th><abbr title="Did the price fall within 8 weeks of the flag?">8-Week</abbr></th>
+                <th><abbr title="Did the price fall within 12 weeks of the flag?">12-Week</abbr></th>
             </tr>
         </thead>
         <tbody id="br-history-body"></tbody>
