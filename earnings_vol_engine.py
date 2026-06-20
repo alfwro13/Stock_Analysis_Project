@@ -115,13 +115,39 @@ def get_implied_straddle_move(ticker: str, underlying_price: float, target_date:
         logger.debug(f"Error calculating implied straddle: {e}")
         return None, 0, None
 
+def _filter_equity_tickers(tickers: List[str]) -> List[str]:
+    if not tickers:
+        return tickers
+    conn = None
+    try:
+        conn = get_connection()
+        placeholders = ",".join("?" * len(tickers))
+        rows = conn.execute(
+            f"SELECT ticker FROM stock_signals WHERE ticker IN ({placeholders}) AND quote_type IS NOT NULL AND quote_type != 'EQUITY' "
+            f"UNION SELECT ticker FROM asset_profiles WHERE ticker IN ({placeholders}) AND quote_type IS NOT NULL AND quote_type != 'EQUITY'",
+            tickers * 2,
+        ).fetchall()
+        non_equity = {row["ticker"] for row in rows}
+        filtered = [t for t in tickers if t not in non_equity]
+        if non_equity:
+            logger.info("Excluded %d non-equity tickers from earnings scan: %s", len(non_equity), sorted(non_equity))
+        return filtered
+    except Exception as e:
+        logger.debug("Could not filter non-equity tickers: %s", e)
+        return tickers
+    finally:
+        if conn:
+            conn.close()
+
+
 def run_earnings_vol_scan(ticker_list: List[str]) -> None:
+    ticker_list = _filter_equity_tickers(ticker_list)
     total_tickers = len(ticker_list)
     if not ticker_list:
         logger.warning("Ticker list is empty. Aborting scan.")
         return
 
-    logger.info(f"Starting earnings volatility scan for {total_tickers} assets...")
+    logger.info("Starting earnings volatility scan for %d assets...", total_tickers)
     log_notification("Info", f"Earnings Volatility Scan initiated for {total_tickers} assets.")
     
     conn = None
