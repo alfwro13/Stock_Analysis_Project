@@ -182,6 +182,7 @@ def test_no_page_route_returns_500(client):
         ("/index/%5EGSPC",      "Index Detail (S&P 500)"),
         ("/login",              "Login"),
         ("/market-regime",      "Market Regime (HMM)"),
+        ("/score-history",      "Score History"),
     ]
     failures = []
     for url, label in pages:
