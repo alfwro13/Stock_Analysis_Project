@@ -11,11 +11,8 @@ from tools.network_engine import yahoo_connection_boundary
 
 logger = logging.getLogger(__name__)
 
-# Serialises all calls that touch the yfinance YfData singleton (session + crumb).
-# yf.Ticker(session=X) and yf.download(session=X) both write to a process-global
-# singleton; concurrent writes corrupt the session and trigger an infinite
-# "Session is closed" → _clear_yfinance_crumb → 401 → re-fetch cycle that
-# can hold yf.download's shared._LOCK for hours, blocking all intraday jobs.
+# Prevents concurrent writes to the yfinance process-global YfData singleton; without this,
+# parallel callers corrupt the session/crumb and trigger an infinite 401 re-fetch loop.
 _yf_singleton_lock = threading.Lock()
 
 _CacheEntry = namedtuple("_CacheEntry", ["data", "expires_at"])
@@ -401,5 +398,4 @@ yahoo_engine = YahooEngine()
 def fetch_diagnostic_history(session) -> "pd.DataFrame":
     """Fetch 1-day SPY history using a caller-supplied session (e.g. curl_cffi for IPv6 tests).
     Kept here so yfinance stays confined to yahoo_engine.py."""
-    import yfinance as yf
     return yf.Ticker("SPY", session=session).history(period="1d")
