@@ -1164,12 +1164,7 @@ async def etf_predictor_detail_page(request: Request, config_id: int):
     )
     cfg = get_etf_predictor_config(config_id)
     if cfg is None:
-        return templates.TemplateResponse(
-            request=request,
-            name="404.html",
-            context={"unread_count": get_unread_count()},
-            status_code=404,
-        )
+        return RedirectResponse("/etf-predictor", status_code=302)
 
     error_html = "<p class='error-text'>Data unavailable — please try again later.</p>"
     etf_info = detect_etf_info(cfg["etf_ticker"])

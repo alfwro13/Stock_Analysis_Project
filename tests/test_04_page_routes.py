@@ -227,3 +227,21 @@ def test_admin_reset_password_page_redirects_when_flag_disabled(client):
         resp = client.get("/admin-reset-password", follow_redirects=False)
     assert resp.status_code == 302
     assert "/login" in resp.headers["location"]
+
+
+# ── ETF Predictor ─────────────────────────────────────────────────────────────
+
+@pytest.mark.pages
+def test_etf_predictor_index_page_loads(client):
+    """GET /etf-predictor must render with an empty config list without crashing."""
+    _assert_page_ok(client, "/etf-predictor", label="ETF Predictor Index")
+
+
+@pytest.mark.pages
+def test_etf_predictor_detail_unknown_id_redirects(client):
+    """GET /etf-predictor/99999 with no such config must redirect (not 500)."""
+    resp = client.get("/etf-predictor/99999", follow_redirects=False)
+    assert resp.status_code in (302, 303, 307, 308), (
+        f"Expected redirect for unknown ETF config id, got {resp.status_code}"
+    )
+    assert "/etf-predictor" in resp.headers["location"]
