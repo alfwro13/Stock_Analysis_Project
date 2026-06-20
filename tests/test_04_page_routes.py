@@ -177,6 +177,7 @@ def test_no_page_route_returns_500(client):
         ("/bubble-radar",       "Bubble Radar"),
         ("/change-password",    "Change Password"),
         ("/dip-radar",          "Dip Radar Summary"),
+        ("/forensic-screener",  "Forensic Screener"),
     ]
     failures = []
     for url, label in pages:
