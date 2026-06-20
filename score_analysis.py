@@ -99,7 +99,6 @@ def get_score_analysis(filter_name: str = "all") -> dict:
         for k, v in _HORIZONS.items()
     }
 
-    # Build per-ticker price series for fast forward-return lookups
     prices_df = pd.DataFrame([dict(r) for r in price_rows])
     price_lookup: dict[str, pd.Series] = {}
     if not prices_df.empty:
