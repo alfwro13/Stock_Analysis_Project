@@ -90,7 +90,7 @@ def _get_pulse_rows(tickers: list[str]) -> dict[str, dict]:
 
 
 def _format_age(pub_time: datetime) -> str:
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    now = datetime.now(timezone.utc)
     delta_secs = (now - pub_time).total_seconds()
     if delta_secs < 3600:
         return f"{int(delta_secs / 60)}min ago"
@@ -102,7 +102,7 @@ def fetch_portfolio_news(
     since_dt: datetime,
     max_per_ticker: int = 3,
 ) -> dict[str, list[dict[str, Any]]]:
-    """Fetch Yahoo Finance news per ticker; since_dt must be naive UTC; returns max_per_ticker items newest-first."""
+    """Fetch Yahoo Finance news per ticker; since_dt must be UTC-aware; returns max_per_ticker items newest-first."""
     result: dict[str, list[dict]] = {}
 
     for ticker in tickers:
@@ -132,11 +132,11 @@ def fetch_portfolio_news(
                 )
                 try:
                     if isinstance(pub_time_raw, str):
-                        pub_time = pd.to_datetime(pub_time_raw, utc=True).tz_convert(None)
+                        pub_time = pd.to_datetime(pub_time_raw, utc=True).to_pydatetime()
                     else:
                         pub_time = datetime.fromtimestamp(
                             float(pub_time_raw), tz=timezone.utc
-                        ).replace(tzinfo=None)
+                        )
 
                     if pub_time >= since_dt:
                         parsed.append((
@@ -397,7 +397,7 @@ def generate_morning_briefing(target_date: str) -> str:
     news_data: dict[str, list[dict]] = {}
     if tickers:
         logger.info("Fetching overnight news for %d portfolio tickers...", len(tickers))
-        news_data = fetch_portfolio_news(tickers, since_dt.replace(tzinfo=None))
+        news_data = fetch_portfolio_news(tickers, since_dt)
 
     logger.info("Generating UK market chart snapshots...")
     charts = generate_uk_charts(target_date)
