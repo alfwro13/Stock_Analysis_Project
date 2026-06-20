@@ -1,0 +1,771 @@
+        <details class="settings-card" id="diagnostics-panel" ontoggle="handleDiagnosticsToggle(this)">
+            <summary>🩺 System Diagnostics and Maintenance</summary>
+
+            <div id="metrics-loading" class="status-msg-sm msg-cyan mt-10">⏳ Querying system databases and storage matrices...</div>
+            <div id="metrics-content" class="d-none">
+
+                <div class="diag-grid mt-20">
+                    <div>
+                        <h4 class="settings-panel-header text-blue mb-10">🌍 Asset Universe &amp; Data Coverage</h4>
+                        <table class="diag-table">
+                            <thead><tr><th>Metric</th><th>Value</th><th>Context</th></tr></thead>
+                            <tbody>
+                                <tr><td>Total Tickers Tracked</td><td class="val-col" id="diag-univ-total">--</td><td class="sub-val-col">market_universe</td></tr>
+                                <tr><td>Index Scope (SP500/FTSE100)</td><td class="val-col" id="diag-univ-idx">--</td><td class="sub-val-col" id="diag-univ-idx-sub">--</td></tr>
+                                <tr><td>Freetrade Tradable</td><td class="val-col" id="diag-univ-ft">--</td><td class="sub-val-col">is_freetrade=1</td></tr>
+                                <tr><td>Stock Signals Coverage</td><td class="val-col" id="diag-cov-ss">--</td><td class="sub-val-col" id="diag-cov-ss-pct">--%</td></tr>
+                                <tr><td>Quant Signals Coverage</td><td class="val-col" id="diag-cov-qs">--</td><td class="sub-val-col" id="diag-cov-qs-pct">--%</td></tr>
+                                <tr><td>Asset Profiles Coverage</td><td class="val-col" id="diag-cov-ap">--</td><td class="sub-val-col" id="diag-cov-ap-pct">--%</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div>
+                        <h4 class="settings-panel-header text-magenta mb-10">🤖 ML Artifacts &amp; System Ledgers</h4>
+                        <table class="diag-table">
+                            <thead><tr><th>Metric</th><th>State / Count</th><th>Context</th></tr></thead>
+                            <tbody>
+                                <tr><td>Micro-Equities Ensemble</td><td class="val-col" id="diag-ml-state">--</td><td class="sub-val-col" id="diag-ml-sub">--</td></tr>
+                                <tr><td>Vector Feature Dimensions</td><td class="val-col" id="diag-ml-feat">--</td><td class="sub-val-col">feature_stats.joblib</td></tr>
+                                <tr><td><abbr title="Tickers with all four ML features populated on the latest scan date. Must meet 25% of training universe size.">Inference Universe Coverage</abbr></td><td class="val-col" id="diag-ml-cov">--</td><td class="sub-val-col" id="diag-ml-cov-sub">--</td></tr>
+                                <tr><td>Macro HMM State Outputs</td><td class="val-col" id="diag-mac-hmm">--</td><td class="sub-val-col">Rows logged</td></tr>
+                                <tr><td>Macro RF Surprise Outputs</td><td class="val-col" id="diag-mac-rf">--</td><td class="sub-val-col">Rows logged</td></tr>
+                                <tr><td>Macro Indicators (FRED/BoE)</td><td class="val-col" id="diag-mac-ind">--</td><td class="sub-val-col">Structural rows</td></tr>
+                                <tr><td>Isolation Forest Models</td><td class="val-col" id="diag-anomaly-cnt">--</td><td class="sub-val-col">anomaly_models/</td></tr>
+                                <tr><td>Notification Ledger</td><td class="val-col" id="diag-notes-sent">--</td><td class="sub-val-col" id="diag-notes-pending">--</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="diag-grid">
+                    <div>
+                        <h4 class="settings-panel-header text-orange mb-10">🗄️ Storage &amp; JSON Caches</h4>
+                        <table class="diag-table">
+                            <thead><tr><th>Storage Domain</th><th>Size / Items</th><th>Count</th></tr></thead>
+                            <tbody>
+                                <tr><td>SQLite Relational DB</td><td class="val-col" id="diag-db-size">--</td><td class="sub-val-col">analysis.db</td></tr>
+                                <tr><td>Historical Parquets</td><td class="val-col" id="diag-hist-size">--</td><td class="sub-val-col" id="diag-hist-cnt">--</td></tr>
+                                <tr><td>Intraday Parquets</td><td class="val-col" id="diag-intra-size">--</td><td class="sub-val-col" id="diag-intra-cnt">--</td></tr>
+                                <tr><td>Fundamental JSONs</td><td class="val-col">N/A</td><td class="sub-val-col" id="diag-fund-cnt">--</td></tr>
+                                <tr><td>Portfolio Cache</td><td class="val-col">portfolio.json</td><td class="sub-val-col" id="diag-json-port">--</td></tr>
+                                <tr><td>Watchlist Cache</td><td class="val-col">watchlist.json</td><td class="sub-val-col" id="diag-json-watch">--</td></tr>
+                                <tr><td>Freetrade Blacklist</td><td class="val-col">freetrade_blacklist.json</td><td class="sub-val-col" id="diag-json-bl">--</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div>
+                        <h4 class="settings-panel-header text-green mb-10">🖥️ Server Infrastructure</h4>
+                        <table class="diag-table">
+                            <thead><tr><th>Hardware Metric</th><th>Status</th><th>Utilization</th></tr></thead>
+                            <tbody>
+                                <tr><td>CPU Load (1m, 5m, 15m)</td><td class="val-col" id="diag-cpu">--</td><td class="sub-val-col">Native Linux</td></tr>
+                                <tr><td>Total Disk Capacity</td><td class="val-col" id="diag-disk-tot">--</td><td class="sub-val-col">Host Partition</td></tr>
+                                <tr><td>Disk Used</td><td class="val-col" id="diag-disk-used">--</td><td class="sub-val-col" id="diag-disk-pct">--</td></tr>
+                                <tr><td>IPv4/IPv6 Routing</td><td class="val-col text-accent-cyan" id="diag-route-stat">See Above</td><td class="sub-val-col">network_engine.py</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <h4 class="settings-panel-header text-cyan mt-30">⏱️ Master APScheduler Matrix</h4>
+                <p class="settings-desc-sm mb-15">Overview of all background threads currently registered with the APScheduler engine.</p>
+                <table class="scheduler-table" id="scheduler-matrix">
+                    <thead>
+                        <tr>
+                            <th>Job Engine</th>
+                            <th>State</th>
+                            <th>Frequency / Days</th>
+                            <th>Execution Target</th>
+                            <th class="sortable-col" title="Click to sort jobs by when they last ran." onclick="sortSchedulerMatrix()">Last Run <span id="sched-sort-arrow"></span></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for job_name, job_cfg in config.SCHEDULING.items() %}
+                        <tr>
+                            <td class="font-bold">{{ scheduler_job_labels.get(job_name, job_name | replace('_', ' ') | title) }}</td>
+                            <td>
+                                {% if job_cfg.ENABLED %}
+                                    <span class="status-pill status-enabled">ACTIVE</span>
+                                {% elif job_cfg.ENABLED is undefined and job_cfg.DAYS %}
+                                    <span class="status-pill status-enabled">SCHEDULED</span>
+                                {% else %}
+                                    <span class="status-pill status-disabled">DISABLED</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if job_cfg.DAYS %}{{ job_cfg.DAYS | join(', ') | upper }}
+                                {% elif job_cfg.FREQUENCY %}{{ job_cfg.FREQUENCY | upper }}
+                                {% elif job_cfg.DAY_OF_WEEK %}{{ job_cfg.DAY_OF_WEEK | upper }}
+                                {% elif job_cfg.DATA_DAY %}Daily + {{ job_cfg.DATA_DAY | upper }}
+                                {% else %}—{% endif %}
+                            </td>
+                            <td class="font-monospace">
+                                {% if job_cfg.INTERVAL_HOURS and job_cfg.INTERVAL_HOURS > 0 %}
+                                    Every {{ job_cfg.INTERVAL_HOURS }} Hour(s)
+                                {% elif job_cfg.INTERVAL_MINUTES and job_cfg.INTERVAL_MINUTES > 0 %}
+                                    Every {{ job_cfg.INTERVAL_MINUTES }} Min(s) ({{ job_cfg.START_TIME }} - {{ job_cfg.END_TIME }})
+                                {% elif job_cfg.TIME %}
+                                    {{ job_cfg.TIME }}
+                                {% elif job_cfg.DATA_TIME %}
+                                    Data: {{ job_cfg.DATA_TIME }} / Cal: {{ job_cfg.CALENDAR_TIME }}
+                                {% else %}—{% endif %}
+                            </td>
+                            <td class="text-muted font-monospace" data-sched-key="{{ job_name }}">—</td>
+                        </tr>
+                        {% endfor %}
+                        <tr>
+                            <td class="font-bold">Isolation Forest Anomaly Detection</td>
+                            <td><span class="status-pill status-scheduled">NOTIFICATIONS</span></td>
+                            <td>MON-FRI</td>
+                            <td class="font-monospace">18:30</td>
+                            <td class="text-muted font-monospace" data-sched-key="ANOMALY_ALERTS">—</td>
+                        </tr>
+                        <tr>
+                            <td class="font-bold">Portfolio X-ray Risk Cache</td>
+                            <td><span class="status-pill status-scheduled">ALWAYS ON</span></td>
+                            <td>MON-FRI</td>
+                            <td class="font-monospace">19:00</td>
+                            <td class="text-muted font-monospace" data-sched-key="XRAY_RISK_CACHE">—</td>
+                        </tr>
+                        <tr>
+                            <td class="font-bold">System Configuration Check</td>
+                            <td><span class="status-pill status-scheduled">DAILY</span></td>
+                            <td>MON-SUN</td>
+                            <td class="font-monospace">06:00</td>
+                            <td class="text-muted font-monospace" data-sched-key="SYSTEM_CHECK">—</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <div class="settings-panel-md border-left-orange mt-20">
+                    <h4 class="settings-panel-header text-orange">🧹 Database &amp; File Maintenance</h4>
+                    <p class="settings-desc-sm">Deletes orphaned files, trims old notification logs, and vacuums the SQLite database to save disk space.</p>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="MAINTENANCE_ENABLED" {% if config.SCHEDULING.MAINTENANCE.ENABLED %}checked{% endif %}>
+                        <label for="MAINTENANCE_ENABLED">Enable automated system cleanup</label>
+                    </div>
+                    <div class="flex-gap-15 mb-10">
+                        <div class="form-group flex-1">
+                            <label>Day of Week</label>
+                            <select id="MAINTENANCE_DAY" class="form-select">
+                                <option value="sun" {% if config.SCHEDULING.MAINTENANCE.DAY_OF_WEEK == 'sun' %}selected{% endif %}>Sunday</option>
+                                <option value="sat" {% if config.SCHEDULING.MAINTENANCE.DAY_OF_WEEK == 'sat' %}selected{% endif %}>Saturday</option>
+                                <option value="*" {% if config.SCHEDULING.MAINTENANCE.DAY_OF_WEEK == '*' %}selected{% endif %}>Every Day</option>
+                            </select>
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Execution Time</label>
+                            <input type="time" id="MAINTENANCE_TIME" class="form-control" value="{{ config.SCHEDULING.MAINTENANCE.TIME }}">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Days to Keep Data Files</label>
+                            <input type="number" id="MAINTENANCE_DAYS_TO_KEEP_FILES" class="form-control" min="1" max="365" value="{{ config.SCHEDULING.MAINTENANCE.DAYS_TO_KEEP_FILES | default(60) }}">
+                        </div>
+                    </div>
+                    <div class="flex-gap-10 mt-5">
+                        <button type="button" id="maintenanceRunBtn" class="btn btn-primary flex-1" onclick="runMaintenanceNow()">▶ Run Now</button>
+                        <button type="button" id="maintenanceDryRunBtn" class="btn btn-primary flex-1" onclick="runMaintenanceDryRun()">🔍 Dry Run</button>
+                    </div>
+                    <div id="maintenance-dry-run-output" class="mt-10" style="display:none;">
+                        <div id="maintenance-dry-run-content" class="settings-panel border-left-cyan" style="font-family:monospace;font-size:0.8rem;white-space:pre-wrap;max-height:320px;overflow-y:auto;"></div>
+                    </div>
+                </div>
+            </div>
+        </details>
+
+        <details class="settings-card">
+            <summary>🛠️ Manual Actions</summary>
+            <p class="settings-desc">Manually trigger system processes. These operations run in the background. Please wait a few moments before refreshing your views.</p>
+            <div class="flex-gap-15 mt-15">
+                <button type="button" id="syncBtn" class="btn btn-primary flex-1" onclick="triggerGhostfolioSync()">⬇️ Sync Ghostfolio Data</button>
+                <button type="button" id="updateBtn" class="btn btn-primary flex-1" onclick="triggerUpdate()">↻ Force Update Analysis Models</button>
+            </div>
+            <hr class="border-secondary my-4">
+            <p class="settings-desc"><strong>Service control</strong> — use these when a stuck job is blocking normal operations.</p>
+            <div class="flex-gap-15 mt-15">
+                <button type="button" class="btn btn-primary flex-1" onclick="forceRestart()">⚡ Force Restart</button>
+                <button type="button" class="btn btn-primary flex-1" onclick="showTerminateConfirm()">🛑 Terminate Jobs</button>
+            </div>
+            <div id="manual-actions-status" class="mt-15"></div>
+            <div id="terminate-confirm-panel" class="d-none mt-15" style="background:#1a1a1a; border:1px solid #ff4d4d; border-radius:6px; padding:15px;">
+                <p style="color:#ff8080; font-weight:bold; margin:0 0 8px;">⚠️ Warning: terminated jobs will NOT resume automatically.</p>
+                <p class="settings-desc" style="margin:0 0 12px;">The following jobs are currently running and will be forcibly cleared from the active-jobs registry. Any in-progress work (e.g. a partial data scan) will be abandoned mid-run.</p>
+                <ul id="terminate-job-list" class="mt-5 mb-10" style="color:#e0e0e0; padding-left:20px;"></ul>
+                <div class="flex-gap-15">
+                    <button type="button" class="btn btn-primary flex-1" onclick="confirmTerminate()">Confirm — Terminate All Listed Jobs</button>
+                    <button type="button" class="btn btn-primary flex-1" onclick="cancelTerminate()">Cancel</button>
+                </div>
+            </div>
+        </details>
+
+        <details class="settings-card">
+            <summary>🌐 Core System &amp; Currencies</summary>
+            <div class="form-group">
+                <label>Server URL (Base URL for alerts, e.g. http://localhost)</label>
+                <input type="text" id="SERVER_URL" class="form-control" value="{{ config.SERVER_URL }}">
+            </div>
+            <div class="form-group">
+                <label>System Port (Requires Restart)</label>
+                <input type="number" id="PORT" class="form-control" value="{{ config.PORT }}">
+            </div>
+            <div class="form-group">
+                <label>Base Currency (e.g. GBP, USD, EUR)</label>
+                <input type="text" id="BASE_CURRENCY" class="form-control" value="{{ config.BASE_CURRENCY }}">
+            </div>
+            <div class="form-group">
+                <label>Display Timezone (IANA name — all times shown in this timezone)</label>
+                <input type="text" id="USER_TIMEZONE" class="form-control" value="{{ config.USER_TIMEZONE | default('Europe/London') }}" placeholder="e.g. Europe/London, America/New_York, Europe/Berlin">
+            </div>
+            <div class="form-group">
+                <label>Home Exchange (drives default market-window logic and DIP Radar reset)</label>
+                <select id="HOME_EXCHANGE" class="form-select">
+                    {% set home_ex = config.HOME_EXCHANGE | default('LSE') %}
+                    <option value="LSE"   {% if home_ex == 'LSE'   %}selected{% endif %}>LSE — London Stock Exchange (08:00–16:30 Europe/London)</option>
+                    <option value="NYSE"  {% if home_ex == 'NYSE'  %}selected{% endif %}>NYSE — New York Stock Exchange (09:30–16:00 America/New_York, pre-market from 04:00)</option>
+                    <option value="XETRA" {% if home_ex == 'XETRA' %}selected{% endif %}>XETRA — Frankfurt (09:00–17:30 Europe/Berlin)</option>
+                    <option value="TSE"   {% if home_ex == 'TSE'   %}selected{% endif %}>TSE — Tokyo Stock Exchange (09:00–15:30 Asia/Tokyo)</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Ignored Tickers (Comma separated, e.g. GBP, USD, 0P00018XAR.L)</label>
+                <input type="text" id="IGNORED_TICKERS" class="form-control" value="{{ config.IGNORED_TICKERS | join(', ') if config.IGNORED_TICKERS else '' }}">
+            </div>
+
+            <div class="settings-panel border-left-cyan">
+                <strong>🔤 Font Sizes</strong>
+                <p class="settings-desc">Adjust font sizes for major UI elements. Changes take effect after saving — no restart needed.</p>
+                {% set _px_opts = [10, 11, 12, 13, 14, 15, 16, 17, 18] %}
+                {% set _px_opts_lg = [10, 11, 12, 13, 14, 15, 16, 17, 18, 20, 22, 24, 28, 32] %}
+
+                <div class="d-flex flex-wrap gap-3 align-items-end mb-3">
+                    <div>
+                        <label class="form-label form-label-sm d-block mb-1"><abbr title="Font size for navbar links (Portfolio, Watchlist, etc.).">Nav menu</abbr></label>
+                        <select id="FONT_SIZE_NAV" class="form-select form-select-sm font-size-select">
+                            {% set v = config.UI_PREFERENCES.FONT_SIZE_NAV | default(12) %}
+                            {% for px in _px_opts %}<option value="{{ px }}" {% if v == px %}selected{% endif %}>{{ px }} px</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="form-label form-label-sm d-block mb-1"><abbr title="Font size for screener, reports, and other non-DataTables tables.">Screener tables</abbr></label>
+                        <select id="FONT_SIZE_TABLE" class="form-select form-select-sm font-size-select">
+                            {% set v = config.UI_PREFERENCES.FONT_SIZE_TABLE | default(12) %}
+                            {% for px in _px_opts %}<option value="{{ px }}" {% if v == px %}selected{% endif %}>{{ px }} px</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="form-label form-label-sm d-block mb-1"><abbr title="Font size for Portfolio and Watchlist DataTables (uses a direct cell rule to ensure the setting takes effect).">Portfolio / Watchlist</abbr></label>
+                        <select id="FONT_SIZE_DT_TABLE" class="form-select form-select-sm font-size-select">
+                            {% set v = config.UI_PREFERENCES.FONT_SIZE_DT_TABLE | default(12) %}
+                            {% for px in _px_opts %}<option value="{{ px }}" {% if v == px %}selected{% endif %}>{{ px }} px</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="form-label form-label-sm d-block mb-1"><abbr title="Font size for form labels, inputs, and selects.">Form controls</abbr></label>
+                        <select id="FONT_SIZE_FORM" class="form-select form-select-sm font-size-select">
+                            {% set v = config.UI_PREFERENCES.FONT_SIZE_FORM | default(12) %}
+                            {% for px in _px_opts %}<option value="{{ px }}" {% if v == px %}selected{% endif %}>{{ px }} px</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="form-label form-label-sm d-block mb-1"><abbr title="Font size for Save, Refresh, Test, and other action buttons.">Action buttons</abbr></label>
+                        <select id="FONT_SIZE_BTN" class="form-select form-select-sm font-size-select">
+                            {% set v = config.UI_PREFERENCES.FONT_SIZE_BTN | default(12) %}
+                            {% for px in _px_opts %}<option value="{{ px }}" {% if v == px %}selected{% endif %}>{{ px }} px</option>{% endfor %}
+                        </select>
+                    </div>
+                </div>
+
+                <div class="d-flex flex-wrap gap-3 align-items-end mb-3">
+                    <div>
+                        <label class="form-label form-label-sm d-block mb-1"><abbr title="Font size for the bold collapsible section titles on this Settings page.">Section headers</abbr></label>
+                        <select id="FONT_SIZE_SECTION" class="form-select form-select-sm font-size-select">
+                            {% set v = config.UI_PREFERENCES.FONT_SIZE_SECTION | default(13) %}
+                            {% for px in _px_opts_lg %}<option value="{{ px }}" {% if v == px %}selected{% endif %}>{{ px }} px</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="form-label form-label-sm d-block mb-1"><abbr title="Base font size for general content — paragraphs, data labels, and inline text.">Body text</abbr></label>
+                        <select id="FONT_SIZE_BODY" class="form-select form-select-sm font-size-select">
+                            {% set v = config.UI_PREFERENCES.FONT_SIZE_BODY | default(12) %}
+                            {% for px in _px_opts %}<option value="{{ px }}" {% if v == px %}selected{% endif %}>{{ px }} px</option>{% endfor %}
+                        </select>
+                    </div>
+                </div>
+
+                <div class="d-flex flex-wrap gap-3 align-items-end mb-1">
+                    <div>
+                        <label class="form-label form-label-sm d-block mb-1"><abbr title="Font size for page-level h1 headings (e.g. company name on the detail page).">H1 (page title)</abbr></label>
+                        <select id="FONT_SIZE_H1" class="form-select form-select-sm font-size-select">
+                            {% set v = config.UI_PREFERENCES.FONT_SIZE_H1 | default(17) %}
+                            {% for px in _px_opts_lg %}<option value="{{ px }}" {% if v == px %}selected{% endif %}>{{ px }} px</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="form-label form-label-sm d-block mb-1"><abbr title="Font size for section h2 headings (e.g. Your Position, System Verdict, Market Regime).">H2 (section)</abbr></label>
+                        <select id="FONT_SIZE_H2" class="form-select form-select-sm font-size-select">
+                            {% set v = config.UI_PREFERENCES.FONT_SIZE_H2 | default(14) %}
+                            {% for px in _px_opts_lg %}<option value="{{ px }}" {% if v == px %}selected{% endif %}>{{ px }} px</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="form-label form-label-sm d-block mb-1"><abbr title="Font size for sub-section h3 headings (e.g. Trading Ranges, Pivot Points, Technical Levels).">H3 (sub-section)</abbr></label>
+                        <select id="FONT_SIZE_H3" class="form-select form-select-sm font-size-select">
+                            {% set v = config.UI_PREFERENCES.FONT_SIZE_H3 | default(12) %}
+                            {% for px in _px_opts_lg %}<option value="{{ px }}" {% if v == px %}selected{% endif %}>{{ px }} px</option>{% endfor %}
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="settings-panel border-left-cyan">
+                <strong>📄 File Logging</strong>
+                <p class="settings-desc">Write all console log output to a rotating daily log file. Each day's file is kept for the configured number of days, then deleted automatically on the next rotation.</p>
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="FILE_LOGGING_ENABLED" {% if config.FILE_LOGGING and config.FILE_LOGGING.ENABLED %}checked{% endif %}>
+                        <abbr title="When enabled, a TimedRotatingFileHandler is attached to the root Python logger. All output that currently goes to the console is also written to the log file.">Enable file logging</abbr>
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label><abbr title="Minimum severity level written to the log file. The console log level is unaffected and stays at INFO.">Log level</abbr></label>
+                    <select id="FILE_LOGGING_LEVEL" class="form-select">
+                        {% set fl_level = config.FILE_LOGGING.LEVEL | default('INFO') if config.FILE_LOGGING else 'INFO' %}
+                        <option value="DEBUG"    {% if fl_level == 'DEBUG'    %}selected{% endif %}>DEBUG — everything</option>
+                        <option value="INFO"     {% if fl_level == 'INFO'     %}selected{% endif %}>INFO — standard operational messages</option>
+                        <option value="WARNING"  {% if fl_level == 'WARNING'  %}selected{% endif %}>WARNING — warnings and above</option>
+                        <option value="ERROR"    {% if fl_level == 'ERROR'    %}selected{% endif %}>ERROR — errors and above</option>
+                        <option value="CRITICAL" {% if fl_level == 'CRITICAL' %}selected{% endif %}>CRITICAL — critical errors only</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label><abbr title="Number of daily rotated log files to retain. Files older than this are deleted automatically when the next midnight rotation occurs.">Days to keep</abbr></label>
+                    <input type="number" id="FILE_LOGGING_DAYS_TO_KEEP" class="form-control" min="1" max="365" value="{{ config.FILE_LOGGING.DAYS_TO_KEEP | default(30) if config.FILE_LOGGING else 30 }}">
+                </div>
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="FILE_LOGGING_ARCHIVE" {% if config.FILE_LOGGING and config.FILE_LOGGING.ARCHIVE %}checked{% endif %}>
+                        <abbr title="When enabled, rotated log files are gzip-compressed (.gz) to save disk space. The active app.log is always plain text.">Compress rotated files (gzip)</abbr>
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label><abbr title="Directory where log files are written, relative to the project root. Created automatically if it does not exist.">Log directory (relative path)</abbr></label>
+                    <input type="text" id="FILE_LOGGING_LOG_DIR" class="form-control" value="{{ config.FILE_LOGGING.LOG_DIR | default('logs') if config.FILE_LOGGING else 'logs' }}" placeholder="logs">
+                </div>
+                <div class="form-group mt-10">
+                    <a href="/log-viewer" target="_blank" rel="noopener" class="btn btn-primary">📄 Open Log Viewer</a>
+                </div>
+            </div>
+        </details>
+
+        <details class="settings-card">
+            <summary>🌐 Advanced Network &amp; Socket Binding</summary>
+            <p class="settings-desc">Configure low-level routing overrides. If you specify an IPv6 address here, the system will explicitly bind all Yahoo Finance edge traffic to this socket to bypass restrictive IPv4 rate limits.</p>
+
+            <div class="settings-panel border-left-cyan">
+                <div class="flex-gap-10 mb-15 flex-center-wrap">
+                    <strong class="text-muted">Current Active Route:</strong>
+                    <span id="network-route-badge" class="setup-tag text-muted border-none">Checking...</span>
+                </div>
+                <div id="network-route-details" class="text-muted-desc mb-20">Waiting for status...</div>
+                <div class="form-group mb-10">
+                    <label>Yahoo Finance IPv6 Binding Address (Leave blank for OS Default)</label>
+                    <input type="text" id="YAHOO_IPV6_ADDRESS" class="form-control" value="{{ config.YAHOO_IPV6_ADDRESS | default('') }}" placeholder="e.g., 2001:db8:1234:5678::1">
+                </div>
+                <button type="button" class="btn btn-primary mt-10" id="testIpv6Btn" onclick="testYahooIPv6()">🧪 Test IPv6 Connection</button>
+                <div id="test-ipv6-msg" class="status-msg-sm d-none"></div>
+            </div>
+        </details>
+
+        <details class="settings-card">
+            <summary>☁️ Nextcloud Talk Webhooks</summary>
+            <p class="settings-desc">Credentials are stored in <code>.env</code> and applied at runtime. Changes take effect immediately without a restart.</p>
+            <div class="form-group">
+                <label>Nextcloud Server URL</label>
+                <input type="text" id="NEXTCLOUD_URL" class="form-control" value="{{ nextcloud_url }}" placeholder="https://your.nextcloud.example">
+            </div>
+            <div class="form-group">
+                <label>Bot Username</label>
+                <input type="text" id="BOT_USERNAME" class="form-control" value="{{ nextcloud_bot_username }}" placeholder="notify.bot">
+            </div>
+            <div class="form-group">
+                <label>App Password</label>
+                <input type="password" id="APP_PASSWORD" class="form-control" value="{{ nextcloud_app_password }}" autocomplete="new-password">
+            </div>
+            <div class="form-group">
+                <label>Talk Conversation Token</label>
+                <input type="text" id="CONVERSATION_TOKEN" class="form-control" value="{{ nextcloud_conversation_token }}" placeholder="ch2dtvqn">
+            </div>
+            <div class="flex-gap-15 mt-0">
+                <button type="button" class="btn btn-primary" onclick="saveNextcloudSettings()">💾 Save Nextcloud Settings</button>
+                <button type="button" class="btn btn-primary" onclick="testNextcloudMessage()">🧪 Send Test Message</button>
+            </div>
+            <div id="nc-status-msg"></div>
+        </details>
+
+        <details class="settings-card">
+            <summary>👻 Ghostfolio Integration API</summary>
+            <p class="settings-desc">Credentials are stored in <code>.env</code> and applied at runtime. Changes take effect immediately without a restart.</p>
+            <div class="form-group">
+                <label>Ghostfolio Server URL</label>
+                <input type="text" id="GHOSTFOLIO_URL" class="form-control" value="{{ ghostfolio_url }}" placeholder="http://192.168.1.x:3333">
+            </div>
+            <div class="form-group">
+                <label>Security API Token</label>
+                <input type="password" id="API_TOKEN" class="form-control" value="{{ ghostfolio_token }}" autocomplete="new-password">
+            </div>
+            <button type="button" class="btn btn-primary mt-0" onclick="saveGhostfolioSettings()">💾 Save Ghostfolio Credentials</button>
+            <div id="ghostfolio-creds-msg"></div>
+
+            <div class="settings-panel mt-20">
+                <h4 class="settings-panel-header text-blue">Opt-In Account Syncing</h4>
+                <p class="settings-desc">Select which accounts the Data Engine is permitted to synchronize. This dramatically reduces API loads and allows you to exclude specific portfolios from the system math.</p>
+                <div class="account-list" id="accountListContainer">
+                    {% if config.GHOSTFOLIO_ACCOUNTS.discovered %}
+                        {% for acc in config.GHOSTFOLIO_ACCOUNTS.discovered %}
+                        <div class="account-item">
+                            <input type="checkbox" id="acc_{{ acc.id }}" value="{{ acc.id }}" class="ghostfolio-account-checkbox"
+                                   {% if acc.id in config.GHOSTFOLIO_ACCOUNTS.active %}checked{% endif %}>
+                            <label for="acc_{{ acc.id }}">
+                                <span>{{ acc.name }}</span>
+                                <span class="account-badge">{{ acc.currency }}</span>
+                            </label>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="empty-table-msg">No accounts discovered. Please click the discovery button below.</div>
+                    {% endif %}
+                </div>
+                <button type="button" class="btn btn-primary mt-0" onclick="discoverGhostfolioAccounts()">🔍 Discover Accounts on Server</button>
+                <div id="discovery-status-msg"></div>
+            </div>
+        </details>
+
+        <details class="settings-card">
+            <summary>👤 User Account</summary>
+
+            <div class="settings-panel mt-20">
+                <h4 class="settings-panel-header text-blue">Logged in as</h4>
+                <p class="settings-desc" style="font-size:1rem; color: var(--text-primary, #fff);">
+                    <strong id="ua-username-display">{{ dashboard_username }}</strong>
+                </p>
+            </div>
+
+            <div class="settings-panel mt-20">
+                <h4 class="settings-panel-header text-blue">Change Username</h4>
+                <p class="settings-desc">Update your dashboard login username.</p>
+                <div class="form-group">
+                    <label>New username</label>
+                    <input type="text" id="ua_new_username" class="form-control" autocomplete="username" placeholder="{{ dashboard_username }}">
+                </div>
+                <button type="button" class="btn btn-primary mt-0" onclick="changeUsername()">👤 Update Username</button>
+                <div id="ua-username-msg"></div>
+            </div>
+
+            <div class="settings-panel mt-20">
+                <h4 class="settings-panel-header text-blue">Account Email</h4>
+                <p class="settings-desc">Email address used for password reset links. Optional — if left blank, reset links are sent via Nextcloud Talk or logged to the server.</p>
+                <div class="form-group">
+                    <label>Email address</label>
+                    <input type="email" id="ua_account_email" class="form-control" autocomplete="email" value="{{ account_email }}" placeholder="you@example.com">
+                </div>
+                <button type="button" class="btn btn-primary mt-0" onclick="saveAccountEmail()">💾 Save Email</button>
+                <div id="ua-email-msg"></div>
+            </div>
+
+            <div class="settings-panel mt-20">
+                <h4 class="settings-panel-header text-blue">Change Password</h4>
+                <p class="settings-desc">Update your dashboard login password. You will remain logged in after saving.</p>
+                <div class="form-group">
+                    <label>Current password</label>
+                    <input type="password" id="ua_current_password" class="form-control" autocomplete="current-password">
+                </div>
+                <div class="form-group">
+                    <label>New password</label>
+                    <input type="password" id="ua_new_password" class="form-control" autocomplete="new-password">
+                </div>
+                <div class="form-group">
+                    <label>Confirm new password</label>
+                    <input type="password" id="ua_confirm_password" class="form-control" autocomplete="new-password">
+                </div>
+                <button type="button" class="btn btn-primary mt-0" onclick="changePassword()">🔑 Update Password</button>
+                <div id="ua-pw-msg"></div>
+            </div>
+
+            <div class="settings-panel mt-20">
+                <h4 class="settings-panel-header text-blue">API Key</h4>
+                <p class="settings-desc">Use this key to access the API from scripts or external tools via the <code>X-API-Key</code> header. Generating a new key immediately invalidates the old one.</p>
+                <div class="form-group">
+                    <label>Current API key</label>
+                    <div class="flex-gap-10">
+                        <input type="password" id="ua_api_key" class="form-control font-monospace flex-1" value="{{ api_key }}" readonly>
+                        <button type="button" class="btn btn-primary mt-0" style="white-space:nowrap;" onclick="toggleApiKeyVisibility()">👁 Show</button>
+                    </div>
+                    {% if not api_key %}
+                    <p class="settings-desc mt-5" style="color: var(--text-warning, #f59e0b);">
+                        No API key set — generate one below to enable script access.
+                    </p>
+                    {% endif %}
+                </div>
+                <button type="button" class="btn btn-primary mt-0" onclick="generateApiKey()">🔄 Generate New API Key</button>
+                <div id="ua-apikey-msg"></div>
+            </div>
+
+            <div class="settings-panel mt-20">
+                <h4 class="settings-panel-header text-blue">App Secret Key</h4>
+                <p class="settings-desc">Used to sign session tokens. Rotating immediately invalidates all active sessions — every user will be logged out.</p>
+                <button type="button" class="btn btn-primary mt-0" onclick="rotateAppSecret()">🔄 Rotate App Secret</button>
+                <div id="ua-secret-msg"></div>
+            </div>
+
+            <div class="settings-panel mt-20">
+                <h4 class="settings-panel-header text-blue">Settings Confirm Token</h4>
+                <p class="settings-desc">Internal token that authorises settings saves. Rotating generates a new random token and updates <code>.env</code> immediately.</p>
+                <button type="button" class="btn btn-primary mt-0" onclick="rotateConfirmToken()">🔄 Rotate Confirm Token</button>
+                <div id="ua-confirmtoken-msg"></div>
+            </div>
+
+            <div class="settings-panel mt-20">
+                <h4 class="settings-panel-header text-blue">Session</h4>
+                <p class="settings-desc">Sign out of the dashboard on this device.</p>
+                <a href="/logout" class="btn btn-primary mt-0 d-inline-block">🚪 Log Out</a>
+            </div>
+
+        </details>
+
+        <details class="settings-card" id="tools-card">
+            <summary>🔧 Tools</summary>
+
+            <div class="settings-panel border-left-purple" id="etf-predictors-section">
+                <h4 class="settings-panel-header text-purple">&#128202; ETF Price Predictors</h4>
+                <p class="settings-desc">Configure generic ETF morning price predictors. Each predictor specifies an ETF ticker and its top 10–20 constituent tickers with weights. Predictions are logged and accuracy is tracked over time. Manage and view results under <a href="/etf-predictor">Tools → ETF Price Predictor</a>.</p>
+
+                <div id="etf-predictor-list" class="mb-15">
+                    <p class="text-muted text-sm">Loading...</p>
+                </div>
+
+                <button type="button" class="btn btn-primary mt-0" onclick="toggleAddEtfForm()">+ Add New Predictor</button>
+
+                <div id="add-etf-form" style="display:none;margin-top:16px;background:#111;padding:16px;border-radius:6px;">
+                    <h5 style="color:#b366ff;margin:0 0 12px;">New ETF Predictor</h5>
+                    <div class="flex-gap-15">
+                        <div class="form-group flex-1 mb-0">
+                            <label>Name</label>
+                            <input type="text" id="etf-new-name" class="form-control" placeholder="e.g. VUSA S&amp;P 500 Predictor">
+                        </div>
+                        <div class="form-group flex-1 mb-0">
+                            <label>ETF Ticker</label>
+                            <input type="text" id="etf-new-ticker" class="form-control" placeholder="e.g. VUSA.L" style="text-transform:uppercase;">
+                        </div>
+                    </div>
+                    <div style="margin-top:14px;background:#1a1a1a;padding:12px;border-radius:5px;border:1px solid #2a2a2a;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                            <span style="color:#aaa;font-size:12px;font-weight:600;">IMPORT FROM JSON</span>
+                            <button type="button" class="btn btn-primary mt-0" style="font-size:11px;padding:3px 10px;" onclick="toggleEtfJsonImport('new')">Toggle</button>
+                        </div>
+                        <div id="etf-json-import-new" style="display:none;">
+                            <p style="color:#888;font-size:12px;margin:0 0 6px;">Paste an array of <code>{"ticker","weight"}</code> objects or a simple <code>{"TICKER":weight}</code> map, then click Import.</p>
+                            <textarea id="etf-json-new" rows="4" placeholder='[{"ticker":"AAPL","weight":7.5},{"ticker":"MSFT","weight":6.8}]' style="width:100%;font-size:12px;font-family:monospace;background:#111;color:#ccc;border:1px solid #333;border-radius:4px;padding:8px;box-sizing:border-box;resize:vertical;"></textarea>
+                            <div class="flex-gap-15 mt-8">
+                                <button type="button" class="btn btn-primary mt-0" style="font-size:12px;" onclick="importEtfJson('etf-new-constituents','etf-json-new','etf-add-status')">Import JSON</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="margin-top:12px;">
+                        <label style="color:#aaa;font-size:13px;display:block;margin-bottom:6px;">Constituents (ticker + weight %)</label>
+                        <div id="etf-new-constituents">
+                            <div class="etf-constituent-row flex-gap-15 mb-10">
+                                <input type="text" class="etf-c-ticker form-control" placeholder="Ticker" style="flex:1;text-transform:uppercase;">
+                                <input type="number" class="etf-c-weight form-control" placeholder="Weight %" step="0.01" min="0" style="width:100px;">
+                                <button type="button" class="btn btn-primary" style="padding:6px 10px;" onclick="removeConstituentRow(this)">×</button>
+                            </div>
+                        </div>
+                        <div class="flex-gap-15 mt-10">
+                            <button type="button" class="btn btn-primary mt-0" onclick="addConstituentRow('etf-new-constituents')">+ Add Row</button>
+                            <button type="button" class="btn btn-primary mt-0" onclick="normaliseWeights('etf-new-constituents')">⚖ Normalise Weights</button>
+                            <button type="button" class="btn btn-primary mt-0" onclick="checkEtfConfig('etf-new-ticker','etf-new-constituents','etf-add-status')">&#10003; Check Config</button>
+                        </div>
+                    </div>
+                    <div style="margin-top:12px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
+                        <div class="form-group mb-0">
+                            <label>Pre-run time (<span class="etf-tz-label"></span>)</label>
+                            <input type="time" id="etf-new-pre-time" class="form-control" value="13:30">
+                        </div>
+                        <div class="form-group mb-0">
+                            <label>Post-run time (<span class="etf-tz-label"></span>)</label>
+                            <input type="time" id="etf-new-post-time" class="form-control" value="22:00">
+                        </div>
+                        <div class="form-group mb-0" style="justify-content:flex-end;padding-bottom:2px;">
+                            <label>&nbsp;</label>
+                            <div class="checkbox-group mb-0">
+                                <input type="checkbox" id="etf-new-auto-schedule">
+                                <label for="etf-new-auto-schedule" style="font-size:13px;">Auto-schedule</label>
+                            </div>
+                            <div class="checkbox-group mb-0">
+                                <input type="checkbox" id="etf-new-enabled" checked>
+                                <label for="etf-new-enabled" style="font-size:13px;">Enabled</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex-gap-15 mt-15">
+                        <button type="button" class="btn btn-primary flex-1" style="max-width:160px;" onclick="saveNewEtfPredictor()">Save</button>
+                        <button type="button" class="btn btn-primary mt-0" onclick="toggleAddEtfForm()">Cancel</button>
+                    </div>
+                    <div id="etf-add-status" class="status-msg-sm mt-10"></div>
+                </div>
+            </div>
+
+            <div class="settings-panel border-left-cyan" id="bubble-radar-settings-section">
+                <h4 class="settings-panel-header text-cyan">&#127968; Bubble Radar</h4>
+                <p class="settings-desc">
+                    Scans your portfolio and watchlist for tickers exhibiting valuation euphoria across seven metrics:
+                    <abbr title="% above the 200-day Simple Moving Average.">SMA-200 Extension</abbr>,
+                    <abbr title="20-day average RSI — sustained overbought pressure.">RSI high</abbr>,
+                    <abbr title="Price-to-Sales (trailing 12 months).">P/S</abbr>,
+                    <abbr title="PEG Ratio — P/E divided by earnings growth.">PEG</abbr>,
+                    <abbr title="Free Cash Flow yield vs the US real 10-year yield (DFII10). A negative gap means equity earns less cash than risk-free bonds.">FCF Yield vs Real 10Y</abbr>,
+                    <abbr title="OTM call IV ÷ OTM put IV. Values above 1.2 indicate call mania (US tickers only).">IV Call Skew</abbr>, and
+                    <abbr title="20-day SPY return minus 20-day RSP (equal-weight) return. A large positive spread signals narrow market breadth.">SPY vs RSP Breadth</abbr>.
+                    Results appear on each flagged stock's detail page and at the <a href="/bubble-radar" class="text-cyan">Bubble Radar tools page</a>.
+                </p>
+
+                {% set bubble_sched = config.SCHEDULING.BUBBLE_RADAR if config.SCHEDULING.BUBBLE_RADAR else {} %}
+
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="BUBBLE_RADAR_ENABLED" {% if bubble_sched.ENABLED %}checked{% endif %}>
+                    <label for="BUBBLE_RADAR_ENABLED">Enable daily post-market scan</label>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label>Active Days</label>
+                        <select id="BUBBLE_RADAR_FREQ" class="form-select">
+                            {% set joined = bubble_sched.DAYS | join(',') if bubble_sched.DAYS else 'mon,tue,wed,thu,fri' %}
+                            <option value="mon-fri" {% if joined == 'mon,tue,wed,thu,fri' %}selected{% endif %}>Mon–Fri</option>
+                            <option value="mon-sun" {% if joined == 'mon,tue,wed,thu,fri,sat,sun' %}selected{% endif %}>Every Day</option>
+                        </select>
+                    </div>
+                    <div class="form-group flex-1">
+                        <label>Scan Time <span class="text-muted" style="font-size:10px;">(local tz)</span></label>
+                        <input type="time" id="BUBBLE_RADAR_TIME" class="form-control" value="{{ bubble_sched.TIME | default('19:30') }}">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="Score at or above this value triggers a Bubble Watch (yellow) flag.">Watch threshold</abbr> (0–100)</label>
+                        <input type="number" id="BUBBLE_RADAR_WATCH_THRESHOLD" class="form-control" value="{{ bubble_sched.WATCH_THRESHOLD | default(70) }}" min="0" max="99" step="1">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="Score at or above this value triggers a Bubble Risk (red) flag.">Bubble threshold</abbr> (0–100)</label>
+                        <input type="number" id="BUBBLE_RADAR_FLAG_THRESHOLD" class="form-control" value="{{ bubble_sched.FLAG_THRESHOLD | default(85) }}" min="1" max="100" step="1">
+                    </div>
+                </div>
+                <div class="flex-gap-15">
+                    <button type="button" class="btn btn-primary mt-0" onclick="triggerBubbleRadarScan()">&#9654; Run Scan Now</button>
+                </div>
+                <div id="bubble-radar-msg" class="mt-10"></div>
+            </div>
+
+            <div class="settings-panel border-left-cyan" id="forensic-screener-card">
+                <h4 class="settings-panel-header text-cyan">&#128269; Forensic Screener</h4>
+                <p class="settings-desc">
+                    Monthly forensic accounting analysis for your portfolio and watchlist.
+                    Runs two jobs on the 1st of each month: first downloads annual financial statements from Yahoo Finance,
+                    then computes <abbr title="9-point model: profitability, leverage, liquidity, efficiency. Score &lt; 4 flags decay risk.">Piotroski F-Score</abbr>,
+                    <abbr title="Altman Z' bankruptcy model. Zones: &gt;2.6 safe, 1.1–2.6 grey, &lt;1.1 distress.">Altman Z-Score</abbr>, and
+                    <abbr title="8-variable earnings manipulation model. M &gt; −1.78 flags possible manipulation.">Beneish M-Score</abbr>.
+                    Alerts are dispatched via the Notification Router when distress thresholds are breached.
+                    Full results at the <a href="/forensic-screener" class="text-cyan">Forensic Screener tools page</a>.
+                </p>
+
+                {% set forensic_fetch_cfg = config.SCHEDULING.FORENSIC_QUARTERLY_FETCH if config.SCHEDULING.FORENSIC_QUARTERLY_FETCH else {} %}
+                {% set forensic_score_cfg = config.SCHEDULING.FORENSIC_SCORES if config.SCHEDULING.FORENSIC_SCORES else {} %}
+
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="FORENSIC_QUARTERLY_FETCH_ENABLED" {% if forensic_fetch_cfg.ENABLED %}checked{% endif %}>
+                    <label for="FORENSIC_QUARTERLY_FETCH_ENABLED">Enable scheduled Forensic Quarterly Data Fetch (day 1 of month, 06:00 local time)</label>
+                </div>
+                <div class="checkbox-group mb-10">
+                    <input type="checkbox" id="FORENSIC_SCORES_ENABLED" {% if forensic_score_cfg.ENABLED %}checked{% endif %}>
+                    <label for="FORENSIC_SCORES_ENABLED">Enable scheduled Forensic Accounting Scores (day 1 of month, 07:00 local time)</label>
+                </div>
+                <div class="flex-gap-15">
+                    <button type="button" class="btn btn-primary mt-0" onclick="triggerForensicFetch()">&#9654; Run Fetch Now</button>
+                    <button type="button" class="btn btn-primary mt-0" onclick="triggerForensicScore()">&#9654; Run Scores Now</button>
+                </div>
+                <div id="forensic-msg" class="mt-10"></div>
+            </div>
+
+        </details>
+
+        <details class="settings-card" id="workflow-monitor-card">
+            <summary>🔄 Workflow Monitor</summary>
+            <p class="settings-desc">Dependency flow-chart of every scheduled job, coloured by <abbr title="Green: ran recently. Amber: stale, never run, or due soon. Red: failed or overdue. Grey: disabled in config.">recency status</abbr>. The conflict engine flags jobs scheduled before or while the upstream job that feeds their data is still running, jobs whose upstream is disabled, and jobs that failed or have gone stale.</p>
+
+            <div class="settings-panel border-left-red">
+                <h4 class="settings-panel-header text-red">Detected Conflicts</h4>
+                <div id="workflow-conflicts">
+                    <p class="text-muted text-sm">Loading…</p>
+                </div>
+            </div>
+
+            <div class="flex-gap-15 mt-10">
+                <button type="button" class="btn btn-primary mt-0" onclick="loadWorkflowMonitor()">🔄 Refresh</button>
+                <button type="button" class="btn btn-primary mt-0" onclick="openWorkflowGraphTab()">⤢ Open full graph in new tab</button>
+            </div>
+        </details>
+
+        <details class="settings-card" id="notification-settings-card">
+            <summary>🔔 Notification Settings</summary>
+            <p class="settings-desc">Single pane of glass for every notification the app produces. For each job and alert, choose which channels it goes to: the rotating <strong>log file</strong>, the in-app <strong>notification centre</strong> (bell icon), and/or <strong>Nextcloud Talk</strong>. Briefings and the Fear &amp; Greed chart upload attachments to Talk and are governed by their own enable toggles, so they appear here for log/in-app routing only.</p>
+            {% for group in notification_routing %}
+            <div class="settings-panel border-left-cyan">
+                <h4 class="settings-panel-header text-cyan">{{ group.category }}</h4>
+                <table class="notif-routing-table">
+                    <thead>
+                        <tr>
+                            <th>Notification</th>
+                            <th title="Write to the rotating application log file (logs/app.log).">Log file</th>
+                            <th title="Show in the in-app notification centre (bell icon).">In-app</th>
+                            <th title="Push a message to your Nextcloud Talk conversation.">Talk</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for job in group.jobs %}
+                        {% for row in job %}
+                        <tr class="notif-routing-row{% if row.type == 'alert' %} notif-routing-alert{% endif %}">
+                            <td class="notif-routing-label">{{ row.label }}</td>
+                            {% for channel in ['log_file', 'in_app', 'nextcloud_talk'] %}
+                            <td>
+                                <input type="checkbox" data-notif-source="{{ row.source }}" data-notif-channel="{{ channel }}"
+                                       {% if row.channels[channel] %}checked{% endif %}>
+                            </td>
+                            {% endfor %}
+                        </tr>
+                        {% endfor %}
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endfor %}
+
+            <div class="settings-panel border-left-cyan">
+                <h4 class="settings-panel-header text-cyan">How to read this table</h4>
+                <p class="settings-desc-sm">Each job has a non-indented <strong>status row</strong> that routes that job's start / success / error messages. Indented beneath it (marked <strong>↳</strong>) are the individual <strong>alerts</strong> that job fires; each routes independently. For example, the checkboxes on <strong>Crash &amp; Moonshot Alerts</strong> control the orchestrator job's status messages, while the <strong>↳ Crash Alert</strong> and <strong>↳ Moonshot Alert</strong> rows control those specific alerts. A status row and its alert can share a near-identical name (e.g. <em>Portfolio Earnings Alerts</em> vs. <em>↳ Portfolio Earnings Alert</em>) — that is expected, not a duplicate.</p>
+                <p class="settings-desc-sm">The morning &amp; lunchtime briefings and the Fear &amp; Greed chart send <strong>file attachments</strong> to Nextcloud Talk through their own enable toggles (in their own Settings panels). Their row here routes only their log / in-app status messages — not the attachment itself.</p>
+            </div>
+        </details>
+
+        <div class="system-updates-panel">
+            <h3 class="text-orange mb-5 mt-0">🔄 System Updates &amp; Power</h3>
+            <p class="text-muted text-sm mt-0">Pull the latest code from the main GitHub repository, or manually restart the background service.</p>
+
+            <div id="active-jobs-panel" class="mt-10 mb-15">
+                <div id="active-jobs-display">
+                    <span class="text-muted text-sm">Checking for active processes…</span>
+                </div>
+            </div>
+
+            <div class="flex-gap-15 mt-15">
+                <button type="button" class="btn btn-primary flex-1" onclick="gitPull()">⬇️ Pull Latest from GitHub</button>
+                <button type="button" class="btn btn-primary flex-1" onclick="restartSystem()">⚡ Restart Service</button>
+            </div>
+
+            <div id="git-status-msg"></div>
+        </div>

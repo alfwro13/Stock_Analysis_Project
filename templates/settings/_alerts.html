@@ -1,0 +1,490 @@
+            <details class="settings-card" id="crash-moonshot-card">
+                <summary>🚨 Crash &amp; Moonshot Alerts</summary>
+                <p class="settings-desc">Configure the intraday crash and moonshot scanning engines, their market-hours schedules, and the signal thresholds that trigger Nextcloud Talk alerts.</p>
+
+                <div class="settings-panel border-left-red">
+                    <h4 class="settings-panel-header text-red">📉 Intraday Crash Engine</h4>
+                    <p class="settings-desc-sm">Scans intraday data for downside volatility. Avoids API bans by respecting market hours.</p>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="CRASH_ALERTS_SCHED_ENABLED" {% if config.SCHEDULING.CRASH_ALERTS.ENABLED %}checked{% endif %}>
+                        <label for="CRASH_ALERTS_SCHED_ENABLED">Enable high-frequency crash scanning</label>
+                    </div>
+                    <div class="flex-gap-15 mb-10">
+                        <div class="form-group flex-1">
+                            <label>Active Days</label>
+                            <select id="CRASH_ALERTS_FREQ" class="form-select">
+                                <option value="mon-fri" {% if config.SCHEDULING.CRASH_ALERTS.FREQUENCY == 'mon-fri' %}selected{% endif %}>Mon-Fri</option>
+                            </select>
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Start Time</label>
+                            <input type="time" id="CRASH_ALERTS_START" class="form-control" value="{{ config.SCHEDULING.CRASH_ALERTS.START_TIME }}">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>End Time</label>
+                            <input type="time" id="CRASH_ALERTS_END" class="form-control" value="{{ config.SCHEDULING.CRASH_ALERTS.END_TIME }}">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Interval (Mins)</label>
+                            <input type="number" id="CRASH_ALERTS_MINUTES" class="form-control" value="{{ config.SCHEDULING.CRASH_ALERTS.INTERVAL_MINUTES }}" min="5" max="60">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-panel border-left-red">
+                    <h4 class="settings-panel-header text-red">📉 Intraday Crash Thresholds</h4>
+                    <p class="settings-desc-sm">Triggers Nextcloud Talk alerts if a stock breaches these bounds. Integrated with the DB ATR Stop-Loss.</p>
+                    <div class="flex-gap-15 mb-10">
+                        <div class="form-group flex-1">
+                            <label>Flash Crash Trigger (%)</label>
+                            <input type="number" id="CRASH_FLASH_THRESHOLD" class="form-control" value="{{ config.NOTIFICATIONS.CRASH_ALERTS.FLASH_CRASH_THRESHOLD | default(3.0) }}" step="0.1">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Drop Percentage (%)</label>
+                            <input type="number" id="CRASH_DROP_PERCENT" class="form-control" value="{{ config.NOTIFICATIONS.CRASH_ALERTS.DROP_PERCENT }}" step="0.1">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Over Timeframe (Days)</label>
+                            <input type="number" id="CRASH_DROP_DAYS" class="form-control" value="{{ config.NOTIFICATIONS.CRASH_ALERTS.DROP_DAYS }}" min="1">
+                        </div>
+                    </div>
+                    <div class="flex-gap-15 mb-10">
+                        <div class="form-group flex-1">
+                            <label>Short-Term SMA Length</label>
+                            <input type="number" id="CRASH_SMA_LENGTH" class="form-control" value="{{ config.NOTIFICATIONS.CRASH_ALERTS.SMA_LENGTH }}" min="5">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Gap Below SMA (%)</label>
+                            <input type="number" id="CRASH_SMA_GAP_PERCENT" class="form-control" value="{{ config.NOTIFICATIONS.CRASH_ALERTS.SMA_GAP_PERCENT }}" step="0.1">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-panel border-left-green">
+                    <h4 class="settings-panel-header text-green">🚀 Intraday Moonshot Engine</h4>
+                    <p class="settings-desc-sm">Scans intraday data for parabolic upside volatility, ATHs, and technical mean-reversion risks.</p>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="MOONSHOT_ALERTS_SCHED_ENABLED" {% if config.SCHEDULING.MOONSHOT_ALERTS.ENABLED %}checked{% endif %}>
+                        <label for="MOONSHOT_ALERTS_SCHED_ENABLED">Enable high-frequency upside scanning</label>
+                    </div>
+                    <div class="flex-gap-15 mb-10">
+                        <div class="form-group flex-1">
+                            <label>Active Days</label>
+                            <select id="MOONSHOT_ALERTS_FREQ" class="form-select">
+                                <option value="mon-fri" {% if config.SCHEDULING.MOONSHOT_ALERTS.FREQUENCY == 'mon-fri' %}selected{% endif %}>Mon-Fri</option>
+                            </select>
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Start Time</label>
+                            <input type="time" id="MOONSHOT_ALERTS_START" class="form-control" value="{{ config.SCHEDULING.MOONSHOT_ALERTS.START_TIME }}">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>End Time</label>
+                            <input type="time" id="MOONSHOT_ALERTS_END" class="form-control" value="{{ config.SCHEDULING.MOONSHOT_ALERTS.END_TIME }}">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Interval (Mins)</label>
+                            <input type="number" id="MOONSHOT_ALERTS_MINUTES" class="form-control" value="{{ config.SCHEDULING.MOONSHOT_ALERTS.INTERVAL_MINUTES }}" min="5" max="60">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-panel border-left-green">
+                    <h4 class="settings-panel-header text-green">🚀 Intraday Moonshot Thresholds</h4>
+                    <p class="settings-desc-sm">Triggers Nextcloud alerts when an asset goes parabolic or breaks an All-Time High.</p>
+                    <div class="flex-gap-15 mb-10">
+                        <div class="form-group flex-1">
+                            <label>Spike Percentage (%)</label>
+                            <input type="number" id="MOONSHOT_SPIKE_PERCENT" class="form-control" value="{{ config.NOTIFICATIONS.MOONSHOT_ALERTS.SPIKE_PERCENT }}" step="0.1">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Over Timeframe (Days)</label>
+                            <input type="number" id="MOONSHOT_SPIKE_DAYS" class="form-control" value="{{ config.NOTIFICATIONS.MOONSHOT_ALERTS.SPIKE_DAYS }}" min="1">
+                        </div>
+                    </div>
+                    <div class="flex-gap-15 mb-10">
+                        <div class="form-group flex-1">
+                            <label>Short-Term SMA Length</label>
+                            <input type="number" id="MOONSHOT_SMA_LENGTH" class="form-control" value="{{ config.NOTIFICATIONS.MOONSHOT_ALERTS.SMA_LENGTH }}" min="5">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Gap Above SMA (%)</label>
+                            <input type="number" id="MOONSHOT_SMA_GAP_PERCENT" class="form-control" value="{{ config.NOTIFICATIONS.MOONSHOT_ALERTS.SMA_GAP_PERCENT }}" step="0.1">
+                        </div>
+                    </div>
+                </div>
+
+            </details>
+
+            <details class="settings-card" id="dip-radar-settings-card">
+                <summary>🎯 Dip Radar — Intraday Bottom Finder</summary>
+                <p class="settings-desc">On-demand session monitoring to detect capitulation bottoms on selected tickers. Enable monitoring from any stock detail page. All monitors deactivate automatically at <span class="dip-reset-time">16:05 ET</span> each trading day.</p>
+
+                <div class="settings-panel border-left-orange">
+                    <h4 class="settings-panel-header text-orange">Active Session Monitors</h4>
+                    <p class="settings-desc-sm">Tickers currently armed for today's session. You can also disable them here without navigating back to the stock detail page.</p>
+                    <div id="dip-radar-monitor-list" class="mt-10">
+                        <p class="text-muted text-sm">Loading...</p>
+                    </div>
+                    <button type="button" class="btn btn-primary mt-10" onclick="loadDipRadarMonitors()">🔄 Refresh List</button>
+                </div>
+            </details>
+
+            <details class="settings-card" id="ai-contagion-card">
+                <summary>🤖 AI Sector Contagion Monitor</summary>
+                <p class="settings-desc">
+                    Monitors AI bellwether stocks and semiconductor ETFs for intraday flash crashes using
+                    15-minute pre/post-market data. Requires a two-tier confirmation: at least one leader shock
+                    (e.g. NVDA down &gt;4%) <strong>and</strong> at least one ETF basket drop (e.g. SMH down &gt;2.5%)
+                    before firing an alert — filtering out isolated single-stock news.
+                </p>
+
+                {% set ac_sched = config.SCHEDULING.AI_CONTAGION if config.SCHEDULING.AI_CONTAGION else {} %}
+                {% set ac_cfg = config.NOTIFICATIONS.AI_CONTAGION if config.NOTIFICATIONS.AI_CONTAGION else {} %}
+
+                <div class="settings-panel border-left-purple">
+                    <h4 class="settings-panel-header text-purple">⏱️ Scan Schedule</h4>
+                    <p class="settings-desc-sm">Wide windows (e.g. 09:00–21:00) cover US pre-market (opens ~14:00 UTC) and post-market for earnings reactions.</p>
+                    <div class="checkbox-group mb-10">
+                        <input type="checkbox" id="AI_CONTAGION_SCHED_ENABLED" {% if ac_sched.ENABLED %}checked{% endif %}>
+                        <label for="AI_CONTAGION_SCHED_ENABLED">Enable AI Contagion Monitor (runs every N minutes)</label>
+                    </div>
+                    <div class="flex-gap-15 mb-10">
+                        <div class="form-group flex-1">
+                            <label>Active Days</label>
+                            <select id="AI_CONTAGION_FREQ" class="form-select">
+                                <option value="mon-fri" {% if ac_sched.FREQUENCY == 'mon-fri' or not ac_sched.FREQUENCY %}selected{% endif %}>Mon–Fri</option>
+                                <option value="*" {% if ac_sched.FREQUENCY == '*' %}selected{% endif %}>Every Day</option>
+                            </select>
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Start Time <span class="text-muted" style="font-size:10px;">(UTC)</span></label>
+                            <input type="time" id="AI_CONTAGION_START" class="form-control" value="{{ ac_sched.START_TIME | default('09:00') }}">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>End Time <span class="text-muted" style="font-size:10px;">(UTC)</span></label>
+                            <input type="time" id="AI_CONTAGION_END" class="form-control" value="{{ ac_sched.END_TIME | default('21:00') }}">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Interval (mins)</label>
+                            <input type="number" id="AI_CONTAGION_INTERVAL" class="form-control" value="{{ ac_sched.INTERVAL_MINUTES | default(15) }}" min="5" max="60">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-panel border-left-orange">
+                    <h4 class="settings-panel-header text-orange">📉 Detection Thresholds</h4>
+                    <div class="checkbox-group mb-10">
+                        <input type="checkbox" id="AI_CONTAGION_ENABLED" {% if ac_cfg.ENABLED %}checked{% endif %}>
+                        <label for="AI_CONTAGION_ENABLED">Send Nextcloud Talk alert when contagion is confirmed</label>
+                    </div>
+                    <div class="flex-gap-15 mb-10">
+                        <div class="form-group flex-1">
+                            <label>Leader Shock Threshold (%)</label>
+                            <input type="number" id="AI_CONTAGION_LEADER_THRESHOLD" class="form-control" value="{{ ac_cfg.LEADER_THRESHOLD_PCT | default(4.0) }}" step="0.1" min="0.5">
+                            <p class="text-muted-desc">Min intraday drop % for a bellwether to count as a leader shock.</p>
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>ETF Confirmation Threshold (%)</label>
+                            <input type="number" id="AI_CONTAGION_ETF_THRESHOLD" class="form-control" value="{{ ac_cfg.ETF_CONFIRMATION_THRESHOLD_PCT | default(2.5) }}" step="0.1" min="0.5">
+                            <p class="text-muted-desc">Min ETF drop % required to confirm sector-wide contagion.</p>
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Volume Spike Multiplier</label>
+                            <input type="number" id="AI_CONTAGION_VOLUME_MULT" class="form-control" value="{{ ac_cfg.VOLUME_SPIKE_MULTIPLIER | default(1.8) }}" step="0.1" min="1.0">
+                            <p class="text-muted-desc">Volume vs 20-day avg to flag as a spike (informational only).</p>
+                        </div>
+                    </div>
+                    <div class="flex-gap-15 mb-10">
+                        <div class="form-group flex-1">
+                            <label>Cooldown (Minutes)</label>
+                            <input type="number" id="AI_CONTAGION_COOLDOWN" class="form-control" value="{{ ac_cfg.COOLDOWN_MINUTES | default(60) }}" min="15">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Retrigger % (Worsened)</label>
+                            <input type="number" id="AI_CONTAGION_RETRIGGER" class="form-control" value="{{ ac_cfg.RETRIGGER_PERCENT | default(1.5) }}" step="0.1">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Re-arm % (Recovered)</label>
+                            <input type="number" id="AI_CONTAGION_REARM" class="form-control" value="{{ ac_cfg.REARM_PERCENT | default(2.5) }}" step="0.1">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-panel border-left-cyan">
+                    <h4 class="settings-panel-header text-cyan">🎯 Monitored Basket</h4>
+                    <p class="settings-desc-sm">Comma- or space-separated tickers. Bellwethers trigger the leader shock signal; ETFs must confirm for an alert to fire.</p>
+                    <div class="flex-gap-15 mb-10">
+                        <div class="form-group flex-1">
+                            <label>Bellwether Stocks</label>
+                            <input type="text" id="AI_CONTAGION_BELLWETHERS" class="form-control" value="{{ (ac_cfg.BELLWETHER_TICKERS | default(['NVDA','AMD','MSFT','META','GOOGL','AAPL','AVGO'])) | join(', ') }}">
+                        </div>
+                    </div>
+                    <div class="flex-gap-15 mb-10">
+                        <div class="form-group flex-1">
+                            <label>ETF Confirmation Basket</label>
+                            <input type="text" id="AI_CONTAGION_ETFS" class="form-control" value="{{ (ac_cfg.ETF_BASKET | default(['SMH','SOXX','QQQ'])) | join(', ') }}">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex-gap-15 align-end mt-10">
+                    <button type="button" class="btn btn-primary mt-0" onclick="triggerAIContagionScan()">▶ Run Scan Now</button>
+                </div>
+                <div id="ai-contagion-scan-msg" class="mt-10"></div>
+            </details>
+
+            <details class="settings-card" id="trap-monitor-card">
+                <summary>🎭 Market Trap &amp; Recovery Monitor</summary>
+                <p class="settings-desc">
+                    Scans your portfolio and a configurable AI proxy basket for four post-crash lifecycle signals:
+                    <abbr title="Dead Cat Bounce: price recovering below 20-EMA on low volume.">Bull Trap</abbr>,
+                    <abbr title="False breakdown on low volume that reverses — short sellers get squeezed.">Bear Trap</abbr>,
+                    <abbr title="Extreme volume climax (&gt;3σ) with RSI deeply oversold — possible true bottom.">Capitulation</abbr>, and
+                    <abbr title="Bollinger Band squeeze with ATR contraction and drying volume — Wyckoff accumulation base.">Wyckoff Accumulation</abbr>.
+                    Results are visible at <a href="/trap-monitor">/trap-monitor</a>.
+                </p>
+
+                {% set trap_sched = config.SCHEDULING.TRAP_MONITORS if config.SCHEDULING.TRAP_MONITORS else {} %}
+                {% set trap_cfg = config.NOTIFICATIONS.TRAP_MONITOR_ALERTS if config.NOTIFICATIONS.TRAP_MONITOR_ALERTS else {} %}
+
+                <div class="settings-panel border-left-cyan">
+                    <h4 class="settings-panel-header text-cyan">⏱️ Scan Schedule</h4>
+                    <div class="checkbox-group mb-10">
+                        <input type="checkbox" id="TRAP_MONITOR_ENABLED" {% if trap_sched.ENABLED %}checked{% endif %}>
+                        <label for="TRAP_MONITOR_ENABLED">Enable Trap Monitor (runs every N minutes during market hours)</label>
+                    </div>
+                    <div class="flex-gap-15 mb-10">
+                        <div class="form-group flex-1">
+                            <label>Active Days</label>
+                            <select id="TRAP_MONITOR_FREQ" class="form-select">
+                                <option value="mon-fri" {% if trap_sched.FREQUENCY == 'mon-fri' or not trap_sched.FREQUENCY %}selected{% endif %}>Mon–Fri</option>
+                                <option value="*" {% if trap_sched.FREQUENCY == '*' %}selected{% endif %}>Every Day</option>
+                            </select>
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Start Time <span class="text-muted" style="font-size:10px;">(UTC)</span></label>
+                            <input type="time" id="TRAP_MONITOR_START" class="form-control" value="{{ trap_sched.START_TIME | default('08:00') }}">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>End Time <span class="text-muted" style="font-size:10px;">(UTC)</span></label>
+                            <input type="time" id="TRAP_MONITOR_END" class="form-control" value="{{ trap_sched.END_TIME | default('21:00') }}">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Interval (minutes)</label>
+                            <input type="number" id="TRAP_MONITOR_INTERVAL" class="form-control" value="{{ trap_sched.INTERVAL_MINUTES | default(30) }}" min="10" max="120">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-panel border-left-cyan">
+                    <h4 class="settings-panel-header text-cyan">🔍 Signal Detectors</h4>
+                    <p class="settings-desc-sm">Each detector can be enabled or disabled independently.</p>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="TRAP_BULL_ENABLED" {% if trap_sched.BULL_TRAP != false %}checked{% endif %}>
+                        <label for="TRAP_BULL_ENABLED"><abbr title="Detects Dead Cat Bounce: price below 20-EMA with recovery-day volume below sell-off-day volume.">Bull Trap detector</abbr></label>
+                    </div>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="TRAP_BEAR_ENABLED" {% if trap_sched.BEAR_TRAP != false %}checked{% endif %}>
+                        <label for="TRAP_BEAR_ENABLED"><abbr title="Detects false breakdowns: intraday breach of lower Bollinger Band or 20-day low, recovering above support on low volume.">Bear Trap detector</abbr></label>
+                    </div>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="TRAP_CAP_ENABLED" {% if trap_sched.CAPITULATION != false %}checked{% endif %}>
+                        <label for="TRAP_CAP_ENABLED"><abbr title="Detects volume climax spikes (&gt;3σ above 20-day mean) with RSI below 30 — possible true bottom signal.">Capitulation detector</abbr></label>
+                    </div>
+                    <div class="checkbox-group mb-10">
+                        <input type="checkbox" id="TRAP_WYK_ENABLED" {% if trap_sched.WYCKOFF != false %}checked{% endif %}>
+                        <label for="TRAP_WYK_ENABLED"><abbr title="Detects Bollinger Band squeeze with ATR contraction and volume dry-up — Wyckoff accumulation base building.">Wyckoff Accumulation detector</abbr></label>
+                    </div>
+                </div>
+
+                <div class="settings-panel border-left-cyan">
+                    <h4 class="settings-panel-header text-cyan">🔔 Alert Dedup</h4>
+                    <p class="settings-desc-sm">Channel routing for trap alerts is set in the <strong>Notification Settings</strong> card (right-hand column).</p>
+                    <div class="flex-gap-15 mb-10">
+                        <div class="form-group flex-1">
+                            <label>Alert cooldown (min)</label>
+                            <input type="number" id="TRAP_COOLDOWN" class="form-control" value="{{ trap_cfg.COOLDOWN_MINUTES | default(120) }}" min="15">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Retrigger % move</label>
+                            <input type="number" id="TRAP_RETRIGGER" class="form-control" value="{{ trap_cfg.RETRIGGER_PERCENT | default(3.0) }}" step="0.1">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Re-arm % recovery</label>
+                            <input type="number" id="TRAP_REARM" class="form-control" value="{{ trap_cfg.REARM_PERCENT | default(5.0) }}" step="0.1">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-panel border-left-cyan">
+                    <h4 class="settings-panel-header text-cyan">📋 Proxy Ticker Basket</h4>
+                    <p class="settings-desc-sm">Additional tickers to scan beyond your portfolio. Comma-separated, e.g. QQQ, SMH, NVDA. If a ticker has no local history it will be fetched automatically on the first scan.</p>
+                    <div class="checkbox-group mb-10">
+                        <input type="checkbox" id="TRAP_MONITOR_PORTFOLIO" {% if trap_sched.MONITOR_PORTFOLIO != false %}checked{% endif %}>
+                        <label for="TRAP_MONITOR_PORTFOLIO">Monitor Portfolio Tickers</label>
+                    </div>
+                    <div class="form-group">
+                        <label>Extra Proxy Tickers</label>
+                        <input type="text" id="TRAP_PROXY_TICKERS" class="form-control" value="{{ (trap_cfg.PROXY_TICKERS | default(['QQQ','SMH','NVDA','MSFT','AAPL'])) | join(', ') }}" placeholder="QQQ, SMH, NVDA, MSFT, AAPL">
+                    </div>
+                </div>
+
+                <div class="flex-gap-15 mt-10">
+                    <button type="button" class="btn btn-primary mt-0" onclick="triggerTrapMonitorScan()">&#9654; Run Scan Now</button>
+                </div>
+                <div id="trap-monitor-msg" class="mt-10"></div>
+            </details>
+
+            <details class="settings-card" id="alerts-briefings-card">
+                <summary>📊 Alerts, Reports &amp; Quant Briefings</summary>
+
+                <div class="settings-panel">
+                    <h4 class="settings-panel-header text-blue">📅 Portfolio Earnings Alerts</h4>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="EARNINGS_ENABLED" {% if config.NOTIFICATIONS.EARNINGS_ALERTS.ENABLED %}checked{% endif %}>
+                        <label for="EARNINGS_ENABLED">Enable automated Nextcloud delivery</label>
+                    </div>
+                    <div class="flex-gap-15 mb-10">
+                        <div class="form-group flex-1">
+                            <label>Delivery Time (24H Format)</label>
+                            <input type="time" id="EARNINGS_TIME" class="form-control" value="{{ config.NOTIFICATIONS.EARNINGS_ALERTS.TIME }}">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Days Ahead to Warn</label>
+                            <input type="number" id="EARNINGS_DAYS_AHEAD" class="form-control" value="{{ config.NOTIFICATIONS.EARNINGS_ALERTS.DAYS_AHEAD }}" min="1" max="30">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Alert Frequency</label>
+                            <select id="EARNINGS_ALERT_TYPE" class="form-select">
+                                <option value="daily" {% if config.NOTIFICATIONS.EARNINGS_ALERTS.ALERT_TYPE == 'daily' %}selected{% endif %}>Daily leading up to date</option>
+                                <option value="once" {% if config.NOTIFICATIONS.EARNINGS_ALERTS.ALERT_TYPE == 'once' %}selected{% endif %}>Once exactly X days before</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button type="button" class="btn btn-primary" onclick="testEarningsAlert()">🧪 Run Test Earnings Alert</button>
+                    <div id="test-earnings-msg"></div>
+                </div>
+
+                <div class="settings-panel">
+                    <h4 class="settings-panel-header text-blue">🚨 Insider Trading Alerts</h4>
+                    <div class="flex-gap-20 mb-15">
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="INSIDER_ENABLED_PORTFOLIO" {% if config.NOTIFICATIONS.INSIDER_TRADING.ENABLED_PORTFOLIO %}checked{% endif %}>
+                            <label for="INSIDER_ENABLED_PORTFOLIO">Monitor Portfolio</label>
+                        </div>
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="INSIDER_ENABLED_WATCHLIST" {% if config.NOTIFICATIONS.INSIDER_TRADING.ENABLED_WATCHLIST %}checked{% endif %}>
+                            <label for="INSIDER_ENABLED_WATCHLIST">Monitor Watchlist</label>
+                        </div>
+                    </div>
+                    <div class="flex-gap-15 mb-10">
+                        <div class="form-group flex-1">
+                            <label>Delivery Time (24H Format)</label>
+                            <input type="time" id="INSIDER_TIME" class="form-control" value="{{ config.NOTIFICATIONS.INSIDER_TRADING.TIME }}">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Schedule Frequency</label>
+                            <select id="INSIDER_FREQUENCY" class="form-select">
+                                <option value="mon-fri" {% if config.NOTIFICATIONS.INSIDER_TRADING.FREQUENCY == 'mon-fri' %}selected{% endif %}>Trading Days (Mon-Fri)</option>
+                                <option value="*" {% if config.NOTIFICATIONS.INSIDER_TRADING.FREQUENCY == '*' %}selected{% endif %}>Every Day</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="flex-gap-15 mb-10">
+                        <div class="form-group flex-1">
+                            <label>Min Purchase Value ($)</label>
+                            <input type="number" id="INSIDER_MIN_VALUE" class="form-control" value="{{ config.NOTIFICATIONS.INSIDER_TRADING.MIN_VALUE }}" step="10000">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Days Lookback Filter</label>
+                            <input type="number" id="INSIDER_DAYS_BACK" class="form-control" value="{{ config.NOTIFICATIONS.INSIDER_TRADING.DAYS_BACK }}" min="1" max="30">
+                        </div>
+                    </div>
+                    <button type="button" class="btn btn-primary" onclick="testInsiderAlert()">🧪 Run Test Insider Check</button>
+                    <div id="test-insider-msg"></div>
+                </div>
+
+                <div class="settings-panel-md">
+                    <h4 class="settings-panel-header text-blue">Market Sentiment (Fear &amp; Greed)</h4>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="FNG_ENABLED" {% if config.NOTIFICATIONS.MARKET_SENTIMENT.ENABLED %}checked{% endif %}>
+                        <label for="FNG_ENABLED">Enable automated Nextcloud delivery</label>
+                    </div>
+                    <div class="flex-gap-15">
+                        <div class="form-group flex-1">
+                            <label>Delivery Time (24H Format)</label>
+                            <input type="time" id="FNG_TIME" class="form-control" value="{{ config.NOTIFICATIONS.MARKET_SENTIMENT.TIME }}">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Schedule Frequency</label>
+                            <select id="FNG_FREQUENCY" class="form-select">
+                                <option value="mon-fri" {% if config.NOTIFICATIONS.MARKET_SENTIMENT.FREQUENCY == 'mon-fri' %}selected{% endif %}>Trading Days (Mon-Fri)</option>
+                                <option value="*" {% if config.NOTIFICATIONS.MARKET_SENTIMENT.FREQUENCY == '*' %}selected{% endif %}>Every Day</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button type="button" class="btn btn-primary" onclick="testSentimentAlert()">🧪 Run Test Alert Now</button>
+                    <div id="test-status-msg"></div>
+                </div>
+
+                {% set d_engine = config.SCHEDULING.DISPATCHER if config.SCHEDULING.DISPATCHER else {} %}
+                {% set d_days = d_engine.DAYS if d_engine.DAYS else ['mon', 'tue', 'wed', 'thu', 'fri'] %}
+                {% set l_engine = config.SCHEDULING.LUNCH_DISPATCHER if config.SCHEDULING.LUNCH_DISPATCHER else {} %}
+                {% set l_days = l_engine.DAYS if l_engine.DAYS else ['mon', 'tue', 'wed', 'thu', 'fri'] %}
+
+                <div class="settings-panel border-left-pink">
+                    <h4 class="settings-panel-header text-pink">📨 Quant Briefing Generator &amp; Notifications</h4>
+                    <p class="settings-desc-sm">Briefings are generated automatically at the scheduled time and saved to disk. Tick <em>Send to Nextcloud Talk</em> to also push them to your Nextcloud Talk conversation.</p>
+
+                    <div class="settings-briefing-grid">
+                        <div class="settings-briefing-box">
+                            <strong class="text-pink">🌅 Morning Briefing</strong>
+                            <p class="settings-desc-sm" style="margin:4px 0 10px;">Overnight portfolio news, US futures, UK pre-open &amp; quant signals.</p>
+                            <div class="flex-gap-15 mb-10 flex-wrap">
+                                <label><input type="checkbox" class="dispatch-day" value="mon" {% if 'mon' in d_days %}checked{% endif %}> Mon</label>
+                                <label><input type="checkbox" class="dispatch-day" value="tue" {% if 'tue' in d_days %}checked{% endif %}> Tue</label>
+                                <label><input type="checkbox" class="dispatch-day" value="wed" {% if 'wed' in d_days %}checked{% endif %}> Wed</label>
+                                <label><input type="checkbox" class="dispatch-day" value="thu" {% if 'thu' in d_days %}checked{% endif %}> Thu</label>
+                                <label><input type="checkbox" class="dispatch-day" value="fri" {% if 'fri' in d_days %}checked{% endif %}> Fri</label>
+                                <label><input type="checkbox" class="dispatch-day" value="sat" {% if 'sat' in d_days %}checked{% endif %}> Sat</label>
+                                <label><input type="checkbox" class="dispatch-day" value="sun" {% if 'sun' in d_days %}checked{% endif %}> Sun</label>
+                            </div>
+                            <div class="form-group mb-10">
+                                <label>Execution Time</label>
+                                <input type="time" id="DISPATCHER_TIME" class="form-control" value="{{ d_engine.TIME | default('07:15') }}">
+                            </div>
+                            <div class="checkbox-group mb-10">
+                                <input type="checkbox" id="DISPATCHER_ENABLED" {% if d_engine.ENABLED %}checked{% endif %}>
+                                <label for="DISPATCHER_ENABLED">Send to Nextcloud Talk</label>
+                            </div>
+                            <button type="button" class="btn btn-primary mt-0" onclick="triggerMorningBriefing()">▶️ Run Morning Briefing Now</button>
+                            <div id="morning-briefing-status" style="margin-top:6px; font-size:0.78rem; color:#aaa;"></div>
+                        </div>
+
+                        <div class="settings-briefing-box">
+                            <strong class="text-pink">🕛 Lunchtime Briefing</strong>
+                            <p class="settings-desc-sm" style="margin:4px 0 10px;">Morning session news, UK mid-session, US pre-market &amp; intraday alerts.</p>
+                            <div class="flex-gap-15 mb-10 flex-wrap">
+                                <label><input type="checkbox" class="lunch-dispatch-day" value="mon" {% if 'mon' in l_days %}checked{% endif %}> Mon</label>
+                                <label><input type="checkbox" class="lunch-dispatch-day" value="tue" {% if 'tue' in l_days %}checked{% endif %}> Tue</label>
+                                <label><input type="checkbox" class="lunch-dispatch-day" value="wed" {% if 'wed' in l_days %}checked{% endif %}> Wed</label>
+                                <label><input type="checkbox" class="lunch-dispatch-day" value="thu" {% if 'thu' in l_days %}checked{% endif %}> Thu</label>
+                                <label><input type="checkbox" class="lunch-dispatch-day" value="fri" {% if 'fri' in l_days %}checked{% endif %}> Fri</label>
+                                <label><input type="checkbox" class="lunch-dispatch-day" value="sat" {% if 'sat' in l_days %}checked{% endif %}> Sat</label>
+                                <label><input type="checkbox" class="lunch-dispatch-day" value="sun" {% if 'sun' in l_days %}checked{% endif %}> Sun</label>
+                            </div>
+                            <div class="form-group mb-10">
+                                <label>Execution Time</label>
+                                <input type="time" id="LUNCH_DISPATCHER_TIME" class="form-control" value="{{ l_engine.TIME | default('12:00') }}">
+                            </div>
+                            <div class="checkbox-group mb-10">
+                                <input type="checkbox" id="LUNCH_DISPATCHER_ENABLED" {% if l_engine.ENABLED %}checked{% endif %}>
+                                <label for="LUNCH_DISPATCHER_ENABLED">Send to Nextcloud Talk</label>
+                            </div>
+                            <button type="button" class="btn btn-primary mt-0" onclick="triggerLunchBriefing()">▶️ Run Lunchtime Briefing Now</button>
+                            <div id="lunch-briefing-status" style="margin-top:6px; font-size:0.78rem; color:#aaa;"></div>
+                        </div>
+                    </div>
+                </div>
+            </details>

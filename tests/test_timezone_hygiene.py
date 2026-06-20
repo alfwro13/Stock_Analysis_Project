@@ -198,10 +198,10 @@ class TestTemplateTimezoneHygiene:
         )
 
     def test_settings_dip_radar_uses_dynamic_span(self):
-        """The dip-radar description in settings.html must use .dip-reset-time span."""
-        content = self._read("settings.html")
+        """The dip-radar description in settings/_alerts.html must use .dip-reset-time span."""
+        content = self._read("settings/_alerts.html")
         assert 'class="dip-reset-time"' in content, (
-            "settings.html must have a .dip-reset-time span for the reset time"
+            "settings/_alerts.html must have a .dip-reset-time span for the reset time"
         )
 
     def test_stock_detail_has_format_reset_time_js_function(self):
@@ -212,10 +212,10 @@ class TestTemplateTimezoneHygiene:
         )
 
     def test_settings_has_format_reset_time_js_function(self):
-        """settings.js must include the JS helper that computes local reset time."""
-        content = self._read_static("js/settings.js")
+        """settings_alerts.js must include the JS helper that computes local reset time."""
+        content = self._read_static("js/settings_alerts.js")
         assert "formatDipResetLocalTime" in content, (
-            "static/js/settings.js is missing the formatDipResetLocalTime JS function"
+            "static/js/settings_alerts.js is missing the formatDipResetLocalTime JS function"
         )
 
     def test_glossary_mentions_both_timezones(self):

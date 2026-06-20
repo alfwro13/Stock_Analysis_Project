@@ -1,0 +1,234 @@
+            <details class="settings-card">
+                <summary>📐 Position Sizing Defaults</summary>
+                <p class="settings-desc">
+                    Defaults used across watchlist, portfolio, and stock detail pages for
+                    risk-parity position sizing. Each trade is sized so that an adverse move
+                    equal to <em>Stop Multiple</em> ATR units would lose exactly
+                    <em>Risk per Trade %</em> of your account.
+                </p>
+                <div class="form-group">
+                    <div class="form-group flex-1">
+                        <label>Account Value ({{ config.BASE_CURRENCY | default("GBP") }})</label>
+                        <input type="number" id="POSITION_SIZING_ACCOUNT_VALUE" class="form-control"
+                            value="{{ config.POSITION_SIZING.ACCOUNT_VALUE | default(10000) }}"
+                            min="0" step="100">
+                    </div>
+                    <div class="form-group">
+                        <label>Risk per Trade (%)</label>
+                        <input type="number" id="POSITION_SIZING_RISK_PCT" class="form-control"
+                            value="{{ config.POSITION_SIZING.RISK_PCT | default(1.0) }}"
+                            min="0.1" max="5" step="0.1">
+                    </div>
+                    <div class="form-group">
+                        <label>Stop Multiple (× ATR)</label>
+                        <input type="number" id="POSITION_SIZING_STOP_MULTIPLE" class="form-control"
+                            value="{{ config.POSITION_SIZING.STOP_MULTIPLE | default(2.0) }}"
+                            min="1" max="5" step="0.5">
+                    </div>
+                </div>
+            </details>
+
+            <details class="settings-card">
+                <summary>🎯 X-Ray Allocation Targets</summary>
+                <p class="settings-desc">
+                    Benchmarks used by the portfolio X-ray recommendations engine. Defaults are based on MSCI ACWI (2025) composition.
+                    Leave a field blank to disable that bound. Percentages should be entered as numbers (e.g. <code>65</code> for 65%).
+                </p>
+
+                <div class="settings-panel border-left-blue">
+                    <h4 class="settings-panel-header text-blue">🌍 Market Development</h4>
+                    <p class="settings-desc-sm">Target range for Developed vs Emerging Markets exposure. MSCI ACWI baseline: Developed 88%, Emerging 12%.</p>
+                    <div class="flex-gap-15 align-end mb-10">
+                        <div class="form-group flex-1 mb-0"><label>Developed Markets — Min %</label>
+                            <input type="number" id="XT_DEV_MIN" class="form-control" value="{{ config.XRAY_TARGETS.market_development['Developed Markets']['min'] | default('') }}" min="0" max="100" step="0.5" placeholder="e.g. 80"></div>
+                        <div class="form-group flex-1 mb-0"><label>Developed Markets — Max %</label>
+                            <input type="number" id="XT_DEV_MAX" class="form-control" value="{{ config.XRAY_TARGETS.market_development['Developed Markets']['max'] | default('') }}" min="0" max="100" step="0.5" placeholder="e.g. 95"></div>
+                    </div>
+                    <div class="flex-gap-15 align-end">
+                        <div class="form-group flex-1 mb-0"><label>Emerging Markets — Min %</label>
+                            <input type="number" id="XT_EM_MIN" class="form-control" value="{{ config.XRAY_TARGETS.market_development['Emerging Markets']['min'] | default('') }}" min="0" max="100" step="0.5" placeholder="e.g. 5"></div>
+                        <div class="form-group flex-1 mb-0"><label>Emerging Markets — Max %</label>
+                            <input type="number" id="XT_EM_MAX" class="form-control" value="{{ config.XRAY_TARGETS.market_development['Emerging Markets']['max'] | default('') }}" min="0" max="100" step="0.5" placeholder="e.g. 20"></div>
+                    </div>
+                </div>
+
+                <div class="settings-panel border-left-cyan">
+                    <h4 class="settings-panel-header text-cyan">🗺️ Regional Clusters</h4>
+                    <p class="settings-desc-sm">Target range per geographic region. MSCI ACWI baseline: North America ~65%, Europe ~17%, Japan ~5%, Asia-Pacific ~4%, EM ~12%.</p>
+                    {% for region, id_prefix, placeholder_min, placeholder_max in [
+                        ('North America', 'XT_NA', '55', '75'),
+                        ('Europe',        'XT_EU', '12', '22'),
+                        ('Japan',         'XT_JP', '3',  '8'),
+                        ('Asia-Pacific',  'XT_AP', '2',  '8'),
+                        ('Emerging Markets', 'XT_RC_EM', '5', '18')
+                    ] %}
+                    <div class="flex-gap-15 align-end mb-10">
+                        <div class="form-group mb-0" style="min-width:120px;flex:0 0 120px;"><label>{{ region }}</label></div>
+                        <div class="form-group flex-1 mb-0"><label>Min %</label>
+                            <input type="number" id="{{ id_prefix }}_MIN" class="form-control"
+                                value="{{ config.XRAY_TARGETS.regional_clusters[region]['min'] | default('') }}"
+                                min="0" max="100" step="0.5" placeholder="{{ placeholder_min }}"></div>
+                        <div class="form-group flex-1 mb-0"><label>Max %</label>
+                            <input type="number" id="{{ id_prefix }}_MAX" class="form-control"
+                                value="{{ config.XRAY_TARGETS.regional_clusters[region]['max'] | default('') }}"
+                                min="0" max="100" step="0.5" placeholder="{{ placeholder_max }}"></div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <div class="settings-panel border-left-purple">
+                    <h4 class="settings-panel-header text-purple">🏳️ Country Concentration (Max %)</h4>
+                    <p class="settings-desc-sm">Maximum exposure per individual country. Leave blank to disable the check.</p>
+                    <div class="flex-gap-15 flex-wrap align-end">
+                        {% for country, id_suffix, placeholder in [
+                            ('United States',  'XT_CC_US',  '70'),
+                            ('China',          'XT_CC_CN',  '15'),
+                            ('Japan',          'XT_CC_JP',  '10'),
+                            ('United Kingdom', 'XT_CC_GB',  '10')
+                        ] %}
+                        <div class="form-group flex-1 mb-0" style="min-width:140px">
+                            <label>{{ country }}</label>
+                            <input type="number" id="{{ id_suffix }}" class="form-control"
+                                value="{{ config.XRAY_TARGETS.country_concentration[country]['max'] | default('') }}"
+                                min="0" max="100" step="0.5" placeholder="{{ placeholder }}">
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <div class="settings-panel border-left-orange">
+                    <h4 class="settings-panel-header text-orange">📊 Sector Targets (Max %)</h4>
+                    <p class="settings-desc-sm">Upper bounds for GICS sector look-through weights. Sector names must match Ghostfolio data exactly.</p>
+                    <div class="flex-gap-15 flex-wrap align-end">
+                        {% for sector, id_suffix, placeholder in [
+                            ('Technology',             'XT_SEC_TECH',   '35'),
+                            ('Financials',             'XT_SEC_FIN',    '25'),
+                            ('Healthcare',             'XT_SEC_HLTH',   '20'),
+                            ('Consumer Cyclical',      'XT_SEC_CC',     '20'),
+                            ('Industrials',            'XT_SEC_IND',    '20'),
+                            ('Communication Services', 'XT_SEC_COMM',   '15'),
+                            ('Consumer Staples',       'XT_SEC_CS',     '15'),
+                            ('Energy',                 'XT_SEC_ENE',    '10'),
+                            ('Materials',              'XT_SEC_MAT',    '10'),
+                            ('Utilities',              'XT_SEC_UTIL',   '8'),
+                            ('Real Estate',            'XT_SEC_RE',     '8')
+                        ] %}
+                        <div class="form-group flex-1 mb-0" style="min-width:150px">
+                            <label>{{ sector }}</label>
+                            <input type="number" id="{{ id_suffix }}" class="form-control"
+                                value="{{ config.XRAY_TARGETS.sector_targets[sector]['max'] | default('') }}"
+                                min="0" max="100" step="0.5" placeholder="{{ placeholder }}">
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <div class="settings-panel border-left-green">
+                    <h4 class="settings-panel-header text-green">🧩 Asset Class Targets</h4>
+                    <p class="settings-desc-sm">Min/Max bounds for instrument type exposure (ETF, Equity, Fixed Income, Commodity).</p>
+                    {% for ac, id_prefix, ph_min, ph_max in [
+                        ('ETF',          'XT_AC_ETF', '40', ''),
+                        ('Equity',       'XT_AC_EQ',  '',   '40'),
+                        ('Fixed Income', 'XT_AC_FI',  '',   '30'),
+                        ('Commodity',    'XT_AC_COM', '',   '10')
+                    ] %}
+                    <div class="flex-gap-15 align-end mb-10">
+                        <div class="form-group mb-0" style="min-width:110px;flex:0 0 110px;"><label>{{ ac }}</label></div>
+                        <div class="form-group flex-1 mb-0"><label>Min %</label>
+                            <input type="number" id="{{ id_prefix }}_MIN" class="form-control"
+                                value="{{ config.XRAY_TARGETS.asset_class_targets[ac]['min'] | default('') }}"
+                                min="0" max="100" step="0.5" placeholder="{{ ph_min }}"></div>
+                        <div class="form-group flex-1 mb-0"><label>Max %</label>
+                            <input type="number" id="{{ id_prefix }}_MAX" class="form-control"
+                                value="{{ config.XRAY_TARGETS.asset_class_targets[ac]['max'] | default('') }}"
+                                min="0" max="100" step="0.5" placeholder="{{ ph_max }}"></div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <div class="settings-panel border-left-amber">
+                    <h4 class="settings-panel-header text-amber">⚖️ Concentration Limits</h4>
+                    <div class="flex-gap-15 flex-wrap align-end">
+                        <div class="form-group flex-1 mb-0" style="min-width:140px">
+                            <label>Max Single Position %</label>
+                            <input type="number" id="XT_CONC_MAX_POS" class="form-control"
+                                value="{{ config.XRAY_TARGETS.concentration_targets.max_single_position_pct | default('15') }}"
+                                min="0" max="100" step="0.5">
+                        </div>
+                        <div class="form-group flex-1 mb-0" style="min-width:140px">
+                            <label>Top-5 Max %</label>
+                            <input type="number" id="XT_CONC_TOP5" class="form-control"
+                                value="{{ config.XRAY_TARGETS.concentration_targets.top5_weight_max_pct | default('50') }}"
+                                min="0" max="100" step="1">
+                        </div>
+                        <div class="form-group flex-1 mb-0" style="min-width:140px">
+                            <label>Top-10 Max %</label>
+                            <input type="number" id="XT_CONC_TOP10" class="form-control"
+                                value="{{ config.XRAY_TARGETS.concentration_targets.top10_weight_max_pct | default('70') }}"
+                                min="0" max="100" step="1">
+                        </div>
+                        <div class="form-group flex-1 mb-0" style="min-width:140px">
+                            <label>HHI Max (0–1)</label>
+                            <input type="number" id="XT_CONC_HHI" class="form-control"
+                                value="{{ config.XRAY_TARGETS.concentration_targets.hhi_max | default('0.15') }}"
+                                min="0" max="1" step="0.01">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-panel border-left-red">
+                    <h4 class="settings-panel-header text-red">📉 Risk Metric Targets</h4>
+                    <p class="settings-desc-sm">Targets applied when X-ray cache data is available. Items are suppressed when the metric has not been computed yet.</p>
+                    <div class="flex-gap-15 flex-wrap align-end">
+                        <div class="form-group flex-1 mb-0" style="min-width:130px">
+                            <label>Beta — Min</label>
+                            <input type="number" id="XT_RISK_BETA_MIN" class="form-control"
+                                value="{{ config.XRAY_TARGETS.risk_metric_targets.portfolio_beta_min | default('0.6') }}"
+                                min="0" max="3" step="0.05">
+                        </div>
+                        <div class="form-group flex-1 mb-0" style="min-width:130px">
+                            <label>Beta — Max</label>
+                            <input type="number" id="XT_RISK_BETA_MAX" class="form-control"
+                                value="{{ config.XRAY_TARGETS.risk_metric_targets.portfolio_beta_max | default('1.4') }}"
+                                min="0" max="3" step="0.05">
+                        </div>
+                        <div class="form-group flex-1 mb-0" style="min-width:130px">
+                            <label>Ann. Volatility Max %</label>
+                            <input type="number" id="XT_RISK_VOL_MAX" class="form-control"
+                                value="{{ config.XRAY_TARGETS.risk_metric_targets.annualized_vol_max_pct | default('20') }}"
+                                min="0" max="100" step="0.5">
+                        </div>
+                        <div class="form-group flex-1 mb-0" style="min-width:130px">
+                            <label>Sharpe Ratio Min</label>
+                            <input type="number" id="XT_RISK_SHARPE_MIN" class="form-control"
+                                value="{{ config.XRAY_TARGETS.risk_metric_targets.sharpe_ratio_min | default('0.5') }}"
+                                min="-5" max="10" step="0.1">
+                        </div>
+                        <div class="form-group flex-1 mb-0" style="min-width:130px">
+                            <label>Max Drawdown Max %</label>
+                            <input type="number" id="XT_RISK_DD_MAX" class="form-control"
+                                value="{{ config.XRAY_TARGETS.risk_metric_targets.max_drawdown_max_pct | default('30') }}"
+                                min="0" max="100" step="0.5">
+                        </div>
+                        <div class="form-group flex-1 mb-0" style="min-width:130px">
+                            <label>Avg Correlation Max</label>
+                            <input type="number" id="XT_RISK_CORR_MAX" class="form-control"
+                                value="{{ config.XRAY_TARGETS.risk_metric_targets.avg_correlation_max | default('0.75') }}"
+                                min="0" max="1" step="0.01">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-panel border-left-green">
+                    <h4 class="settings-panel-header text-green">💰 Income Target</h4>
+                    <div class="flex-gap-15 align-end">
+                        <div class="form-group flex-1 mb-0" style="max-width:200px">
+                            <label>Dividend Yield — Min %</label>
+                            <input type="number" id="XT_INC_DIV_MIN" class="form-control"
+                                value="{{ config.XRAY_TARGETS.income_targets.dividend_yield_min_pct | default('1.5') }}"
+                                min="0" max="20" step="0.1">
+                        </div>
+                    </div>
+                </div>
+
+            </details>

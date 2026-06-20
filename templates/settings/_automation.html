@@ -1,0 +1,290 @@
+            <details class="settings-card">
+                <summary>🖥️ Live UI Updates &amp; Notifications</summary>
+                <p class="settings-desc">Enable or disable real-time price fetching for individual stocks on specific pages. Market Indexes will always remain live.</p>
+                <div class="checkbox-group">
+                    <input type="checkbox" id="LIVE_PORTFOLIO" {% if config.UI_PREFERENCES.LIVE_PORTFOLIO %}checked{% endif %}>
+                    <label for="LIVE_PORTFOLIO">Live prices on Portfolio</label>
+                </div>
+                <div class="checkbox-group">
+                    <input type="checkbox" id="LIVE_WATCHLIST" {% if config.UI_PREFERENCES.LIVE_WATCHLIST %}checked{% endif %}>
+                    <label for="LIVE_WATCHLIST">Live prices on Watchlist</label>
+                </div>
+                <div class="checkbox-group">
+                    <input type="checkbox" id="LIVE_DETAILS" {% if config.UI_PREFERENCES.LIVE_DETAILS %}checked{% endif %}>
+                    <label for="LIVE_DETAILS">Live prices on Stock Detail View</label>
+                </div>
+                <div class="form-group mt-10 mb-20">
+                    <label>Polling Refresh Rate (Seconds)</label>
+                    <input type="number" id="REFRESH_RATE" class="form-control" value="{{ config.UI_PREFERENCES.REFRESH_RATE | default(60) }}" min="15">
+                </div>
+                <div class="settings-panel-sm">
+                    <h4 class="settings-panel-header text-blue">🔔 Browser Notifications</h4>
+                    <p class="settings-desc-sm">Receive native desktop/browser notifications when new alerts trigger (if the dashboard is open in a background tab).</p>
+                    <button type="button" class="btn btn-primary mt-5" onclick="requestBrowserNotificationPermission()">Enable Desktop Alerts</button>
+                    <div id="browser-notif-msg" class="status-msg-sm"></div>
+                </div>
+            </details>
+
+            <details class="settings-card" id="automation-schedulers-card">
+                <summary>🤖 Background Automation Schedulers</summary>
+
+                <div class="settings-panel">
+                    <h4 class="settings-panel-header text-blue">📈 Quantamental Analysis Engine</h4>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="QUANT_ANALYSIS_ENABLED" {% if config.SCHEDULING.QUANT_ANALYSIS.ENABLED %}checked{% endif %}>
+                        <label for="QUANT_ANALYSIS_ENABLED">Auto-run macro/fundamental models</label>
+                    </div>
+                    <div class="flex-gap-15 mb-10">
+                        <div class="form-group flex-1">
+                            <label>Frequency</label>
+                            <select id="QUANT_ANALYSIS_FREQ" class="form-select">
+                                <option value="mon-fri" {% if config.SCHEDULING.QUANT_ANALYSIS.FREQUENCY == 'mon-fri' %}selected{% endif %}>Mon-Fri</option>
+                                <option value="*" {% if config.SCHEDULING.QUANT_ANALYSIS.FREQUENCY == '*' %}selected{% endif %}>Every Day</option>
+                            </select>
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Interval (Hours)</label>
+                            <input type="number" id="QUANT_ANALYSIS_INTERVAL" class="form-control" value="{{ config.SCHEDULING.QUANT_ANALYSIS.INTERVAL_HOURS }}" min="0" placeholder="0 to run once">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Specific Time (if Interval = 0)</label>
+                            <input type="time" id="QUANT_ANALYSIS_TIME" class="form-control" value="{{ config.SCHEDULING.QUANT_ANALYSIS.TIME }}">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-panel">
+                    <h4 class="settings-panel-header text-blue">🔄 Ghostfolio Sync</h4>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="GHOSTFOLIO_SYNC_ENABLED" {% if config.SCHEDULING.GHOSTFOLIO_SYNC.ENABLED %}checked{% endif %}>
+                        <label for="GHOSTFOLIO_SYNC_ENABLED">Auto-sync portfolio/watchlist</label>
+                    </div>
+                    <div class="flex-gap-15 mb-10">
+                        <div class="form-group flex-1">
+                            <label>Frequency</label>
+                            <select id="GHOSTFOLIO_SYNC_FREQ" class="form-select">
+                                <option value="mon-fri" {% if config.SCHEDULING.GHOSTFOLIO_SYNC.FREQUENCY == 'mon-fri' %}selected{% endif %}>Mon-Fri</option>
+                                <option value="*" {% if config.SCHEDULING.GHOSTFOLIO_SYNC.FREQUENCY == '*' %}selected{% endif %}>Every Day</option>
+                            </select>
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Interval (Hours)</label>
+                            <input type="number" id="GHOSTFOLIO_SYNC_INTERVAL" class="form-control" value="{{ config.SCHEDULING.GHOSTFOLIO_SYNC.INTERVAL_HOURS }}" min="0" placeholder="0 to run once">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Specific Time (if Interval = 0)</label>
+                            <input type="time" id="GHOSTFOLIO_SYNC_TIME" class="form-control" value="{{ config.SCHEDULING.GHOSTFOLIO_SYNC.TIME }}">
+                        </div>
+                    </div>
+                </div>
+
+                {% set q_engine = config.SCHEDULING.QUANT_ENGINE if config.SCHEDULING.QUANT_ENGINE else {} %}
+                {% set q_days = q_engine.DAYS if q_engine.DAYS else ['mon', 'tue', 'wed', 'thu', 'fri'] %}
+
+                <div class="settings-panel border-left-cyan">
+                    <h4 class="settings-panel-header text-cyan">📊 Daily Quant Screener (Portfolio &amp; Watchlist)</h4>
+                    <p class="settings-desc-sm">Runs the fast overnight quantitative data aggregation and scanning for your active assets.</p>
+                    <div class="flex-gap-15 mb-15 flex-wrap">
+                        <label><input type="checkbox" class="quant-day" value="mon" {% if 'mon' in q_days %}checked{% endif %}> Mon</label>
+                        <label><input type="checkbox" class="quant-day" value="tue" {% if 'tue' in q_days %}checked{% endif %}> Tue</label>
+                        <label><input type="checkbox" class="quant-day" value="wed" {% if 'wed' in q_days %}checked{% endif %}> Wed</label>
+                        <label><input type="checkbox" class="quant-day" value="thu" {% if 'thu' in q_days %}checked{% endif %}> Thu</label>
+                        <label><input type="checkbox" class="quant-day" value="fri" {% if 'fri' in q_days %}checked{% endif %}> Fri</label>
+                        <label><input type="checkbox" class="quant-day" value="sat" {% if 'sat' in q_days %}checked{% endif %}> Sat</label>
+                        <label><input type="checkbox" class="quant-day" value="sun" {% if 'sun' in q_days %}checked{% endif %}> Sun</label>
+                    </div>
+                    <div class="flex-gap-15 align-end">
+                        <div class="form-group mb-0">
+                            <label>Execution Time</label>
+                            <input type="time" id="QUANT_ENGINE_TIME" class="form-control" value="{{ q_engine.TIME | default('01:00') }}">
+                        </div>
+                        <button type="button" class="btn btn-primary mt-0" onclick="triggerQuantScan()">▶️ Run Daily Scan Now</button>
+                    </div>
+                </div>
+
+                {% set e_engine = config.SCHEDULING.EARNINGS_ENGINE if config.SCHEDULING.EARNINGS_ENGINE else {} %}
+                {% set e_days = e_engine.DAYS if e_engine.DAYS else ['sat'] %}
+
+                <div class="settings-panel border-left-orange">
+                    <h4 class="settings-panel-header text-orange">📅 Earnings Volatility Engine</h4>
+                    <p class="settings-desc-sm">Calculates options mispricing and mathematical edge for upcoming earnings events.</p>
+                    <div class="flex-gap-15 mb-15 flex-wrap">
+                        <label><input type="checkbox" class="earn-day" value="mon" {% if 'mon' in e_days %}checked{% endif %}> Mon</label>
+                        <label><input type="checkbox" class="earn-day" value="tue" {% if 'tue' in e_days %}checked{% endif %}> Tue</label>
+                        <label><input type="checkbox" class="earn-day" value="wed" {% if 'wed' in e_days %}checked{% endif %}> Wed</label>
+                        <label><input type="checkbox" class="earn-day" value="thu" {% if 'thu' in e_days %}checked{% endif %}> Thu</label>
+                        <label><input type="checkbox" class="earn-day" value="fri" {% if 'fri' in e_days %}checked{% endif %}> Fri</label>
+                        <label><input type="checkbox" class="earn-day" value="sat" {% if 'sat' in e_days %}checked{% endif %}> Sat</label>
+                        <label><input type="checkbox" class="earn-day" value="sun" {% if 'sun' in e_days %}checked{% endif %}> Sun</label>
+                    </div>
+                    <div class="flex-gap-15 align-end">
+                        <div class="form-group mb-0">
+                            <label>Execution Time</label>
+                            <input type="time" id="EARNINGS_ENGINE_TIME" class="form-control" value="{{ e_engine.TIME | default('10:00') }}">
+                        </div>
+                        <button type="button" class="btn btn-primary mt-0" onclick="triggerEarningsScan()">▶️ Run Now</button>
+                    </div>
+                </div>
+
+                <div class="settings-panel border-left-cyan">
+                    <h4 class="settings-panel-header text-cyan">&#128302; Portfolio X-ray Risk Cache</h4>
+                    <p class="settings-desc-sm">Pre-computes portfolio beta, annualised volatility, pairwise correlation matrix, and dividend yields for the X-ray report. Always scheduled — no toggle required. Fetches 1-year trailing returns from Yahoo Finance for all portfolio tickers plus the SWDA.L benchmark.</p>
+                    <div class="flex-gap-15 align-end">
+                        <div class="form-group mb-0">
+                            <label>Schedule</label>
+                            <input type="text" class="form-control settings-readonly min-w-280" value="Mon–Fri at 19:00 (after market close)" disabled>
+                        </div>
+                        <button type="button" class="btn btn-primary mt-0" onclick="triggerXrayRiskCache()">&#9654;&#65039; Run Now</button>
+                    </div>
+                </div>
+
+            </details>
+
+            <details class="settings-card" id="ml-ai-card">
+                <summary>🧠 Machine Learning &amp; AI Engine</summary>
+
+                {% set ml_backfill = config.SCHEDULING.ML_BACKFILL if config.SCHEDULING.ML_BACKFILL else {} %}
+                {% set ml_backfill_days = ml_backfill.DAYS if ml_backfill.DAYS else ['sat'] %}
+
+                <div class="settings-panel border-left-orange">
+                    <h4 class="settings-panel-header text-orange">⚙️ Historical Data Backfill &amp; Sync</h4>
+                    <p class="settings-desc-sm">Heavy ETL job that synchronizes structural metadata (Beta, Sector) and fetches 2 years of history for ML feature vectors.</p>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="ML_BACKFILL_ENABLED" {% if ml_backfill.ENABLED %}checked{% endif %}>
+                        <label for="ML_BACKFILL_ENABLED">Enable automated background execution</label>
+                    </div>
+                    <div class="flex-gap-15 mb-15 flex-wrap">
+                        <label><input type="checkbox" class="ml-backfill-day" value="mon" {% if 'mon' in ml_backfill_days %}checked{% endif %}> Mon</label>
+                        <label><input type="checkbox" class="ml-backfill-day" value="tue" {% if 'tue' in ml_backfill_days %}checked{% endif %}> Tue</label>
+                        <label><input type="checkbox" class="ml-backfill-day" value="wed" {% if 'wed' in ml_backfill_days %}checked{% endif %}> Wed</label>
+                        <label><input type="checkbox" class="ml-backfill-day" value="thu" {% if 'thu' in ml_backfill_days %}checked{% endif %}> Thu</label>
+                        <label><input type="checkbox" class="ml-backfill-day" value="fri" {% if 'fri' in ml_backfill_days %}checked{% endif %}> Fri</label>
+                        <label><input type="checkbox" class="ml-backfill-day" value="sat" {% if 'sat' in ml_backfill_days %}checked{% endif %}> Sat</label>
+                        <label><input type="checkbox" class="ml-backfill-day" value="sun" {% if 'sun' in ml_backfill_days %}checked{% endif %}> Sun</label>
+                    </div>
+                    <div class="flex-gap-15 align-end flex-wrap">
+                        <div class="form-group mb-0">
+                            <label>Execution Time</label>
+                            <input type="time" id="ML_BACKFILL_TIME" class="form-control" value="{{ ml_backfill.TIME | default('02:00') }}">
+                        </div>
+                        <button type="button" class="btn btn-primary mt-0" onclick="triggerMLBackfill()">▶️ Run Backfill Now</button>
+                    </div>
+                </div>
+
+                {% set ml_training = config.SCHEDULING.ML_TRAINING if config.SCHEDULING.ML_TRAINING else {} %}
+                {% set ml_train_days = ml_training.DAYS if ml_training.DAYS else ['sun'] %}
+
+                <div class="settings-panel border-left-magenta">
+                    <h4 class="settings-panel-header text-magenta">🧠 Global Model Training (Walk-Forward)</h4>
+                    <p class="settings-desc-sm">Compute-heavy process that executes Anchored Walk-Forward Cross Validation and trains the global Voting Classifier ensemble.</p>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="ML_TRAINING_ENABLED" {% if ml_training.ENABLED %}checked{% endif %}>
+                        <label for="ML_TRAINING_ENABLED">Enable automated background execution</label>
+                    </div>
+                    <div class="flex-gap-15 mb-15 flex-wrap">
+                        <label><input type="checkbox" class="ml-training-day" value="mon" {% if 'mon' in ml_train_days %}checked{% endif %}> Mon</label>
+                        <label><input type="checkbox" class="ml-training-day" value="tue" {% if 'tue' in ml_train_days %}checked{% endif %}> Tue</label>
+                        <label><input type="checkbox" class="ml-training-day" value="wed" {% if 'wed' in ml_train_days %}checked{% endif %}> Wed</label>
+                        <label><input type="checkbox" class="ml-training-day" value="thu" {% if 'thu' in ml_train_days %}checked{% endif %}> Thu</label>
+                        <label><input type="checkbox" class="ml-training-day" value="fri" {% if 'fri' in ml_train_days %}checked{% endif %}> Fri</label>
+                        <label><input type="checkbox" class="ml-training-day" value="sat" {% if 'sat' in ml_train_days %}checked{% endif %}> Sat</label>
+                        <label><input type="checkbox" class="ml-training-day" value="sun" {% if 'sun' in ml_train_days %}checked{% endif %}> Sun</label>
+                    </div>
+                    <div class="flex-gap-15 align-end flex-wrap">
+                        <div class="form-group mb-0">
+                            <label>Execution Time</label>
+                            <input type="time" id="ML_TRAINING_TIME" class="form-control" value="{{ ml_training.TIME | default('04:00') }}">
+                        </div>
+                        <button type="button" class="btn btn-primary mt-0" onclick="triggerMLTraining()">▶️ Run Training Now</button>
+                    </div>
+                </div>
+
+                {% set ml_inference = config.SCHEDULING.ML_INFERENCE if config.SCHEDULING.ML_INFERENCE else {} %}
+                {% set ml_infer_days = ml_inference.DAYS if ml_inference.DAYS else ['mon', 'tue', 'wed', 'thu', 'fri'] %}
+
+                <div class="settings-panel border-left-cyan">
+                    <h4 class="settings-panel-header text-cyan">🔮 Daily ML Inference</h4>
+                    <p class="settings-desc-sm">Loads the trained model and performs rapid daily predictions on your portfolio and the market universe. Should run shortly after the Daily Quant Screener (Portfolio &amp; Watchlist).</p>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="ML_INFERENCE_ENABLED" {% if ml_inference.ENABLED %}checked{% endif %}>
+                        <label for="ML_INFERENCE_ENABLED">Enable automated background execution</label>
+                    </div>
+                    <div class="flex-gap-15 mb-15 flex-wrap">
+                        <label><input type="checkbox" class="ml-inference-day" value="mon" {% if 'mon' in ml_infer_days %}checked{% endif %}> Mon</label>
+                        <label><input type="checkbox" class="ml-inference-day" value="tue" {% if 'tue' in ml_infer_days %}checked{% endif %}> Tue</label>
+                        <label><input type="checkbox" class="ml-inference-day" value="wed" {% if 'wed' in ml_infer_days %}checked{% endif %}> Wed</label>
+                        <label><input type="checkbox" class="ml-inference-day" value="thu" {% if 'thu' in ml_infer_days %}checked{% endif %}> Thu</label>
+                        <label><input type="checkbox" class="ml-inference-day" value="fri" {% if 'fri' in ml_infer_days %}checked{% endif %}> Fri</label>
+                        <label><input type="checkbox" class="ml-inference-day" value="sat" {% if 'sat' in ml_infer_days %}checked{% endif %}> Sat</label>
+                        <label><input type="checkbox" class="ml-inference-day" value="sun" {% if 'sun' in ml_infer_days %}checked{% endif %}> Sun</label>
+                    </div>
+                    <div class="flex-gap-15 align-end flex-wrap">
+                        <div class="form-group mb-0">
+                            <label>Execution Time</label>
+                            <input type="time" id="ML_INFERENCE_TIME" class="form-control" value="{{ ml_inference.TIME | default('01:30') }}">
+                        </div>
+                        <button type="button" class="btn btn-primary mt-0" onclick="triggerMLInference()">▶️ Run Inference Now</button>
+                    </div>
+                </div>
+
+                {% set anomaly_cfg = config.NOTIFICATIONS.ANOMALY_ALERTS if config.NOTIFICATIONS.ANOMALY_ALERTS else {} %}
+                <div class="settings-panel border-left-green">
+                    <h4 class="settings-panel-header text-green">🔬 Isolation Forest Anomaly Detection</h4>
+                    <p class="settings-desc-sm">Trains a per-ticker unsupervised Isolation Forest model on 6-dimensional market features (volume ratio, RSI, daily return, SMA distance, volatility, beta). Runs nightly at 18:30. Anomaly scores are written intraday and displayed on each stock detail page.</p>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="ANOMALY_ALERTS_ENABLED" {% if anomaly_cfg.ENABLED %}checked{% endif %}>
+                        <label for="ANOMALY_ALERTS_ENABLED">Enable anomaly scoring &amp; pre-alerts</label>
+                    </div>
+                    <div class="flex-gap-15 align-end flex-wrap mt-10">
+                        <div class="form-group mb-0">
+                            <label>Alert Threshold (0–1)</label>
+                            <input type="number" id="ANOMALY_ALERTS_THRESHOLD" class="form-control" min="0" max="1" step="0.05" value="{{ anomaly_cfg.THRESHOLD | default(0.7) }}" style="width:90px;">
+                        </div>
+                        <button type="button" class="btn btn-primary mt-0" onclick="triggerAnomalyTraining()">▶️ Train Models Now</button>
+                    </div>
+                </div>
+
+                <div class="settings-panel-sm border-left-cyan">
+                    <h4 class="settings-panel-header text-cyan">📰 NLP Market Sentiment Engine</h4>
+                    <p class="settings-desc-sm">Fetches financial news and runs FinBERT NLP sentiment analysis independently of the core quant scan.</p>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="SENTIMENT_ENGINE_ENABLED" {% if config.SCHEDULING.SENTIMENT_ENGINE.ENABLED %}checked{% endif %}>
+                        <label for="SENTIMENT_ENGINE_ENABLED">Enable automated news sentiment scraping</label>
+                    </div>
+                    <div class="flex-gap-15 mb-10">
+                        <div class="form-group flex-1">
+                            <label>Active Days</label>
+                            <select id="SENTIMENT_ENGINE_FREQ" class="form-select">
+                                <option value="mon-fri" {% if config.SCHEDULING.SENTIMENT_ENGINE.FREQUENCY == 'mon-fri' %}selected{% endif %}>Mon-Fri</option>
+                                <option value="*" {% if config.SCHEDULING.SENTIMENT_ENGINE.FREQUENCY == '*' %}selected{% endif %}>Every Day</option>
+                            </select>
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Start Time</label>
+                            <input type="time" id="SENTIMENT_ENGINE_START" class="form-control" value="{{ config.SCHEDULING.SENTIMENT_ENGINE.START_TIME | default('09:30') }}">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>End Time</label>
+                            <input type="time" id="SENTIMENT_ENGINE_END" class="form-control" value="{{ config.SCHEDULING.SENTIMENT_ENGINE.END_TIME | default('16:00') }}">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Interval (Hours)</label>
+                            <input type="number" id="SENTIMENT_ENGINE_INTERVAL" class="form-control" value="{{ config.SCHEDULING.SENTIMENT_ENGINE.INTERVAL_HOURS | default(4) }}" min="1">
+                        </div>
+                    </div>
+                    <button type="button" class="btn btn-primary mt-0" onclick="triggerSentimentScan()">▶️ Run Sentiment Scan Now</button>
+                </div>
+
+                <div class="settings-panel-sm border-left-cyan">
+                    <h4 class="settings-panel-header text-cyan">🤗 HuggingFace API Token</h4>
+                    <p class="settings-desc-sm">Optional. Suppresses unauthenticated-request warnings and enables higher rate limits when downloading or updating FinBERT and other HuggingFace models. Get a free token at <a href="https://huggingface.co/settings/tokens" target="_blank" class="text-cyan">huggingface.co/settings/tokens</a>.</p>
+                    <div class="form-group mb-10">
+                        <label>HuggingFace Token</label>
+                        <input type="password" id="HF_TOKEN" class="form-control" value="{{ hf_token }}" autocomplete="new-password" placeholder="hf_xxxxxxxxxxxxxxxxxxxx">
+                    </div>
+                    <button type="button" class="btn btn-primary mt-0" onclick="saveHFToken()">💾 Save HF Token</button>
+                    <button type="button" class="btn btn-primary mt-0" onclick="testHFToken()">🧪 Verify Token</button>
+                    <div id="hf-status-msg"></div>
+                </div>
+
+            </details>

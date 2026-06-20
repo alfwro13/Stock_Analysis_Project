@@ -1,0 +1,440 @@
+var CONFIRM_TOKEN = window.CONFIRM_TOKEN;
+var currentDiscoveredAccounts = JSON.parse(document.getElementById('discoveredAccountsData').textContent);
+var macroInitState = JSON.parse(document.getElementById('macroInitState').textContent);
+
+function setStatus(elId, type, msg) {
+    const el = document.getElementById(elId);
+    el.innerText = (type === 'success' ? '✅ ' : type === 'error' ? '❌ ' : type === 'warning' ? '⚠️ ' : '⏳ ') + msg;
+    el.className = 'status-msg-sm ' + (type === 'success' ? 'msg-success' : type === 'error' ? 'msg-error' : type === 'warning' ? 'msg-warning' : 'msg-info');
+}
+
+function setBoxStatus(elId, type, htmlMsg) {
+    const el = document.getElementById(elId);
+    el.style.display = 'block';
+    el.innerHTML = htmlMsg;
+    el.className = 'status-msg-sm ' + (type === 'success' ? 'box-success' : type === 'error' ? 'box-error' : type === 'warning' ? 'box-warning' : 'box-info');
+}
+
+async function saveSettings(silent = false) {
+    const btn = document.querySelector('.btn-save');
+
+    if (!silent) {
+        btn.disabled = true;
+        btn.innerText = "Saving Configuration...";
+    }
+
+    const activeAccounts = [];
+    document.querySelectorAll('.ghostfolio-account-checkbox').forEach((cb) => {
+        if (cb.checked) activeAccounts.push(cb.value);
+    });
+
+    const quantDays        = Array.from(document.querySelectorAll('.quant-day:checked')).map(cb => cb.value);
+    const earnDays         = Array.from(document.querySelectorAll('.earn-day:checked')).map(cb => cb.value);
+    const dispatchDays     = Array.from(document.querySelectorAll('.dispatch-day:checked')).map(cb => cb.value);
+    const lunchDispatchDays = Array.from(document.querySelectorAll('.lunch-dispatch-day:checked')).map(cb => cb.value);
+    const universeDays     = Array.from(document.querySelectorAll('.universe-day:checked')).map(cb => cb.value);
+    const mlBackfillDays   = Array.from(document.querySelectorAll('.ml-backfill-day:checked')).map(cb => cb.value);
+    const mlTrainingDays   = Array.from(document.querySelectorAll('.ml-training-day:checked')).map(cb => cb.value);
+    const mlInferenceDays  = Array.from(document.querySelectorAll('.ml-inference-day:checked')).map(cb => cb.value);
+    const indexDays        = Array.from(document.querySelectorAll('.index-day:checked')).map(cb => cb.value);
+    const profilerDays     = Array.from(document.querySelectorAll('.profiler-day:checked')).map(cb => cb.value);
+    const udsDays          = Array.from(document.querySelectorAll('.uds-day:checked')).map(cb => cb.value);
+    const activeIndices    = Array.from(document.querySelectorAll('.index-target:checked')).map(cb => cb.value);
+
+    const payload = {
+        "SERVER_URL": document.getElementById('SERVER_URL').value,
+        "PORT": parseInt(document.getElementById('PORT').value),
+        "BASE_CURRENCY": document.getElementById('BASE_CURRENCY').value,
+        "USER_TIMEZONE": document.getElementById('USER_TIMEZONE').value.trim(),
+        "HOME_EXCHANGE": document.getElementById('HOME_EXCHANGE').value,
+        "IGNORED_TICKERS": document.getElementById('IGNORED_TICKERS').value.split(',').map(s => s.trim()).filter(Boolean),
+        "FILE_LOGGING": {
+            "ENABLED": document.getElementById('FILE_LOGGING_ENABLED').checked,
+            "LEVEL": document.getElementById('FILE_LOGGING_LEVEL').value,
+            "DAYS_TO_KEEP": parseInt(document.getElementById('FILE_LOGGING_DAYS_TO_KEEP').value) || 30,
+            "ARCHIVE": document.getElementById('FILE_LOGGING_ARCHIVE').checked,
+            "LOG_DIR": document.getElementById('FILE_LOGGING_LOG_DIR').value.trim() || 'logs'
+        },
+        "YAHOO_IPV6_ADDRESS": document.getElementById('YAHOO_IPV6_ADDRESS').value.trim(),
+        "GHOSTFOLIO_ACCOUNTS": {
+            "discovered": currentDiscoveredAccounts,
+            "active": activeAccounts
+        },
+        "UI_PREFERENCES": {
+            "LIVE_PORTFOLIO": document.getElementById('LIVE_PORTFOLIO').checked,
+            "LIVE_WATCHLIST": document.getElementById('LIVE_WATCHLIST').checked,
+            "LIVE_DETAILS": document.getElementById('LIVE_DETAILS').checked,
+            "FREETRADE_ONLY_MODE": document.getElementById('FREETRADE_ONLY_MODE').checked,
+            "REFRESH_RATE": parseInt(document.getElementById('REFRESH_RATE').value) || 60,
+            "FONT_SIZE_NAV": parseInt(document.getElementById('FONT_SIZE_NAV').value) || 16,
+            "FONT_SIZE_TABLE": parseInt(document.getElementById('FONT_SIZE_TABLE').value) || 12,
+            "FONT_SIZE_DT_TABLE": parseInt(document.getElementById('FONT_SIZE_DT_TABLE').value) || 12,
+            "FONT_SIZE_FORM": parseInt(document.getElementById('FONT_SIZE_FORM').value) || 12,
+            "FONT_SIZE_BTN": parseInt(document.getElementById('FONT_SIZE_BTN').value) || 14,
+            "FONT_SIZE_SECTION": parseInt(document.getElementById('FONT_SIZE_SECTION').value) || 20,
+            "FONT_SIZE_BODY": parseInt(document.getElementById('FONT_SIZE_BODY').value) || 12,
+            "FONT_SIZE_H1": parseInt(document.getElementById('FONT_SIZE_H1').value) || 17,
+            "FONT_SIZE_H2": parseInt(document.getElementById('FONT_SIZE_H2').value) || 14,
+            "FONT_SIZE_H3": parseInt(document.getElementById('FONT_SIZE_H3').value) || 12
+        },
+        "POSITION_SIZING": {
+            "ACCOUNT_VALUE": parseFloat(document.getElementById('POSITION_SIZING_ACCOUNT_VALUE').value) || 10000,
+            "RISK_PCT":      parseFloat(document.getElementById('POSITION_SIZING_RISK_PCT').value) || 1.0,
+            "STOP_MULTIPLE": parseFloat(document.getElementById('POSITION_SIZING_STOP_MULTIPLE').value) || 2.0
+        },
+        "SCHEDULING": {
+            "GHOSTFOLIO_SYNC": {
+                "ENABLED": document.getElementById('GHOSTFOLIO_SYNC_ENABLED').checked,
+                "FREQUENCY": document.getElementById('GHOSTFOLIO_SYNC_FREQ').value,
+                "INTERVAL_HOURS": parseInt(document.getElementById('GHOSTFOLIO_SYNC_INTERVAL').value) || 0,
+                "TIME": document.getElementById('GHOSTFOLIO_SYNC_TIME').value
+            },
+            "FREETRADE_SYNC": {
+                "ENABLED": document.getElementById('FREETRADE_SYNC_ENABLED').checked,
+                "FREQUENCY": document.getElementById('FREETRADE_SYNC_FREQ').value,
+                "TIME": document.getElementById('FREETRADE_SYNC_TIME').value
+            },
+            "QUANT_ANALYSIS": {
+                "ENABLED": document.getElementById('QUANT_ANALYSIS_ENABLED').checked,
+                "FREQUENCY": document.getElementById('QUANT_ANALYSIS_FREQ').value,
+                "INTERVAL_HOURS": parseInt(document.getElementById('QUANT_ANALYSIS_INTERVAL').value) || 0,
+                "TIME": document.getElementById('QUANT_ANALYSIS_TIME').value
+            },
+            "SENTIMENT_ENGINE": {
+                "ENABLED": document.getElementById('SENTIMENT_ENGINE_ENABLED').checked,
+                "FREQUENCY": document.getElementById('SENTIMENT_ENGINE_FREQ').value,
+                "START_TIME": document.getElementById('SENTIMENT_ENGINE_START').value,
+                "END_TIME": document.getElementById('SENTIMENT_ENGINE_END').value,
+                "INTERVAL_HOURS": parseInt(document.getElementById('SENTIMENT_ENGINE_INTERVAL').value) || 4
+            },
+            "NEWS_FEED": {
+                "ENABLED": document.getElementById('NEWS_FEED_ENABLED').checked,
+                "FREQUENCY": document.getElementById('NEWS_FEED_FREQ').value,
+                "START_TIME": document.getElementById('NEWS_FEED_START').value,
+                "END_TIME": document.getElementById('NEWS_FEED_END').value,
+                "INTERVAL_HOURS": parseInt(document.getElementById('NEWS_FEED_INTERVAL').value) || 4,
+                "MAX_PER_TICKER": parseInt(document.getElementById('NEWS_FEED_MAX_PER').value) || 5,
+                "MAX_AGE_DAYS": parseInt(document.getElementById('NEWS_FEED_MAX_AGE').value) || 7
+            },
+            "CRASH_ALERTS": {
+                "ENABLED": document.getElementById('CRASH_ALERTS_SCHED_ENABLED').checked,
+                "FREQUENCY": document.getElementById('CRASH_ALERTS_FREQ').value,
+                "START_TIME": document.getElementById('CRASH_ALERTS_START').value,
+                "END_TIME": document.getElementById('CRASH_ALERTS_END').value,
+                "INTERVAL_MINUTES": parseInt(document.getElementById('CRASH_ALERTS_MINUTES').value) || 10,
+                "FLASH_CRASH_THRESHOLD": parseFloat(document.getElementById('CRASH_FLASH_THRESHOLD').value)
+            },
+            "MOONSHOT_ALERTS": {
+                "ENABLED": document.getElementById('MOONSHOT_ALERTS_SCHED_ENABLED').checked,
+                "FREQUENCY": document.getElementById('MOONSHOT_ALERTS_FREQ').value,
+                "START_TIME": document.getElementById('MOONSHOT_ALERTS_START').value,
+                "END_TIME": document.getElementById('MOONSHOT_ALERTS_END').value,
+                "INTERVAL_MINUTES": parseInt(document.getElementById('MOONSHOT_ALERTS_MINUTES').value) || 10,
+                "SPIKE_PERCENT": parseFloat(document.getElementById('MOONSHOT_SPIKE_PERCENT').value),
+                "SPIKE_DAYS": parseInt(document.getElementById('MOONSHOT_SPIKE_DAYS').value),
+                "SMA_LENGTH": parseInt(document.getElementById('MOONSHOT_SMA_LENGTH').value),
+                "SMA_GAP_PERCENT": parseFloat(document.getElementById('MOONSHOT_SMA_GAP_PERCENT').value)
+            },
+            "MAINTENANCE": {
+                "ENABLED": document.getElementById('MAINTENANCE_ENABLED').checked,
+                "DAY_OF_WEEK": document.getElementById('MAINTENANCE_DAY').value,
+                "TIME": document.getElementById('MAINTENANCE_TIME').value,
+                "DAYS_TO_KEEP_FILES": parseInt(document.getElementById('MAINTENANCE_DAYS_TO_KEEP_FILES').value) || 60
+            },
+            "QUANT_ENGINE": {
+                "DAYS": quantDays,
+                "TIME": document.getElementById('QUANT_ENGINE_TIME').value
+            },
+            "EARNINGS_ENGINE": {
+                "DAYS": earnDays,
+                "TIME": document.getElementById('EARNINGS_ENGINE_TIME').value
+            },
+            "DISPATCHER": {
+                "ENABLED": document.getElementById('DISPATCHER_ENABLED').checked,
+                "DAYS": dispatchDays,
+                "TIME": document.getElementById('DISPATCHER_TIME').value
+            },
+            "LUNCH_DISPATCHER": {
+                "ENABLED": document.getElementById('LUNCH_DISPATCHER_ENABLED').checked,
+                "DAYS": lunchDispatchDays,
+                "TIME": document.getElementById('LUNCH_DISPATCHER_TIME').value
+            },
+            "SYNC_INDICES": {
+                "ENABLED": document.getElementById('SYNC_INDICES_ENABLED').checked,
+                "INDICES": activeIndices,
+                "DAYS": indexDays,
+                "TIME": document.getElementById('SYNC_INDICES_TIME').value
+            },
+            "PROFILER_ENGINE": {
+                "ENABLED": document.getElementById('PROFILER_ENGINE_ENABLED').checked,
+                "DAYS": profilerDays,
+                "TIME": document.getElementById('PROFILER_ENGINE_TIME').value,
+                "BATCH_SIZE": parseInt(document.getElementById('PROFILER_BATCH_SIZE').value) || 250
+            },
+            "UNIVERSE_DEEP_SYNC": {
+                "ENABLED": document.getElementById('UNIVERSE_DEEP_SYNC_ENABLED').checked,
+                "DAYS": udsDays,
+                "TIME": document.getElementById('UNIVERSE_DEEP_SYNC_TIME').value
+            },
+            "UNIVERSE_ENGINE": {
+                "ENABLED": document.getElementById('UNIVERSE_ENGINE_ENABLED').checked,
+                "DAYS": universeDays,
+                "TIME": document.getElementById('UNIVERSE_ENGINE_TIME').value
+            },
+            "ML_BACKFILL": {
+                "ENABLED": document.getElementById('ML_BACKFILL_ENABLED').checked,
+                "DAYS": mlBackfillDays,
+                "TIME": document.getElementById('ML_BACKFILL_TIME').value
+            },
+            "ML_TRAINING": {
+                "ENABLED": document.getElementById('ML_TRAINING_ENABLED').checked,
+                "DAYS": mlTrainingDays,
+                "TIME": document.getElementById('ML_TRAINING_TIME').value
+            },
+            "ML_INFERENCE": {
+                "ENABLED": document.getElementById('ML_INFERENCE_ENABLED').checked,
+                "DAYS": mlInferenceDays,
+                "TIME": document.getElementById('ML_INFERENCE_TIME').value
+            },
+            "MACRO_ENGINE": {
+                "ENABLED": document.getElementById('MACRO_ENGINE_ENABLED').checked,
+                "INITIALIZED": macroInitState,
+                "CALENDAR_TIME": document.getElementById('MACRO_CALENDAR_TIME').value,
+                "DATA_DAY": document.getElementById('MACRO_DATA_DAY').value,
+                "DATA_TIME": document.getElementById('MACRO_DATA_TIME').value
+            },
+            "AI_CONTAGION": {
+                "ENABLED": document.getElementById('AI_CONTAGION_SCHED_ENABLED').checked,
+                "FREQUENCY": document.getElementById('AI_CONTAGION_FREQ').value,
+                "START_TIME": document.getElementById('AI_CONTAGION_START').value,
+                "END_TIME": document.getElementById('AI_CONTAGION_END').value,
+                "INTERVAL_MINUTES": parseInt(document.getElementById('AI_CONTAGION_INTERVAL').value) || 15
+            },
+            "TRAP_MONITORS": {
+                "ENABLED": document.getElementById('TRAP_MONITOR_ENABLED').checked,
+                "BULL_TRAP": document.getElementById('TRAP_BULL_ENABLED').checked,
+                "BEAR_TRAP": document.getElementById('TRAP_BEAR_ENABLED').checked,
+                "CAPITULATION": document.getElementById('TRAP_CAP_ENABLED').checked,
+                "WYCKOFF": document.getElementById('TRAP_WYK_ENABLED').checked,
+                "MONITOR_PORTFOLIO": document.getElementById('TRAP_MONITOR_PORTFOLIO').checked,
+                "FREQUENCY": document.getElementById('TRAP_MONITOR_FREQ').value,
+                "START_TIME": document.getElementById('TRAP_MONITOR_START').value,
+                "END_TIME": document.getElementById('TRAP_MONITOR_END').value,
+                "INTERVAL_MINUTES": parseInt(document.getElementById('TRAP_MONITOR_INTERVAL').value) || 30
+            },
+            "BUBBLE_RADAR": {
+                "ENABLED": document.getElementById('BUBBLE_RADAR_ENABLED').checked,
+                "DAYS": document.getElementById('BUBBLE_RADAR_FREQ').value === 'mon-sun'
+                    ? ['mon','tue','wed','thu','fri','sat','sun']
+                    : ['mon','tue','wed','thu','fri'],
+                "TIME": document.getElementById('BUBBLE_RADAR_TIME').value,
+                "WATCH_THRESHOLD": parseInt(document.getElementById('BUBBLE_RADAR_WATCH_THRESHOLD').value) || 70,
+                "FLAG_THRESHOLD": parseInt(document.getElementById('BUBBLE_RADAR_FLAG_THRESHOLD').value) || 85
+            },
+            "FORENSIC_QUARTERLY_FETCH": {
+                "ENABLED": document.getElementById('FORENSIC_QUARTERLY_FETCH_ENABLED').checked,
+                "DAY_OF_MONTH": 1,
+                "TIME": "06:00"
+            },
+            "FORENSIC_SCORES": {
+                "ENABLED": document.getElementById('FORENSIC_SCORES_ENABLED').checked,
+                "DAY_OF_MONTH": 1,
+                "TIME": "07:00"
+            }
+        },
+        "NOTIFICATIONS": {
+            "MARKET_SENTIMENT": {
+                "ENABLED": document.getElementById('FNG_ENABLED').checked,
+                "TIME": document.getElementById('FNG_TIME').value,
+                "FREQUENCY": document.getElementById('FNG_FREQUENCY').value
+            },
+            "EARNINGS_ALERTS": {
+                "ENABLED": document.getElementById('EARNINGS_ENABLED').checked,
+                "TIME": document.getElementById('EARNINGS_TIME').value,
+                "DAYS_AHEAD": parseInt(document.getElementById('EARNINGS_DAYS_AHEAD').value),
+                "ALERT_TYPE": document.getElementById('EARNINGS_ALERT_TYPE').value
+            },
+            "INSIDER_TRADING": {
+                "ENABLED_PORTFOLIO": document.getElementById('INSIDER_ENABLED_PORTFOLIO').checked,
+                "ENABLED_WATCHLIST": document.getElementById('INSIDER_ENABLED_WATCHLIST').checked,
+                "TIME": document.getElementById('INSIDER_TIME').value,
+                "FREQUENCY": document.getElementById('INSIDER_FREQUENCY').value,
+                "MIN_VALUE": parseInt(document.getElementById('INSIDER_MIN_VALUE').value),
+                "DAYS_BACK": parseInt(document.getElementById('INSIDER_DAYS_BACK').value)
+            },
+            "CRASH_ALERTS": {
+                "DROP_PERCENT": parseFloat(document.getElementById('CRASH_DROP_PERCENT').value),
+                "DROP_DAYS": parseInt(document.getElementById('CRASH_DROP_DAYS').value),
+                "SMA_LENGTH": parseInt(document.getElementById('CRASH_SMA_LENGTH').value),
+                "SMA_GAP_PERCENT": parseFloat(document.getElementById('CRASH_SMA_GAP_PERCENT').value),
+                "FLASH_CRASH_THRESHOLD": parseFloat(document.getElementById('CRASH_FLASH_THRESHOLD').value)
+            },
+            "MOONSHOT_ALERTS": {
+                "SPIKE_PERCENT": parseFloat(document.getElementById('MOONSHOT_SPIKE_PERCENT').value),
+                "SPIKE_DAYS": parseInt(document.getElementById('MOONSHOT_SPIKE_DAYS').value),
+                "SMA_LENGTH": parseInt(document.getElementById('MOONSHOT_SMA_LENGTH').value),
+                "SMA_GAP_PERCENT": parseFloat(document.getElementById('MOONSHOT_SMA_GAP_PERCENT').value)
+            },
+            "RSS_FEED": {
+                "ENABLED": document.getElementById('RSS_FEED_ENABLED').checked
+            },
+            "AI_CONTAGION": {
+                "ENABLED": document.getElementById('AI_CONTAGION_ENABLED').checked,
+                "LEADER_THRESHOLD_PCT": parseFloat(document.getElementById('AI_CONTAGION_LEADER_THRESHOLD').value),
+                "ETF_CONFIRMATION_THRESHOLD_PCT": parseFloat(document.getElementById('AI_CONTAGION_ETF_THRESHOLD').value),
+                "VOLUME_SPIKE_MULTIPLIER": parseFloat(document.getElementById('AI_CONTAGION_VOLUME_MULT').value),
+                "BELLWETHER_TICKERS": document.getElementById('AI_CONTAGION_BELLWETHERS').value
+                    .split(/[,\s]+/).map(s => s.trim()).filter(Boolean),
+                "ETF_BASKET": document.getElementById('AI_CONTAGION_ETFS').value
+                    .split(/[,\s]+/).map(s => s.trim()).filter(Boolean),
+                "COOLDOWN_MINUTES": parseFloat(document.getElementById('AI_CONTAGION_COOLDOWN').value),
+                "RETRIGGER_PERCENT": parseFloat(document.getElementById('AI_CONTAGION_RETRIGGER').value),
+                "REARM_PERCENT": parseFloat(document.getElementById('AI_CONTAGION_REARM').value)
+            },
+            "TRAP_MONITOR_ALERTS": {
+                "COOLDOWN_MINUTES": parseFloat(document.getElementById('TRAP_COOLDOWN').value),
+                "RETRIGGER_PERCENT": parseFloat(document.getElementById('TRAP_RETRIGGER').value),
+                "REARM_PERCENT": parseFloat(document.getElementById('TRAP_REARM').value),
+                "PROXY_TICKERS": document.getElementById('TRAP_PROXY_TICKERS').value
+                    .split(/[,\s]+/).map(s => s.trim().toUpperCase()).filter(Boolean)
+            }
+        },
+        "NOTIFICATION_ROUTING": (function() {
+            const routing = {};
+            document.querySelectorAll('[data-notif-source]').forEach(cb => {
+                const src = cb.dataset.notifSource;
+                (routing[src] = routing[src] || {})[cb.dataset.notifChannel] = cb.checked;
+            });
+            return routing;
+        })(),
+        "XRAY_TARGETS": (function() {
+            function xt(id) {
+                const v = (document.getElementById(id)?.value ?? '').trim();
+                return v === '' ? null : parseFloat(v);
+            }
+            return {
+                "market_development": {
+                    "Developed Markets": { "min": xt('XT_DEV_MIN'), "max": xt('XT_DEV_MAX') },
+                    "Emerging Markets":  { "min": xt('XT_EM_MIN'),  "max": xt('XT_EM_MAX') }
+                },
+                "regional_clusters": {
+                    "North America":    { "min": xt('XT_NA_MIN'),    "max": xt('XT_NA_MAX') },
+                    "Europe":           { "min": xt('XT_EU_MIN'),    "max": xt('XT_EU_MAX') },
+                    "Japan":            { "min": xt('XT_JP_MIN'),    "max": xt('XT_JP_MAX') },
+                    "Asia-Pacific":     { "min": xt('XT_AP_MIN'),    "max": xt('XT_AP_MAX') },
+                    "Emerging Markets": { "min": xt('XT_RC_EM_MIN'), "max": xt('XT_RC_EM_MAX') }
+                },
+                "country_concentration": {
+                    "United States":  { "min": null, "max": xt('XT_CC_US') },
+                    "China":          { "min": null, "max": xt('XT_CC_CN') },
+                    "Japan":          { "min": null, "max": xt('XT_CC_JP') },
+                    "United Kingdom": { "min": null, "max": xt('XT_CC_GB') }
+                },
+                "sector_targets": {
+                    "Technology":             { "min": null, "max": xt('XT_SEC_TECH') },
+                    "Financials":             { "min": null, "max": xt('XT_SEC_FIN')  },
+                    "Healthcare":             { "min": null, "max": xt('XT_SEC_HLTH') },
+                    "Consumer Cyclical":      { "min": null, "max": xt('XT_SEC_CC')   },
+                    "Industrials":            { "min": null, "max": xt('XT_SEC_IND')  },
+                    "Communication Services": { "min": null, "max": xt('XT_SEC_COMM') },
+                    "Consumer Staples":       { "min": null, "max": xt('XT_SEC_CS')   },
+                    "Energy":                 { "min": null, "max": xt('XT_SEC_ENE')  },
+                    "Materials":              { "min": null, "max": xt('XT_SEC_MAT')  },
+                    "Utilities":              { "min": null, "max": xt('XT_SEC_UTIL') },
+                    "Real Estate":            { "min": null, "max": xt('XT_SEC_RE')   }
+                },
+                "asset_class_targets": {
+                    "ETF":          { "min": xt('XT_AC_ETF_MIN'), "max": xt('XT_AC_ETF_MAX') },
+                    "Equity":       { "min": xt('XT_AC_EQ_MIN'),  "max": xt('XT_AC_EQ_MAX')  },
+                    "Fixed Income": { "min": xt('XT_AC_FI_MIN'),  "max": xt('XT_AC_FI_MAX')  },
+                    "Commodity":    { "min": xt('XT_AC_COM_MIN'), "max": xt('XT_AC_COM_MAX') }
+                },
+                "concentration_targets": {
+                    "max_single_position_pct": xt('XT_CONC_MAX_POS'),
+                    "top5_weight_max_pct":     xt('XT_CONC_TOP5'),
+                    "top10_weight_max_pct":    xt('XT_CONC_TOP10'),
+                    "hhi_max":                 xt('XT_CONC_HHI')
+                },
+                "risk_metric_targets": {
+                    "portfolio_beta_min":      xt('XT_RISK_BETA_MIN'),
+                    "portfolio_beta_max":      xt('XT_RISK_BETA_MAX'),
+                    "annualized_vol_max_pct":  xt('XT_RISK_VOL_MAX'),
+                    "sharpe_ratio_min":        xt('XT_RISK_SHARPE_MIN'),
+                    "max_drawdown_max_pct":    xt('XT_RISK_DD_MAX'),
+                    "avg_correlation_max":     xt('XT_RISK_CORR_MAX')
+                },
+                "income_targets": {
+                    "dividend_yield_min_pct": xt('XT_INC_DIV_MIN')
+                }
+            };
+        })()
+    };
+
+    try {
+        const response = await fetch('/api/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Confirm-Token': CONFIRM_TOKEN },
+            body: JSON.stringify(payload)
+        });
+
+        const result = await response.json();
+
+        if (!silent) {
+            if (response.ok) {
+                setStatus('status-msg', 'success', "Settings saved. Background schedulers restarted dynamically.");
+            } else {
+                const errMsg = result.message || (result.detail ? (Array.isArray(result.detail) ? result.detail.map(d => d.loc.join('.') + ': ' + d.msg).join('; ') : result.detail) : 'Unknown error');
+                setStatus('status-msg', 'error', errMsg);
+            }
+        }
+    } catch (error) {
+        if (!silent) {
+            setStatus('status-msg', 'error', "Network Error while saving.");
+        }
+    }
+
+    if (!silent) {
+        setTimeout(() => {
+            btn.disabled = false;
+            btn.innerText = "💾 Save & Apply System Settings";
+            document.getElementById('status-msg').innerText = "";
+        }, 5000);
+    }
+}
+
+(function() {
+    const searchInput = document.getElementById('settingsSearch');
+    const clearBtn = document.getElementById('settingsSearchClear');
+    const cards = document.querySelectorAll('details.settings-card');
+    const noResults = document.getElementById('noSettingsResults');
+
+    searchInput.addEventListener('input', function() {
+        const query = this.value.toLowerCase().trim();
+        let found = 0;
+
+        if (clearBtn) clearBtn.style.display = this.value ? 'block' : 'none';
+
+        cards.forEach(card => {
+            const matches = query === '' || card.innerText.toLowerCase().includes(query);
+            card.style.display = matches ? '' : 'none';
+            if (matches) {
+                found++;
+                if (query !== '' && !card.hasAttribute('ontoggle')) {
+                    card.setAttribute('open', '');
+                }
+            } else if (query !== '') {
+                card.removeAttribute('open');
+            }
+        });
+
+        noResults.style.display = (found === 0 && query !== '') ? 'block' : 'none';
+    });
+
+    if (clearBtn) {
+        clearBtn.addEventListener('click', function() {
+            searchInput.value = '';
+            searchInput.dispatchEvent(new Event('input'));
+            searchInput.focus();
+        });
+    }
+})();
