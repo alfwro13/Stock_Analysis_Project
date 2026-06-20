@@ -28,6 +28,7 @@ from bubble_radar_engine import (
     _score_iv_skew,
     _score_spy_rsp,
     _flag_from_score,
+    _get_fundamentals,
     _record_history,
     _backfill_outcomes,
     get_bubble_radar_data,
@@ -301,6 +302,17 @@ def test_bubble_radar_metrics_upsert(conn):
     assert row["flag"] == "bubble"
     conn.execute("DELETE FROM bubble_radar_metrics WHERE ticker=?", (ticker,))
     conn.commit()
+
+
+# ── _get_fundamentals — missing row path ─────────────────────────────────────
+
+def test_get_fundamentals_returns_four_nones_when_ticker_absent(conn):
+    # Regression: early-return path previously returned 5 Nones, mismatching the
+    # 4-value unpacking at the call site; caused silent ValueError for unknown tickers.
+    result = _get_fundamentals("NOTINTABLE", conn)
+    assert result == (None, None, None, None), (
+        f"Expected (None, None, None, None), got {result}"
+    )
 
 
 # ── run_bubble_scan integration ───────────────────────────────────────────────

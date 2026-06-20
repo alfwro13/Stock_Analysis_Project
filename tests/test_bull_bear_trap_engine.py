@@ -23,7 +23,7 @@ import ta
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import database as db
-from bull_bear_trap_engine import TrapEngine, _phase_severity, _PHASE_ORDER
+from bull_bear_trap_engine import TrapEngine, _phase_severity, _PHASE_ORDER, fill_trap_phase_actuals
 
 # ── minimal config ─────────────────────────────────────────────────────────────
 
@@ -674,3 +674,103 @@ class TestTrapAccuracyAPIEndpoint:
         assert data["status"] == "success"
         assert "phases" in data
         assert "overall" in data
+
+
+# ── fill_trap_phase_actuals() ─────────────────────────────────────────────────
+
+class TestFillTrapPhaseActuals:
+    """
+    fill_trap_phase_actuals() back-fills actual prices and direction_correct flags
+    for trap_phase_history rows whose horizon (14d / 30d) has elapsed.
+    """
+
+    @staticmethod
+    def _seed_phase(scan_date: str, phase: str = "BULL_TRAP_RISK", close_price: float = 100.0) -> int:
+        conn = db.get_connection()
+        try:
+            cursor = conn.execute(
+                """INSERT OR IGNORE INTO trap_phase_history
+                   (ticker, phase, scan_date, scan_ts, close_price)
+                   VALUES ('FTATST', ?, ?, ?, ?)""",
+                (phase, scan_date, f"{scan_date} 10:00:00", close_price),
+            )
+            conn.commit()
+            return cursor.lastrowid
+        finally:
+            conn.close()
+
+    @staticmethod
+    def _cleanup():
+        conn = db.get_connection()
+        try:
+            conn.execute("DELETE FROM trap_phase_history WHERE ticker='FTATST'")
+            conn.commit()
+        finally:
+            conn.close()
+
+    @staticmethod
+    def _read_row(scan_date: str) -> dict:
+        conn = db.get_connection()
+        try:
+            row = conn.execute(
+                "SELECT * FROM trap_phase_history WHERE ticker='FTATST' AND scan_date=?",
+                (scan_date,),
+            ).fetchone()
+            return dict(row) if row else {}
+        finally:
+            conn.close()
+
+    def test_returns_zero_when_no_pending_rows(self):
+        count = fill_trap_phase_actuals()
+        assert count == 0
+
+    def test_back_fills_14d_outcome_from_parquet(self, tmp_path):
+        # Seed a BULL_TRAP_RISK phase flagged 20 days ago at close=100.
+        from datetime import date, timedelta
+        scan_date = (date.today() - timedelta(days=20)).strftime("%Y-%m-%d")
+        self._seed_phase(scan_date, close_price=100.0)
+        try:
+            # Build a parquet file covering scan_date through today with price going down (correct prediction).
+            n = 30
+            idx = pd.date_range(scan_date, periods=n, freq="D")
+            prices = np.linspace(100.0, 90.0, n)  # declining — BULL_TRAP "down" prediction correct
+            df = pd.DataFrame({"Close": prices, "Open": prices, "High": prices + 1, "Low": prices - 1, "Volume": np.ones(n)}, index=idx)
+            pq_path = tmp_path / "FTATST.parquet"
+            df.to_parquet(pq_path, engine="pyarrow")
+
+            with patch("bull_bear_trap_engine.HISTORICAL_DIR", tmp_path):
+                count = fill_trap_phase_actuals()
+
+            row = self._read_row(scan_date)
+            assert count >= 1, "Expected at least one outcome filled"
+            assert row.get("actual_price_14d") is not None, "14d actual price must be recorded"
+            assert row.get("direction_correct_14d") == 1, "Declining price is correct for BULL_TRAP_RISK (expected 'down')"
+        finally:
+            self._cleanup()
+
+    def test_neutral_phase_skipped(self, tmp_path):
+        # NEUTRAL rows are excluded by get_unresolved_trap_phases (phase != 'NEUTRAL').
+        from datetime import date, timedelta
+        scan_date = (date.today() - timedelta(days=20)).strftime("%Y-%m-%d")
+        conn = db.get_connection()
+        try:
+            conn.execute(
+                """INSERT OR IGNORE INTO trap_phase_history
+                   (ticker, phase, scan_date, scan_ts, close_price)
+                   VALUES ('FTATST', 'NEUTRAL', ?, ?, 100.0)""",
+                (scan_date, f"{scan_date} 10:00:00"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        try:
+            n = 30
+            idx = pd.date_range(scan_date, periods=n, freq="D")
+            prices = np.linspace(100.0, 90.0, n)
+            df = pd.DataFrame({"Close": prices, "Open": prices, "High": prices + 1, "Low": prices - 1, "Volume": np.ones(n)}, index=idx)
+            (tmp_path / "FTATST.parquet").write_bytes(b"")  # parquet intentionally absent → 0 outcomes
+            with patch("bull_bear_trap_engine.HISTORICAL_DIR", tmp_path):
+                count = fill_trap_phase_actuals()
+            assert count == 0, "NEUTRAL phase rows must not be resolved"
+        finally:
+            self._cleanup()

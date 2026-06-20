@@ -177,6 +177,56 @@ def test_load_config_migrates_et_as_utc_defaults(tmp_path):
         _config.SECRETS_PATH = original_path
 
 
+@pytest.mark.config
+def test_load_config_fills_missing_scheduling_sub_keys_from_defaults(tmp_path):
+    """load_config() must fill in missing keys within a SCHEDULING sub-block from defaults.
+
+    If config.json stores only {"SCHEDULING": {"QUANT_ANALYSIS": {"TIME": "20:00"}}},
+    the merged result must still include all default QUANT_ANALYSIS keys (ENABLED,
+    FREQUENCY, etc.) so that scheduler_engine never gets a KeyError.
+    """
+    import config as _config
+    original_path = _config.SECRETS_PATH
+    partial_config_path = tmp_path / "partial.json"
+    partial_config_path.write_text(json.dumps({
+        "SCHEDULING": {
+            "QUANT_ANALYSIS": {"TIME": "20:00"}
+        }
+    }))
+    try:
+        _config.SECRETS_PATH = partial_config_path
+        result = _config.load_config()
+        qa = result["SCHEDULING"]["QUANT_ANALYSIS"]
+        assert qa.get("TIME") == "20:00", "Stored TIME must be applied"
+        assert "ENABLED" in qa, "Default ENABLED key must be filled in from defaults"
+        assert "FREQUENCY" in qa, "Default FREQUENCY key must be filled in from defaults"
+    finally:
+        _config.SECRETS_PATH = original_path
+
+
+@pytest.mark.config
+def test_update_config_atomic_deep_merge_preserves_sibling_keys(tmp_path):
+    """update_config_atomic() deep_merge must not clobber sibling sub-keys.
+
+    Updating only {"SCHEDULING": {"QUANT_ANALYSIS": {"TIME": "22:00"}}} must leave
+    all other SCHEDULING entries (e.g. MAINTENANCE) untouched.
+    """
+    import config as _config
+    original_path = _config.SECRETS_PATH
+    test_config_path = tmp_path / "deep.json"
+    try:
+        _config.SECRETS_PATH = test_config_path
+        # Write an initial full config via the first atomic write.
+        _config.update_config_atomic({"PORT": 8090})
+        # Now update only one nested key.
+        _config.update_config_atomic({"SCHEDULING": {"QUANT_ANALYSIS": {"TIME": "22:00"}}})
+        result = _config.load_config()
+        assert result["SCHEDULING"]["QUANT_ANALYSIS"]["TIME"] == "22:00", "Updated key must be applied"
+        assert "MAINTENANCE" in result["SCHEDULING"], "Sibling MAINTENANCE block must be preserved"
+    finally:
+        _config.SECRETS_PATH = original_path
+
+
 # ── Ticker normalisation ──────────────────────────────────────────────────────
 
 @pytest.mark.config

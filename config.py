@@ -413,7 +413,7 @@ def load_config() -> dict:
             # Use Deep Copy so we don't mutate the global defaults dictionary
             merged_config = copy.deepcopy(DEFAULT_CONFIG)
             for key, val in data.items():
-                if key in ["NOTIFICATIONS", "SCHEDULING", "GHOSTFOLIO_ACCOUNTS", "UI_PREFERENCES", "FREETRADE_MAPPINGS", "POSITION_SIZING"] and isinstance(val, dict):
+                if key in ["NOTIFICATIONS", "SCHEDULING", "GHOSTFOLIO_ACCOUNTS", "UI_PREFERENCES", "FREETRADE_MAPPINGS", "POSITION_SIZING", "XRAY_TARGETS", "REGIME_TARGETS", "FILE_LOGGING", "REPORTS_DEFAULTS", "NOTIFICATION_ROUTING"] and isinstance(val, dict):
                     for sub_key, sub_val in val.items():
                         # Silently drop keys removed in later releases (backward compat).
                         if key == "SCHEDULING" and sub_key in DEPRECATED_SCHEDULE_KEYS:

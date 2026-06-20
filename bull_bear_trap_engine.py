@@ -10,7 +10,7 @@ import pandas as pd
 import ta
 
 from config import HISTORICAL_DIR, PORTFOLIO_PATH
-from database import get_connection, log_trap_phase, get_unresolved_trap_phases, update_trap_phase_actual, batch_update_trap_phase_actuals
+from database import get_connection, log_trap_phase, get_unresolved_trap_phases, batch_update_trap_phase_actuals
 from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
