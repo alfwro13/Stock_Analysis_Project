@@ -236,8 +236,7 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
                     continue
 
                 if t_live.empty:
-                    # Daily-priced instrument (e.g. mutual fund): no intraday ticks exist.
-                    # Use the most recent daily close as the current price.
+                    # Daily-priced instrument (e.g. mutual fund) — use most recent daily close.
                     current_price = float(t_daily['Close'].iloc[-1])
                     prev_close = float(t_daily['Close'].iloc[-2]) if len(t_daily) >= 2 else current_price
                 else:
