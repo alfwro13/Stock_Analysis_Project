@@ -1,4 +1,3 @@
-# gilt_engine.py
 import io
 import re
 import time
@@ -25,8 +24,7 @@ class GiltDataService:
         self.parquet_path = HISTORICAL_DIR / "UK_GILT_BASELINE.parquet"
 
     def _get_with_retry(self, url: str, *, params=None, timeout: int, retries: int = 3) -> requests.Response:
-        """GET with exponential backoff (1 s, 2 s, 4 s). Raises on final failure.
-        No finally block: requests manages its own connection pool; there is no resource to release manually."""
+        """GET with exponential backoff (1 s, 2 s, 4 s); raises on final failure; no finally block — requests manages its own connection pool."""
         for attempt in range(retries):
             try:
                 response = requests.get(url, params=params, headers=self.headers, timeout=timeout)
