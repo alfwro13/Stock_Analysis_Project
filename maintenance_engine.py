@@ -9,7 +9,7 @@ from config import (
     PORTFOLIO_PATH, WATCHLIST_PATH, HISTORICAL_DIR,
     INTRADAY_DIR, FUNDAMENTALS_DIR, load_config
 )
-from database import get_connection
+from database import get_connection, log_notification as _db_log_notification
 
 class MaintenanceEngine:
     """Weekly housekeeping: prune notification logs, delete orphaned files, VACUUM the DB."""
@@ -178,10 +178,7 @@ class MaintenanceEngine:
                 conn.close()
 
     def log_notification(self):
-        conn = None
         try:
-            conn = get_connection()
-            cursor = conn.cursor()
             vac_status = "Successful" if self.metrics["vacuum_success"] else "Failed (Locked or Busy)"
             deleted = self.metrics["deleted_files"]
             if deleted:
@@ -196,16 +193,9 @@ class MaintenanceEngine:
                 f"{files_section}\n"
                 f"• DB Defragmentation: {vac_status}"
             )
-            cursor.execute(
-                "INSERT INTO system_notifications (message_type, message_text) VALUES (?, ?)",
-                ("Maintenance", msg)
-            )
-            conn.commit()
+            _db_log_notification("Maintenance", msg)
         except Exception as e:
             logger.error("Failed to write maintenance notification: %s", e)
-        finally:
-            if conn:
-                conn.close()
 
     def dry_run(self) -> dict:
         """Same scan as garbage_collect_files() but deletes nothing; returns what would/would-not be removed."""
