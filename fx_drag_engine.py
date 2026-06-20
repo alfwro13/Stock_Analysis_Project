@@ -8,6 +8,7 @@ import pandas as pd
 
 from config import HISTORICAL_DIR, PORTFOLIO_PATH, BASE_CURRENCY, GHOSTFOLIO_URL, GHOSTFOLIO_TOKEN
 from database import get_connection
+from ghostfolio_sync import GhostfolioSyncEngine
 from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
@@ -157,14 +158,7 @@ def portfolio_fx_breakdown(period_days: int) -> list[dict]:
 def _compute_activities_gbpusd(
     activities: list[dict], ticker: str, gbpusd_series: pd.Series
 ) -> tuple[float, float, int, str] | None:
-    """
-    Returns (vwap_buy_usd, weighted_avg_gbpusd_buy, buy_count, earliest_buy).
-
-    When the activity's account currency is GBP, the implied GBPUSD at purchase
-    is derived directly from unitPriceInAssetProfileCurrency / unitPrice.
-    When the account currency is non-GBP (e.g. USD), unitPrice is in USD, so
-    the actual GBPUSD rate at the trade date is looked up from gbpusd_series.
-    """
+    """Returns (vwap_buy_usd, weighted_avg_gbpusd_buy, buy_count, earliest_buy); GBP-account activities derive GBPUSD from unitPriceInAssetProfileCurrency/unitPrice, USD-account activities look up gbpusd_series at trade date."""
     total_usd = 0.0
     total_gbp = 0.0
     total_qty = 0.0
@@ -194,8 +188,7 @@ def _compute_activities_gbpusd(
                 continue
             gbp_cost = qty * gbp_price
         else:
-            # Account denominated in USD (or other non-GBP): unitPrice is in USD.
-            # Look up the actual GBPUSD rate at the trade date from our Parquet series.
+            # USD-denominated account: unitPrice is in USD; look up historical GBPUSD at trade date.
             if gbpusd_series.empty or not date_str:
                 continue
             trade_ts = pd.Timestamp(date_str)
@@ -228,8 +221,6 @@ def portfolio_lifetime_fx_breakdown() -> list[dict]:
 
     if not GHOSTFOLIO_URL or not GHOSTFOLIO_TOKEN:
         return []
-
-    from ghostfolio_sync import GhostfolioSyncEngine
 
     engine = GhostfolioSyncEngine()
     if not engine.is_configured:
