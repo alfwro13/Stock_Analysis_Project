@@ -4,6 +4,7 @@ reports/
 models/
 logs/
 static/briefing_charts/
+audit/
 
 .claude/
 

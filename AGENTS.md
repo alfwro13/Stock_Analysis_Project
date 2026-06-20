@@ -83,7 +83,13 @@ Stock_Analysis_Project/
 ├── utils.py                  # Shared utilities
 │
 ├── templates/                # Jinja2 HTML templates
-│   └── base.html             # Shared Bootstrap 5 shell — migrated pages {% extends %} it
+│   ├── base.html             # Shared Bootstrap 5 shell — migrated pages {% extends %} it
+│   └── settings/             # Settings page partials (included by settings.html)
+│       ├── _data.html        # Market Universe Pipeline, Macroeconomic Data, News & RSS cards
+│       ├── _automation.html  # Background Automation Schedulers, ML & AI Engine, Live UI Updates cards
+│       ├── _alerts.html      # Crash/Moonshot Alerts, Dip Radar, AI Contagion, Trap Monitor, Briefings cards
+│       ├── _portfolio.html   # Position Sizing Defaults, X-Ray Allocation Targets cards
+│       └── _system.html      # System Diagnostics, Manual Actions, Core System, Advanced Network, Nextcloud, Ghostfolio, User Account, Tools, Workflow Monitor, Notification Settings, System Updates cards
 ├── static/                   # CSS, JS, images
 │   ├── css/styles.css        # Global stylesheet (single source of truth for all styles)
 │   ├── vendor/               # Vendored front-end libs (Bootstrap 5, jQuery, DataTables + Responsive) — no CDN at runtime
@@ -91,7 +97,12 @@ Stock_Analysis_Project/
 │       ├── csrf.js           # CSRF token helper
 │       ├── navbar.js         # base.html navbar: notification poller + freshness badge
 │       ├── position_sizing.js
-│       └── settings.js       # Settings page JS (2100 lines, extracted from settings.html)
+│       ├── settings_shared.js    # setStatus(), setBoxStatus(), saveSettings(), search IIFE, global vars — load first
+│       ├── settings_system.js    # auth, diagnostics, Workflow Monitor, git-pull, restart/terminate, Nextcloud/Ghostfolio, maintenance
+│       ├── settings_data.js      # universe triggers, macro triggers, news fetch, profiler status, FRED key
+│       ├── settings_automation.js # quant/earnings/briefing/ML/sentiment/X-ray triggers, HF token
+│       ├── settings_alerts.js    # Dip Radar IIFE, crash/moonshot/contagion/trap/bubble/forensic triggers, test alerts
+│       └── settings_portfolio.js # ETF predictor CRUD + all helpers
 ├── data/                     # Runtime data (SQLite, Parquet, JSON)
 │   ├── analysis.db
 │   ├── historical/*.parquet  # 2-year daily OHLCV per ticker
@@ -191,7 +202,7 @@ First boot auto-creates `config.json` and initialises the DB schema.
 Always run the full regression suite after any code change:
 
 ```bash
-./run_tests.sh              # full suite (~152 tests)
+./run_tests.sh              # full suite (~2052 tests)
 ./run_tests.sh --fast       # skip slow page-render tests
 ./run_tests.sh --db-only    # DB schema tests only
 ./run_tests.sh --api-only   # API endpoint tests only
@@ -244,12 +255,41 @@ Every code change that adds, removes, or significantly alters a feature **must**
 - **Tooltips:** Use `<abbr title="Explanation text.">Label</abbr>` — wrap the label itself, no custom JS tooltip systems, no icon, no `style` attribute on the `<abbr>`. The global CSS in `static/css/styles.css` already applies `text-decoration: underline dotted #666`, `cursor: pointer`, and `color: inherit` to all `abbr` elements. Never override these inline. Keep tooltip text to 1–2 sentences matching existing examples (e.g. Support 1, RSI, ATR).
 - **Styles belong in `static/css/styles.css`:** Do not write inline `style="..."` attributes. Check whether a CSS class already exists before adding anything. Only use inline styles in JS-generated HTML (e.g. dynamic `innerHTML`) where class-based styling is impractical, and even then keep it minimal.
 - **No hardcoded `font-size` values for UI layout elements in `styles.css`.** All user-visible text sizes must reference a CSS custom property declared in the `:root` block (e.g. `font-size: var(--font-size-body)`). The ten variables are `--font-size-nav`, `--font-size-table` (screener/report tables), `--font-size-dt-table` (Portfolio/Watchlist DataTables — uses an explicit `td`/`th` rule, not inheritance), `--font-size-form`, `--font-size-btn`, `--font-size-section`, `--font-size-body`, `--font-size-h1`, `--font-size-h2`, `--font-size-h3`; their runtime values come from `GET /api/ui-theme.css` which reads `UI_PREFERENCES` from `config.json`. Exception: intentional data-visualisation sizes (large numeric KPI tiles, score displays, chart annotation text) may use explicit `px` values when they are purposely non-configurable.
-- **Large JS blocks belong in `static/js/`:** If a template `<script>` block exceeds ~50 lines, extract it to a `.js` file (see `settings.html` / `settings.js` as the reference). Use a small inline bootstrap to expose any Jinja-derived values as `window.*` globals, then load the external file with `<script src="/static/js/file.js?v={{ css_version }}">`. Never put `{{ ... }}` Jinja interpolations inside `.js` files.
+- **Large JS blocks belong in `static/js/`:** If a template `<script>` block exceeds ~50 lines, extract it to a `.js` file (see `templates/watchlist.html` / `static/js/watchlist.js` as the reference). Use a small inline bootstrap to expose any Jinja-derived values as `window.*` globals, then load the external file with `<script src="/static/js/file.js?v={{ css_version }}">`. Never put `{{ ... }}` Jinja interpolations inside `.js` files.
 - **Tables use DataTables Responsive:** New or migrated data tables initialise DataTables with `responsive: true` and explicit per-column `responsivePriority` so the full column set shows on desktop and only the essentials survive on a phone (collapsed columns move to the expandable child row). Keep the client-side full-array data load — do not switch to server-side processing. See `static/js/watchlist.js`.
 - **UK market quirks:** LSE-listed stocks may have prices quoted in pence (GBX), not pounds (GBP). The codebase handles this explicitly — do not remove or simplify that logic.
 - **Secrets:** All credentials live in `.env` (loaded via `python-dotenv`). Never hard-code tokens or API keys. Never commit `.env`.
 - **Port:** Default is `8090`. Do not change it without updating `config.json` and `config.py`.
 - **Never mask bad data in the display layer.** If a chart, table, or API response shows incorrect values due to corrupt or misformatted data in the database, the fix must go to the source — either the data pipeline (engine) or a data migration in `database.py:migrate_db()`. Do not add filters, clamps, or guards in `visuals.py`, template code, or API serialisation to hide the bad values. Filtering in the display layer hides the problem from monitoring and leaves incorrect data in the DB silently corrupting other consumers (e.g. `regime_engine.py` reads `us_cpi_inflation` directly for macro regime classification).
+
+### Settings page structure
+
+`templates/settings.html` is a thin shell (~70 lines). All card HTML lives in five Jinja2 partials under `templates/settings/`:
+
+| Partial | Cards |
+|---|---|
+| `_data.html` | Market Universe Pipeline, Macroeconomic Data, News & RSS |
+| `_automation.html` | Background Automation Schedulers, Machine Learning & AI Engine, Live UI Updates & Notifications |
+| `_alerts.html` | Crash & Moonshot Alerts, Dip Radar, AI Sector Contagion Monitor, Trap Monitor, Alerts/Reports/Quant Briefings |
+| `_portfolio.html` | Position Sizing Defaults, X-Ray Allocation Targets |
+| `_system.html` | System Diagnostics, Manual Actions, Core System & Currencies, Advanced Network, Nextcloud, Ghostfolio, User Account, Tools, Workflow Monitor, Notification Settings, System Updates |
+
+JS is split across six domain files in `static/js/`:
+
+| File | Responsibility |
+|---|---|
+| `settings_shared.js` | `setStatus()`, `setBoxStatus()`, `saveSettings()`, search IIFE, global vars (`CONFIRM_TOKEN`, `currentDiscoveredAccounts`, `macroInitState`) — **must load first** |
+| `settings_system.js` | Auth, diagnostics, Workflow Monitor, git-pull, restart/terminate, Nextcloud test, Ghostfolio discover, maintenance, active-jobs refresh |
+| `settings_data.js` | Universe triggers (Freetrade, index scrape, profiler, deep sync, import), macro triggers, news fetch, profiler status, FRED key save |
+| `settings_automation.js` | Quant scan, earnings scan, morning/lunch briefings, ML backfill/training/inference/anomaly, sentiment scan, HF token |
+| `settings_alerts.js` | Dip Radar IIFE + functions, crash/moonshot/contagion/trap/bubble/forensic triggers, test-alert functions, `copyRssFeedUrl` |
+| `settings_portfolio.js` | ETF predictor CRUD + all helpers |
+
+**Adding a new settings panel:**
+- Put the card HTML in the appropriate partial (or `_system.html` for system-level concerns).
+- Put the card's JS functions in the matching domain file.
+- Declare any new global state with `var` (not `let`) in `settings_shared.js` if it must be read by more than one domain file.
+- Cards inside the left column (`_data`, `_automation`, `_alerts`, `_portfolio`) are inside `<form id="settingsForm">` — their inputs are harvested by `saveSettings()` on Save. Cards in `_system.html` are outside the form and are saved via their own dedicated API calls.
 
 ### Time and Timezone Rules
 
