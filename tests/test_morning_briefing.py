@@ -27,11 +27,11 @@ from morning_briefing import (
 
 class TestFormatAge:
     def test_recent_returns_minutes(self):
-        pub = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=30)
+        pub = datetime.now(timezone.utc) - timedelta(minutes=30)
         assert "30min ago" in _format_age(pub)
 
     def test_older_returns_hours(self):
-        pub = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=3)
+        pub = datetime.now(timezone.utc) - timedelta(hours=3)
         result = _format_age(pub)
         assert "3h ago" in result or "h ago" in result
 
