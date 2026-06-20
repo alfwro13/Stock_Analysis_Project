@@ -38,6 +38,7 @@ _TTLS: dict[str, int] = {
     "ticker_actions":        86400,
     "fx_rate":                 600,  # 10 min
     "annual_financials":     86400,  # 24 h — annual statements change quarterly
+    "isin_search":           86400,  # 24 h — ISIN→ticker mapping is stable
 }
 
 
@@ -345,6 +346,27 @@ class YahooEngine:
                 return rate
         except Exception:
             logger.error("get_fx_rate failed for %s", pair, exc_info=True)
+        return None
+
+    def search_by_isin(self, isin: str) -> Optional[str]:
+        """Return the first Yahoo Finance symbol for an ISIN, or None on failure."""
+        key = f"isin_search:{isin}"
+        cached = self._get(key)
+        if cached is not None:
+            return cached
+        try:
+            url = f"https://query2.finance.yahoo.com/v1/finance/search?q={isin}"
+            with yahoo_connection_boundary(f"ISIN search: {isin}") as session:
+                resp = session.get(url, timeout=10)
+            if resp.status_code == 200:
+                quotes = resp.json().get("quotes", [])
+                if quotes:
+                    symbol = quotes[0].get("symbol")
+                    if symbol:
+                        self._set(key, symbol, _TTLS["isin_search"])
+                        return symbol
+        except Exception:
+            logger.debug("ISIN search failed for %s", isin, exc_info=True)
         return None
 
     def get_stats(self) -> dict:

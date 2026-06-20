@@ -3,7 +3,6 @@ import json
 import os
 import time
 import random
-import requests
 import logging
 import argparse
 import pandas as pd
@@ -11,6 +10,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any, Tuple
 from database import get_connection
 from config import load_config
+from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
 
@@ -44,22 +44,6 @@ def load_blacklist() -> set:
             logger.warning("Failed to read Freetrade blacklist from %s", BLACKLIST_PATH, exc_info=True)
     return set()
 
-def log_freetrade_notification(msg_type: str, msg_text: str) -> None:
-    conn = None
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO system_notifications (message_type, message_text) VALUES (?, ?)",
-            (msg_type, msg_text)
-        )
-        conn.commit()
-    except Exception as e:
-        logger.error(f"Failed to log notification: {e}")
-    finally:
-        if conn is not None:
-            conn.close()
-
 def resolve_ticker(symbol: str, isin: str, mic: str, cache_dict: Dict[str, str], ft_config: Dict) -> Tuple[Optional[str], bool]:
     # Strip whitespace and any trailing periods (Fixes RR. and BP. becoming RR..L)
     ft_symbol = str(symbol).strip().rstrip('.')
@@ -73,21 +57,13 @@ def resolve_ticker(symbol: str, isin: str, mic: str, cache_dict: Dict[str, str],
             isin = str(isin).strip()
             if isin in cache_dict:
                 return cache_dict[isin], True
-                
-            url = f"https://query2.finance.yahoo.com/v1/finance/search?q={isin}"
-            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-            
+
             try:
-                time.sleep(random.uniform(0.3, 0.7)) 
-                response = requests.get(url, headers=headers, timeout=10)
-                if response.status_code == 200:
-                    data = response.json()
-                    quotes = data.get('quotes', [])
-                    if quotes:
-                        resolved_symbol = quotes[0].get('symbol')
-                        if resolved_symbol:
-                            cache_dict[isin] = resolved_symbol
-                            return resolved_symbol, True
+                time.sleep(random.uniform(0.3, 0.7))
+                resolved_symbol = yahoo_engine.search_by_isin(isin)
+                if resolved_symbol:
+                    cache_dict[isin] = resolved_symbol
+                    return resolved_symbol, True
             except Exception:
                 logger.debug("ISIN lookup failed for %s, using fallback symbol", isin, exc_info=True)
 
