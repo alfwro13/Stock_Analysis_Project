@@ -85,16 +85,6 @@ class AIRegimePromptEngine:
 
             try:
                 cur.execute(
-                    "SELECT date, state FROM price_hmm_states ORDER BY date ASC"
-                )
-                rows = [dict(r) for r in cur.fetchall()]
-                data["hmm_history"] = rows
-            except Exception as e:
-                logger.error("ai_regime_engine: price_hmm_states query failed: %s", e)
-                data["hmm_history"] = []
-
-            try:
-                cur.execute(
                     "SELECT date, price_hmm_state, price_hmm_label, price_hmm_prob "
                     "FROM market_regimes WHERE price_hmm_state IS NOT NULL ORDER BY date DESC LIMIT 1825"
                 )
