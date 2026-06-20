@@ -180,6 +180,7 @@ def test_no_page_route_returns_500(client):
         ("/forensic-screener",  "Forensic Screener"),
         ("/fx-drag",            "FX Drag Analyzer"),
         ("/index/%5EGSPC",      "Index Detail (S&P 500)"),
+        ("/login",              "Login"),
     ]
     failures = []
     for url, label in pages:
