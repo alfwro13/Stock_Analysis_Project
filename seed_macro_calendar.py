@@ -11,7 +11,7 @@ def seed_calendar():
     conn = get_connection()
     cursor = conn.cursor()
     try:
-        logger.info("🌱 Seeding historical Macro Calendar events for AI Training...")
+        logger.info("Seeding historical Macro Calendar events for AI Training...")
 
         records = []
         base_date = datetime.now(timezone.utc) - timedelta(days=180)
@@ -50,7 +50,7 @@ def seed_calendar():
         row = cursor.fetchone()
         count = row['count'] if row else 0
 
-        logger.info("✅ Successfully seeded %d historical events with AI training targets. Verified %d valid rows in DB.", len(records), count)
+        logger.info("Seeded %d historical events with AI training targets. Verified %d valid rows in DB.", len(records), count)
     finally:
         conn.close()
 

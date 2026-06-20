@@ -68,7 +68,6 @@ from tools.network_engine import GLOBAL_IPV6_STATUS
 from yahoo_engine import yahoo_engine
 # Import curl_cffi for resilient IPv6 socket testing
 from curl_cffi import requests as cffi_requests
-from seed_macro_calendar import seed_calendar
 from macro_calendar_engine import update_macro_calendar
 from macro_data_engine import update_macro_indicators
 from macro_ai_engine import MacroAIEngine
