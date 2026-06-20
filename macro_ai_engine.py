@@ -16,7 +16,7 @@ from sklearn.preprocessing import StandardScaler
 from constants import (
     MACRO_CAL_MIN_TRAIN_ROWS,
     MACRO_CV_N_SPLITS,
-    MACRO_HMM_HOLDOUT_FRAC,
+    MACRO_HMM_TRAIN_FRAC,
     MACRO_HMM_MIN_TRAIN_ROWS,
     MACRO_HMM_N_ITER,
     MACRO_HMM_N_STATES,
@@ -108,7 +108,7 @@ class MacroAIEngine:
             # Scale features for the Gaussian emission distributions
             X = self.hmm_scaler.fit_transform(df[['us_m2', 'us_jobless_claims', 'us_high_yield_spread', 'us_yield_curve']])
 
-            split = max(1, int(len(X) * MACRO_HMM_HOLDOUT_FRAC))
+            split = max(1, int(len(X) * MACRO_HMM_TRAIN_FRAC))
             if split < len(X):
                 eval_hmm = hmm.GaussianHMM(n_components=MACRO_HMM_N_STATES, covariance_type="full", n_iter=MACRO_HMM_N_ITER, random_state=42)
                 eval_hmm.fit(X[:split])

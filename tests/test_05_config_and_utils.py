@@ -328,6 +328,58 @@ def test_regime_thresholds_ordered():
     )
 
 
+@pytest.mark.config
+def test_score_boundaries_are_strictly_ordered():
+    """Score label boundaries must be strictly descending: STRONG_BUY > BULLISH > NEUTRAL > BEARISH > STRONG_SELL."""
+    from constants import SCORE_STRONG_BUY, SCORE_BULLISH, SCORE_NEUTRAL, SCORE_BEARISH, SCORE_STRONG_SELL
+    assert SCORE_STRONG_BUY > SCORE_BULLISH > SCORE_NEUTRAL > SCORE_BEARISH > SCORE_STRONG_SELL, (
+        f"Score boundaries out of order: {SCORE_STRONG_BUY}, {SCORE_BULLISH}, "
+        f"{SCORE_NEUTRAL}, {SCORE_BEARISH}, {SCORE_STRONG_SELL}"
+    )
+
+
+@pytest.mark.config
+def test_freshness_thresholds_ordered():
+    """Staleness warning threshold must be strictly less than stale threshold for both model and price data."""
+    from constants import (
+        FRESHNESS_MODEL_WARN_DAYS, FRESHNESS_MODEL_STALE_DAYS,
+        FRESHNESS_PRICES_WARN_DAYS, FRESHNESS_PRICES_STALE_DAYS,
+    )
+    assert FRESHNESS_MODEL_WARN_DAYS < FRESHNESS_MODEL_STALE_DAYS, (
+        f"Model freshness thresholds wrong: warn={FRESHNESS_MODEL_WARN_DAYS}, stale={FRESHNESS_MODEL_STALE_DAYS}"
+    )
+    assert FRESHNESS_PRICES_WARN_DAYS < FRESHNESS_PRICES_STALE_DAYS, (
+        f"Price freshness thresholds wrong: warn={FRESHNESS_PRICES_WARN_DAYS}, stale={FRESHNESS_PRICES_STALE_DAYS}"
+    )
+
+
+@pytest.mark.config
+def test_rsi_stressed_threshold_below_normal():
+    """RSI_OVERBOUGHT_STRESSED must be strictly less than RSI_OVERBOUGHT (tighter gate under stress)."""
+    from constants import RSI_OVERBOUGHT, RSI_OVERBOUGHT_STRESSED
+    assert RSI_OVERBOUGHT_STRESSED < RSI_OVERBOUGHT, (
+        f"Stressed overbought {RSI_OVERBOUGHT_STRESSED} must be below normal {RSI_OVERBOUGHT}"
+    )
+
+
+@pytest.mark.config
+def test_rsi_healthy_band_ordered():
+    """RSI_HEALTHY_MIN must be strictly less than RSI_HEALTHY_MAX."""
+    from constants import RSI_HEALTHY_MIN, RSI_HEALTHY_MAX
+    assert RSI_HEALTHY_MIN < RSI_HEALTHY_MAX, (
+        f"RSI healthy band inverted: min={RSI_HEALTHY_MIN}, max={RSI_HEALTHY_MAX}"
+    )
+
+
+@pytest.mark.config
+def test_css_version_is_nonempty_string():
+    """CSS_VERSION must be a non-empty string so cache-busting query parameters are always applied."""
+    from constants import CSS_VERSION
+    assert isinstance(CSS_VERSION, str) and CSS_VERSION.strip(), (
+        f"CSS_VERSION must be a non-empty string, got {CSS_VERSION!r}"
+    )
+
+
 # ── Indicator functions exist and are callable ───────────────────────────────
 
 @pytest.mark.config

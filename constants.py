@@ -43,7 +43,7 @@ MACRO_CAL_MIN_TRAIN_ROWS   = 10    # macro_calendar rows required for RF and XGB
 # HMM architecture
 MACRO_HMM_N_STATES         = 3     # hidden states: 0=expansion, 1=choppy, 2=recession
 MACRO_HMM_N_ITER           = 100   # EM iterations for GaussianHMM.fit()
-MACRO_HMM_HOLDOUT_FRAC     = 0.8   # train fraction for held-out log-likelihood scoring
+MACRO_HMM_TRAIN_FRAC       = 0.8   # fraction of rows used to fit HMM; remainder scored for log-likelihood
 
 # Random Forest hyperparameters (consensus miss probability)
 MACRO_RF_N_ESTIMATORS      = 100
