@@ -687,6 +687,130 @@ class TestStats:
         assert self.eng.get_stats()["cached_keys"] == 1
 
 
+# ─── TestSearchByIsin ────────────────────────────────────────────────────────
+
+class TestSearchByIsin:
+
+    def setup_method(self):
+        self.eng = YahooEngine()
+
+    def _mock_session(self, status_code, json_body):
+        """Returns a context-manager mock whose __enter__ yields a session with .get()."""
+        fake_resp = MagicMock()
+        fake_resp.status_code = status_code
+        fake_resp.json.return_value = json_body
+        fake_session = MagicMock()
+        fake_session.get.return_value = fake_resp
+        mock_ctx = MagicMock()
+        mock_ctx.__enter__ = lambda s: fake_session
+        mock_ctx.__exit__ = MagicMock(return_value=False)
+        return mock_ctx
+
+    @patch("yahoo_engine.yahoo_connection_boundary")
+    def test_returns_symbol_on_success(self, mock_ctx):
+        mock_ctx.return_value = self._mock_session(
+            200, {"quotes": [{"symbol": "VANEA.L"}, {"symbol": "VANEA.AS"}]}
+        )
+        result = self.eng.search_by_isin("IE00B3RBWM25")
+        assert result == "VANEA.L"
+
+    @patch("yahoo_engine.yahoo_connection_boundary")
+    def test_caches_result(self, mock_ctx):
+        mock_ctx.return_value = self._mock_session(200, {"quotes": [{"symbol": "SPY"}]})
+        self.eng.search_by_isin("US78462F1030")
+        mock_ctx.reset_mock()
+        # Second call must hit cache — yahoo_connection_boundary not entered again
+        result = self.eng.search_by_isin("US78462F1030")
+        mock_ctx.assert_not_called()
+        assert result == "SPY"
+
+    @patch("yahoo_engine.yahoo_connection_boundary")
+    def test_returns_none_on_empty_quotes(self, mock_ctx):
+        mock_ctx.return_value = self._mock_session(200, {"quotes": []})
+        assert self.eng.search_by_isin("XX0000000000") is None
+
+    @patch("yahoo_engine.yahoo_connection_boundary")
+    def test_returns_none_on_non_200(self, mock_ctx):
+        mock_ctx.return_value = self._mock_session(404, {})
+        assert self.eng.search_by_isin("XX0000000001") is None
+
+    @patch("yahoo_engine.yahoo_connection_boundary")
+    def test_returns_none_on_quote_missing_symbol_key(self, mock_ctx):
+        mock_ctx.return_value = self._mock_session(200, {"quotes": [{"name": "No Symbol"}]})
+        assert self.eng.search_by_isin("XX0000000002") is None
+
+    @patch("yahoo_engine.yahoo_connection_boundary")
+    def test_returns_none_on_exception(self, mock_ctx):
+        mock_ctx.side_effect = RuntimeError("connection refused")
+        assert self.eng.search_by_isin("XX0000000003") is None
+
+
+# ─── TestGetAnnualFinancials ──────────────────────────────────────────────────
+
+class TestGetAnnualFinancials:
+
+    def setup_method(self):
+        self.eng = YahooEngine()
+
+    def _fake_tk(self, bs=None, fin=None, cf=None):
+        mock_tk = MagicMock()
+        mock_tk.balance_sheet = bs if bs is not None else pd.DataFrame()
+        mock_tk.income_stmt  = fin if fin is not None else pd.DataFrame()
+        mock_tk.cash_flow    = cf if cf is not None else pd.DataFrame()
+        return mock_tk
+
+    @patch("yahoo_engine.yahoo_connection_boundary")
+    def test_returns_three_tuple(self, mock_ctx):
+        mock_ctx.return_value.__enter__ = lambda s: MagicMock()
+        mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
+        bs  = pd.DataFrame({"TotalAssets": [1e9]})
+        fin = pd.DataFrame({"TotalRevenue": [5e8]})
+        cf  = pd.DataFrame({"FreeCashFlow": [1e8]})
+
+        with patch("yahoo_engine.yf.Ticker") as mock_tk_cls:
+            mock_tk_cls.return_value = self._fake_tk(bs, fin, cf)
+            result = self.eng.get_annual_financials("AAPL")
+
+        assert len(result) == 3
+        r_bs, r_fin, r_cf = result
+        assert r_bs is not None and len(r_bs) == 1
+        assert r_fin is not None and len(r_fin) == 1
+        assert r_cf is not None and len(r_cf) == 1
+
+    @patch("yahoo_engine.yahoo_connection_boundary")
+    def test_empty_dataframes_return_none_elements(self, mock_ctx):
+        mock_ctx.return_value.__enter__ = lambda s: MagicMock()
+        mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
+
+        with patch("yahoo_engine.yf.Ticker") as mock_tk_cls:
+            mock_tk_cls.return_value = self._fake_tk()
+            bs, fin, cf = self.eng.get_annual_financials("EMPTY")
+
+        assert bs is None and fin is None and cf is None
+
+    @patch("yahoo_engine.yahoo_connection_boundary")
+    def test_caches_result(self, mock_ctx):
+        mock_ctx.return_value.__enter__ = lambda s: MagicMock()
+        mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
+        bs = pd.DataFrame({"TotalAssets": [1e9]})
+
+        with patch("yahoo_engine.yf.Ticker") as mock_tk_cls:
+            mock_tk_cls.return_value = self._fake_tk(bs=bs)
+            self.eng.get_annual_financials("AAPL")
+            self.eng.get_annual_financials("AAPL")
+            assert mock_tk_cls.call_count == 1
+
+    @patch("yahoo_engine.yahoo_connection_boundary")
+    def test_returns_three_nones_on_exception(self, mock_ctx):
+        mock_ctx.return_value.__enter__ = lambda s: MagicMock()
+        mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
+
+        with patch("yahoo_engine.yf.Ticker", side_effect=RuntimeError("network")):
+            result = self.eng.get_annual_financials("BAD")
+
+        assert result == (None, None, None)
+
+
 # ─── TestSingleton ────────────────────────────────────────────────────────────
 
 class TestSingleton:
