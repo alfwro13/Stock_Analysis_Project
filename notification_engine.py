@@ -133,6 +133,13 @@ def notify(
     return True
 
 
+def send_test_message() -> bool:
+    """Send a Nextcloud Talk connectivity test message. Returns True on success."""
+    return nextcloud_talk.send_text_message(
+        "✅ Quantamental test message — Nextcloud Talk integration is working correctly.", {}
+    )
+
+
 def build_routing_panel(config: Optional[dict] = None) -> list:
     """Grouped source list for the Settings 'Notification Settings' panel, keyed by JOB_GRAPH category."""
     from scheduler_engine import JOB_GRAPH, job_label
