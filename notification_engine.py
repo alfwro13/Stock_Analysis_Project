@@ -20,9 +20,8 @@ SCHEDULER_STATUS_SOURCE = "scheduler_status"
 
 _LEVELS = {"debug": logging.DEBUG, "info": logging.INFO, "warning": logging.WARNING, "error": logging.ERROR}
 
-# Alert/briefing sources that fan out plain-text messages. Each carries its own canonical
-# label and the parent scheduled job it belongs to (for grouping in the Settings panel).
-# Defaults reproduce the routing that the removed per-engine NEXTCLOUD flags used to give.
+# Alert/briefing sources: each carries its canonical label and parent job_id (for grouping
+# in the Settings panel) plus per-channel default routing.
 NOTIFICATION_SOURCES: dict[str, dict] = {
     "crash_alert":           {"label": "Crash Alert",                  "job_id": "intraday_orchestrator_job", "default": dict(_ON)},
     "moonshot_alert":        {"label": "Moonshot Alert",               "job_id": "intraday_orchestrator_job", "default": dict(_ON)},
@@ -100,11 +99,7 @@ def notify(
     level: str = "info",
     conn: Optional[sqlite3.Connection] = None,
 ) -> bool:
-    """Single dispatch path: routes one event to log/in-app/Nextcloud per its source's NOTIFICATION_ROUTING.
-
-    Returns False only when Nextcloud Talk is an enabled channel and its send failed — lets dedup-gated
-    callers withhold record_alert_fired so a transient outage retries on the next scan.
-    """
+    """Route one event to log/in-app/Nextcloud per NOTIFICATION_ROUTING; returns False only when Talk is enabled and the send failed (lets dedup callers retry on the next scan)."""
     config = load_config()
     routing = effective_routing(source, config)
 
