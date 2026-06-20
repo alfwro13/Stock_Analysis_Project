@@ -62,13 +62,7 @@ class MacroAIEngine:
             logger.exception(f"Failed to persist training score for {model_name}.")
 
     def _remap_hmm_states(self, raw_states: np.ndarray) -> np.ndarray:
-        """Remap arbitrary HMM state indices to a canonical ordering stable across retrains.
-
-        States are sorted ascending by mean us_high_yield_spread (feature index 2 in the
-        scaled feature vector), so canonical index 0 always means lowest credit stress
-        (expansion) and 2 always means highest stress (recession/crash).
-        Falls back to identity if hmm_state_order is not yet set.
-        """
+        """Remap raw HMM indices to canonical order by ascending us_high_yield_spread mean (0=expansion, 2=recession/crash); identity fallback if hmm_state_order unset."""
         if self.hmm_state_order is None:
             return raw_states
         inv = np.empty(len(self.hmm_state_order), dtype=int)
@@ -80,10 +74,8 @@ class MacroAIEngine:
         if pd.isna(val_str) or not str(val_str).strip():
             return np.nan
         try:
-            # Strip thousands separators before matching so '1,234.5' → '1234.5'
+            # Strip thousands separators first; re.search then ignores surrounding decoration ('%', '$', 'K') without mangling the number
             s = str(val_str).replace(',', '')
-            # Match a valid float including scientific notation; re.search ignores surrounding
-            # decoration ('%', '$', 'K', etc.) without stripping characters from the number itself
             m = re.search(r'-?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?', s)
             return float(m.group()) if m else np.nan
         except Exception:
@@ -189,9 +181,7 @@ class MacroAIEngine:
             df_cal['forecast_num'] = df_cal['forecast_val'].apply(self._extract_numeric)
             df_cal['previous_num'] = df_cal['previous_val'].apply(self._extract_numeric)
 
-            # Assert VIX join quality before filling nulls.
-            # A 0% match rate means date(event_date) and market_regimes.date formats diverge —
-            # the whole model would silently train on VIX=20.0 constant.
+            # 0% VIX join match means date(event_date)/market_regimes.date formats diverge — model silently trains on VIX=20.0 constant.
             vix_matched = int(df_cal['vix_close'].notna().sum())
             vix_total = len(df_cal)
             vix_match_rate = vix_matched / vix_total if vix_total else 0.0
