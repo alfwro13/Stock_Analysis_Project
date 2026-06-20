@@ -572,7 +572,9 @@ table.dataTable tbody tr td { color: #ccc; }
 .mt-5 { margin-top: 5px; }
 .mt-0 { margin-top: 0; }
 .pl-20 { padding-left: 20px; }
+.w-90 { width: 90px; }
 .w-200 { width: 200px; }
+.min-w-280 { min-width: 280px; }
 .d-none { display: none; }
 .d-inline-block { display: inline-block; }
 .price-display { margin-left: auto; font-size: 18px; font-weight: bold; color: #00ffcc; }

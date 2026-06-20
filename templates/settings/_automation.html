@@ -238,14 +238,14 @@
                     <div class="flex-gap-15 align-end flex-wrap mt-10">
                         <div class="form-group mb-0">
                             <label>Alert Threshold (0–1)</label>
-                            <input type="number" id="ANOMALY_ALERTS_THRESHOLD" class="form-control" min="0" max="1" step="0.05" value="{{ anomaly_cfg.THRESHOLD | default(0.7) }}" style="width:90px;">
+                            <input type="number" id="ANOMALY_ALERTS_THRESHOLD" class="form-control w-90" min="0" max="1" step="0.05" value="{{ anomaly_cfg.THRESHOLD | default(0.7) }}">
                         </div>
                         <button type="button" class="btn btn-primary mt-0" onclick="triggerAnomalyTraining()">▶️ Train Models Now</button>
                     </div>
                 </div>
 
                 <div class="settings-panel-sm border-left-cyan">
-                    <h4 class="settings-panel-header text-cyan">📰 NLP Market Sentiment Engine</h4>
+                    <h4 class="settings-panel-header text-cyan">📰 <abbr title="Natural Language Processing — AI-driven analysis of financial news text to extract bullish/bearish sentiment signals.">NLP</abbr> Market Sentiment Engine</h4>
                     <p class="settings-desc-sm">Fetches financial news and runs FinBERT NLP sentiment analysis independently of the core quant scan.</p>
                     <div class="checkbox-group">
                         <input type="checkbox" id="SENTIMENT_ENGINE_ENABLED" {% if config.SCHEDULING.SENTIMENT_ENGINE.ENABLED %}checked{% endif %}>
