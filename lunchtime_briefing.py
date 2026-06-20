@@ -226,8 +226,7 @@ def generate_lunchtime_briefing(target_date: str) -> str:
     news_data: dict = {}
     if tickers:
         logger.info("Fetching morning session news for %d portfolio tickers...", len(tickers))
-        # fetch_portfolio_news expects naive UTC for its internal pub_time comparisons
-        news_data = fetch_portfolio_news(tickers, since_dt.replace(tzinfo=None))
+        news_data = fetch_portfolio_news(tickers, since_dt)
 
     # --- UK charts (regenerated with live mid-session data) ---
     logger.info("Generating UK market chart snapshots for lunchtime briefing...")
