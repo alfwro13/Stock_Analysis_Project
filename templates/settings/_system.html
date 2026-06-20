@@ -76,7 +76,7 @@
                             <th>State</th>
                             <th>Frequency / Days</th>
                             <th>Execution Target</th>
-                            <th class="sortable-col" title="Click to sort jobs by when they last ran." onclick="sortSchedulerMatrix()">Last Run <span id="sched-sort-arrow"></span></th>
+                            <th class="sortable-col" onclick="sortSchedulerMatrix()"><abbr title="Click to sort jobs by when they last ran.">Last Run</abbr> <span id="sched-sort-arrow"></span></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -166,8 +166,8 @@
                         <button type="button" id="maintenanceRunBtn" class="btn btn-primary flex-1" onclick="runMaintenanceNow()">▶ Run Now</button>
                         <button type="button" id="maintenanceDryRunBtn" class="btn btn-primary flex-1" onclick="runMaintenanceDryRun()">🔍 Dry Run</button>
                     </div>
-                    <div id="maintenance-dry-run-output" class="mt-10" style="display:none;">
-                        <div id="maintenance-dry-run-content" class="settings-panel border-left-cyan" style="font-family:monospace;font-size:0.8rem;white-space:pre-wrap;max-height:320px;overflow-y:auto;"></div>
+                    <div id="maintenance-dry-run-output" class="mt-10 d-none">
+                        <div id="maintenance-dry-run-content" class="settings-panel border-left-cyan dry-run-output"></div>
                     </div>
                 </div>
             </div>
@@ -445,7 +445,7 @@
 
             <div class="settings-panel mt-20">
                 <h4 class="settings-panel-header text-blue">Logged in as</h4>
-                <p class="settings-desc" style="font-size:1rem; color: var(--text-primary, #fff);">
+                <p class="settings-desc text-white">
                     <strong id="ua-username-display">{{ dashboard_username }}</strong>
                 </p>
             </div>
@@ -644,7 +644,7 @@
                         </select>
                     </div>
                     <div class="form-group flex-1">
-                        <label>Scan Time <span class="text-muted" style="font-size:10px;">(local tz)</span></label>
+                        <label>Scan Time <span class="text-muted text-xs">(local tz)</span></label>
                         <input type="time" id="BUBBLE_RADAR_TIME" class="form-control" value="{{ bubble_sched.TIME | default('19:30') }}">
                     </div>
                     <div class="form-group flex-1">
@@ -721,9 +721,9 @@
                     <thead>
                         <tr>
                             <th>Notification</th>
-                            <th title="Write to the rotating application log file (logs/app.log).">Log file</th>
-                            <th title="Show in the in-app notification centre (bell icon).">In-app</th>
-                            <th title="Push a message to your Nextcloud Talk conversation.">Talk</th>
+                            <th><abbr title="Write to the rotating application log file (logs/app.log).">Log file</abbr></th>
+                            <th><abbr title="Show in the in-app notification centre (bell icon).">In-app</abbr></th>
+                            <th><abbr title="Push a message to your Nextcloud Talk conversation.">Talk</abbr></th>
                         </tr>
                     </thead>
                     <tbody>

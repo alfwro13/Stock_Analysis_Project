@@ -34,7 +34,7 @@ async function runMaintenanceDryRun() {
     const outputBox = document.getElementById('maintenance-dry-run-output');
     const content = document.getElementById('maintenance-dry-run-content');
     btn.innerText = "Scanning..."; btn.disabled = true;
-    outputBox.style.display = 'block';
+    outputBox.classList.remove('d-none');
     content.innerText = 'Scanning file system...';
     try {
         const resp = await fetch('/api/maintenance/dry-run', { method: 'POST' });
