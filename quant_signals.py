@@ -537,7 +537,7 @@ class QuantEngine:
 
             ex_dividend_date = info.get('exDividendDate', None)
             target_price = info.get('targetMeanPrice', None)
-            analyst_rating = info.get('recommendationKey', 'None').upper()
+            analyst_rating = (info.get('recommendationKey') or 'None').upper()
             
             earnings_ts = info.get('earningsTimestamp', None)
             next_earnings_date = datetime.fromtimestamp(earnings_ts, tz=timezone.utc).strftime('%Y-%m-%d') if earnings_ts else "Unknown"
