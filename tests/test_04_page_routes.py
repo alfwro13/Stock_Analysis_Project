@@ -175,6 +175,7 @@ def test_no_page_route_returns_500(client):
         ("/trap-monitor",       "Trap Monitor"),
         ("/ai-contagion",       "AI Sector Contagion Monitor"),
         ("/bubble-radar",       "Bubble Radar"),
+        ("/change-password",    "Change Password"),
     ]
     failures = []
     for url, label in pages:
