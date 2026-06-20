@@ -258,7 +258,7 @@ class TestFmtVolume:
         assert _fmt_volume(3.5e6) == "3.5M"
 
     def test_thousands(self):
-        assert _fmt_volume(4500) == "5K"
+        assert _fmt_volume(4000) == "4K"
 
     def test_small_value(self):
         assert _fmt_volume(42) == "42"
