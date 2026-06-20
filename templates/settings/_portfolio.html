@@ -20,7 +20,7 @@
                             min="0.1" max="5" step="0.1">
                     </div>
                     <div class="form-group">
-                        <label>Stop Multiple (× ATR)</label>
+                        <label>Stop Multiple (× <abbr title="Average True Range — the average daily price swing over 14 days, used to calibrate stop-loss distance.">ATR</abbr>)</label>
                         <input type="number" id="POSITION_SIZING_STOP_MULTIPLE" class="form-control"
                             value="{{ config.POSITION_SIZING.STOP_MULTIPLE | default(2.0) }}"
                             min="1" max="5" step="0.5">
@@ -63,7 +63,7 @@
                         ('Emerging Markets', 'XT_RC_EM', '5', '18')
                     ] %}
                     <div class="flex-gap-15 align-end mb-10">
-                        <div class="form-group mb-0" style="min-width:120px;flex:0 0 120px;"><label>{{ region }}</label></div>
+                        <div class="form-group mb-0 xray-label-col-120"><label>{{ region }}</label></div>
                         <div class="form-group flex-1 mb-0"><label>Min %</label>
                             <input type="number" id="{{ id_prefix }}_MIN" class="form-control"
                                 value="{{ config.XRAY_TARGETS.regional_clusters[region]['min'] | default('') }}"
@@ -86,7 +86,7 @@
                             ('Japan',          'XT_CC_JP',  '10'),
                             ('United Kingdom', 'XT_CC_GB',  '10')
                         ] %}
-                        <div class="form-group flex-1 mb-0" style="min-width:140px">
+                        <div class="form-group flex-1 mb-0 min-w-140">
                             <label>{{ country }}</label>
                             <input type="number" id="{{ id_suffix }}" class="form-control"
                                 value="{{ config.XRAY_TARGETS.country_concentration[country]['max'] | default('') }}"
@@ -113,7 +113,7 @@
                             ('Utilities',              'XT_SEC_UTIL',   '8'),
                             ('Real Estate',            'XT_SEC_RE',     '8')
                         ] %}
-                        <div class="form-group flex-1 mb-0" style="min-width:150px">
+                        <div class="form-group flex-1 mb-0 min-w-150">
                             <label>{{ sector }}</label>
                             <input type="number" id="{{ id_suffix }}" class="form-control"
                                 value="{{ config.XRAY_TARGETS.sector_targets[sector]['max'] | default('') }}"
@@ -133,7 +133,7 @@
                         ('Commodity',    'XT_AC_COM', '',   '10')
                     ] %}
                     <div class="flex-gap-15 align-end mb-10">
-                        <div class="form-group mb-0" style="min-width:110px;flex:0 0 110px;"><label>{{ ac }}</label></div>
+                        <div class="form-group mb-0 xray-label-col-110"><label>{{ ac }}</label></div>
                         <div class="form-group flex-1 mb-0"><label>Min %</label>
                             <input type="number" id="{{ id_prefix }}_MIN" class="form-control"
                                 value="{{ config.XRAY_TARGETS.asset_class_targets[ac]['min'] | default('') }}"
@@ -149,26 +149,26 @@
                 <div class="settings-panel border-left-amber">
                     <h4 class="settings-panel-header text-amber">⚖️ Concentration Limits</h4>
                     <div class="flex-gap-15 flex-wrap align-end">
-                        <div class="form-group flex-1 mb-0" style="min-width:140px">
+                        <div class="form-group flex-1 mb-0 min-w-140">
                             <label>Max Single Position %</label>
                             <input type="number" id="XT_CONC_MAX_POS" class="form-control"
                                 value="{{ config.XRAY_TARGETS.concentration_targets.max_single_position_pct | default('15') }}"
                                 min="0" max="100" step="0.5">
                         </div>
-                        <div class="form-group flex-1 mb-0" style="min-width:140px">
+                        <div class="form-group flex-1 mb-0 min-w-140">
                             <label>Top-5 Max %</label>
                             <input type="number" id="XT_CONC_TOP5" class="form-control"
                                 value="{{ config.XRAY_TARGETS.concentration_targets.top5_weight_max_pct | default('50') }}"
                                 min="0" max="100" step="1">
                         </div>
-                        <div class="form-group flex-1 mb-0" style="min-width:140px">
+                        <div class="form-group flex-1 mb-0 min-w-140">
                             <label>Top-10 Max %</label>
                             <input type="number" id="XT_CONC_TOP10" class="form-control"
                                 value="{{ config.XRAY_TARGETS.concentration_targets.top10_weight_max_pct | default('70') }}"
                                 min="0" max="100" step="1">
                         </div>
-                        <div class="form-group flex-1 mb-0" style="min-width:140px">
-                            <label>HHI Max (0–1)</label>
+                        <div class="form-group flex-1 mb-0 min-w-140">
+                            <label><abbr title="Herfindahl-Hirschman Index — a concentration measure (0–1) where values closer to 1 indicate a highly concentrated portfolio.">HHI</abbr> Max (0–1)</label>
                             <input type="number" id="XT_CONC_HHI" class="form-control"
                                 value="{{ config.XRAY_TARGETS.concentration_targets.hhi_max | default('0.15') }}"
                                 min="0" max="1" step="0.01">
@@ -180,37 +180,37 @@
                     <h4 class="settings-panel-header text-red">📉 Risk Metric Targets</h4>
                     <p class="settings-desc-sm">Targets applied when X-ray cache data is available. Items are suppressed when the metric has not been computed yet.</p>
                     <div class="flex-gap-15 flex-wrap align-end">
-                        <div class="form-group flex-1 mb-0" style="min-width:130px">
+                        <div class="form-group flex-1 mb-0 min-w-130">
                             <label>Beta — Min</label>
                             <input type="number" id="XT_RISK_BETA_MIN" class="form-control"
                                 value="{{ config.XRAY_TARGETS.risk_metric_targets.portfolio_beta_min | default('0.6') }}"
                                 min="0" max="3" step="0.05">
                         </div>
-                        <div class="form-group flex-1 mb-0" style="min-width:130px">
+                        <div class="form-group flex-1 mb-0 min-w-130">
                             <label>Beta — Max</label>
                             <input type="number" id="XT_RISK_BETA_MAX" class="form-control"
                                 value="{{ config.XRAY_TARGETS.risk_metric_targets.portfolio_beta_max | default('1.4') }}"
                                 min="0" max="3" step="0.05">
                         </div>
-                        <div class="form-group flex-1 mb-0" style="min-width:130px">
+                        <div class="form-group flex-1 mb-0 min-w-130">
                             <label>Ann. Volatility Max %</label>
                             <input type="number" id="XT_RISK_VOL_MAX" class="form-control"
                                 value="{{ config.XRAY_TARGETS.risk_metric_targets.annualized_vol_max_pct | default('20') }}"
                                 min="0" max="100" step="0.5">
                         </div>
-                        <div class="form-group flex-1 mb-0" style="min-width:130px">
+                        <div class="form-group flex-1 mb-0 min-w-130">
                             <label>Sharpe Ratio Min</label>
                             <input type="number" id="XT_RISK_SHARPE_MIN" class="form-control"
                                 value="{{ config.XRAY_TARGETS.risk_metric_targets.sharpe_ratio_min | default('0.5') }}"
                                 min="-5" max="10" step="0.1">
                         </div>
-                        <div class="form-group flex-1 mb-0" style="min-width:130px">
+                        <div class="form-group flex-1 mb-0 min-w-130">
                             <label>Max Drawdown Max %</label>
                             <input type="number" id="XT_RISK_DD_MAX" class="form-control"
                                 value="{{ config.XRAY_TARGETS.risk_metric_targets.max_drawdown_max_pct | default('30') }}"
                                 min="0" max="100" step="0.5">
                         </div>
-                        <div class="form-group flex-1 mb-0" style="min-width:130px">
+                        <div class="form-group flex-1 mb-0 min-w-130">
                             <label>Avg Correlation Max</label>
                             <input type="number" id="XT_RISK_CORR_MAX" class="form-control"
                                 value="{{ config.XRAY_TARGETS.risk_metric_targets.avg_correlation_max | default('0.75') }}"
@@ -222,7 +222,7 @@
                 <div class="settings-panel border-left-green">
                     <h4 class="settings-panel-header text-green">💰 Income Target</h4>
                     <div class="flex-gap-15 align-end">
-                        <div class="form-group flex-1 mb-0" style="max-width:200px">
+                        <div class="form-group flex-1 mb-0 max-w-200">
                             <label>Dividend Yield — Min %</label>
                             <input type="number" id="XT_INC_DIV_MIN" class="form-control"
                                 value="{{ config.XRAY_TARGETS.income_targets.dividend_yield_min_pct | default('1.5') }}"
