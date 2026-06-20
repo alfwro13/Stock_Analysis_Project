@@ -1,4 +1,3 @@
-# ghostfolio_sync.py
 import json
 import logging
 import requests
@@ -15,8 +14,7 @@ from config import (
     GHOSTFOLIO_TOKEN,
     PORTFOLIO_PATH,
     WATCHLIST_PATH,
-    SECRETS_PATH,
-    GHOSTFOLIO_ACCOUNTS
+    GHOSTFOLIO_ACCOUNTS,
 )
 
 # Disable insecure request warnings for self-hosted instances using IP addresses
