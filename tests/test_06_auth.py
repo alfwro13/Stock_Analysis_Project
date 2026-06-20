@@ -36,7 +36,7 @@ from fastapi.testclient import TestClient
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from auth import COOKIE_NAME, create_session_token, verify_session_token
+from auth import COOKIE_NAME, create_session_token, hash_password, verify_password, verify_session_token
 
 
 # ── Helper ────────────────────────────────────────────────────────────────────
@@ -121,6 +121,53 @@ class TestTokenHelpers:
         token = create_session_token("alice", remember=True)
         monkeypatch.undo()
         assert verify_session_token(token) is False
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 1b. hash_password / verify_password  (pure unit tests, no HTTP)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestPasswordHashing:
+
+    def test_hash_format_is_pbkdf2_sha256(self):
+        h = hash_password("mypassword")
+        parts = h.split(":")
+        assert len(parts) == 5
+        assert parts[0] == "pbkdf2"
+        assert parts[1] == "sha256"
+
+    def test_each_hash_uses_a_unique_salt(self):
+        h1 = hash_password("mypassword")
+        h2 = hash_password("mypassword")
+        assert h1 != h2, "Two calls with the same password must produce different hashes"
+
+    def test_verify_correct_password_returns_true(self):
+        h = hash_password("correctpassword")
+        assert verify_password("correctpassword", h) is True
+
+    def test_verify_wrong_password_returns_false(self):
+        h = hash_password("correctpassword")
+        assert verify_password("wrongpassword", h) is False
+
+    def test_verify_is_case_sensitive(self):
+        h = hash_password("MyPassword")
+        assert verify_password("mypassword", h) is False
+
+    def test_verify_empty_password_against_nonempty_hash(self):
+        h = hash_password("somepass")
+        assert verify_password("", h) is False
+
+    def test_verify_malformed_hash_returns_false(self):
+        assert verify_password("pass", "not:a:valid:hash") is False
+        assert verify_password("pass", "") is False
+
+    def test_verify_invalid_hex_in_hash_returns_false(self):
+        assert verify_password("pass", "pbkdf2:sha256:600000:NOTVALIDHEX:NOTVALIDHEX") is False
+
+    def test_verify_wrong_algorithm_prefix_returns_false(self):
+        h = hash_password("mypassword")
+        bad = "bcrypt:" + ":".join(h.split(":")[1:])
+        assert verify_password("mypassword", bad) is False
 
 
 # ─────────────────────────────────────────────────────────────────────────────

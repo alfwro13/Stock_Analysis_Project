@@ -129,7 +129,7 @@ def _get_quant_signals(ticker: str, conn) -> tuple[Optional[float], Optional[flo
     return sma_ext, rsi_avg
 
 
-def _get_fundamentals(ticker: str, conn) -> tuple[Optional[float], Optional[float], Optional[float], Optional[float], Optional[float]]:
+def _get_fundamentals(ticker: str, conn) -> tuple[Optional[float], Optional[float], Optional[float], Optional[float]]:
     cursor = conn.cursor()
     cursor.execute(
         "SELECT price_to_sales, free_cash_flow, peg_ratio, current_price FROM stock_signals WHERE ticker=?",
@@ -137,7 +137,7 @@ def _get_fundamentals(ticker: str, conn) -> tuple[Optional[float], Optional[floa
     )
     row = cursor.fetchone()
     if not row:
-        return None, None, None, None, None
+        return None, None, None, None
     ps = row["price_to_sales"]
     fcf = row["free_cash_flow"]
     peg = row["peg_ratio"]
