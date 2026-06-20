@@ -11,11 +11,11 @@ from typing import Any, List, Optional
 
 import joblib
 import time_engine
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import BaseModel
-from slowapi import Limiter
-from slowapi.util import get_remote_address
+
+from api_deps import limiter, require_confirm_token, _error_500
 
 from config import (
     BASE_DIR, DATA_DIR, DB_PATH, FUNDAMENTALS_DIR, HISTORICAL_DIR,
@@ -39,18 +39,6 @@ from curl_cffi import requests as cffi_requests
 logger = logging.getLogger(__name__)
 
 system_router = APIRouter()
-_system_limiter = Limiter(key_func=get_remote_address)
-
-
-def require_confirm_token(x_confirm_token: str = Header(..., alias="X-Confirm-Token")):
-    import secrets as _secrets
-    expected = os.environ.get("ADMIN_CONFIRM_TOKEN", "")
-    if not expected or not _secrets.compare_digest(x_confirm_token.encode(), expected.encode()):
-        raise HTTPException(status_code=403, detail="Invalid or missing confirmation token.")
-
-
-def _error_500(e: Exception) -> JSONResponse:
-    return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 
 # --- SHARED PYDANTIC SCHEMAS (also used by other sub-routers / main api_routes.py) ---

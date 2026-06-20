@@ -27,6 +27,7 @@ Stock_Analysis_Project/
 ├── api_routes_triggers.py    # Scheduler trigger endpoints (ML, quant scan, universe, earnings, briefings, maintenance)
 ├── api_routes_system.py      # Settings Pydantic models + settings save, system ops, notifications, workflow monitor
 ├── api_routes_analysis.py    # Analysis signal endpoints (contagion, trap, bubble, forensic, regime, stress, ETF predictor, AI prompts)
+├── api_deps.py               # Shared FastAPI dependencies for all api_routes* files: limiter (slowapi), require_confirm_token, _error_500
 ├── page_routes.py            # All HTML page routes
 ├── database.py               # init_db(), schema migrations, SQLite helpers
 ├── config.py / config.json   # Runtime configuration

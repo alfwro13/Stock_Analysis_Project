@@ -16,12 +16,9 @@ from datetime import datetime, timezone, timedelta
 from typing import Any, List, Optional
 from pathlib import Path
 
-from fastapi import APIRouter, Request, BackgroundTasks, HTTPException, Query, Path as PathParam, Response, Depends, Header
+from fastapi import APIRouter, Request, BackgroundTasks, HTTPException, Query, Path as PathParam, Response
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
-from slowapi import Limiter
-from slowapi.util import get_remote_address
-
-limiter = Limiter(key_func=get_remote_address)
+from api_deps import limiter, require_confirm_token, _error_500
 from pydantic import BaseModel
 
 from log_config import configure_file_logging
@@ -82,16 +79,6 @@ logger = logging.getLogger(__name__)
 
 api_router = APIRouter(prefix="/api")
 
-
-def require_confirm_token(x_confirm_token: str = Header(..., alias="X-Confirm-Token")):
-    import secrets as _secrets
-    expected = os.environ.get("ADMIN_CONFIRM_TOKEN", "")
-    if not expected or not _secrets.compare_digest(x_confirm_token.encode(), expected.encode()):
-        raise HTTPException(status_code=403, detail="Invalid or missing confirmation token.")
-
-
-def _error_500(e: Exception) -> JSONResponse:
-    return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 
 class TickerRequest(BaseModel):

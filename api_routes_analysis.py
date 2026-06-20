@@ -9,8 +9,8 @@ import time_engine
 from fastapi import APIRouter, BackgroundTasks, Path as PathParam, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from slowapi import Limiter
-from slowapi.util import get_remote_address
+
+from api_deps import limiter, _error_500
 
 from config import HISTORICAL_DIR
 from database import get_connection
@@ -24,11 +24,6 @@ from yahoo_engine import yahoo_engine
 logger = logging.getLogger(__name__)
 
 analysis_router = APIRouter()
-_analysis_limiter = Limiter(key_func=get_remote_address)
-
-
-def _error_500(e: Exception) -> JSONResponse:
-    return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 
 @analysis_router.get("/ai-contagion/status")
@@ -70,7 +65,7 @@ async def get_ai_contagion_status():
 
 
 @analysis_router.post("/ai-contagion/trigger")
-@_analysis_limiter.limit("4/minute")
+@limiter.limit("4/minute")
 async def trigger_ai_contagion(request: Request, background_tasks: BackgroundTasks):
     """Manually triggers an AI Contagion scan in the background (useful for testing)."""
     try:
@@ -83,7 +78,7 @@ async def trigger_ai_contagion(request: Request, background_tasks: BackgroundTas
 
 
 @analysis_router.get("/trap-monitor/results")
-@_analysis_limiter.limit("20/minute")
+@limiter.limit("20/minute")
 async def get_trap_monitor_results(request: Request):
     """Returns all trap monitor scan results ordered by phase severity (most severe first)."""
     conn = None
@@ -104,7 +99,7 @@ async def get_trap_monitor_results(request: Request):
 
 
 @analysis_router.post("/trap-monitor/run")
-@_analysis_limiter.limit("4/minute")
+@limiter.limit("4/minute")
 async def run_trap_monitor(request: Request, background_tasks: BackgroundTasks):
     """Manually triggers a Trap Monitor scan in the background."""
     try:
@@ -117,7 +112,7 @@ async def run_trap_monitor(request: Request, background_tasks: BackgroundTasks):
 
 
 @analysis_router.get("/trap-monitor/accuracy")
-@_analysis_limiter.limit("20/minute")
+@limiter.limit("20/minute")
 async def get_trap_monitor_accuracy(request: Request):
     """Returns per-phase prediction accuracy at 14-day and 30-day horizons."""
     from database import get_trap_phase_accuracy
@@ -126,7 +121,7 @@ async def get_trap_monitor_accuracy(request: Request):
 
 
 @analysis_router.get("/bubble-radar/data")
-@_analysis_limiter.limit("20/minute")
+@limiter.limit("20/minute")
 async def get_bubble_radar_data(request: Request):
     """Returns all currently-flagged tickers with their latest bubble metrics."""
     from bubble_radar_engine import get_bubble_radar_data
@@ -135,7 +130,7 @@ async def get_bubble_radar_data(request: Request):
 
 
 @analysis_router.get("/bubble-radar/ticker/{ticker}")
-@_analysis_limiter.limit("20/minute")
+@limiter.limit("20/minute")
 async def get_bubble_radar_ticker(request: Request, ticker: str):
     """Returns the latest bubble metrics and per-metric score breakdown for a single ticker."""
     from bubble_radar_engine import get_bubble_ticker_detail
@@ -146,7 +141,7 @@ async def get_bubble_radar_ticker(request: Request, ticker: str):
 
 
 @analysis_router.get("/bubble-radar/history")
-@_analysis_limiter.limit("10/minute")
+@limiter.limit("10/minute")
 async def get_bubble_radar_history(request: Request):
     """Returns historical bubble flag events with outcome tracking."""
     from bubble_radar_engine import get_bubble_radar_history
@@ -155,7 +150,7 @@ async def get_bubble_radar_history(request: Request):
 
 
 @analysis_router.post("/bubble-radar/run")
-@_analysis_limiter.limit("4/minute")
+@limiter.limit("4/minute")
 async def run_bubble_radar(request: Request, background_tasks: BackgroundTasks):
     """Manually triggers a Bubble Radar scan in the background."""
     try:
@@ -168,7 +163,7 @@ async def run_bubble_radar(request: Request, background_tasks: BackgroundTasks):
 
 
 @analysis_router.get("/forensic-scores")
-@_analysis_limiter.limit("20/minute")
+@limiter.limit("20/minute")
 async def get_forensic_scores(request: Request):
     """Returns Piotroski F-Score, Altman Z-Score, and Beneish M-Score for all portfolio and watchlist tickers."""
     conn = None
@@ -233,7 +228,7 @@ async def get_forensic_scores(request: Request):
 
 
 @analysis_router.post("/forensic-scores/run-fetch")
-@_analysis_limiter.limit("4/minute")
+@limiter.limit("4/minute")
 async def trigger_forensic_fetch(request: Request, background_tasks: BackgroundTasks):
     """Manually triggers the Forensic Quarterly Data Fetch in the background."""
     try:
@@ -246,7 +241,7 @@ async def trigger_forensic_fetch(request: Request, background_tasks: BackgroundT
 
 
 @analysis_router.post("/forensic-scores/run-score")
-@_analysis_limiter.limit("4/minute")
+@limiter.limit("4/minute")
 async def trigger_forensic_scores(request: Request, background_tasks: BackgroundTasks):
     """Manually triggers the Forensic Accounting Scores computation in the background."""
     try:
@@ -259,7 +254,7 @@ async def trigger_forensic_scores(request: Request, background_tasks: Background
 
 
 @analysis_router.get("/market-regime/current")
-@_analysis_limiter.limit("30/minute")
+@limiter.limit("30/minute")
 async def get_market_regime_current(request: Request):
     """Returns the latest HMM price regime state and the most recent regime transition."""
     conn = None
@@ -307,7 +302,7 @@ async def get_market_regime_current(request: Request):
 
 
 @analysis_router.get("/market-stress")
-@_analysis_limiter.limit("30/minute")
+@limiter.limit("30/minute")
 async def get_market_stress(request: Request):
     """Returns the latest market-wide Isolation Forest stress score and the last 30 daily values."""
     conn = None
@@ -348,7 +343,7 @@ async def get_market_stress(request: Request):
 
 
 @analysis_router.get("/market-regime")
-@_analysis_limiter.limit("10/minute")
+@limiter.limit("10/minute")
 async def get_market_regime_full(request: Request):
     """Returns full HMM regime history, transition matrix, and per-state statistics."""
     conn = None
@@ -443,7 +438,7 @@ async def get_market_regime_full(request: Request):
 
 
 @analysis_router.post("/market-regime/run")
-@_analysis_limiter.limit("4/minute")
+@limiter.limit("4/minute")
 async def run_market_regime_now(request: Request, background_tasks: BackgroundTasks):
     """Manually triggers the HMM price regime calculation in the background."""
     try:
@@ -462,7 +457,7 @@ class StressTestRequest(BaseModel):
 
 
 @analysis_router.get("/stress-test/scenarios")
-@_analysis_limiter.limit("30/minute")
+@limiter.limit("30/minute")
 async def get_stress_test_scenarios(request: Request):
     """Returns the list of available stress-test scenarios."""
     try:
@@ -477,7 +472,7 @@ async def get_stress_test_scenarios(request: Request):
 
 
 @analysis_router.post("/stress-test/run")
-@_analysis_limiter.limit("10/minute")
+@limiter.limit("10/minute")
 async def run_stress_test(request: Request, body: StressTestRequest):
     """Applies a beta-adjusted scenario shock to the portfolio and returns a monetary impact report."""
     try:
@@ -523,7 +518,7 @@ def _normalise_constituents(items: List[EtfConstituentItem]) -> List[dict]:
 
 
 @analysis_router.post("/etf-predictors/validate")
-@_analysis_limiter.limit("10/minute")
+@limiter.limit("10/minute")
 async def validate_etf_predictor_config(request: Request, body: EtfValidateBody):
     try:
         from etf_predictor_engine import _ticker_exchange_explicit, find_unknown_exchange_tickers
@@ -581,7 +576,7 @@ async def validate_etf_predictor_config(request: Request, body: EtfValidateBody)
 
 
 @analysis_router.get("/etf-predictors")
-@_analysis_limiter.limit("20/minute")
+@limiter.limit("20/minute")
 async def list_etf_predictors(request: Request):
     try:
         from database import get_etf_predictor_configs
@@ -593,7 +588,7 @@ async def list_etf_predictors(request: Request):
 
 
 @analysis_router.post("/etf-predictors")
-@_analysis_limiter.limit("10/minute")
+@limiter.limit("10/minute")
 async def create_etf_predictor(request: Request, body: EtfPredictorConfigBody):
     try:
         from database import create_etf_predictor_config
@@ -626,7 +621,7 @@ async def create_etf_predictor(request: Request, body: EtfPredictorConfigBody):
 
 
 @analysis_router.put("/etf-predictors/{config_id}")
-@_analysis_limiter.limit("10/minute")
+@limiter.limit("10/minute")
 async def update_etf_predictor(request: Request, config_id: int, body: EtfPredictorConfigBody):
     try:
         from database import update_etf_predictor_config, get_etf_predictor_config
@@ -660,7 +655,7 @@ async def update_etf_predictor(request: Request, config_id: int, body: EtfPredic
 
 
 @analysis_router.delete("/etf-predictors/{config_id}")
-@_analysis_limiter.limit("10/minute")
+@limiter.limit("10/minute")
 async def delete_etf_predictor(request: Request, config_id: int):
     try:
         from database import soft_delete_etf_predictor_config, get_etf_predictor_config
@@ -676,7 +671,7 @@ async def delete_etf_predictor(request: Request, config_id: int):
 
 
 @analysis_router.post("/etf-predictors/{config_id}/run")
-@_analysis_limiter.limit("5/minute")
+@limiter.limit("5/minute")
 async def run_etf_predictor(request: Request, config_id: int, background_tasks: BackgroundTasks):
     try:
         from database import get_etf_predictor_config
@@ -713,7 +708,7 @@ async def run_etf_predictor(request: Request, config_id: int, background_tasks: 
 
 
 @analysis_router.post("/etf-predictors/{config_id}/fill-actuals")
-@_analysis_limiter.limit("5/minute")
+@limiter.limit("5/minute")
 async def fill_etf_predictor_actuals(request: Request, config_id: int, background_tasks: BackgroundTasks):
     try:
         from database import get_etf_predictor_config
@@ -738,7 +733,7 @@ async def fill_etf_predictor_actuals(request: Request, config_id: int, backgroun
 
 
 @analysis_router.get("/etf-predictors/{config_id}/predictions")
-@_analysis_limiter.limit("20/minute")
+@limiter.limit("20/minute")
 async def get_etf_predictor_predictions(request: Request, config_id: int):
     try:
         from database import get_etf_accuracy, get_etf_predictor_config

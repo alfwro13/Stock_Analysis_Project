@@ -8,8 +8,8 @@ import time_engine
 from fastapi import APIRouter, BackgroundTasks, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from slowapi import Limiter
-from slowapi.util import get_remote_address
+
+from api_deps import limiter, _error_500
 
 from config import BASE_DIR, DATA_DIR, update_config_atomic
 from database import get_connection, get_universe_tickers
@@ -38,17 +38,12 @@ from macro_ai_engine import MacroAIEngine
 logger = logging.getLogger(__name__)
 
 triggers_router = APIRouter()
-_triggers_limiter = Limiter(key_func=get_remote_address)
 
 IMPORT_DIR = BASE_DIR / "tools" / "data" / "imports"
 
 
 class ImportRequest(BaseModel):
     filename: str
-
-
-def _error_500(e: Exception) -> JSONResponse:
-    return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 
 def log_notification(message_type: str, message_text: str) -> None:
@@ -157,7 +152,7 @@ def bg_run_macro_pipeline():
 
 
 @triggers_router.post("/macro/init-pipeline")
-@_triggers_limiter.limit("2/minute")
+@limiter.limit("2/minute")
 async def trigger_macro_init_endpoint(request: Request, background_tasks: BackgroundTasks):
     background_tasks.add_task(bg_init_macro_pipeline)
     return JSONResponse(content={
@@ -166,7 +161,7 @@ async def trigger_macro_init_endpoint(request: Request, background_tasks: Backgr
     })
 
 @triggers_router.post("/macro/run-pipeline")
-@_triggers_limiter.limit("2/minute")
+@limiter.limit("2/minute")
 async def trigger_macro_run_endpoint(request: Request, background_tasks: BackgroundTasks):
     background_tasks.add_task(bg_run_macro_pipeline)
     return JSONResponse(content={
@@ -176,7 +171,7 @@ async def trigger_macro_run_endpoint(request: Request, background_tasks: Backgro
 
 
 @triggers_router.get("/macro-regime-allocation")
-@_triggers_limiter.limit("30/minute")
+@limiter.limit("30/minute")
 async def get_macro_regime_allocation(request: Request):
     """Returns regime label, ideal allocation, portfolio alignment score (0–100), and 90-day history."""
     from macro_allocator_engine import get_macro_allocation_data
@@ -189,7 +184,7 @@ async def get_macro_regime_allocation(request: Request):
 
 
 @triggers_router.post("/ml/trigger-backfill")
-@_triggers_limiter.limit("2/minute")
+@limiter.limit("2/minute")
 async def trigger_ml_backfill_endpoint(request: Request, background_tasks: BackgroundTasks):
     background_tasks.add_task(run_historical_backfill)
     return JSONResponse(content={
@@ -198,7 +193,7 @@ async def trigger_ml_backfill_endpoint(request: Request, background_tasks: Backg
     })
 
 @triggers_router.post("/ml/trigger-training")
-@_triggers_limiter.limit("2/minute")
+@limiter.limit("2/minute")
 async def trigger_ml_training_endpoint(request: Request, background_tasks: BackgroundTasks):
     background_tasks.add_task(train_global_ml_model)
     return JSONResponse(content={
@@ -207,7 +202,7 @@ async def trigger_ml_training_endpoint(request: Request, background_tasks: Backg
     })
 
 @triggers_router.post("/ml/trigger-inference")
-@_triggers_limiter.limit("2/minute")
+@limiter.limit("2/minute")
 async def trigger_ml_inference_endpoint(request: Request, background_tasks: BackgroundTasks):
     background_tasks.add_task(bg_execute_ml_inference)
     return JSONResponse(content={
@@ -216,7 +211,7 @@ async def trigger_ml_inference_endpoint(request: Request, background_tasks: Back
     })
 
 @triggers_router.post("/ml/trigger-anomaly-training")
-@_triggers_limiter.limit("2/minute")
+@limiter.limit("2/minute")
 async def trigger_anomaly_training_endpoint(request: Request, background_tasks: BackgroundTasks):
     background_tasks.add_task(run_anomaly_training_job)
     return JSONResponse(content={
@@ -225,7 +220,7 @@ async def trigger_anomaly_training_endpoint(request: Request, background_tasks: 
     })
 
 @triggers_router.post("/trigger-quant-scan")
-@_triggers_limiter.limit("10/minute")
+@limiter.limit("10/minute")
 async def trigger_quant_scan_endpoint(request: Request, background_tasks: BackgroundTasks):
     background_tasks.add_task(bg_execute_quant_scan)
     return JSONResponse(content={
@@ -234,7 +229,7 @@ async def trigger_quant_scan_endpoint(request: Request, background_tasks: Backgr
     })
 
 @triggers_router.post("/trigger-earnings-scan")
-@_triggers_limiter.limit("10/minute")
+@limiter.limit("10/minute")
 async def trigger_earnings_scan_endpoint(request: Request, background_tasks: BackgroundTasks):
     background_tasks.add_task(bg_execute_earnings_scan)
     return JSONResponse(content={
@@ -243,7 +238,7 @@ async def trigger_earnings_scan_endpoint(request: Request, background_tasks: Bac
     })
 
 @triggers_router.post("/trigger-morning-briefing")
-@_triggers_limiter.limit("10/minute")
+@limiter.limit("10/minute")
 async def trigger_morning_briefing_endpoint(request: Request, background_tasks: BackgroundTasks):
     background_tasks.add_task(push_morning_quant_briefing)
     return JSONResponse(content={
@@ -252,7 +247,7 @@ async def trigger_morning_briefing_endpoint(request: Request, background_tasks: 
     })
 
 @triggers_router.post("/trigger-lunch-briefing")
-@_triggers_limiter.limit("10/minute")
+@limiter.limit("10/minute")
 async def trigger_lunch_briefing_endpoint(request: Request, background_tasks: BackgroundTasks):
     background_tasks.add_task(push_lunchtime_quant_briefing)
     return JSONResponse(content={
@@ -261,7 +256,7 @@ async def trigger_lunch_briefing_endpoint(request: Request, background_tasks: Ba
     })
 
 @triggers_router.post("/trigger-universe-update")
-@_triggers_limiter.limit("10/minute")
+@limiter.limit("10/minute")
 async def trigger_universe_update_endpoint(request: Request, background_tasks: BackgroundTasks):
     background_tasks.add_task(update_market_universe)
     return JSONResponse(content={
@@ -289,7 +284,7 @@ async def get_profiler_status():
         return _error_500(e)
 
 @triggers_router.post("/universe/sync-indices")
-@_triggers_limiter.limit("10/minute")
+@limiter.limit("10/minute")
 async def trigger_sync_indices_endpoint(request: Request, background_tasks: BackgroundTasks):
     background_tasks.add_task(run_index_scraper)
     return JSONResponse(content={
@@ -298,7 +293,7 @@ async def trigger_sync_indices_endpoint(request: Request, background_tasks: Back
     })
 
 @triggers_router.post("/universe/sync-profiler")
-@_triggers_limiter.limit("2/minute")
+@limiter.limit("2/minute")
 async def trigger_sync_profiler_endpoint(request: Request, background_tasks: BackgroundTasks):
     background_tasks.add_task(run_fundamentals_profiler)
     return JSONResponse(content={
@@ -307,7 +302,7 @@ async def trigger_sync_profiler_endpoint(request: Request, background_tasks: Bac
     })
 
 @triggers_router.post("/universe/deep-sync")
-@_triggers_limiter.limit("2/minute")
+@limiter.limit("2/minute")
 async def trigger_universe_deep_sync_endpoint(request: Request, background_tasks: BackgroundTasks):
     """
     Manually trigger the unified Universe Deep Sync pipeline.
@@ -329,7 +324,7 @@ async def trigger_universe_deep_sync_endpoint(request: Request, background_tasks
     })
 
 @triggers_router.post("/trigger-universe-quant-scan")
-@_triggers_limiter.limit("2/minute")
+@limiter.limit("2/minute")
 async def trigger_universe_quant_scan_endpoint(request: Request, background_tasks: BackgroundTasks):
     background_tasks.add_task(bg_execute_universe_quant_scan)
     return JSONResponse(content={
@@ -338,7 +333,7 @@ async def trigger_universe_quant_scan_endpoint(request: Request, background_task
     })
 
 @triggers_router.post("/trigger-sentiment-scan")
-@_triggers_limiter.limit("10/minute")
+@limiter.limit("10/minute")
 async def trigger_sentiment_scan_endpoint(request: Request, background_tasks: BackgroundTasks):
     background_tasks.add_task(run_sentiment_scan)
     return JSONResponse(content={
@@ -418,19 +413,19 @@ async def import_server_csv(request: ImportRequest, background_tasks: Background
 
 
 @triggers_router.post("/update")
-@_triggers_limiter.limit("10/minute")
+@limiter.limit("10/minute")
 async def trigger_update(request: Request, background_tasks: BackgroundTasks):
     background_tasks.add_task(run_update_pipeline)
     return JSONResponse(content={"status": "success"})
 
 @triggers_router.post("/sync-ghostfolio")
-@_triggers_limiter.limit("10/minute")
+@limiter.limit("10/minute")
 async def trigger_ghostfolio_sync(request: Request, background_tasks: BackgroundTasks):
     background_tasks.add_task(run_ghostfolio_sync)
     return JSONResponse(content={"status": "success"})
 
 @triggers_router.post("/trigger-freetrade-sync")
-@_triggers_limiter.limit("10/minute")
+@limiter.limit("10/minute")
 async def trigger_freetrade_sync_endpoint(request: Request, background_tasks: BackgroundTasks):
     background_tasks.add_task(run_freetrade_sync)
     return JSONResponse(content={
@@ -439,13 +434,13 @@ async def trigger_freetrade_sync_endpoint(request: Request, background_tasks: Ba
     })
 
 @triggers_router.post("/maintenance/run")
-@_triggers_limiter.limit("5/minute")
+@limiter.limit("5/minute")
 async def trigger_maintenance_run(request: Request, background_tasks: BackgroundTasks):
     background_tasks.add_task(run_maintenance_engine)
     return JSONResponse(content={"status": "success", "message": "Maintenance job started in the background. Check System Notifications for the summary."})
 
 @triggers_router.post("/maintenance/dry-run")
-@_triggers_limiter.limit("5/minute")
+@limiter.limit("5/minute")
 async def trigger_maintenance_dry_run(request: Request):
     try:
         engine = MaintenanceEngine()

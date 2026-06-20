@@ -1,30 +1,17 @@
 import os
 import logging
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 from pydantic import BaseModel
 
+from api_deps import limiter, require_confirm_token, _error_500
 from config import BASE_DIR, load_config, update_config_atomic
 from database import get_connection
 
 logger = logging.getLogger(__name__)
 
 auth_router = APIRouter()
-_auth_limiter = Limiter(key_func=get_remote_address)
-
-
-def require_confirm_token(x_confirm_token: str = Header(..., alias="X-Confirm-Token")):
-    import secrets as _secrets
-    expected = os.environ.get("ADMIN_CONFIRM_TOKEN", "")
-    if not expected or not _secrets.compare_digest(x_confirm_token.encode(), expected.encode()):
-        raise HTTPException(status_code=403, detail="Invalid or missing confirmation token.")
-
-
-def _error_500(e: Exception) -> JSONResponse:
-    return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 
 class LoginRequest(BaseModel):
@@ -34,7 +21,7 @@ class LoginRequest(BaseModel):
 
 
 @auth_router.post("/login")
-@_auth_limiter.limit("10/minute")
+@limiter.limit("10/minute")
 async def login(request: Request, body: LoginRequest, response: Response):
     import secrets as _secrets
     from auth import create_session_token, cookie_kwargs, verify_password
