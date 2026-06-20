@@ -70,6 +70,14 @@ def _run_macro(curr_tnx, past_tnx):
 
 class TestCalculateMarketRegime:
 
+    def setup_method(self):
+        conn = database.get_connection()
+        try:
+            conn.execute("DELETE FROM market_regimes")
+            conn.commit()
+        finally:
+            conn.close()
+
     def test_high_vol_produces_crash_regime(self):
         spy_df, vix_df, ftse_df = _make_spy_vix_ftse(spy_daily_std=0.03)
         with patch("regime_engine.yahoo_engine.get_price_history",

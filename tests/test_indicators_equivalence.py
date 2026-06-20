@@ -27,6 +27,8 @@ from indicators import (
     compute_volume_sma,
     compute_volume_surge,
     compute_bullish_cross,
+    compute_volume_profile,
+    compute_keltner_channel,
 )
 
 # ── Synthetic deterministic OHLCV fixture (300 rows, no network needed) ───────
@@ -119,6 +121,89 @@ def test_bullish_cross_matches_old_vectorized_expression(df):
     ).astype(int)
     result = compute_bullish_cross(macd, signal)
     pd.testing.assert_series_equal(result, expected, check_names=False)
+
+
+# ── compute_volume_profile ─────────────────────────────────────────────────────
+
+def test_volume_profile_returns_all_keys(df):
+    result = compute_volume_profile(df)
+    for key in ("poc", "val", "vah", "hvns", "lvns", "entry_zone", "exit_zone"):
+        assert key in result
+
+def test_volume_profile_poc_within_price_range(df):
+    result = compute_volume_profile(df)
+    assert result["poc"] is not None
+    assert float(df["Low"].min()) <= result["poc"] <= float(df["High"].max())
+
+def test_volume_profile_val_leq_poc_leq_vah(df):
+    result = compute_volume_profile(df)
+    assert result["val"] <= result["poc"] <= result["vah"]
+
+def test_volume_profile_entry_zone_below_current_price(df):
+    result = compute_volume_profile(df)
+    if result["entry_zone"] is not None:
+        assert result["entry_zone"] < float(df["Close"].iloc[-1])
+
+def test_volume_profile_exit_zone_above_current_price(df):
+    result = compute_volume_profile(df)
+    if result["exit_zone"] is not None:
+        assert result["exit_zone"] > float(df["Close"].iloc[-1])
+
+def test_volume_profile_insufficient_data_returns_empty():
+    tiny = _make_ohlcv(n=10)
+    result = compute_volume_profile(tiny)
+    assert result["poc"] is None
+    assert result["hvns"] == []
+
+def test_volume_profile_zero_volume_returns_empty(df):
+    df_zero = df.copy()
+    df_zero["Volume"] = 0.0
+    result = compute_volume_profile(df_zero)
+    assert result["poc"] is None
+
+def test_volume_profile_flat_price_range_returns_empty(df):
+    df_flat = df.copy()
+    df_flat["High"] = df_flat["Low"] = df_flat["Close"] = 100.0
+    result = compute_volume_profile(df_flat)
+    assert result["poc"] is None
+
+
+# ── compute_keltner_channel ────────────────────────────────────────────────────
+
+def test_keltner_returns_all_keys(df):
+    result = compute_keltner_channel(df["High"], df["Low"], df["Close"])
+    for key in ("ema_21", "upper_2", "upper_3", "lower_2", "lower_3", "z_score"):
+        assert key in result
+
+def test_keltner_bands_symmetric_around_ema(df):
+    r = compute_keltner_channel(df["High"], df["Low"], df["Close"])
+    assert r["ema_21"] is not None
+    ema = r["ema_21"]
+    assert abs((ema - r["lower_2"]) - (r["upper_2"] - ema)) < 1e-9
+    assert abs((ema - r["lower_3"]) - (r["upper_3"] - ema)) < 1e-9
+
+def test_keltner_upper3_wider_than_upper2(df):
+    r = compute_keltner_channel(df["High"], df["Low"], df["Close"])
+    assert r["upper_3"] > r["upper_2"]
+    assert r["lower_3"] < r["lower_2"]
+
+def test_keltner_insufficient_data_returns_all_none():
+    tiny = _make_ohlcv(n=5)
+    r = compute_keltner_channel(tiny["High"], tiny["Low"], tiny["Close"])
+    assert all(v is None for v in r.values())
+
+def test_keltner_flat_close_z_score_is_none():
+    flat = _make_ohlcv(n=50)
+    flat["Close"] = flat["High"] = flat["Low"] = 100.0
+    r = compute_keltner_channel(flat["High"], flat["Low"], flat["Close"])
+    assert r["z_score"] is None
+
+def test_keltner_z_score_positive_above_ema(df):
+    r = compute_keltner_channel(df["High"], df["Low"], df["Close"])
+    last_close = float(df["Close"].iloc[-1])
+    if r["ema_21"] is not None and r["z_score"] is not None:
+        expected_sign = 1 if last_close > r["ema_21"] else -1 if last_close < r["ema_21"] else 0
+        assert (r["z_score"] > 0) == (expected_sign > 0) or r["z_score"] == 0.0
 
 
 # ── quant_engine.py scalar extraction: squeeze() is a no-op on a plain Series ──

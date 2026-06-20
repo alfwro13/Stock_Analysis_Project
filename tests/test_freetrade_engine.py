@@ -40,11 +40,7 @@ class TestMutualFundExchange:
 
     def test_isin_not_in_cache_http_success_resolves_symbol(self):
         cache = {}
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"quotes": [{"symbol": "VANEA.L"}]}
-
-        with patch("freetrade_engine.requests.get", return_value=mock_response), \
+        with patch("freetrade_engine.yahoo_engine.search_by_isin", return_value="VANEA.L"), \
              patch("freetrade_engine.time.sleep"):
             ticker, mapped = resolve_ticker("VANEA", "IE00B3RBWM25", "MUTUAL_FUND_EXCHANGE", cache, FT_CONFIG)
 
@@ -54,7 +50,7 @@ class TestMutualFundExchange:
 
     def test_isin_not_in_cache_http_failure_falls_back_to_dot_l(self):
         cache = {}
-        with patch("freetrade_engine.requests.get", side_effect=Exception("timeout")), \
+        with patch("freetrade_engine.yahoo_engine.search_by_isin", side_effect=Exception("timeout")), \
              patch("freetrade_engine.time.sleep"):
             ticker, mapped = resolve_ticker("ACWI", "IE00B6R52259", "MUTUAL_FUND_EXCHANGE", cache, FT_CONFIG)
 

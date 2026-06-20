@@ -311,7 +311,7 @@ def run_market_stress_if() -> dict:
     }
 
 
-def calculate_market_regime() -> dict:
+def calculate_market_regime() -> Optional[dict]:
     """Fetches 1y of SPY/VIX/FTSE, computes RiskMetrics EWMA vol, classifies regimes, and persists to market_regimes."""
     logger.info("Initiating daily Dual-Region Market Regime calculation...")
 
