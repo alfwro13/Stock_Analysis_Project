@@ -83,13 +83,7 @@ def compute_volume_profile(
     bins: int = 50,
     window: int = 180,
 ) -> Dict[str, object]:
-    """
-    Volume-at-Price distribution over the last `window` daily bars.
-    Returns POC, Value Area Low/High, HVN/LVN lists, and pre-computed
-    entry_zone (highest support HVN/VAL below current price) and
-    exit_zone (lowest resistance HVN/VAH above current price).
-    All price values are None when data is insufficient.
-    """
+    """Volume-at-Price distribution over the last `window` bars; returns {poc, val, vah, hvns, lvns, entry_zone, exit_zone}; entry_zone = highest support below price, exit_zone = lowest resistance above; all None when data is insufficient."""
     _empty: Dict[str, object] = {
         "poc": None, "val": None, "vah": None,
         "hvns": [], "lvns": [], "entry_zone": None, "exit_zone": None,
@@ -181,12 +175,7 @@ def compute_keltner_channel(
     close: pd.Series,
     ema_period: int = 21,
 ) -> Dict[str, Optional[float]]:
-    """
-    Keltner Channel centred on EMA(21) with ATR(14) band width.
-    Returns last-bar scalar values for ema_21, the ±2/±3 ATR bands,
-    and z_score = (Close − EMA) / ATR (dimensionless deviation from centre).
-    All values are None when ATR is unavailable or zero.
-    """
+    """Last-bar Keltner Channel: EMA(ema_period) centre with ±2/±3 ATR(14) bands; z_score = (Close − EMA)/ATR; all None when ATR is unavailable or zero."""
     if len(close) < ATR_WINDOW + 1:
         return {
             "ema_21": None, "upper_2": None, "upper_3": None,
