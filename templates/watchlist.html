@@ -81,12 +81,12 @@
             <th>Target</th>
             <th>50D</th>
             <th>200D</th>
-            <th title="Standard PEG Ratio">PEG</th>
-            <th title="Peter Lynch Fair Value">PL PEG</th>
+            <th><abbr title="Standard PEG Ratio">PEG</abbr></th>
+            <th><abbr title="Peter Lynch Fair Value">PL PEG</abbr></th>
             <th>Stop-Loss</th>
-            <th title="Volume Profile entry zone: the nearest High Volume Node or Value Area Low below the current price — a candidate limit-order buy level.">Entry Zone</th>
+            <th><abbr title="Volume Profile entry zone: the nearest High Volume Node or Value Area Low below the current price — a candidate limit-order buy level.">Entry Zone</abbr></th>
             <th>RSI</th>
-            <th title="Machine Learning Ensemble confidence score predicting a >3% return over the next 10 days.">ML Conf</th>
+            <th><abbr title="Machine Learning Ensemble confidence score predicting a >3% return over the next 10 days.">ML Conf</abbr></th>
             <th>VaR (95%)</th>
             <th>Sentiment</th>
             <th>Earnings</th>
@@ -236,6 +236,6 @@
     window.BASE_CURRENCY = "{{ position_sizing.base_currency }}";
     window.FX_RATES = {{ position_sizing.fx_rates | tojson }};
 </script>
-<script src="/static/js/position_sizing.js"></script>
+<script src="/static/js/position_sizing.js?v={{ css_version }}"></script>
 <script src="/static/js/watchlist.js?v={{ css_version }}"></script>
 {% endblock %}
