@@ -19,11 +19,11 @@ def _intraday_market_tz(ticker: str, currency: str) -> str:
     return time_engine.get_user_tz().key
 
 
-def create_intraday_chart(df, ticker, s1=None, s2=None, live_pattern_name=None, live_pattern_tooltip=None, live_pattern_score=None, include_plotlyjs='cdn', market_tz=None, data_delay_minutes=0):
+def create_intraday_chart(df, ticker, s1=None, s2=None, live_pattern_name=None, live_pattern_tooltip=None, live_pattern_score=None, include_plotlyjs=False, market_tz=None, data_delay_minutes=0):
     # market_tz: parquet stores naive UTC; if provided the index is converted before plotting. data_delay_minutes > 0 adds amber warning.
     if market_tz and not df.empty:
         df = df.copy()
-        df.index = df.index.tz_localize('UTC').tz_convert(market_tz).tz_localize(None)
+        df.index = df.index.tz_localize(timezone.utc).tz_convert(market_tz).tz_localize(None)
 
     last_date = df.index[-1].date().strftime('%d-%b-%Y') if not df.empty else 'Today'
 
@@ -167,7 +167,7 @@ def create_macro_chart(df, df_baseline, ticker):
         'displaylogo': False
     }
 
-    return fig.to_html(full_html=False, include_plotlyjs='cdn', config=clean_config)
+    return fig.to_html(full_html=False, include_plotlyjs=False, config=clean_config)
 
 def create_us_inflation_chart(df_spy: pd.DataFrame, df_cpi: pd.DataFrame) -> str:
     # df_cpi['value'] is us_cpi_inflation from the DB, already stored as YoY% by macro_data_engine.
@@ -218,7 +218,7 @@ def create_us_inflation_chart(df_spy: pd.DataFrame, df_cpi: pd.DataFrame) -> str
     )
     fig.update_yaxes(title_text="S&P 500 Index", secondary_y=False, showgrid=False)
     fig.update_yaxes(title_text="CPI YoY (%)", secondary_y=True, showgrid=False)
-    return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
+    return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
 
 
 def create_uk_inflation_chart(df_ftse: pd.DataFrame, df_cpi: pd.DataFrame) -> str:
@@ -271,7 +271,7 @@ def create_uk_inflation_chart(df_ftse: pd.DataFrame, df_cpi: pd.DataFrame) -> st
     )
     fig.update_yaxes(title_text="FTSE 100 Index", secondary_y=False, showgrid=False)
     fig.update_yaxes(title_text="CPI YoY (%)", secondary_y=True, showgrid=False)
-    return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
+    return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
 
 
 def create_us_liquidity_chart(df_spy: pd.DataFrame, df_m2: pd.DataFrame) -> str:
@@ -288,7 +288,7 @@ def create_us_liquidity_chart(df_spy: pd.DataFrame, df_m2: pd.DataFrame) -> str:
     )
     fig.update_yaxes(title_text="S&P 500 Index", secondary_y=False, showgrid=False)
     fig.update_yaxes(title_text="M2 Supply (Trillions)", secondary_y=True, showgrid=False)
-    return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
+    return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
 
 def create_us_credit_chart(df_spread: pd.DataFrame) -> str:
     fig = go.Figure()
@@ -303,7 +303,7 @@ def create_us_credit_chart(df_spread: pd.DataFrame) -> str:
         margin=dict(l=20, r=20, t=50, b=20), hovermode="x unified"
     )
     fig.update_yaxes(title_text="Spread (%)", showgrid=True, gridcolor="#333333")
-    return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
+    return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
 
 def create_uk_liquidity_chart(df_ftse: pd.DataFrame, df_m4: pd.DataFrame) -> str:
     fig = make_subplots(specs=[[{"secondary_y": True}]])
@@ -319,7 +319,7 @@ def create_uk_liquidity_chart(df_ftse: pd.DataFrame, df_m4: pd.DataFrame) -> str
     )
     fig.update_yaxes(title_text="FTSE 100 Index", secondary_y=False, showgrid=False)
     fig.update_yaxes(title_text="M4 Supply (Billions)", secondary_y=True, showgrid=False)
-    return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
+    return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
 
 def create_uk_credit_chart(df_spread: pd.DataFrame) -> str:
     fig = go.Figure()
@@ -334,7 +334,7 @@ def create_uk_credit_chart(df_spread: pd.DataFrame) -> str:
         margin=dict(l=20, r=20, t=50, b=20), hovermode="x unified"
     )
     fig.update_yaxes(title_text="Spread (%)", showgrid=True, gridcolor="#333333")
-    return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
+    return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
 
 def create_yield_curve_chart(df_curve: pd.DataFrame) -> str:
     fig = go.Figure()
@@ -375,7 +375,7 @@ def create_yield_curve_chart(df_curve: pd.DataFrame) -> str:
     )
     fig.update_yaxes(title_text="Spread (%)", showgrid=True, gridcolor="#333333")
 
-    return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
+    return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
 
 
 def create_anomaly_score_chart(df: pd.DataFrame, ticker: str, threshold: float = 0.7) -> str:
@@ -446,7 +446,7 @@ def create_anomaly_score_chart(df: pd.DataFrame, ticker: str, threshold: float =
     fig.update_yaxes(title_text="Close Price", row=2, col=1)
     fig.update_xaxes(rangeslider_visible=False)
 
-    return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
+    return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
 
 
 def create_anomaly_feature_radar(features: dict, ticker: str) -> str:
@@ -528,7 +528,7 @@ def create_etf_correlation_chart(
         fig = go.Figure()
         fig.update_layout(template="plotly_dark", height=650,
                           title=dict(text=f"{etf_ticker} Correlation — No Data", x=0.5))
-        return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
+        return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
 
     fig = make_subplots(
         rows=2, cols=1, shared_xaxes=True,
@@ -587,7 +587,7 @@ def create_etf_correlation_chart(
     )
     fig.update_yaxes(title_text="Indexed (100 = start)", row=1, col=1, showgrid=True, gridcolor="#333333")
     fig.update_yaxes(title_text="Pearson r", row=2, col=1, showgrid=True, gridcolor="#333333", range=[-1.1, 1.1])
-    return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
+    return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
 
 
 def create_etf_prediction_chart(
@@ -653,7 +653,7 @@ def create_etf_prediction_chart(
                     font=dict(size=9), tracegroupgap=2),
     )
     fig.update_yaxes(title_text=ccy, showgrid=True, gridcolor="#333333")
-    return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
+    return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
 
 
 def create_etf_contributions_chart(etf_ticker: str, contributions: list) -> str:
@@ -662,7 +662,7 @@ def create_etf_contributions_chart(etf_ticker: str, contributions: list) -> str:
         fig = go.Figure()
         fig.update_layout(template="plotly_dark", height=350,
                           title=dict(text="Holdings Contributions — No Data", x=0.5))
-        return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
+        return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
 
     sorted_items = sorted(contributions, key=lambda x: abs(x.get("contribution_pct", 0)), reverse=True)
     tickers = [c["ticker"] for c in sorted_items]
@@ -688,7 +688,7 @@ def create_etf_contributions_chart(etf_ticker: str, contributions: list) -> str:
         yaxis=dict(autorange="reversed"),
         showlegend=False,
     )
-    return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
+    return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
 
 
 def create_etf_overlay_chart(
@@ -713,9 +713,12 @@ def create_etf_overlay_chart(
     user_tz = time_engine.get_user_tz()
 
     if now_utc is None:
-        now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+        now_utc = datetime.now(timezone.utc)
 
-    now_local = pd.Timestamp(now_utc).tz_localize("UTC").tz_convert(user_tz).tz_localize(None)
+    _now_ts = pd.Timestamp(now_utc)
+    if _now_ts.tz is None:
+        _now_ts = _now_ts.tz_localize(timezone.utc)
+    now_local = _now_ts.tz_convert(user_tz).tz_localize(None)
     x_start = now_local - pd.Timedelta(hours=20)
     x_end = now_local + pd.Timedelta(hours=10)
 
@@ -724,7 +727,7 @@ def create_etf_overlay_chart(
             return s
         idx = pd.DatetimeIndex(s.index)
         if idx.tz is None:
-            idx = idx.tz_localize("UTC")
+            idx = idx.tz_localize(timezone.utc)
         return s.set_axis(idx.tz_convert(user_tz).tz_localize(None))
 
     def _to_pct(s: "pd.Series", ref: float) -> "pd.Series":
@@ -828,7 +831,7 @@ def create_etf_overlay_chart(
                     _open_t, _close_t = time_engine.market_window_utc(_exch)
                     _t = _open_t if _is_open else _close_t
                     _utc_dt = datetime.combine(_cur, _t)
-                    _local_dt = pd.Timestamp(_utc_dt).tz_localize("UTC").tz_convert(user_tz).tz_localize(None)
+                    _local_dt = pd.Timestamp(_utc_dt).tz_localize(timezone.utc).tz_convert(user_tz).tz_localize(None)
                     if not (x_start <= _local_dt <= x_end):
                         continue
                     _dt_str = str(_local_dt)
@@ -869,13 +872,13 @@ def create_etf_overlay_chart(
             # Star at primary constituent exchange open (LSE ETF with US constituents case)
             _primary = constituent_exchanges[0]
             _c_open_t, _c_close_t = time_engine.market_window_utc(_primary)
-            _now_c = datetime.now(timezone.utc).replace(tzinfo=None)
-            _today_c = datetime.now(timezone.utc).date()
+            _now_c = datetime.now(timezone.utc)
+            _today_c = _now_c.date()
             if _today_c.weekday() == 5:
                 _c_target = _today_c + timedelta(days=2)
             elif _today_c.weekday() == 6:
                 _c_target = _today_c + timedelta(days=1)
-            elif _now_c < datetime.combine(_today_c, _c_close_t):
+            elif _now_c < datetime.combine(_today_c, _c_close_t, tzinfo=timezone.utc):
                 _c_target = _today_c
             elif _today_c.weekday() == 4:
                 _c_target = _today_c + timedelta(days=3)
@@ -886,7 +889,7 @@ def create_etf_overlay_chart(
             # Star at ETF next open (Asia → UK, or post-close / daily-close signal)
             etf_open_t, _ = time_engine.market_window_utc(etf_exchange)
             pred_dt_utc = datetime.combine(next_open_date, etf_open_t)
-        pred_dt = pd.Timestamp(pred_dt_utc).tz_localize("UTC").tz_convert(user_tz).tz_localize(None)
+        pred_dt = pd.Timestamp(pred_dt_utc).tz_localize(timezone.utc).tz_convert(user_tz).tz_localize(None)
         fig.add_trace(go.Scatter(
             x=[pred_dt],
             y=[pred_pct],
@@ -918,14 +921,14 @@ def create_etf_overlay_chart(
         showgrid=True, gridcolor="#333333",
     )
     fig.update_xaxes(range=[str(x_start), str(x_end)], showgrid=True, gridcolor="#333333")
-    return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
+    return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
 
 
 def create_ai_contagion_performance_chart(ticker_dfs: dict, period_label: str = "30-Day") -> str:
     if not ticker_dfs:
         fig = go.Figure()
         fig.update_layout(template="plotly_dark", height=480, title=dict(text="AI Sector Performance — No Data", x=0.5))
-        return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
+        return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
 
     fig = go.Figure()
     for ticker, df in ticker_dfs.items():
@@ -954,7 +957,7 @@ def create_ai_contagion_performance_chart(ticker_dfs: dict, period_label: str = 
         legend=dict(orientation="h", yanchor="top", y=1.10, xanchor="right", x=1, font=dict(size=10)),
     )
     fig.update_yaxes(title_text="Indexed (100 = start)", showgrid=True, gridcolor="#333333")
-    return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
+    return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
 
 
 def create_ai_contagion_correlation_heatmap(ticker_dfs: dict, window: int = 20) -> str:
@@ -969,7 +972,7 @@ def create_ai_contagion_correlation_heatmap(ticker_dfs: dict, window: int = 20) 
     if len(returns) < 2:
         fig = go.Figure()
         fig.update_layout(template="plotly_dark", height=500, title=dict(text="AI Correlation — Insufficient Data", x=0.5))
-        return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
+        return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
 
     ret_df = pd.DataFrame(returns).dropna()
     corr = ret_df.tail(window).corr()
@@ -995,4 +998,4 @@ def create_ai_contagion_correlation_heatmap(ticker_dfs: dict, window: int = 20) 
         height=500,
         margin=dict(l=20, r=20, t=70, b=20),
     )
-    return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
+    return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
