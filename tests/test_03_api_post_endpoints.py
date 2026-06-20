@@ -425,3 +425,47 @@ def test_forensic_run_score_returns_success(client):
     assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
     data = resp.json()
     assert data.get("status") == "success", f"Expected success, got: {data}"
+
+
+# ── AI Sector Contagion ───────────────────────────────────────────────────────
+
+@pytest.mark.api
+def test_ai_contagion_trigger_returns_success(client):
+    """POST /api/ai-contagion/trigger must return 200 {status: success} immediately."""
+    with patch.object(_StarletteBackgroundTasks, "add_task", return_value=None):
+        resp = client.post("/api/ai-contagion/trigger")
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
+    data = resp.json()
+    assert data.get("status") == "success", f"Expected success, got: {data}"
+
+
+# ── Market Regime ─────────────────────────────────────────────────────────────
+
+@pytest.mark.api
+def test_market_regime_run_returns_success(client):
+    """POST /api/market-regime/run must return 200 {status: success} immediately."""
+    with patch.object(_StarletteBackgroundTasks, "add_task", return_value=None):
+        resp = client.post("/api/market-regime/run")
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
+    data = resp.json()
+    assert data.get("status") == "success", f"Expected success, got: {data}"
+
+
+# ── Stress Test ───────────────────────────────────────────────────────────────
+
+@pytest.mark.api
+def test_stress_test_run_rejects_unknown_scenario(client):
+    """POST /api/stress-test/run with an unknown scenario_id must return 400."""
+    resp = client.post("/api/stress-test/run", json={"scenario_id": "NONEXISTENT_SCENARIO_XYZ"})
+    assert resp.status_code == 400, f"Expected 400, got {resp.status_code}"
+    data = resp.json()
+    assert data.get("status") == "error"
+
+
+@pytest.mark.api
+def test_stress_test_run_valid_scenario(client):
+    """POST /api/stress-test/run with a known scenario must return 200 or 400 (not 500)."""
+    from stress_engine import SCENARIOS
+    scenario_id = next(iter(SCENARIOS))
+    resp = client.post("/api/stress-test/run", json={"scenario_id": scenario_id, "account_id": "all"})
+    assert resp.status_code in (200, 400), f"Must not 500, got {resp.status_code}: {resp.text}"

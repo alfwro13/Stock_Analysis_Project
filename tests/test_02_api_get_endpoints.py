@@ -480,6 +480,95 @@ def test_get_forensic_scores_returns_200(client):
     assert isinstance(data["results"], list)
 
 
+# ── AI Sector Contagion ───────────────────────────────────────────────────────
+
+@pytest.mark.api
+def test_ai_contagion_status_returns_200(client):
+    """GET /api/ai-contagion/status must return 200 with a snapshots list."""
+    resp = client.get("/api/ai-contagion/status")
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
+    data = _json(resp)
+    assert data["status"] == "success"
+    assert "snapshots" in data
+    assert isinstance(data["snapshots"], list)
+
+
+@pytest.mark.api
+def test_ai_contagion_status_empty_on_fresh_db(client):
+    """On a fresh test database, ai-contagion snapshots must be an empty list."""
+    resp = client.get("/api/ai-contagion/status")
+    data = _json(resp)
+    assert data["snapshots"] == []
+
+
+# ── Market Regime ─────────────────────────────────────────────────────────────
+
+@pytest.mark.api
+def test_market_regime_current_returns_200(client):
+    """GET /api/market-regime/current must return 200 with current/last_change keys."""
+    resp = client.get("/api/market-regime/current")
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
+    data = _json(resp)
+    assert data["status"] == "success"
+    assert "current" in data
+    assert "last_change" in data
+
+
+@pytest.mark.api
+def test_market_regime_current_null_on_fresh_db(client):
+    """On a fresh test database with no HMM data, current must be None."""
+    resp = client.get("/api/market-regime/current")
+    data = _json(resp)
+    assert data["current"] is None
+
+
+@pytest.mark.api
+def test_market_regime_full_returns_200(client):
+    """GET /api/market-regime must return 200 with current/history/transition_matrix/regime_stats keys."""
+    resp = client.get("/api/market-regime")
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
+    data = _json(resp)
+    assert data["status"] == "success"
+    assert "current" in data
+    assert "history" in data
+
+
+# ── Market Stress ─────────────────────────────────────────────────────────────
+
+@pytest.mark.api
+def test_market_stress_returns_200(client):
+    """GET /api/market-stress must return 200 with current and history keys."""
+    resp = client.get("/api/market-stress")
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
+    data = _json(resp)
+    assert data["status"] == "success"
+    assert "current" in data
+    assert "history" in data
+
+
+@pytest.mark.api
+def test_market_stress_null_on_fresh_db(client):
+    """On a fresh test database with no stress data, current must be None."""
+    resp = client.get("/api/market-stress")
+    data = _json(resp)
+    assert data["current"] is None
+    assert data["history"] == []
+
+
+# ── Stress Test ───────────────────────────────────────────────────────────────
+
+@pytest.mark.api
+def test_stress_test_scenarios_returns_200(client):
+    """GET /api/stress-test/scenarios must return 200 with a non-empty scenarios dict."""
+    resp = client.get("/api/stress-test/scenarios")
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
+    data = _json(resp)
+    assert data["status"] == "success"
+    assert "scenarios" in data
+    assert isinstance(data["scenarios"], dict)
+    assert len(data["scenarios"]) > 0, "SCENARIOS dict must be non-empty"
+
+
 # ── AI Prompt — market-level endpoints ────────────────────────────────────────
 
 @pytest.mark.api
