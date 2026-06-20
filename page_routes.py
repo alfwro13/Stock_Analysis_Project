@@ -2,6 +2,7 @@ import email.utils
 import ipaddress
 import json
 import logging
+import os
 import re
 from pathlib import Path
 
@@ -79,9 +80,8 @@ async def logout():
 
 @page_router.get("/change-password", response_class=HTMLResponse)
 async def change_password_page(request: Request):
-    import os as _os
     return templates.TemplateResponse(request=request, name="change_password.html",
-                                      context={"confirm_token": _os.environ.get("ADMIN_CONFIRM_TOKEN", "")})
+                                      context={"confirm_token": os.environ.get("ADMIN_CONFIRM_TOKEN", "")})
 
 
 @page_router.get("/reset-password", response_class=HTMLResponse)
@@ -92,7 +92,6 @@ async def reset_password_page(request: Request):
 
 @page_router.get("/admin-reset-password", response_class=HTMLResponse)
 async def admin_reset_password_page(request: Request):
-    from config import load_config
     if not load_config().get("FORCE_PASSWORD_RESET", False):
         from fastapi.responses import RedirectResponse as _Redir
         return _Redir("/login", status_code=302)
@@ -360,7 +359,6 @@ def enrich_macro_events(events_list: List[Dict[str, Any]]) -> List[Dict[str, Any
 
 @page_router.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request):
-    import os
     from scheduler_engine import scheduler_display_names
     from notification_engine import build_routing_panel
     config_data = load_config()
@@ -953,20 +951,19 @@ async def earnings_volatility_page(request: Request):
 
 @page_router.get("/quant-screener", response_class=HTMLResponse)
 async def quant_screener_page(request: Request):
-    import os as _os
     today = time_engine.now_local()
     target_date = today.strftime('%Y-%m-%d')
 
-    reports_dir = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "reports")
+    reports_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reports")
 
     # Prefer the most recently generated briefing (lunch takes precedence over morning when both
     # exist for today; fall back to yesterday if nothing generated today yet).
     def _best_briefing(date_str):
         candidates = []
         for prefix in ("lunch_briefing", "morning_briefing"):
-            f = _os.path.join(reports_dir, f"{prefix}_{date_str}.md")
-            if _os.path.exists(f):
-                candidates.append((f, _os.path.getmtime(f)))
+            f = os.path.join(reports_dir, f"{prefix}_{date_str}.md")
+            if os.path.exists(f):
+                candidates.append((f, os.path.getmtime(f)))
         return max(candidates, key=lambda x: x[1]) if candidates else None
 
     yesterday = (today - timedelta(days=1)).strftime('%Y-%m-%d')

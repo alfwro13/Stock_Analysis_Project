@@ -13,7 +13,14 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from page_routes import enrich_macro_events, _build_rss_base_url, _parse_cb_nlp_message
+from page_routes import (
+    enrich_macro_events,
+    _build_rss_base_url,
+    _parse_cb_nlp_message,
+    _fmt_currency,
+    _fmt_volume,
+    _utc_str_to_local,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -206,6 +213,83 @@ class TestParseCbNlpMessage:
         ts = "2026-06-08 09:30:00"
         result = _parse_cb_nlp_message(DOVISH_MSG, ts)
         assert result["timestamp"] == ts
+
+
+# ---------------------------------------------------------------------------
+# _fmt_currency
+# ---------------------------------------------------------------------------
+
+class TestFmtCurrency:
+    def test_none_returns_none(self):
+        assert _fmt_currency(None) is None
+
+    def test_trillion(self):
+        assert _fmt_currency(2.5e12) == "$2.50T"
+
+    def test_billion(self):
+        assert _fmt_currency(1.23e9) == "$1.23B"
+
+    def test_million(self):
+        assert _fmt_currency(5.6e6) == "$5.6M"
+
+    def test_small_value(self):
+        assert _fmt_currency(1234) == "$1,234"
+
+    def test_negative_billion(self):
+        result = _fmt_currency(-3e9)
+        assert result == "-$3.00B"
+
+    def test_zero(self):
+        assert _fmt_currency(0) == "$0"
+
+
+# ---------------------------------------------------------------------------
+# _fmt_volume
+# ---------------------------------------------------------------------------
+
+class TestFmtVolume:
+    def test_none_returns_none(self):
+        assert _fmt_volume(None) is None
+
+    def test_billions(self):
+        assert _fmt_volume(2e9) == "2.0B"
+
+    def test_millions(self):
+        assert _fmt_volume(3.5e6) == "3.5M"
+
+    def test_thousands(self):
+        assert _fmt_volume(4500) == "5K"
+
+    def test_small_value(self):
+        assert _fmt_volume(42) == "42"
+
+    def test_exact_billion_boundary(self):
+        result = _fmt_volume(1e9)
+        assert "B" in result
+
+    def test_exact_million_boundary(self):
+        result = _fmt_volume(1e6)
+        assert "M" in result
+
+
+# ---------------------------------------------------------------------------
+# _utc_str_to_local
+# ---------------------------------------------------------------------------
+
+class TestUtcStrToLocal:
+    def test_valid_datetime_string_returns_formatted(self):
+        result = _utc_str_to_local("2026-06-08 14:30:00")
+        assert result  # non-empty; actual format depends on USER_TIMEZONE
+
+    def test_valid_hhmm_string_parsed(self):
+        result = _utc_str_to_local("2026-06-08 14:30")
+        assert result
+
+    def test_invalid_string_returned_unchanged(self):
+        assert _utc_str_to_local("not-a-date") == "not-a-date"
+
+    def test_empty_string_returned_unchanged(self):
+        assert _utc_str_to_local("") == ""
 
 
 if __name__ == "__main__":
