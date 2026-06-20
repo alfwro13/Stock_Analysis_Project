@@ -5,8 +5,8 @@ import xml.etree.ElementTree as ET
 import pandas as pd
 from typing import Optional, List, Tuple
 from datetime import datetime, timedelta, timezone
-from zoneinfo import ZoneInfo
 from database import get_connection
+from time_engine import localize_naive_to_utc
 from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
@@ -16,7 +16,6 @@ logger = logging.getLogger(__name__)
 FEED_URL = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml"
 TARGET_CURRENCIES = {'USD', 'GBP'}
 TARGET_IMPACT = 'High'
-_ET = ZoneInfo("America/New_York")
 
 def clean_value(val_str: Optional[str]) -> Optional[float]:
     """Parse financial magnitude strings (K/M/B/T/%) to raw float, or None if unparseable."""
@@ -89,11 +88,11 @@ def fetch_and_process_calendar() -> List[Tuple]:
             try:
                 time_clean = time_str.replace(' ', '').lower()
                 dt_naive = datetime.strptime(f"{date_str} {time_clean}", "%m-%d-%Y %I:%M%p")
-                formatted_date = dt_naive.replace(tzinfo=_ET).astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+                formatted_date = localize_naive_to_utc(dt_naive, "NYSE").strftime("%Y-%m-%d %H:%M:%S")
             except ValueError:
                 try:
                     dt_naive = datetime.strptime(date_str, "%m-%d-%Y")
-                    formatted_date = dt_naive.replace(tzinfo=_ET).astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+                    formatted_date = localize_naive_to_utc(dt_naive, "NYSE").strftime("%Y-%m-%d %H:%M:%S")
                 except ValueError:
                     logger.warning(f"Could not parse date: {date_str} {time_str}")
                     formatted_date = f"{date_str} {time_str}"
@@ -186,13 +185,15 @@ def reconcile_past_events() -> None:
         if spy_df is None or spy_df.empty:
             logger.error("Failed to fetch SPY data for reconciliation.")
             return
-        if spy_df.index.tz is not None:
-            spy_df.index = spy_df.index.tz_convert(None)
+        if spy_df.index.tz is None:
+            spy_df.index = spy_df.index.tz_localize(timezone.utc)
+        else:
+            spy_df.index = spy_df.index.tz_convert(timezone.utc)
 
         updates = []
         for row in events_to_reconcile:
             try:
-                event_dt = datetime.strptime(row['event_date'], "%Y-%m-%d %H:%M:%S")
+                event_dt = datetime.strptime(row['event_date'], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
                 window_end = event_dt + timedelta(minutes=30)
 
                 event_window = spy_df[(spy_df.index >= event_dt) & (spy_df.index <= window_end)]
