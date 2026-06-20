@@ -181,6 +181,7 @@ def test_no_page_route_returns_500(client):
         ("/fx-drag",            "FX Drag Analyzer"),
         ("/index/%5EGSPC",      "Index Detail (S&P 500)"),
         ("/login",              "Login"),
+        ("/market-regime",      "Market Regime (HMM)"),
     ]
     failures = []
     for url, label in pages:
