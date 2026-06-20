@@ -357,40 +357,40 @@ class TestNormaliseConstituents:
 
     @staticmethod
     def _item(ticker: str, weight: float):
-        from api_routes import EtfConstituentItem
+        from api_routes_analysis import EtfConstituentItem
         return EtfConstituentItem(ticker=ticker, weight=weight)
 
     def test_weights_normalised_to_sum_one(self):
-        from api_routes import _normalise_constituents
+        from api_routes_analysis import _normalise_constituents
         items = [self._item("AAPL", 60.0), self._item("MSFT", 40.0)]
         result = _normalise_constituents(items)
         assert abs(sum(r["weight"] for r in result) - 1.0) < 1e-9
 
     def test_weight_proportions_preserved(self):
-        from api_routes import _normalise_constituents
+        from api_routes_analysis import _normalise_constituents
         items = [self._item("AAPL", 60.0), self._item("MSFT", 40.0)]
         result = _normalise_constituents(items)
         assert abs(result[0]["weight"] - 0.6) < 1e-9
         assert abs(result[1]["weight"] - 0.4) < 1e-9
 
     def test_zero_total_returns_empty(self):
-        from api_routes import _normalise_constituents
+        from api_routes_analysis import _normalise_constituents
         items = [self._item("AAPL", 0.0), self._item("MSFT", 0.0)]
         assert _normalise_constituents(items) == []
 
     def test_negative_total_returns_empty(self):
-        from api_routes import _normalise_constituents
+        from api_routes_analysis import _normalise_constituents
         items = [self._item("AAPL", -5.0), self._item("MSFT", -3.0)]
         assert _normalise_constituents(items) == []
 
     def test_ticker_uppercased_and_stripped(self):
-        from api_routes import _normalise_constituents
+        from api_routes_analysis import _normalise_constituents
         items = [self._item("  aapl  ", 1.0)]
         result = _normalise_constituents(items)
         assert result[0]["ticker"] == "AAPL"
 
     def test_already_normalised_passes_through(self):
-        from api_routes import _normalise_constituents
+        from api_routes_analysis import _normalise_constituents
         items = [self._item("SPY", 0.5), self._item("QQQ", 0.5)]
         result = _normalise_constituents(items)
         assert abs(sum(r["weight"] for r in result) - 1.0) < 1e-9

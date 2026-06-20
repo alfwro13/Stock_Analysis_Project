@@ -145,7 +145,7 @@ Scheduled via `CronTrigger` in `scheduler_engine.reload_scheduler()`, using the 
 
 The job only appears in the scheduler when `SCHEDULING.TRAP_MONITORS.ENABLED` is `True`.
 
-Last-run time is written to `scheduler_run_log` via `record_job_run('trap_monitor_job')` and is visible in the Settings → Diagnostics scheduler matrix (the `TRAP_MONITORS` config key maps to `trap_monitor_job` in the `config_key_to_job` dict in `api_routes.py`).
+Last-run time is written to `scheduler_run_log` via `record_job_run('trap_monitor_job')` and is visible in the Settings → Diagnostics scheduler matrix (the `TRAP_MONITORS` config key maps to `trap_monitor_job` in the `config_key_to_job` dict in `scheduler_engine.py`).
 
 ---
 
@@ -250,7 +250,7 @@ Aggregated accuracy stats are served by `GET /api/trap-monitor/accuracy` and dis
 |------|------|
 | `bull_bear_trap_engine.py` | `TrapEngine` class: all four detectors, phase derivation, DB persistence; `fill_trap_phase_actuals()` for accuracy resolution |
 | `scheduler_engine.py` | `run_trap_monitor_job()`, `run_trap_accuracy_fill_job()`, CronTrigger scheduling blocks |
-| `api_routes.py` | `GET /api/trap-monitor/results`, `POST /api/trap-monitor/run`, `GET /api/trap-monitor/accuracy` |
+| `api_routes_analysis.py` | `GET /api/trap-monitor/results`, `POST /api/trap-monitor/run`, `GET /api/trap-monitor/accuracy` |
 | `page_routes.py` | `GET /trap-monitor` route |
 | `templates/trap_monitor.html` | Page template: lifecycle arc, alert strip, ticker table, accuracy panel, auto-refresh |
 | `templates/tools.html` | Guide-card entry |

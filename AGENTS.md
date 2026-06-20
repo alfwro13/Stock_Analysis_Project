@@ -22,7 +22,11 @@ A self-hosted **FastAPI** web application that merges quantitative analysis, fun
 ```
 Stock_Analysis_Project/
 ├── main.py                   # App factory, middleware, lifespan hooks
-├── api_routes.py             # All /api/* REST endpoints
+├── api_routes.py             # /api/* router root: watchlist, screener, reports, options, xray, intraday, news, logs; includes sub-routers
+├── api_routes_auth.py        # Auth + credential endpoints (login, password, account, Nextcloud/Ghostfolio/FRED/HF settings)
+├── api_routes_triggers.py    # Scheduler trigger endpoints (ML, quant scan, universe, earnings, briefings, maintenance)
+├── api_routes_system.py      # Settings Pydantic models + settings save, system ops, notifications, workflow monitor
+├── api_routes_analysis.py    # Analysis signal endpoints (contagion, trap, bubble, forensic, regime, stress, ETF predictor, AI prompts)
 ├── page_routes.py            # All HTML page routes
 ├── database.py               # init_db(), schema migrations, SQLite helpers
 ├── config.py / config.json   # Runtime configuration
@@ -322,6 +326,8 @@ All time-related code **must** go through `time_engine.py`. Never hardcode timez
 **Per-ticker exchange detection:** Use `time_engine.ticker_exchange(ticker, currency)` — it maps `.L`/GBP→LSE, `.DE`/EUR→XETRA, `.T`→TSE, USD→NYSE, and falls back to `HOME_EXCHANGE` for ambiguous tickers.
 
 **APScheduler jobs:** Use `time_engine.reset_cron_trigger_params(exchange)` to generate `CronTrigger` kwargs for end-of-session resets. Always specify `timezone` in every `CronTrigger` — a trigger without a timezone is implicitly system-local and will break across DST boundaries or server moves.
+
+**Formatting a reset time for display:** Use `time_engine.fmt_reset_time(exchange) -> str` — it wraps `reset_cron_trigger_params` + `datetime.combine` + `fmt_time` so callers never need to import `ZoneInfo` directly.
 
 **Config keys:** `USER_TIMEZONE` (IANA string, e.g. `"Europe/London"`) and `HOME_EXCHANGE` (`"LSE"` | `"NYSE"` | `"XETRA"` | `"TSE"`) are the two user-facing settings that drive all of the above. Both live in `config.json` and are editable via the Settings UI.
 

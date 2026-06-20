@@ -853,8 +853,8 @@ class TestGhostfolioApiRoutes:
             {"id": "acc-1", "name": "ISA"},
             {"id": "acc-2", "name": "FreeTrade"},
         ]
-        with patch("api_routes.GhostfolioSyncEngine", return_value=mock_engine), \
-             patch("api_routes.reload_scheduler"):
+        with patch("api_routes_triggers.GhostfolioSyncEngine", return_value=mock_engine), \
+             patch("api_routes_triggers.reload_scheduler"):
             resp = client.post("/api/ghostfolio/discover")
         assert resp.status_code == 200
         assert resp.json().get("status") == "success"
@@ -863,7 +863,7 @@ class TestGhostfolioApiRoutes:
         """POST /api/ghostfolio/discover returns 500 when auth fails."""
         mock_engine = MagicMock()
         mock_engine.authenticate.return_value = False
-        with patch("api_routes.GhostfolioSyncEngine", return_value=mock_engine):
+        with patch("api_routes_triggers.GhostfolioSyncEngine", return_value=mock_engine):
             resp = client.post("/api/ghostfolio/discover")
         assert resp.status_code == 500
         assert resp.json().get("status") == "error"
@@ -873,7 +873,7 @@ class TestGhostfolioApiRoutes:
         mock_engine = MagicMock()
         mock_engine.authenticate.return_value = True
         mock_engine.discover_accounts.return_value = []
-        with patch("api_routes.GhostfolioSyncEngine", return_value=mock_engine):
+        with patch("api_routes_triggers.GhostfolioSyncEngine", return_value=mock_engine):
             resp = client.post("/api/ghostfolio/discover")
         assert resp.status_code == 500
 
