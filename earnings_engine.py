@@ -1,4 +1,5 @@
 # earnings_engine.py
+import logging
 import os
 import json
 from datetime import datetime
@@ -6,6 +7,8 @@ from database import get_connection
 from config import PORTFOLIO_PATH, load_config
 from time_engine import now_local
 from notification_engine import notify
+
+logger = logging.getLogger(__name__)
 
 def run_earnings_alert():
     try:
@@ -77,7 +80,7 @@ def run_earnings_alert():
                         alerts_sent += 1
 
                 except Exception as e:
-                    print(f"[ERROR] Evaluating earnings date for {ticker}: {e}")
+                    logger.error("Evaluating earnings date for %s: %s", ticker, e)
 
             conn.commit()
             return True, f"Earnings check complete. Triggered {alerts_sent} alerts based on current settings."
@@ -85,5 +88,5 @@ def run_earnings_alert():
             conn.close()
     
     except Exception as e:
-        print(f"[ERROR] Fatal crash in run_earnings_alert: {e}")
+        logger.error("Fatal crash in run_earnings_alert: %s", e)
         return False, f"System Crash: {str(e)}"

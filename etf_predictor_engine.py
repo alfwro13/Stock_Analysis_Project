@@ -12,8 +12,8 @@ from database import (
     get_etf_predictor_config,
     get_etf_predictor_configs,
     log_etf_prediction,
-    log_notification,
 )
+from notification_engine import notify
 from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
@@ -60,14 +60,14 @@ def detect_fx_pair(etf_currency: str, constituent_currencies: list) -> str | Non
 
 
 def get_next_open_date(etf_exchange: str) -> date:
-    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
-    today = datetime.now(timezone.utc).date()
+    now_utc = datetime.now(timezone.utc)
+    today = now_utc.date()
     if today.weekday() == 5:
         return today + timedelta(days=2)
     if today.weekday() == 6:
         return today + timedelta(days=1)
     _, etf_close_utc = time_engine.market_window_utc(etf_exchange)
-    if now_utc < datetime.combine(today, etf_close_utc):
+    if now_utc < datetime.combine(today, etf_close_utc, tzinfo=timezone.utc):
         return today
     if today.weekday() == 4:
         return today + timedelta(days=3)
@@ -75,14 +75,14 @@ def get_next_open_date(etf_exchange: str) -> date:
 
 
 def _last_trading_date_for_exchange(exchange: str) -> date:
-    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
-    today = datetime.now(timezone.utc).date()
+    now_utc = datetime.now(timezone.utc)
+    today = now_utc.date()
     if today.weekday() == 5:
         return today - timedelta(days=1)
     if today.weekday() == 6:
         return today - timedelta(days=2)
     open_utc, _ = time_engine.market_window_utc(exchange)
-    if now_utc < datetime.combine(today, open_utc):
+    if now_utc < datetime.combine(today, open_utc, tzinfo=timezone.utc):
         d = today - timedelta(days=1)
         while d.weekday() >= 5:
             d -= timedelta(days=1)
@@ -255,12 +255,12 @@ def _compute_intraday_returns(
     if found_post:
         signal_source = "intraday_post_close"
     elif found_intraday:
-        now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+        now_utc = datetime.now(timezone.utc)
         primary_open_utc, _ = time_engine.market_window_utc(primary_exchange)
         primary_trading_date = _last_trading_date_for_exchange(primary_exchange)
         signal_source = (
             "intraday_live"
-            if now_utc >= datetime.combine(primary_trading_date, primary_open_utc)
+            if now_utc >= datetime.combine(primary_trading_date, primary_open_utc, tzinfo=timezone.utc)
             else "intraday_premarket"
         )
     else:
@@ -488,8 +488,9 @@ def run_prediction(config_id: int) -> dict:
 
     unknown = find_unknown_exchange_tickers(constituent_tickers)
     if unknown:
-        log_notification(
-            "etf_unknown_exchange",
+        notify(
+            "etf_predictor",
+            "Warning",
             f"{etf_ticker}: constituent tickers {unknown} use suffixes not found in "
             f"exchange_hours.json. Exchange markers will default to NYSE. "
             f"Add the exchange definition to data/exchange_hours.json to fix.",
@@ -569,7 +570,7 @@ def get_etf_correlation_data(config: dict, days: int = 60) -> dict:
 
 
 def get_etf_intraday_overlay_data(config: dict, prediction: dict | None = None) -> dict:
-    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+    now_utc = datetime.now(timezone.utc)
     etf_ticker = config["etf_ticker"]
     constituent_tickers = [h["ticker"] for h in config["constituents"]]
     etf_info = detect_etf_info(etf_ticker)
@@ -584,7 +585,7 @@ def get_etf_intraday_overlay_data(config: dict, prediction: dict | None = None) 
     def _strip_tz(df: pd.DataFrame) -> pd.DataFrame:
         df = df.copy()
         if df.index.tz is not None:
-            df.index = df.index.tz_convert("UTC").tz_localize(None)
+            df.index = df.index.tz_convert("UTC")
         return df
 
     etf_series = pd.Series(dtype=float)

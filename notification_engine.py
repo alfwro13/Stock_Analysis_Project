@@ -40,6 +40,7 @@ NOTIFICATION_SOURCES: dict[str, dict] = {
     "network_fault":         {"label": "Network Fault Alert",          "job_id": None,                        "default": dict(_NO_TALK)},
     "forensic_fetch_status": {"label": "Forensic Quarterly Data Fetch", "job_id": "forensic_quarterly_fetch_job", "default": dict(_NO_TALK)},
     "forensic_alert":        {"label": "Forensic Accounting Alert",     "job_id": "forensic_scores_job",          "default": dict(_ON)},
+    "etf_predictor":         {"label": "ETF Predictor",                 "job_id": None,                           "default": dict(_NO_TALK)},
 }
 
 CATEGORY_LABELS = {
