@@ -18,7 +18,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-from nextcloud_talk import upload_file_webdav, share_file_to_talk, send_text_message
+from nextcloud_talk import upload_file_webdav, share_file_to_talk
 from constants import (
     SENTIMENT_CHART_FIGSIZE, SENTIMENT_CHART_DPI,
 )
@@ -240,7 +240,7 @@ def get_yield_equity_html() -> str:
     )
     fig.update_yaxes(title_text="S&P 500 Price ($)", secondary_y=False)
     fig.update_yaxes(title_text="30Y Yield (%)", secondary_y=True)
-    return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
+    return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
 
 
 def get_uk_yield_equity_html() -> str:
@@ -273,7 +273,7 @@ def get_uk_yield_equity_html() -> str:
     )
     fig.update_yaxes(title_text="FTSE 100 Points", secondary_y=False)
     fig.update_yaxes(title_text="10Y Gilt Yield (%)", secondary_y=True)
-    return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
+    return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
 
 
 def get_ftse_gbp_html() -> str:
@@ -306,7 +306,7 @@ def get_ftse_gbp_html() -> str:
     )
     fig.update_yaxes(title_text="FTSE 100 Points", secondary_y=False)
     fig.update_yaxes(title_text="GBP/USD Rate", secondary_y=True)
-    return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
+    return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
 
 
 def get_sentiment_html() -> str:
@@ -317,7 +317,7 @@ def get_sentiment_html() -> str:
     fig = generate_sentiment_figure()
     if not fig:
         return "<p>Error loading sentiment data. Please try again later.</p>"
-    return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
+    return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
 
 
 def get_vix_spy_html() -> str:
@@ -328,7 +328,7 @@ def get_vix_spy_html() -> str:
     fig = generate_vix_spy_figure()
     if not fig:
         return "<p>Error loading VIX data. Please try again later.</p>"
-    return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False})
+    return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
 
 
 def _check_and_trigger_async_refresh() -> None:
@@ -353,12 +353,12 @@ def _async_chart_cruncher_worker() -> None:
 
         fig_sentiment = generate_sentiment_figure()
         html_sentiment = fig_sentiment.to_html(
-            full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False}
+            full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False}
         ) if fig_sentiment else ""
 
         fig_vix = generate_vix_spy_figure()
         html_vix = fig_vix.to_html(
-            full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False}
+            full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False}
         ) if fig_vix else ""
 
         today = datetime.now(timezone.utc)
@@ -384,7 +384,7 @@ def _async_chart_cruncher_worker() -> None:
             fig_yield_equity.update_yaxes(title_text="S&P 500 Price ($)", secondary_y=False)
             fig_yield_equity.update_yaxes(title_text="30Y Yield (%)", secondary_y=True)
             html_yield_equity = fig_yield_equity.to_html(
-                full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False}
+                full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False}
             )
 
         ftse_data = fetch_parquet_data('FTSE_BASELINE.parquet', start_date)
@@ -408,7 +408,7 @@ def _async_chart_cruncher_worker() -> None:
             fig_uk_yield.update_yaxes(title_text="FTSE 100 Points", secondary_y=False)
             fig_uk_yield.update_yaxes(title_text="10Y Gilt Yield (%)", secondary_y=True)
             html_uk_yield_equity = fig_uk_yield.to_html(
-                full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False}
+                full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False}
             )
 
         gbp_data = fetch_parquet_data('GBPUSD_BASELINE.parquet', start_date)
@@ -430,7 +430,7 @@ def _async_chart_cruncher_worker() -> None:
             fig_gbp.update_yaxes(title_text="FTSE 100 Points", secondary_y=False)
             fig_gbp.update_yaxes(title_text="GBP/USD Rate", secondary_y=True)
             html_ftse_gbp = fig_gbp.to_html(
-                full_html=False, include_plotlyjs='cdn', config={'responsive': True, 'displaylogo': False}
+                full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False}
             )
 
         with _CACHE_LOCK:
