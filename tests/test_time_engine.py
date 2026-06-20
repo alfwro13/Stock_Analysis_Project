@@ -11,6 +11,11 @@ from time_engine import (
     is_market_open,
     is_trading_session,
     reset_cron_trigger_params,
+    exchange_tz,
+    to_local,
+    fmt_time,
+    fmt_datetime,
+    fmt_reset_time,
     EXCHANGE_HOURS,
     _load_exchange_registry,
     reload_exchange_registry,
@@ -286,3 +291,116 @@ class TestIsTradingSession:
 
     def test_returns_bool(self):
         assert isinstance(is_trading_session("NYSE"), bool)
+
+
+# ---------------------------------------------------------------------------
+# exchange_tz
+# ---------------------------------------------------------------------------
+
+class TestExchangeTz:
+    def test_nyse_returns_america_new_york(self):
+        assert exchange_tz("NYSE") == "America/New_York"
+
+    def test_lse_returns_europe_london(self):
+        assert exchange_tz("LSE") == "Europe/London"
+
+    def test_xetra_returns_europe_berlin(self):
+        assert exchange_tz("XETRA") == "Europe/Berlin"
+
+    def test_tse_returns_asia_tokyo(self):
+        assert exchange_tz("TSE") == "Asia/Tokyo"
+
+    def test_unknown_exchange_falls_back_to_nyse_tz(self):
+        # Unrecognised exchange → fallback is NYSE
+        assert exchange_tz("BOGUS") == "America/New_York"
+
+
+# ---------------------------------------------------------------------------
+# to_local / fmt_time / fmt_datetime
+# ---------------------------------------------------------------------------
+
+_UTC_NOON = datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc)  # 12:00 UTC, winter
+
+
+class TestToLocal:
+    def test_aware_utc_converted_to_user_tz(self):
+        _UTC_CONFIG = {"USER_TIMEZONE": "Europe/London"}
+        with patch("time_engine._load_config", return_value=_UTC_CONFIG):
+            local = to_local(_UTC_NOON)
+        # Europe/London in January is UTC+0, so hour should be 12
+        assert local.hour == 12
+        assert local.tzinfo is not None
+
+    def test_naive_datetime_treated_as_utc(self):
+        naive = datetime(2026, 1, 15, 12, 0, 0)
+        _UTC_CONFIG = {"USER_TIMEZONE": "America/New_York"}
+        with patch("time_engine._load_config", return_value=_UTC_CONFIG):
+            local = to_local(naive)
+        # EST is UTC-5; noon UTC → 07:00 EST in January
+        assert local.hour == 7
+
+    def test_returns_aware_datetime(self):
+        _UTC_CONFIG = {"USER_TIMEZONE": "Europe/London"}
+        with patch("time_engine._load_config", return_value=_UTC_CONFIG):
+            local = to_local(_UTC_NOON)
+        assert local.tzinfo is not None
+
+
+class TestFmtTime:
+    def test_returns_string_with_time_and_tz_abbreviation(self):
+        _UTC_CONFIG = {"USER_TIMEZONE": "Europe/London"}
+        with patch("time_engine._load_config", return_value=_UTC_CONFIG):
+            result = fmt_time(_UTC_NOON)
+        # Should look like "12:00 GMT" in January
+        assert ":" in result
+        assert len(result) > 4
+
+    def test_format_pattern_hhmm_tz(self):
+        _UTC_CONFIG = {"USER_TIMEZONE": "Europe/London"}
+        with patch("time_engine._load_config", return_value=_UTC_CONFIG):
+            result = fmt_time(_UTC_NOON)
+        parts = result.split(" ")
+        assert len(parts) == 2
+        assert ":" in parts[0]
+
+
+class TestFmtDatetime:
+    def test_includes_date_time_and_tz(self):
+        _UTC_CONFIG = {"USER_TIMEZONE": "Europe/London"}
+        with patch("time_engine._load_config", return_value=_UTC_CONFIG):
+            result = fmt_datetime(_UTC_NOON)
+        # Format: "2026-01-15 12:00 GMT"
+        assert result.startswith("2026-01-15")
+        assert "12:00" in result
+
+    def test_returns_string(self):
+        _UTC_CONFIG = {"USER_TIMEZONE": "Europe/London"}
+        with patch("time_engine._load_config", return_value=_UTC_CONFIG):
+            result = fmt_datetime(_UTC_NOON)
+        assert isinstance(result, str)
+
+
+# ---------------------------------------------------------------------------
+# fmt_reset_time
+# ---------------------------------------------------------------------------
+
+class TestFmtResetTime:
+    def test_returns_string(self):
+        _UTC_CONFIG = {"USER_TIMEZONE": "Europe/London", "HOME_EXCHANGE": "NYSE"}
+        with patch("time_engine._load_config", return_value=_UTC_CONFIG):
+            result = fmt_reset_time("NYSE")
+        assert isinstance(result, str)
+
+    def test_contains_colon(self):
+        _UTC_CONFIG = {"USER_TIMEZONE": "Europe/London", "HOME_EXCHANGE": "NYSE"}
+        with patch("time_engine._load_config", return_value=_UTC_CONFIG):
+            result = fmt_reset_time("NYSE")
+        assert ":" in result
+
+    def test_lse_reset_is_after_close(self):
+        # LSE closes at 16:30; reset fires at 16:35 Europe/London
+        # In UTC+0 (winter) this should be "16:35 GMT"
+        _UTC_CONFIG = {"USER_TIMEZONE": "Europe/London", "HOME_EXCHANGE": "LSE"}
+        with patch("time_engine._load_config", return_value=_UTC_CONFIG):
+            result = fmt_reset_time("LSE")
+        assert "16:35" in result
