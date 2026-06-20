@@ -184,6 +184,24 @@ Schema changes must go through `database.py:init_db()`.
     - Bump `CSS_VERSION` in `constants.py` whenever `styles.css` changes.
     - Canonical reference implementation: `templates/watchlist.html` + `static/js/watchlist.js`.
 
+11. **AI manageability & central-engine compliance.** This codebase is edited collaboratively with AI coding agents whose context windows are finite. Keep files at a size where a single Read can capture the relevant section without loading the whole module into context.
+
+    **File growth:** There are no hard line-count limits, but when a Python module or HTML template has grown to the point where an agent must read it in multiple passes to understand a single feature, that is the signal to split. Prefer extracting large, self-contained functions or related groups of functions into a new module rather than growing the existing one. For HTML templates, follow the same pattern already used for `templates/settings/` — extract card groups into `_partial.html` files and `{% include %}` them. Do not create a new file unless the existing file is genuinely unwieldy; three or four files of moderate size are better than one that requires multiple reads and one that is near-empty.
+
+    **Central engines — never bypass:**
+
+    | Concern | Canonical engine | What a bypass looks like |
+    |---|---|---|
+    | Time / timezone | `time_engine.py` | `datetime.now()` without `timezone.utc`; `date.today()`; hardcoded `"Europe/London"` / `"America/New_York"` / `"UTC"` outside `time_engine.py`; `ZoneInfo(…)` or `pytz` imports in any other module |
+    | Yahoo Finance | `yahoo_engine.py` | `yf.Ticker(…)` / `yf.download(…)` in any module other than `yahoo_engine.py` |
+    | Scheduled jobs | `scheduler_engine.py` | APScheduler imported anywhere else; any external `cron` or `systemd timer` |
+    | Notifications | `notification_engine.notify()` | Direct `nextcloud_talk.send_text_message()` or bare `INSERT INTO system_notifications` in feature engines |
+    | Font sizes (UI text) | CSS custom properties in `:root` | Literal `font-size: 14px` / `font-size: 1rem` on UI-text elements in `styles.css` — use a `var(--font-size-*)` property instead |
+
+    **Bootstrap 5 / front-end vendoring:** Every full HTML page must `{% extends "base.html" %}`. No page may load Bootstrap, jQuery, DataTables, or Plotly via a CDN `<script>` or `<link>` tag — all front-end libraries are vendored under `static/vendor/` and served locally. Verify with: `grep -r "cdn\." templates/ --include="*.html"`.
+
+    **Before touching a large file:** read only the section you need (use `offset` and `limit` on the Read tool, or a targeted `grep`). If a file is so large that understanding one feature requires reading more than ~400 lines, flag it as [NEEDS REVIEW] for splitting rather than loading it wholesale.
+
 ---
 
 ## Running the App
