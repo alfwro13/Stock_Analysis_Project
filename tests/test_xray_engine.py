@@ -1073,3 +1073,97 @@ class TestRecommendationsInReport:
         recs = result["recommendations"]
         for key, items in recs.items():
             assert items == [], f"With empty targets, '{key}' should be an empty list"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 12. _psd_fix_corr — direct unit tests
+# ─────────────────────────────────────────────────────────────────────────────
+
+from xray_engine import _psd_fix_corr, _sanitize_floats
+import numpy as np
+
+
+class TestPsdFixCorr:
+
+    def test_already_psd_matrix_unchanged(self):
+        raw = [[1.0, 0.5], [0.5, 1.0]]
+        result = _psd_fix_corr(raw)
+        arr = np.array(result)
+        assert arr[0, 0] == pytest.approx(1.0)
+        assert arr[1, 1] == pytest.approx(1.0)
+        assert arr[0, 1] == pytest.approx(0.5, abs=1e-6)
+
+    def test_none_values_replaced_with_zero(self):
+        raw = [[1.0, None], [None, 1.0]]
+        result = _psd_fix_corr(raw)
+        arr = np.array(result)
+        assert arr[0, 1] == pytest.approx(0.0)
+        assert arr[1, 0] == pytest.approx(0.0)
+
+    def test_diagonal_forced_to_one(self):
+        raw = [[0.9, 0.3], [0.3, 0.8]]
+        result = _psd_fix_corr(raw)
+        arr = np.array(result)
+        assert arr[0, 0] == pytest.approx(1.0)
+        assert arr[1, 1] == pytest.approx(1.0)
+
+    def test_non_psd_matrix_projected(self):
+        # corr=0.99 between two assets creates a near-singular, easily non-PSD 3×3 matrix
+        # with the off-diagonal at -0.5 between assets 1 and 2
+        raw = [[1.0, 0.9, -0.9], [0.9, 1.0, 0.9], [-0.9, 0.9, 1.0]]
+        result = _psd_fix_corr(raw)
+        arr = np.array(result)
+        eigvals = np.linalg.eigvalsh(arr)
+        assert float(eigvals.min()) >= -1e-6, "Result must be PSD"
+        assert arr[0, 0] == pytest.approx(1.0)
+
+    def test_single_element_matrix(self):
+        result = _psd_fix_corr([[1.0]])
+        assert result == [[pytest.approx(1.0)]]
+
+    def test_nan_values_replaced_with_zero(self):
+        raw = [[1.0, float("nan")], [float("nan"), 1.0]]
+        result = _psd_fix_corr(raw)
+        arr = np.array(result)
+        assert np.isfinite(arr).all()
+        assert arr[0, 1] == pytest.approx(0.0)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 13. _sanitize_floats — direct unit tests
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestSanitizeFloats:
+
+    def test_nan_replaced_with_none(self):
+        assert _sanitize_floats(float("nan")) is None
+
+    def test_inf_replaced_with_none(self):
+        assert _sanitize_floats(float("inf")) is None
+
+    def test_negative_inf_replaced_with_none(self):
+        assert _sanitize_floats(float("-inf")) is None
+
+    def test_finite_float_unchanged(self):
+        assert _sanitize_floats(3.14) == pytest.approx(3.14)
+
+    def test_dict_values_sanitized(self):
+        result = _sanitize_floats({"a": float("nan"), "b": 1.5})
+        assert result["a"] is None
+        assert result["b"] == pytest.approx(1.5)
+
+    def test_list_values_sanitized(self):
+        result = _sanitize_floats([float("nan"), 2.0, float("inf")])
+        assert result[0] is None
+        assert result[1] == pytest.approx(2.0)
+        assert result[2] is None
+
+    def test_nested_structure_sanitized(self):
+        result = _sanitize_floats({"a": [float("nan"), {"b": float("inf")}]})
+        assert result["a"][0] is None
+        assert result["a"][1]["b"] is None
+
+    def test_non_float_passthrough(self):
+        assert _sanitize_floats("string") == "string"
+        assert _sanitize_floats(42) == 42
+        assert _sanitize_floats(None) is None

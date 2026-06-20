@@ -466,7 +466,7 @@ class XRayRiskComputer:
 
 def cache_xray_dividends(holdings: List[Dict], client: GhostfolioXRayClient) -> None:
     # One HTTP call per holding — must only be called from the scheduler job, never on page load.
-    today = datetime.date.today().isoformat()
+    today = datetime.datetime.now(datetime.timezone.utc).date().isoformat()
     conn = None
     try:
         conn = get_connection()
@@ -580,12 +580,8 @@ def _rec_item(
         status = "exceeds"
         msg = f"The {category} contribution of your current investment ({pct_str}) exceeds {max_val}{unit}"
     elif min_val is not None and current < min_val:
-        if max_val is not None:
-            status = "below"
-            msg = f"The {category} contribution of your current investment ({pct_str}) is below {min_val}{unit}"
-        else:
-            status = "below"
-            msg = f"The {category} contribution of your current investment ({pct_str}) is below {min_val}{unit}"
+        status = "below"
+        msg = f"The {category} contribution of your current investment ({pct_str}) is below {min_val}{unit}"
     elif min_val is not None and max_val is not None:
         status = "within"
         msg = (
@@ -760,16 +756,7 @@ def _generate_xray_recommendations(
 
 
 def _psd_fix_corr(raw: List) -> List[List[float]]:
-    """
-    Convert a stored correlation matrix (which may contain JSON null → None values
-    from pairwise gaps) to a valid positive-semidefinite float matrix.
-
-    Strategy:
-    1. Replace None / NaN with 0.0 (uncorrelated assumption for missing pairs).
-    2. Ensure diagonal is exactly 1.0.
-    3. If min eigenvalue < 0, clip it to 1e-8 and rebuild (Higham nearest-PSD).
-    4. Re-normalise to a proper correlation matrix (diagonal = 1.0).
-    """
+    """Sanitise a stored correlation matrix: null→0.0, diagonal→1.0, clip negative eigenvalues to 1e-8 (Higham nearest-PSD), re-normalise."""
     n = len(raw)
     arr = np.zeros((n, n), dtype=float)
     for i, row in enumerate(raw):
@@ -1115,7 +1102,7 @@ def assemble_xray_report(account_id: str) -> Dict:
     elif cache_date:
         try:
             days_old = (
-                datetime.date.today() - datetime.date.fromisoformat(cache_date)
+                datetime.datetime.now(datetime.timezone.utc).date() - datetime.date.fromisoformat(cache_date)
             ).days
             if days_old > 3:
                 data_warnings.append(
