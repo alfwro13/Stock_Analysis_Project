@@ -442,8 +442,8 @@ class AIPromptEngine:
             last_updated = r.get('last_updated', '')
             staleness_note = ""
             try:
-                lu_dt = datetime.strptime(last_updated[:19], "%Y-%m-%d %H:%M:%S")
-                age_days = (datetime.now(timezone.utc).replace(tzinfo=None) - lu_dt).days
+                lu_dt = datetime.strptime(last_updated[:19], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+                age_days = (datetime.now(timezone.utc) - lu_dt).days
                 if age_days > 7:
                     staleness_note = f"\n[WARNING: This data is {age_days} days old — treat as stale.]"
             except (ValueError, TypeError):
