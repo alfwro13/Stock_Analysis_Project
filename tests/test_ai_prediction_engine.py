@@ -246,7 +246,6 @@ def _run_backfill_mocked(tickers):
     with (
         patch("ai_prediction_engine.sync_ticker_metadata"),
         patch("ai_prediction_engine._download_spy_benchmark", return_value=None),
-        patch("ai_prediction_engine._migrate_quant_signals_schema"),
         patch("ai_prediction_engine.yahoo_engine") as mock_ye,
         patch("ai_prediction_engine.time"),
     ):
