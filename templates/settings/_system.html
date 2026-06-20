@@ -187,10 +187,10 @@
                 <button type="button" class="btn btn-primary flex-1" onclick="showTerminateConfirm()">🛑 Terminate Jobs</button>
             </div>
             <div id="manual-actions-status" class="mt-15"></div>
-            <div id="terminate-confirm-panel" class="d-none mt-15" style="background:#1a1a1a; border:1px solid #ff4d4d; border-radius:6px; padding:15px;">
-                <p style="color:#ff8080; font-weight:bold; margin:0 0 8px;">⚠️ Warning: terminated jobs will NOT resume automatically.</p>
-                <p class="settings-desc" style="margin:0 0 12px;">The following jobs are currently running and will be forcibly cleared from the active-jobs registry. Any in-progress work (e.g. a partial data scan) will be abandoned mid-run.</p>
-                <ul id="terminate-job-list" class="mt-5 mb-10" style="color:#e0e0e0; padding-left:20px;"></ul>
+            <div id="terminate-confirm-panel" class="d-none mt-15 terminate-confirm-panel">
+                <p class="terminate-confirm-warning">⚠️ Warning: terminated jobs will NOT resume automatically.</p>
+                <p class="settings-desc terminate-confirm-desc">The following jobs are currently running and will be forcibly cleared from the active-jobs registry. Any in-progress work (e.g. a partial data scan) will be abandoned mid-run.</p>
+                <ul id="terminate-job-list" class="mt-5 mb-10 terminate-job-list"></ul>
                 <div class="flex-gap-15">
                     <button type="button" class="btn btn-primary flex-1" onclick="confirmTerminate()">Confirm — Terminate All Listed Jobs</button>
                     <button type="button" class="btn btn-primary flex-1" onclick="cancelTerminate()">Cancel</button>
@@ -545,8 +545,8 @@
 
                 <button type="button" class="btn btn-primary mt-0" onclick="toggleAddEtfForm()">+ Add New Predictor</button>
 
-                <div id="add-etf-form" style="display:none;margin-top:16px;background:#111;padding:16px;border-radius:6px;">
-                    <h5 style="color:#b366ff;margin:0 0 12px;">New ETF Predictor</h5>
+                <div id="add-etf-form" class="d-none etf-add-form">
+                    <h5 class="etf-add-form-title">New ETF Predictor</h5>
                     <div class="flex-gap-15">
                         <div class="form-group flex-1 mb-0">
                             <label>Name</label>
@@ -554,29 +554,29 @@
                         </div>
                         <div class="form-group flex-1 mb-0">
                             <label>ETF Ticker</label>
-                            <input type="text" id="etf-new-ticker" class="form-control" placeholder="e.g. VUSA.L" style="text-transform:uppercase;">
+                            <input type="text" id="etf-new-ticker" class="form-control input-uppercase" placeholder="e.g. VUSA.L">
                         </div>
                     </div>
-                    <div style="margin-top:14px;background:#1a1a1a;padding:12px;border-radius:5px;border:1px solid #2a2a2a;">
-                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-                            <span style="color:#aaa;font-size:12px;font-weight:600;">IMPORT FROM JSON</span>
-                            <button type="button" class="btn btn-primary mt-0" style="font-size:11px;padding:3px 10px;" onclick="toggleEtfJsonImport('new')">Toggle</button>
+                    <div class="etf-import-panel">
+                        <div class="etf-import-header">
+                            <span class="etf-import-label">IMPORT FROM JSON</span>
+                            <button type="button" class="btn btn-primary mt-0 btn-xs" onclick="toggleEtfJsonImport('new')">Toggle</button>
                         </div>
-                        <div id="etf-json-import-new" style="display:none;">
-                            <p style="color:#888;font-size:12px;margin:0 0 6px;">Paste an array of <code>{"ticker","weight"}</code> objects or a simple <code>{"TICKER":weight}</code> map, then click Import.</p>
-                            <textarea id="etf-json-new" rows="4" placeholder='[{"ticker":"AAPL","weight":7.5},{"ticker":"MSFT","weight":6.8}]' style="width:100%;font-size:12px;font-family:monospace;background:#111;color:#ccc;border:1px solid #333;border-radius:4px;padding:8px;box-sizing:border-box;resize:vertical;"></textarea>
+                        <div id="etf-json-import-new" class="d-none">
+                            <p class="etf-import-hint">Paste an array of <code>{"ticker","weight"}</code> objects or a simple <code>{"TICKER":weight}</code> map, then click Import.</p>
+                            <textarea id="etf-json-new" rows="4" placeholder='[{"ticker":"AAPL","weight":7.5},{"ticker":"MSFT","weight":6.8}]' class="etf-import-textarea"></textarea>
                             <div class="flex-gap-15 mt-8">
-                                <button type="button" class="btn btn-primary mt-0" style="font-size:12px;" onclick="importEtfJson('etf-new-constituents','etf-json-new','etf-add-status')">Import JSON</button>
+                                <button type="button" class="btn btn-primary mt-0 btn-xs" onclick="importEtfJson('etf-new-constituents','etf-json-new','etf-add-status')">Import JSON</button>
                             </div>
                         </div>
                     </div>
-                    <div style="margin-top:12px;">
-                        <label style="color:#aaa;font-size:13px;display:block;margin-bottom:6px;">Constituents (ticker + weight %)</label>
+                    <div class="etf-constituents-section">
+                        <label class="etf-section-label">Constituents (ticker + weight %)</label>
                         <div id="etf-new-constituents">
                             <div class="etf-constituent-row flex-gap-15 mb-10">
-                                <input type="text" class="etf-c-ticker form-control" placeholder="Ticker" style="flex:1;text-transform:uppercase;">
-                                <input type="number" class="etf-c-weight form-control" placeholder="Weight %" step="0.01" min="0" style="width:100px;">
-                                <button type="button" class="btn btn-primary" style="padding:6px 10px;" onclick="removeConstituentRow(this)">×</button>
+                                <input type="text" class="etf-c-ticker form-control input-uppercase" placeholder="Ticker">
+                                <input type="number" class="etf-c-weight form-control" placeholder="Weight %" step="0.01" min="0">
+                                <button type="button" class="btn btn-primary btn-row-remove" onclick="removeConstituentRow(this)">×</button>
                             </div>
                         </div>
                         <div class="flex-gap-15 mt-10">
@@ -585,7 +585,7 @@
                             <button type="button" class="btn btn-primary mt-0" onclick="checkEtfConfig('etf-new-ticker','etf-new-constituents','etf-add-status')">&#10003; Check Config</button>
                         </div>
                     </div>
-                    <div style="margin-top:12px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
+                    <div class="etf-grid-3col">
                         <div class="form-group mb-0">
                             <label>Pre-run time (<span class="etf-tz-label"></span>)</label>
                             <input type="time" id="etf-new-pre-time" class="form-control" value="13:30">
@@ -594,20 +594,20 @@
                             <label>Post-run time (<span class="etf-tz-label"></span>)</label>
                             <input type="time" id="etf-new-post-time" class="form-control" value="22:00">
                         </div>
-                        <div class="form-group mb-0" style="justify-content:flex-end;padding-bottom:2px;">
+                        <div class="form-group mb-0 etf-form-group-end">
                             <label>&nbsp;</label>
                             <div class="checkbox-group mb-0">
                                 <input type="checkbox" id="etf-new-auto-schedule">
-                                <label for="etf-new-auto-schedule" style="font-size:13px;">Auto-schedule</label>
+                                <label for="etf-new-auto-schedule" class="etf-checkbox-label">Auto-schedule</label>
                             </div>
                             <div class="checkbox-group mb-0">
                                 <input type="checkbox" id="etf-new-enabled" checked>
-                                <label for="etf-new-enabled" style="font-size:13px;">Enabled</label>
+                                <label for="etf-new-enabled" class="etf-checkbox-label">Enabled</label>
                             </div>
                         </div>
                     </div>
                     <div class="flex-gap-15 mt-15">
-                        <button type="button" class="btn btn-primary flex-1" style="max-width:160px;" onclick="saveNewEtfPredictor()">Save</button>
+                        <button type="button" class="btn btn-primary flex-1 btn-save-predictor" onclick="saveNewEtfPredictor()">Save</button>
                         <button type="button" class="btn btn-primary mt-0" onclick="toggleAddEtfForm()">Cancel</button>
                     </div>
                     <div id="etf-add-status" class="status-msg-sm mt-10"></div>

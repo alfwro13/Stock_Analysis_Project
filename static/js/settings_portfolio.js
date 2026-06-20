@@ -60,7 +60,7 @@ function _etfEditFormHtml(cfg) {
                 <span style="color:#aaa;font-size:12px;font-weight:600;">IMPORT FROM JSON</span>
                 <button type="button" class="btn-test mt-0" style="font-size:11px;padding:3px 10px;background:#333;" onclick="toggleEtfJsonImport('edit-${cfg.id}')">Toggle</button>
             </div>
-            <div id="etf-json-import-edit-${cfg.id}" style="display:none;">
+            <div id="etf-json-import-edit-${cfg.id}" class="d-none">
                 <p style="color:#888;font-size:12px;margin:0 0 6px;">Paste array or map, then click Import to overwrite constituent rows.</p>
                 <textarea id="etf-json-edit-${cfg.id}" rows="3" placeholder='[{"ticker":"AAPL","weight":7.5}]' style="width:100%;font-size:12px;font-family:monospace;background:#111;color:#ccc;border:1px solid #333;border-radius:4px;padding:8px;box-sizing:border-box;resize:vertical;"></textarea>
                 <button type="button" class="btn-test mt-8" style="font-size:12px;" onclick="importEtfJson('etf-edit-constituents-${cfg.id}','etf-json-edit-${cfg.id}','etf-edit-status-${cfg.id}')">Import JSON</button>
@@ -153,8 +153,7 @@ async function loadEtfPredictors() {
 }
 
 function toggleAddEtfForm() {
-    const f = document.getElementById('add-etf-form');
-    f.style.display = f.style.display === 'none' ? 'block' : 'none';
+    document.getElementById('add-etf-form').classList.toggle('d-none');
 }
 
 function toggleEtfEditForm(id) {
@@ -165,7 +164,7 @@ function toggleEtfEditForm(id) {
 
 function toggleEtfJsonImport(suffix) {
     const el = document.getElementById(`etf-json-import-${suffix}`);
-    if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+    if (el) el.classList.toggle('d-none');
 }
 
 function importEtfJson(containerId, textareaId, statusId) {
@@ -280,7 +279,7 @@ async function saveNewEtfPredictor() {
         const data = await r.json();
         if (data.status === 'success') {
             status.innerHTML = '<span class="msg-success">Predictor created.</span>';
-            document.getElementById('add-etf-form').style.display = 'none';
+            document.getElementById('add-etf-form').classList.add('d-none');
             loadEtfPredictors();
         } else {
             status.innerHTML = `<span class="msg-error">${data.message || 'Failed'}</span>`;

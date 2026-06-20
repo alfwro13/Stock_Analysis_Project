@@ -542,6 +542,12 @@ table.dataTable tbody tr td { color: #ccc; }
 .no-decoration-abbr { text-decoration: none; }
 .help-abbr { text-decoration: underline dotted; cursor: default; }
 .max-w-150 { max-width: 150px; }
+.max-w-200 { max-width: 200px; }
+.min-w-130 { min-width: 130px; }
+.min-w-140 { min-width: 140px; }
+.min-w-150 { min-width: 150px; }
+.xray-label-col-110 { min-width: 110px; flex: 0 0 110px; }
+.xray-label-col-120 { min-width: 120px; flex: 0 0 120px; }
 .num-cell { font-size: var(--font-size-dt-table); }
 .text-danger { color: #ff4d4d; }
 .text-success { color: #00ff00; }
@@ -1397,6 +1403,32 @@ details[open] > .trap-accuracy-summary::before { transform: rotate(90deg); }
 
 .btn-name-edit { background: none; border: none; cursor: pointer; color: var(--bs-secondary); font-size: 0.7em; padding: 0 0.25rem; vertical-align: middle; opacity: 0.5; line-height: 1; }
 .btn-name-edit:hover { opacity: 1; color: var(--bs-primary); }
+
+/* === Terminate-jobs confirm panel === */
+.terminate-confirm-panel  { background: #1a1a1a; border: 1px solid #ff4d4d; border-radius: 6px; padding: 15px; }
+.terminate-confirm-warning { color: #ff8080; font-weight: bold; margin: 0 0 8px; }
+.terminate-confirm-desc   { margin: 0 0 12px; }
+.terminate-job-list       { color: #e0e0e0; padding-left: 20px; }
+
+/* === ETF predictor add form === */
+.etf-add-form        { margin-top: 16px; background: #111; padding: 16px; border-radius: 6px; }
+.etf-add-form-title  { color: #b366ff; margin: 0 0 12px; }
+.input-uppercase     { text-transform: uppercase; }
+.etf-import-panel    { margin-top: 14px; background: #1a1a1a; padding: 12px; border-radius: 5px; border: 1px solid #2a2a2a; }
+.etf-import-header   { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.etf-import-label    { color: #aaa; font-size: var(--font-size-dt-table); font-weight: 600; }
+.btn-xs              { font-size: var(--font-size-dt-table); padding: 3px 10px; }
+.etf-import-hint     { color: #888; font-size: var(--font-size-dt-table); margin: 0 0 6px; }
+.etf-import-textarea { width: 100%; font-size: var(--font-size-dt-table); font-family: monospace; background: #111; color: #ccc; border: 1px solid #333; border-radius: 4px; padding: 8px; box-sizing: border-box; resize: vertical; }
+.etf-constituents-section { margin-top: 12px; }
+.etf-section-label   { color: #aaa; font-size: var(--font-size-dt-table); display: block; margin-bottom: 6px; }
+.etf-c-ticker        { flex: 1; }
+.etf-c-weight        { width: 100px; }
+.btn-row-remove      { padding: 6px 10px; }
+.etf-grid-3col       { margin-top: 12px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+.etf-form-group-end  { justify-content: flex-end; padding-bottom: 2px; }
+.etf-checkbox-label  { font-size: var(--font-size-dt-table); }
+.btn-save-predictor  { max-width: 160px; }
 .name-edit-form { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; flex-wrap: wrap; }
 .name-edit-input { max-width: 320px; }
 .name-override-badge { font-size: 0.55em; color: var(--bs-warning); vertical-align: super; }
