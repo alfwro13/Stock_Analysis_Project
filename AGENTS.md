@@ -82,7 +82,9 @@ Stock_Analysis_Project/
 ├── freetrade_engine.py       # Freetrade CSV import
 ├── ghostfolio_sync.py        # Ghostfolio API sync
 ├── fundamentals_helpers.py   # Shared fundamentals utilities
-├── visuals.py                # Matplotlib / Plotly chart generation
+├── visuals.py                # OHLCV, macro, and anomaly Plotly charts
+├── visuals_etf.py            # ETF charts: correlation, prediction, contributions, overlay
+├── visuals_ai.py             # AI contagion charts: performance chart, correlation heatmap
 ├── maintenance_engine.py     # DB vacuum, orphan file pruning
 ├── reports_engine.py         # Quant briefing report generation
 ├── morning_briefing.py       # Morning briefing assembly + dispatch
