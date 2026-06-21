@@ -28,7 +28,9 @@ Stock_Analysis_Project/
 ├── api_routes_system.py      # Settings Pydantic models + settings save, system ops, notifications, workflow monitor
 ├── api_routes_analysis.py    # Analysis signal endpoints (contagion, trap, bubble, forensic, regime, stress, ETF predictor, AI prompts)
 ├── api_deps.py               # Shared FastAPI dependencies for all api_routes* files: limiter (slowapi), require_confirm_token, _error_500
-├── page_routes.py            # All HTML page routes
+├── page_routes.py            # HTML page route handlers (thin shell — includes page_router_macro)
+├── page_routes_macro.py      # /market-sentiment and /index/{ticker} routes + supporting data (INDEX_PARQUET_MAP, EVENT_GLOSSARY, enrich_macro_events, _parse_cb_nlp_message)
+├── page_helpers.py           # Shared page-layer helpers: get_unread_count, _fmt_currency, _fmt_volume, _load_fundamentals_extra, _utc_str_to_local, _build_position_sizing_context, calculate_pnl
 ├── database.py               # init_db(), schema migrations, SQLite helpers
 ├── config.py / config.json   # Runtime configuration
 ├── constants.py              # Global constants

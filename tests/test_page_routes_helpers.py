@@ -13,14 +13,9 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from page_routes import (
-    enrich_macro_events,
-    _build_rss_base_url,
-    _parse_cb_nlp_message,
-    _fmt_currency,
-    _fmt_volume,
-    _utc_str_to_local,
-)
+from page_routes import _build_rss_base_url
+from page_routes_macro import enrich_macro_events, _parse_cb_nlp_message
+from page_helpers import _fmt_currency, _fmt_volume, _utc_str_to_local, calculate_pnl, _build_position_sizing_context
 
 
 # ---------------------------------------------------------------------------
@@ -290,6 +285,104 @@ class TestUtcStrToLocal:
 
     def test_empty_string_returned_unchanged(self):
         assert _utc_str_to_local("") == ""
+
+
+# ---------------------------------------------------------------------------
+# calculate_pnl
+# ---------------------------------------------------------------------------
+
+class TestCalculatePnl:
+    def test_zero_shares_returns_none(self):
+        assert calculate_pnl(0, 10.0, 1.0, 100.0) is None
+
+    def test_negative_shares_returns_none(self):
+        assert calculate_pnl(-5, 10.0, 1.0, 100.0) is None
+
+    def test_basic_profit(self):
+        # 10 shares, buy at £10, current at £12, no FX, no pence conversion
+        result = calculate_pnl(10, 10.0, 1.0, 12.0)
+        assert result is not None
+        assert result["pnl"] == pytest.approx(20.0)
+        assert result["pnl_pct"] == pytest.approx(20.0)
+
+    def test_basic_loss(self):
+        result = calculate_pnl(10, 10.0, 1.0, 8.0)
+        assert result["pnl"] == pytest.approx(-20.0)
+        assert result["pnl_pct"] == pytest.approx(-20.0)
+
+    def test_fx_exchange_rate_applied_to_buy_price(self):
+        # buy_price_base=10 in USD, exchange_rate=0.8 → bp_adj=8 GBP
+        result = calculate_pnl(1, 10.0, 0.8, 9.0)
+        assert result["buy_price"] == pytest.approx(8.0)
+        assert result["pnl"] == pytest.approx(1.0)
+
+    def test_price_in_pence_converts_buy_price_to_pence(self):
+        # buy_price_base=10 GBP, exchange_rate=1.0, current_price=1050p
+        # bp_adj becomes 1000p; pnl = 1*(1050-1000) = 50p
+        result = calculate_pnl(1, 10.0, 1.0, 1050.0, price_in_pence=True)
+        assert result["buy_price"] == pytest.approx(1000.0)
+        assert result["pnl"] == pytest.approx(50.0)
+        assert result["pnl_pct"] == pytest.approx(5.0)
+
+    def test_zero_cost_basis_pnl_pct_is_zero(self):
+        result = calculate_pnl(1, 0.0, 1.0, 100.0)
+        assert result["pnl_pct"] == 0
+
+    def test_result_keys_present(self):
+        result = calculate_pnl(5, 10.0, 1.0, 15.0)
+        assert set(result.keys()) == {"shares", "buy_price", "current_value", "pnl", "pnl_pct"}
+
+    def test_shares_rounded_to_4dp(self):
+        result = calculate_pnl(1.23456789, 10.0, 1.0, 10.0)
+        assert result["shares"] == 1.2346
+
+
+# ---------------------------------------------------------------------------
+# _build_position_sizing_context
+# ---------------------------------------------------------------------------
+
+class TestBuildPositionSizingContext:
+    def _make_row(self, currency):
+        """Return a dict-like object that behaves like an sqlite3.Row."""
+        class _Row(dict):
+            def keys(self):
+                return super().keys()
+        return _Row({"currency": currency})
+
+    def test_returns_required_keys(self):
+        with patch("page_helpers.get_position_sizing_config", return_value={}), \
+             patch("page_helpers.get_rate_to_base", return_value=1.25):
+            result = _build_position_sizing_context({"BASE_CURRENCY": "GBP"}, [])
+        assert set(result.keys()) == {"config", "fx_rates", "base_currency"}
+
+    def test_base_currency_always_has_rate_1(self):
+        with patch("page_helpers.get_position_sizing_config", return_value={}), \
+             patch("page_helpers.get_rate_to_base", return_value=1.25):
+            result = _build_position_sizing_context({"BASE_CURRENCY": "GBP"}, [])
+        assert result["fx_rates"]["GBP"] == 1.0
+
+    def test_foreign_currency_from_rows_included(self):
+        rows = [self._make_row("USD")]
+        with patch("page_helpers.get_position_sizing_config", return_value={}), \
+             patch("page_helpers.get_rate_to_base", return_value=0.79):
+            result = _build_position_sizing_context({"BASE_CURRENCY": "GBP"}, rows)
+        assert "USD" in result["fx_rates"]
+        assert result["fx_rates"]["USD"] == pytest.approx(0.79)
+
+    def test_failed_fx_lookup_does_not_raise(self):
+        rows = [self._make_row("EUR")]
+        with patch("page_helpers.get_position_sizing_config", return_value={}), \
+             patch("page_helpers.get_rate_to_base", side_effect=Exception("network")):
+            result = _build_position_sizing_context({"BASE_CURRENCY": "GBP"}, rows)
+        assert result["fx_rates"]["GBP"] == 1.0
+        assert "EUR" not in result["fx_rates"]
+
+    def test_none_rate_excluded(self):
+        rows = [self._make_row("JPY")]
+        with patch("page_helpers.get_position_sizing_config", return_value={}), \
+             patch("page_helpers.get_rate_to_base", return_value=None):
+            result = _build_position_sizing_context({"BASE_CURRENCY": "GBP"}, rows)
+        assert "JPY" not in result["fx_rates"]
 
 
 if __name__ == "__main__":

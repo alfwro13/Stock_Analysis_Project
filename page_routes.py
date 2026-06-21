@@ -19,19 +19,9 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
-from position_sizing import get_position_sizing_config
-
-from config import load_config, PORTFOLIO_PATH, WATCHLIST_PATH, HISTORICAL_DIR, INTRADAY_DIR, FUNDAMENTALS_DIR, BASE_CURRENCY
+from config import load_config, PORTFOLIO_PATH, WATCHLIST_PATH, HISTORICAL_DIR, INTRADAY_DIR, BASE_CURRENCY
 import time_engine
 from database import get_connection
-from regime_engine import get_latest_regime
-from sentiment_engine import (
-    get_sentiment_html,
-    get_vix_spy_html,
-    get_yield_equity_html,
-    get_uk_yield_equity_html,
-    get_ftse_gbp_html
-)
 from market_pulse import get_all_cached_pulse, INDEX_TICKERS
 from utils import normalize_ticker
 from visuals import (
@@ -39,13 +29,6 @@ from visuals import (
     create_intraday_chart,
     _intraday_market_tz,
     _EXCHANGE_DELAYS,
-    create_us_liquidity_chart,
-    create_us_credit_chart,
-    create_uk_liquidity_chart,
-    create_uk_credit_chart,
-    create_yield_curve_chart,
-    create_us_inflation_chart,
-    create_uk_inflation_chart,
     create_anomaly_score_chart,
     create_anomaly_feature_radar,
     create_ai_contagion_performance_chart,
@@ -60,6 +43,14 @@ from fx_drag_engine import compute_fx_breakdown, portfolio_fx_breakdown
 from quant_signals import get_candlestick_patterns
 from quant_screener import fetch_latest_signals, generate_markdown_briefing
 from constants import PREDICTION_HORIZON_DAYS, PREDICTION_RETURN_THRESHOLD, CSS_VERSION
+from page_helpers import (
+    _load_fundamentals_extra,
+    _utc_str_to_local,
+    _build_position_sizing_context,
+    get_unread_count,
+    calculate_pnl,
+)
+from page_routes_macro import page_router_macro
 
 page_router = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -106,257 +97,6 @@ def get_json_data(filepath: str) -> Dict[str, Any]:
         return {}
 
 
-def get_unread_count() -> int:
-    conn = None
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) as cnt FROM system_notifications WHERE is_read = 0")
-        return cursor.fetchone()['cnt']
-    except Exception:
-        return 0
-    finally:
-        if conn:
-            conn.close()
-
-def _build_position_sizing_context(config_data: dict, db_rows) -> dict:
-    base_currency = config_data.get("BASE_CURRENCY", "GBP")
-    
-    currencies = set()
-    for row in db_rows:
-        try:
-            cur = row["currency"] if "currency" in row.keys() else None
-        except Exception:
-            cur = None
-        if cur:
-            currencies.add(cur)
-    currencies.add(base_currency)
-    fx_rates = {}
-    for cur in currencies:
-        try:
-            rate = get_rate_to_base(cur)
-            if rate is not None and rate > 0:
-                fx_rates[cur] = float(rate)
-        except Exception:
-            logger.warning("FX rate lookup failed for currency %s", cur, exc_info=True)
-    fx_rates[base_currency] = 1.0
-    
-    return {
-        "config":   get_position_sizing_config(config_data),
-        "fx_rates": fx_rates,
-        "base_currency": base_currency,
-    }
-
-
-INDEX_PARQUET_MAP: Dict[str, str] = {
-    "^GSPC":    "SP500_BASELINE.parquet",
-    "^FTSE":    "FTSE_BASELINE.parquet",
-    "^TNX":     "TNX_BASELINE.parquet",
-    "^TYX":     "TYX_BASELINE.parquet",
-    "DX-Y.NYB": "DXY_BASELINE.parquet",
-    "GBPUSD=X": "GBPUSD_BASELINE.parquet",
-    "UK10YG":   "UK_GILT_BASELINE.parquet",
-}
-
-_INDEX_QUANT_DEFAULTS: Dict[str, Any] = dict.fromkeys([
-    "rsi_14", "macd", "macd_signal", "macd_hist", "sma_50", "sma_200",
-    "mom_1m", "mom_3m", "mom_6m", "mom_12m_skip1m", "hist_vol_20", "atr_pct",
-    "var_95", "cvar_95", "sentiment_score", "volume", "volume_surge",
-    "composite_score", "close_price", "date",
-])
-
-INDEX_CONTEXT_BLURBS: Dict[str, str] = {
-    "^FTSE":    "The FTSE 100 tracks the 100 largest companies on the London Stock Exchange. Heavily weighted to mining, energy, and banks; often moves inversely to GBP strength.",
-    "^FTMC":    "The FTSE 250 tracks mid-cap UK companies (ranks 101–350 on LSE). More domestically driven than the FTSE 100 — a purer barometer of UK economic health.",
-    "GBPUSD=X": "GBP/USD exchange rate. Weakness boosts FTSE 100 exporters' translated earnings; strength signals UK economic confidence and tighter BoE policy expectations.",
-    "BZ=F":     "Brent Crude Oil futures — the global benchmark for oil pricing. Elevated prices raise input costs across the economy and pressure rate-sensitive equities.",
-    "UK10YG":   "The UK 10-Year Gilt Yield reflects sovereign borrowing costs and BoE monetary policy expectations. Rising yields compress equity multiples and increase corporate financing costs.",
-    "^GSPC":    "The S&P 500 tracks 500 large-cap US equities — the primary benchmark for US equity market health and the foundation of most global asset allocation frameworks.",
-    "^NDX":     "The Nasdaq 100 tracks the 100 largest non-financial companies on Nasdaq. Tech-heavy and highly sensitive to real interest rate expectations and liquidity conditions.",
-    "^TYX":     "The US 30-Year Treasury Yield gauges long-term US borrowing costs and inflation expectations. Directly impacts mortgage rates and long-duration equity discount rates.",
-    "^TNX":     "The US 10-Year Treasury Yield is the global risk-free rate benchmark. Rising yields tighten financial conditions, compress equity multiples, and strengthen the US Dollar.",
-    "DX-Y.NYB": "The US Dollar Index (DXY) measures USD strength vs a basket of major currencies. A rising DXY tightens global dollar liquidity and pressures commodities and EM assets.",
-}
-
-# --- COMPREHENSIVE MACRO GLOSSARY & POLARITY MAPPING ---
-EVENT_GLOSSARY = {
-    # --- INFLATION & PRICES (Inverse Polarity) ---
-    r"\bcpi\b": {"desc": "Consumer Price Index. The primary measure of inflation. Higher than expected forces Central Banks to keep rates high (Bearish for equities).", "polarity": "inverse"},
-    r"\bppi\b": {"desc": "Producer Price Index. Measures wholesale inflation before it reaches consumers. A leading indicator for future CPI.", "polarity": "inverse"},
-    r"\brpi\b|retail price index": {"desc": "Retail Price Index. An older UK inflation measure, still used heavily for wage and contract pricing negotiations.", "polarity": "inverse"},
-    r"house price index": {"desc": "Measures housing inflation and consumer wealth effect.", "polarity": "direct"},
-    
-    # --- CENTRAL BANKS & LIQUIDITY (Neutral/Narrative Polarity) ---
-    r"\bfomc\b": {"desc": "Federal Open Market Committee. The Fed's policy body. Their rate decisions and minutes dictate global liquidity.", "polarity": "neutral"},
-    r"\bboe\b": {"desc": "Bank of England. The UK's central bank. Sets base rates impacting GBP and UK equities.", "polarity": "neutral"},
-    r"fed's.*speech|boe's.*speech": {"desc": "Central Bank Speaker. Unscheduled volatility risk. Markets scan these speeches for hawkish or dovish policy hints.", "polarity": "neutral"},
-    r"auction": {"desc": "Sovereign Debt Auction (Bonds/Bills). Weak demand can cause Treasury yields to spike, triggering algorithmic equity sell-offs.", "polarity": "neutral"},
-
-    # --- ECONOMIC GROWTH & ACTIVITY (Direct/Threshold Polarity) ---
-    r"\bpmi\b": {"desc": "Purchasing Managers' Index. A leading indicator of economic health. >50.0 indicates expansion; <50.0 indicates contraction/recession.", "polarity": "threshold"},
-    r"\bgdp\b": {"desc": "Gross Domestic Product. The total value of goods produced. High GDP is bullish, but too hot can trigger inflation fears.", "polarity": "direct"},
-    r"retail sales": {"desc": "Measures consumer spending, which makes up the majority of Western economic growth.", "polarity": "direct"},
-    r"fed manufacturing|empire state|fed activity": {"desc": "Regional Fed Surveys (e.g., Philly, Kansas, NY). Early localized indicators of manufacturing health before national PMI data drops.", "polarity": "direct"},
-
-    # --- LABOR MARKET ---
-    r"non-farm|nfp": {"desc": "Non-Farm Payrolls. US employment data. Strong jobs data can be bearish if it forces the Fed to keep rates high to cool the economy.", "polarity": "direct"},
-    r"claimant count": {"desc": "UK Unemployment. The change in the number of people claiming jobless benefits. A rising number indicates economic weakness.", "polarity": "inverse"},
-    r"jobless claims": {"desc": "US Unemployment filings. Rising claims signal a cooling labor market, which can be perversely bullish if the market expects rate cuts.", "polarity": "inverse"},
-    r"unemployment rate": {"desc": "Percentage of the total labor force that is unemployed. Serves as a primary mandate metric for central bank policy.", "polarity": "inverse"},
-
-    # --- HOUSING & REAL ESTATE (Direct Polarity) ---
-    r"building permits|housing starts": {"desc": "Leading indicators for the construction sector and broader economic health. Highly sensitive to interest rates.", "polarity": "direct"},
-    r"mortgage applications": {"desc": "A direct measure of housing demand. Drops significantly when bond yields/mortgage rates rise.", "polarity": "direct"},
-
-    # --- ENERGY & COMMODITIES (Inverse/Neutral Polarity) ---
-    r"crude oil|natural gas": {"desc": "Energy Inventories (EIA/API). Drops in supply can spike oil prices, driving up inflation and hurting consumer discretionary stocks.", "polarity": "inverse"}
-}
-
-def _fmt_currency(value) -> str | None:
-    if value is None:
-        return None
-    abs_val = abs(value)
-    sign = "-" if value < 0 else ""
-    if abs_val >= 1e12:
-        return f"{sign}${abs_val/1e12:.2f}T"
-    if abs_val >= 1e9:
-        return f"{sign}${abs_val/1e9:.2f}B"
-    if abs_val >= 1e6:
-        return f"{sign}${abs_val/1e6:.1f}M"
-    return f"{sign}${abs_val:,.0f}"
-
-
-def _fmt_volume(value) -> str | None:
-    if value is None:
-        return None
-    if value >= 1e9:
-        return f"{value/1e9:.1f}B"
-    if value >= 1e6:
-        return f"{value/1e6:.1f}M"
-    if value >= 1e3:
-        return f"{value/1e3:.0f}K"
-    return str(int(value))
-
-
-def _load_fundamentals_extra(ticker: str) -> dict:
-    empty: dict = {
-        "market_cap_fmt": None, "trailing_eps": None, "forward_eps": None,
-        "earnings_growth": None, "free_cash_flow_fmt": None, "total_debt_fmt": None,
-        "total_cash_fmt": None, "net_cash_fmt": None, "roa": None, "quick_ratio": None,
-        "insider_ownership": None, "payout_ratio": None, "ex_dividend_date_fmt": None,
-        "average_volume_fmt": None, "full_time_employees_fmt": None, "website": None,
-    }
-    path = FUNDAMENTALS_DIR / f"{ticker}.json"
-    if not path.exists():
-        return empty
-    try:
-        with open(path) as f:
-            d = json.load(f)
-
-        ex_div_fmt = None
-        ex_div_ts = d.get("exDividendDate")
-        if ex_div_ts:
-            try:
-                ex_div_fmt = datetime.fromtimestamp(ex_div_ts, tz=timezone.utc).strftime("%Y-%m-%d")
-            except Exception:
-                logger.warning("Could not parse exDividendDate timestamp %s", ex_div_ts)
-
-        total_cash = d.get("totalCash")
-        total_debt = d.get("totalDebt")
-        net_cash = (total_cash - total_debt) if (total_cash is not None and total_debt is not None) else None
-
-        employees = d.get("fullTimeEmployees")
-        return {
-            "market_cap_fmt": _fmt_currency(d.get("marketCap")),
-            "trailing_eps": d.get("trailingEps"),
-            "forward_eps": d.get("forwardEps"),
-            "earnings_growth": d.get("earningsGrowth"),
-            "free_cash_flow_fmt": _fmt_currency(d.get("freeCashflow")),
-            "total_debt_fmt": _fmt_currency(total_debt),
-            "total_cash_fmt": _fmt_currency(total_cash),
-            "net_cash_fmt": _fmt_currency(net_cash),
-            "roa": d.get("returnOnAssets"),
-            "quick_ratio": d.get("quickRatio"),
-            "insider_ownership": d.get("heldPercentInsiders"),
-            "payout_ratio": d.get("payoutRatio"),
-            "ex_dividend_date_fmt": ex_div_fmt,
-            "average_volume_fmt": _fmt_volume(d.get("averageVolume")),
-            "full_time_employees_fmt": f"{employees:,}" if employees else None,
-            "website": d.get("website"),
-        }
-    except Exception:
-        return empty
-
-
-def _utc_str_to_local(s: str) -> str:
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
-        try:
-            dt = datetime.strptime(s, fmt).replace(tzinfo=timezone.utc)
-            return time_engine.fmt_datetime(dt)
-        except ValueError:
-            continue
-    return s
-
-
-def enrich_macro_events(events_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    for evt in events_list:
-        evt_name = evt.get('event_name', '')
-        evt['context'] = None
-        evt['insight'] = ""
-        evt['display_date'] = _utc_str_to_local(evt.get('event_date', ''))
-
-        polarity = "neutral"
-        for pattern, data in EVENT_GLOSSARY.items():
-            if re.search(pattern, evt_name, re.IGNORECASE):
-                evt['context'] = data["desc"]
-                polarity = data["polarity"]
-                break
-        f_val = evt.get('forecast_val')
-        p_val = evt.get('previous_val')
-        
-        if f_val is not None and p_val is not None:
-            try:
-                f_num = float(f_val)
-                p_num = float(p_val)
-                delta = f_num - p_num
-                if polarity == "inverse":
-                    if delta < 0:
-                        evt['insight'] = f"📉 Expected to drop by {delta:+.2f} (Cooling / Dovish)"
-                    elif delta > 0:
-                        evt['insight'] = f"📈 Expected to rise by {delta:+.2f} (Hot / Hawkish)"
-                    else:
-                        evt['insight'] = "⚖️ Expected to remain unchanged"
-                        
-                elif polarity == "direct":
-                    if delta > 0:
-                        evt['insight'] = f"📈 Expected to grow by {delta:+.2f} (Expanding / Bullish)"
-                    elif delta < 0:
-                        evt['insight'] = f"📉 Expected to shrink by {delta:+.2f} (Slowing / Bearish)"
-                    else:
-                        evt['insight'] = "⚖️ Expected to remain unchanged"
-                        
-                elif polarity == "threshold":
-                    status = "Expansion" if f_num > 50.0 else "Contraction"
-                    if delta > 0:
-                        evt['insight'] = f"📈 Expected to rise by {delta:+.2f} (Est: {f_num} - {status})"
-                    elif delta < 0:
-                        evt['insight'] = f"📉 Expected to drop by {delta:+.2f} (Est: {f_num} - {status})"
-                    else:
-                        evt['insight'] = f"⚖️ Expected unchanged (Est: {f_num} - {status})"
-                        
-                else:
-                    if delta != 0:
-                        evt['insight'] = f"Expected change: {delta:+.2f}"
-                    else:
-                        evt['insight'] = "Expected unchanged"
-                        
-            except ValueError:
-                # Fallback if values cannot be cast to floats
-                pass
-                
-    return events_list
-
-
 @page_router.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request):
     from scheduler_engine import scheduler_display_names
@@ -386,206 +126,11 @@ async def settings_page(request: Request):
     )
 
 
-def _parse_cb_nlp_message(msg_text: str, timestamp: str) -> dict | None:
-    try:
-        result: dict = {"timestamp": timestamp}
-        for line in msg_text.split('\n'):
-            if '**Event:**' in line:
-                part = line.split('**Event:** ', 1)[1]
-                result['event_name'] = part.split(' (')[0].strip()
-                result['currency'] = part.split('(')[1].rstrip(')').strip()
-            elif '**Calculated Tone:**' in line:
-                result['tone'] = line.split('**Calculated Tone:** ', 1)[1].strip()
-            elif '**Expected Equity Impact:**' in line:
-                result['equity_impact'] = line.split('**Expected Equity Impact:** ', 1)[1].strip()
-            elif '**Analyzed FinBERT Score:**' in line:
-                result['score'] = line.split('**Analyzed FinBERT Score:** ', 1)[1].strip()
-        if 'tone' not in result:
-            return None
-        tone_upper = result['tone'].upper()
-        if 'HAWKISH' in tone_upper:
-            result['css_class'] = 'risk-summary-red'
-            result['header_class'] = 'red'
-        elif 'DOVISH' in tone_upper:
-            result['css_class'] = 'risk-summary-green'
-            result['header_class'] = 'green'
-        else:
-            result['css_class'] = 'risk-summary-yellow'
-            result['header_class'] = 'yellow'
-        return result
-    except Exception:
-        return None
-
-
-@page_router.get("/market-sentiment", response_class=HTMLResponse)
-async def market_sentiment_page(request: Request):
-    regime_data = get_latest_regime()
-    if not regime_data:
-        regime_data = {
-            "us_regime_label": "Unknown", 
-            "us_turbulence": 0.0,
-            "uk_regime_label": "Unknown", 
-            "uk_turbulence": 0.0
-        }
-        
-    conn = get_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM macro_regimes ORDER BY date DESC LIMIT 1")
-        macro_row = cursor.fetchone()
-        macro_regime = dict(macro_row) if macro_row else None
-        now = datetime.now(timezone.utc)
-        start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        
-        horizon_48h = (now + timedelta(hours=48)).strftime('%Y-%m-%d %H:%M:%S')
-        horizon_7d = (now + timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')
-        now_str = start_of_day.strftime('%Y-%m-%d %H:%M:%S')
-
-        cursor.execute("""
-            SELECT * FROM macro_calendar 
-            WHERE event_date BETWEEN ? AND ? 
-            ORDER BY event_date ASC
-        """, (now_str, horizon_48h))
-        urgent_events = enrich_macro_events([dict(row) for row in cursor.fetchall()])
-
-        cursor.execute("""
-            SELECT * FROM macro_calendar 
-            WHERE currency = 'USD' AND event_date BETWEEN ? AND ? 
-            ORDER BY event_date ASC
-        """, (now_str, horizon_7d))
-        us_events = enrich_macro_events([dict(row) for row in cursor.fetchall()])
-
-        cursor.execute("""
-            SELECT * FROM macro_calendar 
-            WHERE currency = 'GBP' AND event_date BETWEEN ? AND ? 
-            ORDER BY event_date ASC
-        """, (now_str, horizon_7d))
-        uk_events = enrich_macro_events([dict(row) for row in cursor.fetchall()])
-
-        cb_nlp_latest = None
-        cb_row = cursor.execute(
-            "SELECT message_text, timestamp FROM system_notifications "
-            "WHERE message_type = 'Macro NLP' ORDER BY timestamp DESC LIMIT 1"
-        ).fetchone()
-        if cb_row:
-            cb_nlp_latest = _parse_cb_nlp_message(cb_row["message_text"], cb_row["timestamp"])
-
-        ai_contagion_status = []
-        try:
-            rows = cursor.execute(
-                "SELECT scan_ts, leader_count, etf_count, alert_fired, payload_json "
-                "FROM ai_contagion_snapshots ORDER BY scan_ts DESC LIMIT 5"
-            ).fetchall()
-            for r in rows:
-                raw = json.loads(r["payload_json"] or '{"tickers":[],"severity_score":0.0}')
-                if isinstance(raw, list):
-                    tickers, severity_score = raw, 0.0
-                else:
-                    tickers, severity_score = raw.get("tickers", []), raw.get("severity_score", 0.0)
-                ai_contagion_status.append({
-                    "scan_ts": _utc_str_to_local(r["scan_ts"]),
-                    "leader_count": r["leader_count"],
-                    "etf_count": r["etf_count"],
-                    "alert_fired": bool(r["alert_fired"]),
-                    "tickers": tickers,
-                    "severity_score": severity_score,
-                })
-        except Exception:
-            pass  # table absent on first boot — silently ignore
-
-        try:
-            df_indicators = pd.read_sql_query("SELECT * FROM macro_indicators", conn)
-            
-            if not df_indicators.empty and 'date' in df_indicators.columns:
-                df_indicators['date'] = pd.to_datetime(df_indicators['date'])
-                df_indicators.set_index('date', inplace=True)
-                
-                # Extract wide columns and rename to 'value' to satisfy the Plotly wrappers
-                df_m2 = df_indicators[['us_m2']].rename(columns={'us_m2': 'value'}).dropna().sort_index() if 'us_m2' in df_indicators.columns else pd.DataFrame()
-                df_us_hy = df_indicators[['us_high_yield_spread']].rename(columns={'us_high_yield_spread': 'value'}).dropna().sort_index() if 'us_high_yield_spread' in df_indicators.columns else pd.DataFrame()
-                df_m4 = df_indicators[['uk_m4']].rename(columns={'uk_m4': 'value'}).dropna().sort_index() if 'uk_m4' in df_indicators.columns else pd.DataFrame()
-                df_uk_ig = df_indicators[['uk_corporate_spread']].rename(columns={'uk_corporate_spread': 'value'}).dropna().sort_index() if 'uk_corporate_spread' in df_indicators.columns else pd.DataFrame()
-                df_yield_curve = df_indicators[['us_yield_curve']].rename(columns={'us_yield_curve': 'value'}).dropna().sort_index() if 'us_yield_curve' in df_indicators.columns else pd.DataFrame()
-                df_us_cpi = df_indicators[['us_cpi_inflation']].rename(columns={'us_cpi_inflation': 'value'}).dropna().sort_index() if 'us_cpi_inflation' in df_indicators.columns else pd.DataFrame()
-                df_uk_cpi = df_indicators[['uk_cpi_inflation']].rename(columns={'uk_cpi_inflation': 'value'}).dropna().sort_index() if 'uk_cpi_inflation' in df_indicators.columns else pd.DataFrame()
-            else:
-                df_m2, df_us_hy, df_m4, df_uk_ig, df_yield_curve = pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
-                df_us_cpi, df_uk_cpi = pd.DataFrame(), pd.DataFrame()
-        except Exception as e:
-            logger.error("Error processing macro indicators matrix: %s", e)
-            df_m2, df_us_hy, df_m4, df_uk_ig, df_yield_curve = pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
-            df_us_cpi, df_uk_cpi = pd.DataFrame(), pd.DataFrame()
-
-        try:
-            df_spy = pd.read_parquet(HISTORICAL_DIR / "SP500_BASELINE.parquet")
-        except Exception:
-            df_spy = pd.DataFrame()
-            
-        try:
-            df_ftse = pd.read_parquet(HISTORICAL_DIR / "FTSE_BASELINE.parquet")
-        except Exception:
-            df_ftse = pd.DataFrame()
-        us_liquidity_html = create_us_liquidity_chart(df_spy, df_m2)
-        us_credit_html = create_us_credit_chart(df_us_hy)
-        uk_liquidity_html = create_uk_liquidity_chart(df_ftse, df_m4)
-        uk_credit_html = create_uk_credit_chart(df_uk_ig)
-        yield_curve_html = create_yield_curve_chart(df_yield_curve)
-        us_inflation_html = create_us_inflation_chart(df_spy, df_us_cpi)
-        uk_inflation_html = create_uk_inflation_chart(df_ftse, df_uk_cpi)
-
-    except Exception as e:
-        logger.error("Fatal error in market_sentiment route: %s", e)
-        macro_regime = None
-        urgent_events = []
-        us_events = []
-        uk_events = []
-        us_liquidity_html = "<p>Data unavailable.</p>"
-        us_credit_html = "<p>Data unavailable.</p>"
-        uk_liquidity_html = "<p>Data unavailable.</p>"
-        uk_credit_html = "<p>Data unavailable.</p>"
-        yield_curve_html = "<p>Data unavailable.</p>"
-        us_inflation_html = "<p>Data unavailable.</p>"
-        uk_inflation_html = "<p>Data unavailable.</p>"
-        cb_nlp_latest = None
-        ai_contagion_status = []
-    finally:
-        conn.close()
-        
-    return templates.TemplateResponse(
-        request=request, 
-        name="market_sentiment.html", 
-        context={
-            "sentiment_html": get_sentiment_html(), 
-            "vix_spy_html": get_vix_spy_html(),
-            "yield_equity_html": get_yield_equity_html(),
-            "uk_yield_equity_html": get_uk_yield_equity_html(),
-            "ftse_gbp_html": get_ftse_gbp_html(),
-            "us_liquidity_html": us_liquidity_html,
-            "us_credit_html": us_credit_html,
-            "uk_liquidity_html": uk_liquidity_html,
-            "uk_credit_html": uk_credit_html,
-            "yield_curve_html": yield_curve_html,
-            "us_inflation_html": us_inflation_html,
-            "uk_inflation_html": uk_inflation_html,
-            "regime_data": regime_data,
-            "macro_regime": macro_regime,
-            "urgent_events": urgent_events,
-            "us_events": us_events,
-            "uk_events": uk_events,
-            "cb_nlp_latest": cb_nlp_latest,
-            "ai_contagion_status": ai_contagion_status,
-            "user_tz_label": time_engine.now_local().strftime("%Z"),
-            "unread_count": get_unread_count(),
-            "config": load_config()
-        }
-    )
-
-
 @page_router.get("/options-sandbox", response_class=HTMLResponse)
 async def options_sandbox_page(request: Request):
     return templates.TemplateResponse(
-        request=request, 
-        name="options_sandbox.html", 
+        request=request,
+        name="options_sandbox.html",
         context={
             "unread_count": get_unread_count(),
             "config": load_config(),
@@ -653,7 +198,7 @@ async def home():
 async def portfolio_page(request: Request, account_id: str = "all", embed: bool = False):
     conn = get_connection()
     cursor = conn.cursor()
-    
+
     cursor.execute("""
         SELECT s.*,
                (SELECT ml_confidence_score FROM quant_signals
@@ -687,11 +232,11 @@ async def portfolio_page(request: Request, account_id: str = "all", embed: bool 
         AND q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = s.ticker)
     """)
     db_rows = cursor.fetchall()
-  
+
     cursor.execute("SELECT * FROM macro_regimes ORDER BY date DESC LIMIT 1")
     macro_row = cursor.fetchone()
     macro_regime = dict(macro_row) if macro_row else None
-    
+
     cursor.execute("SELECT MAX(last_updated) as global_updated FROM stock_signals")
     global_update_val = cursor.fetchone()['global_updated']
     global_updated = global_update_val if global_update_val else "Awaiting initial update..."
@@ -705,10 +250,10 @@ async def portfolio_page(request: Request, account_id: str = "all", embed: bool 
     for acc in discovered_accounts:
         if acc["id"] in active_accounts:
             account_options.append({"id": acc["id"], "name": acc["name"]})
-    
+
     portfolio_json = get_json_data(PORTFOLIO_PATH)
     portfolio_tickers = []
-    
+
     for key, data in portfolio_json.items():
         if "ticker" in data:
             if account_id == "all":
@@ -718,10 +263,10 @@ async def portfolio_page(request: Request, account_id: str = "all", embed: bool 
                     if acc["id"] == account_id:
                         portfolio_tickers.append(data["ticker"])
                         break
-                        
+
     portfolio_data = []
     summary_math = {"value": 0.0, "cost": 0.0, "pnl": 0.0, "pnl_pct": 0.0}
-    
+
     for row in db_rows:
         row_dict = dict(row)
         if row_dict['ticker'] in portfolio_tickers:
@@ -796,13 +341,13 @@ async def portfolio_page(request: Request, account_id: str = "all", embed: bool 
         }
     else:
         formatted_summary = None
-    
+
     return templates.TemplateResponse(
-        request=request, name="portfolio.html", 
+        request=request, name="portfolio.html",
         context={
-            "portfolio": portfolio_data, 
-            "global_updated": global_updated, 
-            "embed": embed, 
+            "portfolio": portfolio_data,
+            "global_updated": global_updated,
+            "embed": embed,
             "unread_count": get_unread_count(),
             "account_options": account_options,
             "selected_account": account_id,
@@ -819,7 +364,7 @@ async def portfolio_page(request: Request, account_id: str = "all", embed: bool 
 async def watchlist_page(request: Request, embed: bool = False):
     conn = get_connection()
     cursor = conn.cursor()
-    
+
     cursor.execute("""
         SELECT s.*,
                (SELECT ml_confidence_score FROM quant_signals
@@ -854,19 +399,19 @@ async def watchlist_page(request: Request, embed: bool = False):
         LEFT JOIN company_name_overrides cno ON s.ticker = cno.ticker
     """)
     db_rows = cursor.fetchall()
-    
+
     cursor.execute("SELECT * FROM macro_regimes ORDER BY date DESC LIMIT 1")
     macro_row = cursor.fetchone()
     macro_regime = dict(macro_row) if macro_row else None
-    
+
     cursor.execute("SELECT MAX(last_updated) as global_updated FROM stock_signals")
     global_update_val = cursor.fetchone()['global_updated']
     global_updated = global_update_val if global_update_val else "Awaiting initial update..."
     conn.close()
-    
+
     watchlist_json = get_json_data(WATCHLIST_PATH)
     watchlist_tickers = watchlist_json.get("watchlist", [])
-    
+
     watchlist_data = []
     for row in db_rows:
         row_dict = dict(row)
@@ -892,11 +437,11 @@ async def watchlist_page(request: Request, embed: bool = False):
     position_sizing_context = _build_position_sizing_context(config_data, db_rows)
 
     return templates.TemplateResponse(
-        request=request, name="watchlist.html", 
+        request=request, name="watchlist.html",
         context={
-            "watchlist": watchlist_data, 
-            "global_updated": global_updated, 
-            "embed": embed, 
+            "watchlist": watchlist_data,
+            "global_updated": global_updated,
+            "embed": embed,
             "unread_count": get_unread_count(),
             "config": config_data,
             "cached_pulse": get_all_cached_pulse(),
@@ -923,24 +468,24 @@ async def news_page(request: Request):
 @page_router.get("/earnings-volatility", response_class=HTMLResponse)
 async def earnings_volatility_page(request: Request):
     today_str = time_engine.now_local().strftime('%Y-%m-%d')
-    
+
     conn = get_connection()
     cursor = conn.cursor()
-    
+
     query = """
-        SELECT * FROM earnings_volatility 
+        SELECT * FROM earnings_volatility
         WHERE next_earnings_date >= ?
         ORDER BY next_earnings_date ASC, edge_score DESC
     """
     cursor.execute(query, (today_str,))
     rows = cursor.fetchall()
-    
+
     earnings_data = [dict(row) for row in rows]
     conn.close()
-    
+
     return templates.TemplateResponse(
-        request=request, 
-        name="earnings_volatility.html", 
+        request=request,
+        name="earnings_volatility.html",
         context={
             "earnings_data": earnings_data,
             "unread_count": get_unread_count(),
@@ -971,7 +516,7 @@ async def quant_screener_page(request: Request):
 
     if best:
         best_file, _ = best
-        base = _os.path.basename(best_file)
+        base = os.path.basename(best_file)
         target_date = yesterday if yesterday in base else target_date
         try:
             with open(best_file, "r", encoding="utf-8") as f:
@@ -1054,8 +599,6 @@ async def dip_radar_page(request: Request):
         name="dip_radar_summary.html",
         context={"unread_count": get_unread_count()},
     )
-
-
 
 
 @page_router.get("/bubble-radar", response_class=HTMLResponse)
@@ -1330,96 +873,6 @@ async def score_history_page(request: Request, filter: str = "all", ref: str = "
     )
 
 
-@page_router.get("/index/{ticker}", response_class=HTMLResponse)
-async def index_detail(request: Request, ticker: str):
-    ticker = normalize_ticker(ticker)
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    cursor.execute(
-        "SELECT ticker, name, price, change_pts, change_pct, is_positive FROM market_pulse_cache WHERE ticker = ?",
-        (ticker,)
-    )
-    pulse_row = cursor.fetchone()
-    pulse = dict(pulse_row) if pulse_row else {
-        "price": None, "change_pts": None, "change_pct": None,
-        "is_positive": None, "name": INDEX_TICKERS.get(ticker, ticker),
-    }
-
-    cursor.execute("""
-        SELECT rsi_14, macd, macd_signal, macd_hist,
-               sma_50, sma_200, mom_1m, mom_3m, mom_6m, mom_12m_skip1m,
-               hist_vol_20, atr_pct, var_95, cvar_95,
-               sentiment_score, volume, volume_surge, composite_score, close_price, date
-        FROM quant_signals
-        WHERE ticker = ?
-        ORDER BY date DESC LIMIT 1
-    """, (ticker,))
-    q_row = cursor.fetchone()
-    quant = {**_INDEX_QUANT_DEFAULTS, **(dict(q_row) if q_row else {})}
-
-    cursor.execute("SELECT currency FROM asset_profiles WHERE ticker = ?", (ticker,))
-    ap = cursor.fetchone()
-    currency = ap["currency"] if ap else "USD"
-    conn.close()
-
-    price_action = None
-    # Prefer fresh per-ticker parquet (written by /api/index/refresh); fall back to shared baseline
-    _ticker_parquet = HISTORICAL_DIR / f"{ticker}.parquet"
-    _baseline_name = INDEX_PARQUET_MAP.get(ticker)
-    parquet_path = _ticker_parquet if _ticker_parquet.exists() else (HISTORICAL_DIR / _baseline_name if _baseline_name else None)
-    try:
-        df_macro = pd.read_parquet(parquet_path) if parquet_path else pd.DataFrame()
-        if df_macro.empty:
-            raise FileNotFoundError
-        macro_html = create_macro_chart(df_macro, None, ticker)
-        last_day = df_macro.iloc[-1]
-        prev_day = df_macro.iloc[-2] if len(df_macro) > 1 else last_day
-        last_21 = df_macro.tail(21)
-        P = (prev_day['High'] + prev_day['Low'] + prev_day['Close']) / 3
-        price_action = {
-            "day_low": last_day['Low'], "day_high": last_day['High'],
-            "month_low": last_21['Low'].min(), "month_high": last_21['High'].max(),
-            "s1": (P * 2) - prev_day['High'],
-            "s2": P - (prev_day['High'] - prev_day['Low']),
-        }
-    except FileNotFoundError:
-        macro_html = "<div style='display:flex;flex-direction:column;align-items:center;justify-content:center;height:180px;gap:10px;color:#888;'><span style='font-size:2rem;'>📭</span><span style='font-weight:600;'>No historical data yet</span></div>"
-    except Exception as e:
-        macro_html = f"<div style='display:flex;flex-direction:column;align-items:center;justify-content:center;height:180px;gap:8px;color:#888;'><span style='font-size:2rem;'>⚠️</span><span style='font-weight:600;'>Chart unavailable</span><span style='font-size:0.85rem;'>{type(e).__name__}: {e}</span></div>"
-
-    try:
-        df_intraday = pd.read_parquet(INTRADAY_DIR / f"{ticker}_intraday.parquet")
-        s1 = price_action['s1'] if price_action else None
-        s2 = price_action['s2'] if price_action else None
-        mkt_tz = _intraday_market_tz(ticker, currency)
-        delay_min = _EXCHANGE_DELAYS.get(currency, 0)
-        intraday_html = create_intraday_chart(df_intraday, ticker, s1=s1, s2=s2,
-                                              market_tz=mkt_tz, data_delay_minutes=delay_min)
-    except FileNotFoundError:
-        intraday_html = "<div style='display:flex;flex-direction:column;align-items:center;justify-content:center;height:120px;gap:10px;color:#888;'><span style='font-size:1.8rem;'>📭</span><span style='font-weight:600;'>No intraday data yet</span></div>"
-    except Exception:
-        intraday_html = "<div style='display:flex;flex-direction:column;align-items:center;justify-content:center;height:120px;gap:8px;color:#888;'><span style='font-size:1.8rem;'>⚠️</span><span style='font-weight:600;'>Intraday data unavailable</span></div>"
-
-    return templates.TemplateResponse(
-        request=request, name="index_detail.html",
-        context={
-            "ticker":        ticker,
-            "display_name":  INDEX_TICKERS.get(ticker, ticker),
-            "pulse":         pulse,
-            "quant":         quant,
-            "currency":      currency,
-            "context_blurb": INDEX_CONTEXT_BLURBS.get(ticker, ""),
-            "macro_html":    macro_html,
-            "intraday_html": intraday_html,
-            "price_action":  price_action,
-            "unread_count":  get_unread_count(),
-            "config":        load_config(),
-            "css_version":   CSS_VERSION,
-        }
-    )
-
-
 @page_router.get("/stock/{ticker}", response_class=HTMLResponse)
 async def stock_detail(request: Request, ticker: str, embed: bool = False):
     ticker = normalize_ticker(ticker)
@@ -1472,7 +925,7 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
         WHERE s.ticker = ?
     ''', (ticker,))
     stock_data = cursor.fetchone()
-    
+
     if stock_data:
         stock_data = dict(stock_data)
         _cp = stock_data.get("current_price") or 0.0
@@ -1514,10 +967,10 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
             q_data = dict(q_data)
             company_name = q_data.get("company_name") or ticker
             company_name = company_name.replace(" - Common Stock", "").replace(" Common Stock", "").strip()
-            
+
             c_price = q_data.get("close_price")
             c_price = float(c_price) if c_price is not None else 0.0
-            
+
             stock_data = {
                 "ticker": ticker,
                 "company_name": company_name,
@@ -1653,7 +1106,6 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
                 "price_q10": None, "price_q90": None,
             }
 
-    # --- earnings_volatility enrichment ---
     earnings_vol: dict = {}
     if stock_data:
         cursor.execute('''
@@ -1707,38 +1159,32 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
 
     portfolio_json = get_json_data(PORTFOLIO_PATH)
     user_asset = next((data for key, data in portfolio_json.items() if data.get("ticker") == ticker), None)
-    
+
     portfolio_math = None
     if user_asset and stock_data and stock_data.get('current_price'):
         exchange_rate = get_rate_from_base(stock_data['currency'])
-        
-        def calculate_pnl(shares, buy_price_base):
-            if shares <= 0: return None
-            bp_adj = buy_price_base * exchange_rate
-            if user_asset.get('price_in_pence', False): 
-                bp_adj *= 100
-                
-            current_value = shares * stock_data['current_price']
-            cost_basis = shares * bp_adj
-            pnl = current_value - cost_basis
-            pnl_pct = (pnl / cost_basis) * 100 if cost_basis > 0 else 0
-            
-            return {
-                "shares": round(shares, 4),
-                "buy_price": round(bp_adj, 4),
-                "current_value": round(current_value, 2),
-                "pnl": round(pnl, 2),
-                "pnl_pct": round(pnl_pct, 2)
-            }
-            
-        global_math = calculate_pnl(user_asset.get('global_shares', 0), user_asset.get('global_buy_price', 0))
+        price_in_pence = user_asset.get('price_in_pence', False)
+
+        global_math = calculate_pnl(
+            user_asset.get('global_shares', 0),
+            user_asset.get('global_buy_price', 0),
+            exchange_rate,
+            stock_data['current_price'],
+            price_in_pence,
+        )
         account_maths = []
         for acc in user_asset.get('accounts', []):
-            acc_m = calculate_pnl(acc.get('shares', 0), acc.get('buy_price', 0))
+            acc_m = calculate_pnl(
+                acc.get('shares', 0),
+                acc.get('buy_price', 0),
+                exchange_rate,
+                stock_data['current_price'],
+                price_in_pence,
+            )
             if acc_m:
                 acc_m["name"] = acc.get("name", "Unknown Account")
                 account_maths.append(acc_m)
-                
+
         if global_math:
             portfolio_math = {"global": global_math, "accounts": account_maths}
 
@@ -1751,7 +1197,7 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
     price_action = None
     try:
         df_macro = pd.read_parquet(HISTORICAL_DIR / f"{ticker}.parquet")
-        
+
         currency = stock_data.get('currency', 'USD') if stock_data else 'USD'
         if ticker.endswith('.L') or currency in ['GBp', 'GBP']:
             try:
@@ -1763,9 +1209,9 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
                 df_baseline = pd.read_parquet(HISTORICAL_DIR / "SP500_BASELINE.parquet")
             except Exception:
                 df_baseline = None
-                
+
         macro_html = create_macro_chart(df_macro, df_baseline, ticker)
-        
+
         if not df_macro.empty:
             last_day = df_macro.iloc[-1]
             prev_day = df_macro.iloc[-2] if len(df_macro) > 1 else last_day
@@ -1773,11 +1219,11 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
 
             P = (prev_day['High'] + prev_day['Low'] + prev_day['Close']) / 3
             price_action = {
-                "day_low": last_day['Low'], 
+                "day_low": last_day['Low'],
                 "day_high": last_day['High'],
-                "month_low": last_21['Low'].min(), 
+                "month_low": last_21['Low'].min(),
                 "month_high": last_21['High'].max(),
-                "s1": (P * 2) - prev_day['High'], 
+                "s1": (P * 2) - prev_day['High'],
                 "s2": P - (prev_day['High'] - prev_day['Low'])
             }
     except FileNotFoundError:
@@ -1819,7 +1265,7 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
         intraday_html = "<div style='display:flex;flex-direction:column;align-items:center;justify-content:center;height:120px;gap:10px;color:#888;'><span style='font-size:1.8rem;'>📭</span><span style='font-weight:600;'>No intraday data yet</span><span style='font-size:0.85rem;'>Press <strong>Refresh</strong> above to fetch today's intraday data.</span></div>"
     except Exception:
         intraday_html = "<div style='display:flex;flex-direction:column;align-items:center;justify-content:center;height:120px;gap:8px;color:#888;'><span style='font-size:1.8rem;'>⚠️</span><span style='font-weight:600;'>Intraday data unavailable</span></div>"
-    
+
     config_data = load_config()
     fake_rows = [{"currency": stock_data.get("currency", "USD")}]
     position_sizing_context = _build_position_sizing_context(config_data, fake_rows)
@@ -2013,6 +1459,7 @@ async def rss_alerts_feed():
 
     return Response(content=feed_xml, media_type="application/rss+xml")
 
+
 @page_router.get("/log-viewer", response_class=HTMLResponse)
 async def log_viewer_page(request: Request):
     cfg = load_config()
@@ -2023,3 +1470,6 @@ async def log_viewer_page(request: Request):
         name="log_viewer.html",
         context={"logging_enabled": logging_enabled},
     )
+
+
+page_router.include_router(page_router_macro)
