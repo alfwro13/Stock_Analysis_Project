@@ -239,7 +239,7 @@ class TestResumeInterruptedScans:
 
     def test_in_progress_daily_dispatches_overnight_scan(self):
         _seed_scan_state('daily', 'IN_PROGRESS')
-        with patch("scheduler_engine.run_overnight_quant_scan") as mock_fn:
+        with patch("scheduler_jobs.run_overnight_quant_scan") as mock_fn:
             resume_interrupted_scans()
             # Wait briefly for daemon thread to call the function
             import time; time.sleep(0.1)
@@ -247,7 +247,7 @@ class TestResumeInterruptedScans:
 
     def test_in_progress_universe_dispatches_weekend_routine(self):
         _seed_scan_state('universe', 'IN_PROGRESS')
-        with patch("scheduler_engine.run_weekend_universe_routine") as mock_fn:
+        with patch("scheduler_jobs.run_weekend_universe_routine") as mock_fn:
             resume_interrupted_scans()
             import time; time.sleep(0.1)
             mock_fn.assert_called_once()
@@ -256,21 +256,21 @@ class TestResumeInterruptedScans:
         _seed_scan_state('deep_sync_s1', 'COMPLETED')
         _seed_scan_state('deep_sync_s2', 'COMPLETED')
         _seed_scan_state('deep_sync_s4', 'IN_PROGRESS')
-        with patch("scheduler_engine.run_universe_deep_sync_job") as mock_fn:
+        with patch("scheduler_jobs.run_universe_deep_sync_job") as mock_fn:
             resume_interrupted_scans()
             import time; time.sleep(0.1)
             mock_fn.assert_called_once()
 
     def test_completed_deep_sync_does_not_redispatch(self):
         _seed_scan_state('deep_sync_s5', 'COMPLETED')
-        with patch("scheduler_engine.run_universe_deep_sync_job") as mock_fn:
+        with patch("scheduler_jobs.run_universe_deep_sync_job") as mock_fn:
             resume_interrupted_scans()
             import time; time.sleep(0.05)
             mock_fn.assert_not_called()
 
     def test_standalone_ml_backfill_dispatches_when_no_deep_sync(self):
         _seed_scan_state('ml_backfill', 'IN_PROGRESS')
-        with patch("scheduler_engine.run_ml_backfill") as mock_fn:
+        with patch("scheduler_jobs.run_ml_backfill") as mock_fn:
             resume_interrupted_scans()
             import time; time.sleep(0.1)
             mock_fn.assert_called_once()
@@ -280,8 +280,8 @@ class TestResumeInterruptedScans:
         _seed_scan_state('deep_sync_s1', 'COMPLETED')
         _seed_scan_state('ml_backfill', 'IN_PROGRESS')
         with (
-            patch("scheduler_engine.run_ml_backfill") as mock_ml,
-            patch("scheduler_engine.run_universe_deep_sync_job"),
+            patch("scheduler_jobs.run_ml_backfill") as mock_ml,
+            patch("scheduler_jobs.run_universe_deep_sync_job"),
         ):
             resume_interrupted_scans()
             import time; time.sleep(0.1)
@@ -289,7 +289,7 @@ class TestResumeInterruptedScans:
 
     def test_completed_daily_does_not_redispatch(self):
         _seed_scan_state('daily', 'COMPLETED')
-        with patch("scheduler_engine.run_overnight_quant_scan") as mock_fn:
+        with patch("scheduler_jobs.run_overnight_quant_scan") as mock_fn:
             resume_interrupted_scans()
             import time; time.sleep(0.05)
             mock_fn.assert_not_called()
@@ -297,7 +297,7 @@ class TestResumeInterruptedScans:
     def test_tail_risk_daily_in_progress_dispatches_when_daily_completed(self):
         _seed_scan_state('daily', 'COMPLETED')
         _seed_scan_state('tail_risk_daily', 'IN_PROGRESS', last_ticker='AAPL')
-        with patch("scheduler_engine.update_all_tail_risks") as mock_fn:
+        with patch("scheduler_jobs.update_all_tail_risks") as mock_fn:
             resume_interrupted_scans()
             import time; time.sleep(0.1)
             mock_fn.assert_called_once()
@@ -309,8 +309,8 @@ class TestResumeInterruptedScans:
         _seed_scan_state('daily', 'IN_PROGRESS')
         _seed_scan_state('tail_risk_daily', 'IN_PROGRESS', last_ticker='AAPL')
         with (
-            patch("scheduler_engine.run_overnight_quant_scan"),
-            patch("scheduler_engine.update_all_tail_risks") as mock_tr,
+            patch("scheduler_jobs.run_overnight_quant_scan"),
+            patch("scheduler_jobs.update_all_tail_risks") as mock_tr,
         ):
             resume_interrupted_scans()
             import time; time.sleep(0.1)
@@ -319,7 +319,7 @@ class TestResumeInterruptedScans:
     def test_tail_risk_universe_in_progress_dispatches_when_universe_completed(self):
         _seed_scan_state('universe', 'COMPLETED')
         _seed_scan_state('tail_risk_universe', 'IN_PROGRESS', last_ticker='VOD.L')
-        with patch("scheduler_engine.update_all_tail_risks") as mock_fn:
+        with patch("scheduler_jobs.update_all_tail_risks") as mock_fn:
             resume_interrupted_scans()
             import time; time.sleep(0.1)
             mock_fn.assert_called_once()
@@ -329,7 +329,7 @@ class TestResumeInterruptedScans:
     def test_tail_risk_daily_completed_does_not_redispatch(self):
         _seed_scan_state('daily', 'COMPLETED')
         _seed_scan_state('tail_risk_daily', 'COMPLETED')
-        with patch("scheduler_engine.update_all_tail_risks") as mock_fn:
+        with patch("scheduler_jobs.update_all_tail_risks") as mock_fn:
             resume_interrupted_scans()
             import time; time.sleep(0.05)
             mock_fn.assert_not_called()
@@ -583,7 +583,7 @@ class TestCanonicalJobNames:
         def _fake_training():
             captured.update(get_active_jobs())
 
-        with patch("scheduler_engine.train_global_ml_model", _fake_training):
+        with patch("scheduler_jobs.train_global_ml_model", _fake_training):
             _sched_module.run_ml_training()
         assert "Global Model Training (Walk-Forward)" in captured
         assert "ML Global Training" not in captured
