@@ -3,10 +3,14 @@ tests/test_08_database_helpers.py  ── DATABASE HELPER FUNCTION TESTS
 
 Exercises the business logic in database.py helper functions:
   - log_score_event: upsert with COALESCE on close_price
+  - upsert_quant_signal: insert + conflict update semantics
+  - get_universe_tickers: FREETRADE_ONLY_MODE filtering
+  - batch_update_trap_phase_actuals: single-transaction multi-row update
 """
 
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -82,3 +86,141 @@ def test_log_score_event_coalesce_preserves_existing_close_price():
         conn.commit()
         conn.close()
 
+
+# ── upsert_quant_signal ───────────────────────────────────────────────────────
+
+@pytest.mark.db
+def test_upsert_quant_signal_inserts_row():
+    conn = _conn()
+    try:
+        ok = _db.upsert_quant_signal("UQ_TEST", "2099-02-01", 123.0, 50000, rsi_14=55.0)
+        assert ok is True
+        row = conn.execute(
+            "SELECT close_price, volume, rsi_14 FROM quant_signals "
+            "WHERE ticker='UQ_TEST' AND date='2099-02-01'"
+        ).fetchone()
+        assert row is not None
+        assert abs(row["close_price"] - 123.0) < 0.001
+        assert row["volume"] == 50000
+        assert abs(row["rsi_14"] - 55.0) < 0.001
+    finally:
+        conn.execute("DELETE FROM quant_signals WHERE ticker='UQ_TEST'")
+        conn.commit()
+        conn.close()
+
+
+@pytest.mark.db
+def test_upsert_quant_signal_updates_on_conflict():
+    conn = _conn()
+    try:
+        _db.upsert_quant_signal("UQ_TEST", "2099-02-02", 100.0, 1000)
+        _db.upsert_quant_signal("UQ_TEST", "2099-02-02", 110.0, 2000, rsi_14=70.0)
+        row = conn.execute(
+            "SELECT close_price, volume, rsi_14 FROM quant_signals "
+            "WHERE ticker='UQ_TEST' AND date='2099-02-02'"
+        ).fetchone()
+        assert abs(row["close_price"] - 110.0) < 0.001
+        assert row["volume"] == 2000
+        assert abs(row["rsi_14"] - 70.0) < 0.001
+    finally:
+        conn.execute("DELETE FROM quant_signals WHERE ticker='UQ_TEST'")
+        conn.commit()
+        conn.close()
+
+
+@pytest.mark.db
+def test_upsert_quant_signal_coalesce_preserves_ml_score():
+    """ml_confidence_score uses COALESCE — a None update must not overwrite an existing value."""
+    conn = _conn()
+    try:
+        _db.upsert_quant_signal("UQ_TEST", "2099-02-03", 100.0, 1000, ml_confidence_score=0.88)
+        _db.upsert_quant_signal("UQ_TEST", "2099-02-03", 101.0, 1100, ml_confidence_score=None)
+        row = conn.execute(
+            "SELECT ml_confidence_score FROM quant_signals "
+            "WHERE ticker='UQ_TEST' AND date='2099-02-03'"
+        ).fetchone()
+        assert row["ml_confidence_score"] is not None
+        assert abs(row["ml_confidence_score"] - 0.88) < 0.001
+    finally:
+        conn.execute("DELETE FROM quant_signals WHERE ticker='UQ_TEST'")
+        conn.commit()
+        conn.close()
+
+
+# ── get_universe_tickers ──────────────────────────────────────────────────────
+
+@pytest.mark.db
+def test_get_universe_tickers_returns_all_by_default():
+    conn = _conn()
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO market_universe (ticker, is_freetrade) VALUES ('GU_ALL', 0)"
+        )
+        conn.execute(
+            "INSERT OR IGNORE INTO market_universe (ticker, is_freetrade) VALUES ('GU_FT', 1)"
+        )
+        conn.commit()
+        with patch("db_helpers.load_config", return_value={"UI_PREFERENCES": {"FREETRADE_ONLY_MODE": False}}):
+            tickers = _db.get_universe_tickers()
+        assert "GU_ALL" in tickers
+        assert "GU_FT" in tickers
+    finally:
+        conn.execute("DELETE FROM market_universe WHERE ticker IN ('GU_ALL', 'GU_FT')")
+        conn.commit()
+        conn.close()
+
+
+@pytest.mark.db
+def test_get_universe_tickers_freetrade_only_mode_filters():
+    conn = _conn()
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO market_universe (ticker, is_freetrade) VALUES ('GU_NON', 0)"
+        )
+        conn.execute(
+            "INSERT OR IGNORE INTO market_universe (ticker, is_freetrade) VALUES ('GU_FT2', 1)"
+        )
+        conn.commit()
+        with patch("db_helpers.load_config", return_value={"UI_PREFERENCES": {"FREETRADE_ONLY_MODE": True}}):
+            tickers = _db.get_universe_tickers()
+        assert "GU_NON" not in tickers
+        assert "GU_FT2" in tickers
+    finally:
+        conn.execute("DELETE FROM market_universe WHERE ticker IN ('GU_NON', 'GU_FT2')")
+        conn.commit()
+        conn.close()
+
+
+# ── batch_update_trap_phase_actuals ───────────────────────────────────────────
+
+@pytest.mark.db
+def test_batch_update_trap_phase_actuals_updates_all_rows():
+    conn = _conn()
+    try:
+        _db.log_trap_phase("BTPA_1", "BULL_TRAP_RISK", "2019-05-01", 100.0, "2019-05-01 10:00:00")
+        _db.log_trap_phase("BTPA_2", "CAPITULATION_FORMING", "2019-05-02", 80.0, "2019-05-02 10:00:00")
+        rows = conn.execute(
+            "SELECT id FROM trap_phase_history WHERE ticker IN ('BTPA_1','BTPA_2') ORDER BY ticker"
+        ).fetchall()
+        ids = [r["id"] for r in rows]
+        assert len(ids) == 2
+        payloads = [(ids[0], 14, 105.0, "2019-05-15", 1), (ids[1], 14, 75.0, "2019-05-16", 0)]
+        _db.batch_update_trap_phase_actuals(payloads)
+        updated = conn.execute(
+            "SELECT ticker, actual_price_14d, direction_correct_14d "
+            "FROM trap_phase_history WHERE ticker IN ('BTPA_1','BTPA_2') ORDER BY ticker"
+        ).fetchall()
+        assert len(updated) == 2
+        assert abs(updated[0]["actual_price_14d"] - 105.0) < 0.001
+        assert updated[0]["direction_correct_14d"] == 1
+        assert abs(updated[1]["actual_price_14d"] - 75.0) < 0.001
+        assert updated[1]["direction_correct_14d"] == 0
+    finally:
+        conn.execute("DELETE FROM trap_phase_history WHERE ticker IN ('BTPA_1','BTPA_2')")
+        conn.commit()
+        conn.close()
+
+
+@pytest.mark.db
+def test_batch_update_trap_phase_actuals_empty_payload_is_noop():
+    _db.batch_update_trap_phase_actuals([])
