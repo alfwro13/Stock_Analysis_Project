@@ -27,6 +27,7 @@ from report_dispatcher import push_morning_quant_briefing, push_lunchtime_quant_
 from risk_engine import update_all_tail_risks
 from sentiment_engine import run_nextcloud_alert
 from system_check_engine import run_system_checks
+from treasury_auction_engine import check_auction_results
 from universe_deep_sync_engine import run_universe_deep_sync
 from universe_engine import update_market_universe
 from xray_engine import run_xray_precompute
@@ -1094,3 +1095,18 @@ def run_system_check_job():
         log_sched_notification("Error", f"System Check failed: {e}")
     finally:
         record_job_run('system_check_job')
+
+
+def run_treasury_auction_check(slot: str) -> None:
+    job_id = f"macro_auction_job_{slot}"
+    _mark_job_started(job_label(job_id))
+    try:
+        log_sched_notification("Scheduler", f"Started Sovereign Debt Auction Monitor ({slot.upper()})...")
+        new_count = check_auction_results()
+        log_sched_notification("Success", f"Sovereign Debt Auction Monitor ({slot.upper()}) complete: {new_count} new result(s).")
+    except Exception as e:
+        logger.error("Sovereign Debt Auction Monitor (%s) failed: %s", slot, e)
+        log_sched_notification("Error", f"Sovereign Debt Auction Monitor ({slot.upper()}) failed: {e}")
+    finally:
+        _mark_job_done(job_label(job_id))
+        record_job_run(job_id)

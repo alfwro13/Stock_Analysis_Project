@@ -38,8 +38,9 @@ NOTIFICATION_SOURCES: dict[str, dict] = {
     "cb_nlp_alert":          {"label": "Central Bank NLP Alert",       "job_id": "cb_nlp_alert_job",          "default": dict(_ON)},
     "network_fault":         {"label": "Network Fault Alert",          "job_id": None,                        "default": dict(_NO_TALK)},
     "forensic_fetch_status": {"label": "Forensic Quarterly Data Fetch", "job_id": "forensic_quarterly_fetch_job", "default": dict(_NO_TALK)},
-    "forensic_alert":        {"label": "Forensic Accounting Alert",     "job_id": "forensic_scores_job",          "default": dict(_ON)},
-    "etf_predictor":         {"label": "ETF Predictor",                 "job_id": None,                           "default": dict(_NO_TALK)},
+    "forensic_alert":          {"label": "Forensic Accounting Alert",       "job_id": "forensic_scores_job",    "default": dict(_ON)},
+    "etf_predictor":           {"label": "ETF Predictor",                   "job_id": None,                     "default": dict(_NO_TALK)},
+    "treasury_auction_alert":  {"label": "Sovereign Debt Auction Alert",    "job_id": "macro_auction_job_am",   "default": dict(_ON)},
 }
 
 CATEGORY_LABELS = {

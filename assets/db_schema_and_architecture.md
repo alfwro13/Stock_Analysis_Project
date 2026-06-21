@@ -73,6 +73,10 @@ The SQLite database acts as the central brain of the dashboard. It uses a star-l
 * **Purpose:** A structural economic datastore integrating FRED, BoE, and ONS metrics (M2 Supply, Jobless Claims, Yield Curve, CPI, Fed Funds Rate, real yield).
 * **Key Columns:** `date` (PK), `us_m2`, `us_jobless_claims`, `us_high_yield_spread`, `us_yield_curve`, `uk_m4`, `uk_corporate_spread`, `us_cpi_inflation`, `us_fed_funds_rate` (FEDFUNDS), `us_real_yield_10y` (DFII10 TIPS), `uk_base_rate` (IUDBEDR).
 
+#### `treasury_auction_results`
+* **Purpose:** US Treasury auction demand metrics fetched from the free fiscaldata.treasury.gov API. One row per CUSIP × auction date. Powers the Sovereign Debt Auction Monitor, which fires an alert when bid-to-cover or yield tail is significantly below/above the 6-auction rolling baseline for that maturity.
+* **Key Columns:** `cusip` + `auction_date` (composite PK), `maturity_label` (e.g. "10Y", "30Y"), `high_yield`, `bid_to_cover`, `tail_bp` (high_yield − median_yield in basis points), `direct_pct`, `indirect_pct`, `dealer_pct`, `offering_amt` (raw API value), `alert_fired` (0/1 dedup flag). Engine: `treasury_auction_engine.py`.
+
 ---
 
 ## 1b. Indexes
@@ -80,6 +84,7 @@ The SQLite database acts as the central brain of the dashboard. It uses a star-l
 | Index | Table | Columns | Notes |
 |---|---|---|---|
 | `idx_macro_event_date` | `macro_calendar` | `event_date` | Range-filtered by 6+ call sites; added June 2026. |
+| `idx_treasury_auction_date` | `treasury_auction_results` | `auction_date` | Baseline query filters by auction_date; added June 2026. |
 | *(PK)* | `quant_signals` | `ticker, date` | Composite PK; covers all ticker+date lookups. The redundant `idx_qs_ticker_date` explicit index was dropped June 2026. |
 
 ---

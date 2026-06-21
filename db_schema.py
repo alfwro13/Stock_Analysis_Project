@@ -344,6 +344,28 @@ def init_db() -> None:
         ''')
 
         cursor.execute('''
+            CREATE TABLE IF NOT EXISTS treasury_auction_results (
+                cusip          TEXT NOT NULL,
+                maturity_label TEXT NOT NULL,
+                auction_date   TEXT NOT NULL,
+                high_yield     REAL,
+                bid_to_cover   REAL,
+                tail_bp        REAL,
+                direct_pct     REAL,
+                indirect_pct   REAL,
+                dealer_pct     REAL,
+                offering_amt   REAL,
+                alert_fired    INTEGER DEFAULT 0,
+                PRIMARY KEY (cusip, auction_date)
+            )
+        ''')
+
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_treasury_auction_date "
+            "ON treasury_auction_results(auction_date)"
+        )
+
+        cursor.execute('''
             CREATE TABLE IF NOT EXISTS scheduler_run_log (
                 job_id TEXT PRIMARY KEY,
                 last_run TEXT NOT NULL,

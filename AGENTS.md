@@ -66,6 +66,7 @@ Stock_Analysis_Project/
 ├── macro_ai_engine.py        # HMM + RF + XGBoost macro predictions
 ├── macro_data_engine.py      # FRED / BoE / ONS ingestion
 ├── macro_calendar_engine.py  # Economic event calendar
+├── treasury_auction_engine.py # Sovereign Debt Auction Monitor (fiscaldata.treasury.gov)
 ├── ai_engine.py              # LLM prompt aggregator
 ├── ai_prediction_engine.py   # XGBoost + RF soft-voting ensemble
 ├── ai_contagion_engine.py    # AI sector contagion monitor (10-ticker ecosystem)
@@ -158,6 +159,7 @@ All tables join on `ticker` as the primary key unless noted.
 | `macro_regimes` | Gilt/bond yield threat levels (US + UK) |
 | `macro_calendar` | Economic events + AI volatility warnings |
 | `macro_indicators` | FRED / BoE / ONS structural macro metrics |
+| `treasury_auction_results` | US Treasury auction bid-to-cover, yield tail, and dealer participation — early warning for rate-shock events |
 | `intraday_monitors` | Active dip-radar watch list (ticker, date_added, activated_by) |
 | `intraday_monitor_results` | Per-ticker dip-radar scan results |
 | `xray_risk_cache` | Per-ticker beta + annualised vol vs benchmark |

@@ -97,6 +97,8 @@ class ScheduleItemConfig(BaseModel):
     MAX_AGE_DAYS: Optional[int] = None
     PRE_US_OPEN_TIME: Optional[str] = None
     POST_US_CLOSE_TIME: Optional[str] = None
+    AM_TIME: Optional[str] = None
+    PM_TIME: Optional[str] = None
     BULL_TRAP: Optional[bool] = None
     BEAR_TRAP: Optional[bool] = None
     CAPITULATION: Optional[bool] = None
@@ -132,6 +134,7 @@ class SchedulingConfig(BaseModel):
     LUNCH_DISPATCHER: Optional[ScheduleItemConfig] = None
     FORENSIC_QUARTERLY_FETCH: Optional[ScheduleItemConfig] = None
     FORENSIC_SCORES: Optional[ScheduleItemConfig] = None
+    MACRO_AUCTIONS: Optional[ScheduleItemConfig] = None
 
 class ReportsDefaultsConfig(BaseModel):
     MR_MAX_RSI: Optional[int] = None

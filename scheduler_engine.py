@@ -2,6 +2,7 @@ import logging
 import functools as _functools
 import threading as _threading
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -728,6 +729,34 @@ def reload_scheduler():
     except Exception as e:
         logger.error("Failed to register ETF predictor jobs from DB: %s", e)
 
+    auction_cfg = scheduling.get("MACRO_AUCTIONS", {})
+    if auction_cfg.get("ENABLED", True):
+        _nyse_tz = ZoneInfo(time_engine.exchange_tz("NYSE"))
+        am_time = auction_cfg.get("AM_TIME", "13:15")
+        pm_time = auction_cfg.get("PM_TIME", "15:30")
+        try:
+            am_h, am_m = map(int, am_time.split(":"))
+            scheduler.add_job(
+                lambda: run_treasury_auction_check("am"),
+                CronTrigger(day_of_week="mon-fri", hour=am_h, minute=am_m, timezone=_nyse_tz),
+                id="macro_auction_job_am",
+                replace_existing=True,
+            )
+            logger.info("Sovereign Debt Auction Monitor (AM) scheduled mon-fri at %s ET.", am_time)
+        except Exception as e:
+            logger.error("Failed to schedule Sovereign Debt Auction Monitor (AM): %s", e)
+        try:
+            pm_h, pm_m = map(int, pm_time.split(":"))
+            scheduler.add_job(
+                lambda: run_treasury_auction_check("pm"),
+                CronTrigger(day_of_week="mon-fri", hour=pm_h, minute=pm_m, timezone=_nyse_tz),
+                id="macro_auction_job_pm",
+                replace_existing=True,
+            )
+            logger.info("Sovereign Debt Auction Monitor (PM) scheduled mon-fri at %s ET.", pm_time)
+        except Exception as e:
+            logger.error("Failed to schedule Sovereign Debt Auction Monitor (PM): %s", e)
+
     sys_check_cfg = scheduling.get("SYSTEM_CHECK", {})
     if sys_check_cfg.get("ENABLED", True):
         sys_check_days_list = sys_check_cfg.get("DAYS", ["mon", "tue", "wed", "thu", "fri", "sat", "sun"])
@@ -775,5 +804,5 @@ from scheduler_jobs import (
     run_ai_contagion_job, run_trap_monitor_job, run_trap_accuracy_fill_job,
     run_bubble_radar_job, register_etf_predictor_jobs, unregister_etf_predictor_jobs,
     run_forensic_quarterly_fetch_job, run_forensic_scores_job, run_etf_actual_fill_job,
-    run_system_check_job,
+    run_system_check_job, run_treasury_auction_check,
 )

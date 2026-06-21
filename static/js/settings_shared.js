@@ -240,6 +240,11 @@ async function saveSettings(silent = false) {
                 "ENABLED": document.getElementById('FORENSIC_SCORES_ENABLED').checked,
                 "DAY_OF_MONTH": 1,
                 "TIME": "07:00"
+            },
+            "MACRO_AUCTIONS": {
+                "ENABLED": document.getElementById('MACRO_AUCTIONS_ENABLED').checked,
+                "AM_TIME": document.getElementById('MACRO_AUCTIONS_AM_TIME').value,
+                "PM_TIME": document.getElementById('MACRO_AUCTIONS_PM_TIME').value
             }
         },
         "NOTIFICATIONS": {
