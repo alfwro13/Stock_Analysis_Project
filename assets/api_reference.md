@@ -2362,6 +2362,35 @@ Triggers an immediate background run of the **Forensic Accounting Scores** job, 
 
 ---
 
+### `GET /api/monte-carlo/accounts`
+
+Returns per-account portfolio values for all active Ghostfolio accounts, plus the grand total. Used to populate the account-selector bar on the Monte Carlo page. Requires Ghostfolio to be configured and authenticated; returns `status=error` with a message when it is not.
+
+**Auth:** Required (session cookie).
+
+**Rate limit:** 10 requests/minute.
+
+**Response (success):**
+
+```json
+{
+  "status": "success",
+  "accounts": [
+    {"id": "<uuid>", "name": "ISA", "value": 45321.50},
+    {"id": "<uuid>", "name": "SIPP", "value": 12890.00}
+  ],
+  "total": 58211.50
+}
+```
+
+**Response (Ghostfolio not configured / no active accounts):**
+
+```json
+{"status": "error", "message": "Ghostfolio not configured."}
+```
+
+---
+
 ### `POST /api/monte-carlo/run`
 
 Runs a forward-looking Monte Carlo Wealth Simulation and returns percentile fan data. Computes 1,000 correlated GBM paths using per-asset volatility from `xray_risk_cache`, pairwise correlations from `xray_correlation_matrix` (Cholesky decomposition), and per-asset drift derived from the asset class of each holding. Results are not persisted — computed fresh on every call.

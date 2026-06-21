@@ -596,3 +596,19 @@ def test_ai_prompt_sentiment_uk(client):
     data = _json(resp)
     assert data["status"] == "success"
     assert isinstance(data.get("prompt"), str) and len(data["prompt"]) > 0
+
+
+# ── Monte Carlo Accounts ──────────────────────────────────────────────────────
+
+@pytest.mark.api
+def test_monte_carlo_accounts_returns_200(client):
+    """GET /api/monte-carlo/accounts returns 200; when Ghostfolio is unconfigured, status=error."""
+    resp = client.get("/api/monte-carlo/accounts")
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
+    data = _json(resp)
+    assert "status" in data
+    if data["status"] == "success":
+        assert "accounts" in data and isinstance(data["accounts"], list)
+        assert "total" in data and isinstance(data["total"], (int, float))
+    else:
+        assert "message" in data

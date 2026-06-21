@@ -487,6 +487,11 @@ table.dataTable.display tbody tr.even > .sorting_1, table.dataTable.order-column
 .chart-wrapper-accent-purple { border-left: 4px solid #b366ff; }
 .fxd-chart-wrapper { min-height: 260px; }
 .mc-chart-wrapper { min-height: 480px; }
+.mc-account-tile { display: flex; flex-direction: column; align-items: flex-start; background: #1e1e1e; border: 1px solid #333; border-top: 3px solid #444; border-radius: 8px; padding: 10px 14px; cursor: pointer; text-align: left; transition: border-color 0.15s; min-width: 110px; }
+.mc-account-tile:hover { border-top-color: #6366f1; background: #242438; }
+.mc-account-tile--active { border-top-color: #6366f1; background: #1a1a2e; }
+.mc-account-tile-name { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+.mc-account-tile-value { font-size: var(--font-size-h3); font-weight: 700; color: #e0e0e0; font-variant-numeric: tabular-nums; }
 .text-accent-cyan { color: #00ffcc; }
 .text-accent-purple { color: #b366ff; }
 /* --- 19. Algorithmic Breakdown Lists & Risk Warnings --- */

@@ -71,12 +71,14 @@ function renderChart(data) {
 
     const layout = {
         template: "plotly_dark",
+        paper_bgcolor: "transparent",
+        plot_bgcolor: "rgba(0,0,0,0)",
         height: 480,
-        xaxis: { title: "Year", tickmode: "linear", dtick: 5 },
-        yaxis: { title: "£", tickprefix: "£", tickformat: ",.0f" },
-        title: { text: "Portfolio Wealth Projection — 1,000 Simulations", x: 0.5, xanchor: "center" },
+        xaxis: { title: "Year", tickmode: "linear", dtick: 5, gridcolor: "#2a2a2a", zerolinecolor: "#444" },
+        yaxis: { title: "£", tickprefix: "£", tickformat: ",.0f", gridcolor: "#2a2a2a", zerolinecolor: "#444" },
+        title: { text: "Portfolio Wealth Projection — 1,000 Simulations", x: 0.5, xanchor: "center", font: { color: "#e0e0e0" } },
         margin: { t: 60, b: 50, l: 80, r: 20 },
-        legend: { orientation: "h", y: -0.15, x: 0.5, xanchor: "center" },
+        legend: { orientation: "h", y: -0.15, x: 0.5, xanchor: "center", font: { color: "#aaa" } },
         hovermode: "x unified",
         shapes: shapes,
         annotations: annotations,
@@ -159,6 +161,48 @@ function runSimulation(e) {
         });
 }
 
+function _setActiveTile(btn) {
+    document.querySelectorAll(".mc-account-tile").forEach(function (t) {
+        t.classList.remove("mc-account-tile--active");
+    });
+    btn.classList.add("mc-account-tile--active");
+    document.getElementById("mc-pv").value = btn.dataset.value;
+}
+
+function loadAccounts() {
+    fetch("/api/monte-carlo/accounts")
+        .then(function (resp) { return resp.json(); })
+        .then(function (data) {
+            if (data.status !== "success" || !data.accounts || !data.accounts.length) return;
+            const bar = document.getElementById("mc-accounts-bar");
+            const container = document.getElementById("mc-accounts-tiles");
+
+            var tiles = data.accounts.map(function (acc) {
+                return { name: acc.name, value: acc.value };
+            });
+            tiles.push({ name: "Total", value: data.total, isTotal: true });
+
+            tiles.forEach(function (tile) {
+                var btn = document.createElement("button");
+                btn.type = "button";
+                btn.className = "mc-account-tile";
+                btn.dataset.value = Math.round(tile.value);
+                btn.innerHTML =
+                    '<div class="mc-account-tile-name">' + tile.name + "</div>" +
+                    '<div class="mc-account-tile-value">' + _fmt_gbp(tile.value) + "</div>";
+                btn.addEventListener("click", function () { _setActiveTile(btn); });
+                if (tile.isTotal) {
+                    btn.classList.add("mc-account-tile--active");
+                }
+                container.appendChild(btn);
+            });
+
+            document.getElementById("mc-pv").value = Math.round(data.total);
+            bar.classList.remove("d-none");
+        })
+        .catch(function () {});
+}
+
 function initPage() {
     const drifts = window.MC_DEFAULTS.drifts;
     document.getElementById("mc-drift-global").value = drifts["Global Equity ETF"];
@@ -166,14 +210,7 @@ function initPage() {
     document.getElementById("mc-drift-bond").value = drifts["Bond/Fixed Income"];
     document.getElementById("mc-inflation").value = window.MC_DEFAULTS.inflation;
 
-    fetch("/api/xray")
-        .then(function (resp) { return resp.json(); })
-        .then(function (data) {
-            if (data && data.portfolio_total_value > 0) {
-                document.getElementById("mc-pv").value = Math.round(data.portfolio_total_value);
-            }
-        })
-        .catch(function () {});
+    loadAccounts();
 
     document.getElementById("mc-form").addEventListener("submit", runSimulation);
 }

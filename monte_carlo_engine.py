@@ -68,7 +68,7 @@ def run_simulation(
 
     try:
         from xray_engine import assemble_xray_report
-        xray = assemble_xray_report()
+        xray = assemble_xray_report("all")
         holdings = [h for h in xray.get("holdings", []) if (h.get("weight") or 0) > 0]
     except Exception as e:
         logger.error("assemble_xray_report failed, using scalar fallback: %s", e)
