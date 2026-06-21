@@ -352,34 +352,36 @@ async def market_sentiment_page(request: Request):
 async def index_detail(request: Request, ticker: str):
     ticker = normalize_ticker(ticker)
     conn = get_connection()
-    cursor = conn.cursor()
+    try:
+        cursor = conn.cursor()
 
-    cursor.execute(
-        "SELECT ticker, name, price, change_pts, change_pct, is_positive FROM market_pulse_cache WHERE ticker = ?",
-        (ticker,)
-    )
-    pulse_row = cursor.fetchone()
-    pulse = dict(pulse_row) if pulse_row else {
-        "price": None, "change_pts": None, "change_pct": None,
-        "is_positive": None, "name": INDEX_TICKERS.get(ticker, ticker),
-    }
+        cursor.execute(
+            "SELECT ticker, name, price, change_pts, change_pct, is_positive FROM market_pulse_cache WHERE ticker = ?",
+            (ticker,)
+        )
+        pulse_row = cursor.fetchone()
+        pulse = dict(pulse_row) if pulse_row else {
+            "price": None, "change_pts": None, "change_pct": None,
+            "is_positive": None, "name": INDEX_TICKERS.get(ticker, ticker),
+        }
 
-    cursor.execute("""
-        SELECT rsi_14, macd, macd_signal, macd_hist,
-               sma_50, sma_200, mom_1m, mom_3m, mom_6m, mom_12m_skip1m,
-               hist_vol_20, atr_pct, var_95, cvar_95,
-               sentiment_score, volume, volume_surge, composite_score, close_price, date
-        FROM quant_signals
-        WHERE ticker = ?
-        ORDER BY date DESC LIMIT 1
-    """, (ticker,))
-    q_row = cursor.fetchone()
-    quant = {**_INDEX_QUANT_DEFAULTS, **(dict(q_row) if q_row else {})}
+        cursor.execute("""
+            SELECT rsi_14, macd, macd_signal, macd_hist,
+                   sma_50, sma_200, mom_1m, mom_3m, mom_6m, mom_12m_skip1m,
+                   hist_vol_20, atr_pct, var_95, cvar_95,
+                   sentiment_score, volume, volume_surge, composite_score, close_price, date
+            FROM quant_signals
+            WHERE ticker = ?
+            ORDER BY date DESC LIMIT 1
+        """, (ticker,))
+        q_row = cursor.fetchone()
+        quant = {**_INDEX_QUANT_DEFAULTS, **(dict(q_row) if q_row else {})}
 
-    cursor.execute("SELECT currency FROM asset_profiles WHERE ticker = ?", (ticker,))
-    ap = cursor.fetchone()
-    currency = ap["currency"] if ap else "USD"
-    conn.close()
+        cursor.execute("SELECT currency FROM asset_profiles WHERE ticker = ?", (ticker,))
+        ap = cursor.fetchone()
+        currency = ap["currency"] if ap else "USD"
+    finally:
+        conn.close()
 
     price_action = None
     # Prefer fresh per-ticker parquet (written by /api/index/refresh); fall back to shared baseline
