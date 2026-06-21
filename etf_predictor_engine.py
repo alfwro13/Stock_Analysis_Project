@@ -584,8 +584,10 @@ def get_etf_intraday_overlay_data(config: dict, prediction: dict | None = None) 
 
     def _strip_tz(df: pd.DataFrame) -> pd.DataFrame:
         df = df.copy()
-        if df.index.tz is not None:
-            df.index = df.index.tz_convert("UTC")
+        if df.index.tz is None:
+            df.index = df.index.tz_localize(timezone.utc)
+        else:
+            df.index = df.index.tz_convert(timezone.utc)
         return df
 
     etf_series = pd.Series(dtype=float)
