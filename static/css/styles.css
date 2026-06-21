@@ -486,6 +486,7 @@ table.dataTable.display tbody tr.even > .sorting_1, table.dataTable.order-column
 .chart-wrapper-accent-cyan { border-left: 4px solid #00ffcc; }
 .chart-wrapper-accent-purple { border-left: 4px solid #b366ff; }
 .fxd-chart-wrapper { min-height: 260px; }
+.mc-chart-wrapper { min-height: 480px; }
 .text-accent-cyan { color: #00ffcc; }
 .text-accent-purple { color: #b366ff; }
 /* --- 19. Algorithmic Breakdown Lists & Risk Warnings --- */

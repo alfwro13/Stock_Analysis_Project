@@ -105,6 +105,22 @@
                             </ul>
                             <div class="rule">COMPLEMENTARY TO HMM: The HMM classifies <em>which regime</em> the market is in (Bull / Chop / Crash). The Market Stress Score measures <em>how anomalous</em> the current regime environment is relative to its own history. A Crash-regime day with a low stress score is a routine bad day; a Chop-regime day with a high stress score may precede a regime transition.</div>
                         </div>
+                        <div class="term-box">
+                            <span class="term-title">Monte Carlo Simulation</span>
+                            <p>N=1,000 correlated random-walk paths drawn from a multivariate log-normal distribution to estimate the range of possible future portfolio wealth values over a chosen time horizon. Each path simulates annual returns using per-asset drift (μ), annualised volatility (σ), and the live pairwise correlation matrix from the X-ray engine (Cholesky decomposition). The spread of outcomes across all paths quantifies the uncertainty inherent in long-horizon investing.</p>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">Drift Assumption</span>
+                            <p>The expected nominal annual return (μ) assigned to each asset class before volatility is applied. Defaults are 7.0% for Global Equity ETFs, 6.5% for UK Equities, and 3.5% for Bonds/Fixed Income. These reflect long-run historical averages and can be overridden in the Monte Carlo Simulator to reflect a more optimistic or pessimistic outlook.</p>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">Percentile Fan</span>
+                            <p>A chart showing the 5th, 25th, 50th, 75th, and 95th percentile wealth paths across all simulations. The shaded bands between percentiles represent the uncertainty range: the inner band (P25–P75) captures the "likely" outcomes, while the outer band (P5–P95) captures more extreme scenarios. The solid median line (P50) is the central estimate.</p>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">Probability of Success</span>
+                            <p>The fraction of the 1,000 Monte Carlo paths that reach or exceed a user-supplied target wealth by the end of the chosen horizon. A value of 0.73 means 730 out of 1,000 simulated futures ended above the target. This metric is sensitive to both the target amount and the time horizon — extending the horizon or reducing the target will increase the probability.</p>
+                        </div>
                     </div>
                 </div>
             </div>

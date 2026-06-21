@@ -85,6 +85,7 @@ Stock_Analysis_Project/
 ├── visuals.py                # OHLCV, macro, and anomaly Plotly charts
 ├── visuals_etf.py            # ETF charts: correlation, prediction, contributions, overlay
 ├── visuals_ai.py             # AI contagion charts: performance chart, correlation heatmap
+├── monte_carlo_engine.py     # Forward-looking Monte Carlo wealth simulation (on-demand, no scheduler job)
 ├── maintenance_engine.py     # DB vacuum, orphan file pruning
 ├── reports_engine.py         # Quant briefing report generation
 ├── morning_briefing.py       # Morning briefing assembly + dispatch
@@ -99,6 +100,7 @@ Stock_Analysis_Project/
 │
 ├── templates/                # Jinja2 HTML templates
 │   ├── base.html             # Shared Bootstrap 5 shell — migrated pages {% extends %} it
+│   ├── monte_carlo.html      # Monte Carlo Wealth Simulator page (/monte-carlo)
 │   └── settings/             # Settings page partials (included by settings.html)
 │       ├── _data.html        # Market Universe Pipeline, Macroeconomic Data, News & RSS cards
 │       ├── _automation.html  # Background Automation Schedulers, ML & AI Engine, Live UI Updates cards
@@ -117,7 +119,8 @@ Stock_Analysis_Project/
 │       ├── settings_data.js      # universe triggers, macro triggers, news fetch, profiler status, FRED key
 │       ├── settings_automation.js # quant/earnings/briefing/ML/sentiment/X-ray triggers, HF token
 │       ├── settings_alerts.js    # Dip Radar IIFE, crash/moonshot/contagion/trap/bubble/forensic triggers, test alerts
-│       └── settings_portfolio.js # ETF predictor CRUD + all helpers
+│       ├── settings_portfolio.js # ETF predictor CRUD + all helpers
+│       └── monte_carlo.js        # Monte Carlo Wealth Simulator: initPage(), runSimulation(), renderChart() (Plotly fan chart)
 ├── data/                     # Runtime data (SQLite, Parquet, JSON)
 │   ├── analysis.db
 │   ├── historical/*.parquet  # 2-year daily OHLCV per ticker
@@ -388,6 +391,7 @@ A dedicated page housing standalone analytical tools. Each tool is self-containe
 | Forensic Screener | `/forensic-screener` | Monthly institutional-grade accounting forensics: Piotroski F-Score, Altman Z-Score, and Beneish M-Score from annual financials; fires Nextcloud alerts when holdings breach distress thresholds |
 | FX Drag Analyzer | `/fx-drag` | Decomposes each US stock position's GBP return into equity return (USD) and FX effect (GBP/USD movement) across YTD, 1-year, and 2-year windows |
 | ETF Price Predictor | `/etf-predictor` | Generic morning price predictor for any ETF; configure constituent tickers and weights, predicts next-session open via holdings-weighted basket return and OLS regression with FX adjustment; tracks accuracy over time |
+| Monte Carlo Wealth Simulator | `/monte-carlo` | Projects portfolio wealth over 10/20/30 years using 1,000 correlated GBM paths (Cholesky of `xray_correlation_matrix`); percentile fan (P5–P95) in nominal and real terms; probability of reaching a target wealth. On-demand only — no scheduler job. Engine: `monte_carlo_engine.py` |
 
 ---
 

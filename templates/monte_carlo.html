@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+
+{% block title %}Quantamental - Monte Carlo Wealth Simulator{% endblock %}
+
+{% block extra_head %}
+<script src="/static/vendor/plotly/plotly-3.5.0.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<h1 class="mb-1">&#128200; Monte Carlo Wealth Simulator</h1>
+<p class="text-muted mb-3">
+    Projects portfolio wealth over 10, 20, or 30 years using 1,000 correlated
+    <abbr title="Random-walk simulations that capture asset correlations and volatility to model the full range of possible future outcomes.">Monte Carlo paths</abbr>.
+    Nominal and real (inflation-adjusted) percentile fans are shown side-by-side.
+</p>
+
+<a href="/tools" class="btn btn-outline-secondary btn-sm mb-4">&#8592; Back to Tools</a>
+
+<div class="row g-3">
+    <div class="col-12 col-lg-3">
+        <div class="card card-bg h-100">
+            <div class="card-body">
+                <h6 class="card-title mb-3">Simulation Inputs</h6>
+                <form id="mc-form">
+                    <div class="mb-3">
+                        <label for="mc-pv" class="form-label small">
+                            <abbr title="Current total portfolio value in GBP. Pre-filled from X-ray if available.">Portfolio Value (£)</abbr>
+                        </label>
+                        <input type="number" class="form-control form-control-sm" id="mc-pv" min="0" step="1000" value="0" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="mc-contrib" class="form-label small">
+                            <abbr title="Additional monthly investment added at the end of each simulated year.">Monthly Contribution (£)</abbr>
+                        </label>
+                        <input type="number" class="form-control form-control-sm" id="mc-contrib" min="0" step="100" value="0">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small">Time Horizon</label>
+                        <div class="d-flex gap-2">
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="mc-horizon" id="mc-h10" value="10">
+                                <label class="form-check-label small" for="mc-h10">10 yr</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="mc-horizon" id="mc-h20" value="20" checked>
+                                <label class="form-check-label small" for="mc-h20">20 yr</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="mc-horizon" id="mc-h30" value="30">
+                                <label class="form-check-label small" for="mc-h30">30 yr</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="mc-target" class="form-label small">
+                            <abbr title="Target wealth in GBP. The simulator calculates the probability of reaching this by the end of the horizon.">Target Wealth (£)</abbr>
+                        </label>
+                        <input type="number" class="form-control form-control-sm" id="mc-target" min="0" step="10000" value="0">
+                    </div>
+
+                    <hr class="border-secondary my-2">
+                    <p class="text-muted small mb-2">
+                        <abbr title="Expected annual nominal return for each asset class. Adjust to reflect your market outlook.">Annual Drift Assumptions (%)</abbr>
+                    </p>
+                    <div class="mb-2">
+                        <label for="mc-drift-global" class="form-label small">Global Equity ETF</label>
+                        <input type="number" class="form-control form-control-sm" id="mc-drift-global" min="0" max="30" step="0.5">
+                    </div>
+                    <div class="mb-2">
+                        <label for="mc-drift-uk" class="form-label small">UK Equity</label>
+                        <input type="number" class="form-control form-control-sm" id="mc-drift-uk" min="0" max="30" step="0.5">
+                    </div>
+                    <div class="mb-3">
+                        <label for="mc-drift-bond" class="form-label small">Bond / Fixed Income</label>
+                        <input type="number" class="form-control form-control-sm" id="mc-drift-bond" min="0" max="30" step="0.5">
+                    </div>
+
+                    <hr class="border-secondary my-2">
+                    <div class="mb-3">
+                        <label for="mc-inflation" class="form-label small">
+                            <abbr title="Annual inflation rate used to deflate nominal paths into today's purchasing power.">Inflation Assumption (%)</abbr>
+                        </label>
+                        <input type="number" class="form-control form-control-sm" id="mc-inflation" min="0" max="20" step="0.5">
+                    </div>
+
+                    <button type="submit" class="btn btn-primary btn-sm w-100" id="mc-run-btn">&#9654; Run Simulation</button>
+                    <div id="mc-error" class="text-danger small mt-2 d-none"></div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-lg-9">
+        <div id="mc-placeholder" class="chart-wrapper mc-chart-wrapper d-flex align-items-center justify-content-center text-muted">
+            Set your inputs and click <strong class="ms-1">Run Simulation</strong>.
+        </div>
+        <div id="mc-chart" class="chart-wrapper mc-chart-wrapper d-none"></div>
+
+        <div id="mc-summary" class="d-none mt-3">
+            <div class="d-flex flex-wrap gap-3">
+                <div class="xray-metric-card">
+                    <div class="xray-metric-label"><abbr title="Median (50th percentile) portfolio value at the end of the horizon.">Median Final Value</abbr></div>
+                    <div class="xray-metric-value" id="mc-median-final">—</div>
+                </div>
+                <div class="xray-metric-card">
+                    <div class="xray-metric-label"><abbr title="Worst-case 5th percentile portfolio value at the end of the horizon.">5th Percentile (Worst Case)</abbr></div>
+                    <div class="xray-metric-value" id="mc-p5-final">—</div>
+                </div>
+                <div class="xray-metric-card">
+                    <div class="xray-metric-label"><abbr title="Fraction of the 1,000 simulated paths that reach or exceed the target wealth by the end of the horizon.">Probability of Success</abbr></div>
+                    <div class="xray-metric-value" id="mc-prob-success">—</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+window.MC_DEFAULTS = {
+    drifts: { "Global Equity ETF": 7.0, "UK Equity": 6.5, "Bond/Fixed Income": 3.5 },
+    inflation: 2.5
+};
+</script>
+<script src="/static/js/monte_carlo.js?v={{ css_version }}"></script>
+{% endblock %}

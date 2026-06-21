@@ -2362,4 +2362,61 @@ Triggers an immediate background run of the **Forensic Accounting Scores** job, 
 
 ---
 
+### `POST /api/monte-carlo/run`
+
+Runs a forward-looking Monte Carlo Wealth Simulation and returns percentile fan data. Computes 1,000 correlated GBM paths using per-asset volatility from `xray_risk_cache`, pairwise correlations from `xray_correlation_matrix` (Cholesky decomposition), and per-asset drift derived from the asset class of each holding. Results are not persisted — computed fresh on every call.
+
+**Auth:** Required (session cookie).
+
+**Request body:**
+
+```json
+{
+  "portfolio_value": 50000.0,
+  "monthly_contribution": 500.0,
+  "horizon_years": 20,
+  "target_wealth": 250000.0,
+  "drift_overrides": {
+    "Global Equity ETF": 7.0,
+    "UK Equity": 6.5,
+    "Bond/Fixed Income": 3.5
+  },
+  "inflation_pct": 2.5
+}
+```
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `portfolio_value` | float | required | Current portfolio value (£) |
+| `monthly_contribution` | float | 0.0 | Monthly investment added at each year-end step |
+| `horizon_years` | int | required | Projection horizon in years (1–50) |
+| `target_wealth` | float | 0.0 | Target wealth for probability-of-success calculation (0 = disabled) |
+| `drift_overrides` | dict | {} | Per-asset-class annual return assumption (%) — keys must match the three class names above |
+| `inflation_pct` | float | 2.5 | Annual inflation rate used to produce the real-wealth series |
+
+**Response:**
+
+```json
+{
+  "status": "success",
+  "percentiles": {
+    "p5":  [50000.0, ...],
+    "p25": [...],
+    "p50": [...],
+    "p75": [...],
+    "p95": [...]
+  },
+  "percentiles_real": { "p5": [...], "p25": [...], "p50": [...], "p75": [...], "p95": [...] },
+  "probability_of_success": 0.73,
+  "median_final": 187000.0,
+  "p5_final": 62000.0,
+  "horizon_years": 20,
+  "n_simulations": 1000
+}
+```
+
+Each percentile array has length `horizon_years + 1` (index 0 = current year, index N = end of horizon). `percentiles_real` contains the same structure with each value divided by `(1 + inflation_pct/100)^t`. `probability_of_success` is `null` when `target_wealth` is 0.
+
+---
+
 *Generated: 2026-06-06 · Quantamental Dashboard*

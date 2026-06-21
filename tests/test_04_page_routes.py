@@ -179,6 +179,7 @@ def test_no_page_route_returns_500(client):
         ("/dip-radar",          "Dip Radar Summary"),
         ("/forensic-screener",  "Forensic Screener"),
         ("/fx-drag",            "FX Drag Analyzer"),
+        ("/monte-carlo",        "Monte Carlo Wealth Simulator"),
         ("/index/%5EGSPC",      "Index Detail (S&P 500)"),
         ("/login",              "Login"),
         ("/market-regime",      "Market Regime (HMM)"),

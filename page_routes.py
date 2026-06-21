@@ -666,6 +666,15 @@ async def fx_drag_page(request: Request):
     )
 
 
+@page_router.get("/monte-carlo", response_class=HTMLResponse)
+async def monte_carlo_page(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="monte_carlo.html",
+        context={"unread_count": get_unread_count()},
+    )
+
+
 @page_router.get("/market-regime", response_class=HTMLResponse)
 async def market_regime_page(request: Request):
     return templates.TemplateResponse(

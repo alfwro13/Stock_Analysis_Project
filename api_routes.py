@@ -19,7 +19,7 @@ from pathlib import Path
 from fastapi import APIRouter, Request, BackgroundTasks, HTTPException, Query, Path as PathParam, Response
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 from api_deps import limiter, require_confirm_token, _error_500
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from log_config import configure_file_logging
 from config import (
@@ -73,6 +73,7 @@ from macro_data_engine import update_macro_indicators
 from macro_ai_engine import MacroAIEngine
 from visuals import create_intraday_chart, _intraday_market_tz, _EXCHANGE_DELAYS
 from quant_signals import get_candlestick_patterns
+from monte_carlo_engine import run_simulation as _run_mc_simulation
 
 logger = logging.getLogger(__name__)
 
@@ -854,6 +855,33 @@ async def logs_stream():
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+class MonteCarloRequest(BaseModel):
+    portfolio_value: float = Field(gt=0)
+    monthly_contribution: float = Field(default=0.0, ge=0)
+    horizon_years: int = Field(ge=1, le=50)
+    target_wealth: float = Field(default=0.0, ge=0)
+    drift_overrides: dict = {}
+    inflation_pct: float = Field(default=2.5, ge=0)
+
+
+@limiter.limit("10/minute")
+@api_router.post("/monte-carlo/run")
+async def api_monte_carlo_run(request: Request, req: MonteCarloRequest):
+    try:
+        result = await asyncio.to_thread(
+            _run_mc_simulation,
+            req.portfolio_value,
+            req.monthly_contribution,
+            req.horizon_years,
+            req.target_wealth,
+            req.drift_overrides,
+            req.inflation_pct,
+        )
+        return JSONResponse(content=result)
+    except Exception as e:
+        return _error_500(e)
 
 
 # --- Sub-router registrations ---

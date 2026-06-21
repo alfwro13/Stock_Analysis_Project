@@ -469,3 +469,42 @@ def test_stress_test_run_valid_scenario(client):
     scenario_id = next(iter(SCENARIOS))
     resp = client.post("/api/stress-test/run", json={"scenario_id": scenario_id, "account_id": "all"})
     assert resp.status_code in (200, 400), f"Must not 500, got {resp.status_code}: {resp.text}"
+
+
+# ── Monte Carlo ───────────────────────────────────────────────────────────────
+
+@pytest.mark.api
+def test_monte_carlo_run_returns_success(client):
+    """POST /api/monte-carlo/run must return 200 with status=success and required keys."""
+    payload = {
+        "portfolio_value": 50_000.0,
+        "monthly_contribution": 0.0,
+        "horizon_years": 10,
+        "target_wealth": 100_000.0,
+        "drift_overrides": {},
+        "inflation_pct": 2.5,
+    }
+    resp = client.post("/api/monte-carlo/run", json=payload)
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
+    data = _json(resp)
+    assert data.get("status") == "success", f"Expected success, got: {data}"
+    for key in ("percentiles", "percentiles_real", "probability_of_success", "median_final", "p5_final"):
+        assert key in data, f"Missing key '{key}' in response"
+    for pkey in ("p5", "p25", "p50", "p75", "p95"):
+        assert pkey in data["percentiles"], f"Missing percentile '{pkey}'"
+        assert len(data["percentiles"][pkey]) == 11  # year 0..10
+
+
+def test_monte_carlo_rejects_horizon_above_50(client):
+    """horizon_years > 50 must be rejected with 422 (Field le=50 constraint)."""
+    payload = {"portfolio_value": 50_000.0, "horizon_years": 51}
+    resp = client.post("/api/monte-carlo/run", json=payload)
+    assert resp.status_code == 422, f"Expected 422, got {resp.status_code}"
+
+
+def test_monte_carlo_rejects_nonpositive_portfolio_value(client):
+    """portfolio_value <= 0 must be rejected with 422 (Field gt=0 constraint)."""
+    for bad_value in (0.0, -1.0):
+        payload = {"portfolio_value": bad_value, "horizon_years": 10}
+        resp = client.post("/api/monte-carlo/run", json=payload)
+        assert resp.status_code == 422, f"Expected 422 for pv={bad_value}, got {resp.status_code}"
