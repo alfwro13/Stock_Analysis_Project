@@ -965,6 +965,13 @@ details[open].xray-rec-group .xray-rec-group-summary::before { transform: rotate
 .regime-change-block { border-left: 1px solid #333; padding-left: 20px; }
 .regime-chart-area { height: 280px; padding: 0 8px 8px; }
 .regime-chart-placeholder { height: 280px; display: flex; align-items: center; justify-content: center; color: #555; font-size: 13px; }
+.chart-ph { display: flex; flex-direction: column; align-items: center; justify-content: center; color: #888; gap: 10px; }
+.chart-ph--lg { height: 180px; }
+.chart-ph--sm { height: 120px; }
+.chart-ph--gap-sm { gap: 8px; }
+.chart-ph__icon { font-size: 2rem; }
+.chart-ph__title { font-weight: 600; }
+.chart-ph__hint { font-size: var(--font-size-table); }
 .col-bull { color: #00ff00; font-weight: 600; }
 .col-chop { color: #ffaa00; font-weight: 600; }
 .col-crash { color: #ff4d4d; font-weight: 600; }

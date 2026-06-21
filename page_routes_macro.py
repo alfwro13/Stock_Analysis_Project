@@ -402,9 +402,9 @@ async def index_detail(request: Request, ticker: str):
             "s2": P - (prev_day['High'] - prev_day['Low']),
         }
     except FileNotFoundError:
-        macro_html = "<div style='display:flex;flex-direction:column;align-items:center;justify-content:center;height:180px;gap:10px;color:#888;'><span style='font-size:2rem;'>📭</span><span style='font-weight:600;'>No historical data yet</span></div>"
+        macro_html = "<div class='chart-ph chart-ph--lg'><span class='chart-ph__icon'>📭</span><span class='chart-ph__title'>No historical data yet</span></div>"
     except Exception as e:
-        macro_html = f"<div style='display:flex;flex-direction:column;align-items:center;justify-content:center;height:180px;gap:8px;color:#888;'><span style='font-size:2rem;'>⚠️</span><span style='font-weight:600;'>Chart unavailable</span><span style='font-size:0.85rem;'>{type(e).__name__}: {e}</span></div>"
+        macro_html = f"<div class='chart-ph chart-ph--lg chart-ph--gap-sm'><span class='chart-ph__icon'>⚠️</span><span class='chart-ph__title'>Chart unavailable</span><span class='chart-ph__hint'>{type(e).__name__}: {e}</span></div>"
 
     try:
         df_intraday = pd.read_parquet(INTRADAY_DIR / f"{ticker}_intraday.parquet")
@@ -415,9 +415,9 @@ async def index_detail(request: Request, ticker: str):
         intraday_html = create_intraday_chart(df_intraday, ticker, s1=s1, s2=s2,
                                               market_tz=mkt_tz, data_delay_minutes=delay_min)
     except FileNotFoundError:
-        intraday_html = "<div style='display:flex;flex-direction:column;align-items:center;justify-content:center;height:120px;gap:10px;color:#888;'><span style='font-size:1.8rem;'>📭</span><span style='font-weight:600;'>No intraday data yet</span></div>"
+        intraday_html = "<div class='chart-ph chart-ph--sm'><span class='chart-ph__icon'>📭</span><span class='chart-ph__title'>No intraday data yet</span></div>"
     except Exception:
-        intraday_html = "<div style='display:flex;flex-direction:column;align-items:center;justify-content:center;height:120px;gap:8px;color:#888;'><span style='font-size:1.8rem;'>⚠️</span><span style='font-weight:600;'>Intraday data unavailable</span></div>"
+        intraday_html = "<div class='chart-ph chart-ph--sm chart-ph--gap-sm'><span class='chart-ph__icon'>⚠️</span><span class='chart-ph__title'>Intraday data unavailable</span></div>"
 
     return templates.TemplateResponse(
         request=request, name="index_detail.html",

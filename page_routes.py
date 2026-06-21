@@ -196,50 +196,52 @@ async def home():
 @page_router.get("/portfolio", response_class=HTMLResponse)
 async def portfolio_page(request: Request, account_id: str = "all", embed: bool = False):
     conn = get_connection()
-    cursor = conn.cursor()
+    try:
+        cursor = conn.cursor()
 
-    cursor.execute("""
-        SELECT s.*,
-               (SELECT ml_confidence_score FROM quant_signals
-                WHERE ticker = s.ticker AND ml_confidence_score IS NOT NULL
-                ORDER BY date DESC LIMIT 1) AS ml_confidence_score,
-               (SELECT var_95 FROM quant_signals
-                WHERE ticker = s.ticker AND var_95 IS NOT NULL
-                ORDER BY date DESC LIMIT 1) AS var_95,
-               (SELECT cvar_95 FROM quant_signals
-                WHERE ticker = s.ticker AND cvar_95 IS NOT NULL
-                ORDER BY date DESC LIMIT 1) AS cvar_95,
-               (SELECT sentiment_score FROM quant_signals
-                WHERE ticker = s.ticker AND sentiment_score IS NOT NULL
-                ORDER BY date DESC LIMIT 1) AS sentiment_score,
-               q.atr_pct,
-               q.close_price as quant_close_price,
-               q.vp_entry_zone,
-               q.vp_exit_zone,
-               COALESCE(
-                   cno.display_name,
-                   NULLIF(ap.company_name, s.ticker),
-                   NULLIF(mu.company_name, s.ticker),
-                   s.company_name,
-                   s.ticker
-               ) as resolved_company_name
-        FROM stock_signals s
-        LEFT JOIN asset_profiles ap ON s.ticker = ap.ticker
-        LEFT JOIN market_universe mu ON s.ticker = mu.ticker
-        LEFT JOIN company_name_overrides cno ON s.ticker = cno.ticker
-        LEFT JOIN quant_signals q ON s.ticker = q.ticker
-        AND q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = s.ticker)
-    """)
-    db_rows = cursor.fetchall()
+        cursor.execute("""
+            SELECT s.*,
+                   (SELECT ml_confidence_score FROM quant_signals
+                    WHERE ticker = s.ticker AND ml_confidence_score IS NOT NULL
+                    ORDER BY date DESC LIMIT 1) AS ml_confidence_score,
+                   (SELECT var_95 FROM quant_signals
+                    WHERE ticker = s.ticker AND var_95 IS NOT NULL
+                    ORDER BY date DESC LIMIT 1) AS var_95,
+                   (SELECT cvar_95 FROM quant_signals
+                    WHERE ticker = s.ticker AND cvar_95 IS NOT NULL
+                    ORDER BY date DESC LIMIT 1) AS cvar_95,
+                   (SELECT sentiment_score FROM quant_signals
+                    WHERE ticker = s.ticker AND sentiment_score IS NOT NULL
+                    ORDER BY date DESC LIMIT 1) AS sentiment_score,
+                   q.atr_pct,
+                   q.close_price as quant_close_price,
+                   q.vp_entry_zone,
+                   q.vp_exit_zone,
+                   COALESCE(
+                       cno.display_name,
+                       NULLIF(ap.company_name, s.ticker),
+                       NULLIF(mu.company_name, s.ticker),
+                       s.company_name,
+                       s.ticker
+                   ) as resolved_company_name
+            FROM stock_signals s
+            LEFT JOIN asset_profiles ap ON s.ticker = ap.ticker
+            LEFT JOIN market_universe mu ON s.ticker = mu.ticker
+            LEFT JOIN company_name_overrides cno ON s.ticker = cno.ticker
+            LEFT JOIN quant_signals q ON s.ticker = q.ticker
+            AND q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = s.ticker)
+        """)
+        db_rows = cursor.fetchall()
 
-    cursor.execute("SELECT * FROM macro_regimes ORDER BY date DESC LIMIT 1")
-    macro_row = cursor.fetchone()
-    macro_regime = dict(macro_row) if macro_row else None
+        cursor.execute("SELECT * FROM macro_regimes ORDER BY date DESC LIMIT 1")
+        macro_row = cursor.fetchone()
+        macro_regime = dict(macro_row) if macro_row else None
 
-    cursor.execute("SELECT MAX(last_updated) as global_updated FROM stock_signals")
-    global_update_val = cursor.fetchone()['global_updated']
-    global_updated = global_update_val if global_update_val else "Awaiting initial update..."
-    conn.close()
+        cursor.execute("SELECT MAX(last_updated) as global_updated FROM stock_signals")
+        global_update_val = cursor.fetchone()['global_updated']
+        global_updated = global_update_val if global_update_val else "Awaiting initial update..."
+    finally:
+        conn.close()
 
     config_data = load_config()
     active_accounts = config_data.get("GHOSTFOLIO_ACCOUNTS", {}).get("active", [])
@@ -362,51 +364,53 @@ async def portfolio_page(request: Request, account_id: str = "all", embed: bool 
 @page_router.get("/watchlist", response_class=HTMLResponse)
 async def watchlist_page(request: Request, embed: bool = False):
     conn = get_connection()
-    cursor = conn.cursor()
+    try:
+        cursor = conn.cursor()
 
-    cursor.execute("""
-        SELECT s.*,
-               (SELECT ml_confidence_score FROM quant_signals
-                WHERE ticker = s.ticker AND ml_confidence_score IS NOT NULL
-                ORDER BY date DESC LIMIT 1) AS ml_confidence_score,
-               (SELECT var_95 FROM quant_signals
-                WHERE ticker = s.ticker AND var_95 IS NOT NULL
-                ORDER BY date DESC LIMIT 1) AS var_95,
-               (SELECT cvar_95 FROM quant_signals
-                WHERE ticker = s.ticker AND cvar_95 IS NOT NULL
-                ORDER BY date DESC LIMIT 1) AS cvar_95,
-               (SELECT sentiment_score FROM quant_signals
-                WHERE ticker = s.ticker AND sentiment_score IS NOT NULL
-                ORDER BY date DESC LIMIT 1) AS sentiment_score,
-               q.atr_pct,
-               q.close_price as quant_close_price,
-               q.vp_entry_zone,
-               q.vp_exit_zone,
-               m.is_freetrade,
-               COALESCE(
-                   cno.display_name,
-                   NULLIF(ap.company_name, s.ticker),
-                   NULLIF(m.company_name, s.ticker),
-                   s.company_name,
-                   s.ticker
-               ) as resolved_company_name
-        FROM stock_signals s
-        LEFT JOIN quant_signals q ON s.ticker = q.ticker
-        AND q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = s.ticker)
-        LEFT JOIN market_universe m ON s.ticker = m.ticker
-        LEFT JOIN asset_profiles ap ON s.ticker = ap.ticker
-        LEFT JOIN company_name_overrides cno ON s.ticker = cno.ticker
-    """)
-    db_rows = cursor.fetchall()
+        cursor.execute("""
+            SELECT s.*,
+                   (SELECT ml_confidence_score FROM quant_signals
+                    WHERE ticker = s.ticker AND ml_confidence_score IS NOT NULL
+                    ORDER BY date DESC LIMIT 1) AS ml_confidence_score,
+                   (SELECT var_95 FROM quant_signals
+                    WHERE ticker = s.ticker AND var_95 IS NOT NULL
+                    ORDER BY date DESC LIMIT 1) AS var_95,
+                   (SELECT cvar_95 FROM quant_signals
+                    WHERE ticker = s.ticker AND cvar_95 IS NOT NULL
+                    ORDER BY date DESC LIMIT 1) AS cvar_95,
+                   (SELECT sentiment_score FROM quant_signals
+                    WHERE ticker = s.ticker AND sentiment_score IS NOT NULL
+                    ORDER BY date DESC LIMIT 1) AS sentiment_score,
+                   q.atr_pct,
+                   q.close_price as quant_close_price,
+                   q.vp_entry_zone,
+                   q.vp_exit_zone,
+                   m.is_freetrade,
+                   COALESCE(
+                       cno.display_name,
+                       NULLIF(ap.company_name, s.ticker),
+                       NULLIF(m.company_name, s.ticker),
+                       s.company_name,
+                       s.ticker
+                   ) as resolved_company_name
+            FROM stock_signals s
+            LEFT JOIN quant_signals q ON s.ticker = q.ticker
+            AND q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = s.ticker)
+            LEFT JOIN market_universe m ON s.ticker = m.ticker
+            LEFT JOIN asset_profiles ap ON s.ticker = ap.ticker
+            LEFT JOIN company_name_overrides cno ON s.ticker = cno.ticker
+        """)
+        db_rows = cursor.fetchall()
 
-    cursor.execute("SELECT * FROM macro_regimes ORDER BY date DESC LIMIT 1")
-    macro_row = cursor.fetchone()
-    macro_regime = dict(macro_row) if macro_row else None
+        cursor.execute("SELECT * FROM macro_regimes ORDER BY date DESC LIMIT 1")
+        macro_row = cursor.fetchone()
+        macro_regime = dict(macro_row) if macro_row else None
 
-    cursor.execute("SELECT MAX(last_updated) as global_updated FROM stock_signals")
-    global_update_val = cursor.fetchone()['global_updated']
-    global_updated = global_update_val if global_update_val else "Awaiting initial update..."
-    conn.close()
+        cursor.execute("SELECT MAX(last_updated) as global_updated FROM stock_signals")
+        global_update_val = cursor.fetchone()['global_updated']
+        global_updated = global_update_val if global_update_val else "Awaiting initial update..."
+    finally:
+        conn.close()
 
     watchlist_json = get_json_data(WATCHLIST_PATH)
     watchlist_tickers = watchlist_json.get("watchlist", [])
@@ -469,18 +473,18 @@ async def earnings_volatility_page(request: Request):
     today_str = time_engine.now_local().strftime('%Y-%m-%d')
 
     conn = get_connection()
-    cursor = conn.cursor()
-
-    query = """
-        SELECT * FROM earnings_volatility
-        WHERE next_earnings_date >= ?
-        ORDER BY next_earnings_date ASC, edge_score DESC
-    """
-    cursor.execute(query, (today_str,))
-    rows = cursor.fetchall()
-
-    earnings_data = [dict(row) for row in rows]
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        query = """
+            SELECT * FROM earnings_volatility
+            WHERE next_earnings_date >= ?
+            ORDER BY next_earnings_date ASC, edge_score DESC
+        """
+        cursor.execute(query, (today_str,))
+        rows = cursor.fetchall()
+        earnings_data = [dict(row) for row in rows]
+    finally:
+        conn.close()
 
     return templates.TemplateResponse(
         request=request,
@@ -882,240 +886,242 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
     is_in_watchlist = ticker in watchlist_tickers
 
     conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT s.*, p.business_summary,
-               (SELECT ml_confidence_score FROM quant_signals
-                WHERE ticker = s.ticker AND ml_confidence_score IS NOT NULL
-                ORDER BY date DESC LIMIT 1) AS ml_confidence_score,
-               (SELECT var_95 FROM quant_signals
-                WHERE ticker = s.ticker AND var_95 IS NOT NULL
-                ORDER BY date DESC LIMIT 1) AS var_95,
-               (SELECT cvar_95 FROM quant_signals
-                WHERE ticker = s.ticker AND cvar_95 IS NOT NULL
-                ORDER BY date DESC LIMIT 1) AS cvar_95,
-               (SELECT sentiment_score FROM quant_signals
-                WHERE ticker = s.ticker AND sentiment_score IS NOT NULL
-                ORDER BY date DESC LIMIT 1) AS sentiment_score,
-               q.atr_pct, q.volume, q.volume_surge, q.bullish_cross,
-               q.macd, q.macd_signal, q.macd_hist,
-               q.sma_50, q.sma_200,
-               q.mom_1m, q.mom_3m, q.mom_6m, q.mom_12m_skip1m,
-               q.hist_vol_20, q.rel_strength_5d, q.rel_strength_20d,
-               q.anomaly_score,
-               q.vp_poc, q.vp_val, q.vp_vah, q.vp_entry_zone, q.vp_exit_zone,
-               q.kc_z_score, q.kc_entry_signal, q.kc_exit_signal,
-               q.price_q10, q.price_q90,
-               mu.industry, mu.index_membership,
-               cno.display_name as name_override,
-               COALESCE(
-                   cno.display_name,
-                   NULLIF(p.company_name, s.ticker),
-                   NULLIF(mu.company_name, s.ticker),
-                   s.company_name,
-                   s.ticker
-               ) as resolved_company_name
-        FROM stock_signals s
-        LEFT JOIN asset_profiles p ON s.ticker = p.ticker
-        LEFT JOIN market_universe mu ON s.ticker = mu.ticker
-        LEFT JOIN company_name_overrides cno ON s.ticker = cno.ticker
-        LEFT JOIN quant_signals q ON s.ticker = q.ticker
-            AND q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = s.ticker)
-        WHERE s.ticker = ?
-    ''', (ticker,))
-    stock_data = cursor.fetchone()
-
-    if stock_data:
-        stock_data = dict(stock_data)
-        _cp = stock_data.get("current_price") or 0.0
-        stock_data["trend_50d"] = "UP" if stock_data.get("sma_50") and _cp > stock_data["sma_50"] else "DOWN"
-        stock_data["trend_200d"] = "UP" if stock_data.get("sma_200") and _cp > stock_data["sma_200"] else "DOWN"
-        # Resolve best available display name — mutual funds often have no shortName
-        # from yfinance; fall back through asset_profiles → market_universe
-        stock_data['company_name'] = (
-            stock_data.get('resolved_company_name')
-            or stock_data.get('company_name')
-            or ticker
-        )
-        stock_data['company_name'] = (
-            stock_data['company_name']
-            .replace(" - Common Stock", "")
-            .replace(" Common Stock", "")
-            .strip()
-        )
-        stock_data['has_name_override'] = bool(stock_data.get('name_override'))
-    else:
+    try:
+        cursor = conn.cursor()
         cursor.execute('''
-            SELECT q.*,
+            SELECT s.*, p.business_summary,
+                   (SELECT ml_confidence_score FROM quant_signals
+                    WHERE ticker = s.ticker AND ml_confidence_score IS NOT NULL
+                    ORDER BY date DESC LIMIT 1) AS ml_confidence_score,
+                   (SELECT var_95 FROM quant_signals
+                    WHERE ticker = s.ticker AND var_95 IS NOT NULL
+                    ORDER BY date DESC LIMIT 1) AS var_95,
+                   (SELECT cvar_95 FROM quant_signals
+                    WHERE ticker = s.ticker AND cvar_95 IS NOT NULL
+                    ORDER BY date DESC LIMIT 1) AS cvar_95,
+                   (SELECT sentiment_score FROM quant_signals
+                    WHERE ticker = s.ticker AND sentiment_score IS NOT NULL
+                    ORDER BY date DESC LIMIT 1) AS sentiment_score,
+                   q.atr_pct, q.volume, q.volume_surge, q.bullish_cross,
+                   q.macd, q.macd_signal, q.macd_hist,
+                   q.sma_50, q.sma_200,
+                   q.mom_1m, q.mom_3m, q.mom_6m, q.mom_12m_skip1m,
+                   q.hist_vol_20, q.rel_strength_5d, q.rel_strength_20d,
+                   q.anomaly_score,
+                   q.vp_poc, q.vp_val, q.vp_vah, q.vp_entry_zone, q.vp_exit_zone,
+                   q.kc_z_score, q.kc_entry_signal, q.kc_exit_signal,
+                   q.price_q10, q.price_q90,
+                   mu.industry, mu.index_membership,
                    cno.display_name as name_override,
-                   COALESCE(cno.display_name, p.company_name, m.company_name, q.ticker) as company_name,
-                   COALESCE(p.sector, 'Unclassified') as sector,
-                   COALESCE(p.currency, 'USD') as currency,
-                   COALESCE(p.quote_type, 'EQUITY') as quote_type,
-                   p.business_summary,
-                   m.industry, m.index_membership
-            FROM quant_signals q
-            LEFT JOIN market_universe m ON q.ticker = m.ticker
-            LEFT JOIN asset_profiles p ON q.ticker = p.ticker
-            LEFT JOIN company_name_overrides cno ON q.ticker = cno.ticker
-            WHERE q.ticker = ? ORDER BY q.date DESC LIMIT 1
+                   COALESCE(
+                       cno.display_name,
+                       NULLIF(p.company_name, s.ticker),
+                       NULLIF(mu.company_name, s.ticker),
+                       s.company_name,
+                       s.ticker
+                   ) as resolved_company_name
+            FROM stock_signals s
+            LEFT JOIN asset_profiles p ON s.ticker = p.ticker
+            LEFT JOIN market_universe mu ON s.ticker = mu.ticker
+            LEFT JOIN company_name_overrides cno ON s.ticker = cno.ticker
+            LEFT JOIN quant_signals q ON s.ticker = q.ticker
+                AND q.date = (SELECT MAX(date) FROM quant_signals WHERE ticker = s.ticker)
+            WHERE s.ticker = ?
         ''', (ticker,))
-        q_data = cursor.fetchone()
+        stock_data = cursor.fetchone()
 
-        if q_data:
-            q_data = dict(q_data)
-            company_name = q_data.get("company_name") or ticker
-            company_name = company_name.replace(" - Common Stock", "").replace(" Common Stock", "").strip()
-
-            c_price = q_data.get("close_price")
-            c_price = float(c_price) if c_price is not None else 0.0
-
-            stock_data = {
-                "ticker": ticker,
-                "company_name": company_name,
-                "sector": q_data.get("sector") or "Unclassified",
-                "quote_type": q_data.get("quote_type") or "EQUITY",
-                "currency": q_data.get("currency") or "USD",
-                "current_price": c_price,
-                "overall_signal": "UNIVERSE SCAN ONLY",
-                "composite_score": "N/A",
-                "educational_notes": "This asset is part of the broader market universe scan. Add it to your Ghostfolio or Watchlist to trigger a deep, institutional fundamental evaluation.",
-                "business_summary": q_data.get("business_summary"),
-                "next_earnings_date": "Unknown",
-                "target_price": None,
-                "trend_50d": "UP" if q_data.get("sma_50") and c_price > q_data.get("sma_50") else "DOWN",
-                "trend_200d": "UP" if q_data.get("sma_200") and c_price > q_data.get("sma_200") else "DOWN",
-                "rsi_14": q_data.get("rsi_14"),
-                "atr_pct": q_data.get("atr_pct"),
-                "atr_stop_loss": None,
-                "last_updated": None,
-                "ml_confidence_score": q_data.get("ml_confidence_score"),
-                "var_95": q_data.get("var_95"),
-                "cvar_95": q_data.get("cvar_95"),
-                "sentiment_score": q_data.get("sentiment_score"),
-                "yield_correlation": None,
-                "trailing_pe": None,
-                "debt_to_equity": None,
-                "forward_pe": None,
-                "peg_ratio": None,
-                "peter_lynch_peg": None,
-                "price_to_book": None,
-                "profit_margin": None,
-                "roe": None,
-                "revenue_growth": None,
-                "current_ratio": None,
-                "operating_cash_flow": None,
-                "short_interest": None,
-                "institutional_ownership": None,
-                "beta": None,
-                "expense_ratio": None,
-                "ytd_return": None,
-                "total_assets": None,
-                "nav_price": None,
-                "dividend_yield": None,
-                "top_holdings": None,
-                "sector_weightings": None,
-                "volume": q_data.get("volume"),
-                "volume_surge": q_data.get("volume_surge"),
-                "bullish_cross": q_data.get("bullish_cross"),
-                "macd": q_data.get("macd"),
-                "macd_signal": q_data.get("macd_signal"),
-                "macd_hist": q_data.get("macd_hist"),
-                "sma_50": q_data.get("sma_50"),
-                "sma_200": q_data.get("sma_200"),
-                "mom_1m": q_data.get("mom_1m"),
-                "mom_3m": q_data.get("mom_3m"),
-                "mom_6m": q_data.get("mom_6m"),
-                "mom_12m_skip1m": q_data.get("mom_12m_skip1m"),
-                "hist_vol_20": q_data.get("hist_vol_20"),
-                "rel_strength_5d": q_data.get("rel_strength_5d"),
-                "rel_strength_20d": q_data.get("rel_strength_20d"),
-                "anomaly_score": q_data.get("anomaly_score"),
-                "industry": q_data.get("industry"),
-                "index_membership": q_data.get("index_membership"),
-                "has_name_override": bool(q_data.get("name_override")),
-                "vp_poc": q_data.get("vp_poc"),
-                "vp_val": q_data.get("vp_val"),
-                "vp_vah": q_data.get("vp_vah"),
-                "vp_entry_zone": q_data.get("vp_entry_zone"),
-                "vp_exit_zone": q_data.get("vp_exit_zone"),
-                "kc_z_score": q_data.get("kc_z_score"),
-                "kc_entry_signal": q_data.get("kc_entry_signal"),
-                "kc_exit_signal": q_data.get("kc_exit_signal"),
-                "price_q10": q_data.get("price_q10"),
-                "price_q90": q_data.get("price_q90"),
-            }
+        if stock_data:
+            stock_data = dict(stock_data)
+            _cp = stock_data.get("current_price") or 0.0
+            stock_data["trend_50d"] = "UP" if stock_data.get("sma_50") and _cp > stock_data["sma_50"] else "DOWN"
+            stock_data["trend_200d"] = "UP" if stock_data.get("sma_200") and _cp > stock_data["sma_200"] else "DOWN"
+            # Resolve best available display name — mutual funds often have no shortName
+            # from yfinance; fall back through asset_profiles → market_universe
+            stock_data['company_name'] = (
+                stock_data.get('resolved_company_name')
+                or stock_data.get('company_name')
+                or ticker
+            )
+            stock_data['company_name'] = (
+                stock_data['company_name']
+                .replace(" - Common Stock", "")
+                .replace(" Common Stock", "")
+                .strip()
+            )
+            stock_data['has_name_override'] = bool(stock_data.get('name_override'))
         else:
-            stock_data = {
-                "ticker": ticker,
-                "company_name": ticker,
-                "has_name_override": False,
-                "sector": "Unknown",
-                "quote_type": "UNKNOWN",
-                "currency": "USD",
-                "current_price": 0.0,
-                "overall_signal": "UNKNOWN",
-                "composite_score": "N/A",
-                "educational_notes": "Data not found. Asset may not be tracked.",
-                "business_summary": None,
-                "next_earnings_date": "Unknown",
-                "target_price": None,
-                "trend_50d": "N/A",
-                "trend_200d": "N/A",
-                "rsi_14": None,
-                "atr_pct": None,
-                "atr_stop_loss": None,
-                "last_updated": None,
-                "ml_confidence_score": None,
-                "var_95": None,
-                "cvar_95": None,
-                "sentiment_score": None,
-                "yield_correlation": None,
-                "trailing_pe": None,
-                "debt_to_equity": None,
-                "forward_pe": None,
-                "peg_ratio": None,
-                "peter_lynch_peg": None,
-                "price_to_book": None,
-                "profit_margin": None,
-                "roe": None,
-                "revenue_growth": None,
-                "current_ratio": None,
-                "operating_cash_flow": None,
-                "short_interest": None,
-                "institutional_ownership": None,
-                "beta": None,
-                "expense_ratio": None,
-                "ytd_return": None,
-                "total_assets": None,
-                "nav_price": None,
-                "dividend_yield": None,
-                "top_holdings": None,
-                "sector_weightings": None,
-                "volume": None, "volume_surge": None, "bullish_cross": None,
-                "macd": None, "macd_signal": None, "macd_hist": None,
-                "sma_50": None, "sma_200": None,
-                "mom_1m": None, "mom_3m": None, "mom_6m": None, "mom_12m_skip1m": None,
-                "hist_vol_20": None, "rel_strength_5d": None, "rel_strength_20d": None,
-                "anomaly_score": None,
-                "industry": None, "index_membership": None,
-                "vp_poc": None, "vp_val": None, "vp_vah": None,
-                "vp_entry_zone": None, "vp_exit_zone": None,
-                "kc_z_score": None, "kc_entry_signal": None, "kc_exit_signal": None,
-                "price_q10": None, "price_q90": None,
-            }
+            cursor.execute('''
+                SELECT q.*,
+                       cno.display_name as name_override,
+                       COALESCE(cno.display_name, p.company_name, m.company_name, q.ticker) as company_name,
+                       COALESCE(p.sector, 'Unclassified') as sector,
+                       COALESCE(p.currency, 'USD') as currency,
+                       COALESCE(p.quote_type, 'EQUITY') as quote_type,
+                       p.business_summary,
+                       m.industry, m.index_membership
+                FROM quant_signals q
+                LEFT JOIN market_universe m ON q.ticker = m.ticker
+                LEFT JOIN asset_profiles p ON q.ticker = p.ticker
+                LEFT JOIN company_name_overrides cno ON q.ticker = cno.ticker
+                WHERE q.ticker = ? ORDER BY q.date DESC LIMIT 1
+            ''', (ticker,))
+            q_data = cursor.fetchone()
 
-    earnings_vol: dict = {}
-    if stock_data:
-        cursor.execute('''
-            SELECT implied_move_pct, historical_avg_move_pct, edge_score, options_volume
-            FROM earnings_volatility WHERE ticker = ?
-        ''', (ticker,))
-        ev_row = cursor.fetchone()
-        if ev_row:
-            earnings_vol = dict(ev_row)
+            if q_data:
+                q_data = dict(q_data)
+                company_name = q_data.get("company_name") or ticker
+                company_name = company_name.replace(" - Common Stock", "").replace(" Common Stock", "").strip()
 
-    conn.close()
+                c_price = q_data.get("close_price")
+                c_price = float(c_price) if c_price is not None else 0.0
+
+                stock_data = {
+                    "ticker": ticker,
+                    "company_name": company_name,
+                    "sector": q_data.get("sector") or "Unclassified",
+                    "quote_type": q_data.get("quote_type") or "EQUITY",
+                    "currency": q_data.get("currency") or "USD",
+                    "current_price": c_price,
+                    "overall_signal": "UNIVERSE SCAN ONLY",
+                    "composite_score": "N/A",
+                    "educational_notes": "This asset is part of the broader market universe scan. Add it to your Ghostfolio or Watchlist to trigger a deep, institutional fundamental evaluation.",
+                    "business_summary": q_data.get("business_summary"),
+                    "next_earnings_date": "Unknown",
+                    "target_price": None,
+                    "trend_50d": "UP" if q_data.get("sma_50") and c_price > q_data.get("sma_50") else "DOWN",
+                    "trend_200d": "UP" if q_data.get("sma_200") and c_price > q_data.get("sma_200") else "DOWN",
+                    "rsi_14": q_data.get("rsi_14"),
+                    "atr_pct": q_data.get("atr_pct"),
+                    "atr_stop_loss": None,
+                    "last_updated": None,
+                    "ml_confidence_score": q_data.get("ml_confidence_score"),
+                    "var_95": q_data.get("var_95"),
+                    "cvar_95": q_data.get("cvar_95"),
+                    "sentiment_score": q_data.get("sentiment_score"),
+                    "yield_correlation": None,
+                    "trailing_pe": None,
+                    "debt_to_equity": None,
+                    "forward_pe": None,
+                    "peg_ratio": None,
+                    "peter_lynch_peg": None,
+                    "price_to_book": None,
+                    "profit_margin": None,
+                    "roe": None,
+                    "revenue_growth": None,
+                    "current_ratio": None,
+                    "operating_cash_flow": None,
+                    "short_interest": None,
+                    "institutional_ownership": None,
+                    "beta": None,
+                    "expense_ratio": None,
+                    "ytd_return": None,
+                    "total_assets": None,
+                    "nav_price": None,
+                    "dividend_yield": None,
+                    "top_holdings": None,
+                    "sector_weightings": None,
+                    "volume": q_data.get("volume"),
+                    "volume_surge": q_data.get("volume_surge"),
+                    "bullish_cross": q_data.get("bullish_cross"),
+                    "macd": q_data.get("macd"),
+                    "macd_signal": q_data.get("macd_signal"),
+                    "macd_hist": q_data.get("macd_hist"),
+                    "sma_50": q_data.get("sma_50"),
+                    "sma_200": q_data.get("sma_200"),
+                    "mom_1m": q_data.get("mom_1m"),
+                    "mom_3m": q_data.get("mom_3m"),
+                    "mom_6m": q_data.get("mom_6m"),
+                    "mom_12m_skip1m": q_data.get("mom_12m_skip1m"),
+                    "hist_vol_20": q_data.get("hist_vol_20"),
+                    "rel_strength_5d": q_data.get("rel_strength_5d"),
+                    "rel_strength_20d": q_data.get("rel_strength_20d"),
+                    "anomaly_score": q_data.get("anomaly_score"),
+                    "industry": q_data.get("industry"),
+                    "index_membership": q_data.get("index_membership"),
+                    "has_name_override": bool(q_data.get("name_override")),
+                    "vp_poc": q_data.get("vp_poc"),
+                    "vp_val": q_data.get("vp_val"),
+                    "vp_vah": q_data.get("vp_vah"),
+                    "vp_entry_zone": q_data.get("vp_entry_zone"),
+                    "vp_exit_zone": q_data.get("vp_exit_zone"),
+                    "kc_z_score": q_data.get("kc_z_score"),
+                    "kc_entry_signal": q_data.get("kc_entry_signal"),
+                    "kc_exit_signal": q_data.get("kc_exit_signal"),
+                    "price_q10": q_data.get("price_q10"),
+                    "price_q90": q_data.get("price_q90"),
+                }
+            else:
+                stock_data = {
+                    "ticker": ticker,
+                    "company_name": ticker,
+                    "has_name_override": False,
+                    "sector": "Unknown",
+                    "quote_type": "UNKNOWN",
+                    "currency": "USD",
+                    "current_price": 0.0,
+                    "overall_signal": "UNKNOWN",
+                    "composite_score": "N/A",
+                    "educational_notes": "Data not found. Asset may not be tracked.",
+                    "business_summary": None,
+                    "next_earnings_date": "Unknown",
+                    "target_price": None,
+                    "trend_50d": "N/A",
+                    "trend_200d": "N/A",
+                    "rsi_14": None,
+                    "atr_pct": None,
+                    "atr_stop_loss": None,
+                    "last_updated": None,
+                    "ml_confidence_score": None,
+                    "var_95": None,
+                    "cvar_95": None,
+                    "sentiment_score": None,
+                    "yield_correlation": None,
+                    "trailing_pe": None,
+                    "debt_to_equity": None,
+                    "forward_pe": None,
+                    "peg_ratio": None,
+                    "peter_lynch_peg": None,
+                    "price_to_book": None,
+                    "profit_margin": None,
+                    "roe": None,
+                    "revenue_growth": None,
+                    "current_ratio": None,
+                    "operating_cash_flow": None,
+                    "short_interest": None,
+                    "institutional_ownership": None,
+                    "beta": None,
+                    "expense_ratio": None,
+                    "ytd_return": None,
+                    "total_assets": None,
+                    "nav_price": None,
+                    "dividend_yield": None,
+                    "top_holdings": None,
+                    "sector_weightings": None,
+                    "volume": None, "volume_surge": None, "bullish_cross": None,
+                    "macd": None, "macd_signal": None, "macd_hist": None,
+                    "sma_50": None, "sma_200": None,
+                    "mom_1m": None, "mom_3m": None, "mom_6m": None, "mom_12m_skip1m": None,
+                    "hist_vol_20": None, "rel_strength_5d": None, "rel_strength_20d": None,
+                    "anomaly_score": None,
+                    "industry": None, "index_membership": None,
+                    "vp_poc": None, "vp_val": None, "vp_vah": None,
+                    "vp_entry_zone": None, "vp_exit_zone": None,
+                    "kc_z_score": None, "kc_entry_signal": None, "kc_exit_signal": None,
+                    "price_q10": None, "price_q90": None,
+                }
+
+        earnings_vol: dict = {}
+        if stock_data:
+            cursor.execute('''
+                SELECT implied_move_pct, historical_avg_move_pct, edge_score, options_volume
+                FROM earnings_volatility WHERE ticker = ?
+            ''', (ticker,))
+            ev_row = cursor.fetchone()
+            if ev_row:
+                earnings_vol = dict(ev_row)
+
+    finally:
+        conn.close()
 
     fundamentals_extra = _load_fundamentals_extra(ticker)
 
@@ -1227,10 +1233,10 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
             }
     except FileNotFoundError:
         df_macro = pd.DataFrame()
-        macro_html = "<div style='display:flex;flex-direction:column;align-items:center;justify-content:center;height:180px;gap:10px;color:#888;'><span style='font-size:2rem;'>📭</span><span style='font-weight:600;'>No historical data yet</span><span style='font-size:0.85rem;'>Press <strong>Refresh</strong> above to fetch price history for this asset.</span></div>"
+        macro_html = "<div class='chart-ph chart-ph--lg'><span class='chart-ph__icon'>📭</span><span class='chart-ph__title'>No historical data yet</span><span class='chart-ph__hint'>Press <strong>Refresh</strong> above to fetch price history for this asset.</span></div>"
     except Exception as e:
         df_macro = pd.DataFrame()
-        macro_html = f"<div style='display:flex;flex-direction:column;align-items:center;justify-content:center;height:180px;gap:8px;color:#888;'><span style='font-size:2rem;'>⚠️</span><span style='font-weight:600;'>Chart unavailable</span><span style='font-size:0.85rem;'>{type(e).__name__}: {e}</span></div>"
+        macro_html = f"<div class='chart-ph chart-ph--lg chart-ph--gap-sm'><span class='chart-ph__icon'>⚠️</span><span class='chart-ph__title'>Chart unavailable</span><span class='chart-ph__hint'>{type(e).__name__}: {e}</span></div>"
 
     live_pattern_name = live_pattern_tooltip = live_pattern_score = None
     try:
@@ -1261,19 +1267,18 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
             data_delay_minutes=delay_min,
         )
     except FileNotFoundError:
-        intraday_html = "<div style='display:flex;flex-direction:column;align-items:center;justify-content:center;height:120px;gap:10px;color:#888;'><span style='font-size:1.8rem;'>📭</span><span style='font-weight:600;'>No intraday data yet</span><span style='font-size:0.85rem;'>Press <strong>Refresh</strong> above to fetch today's intraday data.</span></div>"
+        intraday_html = "<div class='chart-ph chart-ph--sm'><span class='chart-ph__icon'>📭</span><span class='chart-ph__title'>No intraday data yet</span><span class='chart-ph__hint'>Press <strong>Refresh</strong> above to fetch today's intraday data.</span></div>"
     except Exception:
-        intraday_html = "<div style='display:flex;flex-direction:column;align-items:center;justify-content:center;height:120px;gap:8px;color:#888;'><span style='font-size:1.8rem;'>⚠️</span><span style='font-weight:600;'>Intraday data unavailable</span></div>"
+        intraday_html = "<div class='chart-ph chart-ph--sm chart-ph--gap-sm'><span class='chart-ph__icon'>⚠️</span><span class='chart-ph__title'>Intraday data unavailable</span></div>"
 
     config_data = load_config()
     fake_rows = [{"currency": stock_data.get("currency", "USD")}]
     position_sizing_context = _build_position_sizing_context(config_data, fake_rows)
     anomaly_chart_html = (
-        "<div style='display:flex;flex-direction:column;align-items:center;"
-        "justify-content:center;height:180px;gap:10px;color:#888;'>"
-        "<span style='font-size:2rem;'>📊</span>"
-        "<span style='font-weight:600;'>No anomaly data yet</span>"
-        "<span style='font-size:0.85rem;'>Scores are written during market hours once models are trained.</span>"
+        "<div class='chart-ph chart-ph--lg'>"
+        "<span class='chart-ph__icon'>📊</span>"
+        "<span class='chart-ph__title'>No anomaly data yet</span>"
+        "<span class='chart-ph__hint'>Scores are written during market hours once models are trained.</span>"
         "</div>"
     )
     anomaly_percentile = None
