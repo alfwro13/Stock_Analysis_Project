@@ -17,10 +17,14 @@ from datetime import datetime, timezone
 from visuals import (
     create_anomaly_score_chart,
     create_anomaly_feature_radar,
+    create_intraday_chart,
+    create_macro_chart,
     create_us_inflation_chart,
     create_uk_inflation_chart,
     create_us_liquidity_chart,
     create_us_credit_chart,
+    create_uk_liquidity_chart,
+    create_uk_credit_chart,
     create_yield_curve_chart,
 )
 from visuals_ai import (
@@ -243,3 +247,77 @@ class TestMacroChartSmoke:
     def test_yield_curve_empty_dataframe(self):
         result = create_yield_curve_chart(pd.DataFrame())
         assert isinstance(result, str)
+
+    def test_uk_liquidity_returns_html(self):
+        result = create_uk_liquidity_chart(self._spy(), self._series(val=3200.0))
+        assert isinstance(result, str) and "<div" in result
+
+    def test_uk_credit_returns_html(self):
+        result = create_uk_credit_chart(self._series(val=2.5))
+        assert isinstance(result, str) and "<div" in result
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# create_intraday_chart smoke tests
+# ──────────────────────────────────────────────────────────────────────────────
+
+class TestCreateIntradayChart:
+
+    def _df(self, n: int = 50) -> pd.DataFrame:
+        idx = pd.date_range("2026-06-01 09:00", periods=n, freq="5min")
+        closes = np.linspace(100.0, 102.0, n)
+        return pd.DataFrame({
+            "Open": closes * 0.999, "High": closes * 1.01,
+            "Low": closes * 0.998, "Close": closes,
+            "Volume": np.full(n, 10_000.0),
+        }, index=idx)
+
+    def test_returns_html_string(self):
+        result = create_intraday_chart(self._df(), "AAPL")
+        assert isinstance(result, str) and "<div" in result
+
+    def test_ticker_in_output(self):
+        assert "TSLA" in create_intraday_chart(self._df(), "TSLA")
+
+    def test_support_lines_rendered(self):
+        result = create_intraday_chart(self._df(), "AAPL", s1=99.0, s2=97.0)
+        assert "S1 Support" in result and "S2 Support" in result
+
+    def test_market_tz_conversion_does_not_crash(self):
+        result = create_intraday_chart(self._df(), "AAPL", market_tz="Europe/London")
+        assert isinstance(result, str) and "<div" in result
+
+    def test_live_pattern_annotation_rendered(self):
+        result = create_intraday_chart(
+            self._df(), "AAPL",
+            live_pattern_name="Doji", live_pattern_tooltip="Indecision candle.", live_pattern_score=1,
+        )
+        assert "Doji" in result
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# create_macro_chart smoke tests
+# ──────────────────────────────────────────────────────────────────────────────
+
+class TestCreateMacroChart:
+
+    def _df(self, n: int = 30) -> pd.DataFrame:
+        idx = pd.date_range("2026-01-01", periods=n, freq="B")
+        closes = np.linspace(500.0, 520.0, n)
+        return pd.DataFrame({
+            "Open": closes * 0.99, "High": closes * 1.01,
+            "Low": closes * 0.98, "Close": closes,
+            "Volume": np.full(n, 1_000_000.0),
+        }, index=idx)
+
+    def test_returns_html_string(self):
+        result = create_macro_chart(self._df(), None, "SPY")
+        assert isinstance(result, str) and "<div" in result
+
+    def test_ticker_in_title(self):
+        assert "AAPL" in create_macro_chart(self._df(), None, "AAPL")
+
+    def test_with_baseline_does_not_crash(self):
+        df = self._df()
+        result = create_macro_chart(df.copy(), df.copy(), "SPY")
+        assert isinstance(result, str) and "<div" in result

@@ -386,7 +386,6 @@ def create_anomaly_score_chart(df: pd.DataFrame, ticker: str, threshold: float =
         subplot_titles=(f"{ticker} — Isolation Forest Anomaly Score (90d)", "Close Price"),
     )
 
-    # Shaded alert zone — subtle red band above the threshold
     fig.add_hrect(
         y0=threshold, y1=1.01,
         fillcolor="#ff4d4d", opacity=0.08,
@@ -394,7 +393,6 @@ def create_anomaly_score_chart(df: pd.DataFrame, ticker: str, threshold: float =
         row=1, col=1,
     )
 
-    # Single continuous line — one unbroken series, per-point marker colours
     marker_colors = [
         '#ff4d4d' if s > threshold else '#00ffcc'
         for s in df['anomaly_score']
@@ -448,8 +446,7 @@ def create_anomaly_score_chart(df: pd.DataFrame, ticker: str, threshold: float =
 
 
 def create_anomaly_feature_radar(features: dict, ticker: str) -> str:
-    # features: {'volume_ratio', 'rsi_14', 'daily_return_pct', 'sma50_dist_pct', 'hist_vol_20', 'beta'} normalised to [0, 1] against typical market bounds.
-    # (label, feature_key, range_lo, range_hi) — ranges represent typical market bounds
+    # features: {volume_ratio, rsi_14, daily_return_pct, sma50_dist_pct, hist_vol_20, beta} normalised to [0, 1] against typical market bounds.
     AXES = [
         ('Volume Ratio',   'volume_ratio',     0.0,   3.0),
         ('RSI (14)',       'rsi_14',           0.0, 100.0),
