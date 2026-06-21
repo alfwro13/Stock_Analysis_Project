@@ -10,7 +10,7 @@ from apscheduler.events import EVENT_JOB_SUBMITTED, EVENT_JOB_EXECUTED, EVENT_JO
 from config import load_config
 import time_engine
 from notification_engine import notify, set_job_source, clear_job_source, current_job_source, SCHEDULER_STATUS_SOURCE
-from database import get_connection
+from database import get_connection, get_etf_predictor_configs
 from insider_engine import run_insider_alert
 from news_feed_engine import run_news_feed_job
 
@@ -672,7 +672,7 @@ def reload_scheduler():
     try:
         scheduler.add_job(
             run_intraday_dip_scan,
-            CronTrigger(day_of_week='mon-fri', hour='7-21', minute='*/2', timezone='UTC'),
+            CronTrigger(day_of_week='mon-fri', hour='7-21', minute='*/2', timezone=timezone.utc),
             id='intraday_dip_scan_job',
             replace_existing=True,
             misfire_grace_time=60,
@@ -714,7 +714,7 @@ def reload_scheduler():
     try:
         scheduler.add_job(
             run_etf_actual_fill_job,
-            CronTrigger(day_of_week="mon-fri", hour=9, minute=20, timezone="UTC"),
+            CronTrigger(day_of_week="mon-fri", hour=9, minute=20, timezone=timezone.utc),
             id="etf_predictor_actual_fill_job",
         )
         logger.info("ETF Predictor actual-fill job scheduled for mon-fri at 09:20 UTC.")
@@ -722,8 +722,7 @@ def reload_scheduler():
         logger.error("Failed to schedule ETF Predictor actual-fill job: %s", e)
 
     try:
-        from database import get_etf_predictor_configs as _get_etf_cfgs
-        for _etf_cfg in _get_etf_cfgs():
+        for _etf_cfg in get_etf_predictor_configs():
             if _etf_cfg.get("auto_schedule") and _etf_cfg.get("enabled") and not _etf_cfg.get("deleted_at"):
                 register_etf_predictor_jobs(_etf_cfg)
     except Exception as e:

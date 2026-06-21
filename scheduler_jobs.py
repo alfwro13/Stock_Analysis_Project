@@ -686,7 +686,6 @@ def run_ai_contagion_job():
 
 def run_trap_monitor_job():
     from bull_bear_trap_engine import TrapEngine
-    from intraday_orchestrator import IntradayOrchestrator
     config = load_config()
     conn = None
     try:
@@ -822,7 +821,7 @@ def register_etf_predictor_jobs(config: dict) -> None:
         pre_h, pre_m = map(int, pre_time.split(":"))
         scheduler.add_job(
             _run_etf_predictor_job,
-            CronTrigger(day_of_week="mon-fri", hour=pre_h, minute=pre_m, timezone="UTC"),
+            CronTrigger(day_of_week="mon-fri", hour=pre_h, minute=pre_m, timezone=timezone.utc),
             id=f"etf_predictor_{config_id}_pre_job",
             kwargs={"config_id": config_id, "fill_actuals": False},
             replace_existing=True,
@@ -835,7 +834,7 @@ def register_etf_predictor_jobs(config: dict) -> None:
         post_h, post_m = map(int, post_time.split(":"))
         scheduler.add_job(
             _run_etf_predictor_job,
-            CronTrigger(day_of_week="mon-fri", hour=post_h, minute=post_m, timezone="UTC"),
+            CronTrigger(day_of_week="mon-fri", hour=post_h, minute=post_m, timezone=timezone.utc),
             id=f"etf_predictor_{config_id}_post_job",
             kwargs={"config_id": config_id, "fill_actuals": True},
             replace_existing=True,
