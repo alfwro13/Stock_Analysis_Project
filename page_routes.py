@@ -84,8 +84,7 @@ async def reset_password_page(request: Request):
 @page_router.get("/admin-reset-password", response_class=HTMLResponse)
 async def admin_reset_password_page(request: Request):
     if not load_config().get("FORCE_PASSWORD_RESET", False):
-        from fastapi.responses import RedirectResponse as _Redir
-        return _Redir("/login", status_code=302)
+        return RedirectResponse("/login", status_code=302)
     return templates.TemplateResponse(request=request, name="admin_reset_password.html")
 
 
