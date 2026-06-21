@@ -997,6 +997,7 @@ details[open].xray-rec-group .xray-rec-group-summary::before { transform: rotate
 .contagion-severity-high { color: #f44336; font-weight: 700; }
 .contagion-severity-med { color: #ff9800; font-weight: 700; }
 .contagion-severity-low { color: #4caf50; font-weight: 700; }
+.auction-row-weak td { background: rgba(100,0,0,0.18) !important; }
 .contagion-alert-text { color: #f44336; font-weight: 600; }
 .text-dim { color: #888; }
 /* market_reports — dynamic filter elements injected by DataTables initComplete */

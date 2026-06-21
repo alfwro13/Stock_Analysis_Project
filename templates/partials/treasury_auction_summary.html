@@ -1,0 +1,42 @@
+{% if auction_rows %}
+{% set weak_rows = auction_rows | selectattr('alert_fired') | list %}
+{% set any_weak = weak_rows | length > 0 %}
+<div class="risk-summary-row {% if any_weak %}risk-summary-red{% else %}risk-summary-green{% endif %}">
+    <h3 class="risk-summary-header {% if any_weak %}red{% else %}green{% endif %} mb-2">
+        🏛️ US Treasury Auction Demand —
+        {% if any_weak %}🚨 WEAKNESS DETECTED{% else %}✅ HEALTHY{% endif %}
+        <a href="/treasury-auctions" class="text-xs text-dim ms-3 fw-normal">View full history →</a>
+    </h3>
+    <div class="contagion-mini-table-wrapper">
+        <table class="contagion-mini-table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Maturity</th>
+                    <th><abbr title="Ratio of total bids to amount offered. Lower than baseline signals weak demand." class="text-help">Bid-to-Cover</abbr></th>
+                    <th><abbr title="High yield minus median yield in basis points. Higher than baseline signals dealer absorption of unwanted supply." class="text-help">Tail (bp)</abbr></th>
+                    <th>Result</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in auction_rows %}
+                <tr>
+                    <td class="font-monospace">{{ row.auction_date }}</td>
+                    <td>{{ row.maturity_label }}</td>
+                    <td class="font-monospace {% if row.alert_fired %}negative-val{% endif %}">
+                        {{ "%.2f"|format(row.bid_to_cover) if row.bid_to_cover else '—' }}
+                    </td>
+                    <td class="font-monospace {% if row.alert_fired %}negative-val{% endif %}">
+                        {{ "%.1f"|format(row.tail_bp) if row.tail_bp is not none else '—' }}
+                    </td>
+                    <td>
+                        {% if row.alert_fired %}<span class="negative-val">⚠ Weak</span>
+                        {% else %}<span class="positive-val">✓ OK</span>{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}

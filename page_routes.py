@@ -675,6 +675,59 @@ async def monte_carlo_page(request: Request):
     )
 
 
+@page_router.get("/treasury-auctions", response_class=HTMLResponse)
+async def treasury_auctions_page(request: Request):
+    conn = None
+    rows = []
+    summary = None
+    try:
+        conn = get_connection()
+        raw = conn.execute("""
+            SELECT
+                cusip, maturity_label, auction_date, high_yield, bid_to_cover, tail_bp,
+                direct_pct, indirect_pct, dealer_pct, offering_amt, alert_fired,
+                AVG(bid_to_cover) OVER (
+                    PARTITION BY maturity_label ORDER BY auction_date
+                    ROWS BETWEEN 6 PRECEDING AND 1 PRECEDING
+                ) AS baseline_btc,
+                AVG(tail_bp) OVER (
+                    PARTITION BY maturity_label ORDER BY auction_date
+                    ROWS BETWEEN 6 PRECEDING AND 1 PRECEDING
+                ) AS baseline_tail
+            FROM treasury_auction_results
+            ORDER BY auction_date DESC, maturity_label ASC
+            LIMIT 100
+        """).fetchall()
+        rows = [dict(r) for r in raw]
+
+        stats = conn.execute("""
+            SELECT COUNT(*) AS total,
+                   MIN(auction_date) AS first_date,
+                   MAX(auction_date) AS last_check,
+                   SUM(alert_fired) AS weak_count
+            FROM treasury_auction_results
+        """).fetchone()
+        if stats and stats["total"]:
+            summary = dict(stats)
+    except Exception:
+        pass
+    finally:
+        if conn:
+            conn.close()
+
+    return templates.TemplateResponse(
+        request=request,
+        name="treasury_auctions.html",
+        context={
+            "unread_count": get_unread_count(),
+            "config": load_config(),
+            "rows": rows,
+            "summary": summary,
+            "css_version": CSS_VERSION,
+        },
+    )
+
+
 @page_router.get("/market-regime", response_class=HTMLResponse)
 async def market_regime_page(request: Request):
     return templates.TemplateResponse(

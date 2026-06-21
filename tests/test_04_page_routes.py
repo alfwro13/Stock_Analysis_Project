@@ -185,6 +185,7 @@ def test_no_page_route_returns_500(client):
         ("/login",              "Login"),
         ("/market-regime",      "Market Regime (HMM)"),
         ("/score-history",      "Score History"),
+        ("/treasury-auctions",  "Sovereign Debt Auction Monitor"),
     ]
     failures = []
     for url, label in pages:

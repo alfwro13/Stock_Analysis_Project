@@ -183,6 +183,20 @@ def _parse_cb_nlp_message(msg_text: str, timestamp: str) -> dict | None:
         return None
 
 
+def _get_auction_summary(conn):
+    try:
+        rows = conn.execute("""
+            SELECT maturity_label, auction_date, bid_to_cover, tail_bp, alert_fired
+            FROM treasury_auction_results
+            WHERE auction_date >= date('now', '-30 days')
+            ORDER BY auction_date DESC, maturity_label ASC
+            LIMIT 6
+        """).fetchall()
+        return [dict(r) for r in rows]
+    except Exception:
+        return []
+
+
 @page_router_macro.get("/market-sentiment", response_class=HTMLResponse)
 async def market_sentiment_page(request: Request):
     regime_data = get_latest_regime()
@@ -259,6 +273,8 @@ async def market_sentiment_page(request: Request):
         except Exception:
             pass  # table absent on first boot — silently ignore
 
+        auction_rows = _get_auction_summary(conn)
+
         try:
             df_indicators = pd.read_sql_query("SELECT * FROM macro_indicators", conn)
 
@@ -315,6 +331,7 @@ async def market_sentiment_page(request: Request):
         uk_inflation_html = "<p>Data unavailable.</p>"
         cb_nlp_latest = None
         ai_contagion_status = []
+        auction_rows = []
     finally:
         conn.close()
 
@@ -341,6 +358,7 @@ async def market_sentiment_page(request: Request):
             "uk_events":           uk_events,
             "cb_nlp_latest":       cb_nlp_latest,
             "ai_contagion_status": ai_contagion_status,
+            "auction_rows":        auction_rows,
             "user_tz_label":       time_engine.now_local().strftime("%Z"),
             "unread_count":        get_unread_count(),
             "config":              load_config(),

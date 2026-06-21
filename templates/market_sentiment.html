@@ -74,6 +74,7 @@
 {% if macro_regime %}
     {% include 'partials/risk_summary.html' %}
 {% endif %}
+{% include 'partials/treasury_auction_summary.html' %}
 
 {% if cb_nlp_latest %}
 <div class="risk-summary-row {{ cb_nlp_latest.css_class }}">

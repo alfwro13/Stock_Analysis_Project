@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}Quantamental - Sovereign Debt Auction Monitor{% endblock %}
+
+{% block content %}
+<h1 class="mb-2">🏛️ Sovereign Debt Auction Monitor</h1>
+<p class="text-dim mb-3">
+    US Treasury auction demand analysis — <abbr title="Ratio of total bids submitted to the amount offered. A declining BTC signals weakening institutional demand for US debt." class="text-help">bid-to-cover ratio</abbr> and
+    <abbr title="High yield minus median yield in basis points. A large tail means primary dealers absorbed supply at above-market yields — a sign of weak demand." class="text-help">yield tail</abbr>
+    vs. 6-auction rolling baseline per maturity.
+    Data sourced from <abbr title="Official US Treasury data API — free, no API key required." class="text-help">fiscaldata.treasury.gov</abbr>.
+    Refreshed twice daily at 13:15 ET and 15:30 ET on weekdays.
+</p>
+
+{% if summary and summary.total %}
+<div class="regime-callout mb-3">
+    <div class="regime-callout-title">📊 Data Summary</div>
+    <p class="regime-callout-text">
+        <strong>{{ summary.total }}</strong> auction(s) on record
+        {% if summary.first_date %} since <strong>{{ summary.first_date }}</strong>{% endif %}
+        &nbsp;|&nbsp;
+        <strong class="{% if summary.weak_count and summary.weak_count > 0 %}negative-val{% else %}positive-val{% endif %}">
+            {{ summary.weak_count or 0 }} weak auction(s) flagged
+        </strong>
+        {% if summary.last_check %} &nbsp;|&nbsp; Last auction date: <strong>{{ summary.last_check }}</strong>{% endif %}
+    </p>
+</div>
+{% endif %}
+
+{% if not rows %}
+<div class="risk-summary-row risk-summary-yellow">
+    <p class="risk-summary-text mb-0">
+        No auction data yet. The monitor checks twice daily on weekdays (13:15 ET and 15:30 ET).
+        Results will appear here after the first successful scheduled check.
+    </p>
+</div>
+{% else %}
+
+<table id="auctionTable" class="table table-hover w-100">
+    <thead>
+        <tr>
+            <th>Date</th>
+            <th>Maturity</th>
+            <th><abbr title="Ratio of total bids to amount offered. Alert fires when BTC falls more than 0.2 below the 6-auction rolling baseline for the same maturity." class="text-help">Bid-to-Cover</abbr></th>
+            <th><abbr title="6-auction rolling mean bid-to-cover for this maturity, excluding the current auction." class="text-help">BTC Baseline</abbr></th>
+            <th><abbr title="High yield minus median yield in basis points. Alert fires when tail exceeds the 6-auction mean by ≥ 2 bp." class="text-help">Tail (bp)</abbr></th>
+            <th><abbr title="6-auction rolling mean yield tail for this maturity, excluding the current auction." class="text-help">Tail Baseline</abbr></th>
+            <th><abbr title="Percentage of competitive allocation taken by direct bidders (institutional investors)." class="text-help">Direct %</abbr></th>
+            <th><abbr title="Percentage taken by indirect bidders — typically foreign central banks and sovereign wealth funds." class="text-help">Indirect %</abbr></th>
+            <th><abbr title="Percentage taken by primary dealers, who are obligated to bid. High dealer share indicates weak demand from others." class="text-help">Dealer %</abbr></th>
+            <th>Status</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for row in rows %}
+        <tr class="{% if row.alert_fired %}auction-row-weak{% endif %}">
+            <td class="font-monospace">{{ row.auction_date }}</td>
+            <td>{{ row.maturity_label }}</td>
+            <td class="font-monospace {% if row.alert_fired and row.bid_to_cover and row.baseline_btc and row.bid_to_cover < row.baseline_btc - 0.2 %}negative-val{% endif %}">
+                {{ "%.2f"|format(row.bid_to_cover) if row.bid_to_cover else '—' }}
+            </td>
+            <td class="font-monospace text-dim">
+                {{ "%.2f"|format(row.baseline_btc) if row.baseline_btc else '—' }}
+            </td>
+            <td class="font-monospace {% if row.alert_fired and row.tail_bp is not none and row.baseline_tail is not none and row.tail_bp > row.baseline_tail + 2.0 %}negative-val{% endif %}">
+                {{ "%.1f"|format(row.tail_bp) if row.tail_bp is not none else '—' }}
+            </td>
+            <td class="font-monospace text-dim">
+                {{ "%.1f"|format(row.baseline_tail) if row.baseline_tail is not none else '—' }}
+            </td>
+            <td class="font-monospace">{{ "%.1f"|format(row.direct_pct) ~ '%' if row.direct_pct else '—' }}</td>
+            <td class="font-monospace">{{ "%.1f"|format(row.indirect_pct) ~ '%' if row.indirect_pct else '—' }}</td>
+            <td class="font-monospace">{{ "%.1f"|format(row.dealer_pct) ~ '%' if row.dealer_pct else '—' }}</td>
+            <td>
+                {% if row.alert_fired %}<span class="negative-val font-bold">⚠ Weak</span>
+                {% elif row.baseline_btc %}<span class="positive-val">✓ OK</span>
+                {% else %}<span class="text-dim">— No baseline</span>{% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<div class="footer-notes mt-3">
+    <span class="sentiment-footer-title">How to read this data:</span>
+    <div class="sentiment-footer-text">
+        <strong><abbr title="Alert fires when BTC falls more than 0.2 below the 6-auction rolling mean for this maturity." class="text-help">Bid-to-Cover</abbr>:</strong>
+        Measures overall auction demand. A reading well above the baseline indicates healthy appetite for US debt. Weak BTC means the Treasury had to offer higher yields to clear supply.<br>
+        <strong><abbr title="Alert fires when the tail exceeds the 6-auction rolling mean by ≥ 2 basis points." class="text-help">Yield Tail</abbr>:</strong>
+        High yield minus median yield in basis points. A large tail means primary dealers (who must bid) absorbed supply at above-market yields — a reliable sign of poor institutional demand.<br>
+        <strong>Baseline:</strong> Rolling 6-auction mean per maturity, excluding the current auction — gives context-adjusted thresholds rather than fixed absolute levels.<br>
+        <strong>Dealer %:</strong> Primary dealers are obligated to bid. A rising dealer share combined with falling indirect % signals foreign central banks stepping back from US debt.
+    </div>
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if rows %}
+<script>
+$(document).ready(function () {
+    $('#auctionTable').DataTable({
+        responsive: true,
+        order: [[0, 'desc']],
+        pageLength: 25,
+        columnDefs: [
+            { responsivePriority: 1, targets: 0 },
+            { responsivePriority: 2, targets: 1 },
+            { responsivePriority: 3, targets: 2 },
+            { responsivePriority: 4, targets: 9 },
+            { responsivePriority: 5, targets: 4 },
+            { responsivePriority: 6, targets: 3 },
+            { responsivePriority: 7, targets: 5 },
+        ]
+    });
+});
+</script>
+{% endif %}
+{% endblock %}
