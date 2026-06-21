@@ -1,7 +1,7 @@
 """
-tests/test_visuals_etf_charts.py — ETF chart functions in visuals.py
+tests/test_visuals_etf_charts.py — ETF chart functions in visuals_etf.py
 
-Covers the four functions added in the 2026-06-11 diff:
+Covers:
  - create_etf_correlation_chart
  - create_etf_prediction_chart
  - create_etf_contributions_chart
@@ -14,7 +14,7 @@ import pandas as pd
 import numpy as np
 from unittest.mock import patch
 
-from visuals import (
+from visuals_etf import (
     create_etf_correlation_chart,
     create_etf_prediction_chart,
     create_etf_contributions_chart,

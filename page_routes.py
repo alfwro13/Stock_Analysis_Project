@@ -31,12 +31,16 @@ from visuals import (
     _EXCHANGE_DELAYS,
     create_anomaly_score_chart,
     create_anomaly_feature_radar,
-    create_ai_contagion_performance_chart,
-    create_ai_contagion_correlation_heatmap,
+)
+from visuals_etf import (
     create_etf_correlation_chart,
     create_etf_prediction_chart,
     create_etf_contributions_chart,
     create_etf_overlay_chart,
+)
+from visuals_ai import (
+    create_ai_contagion_performance_chart,
+    create_ai_contagion_correlation_heatmap,
 )
 from portfolio_service import get_rate_to_base, get_rate_from_base
 from fx_drag_engine import compute_fx_breakdown, portfolio_fx_breakdown

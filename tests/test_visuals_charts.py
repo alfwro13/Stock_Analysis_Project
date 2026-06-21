@@ -1,11 +1,11 @@
 """
-tests/test_visuals_charts.py — Chart functions in visuals.py (non-ETF)
+tests/test_visuals_charts.py — Chart functions in visuals.py and visuals_ai.py (non-ETF)
 
 Covers:
  - create_anomaly_score_chart (threshold coloring)
  - create_anomaly_feature_radar (AXES normalization and clipping)
- - create_ai_contagion_performance_chart (empty guard, normalisation)
- - create_ai_contagion_correlation_heatmap (<2 tickers guard, correlation)
+ - create_ai_contagion_performance_chart (empty guard, normalisation) [visuals_ai]
+ - create_ai_contagion_correlation_heatmap (<2 tickers guard, correlation) [visuals_ai]
  - Smoke tests for macro economic charts (return HTML, empty-data guard)
 """
 
@@ -17,13 +17,15 @@ from datetime import datetime, timezone
 from visuals import (
     create_anomaly_score_chart,
     create_anomaly_feature_radar,
-    create_ai_contagion_performance_chart,
-    create_ai_contagion_correlation_heatmap,
     create_us_inflation_chart,
     create_uk_inflation_chart,
     create_us_liquidity_chart,
     create_us_credit_chart,
     create_yield_curve_chart,
+)
+from visuals_ai import (
+    create_ai_contagion_performance_chart,
+    create_ai_contagion_correlation_heatmap,
 )
 
 pytestmark = pytest.mark.visuals
