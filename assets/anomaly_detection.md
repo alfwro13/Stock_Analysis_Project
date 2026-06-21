@@ -156,7 +156,7 @@ Normalising against a single live point has no statistical meaning. The training
 ## 6. Training Pipeline
 
 **Entry point:** `AnomalyEngine.train_all(tickers, parquet_dir)`  
-**Triggered by:** `run_anomaly_training_job()` in `scheduler_engine.py` (nightly 18:30) or the "Train Models Now" button in Settings → Machine Learning & AI Engine.
+**Triggered by:** `run_anomaly_training_job()` in `scheduler_jobs.py` (nightly 18:30, registered in `scheduler_engine.reload_scheduler()`) or the "Train Models Now" button in Settings → Machine Learning & AI Engine.
 
 ```
 For each ticker:

@@ -242,10 +242,17 @@ Results are computed on-demand and returned directly in the API response — **n
 
 ## 5. Scheduler Job Dependency Map (Workflow Monitor)
 
-The Workflow Monitor (`scheduler_engine.py`, Settings UI) does not store a graph in the database — it is derived at request time from a **declarative manifest plus live state**.
+The Workflow Monitor (Settings UI) does not store a graph in the database — it is derived at request time from a **declarative manifest plus live state**. The scheduler subsystem is split across four modules (all re-exported from `scheduler_engine` for backward compatibility):
 
-* **`JOB_GRAPH`** (`scheduler_engine.py`): one entry per `scheduler.add_job(... id=X)`. Each entry declares the data **artifacts** a job reads (`consumes`) and writes (`produces`) — e.g. `quant_signals`, `ml_model`, `ml_predictions`, `historical_parquet`, `portfolio`, `sentiment`. Dynamic per-config jobs (ETF predictors) are matched in `_resolve_manifest()`.
+| Module | Responsibility |
+|---|---|
+| `scheduler_engine.py` | APScheduler setup, `start_scheduler`, `reload_scheduler`, job wiring + tracking infrastructure |
+| `scheduler_jobs.py` | All `run_*` job runner functions + `resume_interrupted_scans` |
+| `scheduler_manifest.py` | `JOB_GRAPH`, `CONFIG_KEY_TO_JOB`, `job_label()`, `scheduler_display_names()`, `_resolve_manifest()` |
+| `scheduler_monitor.py` | `build_workflow_graph()`, `detect_workflow_conflicts()` |
+
+* **`JOB_GRAPH`** (`scheduler_manifest.py`): one entry per `scheduler.add_job(... id=X)`. Each entry declares the data **artifacts** a job reads (`consumes`) and writes (`produces`) — e.g. `quant_signals`, `ml_model`, `ml_predictions`, `historical_parquet`, `portfolio`, `sentiment`. Dynamic per-config jobs (ETF predictors) are matched in `_resolve_manifest()`.
 * **Edges** are derived, never hand-listed: a dependency `A → B` exists iff `A.produces ∩ B.consumes ≠ ∅`. Adding a job with correct declarations auto-wires it into the graph.
-* **Live overlay:** `build_workflow_graph()` merges the manifest with `scheduler.get_jobs()` (enabled? next run?) and `scheduler_run_log` (last run, avg duration, last status) to colour each node and compute conflicts.
-* **Conflict engine** (`detect_workflow_conflicts()`): `overlap_risk` (consumer scheduled within the producer's average run duration), `backwards_ordering`, `disabled_upstream`, `stale_never_run`, `last_run_error`.
+* **Live overlay:** `build_workflow_graph()` (`scheduler_monitor.py`) merges the manifest with `scheduler.get_jobs()` (enabled? next run?) and `scheduler_run_log` (last run, avg duration, last status) to colour each node and compute conflicts.
+* **Conflict engine** (`detect_workflow_conflicts()` in `scheduler_monitor.py`): `overlap_risk` (consumer scheduled within the producer's average run duration), `backwards_ordering`, `disabled_upstream`, `stale_never_run`, `last_run_error`.
 * **Enforcement:** the manifest-completeness test fails CI if any registered job lacks a `JOB_GRAPH` entry, keeping the map in sync with the scheduler automatically.
