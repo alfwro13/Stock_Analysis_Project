@@ -31,7 +31,10 @@ Stock_Analysis_Project/
 ├── page_routes.py            # HTML page route handlers (thin shell — includes page_router_macro)
 ├── page_routes_macro.py      # /market-sentiment and /index/{ticker} routes + supporting data (INDEX_PARQUET_MAP, EVENT_GLOSSARY, enrich_macro_events, _parse_cb_nlp_message)
 ├── page_helpers.py           # Shared page-layer helpers: get_unread_count, _fmt_currency, _fmt_volume, _load_fundamentals_extra, _utc_str_to_local, _build_position_sizing_context, calculate_pnl
-├── database.py               # init_db(), schema migrations, SQLite helpers
+├── database.py               # Thin hub (~80 lines): get_connection(), log_notification(), re-exports from sub-modules below
+├── db_schema.py              # init_db() (all CREATE TABLE statements) + migrate_db() (all ALTER TABLE migrations) + _seed_exchange_hours_json()
+├── db_etf.py                 # ETF predictor CRUD: get/create/update/soft-delete configs, log_etf_prediction, fill_etf_actual, get_etf_accuracy
+├── db_helpers.py             # Quant/trap/score helpers: upsert_quant_signal, log_score_event, log_trap_phase, get_unresolved_trap_phases, batch_update_trap_phase_actuals, get_trap_phase_accuracy, get_universe_tickers
 ├── config.py / config.json   # Runtime configuration
 ├── constants.py              # Global constants
 ├── scheduler_engine.py       # APScheduler core: start/reload/shutdown, job wiring + infrastructure
@@ -164,7 +167,7 @@ All tables join on `ticker` as the primary key unless noted.
 | `system_notifications` | In-app notification feed visible in the Settings notifications panel (written via the unified notification router) |
 | `scheduler_run_log` | Last-run timestamp per APScheduler job ID, plus last-start, last/avg run duration, and last status (success/error) — powers the Workflow Monitor |
 
-Schema changes must go through `database.py:init_db()`.
+Schema changes must go through `db_schema.py:init_db()` (new tables) and `db_schema.py:migrate_db()` (ALTER TABLE on existing tables). All callers continue to `from database import init_db, migrate_db` — `database.py` re-exports both.
 
 ---
 
@@ -288,7 +291,7 @@ Every code change that adds, removes, or significantly alters a feature **must**
 - **UK market quirks:** LSE-listed stocks may have prices quoted in pence (GBX), not pounds (GBP). The codebase handles this explicitly — do not remove or simplify that logic.
 - **Secrets:** All credentials live in `.env` (loaded via `python-dotenv`). Never hard-code tokens or API keys. Never commit `.env`.
 - **Port:** Default is `8090`. Do not change it without updating `config.json` and `config.py`.
-- **Never mask bad data in the display layer.** If a chart, table, or API response shows incorrect values due to corrupt or misformatted data in the database, the fix must go to the source — either the data pipeline (engine) or a data migration in `database.py:migrate_db()`. Do not add filters, clamps, or guards in `visuals.py`, template code, or API serialisation to hide the bad values. Filtering in the display layer hides the problem from monitoring and leaves incorrect data in the DB silently corrupting other consumers (e.g. `regime_engine.py` reads `us_cpi_inflation` directly for macro regime classification).
+- **Never mask bad data in the display layer.** If a chart, table, or API response shows incorrect values due to corrupt or misformatted data in the database, the fix must go to the source — either the data pipeline (engine) or a data migration in `db_schema.py:migrate_db()`. Do not add filters, clamps, or guards in `visuals.py`, template code, or API serialisation to hide the bad values. Filtering in the display layer hides the problem from monitoring and leaves incorrect data in the DB silently corrupting other consumers (e.g. `regime_engine.py` reads `us_cpi_inflation` directly for macro regime classification).
 
 ### Settings page structure
 

@@ -123,6 +123,21 @@ def test_update_config():
 
 
 @pytest.mark.db
+def test_update_config_rejects_unknown_columns():
+    """Column whitelist must block keys not in _ALLOWED_ETF_CONFIG_COLUMNS."""
+    cid = _db.create_etf_predictor_config(
+        name="WL Test", etf_ticker="WL.L",
+        constituents=[{"ticker": "A", "weight": 1.0}],
+    )
+    assert cid is not None
+    result = _db.update_etf_predictor_config(cid, deleted_at="2000-01-01", name="Injected")
+    assert result is False
+    cfg = _db.get_etf_predictor_config(cid)
+    assert cfg["name"] == "WL Test"  # unchanged — update was rejected
+    _db.soft_delete_etf_predictor_config(cid)
+
+
+@pytest.mark.db
 def test_log_etf_prediction_and_idempotency():
     cid = _db.create_etf_predictor_config(
         name="Log Test", etf_ticker="LOG.L",
