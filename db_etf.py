@@ -92,9 +92,19 @@ def create_etf_predictor_config(
             conn.close()
 
 
+_ALLOWED_ETF_CONFIG_COLUMNS = frozenset({
+    "name", "etf_ticker", "constituents", "enabled", "auto_schedule",
+    "pre_run_time", "post_run_time",
+})
+
+
 def update_etf_predictor_config(config_id: int, **fields) -> bool:
     if not fields:
         return True
+    unknown = set(fields) - _ALLOWED_ETF_CONFIG_COLUMNS
+    if unknown:
+        logger.error("update_etf_predictor_config: unknown column(s) rejected: %s", unknown)
+        return False
     conn = None
     try:
         conn = get_connection()
