@@ -2,6 +2,10 @@
 
 {% block title %}Quantamental - {{ cfg.etf_ticker }} Price Predictor{% endblock %}
 
+{% block extra_head %}
+<script src="/static/vendor/plotly/plotly-3.5.0.min.js"></script>
+{% endblock %}
+
 {% block content %}
 <h1 class="mb-1">&#128202; {{ cfg.etf_ticker }} Price Predictor</h1>
 <p class="text-muted mb-3">

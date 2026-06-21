@@ -6,6 +6,10 @@
 
 {% block viewport %}width=640{% endblock %}
 
+{% block extra_head %}
+<script src="/static/vendor/plotly/plotly-3.5.0.min.js"></script>
+{% endblock %}
+
 {% macro display_price(value, currency) %}
     {% if value is none %}N/A{% else %}
         {% set val = (value / 100.0) if currency == 'GBp' else value %}

@@ -2,6 +2,10 @@
 
 {% block title %}Quantamental - AI Sector Contagion Monitor{% endblock %}
 
+{% block extra_head %}
+<script src="/static/vendor/plotly/plotly-3.5.0.min.js"></script>
+{% endblock %}
+
 {% block content %}
 <h1 class="mb-1">AI Sector Contagion Monitor</h1>
 <p class="text-muted mb-3">Tracks the broader <abbr title="AI ecosystem: semiconductors (NVDA, AMD, AVGO), hyperscalers (GOOGL, MSFT, META, AAPL), cloud (ORCL, AMZN), and AI-adjacent (TSLA).">AI ecosystem</abbr> &mdash; normalised performance and rolling pairwise correlation</p>

@@ -3,7 +3,7 @@
 {% block title %}{{ display_name }} ({{ ticker }}) — Market Pulse Detail{% endblock %}
 
 {% block extra_head %}
-<script src="/static/vendor/plotly/plotly-2.27.0.min.js"></script>
+<script src="/static/vendor/plotly/plotly-3.5.0.min.js"></script>
 {% endblock %}
 
 {% macro fmt(v) %}{% if v is not none %}{{ "{:,.2f}".format(v|float) }}{% else %}N/A{% endif %}{% endmacro %}

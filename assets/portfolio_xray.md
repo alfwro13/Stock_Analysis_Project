@@ -137,7 +137,7 @@ If the cache has not yet run, the X-ray still loads — the allocation charts an
 | File | Role |
 |---|---|
 | `xray_engine.py` | All backend logic: `GhostfolioXRayClient`, `XRayRiskComputer`, `assemble_xray_report()`, centralised `XRAY_TOOLTIPS` glossary |
-| `database.py` | Schema for the three X-ray cache tables (`xray_risk_cache`, `xray_correlation_matrix`, `xray_dividend_cache`) |
+| `db_schema.py` | Schema for the three X-ray cache tables (`xray_risk_cache`, `xray_correlation_matrix`, `xray_dividend_cache`) (re-exported from `database.py`) |
 | `scheduler_jobs.py` | `run_xray_risk_cache_job()` wrapper |
 | `scheduler_engine.py` | Always-on CronTrigger registration in `reload_scheduler()` |
 | `api_routes.py` | `GET /api/xray?account_id=` (report) · `POST /api/xray/trigger` (manual trigger) |

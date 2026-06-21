@@ -257,5 +257,6 @@ Aggregated accuracy stats are served by `GET /api/trap-monitor/accuracy` and dis
 | `templates/tools.html` | Guide-card entry |
 | `templates/settings.html` | Settings card: enable toggle, detector toggles, portfolio checkbox, proxy tickers, notification config |
 | `templates/glossary.html` | Term-box entries: Bull Trap, Bear Trap, Capitulation, Wyckoff Accumulation, Trap Phase History |
-| `database.py` | `trap_monitor_results` and `trap_phase_history` tables in `init_db()`; `log_trap_phase()`, `get_unresolved_trap_phases()`, `update_trap_phase_actual()`, `get_trap_phase_accuracy()` |
+| `db_schema.py` | `trap_monitor_results` and `trap_phase_history` table definitions in `init_db()` |
+| `db_helpers.py` | `log_trap_phase()`, `get_unresolved_trap_phases()`, `update_trap_phase_actual()`, `batch_update_trap_phase_actuals()`, `get_trap_phase_accuracy()` (all re-exported from `database.py`) |
 | `config.py` | `SCHEDULING.TRAP_MONITORS` and `NOTIFICATIONS.TRAP_MONITOR_ALERTS` in `DEFAULT_CONFIG` |
