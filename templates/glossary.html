@@ -121,14 +121,6 @@
                             <span class="term-title">Probability of Success</span>
                             <p>The fraction of the 1,000 Monte Carlo paths that reach or exceed a user-supplied target wealth by the end of the chosen horizon. A value of 0.73 means 730 out of 1,000 simulated futures ended above the target. This metric is sensitive to both the target amount and the time horizon — extending the horizon or reducing the target will increase the probability.</p>
                         </div>
-                        <div class="term-box">
-                            <span class="term-title">Bid-to-Cover Ratio (Treasury Auction)</span>
-                            <p>The ratio of the total dollar amount of bids submitted to the amount offered at a US Treasury auction. A value of 2.6 means investors bid for $2.60 of bonds for every $1.00 offered. The <strong>Sovereign Debt Auction Monitor</strong> compares each result to a rolling 6-auction mean for the same maturity — a ratio more than 0.2 below that baseline signals weak demand and triggers an alert.</p>
-                        </div>
-                        <div class="term-box">
-                            <span class="term-title">Yield Tail (Treasury Auction)</span>
-                            <p>The difference in basis points between the auction's high yield (the cut-off rate at which all bids were accepted) and the median yield (the consensus price). A positive tail means the market demanded a yield premium above the consensus to absorb supply — a sign of weak demand at the margin. The October 2023 30-year auction produced a ~3bp tail, triggering an intraday TLT selloff and equity rotation.</p>
-                        </div>
                     </div>
                 </div>
             </div>
@@ -690,6 +682,59 @@
                         <div class="term-box">
                             <span class="term-title">Financial Safety (Debt &amp; Liquidity)</span>
                             <p>Debt-to-Equity &gt; 2.0 suggests bankruptcy risk in high-rate environments.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="accordion-item glossary-section" id="sovereign-debt-auction">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button"
+                            data-bs-toggle="collapse" data-bs-target="#collapse-auction"
+                            aria-expanded="false" aria-controls="collapse-auction">
+                        🏛️ Sovereign Debt Auction Monitor
+                    </button>
+                </h2>
+                <div id="collapse-auction" class="accordion-collapse collapse">
+                    <div class="accordion-body">
+                        <div class="term-box">
+                            <span class="term-title">Sovereign Debt Auction Monitor</span>
+                            <p>A tool that watches US Treasury bond auctions and warns you when demand looks weak. When the US government needs to borrow money, it holds public auctions — investors bid to buy government bonds. If those auctions go badly (not enough buyers, or buyers demanding unusually high interest rates), it signals that confidence in US government debt is falling. That almost always causes bond yields to spike, which can then drag down the stock market — especially technology and growth stocks that rely on cheap borrowing.</p>
+                            <p>The monitor checks auction results twice a day on weekdays and fires an alert if either the <strong>bid-to-cover ratio</strong> or the <strong>yield tail</strong> is significantly worse than the last 6 auctions of the same bond type.</p>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">US Treasury Auction</span>
+                            <p>An event where the US government sells new bonds (IOUs) to raise cash. Think of it like a public sale: the government announces it wants to borrow, say, $39 billion over 10 years, and investors place bids saying how much interest rate they want in return. The auction "clears" at the rate where enough bids were placed to sell all the bonds. These happen multiple times per week for different bond maturities (3-month, 6-month, 2-year, 10-year, 30-year, etc.). Because the US Treasury market is the foundation of global finance — everything from mortgage rates to company valuations is priced off it — weak auctions can trigger rapid and painful market moves.</p>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">Bid-to-Cover Ratio</span>
+                            <p>How many times over an auction was subscribed. If the government offers $39 billion of bonds and investors submitted $102 billion of bids, the bid-to-cover is 2.6 — meaning demand was 2.6× supply. A <em>high</em> ratio (e.g. 2.8+) means lots of buyers competing for limited supply — a healthy, confident auction. A <em>low</em> ratio (e.g. 2.1) means the government struggled to find enough buyers and had to raise the yield to attract them — a warning sign.</p>
+                            <p>The monitor alerts when a ratio falls more than 0.2 below the rolling 6-auction average for that bond type, since each maturity has its own normal range.</p>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">Yield Tail</span>
+                            <p>The gap in basis points (hundredths of a percent) between the <em>highest</em> yield accepted and the <em>median</em> (middle) yield of all bids. In a healthy auction, these are very close — everyone got roughly the same rate. A large tail (e.g. +3bp) means the government had to accept bids at significantly higher interest rates than the midpoint to clear all the supply. This indicates that the most desperate buyers (primary dealers who are legally required to bid) had to step in at elevated yields because not enough voluntary buyers showed up.</p>
+                            <p>The October 2023 US 30-year auction produced a ~3bp tail — a clear sign of weak demand — and triggered an immediate TLT selloff and a sharp equity rotation that same afternoon.</p>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">Direct Bidders (%)</span>
+                            <p>Large institutions — pension funds, insurance companies, asset managers — who buy bonds directly at the auction without going through a bank. A high direct bidder percentage is a positive sign: it means sophisticated, long-term investors are actively competing to buy US government debt. A falling direct % over time can signal declining institutional confidence.</p>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">Indirect Bidders (%)</span>
+                            <p>Mostly foreign central banks, sovereign wealth funds, and overseas government buyers. When China, Japan, or the UK central bank buys US Treasuries, they show up here. A falling indirect % is one of the clearest early warning signs that foreign governments are reducing their appetite for US debt — which forces yields higher and makes the dollar stronger, both of which can destabilise global markets.</p>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">Primary Dealers (%)</span>
+                            <p>A small group of large banks (JP Morgan, Goldman Sachs, etc.) that are legally required by the Federal Reserve to bid in every Treasury auction. They act as buyers of last resort. A <em>rising</em> dealer percentage is a red flag: it means the banks had to absorb more of the supply because everyone else didn't want it. High dealer participation combined with a large yield tail is the classic pattern that precedes a bond market selloff and equity rotation.</p>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">Maturity Label</span>
+                            <p>The length of time until the bond repays its face value. Common maturities are 3M (3 months), 6M, 2Y (2 years), 5Y, 10Y, and 30Y. Short-dated bonds (bills) are sensitive to near-term Federal Reserve rate expectations. Long-dated bonds (notes and bonds) reflect long-term inflation and fiscal confidence. A weak 10Y or 30Y auction is generally more alarming for equities than a weak 3M bill, because long-end weakness signals structural concerns about US debt sustainability rather than short-term rate noise.</p>
+                        </div>
+                        <div class="term-box">
+                            <span class="term-title">Rolling 6-Auction Baseline</span>
+                            <p>Instead of comparing each auction against a fixed threshold, the monitor computes the average bid-to-cover and yield tail for the previous 6 auctions of the <em>same maturity</em>. This makes alerts context-aware: a 2.3 bid-to-cover might be normal for a 30-year bond but alarming for a 2-year note. Alerts only fire when the current result is meaningfully worse than recent history — reducing false alarms from structural shifts in the Treasury market.</p>
                         </div>
                     </div>
                 </div>

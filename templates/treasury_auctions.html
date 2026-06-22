@@ -80,15 +80,20 @@
     </tbody>
 </table>
 
-<div class="footer-notes mt-3">
-    <span class="sentiment-footer-title">How to read this data:</span>
-    <div class="sentiment-footer-text">
-        <strong><abbr title="Alert fires when BTC falls more than 0.2 below the 6-auction rolling mean for this maturity." class="text-help">Bid-to-Cover</abbr>:</strong>
-        Measures overall auction demand. A reading well above the baseline indicates healthy appetite for US debt. Weak BTC means the Treasury had to offer higher yields to clear supply.<br>
-        <strong><abbr title="Alert fires when the tail exceeds the 6-auction rolling mean by ≥ 2 basis points." class="text-help">Yield Tail</abbr>:</strong>
-        High yield minus median yield in basis points. A large tail means primary dealers (who must bid) absorbed supply at above-market yields — a reliable sign of poor institutional demand.<br>
-        <strong>Baseline:</strong> Rolling 6-auction mean per maturity, excluding the current auction — gives context-adjusted thresholds rather than fixed absolute levels.<br>
-        <strong>Dealer %:</strong> Primary dealers are obligated to bid. A rising dealer share combined with falling indirect % signals foreign central banks stepping back from US debt.
+<div class="sentiment-module module-default mt-3">
+    <div class="sentiment-footer">
+        <span class="sentiment-footer-title">📖 How to read this data — plain English guide</span>
+        <div class="sentiment-footer-text">
+            <p><strong>What is a Treasury auction?</strong> When the US government needs to borrow money, it sells bonds to the public. Think of it like a public sale: it announces "we want to borrow $39 billion for 10 years" and investors bid on what interest rate they'll accept. If it goes well, lots of buyers compete and rates stay low. If it goes badly, the government has to offer higher rates to attract enough buyers — and higher rates can quickly spread through the economy, putting pressure on stock valuations.</p>
+
+            <p><strong>Bid-to-Cover</strong> tells you how many buyers showed up. A ratio of 2.6 means investors offered to buy $2.60 of bonds for every $1.00 available. Higher is better — it means strong demand. The <em>BTC Baseline</em> column shows the average from the previous 6 auctions of the same bond type, so you can see whether this auction was stronger or weaker than normal. A ⚠ Weak flag appears when the ratio falls more than 0.2 below that average.</p>
+
+            <p><strong>Yield Tail (bp)</strong> measures whether buyers demanded an extra premium to participate. If the middle bid came in at 4.50% but the last buyers needed 4.53%, the tail is +3bp. A small tail (near 0) means the auction was orderly — everyone got roughly the same rate. A large tail means the government had to accept increasingly expensive bids to clear all the supply. This is the clearest sign that demand was thin at the margin. A ⚠ Weak flag appears when the tail is more than 2bp above its recent average.</p>
+
+            <p><strong>Direct % / Indirect % / Dealer %</strong> show <em>who</em> bought. Direct buyers are large institutions like pension funds — high is good. Indirect buyers are mostly foreign central banks (China, Japan, UK) — a falling indirect % over time signals overseas governments stepping back from US debt. Dealer % is the most watched: primary dealers (big banks) are <em>legally required</em> to bid, so a high dealer share means everyone else didn't want it and the banks had to pick up the slack. Rising dealer % + large tail + low BTC = the worst combination.</p>
+
+            <p><strong>Why does this matter for stocks?</strong> When Treasury auctions go badly, bond yields rise quickly. Rising long-term yields act like gravity on stock valuations — they compress the multiples that investors are willing to pay, particularly for technology and growth companies. The October 2023 30-year auction produced a 3bp tail and sparked an immediate equity sell-off the same afternoon. This monitor is designed to catch that signal early, before it propagates into equities.</p>
+        </div>
     </div>
 </div>
 
