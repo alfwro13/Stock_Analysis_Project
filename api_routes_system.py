@@ -196,6 +196,8 @@ class SettingsConfig(BaseModel):
 
     SERVER_URL: Optional[str] = None
     YAHOO_IPV6_ADDRESS: Optional[str] = None
+    YAHOO_USE_IPV4: Optional[bool] = None
+    YAHOO_USE_IPV6: Optional[bool] = None
     PORT: Optional[int] = None
     BASE_CURRENCY: Optional[str] = None
     USER_TIMEZONE: Optional[str] = None
@@ -339,13 +341,23 @@ async def get_network_status():
     """Returns the current active route and health status for Yahoo Finance connections."""
     config_data = load_config()
     ipv6_addr = config_data.get("YAHOO_IPV6_ADDRESS", "").strip()
+    use_ipv4 = config_data.get("YAHOO_USE_IPV4", True)
+    use_ipv6 = config_data.get("YAHOO_USE_IPV6", bool(ipv6_addr)) and bool(ipv6_addr)
 
-    if not ipv6_addr:
+    if use_ipv4 and use_ipv6:
+        routing_mode = "Dual (Round-robin)"
+    elif use_ipv6:
+        routing_mode = "IPv6 Only"
+    else:
+        routing_mode = "IPv4 Only"
+
+    if not ipv6_addr or not use_ipv6:
         return JSONResponse(content={
             "status": "success",
-            "route": "IPv4 (OS Default)",
+            "route": "IPv4 Only",
+            "routing_mode": routing_mode,
             "indicator": "green",
-            "message": "Using standard IPv4 routing. No custom IPv6 address is configured."
+            "message": "Using standard IPv4 routing. No IPv6 address is configured or IPv6 is disabled."
         })
 
     if GLOBAL_IPV6_STATUS["is_failing"]:
@@ -353,16 +365,34 @@ async def get_network_status():
         return JSONResponse(content={
             "status": "warning",
             "route": "IPv4 (Failover Rescue Active)",
+            "routing_mode": routing_mode,
             "indicator": "yellow",
-            "message": f"IPv6 routing failed at {fail_time_str}. Traffic is actively being rescued via IPv4 fallback. Last Error: {GLOBAL_IPV6_STATUS['last_error']}"
+            "message": "IPv6 routing failed at %s. Traffic is actively being rescued via IPv4 fallback. Last Error: %s" % (fail_time_str, GLOBAL_IPV6_STATUS["last_error"])
+        })
+
+    if use_ipv4 and use_ipv6:
+        return JSONResponse(content={
+            "status": "success",
+            "route": "Dual (Round-robin)",
+            "routing_mode": routing_mode,
+            "indicator": "green",
+            "message": "Round-robin load balancing between IPv4 and IPv6 (%s)." % ipv6_addr
         })
 
     return JSONResponse(content={
         "status": "success",
-        "route": "IPv6 (Active)",
+        "route": "IPv6 Only",
+        "routing_mode": routing_mode,
         "indicator": "green",
-        "message": f"Successfully routing Yahoo Finance edge traffic exclusively through {ipv6_addr}."
+        "message": "Routing all Yahoo Finance traffic exclusively through IPv6 (%s)." % ipv6_addr
     })
+
+
+@system_router.get("/system/yahoo-api-stats")
+async def get_yahoo_api_stats_endpoint():
+    from database import get_yahoo_api_stats
+    rows = get_yahoo_api_stats(days=8)
+    return JSONResponse(content={"status": "success", "rows": rows})
 
 
 @system_router.get("/system/metrics")

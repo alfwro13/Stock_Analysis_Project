@@ -56,6 +56,8 @@ async function saveSettings(silent = false) {
             "LOG_DIR": document.getElementById('FILE_LOGGING_LOG_DIR').value.trim() || 'logs'
         },
         "YAHOO_IPV6_ADDRESS": document.getElementById('YAHOO_IPV6_ADDRESS').value.trim(),
+        "YAHOO_USE_IPV4": document.getElementById('YAHOO_USE_IPV4').checked,
+        "YAHOO_USE_IPV6": document.getElementById('YAHOO_USE_IPV6').checked,
         "GHOSTFOLIO_ACCOUNTS": {
             "discovered": currentDiscoveredAccounts,
             "active": activeAccounts

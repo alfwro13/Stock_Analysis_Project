@@ -689,6 +689,17 @@ def init_db() -> None:
             )
         ''')
 
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS yahoo_api_stats (
+                date           TEXT PRIMARY KEY,
+                total_calls    INTEGER NOT NULL DEFAULT 0,
+                ipv4_calls     INTEGER NOT NULL DEFAULT 0,
+                ipv6_calls     INTEGER NOT NULL DEFAULT 0,
+                rate_limit_429 INTEGER NOT NULL DEFAULT 0,
+                other_errors   INTEGER NOT NULL DEFAULT 0
+            )
+        ''')
+
         conn.commit()
 
         migrate_db(conn, cursor)
@@ -1158,6 +1169,21 @@ def migrate_db(conn, cursor) -> None:
             cursor.execute("UPDATE macro_indicators SET us_cpi_inflation=NULL WHERE us_cpi_inflation > 20")
     except Exception as e:
         logger.error("[MIGRATION ERROR] CPI corruption cleanup: %s", e)
+
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS yahoo_api_stats (
+                date           TEXT PRIMARY KEY,
+                total_calls    INTEGER NOT NULL DEFAULT 0,
+                ipv4_calls     INTEGER NOT NULL DEFAULT 0,
+                ipv6_calls     INTEGER NOT NULL DEFAULT 0,
+                rate_limit_429 INTEGER NOT NULL DEFAULT 0,
+                other_errors   INTEGER NOT NULL DEFAULT 0
+            )
+        """)
+        conn.commit()
+    except Exception as e:
+        logger.debug("yahoo_api_stats migration: %s", e)
 
     try:
         conn.commit()

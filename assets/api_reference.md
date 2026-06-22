@@ -1044,40 +1044,88 @@ Returns a CSS stylesheet fragment that sets the five user-configurable font-size
 
 ### `GET /api/settings/network-status`
 
-Returns the currently active Yahoo Finance routing mode and its health status.
+Returns the currently active Yahoo Finance routing mode and its health status. Includes a `routing_mode` field reflecting the configured mode (`"IPv4 Only"`, `"IPv6 Only"`, or `"Dual (Round-robin)"`).
 
-**Response (IPv4 default)**
-
-```json
-{
-  "status": "success",
-  "route": "IPv4 (OS Default)",
-  "indicator": "green",
-  "message": "Using standard IPv4 routing. No custom IPv6 address is configured."
-}
-```
-
-**Response (IPv6 active)**
+**Response (IPv4 Only)**
 
 ```json
 {
   "status": "success",
-  "route": "IPv6 (Active)",
+  "route": "IPv4 Only",
+  "routing_mode": "IPv4 Only",
   "indicator": "green",
-  "message": "Successfully routing Yahoo Finance edge traffic exclusively through 2a00:..."
+  "message": "Using standard IPv4 routing. No IPv6 address is configured or IPv6 is disabled."
 }
 ```
 
-**Response (IPv6 failover)**
+**Response (IPv6 Only)**
+
+```json
+{
+  "status": "success",
+  "route": "IPv6 Only",
+  "routing_mode": "IPv6 Only",
+  "indicator": "green",
+  "message": "Routing all Yahoo Finance traffic exclusively through IPv6 (2a00:...)."
+}
+```
+
+**Response (Dual round-robin)**
+
+```json
+{
+  "status": "success",
+  "route": "Dual (Round-robin)",
+  "routing_mode": "Dual (Round-robin)",
+  "indicator": "green",
+  "message": "Round-robin load balancing between IPv4 and IPv6 (2a00:...)."
+}
+```
+
+**Response (IPv6 failover active)**
 
 ```json
 {
   "status": "warning",
   "route": "IPv4 (Failover Rescue Active)",
+  "routing_mode": "IPv6 Only",
   "indicator": "yellow",
   "message": "IPv6 routing failed at 2026-05-29 12:00:00. Traffic is actively being rescued via IPv4 fallback. Last Error: ..."
 }
 ```
+
+---
+
+### `GET /api/system/yahoo-api-stats`
+
+Returns daily Yahoo Finance request counts for the past 8 days, broken down by interface and outcome.
+
+**Response**
+
+```json
+{
+  "status": "success",
+  "rows": [
+    {
+      "date": "2026-06-22",
+      "total_calls": 142,
+      "ipv4_calls": 71,
+      "ipv6_calls": 71,
+      "rate_limit_429": 0,
+      "other_errors": 2
+    }
+  ]
+}
+```
+
+| Field | Description |
+|---|---|
+| `date` | UTC date (`YYYY-MM-DD`) |
+| `total_calls` | Total `yahoo_connection_boundary` invocations |
+| `ipv4_calls` | Calls routed via IPv4 |
+| `ipv6_calls` | Calls routed via IPv6 |
+| `rate_limit_429` | Calls that received HTTP 429 |
+| `other_errors` | Calls that raised a non-429 exception |
 
 ---
 
@@ -1591,7 +1639,8 @@ Sends a test insider trading alert via Nextcloud Talk.
 | `GET` | `/api/ai-prompt/{ticker}` | AI-consumable analysis prompt (stock) |
 | `POST` | `/api/settings` | Save configuration |
 | `POST` | `/api/settings/test-yahoo-ipv6` | Test IPv6 connection |
-| `GET` | `/api/settings/network-status` | Current routing health |
+| `GET` | `/api/settings/network-status` | Current routing health and mode |
+| `GET` | `/api/system/yahoo-api-stats` | Daily Yahoo Finance API call counts |
 | `GET` | `/api/ui-theme.css` | Dynamic font-size CSS variables |
 | `GET` | `/api/system/metrics` | System diagnostic data |
 | `GET` | `/api/system/checks` | Active scheduling health warnings/errors |

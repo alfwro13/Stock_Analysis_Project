@@ -117,6 +117,17 @@ def test_get_network_status_returns_200(client):
     data = _json(resp)
     assert "route" in data, f"Missing 'route' in network status: {data}"
     assert "indicator" in data, f"Missing 'indicator' in network status: {data}"
+    assert "routing_mode" in data, f"Missing 'routing_mode' in network status: {data}"
+
+
+@pytest.mark.api
+def test_get_yahoo_api_stats_returns_200(client):
+    """GET /api/system/yahoo-api-stats must return 200 with rows list."""
+    resp = client.get("/api/system/yahoo-api-stats")
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
+    data = _json(resp)
+    assert "rows" in data, f"Missing 'rows' in yahoo-api-stats response: {data}"
+    assert isinstance(data["rows"], list)
 
 
 # ── Market Pulse ──────────────────────────────────────────────────────────────

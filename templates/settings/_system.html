@@ -400,8 +400,35 @@
                     <label>Yahoo Finance IPv6 Binding Address (Leave blank for OS Default)</label>
                     <input type="text" id="YAHOO_IPV6_ADDRESS" class="form-control" value="{{ config.YAHOO_IPV6_ADDRESS | default('') }}" placeholder="e.g., 2001:db8:1234:5678::1">
                 </div>
+                <div class="flex-gap-20 mb-10 mt-10">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="YAHOO_USE_IPV4" {% if config.YAHOO_USE_IPV4 != False %}checked{% endif %}>
+                        <label class="form-check-label" for="YAHOO_USE_IPV4">
+                            <abbr title="When checked, IPv4 (standard OS routing) is used for Yahoo Finance requests.">Use IPv4</abbr>
+                        </label>
+                    </div>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="YAHOO_USE_IPV6" {% if config.YAHOO_USE_IPV6 %}checked{% endif %}>
+                        <label class="form-check-label" for="YAHOO_USE_IPV6">
+                            <abbr title="When checked, IPv6 (bound to the address above) is used for Yahoo Finance requests.">Use IPv6</abbr>
+                        </label>
+                    </div>
+                </div>
+                <p class="text-muted-desc mb-10">
+                    <strong>IPv4 only</strong>: standard routing. <strong>IPv6 only</strong>: all traffic uses the bound address, no IPv4 fallback. <strong>Both</strong>: round-robin load balancing between IPv4 and IPv6.
+                </p>
                 <button type="button" class="btn btn-primary mt-10" id="testIpv6Btn" onclick="testYahooIPv6()">🧪 Test IPv6 Connection</button>
                 <div id="test-ipv6-msg" class="status-msg-sm d-none"></div>
+            </div>
+        </details>
+
+        <details class="settings-card" open>
+            <summary>📊 Yahoo Finance API Usage</summary>
+            <p class="settings-desc">Daily request volume, interface breakdown, rate-limit hits, and errors for the past 8 days.</p>
+            <div class="settings-panel border-left-cyan">
+                <div id="yahoo-api-stats-container">
+                    <span class="text-muted">Loading...</span>
+                </div>
             </div>
         </details>
 

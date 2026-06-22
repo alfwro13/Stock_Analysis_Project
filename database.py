@@ -36,6 +36,25 @@ def log_notification(message_type: str, message_text: str) -> None:
             conn.close()
 
 
+def get_yahoo_api_stats(days: int = 8) -> list:
+    conn = None
+    try:
+        conn = get_connection()
+        rows = conn.execute("""
+            SELECT date, total_calls, ipv4_calls, ipv6_calls, rate_limit_429, other_errors
+            FROM yahoo_api_stats
+            ORDER BY date DESC
+            LIMIT ?
+        """, (days,)).fetchall()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        logger.error("Failed to get Yahoo API stats: %s", e)
+        return []
+    finally:
+        if conn:
+            conn.close()
+
+
 from db_schema import init_db, migrate_db  # noqa: E402
 from db_etf import (  # noqa: E402
     get_etf_predictor_configs,
@@ -61,6 +80,7 @@ from db_helpers import (  # noqa: E402
 __all__ = [
     "get_connection",
     "log_notification",
+    "get_yahoo_api_stats",
     "init_db",
     "migrate_db",
     "get_etf_predictor_configs",

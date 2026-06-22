@@ -4,6 +4,7 @@ import random
 import logging
 import traceback
 import threading
+import queue as _queue_module
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from curl_cffi import requests as cffi_requests
@@ -24,6 +25,32 @@ GLOBAL_IPV6_STATUS = {
 _ipv6_status_lock = threading.Lock()
 _latch_initialized = False
 _latch_init_lock = threading.Lock()
+
+_RATE_LIMIT_READY = threading.Event()
+_RATE_LIMIT_READY.set()
+_rate_limit_cb_lock = threading.Lock()
+_RATE_LIMIT_COOLDOWN_SECS: float = 60.0
+
+_routing_lock = threading.Lock()
+_routing_counter = 0
+
+_stats_queue: "_queue_module.Queue" = _queue_module.Queue()
+_stats_writer_started = False
+_stats_writer_init_lock = threading.Lock()
+
+
+class _RateLimitedError(Exception):
+    """Raised on HTTP 429; bypasses IPv6-fault handling and transient-retry logic."""
+
+
+def _select_interface(use_ipv4: bool, use_ipv6: bool) -> str:
+    global _routing_counter
+    if use_ipv4 and use_ipv6:
+        with _routing_lock:
+            result = "ipv4" if _routing_counter % 2 == 0 else "ipv6"
+            _routing_counter += 1
+        return result
+    return "ipv6" if use_ipv6 else "ipv4"
 
 
 def _update_ipv6_status(failing: bool, error: str = "", fail_time: float = 0.0) -> None:
@@ -71,11 +98,37 @@ def _clear_yfinance_crumb() -> None:
         logger.debug("Could not clear yfinance crumb cache: %s", e)
 
 
+def wait_for_yahoo_rate_limit_reset(timeout: float = 65.0) -> None:
+    """Block until the global Yahoo 429 cooldown has passed. Returns immediately when not rate-limited."""
+    _RATE_LIMIT_READY.wait(timeout=timeout)
+
+
+def _enter_yahoo_rate_limit(action_context: str) -> None:
+    """Trip the global 429 circuit breaker. Only the first concurrent caller does work; others return immediately."""
+    with _rate_limit_cb_lock:
+        if not _RATE_LIMIT_READY.is_set():
+            return
+        _RATE_LIMIT_READY.clear()
+
+    _clear_yfinance_crumb()
+    logger.warning(
+        "Yahoo Finance HTTP 429 during '%s' — pausing all Yahoo requests for %.0fs and resetting session.",
+        action_context, _RATE_LIMIT_COOLDOWN_SECS,
+    )
+
+    def _reset() -> None:
+        time.sleep(_RATE_LIMIT_COOLDOWN_SECS)
+        _RATE_LIMIT_READY.set()
+        logger.info("Yahoo Finance rate-limit cooldown complete — resuming requests.")
+
+    threading.Thread(target=_reset, daemon=True).start()
+
+
 def _trigger_fallback_alert(ipv6_address: str, action_context: str, error_summary: str, detailed_trace: str, config: dict) -> None:
     # Atomically check-and-set ensures only the first concurrent caller fires the alert; all others see is_failing=True and return.
     with _ipv6_status_lock:
         if GLOBAL_IPV6_STATUS["is_failing"]:
-            logger.warning(f"IPv6 already disabled — suppressing duplicate alert for: {error_summary}")
+            logger.warning("IPv6 already disabled — suppressing duplicate alert for: %s", error_summary)
             return
         GLOBAL_IPV6_STATUS["is_failing"] = True
         GLOBAL_IPV6_STATUS["last_error"] = error_summary
@@ -111,7 +164,6 @@ def _patch_session_with_retries(
     timeout: int = 30,
     max_retries: int = 3,
 ) -> None:
-    # Applied to the non-IPv6 path to give it the same 429-backoff and transient-retry resilience as the failover session.
     original_request = session.request
     base_delay = 2.0
 
@@ -120,18 +172,9 @@ def _patch_session_with_retries(
         for attempt in range(max_retries + 1):
             try:
                 response = original_request(method, url, **kwargs)
-                if response.status_code == 429:
-                    if attempt < max_retries:
-                        sleep_time = (5 * (2 ** attempt)) + random.uniform(0.5, 1.5)
-                        logger.warning(
-                            f"[HTTP 429] Rate limited by Yahoo during '{action_context}'. "
-                            f"Backing off for {sleep_time:.2f}s (Attempt {attempt + 1}/{max_retries})."
-                        )
-                        time.sleep(sleep_time)
-                        continue
-                    raise Exception(f"HTTP 429 Max Retries Exceeded. URL: {url}")
-                return response
             except Exception as e:
+                if isinstance(e, _RateLimitedError):
+                    raise
                 error_str = str(e)
                 is_transient = (
                     type(e).__name__.lower() in {"timeout", "connectiontimeout", "connectionerror"}
@@ -142,12 +185,17 @@ def _patch_session_with_retries(
                 if is_transient and attempt < max_retries:
                     sleep_time = (base_delay ** attempt) + random.uniform(0.5, 1.5)
                     logger.warning(
-                        f"Transient network error during '{action_context}': {error_str}. "
-                        f"Retrying in {sleep_time:.2f}s (Attempt {attempt + 1}/{max_retries})."
+                        "Transient network error during '%s': %s. Retrying in %.2fs (Attempt %d/%d).",
+                        action_context, error_str, sleep_time, attempt + 1, max_retries,
                     )
                     time.sleep(sleep_time)
                     continue
                 raise
+            else:
+                if response.status_code == 429:
+                    _enter_yahoo_rate_limit(action_context)
+                    raise _RateLimitedError("HTTP 429. URL: %s" % url)
+                return response
 
     session.request = wrapped_request
 
@@ -165,39 +213,36 @@ def create_failover_session(ipv6_address: str, action_context: str, config: dict
         kwargs.setdefault("timeout", 30)
         max_retries = 3
         base_delay = 2.0
-        
+
         for attempt in range(max_retries + 1):
             try:
                 response = original_request(method, url, **kwargs)
-                
+
                 if response.status_code == 429:
-                    if attempt < max_retries:
-                        # longer backoff than transient errors: 5s → 10s → 20s
-                        sleep_time = (5 * (2 ** attempt)) + random.uniform(0.5, 1.5)
-                        logger.warning(f"[HTTP 429] Rate limited by Yahoo on IPv6 '{ipv6_address}'. Backing off for {sleep_time:.2f}s (Attempt {attempt + 1}/{max_retries}).")
-                        time.sleep(sleep_time)
-                        continue
-                    else:
-                        raise Exception(f"HTTP 429 Max Retries Exceeded on IPv6 Interface. URL: {url}")
-                        
+                    _enter_yahoo_rate_limit(action_context)
+                    raise _RateLimitedError("HTTP 429 on IPv6 interface. URL: %s" % url)
+
                 if not getattr(session, 'fallback_triggered', False):
                     _update_ipv6_status(failing=False)
-                    
+
                 return response
 
             except Exception as e:
+                if isinstance(e, _RateLimitedError):
+                    raise
+
                 error_str = str(e)
-                
+
                 if "Session is closed" in error_str:
-                    logger.warning(f"Closed session detected. Rebuilding IPv6 session for '{action_context}' ({ipv6_address})...")
+                    logger.warning("Closed session detected. Rebuilding IPv6 session for '%s' (%s)...", action_context, ipv6_address)
                     session = cffi_requests.Session(impersonate="chrome", interface=ipv6_address)
                     original_request = session.request
                     continue
-                
+
                 # If we already fell back to standard routing and it STILL failed, we are completely offline or hard-banned.
                 if getattr(session, 'fallback_triggered', False):
                     raise e
-                
+
                 # bind errors (errno 99) are a startup race — IPv6 interface may still be in DAD; retry before hard-faulting.
                 is_transient = (
                     type(e).__name__.lower() in {"timeout", "connectiontimeout", "connectionerror"}
@@ -208,30 +253,29 @@ def create_failover_session(ipv6_address: str, action_context: str, config: dict
                 )
                 if is_transient and attempt < max_retries:
                     sleep_time = (base_delay ** attempt) + random.uniform(0.5, 1.5)
-                    logger.warning(f"Transient network error on IPv6 '{ipv6_address}': {error_str}. Retrying in {sleep_time:.2f}s (Attempt {attempt + 1}/{max_retries}).")
+                    logger.warning("Transient network error on IPv6 '%s': %s. Retrying in %.2fs (Attempt %d/%d).", ipv6_address, error_str, sleep_time, attempt + 1, max_retries)
                     time.sleep(sleep_time)
                     continue
 
-                error_summary = f"{type(e).__name__}: {error_str}"
+                error_summary = "%s: %s" % (type(e).__name__, error_str)
                 detailed_trace = (
-                    f"Target URL: {method} {url}\n"
-                    f"Attempt: {attempt + 1} of {max_retries + 1}\n"
-                    f"Stack Trace:\n{traceback.format_exc()}"
+                    "Target URL: %s %s\nAttempt: %d of %d\nStack Trace:\n%s"
+                    % (method, url, attempt + 1, max_retries + 1, traceback.format_exc())
                 )
-                
-                logger.error(f"Critical IPv6 Fault during '{action_context}': {error_summary}\n{detailed_trace}")
+
+                logger.error("Critical IPv6 Fault during '%s': %s\n%s", action_context, error_summary, detailed_trace)
                 # duplicate concurrent callers are no-ops: latch check-and-set is atomic.
                 _trigger_fallback_alert(ipv6_address, action_context, error_summary, detailed_trace, config)
 
                 # Build fresh unbound session — mutating session.interface on a live curl_cffi is undocumented and may be silently ignored by libcurl.
-                logger.warning(f"Exhausted IPv6 recovery options. Dropping custom interface {ipv6_address} and reverting to OS default routing (IPv4)...")
+                logger.warning("Exhausted IPv6 recovery options. Dropping custom interface %s and reverting to OS default routing (IPv4)...", ipv6_address)
                 session.fallback_triggered = True
                 _clear_yfinance_crumb()
                 fallback_session = cffi_requests.Session(impersonate="chrome")
                 try:
                     return fallback_session.request(method, url, **kwargs)
                 except Exception as fallback_exc:
-                    logger.error(f"[TOTAL FAILURE] IPv4 fallback also failed for '{action_context}': {fallback_exc}")
+                    logger.error("[TOTAL FAILURE] IPv4 fallback also failed for '%s': %s", action_context, fallback_exc)
                     raise fallback_exc
                 finally:
                     fallback_session.close()
@@ -240,29 +284,101 @@ def create_failover_session(ipv6_address: str, action_context: str, config: dict
     return session
 
 
+def _ensure_stats_writer() -> None:
+    global _stats_writer_started
+    if _stats_writer_started:
+        return
+    with _stats_writer_init_lock:
+        if _stats_writer_started:
+            return
+        _stats_writer_started = True
+
+    def _writer() -> None:
+        while True:
+            try:
+                date_str, interface, status = _stats_queue.get(timeout=60)
+                _write_api_stat(date_str, interface, status)
+            except _queue_module.Empty:
+                pass
+            except Exception as e:
+                logger.debug("Stats writer error: %s", e)
+
+    threading.Thread(target=_writer, daemon=True).start()
+
+
+def _write_api_stat(date_str: str, interface: str, status: str) -> None:
+    is_ipv4 = 1 if interface == "ipv4" else 0
+    is_ipv6 = 1 - is_ipv4
+    is_429 = 1 if status == "429" else 0
+    is_err = 1 if status == "error" else 0
+    try:
+        from database import get_connection
+        conn = None
+        try:
+            conn = get_connection()
+            conn.execute("""
+                INSERT INTO yahoo_api_stats
+                    (date, total_calls, ipv4_calls, ipv6_calls, rate_limit_429, other_errors)
+                VALUES (?, 1, ?, ?, ?, ?)
+                ON CONFLICT(date) DO UPDATE SET
+                    total_calls    = total_calls + 1,
+                    ipv4_calls     = ipv4_calls + ?,
+                    ipv6_calls     = ipv6_calls + ?,
+                    rate_limit_429 = rate_limit_429 + ?,
+                    other_errors   = other_errors + ?
+            """, (date_str, is_ipv4, is_ipv6, is_429, is_err,
+                  is_ipv4, is_ipv6, is_429, is_err))
+            conn.commit()
+        finally:
+            if conn:
+                conn.close()
+    except Exception as e:
+        logger.debug("Could not write Yahoo API stat: %s", e)
+
+
+def _increment_api_stat(interface: str, status: str) -> None:
+    date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    _ensure_stats_writer()
+    _stats_queue.put((date_str, interface, status))
+
+
 @contextmanager
 def yahoo_connection_boundary(action_context: str):
-    # Yields a curl_cffi Session for yfinance: IPv6-bound if configured and healthy, otherwise standard routing.
     _maybe_restore_latch()
-
     config = load_config()
     ipv6_addr = config.get("YAHOO_IPV6_ADDRESS", "").strip()
+    use_ipv4 = config.get("YAHOO_USE_IPV4", True)
+    # Backward compat: if YAHOO_USE_IPV6 absent, infer from whether IPv6 addr is set
+    use_ipv6 = config.get("YAHOO_USE_IPV6", bool(ipv6_addr)) and bool(ipv6_addr)
 
-    # Skip IPv6 entirely if the latch was tripped by a previous failure this session.
+    # IPv6 permanent latch: if IPv6 hard-failed this session, disable it
     if GLOBAL_IPV6_STATUS["is_failing"]:
-        ipv6_addr = ""
+        use_ipv6 = False
+        if not use_ipv4:
+            use_ipv4 = True  # safety: IPv6-only mode but IPv6 is dead
 
-    if not ipv6_addr:
+    interface = _select_interface(use_ipv4, use_ipv6)
+
+    if interface == "ipv6" and not use_ipv4:
+        # IPv6-only: use existing failover session (retains hard-fail latch + emergency IPv4 fallback)
+        session = create_failover_session(ipv6_addr, action_context, config)
+    elif interface == "ipv6":
+        # Dual mode: plain IPv6 session — round-robin handles failures naturally, no failover needed
+        session = cffi_requests.Session(impersonate="chrome", interface=ipv6_addr)
+        _patch_session_with_retries(session, action_context)
+    else:
         session = cffi_requests.Session(impersonate="chrome")
         _patch_session_with_retries(session, action_context)
-        try:
-            yield session
-        finally:
-            session.close()
-        return
 
-    session = create_failover_session(ipv6_addr, action_context, config)
+    stat_status = "success"
     try:
         yield session
+    except _RateLimitedError:
+        stat_status = "429"
+        raise
+    except Exception:
+        stat_status = "error"
+        raise
     finally:
         session.close()
+        _increment_api_stat(interface, stat_status)

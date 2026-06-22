@@ -77,6 +77,12 @@ The Quantamental system features an automated configuration engine. You do not n
 
 **Font Sizes:** Adjust font sizes for major UI elements in Settings → Core System & Currencies → Font Sizes. Five elements are individually configurable — navigation menu items, data table cells, form controls, action buttons, and section/panel headers — each via a pixel-size dropdown. Changes persist across restarts via `config.json` and take effect on the next page load (no server restart required).
 
+**Yahoo Finance Dual-Stack Routing:** The Advanced Network & Socket Binding panel in Settings exposes three routing modes for Yahoo Finance traffic:
+- **IPv4 only** (`YAHOO_USE_IPV4: true`, `YAHOO_USE_IPV6: false`): standard OS routing — the default.
+- **IPv6 only** (`YAHOO_USE_IPV4: false`, `YAHOO_USE_IPV6: true`): all requests are bound to the address in `YAHOO_IPV6_ADDRESS`. On a hard IPv6 fault, the session falls back to IPv4 for the remainder of the process lifetime and fires a Nextcloud alert.
+- **Dual round-robin** (both `true`): alternates between IPv4 and IPv6 on successive calls to spread load and bypass per-IP rate limits.
+The **Yahoo Finance API Usage** panel immediately below shows daily request counts, interface breakdown, HTTP 429 hits, and error counts for the past 8 days (sourced from `GET /api/system/yahoo-api-stats`).
+
 **File Logging:** To capture the full application log to disk, enable `FILE_LOGGING` in Settings → Core System & Currencies. Key options:
 - `ENABLED` — toggle file logging on/off without restarting the server
 - `LEVEL` — minimum severity written to the file (`DEBUG` | `INFO` | `WARNING` | `ERROR` | `CRITICAL`); the console stays at INFO regardless

@@ -236,6 +236,12 @@ Tables added after initial schema creation. All managed via `db_schema.py:init_d
 * **Key Columns:** `token_hash` (PK TEXT), `expires_at` (TEXT UTC ISO), `used` (INTEGER 0/1).
 * **Lifecycle:** Tokens expire after 1 hour. Once redeemed, `used` is set to 1 and the token cannot be reused.
 
+#### `yahoo_api_stats`
+* **Purpose:** Daily aggregated counters for all `yahoo_connection_boundary` invocations. Used by the Yahoo Finance API Usage card in Settings to show request volume, interface breakdown, rate-limit hits, and errors over the past 8 days.
+* **Key Columns:** `date` (PK TEXT `YYYY-MM-DD` UTC), `total_calls`, `ipv4_calls`, `ipv6_calls`, `rate_limit_429`, `other_errors` (all INTEGER, default 0).
+* **Writes:** Appended via a background daemon queue in `tools/network_engine._increment_api_stat()`. The queue drains to `_write_api_stat()` which uses SQLite `ON CONFLICT DO UPDATE` (upsert) so concurrent writes never corrupt the counters.
+* **Reads:** `database.get_yahoo_api_stats(days=8)` → `GET /api/system/yahoo-api-stats`.
+
 ---
 
 ### Stateless Tools (no DB table)

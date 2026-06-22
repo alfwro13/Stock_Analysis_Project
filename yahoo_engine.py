@@ -7,13 +7,28 @@ from typing import Optional
 import yfinance as yf
 import pandas as pd
 
-from tools.network_engine import yahoo_connection_boundary
+from tools.network_engine import yahoo_connection_boundary, wait_for_yahoo_rate_limit_reset
 
 logger = logging.getLogger(__name__)
 
+class _RateLimitAwareLock:
+    # Waits on the global 429 circuit-breaker event *before* acquiring the real lock.
+    # Without this, a thread sleeping inside the lock on 429 backoff starves all other
+    # Yahoo callers (background jobs and web-request threads alike) until the sleep ends.
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+
+    def __enter__(self):
+        wait_for_yahoo_rate_limit_reset()
+        return self._lock.__enter__()
+
+    def __exit__(self, *args):
+        return self._lock.__exit__(*args)
+
+
 # Prevents concurrent writes to the yfinance process-global YfData singleton; without this,
 # parallel callers corrupt the session/crumb and trigger an infinite 401 re-fetch loop.
-_yf_singleton_lock = threading.Lock()
+_yf_singleton_lock = _RateLimitAwareLock()
 
 _CacheEntry = namedtuple("_CacheEntry", ["data", "expires_at"])
 

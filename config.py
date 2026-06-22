@@ -63,6 +63,8 @@ DEFAULT_CONFIG = {
     "SERVER_URL": "http://localhost",
     "FORCE_PASSWORD_RESET": False,
     "YAHOO_IPV6_ADDRESS": "",
+    "YAHOO_USE_IPV4": True,
+    "YAHOO_USE_IPV6": False,
     "PORT": 8090,
     "BASE_CURRENCY": "GBP",
     "USER_TIMEZONE": "Europe/London",   # IANA tz string — used for all display formatting

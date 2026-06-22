@@ -685,8 +685,43 @@ function sortSchedulerMatrix() {
     if (arrow) arrow.textContent = _schedSortAsc ? '▲' : '▼';
 }
 
+function loadYahooApiStats() {
+    fetch('/api/system/yahoo-api-stats')
+        .then(r => r.json())
+        .then(data => {
+            const container = document.getElementById('yahoo-api-stats-container');
+            if (!container) return;
+            if (!data.rows || data.rows.length === 0) {
+                container.innerHTML = '<p class="text-muted">No data yet — stats are recorded as Yahoo Finance requests are made.</p>';
+                return;
+            }
+            let html = '<table class="table table-hover table-sm w-100"><thead><tr>'
+                + '<th>Date</th><th>Total</th><th>IPv4</th><th>IPv6</th><th>429s</th><th>Errors</th>'
+                + '</tr></thead><tbody>';
+            data.rows.forEach(r => {
+                const has429 = r.rate_limit_429 > 0;
+                const hasErr = r.other_errors > 0;
+                html += '<tr>'
+                    + '<td>' + r.date + '</td>'
+                    + '<td>' + r.total_calls + '</td>'
+                    + '<td>' + r.ipv4_calls + '</td>'
+                    + '<td>' + r.ipv6_calls + '</td>'
+                    + '<td class="' + (has429 ? 'text-warning' : '') + '">' + r.rate_limit_429 + '</td>'
+                    + '<td class="' + (hasErr ? 'text-danger' : '') + '">' + r.other_errors + '</td>'
+                    + '</tr>';
+            });
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        })
+        .catch(() => {
+            const container = document.getElementById('yahoo-api-stats-container');
+            if (container) container.innerHTML = '<p class="text-danger">Failed to load API stats.</p>';
+        });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     fetchNetworkStatus();
     setInterval(fetchNetworkStatus, 10000);
     fetchSystemChecks();
+    loadYahooApiStats();
 });
