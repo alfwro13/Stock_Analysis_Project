@@ -1,4 +1,3 @@
-# earnings_vol_engine.py
 import time
 import random
 import logging
@@ -19,10 +18,9 @@ def get_historical_earnings_move(ticker: str) -> Optional[float]:
         if earnings_dates is None or earnings_dates.empty:
             return None
 
-        now = pd.Timestamp.now(tz='UTC')
         if earnings_dates.index.tz is None:
-            now = now.tz_localize(None)
-
+            earnings_dates.index = earnings_dates.index.tz_localize(timezone.utc)
+        now = pd.Timestamp.now(tz=timezone.utc)
         past_dates = earnings_dates[earnings_dates.index < now].index
         if len(past_dates) == 0:
             return None
@@ -41,9 +39,9 @@ def get_historical_earnings_move(ticker: str) -> Optional[float]:
                 if len(hist) < 2:
                     continue
                     
-                # normalize() + tz_localize(None) avoids [s] vs [us] resolution conflicts in Pandas
-                hist_dates = pd.to_datetime(hist.index).tz_localize(None).normalize()
-                target_date = pd.to_datetime(e_date).tz_localize(None).normalize()
+                # normalize() avoids [s] vs [us] resolution conflicts; utc=True standardises both to UTC-aware midnight
+                hist_dates = pd.to_datetime(hist.index, utc=True).normalize()
+                target_date = pd.to_datetime(e_date, utc=True).normalize()
                 
                 time_diffs = abs(hist_dates - target_date)
                 closest_idx = time_diffs.argmin()
@@ -155,7 +153,7 @@ def run_earnings_vol_scan(ticker_list: List[str]) -> None:
         conn = get_connection()
         cursor = conn.cursor()
 
-        today = datetime.now(timezone.utc).replace(tzinfo=None)
+        today = datetime.now(timezone.utc)
         cutoff_date = today + timedelta(days=14)
 
         for i, ticker in enumerate(ticker_list):
@@ -168,16 +166,17 @@ def run_earnings_vol_scan(ticker_list: List[str]) -> None:
                     info = yahoo_engine.get_ticker_info(ticker) or {}
                     earnings_ts = info.get('earningsTimestamp')
                     if earnings_ts:
-                        earnings_date = datetime.fromtimestamp(earnings_ts, tz=timezone.utc).replace(tzinfo=None)
+                        earnings_date = datetime.fromtimestamp(earnings_ts, tz=timezone.utc)
 
                     # Cross-check with earnings calendar (more accurate than the .info timestamp)
                     live_dates = yahoo_engine.get_earnings_dates(ticker, limit=5)
                     if live_dates is not None and not live_dates.empty:
-                        now_tz_naive = pd.Timestamp.now(tz='UTC').tz_localize(None)
-                        if live_dates.index.tz is not None:
-                            live_dates.index = live_dates.index.tz_convert('UTC').tz_localize(None)
-
-                        future_dates = live_dates.index[live_dates.index >= now_tz_naive]
+                        now_utc = pd.Timestamp.now(tz=timezone.utc)
+                        if live_dates.index.tz is None:
+                            live_dates.index = live_dates.index.tz_localize(timezone.utc)
+                        else:
+                            live_dates.index = live_dates.index.tz_convert(timezone.utc)
+                        future_dates = live_dates.index[live_dates.index >= now_utc]
                         if len(future_dates) > 0:
                             earnings_date = future_dates.min().to_pydatetime()
 
@@ -218,8 +217,8 @@ def run_earnings_vol_scan(ticker_list: List[str]) -> None:
                     continue
 
                 # Subtract diffusion over (days_to_expiry - 1) days to isolate the earnings jump from theta
-                target_expiry_date = datetime.strptime(target_expiry, '%Y-%m-%d')
-                days_to_expiry = max((target_expiry_date - datetime.now(timezone.utc).replace(tzinfo=None)).days, 1)
+                target_expiry_date = datetime.strptime(target_expiry, '%Y-%m-%d').replace(tzinfo=timezone.utc)
+                days_to_expiry = max((target_expiry_date - datetime.now(timezone.utc)).days, 1)
                 non_earnings_days = max(days_to_expiry - 1, 0)
                 
                 daily_hv = historical_hv / np.sqrt(252)
