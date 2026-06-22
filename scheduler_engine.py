@@ -731,29 +731,29 @@ def reload_scheduler():
 
     auction_cfg = scheduling.get("MACRO_AUCTIONS", {})
     if auction_cfg.get("ENABLED", True):
-        _nyse_tz = ZoneInfo(time_engine.exchange_tz("NYSE"))
-        am_time = auction_cfg.get("AM_TIME", "13:15")
-        pm_time = auction_cfg.get("PM_TIME", "15:30")
+        _user_tz = time_engine.get_user_tz()
+        am_time = auction_cfg.get("AM_TIME", time_engine.fmt_et_time_value("13:15"))
+        pm_time = auction_cfg.get("PM_TIME", time_engine.fmt_et_time_value("15:30"))
         try:
             am_h, am_m = map(int, am_time.split(":"))
             scheduler.add_job(
                 lambda: run_treasury_auction_check("am"),
-                CronTrigger(day_of_week="mon-fri", hour=am_h, minute=am_m, timezone=_nyse_tz),
+                CronTrigger(day_of_week="mon-fri", hour=am_h, minute=am_m, timezone=_user_tz),
                 id="macro_auction_job_am",
                 replace_existing=True,
             )
-            logger.info("Sovereign Debt Auction Monitor (AM) scheduled mon-fri at %s ET.", am_time)
+            logger.info("Sovereign Debt Auction Monitor (AM) scheduled mon-fri at %s local.", am_time)
         except Exception as e:
             logger.error("Failed to schedule Sovereign Debt Auction Monitor (AM): %s", e)
         try:
             pm_h, pm_m = map(int, pm_time.split(":"))
             scheduler.add_job(
                 lambda: run_treasury_auction_check("pm"),
-                CronTrigger(day_of_week="mon-fri", hour=pm_h, minute=pm_m, timezone=_nyse_tz),
+                CronTrigger(day_of_week="mon-fri", hour=pm_h, minute=pm_m, timezone=_user_tz),
                 id="macro_auction_job_pm",
                 replace_existing=True,
             )
-            logger.info("Sovereign Debt Auction Monitor (PM) scheduled mon-fri at %s ET.", pm_time)
+            logger.info("Sovereign Debt Auction Monitor (PM) scheduled mon-fri at %s local.", pm_time)
         except Exception as e:
             logger.error("Failed to schedule Sovereign Debt Auction Monitor (PM): %s", e)
 

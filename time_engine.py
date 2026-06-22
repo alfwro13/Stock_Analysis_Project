@@ -256,3 +256,17 @@ def fmt_et_time_local(time_str: str) -> str:
         tzinfo=ZoneInfo(exchange_tz("NYSE")),
     )
     return fmt_time(et_dt)
+
+
+def fmt_et_time_value(time_str: str) -> str:
+    """Convert a 'HH:MM' Eastern Time string to 'HH:MM' in the user's local timezone.
+
+    Returns only the time digits (no tz suffix), suitable for <input type="time"> values.
+    """
+    h, m = map(int, time_str.split(":"))
+    et_dt = datetime.combine(
+        now_local().date(),
+        dtime(h, m),
+        tzinfo=ZoneInfo(exchange_tz("NYSE")),
+    )
+    return et_dt.astimezone(get_user_tz()).strftime("%H:%M")

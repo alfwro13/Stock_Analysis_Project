@@ -55,14 +55,14 @@ def get_historical_earnings_move(ticker: str) -> Optional[float]:
                         moves.append(move_pct)
                 
             except Exception as e:
-                logger.debug(f"Could not calculate specific earnings event move: {e}")
+                logger.debug("Could not calculate specific earnings event move: %s", e)
                 continue
                 
         if moves:
             return float(np.mean(moves))
             
     except Exception as e:
-        logger.debug(f"Error fetching historical earnings dates: {e}")
+        logger.debug("Error fetching historical earnings dates: %s", e)
         
     return None
 
@@ -72,7 +72,7 @@ def get_implied_straddle_move(ticker: str, underlying_price: float, target_date:
         if not options:
             return None, 0, None
 
-        valid_expiries = [opt for opt in options if datetime.strptime(opt, '%Y-%m-%d') >= target_date]
+        valid_expiries = [opt for opt in options if datetime.strptime(opt, '%Y-%m-%d').replace(tzinfo=timezone.utc) >= target_date]
         if not valid_expiries:
             return None, 0, None
 
@@ -110,7 +110,7 @@ def get_implied_straddle_move(ticker: str, underlying_price: float, target_date:
         return implied_move_pct, volume, target_expiry
 
     except Exception as e:
-        logger.debug(f"Error calculating implied straddle: {e}")
+        logger.debug("Error calculating implied straddle: %s", e)
         return None, 0, None
 
 def _filter_equity_tickers(tickers: List[str]) -> List[str]:
@@ -183,7 +183,7 @@ def run_earnings_vol_scan(ticker_list: List[str]) -> None:
                     if earnings_date:
                         e_date_str = earnings_date.strftime('%Y-%m-%d')
                 except Exception as e:
-                    logger.debug(f"Failed to fetch live earnings date for {ticker}: {e}")
+                    logger.debug("Failed to fetch live earnings date for %s: %s", ticker, e)
 
                 if not earnings_date:
                     continue
@@ -191,13 +191,13 @@ def run_earnings_vol_scan(ticker_list: List[str]) -> None:
                 if not (today <= earnings_date <= cutoff_date):
                     continue
 
-                logger.info(f"Analyzing {ticker} (Live Earnings Date: {e_date_str})...")
+                logger.info("Analyzing %s (Live Earnings Date: %s)...", ticker, e_date_str)
 
                 _hist_result = yahoo_engine.get_price_history([ticker], period="1mo", interval="1d")
                 hist = _hist_result.get(ticker, pd.DataFrame())
 
                 if hist.empty or len(hist) < 20:
-                    logger.warning(f"Insufficient underlying price data available for {ticker}. Skipping.")
+                    logger.warning("Insufficient underlying price data available for %s. Skipping.", ticker)
                     continue
 
                 underlying_price = hist['Close'].iloc[-1]
@@ -213,7 +213,7 @@ def run_earnings_vol_scan(ticker_list: List[str]) -> None:
                 implied_move_pct, opt_volume, target_expiry = get_implied_straddle_move(ticker, underlying_price, earnings_date)
                 
                 if hist_move_pct is None or implied_move_pct is None or target_expiry is None:
-                    logger.debug(f"Missing volatility parameters or liquidity for {ticker}. Skipping edge calculation.")
+                    logger.debug("Missing volatility parameters or liquidity for %s. Skipping edge calculation.", ticker)
                     continue
 
                 # Subtract diffusion over (days_to_expiry - 1) days to isolate the earnings jump from theta
@@ -246,10 +246,11 @@ def run_earnings_vol_scan(ticker_list: List[str]) -> None:
                 ))
                 conn.commit()
                 
-                logger.info(f"[{ticker}] Edge: {edge_score:.2f}% | Isolated Implied: {isolated_implied_move:.2f}% (Raw: {implied_move_pct:.2f}%) | Hist: {hist_move_pct:.2f}%")
+                logger.info("[%s] Edge: %.2f%% | Isolated Implied: %.2f%% (Raw: %.2f%%) | Hist: %.2f%%",
+                            ticker, edge_score, isolated_implied_move, implied_move_pct, hist_move_pct)
                 
             except Exception as e:
-                logger.error(f"Error analyzing {ticker}: {str(e)}")
+                logger.error("Error analyzing %s: %s", ticker, e)
                 conn.rollback()
             finally:
                 time.sleep(random.uniform(0.5, 1.5))
@@ -263,7 +264,7 @@ def run_earnings_vol_scan(ticker_list: List[str]) -> None:
         log_notification("Success", f"Earnings Volatility Options Scan completed successfully across {total_tickers} tracked assets.")
 
     except Exception as e:
-        logger.error(f"Fatal error during Earnings Scan: {str(e)}")
+        logger.error("Fatal error during Earnings Scan: %s", e)
         log_notification("Error", f"Earnings Volatility Scan failed with a fatal error: {str(e)}")
     finally:
         if conn:
