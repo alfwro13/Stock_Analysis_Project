@@ -241,3 +241,18 @@ def fmt_reset_time(exchange: Optional[str] = None) -> str:
         tzinfo=ZoneInfo(params["timezone"]),
     )
     return fmt_time(reset_dt)
+
+
+def fmt_et_time_local(time_str: str) -> str:
+    """Convert a 'HH:MM' Eastern Time string to the user's configured local timezone.
+
+    Returns e.g. '18:15 BST' when USER_TIMEZONE is Europe/London during summer.
+    Used to display ET-anchored auction check times in the user's local timezone.
+    """
+    h, m = map(int, time_str.split(":"))
+    et_dt = datetime.combine(
+        now_local().date(),
+        dtime(h, m),
+        tzinfo=ZoneInfo(exchange_tz("NYSE")),
+    )
+    return fmt_time(et_dt)

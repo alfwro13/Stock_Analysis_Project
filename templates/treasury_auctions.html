@@ -8,7 +8,7 @@
     <abbr title="High yield minus median yield in basis points. A large tail means primary dealers absorbed supply at above-market yields — a sign of weak demand." class="text-help">yield tail</abbr>
     vs. 6-auction rolling baseline per maturity.
     Data sourced from <abbr title="Official US Treasury data API — free, no API key required." class="text-help">fiscaldata.treasury.gov</abbr>.
-    Refreshed twice daily at 13:15 ET and 15:30 ET on weekdays.
+    Refreshed twice daily at {{ auction_am_local }} ({{ auction_am_et }} ET) and {{ auction_pm_local }} ({{ auction_pm_et }} ET) on weekdays.
 </p>
 
 {% if summary and summary.total %}
@@ -29,7 +29,7 @@
 {% if not rows %}
 <div class="risk-summary-row risk-summary-yellow">
     <p class="risk-summary-text mb-0">
-        No auction data yet. The monitor checks twice daily on weekdays (13:15 ET and 15:30 ET).
+        No auction data yet. The monitor checks twice daily on weekdays at {{ auction_am_local }} ({{ auction_am_et }} ET) and {{ auction_pm_local }} ({{ auction_pm_et }} ET).
         Results will appear here after the first successful scheduled check.
     </p>
 </div>

@@ -303,12 +303,12 @@
                     </div>
                     <div class="flex-gap-15 mb-10">
                         <div class="form-group flex-1">
-                            <label>Morning check (ET)</label>
+                            <label>Morning check — {{ auction_am_local }} ({{ auction_am_et }} ET)</label>
                             <input type="time" id="MACRO_AUCTIONS_AM_TIME" class="form-control" value="{{ auction_sched.AM_TIME | default('13:15') }}">
-                            <p class="text-muted-desc">Times are Eastern — covers most note and bond auctions.</p>
+                            <p class="text-muted-desc">Time is Eastern — covers most note and bond auctions.</p>
                         </div>
                         <div class="form-group flex-1">
-                            <label>Afternoon check (ET)</label>
+                            <label>Afternoon check — {{ auction_pm_local }} ({{ auction_pm_et }} ET)</label>
                             <input type="time" id="MACRO_AUCTIONS_PM_TIME" class="form-control" value="{{ auction_sched.PM_TIME | default('15:30') }}">
                             <p class="text-muted-desc">Catches bill auctions and any afternoon results.</p>
                         </div>

@@ -105,6 +105,9 @@ async def settings_page(request: Request):
     from scheduler_engine import scheduler_display_names
     from notification_engine import build_routing_panel
     config_data = load_config()
+    auction_sched = config_data.get("SCHEDULING", {}).get("MACRO_AUCTIONS", {})
+    auction_am_et = auction_sched.get("AM_TIME", "13:15")
+    auction_pm_et = auction_sched.get("PM_TIME", "15:30")
     return templates.TemplateResponse(
         request=request,
         name="settings.html",
@@ -112,6 +115,10 @@ async def settings_page(request: Request):
             "config": config_data,
             "scheduler_job_labels": scheduler_display_names(),
             "notification_routing": build_routing_panel(config_data),
+            "auction_am_local": time_engine.fmt_et_time_local(auction_am_et),
+            "auction_pm_local": time_engine.fmt_et_time_local(auction_pm_et),
+            "auction_am_et": auction_am_et,
+            "auction_pm_et": auction_pm_et,
             "unread_count": get_unread_count(),
             "dashboard_username": os.environ.get("DASHBOARD_USERNAME", "admin"),
             "api_key": os.environ.get("API_KEY", ""),
@@ -715,15 +722,23 @@ async def treasury_auctions_page(request: Request):
         if conn:
             conn.close()
 
+    cfg = load_config()
+    auction_sched = cfg.get("SCHEDULING", {}).get("MACRO_AUCTIONS", {})
+    auction_am_et = auction_sched.get("AM_TIME", "13:15")
+    auction_pm_et = auction_sched.get("PM_TIME", "15:30")
     return templates.TemplateResponse(
         request=request,
         name="treasury_auctions.html",
         context={
             "unread_count": get_unread_count(),
-            "config": load_config(),
+            "config": cfg,
             "rows": rows,
             "summary": summary,
             "css_version": CSS_VERSION,
+            "auction_am_local": time_engine.fmt_et_time_local(auction_am_et),
+            "auction_pm_local": time_engine.fmt_et_time_local(auction_pm_et),
+            "auction_am_et": auction_am_et,
+            "auction_pm_et": auction_pm_et,
         },
     )
 

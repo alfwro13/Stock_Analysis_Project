@@ -81,6 +81,7 @@
                     </thead>
                     <tbody>
                         {% for job_name, job_cfg in config.SCHEDULING.items() %}
+                        {% if job_name != 'MACRO_AUCTIONS' %}
                         <tr>
                             <td class="font-bold">{{ scheduler_job_labels.get(job_name, job_name | replace('_', ' ') | title) }}</td>
                             <td>
@@ -112,7 +113,35 @@
                             </td>
                             <td class="text-muted font-monospace" data-sched-key="{{ job_name }}">—</td>
                         </tr>
+                        {% endif %}
                         {% endfor %}
+                        {% set _auction_cfg = config.SCHEDULING.MACRO_AUCTIONS if config.SCHEDULING.MACRO_AUCTIONS else {} %}
+                        <tr>
+                            <td class="font-bold">Sovereign Debt Auction Monitor (AM)</td>
+                            <td>
+                                {% if _auction_cfg.ENABLED != false %}
+                                    <span class="status-pill status-enabled">ACTIVE</span>
+                                {% else %}
+                                    <span class="status-pill status-disabled">DISABLED</span>
+                                {% endif %}
+                            </td>
+                            <td>MON-FRI</td>
+                            <td class="font-monospace">{{ auction_am_local }} ({{ auction_am_et }} ET)</td>
+                            <td class="text-muted font-monospace" data-sched-key="macro_auction_job_am">—</td>
+                        </tr>
+                        <tr>
+                            <td class="font-bold">Sovereign Debt Auction Monitor (PM)</td>
+                            <td>
+                                {% if _auction_cfg.ENABLED != false %}
+                                    <span class="status-pill status-enabled">ACTIVE</span>
+                                {% else %}
+                                    <span class="status-pill status-disabled">DISABLED</span>
+                                {% endif %}
+                            </td>
+                            <td>MON-FRI</td>
+                            <td class="font-monospace">{{ auction_pm_local }} ({{ auction_pm_et }} ET)</td>
+                            <td class="text-muted font-monospace" data-sched-key="macro_auction_job_pm">—</td>
+                        </tr>
                         <tr>
                             <td class="font-bold">Isolation Forest Anomaly Detection</td>
                             <td><span class="status-pill status-scheduled">NOTIFICATIONS</span></td>
