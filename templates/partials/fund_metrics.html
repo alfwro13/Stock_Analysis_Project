@@ -1,0 +1,124 @@
+{% from "partials/_macros.html" import display_price %}
+<div class="fundamentals-grid">
+    <div class="data-card card-risk">
+        <h3>Quantitative Risk &amp; AI</h3>
+        <div class="data-row">
+            <span class="data-label"><abbr title="Machine Learning Ensemble confidence score predicting a >3% return over the next 10 days.">ML Confidence:</abbr></span>
+            <span class="data-value">
+                {% if stock.ml_confidence_score is not none %}
+                    {% set ml_class = 'metric-excellent' if stock.ml_confidence_score >= 40 else ('metric-poor' if stock.ml_confidence_score < 20 else 'metric-neutral') %}
+                    <span class="{{ ml_class }}">{{ "{:,.1f}".format(stock.ml_confidence_score) }}%</span>
+                {% else %}N/A{% endif %}
+            </span>
+        </div>
+        <div class="data-row">
+            <span class="data-label"><abbr title="1-day 95% Value at Risk (historical simulation). The expected maximum percentage loss in a single trading day with 95% confidence.">VaR (95%):</abbr></span>
+            <span class="data-value">
+                {% if stock.var_95 is not none %}
+                    {% set var_class = 'metric-poor' if stock.var_95 > 0.05 else 'metric-neutral' %}
+                    <span class="{{ var_class }}">{{ "{:,.2f}".format(stock.var_95 * 100) }}%</span>
+                {% else %}N/A{% endif %}
+            </span>
+        </div>
+        <div class="data-row">
+            <span class="data-label"><abbr title="Conditional Value at Risk (Expected Shortfall). The average expected loss IF the VaR threshold is breached.">CVaR (95%):</abbr></span>
+            <span class="data-value">
+                {% if stock.cvar_95 is not none %}
+                    {% set cvar_class = 'metric-poor' if stock.cvar_95 > 0.07 else 'metric-neutral' %}
+                    <span class="{{ cvar_class }}">{{ "{:,.2f}".format(stock.cvar_95 * 100) }}%</span>
+                {% else %}N/A{% endif %}
+            </span>
+        </div>
+        <div class="data-row">
+            <span class="data-label"><abbr title="Isolation Forest multi-dimensional anomaly score (0 = normal, 1 = anomalous). Scores above 0.70 trigger a pre-alert.">Anomaly Score:</abbr></span>
+            <span class="data-value">
+                {% if stock.anomaly_score is not none %}
+                    {% set anom_class = 'metric-poor' if stock.anomaly_score > 0.7 else ('metric-neutral' if stock.anomaly_score > 0.4 else 'metric-excellent') %}
+                    <span class="{{ anom_class }}">{{ "{:,.2f}".format(stock.anomaly_score) }}</span>
+                {% else %}N/A{% endif %}
+            </span>
+        </div>
+        <div class="data-row">
+            <span class="data-label"><abbr title="FinBERT NLP compound score generated from the latest news headlines.">Media Sentiment:</abbr></span>
+            <span class="data-value">
+                {% if stock.sentiment_score is not none %}
+                    {% if stock.sentiment_score > 0.6 %}
+                        <span class="sent-badge sent-euphoria">Euphoria ({{ "{:,.3f}".format(stock.sentiment_score) }})</span>
+                    {% elif stock.sentiment_score > 0.2 %}
+                        <span class="sent-badge sent-bullish">Bullish ({{ "{:,.3f}".format(stock.sentiment_score) }})</span>
+                    {% elif stock.sentiment_score >= -0.2 %}
+                        <span class="sent-badge sent-neutral">Neutral ({{ "{:,.3f}".format(stock.sentiment_score) }})</span>
+                    {% elif stock.sentiment_score > -0.6 %}
+                        <span class="sent-badge sent-bearish">Bearish ({{ "{:,.3f}".format(stock.sentiment_score) }})</span>
+                    {% else %}
+                        <span class="sent-badge sent-fear">Extreme Fear ({{ "{:,.3f}".format(stock.sentiment_score) }})</span>
+                    {% endif %}
+                {% else %}N/A{% endif %}
+            </span>
+        </div>
+    </div>
+
+    <div class="data-card">
+        <h3>Fund Metrics</h3>
+        <div class="data-row">
+            <span class="data-label">Expense Ratio:</span>
+            <span class="data-value">{% if stock.expense_ratio %}{{ (stock.expense_ratio * 100)|round(2) }}%{% else %}N/A{% endif %}</span>
+        </div>
+        <div class="data-row">
+            <span class="data-label">YTD Return:</span>
+            <span class="data-value">{% if stock.ytd_return %}{{ (stock.ytd_return * 100)|round(2) }}%{% else %}N/A{% endif %}</span>
+        </div>
+        <div class="data-row">
+            <span class="data-label">Total Assets:</span>
+            <span class="data-value">{% if stock.total_assets %}{{ "{:,.0f}".format(stock.total_assets) }} {{ stock.currency }}{% else %}N/A{% endif %}</span>
+        </div>
+        <div class="data-row">
+            <span class="data-label">NAV Price:</span>
+            <span class="data-value">{% if stock.nav_price %}{{ "{:,.2f}".format(stock.nav_price) }} {{ stock.currency }}{% else %}N/A{% endif %}</span>
+        </div>
+        <div class="data-row">
+            <span class="data-label">Dividend Yield:</span>
+            <span class="data-value">{% if stock.dividend_yield %}{{ (stock.dividend_yield * 100)|round(2) }}%{% else %}N/A{% endif %}</span>
+        </div>
+    </div>
+
+    {% if top_holdings %}
+    <div class="data-card">
+        <h3>Top 10 Holdings</h3>
+        <table class="table-sm-collapse">
+            <tr class="table-header-muted">
+                <th class="text-left-pb5">Symbol</th>
+                <th class="text-left-pb5">Name</th>
+                <th class="text-right-pb5">Weight</th>
+            </tr>
+            {% for holding in top_holdings[:10] %}
+            <tr class="border-bottom-muted">
+                <td class="py-5"><a href="/stock/{{ holding.symbol }}" class="ticker-link">{{ holding.symbol }}</a></td>
+                <td class="py-5 text-light">{{ holding.holdingName[:15] }}...</td>
+                <td class="text-right-py5">{{ (holding.holdingPercent * 100)|round(2) }}%</td>
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+    {% endif %}
+
+    {% if sector_weightings %}
+    <div class="data-card">
+        <h3>Sector Weightings</h3>
+        <table class="table-sm-collapse">
+            <tr class="table-header-muted">
+                <th class="text-left-pb5">Sector</th>
+                <th class="text-right-pb5">Weight</th>
+            </tr>
+            {% for sector_dict in sector_weightings %}
+                {% for key, val in sector_dict.items() %}
+                <tr class="border-bottom-muted">
+                    <td class="py-5 text-light text-capitalize">{{ key | replace('_', ' ') }}</td>
+                    <td class="text-right-py5">{{ (val * 100)|round(2) }}%</td>
+                </tr>
+                {% endfor %}
+            {% endfor %}
+        </table>
+    </div>
+    {% endif %}
+</div>

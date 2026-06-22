@@ -1,0 +1,7 @@
+{% macro display_price(value, currency) %}
+    {% if value is none %}N/A{% else %}
+        {% set val = (value / 100.0) if currency == 'GBp' else value %}
+        {% set cur = 'GBP' if currency == 'GBp' else currency %}
+        {{ "{:,.2f}".format(val) }} {{ cur }}
+    {% endif %}
+{% endmacro %}
