@@ -1068,17 +1068,18 @@ details[open].xray-rec-group .xray-rec-group-summary::before { transform: rotate
 .xray-account-bar { display: flex; align-items: center; gap: 10px; padding: 10px 0 4px 0; }
 .xray-account-label { font-size: 0.85rem; color: #888; }
 .xray-account-select { background: #1a1a1a; color: #ccc; border: 1px solid #333; border-radius: 4px; padding: 4px 8px; font-size: 0.85rem; }
-.heatmap-panel { display: none; flex-wrap: wrap; gap: 6px; padding: 12px 0; align-content: flex-start; }
-.heatmap-empty { color: var(--bs-body-color); font-size: var(--font-size-body); }
-.heatmap-tile { display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 4px; cursor: default; transition: filter 0.15s; overflow: hidden; padding: 4px; }
-.heatmap-tile:hover { filter: brightness(1.2); }
+.heatmap-panel { display: none; position: relative; width: 100%; height: 450px; }
+.heatmap-empty { color: var(--bs-body-color); font-size: var(--font-size-body); padding: 12px 0; }
+.heatmap-tile { position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center; box-sizing: border-box; border: 2px solid #121212; border-radius: 2px; cursor: default; transition: filter 0.15s; overflow: hidden; padding: 4px; }
+.heatmap-tile:hover { filter: brightness(1.25); z-index: 1; }
 .heatmap-tile-gain { background-color: #1a4d1a; }
 .heatmap-tile-loss { background-color: #4d1a1a; }
 .heatmap-tile-flat { background-color: #2c2c2c; }
 .heatmap-tile-ticker { font-weight: 700; color: #e0e0e0; font-size: var(--font-size-h2); line-height: 1.1; text-align: center; word-break: break-all; }
-.heatmap-tile-change { font-size: var(--font-size-h3); text-align: center; color: #b0b0b0; }
+.heatmap-tile-change { font-size: var(--font-size-h3); text-align: center; }
 .heatmap-tile-gain .heatmap-tile-change { color: #88cc88; }
 .heatmap-tile-loss .heatmap-tile-change { color: #cc8888; }
+.heatmap-tile-flat .heatmap-tile-change { color: #b0b0b0; }
 .ma-traffic-strip { display: flex; gap: 8px; margin: 12px 0 18px 0; }
 .ma-traffic-box { flex: 1; padding: 8px 4px; border-radius: 6px; text-align: center; font-size: 0.73rem; font-weight: 600; border: 2px solid currentColor; opacity: 0.22; transition: opacity 0.2s; cursor: default; }
 .ma-traffic-box.active { opacity: 1; box-shadow: 0 0 10px currentColor; }
