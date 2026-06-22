@@ -1,0 +1,76 @@
+<div class="accordion-item glossary-section" id="technicals">
+    <h2 class="accordion-header">
+        <button class="accordion-button collapsed" type="button"
+                data-bs-toggle="collapse" data-bs-target="#collapse-technicals"
+                aria-expanded="false" aria-controls="collapse-technicals">
+            📈 Technical Analysis (Chart Momentum)
+        </button>
+    </h2>
+    <div id="collapse-technicals" class="accordion-collapse collapse">
+        <div class="accordion-body">
+
+            <div class="term-box">
+                <span class="term-title">Moving Averages (5D, 10D, 21D, 50D, 200D)</span>
+                <p>A <strong>Moving Average (MA)</strong> smooths out day-to-day price noise to reveal the underlying trend direction. It is computed by averaging the closing price over the last N days, then recalculating that average each new trading day as the oldest data point drops out and the newest comes in — the "window" moves forward through time.</p>
+                <p>Different time periods serve different purposes:</p>
+                <ul>
+                    <li><strong>5-day and 10-day MAs:</strong> Very short-term — useful for intraday traders and for detecting very fresh momentum changes. Extremely noisy and prone to false signals in volatile markets.</li>
+                    <li><strong>21-day MA:</strong> Approximately one trading month. Used to track the short-to-medium trend. Many swing traders use this as their "price must be above the 21-day to stay in the trade" rule.</li>
+                    <li><strong>50-day MA:</strong> The standard medium-term trend filter. When a stock is above its 50-day MA, it is generally considered to be in a medium-term uptrend. When below, a downtrend. Institutions watch this level closely and often add to positions when stocks pull back to test it.</li>
+                    <li><strong>200-day MA:</strong> The single most-watched long-term trend indicator in the world. A stock above its 200-day MA is in a long-term uptrend by definition; below it, a long-term downtrend. When the 50-day MA crosses above the 200-day MA, it is called a <strong>Golden Cross</strong> — a powerful long-term bullish signal. The opposite crossing is a <strong>Death Cross</strong>.</li>
+                </ul>
+                <p>This app uses <strong>EMA</strong> (Exponential Moving Average) for most short-period calculations, not SMA (Simple Moving Average). EMA gives more weight to recent prices, making it more responsive to current price action. SMA weights all days equally and is smoother but lags more. The 200-day is typically calculated as a simple SMA because its role is to represent the long-run structural trend, not to be reactive.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">RSI (Relative Strength Index)</span>
+                <p>The <strong>Relative Strength Index</strong> measures the <em>velocity</em> of recent price changes — how quickly and decisively a stock has been rising or falling over the last 14 trading days. It is displayed as a number between 0 and 100. Developed by J. Welles Wilder in 1978, it remains one of the most widely used momentum indicators in the world.</p>
+                <p>The calculation: RSI compares the average gain on up-days to the average loss on down-days over 14 periods. If a stock went up on 12 of the last 14 days with large gains, the RSI will be very high (near 100). If it fell on 12 of 14 days with large losses, the RSI will be very low (near 0).</p>
+                <p>The classic interpretation:</p>
+                <ul>
+                    <li><strong>RSI &gt; 70:</strong> Overbought. The stock has risen too fast too quickly. Not a sell signal on its own — strong trending stocks can stay above 70 for weeks — but it indicates elevated risk of a pullback. Most useful as a warning to tighten stop-losses rather than exit.</li>
+                    <li><strong>RSI &lt; 30:</strong> Oversold. The stock has fallen too fast. Again, not an automatic buy signal — stocks can stay oversold in a serious downtrend — but historically these levels tend to precede bounces, especially in otherwise healthy stocks.</li>
+                    <li><strong>RSI between 40–60:</strong> Neutral range. Trend is not overextended in either direction.</li>
+                </ul>
+                <p><strong>RSI Divergence</strong> is one of the most reliable signals: when the stock price makes a new high but RSI makes a lower high, it means the latest price high was achieved on declining momentum — a warning that the uptrend is weakening even before the price turns. Similarly, a price making a new low while RSI makes a higher low signals that the selling is losing momentum — a potential bottom forming.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">ATR Stop-Loss (Average True Range)</span>
+                <p>The <strong>Average True Range (ATR)</strong> measures a stock's average daily price range — how much it typically moves from high to low in a single session. It accounts for overnight gaps by using "true range" (the greatest of: today's high minus today's low, today's high minus yesterday's close, yesterday's close minus today's low). ATR is purely a volatility measure — it tells you how much a stock moves, not which direction.</p>
+                <p>A high ATR means the stock is volatile and makes big daily moves — stop-losses need to be wider to avoid being triggered by normal noise. A low ATR means the stock is calm — tighter stops are viable. Using ATR to set stop-losses makes them <em>adaptive</em> to the stock's own behaviour rather than applying the same fixed percentage to every position.</p>
+                <p>The <strong>ATR Stop-Loss</strong> in this app is dynamically set between <strong>1.8× and 3.0× ATRs below the current price</strong>. The multiplier adjusts based on the ATR Stability Ratio (how consistent the ATR has been recently — a more stable ATR allows a tighter multiple) and widens automatically during high-risk macro events. This line moves upward as the stock rises, "trailing" the price to lock in profits while still leaving room for normal daily fluctuations.</p>
+                <p>The boundary has a concrete meaning: as long as the stock stays above the ATR stop, any pullback is within its normal volatility envelope — a genuine dip to consider buying. If the stock closes below the ATR stop, it has moved outside its normal volatility range — the structural trend has broken, and the position should be reviewed.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Volume Profile &amp; POC (Point of Control)</span>
+                <p>Most price charts show volume as a bar at the bottom of the chart aligned with time — you can see that Monday had more trading than Tuesday. A <strong>Volume Profile</strong> turns this on its side: instead of volume-by-time, it shows volume-by-price. It builds a histogram of the last 180 days of trading, showing at which price levels the most shares changed hands.</p>
+                <p>The <strong>Point of Control (POC)</strong> is the single price level with the highest accumulated volume over the period — the price where the most shares changed hands. This level has special significance: because so many transactions occurred here, many investors have cost bases near the POC. They tend to defend it (buying when price approaches from above) and it can act as a ceiling (those who bought here and broke even sell to get out when price returns from below). Institutions also re-enter near the POC because it represents collective market agreement on fair value.</p>
+                <p>The <strong>Value Area</strong> spans from the Value Area Low (VAL) to the Value Area High (VAH) and contains 70% of all volume — it is the "normal" price range where most activity occurred. Prices inside the value area are considered fairly valued; prices outside it signal potential imbalance.</p>
+                <p><strong>High Volume Nodes (HVNs)</strong> are local peaks in the profile — price bands where lots of trading occurred. They act as support from above and resistance from below. <strong>Low Volume Nodes (LVNs)</strong> are thin areas where very little trading happened — price tends to slice through LVNs quickly because there are few participants with positions near those levels who would push back.</p>
+                <div class="rule">Entry Zone = highest HVN or VAL strictly below current price — a historically liquid support level where buyers previously congregated.</div>
+                <div class="rule">Exit Zone = lowest overhead HVN or VAH above current price — a historically liquid resistance level where sellers previously congregated.</div>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Keltner Channel Z-Score</span>
+                <p>A <strong>Keltner Channel</strong> is a volatility envelope drawn around a central moving average (EMA of 21 days). Unlike Bollinger Bands (which use price standard deviation), Keltner Channels use <strong>ATR</strong> (Average True Range) to set the band width. This makes them more stable in trending markets because ATR measures actual price range rather than statistical deviation of closes.</p>
+                <p>The <strong>Z-Score</strong> measures how many ATRs the current close is above or below the 21-day EMA: <code>Z = (Close − EMA21) / ATR14</code>. A score of 0 means the price is exactly at its 21-day trend centre. A score of −2 means it is two ATRs below the trend — a notable oversold pullback within the channel. A score of −3 or lower is very rare and signals an extreme extension.</p>
+                <p>In a healthy uptrend, price typically oscillates between Z = −1.5 and Z = +2. When Z drops to −2 or below while the stock is still above its 200-day SMA (confirming the long-term uptrend is intact), the pullback has overshot the normal range — a mean-reversion opportunity. When Z exceeds +3 alongside RSI above 75, the price is extended to the upside and a correction is likely.</p>
+                <div class="rule">KC Entry Signal: Z-score ∈ (−3, −2) AND price above 200-day SMA — a mean-reversion buy setup inside a healthy long-term uptrend.</div>
+                <div class="rule">KC Exit Signal: Z-score &gt; +3 AND RSI &gt; 75 — price overextended upward, elevated reversion risk.</div>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">ML Quantile Price Bands (Q10 / Q90)</span>
+                <p>Standard ML models output a single probability ("65% chance of rising &gt;3%"). The <strong>Quantile Price Bands</strong> go further: instead of predicting the most likely outcome, they predict the <em>distribution</em> of outcomes — specifically, where the stock is likely to be in the worst-case and best-case scenarios over the next 10 trading days.</p>
+                <p>Two <strong>XGBoost Quantile Regressors</strong> are trained on the same 18 features as the confidence score model, but with different objectives. The <strong>Q10 model</strong> is trained to predict the 10th percentile of outcomes — the level that only 10% of similar historical setups fell below over 10 days. The <strong>Q90 model</strong> predicts the 90th percentile — the level that only 10% of similar setups exceeded. This gives you a statistically grounded range rather than a single point forecast.</p>
+                <p><strong>Q10 Band (Floor):</strong> In 90% of comparable historical situations, the stock did not fall below this price over the following 10 trading days. This is a data-driven worst-case support level — useful for placing limit buy orders or stop-loss levels. It is not a guarantee, but a probabilistic boundary based on the model's training data.</p>
+                <p><strong>Q90 Band (Ceiling):</strong> In 90% of comparable historical situations, the stock reached or exceeded this price within the following 10 trading days. This is a data-driven optimistic target — useful for setting take-profit levels. When shown on the portfolio page, this is displayed as the ML exit target alongside the Volume Profile Exit Zone.</p>
+                <p>Having both bands simultaneously is much more useful than a single confidence score: you can see not just whether the model thinks the stock will go up, but approximately where it expects the floor and ceiling to be over the next two weeks — information you need to decide on position sizing and order placement.</p>
+            </div>
+
+        </div>
+    </div>
+</div>

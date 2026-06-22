@@ -1,0 +1,37 @@
+<div class="accordion-item glossary-section" id="fundamentals">
+    <h2 class="accordion-header">
+        <button class="accordion-button collapsed" type="button"
+                data-bs-toggle="collapse" data-bs-target="#collapse-fundamentals"
+                aria-expanded="false" aria-controls="collapse-fundamentals">
+            🏢 Fundamental Valuation (Company Health)
+        </button>
+    </h2>
+    <div id="collapse-fundamentals" class="accordion-collapse collapse">
+        <div class="accordion-body">
+
+            <div class="term-box">
+                <span class="term-title">What Fundamental Valuation Means</span>
+                <p><strong>Fundamental analysis</strong> asks: what is this company actually worth, based on its financial performance and business quality? It is the opposite of technical analysis, which looks at price charts and momentum. A fundamentally focused investor might buy a stock when its price falls far below its estimated intrinsic value, regardless of what the chart looks like — and sell when the price rises far above it.</p>
+                <p>The two metrics used in this section — PEG ratio and financial safety indicators — are among the most widely used fundamental filters. They are simple enough to apply consistently across thousands of stocks, yet powerful enough to separate genuinely cheap stocks from cheap-looking ones that are heading into trouble.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Peter Lynch Fair Value — PEG Ratio</span>
+                <p>The <strong>P/E ratio</strong> (Price-to-Earnings) is the most widely-known valuation metric: it measures how many pounds (or dollars) you are paying for each pound of annual earnings. A P/E of 20 means you are paying 20× the current year's earnings for the stock. Higher P/E = more expensive, usually because investors expect faster growth. Lower P/E = cheaper, usually reflecting lower expected growth or higher risk.</p>
+                <p>The problem with a standalone P/E ratio: it ignores growth. A company with a P/E of 30 growing earnings at 30% per year is potentially much cheaper than a company with a P/E of 15 growing earnings at 3% per year. You are paying proportionally for the future, not just the present.</p>
+                <p>Peter Lynch — the legendary Fidelity Magellan Fund manager who averaged 29% annual returns — popularised the <strong>PEG ratio</strong> as a simple adjustment: divide the P/E by the earnings growth rate. A PEG of 1.0 means you're paying exactly in line with growth — Lynch considered this "fair value." Below 1.0 means you might be getting growth at a discount; above 2.0 means you are significantly overpaying relative to the growth rate.</p>
+                <p>This app's implementation uses <em>Trailing P/E</em> (based on last 12 months' actual earnings, not analyst forecasts) and <em>Year-over-Year earnings growth</em> (actual reported, not estimates). This makes it less susceptible to overly optimistic analyst projections.</p>
+                <div class="rule">PEG &lt; 1.0 = Potentially undervalued relative to growth. PEG 1.0–2.0 = Fairly valued to mildly overvalued. PEG &gt; 2.0 = Overvalued relative to growth. N/A if P/E is negative (company is losing money) or growth rate is negative or zero.</div>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Financial Safety — Debt &amp; Liquidity</span>
+                <p>A company can look like a bargain on earnings-based metrics while quietly building up dangerous levels of debt. When interest rates are low, debt is cheap — but as rates rise (as dramatically happened in 2022–2023), companies with high debt burdens suddenly face a much larger annual interest expense. Companies that could comfortably service debt at 2% interest rates sometimes cannot at 5–6%.</p>
+                <p>The <strong>Debt-to-Equity ratio (D/E)</strong> compares total liabilities to shareholders' equity — the amount of the company funded by debt versus the amount funded by owners. A D/E above 2.0 means the company has more than twice as much debt as equity — for every £1 of owner-funded value, creditors have lent £2. In a rising-rate or recession environment, this level of leverage creates meaningful bankruptcy risk. Sectors like utilities and real estate naturally carry more debt (because assets are stable and cash flows are predictable); for technology or consumer companies, a D/E above 2.0 is more alarming.</p>
+                <p>The <strong>Current Ratio</strong> (current assets / current liabilities) measures whether a company can cover its near-term obligations with its near-term resources. A current ratio below 1.0 means it cannot — it would need to refinance debt, sell assets, or raise new equity to meet its obligations over the next 12 months. A ratio above 1.5 is generally considered healthy.</p>
+                <p>Together, these two metrics form a quick "financial safety check" — a company can be fundamentally cheap on earnings but a value trap if it has dangerous debt levels. The combination of cheap valuation and deteriorating financial safety is one of the most dangerous setups in investing.</p>
+            </div>
+
+        </div>
+    </div>
+</div>

@@ -703,6 +703,9 @@ table.dataTable tbody tr td { color: #ccc; }
 .status-msg-sm { font-weight: bold; font-family: monospace; font-size: 13px; margin-top: 10px; }
 .bg-dark-alert { background-color: #1a2636; border-left: 4px solid #00ffcc; padding: 15px; border-radius: 5px; margin-top: 15px; }
 .glossary-empty-state { display: none; text-align: center; padding: 50px; color: #888; border: 1px dashed #333; border-radius: 8px; }
+#glossaryContent .term-box p,
+#glossaryContent .term-box li,
+#glossaryContent .candle-explanation { font-size: var(--glossary-fs, var(--font-size-body)); line-height: 1.75; }
 #noSettingsResults { max-width: 1400px; margin: 0 auto; padding: 0 20px; }
 .doc-section-divider { padding: 20px 0 8px 0; border-top: 1px solid #333; margin-top: 10px; margin-bottom: 4px; }
 .doc-section-divider h2 { font-size: 18px; color: #888; text-transform: uppercase; letter-spacing: 1px; margin: 0 0 4px 0; }

@@ -1,0 +1,37 @@
+<div class="accordion-item glossary-section" id="notification-routing">
+    <h2 class="accordion-header">
+        <button class="accordion-button collapsed" type="button"
+                data-bs-toggle="collapse" data-bs-target="#collapse-notifications"
+                aria-expanded="false" aria-controls="collapse-notifications">
+            🔔 Notification Settings
+        </button>
+    </h2>
+    <div id="collapse-notifications" class="accordion-collapse collapse">
+        <div class="accordion-body">
+
+            <div class="term-box">
+                <span class="term-title">Notification Settings</span>
+                <p>The app generates many types of notifications: a job completed successfully, a job failed, an anomaly was detected, a treasury auction looked weak, a dip radar alert fired. Without organisation, these would flood any single channel and important signals would be buried in routine status messages.</p>
+                <p>The <strong>Notification Settings</strong> panel (in Settings → Notification Settings) gives you granular control over each individual notification type: you choose independently whether each event goes to the log file, appears in the in-app bell icon, and/or is sent as a Nextcloud Talk message. This means critical alerts (a crash detection, a forensic accounting red flag) can be sent directly to your phone via Nextcloud while routine job status messages stay in the log only.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Channels</span>
+                <p>There are three independent delivery destinations, each togglable per notification source:</p>
+                <div class="rule"><strong>Log file (<code>logs/app.log</code>):</strong> A rotating text file on the server. Every notification is written here by default. Useful for debugging and audit trails, but requires you to SSH into the server or view the log viewer to read it.</div>
+                <div class="rule"><strong>In-app notification centre:</strong> The bell icon (🔔) in the navbar. Unread notifications are counted and shown in the badge. You can view, dismiss, and search through them in Settings → Notifications. This is the "catch-all" channel for things you want to review periodically without it demanding immediate attention.</div>
+                <div class="rule"><strong>Nextcloud Talk:</strong> A push message to your configured Nextcloud Talk room or direct conversation. This is the "act now" channel — messages arrive on your phone immediately. Suitable for high-priority alerts (crashes, anomalies, briefings) where time matters.</div>
+                <p>The morning and lunchtime briefings are special cases: they send file attachments (the Fear &amp; Greed chart, the briefing Markdown file) to Nextcloud Talk via their own upload paths, and those are controlled by their own separate enable toggles. The Notification Settings panel handles their log/in-app routing for status events (started, completed, failed).</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Job Status vs. Alert Sources</span>
+                <p>Not all notifications are the same type. The system distinguishes between two categories:</p>
+                <p><strong>Job status events</strong> are system-level: "Quant scan started", "ML training completed in 3m 42s", "Morning briefing failed with error." These are operational messages useful for monitoring that the automation is working correctly. They are generally low-urgency and appropriate for the log and in-app channels only.</p>
+                <p><strong>Alert sources</strong> are market-signal events: "Crash alert: AAPL down 8% intraday", "Dip Radar: NVDA score 87/100", "Anomaly detected: TSLA score 0.84", "Macro yield threat: US 10Y +15bp in 24h." These carry potential actionable information and are appropriate for Nextcloud Talk push delivery where real-time awareness matters.</p>
+                <p>Because a single scheduled job can produce multiple distinct alert types (the intraday orchestrator produces crash, moonshot, dip radar, anomaly, and macro yield alerts — each a different signal with different urgency), each alert type has its own routing row in the Notification Settings panel. This lets you, for example, push dip radar and crash alerts to your phone while keeping moonshot alerts (lower urgency for your strategy) in-app only.</p>
+            </div>
+
+        </div>
+    </div>
+</div>

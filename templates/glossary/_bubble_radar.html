@@ -1,0 +1,70 @@
+<div class="accordion-item glossary-section" id="bubble-radar">
+    <h2 class="accordion-header">
+        <button class="accordion-button collapsed" type="button"
+                data-bs-toggle="collapse" data-bs-target="#collapse-bubble"
+                aria-expanded="false" aria-controls="collapse-bubble">
+            &#127968; Bubble Radar — Valuation Euphoria Detection
+        </button>
+    </h2>
+    <div id="collapse-bubble" class="accordion-collapse collapse">
+        <div class="accordion-body">
+
+            <div class="term-box">
+                <span class="term-title">What Bubble Radar Detects</span>
+                <p>Financial bubbles are not unusual events — they happen regularly in different assets and sectors. Technology stocks in 2000, US housing in 2007, crypto in 2021, and AI-related stocks in 2023–2025 all exhibited classic bubble characteristics: prices far above any reasonable fundamental anchor, sustained RSI extremes, speculative options activity, and narrow breadth (a few popular stocks rising while most others lag).</p>
+                <p>The <strong>Bubble Radar</strong> scans your portfolio and watchlist for these specific mathematical signatures. It does not predict when a bubble will burst — bubbles can last far longer than rational analysis suggests they should — but it quantifies how detached from reality a stock's price currently appears across seven independent dimensions simultaneously. A high score should prompt the question "am I comfortable holding this at these valuation levels, and do I have an exit plan?"</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Bubble Risk Score</span>
+                <p>A composite 0–100 score built from seven weighted metrics. Each metric contributes a fixed number of points if it breaches its threshold, and the total is capped at 100. The scoring is <em>threshold-based</em> rather than relative (percentile-ranked vs. the market) — this means a score of 80 means the same thing for a small-cap UK stock as for a US mega-cap: both have crossed the same absolute levels of overextension simultaneously across the same set of metrics.</p>
+                <p>Scores are stored daily per ticker, allowing the Bubble Radar page to show: how long the score has been elevated, whether it is rising or falling, and how accurate the system's past "bubble" flags have been at predicting actual price corrections at 4, 8, and 12-week horizons. This accuracy tracking is critical — it tells you whether the model has actually been right in the past and prevents it from being taken on pure faith.</p>
+                <div class="rule">Bubble Watch flag: score ≥ configurable Watch threshold (default 70). Bubble Risk flag: score ≥ configurable Bubble threshold (default 85). Both thresholds are editable in Settings → Bubble Radar.</div>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">SMA-200 Extension</span>
+                <p>The <strong>200-day Simple Moving Average</strong> is the single most widely-watched long-term trend indicator in institutional finance. It represents approximately 200 trading days (~10 months) of average prices, and it moves very slowly — it is not easily distorted by short-term news events. Because of this, the SMA-200 is often used as a proxy for "long-run fair value" or the "institutional cost basis" of a large position built over many months.</p>
+                <p>When a stock's current price is 40% above its 200-day MA, it means buyers have paid a 40% premium over what the long-run trend suggests is fair value. Historically, very large extensions above the SMA-200 (25%+) have been reliable indicators of overvaluation in individual stocks — not every overextension leads to an immediate collapse, but the odds of a meaningful pullback toward the SMA-200 increase substantially at these levels.</p>
+                <div class="rule">Scoring: 0 pts below 15% extension; 10 pts at 15–25%; 17 pts at 25–40%; 25 pts above 40% extension.</div>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Sustained RSI High</span>
+                <p>A single day with RSI above 70 is a normal overbought reading that occurs regularly in any strong trending stock. What is unusual — and historically correlated with bubbles — is RSI <em>averaging</em> above 70 over 20 consecutive trading days. That requires the stock to be in an almost uninterrupted strong-buying state for a full month with very few down-days disrupting the momentum.</p>
+                <p>This kind of sustained extreme reading typically reflects a self-reinforcing dynamic: price rises attract attention, attention attracts new buyers, new buyers push price higher, which attracts more attention. This is the definition of speculative momentum rather than fundamental value appreciation. While it can continue for weeks or months, it always eventually exhausts itself — and the reversal is typically sharp.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">FCF Yield vs Real 10-Year</span>
+                <p><strong>Free Cash Flow (FCF) Yield</strong> is a fundamental sanity check: how much cash does the company generate relative to how much investors are paying for it? It is calculated as (Free Cash Flow / Market Cap) × 100. A company generating £100m in annual free cash flow with a £2 billion market cap has a 5% FCF yield.</p>
+                <p>The <strong>Real 10-Year Yield</strong> (FRED series DFII10) is the US 10-year Treasury yield adjusted for inflation — this is the risk-free return available with zero equity risk. When a company's FCF yield falls below the real risk-free rate, equity holders are effectively accepting a lower expected return than they could get by simply holding US government bonds — with far more risk. This "paying more than risk-free for equity" condition is a textbook bubble indicator, most famously observed in the Dot-com era when many tech companies had negative FCF yields (they were burning cash) while government bonds yielded 5%+.</p>
+                <div class="rule">Applied to US-listed stocks only (FCF data and real yield comparison are most reliable for US companies). LSE/XETRA stocks are excluded from this metric and receive 0 pts here.</div>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">IV Call Skew</span>
+                <p><strong>Implied Volatility (IV)</strong> is the options market's forecast of how much a stock will move in the future — it is derived from option prices rather than historical price data. Normally, investors are more worried about downside than upside, so put options (bets on a falling price) carry higher IV than call options (bets on a rising price) for the same strike distance from the current price. This is called the "put skew" and is a persistent feature of most stock option markets.</p>
+                <p>During speculative manias, this relationship reverses: demand for out-of-the-money calls (cheap lottery tickets on further rapid price increases) surges as retail participants and momentum funds pile in. When call IV exceeds put IV — the ratio exceeds 1.0 — the options market is pricing in more upside uncertainty than downside uncertainty. This is historically unusual and is associated with late-stage speculative excess.</p>
+                <p>The extreme threshold is a ratio of 1.2+: at this level, the market is charging 20% more for upside bets than for equivalent downside protection. This was observed in many meme stocks in 2021 and in AI-related stocks during various momentum peaks in 2023–2025.</p>
+                <div class="rule">Neutral: IV ratio ≤ 1.0. Elevated: 1.0–1.2. Extreme call mania: ≥ 1.2. Applied to nearest-expiry OTM options chains. US-listed tickers only.</div>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">SPY vs RSP Breadth Spread</span>
+                <p>The S&amp;P 500 is a <strong>cap-weighted</strong> index — larger companies have more influence on the index level. The top 10 stocks in the S&amp;P 500 can represent 35%+ of the index. This means Apple, Microsoft, NVIDIA, Meta, and a handful of others can drag the entire index higher even if most of the 500 stocks are falling or flat.</p>
+                <p><strong>RSP</strong> (the Invesco S&amp;P 500 Equal Weight ETF) solves this by giving every company in the S&amp;P 500 exactly equal weight (~0.2%), regardless of size. When RSP performance equals SPY performance, all 500 companies are rising together — broad, healthy participation. When SPY significantly outperforms RSP (a large positive spread), a small number of mega-cap stocks are doing all the heavy lifting while the average stock is left behind.</p>
+                <p>This "narrow breadth" phenomenon has historically been a late-cycle warning signal. The 2023 AI rally is a good example: the S&amp;P 500 rose strongly, but the equal-weight index was nearly flat, because the gains were almost entirely concentrated in the "Magnificent 7" AI-related mega-caps. When the mega-caps eventually corrected in late 2024, the broad market impact was significant because so much index weight was concentrated in just a few names.</p>
+                <div class="rule">A SPY-vs-RSP spread above 5 percentage points (20-day return comparison) is flagged as a breadth warning — the rally is dangerously narrow.</div>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Bubble Watch vs Bubble Risk</span>
+                <p><strong>Bubble Watch</strong> (yellow flag) means the stock is showing early signs of valuation overextension across some of the seven metrics, but has not yet crossed all the highest-confidence thresholds. Think of it as "elevated, worth monitoring, but not yet alarming."</p>
+                <p><strong>Bubble Risk</strong> (red flag) means the composite score has crossed the upper threshold and multiple independent metrics are simultaneously in extreme territory. This is the "the lights are flashing" state — not a sell signal, but a strong prompt to ask whether you have an exit strategy and whether your current position size reflects the elevated risk.</p>
+                <p>Both thresholds are configurable in Settings because investors have different risk tolerances and time horizons. A long-term, diversified investor might set higher thresholds than a more active trader who is more sensitive to short-term valuation extremes.</p>
+            </div>
+
+        </div>
+    </div>
+</div>

@@ -1,0 +1,156 @@
+<div class="accordion-item glossary-section" id="machine-learning">
+    <h2 class="accordion-header">
+        <button class="accordion-button collapsed" type="button"
+                data-bs-toggle="collapse" data-bs-target="#collapse-ml"
+                aria-expanded="false" aria-controls="collapse-ml">
+            🤖 Machine Learning &amp; Risk Metrics
+        </button>
+    </h2>
+    <div id="collapse-ml" class="accordion-collapse collapse">
+        <div class="accordion-body">
+
+            <div class="term-box">
+                <span class="term-title">ML Confidence Score</span>
+                <p>Every stock in the universe receives a <strong>ML Confidence Score</strong> — a number between 0% and 100% that represents how likely a machine learning model thinks the stock will gain more than {{ prediction_threshold_pct }}% over the next {{ prediction_horizon }} trading days (roughly two calendar weeks), measured from the close on the day of the scan to the close {{ prediction_horizon }} days later.</p>
+                <p>The model is a <strong>Soft-Voting Ensemble</strong>, which means it combines two separate models — XGBoost and Random Forest — and averages their probability estimates rather than taking a hard yes/no vote. This makes it more robust because the two models have different strengths: XGBoost is better at learning non-linear interactions between features; Random Forest is better at avoiding overfitting to recent noise.</p>
+                <p><strong>XGBoost</strong> (eXtreme Gradient Boosting) builds a sequence of small decision trees where each tree learns from the mistakes of the previous ones — a technique called gradient boosting. <strong>Random Forest</strong> builds hundreds of independent decision trees on random subsets of data and features, then averages their predictions. Neither model "knows" finance — they learn statistical patterns from 18 technical and fundamental features (RSI, MACD, volume ratios, SMA distances, etc.) across thousands of past observations.</p>
+                <p>A score of 75% does not mean "this stock will definitely go up 3% in 10 days." It means: of all historical situations where the model saw this same combination of signals, the stock gained more than {{ prediction_threshold_pct }}% in the next {{ prediction_horizon }} days about 75% of the time. Markets are inherently unpredictable — even a perfect model would be wrong 25–30% of the time just due to randomness.</p>
+                <div class="rule">Scores above 65% are considered high-confidence signals by the system. Below 40%, the model sees no edge and the stock is not surfaced in briefings.</div>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Value at Risk — 1-day, 95% (Historical Simulation)</span>
+                <p><strong>Value at Risk (VaR)</strong> answers a specific question: "On a bad-but-not-catastrophic day, how much could I lose?" It is expressed as a percentage of position value and is the standard risk metric used by banks, hedge funds, and institutional investors worldwide.</p>
+                <p>The "95%" means we're looking at the 95th percentile bad day — i.e., the loss level that the worst 5% of days exceeded. On 1 out of every 20 trading days, you can expect to lose <em>more</em> than the VaR figure. On the other 19 days, your loss should stay within it.</p>
+                <p>This app uses <strong>Historical Simulation</strong> to calculate VaR: it looks at the actual daily returns over the past year, sorts them from worst to best, and takes the 5th percentile (the 95th-worst outcome). This approach captures real market behaviour — including fat tails and crash days — rather than assuming returns follow a neat bell curve.</p>
+                <ul>
+                    <li><strong>The Safe Zone:</strong> There is a 95% probability that the position will not lose more than the VaR percentage in a single trading day.</li>
+                    <li><strong>The Danger Zone:</strong> There is a 5% probability (roughly 1 out of every 20 days) that the position drops by the VaR amount <em>or worse</em>.</li>
+                </ul>
+                <div class="rule">EXAMPLE: On a £100,000 position with a 12.76% 1-day 95% VaR, you are 95% confident your daily loss will not exceed £12,760. But expect to breach that figure roughly once per month.</div>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Conditional VaR (CVaR) — Expected Shortfall</span>
+                <p>VaR has a well-known blind spot: it tells you where the threshold is, but says nothing about how bad things get once you cross it. A 95% VaR of 12% could mean the worst 5% of days all cluster just below −13% (manageable), or that one of those days was −40% (catastrophic). The VaR number looks the same.</p>
+                <p><strong>Conditional VaR (CVaR)</strong>, also called <strong>Expected Shortfall (ES)</strong>, solves this by averaging all the losses that exceed the VaR threshold. It answers: "Given that tomorrow is a catastrophic day (one of the worst 5%), how bad will it be on average?"</p>
+                <p>CVaR is always worse (higher) than VaR. If VaR is 12% and CVaR is 18%, it means: on the bad days that cross the VaR boundary, your average loss is 18%, not 12%. This is the number that tells you the <em>severity</em> of tail risk, not just the frequency. Academic and regulatory risk frameworks (Basel III, FRTB) have been shifting toward CVaR as the primary risk metric precisely because of this.</p>
+                <p>Practically: a stock with VaR=10% and CVaR=11% has a smooth tail — bad days are all similar severity. A stock with VaR=10% and CVaR=25% has a fat, lumpy tail — most bad days are okay but occasionally there is a violent crash. Same VaR, very different risk profiles.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">VADER Sentiment Score</span>
+                <p><strong>VADER</strong> (Valence Aware Dictionary and sEntiment Reasoner) is a rule-based Natural Language Processing (NLP) model originally designed for social media text. It reads news headlines and short article summaries and outputs a sentiment score ranging from <strong>−1.0</strong> (extremely negative/fearful) to <strong>+1.0</strong> (extremely positive/euphoric), with 0 being completely neutral.</p>
+                <p>Unlike machine learning models that need training data, VADER works from a carefully curated lexicon of financial and general language words, each pre-assigned a sentiment strength. Words like "surge", "beat", "record", and "buyback" push the score positive. Words like "crash", "miss", "investigation", "downgrade", and "layoffs" push it negative. It also handles punctuation (!!!) and capitalization (CRASH) as intensity amplifiers.</p>
+                <p>It is fast and works offline (no external API required), which makes it practical for scanning hundreds of news articles daily. Its limitation is that it is purely lexical — it doesn't understand context deeply. "The company avoided a crash" would be scored negatively because of the word "crash", when the actual meaning is positive. This is why the app uses VADER alongside FinBERT (a purpose-trained financial NLP model) rather than relying on VADER alone.</p>
+                <div class="rule">VADER scores appear in the news feed and on stock detail pages as a rapid directional signal. Scores below −0.3 or above +0.3 are considered meaningfully negative or positive; scores between ±0.3 are broadly neutral.</div>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Turbulence Index &amp; Volatility Regimes</span>
+                <p>The <strong>Turbulence Index</strong> is a measure of how chaotic and unpredictable the current market environment is, based on the realized volatility of SPY (the S&P 500 ETF) and FTSE over the past 20 trading days, weighted using <strong>EWMA</strong> (Exponentially Weighted Moving Average).</p>
+                <p><strong>EWMA</strong> gives more importance to recent data than older data, making it much more responsive to sudden volatility spikes than a simple 20-day average. The decay factor λ=0.94 means yesterday's observation carries roughly 94% of today's weight, last week's data carries about 70%, and data from a month ago carries around 40%. This weighting is a direct copy of the JP Morgan RiskMetrics standard from the 1990s, which became an industry benchmark for this reason.</p>
+                <p>The index classifies the current environment into three regimes:</p>
+                <ul>
+                    <li><strong>Normal:</strong> Volatility is within its historical average range. Trend-following and momentum strategies typically perform well.</li>
+                    <li><strong>Volatile:</strong> Elevated volatility. False breakouts and whipsaws are common. Mean-reversion strategies gain edge; position sizes should shrink.</li>
+                    <li><strong>Crash:</strong> Extreme volatility consistent with systemic market stress. Most signals become unreliable; capital preservation takes priority over opportunity-seeking.</li>
+                </ul>
+                <div class="rule">The VIX (CBOE Volatility Index) — the "fear gauge" — is displayed alongside the Turbulence Index for context, but it is NOT part of the regime signal. The VIX measures implied volatility (what options traders expect); the Turbulence Index measures realized volatility (what actually happened). Both are useful but measure different things.</div>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Market Regime — Price HMM</span>
+                <p>A <strong>Hidden Markov Model (HMM)</strong> is a type of statistical model that assumes the world passes through a series of unobserved ("hidden") states, and what we observe (the data) is a noisy signal emitted by whichever hidden state the world is currently in.</p>
+                <p>Think of it like the weather: you can't directly observe "weather system type" — but you can observe rain, temperature, and wind. An HMM learns the relationship between the observable signals and the hidden states, then infers which state you're most likely in right now.</p>
+                <p>For markets, the "hidden states" are the true underlying market regimes: Bull, Chop, or Crash. The observable signals are the daily SPY log-returns and 20-day EWMA realized volatility. The HMM is trained on 5 years of SPY data and re-trained every night so it learns from the most recent market behaviour. It then uses the <strong>Viterbi algorithm</strong> to find the single most-likely sequence of regime states across all historical data, and outputs the current state with a confidence probability.</p>
+                <ul>
+                    <li><strong>State 0 = Bull:</strong> Low realized volatility, positive average returns. The market is trending upward with low noise.</li>
+                    <li><strong>State 1 = Chop:</strong> Elevated volatility, near-zero or slightly negative average returns. The market is rangebound, directionless — a high-noise environment where momentum signals tend to fail.</li>
+                    <li><strong>State 2 = Crash:</strong> High realized volatility, significantly negative average returns. Consistent with financial crises, flash crashes, and sustained bear markets.</li>
+                </ul>
+                <div class="rule">Distinct from the <em>Macro HMM</em> (which uses M2, jobless claims, credit spreads, and yield curve to predict macro calendar event impacts). This regime model operates on price and volatility only — it is a market-microstructure signal, not a macro-fundamental one. Full Viterbi history and transition probabilities are at <code>/market-regime</code>.</div>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">🌍 Macro Regime Label (Yield Curve Allocator)</span>
+                <p>While the Price HMM reads market signals, the <strong>Macro Regime Label</strong> reads economic fundamentals: the shape of the yield curve, CPI inflation, high-yield credit spreads, the real 10-year yield, and the HMM hidden state. Together, these paint a picture of where the economic cycle is currently positioned.</p>
+                <p>The <strong>yield curve</strong> shows interest rates for government bonds at different maturities. Normally it slopes upward — you get paid more for lending for longer (more risk). When short-term rates exceed long-term rates, the curve <strong>inverts</strong> — and this has preceded every US recession since the 1960s. It is considered one of the most powerful economic leading indicators.</p>
+                <p>Five macro regime labels are defined:</p>
+                <ul>
+                    <li><strong>Risk-On:</strong> Positive yield curve, low and stable inflation, tight credit spreads. The economy is healthy and growing. Equities and riskier assets typically perform best.</li>
+                    <li><strong>Late Cycle:</strong> Flattening yield curve, rising CPI. Growth continues but is beginning to peak. Value stocks and defensive sectors start outperforming growth.</li>
+                    <li><strong>Stagflation:</strong> High inflation combined with financial stress or negative real yields. Bonds and equities both struggle. Commodities (gold, oil) historically outperform.</li>
+                    <li><strong>Contraction:</strong> Inverted yield curve, recession-mode HMM. The economy is likely shrinking. Cash, short-duration bonds, and defensive equities are favoured.</li>
+                    <li><strong>Recovery:</strong> Transitioning out of contraction. The HMM state is improving. Early-cycle assets (small-caps, cyclicals) historically lead.</li>
+                </ul>
+                <div class="rule">Computed nightly by <code>regime_engine.classify_macro_regime()</code>. Powers the Macro Regime Allocator tool which shows the historically optimal asset class weights for the current regime.</div>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Portfolio Regime Alignment Score</span>
+                <p>Knowing the macro regime is only useful if your portfolio reflects it. The <strong>Regime Alignment Score</strong> measures how closely your current asset class weights (equities, bonds, commodities, cash) match the historically optimal weights for the detected regime.</p>
+                <p>It uses <strong>cosine similarity</strong> — a mathematical measure of how "parallel" two vectors are. If your current allocation vector exactly matches the ideal regime allocation, the similarity is 1.0 (= 100 score). If your allocation points in a completely different direction, similarity is 0 (= 0 score). The calculation is: score = cosine_similarity(your weights, ideal weights) × 100.</p>
+                <p>A score below 50 means your portfolio is meaningfully positioned for a different regime than the one the model detects. This is not a trade recommendation — individual conviction, tax situation, and liquidity needs are not captured here. But it is a prompt to ask: "Am I positioned for today's environment, or yesterday's?"</p>
+                <div class="rule">The score is informational only. A score of 40 doesn't mean you should rebalance today — it means there is a detected mismatch worth considering.</div>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Isolation Forest Anomaly Score</span>
+                <p>Normal machine learning models learn from labelled data — "these past situations led to a 20% drop, those led to a 5% gain." The <strong>Isolation Forest</strong> is different: it is <em>unsupervised</em>, meaning it needs no labels. Instead of learning what a "bad" situation looks like, it simply learns what <em>normal</em> looks like for each ticker — and then flags anything that deviates significantly from that normal baseline.</p>
+                <p>The algorithm works by randomly selecting a feature and a random split value, then recursively splitting the data. Anomalous points (those that look unusual) get isolated in fewer splits than normal points — hence the name. An anomaly score is assigned based on how quickly the point was isolated: the faster it is isolated, the more anomalous it is.</p>
+                <p>The model monitors <strong>six simultaneous dimensions</strong> for each ticker: intraday volume vs. its 20-day average, RSI momentum, daily return percentage, distance from the 50-day SMA, 20-day historical volatility, and beta-adjusted market sensitivity. A volume spike alone is not an anomaly — volume spikes happen. But a volume spike occurring simultaneously with an RSI divergence and an SMA break, in a stock that rarely does any of those things, is anomalous.</p>
+                <p>Scores range from 0.00 to 1.00:</p>
+                <ul>
+                    <li><strong>0.00 – 0.40 (Normal):</strong> The stock is trading within its typical multi-dimensional pattern. No action needed.</li>
+                    <li><strong>0.40 – 0.70 (Elevated):</strong> Some unusual characteristics present but within noise range. Worth monitoring.</li>
+                    <li><strong>0.70 – 1.00 (Alert Zone):</strong> The combination of signals is statistically rare for this specific ticker. The system fires an alert to Nextcloud.</li>
+                </ul>
+                <div class="rule">KEY INSIGHT: An anomaly score above 0.70 while price is flat or rising often indicates silent institutional repositioning — large-scale accumulation or distribution — before the price reaction becomes visible. This is the "smart money moving" signal, before retail investors see it in the price.</div>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Market Stress Score</span>
+                <p>Where the Isolation Forest Anomaly Score asks "is this individual stock behaving strangely?", the <strong>Market Stress Score</strong> asks "is the market environment itself behaving strangely?" It is a market-wide anomaly detection system, not a per-stock one.</p>
+                <p>It uses the same Isolation Forest algorithm but trains on six macro market features: the VIX volatility level, the VIX relative to its 20-day average (capturing spikes), the HYG high-yield credit ETF daily return (a proxy for credit market stress), the US 10-year Treasury yield daily change, the SPY volume z-score, and the SPY daily return. These six features capture different dimensions of market health simultaneously.</p>
+                <p>A score near 1.0 means the joint combination of these six signals is in territory that only occurred in roughly 5% of all trading days over the past two years — the tail of the distribution. This often precedes or coincides with major market dislocations.</p>
+                <ul>
+                    <li><strong>0.00 – 0.50 (Normal):</strong> The macro environment is operating within its typical range.</li>
+                    <li><strong>0.50 – 0.75 (Elevated):</strong> One or more macro signals are stretched; monitor for follow-through.</li>
+                    <li><strong>0.75 – 1.00 (Stress Alert):</strong> The combination of signals is statistically rare. An alert fires if the score stays above 0.75 for two consecutive trading days.</li>
+                </ul>
+                <div class="rule">COMPLEMENTARY TO HMM: The HMM classifies <em>which regime</em> the market is in. The Market Stress Score measures <em>how anomalous</em> the current environment is within that regime. A Crash-regime day with a low stress score is a bad but routine day. A Chop-regime day with a high stress score may be a regime transition in progress.</div>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Monte Carlo Simulation</span>
+                <p>No one can predict whether your portfolio will be worth £800,000 or £1,200,000 in 20 years. But we can build a realistic model of the range of possible outcomes — that is what <strong>Monte Carlo simulation</strong> does.</p>
+                <p>The process: instead of projecting one "expected" future, the model runs 1,000 separate simulated futures. In each simulation, annual returns for each asset are drawn randomly from a probability distribution defined by historical drift (expected return) and volatility (variability around that expected return). The key refinement is that assets are simulated <em>together</em> using their real pairwise correlations (Cholesky decomposition of the live correlation matrix from the X-ray engine) — so in the simulation, if equities crash, bonds behave as they historically have during equity crashes, not independently.</p>
+                <p>After running all 1,000 simulations, you have 1,000 different "futures." Some are optimistic (strong returns throughout), some are pessimistic (crashes early, slow recovery), most are somewhere in between. By sorting these 1,000 outcomes, you can read off what the best 5%, best 25%, median, worst 25%, and worst 5% outcomes look like. This is the <strong>Percentile Fan</strong> chart.</p>
+                <p>Monte Carlo is not a crystal ball — if the next 20 years have structural changes (persistently higher inflation, lower equity returns) not captured in recent history, the simulation will be systematically biased. The key insight is that even with realistic assumptions, the range of outcomes is enormous — which is the honest truth about long-horizon investing that point forecasts hide.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Drift Assumption</span>
+                <p>In a Monte Carlo simulation, the <strong>drift</strong> (μ, the Greek letter "mu") is the expected annual return before volatility is applied — the "centre of gravity" around which random outcomes scatter. It must be chosen before running the simulation and has a significant effect on outcomes over long horizons.</p>
+                <p>The defaults in this app reflect long-run historical averages: 7.0% for Global Equity ETFs, 6.5% for UK Equities, 3.5% for Bonds. These are <em>nominal</em> (before inflation) returns. Real (inflation-adjusted) returns are roughly 2% lower. Whether these historical averages will hold over the next 20–30 years is genuinely uncertain.</p>
+                <p>A key lesson from Monte Carlo: <strong>small changes in drift create huge changes in outcomes over long horizons</strong>. At 7% annual drift, £100,000 grows to a median of ~£387,000 over 20 years. At 5% drift, the median is ~£265,000. That 2% difference compresses by a factor of almost 1.5× — which is why fund charges (which directly reduce your effective drift) matter so much over a lifetime.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Percentile Fan</span>
+                <p>The <strong>Percentile Fan</strong> chart shows all 1,000 simulated wealth paths collapsed into five summary lines: the 5th, 25th, 50th (median), 75th, and 95th percentile outcomes. The shaded bands between them represent the range of uncertainty.</p>
+                <p>How to read it: at any given year on the x-axis, the vertical span of the fan is your uncertainty range. A narrow fan means your portfolio is relatively predictable (lower volatility, shorter horizon); a wide fan means outcomes are highly dispersed (higher volatility, longer horizon). The outer band (P5–P95) captures 90% of all simulated outcomes — the lines above and below represent the extreme 5% tails.</p>
+                <p>Most people focus on the median line (P50), but the <em>shape</em> of the fan matters just as much. If the P5 line shows your portfolio declining in real terms even in the 20-year scenario, you have either too much volatility, too little expected return, or too aggressive a withdrawal rate for your timeline.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Probability of Success</span>
+                <p>If you set a target wealth level in the Monte Carlo Simulator (e.g., "I want at least £500,000 in 20 years"), the <strong>Probability of Success</strong> tells you what fraction of the 1,000 simulated futures ended above that target.</p>
+                <p>A result of 0.73 means 730 out of 1,000 simulated futures reached or exceeded your target — a 73% success rate. Whether 73% is "good enough" is entirely personal. Some investors accept 60% (they're comfortable with the risk and have other income sources). Others want 90%+ before they feel secure. Increasing probability of success requires either a lower target, a longer timeline, more savings contributions, or a higher-return (but higher-risk) portfolio — there is no free lunch.</p>
+                <p>One important nuance: this metric assumes you do nothing for the entire horizon (no rebalancing, no additional contributions, no withdrawals other than a set rate). In reality, active management of the portfolio — rebalancing, adding contributions during downturns — meaningfully improves real-world outcomes beyond what the simulation shows. The simulation is a conservative baseline.</p>
+            </div>
+
+        </div>
+    </div>
+</div>

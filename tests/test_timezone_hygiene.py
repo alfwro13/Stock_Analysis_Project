@@ -219,9 +219,9 @@ class TestTemplateTimezoneHygiene:
         )
 
     def test_glossary_mentions_both_timezones(self):
-        """glossary.html must show ET alongside at least one other timezone."""
-        content = self._read("glossary.html")
+        """glossary Dip Radar partial must show ET alongside at least one UK timezone."""
+        content = self._read("glossary/_dip_radar.html")
         # Should have both ET and at least BST or GMT so non-US readers understand
         assert "ET" in content and ("BST" in content or "GMT" in content), (
-            "glossary.html Dip Radar entry must show both ET and a UK timezone"
+            "glossary/_dip_radar.html Dip Radar entry must show both ET and a UK timezone"
         )

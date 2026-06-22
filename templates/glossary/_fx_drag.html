@@ -1,0 +1,52 @@
+<div class="accordion-item glossary-section" id="fx-drag">
+    <h2 class="accordion-header">
+        <button class="accordion-button collapsed" type="button"
+                data-bs-toggle="collapse" data-bs-target="#collapse-fx-drag"
+                aria-expanded="false" aria-controls="collapse-fx-drag">
+            &#128177; FX Drag Analyzer — Return Decomposition for UK Investors
+        </button>
+    </h2>
+    <div id="collapse-fx-drag" class="accordion-collapse collapse">
+        <div class="accordion-body">
+
+            <div class="term-box">
+                <span class="term-title">The Currency Problem for UK Investors</span>
+                <p>When a UK investor buys shares in a US company (say, Apple), two things happen: they exchange pounds for dollars to make the purchase, and they now own an asset denominated in US dollars. The return they experience in GBP depends on <em>two separate factors</em>: how the stock performed in USD, and how the GBP/USD exchange rate moved during the holding period.</p>
+                <p>These two effects can reinforce or cancel each other out. If Apple rises 15% in USD but the pound strengthened 10% against the dollar over the same period, your GBP return is only about 5% — not 15%. Conversely, if the pound weakened 10%, your GBP return would be approximately 25%, even if you had no view on currencies and weren't actively seeking FX exposure.</p>
+                <p>Most portfolio reporting tools just show the combined GBP return without decomposing it. The <strong>FX Drag Analyzer</strong> splits every US stock position's return into its two components — equity performance in USD and FX effect — so you can understand where your returns actually came from.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">FX Drag</span>
+                <p>The <strong>FX Drag</strong> (or FX Effect) is the portion of your GBP return that came from exchange rate movement rather than the underlying stock's performance. It can be positive (a tailwind) or negative (a headwind).</p>
+                <p><strong>Negative FX drag (headwind):</strong> GBP strengthened against USD. Your dollar-denominated asset is now worth fewer pounds when converted back. Example: if the pound moved from $1.20 to $1.30 per pound (+8.3%), a US stock that was flat in USD terms would show a loss of about −8.3% in GBP terms, purely from the exchange rate.</p>
+                <p><strong>Positive FX drag (tailwind):</strong> GBP weakened against USD. Your dollar-denominated asset is now worth more pounds. The Brexit periods of 2016 and 2022–2023 saw the pound weaken significantly — UK investors holding US stocks received a meaningful FX tailwind that boosted their GBP returns above the stock's actual USD performance.</p>
+                <p>Understanding FX drag matters for several reasons: it tells you how much of your portfolio return was actually within your control (the equity performance) versus simply being exposed to currency movements you neither sought nor hedged against.</p>
+                <div class="rule">FX Effect = (GBPUSD_ref / GBPUSD_now − 1) × 100. Positive = USD strengthened (tailwind for UK investors). Negative = GBP strengthened (headwind for UK investors).</div>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Equity Return (USD)</span>
+                <p>The stock's pure performance in its native currency — US dollars. This is the return you would have seen if you were a US investor with no currency conversion required. It isolates the question: "How did the company itself perform, independent of what currencies were doing?"</p>
+                <p>Calculated as: <code>(current_price_USD / reference_price_USD − 1) × 100</code>, where the reference price is the stock's closing price on the first available trading day on or after the selected start date (January 1st for YTD calculations).</p>
+                <p>Comparing this to your Total GBP Return shows you how much the currency added or subtracted from your actual experience as a GBP-based investor.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Total GBP Return</span>
+                <p>The combined GBP return you actually realised — accounting for both the stock's USD performance and the GBP/USD exchange rate movement over the same period.</p>
+                <p>This is calculated <em>multiplicatively</em>, not by simple addition: <code>(1 + equity_return_USD) × (1 + fx_effect) − 1</code>. The reason for multiplication rather than addition: both effects compound simultaneously, and the combined effect is slightly different from their sum. For example, a +10% equity return and a +5% FX tailwind produces a total return of (1.10 × 1.05) − 1 = 15.5%, not 10 + 5 = 15%.</p>
+                <p>The small difference (0.5% in this example) is the "cross term" — the interaction between the two effects. It is small at moderate return levels but can become meaningful when both components are large (e.g., a 30% equity return and a 20% FX tailwind).</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Lifetime Mode</span>
+                <p>The standard FX Drag modes (YTD, 1-Year, 2-Year) compare your position against a shared start date. <strong>Lifetime Mode</strong> is more sophisticated: it uses the actual exchange rate at which you originally purchased each position, derived from your Ghostfolio trade history.</p>
+                <p>Ghostfolio stores every BUY activity with two prices: the price in the asset's native currency (USD) and the price in your base currency (GBP). From the ratio of these two values, the app can reverse-engineer the implied GBP/USD exchange rate at the time of purchase — without needing a separate historical FX database. If you bought Apple at $180 and Ghostfolio shows the purchase cost as £144, the implied buy-rate was £1 = $1.25.</p>
+                <p>This means Lifetime Mode shows you the true FX effect on your actual investment — not a hypothetical position opened at some arbitrary date, but your real cost basis. For long-held positions spanning multiple purchases at different exchange rates, the buy-rate is computed as a weighted average across all BUY trades.</p>
+                <div class="rule">Requires Ghostfolio to be configured and connected. Returns no data if Ghostfolio is unreachable or trade history is missing for the position.</div>
+            </div>
+
+        </div>
+    </div>
+</div>

@@ -1,0 +1,40 @@
+<div class="accordion-item glossary-section" id="workflow-monitor">
+    <h2 class="accordion-header">
+        <button class="accordion-button collapsed" type="button"
+                data-bs-toggle="collapse" data-bs-target="#collapse-workflow"
+                aria-expanded="false" aria-controls="collapse-workflow">
+            🔄 Workflow Monitor
+        </button>
+    </h2>
+    <div id="collapse-workflow" class="accordion-collapse collapse">
+        <div class="accordion-body">
+
+            <div class="term-box">
+                <span class="term-title">Workflow Monitor</span>
+                <p>The app runs many background jobs automatically: downloading price data, training ML models, scanning for signals, generating briefings, running anomaly detection. These jobs do not run independently — they depend on each other in a specific order. The ML model needs price data to already be downloaded. The quant screener needs the ML scores to already exist. The morning briefing needs the screener to have run. If any job in this chain fails silently, everything downstream produces stale or empty results.</p>
+                <p>The <strong>Workflow Monitor</strong> (found in Settings → Workflow Monitor) makes this entire dependency chain visible as a flow-chart. Each job is a box connected to the jobs that must run before it — you can see at a glance which job feeds which. Each box is colour-coded by its current health, letting you immediately spot where in the pipeline something has gone wrong without trawling through log files.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Traffic-Light Status</span>
+                <p>The colour of each job box in the Workflow Monitor tells you whether that job is running on schedule, and whether its last run succeeded. The system computes "staleness" by comparing when the job last ran to how frequently it is scheduled — if a job runs daily at 18:00 and it is now 20:00 with no record of it running today, it is flagged as overdue.</p>
+                <div class="rule border-left-green"><strong>Green:</strong> The job ran successfully within its expected cadence. All is well.</div>
+                <div class="rule border-left-orange"><strong>Amber:</strong> The job is mildly overdue, has never recorded a run since the app was installed, or is due to run soon. Not a crisis but worth checking if it stays amber.</div>
+                <div class="rule border-left-red"><strong>Red:</strong> The job either failed on its last attempt (an error was recorded) or is significantly overdue well beyond its normal schedule. This needs investigation — downstream jobs may be producing stale data.</div>
+                <div class="rule"><strong>Grey:</strong> The job is disabled in Settings. Downstream jobs that depend on it are flagged with a warning since they will read stale data.</div>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Conflict Detection</span>
+                <p>The scheduler runs multiple jobs concurrently rather than waiting for one to finish before starting the next. This is efficient — overnight there are 20+ jobs to run, and sequential execution would take many hours. But it creates a risk: a downstream job can fire while its upstream data source is still being generated, and silently read incomplete data.</p>
+                <p>The conflict engine continuously checks for four dangerous situations:</p>
+                <div class="rule"><strong>Overlap risk:</strong> A job starts within the typical run time of the upstream job that feeds it. If the upstream job usually takes 45 minutes and the downstream job is scheduled to start 30 minutes later, they will routinely overlap — and the downstream job will read half-complete data.</div>
+                <div class="rule"><strong>Backwards ordering:</strong> A job is scheduled to run <em>before</em> the upstream job that produces the data it needs. For example, if the briefing is scheduled before the quant screener, the briefing will always use yesterday's scan results.</div>
+                <div class="rule"><strong>Disabled upstream:</strong> A job that an enabled downstream job depends on has been turned off. The downstream job will run but operate on stale or missing data without knowing it.</div>
+                <div class="rule"><strong>Stale / failed upstream:</strong> An upstream job has not run when it should have, or its last run errored. Downstream jobs will proceed on outdated data.</div>
+                <p>When conflicts are detected, they are shown on the Workflow Monitor with specific labels on the affected job boxes, allowing you to resolve scheduling gaps without reading the application logs.</p>
+            </div>
+
+        </div>
+    </div>
+</div>

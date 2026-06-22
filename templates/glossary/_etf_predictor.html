@@ -1,0 +1,43 @@
+<div class="accordion-item glossary-section" id="etf-predictor">
+    <h2 class="accordion-header">
+        <button class="accordion-button collapsed" type="button"
+                data-bs-toggle="collapse" data-bs-target="#collapse-etf"
+                aria-expanded="false" aria-controls="collapse-etf">
+            📊 ETF Price Predictor
+        </button>
+    </h2>
+    <div id="collapse-etf" class="accordion-collapse collapse">
+        <div class="accordion-body">
+
+            <div class="term-box">
+                <span class="term-title">ETF Price Predictor — What It Solves</span>
+                <p>Many ETFs listed on the London Stock Exchange hold US stocks as their primary constituents. The problem: the LSE closes at 16:30 BST, but US markets continue trading until 21:00 BST (16:00 ET). If a major US technology ETF holds Apple, Microsoft, and NVIDIA, and all three release earnings after the LSE closes, the ETF's "last price" reflects the state of those stocks 4.5 hours ago — not their current after-hours value.</p>
+                <p>The ETF Price Predictor solves this by computing what the ETF's opening price is likely to be the next morning, based on what its constituent holdings did between the LSE close and the current moment. It lets you make more informed decisions about limit orders, whether to buy before or after the open, or whether a pre-market price gap represents opportunity or risk.</p>
+                <p>The tool is configurable: you define the ETF ticker and up to 20 constituent tickers with their respective weights. The system normalises weights to 100% and runs two prediction engines in sequence.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Holdings Engine (Primary)</span>
+                <p>The <strong>Holdings Engine</strong> is the main prediction method. For each constituent in the configured basket, it measures the price change since the ETF's home-exchange close — the "after-hours signal" for that stock. It then weights each constituent's return by its portfolio weight, sums the weighted returns, and applies any currency adjustment needed (for a GBP-denominated ETF holding USD-denominated stocks, it adjusts for the GBP/USD exchange rate move over the same period).</p>
+                <p>The result is a single number: the expected basket return since the ETF's last close. That return is then applied to the ETF's last known price to produce a predicted next-day open.</p>
+                <div class="rule">Predicted Price = Last Close × (1 + Weighted Basket Return + FX Adjustment). For example: if the weighted basket return is +1.2% and GBP weakened by 0.3% vs USD (a tailwind for GBP investors), the predicted open = Last Close × (1 + 0.012 + 0.003).</div>
+                <p>This engine requires at least 3 constituents to have usable data. If fewer are available (market holiday in the US, data provider issues), it falls back to the Regression Engine.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Regression Engine (Fallback)</span>
+                <p>When the Holdings Engine cannot run due to insufficient constituent data, the <strong>Regression Engine</strong> takes over. It uses 60+ days of historical data to fit an <strong>OLS (Ordinary Least Squares) regression</strong> model: ETF next-morning return = α + β × average constituent daily return.</p>
+                <p><strong>OLS regression</strong> is the most fundamental statistical modelling technique: it finds the straight line through historical data that minimises the total squared error. The <strong>beta (β)</strong> here measures how sensitive the ETF's opening move historically has been to a 1% move in its constituent basket. The <strong>alpha (α)</strong> is the baseline drift that isn't explained by constituent moves.</p>
+                <p>The output includes: the predicted price, the regression beta and R² (a measure of how well the model fits — how much of the ETF's historical variance is explained by constituent moves), and a 95% confidence interval derived from the residuals of the regression. The wider this interval, the less precise the prediction.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Constituent Weights</span>
+                <p>The percentage allocation each ticker represents within the configured ETF prediction basket. Importantly, the weights you configure do not need to exactly match the ETF's actual underlying holdings — they are the weights you want to use for the prediction basket, which may be a simplified approximation of the full holdings.</p>
+                <p>If you configure Apple at 25%, Microsoft at 20%, NVIDIA at 15%, and others, but these sum to only 75%, the system normalises them to 100% (dividing each by 0.75) so that the weighted returns sum to a meaningful basket return. You always see the normalised weights used in the prediction.</p>
+                <p>Weights at the time of each prediction are saved as a snapshot with the prediction record. This means that if you later edit the basket configuration, historical accuracy calculations are not corrupted — each past prediction is evaluated against the weights that were actually in effect when it was made.</p>
+            </div>
+
+        </div>
+    </div>
+</div>

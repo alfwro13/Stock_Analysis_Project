@@ -1,0 +1,63 @@
+<div class="accordion-item glossary-section" id="dip-radar">
+    <h2 class="accordion-header">
+        <button class="accordion-button collapsed" type="button"
+                data-bs-toggle="collapse" data-bs-target="#collapse-dip-radar"
+                aria-expanded="false" aria-controls="collapse-dip-radar">
+            🎯 Dip Radar — Intraday Capitulation Detection
+        </button>
+    </h2>
+    <div id="collapse-dip-radar" class="accordion-collapse collapse">
+        <div class="accordion-body">
+
+            <div class="term-box">
+                <span class="term-title">Intraday Mean Reversion</span>
+                <p><strong>Mean reversion</strong> is the mathematical tendency for extreme readings to revert toward their average over time. In markets, it manifests intraday when panic selling pushes a stock far below its "fair" intraday value — so far that the selling becomes self-reinforcing (triggering stop-losses, margin calls, and further panic), rather than reflecting any new fundamental information about the company.</p>
+                <p>This is the principle Dip Radar is built on: when intraday prices overshoot to the downside due to mechanical/emotional selling pressure, and when that selling pressure shows measurable signs of exhaustion (extreme RSI, extreme distance from VWAP, extreme volume spike), a snap-back toward fair value becomes statistically likely. This is not a prediction that the stock will go up for days — it is a shorter-term reversion toward the session's "true" price range.</p>
+                <p>The model combines four independent measurements of this exhaustion and only fires an alert when the combined evidence is compelling — reducing false positives from any single signal triggering on its own.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Reversal Score (0–100)</span>
+                <p>The <strong>Reversal Score</strong> is the composite signal output by the Dip Radar engine. Rather than a simple yes/no alert, it assigns points for each confirmed exhaustion condition — allowing you to assess how many independent signals have aligned simultaneously. More simultaneous signals = higher score = stronger evidence of exhaustion.</p>
+                <div class="rule">+30 pts: RSI &lt; 25 (extreme oversold on 1-minute data) — or +15 pts: RSI &lt; 30 (oversold)</div>
+                <div class="rule">+25 pts: Price below the Lower Bollinger Band at 2.5σ deviation — statistically extreme distance from the moving average</div>
+                <div class="rule">+20 pts: Price more than 2.5σ below the intraday VWAP — far from the session's fair-value anchor</div>
+                <div class="rule">+25 pts: Volume Capitulation — current candle's volume exceeds the 20-candle average by more than 3 standard deviations</div>
+                <div class="rule border-left-orange"><strong>Alert threshold: Score ≥ 65.</strong> Below this, at least one major exhaustion condition is missing. Above this, multiple independent signals confirm the dislocation.</div>
+                <p>A score of 65–80 indicates a likely short-term exhaustion zone. A score of 80–100 indicates potential full capitulation washout — the highest-probability reversal setups the system identifies. The maximum score of 100 requires all four conditions firing simultaneously, which is rare and historically produces the sharpest bounces.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">VWAP (Volume Weighted Average Price)</span>
+                <p>The <strong>VWAP</strong> is the intraday "true fair value" of a stock. Unlike the simple average of intraday prices, VWAP weights each price level by how much volume traded at that level — so if 10 million shares traded between $99.80 and $100.20, and only 500,000 shares traded at $102, the VWAP will be pulled much closer to $100 than $102.</p>
+                <p>Institutional traders and algorithms use VWAP as the benchmark for execution quality: "Did I buy below VWAP or above it?" If they consistently buy above VWAP, they are paying more than fair intraday value. This is why large orders often try to execute close to the VWAP level — and why price has a strong statistical tendency to oscillate around it during the day.</p>
+                <p>Dip Radar anchors the VWAP from the market open (09:30 ET / 14:30 BST) and calculates a rolling 30-bar standard deviation band around it. A price trading 2.5σ below VWAP means it has deviated so far below the session's fair value that a statistical pull back is likely — particularly if the deviation is accompanied by a volume spike (capitulation) rather than just drifting lower on thin volume.</p>
+                <div class="rule">VWAP = Σ(Typical Price × Volume per candle) / Σ(Volume), reset at each market open. Typical Price = (High + Low + Close) / 3.</div>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Bollinger Bands (2.5σ Extreme Variant)</span>
+                <p><strong>Bollinger Bands</strong> are a volatility envelope drawn around a simple moving average (SMA). The upper and lower bands are plotted N standard deviations (σ) above and below the SMA, where σ is calculated from the price data over the same period. When volatility expands, the bands widen; when volatility contracts, they tighten. This means the bands automatically adapt to the stock's current behaviour.</p>
+                <p>In standard daily charting, Bollinger Bands use 20 periods and 2σ. Under a normal distribution, about 95.5% of all data points fall within 2σ of the mean — so a price outside the bands is statistically unusual. On 1-minute data, the distribution is not perfectly normal, but the principle holds: a price breaching the bands signals a statistical extreme.</p>
+                <p>Dip Radar deliberately uses a <strong>wider 2.5σ threshold</strong> rather than the standard 2σ, to filter out routine volatility and identify only genuinely extreme dislocations. A breach of the 2.5σ lower band on 1-minute data occurs in fewer than 1% of candles under approximately normal conditions. When it does occur, selling pressure has extended the price into statistically rare territory — a condition that historically precedes sharp mean-reversion bounces.</p>
+                <div class="rule">BB Lower = 20-period SMA − (2.5 × 20-period Std Dev of closes). Wider than the market-standard 2σ to reduce false positives in normal intraday noise.</div>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Volume Capitulation (Climax Volume)</span>
+                <p><strong>Capitulation volume</strong> is the single most powerful signal in the Dip Radar algorithm. It detects the specific intraday moment when panicking sellers all attempt to exit simultaneously, producing an extreme volume spike on a down-candle.</p>
+                <p>Here is why it matters: a sustained decline on normal volume means sellers are steadily exiting — supply and demand are adjusting gradually. But a sudden extreme volume spike on a down-candle means forced sellers (margin call recipients who must sell immediately at any price, stop-loss orders triggering in a cascade, retail panic triggered by a fast-moving price) have all been flushed out at once. After this "capitulation" moment, the category of forced sellers is effectively exhausted — they have already sold. The remaining participants are either long-term holders (not selling) or new buyers attracted by the price level. With forced sellers gone, even modest buying pressure can reverse the move sharply.</p>
+                <p>The statistical threshold — 3 standard deviations above the 20-candle rolling volume average — is strict. It filters out ordinary busy periods (1–2σ above average) and focuses only on extreme, anomalous volume events. On most trading days, you will not see a single 3σ volume candle. When you do, in conjunction with a sharp price drop, it is one of the clearest short-term exhaustion signals available.</p>
+                <div class="rule border-left-red">Condition: Volume of current candle &gt; (20-candle Volume SMA) + (3 × 20-candle Volume Std Dev) — AND — the current candle closes lower than the prior candle (it is a down-candle, not a spike on a recovery).</div>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Session-Scoped Monitoring</span>
+                <p>Dip Radar is <em>not</em> a persistent background scanner that runs continuously on all stocks. It must be explicitly activated per ticker from the stock detail page. Once activated, it monitors that ticker every 5 minutes during market hours and automatically deactivates at market close (16:05 ET, adjusted for the ticker's exchange).</p>
+                <p>This design is intentional. Running continuous intraday scans on thousands of tickers simultaneously would generate enormous alert volumes — most of them noise. By requiring manual activation per ticker, the system becomes a precision tool: you identify stocks you want to watch for intraday entry opportunities (perhaps because overnight analysis identified them as interesting setups), activate Dip Radar on them, and then the system monitors for the specific combination of exhaustion signals while you are away from the screen.</p>
+                <p>The deduplication system (the <code>alert_state</code> table) ensures that once an alert fires at a high score level, the same ticker does not generate repeated alerts for the same signal event — it is armed once per session, fires once when the threshold is crossed, then disarms for that session. This prevents alert fatigue from a single sustained dip generating dozens of notifications.</p>
+            </div>
+
+        </div>
+    </div>
+</div>

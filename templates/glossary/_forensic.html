@@ -1,0 +1,63 @@
+<div class="accordion-item glossary-section" id="forensic-screener">
+    <h2 class="accordion-header">
+        <button class="accordion-button collapsed" type="button"
+                data-bs-toggle="collapse" data-bs-target="#collapse-forensic"
+                aria-expanded="false" aria-controls="collapse-forensic">
+            &#128269; Forensic Screener — Accounting Forensics &amp; Structural Health
+        </button>
+    </h2>
+    <div id="collapse-forensic" class="accordion-collapse collapse">
+        <div class="accordion-body">
+
+            <div class="term-box">
+                <span class="term-title">Why Forensic Accounting Matters</span>
+                <p>Price charts and momentum signals tell you what the market thinks of a company. Financial statements tell you what the company actually is. The problem: many investors never look at the financial statements, and some companies know this — exploiting the gap between reported numbers and economic reality through creative accounting, aggressive revenue recognition, and manipulated accruals.</p>
+                <p>The <strong>Forensic Screener</strong> runs three academic models — the Piotroski F-Score, Altman Z-Score, and Beneish M-Score — on annual financial statements for every portfolio and watchlist holding. These models were designed by academics specifically to detect warning signs that financial statements might be deteriorating, distressed, or manipulated. They do not rely on a single ratio but on specific combinations of ratios that historically differentiated healthy companies from distressed or manipulative ones.</p>
+                <p>The screener runs monthly (annual data changes slowly) and fires Nextcloud alerts when holdings breach distress thresholds. Think of it as a quarterly audit of each holding's financial health.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Piotroski F-Score</span>
+                <p>Joseph Piotroski's 2000 paper "Value Investing: The Use of Historical Financial Statement Information to Separate Winners from Losers" introduced a simple but powerful framework: score a company's financial health across 9 specific criteria, one point each, for a maximum score of 9.</p>
+                <p>The criteria cover three dimensions of financial health:</p>
+                <p><strong>Profitability (4 points):</strong> Is the company profitable (positive ROA)? Is it generating cash from operations (positive operating cash flow)? Is profitability improving year-over-year (rising ROA)? And critically — are its profits real or paper (is operating cash flow greater than net income, a test for accruals quality)? A company that reports large profits but has lower operating cash flow is booking income it hasn't actually received in cash — a classic accounting red flag.</p>
+                <p><strong>Leverage &amp; Liquidity (3 points):</strong> Is the company reducing its long-term debt ratio? Is its current ratio (current assets / current liabilities) improving — meaning it can better cover short-term obligations? Has it <em>not</em> issued new shares recently? Issuing new shares dilutes existing shareholders and often signals the company needs cash it can't generate internally.</p>
+                <p><strong>Operating Efficiency (2 points):</strong> Is gross margin improving (selling products at better prices or lower costs)? Is asset turnover improving (generating more revenue per pound of assets)?</p>
+                <div class="rule">Score ≥ 7: Strong fundamentals across multiple dimensions — historically associated with positive 12-month returns. 4–6: Neutral — some strengths, some weaknesses. &lt; 4: Structural decay — the company is deteriorating across multiple financial dimensions simultaneously. A score of 2 or below is a serious red flag.</div>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Altman Z-Score</span>
+                <p>Edward Altman's 1968 model uses financial ratios to predict the probability of corporate bankruptcy within 2 years. While it was originally designed for manufacturing companies, the Z' variant used here was developed for non-manufacturers (service companies, retailers, financial firms) and is more broadly applicable.</p>
+                <p>The four inputs measure different facets of financial resilience:</p>
+                <ul>
+                    <li><strong>Working Capital / Total Assets (X1):</strong> Working capital = current assets minus current liabilities — the liquid buffer that covers day-to-day operations. A low or negative X1 means the company is struggling to cover near-term obligations from current resources.</li>
+                    <li><strong>Retained Earnings / Total Assets (X2):</strong> How much of the company's cumulative profits have been reinvested vs. paid out. High retained earnings signals a mature, self-funded company. Low or negative retained earnings signals a young or consistently unprofitable one.</li>
+                    <li><strong>EBIT / Total Assets (X3):</strong> Operating profitability relative to the asset base — measures how productively assets are being used to generate profit.</li>
+                    <li><strong>Book Equity / Total Liabilities (X4):</strong> How much would the company's equity value need to fall before its liabilities exceeded its assets (technical insolvency)? A low ratio means the company is highly leveraged and has less buffer.</li>
+                </ul>
+                <p>Formula: Z' = 6.56·X1 + 3.26·X2 + 6.72·X3 + 1.05·X4</p>
+                <div class="rule">Z &gt; 2.6: Safe zone — statistically healthy financial structure. 1.1–2.6: Grey zone — elevated financial risk, warranting closer monitoring. &lt; 1.1: Distress zone — this company's financials look statistically similar to companies that filed for bankruptcy within 2 years of measurement. Not a guarantee of failure, but a serious warning.</div>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Beneish M-Score</span>
+                <p>Messod Beneish's 1999 model was designed to detect statistical signatures of earnings manipulation in reported financial statements — "M" stands for Manipulation. Unlike the Piotroski and Altman scores which assess financial health, the Beneish score asks a more uncomfortable question: are these numbers real?</p>
+                <p>It uses eight indices, each measuring a specific ratio that has been found to deviate systematically from normal when companies are manipulating their reported earnings:</p>
+                <ul>
+                    <li><strong>DSRI</strong> (Days Sales in Receivables): Rising DSRI suggests revenues are being recorded before cash is collected — aggressive revenue recognition.</li>
+                    <li><strong>GMI</strong> (Gross Margin): Deteriorating gross margin pressures managers to manipulate other items to maintain reported earnings.</li>
+                    <li><strong>AQI</strong> (Asset Quality): Rising proportion of non-current, non-physical assets on the balance sheet — these are harder to audit and easier to inflate.</li>
+                    <li><strong>SGI</strong> (Sales Growth): High growth companies face more earnings pressure and are historically more likely to manipulate.</li>
+                    <li><strong>DEPI</strong> (Depreciation): Slowing depreciation reduces expenses and inflates profits — a common manipulation technique.</li>
+                    <li><strong>SGAI</strong> (SG&amp;A Expenses): Declining SG&amp;A relative to sales while revenues grow is suspicious — it may indicate expenses are being capitalized (moved to the balance sheet) rather than expensed.</li>
+                    <li><strong>LVGI</strong> (Leverage): Increasing leverage creates pressure to maintain earnings to meet debt covenants.</li>
+                    <li><strong>TATA</strong> (Total Accruals): High total accruals mean reported income is far ahead of cash generation — often the clearest accounting red flag.</li>
+                </ul>
+                <p>The model requires two consecutive annual reporting periods and therefore cannot be applied to newly listed companies or ETFs. The detection rate on confirmed manipulators is approximately 76% — not perfect, but powerful as a screening tool.</p>
+                <div class="rule">M &gt; −1.78: The model flags possible earnings manipulation — the company's financials have the statistical profile of a manipulator. M between −1.78 and −2.22: Moderate risk. M &lt; −2.22: Low manipulation probability. Remember: a single score above −1.78 is a prompt to investigate further, not proof of fraud.</div>
+            </div>
+
+        </div>
+    </div>
+</div>

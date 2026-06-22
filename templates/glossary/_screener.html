@@ -1,0 +1,51 @@
+<div class="accordion-item glossary-section" id="quant-screener">
+    <h2 class="accordion-header">
+        <button class="accordion-button collapsed" type="button"
+                data-bs-toggle="collapse" data-bs-target="#collapse-screener"
+                aria-expanded="false" aria-controls="collapse-screener">
+            🕵️ Overnight Quant Screener (Automated Briefings)
+        </button>
+    </h2>
+    <div id="collapse-screener" class="accordion-collapse collapse">
+        <div class="accordion-body">
+
+            <div class="term-box">
+                <span class="term-title">What the Screener Does</span>
+                <p>Every night after the market closes, the system runs every stock in the universe through a set of mathematical tests and sorts them into actionable categories. The results are assembled into a morning briefing that arrives before the next trading session opens — so you start the day already knowing which stocks are showing interesting setups, rather than spending the morning manually scanning hundreds of charts.</p>
+                <p>The screener is pure rules-based filtering, not machine learning. It applies fixed mathematical conditions (defined below) to each stock's closing price data and flags those that meet the criteria. Because the same rules apply to every stock every night, the output is reproducible and auditable — you can always trace exactly why a stock appeared in the briefing.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Oversold Reversals</span>
+                <p>An <strong>oversold</strong> stock is one that has been sold down so heavily and so quickly that momentum indicators signal the selling pressure may be exhausted. Stocks become oversold because of panic, bad news, forced liquidations, or simply being caught in a broad market selloff even when the company itself is fine.</p>
+                <p>The key insight: being oversold does not automatically mean the stock will bounce — it means the <em>rate of selling</em> has been extreme, and mathematically, that pace is unsustainable. The <strong>MACD Histogram &gt; 0</strong> filter adds a second confirmation: the momentum of the selloff is already turning positive, suggesting sellers are losing control of the move.</p>
+                <div class="rule">TRIGGER: RSI &lt; 30 (extreme oversold) AND MACD Histogram &gt; 0 (momentum already turning upward).</div>
+                <p>RSI (Relative Strength Index) is explained in full in the Technical Analysis section. In short: RSI below 30 means the stock has fallen faster and harder than it has risen over the past 14 trading days — a historically rare and often temporary condition.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Golden MACD Crosses</span>
+                <p>A <strong>MACD Cross</strong> occurs when the MACD line (the fast moving average of prices) crosses above the Signal line (the slow moving average of the MACD). This crossover is one of the most widely-watched momentum reversal signals in technical analysis. The name "Golden" is an informal label for an upward cross, distinguishing it from a "Death Cross" (downward).</p>
+                <p>The phrase "institutional accumulation" in the screener description refers to a common interpretation: when a MACD cross occurs on rising volume in a stock that has been in a downtrend, it may indicate that large buyers — institutions that move slowly and quietly — have been absorbing shares during the decline and are now causing a momentum shift. This is not always the case, but is one useful framework for interpreting the signal.</p>
+                <p>MACD crosses generate many false positives in choppy, rangebound markets. They are most reliable when the stock is in a clear trend and the cross happens after a significant dip (not in the middle of a flat period). This is why the screener presents them as candidate setups to investigate, not buy signals to act on blindly.</p>
+                <div class="rule">TRIGGER: MACD Line crosses above the Signal Line within the last 1–2 trading sessions.</div>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Momentum &amp; Volume Surges</span>
+                <p>A <strong>volume surge</strong> means significantly more shares changed hands than on a typical day. When a stock surges in price on high volume, it tells you the move is backed by broad participation — many buyers competing to get in. A price move on low volume is "thin" and often reverses quickly; a move on high volume tends to have follow-through.</p>
+                <p>The <strong>RSI 50–70 band</strong> filter is what makes this a <em>healthy</em> momentum signal rather than an overbought warning. RSI in the 50–70 range means the stock is showing positive momentum but has not yet reached extreme levels. This is the "sweet spot" of a trending move — strong enough to signal real buying pressure, not so extended that a near-term pullback is inevitable.</p>
+                <div class="rule">TRIGGER: Volume &gt; 1.5× 20-day average volume AND RSI between 50 and 70.</div>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Overbought Warnings</span>
+                <p><strong>Overbought</strong> is the mirror image of oversold. When a stock has risen so fast that RSI exceeds 70, it has been bought up faster and harder than it has fallen over the past 14 trading days. This is a state that historically tends to precede pullbacks — not because the stock is necessarily bad, but because the short-term buyers who drove the move often take profits once the RSI signal becomes common knowledge.</p>
+                <p>The additional filter — <strong>MACD Histogram &lt; 0</strong> — adds critical confirmation. RSI above 70 alone is common in strong bull trends and can stay elevated for weeks. But when the MACD histogram turns negative while RSI is still high, it means upward momentum is already fading even as the price holds near its highs — a classic "divergence" setup that often precedes a sharper correction.</p>
+                <p>This is a <em>risk management alert</em>, not a short-selling signal. It is most useful for existing holders asking "should I tighten my stop-loss or reduce position size?" rather than for new entrants looking to short the stock.</p>
+                <div class="rule border-left-red">TRIGGER: RSI &gt; 70 AND MACD Histogram &lt; 0 — momentum is fading at an overextended price level.</div>
+            </div>
+
+        </div>
+    </div>
+</div>

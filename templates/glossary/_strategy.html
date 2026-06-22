@@ -1,0 +1,77 @@
+<div class="accordion-item glossary-section" id="strategies">
+    <h2 class="accordion-header">
+        <button class="accordion-button collapsed" type="button"
+                data-bs-toggle="collapse" data-bs-target="#collapse-strategies"
+                aria-expanded="false" aria-controls="collapse-strategies">
+            🎯 The Multi-Regime Strategy (Scoring &amp; Tags)
+        </button>
+    </h2>
+    <div id="collapse-strategies" class="accordion-collapse collapse">
+        <div class="accordion-body">
+
+            <div class="term-box">
+                <span class="term-title">⚡ MACD Reversal</span>
+                <p><strong>MACD</strong> (Moving Average Convergence Divergence) is a momentum indicator built from the difference between two exponential moving averages of price — typically the 12-day EMA minus the 26-day EMA. This difference (the MACD line) is then compared against its own 9-day EMA (the Signal line). When the MACD line crosses above the Signal line, it signals that short-term momentum is turning upward — a reversal of the recent downtrend.</p>
+                <p>The strategy tag <strong>⚡ MACD Reversal</strong> is used for <em>bottom-fishing</em>: identifying stocks that have been in a downtrend where the selling momentum has mathematically exhausted itself. The crossover doesn't mean the decline is definitely over — it means the pace of decline has slowed and the early momentum of a recovery is detectable.</p>
+                <p>This is most useful after a significant dip in an otherwise healthy stock — not for a stock in a multi-year structural decline. The distinction between "healthy pullback before the uptrend resumes" and "start of a much larger fall" is what the system's full multi-factor scoring is designed to help navigate.</p>
+                <div class="rule">TRIGGER: MACD line crosses above the Signal line within the last 1–2 sessions.</div>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">🔥 VCP Breakout (Volatility Contraction Pattern)</span>
+                <p>The <strong>Volatility Contraction Pattern</strong> was popularised by trader Mark Minervini and describes a recurring price structure seen before major breakouts. After a strong upward move, a stock enters a period of controlled consolidation where the price trades in progressively tighter ranges — each correction is smaller in amplitude and the volume steadily dries up. This "coiling" action reflects a specific market dynamic: the remaining weak, nervous holders are being shaken out on each dip, while strong, patient institutional buyers are quietly absorbing the supply without driving the price higher.</p>
+                <p>Eventually, the supply of sellers is exhausted. When institutional buyers then step in more aggressively, even a small new wave of demand causes an outsized price move because there is very little stock available at current prices. This is the breakout — and because it was preceded by volume dry-up, it tends to be explosive and sustained.</p>
+                <p>The pattern visually looks like a funnel narrowing over time: big swings early in the base, tiny swings at the end, then a sudden expansion of range on a high-volume breakout day.</p>
+                <div class="rule">TRIGGER: Weekly price variance &lt; 2.5% (very tight price action) AND volume has declined &gt;20% from its 20-day average (drying up). A subsequent high-volume breakout above the range confirms the setup.</div>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">🎭 Bull Trap / Dead Cat Bounce</span>
+                <p>A <strong>Bull Trap</strong> is one of the most frustrating setups in markets: a stock falls sharply, then bounces convincingly — appearing to have found its bottom. Retail buyers who missed the selloff rush in to "buy the dip", expecting the recovery to continue. Instead, the bounce fails and a second, often sharper leg down follows. The optimistic buyers are left "trapped" in a position that immediately moved against them.</p>
+                <p>The <strong>Dead Cat Bounce</strong> is the colourful Wall Street nickname for this pattern, derived from the dark observation that "even a dead cat will bounce if it falls from high enough." The bounce looks real — price is going up — but it is driven by short-term mechanics (short sellers covering their positions, creating artificial demand) rather than genuine investors who believe in the stock's future.</p>
+                <p>The key diagnostic: volume behaviour. In a genuine recovery, prices rise on <em>high</em> volume as new committed buyers step in. In a bull trap, prices rise on <em>low</em> volume because there are no new believers — just short-covering. The 20-day EMA is also often used as a ceiling test: if the bounce fails to close above the 20-EMA, it has not recaptured a key institutional reference level.</p>
+                <div class="rule">SIGNAL: Close &lt; 20-day EMA AND recent up-days on light volume. Ratio of average up-day volume to average down-day volume &lt; 0.75–0.90 confirms weak buying pressure on the recovery.</div>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">🪤 Bear Trap / False Breakdown</span>
+                <p>The <strong>Bear Trap</strong> is the mirror-image of the Bull Trap. Instead of a false recovery, it is a false breakdown. A stock falls through an important support level — the lower Bollinger Band, a key swing low, a round number — triggering stop-loss orders and attracting short sellers who expect the decline to continue. Then the price violently reverses back above the broken level, "trapping" the shorts in a losing position.</p>
+                <p>Bear traps occur because support levels are visible to everyone. Professional traders and algorithms know exactly where stop orders cluster and where short sellers will pile in after a support break. A brief engineered breakdown — sometimes just an intraday move that closes back above support — can flush out the nervous holders, collect their stop-loss sales at low prices, and set up a sharp move higher when the trap springs.</p>
+                <p>The tell is volume: a genuine breakdown below support typically involves <em>high</em> volume as sellers accelerate into the move. A bear trap shows relatively low volume on the breakdown — not enough sellers to sustain the move below support — followed by a recovery close back above it.</p>
+                <div class="rule">SIGNAL: Intraday low &lt; Bollinger Lower Band AND the day closes back above support AND breakdown volume &lt; 1.2× the 20-day average — weak selling pressure could not hold below support.</div>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">💥 Capitulation (The Final Flush)</span>
+                <p><strong>Capitulation</strong> is the moment in a decline when the last reluctant holders give up and sell at any price. Before capitulation, you have orderly selling — investors selling in stages as the stock declines, with hope that it will recover. Capitulation is the end of that hope: forced selling (margin calls, stop-losses triggering, panic) floods the market simultaneously, creating a volume spike and an often violent, fast price drop.</p>
+                <p>Paradoxically, capitulation is bullish in its aftermath. After capitulation, there are almost no more forced sellers left. The only remaining participants are long-term investors who survived the panic (they weren't selling), and new buyers who see value at depressed prices. With selling pressure exhausted, even modest buying demand can cause a sharp bounce.</p>
+                <p>The statistical signature is specific: volume more than 3 standard deviations above the 20-day average (an extreme spike), RSI below 30 (extreme oversold), but critically, the day's candle closes in the <em>upper half of its range</em> — the long lower wick shows that institutions absorbed the panic selling, buying everything that desperate sellers were throwing at the market. This close in the upper range is the "absorption" signal — potential indication of the true bottom.</p>
+                <div class="rule">SIGNAL: Volume &gt; μ₂₀ + 3σ (extreme spike) AND RSI &lt; 30 AND the day closes in the upper 50% of the high–low range (long lower wick / absorption candle).</div>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">🏗️ Wyckoff Accumulation Phase</span>
+                <p>Richard Wyckoff was a 1930s stock market analyst who described the market as a battleground between large professional operators ("Smart Money") and the uninformed public. His most important observation: after a capitulation bottom, Smart Money doesn't immediately push prices higher. Instead, it quietly accumulates shares over weeks or months in a "trading range" where prices move sideways in a narrow band with declining volume. This is the <strong>Accumulation Phase</strong>.</p>
+                <p>Why so quiet? Large institutions can't buy millions of shares without moving the price significantly. So they buy slowly — absorbing supply whenever sellers emerge, without revealing their hand. The price goes nowhere (frustrating everyone watching), volume dries up (fewer and fewer sellers are left), and volatility contracts. This specific pattern — Bollinger Band squeeze, declining ATR, drying volume — is the quantitative fingerprint of accumulation in progress.</p>
+                <p>When the absorption is complete, a <strong>breakout</strong> occurs: high-volume expansion through the upper band of the range, confirming that institutional buying has accelerated and the accumulation phase is over. This breakout is the entry signal — ideally caught as close to the pivot point as possible.</p>
+                <div class="rule">SIGNAL: Bollinger Band width &lt; 2% of price AND at a 20-day low (tightest it's been in a month) AND current ATR &lt; 70% of its 20-day average AND 5-day average volume &lt; 70% of 20-day average. All four conditions together define the Wyckoff squeeze.</div>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">📊 Trap Phase History &amp; Prediction Accuracy</span>
+                <p>Each time the Trap Monitor scan runs (typically once per day), the detected lifecycle phase for every ticker is saved to a persistent database table. This creates a timestamped history: "On 2024-10-15, ticker XYZ was classified as Wyckoff Accumulation."</p>
+                <p>A background job then looks up the actual closing price of each ticker 14 and 30 calendar days after each phase was detected, and compares it to the price on the detection date. If the price moved in the direction predicted by the phase classification (lower for Bull Trap, higher for Capitulation / Accumulation / Bear Trap), the prediction is marked "correct." This builds an accuracy record for each phase label based on real outcomes — not backtested simulations.</p>
+                <p>At least 5 resolved predictions per phase are required before an accuracy percentage is shown, to avoid statistically meaningless figures from very small samples. The accuracy chart on the Trap Monitor page is updated daily as new resolutions come in.</p>
+                <div class="rule">Resolution: uses the first available trading-day close on or after scan_date + N days. Accuracy is tracked separately for 14-day and 30-day horizons because the signal quality differs over time.</div>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">👑 Market Leader</span>
+                <p>A <strong>Market Leader</strong> tag is assigned to a stock that shows positive <strong>Relative Strength (RS)</strong> compared to the S&amp;P 500. Relative Strength measures how much better (or worse) a stock has performed compared to the market benchmark over a defined period.</p>
+                <p>The concept, popularised by William O'Neil and his CANSLIM method, is straightforward: if you're going to own individual stocks rather than just the index, you want stocks that are outperforming the market — not just rising because a rising tide is lifting all boats. A Market Leader rises faster than the index in bull markets and falls less (or continues rising) when the market corrects. That relative strength reflects genuine investor demand and institutional accumulation.</p>
+                <p>Practically: during a market rally, owning market leaders means your portfolio outperforms. During a correction, market leaders often signal their strength by refusing to fall as much as the broad market. When even market leaders start declining at the rate of the index, it is often an early warning that the rally is faltering.</p>
+            </div>
+
+        </div>
+    </div>
+</div>

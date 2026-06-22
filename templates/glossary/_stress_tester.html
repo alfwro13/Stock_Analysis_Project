@@ -1,0 +1,42 @@
+<div class="accordion-item glossary-section" id="stress-tester">
+    <h2 class="accordion-header">
+        <button class="accordion-button collapsed" type="button"
+                data-bs-toggle="collapse" data-bs-target="#collapse-stress"
+                aria-expanded="false" aria-controls="collapse-stress">
+            📉 Historical Stress Tester
+        </button>
+    </h2>
+    <div id="collapse-stress" class="accordion-collapse collapse">
+        <div class="accordion-body">
+
+            <div class="term-box">
+                <span class="term-title">What the Stress Tester Does</span>
+                <p>The <strong>Historical Stress Tester</strong> answers a question most investors don't ask until it's too late: "If 2008 happened again tomorrow, how much would I lose in pounds?" It takes your current portfolio, applies the historical shock from each of four major market crises, and shows you an estimated monetary loss per holding and by sector.</p>
+                <p>The four scenarios are: the <strong>Global Financial Crisis 2008–2009</strong> (S&amp;P 500 fell ~56%), the <strong>Dot-com bust 2000–2002</strong> (NASDAQ fell ~78%, S&amp;P fell ~49%), the <strong>COVID-19 crash March 2020</strong> (S&amp;P fell ~34% in 33 days), and the <strong>2022 inflation shock</strong> (S&amp;P fell ~25% as the Fed raised rates at the fastest pace in 40 years).</p>
+                <p>The purpose is not to predict when a crash will happen — it is to make you viscerally aware of the downside before it happens. Seeing that your portfolio would have lost £47,000 in a 2008-style scenario is different from knowing your "average beta is 1.2." Concrete monetary figures change how investors think about risk.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Beta-Adjusted Scenario Shock</span>
+                <p><strong>Beta</strong> is the core concept here. Beta measures how much a specific stock amplifies (or dampens) the broad market's moves. A stock with β=1.0 historically moves exactly in line with the market. A stock with β=1.5 historically falls 50% more than the market on bad days — and rises 50% more on good days. A stock with β=0.5 is half as volatile as the market. Gold or utility stocks can have negative beta (they rise when equities fall, acting as hedges).</p>
+                <p>The stress tester applies each stock's beta to the historical scenario shock: if the S&amp;P fell 56% in the GFC and your stock has β=1.2, the estimated drop is 56% × 1.2 = 67.2%. This is then multiplied by the sector multiplier to adjust for how your specific sector performed relative to the broad market during that specific crisis.</p>
+                <div class="rule">Formula: Holding Drop (%) = Market Crash % × Beta × Sector Multiplier. Monetary Loss = Holding Drop × Current Market Value in GBP. Drops are capped at −95% (equities rarely go to zero in systemic crashes).</div>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Sector Multiplier</span>
+                <p>Not all sectors fall equally in a crash. During the Dot-com bust, Technology stocks (the epicentre of the bubble) fell roughly 80% while consumer staples (food, household goods) fell 20% or held steady — people still buy toothpaste in a recession. During the 2022 inflation shock, Energy stocks actually <em>rose</em> significantly (high oil prices were the source of inflation) while growth/tech stocks fell 40–70%.</p>
+                <p>The <strong>Sector Multiplier</strong> captures these differences: a multiplier above 1.0 means the sector was hit harder than the broad index; below 1.0 means it held up better; a negative multiplier means it actually gained during the crisis (e.g., Energy in 2022 has a negative multiplier for that scenario, meaning your energy holdings would appear as a partial hedge).</p>
+                <p>Examples from the Dot-com crash: Technology ×2.2 (fell far more than the index), Consumer Defensive ×0.4 (held up much better), Energy ×0.5 (modest decline). These multipliers are fixed per scenario and sector, derived from actual sector ETF performance during those periods.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Why Not Historical Replay?</span>
+                <p>A natural question: why not just look up what each stock actually returned during the 2008 crisis, rather than using a formula?</p>
+                <p>Two reasons make that impossible for most portfolios: First, the app only holds 2 years of daily price history per ticker — the GFC, Dot-com, COVID, and 2022 shock are all outside that window for different reasons. Second, many holdings in a modern portfolio — newer ETFs, recently-listed stocks, companies that merged or were acquired — simply did not exist or traded very differently during those historical crises. There is no "actual 2008 price" for a stock that IPO'd in 2021.</p>
+                <p>The beta-shock parametric model works for <em>any</em> holding regardless of listing date, is transparent about its assumptions, and can be applied consistently across the whole portfolio. Its limitation is that it assumes beta and sector relationships are stable across market regimes — a stock with β=1.5 in calm markets may behave very differently in a genuine crisis when correlations spike and liquidity dries up. Treat the stress test results as directionally informative order-of-magnitude estimates, not precise predictions.</p>
+            </div>
+
+        </div>
+    </div>
+</div>

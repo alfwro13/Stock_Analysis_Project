@@ -1,0 +1,40 @@
+<div class="accordion-item glossary-section" id="methodology">
+    <h2 class="accordion-header">
+        <button class="accordion-button collapsed" type="button"
+                data-bs-toggle="collapse" data-bs-target="#collapse-methodology"
+                aria-expanded="false" aria-controls="collapse-methodology">
+            🧠 System Methodology (The "Why")
+        </button>
+    </h2>
+    <div id="collapse-methodology" class="accordion-collapse collapse">
+        <div class="accordion-body">
+
+            <div class="term-box">
+                <span class="term-title">Quantamental "Dual-Lens" Architecture</span>
+                <p>Most investment frameworks are either purely fundamental (Warren Buffett: buy great businesses at fair prices, hold forever) or purely technical (trend-following algorithms: buy what's rising, sell what's falling). Each approach has real weaknesses that the other compensates for.</p>
+                <p>Pure fundamental analysis answers "what to buy" with precision — but can be early by years. A fundamentally cheap stock can remain cheap for a very long time if market sentiment is against it. Investors who bought excellent businesses in 2007 at seemingly cheap prices were down 40–60% before the thesis proved correct in 2010. The entry timing was wrong, even though the fundamental analysis was right.</p>
+                <p>Pure technical analysis answers "when to buy" with reasonable timing signals — but buys blindly on momentum, with no check on whether the underlying business is actually healthy. It will buy a stock going up regardless of whether the valuation makes any sense, and exit just because a line on a chart was breached — no matter the fundamental reason.</p>
+                <p>The <strong>Quantamental</strong> approach combines both lenses: <strong>Fundamentals decide WHAT to buy</strong> (only stocks with healthy balance sheets, improving earnings, and reasonable valuations pass through), and <strong>Technical analysis decides WHEN to buy</strong> (the entry is timed to coincide with momentum confirmation, a volume pattern, a regime signal). The goal is to own the right businesses at the right times with quantified risk controls — rather than relying on either gut feel or pure automation.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Hierarchical Signal Purity</span>
+                <p>When multiple candlestick patterns appear on the same set of candles, which one takes priority? This question matters because different patterns can imply contradictory signals — a two-candle Bullish Harami might appear within a three-candle Morning Star. If both signals are displayed, the system is giving conflicting advice on the same price data.</p>
+                <p>The <strong>Hierarchical Signal Purity</strong> rule resolves this with a simple priority: <strong>3-candle patterns always override 2-candle patterns</strong>. A Morning Star takes precedence over a Bullish Harami Cross that happens to form within it. The 3-candle pattern provides more information (it requires three specific candles in sequence), is statistically rarer, and is generally considered more reliable. Showing both would be redundant and potentially confusing.</p>
+                <p>This is one of many places where the system makes explicit design choices about signal conflicts — documenting them here so users understand why they see one signal label rather than multiple. Fewer, higher-quality signals are better than many overlapping signals that cancel each other out.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">FinBERT NLP Sentiment Engine</span>
+                <p><strong>Natural Language Processing (NLP)</strong> is the branch of artificial intelligence concerned with understanding and processing human language. For financial applications, it is used to automatically read news articles, earnings call transcripts, analyst reports, and social media posts, and extract a sense of whether the content is positive, negative, or neutral about a company or the market.</p>
+                <p><strong>FinBERT</strong> is a version of Google's BERT language model (Bidirectional Encoder Representations from Transformers) that has been specifically fine-tuned on financial text — earnings call transcripts, financial news, Reuters articles — to understand financial language better than a general-purpose model. It was developed by ProsusAI and is available open-source through HuggingFace. Because it was trained on financial language, it correctly understands financial context: "the company beat expectations" is positive even though "beat" normally has physical connotations, and "the stock fell on strong results" correctly interprets the fall as negative despite the "strong results" positive phrase nearby.</p>
+                <p>The raw output is a classification (Positive / Negative / Neutral) with a confidence score. This app maps these into five labelled sentiment states for display: <strong>Euphoria</strong>, <strong>Bullish</strong>, <strong>Neutral</strong>, <strong>Bearish</strong>, <strong>Extreme Fear</strong>.</p>
+                <p>The model runs entirely locally on the server — no data is sent to an external API. It processes news articles in batches nightly, truncating text to the 512-token BERT input limit (roughly 380 words). For very long articles, the sentiment reflects the first 380 words, which is typically the most informative section (headline, key announcement) rather than boilerplate legal language at the end.</p>
+                <div class="rule border-left-red">
+                    <strong>Architectural Note (The Yield Trap):</strong> UK Gilt and US Treasury yield data is strictly excluded from NLP sentiment scoring. NLP models are trained on human language where "surging", "hitting new highs", and "breaking out" are positive phrases. But surging government bond yields are economically toxic for equities — they raise borrowing costs and reduce valuations. Feeding yield headlines through FinBERT would generate false positive sentiment scores for information that is actually negative for equity holders. This exclusion prevents a critical inverse-logic error in the sentiment display.
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
