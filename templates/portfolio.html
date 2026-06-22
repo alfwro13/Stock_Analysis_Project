@@ -40,6 +40,7 @@ window.REFRESH_RATE_MS = {% if not embed %}{{ config.UI_PREFERENCES.REFRESH_RATE
     </div>
     <div class="summary-label xray-link-container portfolio-action-links d-none d-md-flex">
         <a href="#" id="xray-link" class="xray-link-btn" onclick="toggleXray(); return false;">&#128302; X-ray</a>
+        <a href="#" id="heatmap-link" class="xray-link-btn ms-2" onclick="toggleHeatmap(); return false;">&#9638; Heatmap</a>
         <a href="/score-history?filter=portfolio&ref=/portfolio" class="xray-link-btn ms-2">&#128200; Score History</a>
     </div>
 </div>
@@ -99,6 +100,8 @@ window.REFRESH_RATE_MS = {% if not embed %}{{ config.UI_PREFERENCES.REFRESH_RATE
     </select>
 </div>
 
+<div id="heatmap-panel" class="heatmap-panel"></div>
+
 <table id="dataTable" class="table table-hover w-100">
     <thead>
         <tr>
@@ -127,8 +130,10 @@ window.REFRESH_RATE_MS = {% if not embed %}{{ config.UI_PREFERENCES.REFRESH_RATE
     </thead>
     <tbody>
         {% for item in portfolio %}
+        {% set cp = cached_pulse.get(item.ticker) %}
         <tr class="live-asset-row"
             data-ticker="{{ item.ticker }}"
+            data-change-pct="{{ cp.change_pct|float if cp else 0 }}"
             data-currency="{{ item.currency }}"
             data-signal="{{ item.overall_signal | upper }}"
             data-tags="{% for tag in item.setup_tags_list %}{{ tag.name }} {% endfor %}"
@@ -146,7 +151,6 @@ window.REFRESH_RATE_MS = {% if not embed %}{{ config.UI_PREFERENCES.REFRESH_RATE
                 {{ item.company_name }}
             </td>
 
-            {% set cp = cached_pulse.get(item.ticker) %}
             <td data-sort="{{ cp.price if cp else (item.current_price or 0) }}" class="num-cell">
                 <span id="price-{{ item.ticker }}" class="{% if cp and cp.is_stale %}stale-text{% elif cp %}{% if cp.is_positive %}trend-up{% else %}trend-down{% endif %}{% endif %}">
                     {% set display_price = cp.price|float if cp else (item.current_price if item.current_price is not none else none) %}
@@ -298,4 +302,5 @@ window.REFRESH_RATE_MS = {% if not embed %}{{ config.UI_PREFERENCES.REFRESH_RATE
 {% block scripts %}
 <script src="/static/js/position_sizing.js?v={{ css_version }}"></script>
 <script src="/static/js/portfolio.js?v={{ css_version }}"></script>
+<script src="/static/js/portfolio_heatmap.js?v={{ css_version }}"></script>
 {% endblock %}

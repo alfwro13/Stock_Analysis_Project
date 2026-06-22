@@ -91,6 +91,7 @@ function _getTableContainer() {
 }
 
 function _enterXrayMode() {
+    if (typeof _exitHeatmapMode === 'function' && window._heatmapMode) _exitHeatmapMode();
     _captureSummaryOriginal();
     window._xrayMode = true;
     var ctrl = document.querySelector('.controls-container');
