@@ -2,8 +2,6 @@
 
 This document details the high-priority arbitration logic, dual-storage strategy, and frontend rendering pipeline of the Quantamental Web Terminal.
 
-> **Visual Map (Placeholder for `image_7.png`)**
-> [I have generated a high-resolution, institution-grade schematic detailing this logic. Until the technical delivery issues to the browser are resolved, here is the complete textual description of that visual map:]
 
 ## 🧠 System-Wide Ingestion & Priority Arbitration (The Brain)
 
