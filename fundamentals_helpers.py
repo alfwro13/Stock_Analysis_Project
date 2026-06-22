@@ -269,3 +269,19 @@ def calculate_beneish_m_score(bs, fin, cf) -> Optional[float]:
         return None
 
     return round(-4.840 + total, 3)
+
+
+def get_instrument_type(asset_class: str, asset_sub_class: str) -> str:
+    sub = (asset_sub_class or "").upper()
+    cls = (asset_class or "").upper()
+    if sub == "ETF" or cls == "ETF":
+        return "ETF"
+    if cls == "EQUITY" or sub == "STOCK":
+        return "Equity"
+    if cls == "COMMODITY" or sub == "COMMODITY":
+        return "Commodity"
+    if cls == "FIXED_INCOME":
+        return "Fixed Income"
+    if cls:
+        return cls.title()
+    return "Other"

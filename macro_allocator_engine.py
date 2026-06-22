@@ -4,7 +4,8 @@ from typing import Dict, List, Optional, Any
 
 from config import load_config, GHOSTFOLIO_URL, GHOSTFOLIO_TOKEN
 from database import get_connection
-from xray_engine import GhostfolioXRayClient, _get_instrument_type
+from xray_engine import GhostfolioXRayClient
+from fundamentals_helpers import get_instrument_type
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +95,7 @@ def _get_portfolio_asset_class_weights() -> tuple:
 
     holding_values: Dict[str, float] = {}
     for h in holdings:
-        itype = _get_instrument_type(h.get("asset_class", ""), h.get("asset_sub_class", ""))
+        itype = get_instrument_type(h.get("asset_class", ""), h.get("asset_sub_class", ""))
         macro_class = _INSTRUMENT_TO_CLASS.get(itype, "equities")
         holding_values[macro_class] = holding_values.get(macro_class, 0.0) + h["value"]
 

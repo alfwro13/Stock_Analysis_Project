@@ -13,6 +13,7 @@ from urllib.parse import quote
 
 from config import GHOSTFOLIO_URL, GHOSTFOLIO_TOKEN, PORTFOLIO_PATH, load_config
 from database import get_connection
+from fundamentals_helpers import get_instrument_type as _get_instrument_type
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -529,22 +530,6 @@ def run_xray_precompute() -> bool:
     logger.info("X-ray pre-compute finished. Risk cache: %s.", "OK" if risk_ok else "FAILED")
     return risk_ok
 
-
-
-def _get_instrument_type(asset_class: str, asset_sub_class: str) -> str:
-    sub = (asset_sub_class or "").upper()
-    cls = (asset_class or "").upper()
-    if sub == "ETF" or cls == "ETF":
-        return "ETF"
-    if cls == "EQUITY" or sub == "STOCK":
-        return "Equity"
-    if cls == "COMMODITY" or sub == "COMMODITY":
-        return "Commodity"
-    if cls == "FIXED_INCOME":
-        return "Fixed Income"
-    if cls:
-        return cls.title()
-    return "Other"
 
 
 def _compute_max_drawdown(chart: List[Dict]) -> Optional[float]:

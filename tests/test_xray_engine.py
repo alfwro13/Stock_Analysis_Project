@@ -30,7 +30,6 @@ from xray_engine import (
     XRayRiskComputer,
     GhostfolioXRayClient,
     _compute_max_drawdown,
-    _get_instrument_type,
     _generate_xray_recommendations,
     assemble_xray_report,
     BENCHMARK_SYMBOL,
@@ -38,6 +37,7 @@ from xray_engine import (
     _EMERGING_MARKET_CODES,
     _APAC_CODES,
 )
+from fundamentals_helpers import get_instrument_type as _get_instrument_type
 
 # ─── Unique ticker namespaces for this module (avoid collisions with other tests)
 T1 = "XRAY_T1"
