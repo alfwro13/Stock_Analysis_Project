@@ -1,5 +1,4 @@
 import os
-import json
 import time
 import logging
 import threading
@@ -18,7 +17,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-from nextcloud_talk import upload_file_webdav, share_file_to_talk
+from nextcloud_talk import upload_file_webdav, share_file_to_talk, send_text_message
 from constants import (
     SENTIMENT_CHART_FIGSIZE, SENTIMENT_CHART_DPI,
 )
@@ -509,22 +508,19 @@ def run_nextcloud_alert() -> Tuple[bool, str]:
         else:
             report_message += "\n\n❌ WARNING: File sharing failed. Talk Token may be invalid."
 
-        api_endpoint = f"{NEXTCLOUD_URL}/ocs/v2.php/apps/spreed/api/v1/chat/{CONVERSATION_TOKEN}"
-        resp = requests.post(
-            api_endpoint,
-            headers={"OCS-APIRequest": "true", "Content-Type": "application/json"},
-            data=json.dumps({"message": report_message}),
-            auth=(BOT_USERNAME, APP_PASSWORD),
-            timeout=15
-        )
-
-        if resp.status_code in [200, 201]:
+        msg_sent = send_text_message(report_message, {
+            "NEXTCLOUD_URL": NEXTCLOUD_URL,
+            "CONVERSATION_TOKEN": CONVERSATION_TOKEN,
+            "BOT_USERNAME": BOT_USERNAME,
+            "APP_PASSWORD": APP_PASSWORD,
+        })
+        if msg_sent:
             if share_success:
                 return True, "Alert successfully generated, uploaded, and shared to Talk."
             else:
                 return False, "File upload succeeded, but Talk Share failed. Check Conversation Token."
         else:
-            return False, f"Failed to send final text message. HTTP {resp.status_code}"
+            return False, "Failed to send final text message. Check Nextcloud credentials."
 
     except Exception as e:
         return False, f"Unexpected System Error: {str(e)}"
