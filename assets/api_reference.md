@@ -1170,6 +1170,34 @@ Saves the account email address used for password-reset notifications. Requires 
 
 ---
 
+### `POST /api/save-smtp-settings`
+
+Saves SMTP mail server configuration to `.env`. Takes effect immediately without a restart. Requires `X-Confirm-Token` header.
+
+**Headers:** `X-Confirm-Token: <token>`, `Content-Type: application/json`
+
+**Request body**
+
+```json
+{
+  "smtp_host": "smtp.gmail.com",
+  "smtp_port": "587",
+  "smtp_user": "you@example.com",
+  "smtp_pass": "app-password",
+  "smtp_from": "noreply@example.com"
+}
+```
+
+---
+
+### `POST /api/send-test-email`
+
+Sends a test email to the configured `ACCOUNT_EMAIL` using the current SMTP settings. Returns `400` if `SMTP_HOST` or `ACCOUNT_EMAIL` is not configured. Returns `500` on SMTP send failure. Requires `X-Confirm-Token` header.
+
+**Headers:** `X-Confirm-Token: <token>`
+
+---
+
 ### `POST /api/request-password-reset`
 
 Initiates a self-service password reset. No authentication required — accessible from the login page.

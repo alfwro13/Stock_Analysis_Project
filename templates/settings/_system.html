@@ -202,62 +202,76 @@
             </div>
         </details>
 
-        <details class="settings-card">
-            <summary>🛠️ Manual Actions</summary>
-            <p class="settings-desc">Manually trigger system processes. These operations run in the background. Please wait a few moments before refreshing your views.</p>
-            <div class="flex-gap-15 mt-15">
-                <button type="button" id="syncBtn" class="btn btn-primary flex-1" onclick="triggerGhostfolioSync()">⬇️ Sync Ghostfolio Data</button>
-                <button type="button" id="updateBtn" class="btn btn-primary flex-1" onclick="triggerUpdate()">↻ Force Update Analysis Models</button>
-            </div>
-            <hr class="border-secondary my-4">
-            <p class="settings-desc"><strong>Service control</strong> — use these when a stuck job is blocking normal operations.</p>
-            <div class="flex-gap-15 mt-15">
-                <button type="button" class="btn btn-primary flex-1" onclick="forceRestart()">⚡ Force Restart</button>
-                <button type="button" class="btn btn-primary flex-1" onclick="showTerminateConfirm()">🛑 Terminate Jobs</button>
-            </div>
-            <div id="manual-actions-status" class="mt-15"></div>
-            <div id="terminate-confirm-panel" class="d-none mt-15 terminate-confirm-panel">
-                <p class="terminate-confirm-warning">⚠️ Warning: terminated jobs will NOT resume automatically.</p>
-                <p class="settings-desc terminate-confirm-desc">The following jobs are currently running and will be forcibly cleared from the active-jobs registry. Any in-progress work (e.g. a partial data scan) will be abandoned mid-run.</p>
-                <ul id="terminate-job-list" class="mt-5 mb-10 terminate-job-list"></ul>
-                <div class="flex-gap-15">
-                    <button type="button" class="btn btn-primary flex-1" onclick="confirmTerminate()">Confirm — Terminate All Listed Jobs</button>
-                    <button type="button" class="btn btn-primary flex-1" onclick="cancelTerminate()">Cancel</button>
+
+        <details class="settings-card" id="core-system-card">
+            <summary>🌐 Core System &amp; Currencies</summary>
+            <div class="flex-gap-15">
+                <div class="form-group flex-1">
+                    <label>Server URL <span class="text-muted text-xs">(base URL for alerts)</span></label>
+                    <input type="text" id="SERVER_URL" class="form-control" value="{{ config.SERVER_URL }}">
+                </div>
+                <div class="form-group w-130 flex-shrink-0">
+                    <label>Port <span class="text-muted text-xs">(restart req.)</span></label>
+                    <input type="number" id="PORT" class="form-control" value="{{ config.PORT }}">
                 </div>
             </div>
-        </details>
-
-        <details class="settings-card">
-            <summary>🌐 Core System &amp; Currencies</summary>
-            <div class="form-group">
-                <label>Server URL (Base URL for alerts, e.g. http://localhost)</label>
-                <input type="text" id="SERVER_URL" class="form-control" value="{{ config.SERVER_URL }}">
+            <div class="flex-gap-15">
+                <div class="form-group flex-1">
+                    <label><abbr title="3-letter ISO currency code for portfolio values, e.g. GBP, USD, EUR.">Base Currency</abbr></label>
+                    <input type="text" id="BASE_CURRENCY" class="form-control" value="{{ config.BASE_CURRENCY }}" placeholder="GBP">
+                </div>
+                <div class="form-group flex-2">
+                    <label><abbr title="IANA timezone name — all times in the UI are shown in this timezone.">Display Timezone</abbr></label>
+                    <input type="text" id="USER_TIMEZONE" class="form-control" value="{{ config.USER_TIMEZONE | default('Europe/London') }}" placeholder="e.g. Europe/London">
+                </div>
+                <div class="form-group flex-2">
+                    <label><abbr title="Drives default market-window logic and DIP Radar reset time.">Home Exchange</abbr></label>
+                    <select id="HOME_EXCHANGE" class="form-select">
+                        {% set home_ex = config.HOME_EXCHANGE | default('LSE') %}
+                        <option value="LSE"   {% if home_ex == 'LSE'   %}selected{% endif %}>LSE (08:00–16:30 London)</option>
+                        <option value="NYSE"  {% if home_ex == 'NYSE'  %}selected{% endif %}>NYSE (09:30–16:00 New York)</option>
+                        <option value="XETRA" {% if home_ex == 'XETRA' %}selected{% endif %}>XETRA (09:00–17:30 Frankfurt)</option>
+                        <option value="TSE"   {% if home_ex == 'TSE'   %}selected{% endif %}>TSE (09:00–15:30 Tokyo)</option>
+                    </select>
+                </div>
             </div>
             <div class="form-group">
-                <label>System Port (Requires Restart)</label>
-                <input type="number" id="PORT" class="form-control" value="{{ config.PORT }}">
-            </div>
-            <div class="form-group">
-                <label>Base Currency (e.g. GBP, USD, EUR)</label>
-                <input type="text" id="BASE_CURRENCY" class="form-control" value="{{ config.BASE_CURRENCY }}">
-            </div>
-            <div class="form-group">
-                <label>Display Timezone (IANA name — all times shown in this timezone)</label>
-                <input type="text" id="USER_TIMEZONE" class="form-control" value="{{ config.USER_TIMEZONE | default('Europe/London') }}" placeholder="e.g. Europe/London, America/New_York, Europe/Berlin">
-            </div>
-            <div class="form-group">
-                <label>Home Exchange (drives default market-window logic and DIP Radar reset)</label>
-                <select id="HOME_EXCHANGE" class="form-select">
-                    {% set home_ex = config.HOME_EXCHANGE | default('LSE') %}
-                    <option value="LSE"   {% if home_ex == 'LSE'   %}selected{% endif %}>LSE — London Stock Exchange (08:00–16:30 Europe/London)</option>
-                    <option value="NYSE"  {% if home_ex == 'NYSE'  %}selected{% endif %}>NYSE — New York Stock Exchange (09:30–16:00 America/New_York, pre-market from 04:00)</option>
-                    <option value="XETRA" {% if home_ex == 'XETRA' %}selected{% endif %}>XETRA — Frankfurt (09:00–17:30 Europe/Berlin)</option>
-                    <option value="TSE"   {% if home_ex == 'TSE'   %}selected{% endif %}>TSE — Tokyo Stock Exchange (09:00–15:30 Asia/Tokyo)</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label>Ignored Tickers (Comma separated, e.g. GBP, USD, 0P00018XAR.L)</label>
+                <label>Ignored Tickers <span class="text-muted text-xs">(comma-separated, e.g. GBP, USD, 0P00018XAR.L)</span></label>
                 <input type="text" id="IGNORED_TICKERS" class="form-control" value="{{ config.IGNORED_TICKERS | join(', ') if config.IGNORED_TICKERS else '' }}">
+            </div>
+
+            <div class="settings-panel border-left-cyan">
+                <strong>✉️ Mail Server</strong>
+                <p class="settings-desc">SMTP settings used to send password-reset emails. Stored in <code>.env</code> — changes take effect immediately without a restart.</p>
+                <div class="flex-gap-15">
+                    <div class="form-group flex-2">
+                        <label><abbr title="Hostname or IP of your SMTP server, e.g. smtp.gmail.com.">SMTP Host</abbr></label>
+                        <input type="text" id="SMTP_HOST" class="form-control" value="{{ smtp_host }}" placeholder="smtp.gmail.com">
+                    </div>
+                    <div class="form-group w-130 flex-shrink-0">
+                        <label><abbr title="SMTP port — 587 for STARTTLS, 465 for SSL, 25 for plain.">Port</abbr></label>
+                        <input type="number" id="SMTP_PORT" class="form-control" value="{{ smtp_port }}" placeholder="587" min="1" max="65535">
+                    </div>
+                </div>
+                <div class="flex-gap-15">
+                    <div class="form-group flex-1">
+                        <label><abbr title="Login username for the SMTP server — usually your email address.">Username</abbr></label>
+                        <input type="text" id="SMTP_USER" class="form-control" value="{{ smtp_user }}" placeholder="you@example.com" autocomplete="username">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="Password or app password for the SMTP account.">Password</abbr></label>
+                        <input type="password" id="SMTP_PASS" class="form-control" value="{{ smtp_pass }}" autocomplete="new-password">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="From address on outgoing emails. Defaults to Username if left blank.">From Address</abbr></label>
+                        <input type="text" id="SMTP_FROM" class="form-control" value="{{ smtp_from }}" placeholder="noreply@example.com">
+                    </div>
+                </div>
+                <div class="flex-gap-15 mt-5">
+                    <button type="button" class="btn btn-primary" onclick="saveSmtpSettings()">💾 Save Mail Settings</button>
+                    <button type="button" class="btn btn-primary" onclick="sendTestEmail()">🧪 Send Test Email</button>
+                </div>
+                <div id="smtp-status-msg" class="mt-10"></div>
             </div>
 
             <div class="settings-panel border-left-cyan">
@@ -349,32 +363,32 @@
             <div class="settings-panel border-left-cyan">
                 <strong>📄 File Logging</strong>
                 <p class="settings-desc">Write all console log output to a rotating daily log file. Each day's file is kept for the configured number of days, then deleted automatically on the next rotation.</p>
-                <div class="form-group">
+                <div class="flex-gap-20 mb-5">
                     <label class="checkbox-label">
                         <input type="checkbox" id="FILE_LOGGING_ENABLED" {% if config.FILE_LOGGING and config.FILE_LOGGING.ENABLED %}checked{% endif %}>
                         <abbr title="When enabled, a TimedRotatingFileHandler is attached to the root Python logger. All output that currently goes to the console is also written to the log file.">Enable file logging</abbr>
                     </label>
-                </div>
-                <div class="form-group">
-                    <label><abbr title="Minimum severity level written to the log file. The console log level is unaffected and stays at INFO.">Log level</abbr></label>
-                    <select id="FILE_LOGGING_LEVEL" class="form-select">
-                        {% set fl_level = config.FILE_LOGGING.LEVEL | default('INFO') if config.FILE_LOGGING else 'INFO' %}
-                        <option value="DEBUG"    {% if fl_level == 'DEBUG'    %}selected{% endif %}>DEBUG — everything</option>
-                        <option value="INFO"     {% if fl_level == 'INFO'     %}selected{% endif %}>INFO — standard operational messages</option>
-                        <option value="WARNING"  {% if fl_level == 'WARNING'  %}selected{% endif %}>WARNING — warnings and above</option>
-                        <option value="ERROR"    {% if fl_level == 'ERROR'    %}selected{% endif %}>ERROR — errors and above</option>
-                        <option value="CRITICAL" {% if fl_level == 'CRITICAL' %}selected{% endif %}>CRITICAL — critical errors only</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label><abbr title="Number of daily rotated log files to retain. Files older than this are deleted automatically when the next midnight rotation occurs.">Days to keep</abbr></label>
-                    <input type="number" id="FILE_LOGGING_DAYS_TO_KEEP" class="form-control" min="1" max="365" value="{{ config.FILE_LOGGING.DAYS_TO_KEEP | default(30) if config.FILE_LOGGING else 30 }}">
-                </div>
-                <div class="form-group">
                     <label class="checkbox-label">
                         <input type="checkbox" id="FILE_LOGGING_ARCHIVE" {% if config.FILE_LOGGING and config.FILE_LOGGING.ARCHIVE %}checked{% endif %}>
                         <abbr title="When enabled, rotated log files are gzip-compressed (.gz) to save disk space. The active app.log is always plain text.">Compress rotated files (gzip)</abbr>
                     </label>
+                </div>
+                <div class="flex-gap-15">
+                    <div class="form-group flex-2">
+                        <label><abbr title="Minimum severity level written to the log file. The console log level is unaffected and stays at INFO.">Log level</abbr></label>
+                        <select id="FILE_LOGGING_LEVEL" class="form-select">
+                            {% set fl_level = config.FILE_LOGGING.LEVEL | default('INFO') if config.FILE_LOGGING else 'INFO' %}
+                            <option value="DEBUG"    {% if fl_level == 'DEBUG'    %}selected{% endif %}>DEBUG — everything</option>
+                            <option value="INFO"     {% if fl_level == 'INFO'     %}selected{% endif %}>INFO — standard</option>
+                            <option value="WARNING"  {% if fl_level == 'WARNING'  %}selected{% endif %}>WARNING and above</option>
+                            <option value="ERROR"    {% if fl_level == 'ERROR'    %}selected{% endif %}>ERROR and above</option>
+                            <option value="CRITICAL" {% if fl_level == 'CRITICAL' %}selected{% endif %}>CRITICAL only</option>
+                        </select>
+                    </div>
+                    <div class="form-group flex-1">
+                        <label><abbr title="Number of daily rotated log files to retain. Files older than this are deleted automatically when the next midnight rotation occurs.">Days to keep</abbr></label>
+                        <input type="number" id="FILE_LOGGING_DAYS_TO_KEEP" class="form-control" min="1" max="365" value="{{ config.FILE_LOGGING.DAYS_TO_KEEP | default(30) if config.FILE_LOGGING else 30 }}">
+                    </div>
                 </div>
                 <div class="form-group">
                     <label><abbr title="Directory where log files are written, relative to the project root. Created automatically if it does not exist.">Log directory (relative path)</abbr></label>
@@ -520,6 +534,7 @@
             <div class="settings-panel mt-20">
                 <h4 class="settings-panel-header text-blue">Account Email</h4>
                 <p class="settings-desc">Email address used for password reset links. Optional — if left blank, reset links are sent via Nextcloud Talk or logged to the server.</p>
+                <p class="settings-desc-sm text-muted">To send reset emails, configure the <a href="#" onclick="document.querySelector('#core-system-card').open=true; return false;">Mail Server settings</a> in Core System &amp; Currencies.</p>
                 <div class="form-group">
                     <label>Email address</label>
                     <input type="email" id="ua_account_email" class="form-control" autocomplete="email" value="{{ account_email }}" placeholder="you@example.com">
@@ -822,6 +837,20 @@
                 <button type="button" class="btn btn-primary flex-1" onclick="gitPull()">⬇️ Pull Latest from GitHub</button>
                 <button type="button" class="btn btn-primary flex-1" onclick="restartSystem()">⚡ Restart Service</button>
             </div>
+            <div class="flex-gap-15 mt-10">
+                <button type="button" class="btn btn-primary flex-1" onclick="forceRestart()">⚡ Force Restart</button>
+                <button type="button" class="btn btn-primary flex-1" onclick="showTerminateConfirm()">🛑 Terminate Jobs</button>
+            </div>
 
             <div id="git-status-msg"></div>
+            <div id="manual-actions-status" class="mt-10"></div>
+            <div id="terminate-confirm-panel" class="d-none mt-15 terminate-confirm-panel">
+                <p class="terminate-confirm-warning">⚠️ Warning: terminated jobs will NOT resume automatically.</p>
+                <p class="settings-desc terminate-confirm-desc">The following jobs are currently running and will be forcibly cleared from the active-jobs registry. Any in-progress work (e.g. a partial data scan) will be abandoned mid-run.</p>
+                <ul id="terminate-job-list" class="mt-5 mb-10 terminate-job-list"></ul>
+                <div class="flex-gap-15">
+                    <button type="button" class="btn btn-primary flex-1" onclick="confirmTerminate()">Confirm — Terminate All Listed Jobs</button>
+                    <button type="button" class="btn btn-primary flex-1" onclick="cancelTerminate()">Cancel</button>
+                </div>
+            </div>
         </div>

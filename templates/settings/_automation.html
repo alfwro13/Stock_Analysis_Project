@@ -51,6 +51,7 @@
                             <input type="time" id="QUANT_ANALYSIS_TIME" class="form-control" value="{{ config.SCHEDULING.QUANT_ANALYSIS.TIME }}">
                         </div>
                     </div>
+                    <button type="button" id="updateBtn" class="btn btn-primary mt-0" onclick="triggerUpdate()">↻ Force Update Analysis Models</button>
                 </div>
 
                 <div class="settings-panel">
@@ -76,6 +77,7 @@
                             <input type="time" id="GHOSTFOLIO_SYNC_TIME" class="form-control" value="{{ config.SCHEDULING.GHOSTFOLIO_SYNC.TIME }}">
                         </div>
                     </div>
+                    <button type="button" id="syncBtn" class="btn btn-primary mt-0" onclick="triggerGhostfolioSync()">⬇️ Sync Ghostfolio Data</button>
                 </div>
 
                 {% set q_engine = config.SCHEDULING.QUANT_ENGINE if config.SCHEDULING.QUANT_ENGINE else {} %}

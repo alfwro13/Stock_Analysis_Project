@@ -130,6 +130,11 @@ async def settings_page(request: Request):
             "fred_api_key": os.environ.get("FRED_API_KEY", ""),
             "hf_token": os.environ.get("HF_TOKEN", ""),
             "account_email": os.environ.get("ACCOUNT_EMAIL", ""),
+            "smtp_host": os.environ.get("SMTP_HOST", ""),
+            "smtp_port": os.environ.get("SMTP_PORT", "587"),
+            "smtp_user": os.environ.get("SMTP_USER", ""),
+            "smtp_pass": os.environ.get("SMTP_PASS", ""),
+            "smtp_from": os.environ.get("SMTP_FROM", ""),
         }
     )
 

@@ -409,3 +409,65 @@ async def rotate_confirm_token():
     set_key(env_path, "ADMIN_CONFIRM_TOKEN", new_token)
     os.environ["ADMIN_CONFIRM_TOKEN"] = new_token
     return {"status": "ok", "new_token": new_token}
+
+
+class SaveSmtpSettingsRequest(BaseModel):
+    smtp_host: str
+    smtp_port: str
+    smtp_user: str
+    smtp_pass: str
+    smtp_from: str
+
+
+@auth_router.post("/save-smtp-settings", dependencies=[Depends(require_confirm_token)])
+async def save_smtp_settings(body: SaveSmtpSettingsRequest):
+    from dotenv import set_key
+    env_path = str(BASE_DIR / ".env")
+    fields = {
+        "SMTP_HOST": body.smtp_host.strip(),
+        "SMTP_PORT": body.smtp_port.strip(),
+        "SMTP_USER": body.smtp_user.strip(),
+        "SMTP_PASS": body.smtp_pass.strip(),
+        "SMTP_FROM": body.smtp_from.strip(),
+    }
+    for key, val in fields.items():
+        set_key(env_path, key, val)
+        os.environ[key] = val
+    return {"status": "ok", "message": "Mail server settings saved."}
+
+
+@auth_router.post("/send-test-email", dependencies=[Depends(require_confirm_token)])
+async def send_test_email():
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+
+    smtp_host = os.environ.get("SMTP_HOST", "").strip()
+    account_email = os.environ.get("ACCOUNT_EMAIL", "").strip()
+    if not smtp_host:
+        raise HTTPException(status_code=400, detail="SMTP host is not configured.")
+    if not account_email:
+        raise HTTPException(status_code=400, detail="Account email is not set — configure it in User Account first.")
+
+    smtp_port = int(os.environ.get("SMTP_PORT", "587") or "587")
+    smtp_user = os.environ.get("SMTP_USER", "").strip()
+    smtp_pass = os.environ.get("SMTP_PASS", "").strip()
+    smtp_from = (os.environ.get("SMTP_FROM", "").strip() or smtp_user) or "noreply@quantamental"
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = "Quantamental — Mail Server Test"
+    msg["From"] = smtp_from
+    msg["To"] = account_email
+    msg.attach(MIMEText("This is a test email from your Quantamental dashboard. Mail server is configured correctly.", "plain"))
+    try:
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as s:
+            s.ehlo()
+            s.starttls()
+            if smtp_user and smtp_pass:
+                s.login(smtp_user, smtp_pass)
+            s.sendmail(smtp_from, [account_email], msg.as_string())
+        logger.info("Test email sent to %s", account_email)
+        return {"status": "ok", "message": "Test email sent to %s." % account_email}
+    except Exception as e:
+        logger.warning("Test email failed: %s", e)
+        raise HTTPException(status_code=500, detail="Send failed: %s" % e)

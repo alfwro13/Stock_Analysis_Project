@@ -490,6 +490,53 @@ async function fetchSystemMetrics() {
     }
 }
 
+async function saveSmtpSettings() {
+    const btn = document.querySelector('button[onclick="saveSmtpSettings()"]');
+    btn.disabled = true;
+    btn.innerText = '⏳ Saving…';
+    setStatus('smtp-status-msg', 'info', 'Saving…');
+    try {
+        const res = await fetch('/api/save-smtp-settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Confirm-Token': CONFIRM_TOKEN },
+            body: JSON.stringify({
+                smtp_host: document.getElementById('SMTP_HOST').value,
+                smtp_port: document.getElementById('SMTP_PORT').value,
+                smtp_user: document.getElementById('SMTP_USER').value,
+                smtp_pass: document.getElementById('SMTP_PASS').value,
+                smtp_from: document.getElementById('SMTP_FROM').value,
+            }),
+        });
+        const data = await res.json().catch(() => ({}));
+        setStatus('smtp-status-msg', res.ok ? 'success' : 'error', res.ok ? data.message : (data.detail || 'Failed to save.'));
+    } catch (e) {
+        setStatus('smtp-status-msg', 'error', 'Network error while saving.');
+    } finally {
+        btn.disabled = false;
+        btn.innerText = '💾 Save Mail Settings';
+    }
+}
+
+async function sendTestEmail() {
+    const btn = document.querySelector('button[onclick="sendTestEmail()"]');
+    btn.disabled = true;
+    btn.innerText = '⏳ Sending…';
+    setStatus('smtp-status-msg', 'info', 'Sending test email…');
+    try {
+        const res = await fetch('/api/send-test-email', {
+            method: 'POST',
+            headers: { 'X-Confirm-Token': CONFIRM_TOKEN },
+        });
+        const data = await res.json().catch(() => ({}));
+        setStatus('smtp-status-msg', res.ok ? 'success' : 'error', res.ok ? data.message : (data.detail || 'Send failed.'));
+    } catch (e) {
+        setStatus('smtp-status-msg', 'error', 'Network error while sending.');
+    } finally {
+        btn.disabled = false;
+        btn.innerText = '🧪 Send Test Email';
+    }
+}
+
 async function saveGhostfolioSettings() {
     const btn = document.querySelector('button[onclick="saveGhostfolioSettings()"]');
     btn.disabled = true;
