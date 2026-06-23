@@ -181,6 +181,57 @@ class TestRunInsiderAlertGuards:
         assert ok is True
         assert "no valid" in msg.lower()
 
+    def test_ignored_tickers_excluded(self, db_path):
+        cfg = {
+            "NOTIFICATIONS": {"INSIDER_TRADING": {
+                "ENABLED_PORTFOLIO": True, "ENABLED_WATCHLIST": False,
+                "MIN_VALUE": 50000, "DAYS_BACK": 7,
+            }},
+            "IGNORED_TICKERS": ["GBP", "USD"],
+        }
+        with patch("insider_engine.load_config", return_value=cfg), \
+             patch("insider_engine.get_tickers_from_json", return_value=["GBP", "USD"]), \
+             patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)):
+            ok, msg = run_insider_alert()
+        assert ok is True
+        assert "no valid" in msg.lower()
+
+    def test_futures_tickers_excluded(self, db_path):
+        cfg = {"NOTIFICATIONS": {"INSIDER_TRADING": {
+            "ENABLED_PORTFOLIO": True, "ENABLED_WATCHLIST": False,
+            "MIN_VALUE": 50000, "DAYS_BACK": 7,
+        }}}
+        with patch("insider_engine.load_config", return_value=cfg), \
+             patch("insider_engine.get_tickers_from_json", return_value=["ES=F", "NQ=F"]), \
+             patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)):
+            ok, msg = run_insider_alert()
+        assert ok is True
+        assert "no valid" in msg.lower()
+
+    def test_forex_tickers_excluded(self, db_path):
+        cfg = {"NOTIFICATIONS": {"INSIDER_TRADING": {
+            "ENABLED_PORTFOLIO": True, "ENABLED_WATCHLIST": False,
+            "MIN_VALUE": 50000, "DAYS_BACK": 7,
+        }}}
+        with patch("insider_engine.load_config", return_value=cfg), \
+             patch("insider_engine.get_tickers_from_json", return_value=["GBP=X", "EUR=X"]), \
+             patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)):
+            ok, msg = run_insider_alert()
+        assert ok is True
+        assert "no valid" in msg.lower()
+
+    def test_index_tickers_excluded(self, db_path):
+        cfg = {"NOTIFICATIONS": {"INSIDER_TRADING": {
+            "ENABLED_PORTFOLIO": True, "ENABLED_WATCHLIST": False,
+            "MIN_VALUE": 50000, "DAYS_BACK": 7,
+        }}}
+        with patch("insider_engine.load_config", return_value=cfg), \
+             patch("insider_engine.get_tickers_from_json", return_value=["^GSPC", "^FTSE"]), \
+             patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)):
+            ok, msg = run_insider_alert()
+        assert ok is True
+        assert "no valid" in msg.lower()
+
     def test_fatal_config_error_returns_false(self):
         with patch("insider_engine.load_config", side_effect=RuntimeError("config missing")):
             ok, msg = run_insider_alert()

@@ -259,7 +259,7 @@ class YahooEngine:
                 self._set(key, df, _TTLS["insider_transactions"])
                 return df
         except Exception:
-            logger.error("get_insider_transactions failed for %s", ticker, exc_info=True)
+            logger.debug("get_insider_transactions failed for %s", ticker, exc_info=True)
         return None
 
     def get_earnings_dates(self, ticker: str, limit: int = 10) -> Optional[pd.DataFrame]:

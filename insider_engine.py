@@ -40,13 +40,23 @@ def run_insider_alert():
         if not enable_portfolio and not enable_watchlist:
             return True, "Insider checks skipped (Both toggles disabled)."
 
+        ignored = set(config.get("IGNORED_TICKERS", []))
+
         target_tickers = set()
         if enable_portfolio:
             target_tickers.update(get_tickers_from_json(PORTFOLIO_PATH, False))
         if enable_watchlist:
             target_tickers.update(get_tickers_from_json(WATCHLIST_PATH, True))
 
-        target_tickers = [t for t in target_tickers if t and not t.startswith('0P')]
+        target_tickers = [
+            t for t in target_tickers
+            if t
+            and not t.startswith('0P')
+            and t not in ignored
+            and not t.endswith('=F')
+            and not t.endswith('=X')
+            and not t.startswith('^')
+        ]
         if not target_tickers:
             return True, "No valid equity tickers found to check."
 
