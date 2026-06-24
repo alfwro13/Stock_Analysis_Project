@@ -7,6 +7,7 @@ and the AI Volatility Defense cap. No network calls; uses synthetic DataFrames.
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest.mock import patch, MagicMock
 
 import pandas as pd
 import pytest
@@ -178,3 +179,48 @@ class TestEdgeCases:
         result = eng.evaluate("TEST", 95.0, df, META_NEUTRAL)
         assert result is not None
         assert result["price"] == 95.0
+
+
+# ── SPY market context awareness ──────────────────────────────────────────────
+
+class TestSpyMarketContext:
+    def _context_df(self) -> pd.DataFrame:
+        prices = [100.0] * 55 + [100.0]
+        return pd.DataFrame({"Close": prices})
+
+    def test_us_market_closed_skips_fetch_and_shows_unavailable_note(self):
+        eng = _engine()
+        eng.spy_change_pct = None
+        df = self._context_df()
+        with patch("crash_engine.time_engine.is_market_open", return_value=False) as mock_open, \
+             patch.object(eng, "_fetch_market_context") as mock_fetch:
+            report = eng._generate_context_report("LCJP.L", -4.0, df, {"company_name": "Test"})
+        mock_fetch.assert_not_called()
+        assert "US market is currently closed" in report
+
+    def test_us_market_open_calls_live_fetch_when_not_injected(self):
+        eng = _engine()
+        eng.spy_change_pct = None
+        df = self._context_df()
+        with patch("crash_engine.time_engine.is_market_open", return_value=True), \
+             patch.object(eng, "_fetch_market_context", return_value=None) as mock_fetch:
+            report = eng._generate_context_report("TEST", -4.0, df, {"company_name": "Test"})
+        mock_fetch.assert_called_once()
+        assert "US market is currently closed" in report
+
+    def test_fetch_market_context_skips_when_nyse_closed(self):
+        eng = _engine()
+        with patch("crash_engine.time_engine.is_market_open", return_value=False), \
+             patch("crash_engine.yahoo_engine.get_intraday") as mock_intraday:
+            result = eng._fetch_market_context()
+        assert result is None
+        mock_intraday.assert_not_called()
+
+    def test_fetch_market_context_fetches_when_nyse_open(self):
+        eng = _engine()
+        spy_df = pd.DataFrame({"Close": [400.0, 398.0, 396.0, 394.0, 392.0]})
+        with patch("crash_engine.time_engine.is_market_open", return_value=True), \
+             patch("crash_engine.yahoo_engine.get_intraday", return_value={"SPY": spy_df}):
+            result = eng._fetch_market_context()
+        assert result is not None
+        assert result < 0

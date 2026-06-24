@@ -1,4 +1,3 @@
-# crash_engine.py
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
@@ -10,6 +9,7 @@ import ta
 
 from utils import clamp_beta
 from yahoo_engine import yahoo_engine
+import time_engine
 
 logger = logging.getLogger(__name__)
 
@@ -29,8 +29,9 @@ class CrashEngine:
         # Ceiling applied AFTER beta scaling so high-beta names can't widen the AI Volatility Defense cap back out.
         self.ai_threshold_cap: float | None = None
 
-    def _fetch_market_context(self) -> float:
-        # Fallback used when spy_change_pct was not pre-injected by the orchestrator.
+    def _fetch_market_context(self) -> float | None:
+        if not time_engine.is_market_open("NYSE"):
+            return None
         try:
             _result = yahoo_engine.get_intraday(["SPY"], period="1d", interval="5m")
             spy = _result.get("SPY")
@@ -40,8 +41,8 @@ class CrashEngine:
                 if session_open > 0:
                     return ((curr_price - session_open) / session_open) * 100.0
         except Exception as e:
-            logger.warning(f"Failed to fetch macroeconomic context (SPY): {e}")
-        return 0.0
+            logger.warning("Failed to fetch macroeconomic context (SPY): %s", e)
+        return None
 
     def _generate_context_report(
         self,
@@ -54,17 +55,21 @@ class CrashEngine:
         report = []
         company_name = asset_meta.get('company_name', ticker)
 
-        # Use pre-fetched SPY value injected by the orchestrator; fall back to live fetch only if unavailable.
         if self.spy_change_pct is not None:
-            spy_drop = self.spy_change_pct
-        else:
+            spy_drop: float | None = self.spy_change_pct
+        elif time_engine.is_market_open("NYSE"):
             logger.warning(
                 "spy_change_pct not injected for %s — falling back to live SPY fetch. "
                 "This is expected only outside the orchestrator (tests, ad-hoc scripts).",
                 ticker,
             )
             spy_drop = self._fetch_market_context()
-        if spy_drop <= -1.5:
+        else:
+            spy_drop = None
+
+        if spy_drop is None:
+            report.append("US market is currently closed; S&P 500 context unavailable for this alert.")
+        elif spy_drop <= -1.5:
             report.append(f"The broader market is currently experiencing a heavy sell-off (S&P 500: {spy_drop:.2f}%). The weakness in {company_name} is likely being amplified by macro-economic panic rather than purely isolated company issues.")
         elif spy_drop >= 0:
             report.append(f"This appears to be an isolated (idiosyncratic) event. While {company_name} is crashing, the broader market remains green/flat (S&P 500: {spy_drop:.2f}%).")
@@ -89,7 +94,7 @@ class CrashEngine:
                     else:
                         report.append("Interestingly, this price drop is occurring on relatively low/average volume, suggesting a lack of liquidity or an absence of buyers rather than aggressive institutional dumping.")
         except Exception as e:
-            logger.warning(f"Volume anomaly check failed for {ticker}: {e}")
+            logger.warning("Volume anomaly check failed for %s: %s", ticker, e)
 
         # Use settled bars only for SMA; the live tick is a partially-formed bar.
         df_settled = df_combined.iloc[:-1]
@@ -100,7 +105,7 @@ class CrashEngine:
             if latest_price < sma50 and prev_settled_close >= sma50:
                 report.append("Technical damage is notable: the stock just sliced violently through its 50-day moving average, a key institutional support level.")
         except Exception as e:
-            logger.warning(f"Technical damage assessment failed for {ticker}: {e}")
+            logger.warning("Technical damage assessment failed for %s: %s", ticker, e)
 
         # News requires a live yfinance call (never in df_hist), but _generate_context_report only runs on confirmed alerts — one call per fired event is acceptable.
         try:
@@ -127,7 +132,7 @@ class CrashEngine:
                             pub_time = datetime.fromtimestamp(float(pub_time_raw), tz=timezone.utc)
                         parsed.append((pub_time, publisher, headline))
                     except Exception as dt_e:
-                        logger.debug(f"Date parsing failed for news item on {ticker}: {dt_e}")
+                        logger.debug("Date parsing failed for news item on %s: %s", ticker, dt_e)
 
                 cutoff = datetime.now(timezone.utc) - timedelta(days=2)
                 recent = sorted(
@@ -141,7 +146,7 @@ class CrashEngine:
                     for pub_time, publisher, headline in recent:
                         report.append(f"- *{publisher}:* {headline}")
         except Exception as e:
-            logger.warning(f"Catalyst extraction failed for {ticker}: {e}")
+            logger.warning("Catalyst extraction failed for %s: %s", ticker, e)
             report.append("\n**Catalysts:** No major breaking news headlines found on Yahoo Finance within the last 48 hours.")
 
         return "\n".join(report)
