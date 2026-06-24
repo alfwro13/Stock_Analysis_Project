@@ -623,3 +623,37 @@ def test_monte_carlo_accounts_returns_200(client):
         assert "total" in data and isinstance(data["total"], (int, float))
     else:
         assert "message" in data
+
+
+# ── Portfolio Period Returns ───────────────────────────────────────────────────
+
+@pytest.mark.api
+def test_portfolio_period_returns_returns_200(client):
+    """GET /api/portfolio-period-returns?period=1w&tickers=AAPL must return 200."""
+    resp = client.get("/api/portfolio-period-returns?period=1w&tickers=AAPL")
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text[:300]}"
+
+
+@pytest.mark.api
+def test_portfolio_period_returns_shape(client):
+    """Response must have status, period, and data (dict)."""
+    resp = client.get("/api/portfolio-period-returns?period=1m&tickers=AAPL")
+    data = _json(resp)
+    assert data.get("status") == "success", f"Unexpected status: {data}"
+    assert data.get("period") == "1m"
+    assert isinstance(data.get("data"), dict)
+
+
+@pytest.mark.api
+def test_portfolio_period_returns_all_periods_accepted(client):
+    """All four period values must be accepted (HTTP 200)."""
+    for period in ("1w", "1m", "ytd", "1y"):
+        resp = client.get(f"/api/portfolio-period-returns?period={period}&tickers=AAPL")
+        assert resp.status_code == 200, f"period={period} returned {resp.status_code}: {resp.text[:200]}"
+
+
+@pytest.mark.api
+def test_portfolio_period_returns_invalid_period_rejected(client):
+    """An invalid period must return 422."""
+    resp = client.get("/api/portfolio-period-returns?period=5y&tickers=AAPL")
+    assert resp.status_code == 422, f"Expected 422 for invalid period, got {resp.status_code}"

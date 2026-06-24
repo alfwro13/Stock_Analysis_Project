@@ -758,6 +758,83 @@ function _plotMacroHistory(elId, history) {
     }), _PC);
 }
 
+// ── Period-return toggle ──────────────────────────────────────────────────────
+var _PERIOD_LABELS = { daily: 'Daily Change', '1w': '1W Change', '1m': '1M Change', ytd: 'YTD Change', '1y': '1Y Change' };
+var _dailyChangeData = {};
+
+function _snapshotDailyData() {
+    document.querySelectorAll('tr[data-ticker]').forEach(function (row) {
+        var ticker = row.dataset.ticker;
+        var span   = document.getElementById('change-' + ticker);
+        var td     = span ? span.closest('td') : null;
+        if (span && td) {
+            _dailyChangeData[ticker] = {
+                html:    span.innerHTML,
+                cls:     span.className,
+                sortVal: td.dataset.sort || '0'
+            };
+        }
+    });
+}
+
+function _renderChangePct(change_pct, is_positive) {
+    var cls  = is_positive ? 'trend-up' : 'trend-down';
+    var sign = is_positive ? '+' : '';
+    return '<span class="' + cls + '">' + sign + change_pct.toFixed(2) + '%</span>';
+}
+
+function _applyPeriod(period) {
+    localStorage.setItem('portfolio_change_period', period);
+
+    document.querySelectorAll('#periodBtnGroup .btn-filter').forEach(function (btn) {
+        btn.classList.toggle('active', btn.dataset.period === period);
+    });
+
+    var hdr = document.getElementById('change-col-header');
+    if (hdr) hdr.textContent = _PERIOD_LABELS[period] || 'Daily Change';
+
+    if (period === 'daily') {
+        document.querySelectorAll('tr[data-ticker]').forEach(function (row) {
+            var ticker = row.dataset.ticker;
+            var snap   = _dailyChangeData[ticker];
+            var span   = document.getElementById('change-' + ticker);
+            var td     = span ? span.closest('td') : null;
+            if (snap && span && td) {
+                span.innerHTML  = snap.html;
+                span.className  = snap.cls;
+                td.dataset.sort = snap.sortVal;
+            }
+        });
+        return;
+    }
+
+    var tickers = [];
+    document.querySelectorAll('tr[data-ticker]').forEach(function (row) { tickers.push(row.dataset.ticker); });
+    if (!tickers.length) return;
+
+    fetch('/api/portfolio-period-returns?period=' + period + '&tickers=' + tickers.join(','))
+        .then(function (r) { return r.json(); })
+        .then(function (resp) {
+            if (resp.status !== 'success') return;
+            var data = resp.data || {};
+            document.querySelectorAll('tr[data-ticker]').forEach(function (row) {
+                var ticker = row.dataset.ticker;
+                var span   = document.getElementById('change-' + ticker);
+                var td     = span ? span.closest('td') : null;
+                if (!span || !td) return;
+                if (data[ticker] !== undefined) {
+                    var d = data[ticker];
+                    span.innerHTML  = _renderChangePct(d.change_pct, d.is_positive);
+                    td.dataset.sort = d.change_pct.toString();
+                } else {
+                    span.innerHTML = '<span>-</span>';
+                    td.dataset.sort = '0';
+                }
+            });
+        })
+        .catch(function () {});
+}
+
 // ── DataTables init ───────────────────────────────────────────────────────────
 $(document).ready(function () {
     var table = $('#dataTable').DataTable({
@@ -802,4 +879,11 @@ $(document).ready(function () {
         if (val === 'ALL') { table.column(19).search('').draw(); }
         else { table.column(19).search(val).draw(); }
     });
+
+    _snapshotDailyData();
+    document.querySelectorAll('#periodBtnGroup .btn-filter').forEach(function (btn) {
+        btn.addEventListener('click', function () { _applyPeriod(this.dataset.period); });
+    });
+    var storedPeriod = localStorage.getItem('portfolio_change_period') || 'daily';
+    if (storedPeriod !== 'daily') { _applyPeriod(storedPeriod); }
 });

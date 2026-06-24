@@ -1678,6 +1678,7 @@ Sends a test insider trading alert via Nextcloud Talk.
 | `POST` | `/api/test-sentiment-alert` | Test Nextcloud sentiment alert |
 | `POST` | `/api/test-earnings-alert` | Test Nextcloud earnings alert |
 | `POST` | `/api/test-insider-alert` | Test Nextcloud insider alert |
+| `GET` | `/api/portfolio-period-returns` | Historical period returns (1W/1M/YTD/1Y) for a set of tickers from local Parquet cache |
 | `GET` | `/api/fx-drag` | FX-decomposed return breakdown for all USD portfolio positions |
 | `GET` | `/api/news-feed` | Paginated news articles from local store |
 | `POST` | `/api/news-feed/run-now` | Trigger immediate news feed refresh |
@@ -1952,6 +1953,34 @@ Returns the latest market-wide Isolation Forest stress score and the last 30 dai
 ## 20. FX Drag Analyzer
 
 Decomposes each USD portfolio position's GBP return into equity (USD price move) and FX (GBP/USD rate move) components. Uses existing 2-year daily Parquet data — no additional data source required.
+
+### `GET /api/portfolio-period-returns`
+
+Returns historical price returns for a set of tickers over a chosen period, calculated from the local Parquet cache. Used by the portfolio page to power the 1W / 1M / YTD / 1Y column toggle.
+
+**Query parameters**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `period` | string | Yes | One of `1w` (5 trading days), `1m` (21 trading days), `ytd` (year-to-date), `1y` (252 trading days) |
+| `tickers` | string | No | Comma-separated list of ticker symbols (e.g. `AAPL,MSFT`). Tickers without a local Parquet file are silently omitted from the response. |
+
+**Response**
+
+```json
+{
+  "status": "success",
+  "period": "1w",
+  "data": {
+    "AAPL": { "change_pct": 2.34, "is_positive": true },
+    "MSFT": { "change_pct": -0.87, "is_positive": false }
+  }
+}
+```
+
+Tickers without sufficient history for the requested window are omitted from `data`.
+
+---
 
 ### `GET /api/fx-drag`
 
