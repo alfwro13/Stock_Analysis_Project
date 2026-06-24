@@ -535,6 +535,11 @@ class TestJobStatus:
         status, reason = _job_status(_wf_node(enabled=True, last_run="2020-01-01 00:00", schedule={"weekdays": [0, 1, 2, 3, 4], "minute_of_day": 60}))
         assert status == "red" and reason == "overdue"
 
+    def test_monthly_job_no_schedule_is_green_despite_age(self):
+        old_run = "2026-06-01 06:00:00"
+        status, _ = _job_status(_wf_node(enabled=True, last_run=old_run, schedule=None))
+        assert status == "green"
+
 
 class TestDurationListener:
     def test_executed_records_duration_and_success(self):

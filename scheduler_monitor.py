@@ -61,6 +61,9 @@ def _schedule_slot(trigger) -> tuple[set[int], int] | None:
         fields = {f.name: str(f) for f in trigger.fields}
     except AttributeError:
         return None
+    day_expr = fields.get("day", "*").strip()
+    if day_expr not in ("*", "?", ""):
+        return None
     hour = _first_int_from_expr(fields.get("hour", "0"))
     minute = _first_int_from_expr(fields.get("minute", "0"))
     return _weekdays_from_expr(fields.get("day_of_week", "*")), hour * 60 + minute
@@ -89,7 +92,9 @@ def _job_status(node: dict) -> tuple[str, str]:
     last_run = _parse_last_run(node.get("last_run"))
     if last_run is None:
         return "amber", "never_run"
-    weekdays = set(node["schedule"]["weekdays"]) if node.get("schedule") else None
+    if not node.get("schedule"):
+        return "green", "ok"
+    weekdays = set(node["schedule"]["weekdays"])
     period = _period_days(weekdays)
     age_days = (datetime.now(timezone.utc) - last_run).total_seconds() / 86400.0
     if age_days > period * 2 + 2:
