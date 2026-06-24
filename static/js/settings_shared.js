@@ -378,20 +378,36 @@ async function saveSettings(silent = false) {
     };
 
     try {
-        const response = await fetch('/api/settings', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-Confirm-Token': CONFIRM_TOKEN },
-            body: JSON.stringify(payload)
-        });
+        const [response, smtpResponse] = await Promise.all([
+            fetch('/api/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Confirm-Token': CONFIRM_TOKEN },
+                body: JSON.stringify(payload)
+            }),
+            fetch('/api/save-smtp-settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Confirm-Token': CONFIRM_TOKEN },
+                body: JSON.stringify({
+                    smtp_host: document.getElementById('SMTP_HOST').value,
+                    smtp_port: document.getElementById('SMTP_PORT').value,
+                    smtp_user: document.getElementById('SMTP_USER').value,
+                    smtp_pass: document.getElementById('SMTP_PASS').value,
+                    smtp_from: document.getElementById('SMTP_FROM').value,
+                })
+            })
+        ]);
 
         const result = await response.json();
 
         if (!silent) {
-            if (response.ok) {
+            if (response.ok && smtpResponse.ok) {
                 setStatus('status-msg', 'success', "Settings saved. Background schedulers restarted dynamically.");
-            } else {
+            } else if (!response.ok) {
                 const errMsg = result.message || (result.detail ? (Array.isArray(result.detail) ? result.detail.map(d => d.loc.join('.') + ': ' + d.msg).join('; ') : result.detail) : 'Unknown error');
                 setStatus('status-msg', 'error', errMsg);
+            } else {
+                const smtpResult = await smtpResponse.json();
+                setStatus('status-msg', 'error', 'Mail settings: ' + (smtpResult.detail || 'Failed to save.'));
             }
         }
     } catch (error) {
