@@ -96,6 +96,9 @@ class DataEngine:
                     if df is None or df.empty:
                         continue
                     df = df.dropna(subset=['Close'])
+                    for col in ('Open', 'High', 'Low'):
+                        mask = (df[col] == 0) & (df['Close'] > 0)
+                        df.loc[mask, col] = df.loc[mask, 'Close']
                     if not df.empty:
                         df.to_parquet(HISTORICAL_DIR / f"{name}.parquet", engine='pyarrow')
                 logger.info("All Market and Intermarket Baselines secured successfully.")
@@ -123,6 +126,9 @@ class DataEngine:
                 if df is None or df.empty:
                     continue
                 df = df.dropna(subset=['Close', 'Volume'])
+                for col in ('Open', 'High', 'Low'):
+                    mask = (df[col] == 0) & (df['Close'] > 0)
+                    df.loc[mask, col] = df.loc[mask, 'Close']
                 if not df.empty:
                     df.to_parquet(HISTORICAL_DIR / f"{ticker}.parquet", engine='pyarrow')
         except Exception as e:
@@ -179,6 +185,9 @@ class DataEngine:
             df_daily = _daily.get(ticker, pd.DataFrame())
             if not df_daily.empty:
                 self._strip_tz(df_daily)
+                for col in ('Open', 'High', 'Low'):
+                    mask = (df_daily[col] == 0) & (df_daily['Close'] > 0)
+                    df_daily.loc[mask, col] = df_daily.loc[mask, 'Close']
                 df_daily.to_parquet(HISTORICAL_DIR / f"{ticker}.parquet", engine='pyarrow')
                 persisted = True
 
