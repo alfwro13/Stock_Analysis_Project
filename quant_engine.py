@@ -142,13 +142,24 @@ def run_daily_quant_scan(ticker_list: List[str], scan_type: str = 'daily') -> No
                     and c_rsi is not None and c_rsi > 75
                 )
 
+                _v1m = close_s.pct_change(21).iloc[-1]
+                _v3m = close_s.pct_change(63).iloc[-1]
+                _v6m = close_s.pct_change(126).iloc[-1]
+                _v12 = close_s.pct_change(252).iloc[-1]
+                c_mom_1m = float(_v1m) if not pd.isna(_v1m) else None
+                c_mom_3m = float(_v3m) if not pd.isna(_v3m) else None
+                c_mom_6m = float(_v6m) if not pd.isna(_v6m) else None
+                _m12     = float(_v12) if not pd.isna(_v12) else None
+                c_mom_12m_skip1m = (_m12 - c_mom_1m) if (_m12 is not None and c_mom_1m is not None) else None
+
                 cursor.execute('''
                     INSERT INTO quant_signals
                     (ticker, date, close_price, volume, rsi_14, macd, macd_signal, macd_hist,
                      sma_50, sma_200, volume_surge, bullish_cross, atr_pct, week52_pct,
                      vp_poc, vp_val, vp_vah, vp_entry_zone, vp_exit_zone,
-                     kc_z_score, kc_entry_signal, kc_exit_signal)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     kc_z_score, kc_entry_signal, kc_exit_signal,
+                     mom_1m, mom_3m, mom_6m, mom_12m_skip1m)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(ticker, date) DO UPDATE SET
                         close_price=excluded.close_price,
                         volume=excluded.volume,
@@ -169,12 +180,17 @@ def run_daily_quant_scan(ticker_list: List[str], scan_type: str = 'daily') -> No
                         vp_exit_zone=excluded.vp_exit_zone,
                         kc_z_score=excluded.kc_z_score,
                         kc_entry_signal=excluded.kc_entry_signal,
-                        kc_exit_signal=excluded.kc_exit_signal
+                        kc_exit_signal=excluded.kc_exit_signal,
+                        mom_1m=excluded.mom_1m,
+                        mom_3m=excluded.mom_3m,
+                        mom_6m=excluded.mom_6m,
+                        mom_12m_skip1m=excluded.mom_12m_skip1m
                 ''', (
                     ticker, last_date, c_price, c_vol, c_rsi, c_macd, c_signal, c_hist,
                     c_sma50, c_sma200, vol_surge, bullish_cross, c_atr_pct, c_week52_pct,
                     c_vp_poc, c_vp_val, c_vp_vah, c_vp_entry_zone, c_vp_exit_zone,
                     c_kc_z_score, c_kc_entry_signal, c_kc_exit_signal,
+                    c_mom_1m, c_mom_3m, c_mom_6m, c_mom_12m_skip1m,
                 ))
 
                 cursor.execute("UPDATE quant_scan_states SET last_processed_ticker = ? WHERE scan_date = ? AND scan_type = ?", (ticker, today_str, scan_type))

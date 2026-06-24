@@ -196,3 +196,79 @@ class TestResumability:
         ).fetchone()
         conn.close()
         assert row is None
+
+
+class TestMomentumFieldsPersisted:
+
+    def test_mom_1m_3m_6m_written_for_200_row_ticker(self):
+        """mom_1m/3m/6m are written even with 200 rows (12m_skip1m stays None with < 252 rows)."""
+        scan_type = "mom_200_test"
+        fake_data = {"MU": _fake_ohlcv(n=210)}
+
+        from quant_engine import run_daily_quant_scan
+        with patch("quant_engine.yahoo_engine") as mock_ye, \
+             patch("quant_engine.time"):
+            mock_ye.get_price_history.return_value = fake_data
+            run_daily_quant_scan(["MU"], scan_type=scan_type)
+
+        conn = database.get_connection()
+        row = conn.execute(
+            "SELECT mom_1m, mom_3m, mom_6m, mom_12m_skip1m FROM quant_signals WHERE ticker = 'MU' ORDER BY date DESC LIMIT 1"
+        ).fetchone()
+        conn.close()
+        assert row is not None
+        assert row["mom_1m"] is not None
+        assert row["mom_3m"] is not None
+        assert row["mom_6m"] is not None
+        assert row["mom_12m_skip1m"] is None
+
+    def test_mom_12m_skip1m_written_for_260_row_ticker(self):
+        """All 4 momentum fields including 12M Skip-1M are written when >= 252 rows are available."""
+        scan_type = "mom_260_test"
+        fake_data = {"AAPL": _fake_ohlcv(n=260)}
+
+        from quant_engine import run_daily_quant_scan
+        with patch("quant_engine.yahoo_engine") as mock_ye, \
+             patch("quant_engine.time"):
+            mock_ye.get_price_history.return_value = fake_data
+            run_daily_quant_scan(["AAPL"], scan_type=scan_type)
+
+        conn = database.get_connection()
+        row = conn.execute(
+            "SELECT mom_1m, mom_3m, mom_6m, mom_12m_skip1m FROM quant_signals WHERE ticker = 'AAPL' ORDER BY date DESC LIMIT 1"
+        ).fetchone()
+        conn.close()
+        assert row is not None
+        assert row["mom_1m"] is not None
+        assert row["mom_3m"] is not None
+        assert row["mom_6m"] is not None
+        assert row["mom_12m_skip1m"] is not None
+        assert abs(row["mom_12m_skip1m"]) < 1.0
+
+    def test_quant_scan_preserves_ml_score_on_conflict(self):
+        """When a quant_signals row already has ml_confidence_score from the ML backfill,
+        the quant scan's ON CONFLICT update must leave that score intact."""
+        scan_type = "mom_conflict_test"
+        fake_data = {"NVDA": _fake_ohlcv(n=260)}
+
+        conn = database.get_connection()
+        conn.execute(
+            "INSERT INTO quant_signals (ticker, date, close_price, volume, ml_confidence_score) "
+            "VALUES ('NVDA', '2025-01-10', 500.0, 1000000, 0.91)"
+        )
+        conn.commit()
+        conn.close()
+
+        from quant_engine import run_daily_quant_scan
+        with patch("quant_engine.yahoo_engine") as mock_ye, \
+             patch("quant_engine.time"):
+            mock_ye.get_price_history.return_value = fake_data
+            run_daily_quant_scan(["NVDA"], scan_type=scan_type)
+
+        conn = database.get_connection()
+        preserved = conn.execute(
+            "SELECT ml_confidence_score FROM quant_signals WHERE ticker = 'NVDA' AND date = '2025-01-10'"
+        ).fetchone()
+        conn.close()
+        assert preserved is not None
+        assert preserved["ml_confidence_score"] == pytest.approx(0.91)
