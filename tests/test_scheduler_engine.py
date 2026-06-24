@@ -482,6 +482,20 @@ class TestWorkflowConflicts:
         }
         assert any(c["type"] == "disabled_upstream" for c in detect_workflow_conflicts(graph))
 
+    def test_disabled_upstream_suppressed_when_another_enabled_producer_exists(self):
+        graph = {
+            "nodes": [
+                _wf_node(id="P_disabled", produces=["a"], enabled=False, status="disabled", status_reason="disabled"),
+                _wf_node(id="P_enabled", produces=["a"]),
+                _wf_node(id="C", consumes=["a"], schedule={"weekdays": [0], "minute_of_day": 70}),
+            ],
+            "edges": [
+                {"from": "P_disabled", "to": "C", "via": "a"},
+                {"from": "P_enabled", "to": "C", "via": "a"},
+            ],
+        }
+        assert not any(c["type"] == "disabled_upstream" for c in detect_workflow_conflicts(graph))
+
     def test_last_run_error_flagged(self):
         graph = {"nodes": [_wf_node(id="E", status="red", status_reason="error")], "edges": []}
         assert any(c["type"] == "last_run_error" for c in detect_workflow_conflicts(graph))

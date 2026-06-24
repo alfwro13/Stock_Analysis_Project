@@ -195,6 +195,11 @@ def _derive_edges(nodes: list[dict]) -> list[dict]:
 
 def detect_workflow_conflicts(graph: dict) -> list[dict]:
     nodes = {n["id"]: n for n in graph["nodes"]}
+    enabled_producers: dict[str, list[str]] = defaultdict(list)
+    for n in graph["nodes"]:
+        if n["enabled"]:
+            for artifact in n["produces"]:
+                enabled_producers[artifact].append(n["id"])
     conflicts = []
     for edge in graph["edges"]:
         producer, consumer = nodes.get(edge["from"]), nodes.get(edge["to"])
@@ -203,6 +208,8 @@ def detect_workflow_conflicts(graph: dict) -> list[dict]:
         if not consumer["enabled"]:
             continue
         if not producer["enabled"]:
+            if enabled_producers.get(edge["via"]):
+                continue
             conflicts.append({
                 "type": "disabled_upstream", "severity": "warning",
                 "job_id": consumer["id"], "related": producer["id"],
