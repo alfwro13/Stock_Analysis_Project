@@ -207,7 +207,7 @@ class TestEmptyDailyPath:
 
     def test_new_ticker_seeds_stale_placeholder(self):
         p1, p2 = _pulse_patches(NORMAL_TICKER, pd.DataFrame(), pd.DataFrame())
-        with p1, p2:
+        with p1, p2, patch("market_pulse.yahoo_engine.get_single_ticker_history", return_value=None):
             _mp.fetch_and_save_pulse([NORMAL_TICKER])
 
         row = _read_cache(NORMAL_TICKER)
@@ -222,7 +222,7 @@ class TestEmptyDailyPath:
 
         before = datetime.now().timestamp() - 5
         p1, p2 = _pulse_patches(NORMAL_TICKER, pd.DataFrame(), pd.DataFrame())
-        with p1, p2:
+        with p1, p2, patch("market_pulse.yahoo_engine.get_single_ticker_history", return_value=None):
             _mp.fetch_and_save_pulse([NORMAL_TICKER])
 
         row = _read_cache(NORMAL_TICKER)
@@ -234,7 +234,7 @@ class TestEmptyDailyPath:
         should stay stale so the next poll retries it."""
         _seed_cache(NORMAL_TICKER, price=0.0, last_updated=0)
         p1, p2 = _pulse_patches(NORMAL_TICKER, pd.DataFrame(), pd.DataFrame())
-        with p1, p2:
+        with p1, p2, patch("market_pulse.yahoo_engine.get_single_ticker_history", return_value=None):
             _mp.fetch_and_save_pulse([NORMAL_TICKER])
 
         row = _read_cache(NORMAL_TICKER)
@@ -283,3 +283,74 @@ class TestNormalIntradayPath:
 
         row = _read_cache(NORMAL_TICKER)
         assert row["last_updated"] > before
+
+
+# ── single-ticker history fallback (mutual fund real-world path) ──────────────
+
+class TestFallbackSingleHistory:
+    """
+    Real-world path for mutual funds: yf.download (get_price_history) returns no
+    data for fund tickers, so t_daily is empty. The fallback to get_single_ticker_history
+    must kick in, compute the correct change, and stamp last_updated.
+    """
+
+    def teardown_method(self):
+        _clear_cache(MUTUAL_FUND)
+
+    def test_fallback_writes_correct_change_when_daily_download_fails(self):
+        """get_price_history empty + get_single_ticker_history returns data → change computed."""
+        fallback_df = _flat_daily_df([100.0, 103.0])
+        with (
+            patch("market_pulse.yahoo_engine.get_price_history", return_value={}),
+            patch("market_pulse.yahoo_engine.get_intraday", return_value={}),
+            patch("market_pulse.yahoo_engine.get_single_ticker_history", return_value=fallback_df),
+        ):
+            _mp.fetch_and_save_pulse([MUTUAL_FUND])
+
+        row = _read_cache(MUTUAL_FUND)
+        assert row is not None
+        assert row["price"] == pytest.approx(103.0)
+        assert row["change_pts"] == pytest.approx(3.0, abs=0.01)
+        assert row["change_pct"] == pytest.approx(3.0, abs=0.01)
+        assert row["is_positive"] == 1
+
+    def test_fallback_stamps_last_updated(self):
+        """Fallback must stamp last_updated so the ticker is not stuck permanently stale."""
+        fallback_df = _flat_daily_df([100.0, 102.0])
+        before = datetime.now().timestamp() - 5
+        with (
+            patch("market_pulse.yahoo_engine.get_price_history", return_value={}),
+            patch("market_pulse.yahoo_engine.get_intraday", return_value={}),
+            patch("market_pulse.yahoo_engine.get_single_ticker_history", return_value=fallback_df),
+        ):
+            _mp.fetch_and_save_pulse([MUTUAL_FUND])
+
+        row = _read_cache(MUTUAL_FUND)
+        assert row["last_updated"] > before
+
+    def test_fallback_negative_change(self):
+        fallback_df = _flat_daily_df([105.0, 102.0])
+        with (
+            patch("market_pulse.yahoo_engine.get_price_history", return_value={}),
+            patch("market_pulse.yahoo_engine.get_intraday", return_value={}),
+            patch("market_pulse.yahoo_engine.get_single_ticker_history", return_value=fallback_df),
+        ):
+            _mp.fetch_and_save_pulse([MUTUAL_FUND])
+
+        row = _read_cache(MUTUAL_FUND)
+        assert row["change_pts"] == pytest.approx(-3.0, abs=0.01)
+        assert row["is_positive"] == 0
+
+    def test_fallback_not_invoked_for_index_tickers(self):
+        """Index tickers must skip the single-ticker fallback entirely."""
+        index_ticker = "^FTSE"
+        _clear_cache(index_ticker)
+        with (
+            patch("market_pulse.yahoo_engine.get_price_history", return_value={}),
+            patch("market_pulse.yahoo_engine.get_intraday", return_value={}),
+            patch("market_pulse.yahoo_engine.get_single_ticker_history") as mock_single,
+        ):
+            _mp.fetch_and_save_pulse([index_ticker])
+
+        mock_single.assert_not_called()
+        _clear_cache(index_ticker)

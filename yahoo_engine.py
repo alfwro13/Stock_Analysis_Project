@@ -360,6 +360,26 @@ class YahooEngine:
             logger.error("get_fx_rate failed for %s", pair, exc_info=True)
         return None
 
+    def get_single_ticker_history(self, ticker: str, period: str = "5d") -> Optional[pd.DataFrame]:
+        """Single-ticker daily history via yf.Ticker.history(); used as fallback for tickers
+        (e.g. mutual funds) that yf.download() does not support."""
+        key = f"single_history:{ticker}:{period}"
+        cached = self._get(key)
+        if cached is not None:
+            return cached
+        try:
+            with _yf_singleton_lock:
+                with yahoo_connection_boundary(f"Single History: {ticker}") as session:
+                    df = yf.Ticker(ticker, session=session).history(period=period)
+            if df is not None and not df.empty:
+                if df.index.tz is not None:
+                    df.index = df.index.tz_convert(None)
+                self._set(key, df, _TTLS["history"])
+                return df
+        except Exception:
+            logger.error("get_single_ticker_history failed for %s", ticker, exc_info=True)
+        return None
+
     def search_by_isin(self, isin: str) -> Optional[str]:
         """Return the first Yahoo Finance symbol for an ISIN, or None on failure."""
         key = f"isin_search:{isin}"

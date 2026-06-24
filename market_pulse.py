@@ -213,6 +213,13 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
                 if not t_live.empty:
                     t_live = t_live.dropna(subset=['Close'])
 
+                if t_daily.empty and ticker not in INDEX_TICKERS:
+                    fb = yahoo_engine.get_single_ticker_history(ticker, period="5d")
+                    if fb is not None and not fb.empty:
+                        fb = fb.dropna(subset=['Close'])
+                        if not fb.empty:
+                            t_daily = fb
+
                 if t_daily.empty:
                     # No daily data at all — transient outage or genuinely invalid ticker.
                     price_in_cache = existing_cache.get(ticker)
