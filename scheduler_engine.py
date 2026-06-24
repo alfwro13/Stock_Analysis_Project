@@ -12,7 +12,6 @@ from config import load_config
 import time_engine
 from notification_engine import notify, set_job_source, clear_job_source, current_job_source, SCHEDULER_STATUS_SOURCE
 from database import get_connection, get_etf_predictor_configs
-from insider_engine import run_insider_alert
 from news_feed_engine import run_news_feed_job
 
 logger = logging.getLogger(__name__)
@@ -194,7 +193,7 @@ def reload_scheduler():
         try:
             hour, minute = map(int, time_str.split(':'))
             scheduler.add_job(
-                run_insider_alert,
+                run_insider_alert_job,
                 CronTrigger(day_of_week=freq, hour=hour, minute=minute, timezone=user_tz),
                 id='insider_alert_job'
             )
@@ -793,7 +792,7 @@ from scheduler_monitor import build_workflow_graph, detect_workflow_conflicts, _
 from scheduler_jobs import (
     resume_interrupted_scans,
     trigger_sentiment_report, run_intraday_orchestrator, run_maintenance_engine,
-    run_earnings_alert_job, run_update_pipeline, run_ghostfolio_sync, run_freetrade_sync,
+    run_earnings_alert_job, run_insider_alert_job, run_update_pipeline, run_ghostfolio_sync, run_freetrade_sync,
     run_sentiment_scan, run_overnight_quant_scan, run_weekend_earnings_scan,
     run_morning_briefing_dispatch, run_lunchtime_briefing_dispatch,
     run_weekend_universe_routine, run_index_scraper, run_fundamentals_profiler,

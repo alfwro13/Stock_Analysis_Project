@@ -7,6 +7,7 @@ from config import load_config
 from data_engine import DataEngine
 from database import get_connection, get_universe_tickers
 from earnings_engine import run_earnings_alert
+from insider_engine import run_insider_alert
 from earnings_vol_engine import run_earnings_vol_scan
 from freetrade_engine import sync_freetrade_universe
 from ghostfolio_sync import GhostfolioSyncEngine
@@ -139,6 +140,12 @@ def run_earnings_alert_job():
         run_earnings_alert()
     finally:
         record_job_run('earnings_alert_job')
+
+def run_insider_alert_job():
+    try:
+        run_insider_alert()
+    finally:
+        record_job_run('insider_alert_job')
 
 def run_update_pipeline():
     _mark_job_started(job_label("quant_analysis_job"))
