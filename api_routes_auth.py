@@ -14,6 +14,29 @@ logger = logging.getLogger(__name__)
 auth_router = APIRouter()
 
 
+def _smtp_send(smtp_host, smtp_port, smtp_user, smtp_pass, smtp_from, recipients, msg):
+    import smtplib
+    if smtp_port == 465:
+        with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=10) as s:
+            s.ehlo()
+            if smtp_user and smtp_pass:
+                s.login(smtp_user, smtp_pass)
+            s.sendmail(smtp_from, recipients, msg.as_string())
+    elif smtp_port == 25:
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as s:
+            s.ehlo()
+            if smtp_user and smtp_pass:
+                s.login(smtp_user, smtp_pass)
+            s.sendmail(smtp_from, recipients, msg.as_string())
+    else:
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as s:
+            s.ehlo()
+            s.starttls()
+            if smtp_user and smtp_pass:
+                s.login(smtp_user, smtp_pass)
+            s.sendmail(smtp_from, recipients, msg.as_string())
+
+
 class LoginRequest(BaseModel):
     username: str
     password: str
@@ -99,7 +122,6 @@ class PasswordResetBody(BaseModel):
 
 
 def _send_reset_notification(reset_url: str) -> bool:
-    import smtplib
     from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart
 
@@ -121,12 +143,7 @@ def _send_reset_notification(reset_url: str) -> bool:
         msg["To"] = account_email
         msg.attach(MIMEText(body_text, "plain"))
         try:
-            with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as s:
-                s.ehlo()
-                s.starttls()
-                if smtp_user and smtp_pass:
-                    s.login(smtp_user, smtp_pass)
-                s.sendmail(smtp_from, [account_email], msg.as_string())
+            _smtp_send(smtp_host, smtp_port, smtp_user, smtp_pass, smtp_from, [account_email], msg)
             logger.info("Password reset email sent to %s", account_email)
             return True
         except Exception as e:
@@ -438,7 +455,6 @@ async def save_smtp_settings(body: SaveSmtpSettingsRequest):
 
 @auth_router.post("/send-test-email", dependencies=[Depends(require_confirm_token)])
 async def send_test_email():
-    import smtplib
     from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart
 
@@ -460,12 +476,7 @@ async def send_test_email():
     msg["To"] = account_email
     msg.attach(MIMEText("This is a test email from your Quantamental dashboard. Mail server is configured correctly.", "plain"))
     try:
-        with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as s:
-            s.ehlo()
-            s.starttls()
-            if smtp_user and smtp_pass:
-                s.login(smtp_user, smtp_pass)
-            s.sendmail(smtp_from, [account_email], msg.as_string())
+        _smtp_send(smtp_host, smtp_port, smtp_user, smtp_pass, smtp_from, [account_email], msg)
         logger.info("Test email sent to %s", account_email)
         return {"status": "ok", "message": "Test email sent to %s." % account_email}
     except Exception as e:
