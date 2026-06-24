@@ -98,13 +98,6 @@ window.REFRESH_RATE_MS = {% if not embed %}{{ config.UI_PREFERENCES.REFRESH_RATE
         <option value="👑 Market Leader">👑 Market Leaders</option>
         <option value="🚨 Divergence Warning">🚨 Divergence Warnings</option>
     </select>
-    <div id="periodBtnGroup">
-        <button class="btn-filter active" data-period="daily">Daily</button>
-        <button class="btn-filter" data-period="1w">1W</button>
-        <button class="btn-filter" data-period="1m">1M</button>
-        <button class="btn-filter" data-period="ytd">YTD</button>
-        <button class="btn-filter" data-period="1y">1Y</button>
-    </div>
 </div>
 
 <div id="heatmap-panel" class="heatmap-panel"></div>
@@ -115,7 +108,7 @@ window.REFRESH_RATE_MS = {% if not embed %}{{ config.UI_PREFERENCES.REFRESH_RATE
             <th>Ticker</th>
             <th>Company Name</th>
             <th>Price</th>
-            <th id="change-col-header">Daily Change</th>
+            <th>Daily Change</th>
             <th><abbr title="Current market value across all accounts (in base currency)">Global Value</abbr></th>
             <th><abbr title="Unrealized P&amp;L across all accounts (in base currency)">Global P&amp;L</abbr></th>
             <th>50D</th>

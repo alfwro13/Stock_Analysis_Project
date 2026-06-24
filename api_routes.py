@@ -464,44 +464,6 @@ async def get_fx_drag(
     return JSONResponse(content={"status": "success", "period": period, "data": data})
 
 
-@api_router.get("/portfolio-period-returns")
-async def get_portfolio_period_returns(
-    request: Request,
-    period: str = Query(pattern=r"^(1w|1m|ytd|1y)$"),
-    tickers: str = Query(default=""),
-):
-    ticker_list = [t.strip().upper() for t in tickers.split(",") if t.strip()]
-    now_date = datetime.now(timezone.utc).date()
-    windows = {"1w": 6, "1m": 22, "1y": 253}
-    result = {}
-    for ticker in ticker_list:
-        path = HISTORICAL_DIR / f"{ticker}.parquet"
-        if not path.exists():
-            continue
-        try:
-            df = pd.read_parquet(path, columns=["Close"])
-            df = df.sort_index()
-            closes = df["Close"].dropna()
-            if period == "ytd":
-                ytd = closes[closes.index.year == now_date.year]
-                if len(ytd) < 2:
-                    continue
-                start, end = float(ytd.iloc[0]), float(ytd.iloc[-1])
-            else:
-                n = windows[period]
-                if len(closes) < n:
-                    continue
-                tail = closes.iloc[-n:]
-                start, end = float(tail.iloc[0]), float(tail.iloc[-1])
-            if start == 0:
-                continue
-            change_pct = (end - start) / start * 100.0
-            result[ticker] = {"change_pct": round(change_pct, 2), "is_positive": change_pct >= 0}
-        except Exception:
-            continue
-    return JSONResponse(content={"status": "success", "period": period, "data": result})
-
-
 @api_router.get("/news-feed")
 async def get_news_feed(
     request: Request,
