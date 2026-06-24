@@ -238,6 +238,17 @@ class TestClosedMarketStaleness:
         assert asset["is_stale"] is True
         assert asset["needs_refresh"] is True
 
+    def test_missing_ticker_always_needs_refresh_even_when_market_closed(self):
+        """A ticker with no cache row must always be fetched; daily NAV data is available
+        outside trading hours (e.g. mutual funds), so the missing check must be session-agnostic."""
+        _clear(ASSET_TICKER)
+        with patch("market_pulse.is_trading_session", return_value=False):
+            result = _mp.get_cached_pulse_from_db([ASSET_TICKER], refresh_rate=60)
+        asset = next((r for r in result["assets"] if r["ticker"] == ASSET_TICKER), None)
+        assert asset is not None
+        assert asset["needs_refresh"] is True
+        assert asset["is_stale"] is True
+
     def test_get_all_cached_pulse_not_stale_when_market_closed(self):
         _seed_pulse(ASSET_TICKER, last_updated=time.time() - 3600)
         config_patch = {"UI_PREFERENCES": {"REFRESH_RATE": 60}}

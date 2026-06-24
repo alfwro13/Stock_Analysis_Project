@@ -157,8 +157,8 @@ def get_cached_pulse_from_db(asset_tickers: List[str], refresh_rate: int) -> Dic
                 "change_pts": 0.0,
                 "change_pct": 0.0,
                 "is_positive": True,
-                "is_stale": trading_now,
-                "needs_refresh": trading_now,
+                "is_stale": True,
+                "needs_refresh": True,
                 "sentiment_score": sentiment_scores.get(t, None)
             }
             

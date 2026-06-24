@@ -1,23 +1,8 @@
-"""
-tests/test_market_pulse_ingest.py  ── MARKET PULSE INGEST LOGIC
-
-Tests for the fetch_and_save_pulse() ingest path in market_pulse.py.
-
-The existing API-level tests mock fetch_and_save_pulse entirely, so the internal
-logic has had zero coverage. This file fills that gap, with particular focus on
-the daily-only instrument path (e.g. mutual funds with a 0P prefix) that caused
-a permanent refetch storm: yfinance returns empty 2m data for these tickers, the
-old code treated that as a failure and set last_updated=0, keeping is_stale=True
-forever and triggering a yfinance call on every frontend poll.
-
-yf.download is patched throughout so these tests run offline.
-"""
-
 import sys
 import sqlite3
 from pathlib import Path
 from unittest.mock import patch
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pandas as pd
 import pytest
@@ -27,8 +12,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import database as _db
 import market_pulse as _mp
 
-
-# ── helpers ───────────────────────────────────────────────────────────────────
 
 MUTUAL_FUND = "0P00018XAR.L"
 NORMAL_TICKER = "_PULSE_TEST_STK"
@@ -70,13 +53,7 @@ def _clear_cache(*tickers):
 
 
 def _last_bday() -> pd.Timestamp:
-    """Returns today at midnight if it is a weekday, or rolls back to Friday if weekend.
-
-    pd.bdate_range(end=<weekend-date>, periods=N) silently returns N-1 dates in
-    current pandas — the non-business end date is excluded. Rolling end to the most
-    recent business day keeps the index length exactly equal to len(prices) regardless
-    of whether the test runs on a weekday or weekend.
-    """
+    """Most recent business day; bdate_range excludes non-business end dates, keeping index length deterministic."""
     return pd.offsets.BusinessDay().rollback(pd.Timestamp.now().normalize())
 
 
@@ -113,15 +90,8 @@ def _pulse_patches(ticker, daily_df, live_df):
     )
 
 
-# ── daily-only path (the regression) ─────────────────────────────────────────
-
 class TestDailyOnlyInstrument:
-    """
-    Mutual funds / daily-priced instruments: yf.download interval='2m' is always
-    empty, but interval='1d' returns valid daily NAV data. fetch_and_save_pulse must
-    write a correct cache entry using the daily data rather than falling through to
-    the stale-placeholder path.
-    """
+    """Mutual funds: empty 2m data but valid 1d NAV — fetch_and_save_pulse must write a correct cache entry."""
 
     def teardown_method(self):
         _clear_cache(MUTUAL_FUND)
@@ -172,11 +142,10 @@ class TestDailyOnlyInstrument:
         assert row["change_pts"] == pytest.approx(0.0, abs=0.001)
 
     def test_last_updated_is_recent_not_zero(self):
-        """The critical invariant: last_updated must NOT be 0 after a successful daily fetch.
-        A value of 0 keeps is_stale=True forever and causes an infinite refetch storm."""
+        """last_updated=0 after a successful fetch keeps is_stale=True forever and triggers a refetch storm."""
         daily = _flat_daily_df([100.0, 102.0])
 
-        before = datetime.now().timestamp() - 5
+        before = datetime.now(timezone.utc).timestamp() - 5
         p1, p2 = _pulse_patches(MUTUAL_FUND, daily, pd.DataFrame())
         with p1, p2:
             _mp.fetch_and_save_pulse([MUTUAL_FUND])
@@ -197,8 +166,6 @@ class TestDailyOnlyInstrument:
         mock_err.assert_not_called()
 
 
-# ── empty daily path ──────────────────────────────────────────────────────────
-
 class TestEmptyDailyPath:
     """When daily data is also unavailable (true failure / genuine delisting)."""
 
@@ -216,22 +183,20 @@ class TestEmptyDailyPath:
         assert row["last_updated"] == 0
 
     def test_existing_price_is_marked_fresh_on_transient_outage(self):
-        """A ticker with a known good price that temporarily returns no data
-        should be stamped with current time, not dropped into the storm."""
+        """Known-good price with temporary data outage must be stamped fresh, not stale."""
         _seed_cache(NORMAL_TICKER, price=150.0, last_updated=0)
 
-        before = datetime.now().timestamp() - 5
+        before = datetime.now(timezone.utc).timestamp() - 5
         p1, p2 = _pulse_patches(NORMAL_TICKER, pd.DataFrame(), pd.DataFrame())
         with p1, p2, patch("market_pulse.yahoo_engine.get_single_ticker_history", return_value=None):
             _mp.fetch_and_save_pulse([NORMAL_TICKER])
 
         row = _read_cache(NORMAL_TICKER)
         assert row["last_updated"] > before, "Established ticker was not marked fresh on transient outage"
-        assert row["price"] == pytest.approx(150.0)  # price retained
+        assert row["price"] == pytest.approx(150.0)
 
     def test_existing_zero_price_stays_stale_to_retry(self):
-        """A ticker that was seeded as a placeholder (price=0) and still has no data
-        should stay stale so the next poll retries it."""
+        """Zero-price placeholder with no incoming data must stay stale so the next poll retries."""
         _seed_cache(NORMAL_TICKER, price=0.0, last_updated=0)
         p1, p2 = _pulse_patches(NORMAL_TICKER, pd.DataFrame(), pd.DataFrame())
         with p1, p2, patch("market_pulse.yahoo_engine.get_single_ticker_history", return_value=None):
@@ -240,8 +205,6 @@ class TestEmptyDailyPath:
         row = _read_cache(NORMAL_TICKER)
         assert row["last_updated"] == 0
 
-
-# ── normal intraday path ──────────────────────────────────────────────────────
 
 class TestNormalIntradayPath:
     """Standard equities with both daily and live 2m data available."""
@@ -276,7 +239,7 @@ class TestNormalIntradayPath:
         daily = _flat_daily_df([100.0, 101.0])
         live = _flat_live_df(101.5)
 
-        before = datetime.now().timestamp() - 5
+        before = datetime.now(timezone.utc).timestamp() - 5
         p1, p2 = _pulse_patches(NORMAL_TICKER, daily, live)
         with p1, p2:
             _mp.fetch_and_save_pulse([NORMAL_TICKER])
@@ -285,14 +248,8 @@ class TestNormalIntradayPath:
         assert row["last_updated"] > before
 
 
-# ── single-ticker history fallback (mutual fund real-world path) ──────────────
-
 class TestFallbackSingleHistory:
-    """
-    Real-world path for mutual funds: yf.download (get_price_history) returns no
-    data for fund tickers, so t_daily is empty. The fallback to get_single_ticker_history
-    must kick in, compute the correct change, and stamp last_updated.
-    """
+    """Mutual fund real-world path: get_price_history empty, get_single_ticker_history fallback must compute correct change."""
 
     def teardown_method(self):
         _clear_cache(MUTUAL_FUND)
@@ -317,7 +274,7 @@ class TestFallbackSingleHistory:
     def test_fallback_stamps_last_updated(self):
         """Fallback must stamp last_updated so the ticker is not stuck permanently stale."""
         fallback_df = _flat_daily_df([100.0, 102.0])
-        before = datetime.now().timestamp() - 5
+        before = datetime.now(timezone.utc).timestamp() - 5
         with (
             patch("market_pulse.yahoo_engine.get_price_history", return_value={}),
             patch("market_pulse.yahoo_engine.get_intraday", return_value={}),

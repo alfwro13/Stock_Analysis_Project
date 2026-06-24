@@ -361,8 +361,7 @@ class YahooEngine:
         return None
 
     def get_single_ticker_history(self, ticker: str, period: str = "5d") -> Optional[pd.DataFrame]:
-        """Single-ticker daily history via yf.Ticker.history(); used as fallback for tickers
-        (e.g. mutual funds) that yf.download() does not support."""
+        """Single-ticker daily history via yf.Ticker.history(); fallback for tickers yf.download() does not support."""
         key = f"single_history:{ticker}:{period}"
         cached = self._get(key)
         if cached is not None:
