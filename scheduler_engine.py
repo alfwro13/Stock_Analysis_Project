@@ -359,19 +359,20 @@ def reload_scheduler():
         logger.error("Failed to schedule Lunchtime Briefing: %s", e)
 
     uni_cfg = scheduling.get("UNIVERSE_ENGINE", {})
-    uni_days_list = uni_cfg.get("DAYS", ["sat"])
-    uni_days = ",".join(uni_days_list) if uni_days_list else "sat"
-    uni_time = uni_cfg.get("TIME", "02:00")
-    try:
-        hour, minute = map(int, uni_time.split(':'))
-        scheduler.add_job(
-            run_weekend_universe_routine,
-            CronTrigger(day_of_week=uni_days, hour=hour, minute=minute, timezone=user_tz),
-            id='universe_routine_job'
-        )
-        logger.info("Weekend Universe Routine scheduled for %s at %s", uni_days, uni_time)
-    except Exception as e:
-        logger.error("Failed to schedule Weekend Universe Routine: %s", e)
+    if uni_cfg.get("ENABLED"):
+        uni_days_list = uni_cfg.get("DAYS", ["sat"])
+        uni_days = ",".join(uni_days_list) if uni_days_list else "sat"
+        uni_time = uni_cfg.get("TIME", "02:00")
+        try:
+            hour, minute = map(int, uni_time.split(':'))
+            scheduler.add_job(
+                run_weekend_universe_routine,
+                CronTrigger(day_of_week=uni_days, hour=hour, minute=minute, timezone=user_tz),
+                id='universe_routine_job'
+            )
+            logger.info("Weekend Universe Routine scheduled for %s at %s", uni_days, uni_time)
+        except Exception as e:
+            logger.error("Failed to schedule Weekend Universe Routine: %s", e)
 
     ml_backfill_cfg = scheduling.get("ML_BACKFILL", {})
     if ml_backfill_cfg.get("ENABLED", False):
