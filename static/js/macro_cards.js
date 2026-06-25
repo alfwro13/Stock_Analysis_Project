@@ -60,6 +60,11 @@ async function fetchMarketPulse() {
 
             updateAssetPrices(assets);
 
+            if (window._heatmapMode) {
+                var panel = document.getElementById('heatmap-panel');
+                if (panel) _buildHeatmap(panel);
+            }
+
             // --- DYNAMIC POLLING LOGIC ---
             if (anyStale && !isFastPolling) {
                 // Enter fast-polling mode while backend is fetching
@@ -203,6 +208,7 @@ function updateAssetPrices(assets) {
             priceEl.innerText = formattedPrice;
             const sign = asset.is_positive ? '+' : '';
             changeEl.innerText = `${sign}${formattedChange}%`;
+            if (rowEl) rowEl.setAttribute('data-change-pct', asset.change_pct);
 
             // RESTORED AND ENHANCED: Apply stale/fresh color coding to BOTH elements
             if (asset.is_stale) {
