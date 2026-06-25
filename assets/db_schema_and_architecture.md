@@ -242,6 +242,21 @@ Tables added after initial schema creation. All managed via `db_schema.py:init_d
 * **Writes:** Appended via a background daemon queue in `tools/network_engine._increment_api_stat()`. The queue drains to `_write_api_stat()` which uses SQLite `ON CONFLICT DO UPDATE` (upsert) so concurrent writes never corrupt the counters.
 * **Reads:** `database.get_yahoo_api_stats(days=8)` → `GET /api/system/yahoo-api-stats`.
 
+#### `accounts`
+* **Purpose:** User-defined trading accounts for the built-in (non-Ghostfolio) portfolio system. One row per account; powers the `/accounts` page and feeds the Portfolio page alongside Ghostfolio holdings.
+* **Key Columns:** `id` (PK autoincrement), `name`, `currency` (account reporting currency; equals the system `BASE_CURRENCY` for now), `initial_cash` (opening cash balance), `note`, `deleted_at` (soft-delete), `created_at`.
+* **CRUD:** `db_accounts.py` (re-exported from `database.py`). Soft-delete preserves transaction history.
+
+#### `account_transactions`
+* **Purpose:** Full transaction ledger for built-in accounts. Every activity is retained — including Buys/Sells for tickers no longer held — so closed positions and realized P&L can be derived.
+* **Key Columns:** `id` (PK autoincrement), `account_id` (FK to accounts), `txn_type` (`Buy` | `Sell` | `Fee` | `Dividend` | `Interest` | `Cash`), `ticker`, `company_name`, `currency` (trade currency — USD/EUR/GBP/GBp/…), `txn_date` (YYYY-MM-DD), `quantity`, `unit_price`, `fee`, `exchange_rate` (trade currency → base), `notes`, `update_cash` (0/1 — whether the row adjusts the cash balance), `price_in_pence` (0/1 — GBp pence), `ghostfolio_ref` (dedup key for imported activities), `created_at`.
+* **Notes:** Cost basis is computed in base currency via `exchange_rate`. Holdings, cash, and realized P&L are derived on read by `accounts_engine.py` — no aggregated snapshot is stored here.
+
+#### `account_value_history`
+* **Purpose:** Nightly snapshot of each built-in account's value, used to draw the account-value-over-time chart on the account detail page.
+* **Key Columns:** `id` (PK autoincrement), `account_id` (FK to accounts), `snapshot_date` (YYYY-MM-DD), `total_value`, `cash_value`, `equity_value` (all in base currency).
+* **Constraint:** `UNIQUE(account_id, snapshot_date)` — idempotent upsert via `ON CONFLICT DO UPDATE`.
+
 ---
 
 ### Stateless Tools (no DB table)

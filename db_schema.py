@@ -700,6 +700,51 @@ def init_db() -> None:
             )
         ''')
 
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS accounts (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                name          TEXT NOT NULL,
+                currency      TEXT NOT NULL,
+                initial_cash  REAL NOT NULL DEFAULT 0,
+                note          TEXT,
+                deleted_at    TEXT DEFAULT NULL,
+                created_at    TEXT DEFAULT (datetime('now'))
+            )
+        ''')
+
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS account_transactions (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id      INTEGER NOT NULL,
+                txn_type        TEXT NOT NULL,
+                ticker          TEXT,
+                company_name    TEXT,
+                currency        TEXT,
+                txn_date        TEXT NOT NULL,
+                quantity        REAL,
+                unit_price      REAL,
+                fee             REAL NOT NULL DEFAULT 0,
+                exchange_rate   REAL,
+                notes           TEXT,
+                update_cash     INTEGER NOT NULL DEFAULT 1,
+                price_in_pence  INTEGER NOT NULL DEFAULT 0,
+                ghostfolio_ref  TEXT,
+                created_at      TEXT DEFAULT (datetime('now'))
+            )
+        ''')
+
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS account_value_history (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id    INTEGER NOT NULL,
+                snapshot_date TEXT NOT NULL,
+                total_value   REAL,
+                cash_value    REAL,
+                equity_value  REAL,
+                UNIQUE(account_id, snapshot_date)
+            )
+        ''')
+
         conn.commit()
 
         migrate_db(conn, cursor)

@@ -1,0 +1,196 @@
+import pandas as pd
+import pytest
+
+import accounts_engine
+from database import (
+    get_connection,
+    create_account,
+    add_transaction,
+)
+
+
+def _seed_stock_signal(ticker: str, price: float, currency: str) -> None:
+    conn = None
+    try:
+        conn = get_connection()
+        conn.execute(
+            "INSERT OR REPLACE INTO stock_signals (ticker, current_price, currency) VALUES (?, ?, ?)",
+            (ticker, price, currency),
+        )
+        conn.commit()
+    finally:
+        if conn:
+            conn.close()
+
+
+@pytest.mark.db
+def test_average_cost_basis_in_base_currency():
+    aid = create_account("AvgCost", "GBP")
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZAPL", company_name="Apple",
+                    currency="USD", quantity=10, unit_price=200, exchange_rate=0.80)
+
+    holdings = accounts_engine.derive_account_holdings(aid)
+    assert "ZZAPL" in holdings
+    h = holdings["ZZAPL"]
+    assert h["global_shares"] == 10
+    assert h["global_buy_price"] == 160.0          # 200 USD * 0.80 → base
+    assert h["accounts"][0]["id"] == f"acct:{aid}"
+    assert h["accounts"][0]["total_investment"] == 1600.0
+
+
+@pytest.mark.db
+def test_eur_transaction_converts_to_base():
+    aid = create_account("EurAcc", "GBP")
+    add_transaction(aid, "Buy", "2026-02-01", ticker="ZZSAP", company_name="SAP",
+                    currency="EUR", quantity=5, unit_price=100, exchange_rate=0.85)
+
+    holdings = accounts_engine.derive_account_holdings(aid)
+    assert holdings["ZZSAP"]["global_buy_price"] == 85.0      # 100 EUR * 0.85
+    assert holdings["ZZSAP"]["accounts"][0]["total_investment"] == 425.0
+
+
+@pytest.mark.db
+def test_gbp_pence_holding():
+    aid = create_account("PenceAcc", "GBP")
+    add_transaction(aid, "Buy", "2026-01-10", ticker="ZZGBX", company_name="Tesco",
+                    currency="GBp", quantity=100, unit_price=250, exchange_rate=0.01,
+                    price_in_pence=True)
+
+    h = accounts_engine.derive_account_holdings(aid)["ZZGBX"]
+    assert h["price_in_pence"] is True
+    assert h["global_buy_price"] == 2.5            # 250 pence * 0.01 → £2.50
+    assert h["accounts"][0]["total_investment"] == 250.0
+
+
+@pytest.mark.db
+def test_partial_sell_realizes_pnl_and_reduces_basis():
+    aid = create_account("PartialSell", "GBP")
+    add_transaction(aid, "Buy", "2026-01-01", ticker="ZZPRT", currency="GBP",
+                    quantity=10, unit_price=100, exchange_rate=1.0)
+    add_transaction(aid, "Sell", "2026-02-01", ticker="ZZPRT", currency="GBP",
+                    quantity=4, unit_price=150, exchange_rate=1.0)
+
+    holdings = accounts_engine.derive_account_holdings(aid)
+    assert holdings["ZZPRT"]["global_shares"] == 6
+    assert holdings["ZZPRT"]["global_buy_price"] == 100.0         # avg cost unchanged
+    assert holdings["ZZPRT"]["accounts"][0]["total_investment"] == 600.0
+
+    closed = accounts_engine.closed_positions(aid)
+    row = next(c for c in closed if c["ticker"] == "ZZPRT")
+    assert row["sold_qty"] == 4
+    assert row["remaining_qty"] == 6
+    assert row["realized_pnl"] == 200.0            # 4 * (150 - 100)
+
+
+@pytest.mark.db
+def test_fully_sold_ticker_drops_from_holdings_appears_closed():
+    aid = create_account("FullSell", "GBP")
+    add_transaction(aid, "Buy", "2026-01-01", ticker="ZZFULL", currency="GBP",
+                    quantity=10, unit_price=100, exchange_rate=1.0)
+    add_transaction(aid, "Sell", "2026-03-01", ticker="ZZFULL", currency="GBP",
+                    quantity=10, unit_price=130, exchange_rate=1.0)
+
+    holdings = accounts_engine.derive_account_holdings(aid)
+    assert "ZZFULL" not in holdings
+
+    closed = accounts_engine.closed_positions(aid)
+    row = next(c for c in closed if c["ticker"] == "ZZFULL")
+    assert row["remaining_qty"] == 0
+    assert row["sold_qty"] == 10
+    assert row["realized_pnl"] == 300.0            # 10 * (130 - 100)
+
+    assert accounts_engine.account_summary(aid)["realized_pnl"] == 300.0
+
+
+@pytest.mark.db
+def test_cash_balance_across_all_transaction_types():
+    aid = create_account("CashAcc", "GBP", initial_cash=1000.0)
+    add_transaction(aid, "Cash", "2026-01-01", unit_price=500)                                   # +500
+    add_transaction(aid, "Buy", "2026-01-02", ticker="ZZCSH", currency="GBP",
+                    quantity=10, unit_price=50, fee=2, exchange_rate=1.0)                          # -502
+    add_transaction(aid, "Sell", "2026-01-03", ticker="ZZCSH", currency="GBP",
+                    quantity=5, unit_price=60, fee=1, exchange_rate=1.0)                           # +299
+    add_transaction(aid, "Dividend", "2026-01-04", ticker="ZZCSH", unit_price=20)                 # +20
+    add_transaction(aid, "Interest", "2026-01-05", unit_price=5)                                  # +5
+    add_transaction(aid, "Fee", "2026-01-06", unit_price=3)                                       # -3
+
+    assert accounts_engine.cash_balance(aid) == 1319.0
+
+
+@pytest.mark.db
+def test_update_cash_flag_excludes_transaction_from_cash_but_not_holdings():
+    aid = create_account("NoCashImpact", "GBP", initial_cash=1000.0)
+    add_transaction(aid, "Buy", "2026-01-02", ticker="ZZNCB", currency="GBP",
+                    quantity=4, unit_price=25, exchange_rate=1.0, update_cash=False)
+
+    assert accounts_engine.cash_balance(aid) == 1000.0          # cash untouched
+    assert accounts_engine.derive_account_holdings(aid)["ZZNCB"]["global_shares"] == 4
+
+
+@pytest.mark.db
+def test_account_summary_equity_dividend_interest():
+    _seed_stock_signal("ZZEQT", 180.0, "GBP")
+    aid = create_account("SummaryAcc", "GBP")
+    add_transaction(aid, "Buy", "2026-01-02", ticker="ZZEQT", currency="GBP",
+                    quantity=10, unit_price=160, exchange_rate=1.0)
+    add_transaction(aid, "Dividend", "2026-01-03", ticker="ZZEQT", unit_price=25)
+    add_transaction(aid, "Interest", "2026-01-04", unit_price=10)
+
+    summary = accounts_engine.account_summary(aid)
+    assert summary["equity_value"] == 1800.0       # 10 * 180 GBP
+    assert summary["dividend"] == 25.0
+    assert summary["interest"] == 10.0
+    assert summary["activity_count"] == 3
+
+
+@pytest.mark.db
+def test_get_combined_holdings_sums_ghostfolio_and_builtin(monkeypatch):
+    ghost = {
+        "merge_co": {
+            "ticker": "ZZMRG", "price_in_pence": False,
+            "global_shares": 5.0, "global_buy_price": 160.0,
+            "accounts": [{"id": "gf-1", "name": "FreeTrade", "shares": 5.0,
+                          "buy_price": 160.0, "total_investment": 800.0}],
+        },
+        "ghost_only": {
+            "ticker": "ZZGHO", "price_in_pence": False,
+            "global_shares": 2.0, "global_buy_price": 50.0,
+            "accounts": [{"id": "gf-1", "name": "FreeTrade", "shares": 2.0,
+                          "buy_price": 50.0, "total_investment": 100.0}],
+        },
+    }
+    monkeypatch.setattr(accounts_engine, "_read_portfolio_json", lambda: ghost)
+
+    aid = create_account("MergeAcc", "GBP")
+    add_transaction(aid, "Buy", "2026-01-02", ticker="ZZMRG", currency="GBP",
+                    quantity=10, unit_price=160, exchange_rate=1.0)
+    add_transaction(aid, "Buy", "2026-01-02", ticker="ZZDBO", currency="GBP",
+                    quantity=3, unit_price=20, exchange_rate=1.0)
+
+    combined = accounts_engine.get_combined_holdings()
+
+    assert combined["ZZMRG"]["global_shares"] == 15            # 5 ghost + 10 built-in
+    assert combined["ZZMRG"]["global_buy_price"] == 160.0      # (800 + 1600) / 15
+    assert len(combined["ZZMRG"]["accounts"]) == 2
+    assert {a["id"] for a in combined["ZZMRG"]["accounts"]} == {"gf-1", f"acct:{aid}"}
+    assert combined["ZZGHO"]["global_shares"] == 2.0           # ghost-only survives
+    assert combined["ZZDBO"]["global_shares"] == 3.0           # built-in-only survives
+
+
+@pytest.mark.db
+def test_fx_rate_on_date_base_and_pence_shortcuts():
+    assert accounts_engine.BASE_CURRENCY == "GBP"
+    assert accounts_engine.fx_rate_on_date("GBP", "2026-01-01") == 1.0
+    assert accounts_engine.fx_rate_on_date("", "2026-01-01") == 1.0
+    assert accounts_engine.fx_rate_on_date("GBp", "2026-01-01") == 0.01
+
+
+@pytest.mark.db
+def test_fx_rate_on_date_historical_lookup(monkeypatch):
+    idx = pd.to_datetime(["2026-01-02", "2026-01-05", "2026-01-09"])
+    df = pd.DataFrame({"Close": [1.10, 1.12, 1.15]}, index=idx)
+    monkeypatch.setattr(
+        accounts_engine.yahoo_engine, "get_price_history",
+        lambda tickers, period="5y", interval="1d": {"EURGBP=X": df},
+    )
+    assert accounts_engine.fx_rate_on_date("EUR", "2026-01-06") == 1.12   # last close on/before date
