@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+
+{% block title %}Quantamental - Accounts{% endblock %}
+
+{% block content %}
+<h1 class="mb-1">🏦 Accounts</h1>
+<p class="text-muted mb-3">
+    Manage your own brokerage accounts and transaction ledger. Holdings derived from these
+    transactions are automatically merged into the <a href="/portfolio" class="text-accent-cyan">Portfolio</a>
+    page alongside any Ghostfolio-synced accounts.
+</p>
+
+<div class="d-flex gap-2 mb-3">
+    <button type="button" class="btn btn-primary btn-sm" onclick="openAccountModal()">+ New Account</button>
+    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="openTxnModal()">+ Add Transaction</button>
+</div>
+
+<div id="accounts-list" class="row g-3"></div>
+
+<div class="modal fade" id="accountModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="accountModalTitle">New Account</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="acct-id">
+        <div class="form-group">
+            <label for="acct-name">Name</label>
+            <input type="text" id="acct-name" placeholder="e.g. My ISA">
+        </div>
+        <div class="form-group">
+            <label for="acct-currency">Currency</label>
+            <input type="text" id="acct-currency" placeholder="GBP" value="{{ base_currency }}">
+        </div>
+        <div class="form-group">
+            <label for="acct-cash">Initial Cash</label>
+            <input type="number" id="acct-cash" step="0.01" value="0">
+        </div>
+        <div class="form-group">
+            <label for="acct-note">Note</label>
+            <input type="text" id="acct-note" placeholder="Optional">
+        </div>
+        <div id="account-status" class="status-msg-sm"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-save" onclick="saveAccount()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="txnModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="txnModalTitle">Add Transaction</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="txn-id">
+        <input type="hidden" id="txn-account-id">
+        <input type="hidden" id="txn-currency">
+        <input type="hidden" id="txn-company-name">
+        <div class="form-group">
+            <label for="txn-account">Account</label>
+            <select id="txn-account"></select>
+        </div>
+        <div class="form-group">
+            <label for="txn-type">Type</label>
+            <select id="txn-type">
+                <option value="Buy">Buy</option>
+                <option value="Sell">Sell</option>
+                <option value="Dividend">Dividend</option>
+                <option value="Interest">Interest</option>
+                <option value="Fee">Fee</option>
+                <option value="Cash">Cash</option>
+            </select>
+        </div>
+        <div class="form-group" id="txn-ticker-group">
+            <label for="txn-ticker">Ticker</label>
+            <input type="text" id="txn-ticker" placeholder="AAPL" autocomplete="off">
+            <div id="txn-ticker-result" class="status-msg-sm"></div>
+        </div>
+        <div class="form-group">
+            <label for="txn-date">Date</label>
+            <input type="date" id="txn-date">
+        </div>
+        <div class="form-group">
+            <label for="txn-quantity">Quantity</label>
+            <input type="number" id="txn-quantity" step="0.000001">
+        </div>
+        <div class="form-group">
+            <label for="txn-price"><abbr title="Per-share price in the transaction's native trade currency.">Unit Price</abbr></label>
+            <input type="number" id="txn-price" step="0.0001">
+        </div>
+        <div class="form-group">
+            <label for="txn-fee">Fee</label>
+            <input type="number" id="txn-fee" step="0.01" value="0">
+        </div>
+        <div class="form-group">
+            <label for="txn-fx"><abbr title="Multiplier that converts the trade currency to your base currency. Leave blank to auto-fill from the historical FX rate on the transaction date.">Exchange Rate</abbr></label>
+            <input type="number" id="txn-fx" step="0.000001" placeholder="auto">
+        </div>
+        <div class="checkbox-group">
+            <input type="checkbox" id="txn-update-cash" checked>
+            <label for="txn-update-cash">Update cash balance</label>
+        </div>
+        <div class="form-group">
+            <label for="txn-notes">Notes</label>
+            <input type="text" id="txn-notes" placeholder="Optional">
+        </div>
+        <div id="txn-status" class="status-msg-sm"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-save" onclick="submitTransaction()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    window.BASE_CURRENCY = "{{ base_currency }}";
+</script>
+<script src="/static/js/accounts.js?v={{ css_version }}"></script>
+{% endblock %}

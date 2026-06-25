@@ -914,8 +914,10 @@ from api_routes_auth import auth_router
 from api_routes_triggers import triggers_router
 from api_routes_system import system_router
 from api_routes_analysis import analysis_router
+from api_routes_accounts import accounts_router
 
 api_router.include_router(auth_router)
 api_router.include_router(triggers_router)
 api_router.include_router(system_router)
 api_router.include_router(analysis_router)
+api_router.include_router(accounts_router)

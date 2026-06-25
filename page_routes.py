@@ -375,6 +375,17 @@ async def portfolio_page(request: Request, account_id: str = "all", embed: bool 
     )
 
 
+@page_router.get("/accounts", response_class=HTMLResponse)
+async def accounts_page(request: Request):
+    return templates.TemplateResponse(
+        request=request, name="accounts.html",
+        context={
+            "base_currency": BASE_CURRENCY,
+            "unread_count": get_unread_count(),
+        }
+    )
+
+
 @page_router.get("/watchlist", response_class=HTMLResponse)
 async def watchlist_page(request: Request, embed: bool = False):
     conn = get_connection()

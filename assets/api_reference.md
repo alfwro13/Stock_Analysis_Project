@@ -26,6 +26,7 @@
 16. [AI Sector Contagion Monitor](#16-ai-sector-contagion-monitor)
 17. [Market Trap & Recovery Monitor](#17-market-trap--recovery-monitor)
 18. [Market Regime (HMM + Market Stress IF)](#18-market-regime-hmm--market-stress-if)
+19. [Accounts](#19-accounts)
 
 ---
 
@@ -2522,6 +2523,120 @@ Runs a forward-looking Monte Carlo Wealth Simulation and returns percentile fan 
 ```
 
 Each percentile array has length `horizon_years + 1` (index 0 = current year, index N = end of horizon). `percentiles_real` contains the same structure with each value divided by `(1 + inflation_pct/100)^t`. `probability_of_success` is `null` when `target_wealth` is 0.
+
+---
+
+## 19. Accounts
+
+Native, database-backed brokerage accounts + transaction ledger (`/accounts`). Coexists with Ghostfolio — built-in account holdings are merged into the Portfolio page alongside any Ghostfolio-synced accounts (see `accounts_engine.get_combined_holdings`). Backed by the `accounts`, `account_transactions`, and `account_value_history` SQLite tables.
+
+### `GET /api/accounts`
+
+Returns all non-deleted accounts.
+
+**Response:**
+```json
+{
+  "status": "success",
+  "accounts": [
+    {"id": 1, "name": "My ISA", "currency": "GBP", "initial_cash": 1000.0, "note": null, "deleted_at": null, "created_at": "2026-06-25 10:00:00"}
+  ]
+}
+```
+
+---
+
+### `POST /api/accounts`
+
+Creates a new account. Rate limit: 30/minute.
+
+**Request body:**
+```json
+{ "name": "My ISA", "currency": "GBP", "initial_cash": 1000.0, "note": "optional" }
+```
+
+Returns `{"status": "success", "message": "...", "id": <new_account_id>}`.
+
+---
+
+### `PUT /api/accounts/{id}`
+
+Updates an existing account. Same body as POST. Returns 404 if not found or soft-deleted. Rate limit: 30/minute.
+
+---
+
+### `DELETE /api/accounts/{id}`
+
+Soft-deletes the account (sets `deleted_at`). Transaction history is preserved. Returns 404 if not found. Rate limit: 30/minute.
+
+---
+
+### `GET /api/accounts/{id}/transactions`
+
+Returns all transactions for an account, ordered by `txn_date`. Returns 404 if the account does not exist.
+
+**Response:**
+```json
+{
+  "status": "success",
+  "transactions": [
+    {
+      "id": 1, "account_id": 1, "txn_type": "Buy", "ticker": "AAPL", "company_name": "Apple Inc.",
+      "currency": "USD", "txn_date": "2026-01-15", "quantity": 10.0, "unit_price": 150.0,
+      "fee": 1.5, "exchange_rate": 0.8, "notes": null, "update_cash": 1, "price_in_pence": 0,
+      "ghostfolio_ref": null, "created_at": "2026-06-25 10:00:00"
+    }
+  ]
+}
+```
+
+---
+
+### `POST /api/accounts/{id}/transactions`
+
+Adds a transaction to the ledger. `txn_type` must be one of `Buy`, `Sell`, `Fee`, `Dividend`, `Interest`, `Cash`. If `currency` is omitted, the account's own currency is used. If `exchange_rate` is omitted, it is auto-filled via `accounts_engine.fx_rate_on_date(currency, txn_date)` (historical FX lookup, falling back to the live rate, then `1.0`). If `ticker` is provided and not yet present in `asset_profiles`, a background task calls `profile_engine.update_single_profile(ticker)` so it enters the scan pipeline. Rate limit: 30/minute.
+
+**Request body:**
+```json
+{
+  "txn_type": "Buy", "txn_date": "2026-01-15", "ticker": "AAPL", "company_name": "Apple Inc.",
+  "currency": "USD", "quantity": 10, "unit_price": 150.0, "fee": 1.5, "exchange_rate": 0.8,
+  "notes": "optional", "update_cash": true, "price_in_pence": false
+}
+```
+
+Returns `{"status": "success", "message": "...", "id": <new_txn_id>}`. Returns 404 if the account does not exist, 422 if `txn_type` is invalid.
+
+---
+
+### `PUT /api/accounts/{id}/transactions/{txn_id}`
+
+Updates a transaction. Same body and FX auto-fill behaviour as POST. Returns 404 if the account or transaction does not exist, or if the transaction belongs to a different account. Rate limit: 30/minute.
+
+---
+
+### `DELETE /api/accounts/{id}/transactions/{txn_id}`
+
+Deletes a transaction. Returns 404 if the transaction does not exist or belongs to a different account. Rate limit: 30/minute.
+
+---
+
+### `GET /api/ticker-lookup?q=`
+
+Looks up a ticker on Yahoo Finance for the transaction-entry "ticker/name lookup" UI. Rate limit: 20/minute.
+
+**Response (found):**
+```json
+{
+  "status": "success", "found": true, "ticker": "AAPL",
+  "company_name": "Apple Inc.", "currency": "USD", "quote_type": "EQUITY"
+}
+```
+
+**Response (not found):**
+```json
+{ "status": "success", "found": false, "ticker": "ZZZNOTREAL" }
+```
 
 ---
 

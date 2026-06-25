@@ -27,6 +27,7 @@ Stock_Analysis_Project/
 ├── api_routes_triggers.py    # Scheduler trigger endpoints (ML, quant scan, universe, earnings, briefings, maintenance)
 ├── api_routes_system.py      # Settings Pydantic models + settings save, system ops, notifications, workflow monitor
 ├── api_routes_analysis.py    # Analysis signal endpoints (contagion, trap, bubble, forensic, regime, stress, ETF predictor, AI prompts)
+├── api_routes_accounts.py    # Built-in Accounts CRUD + transaction ledger endpoints + ticker-lookup
 ├── api_deps.py               # Shared FastAPI dependencies for all api_routes* files: limiter (slowapi), require_confirm_token, _error_500
 ├── page_routes.py            # HTML page route handlers (thin shell — includes page_router_macro)
 ├── page_routes_macro.py      # /market-sentiment and /index/{ticker} routes + supporting data (INDEX_PARQUET_MAP, EVENT_GLOSSARY, enrich_macro_events, _parse_cb_nlp_message)
@@ -35,6 +36,8 @@ Stock_Analysis_Project/
 ├── db_schema.py              # init_db() (all CREATE TABLE statements) + migrate_db() (all ALTER TABLE migrations) + _seed_exchange_hours_json()
 ├── db_etf.py                 # ETF predictor CRUD: get/create/update/soft-delete configs, log_etf_prediction, fill_etf_actual, get_etf_accuracy
 ├── db_helpers.py             # Quant/trap/score helpers: upsert_quant_signal, log_score_event, log_trap_phase, get_unresolved_trap_phases, batch_update_trap_phase_actuals, get_trap_phase_accuracy, get_universe_tickers
+├── db_accounts.py            # Built-in Accounts CRUD: accounts + account_transactions + account_value_history
+├── accounts_engine.py        # Built-in Accounts ledger math: average-cost holdings/closed-positions, cash balance, FX backfill, Ghostfolio merge
 ├── config.py / config.json   # Runtime configuration
 ├── constants.py              # Global constants
 ├── scheduler_engine.py       # APScheduler core: start/reload/shutdown, job wiring + infrastructure
@@ -173,6 +176,9 @@ All tables join on `ticker` as the primary key unless noted.
 | `alert_state` | Dedup ledger for intraday alert engines (fingerprint + cooldown) |
 | `system_notifications` | In-app notification feed visible in the Settings notifications panel (written via the unified notification router) |
 | `scheduler_run_log` | Last-run timestamp per APScheduler job ID, plus last-start, last/avg run duration, and last status (success/error) — powers the Workflow Monitor |
+| `accounts` | Built-in brokerage accounts (name, currency, initial cash, soft-delete) — `/accounts` |
+| `account_transactions` | Full transaction ledger per account (Buy/Sell/Fee/Dividend/Interest/Cash), with per-row trade currency + `exchange_rate` to `BASE_CURRENCY` |
+| `account_value_history` | Nightly per-account value snapshot (total/cash/equity) — powers the account-value chart |
 
 Schema changes must go through `db_schema.py:init_db()` (new tables) and `db_schema.py:migrate_db()` (ALTER TABLE on existing tables). All callers continue to `from database import init_db, migrate_db` — `database.py` re-exports both.
 
@@ -413,3 +419,4 @@ A dedicated page housing standalone analytical tools. Each tool is self-containe
 - **Quant briefing** (`reports_engine.py`): Generates a markdown report dispatched each morning via Nextcloud Talk.
 - **Workflow Monitor** (`scheduler_engine.py`): Settings-page dependency flow-chart of every scheduled job, added June 2026. Built from the `JOB_GRAPH` manifest (each job declares `produces`/`consumes`; edges derive from artifact intersection) merged with live scheduler state and `scheduler_run_log` durations. Detects scheduling conflicts (overlap with a still-running upstream, backwards ordering, disabled upstream, stale/never-run, last-run error). Served at `GET /api/workflow-monitor/status`; rendered with vendored Mermaid.js (fetched on first boot, gitignored).
 - **Embed mode:** Append `?embed=true` to `/portfolio` or `/watchlist` to strip the navbar for iframe integration (e.g. Home Assistant).
+- **Built-in Accounts** (`accounts_engine.py` + `db_accounts.py` + `api_routes_accounts.py`): native, database-backed brokerage accounts + transaction ledger, added June 2026, served at `/accounts`. Coexists with Ghostfolio — `accounts_engine.get_combined_holdings()` sums the same ticker across both sources and lists both account entries; built-in account filter ids are namespaced `"acct:{id}"` so they never collide with Ghostfolio UUIDs. Holdings/closed-positions/realized P&L are derived via a single chronological average-cost pass per ticker (`accounts_engine._ledger_for_account`). Cost basis is stored in `BASE_CURRENCY`; FX is resolved per-transaction via an explicit `exchange_rate`, auto-filled from `accounts_engine.fx_rate_on_date()` (historical lookup → live rate → `1.0`) when not supplied. GBp (LSE pence) is preserved verbatim as the transaction currency — never uppercased — so the existing pence-conversion logic keeps working. A nightly `account_value_history` snapshot (from Stage 3 onward) powers the account-value chart.

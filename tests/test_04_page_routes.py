@@ -159,6 +159,7 @@ def test_no_page_route_returns_500(client):
     """
     pages = [
         ("/portfolio",          "Portfolio"),
+        ("/accounts",           "Accounts"),
         ("/watchlist",          "Watchlist"),
         ("/settings",           "Settings"),
         ("/notifications",      "Notifications"),
