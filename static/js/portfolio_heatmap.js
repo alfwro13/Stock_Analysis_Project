@@ -1,4 +1,5 @@
 window._heatmapMode = false;
+var _HEATMAP_KEY = 'portfolio_heatmap_active';
 
 function toggleHeatmap() {
     if (!window._heatmapMode) { _enterHeatmapMode(); } else { _exitHeatmapMode(); }
@@ -7,6 +8,7 @@ function toggleHeatmap() {
 function _enterHeatmapMode() {
     if (window._xrayMode) return;
     window._heatmapMode = true;
+    try { localStorage.setItem(_HEATMAP_KEY, '1'); } catch(e) {}
     var tbl = _getTableContainer();
     if (tbl) tbl.style.display = 'none';
     var panel = document.getElementById('heatmap-panel');
@@ -20,6 +22,7 @@ function _enterHeatmapMode() {
 
 function _exitHeatmapMode() {
     window._heatmapMode = false;
+    try { localStorage.removeItem(_HEATMAP_KEY); } catch(e) {}
     var tbl = _getTableContainer();
     if (tbl) tbl.style.display = '';
     var panel = document.getElementById('heatmap-panel');

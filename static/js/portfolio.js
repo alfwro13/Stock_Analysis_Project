@@ -766,6 +766,9 @@ $(document).ready(function () {
         deferRender: true,
         dom: 'lrtip',
         order: [],
+        initComplete: function () {
+            try { if (localStorage.getItem('portfolio_heatmap_active')) _enterHeatmapMode(); } catch(e) {}
+        },
         columnDefs: [
             { responsivePriority: 1, targets: [0, 2, 5] },
             { responsivePriority: 2, targets: [3, 4, 20] },
