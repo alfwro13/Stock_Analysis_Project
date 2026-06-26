@@ -307,3 +307,41 @@ def test_create_account_triggers_backfill_in_background(client):
 
     import database as _db
     _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_import_ghostfolio_returns_counts(client):
+    with patch("api_routes_accounts.backfill_value_history"):
+        account_id = _create_account(client, name="ImportApiAcc")
+    with (
+        patch("api_routes_accounts.import_ghostfolio_activities", return_value={"imported": 2, "skipped": 1}),
+        patch("api_routes_accounts.backfill_value_history"),
+    ):
+        resp = client.post(f"/api/accounts/{account_id}/import-ghostfolio")
+    assert resp.status_code == 200
+    data = _json(resp)
+    assert data["status"] == "success"
+    assert data["imported"] == 2
+    assert data["skipped"] == 1
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_import_ghostfolio_not_configured_returns_400(client):
+    with patch("api_routes_accounts.backfill_value_history"):
+        account_id = _create_account(client, name="ImportApiNotConfiguredAcc")
+    with patch("api_routes_accounts.import_ghostfolio_activities", return_value={"imported": 0, "skipped": 0, "error": "Ghostfolio is not configured."}):
+        resp = client.post(f"/api/accounts/{account_id}/import-ghostfolio")
+    assert resp.status_code == 400
+    assert _json(resp)["status"] == "error"
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_import_ghostfolio_unknown_account_returns_404(client):
+    resp = client.post("/api/accounts/999999/import-ghostfolio")
+    assert resp.status_code == 404

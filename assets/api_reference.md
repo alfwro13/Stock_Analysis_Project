@@ -2656,4 +2656,17 @@ Returns `{"status": "queued", "message": "..."}` immediately.
 
 ---
 
+### `POST /api/accounts/{id}/import-ghostfolio`
+
+Imports the **entire** Ghostfolio activity history (`ghostfolio_sync.GhostfolioSyncEngine.fetch_activities`) into the given built-in account (`accounts_engine.import_ghostfolio_activities`). `BUY`/`SELL`/`DIVIDEND`/`FEE`/`INTEREST` activities map to the matching `txn_type`; ticker, company name, and currency come from the activity's `SymbolProfile`; `exchange_rate` is derived from `unitPrice` (Ghostfolio account currency) vs `unitPriceInAssetProfileCurrency` (asset-native currency). Every activity is imported, including Buy/Sell pairs for tickers no longer held, so they remain visible under Closed Positions with realized P&amp;L. Draft activities and unsupported types (`ITEM`, `LIABILITY`) are skipped. Re-importing is idempotent — already-imported activities are deduped via `ghostfolio_ref`. On success, schedules a background re-run of `accounts_engine.backfill_value_history` and a profile fetch for any newly-seen ticker. Rate limit: 10/minute.
+
+Returns 404 if the account does not exist; 400 if Ghostfolio is not configured (`GHOSTFOLIO_URL`/`API_TOKEN` missing).
+
+**Response:**
+```json
+{ "status": "success", "message": "Imported 42 activities (3 skipped).", "imported": 42, "skipped": 3 }
+```
+
+---
+
 *Generated: 2026-06-06 · Quantamental Dashboard*

@@ -7,7 +7,7 @@ from typing import Optional
 import pandas as pd
 
 from config import BASE_CURRENCY, HISTORICAL_DIR, PORTFOLIO_PATH
-from db_accounts import get_account, get_accounts, get_transactions, upsert_value_snapshot
+from db_accounts import add_transaction, get_account, get_accounts, get_transactions, upsert_value_snapshot
 from database import get_connection
 from portfolio_service import get_rate_to_base
 from yahoo_engine import yahoo_engine
@@ -427,3 +427,78 @@ def backfill_value_history(account_id: int) -> int:
         upsert_value_snapshot(account_id, date_str, round(cash + equity, 2), round(cash, 2), round(equity, 2))
         written += 1
     return written
+
+
+_GHOSTFOLIO_TYPE_MAP = {
+    "BUY": "Buy",
+    "SELL": "Sell",
+    "DIVIDEND": "Dividend",
+    "FEE": "Fee",
+    "INTEREST": "Interest",
+}
+
+
+def _map_ghostfolio_activity(act: dict) -> Optional[dict]:
+    """One Ghostfolio activity -> add_transaction() kwargs, or None to skip (draft / unsupported type).
+    `unitPrice` is in the Ghostfolio account currency (== BASE_CURRENCY per decision #1); when a
+    SymbolProfile is present, `unitPriceInAssetProfileCurrency` is the same price in the asset's
+    native currency, so their ratio gives the native->base exchange_rate."""
+    txn_type = _GHOSTFOLIO_TYPE_MAP.get(act.get("type"))
+    if not txn_type or act.get("isDraft"):
+        return None
+
+    profile = act.get("SymbolProfile") or {}
+    currency = profile.get("currency") or act.get("currency")
+    unit_price_native = act.get("unitPriceInAssetProfileCurrency")
+    unit_price_base = act.get("unitPrice")
+    if unit_price_native:
+        unit_price = float(unit_price_native)
+        exchange_rate = float(unit_price_base) / unit_price if unit_price_base else 1.0
+    else:
+        unit_price = float(unit_price_base) if unit_price_base is not None else None
+        exchange_rate = 1.0
+
+    fee_base = float(act.get("fee") or 0.0)
+    fee_native = fee_base / exchange_rate if exchange_rate else fee_base
+
+    return {
+        "txn_type": txn_type,
+        "txn_date": (act.get("date") or "")[:10],
+        "ticker": profile.get("symbol") or None,
+        "company_name": profile.get("name") or None,
+        "currency": currency,
+        "quantity": act.get("quantity"),
+        "unit_price": unit_price,
+        "fee": round(fee_native, 4),
+        "exchange_rate": exchange_rate,
+        "price_in_pence": currency == "GBp",
+        "ghostfolio_ref": act.get("id"),
+    }
+
+
+def import_ghostfolio_activities(account_id: int) -> dict:
+    """Imports the entire Ghostfolio activity history into one built-in account, deduped by
+    `ghostfolio_ref` so re-import is idempotent. Imports every activity (incl. tickers no longer
+    held) so fully-sold positions still land in closed_positions with realized P&L."""
+    from ghostfolio_sync import GhostfolioSyncEngine
+
+    engine = GhostfolioSyncEngine()
+    if not engine.is_configured:
+        return {"imported": 0, "skipped": 0, "error": "Ghostfolio is not configured."}
+
+    activities = engine.fetch_activities()
+    existing_refs = {t["ghostfolio_ref"] for t in get_transactions(account_id) if t["ghostfolio_ref"]}
+
+    imported = 0
+    skipped = 0
+    for act in activities:
+        mapped = _map_ghostfolio_activity(act)
+        if mapped is None or mapped["ghostfolio_ref"] in existing_refs:
+            skipped += 1
+            continue
+        if add_transaction(account_id=account_id, **mapped) is None:
+            skipped += 1
+            continue
+        imported += 1
+
+    return {"imported": imported, "skipped": skipped}

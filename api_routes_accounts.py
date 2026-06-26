@@ -5,7 +5,7 @@ from fastapi import APIRouter, BackgroundTasks, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from accounts_engine import backfill_value_history, fx_rate_on_date
+from accounts_engine import backfill_value_history, fx_rate_on_date, import_ghostfolio_activities
 from api_deps import limiter, _error_500
 from database import (
     get_accounts,
@@ -256,6 +256,31 @@ async def api_ticker_lookup(request: Request, q: str):
         })
     except Exception as e:
         logger.error("api_ticker_lookup failed for %r: %s", q, e)
+        return _error_500(e)
+
+
+@accounts_router.post("/accounts/{account_id}/import-ghostfolio")
+@limiter.limit("10/minute")
+async def api_import_ghostfolio(request: Request, account_id: int, background_tasks: BackgroundTasks):
+    try:
+        if get_account(account_id) is None:
+            return JSONResponse(status_code=404, content={"status": "error", "message": "Account not found."})
+        result = import_ghostfolio_activities(account_id)
+        if result.get("error"):
+            return JSONResponse(status_code=400, content={"status": "error", "message": result["error"]})
+        tickers = {txn["ticker"] for txn in get_transactions(account_id) if txn["ticker"]}
+        for ticker in tickers:
+            if not _ticker_known(ticker):
+                background_tasks.add_task(update_single_profile, ticker)
+        background_tasks.add_task(backfill_value_history, account_id)
+        return JSONResponse(content={
+            "status": "success",
+            "message": f"Imported {result['imported']} activities ({result['skipped']} skipped).",
+            "imported": result["imported"],
+            "skipped": result["skipped"],
+        })
+    except Exception as e:
+        logger.error("api_import_ghostfolio account=%s failed: %s", account_id, e)
         return _error_500(e)
 
 

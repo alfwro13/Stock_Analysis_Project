@@ -52,7 +52,9 @@ function _accountCardHtml(acc) {
                 <a href="/accounts/${acc.id}" class="btn btn-outline-primary btn-sm">View Details</a>
                 <button type="button" class="btn btn-primary btn-sm" onclick="openTxnModal(${acc.id})">+ Add Transaction</button>
                 <button type="button" class="btn btn-outline-secondary btn-sm" onclick="toggleTransactions(${acc.id})">Show Transactions</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="importGhostfolio(${acc.id})">Import from Ghostfolio</button>
             </div>
+            <div id="account-import-status-${acc.id}" class="status-msg-sm mt-2"></div>
             <div id="account-txns-${acc.id}" class="mt-3 d-none"></div>
         </div>
     </div>`;
@@ -120,6 +122,31 @@ async function deleteAccount(id, name) {
         else alert(data.message || 'Failed to delete account.');
     } catch (e) {
         alert(e.message);
+    }
+}
+
+async function importGhostfolio(accountId) {
+    if (!confirm('Import the full Ghostfolio activity history into this account? Already-imported activities are skipped automatically.')) return;
+    const status = document.getElementById(`account-import-status-${accountId}`);
+    if (status) status.innerHTML = '<span class="msg-info">Importing...</span>';
+    try {
+        const r = await fetch(`/api/accounts/${accountId}/import-ghostfolio`, { method: 'POST' });
+        const data = await r.json();
+        if (status) {
+            status.innerHTML = data.status === 'success'
+                ? `<span class="msg-success">${_escapeHtml(data.message)}</span>`
+                : `<span class="msg-error">${_escapeHtml(data.message || 'Import failed.')}</span>`;
+        }
+        if (data.status === 'success') {
+            const box = document.getElementById(`account-txns-${accountId}`);
+            if (box && !box.classList.contains('d-none')) {
+                box.classList.add('d-none');
+                toggleTransactions(accountId);
+            }
+            if (typeof window.onTransactionChanged === 'function') window.onTransactionChanged();
+        }
+    } catch (e) {
+        if (status) status.innerHTML = `<span class="msg-error">${_escapeHtml(e.message)}</span>`;
     }
 }
 
