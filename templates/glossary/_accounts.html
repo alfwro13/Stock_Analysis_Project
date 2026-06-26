@@ -1,0 +1,41 @@
+<div class="accordion-item glossary-section" id="accounts">
+    <h2 class="accordion-header">
+        <button class="accordion-button collapsed" type="button"
+                data-bs-toggle="collapse" data-bs-target="#collapse-accounts"
+                aria-expanded="false" aria-controls="collapse-accounts">
+            🏦 Built-in Accounts
+        </button>
+    </h2>
+    <div id="collapse-accounts" class="accordion-collapse collapse">
+        <div class="accordion-body">
+
+            <div class="term-box">
+                <span class="term-title">Built-in Accounts — What It Solves</span>
+                <p>Ghostfolio is a great source of live, auto-synced holdings, but it only ever gives you what its own importer captured — it doesn't let you hand-enter a trade, track cash that isn't tied to a position, or keep a brokerage account that you've never connected to Ghostfolio at all. <strong>Built-in Accounts</strong> (<code>/accounts</code>) is a native, database-backed alternative or companion: you create one or more accounts, log every Buy, Sell, Dividend, Interest, Fee, or Cash movement against them, and the app derives holdings, cash balance, and P&amp;L from that ledger — no external service required.</p>
+                <p>Built-in accounts <strong>coexist</strong> with Ghostfolio rather than replacing it. The Portfolio page merges both sources: a ticker held in both a Ghostfolio account and a built-in account is summed into one row, with both accounts listed against it. If you import the same brokerage account into both systems, that ticker is counted twice — this is a known, documented trade-off rather than an automatic guard.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Transaction Types &amp; Cash Tracking</span>
+                <p>Every position and cash movement is a row in the account's transaction ledger. Six types are supported: <strong>Buy</strong> and <strong>Sell</strong> (move shares and, by default, cash), <strong>Dividend</strong> and <strong>Interest</strong> (cash income, no shares), <strong>Fee</strong> (a cash deduction not tied to a trade), and <strong>Cash</strong> (a manual deposit or withdrawal). Each Buy/Sell row has an <strong>"Update Cash"</strong> toggle — leave it off if the trade happened outside the cash you're tracking in this account (for example, a transfer-in of shares with no corresponding cash movement).</p>
+                <p>Every transaction carries its own trade currency (USD, EUR, GBP, or GBp for London Stock Exchange pence-quoted stocks) plus an <strong>exchange rate</strong> that converts it into the account's base currency. If you don't supply one, it's auto-filled from a historical FX lookup for the transaction date, falling back to the live rate and then to 1.0.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Holdings, Closed Positions &amp; Realized P&amp;L</span>
+                <p>Holdings aren't stored — they're derived on every read by replaying an account's transactions in chronological order using an <strong>average-cost</strong> method: each Buy raises the position's average cost basis, each Sell realises a gain or loss against that average cost and reduces the remaining shares. A ticker that's been fully sold nets to zero open shares but isn't discarded — it survives in the ledger and appears under <strong>Closed Positions</strong> with its realized P&amp;L, so your full trading history (wins and losses) stays visible even after you've exited a position.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Account Value Snapshot</span>
+                <p>The value-over-time chart on each account's detail page is fed by a nightly scheduled job that writes one row per account to <code>account_value_history</code> — total value, cash value, and equity value, all in the base currency. When you first create an account, a one-time backfill runs in the background against cached historical price data so the chart has a meaningful history immediately rather than starting from a single point. The job can also be triggered on demand from the Background Automation Schedulers panel in Settings.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Import from Ghostfolio</span>
+                <p>Rather than re-entering trades you've already recorded in Ghostfolio, the Accounts page offers a one-click <strong>"Import from Ghostfolio"</strong> control that pulls an account's entire Ghostfolio activity history into a built-in account — Buys, Sells, Dividends, Interest, and Fees, mapped to the matching transaction type, including activity for tickers you no longer hold (so they land correctly under Closed Positions). Re-running the import is safe: activities already imported are recognised and skipped, so nothing is duplicated.</p>
+            </div>
+
+        </div>
+    </div>
+</div>
