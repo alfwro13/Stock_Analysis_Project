@@ -80,6 +80,19 @@ async function triggerXrayRiskCache() {
     }
 }
 
+async function triggerAccountValueSnapshot() {
+    const btn = document.querySelector('button[onclick="triggerAccountValueSnapshot()"]');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Queued…'; }
+    try {
+        await fetch('/api/accounts/value-snapshot/trigger', { method: 'POST' });
+        alert("Account Value Snapshot job queued in background. Check System Notifications for completion.");
+    } catch (error) {
+        alert("Failed to queue Account Value Snapshot job. Network or server error.");
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = '&#9654;&#65039; Run Now'; }
+    }
+}
+
 async function triggerMLBackfill() {
     const btn = document.querySelector('button[onclick="triggerMLBackfill()"]');
     btn.disabled = true;

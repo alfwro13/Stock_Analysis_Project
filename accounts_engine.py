@@ -1,10 +1,13 @@
 # GUI name: "Accounts". Canonical scheduled-job names live in scheduler_manifest.JOB_GRAPH.
 import json
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from config import BASE_CURRENCY, PORTFOLIO_PATH
-from db_accounts import get_account, get_accounts, get_transactions
+import pandas as pd
+
+from config import BASE_CURRENCY, HISTORICAL_DIR, PORTFOLIO_PATH
+from db_accounts import get_account, get_accounts, get_transactions, upsert_value_snapshot
 from database import get_connection
 from portfolio_service import get_rate_to_base
 from yahoo_engine import yahoo_engine
@@ -37,10 +40,14 @@ def _cash_delta(txn) -> float:
     return 0.0
 
 
-def _ledger_for_account(account_id: int):
-    """Average-cost pass per ticker → (open_holdings, closed_positions, realized_total_base)."""
+def _ledger_for_account(account_id: int, as_of_date: Optional[str] = None, transactions: Optional[list] = None):
+    """Average-cost pass per ticker → (open_holdings, closed_positions, realized_total_base).
+    `as_of_date` restricts the pass to transactions on/before that date (used by the historical
+    backfill); `transactions` lets a caller reuse an already-fetched list across many dates."""
     by_ticker: dict[str, list] = {}
-    for txn in get_transactions(account_id):
+    for txn in (transactions if transactions is not None else get_transactions(account_id)):
+        if as_of_date and txn["txn_date"] > as_of_date:
+            continue
         if txn["txn_type"] not in ("Buy", "Sell") or not txn["ticker"]:
             continue
         by_ticker.setdefault(txn["ticker"], []).append(txn)
@@ -149,6 +156,44 @@ def closed_positions(account_id: int) -> list:
     return closed
 
 
+def holdings_with_market_value(account_id: int) -> list:
+    """Open holdings for one account enriched with current price, market value, allocation %,
+    and unrealized performance — shape required by the account detail page's Holdings table."""
+    holdings = derive_account_holdings(account_id)
+    if not holdings:
+        return []
+    prices = _current_price_map(list(holdings.keys()))
+    first_dates: dict[str, str] = {}
+    for txn in get_transactions(account_id):
+        if txn["txn_type"] == "Buy" and txn["ticker"]:
+            first_dates.setdefault(txn["ticker"], txn["txn_date"])
+
+    rows = []
+    for ticker, h in holdings.items():
+        total_investment = h["accounts"][0]["total_investment"]
+        priced = prices.get(ticker)
+        if priced and priced[0]:
+            price, currency = priced
+            market_value = h["global_shares"] * price * get_rate_to_base(currency or h["currency"])
+        else:
+            market_value = total_investment
+        rows.append({
+            "ticker": ticker,
+            "company_name": h["company_name"],
+            "first_activity": first_dates.get(ticker),
+            "shares": h["global_shares"],
+            "buy_price": h["global_buy_price"],
+            "market_value": round(market_value, 2),
+            "total_investment": total_investment,
+            "performance_pct": round((market_value / total_investment - 1) * 100, 2) if total_investment else 0.0,
+        })
+
+    total_value = sum(r["market_value"] for r in rows) or 1.0
+    for r in rows:
+        r["allocation_pct"] = round(r["market_value"] / total_value * 100, 2)
+    return rows
+
+
 def _recompute_globals(entry: dict) -> None:
     total_shares = sum(a.get("shares", 0.0) for a in entry["accounts"])
     total_inv = sum(a.get("total_investment", 0.0) for a in entry["accounts"])
@@ -212,6 +257,16 @@ def cash_balance(account_id: int) -> float:
         if txn["update_cash"]:
             balance += _cash_delta(txn)
     return round(balance, 2)
+
+
+def _cash_balance_as_of(acc: dict, transactions: list, as_of_date: str) -> float:
+    balance = acc["initial_cash"] or 0.0
+    for txn in transactions:
+        if txn["txn_date"] > as_of_date:
+            continue
+        if txn["update_cash"]:
+            balance += _cash_delta(txn)
+    return balance
 
 
 def cash_history(account_id: int) -> list:
@@ -308,3 +363,67 @@ def fx_rate_on_date(currency: str, date_str: Optional[str]) -> float:
             logger.warning("Historical FX lookup failed for %s on %s: %s", pair, date_str, e)
     rate = get_rate_to_base(currency)
     return rate if rate else 1.0
+
+
+def snapshot_all_accounts() -> int:
+    """Nightly job body: writes today's value snapshot for every account. Returns rows written."""
+    today = datetime.now(timezone.utc).date().isoformat()
+    written = 0
+    for acc in get_accounts():
+        aid = acc["id"]
+        open_holdings, _closed, _realized = _ledger_for_account(aid)
+        equity = _equity_value(open_holdings)
+        cash = cash_balance(aid)
+        upsert_value_snapshot(aid, today, round(cash + equity, 2), round(cash, 2), round(equity, 2))
+        written += 1
+    return written
+
+
+def backfill_value_history(account_id: int) -> int:
+    """One-time historical snapshot fill from Parquet so the account-value chart has data
+    immediately on account create/import, covering every day from the earliest transaction up to
+    yesterday (today is left to the nightly snapshot job). Returns rows written; 0 if there are no
+    transactions yet."""
+    acc = get_account(account_id)
+    transactions = get_transactions(account_id)
+    if not acc or not transactions:
+        return 0
+
+    start_date = transactions[0]["txn_date"]
+    end_date = (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
+    if start_date > end_date:
+        return 0
+
+    tickers = sorted({t["ticker"] for t in transactions if t["ticker"]})
+    price_series: dict[str, pd.Series] = {}
+    for ticker in tickers:
+        parquet_path = HISTORICAL_DIR / f"{ticker}.parquet"
+        if not parquet_path.exists():
+            continue
+        try:
+            price_series[ticker] = pd.read_parquet(parquet_path)["Close"].sort_index()
+        except Exception as e:
+            logger.warning("backfill_value_history: failed to read parquet for %s: %s", ticker, e)
+
+    written = 0
+    for date_str in pd.date_range(start_date, end_date, freq="D").strftime("%Y-%m-%d"):
+        open_holdings, _closed, _realized = _ledger_for_account(
+            account_id, as_of_date=date_str, transactions=transactions
+        )
+        cash = _cash_balance_as_of(acc, transactions, date_str)
+        equity = 0.0
+        for ticker, holding in open_holdings.items():
+            series = price_series.get(ticker)
+            price = None
+            if series is not None:
+                window = series.loc[:date_str]
+                if not window.empty:
+                    price = float(window.iloc[-1])
+            if price is None:
+                equity += holding["total_investment"]
+                continue
+            native_price = price * 0.01 if holding["price_in_pence"] else price
+            equity += holding["shares"] * native_price * fx_rate_on_date(holding["currency"], date_str)
+        upsert_value_snapshot(account_id, date_str, round(cash + equity, 2), round(cash, 2), round(equity, 2))
+        written += 1
+    return written

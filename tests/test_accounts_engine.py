@@ -194,3 +194,88 @@ def test_fx_rate_on_date_historical_lookup(monkeypatch):
         lambda tickers, period="5y", interval="1d": {"EURGBP=X": df},
     )
     assert accounts_engine.fx_rate_on_date("EUR", "2026-01-06") == 1.12   # last close on/before date
+
+
+@pytest.mark.db
+def test_run_account_value_snapshot_job_runner_is_wired():
+    """scheduler_jobs.run_account_value_snapshot must actually call accounts_engine.snapshot_all_accounts —
+    a regression guard for the job runner's import wiring, not just the engine function in isolation."""
+    import scheduler_jobs
+    aid = create_account("JobRunnerWiringAcc", "GBP", initial_cash=42.0)
+    scheduler_jobs.run_account_value_snapshot()
+
+    from database import get_value_history
+    history = get_value_history(aid)
+    assert history, "run_account_value_snapshot did not write a snapshot row"
+    assert history[-1]["cash_value"] == 42.0
+
+
+@pytest.mark.db
+def test_holdings_with_market_value_allocation_sums_to_100():
+    _seed_stock_signal("ZZHMV1", 100.0, "GBP")
+    _seed_stock_signal("ZZHMV2", 50.0, "GBP")
+    aid = create_account("HoldingsValAcc", "GBP")
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZHMV1", currency="GBP",
+                     quantity=10, unit_price=80, exchange_rate=1.0)
+    add_transaction(aid, "Buy", "2026-01-06", ticker="ZZHMV2", currency="GBP",
+                     quantity=4, unit_price=40, exchange_rate=1.0)
+
+    rows = accounts_engine.holdings_with_market_value(aid)
+    by_ticker = {r["ticker"]: r for r in rows}
+    assert by_ticker["ZZHMV1"]["market_value"] == 1000.0          # 10 * 100
+    assert by_ticker["ZZHMV2"]["market_value"] == 200.0            # 4 * 50
+    assert by_ticker["ZZHMV1"]["first_activity"] == "2026-01-05"
+    assert round(sum(r["allocation_pct"] for r in rows), 1) == 100.0
+    assert by_ticker["ZZHMV1"]["performance_pct"] == 25.0          # (1000/800 - 1) * 100
+
+
+@pytest.mark.db
+def test_holdings_with_market_value_empty_account_returns_empty_list():
+    aid = create_account("NoHoldingsAcc", "GBP")
+    assert accounts_engine.holdings_with_market_value(aid) == []
+
+
+@pytest.mark.db
+def test_snapshot_all_accounts_writes_row_per_account():
+    _seed_stock_signal("ZZSNAP", 120.0, "GBP")
+    aid = create_account("SnapshotAcc", "GBP", initial_cash=500.0)
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZSNAP", currency="GBP",
+                     quantity=5, unit_price=100, exchange_rate=1.0)
+
+    accounts_engine.snapshot_all_accounts()
+
+    from database import get_value_history
+    history = get_value_history(aid)
+    assert history, "expected at least one snapshot row"
+    today = history[-1]
+    assert today["equity_value"] == 600.0       # 5 * 120
+    assert today["cash_value"] == 0.0            # 500 - 500 spent on the buy
+    assert today["total_value"] == 600.0
+
+
+@pytest.mark.db
+def test_backfill_value_history_returns_zero_with_no_transactions():
+    aid = create_account("BackfillEmptyAcc", "GBP")
+    assert accounts_engine.backfill_value_history(aid) == 0
+
+
+@pytest.mark.db
+def test_backfill_value_history_writes_rows_from_parquet(monkeypatch, tmp_path):
+    idx = pd.date_range("2025-01-01", "2025-01-10", freq="D")
+    df = pd.DataFrame({"Close": [100.0 + i for i in range(len(idx))]}, index=idx)
+    df.to_parquet(tmp_path / "ZZBACKFILL.parquet")
+    monkeypatch.setattr(accounts_engine, "HISTORICAL_DIR", tmp_path)
+
+    aid = create_account("BackfillAcc", "GBP", initial_cash=1000.0)
+    add_transaction(aid, "Buy", "2025-01-03", ticker="ZZBACKFILL", currency="GBP",
+                     quantity=2, unit_price=100, exchange_rate=1.0)
+
+    written = accounts_engine.backfill_value_history(aid)
+    assert written > 0
+
+    from database import get_value_history
+    history = {row["snapshot_date"]: row for row in get_value_history(aid)}
+    assert "2025-01-03" in history
+    assert history["2025-01-03"]["equity_value"] == 204.0          # 2 * 102 (Close on 2025-01-03)
+    assert history["2025-01-03"]["cash_value"] == 800.0            # 1000 - 2*100
+    assert "2025-01-02" not in history                             # backfill starts at the first transaction

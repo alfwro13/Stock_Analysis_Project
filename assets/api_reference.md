@@ -2530,6 +2530,14 @@ Each percentile array has length `horizon_years + 1` (index 0 = current year, in
 
 Native, database-backed brokerage accounts + transaction ledger (`/accounts`). Coexists with Ghostfolio — built-in account holdings are merged into the Portfolio page alongside any Ghostfolio-synced accounts (see `accounts_engine.get_combined_holdings`). Backed by the `accounts`, `account_transactions`, and `account_value_history` SQLite tables.
 
+### `GET /accounts`
+
+HTML page. Renders the account list, create-account form, and the shared Buy/Sell/Dividend/Interest/Fee/Cash transaction modal.
+
+### `GET /accounts/{id}`
+
+HTML page. Renders the account detail view: value-over-time chart (`visuals.create_account_value_chart`, sourced from `account_value_history`), summary tiles (cash balance, equity value, realized P&amp;L, dividend/interest income, activity count), Holdings (with current market value, allocation %, and unrealized performance %), Closed Positions, the full Activities ledger (inline edit/delete via the shared transaction modal), and Cash Balance History. Redirects to `/accounts` for an unknown or soft-deleted account id.
+
 ### `GET /api/accounts`
 
 Returns all non-deleted accounts.
@@ -2637,6 +2645,14 @@ Looks up a ticker on Yahoo Finance for the transaction-entry "ticker/name lookup
 ```json
 { "status": "success", "found": false, "ticker": "ZZZNOTREAL" }
 ```
+
+---
+
+### `POST /api/accounts/value-snapshot/trigger`
+
+Manually queues the Account Value Snapshot job (`accounts_engine.snapshot_all_accounts`) as a background task — writes today's cash/equity/total value row for every built-in account without waiting for the nightly schedule. Used by the "Run Now" button on the Background Automation Schedulers settings panel.
+
+Returns `{"status": "queued", "message": "..."}` immediately.
 
 ---
 

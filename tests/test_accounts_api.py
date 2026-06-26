@@ -288,3 +288,22 @@ def test_ticker_lookup_not_found(client):
 def test_ticker_lookup_missing_q_returns_422(client):
     resp = client.get("/api/ticker-lookup")
     assert resp.status_code == 422
+
+
+@pytest.mark.api
+def test_account_value_snapshot_trigger_queues_job(client):
+    with patch("api_routes_accounts.run_account_value_snapshot") as mock_run:
+        resp = client.post("/api/accounts/value-snapshot/trigger")
+    assert resp.status_code == 200
+    data = _json(resp)
+    assert data["status"] == "queued"
+
+
+@pytest.mark.api
+def test_create_account_triggers_backfill_in_background(client):
+    with patch("api_routes_accounts.backfill_value_history") as mock_backfill:
+        account_id = _create_account(client, name="BackfillTriggerAcc")
+    mock_backfill.assert_called_once_with(account_id)
+
+    import database as _db
+    _db.soft_delete_account(account_id)

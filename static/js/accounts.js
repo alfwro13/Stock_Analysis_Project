@@ -22,13 +22,14 @@ async function loadAccounts() {
         _accountsCache = {};
         (data.accounts || []).forEach(a => { _accountsCache[a.id] = a; });
         _populateAccountSelect();
+        if (!list) return;
         if (!data.accounts || data.accounts.length === 0) {
             list.innerHTML = '<div class="col-12"><p class="text-muted">No accounts yet — create one to start tracking transactions.</p></div>';
             return;
         }
         list.innerHTML = data.accounts.map(_accountCardHtml).join('');
     } catch (e) {
-        list.innerHTML = `<div class="col-12"><span class="msg-error">Failed to load accounts: ${e.message}</span></div>`;
+        if (list) list.innerHTML = `<div class="col-12"><span class="msg-error">Failed to load accounts: ${e.message}</span></div>`;
     }
 }
 
@@ -48,6 +49,7 @@ function _accountCardHtml(acc) {
                 </div>
             </div>
             <div class="d-flex gap-2 mt-3">
+                <a href="/accounts/${acc.id}" class="btn btn-outline-primary btn-sm">View Details</a>
                 <button type="button" class="btn btn-primary btn-sm" onclick="openTxnModal(${acc.id})">+ Add Transaction</button>
                 <button type="button" class="btn btn-outline-secondary btn-sm" onclick="toggleTransactions(${acc.id})">Show Transactions</button>
             </div>
@@ -259,6 +261,7 @@ async function submitTransaction() {
                 box.classList.add('d-none');
                 toggleTransactions(parseInt(accountId, 10));
             }
+            if (typeof window.onTransactionChanged === 'function') window.onTransactionChanged();
         } else {
             status.innerHTML = `<span class="msg-error">${data.message || 'Failed'}</span>`;
         }
@@ -274,8 +277,11 @@ async function deleteTransaction(accountId, txnId) {
         const data = await r.json();
         if (data.status === 'success') {
             const box = document.getElementById(`account-txns-${accountId}`);
-            box.classList.add('d-none');
-            toggleTransactions(accountId);
+            if (box) {
+                box.classList.add('d-none');
+                toggleTransactions(accountId);
+            }
+            if (typeof window.onTransactionChanged === 'function') window.onTransactionChanged();
         } else {
             alert(data.message || 'Failed to delete transaction.');
         }

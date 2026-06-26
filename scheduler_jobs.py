@@ -3,6 +3,7 @@ import threading as _threading
 from datetime import datetime, timezone
 
 from apscheduler.triggers.cron import CronTrigger
+from accounts_engine import snapshot_all_accounts
 from config import load_config
 from data_engine import DataEngine
 from database import get_connection, get_universe_tickers
@@ -134,6 +135,12 @@ def run_maintenance_engine():
         MaintenanceEngine().run()
     finally:
         record_job_run('maintenance_job')
+
+def run_account_value_snapshot():
+    try:
+        snapshot_all_accounts()
+    finally:
+        record_job_run('account_value_snapshot_job')
 
 def run_earnings_alert_job():
     try:

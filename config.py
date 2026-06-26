@@ -161,6 +161,10 @@ DEFAULT_CONFIG = {
             "TIME": "02:00",
             "DAYS_TO_KEEP_FILES": 60
         },
+        "ACCOUNT_VALUE_SNAPSHOT": {
+            "ENABLED": True,
+            "TIME": "23:30"
+        },
         "FREETRADE_SYNC": {
             "ENABLED": False,
             "FREQUENCY": "mon-fri",

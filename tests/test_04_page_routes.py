@@ -255,3 +255,27 @@ def test_etf_predictor_detail_unknown_id_redirects(client):
         f"Expected redirect for unknown ETF config id, got {resp.status_code}"
     )
     assert "/etf-predictor" in resp.headers["location"]
+
+
+# ── Account Detail ──────────────────────────────────────────────────────────────
+
+@pytest.mark.pages
+def test_account_detail_unknown_id_redirects(client):
+    """GET /accounts/99999 with no such account must redirect (not 500)."""
+    resp = client.get("/accounts/99999", follow_redirects=False)
+    assert resp.status_code in (302, 303, 307, 308), (
+        f"Expected redirect for unknown account id, got {resp.status_code}"
+    )
+    assert "/accounts" in resp.headers["location"]
+
+
+@pytest.mark.pages
+def test_account_detail_page_loads_for_real_account(client):
+    """GET /accounts/{id} for a real account (with a transaction) must render without crashing."""
+    import database as _db
+    account_id = _db.create_account("Page Test Account", "GBP", initial_cash=100.0)
+    _db.add_transaction(account_id, "Cash", "2026-01-01", unit_price=50)
+    try:
+        _assert_page_ok(client, f"/accounts/{account_id}", label="Account Detail")
+    finally:
+        _db.soft_delete_account(account_id)

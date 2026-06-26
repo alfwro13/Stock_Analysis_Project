@@ -5,7 +5,7 @@ from fastapi import APIRouter, BackgroundTasks, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from accounts_engine import fx_rate_on_date
+from accounts_engine import backfill_value_history, fx_rate_on_date
 from api_deps import limiter, _error_500
 from database import (
     get_accounts,
@@ -21,6 +21,7 @@ from database import (
     get_connection,
 )
 from profile_engine import update_single_profile
+from scheduler_engine import run_account_value_snapshot
 from utils import normalize_ticker
 from yahoo_engine import yahoo_engine
 
@@ -80,7 +81,7 @@ async def api_list_accounts():
 
 @accounts_router.post("/accounts")
 @limiter.limit("30/minute")
-async def api_create_account(request: Request, body: AccountBody):
+async def api_create_account(request: Request, body: AccountBody, background_tasks: BackgroundTasks):
     try:
         account_id = create_account(
             name=body.name.strip(),
@@ -90,6 +91,7 @@ async def api_create_account(request: Request, body: AccountBody):
         )
         if account_id is None:
             return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to create account."})
+        background_tasks.add_task(backfill_value_history, account_id)
         return JSONResponse(content={"status": "success", "message": "Account created.", "id": account_id})
     except Exception as e:
         logger.error("api_create_account failed: %s", e)
@@ -255,3 +257,12 @@ async def api_ticker_lookup(request: Request, q: str):
     except Exception as e:
         logger.error("api_ticker_lookup failed for %r: %s", q, e)
         return _error_500(e)
+
+
+@accounts_router.post("/accounts/value-snapshot/trigger")
+async def api_trigger_account_value_snapshot(background_tasks: BackgroundTasks):
+    background_tasks.add_task(run_account_value_snapshot)
+    return JSONResponse(content={
+        "status": "queued",
+        "message": "Account Value Snapshot job queued. Check system notifications for completion.",
+    })

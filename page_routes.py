@@ -386,6 +386,40 @@ async def accounts_page(request: Request):
     )
 
 
+@page_router.get("/accounts/{account_id}", response_class=HTMLResponse)
+async def account_detail_page(request: Request, account_id: int):
+    from accounts_engine import account_summary, cash_history, closed_positions, holdings_with_market_value
+    from database import get_account, get_transactions, get_value_history
+    from visuals import create_account_value_chart
+
+    acc = get_account(account_id)
+    if acc is None:
+        return RedirectResponse("/accounts", status_code=302)
+
+    value_history = get_value_history(account_id)
+    if value_history:
+        chart_df = pd.DataFrame(value_history).set_index("snapshot_date")
+        chart_df.index = pd.to_datetime(chart_df.index)
+        chart_html = create_account_value_chart(chart_df)
+    else:
+        chart_html = "<p class='text-muted'>No value history yet — check back after the next nightly snapshot.</p>"
+
+    return templates.TemplateResponse(
+        request=request, name="account_detail.html",
+        context={
+            "account": acc,
+            "summary": account_summary(account_id),
+            "holdings": holdings_with_market_value(account_id),
+            "closed_positions": closed_positions(account_id),
+            "activities": get_transactions(account_id),
+            "cash_history": cash_history(account_id),
+            "chart_html": chart_html,
+            "base_currency": BASE_CURRENCY,
+            "unread_count": get_unread_count(),
+        }
+    )
+
+
 @page_router.get("/watchlist", response_class=HTMLResponse)
 async def watchlist_page(request: Request, embed: bool = False):
     conn = get_connection()

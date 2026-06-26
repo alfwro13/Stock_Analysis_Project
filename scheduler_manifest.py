@@ -47,6 +47,7 @@ JOB_GRAPH: dict[str, dict] = {
     "forensic_scores_job":            {"label": "Forensic Accounting Scores",                     "category": "quant",       "engine": "fundamentals_helpers.py",       "produces": ["stock_signals", "forensic_scores"],                           "consumes": ["forensic_quarterly_cache", "fundamentals"],                         "settings_anchor": "forensic-screener-card"},
     "macro_auction_job_am":           {"label": "Sovereign Debt Auction Monitor (AM)",             "category": "macro",       "engine": "treasury_auction_engine.py",    "produces": ["treasury_auction_results"],                                   "consumes": [],                                                                   "settings_anchor": "macro-data-card"},
     "macro_auction_job_pm":           {"label": "Sovereign Debt Auction Monitor (PM)",             "category": "macro",       "engine": "treasury_auction_engine.py",    "produces": ["treasury_auction_results"],                                   "consumes": [],                                                                   "settings_anchor": "macro-data-card"},
+    "account_value_snapshot_job":     {"label": "Account Value Snapshot",                         "category": "portfolio",   "engine": "accounts_engine.py",            "produces": ["account_value_history"],                                      "consumes": ["stock_signals"],                                                    "settings_anchor": "automation-schedulers-card"},
 }
 
 # Canonical config-key → job-id map. `config.json` SCHEDULING/NOTIFICATIONS keys and code
@@ -88,6 +89,7 @@ CONFIG_KEY_TO_JOB: dict[str, str] = {
     "FORENSIC_QUARTERLY_FETCH": "forensic_quarterly_fetch_job",
     "FORENSIC_SCORES":          "forensic_scores_job",
     "MACRO_AUCTIONS":           "macro_auction_job_am",
+    "ACCOUNT_VALUE_SNAPSHOT":   "account_value_snapshot_job",
 }
 
 _DYNAMIC_ETF_RE = re.compile(r"^etf_predictor_\d+_(pre|post)_job$")

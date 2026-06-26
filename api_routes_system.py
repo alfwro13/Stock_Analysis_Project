@@ -117,6 +117,7 @@ class SchedulingConfig(BaseModel):
     CRASH_ALERTS: Optional[ScheduleItemConfig] = None
     MOONSHOT_ALERTS: Optional[ScheduleItemConfig] = None
     MAINTENANCE: Optional[ScheduleItemConfig] = None
+    ACCOUNT_VALUE_SNAPSHOT: Optional[ScheduleItemConfig] = None
     FREETRADE_SYNC: Optional[ScheduleItemConfig] = None
     MACRO_ENGINE: Optional[ScheduleItemConfig] = None
     ML_BACKFILL: Optional[ScheduleItemConfig] = None

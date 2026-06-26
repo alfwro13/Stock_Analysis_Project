@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+
+{% block title %}Quantamental - {{ account.name }}{% endblock %}
+
+{% block extra_head %}
+<script src="/static/vendor/plotly/plotly-3.5.0.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<h1 class="mb-1">🏦 {{ account.name }}</h1>
+<p class="text-muted mb-3">
+    {{ account.currency }}
+    {% if account.note %}&middot; {{ account.note }}{% endif %}
+</p>
+
+<div class="d-flex align-items-center gap-3 mb-3 flex-wrap">
+    <a href="/accounts" class="btn btn-outline-secondary btn-sm">&#8592; Back to Accounts</a>
+    <button type="button" class="btn btn-primary btn-sm" onclick="openTxnModal({{ account.id }})">+ Add Transaction</button>
+</div>
+
+{# ── Account value chart ── #}
+<div class="sentiment-module module-cyan sentiment-module--spaced">
+    <div class="chart-wrapper">
+        <button class="fullscreen-btn" onclick="toggleFullscreen('acct-chart-wrapper')">&#9638; Fullscreen</button>
+        <div id="acct-chart-wrapper">
+            {{ chart_html | safe }}
+        </div>
+    </div>
+</div>
+
+{# ── Summary tiles ── #}
+<div class="xray-cards-row">
+    <div class="xray-metric-card xray-metric-card--purple">
+        <div class="xray-metric-label">Cash Balance ({{ base_currency }})</div>
+        <div class="xray-metric-value">{{ "%.2f"|format(summary.cash_balance | default(0)) }}</div>
+    </div>
+    <div class="xray-metric-card">
+        <div class="xray-metric-label">Equity Value ({{ base_currency }})</div>
+        <div class="xray-metric-value">{{ "%.2f"|format(summary.equity_value | default(0)) }}</div>
+    </div>
+    <div class="xray-metric-card">
+        <div class="xray-metric-label"><abbr title="Gains/losses already locked in on sold-down or fully-closed positions, computed via the average-cost method.">Realized P&amp;L</abbr></div>
+        <div class="xray-metric-value">{{ "%.2f"|format(summary.realized_pnl | default(0)) }}</div>
+    </div>
+    <div class="xray-metric-card">
+        <div class="xray-metric-label">Dividend Income</div>
+        <div class="xray-metric-value">{{ "%.2f"|format(summary.dividend | default(0)) }}</div>
+    </div>
+    <div class="xray-metric-card">
+        <div class="xray-metric-label">Interest Income</div>
+        <div class="xray-metric-value">{{ "%.2f"|format(summary.interest | default(0)) }}</div>
+    </div>
+    <div class="xray-metric-card">
+        <div class="xray-metric-label">Activity Count</div>
+        <div class="xray-metric-value">{{ summary.activity_count | default(0) }}</div>
+    </div>
+</div>
+
+{# ── Holdings ── #}
+<details class="settings-card" open>
+    <summary>📦 Holdings</summary>
+    {% if holdings %}
+    <table id="holdingsTable" class="table table-hover w-100">
+        <thead>
+            <tr>
+                <th>Company</th><th>Ticker</th><th>First Activity</th><th>Shares</th>
+                <th>Buy Price</th><th>Market Value</th><th>Allocation %</th><th>Performance %</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for h in holdings %}
+            <tr>
+                <td>{{ h.company_name }}</td>
+                <td>{{ h.ticker }}</td>
+                <td>{{ h.first_activity or '—' }}</td>
+                <td>{{ h.shares }}</td>
+                <td>{{ "%.2f"|format(h.buy_price) }}</td>
+                <td>{{ "%.2f"|format(h.market_value) }}</td>
+                <td>{{ "%.1f"|format(h.allocation_pct) }}%</td>
+                <td class="{% if h.performance_pct >= 0 %}prediction-change-pos{% else %}prediction-change-neg{% endif %}">{{ "%+.2f"|format(h.performance_pct) }}%</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="text-muted small">No open holdings.</p>
+    {% endif %}
+</details>
+
+{# ── Closed Positions ── #}
+<details class="settings-card" open>
+    <summary>📕 Closed Positions</summary>
+    {% if closed_positions %}
+    <table id="closedTable" class="table table-hover w-100">
+        <thead>
+            <tr>
+                <th>Company</th><th>Ticker</th><th>Bought Qty</th><th>Sold Qty</th>
+                <th>Realized P&amp;L</th><th>First Activity</th><th>Last Activity</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for c in closed_positions %}
+            <tr>
+                <td>{{ c.company_name }}</td>
+                <td>{{ c.ticker }}</td>
+                <td>{{ c.bought_qty }}</td>
+                <td>{{ c.sold_qty }}</td>
+                <td class="{% if c.realized_pnl >= 0 %}prediction-change-pos{% else %}prediction-change-neg{% endif %}">{{ "%.2f"|format(c.realized_pnl) }}</td>
+                <td>{{ c.first_date }}</td>
+                <td>{{ c.last_date }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="text-muted small">No closed positions.</p>
+    {% endif %}
+</details>
+
+{# ── Activities ── #}
+<details class="settings-card" open>
+    <summary>📜 Activities</summary>
+    {% if activities %}
+    <table id="activitiesTable" class="table table-hover w-100">
+        <thead>
+            <tr>
+                <th>Date</th><th>Type</th><th>Ticker</th><th>Qty</th><th>Unit Price</th>
+                <th>Fee</th><th>Currency</th><th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for t in activities %}
+            <tr>
+                <td>{{ t.txn_date }}</td>
+                <td>{{ t.txn_type }}</td>
+                <td>{{ t.ticker or '—' }}</td>
+                <td>{{ t.quantity if t.quantity is not none else '—' }}</td>
+                <td>{{ t.unit_price if t.unit_price is not none else '—' }}</td>
+                <td>{{ t.fee }}</td>
+                <td>{{ t.currency or '—' }}</td>
+                <td>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="editTransaction({{ account.id }}, {{ t.id }})">Edit</button>
+                    <button type="button" class="btn btn-outline-danger btn-sm" onclick="deleteTransaction({{ account.id }}, {{ t.id }})">Delete</button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="text-muted small">No activities yet.</p>
+    {% endif %}
+</details>
+
+{# ── Cash History ── #}
+<details class="settings-card" open>
+    <summary>💵 Cash Balance History</summary>
+    {% if cash_history %}
+    <table id="cashTable" class="table table-hover w-100">
+        <thead><tr><th>Date</th><th>Balance</th></tr></thead>
+        <tbody>
+            {% for c in cash_history %}
+            <tr><td>{{ c.date }}</td><td>{{ "%.2f"|format(c.balance) }}</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="text-muted small">No cash history yet.</p>
+    {% endif %}
+</details>
+
+{% include "partials/_accounts_txn_modal.html" %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+    window.BASE_CURRENCY = "{{ base_currency }}";
+    window.ACCOUNT_TRANSACTIONS = {{ activities | tojson }};
+</script>
+<script src="/static/js/accounts.js?v={{ css_version }}"></script>
+<script src="/static/js/account_detail.js?v={{ css_version }}"></script>
+{% endblock %}

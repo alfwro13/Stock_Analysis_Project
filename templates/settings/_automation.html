@@ -140,6 +140,22 @@
                     </div>
                 </div>
 
+                <div class="settings-panel border-left-green">
+                    <h4 class="settings-panel-header text-green">&#128176; Account Value Snapshot</h4>
+                    <p class="settings-desc-sm">Writes a nightly cash/equity/total value snapshot for every built-in account, powering the value-over-time chart on each account's detail page.</p>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="ACCOUNT_VALUE_SNAPSHOT_ENABLED" {% if config.SCHEDULING.ACCOUNT_VALUE_SNAPSHOT.ENABLED %}checked{% endif %}>
+                        <label for="ACCOUNT_VALUE_SNAPSHOT_ENABLED">Enable nightly snapshot</label>
+                    </div>
+                    <div class="flex-gap-15 align-end">
+                        <div class="form-group mb-0">
+                            <label>Execution Time</label>
+                            <input type="time" id="ACCOUNT_VALUE_SNAPSHOT_TIME" class="form-control" value="{{ config.SCHEDULING.ACCOUNT_VALUE_SNAPSHOT.TIME | default('23:30') }}">
+                        </div>
+                        <button type="button" class="btn btn-primary mt-0" onclick="triggerAccountValueSnapshot()">&#9654;&#65039; Run Now</button>
+                    </div>
+                </div>
+
             </details>
 
             <details class="settings-card" id="ml-ai-card">

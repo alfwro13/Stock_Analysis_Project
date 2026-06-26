@@ -143,6 +143,10 @@ async function saveSettings(silent = false) {
                 "TIME": document.getElementById('MAINTENANCE_TIME').value,
                 "DAYS_TO_KEEP_FILES": parseInt(document.getElementById('MAINTENANCE_DAYS_TO_KEEP_FILES').value) || 60
             },
+            "ACCOUNT_VALUE_SNAPSHOT": {
+                "ENABLED": document.getElementById('ACCOUNT_VALUE_SNAPSHOT_ENABLED').checked,
+                "TIME": document.getElementById('ACCOUNT_VALUE_SNAPSHOT_TIME').value
+            },
             "QUANT_ENGINE": {
                 "DAYS": quantDays,
                 "TIME": document.getElementById('QUANT_ENGINE_TIME').value

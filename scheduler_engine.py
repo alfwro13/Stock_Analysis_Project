@@ -296,6 +296,20 @@ def reload_scheduler():
         except Exception as e:
             logger.error("Failed to schedule Maintenance Job: %s", e)
 
+    snapshot_cfg = scheduling.get("ACCOUNT_VALUE_SNAPSHOT", {})
+    if snapshot_cfg.get("ENABLED", True):
+        snapshot_time = snapshot_cfg.get("TIME", "23:30")
+        try:
+            hour, minute = map(int, snapshot_time.split(':'))
+            scheduler.add_job(
+                run_account_value_snapshot,
+                CronTrigger(hour=hour, minute=minute, timezone=user_tz),
+                id='account_value_snapshot_job'
+            )
+            logger.info("Account Value Snapshot scheduled daily at %s.", snapshot_time)
+        except Exception as e:
+            logger.error("Failed to schedule Account Value Snapshot job: %s", e)
+
     quant_cfg = scheduling.get("QUANT_ENGINE", {})
     quant_days_list = quant_cfg.get("DAYS", ["mon", "tue", "wed", "thu", "fri"])
     quant_days = ",".join(quant_days_list) if quant_days_list else "mon-fri"
@@ -804,5 +818,5 @@ from scheduler_jobs import (
     run_ai_contagion_job, run_trap_monitor_job, run_trap_accuracy_fill_job,
     run_bubble_radar_job, register_etf_predictor_jobs, unregister_etf_predictor_jobs,
     run_forensic_quarterly_fetch_job, run_forensic_scores_job, run_etf_actual_fill_job,
-    run_system_check_job, run_treasury_auction_check,
+    run_system_check_job, run_treasury_auction_check, run_account_value_snapshot,
 )
