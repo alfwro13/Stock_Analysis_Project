@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 from accounts_engine import (
     create_transfer, delete_transaction_with_pair, export_transactions_csv,
-    fx_rate_on_date, import_ghostfolio_activities, resnapshot_account,
+    fx_rate_on_date, import_ghostfolio_activities, is_unresolved_ticker, resnapshot_account,
 )
 from api_deps import limiter, _error_500
 from config import load_config
@@ -374,7 +374,7 @@ async def api_import_ghostfolio(request: Request, account_id: int, body: ImportG
             return JSONResponse(status_code=400, content={"status": "error", "message": result["error"]})
         tickers = {txn["ticker"] for txn in get_transactions(account_id) if txn["ticker"]}
         for ticker in tickers:
-            if not _ticker_known(ticker):
+            if not _ticker_known(ticker) and not is_unresolved_ticker(ticker):
                 background_tasks.add_task(update_single_profile, ticker)
         background_tasks.add_task(resnapshot_account, account_id)
         return JSONResponse(content={

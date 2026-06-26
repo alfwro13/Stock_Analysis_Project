@@ -1,6 +1,7 @@
 # GUI name: "Accounts". Canonical scheduled-job names live in scheduler_manifest.JOB_GRAPH.
 import json
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -18,6 +19,13 @@ from yahoo_engine import yahoo_engine
 logger = logging.getLogger(__name__)
 
 _EPS = 1e-9
+
+_UUID_RE = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.IGNORECASE)
+
+
+def is_unresolved_ticker(ticker: Optional[str]) -> bool:
+    """Ghostfolio reports a raw asset UUID as `symbol` for custom/manual assets with no real market ticker."""
+    return bool(ticker) and bool(_UUID_RE.match(ticker))
 
 
 def _fx(txn) -> float:

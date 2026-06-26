@@ -148,7 +148,14 @@
             <tr>
                 <td>{{ t.txn_date }}</td>
                 <td>{{ t.txn_type }}</td>
-                <td>{{ t.ticker or '—' }}</td>
+                <td>
+                    {% if t.needs_review %}
+                    <abbr title="Ghostfolio reported a raw asset ID instead of a ticker for this holding (typically a custom/manual asset with no market data symbol). Click Edit to set the correct ticker, or leave as-is.">{{ t.company_name or t.ticker }}</abbr>
+                    <span class="badge-warn">Needs Review</span>
+                    {% else %}
+                    {{ t.ticker or '—' }}
+                    {% endif %}
+                </td>
                 <td>{{ t.quantity if t.quantity is not none else '—' }}</td>
                 <td>{{ t.unit_price if t.unit_price is not none else '—' }}</td>
                 <td>{{ t.fee }}</td>

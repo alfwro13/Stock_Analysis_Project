@@ -345,6 +345,30 @@ def test_import_ghostfolio_returns_counts(client):
 
 
 @pytest.mark.api
+def test_import_ghostfolio_skips_profile_fetch_for_uuid_ticker(client):
+    """Ghostfolio reports a raw asset UUID as the symbol for custom/manual assets — queueing a
+    profile fetch for that string only produces a guaranteed Yahoo Finance failure and permanently
+    blacklists the UUID. The import endpoint must not queue update_single_profile for it."""
+    with patch("api_routes_accounts.resnapshot_account"):
+        account_id = _create_account(client, name="ImportApiUuidAcc")
+    import database as _db
+    _db.add_transaction(
+        account_id=account_id, txn_type="Buy", txn_date="2026-01-10",
+        ticker="507f6948-db0b-4877-bec0-030a6996431d", quantity=1, unit_price=1.0,
+    )
+    with (
+        patch("api_routes_accounts.import_ghostfolio_activities", return_value={"imported": 0, "skipped": 0}),
+        patch("api_routes_accounts.resnapshot_account"),
+        patch("api_routes_accounts.update_single_profile") as mock_profile,
+    ):
+        resp = client.post(f"/api/accounts/{account_id}/import-ghostfolio", json={"ghostfolio_account_id": "gf-acc-1"})
+    assert resp.status_code == 200
+    mock_profile.assert_not_called()
+
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
 def test_import_ghostfolio_not_configured_returns_400(client):
     with patch("api_routes_accounts.resnapshot_account"):
         account_id = _create_account(client, name="ImportApiNotConfiguredAcc")

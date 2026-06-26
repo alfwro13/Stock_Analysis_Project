@@ -394,7 +394,10 @@ async def accounts_page(request: Request):
 
 @page_router.get("/accounts/{account_id}", response_class=HTMLResponse)
 async def account_detail_page(request: Request, account_id: int):
-    from accounts_engine import account_summary, cash_history, closed_positions, holdings_with_market_value, transaction_total_base
+    from accounts_engine import (
+        account_summary, cash_history, closed_positions, holdings_with_market_value,
+        is_unresolved_ticker, transaction_total_base,
+    )
     from database import get_account, get_transactions, get_value_history
     from visuals import create_account_value_chart
 
@@ -405,6 +408,7 @@ async def account_detail_page(request: Request, account_id: int):
     activities = get_transactions(account_id)
     for a in activities:
         a["total_base"] = transaction_total_base(a)
+        a["needs_review"] = is_unresolved_ticker(a.get("ticker"))
 
     value_history = get_value_history(account_id)
     if value_history:

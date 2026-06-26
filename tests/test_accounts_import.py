@@ -184,6 +184,38 @@ def test_import_not_configured_returns_error():
 
 
 @pytest.mark.db
+def test_is_unresolved_ticker_detects_ghostfolio_uuid_symbol():
+    """Ghostfolio returns a raw asset UUID as `symbol` for custom/manual assets that have no real
+    market data ticker — these must be flagged for user review rather than treated as a tradeable
+    symbol."""
+    assert accounts_engine.is_unresolved_ticker("507f6948-db0b-4877-bec0-030a6996431d") is True
+    assert accounts_engine.is_unresolved_ticker("AAPL") is False
+    assert accounts_engine.is_unresolved_ticker("BRK.B") is False
+    assert accounts_engine.is_unresolved_ticker(None) is False
+    assert accounts_engine.is_unresolved_ticker("") is False
+
+
+@pytest.mark.db
+def test_import_preserves_uuid_ticker_for_custom_ghostfolio_asset(monkeypatch):
+    """The import must still record the transaction (with the UUID as ticker) rather than dropping
+    it — the user needs to see and correct it via the Activities table, not lose the activity."""
+    monkeypatch.setattr(accounts_engine, "fx_rate_on_date", lambda currency, date: 1.0)
+    aid = create_account("UuidImportAcc", "GBP")
+    act = _activity("BUY", ticker="507f6948-db0b-4877-bec0-030a6996431d", quantity=1, unit_price=100.0,
+                     currency="USD", act_id="gf-uuid-1")
+    mock_engine = MagicMock(is_configured=True)
+    mock_engine.fetch_activities.return_value = [act]
+
+    with patch("ghostfolio_sync.GhostfolioSyncEngine", return_value=mock_engine):
+        result = accounts_engine.import_ghostfolio_activities(aid, "gf-acc-1")
+
+    assert result == {"imported": 1, "skipped": 0}
+    txns = get_transactions(aid)
+    assert len(txns) == 1
+    assert accounts_engine.is_unresolved_ticker(txns[0]["ticker"]) is True
+
+
+@pytest.mark.db
 def test_import_only_pulls_selected_ghostfolio_account():
     """Regression: importing must filter to the chosen Ghostfolio account, not every account the
     user has on Ghostfolio. fetch_activities() is the only call site, so passing account_id through

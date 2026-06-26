@@ -34,6 +34,7 @@
             <div class="term-box">
                 <span class="term-title">Import from Ghostfolio</span>
                 <p>Rather than re-entering trades you've already recorded in Ghostfolio, the Accounts page offers a one-click <strong>"Import from Ghostfolio"</strong> control that pulls an account's entire Ghostfolio activity history into a built-in account — Buys, Sells, Dividends, Interest, and Fees, mapped to the matching transaction type, including activity for tickers you no longer hold (so they land correctly under Closed Positions). These imported rows affect cash the same way any other transaction does, so for the resulting cash balance to be accurate, also record your real deposits, withdrawals, and transfers as Cash/Transfer rows. Re-running the import is safe: activities already imported are recognised and skipped, so nothing is duplicated.</p>
+                <p>Ghostfolio sometimes reports a manual or custom asset using a raw internal ID (a UUID-looking string) instead of a real ticker, because that asset has no actual market data symbol behind it. These rows are still imported — never silently dropped or blacklisted — but are marked <span class="badge-warn">Needs Review</span> in the account's Activities table, showing the asset's name in place of the meaningless ID. Click <strong>Edit</strong> on that row to type in the correct ticker yourself (or leave it as-is if it genuinely has no market data, e.g. a private fund or manual valuation).</p>
             </div>
 
         </div>
