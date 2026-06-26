@@ -136,6 +136,17 @@ def test_post_settings_with_valid_payload(client, confirm_token):
 
 
 @pytest.mark.api
+def test_post_settings_with_account_currencies(client, confirm_token):
+    """POST /api/settings with ACCOUNT_CURRENCIES must persist and round-trip via load_config."""
+    import config as _config
+    payload = {"ACCOUNT_CURRENCIES": ["GBP", "GBp", "USD", "EUR", "JPY"]}
+    resp = client.post("/api/settings", json=payload, headers={"X-Confirm-Token": confirm_token})
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}\n{resp.text}"
+    assert _json(resp).get("status") == "success"
+    assert _config.load_config().get("ACCOUNT_CURRENCIES") == ["GBP", "GBp", "USD", "EUR", "JPY"]
+
+
+@pytest.mark.api
 def test_post_settings_with_notification_routing(client, confirm_token):
     """POST /api/settings with NOTIFICATION_ROUTING must persist and round-trip via load_config."""
     import config as _config

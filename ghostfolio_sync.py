@@ -3,7 +3,7 @@ import logging
 import requests
 import urllib3
 from slugify import slugify
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -229,13 +229,16 @@ class GhostfolioSyncEngine:
             logger.error(f"Exception removing {symbol} from Watchlist: {e}")
             return False
 
-    def fetch_activities(self) -> list[dict]:
+    def fetch_activities(self, account_id: Optional[str] = None) -> list[dict]:
         if not self.headers:
             if not self.authenticate():
                 return []
         try:
+            url = f"{self.url}/api/v1/activities"
+            if account_id:
+                url += f"?accounts={account_id}"
             response = requests.get(
-                f"{self.url}/api/v1/activities",
+                url,
                 headers=self.headers,
                 verify=False,
                 timeout=15,

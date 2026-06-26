@@ -499,12 +499,14 @@ def create_anomaly_feature_radar(features: dict, ticker: str) -> str:
 
 
 def create_account_value_chart(df: pd.DataFrame) -> str:
-    # df indexed by snapshot_date (DatetimeIndex) with 'total_value' and 'cash_value' columns from account_value_history.
+    # df indexed by snapshot_date (DatetimeIndex) with 'total_value'/'cash_value'/'net_contributions' columns from account_value_history.
     fig = go.Figure()
     if not df.empty and 'total_value' in df.columns:
         fig.add_trace(go.Scatter(x=df.index, y=df['total_value'], name="Total Value", line=dict(color="#00ffcc", width=2), connectgaps=True))
     if not df.empty and 'cash_value' in df.columns:
         fig.add_trace(go.Scatter(x=df.index, y=df['cash_value'], name="Cash", line=dict(color="#bb86fc", width=1.5, dash='dot'), connectgaps=True))
+    if not df.empty and 'net_contributions' in df.columns:
+        fig.add_trace(go.Scatter(x=df.index, y=df['net_contributions'], name="Net Contributions", line=dict(color="#ffb74d", width=1.5, dash='dash'), connectgaps=True))
 
     fig.update_layout(
         title=dict(text="Account Value Over Time", x=0.5, xanchor='center'),

@@ -227,6 +227,7 @@ def test_holdings_with_market_value_allocation_sums_to_100():
     assert by_ticker["ZZHMV1"]["first_activity"] == "2026-01-05"
     assert round(sum(r["allocation_pct"] for r in rows), 1) == 100.0
     assert by_ticker["ZZHMV1"]["performance_pct"] == 25.0          # (1000/800 - 1) * 100
+    assert by_ticker["ZZHMV1"]["currency"] == "GBP"
 
 
 @pytest.mark.db
@@ -279,3 +280,176 @@ def test_backfill_value_history_writes_rows_from_parquet(monkeypatch, tmp_path):
     assert history["2025-01-03"]["equity_value"] == 204.0          # 2 * 102 (Close on 2025-01-03)
     assert history["2025-01-03"]["cash_value"] == 800.0            # 1000 - 2*100
     assert "2025-01-02" not in history                             # backfill starts at the first transaction
+
+
+@pytest.mark.db
+def test_cash_history_opening_row_has_no_txn_id():
+    aid = create_account("CashHistOpenAcc", "GBP", initial_cash=200.0)
+    history = accounts_engine.cash_history(aid)
+    assert len(history) == 1
+    assert history[0]["txn_id"] is None
+    assert history[0]["txn_type"] is None
+    assert history[0]["balance"] == 200.0
+
+
+@pytest.mark.db
+def test_cash_history_opening_date_uses_opened_date_when_set():
+    aid = create_account("CashHistOpenedDateAcc", "GBP", initial_cash=100.0, opened_date="2018-06-01")
+    history = accounts_engine.cash_history(aid)
+    assert history[0]["date"] == "2018-06-01"
+
+
+@pytest.mark.db
+def test_cash_history_opening_date_falls_back_to_created_at():
+    aid = create_account("CashHistNoOpenedDateAcc", "GBP", initial_cash=100.0)
+    acc = accounts_engine.get_account(aid)
+    history = accounts_engine.cash_history(aid)
+    assert history[0]["date"] == acc["created_at"][:10]
+
+
+@pytest.mark.db
+def test_cash_history_exposes_txn_id_for_editing_and_deleting():
+    aid = create_account("CashHistTxnAcc", "GBP", initial_cash=0.0)
+    tid = add_transaction(aid, "Cash", "2026-01-05", unit_price=300)
+    history = accounts_engine.cash_history(aid)
+    assert history[0]["txn_id"] is None              # opening balance row
+    assert history[1]["txn_id"] == tid
+    assert history[1]["txn_type"] == "Cash"
+    assert history[1]["balance"] == 300.0
+
+
+@pytest.mark.db
+def test_cash_history_skips_transactions_with_update_cash_false():
+    aid = create_account("CashHistSkipAcc", "GBP", initial_cash=100.0)
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZCHS", currency="GBP",
+                     quantity=1, unit_price=50, exchange_rate=1.0, update_cash=False)
+    history = accounts_engine.cash_history(aid)
+    assert len(history) == 1                          # only the opening row — the Buy never touched cash
+    assert history[0]["balance"] == 100.0
+
+
+@pytest.mark.db
+def test_create_transfer_creates_linked_pair_with_correct_cash_effect():
+    aid_a = create_account("TransferSrc", "GBP", initial_cash=1000.0)
+    aid_b = create_account("TransferDst", "GBP", initial_cash=200.0)
+
+    result = accounts_engine.create_transfer(aid_a, aid_b, 300.0, "2026-01-10", fee=5.0)
+    assert "out_txn_id" in result and "in_txn_id" in result
+
+    assert accounts_engine.cash_balance(aid_a) == 1000.0 - 300.0 - 5.0
+    assert accounts_engine.cash_balance(aid_b) == 200.0 + 300.0
+
+    from database import get_transaction
+    out_txn = get_transaction(result["out_txn_id"])
+    in_txn = get_transaction(result["in_txn_id"])
+    assert out_txn["txn_type"] == "Transfer"
+    assert out_txn["unit_price"] == -300.0
+    assert out_txn["linked_txn_id"] == result["in_txn_id"]
+    assert in_txn["unit_price"] == 300.0
+    assert in_txn["linked_txn_id"] == result["out_txn_id"]
+
+
+@pytest.mark.db
+def test_create_transfer_rejects_same_account():
+    aid = create_account("TransferSelfAcc", "GBP")
+    result = accounts_engine.create_transfer(aid, aid, 100.0, "2026-01-10")
+    assert "error" in result
+
+
+@pytest.mark.db
+def test_create_transfer_rejects_unknown_account():
+    aid = create_account("TransferUnknownDstAcc", "GBP")
+    result = accounts_engine.create_transfer(aid, 999999, 100.0, "2026-01-10")
+    assert "error" in result
+
+
+@pytest.mark.db
+def test_delete_transaction_with_pair_removes_both_legs():
+    aid_a = create_account("DeletePairSrc", "GBP", initial_cash=500.0)
+    aid_b = create_account("DeletePairDst", "GBP", initial_cash=0.0)
+    result = accounts_engine.create_transfer(aid_a, aid_b, 100.0, "2026-01-10")
+
+    from database import get_transaction, get_transactions
+    assert accounts_engine.delete_transaction_with_pair(result["out_txn_id"]) is True
+    assert get_transaction(result["out_txn_id"]) is None
+    assert get_transaction(result["in_txn_id"]) is None
+    assert get_transactions(aid_a) == []
+    assert get_transactions(aid_b) == []
+
+
+@pytest.mark.db
+def test_delete_transaction_with_pair_on_non_transfer_deletes_only_itself():
+    aid = create_account("DeleteSingleAcc", "GBP")
+    tid = add_transaction(aid, "Cash", "2026-01-05", unit_price=100)
+    assert accounts_engine.delete_transaction_with_pair(tid) is True
+
+    from database import get_transaction
+    assert get_transaction(tid) is None
+
+
+@pytest.mark.db
+def test_net_contributions_counts_cash_and_transfer_only():
+    aid_a = create_account("ContribSrc", "GBP", initial_cash=1000.0)
+    aid_b = create_account("ContribDst", "GBP", initial_cash=0.0)
+    add_transaction(aid_a, "Buy", "2026-01-05", ticker="ZZCTRB", currency="GBP",
+                     quantity=10, unit_price=50, exchange_rate=1.0)             # cash -500, NOT a contribution
+    add_transaction(aid_a, "Cash", "2026-01-06", unit_price=200)                # +200 cash AND contribution
+    accounts_engine.create_transfer(aid_a, aid_b, 100.0, "2026-01-07")          # -100 cash AND contribution (src)
+
+    assert accounts_engine.cash_balance(aid_a) == 1000.0 - 500.0 + 200.0 - 100.0
+    assert accounts_engine.net_contributions(aid_a) == 1000.0 + 200.0 - 100.0   # Buy excluded
+    assert accounts_engine.net_contributions(aid_b) == 0.0 + 100.0
+
+
+@pytest.mark.db
+def test_resnapshot_account_writes_todays_row_with_contributions():
+    aid = create_account("ResnapshotAcc", "GBP", initial_cash=500.0)
+    add_transaction(aid, "Cash", "2026-01-05", unit_price=300)
+
+    accounts_engine.resnapshot_account(aid)
+
+    from database import get_value_history
+    history = get_value_history(aid)
+    assert history, "expected at least one snapshot row"
+    today = history[-1]
+    assert today["cash_value"] == 800.0
+    assert today["net_contributions"] == 800.0
+    assert today["total_value"] == 800.0
+
+
+@pytest.mark.db
+def test_transaction_total_base_handles_pence_and_cash_rows():
+    aid = create_account("TotalBaseAcc", "GBP")
+    buy_id = add_transaction(aid, "Buy", "2026-01-05", ticker="ZZTB", currency="GBp",
+                              quantity=10, unit_price=250, exchange_rate=0.01, price_in_pence=True)
+    cash_id = add_transaction(aid, "Cash", "2026-01-06", unit_price=100)
+
+    from database import get_transaction
+    assert accounts_engine.transaction_total_base(get_transaction(buy_id)) == 25.0       # 10 * 250 * 0.01
+    assert accounts_engine.transaction_total_base(get_transaction(cash_id)) == 100.0      # qty defaults to 1
+
+
+@pytest.mark.db
+def test_export_transactions_csv_shape_and_position_status():
+    aid = create_account("ExportAcc", "GBP")
+    add_transaction(aid, "Buy", "2026-01-01", ticker="ZZEXPOPEN", currency="GBP",
+                     quantity=10, unit_price=100, exchange_rate=1.0)
+    add_transaction(aid, "Buy", "2026-01-02", ticker="ZZEXPCLOSED", currency="GBP",
+                     quantity=5, unit_price=50, exchange_rate=1.0)
+    add_transaction(aid, "Sell", "2026-01-03", ticker="ZZEXPCLOSED", currency="GBP",
+                     quantity=5, unit_price=60, exchange_rate=1.0)
+    add_transaction(aid, "Cash", "2026-01-04", unit_price=200)
+
+    csv_text = accounts_engine.export_transactions_csv(aid)
+    lines = [l.rstrip("\r") for l in csv_text.strip().split("\n")]
+    assert lines[0] == (
+        "ticker,type,qty,price,total_original_currency,transaction_currency,"
+        "total_system_currency,system_currency,fx_rate,date,position"
+    )
+    rows = {tuple(l.split(",")[:2]): l for l in lines[1:]}
+    assert rows[("ZZEXPOPEN", "Buy")].endswith("open")
+    assert rows[("ZZEXPCLOSED", "Buy")].endswith("closed")
+    assert rows[("ZZEXPCLOSED", "Sell")].endswith("closed")
+    cash_row = next(l for l in lines[1:] if ",Cash," in l)
+    assert cash_row.endswith(",")            # position column blank for Cash
+    assert cash_row.startswith(",Cash,")     # ticker column blank for Cash

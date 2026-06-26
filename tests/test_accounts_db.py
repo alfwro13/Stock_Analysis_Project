@@ -28,6 +28,25 @@ def test_create_and_get_account_roundtrip():
 
 
 @pytest.mark.db
+def test_create_account_with_opened_date_roundtrip():
+    aid = create_account("HistoricalAcc", "GBP", opened_date="2020-03-15")
+    assert get_account(aid)["opened_date"] == "2020-03-15"
+
+
+@pytest.mark.db
+def test_create_account_without_opened_date_defaults_to_none():
+    aid = create_account("NoOpenedDateAcc", "GBP")
+    assert get_account(aid)["opened_date"] is None
+
+
+@pytest.mark.db
+def test_update_account_opened_date():
+    aid = create_account("UpdateOpenedDateAcc", "GBP")
+    assert update_account(aid, opened_date="2019-01-01") is True
+    assert get_account(aid)["opened_date"] == "2019-01-01"
+
+
+@pytest.mark.db
 def test_update_account_rejects_unknown_columns():
     aid = create_account("Guard", "GBP")
     assert update_account(aid, name="Renamed") is True

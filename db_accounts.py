@@ -48,14 +48,15 @@ def create_account(
     currency: str,
     initial_cash: float = 0.0,
     note: Optional[str] = None,
+    opened_date: Optional[str] = None,
 ) -> Optional[int]:
     conn = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO accounts (name, currency, initial_cash, note) VALUES (?, ?, ?, ?)",
-            (name, currency, initial_cash, note)
+            "INSERT INTO accounts (name, currency, initial_cash, note, opened_date) VALUES (?, ?, ?, ?, ?)",
+            (name, currency, initial_cash, note, opened_date)
         )
         conn.commit()
         return cursor.lastrowid
@@ -67,7 +68,7 @@ def create_account(
             conn.close()
 
 
-_ALLOWED_ACCOUNT_COLUMNS = frozenset({"name", "currency", "initial_cash", "note"})
+_ALLOWED_ACCOUNT_COLUMNS = frozenset({"name", "currency", "initial_cash", "note", "opened_date"})
 
 
 def update_account(account_id: int, **fields) -> bool:
@@ -165,6 +166,7 @@ def add_transaction(
     update_cash: bool = True,
     price_in_pence: bool = False,
     ghostfolio_ref: Optional[str] = None,
+    linked_txn_id: Optional[int] = None,
 ) -> Optional[int]:
     conn = None
     try:
@@ -174,11 +176,11 @@ def add_transaction(
             """INSERT INTO account_transactions
                    (account_id, txn_type, ticker, company_name, currency, txn_date,
                     quantity, unit_price, fee, exchange_rate, notes, update_cash,
-                    price_in_pence, ghostfolio_ref)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    price_in_pence, ghostfolio_ref, linked_txn_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (account_id, txn_type, ticker, company_name, currency, txn_date,
              quantity, unit_price, fee, exchange_rate, notes,
-             1 if update_cash else 0, 1 if price_in_pence else 0, ghostfolio_ref)
+             1 if update_cash else 0, 1 if price_in_pence else 0, ghostfolio_ref, linked_txn_id)
         )
         conn.commit()
         return cursor.lastrowid
@@ -193,6 +195,7 @@ def add_transaction(
 _ALLOWED_TXN_COLUMNS = frozenset({
     "txn_type", "ticker", "company_name", "currency", "txn_date", "quantity",
     "unit_price", "fee", "exchange_rate", "notes", "update_cash", "price_in_pence",
+    "linked_txn_id",
 })
 
 
@@ -249,6 +252,7 @@ def upsert_value_snapshot(
     total_value: float,
     cash_value: float,
     equity_value: float,
+    net_contributions: float = 0.0,
 ) -> None:
     conn = None
     try:
@@ -256,13 +260,14 @@ def upsert_value_snapshot(
         cursor = conn.cursor()
         cursor.execute(
             """INSERT INTO account_value_history
-                   (account_id, snapshot_date, total_value, cash_value, equity_value)
-               VALUES (?, ?, ?, ?, ?)
+                   (account_id, snapshot_date, total_value, cash_value, equity_value, net_contributions)
+               VALUES (?, ?, ?, ?, ?, ?)
                ON CONFLICT(account_id, snapshot_date) DO UPDATE SET
                    total_value = excluded.total_value,
                    cash_value = excluded.cash_value,
-                   equity_value = excluded.equity_value""",
-            (account_id, snapshot_date, total_value, cash_value, equity_value)
+                   equity_value = excluded.equity_value,
+                   net_contributions = excluded.net_contributions""",
+            (account_id, snapshot_date, total_value, cash_value, equity_value, net_contributions)
         )
         conn.commit()
     except Exception as e:

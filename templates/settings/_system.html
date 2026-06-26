@@ -239,6 +239,10 @@
                 <label>Ignored Tickers <span class="text-muted text-xs">(comma-separated, e.g. GBP, USD, 0P00018XAR.L)</span></label>
                 <input type="text" id="IGNORED_TICKERS" class="form-control" value="{{ config.IGNORED_TICKERS | join(', ') if config.IGNORED_TICKERS else '' }}">
             </div>
+            <div class="form-group">
+                <label><abbr title="Currencies offered in the Add/Edit Transaction currency selector on the Accounts pages. GBp is London Stock Exchange pence — distinct from GBP.">Account Currencies</abbr> <span class="text-muted text-xs">(comma-separated, e.g. GBP, GBp, USD, EUR)</span></label>
+                <input type="text" id="ACCOUNT_CURRENCIES" class="form-control" value="{{ config.ACCOUNT_CURRENCIES | join(', ') if config.ACCOUNT_CURRENCIES else '' }}">
+            </div>
 
             <div class="settings-panel border-left-cyan">
                 <strong>✉️ Mail Server</strong>

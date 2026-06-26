@@ -70,6 +70,7 @@ DEFAULT_CONFIG = {
     "USER_TIMEZONE": "Europe/London",   # IANA tz string — used for all display formatting
     "HOME_EXCHANGE": "LSE",             # NYSE | LSE | XETRA | TSE — drives default market-window logic
     "IGNORED_TICKERS": ["GBP", "USD", "EUR"],
+    "ACCOUNT_CURRENCIES": ["GBP", "GBp", "USD", "EUR"],
     "GHOSTFOLIO_ACCOUNTS": {
         "discovered": [],
         "active": []
@@ -468,6 +469,7 @@ BASE_CURRENCY = current_config.get("BASE_CURRENCY", "GBP")
 USER_TIMEZONE = current_config.get("USER_TIMEZONE", "Europe/London")
 HOME_EXCHANGE  = current_config.get("HOME_EXCHANGE", "LSE")
 IGNORED_TICKERS = current_config.get("IGNORED_TICKERS", [])
+ACCOUNT_CURRENCIES = current_config.get("ACCOUNT_CURRENCIES", DEFAULT_CONFIG["ACCOUNT_CURRENCIES"])
 UI_PREFERENCES = current_config.get("UI_PREFERENCES", {})
 NOTIFICATIONS = current_config.get("NOTIFICATIONS", {})
 SCHEDULING = current_config.get("SCHEDULING", {})

@@ -646,6 +646,49 @@ class TestSyncWatchlist:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# 4b. fetch_activities()
+# ──────────────────────────────────────────────────────────────────────────────
+
+class TestFetchActivities:
+
+    def test_no_account_filter_omits_query_param(self, monkeypatch):
+        engine = _engine_with_bearer(monkeypatch)
+        called_urls = []
+
+        def capture(url, **kw):
+            called_urls.append(url)
+            return _mock_resp(200, {"activities": []})
+
+        with patch("requests.get", side_effect=capture):
+            engine.fetch_activities()
+
+        assert called_urls == [f"{engine.url}/api/v1/activities"]
+
+    def test_account_filter_appends_accounts_query_param(self, monkeypatch):
+        """
+        CONTRACT: Per-account filtering must be GET /api/v1/activities?accounts={id}, mirroring the
+        holdings endpoint. Regression for the bug where import pulled every Ghostfolio account's
+        activities into one built-in account because no filter was ever sent.
+        """
+        engine = _engine_with_bearer(monkeypatch)
+        called_urls = []
+
+        def capture(url, **kw):
+            called_urls.append(url)
+            return _mock_resp(200, {"activities": []})
+
+        with patch("requests.get", side_effect=capture):
+            engine.fetch_activities(account_id="acc-42")
+
+        assert called_urls == [f"{engine.url}/api/v1/activities?accounts=acc-42"]
+
+    def test_network_exception_returns_empty_list(self, monkeypatch):
+        engine = _engine_with_bearer(monkeypatch)
+        with patch("requests.get", side_effect=Exception("timeout")):
+            assert engine.fetch_activities(account_id="acc-1") == []
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # 5. add_to_watchlist()
 # ──────────────────────────────────────────────────────────────────────────────
 

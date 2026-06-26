@@ -8,22 +8,26 @@
       <div class="modal-body">
         <input type="hidden" id="txn-id">
         <input type="hidden" id="txn-account-id">
-        <input type="hidden" id="txn-currency">
         <input type="hidden" id="txn-company-name">
         <div class="form-group">
             <label for="txn-account">Account</label>
-            <select id="txn-account"></select>
+            <select id="txn-account" onchange="_populateToAccountSelect()"></select>
         </div>
         <div class="form-group">
             <label for="txn-type">Type</label>
-            <select id="txn-type">
+            <select id="txn-type" onchange="_updateTxnFieldsForType()">
                 <option value="Buy">Buy</option>
                 <option value="Sell">Sell</option>
                 <option value="Dividend">Dividend</option>
                 <option value="Interest">Interest</option>
                 <option value="Fee">Fee</option>
                 <option value="Cash">Cash</option>
+                <option value="Transfer">Transfer</option>
             </select>
+        </div>
+        <div class="form-group d-none" id="txn-to-account-group">
+            <label for="txn-to-account">To Account</label>
+            <select id="txn-to-account"></select>
         </div>
         <div class="form-group" id="txn-ticker-group">
             <label for="txn-ticker">Ticker</label>
@@ -32,32 +36,38 @@
         </div>
         <div class="form-group">
             <label for="txn-date">Date</label>
-            <input type="date" id="txn-date">
+            <input type="date" id="txn-date" onchange="_onTxnCurrencyOrDateChange()">
         </div>
-        <div class="form-group">
+        <div class="form-group" id="txn-quantity-group">
             <label for="txn-quantity">Quantity</label>
-            <input type="number" id="txn-quantity" step="0.000001">
+            <input type="number" id="txn-quantity" step="0.000001" oninput="_updateTxnTotalPreview()">
         </div>
-        <div class="form-group">
-            <label for="txn-price"><abbr title="Per-share price in the transaction's native trade currency.">Unit Price</abbr></label>
-            <input type="number" id="txn-price" step="0.0001">
+        <div class="flex-gap-15">
+            <div class="form-group flex-2">
+                <label for="txn-price"><abbr id="txn-price-abbr" title="Per-share price in the transaction's native trade currency.">Unit Price</abbr></label>
+                <input type="number" id="txn-price" step="0.0001" oninput="_updateTxnTotalPreview()">
+                <div id="txn-price-hint" class="text-muted small d-none">Positive amount = deposit. Negative amount = withdrawal.</div>
+            </div>
+            <div class="form-group" id="txn-currency-group">
+                <label for="txn-currency"><abbr title="The currency this transaction is denominated in. GBp is London Stock Exchange pence — distinct from GBP. Auto-filled from the ticker lookup, but always editable.">Currency</abbr></label>
+                <select id="txn-currency" onchange="_onTxnCurrencyOrDateChange()"></select>
+            </div>
         </div>
-        <div class="form-group">
-            <label for="txn-fee">Fee</label>
-            <input type="number" id="txn-fee" step="0.01" value="0">
-        </div>
-        <div class="form-group">
-            <label for="txn-fx"><abbr title="Multiplier that converts the trade currency to your base currency. Leave blank to auto-fill from the historical FX rate on the transaction date.">Exchange Rate</abbr></label>
-            <input type="number" id="txn-fx" step="0.000001" placeholder="auto">
-        </div>
-        <div class="checkbox-group">
-            <input type="checkbox" id="txn-update-cash" checked>
-            <label for="txn-update-cash">Update cash balance</label>
+        <div class="flex-gap-15">
+            <div class="form-group flex-2">
+                <label for="txn-fee">Fee <span id="txn-fee-currency-label" class="text-muted text-xs"></span></label>
+                <input type="number" id="txn-fee" step="0.01" value="0" oninput="_updateTxnTotalPreview()">
+            </div>
+            <div class="form-group" id="txn-fx-group">
+                <label for="txn-fx"><abbr title="Multiplier that converts the trade currency to your base currency. Auto-filled from the historical FX rate on the transaction date — still editable.">Exchange Rate</abbr></label>
+                <input type="number" id="txn-fx" step="0.000001" placeholder="auto" oninput="_updateTxnTotalPreview()">
+            </div>
         </div>
         <div class="form-group">
             <label for="txn-notes">Notes</label>
             <input type="text" id="txn-notes" placeholder="Optional">
         </div>
+        <div id="txn-total-preview" class="status-msg-sm text-accent-cyan mb-2"></div>
         <div id="txn-status" class="status-msg-sm"></div>
       </div>
       <div class="modal-footer">

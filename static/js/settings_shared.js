@@ -48,6 +48,7 @@ async function saveSettings(silent = false) {
         "USER_TIMEZONE": document.getElementById('USER_TIMEZONE').value.trim(),
         "HOME_EXCHANGE": document.getElementById('HOME_EXCHANGE').value,
         "IGNORED_TICKERS": document.getElementById('IGNORED_TICKERS').value.split(',').map(s => s.trim()).filter(Boolean),
+        "ACCOUNT_CURRENCIES": document.getElementById('ACCOUNT_CURRENCIES').value.split(',').map(s => s.trim()).filter(Boolean),
         "FILE_LOGGING": {
             "ENABLED": document.getElementById('FILE_LOGGING_ENABLED').checked,
             "LEVEL": document.getElementById('FILE_LOGGING_LEVEL').value,

@@ -2,11 +2,15 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 
-from accounts_engine import backfill_value_history, fx_rate_on_date, import_ghostfolio_activities
+from accounts_engine import (
+    create_transfer, delete_transaction_with_pair, export_transactions_csv,
+    fx_rate_on_date, import_ghostfolio_activities, resnapshot_account,
+)
 from api_deps import limiter, _error_500
+from config import load_config
 from database import (
     get_accounts,
     get_account,
@@ -17,7 +21,6 @@ from database import (
     get_transaction,
     add_transaction,
     update_transaction,
-    delete_transaction,
     get_connection,
 )
 from profile_engine import update_single_profile
@@ -29,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 accounts_router = APIRouter()
 
-_TXN_TYPES = frozenset({"Buy", "Sell", "Fee", "Dividend", "Interest", "Cash"})
+_TXN_TYPES = frozenset({"Buy", "Sell", "Fee", "Dividend", "Interest", "Cash", "Transfer"})
 
 
 class AccountBody(BaseModel):
@@ -37,6 +40,7 @@ class AccountBody(BaseModel):
     currency: str
     initial_cash: float = 0.0
     note: Optional[str] = None
+    opened_date: Optional[str] = None
 
 
 class TransactionBody(BaseModel):
@@ -52,6 +56,10 @@ class TransactionBody(BaseModel):
     notes: Optional[str] = None
     update_cash: bool = True
     price_in_pence: bool = False
+
+
+class ImportGhostfolioBody(BaseModel):
+    ghostfolio_account_id: str
 
 
 def _ticker_known(ticker: str) -> bool:
@@ -80,7 +88,7 @@ async def api_list_accounts():
 
 
 @accounts_router.post("/accounts")
-@limiter.limit("30/minute")
+@limiter.limit("60/minute")
 async def api_create_account(request: Request, body: AccountBody, background_tasks: BackgroundTasks):
     try:
         account_id = create_account(
@@ -88,10 +96,11 @@ async def api_create_account(request: Request, body: AccountBody, background_tas
             currency=body.currency.upper().strip(),
             initial_cash=body.initial_cash,
             note=body.note,
+            opened_date=body.opened_date,
         )
         if account_id is None:
             return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to create account."})
-        background_tasks.add_task(backfill_value_history, account_id)
+        background_tasks.add_task(resnapshot_account, account_id)
         return JSONResponse(content={"status": "success", "message": "Account created.", "id": account_id})
     except Exception as e:
         logger.error("api_create_account failed: %s", e)
@@ -110,6 +119,7 @@ async def api_update_account(request: Request, account_id: int, body: AccountBod
             currency=body.currency.upper().strip(),
             initial_cash=body.initial_cash,
             note=body.note,
+            opened_date=body.opened_date,
         )
         if not ok:
             return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to update account."})
@@ -153,6 +163,11 @@ async def api_create_transaction(
                 status_code=422,
                 content={"status": "error", "message": f"txn_type must be one of: {', '.join(sorted(_TXN_TYPES))}"},
             )
+        if body.txn_type == "Transfer":
+            return JSONResponse(
+                status_code=422,
+                content={"status": "error", "message": "Use POST /accounts/{id}/transfer to record a transfer."},
+            )
         ticker = normalize_ticker(body.ticker) if body.ticker else None
         if ticker and not _ticker_known(ticker):
             background_tasks.add_task(update_single_profile, ticker)
@@ -175,6 +190,7 @@ async def api_create_transaction(
         )
         if txn_id is None:
             return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to add transaction."})
+        background_tasks.add_task(resnapshot_account, account_id)
         return JSONResponse(content={"status": "success", "message": "Transaction added.", "id": txn_id})
     except Exception as e:
         logger.error("api_create_transaction account=%s failed: %s", account_id, e)
@@ -183,7 +199,9 @@ async def api_create_transaction(
 
 @accounts_router.put("/accounts/{account_id}/transactions/{txn_id}")
 @limiter.limit("30/minute")
-async def api_update_transaction(request: Request, account_id: int, txn_id: int, body: TransactionBody):
+async def api_update_transaction(
+    request: Request, account_id: int, txn_id: int, body: TransactionBody, background_tasks: BackgroundTasks
+):
     try:
         acc = get_account(account_id)
         if acc is None:
@@ -191,6 +209,11 @@ async def api_update_transaction(request: Request, account_id: int, txn_id: int,
         existing = get_transaction(txn_id)
         if existing is None or existing["account_id"] != account_id:
             return JSONResponse(status_code=404, content={"status": "error", "message": "Transaction not found."})
+        if existing["txn_type"] == "Transfer" or body.txn_type == "Transfer":
+            return JSONResponse(
+                status_code=422,
+                content={"status": "error", "message": "Transfers can't be edited — delete and recreate instead."},
+            )
         if body.txn_type not in _TXN_TYPES:
             return JSONResponse(
                 status_code=422,
@@ -216,6 +239,7 @@ async def api_update_transaction(request: Request, account_id: int, txn_id: int,
         )
         if not ok:
             return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to update transaction."})
+        background_tasks.add_task(resnapshot_account, account_id)
         return JSONResponse(content={"status": "success", "message": "Transaction updated."})
     except Exception as e:
         logger.error("api_update_transaction %s failed: %s", txn_id, e)
@@ -224,15 +248,75 @@ async def api_update_transaction(request: Request, account_id: int, txn_id: int,
 
 @accounts_router.delete("/accounts/{account_id}/transactions/{txn_id}")
 @limiter.limit("30/minute")
-async def api_delete_transaction(request: Request, account_id: int, txn_id: int):
+async def api_delete_transaction(request: Request, account_id: int, txn_id: int, background_tasks: BackgroundTasks):
     try:
         existing = get_transaction(txn_id)
         if existing is None or existing["account_id"] != account_id:
             return JSONResponse(status_code=404, content={"status": "error", "message": "Transaction not found."})
-        delete_transaction(txn_id)
+        delete_transaction_with_pair(txn_id)
+        background_tasks.add_task(resnapshot_account, account_id)
         return JSONResponse(content={"status": "success", "message": "Transaction deleted."})
     except Exception as e:
         logger.error("api_delete_transaction %s failed: %s", txn_id, e)
+        return _error_500(e)
+
+
+class TransferBody(BaseModel):
+    to_account_id: int
+    amount: float
+    txn_date: str
+    fee: float = 0.0
+    notes: Optional[str] = None
+
+
+@accounts_router.post("/accounts/{account_id}/transfer")
+@limiter.limit("30/minute")
+async def api_create_transfer(request: Request, account_id: int, body: TransferBody, background_tasks: BackgroundTasks):
+    try:
+        if get_account(account_id) is None:
+            return JSONResponse(status_code=404, content={"status": "error", "message": "Account not found."})
+        if get_account(body.to_account_id) is None:
+            return JSONResponse(status_code=404, content={"status": "error", "message": "Destination account not found."})
+        if body.amount <= 0:
+            return JSONResponse(status_code=422, content={"status": "error", "message": "amount must be positive."})
+        result = create_transfer(account_id, body.to_account_id, body.amount, body.txn_date, body.fee, body.notes)
+        if result.get("error"):
+            return JSONResponse(status_code=422, content={"status": "error", "message": result["error"]})
+        background_tasks.add_task(resnapshot_account, account_id)
+        background_tasks.add_task(resnapshot_account, body.to_account_id)
+        return JSONResponse(content={"status": "success", "message": "Transfer recorded.", **result})
+    except Exception as e:
+        logger.error("api_create_transfer account=%s failed: %s", account_id, e)
+        return _error_500(e)
+
+
+@accounts_router.get("/accounts/{account_id}/export")
+@limiter.limit("20/minute")
+async def api_export_transactions(request: Request, account_id: int):
+    try:
+        acc = get_account(account_id)
+        if acc is None:
+            return JSONResponse(status_code=404, content={"status": "error", "message": "Account not found."})
+        csv_text = export_transactions_csv(account_id)
+        filename = f"{acc['name'].replace(' ', '_')}_transactions.csv"
+        return Response(
+            content=csv_text,
+            media_type="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except Exception as e:
+        logger.error("api_export_transactions account=%s failed: %s", account_id, e)
+        return _error_500(e)
+
+
+@accounts_router.get("/fx-rate")
+@limiter.limit("30/minute")
+async def api_fx_rate(request: Request, currency: str, date: str):
+    try:
+        rate = fx_rate_on_date(currency, date)
+        return JSONResponse(content={"status": "success", "rate": rate})
+    except Exception as e:
+        logger.error("api_fx_rate failed for %r/%r: %s", currency, date, e)
         return _error_500(e)
 
 
@@ -259,20 +343,40 @@ async def api_ticker_lookup(request: Request, q: str):
         return _error_500(e)
 
 
+@accounts_router.get("/accounts/ghostfolio-accounts")
+@limiter.limit("20/minute")
+async def api_list_ghostfolio_accounts(request: Request):
+    try:
+        config_data = load_config()
+        gf_accounts = config_data.get("GHOSTFOLIO_ACCOUNTS", {})
+        discovered = {a["id"]: a for a in gf_accounts.get("discovered", [])}
+        active_ids = gf_accounts.get("active", [])
+        accounts = [
+            {"id": acc_id, "name": discovered[acc_id]["name"], "currency": discovered[acc_id]["currency"]}
+            for acc_id in active_ids if acc_id in discovered
+        ]
+        return JSONResponse(content={"status": "success", "accounts": accounts})
+    except Exception as e:
+        logger.error("api_list_ghostfolio_accounts failed: %s", e)
+        return _error_500(e)
+
+
 @accounts_router.post("/accounts/{account_id}/import-ghostfolio")
 @limiter.limit("10/minute")
-async def api_import_ghostfolio(request: Request, account_id: int, background_tasks: BackgroundTasks):
+async def api_import_ghostfolio(request: Request, account_id: int, body: ImportGhostfolioBody, background_tasks: BackgroundTasks):
     try:
         if get_account(account_id) is None:
             return JSONResponse(status_code=404, content={"status": "error", "message": "Account not found."})
-        result = import_ghostfolio_activities(account_id)
+        if not body.ghostfolio_account_id:
+            return JSONResponse(status_code=422, content={"status": "error", "message": "ghostfolio_account_id is required."})
+        result = import_ghostfolio_activities(account_id, body.ghostfolio_account_id)
         if result.get("error"):
             return JSONResponse(status_code=400, content={"status": "error", "message": result["error"]})
         tickers = {txn["ticker"] for txn in get_transactions(account_id) if txn["ticker"]}
         for ticker in tickers:
             if not _ticker_known(ticker):
                 background_tasks.add_task(update_single_profile, ticker)
-        background_tasks.add_task(backfill_value_history, account_id)
+        background_tasks.add_task(resnapshot_account, account_id)
         return JSONResponse(content={
             "status": "success",
             "message": f"Imported {result['imported']} activities ({result['skipped']} skipped).",

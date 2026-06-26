@@ -707,6 +707,7 @@ def init_db() -> None:
                 currency      TEXT NOT NULL,
                 initial_cash  REAL NOT NULL DEFAULT 0,
                 note          TEXT,
+                opened_date   TEXT,
                 deleted_at    TEXT DEFAULT NULL,
                 created_at    TEXT DEFAULT (datetime('now'))
             )
@@ -729,18 +730,20 @@ def init_db() -> None:
                 update_cash     INTEGER NOT NULL DEFAULT 1,
                 price_in_pence  INTEGER NOT NULL DEFAULT 0,
                 ghostfolio_ref  TEXT,
+                linked_txn_id   INTEGER,
                 created_at      TEXT DEFAULT (datetime('now'))
             )
         ''')
 
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS account_value_history (
-                id            INTEGER PRIMARY KEY AUTOINCREMENT,
-                account_id    INTEGER NOT NULL,
-                snapshot_date TEXT NOT NULL,
-                total_value   REAL,
-                cash_value    REAL,
-                equity_value  REAL,
+                id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id        INTEGER NOT NULL,
+                snapshot_date     TEXT NOT NULL,
+                total_value       REAL,
+                cash_value        REAL,
+                equity_value      REAL,
+                net_contributions REAL,
                 UNIQUE(account_id, snapshot_date)
             )
         ''')
@@ -814,6 +817,33 @@ def migrate_db(conn, cursor) -> None:
                 break
     except Exception as e:
         logger.error("[MIGRATION ERROR] Failed on market_pulse_cache numeric enforcement: %s", e)
+
+    cursor.execute("PRAGMA table_info(accounts)")
+    existing_account_columns = [info['name'] for info in cursor.fetchall()]
+    if 'opened_date' not in existing_account_columns:
+        try:
+            logger.info("[MIGRATION] Adding column: opened_date to accounts...")
+            cursor.execute("ALTER TABLE accounts ADD COLUMN opened_date TEXT")
+        except Exception as e:
+            logger.error("[MIGRATION ERROR] Failed on accounts: %s", e)
+
+    cursor.execute("PRAGMA table_info(account_transactions)")
+    existing_account_txn_columns = [info['name'] for info in cursor.fetchall()]
+    if 'linked_txn_id' not in existing_account_txn_columns:
+        try:
+            logger.info("[MIGRATION] Adding column: linked_txn_id to account_transactions...")
+            cursor.execute("ALTER TABLE account_transactions ADD COLUMN linked_txn_id INTEGER")
+        except Exception as e:
+            logger.error("[MIGRATION ERROR] Failed on account_transactions: %s", e)
+
+    cursor.execute("PRAGMA table_info(account_value_history)")
+    existing_account_value_columns = [info['name'] for info in cursor.fetchall()]
+    if 'net_contributions' not in existing_account_value_columns:
+        try:
+            logger.info("[MIGRATION] Adding column: net_contributions to account_value_history...")
+            cursor.execute("ALTER TABLE account_value_history ADD COLUMN net_contributions REAL")
+        except Exception as e:
+            logger.error("[MIGRATION ERROR] Failed on account_value_history: %s", e)
 
     cursor.execute("PRAGMA table_info(stock_signals)")
     existing_stock_columns = [info['name'] for info in cursor.fetchall()]

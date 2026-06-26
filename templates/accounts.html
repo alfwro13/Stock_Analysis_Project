@@ -39,6 +39,10 @@
             <input type="number" id="acct-cash" step="0.01" value="0">
         </div>
         <div class="form-group">
+            <label for="acct-opened-date"><abbr title="The real-world date this account was opened. Used as the starting point for the Cash Balance History table — leave blank to use today.">Opening Date</abbr></label>
+            <input type="date" id="acct-opened-date">
+        </div>
+        <div class="form-group">
             <label for="acct-note">Note</label>
             <input type="text" id="acct-note" placeholder="Optional">
         </div>
@@ -52,11 +56,35 @@
 </div>
 
 {% include "partials/_accounts_txn_modal.html" %}
+
+<div class="modal fade" id="gfImportModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Import from Ghostfolio</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="gf-import-account-id">
+        <div class="form-group">
+            <label for="gf-import-select">Ghostfolio Account</label>
+            <select id="gf-import-select"></select>
+        </div>
+        <p class="text-muted">Only activities belonging to the selected Ghostfolio account are imported. Already-imported activities are skipped automatically.</p>
+        <div id="gf-import-status" class="status-msg-sm"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-save" onclick="confirmImportGhostfolio()">Import</button>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
     window.BASE_CURRENCY = "{{ base_currency }}";
+    window.ACCOUNT_CURRENCIES = {{ account_currencies | tojson }};
 </script>
 <script src="/static/js/accounts.js?v={{ css_version }}"></script>
 {% endblock %}

@@ -14,6 +14,10 @@ function _txnModal() {
     return bootstrap.Modal.getOrCreateInstance(document.getElementById('txnModal'));
 }
 
+function _gfImportModal() {
+    return bootstrap.Modal.getOrCreateInstance(document.getElementById('gfImportModal'));
+}
+
 async function loadAccounts() {
     const list = document.getElementById('accounts-list');
     try {
@@ -53,6 +57,7 @@ function _accountCardHtml(acc) {
                 <button type="button" class="btn btn-primary btn-sm" onclick="openTxnModal(${acc.id})">+ Add Transaction</button>
                 <button type="button" class="btn btn-outline-secondary btn-sm" onclick="toggleTransactions(${acc.id})">Show Transactions</button>
                 <button type="button" class="btn btn-outline-secondary btn-sm" onclick="importGhostfolio(${acc.id})">Import from Ghostfolio</button>
+                <a href="/api/accounts/${acc.id}/export" class="btn btn-outline-secondary btn-sm">Export to CSV</a>
             </div>
             <div id="account-import-status-${acc.id}" class="status-msg-sm mt-2"></div>
             <div id="account-txns-${acc.id}" class="mt-3 d-none"></div>
@@ -67,6 +72,31 @@ function _populateAccountSelect() {
     if (current) sel.value = current;
 }
 
+function _populateCurrencySelect() {
+    const sel = document.getElementById('txn-currency');
+    sel.innerHTML = (window.ACCOUNT_CURRENCIES || ['GBP', 'GBp', 'USD', 'EUR'])
+        .map(c => `<option value="${_escapeHtml(c)}">${_escapeHtml(c)}</option>`).join('');
+}
+
+function _setCurrencySelectValue(currency) {
+    const sel = document.getElementById('txn-currency');
+    if (!currency) return;
+    if (!Array.from(sel.options).some(o => o.value === currency)) {
+        sel.insertAdjacentHTML('beforeend', `<option value="${_escapeHtml(currency)}">${_escapeHtml(currency)}</option>`);
+    }
+    sel.value = currency;
+}
+
+function _populateToAccountSelect() {
+    const sourceId = document.getElementById('txn-account').value;
+    const sel = document.getElementById('txn-to-account');
+    const current = sel.value;
+    sel.innerHTML = Object.values(_accountsCache)
+        .filter(a => String(a.id) !== String(sourceId))
+        .map(a => `<option value="${a.id}">${_escapeHtml(a.name)}</option>`).join('');
+    if (current) sel.value = current;
+}
+
 function openAccountModal(id = null) {
     const acc = id ? _accountsCache[id] : null;
     document.getElementById('accountModalTitle').textContent = acc ? 'Edit Account' : 'New Account';
@@ -74,6 +104,7 @@ function openAccountModal(id = null) {
     document.getElementById('acct-name').value = acc ? acc.name : '';
     document.getElementById('acct-currency').value = acc ? acc.currency : window.BASE_CURRENCY;
     document.getElementById('acct-cash').value = acc ? acc.initial_cash : 0;
+    document.getElementById('acct-opened-date').value = acc ? (acc.opened_date || '') : '';
     document.getElementById('acct-note').value = acc ? (acc.note || '') : '';
     document.getElementById('account-status').innerHTML = '';
     _accountModal().show();
@@ -92,6 +123,7 @@ async function saveAccount() {
         name,
         currency,
         initial_cash: parseFloat(document.getElementById('acct-cash').value) || 0,
+        opened_date: document.getElementById('acct-opened-date').value || null,
         note: document.getElementById('acct-note').value.trim() || null,
     };
     status.innerHTML = '<span class="msg-info">Saving...</span>';
@@ -126,27 +158,61 @@ async function deleteAccount(id, name) {
 }
 
 async function importGhostfolio(accountId) {
-    if (!confirm('Import the full Ghostfolio activity history into this account? Already-imported activities are skipped automatically.')) return;
-    const status = document.getElementById(`account-import-status-${accountId}`);
-    if (status) status.innerHTML = '<span class="msg-info">Importing...</span>';
+    document.getElementById('gf-import-account-id').value = accountId;
+    const select = document.getElementById('gf-import-select');
+    const status = document.getElementById('gf-import-status');
+    status.innerHTML = '';
+    select.innerHTML = '<option>Loading...</option>';
+    _gfImportModal().show();
     try {
-        const r = await fetch(`/api/accounts/${accountId}/import-ghostfolio`, { method: 'POST' });
+        const r = await fetch('/api/accounts/ghostfolio-accounts');
         const data = await r.json();
-        if (status) {
-            status.innerHTML = data.status === 'success'
+        const accounts = data.accounts || [];
+        if (accounts.length === 0) {
+            select.innerHTML = '<option value="">No Ghostfolio accounts available</option>';
+            return;
+        }
+        select.innerHTML = accounts.map(a => `<option value="${_escapeHtml(a.id)}">${_escapeHtml(a.name)} (${_escapeHtml(a.currency)})</option>`).join('');
+    } catch (e) {
+        select.innerHTML = '<option value="">Failed to load Ghostfolio accounts</option>';
+    }
+}
+
+async function confirmImportGhostfolio() {
+    const accountId = document.getElementById('gf-import-account-id').value;
+    const ghostfolioAccountId = document.getElementById('gf-import-select').value;
+    const status = document.getElementById('gf-import-status');
+    if (!ghostfolioAccountId) {
+        status.innerHTML = '<span class="msg-error">Select a Ghostfolio account.</span>';
+        return;
+    }
+    status.innerHTML = '<span class="msg-info">Importing...</span>';
+    try {
+        const r = await fetch(`/api/accounts/${accountId}/import-ghostfolio`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ghostfolio_account_id: ghostfolioAccountId }),
+        });
+        const data = await r.json();
+        const pageStatus = document.getElementById(`account-import-status-${accountId}`);
+        if (pageStatus) {
+            pageStatus.innerHTML = data.status === 'success'
                 ? `<span class="msg-success">${_escapeHtml(data.message)}</span>`
                 : `<span class="msg-error">${_escapeHtml(data.message || 'Import failed.')}</span>`;
         }
         if (data.status === 'success') {
+            _gfImportModal().hide();
             const box = document.getElementById(`account-txns-${accountId}`);
             if (box && !box.classList.contains('d-none')) {
                 box.classList.add('d-none');
                 toggleTransactions(accountId);
             }
             if (typeof window.onTransactionChanged === 'function') window.onTransactionChanged();
+        } else {
+            status.innerHTML = `<span class="msg-error">${_escapeHtml(data.message || 'Import failed.')}</span>`;
         }
     } catch (e) {
-        if (status) status.innerHTML = `<span class="msg-error">${_escapeHtml(e.message)}</span>`;
+        status.innerHTML = `<span class="msg-error">${_escapeHtml(e.message)}</span>`;
     }
 }
 
@@ -192,6 +258,98 @@ function _transactionsTableHtml(accountId, txns) {
     </table>`;
 }
 
+function _updateTxnFieldsForType() {
+    const type = document.getElementById('txn-type').value;
+    const isCash = type === 'Cash';
+    const isTransfer = type === 'Transfer';
+    const hideAssetFields = isCash || isTransfer;
+    document.getElementById('txn-ticker-group').classList.toggle('d-none', hideAssetFields);
+    document.getElementById('txn-currency-group').classList.toggle('d-none', hideAssetFields);
+    document.getElementById('txn-quantity-group').classList.toggle('d-none', hideAssetFields);
+    document.getElementById('txn-to-account-group').classList.toggle('d-none', !isTransfer);
+    document.getElementById('txn-price-hint').classList.toggle('d-none', !hideAssetFields);
+    if (isTransfer) _populateToAccountSelect();
+    const abbr = document.getElementById('txn-price-abbr');
+    const hint = document.getElementById('txn-price-hint');
+    if (isTransfer) {
+        abbr.textContent = 'Amount';
+        abbr.title = 'Amount to transfer between the two accounts.';
+        hint.textContent = 'Enter a positive amount — the direction is set by the Account / To Account fields above.';
+    } else if (isCash) {
+        abbr.textContent = 'Amount';
+        abbr.title = 'Positive amount = deposit. Negative amount = withdrawal.';
+        hint.textContent = 'Positive amount = deposit. Negative amount = withdrawal.';
+    } else {
+        abbr.textContent = 'Unit Price';
+        abbr.title = "Per-share price in the transaction's native trade currency.";
+    }
+    _refreshTxnCurrencyUI();
+    _updateTxnTotalPreview();
+}
+
+function _refreshTxnCurrencyUI() {
+    const type = document.getElementById('txn-type').value;
+    const hideAssetFields = type === 'Cash' || type === 'Transfer';
+    const base = window.BASE_CURRENCY || '';
+    // Cash/Transfer are always base-currency — the (hidden) currency select's last value is stale.
+    const currency = hideAssetFields ? base : document.getElementById('txn-currency').value;
+    const feeLabel = document.getElementById('txn-fee-currency-label');
+    if (feeLabel) feeLabel.textContent = currency ? `(${currency})` : '';
+
+    const showFx = !hideAssetFields && currency && currency !== base;
+    document.getElementById('txn-fx-group').classList.toggle('d-none', !showFx);
+}
+
+async function _onTxnCurrencyOrDateChange() {
+    _refreshTxnCurrencyUI();
+    const currency = document.getElementById('txn-currency').value;
+    const base = window.BASE_CURRENCY || '';
+    const type = document.getElementById('txn-type').value;
+    const hideAssetFields = type === 'Cash' || type === 'Transfer';
+    const fxInput = document.getElementById('txn-fx');
+    if (hideAssetFields) {
+        _updateTxnTotalPreview();
+        return;
+    }
+    if (!currency || currency === base) {
+        fxInput.value = 1.0;
+        _updateTxnTotalPreview();
+        return;
+    }
+    const date = document.getElementById('txn-date').value || new Date().toISOString().slice(0, 10);
+    try {
+        const r = await fetch(`/api/fx-rate?currency=${encodeURIComponent(currency)}&date=${encodeURIComponent(date)}`);
+        const data = await r.json();
+        if (data.status === 'success') fxInput.value = data.rate;
+    } catch (e) {
+        // leave whatever was there — user can still enter a rate manually
+    }
+    _updateTxnTotalPreview();
+}
+
+function _updateTxnTotalPreview() {
+    const preview = document.getElementById('txn-total-preview');
+    if (!preview) return;
+    const type = document.getElementById('txn-type').value;
+    const base = window.BASE_CURRENCY || '';
+    if (type === 'Transfer') {
+        const amount = parseFloat(document.getElementById('txn-price').value);
+        preview.textContent = isNaN(amount) ? '' : `Total: ${amount.toFixed(2)} ${base}`;
+        return;
+    }
+    const qty = document.getElementById('txn-quantity').value === '' ? 1.0 : parseFloat(document.getElementById('txn-quantity').value);
+    const price = parseFloat(document.getElementById('txn-price').value);
+    const fx = document.getElementById('txn-fx').value === '' ? 1.0 : parseFloat(document.getElementById('txn-fx').value);
+    const currency = document.getElementById('txn-currency').value || base;
+    if (isNaN(price) || isNaN(qty) || isNaN(fx)) {
+        preview.textContent = '';
+        return;
+    }
+    const totalNative = qty * price;
+    const totalBase = totalNative * fx;
+    preview.textContent = `Total: ${totalNative.toFixed(2)} ${currency} = ${totalBase.toFixed(2)} ${base}`;
+}
+
 function openTxnModal(accountId = null, txn = null) {
     document.getElementById('txnModalTitle').textContent = txn ? 'Edit Transaction' : 'Add Transaction';
     document.getElementById('txn-id').value = txn ? txn.id : '';
@@ -199,22 +357,27 @@ function openTxnModal(accountId = null, txn = null) {
     document.getElementById('txn-account').value = accountId || (Object.values(_accountsCache)[0] || {}).id || '';
     document.getElementById('txn-type').value = txn ? txn.txn_type : 'Buy';
     document.getElementById('txn-ticker').value = txn ? (txn.ticker || '') : '';
-    document.getElementById('txn-currency').value = txn ? (txn.currency || '') : '';
+    _setCurrencySelectValue(txn ? (txn.currency || window.BASE_CURRENCY) : window.BASE_CURRENCY);
     document.getElementById('txn-company-name').value = txn ? (txn.company_name || '') : '';
     document.getElementById('txn-date').value = txn ? txn.txn_date : new Date().toISOString().slice(0, 10);
     document.getElementById('txn-quantity').value = txn ? (txn.quantity ?? '') : '';
     document.getElementById('txn-price').value = txn ? (txn.unit_price ?? '') : '';
     document.getElementById('txn-fee').value = txn ? txn.fee : 0;
     document.getElementById('txn-fx').value = txn ? (txn.exchange_rate ?? '') : '';
-    document.getElementById('txn-update-cash').checked = txn ? !!txn.update_cash : true;
     document.getElementById('txn-notes').value = txn ? (txn.notes || '') : '';
     document.getElementById('txn-ticker-result').innerHTML = '';
     document.getElementById('txn-status').innerHTML = '';
+    _updateTxnFieldsForType();
     _txnModal().show();
 }
 
 function editTransaction(accountId, txnId) {
-    openTxnModal(accountId, _txnCache[txnId]);
+    const txn = _txnCache[txnId];
+    if (txn && txn.txn_type === 'Transfer') {
+        alert("Transfers can't be edited — delete it and record a new one instead.");
+        return;
+    }
+    openTxnModal(accountId, txn);
 }
 
 function _lookupTicker() {
@@ -224,7 +387,6 @@ function _lookupTicker() {
     const ticker = tickerInput.value.trim().toUpperCase();
     if (!ticker) {
         resultEl.innerHTML = '';
-        document.getElementById('txn-currency').value = '';
         document.getElementById('txn-company-name').value = '';
         return;
     }
@@ -234,9 +396,10 @@ function _lookupTicker() {
             const r = await fetch(`/api/ticker-lookup?q=${encodeURIComponent(ticker)}`);
             const data = await r.json();
             if (data.status === 'success' && data.found) {
-                document.getElementById('txn-currency').value = data.currency || '';
+                _setCurrencySelectValue(data.currency);
                 document.getElementById('txn-company-name').value = data.company_name || '';
                 resultEl.innerHTML = `<span class="msg-success">${_escapeHtml(data.company_name)} (${_escapeHtml(data.currency)}, ${_escapeHtml(data.quote_type)})</span>`;
+                _onTxnCurrencyOrDateChange();
             } else {
                 resultEl.innerHTML = '<span class="msg-error">Ticker not found on Yahoo Finance.</span>';
             }
@@ -254,9 +417,53 @@ async function submitTransaction() {
         return;
     }
     const txnId = document.getElementById('txn-id').value;
+    const txnType = document.getElementById('txn-type').value;
+    const txnDate = document.getElementById('txn-date').value;
+    if (!txnDate) {
+        status.innerHTML = '<span class="msg-error">Date is required.</span>';
+        return;
+    }
+
+    if (txnType === 'Transfer') {
+        const toAccountId = document.getElementById('txn-to-account').value;
+        const amount = parseFloat(document.getElementById('txn-price').value);
+        if (!toAccountId) {
+            status.innerHTML = '<span class="msg-error">Select a destination account.</span>';
+            return;
+        }
+        if (!amount || amount <= 0) {
+            status.innerHTML = '<span class="msg-error">Enter a positive amount.</span>';
+            return;
+        }
+        status.innerHTML = '<span class="msg-info">Saving...</span>';
+        try {
+            const r = await fetch(`/api/accounts/${accountId}/transfer`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    to_account_id: parseInt(toAccountId, 10),
+                    amount,
+                    txn_date: txnDate,
+                    fee: parseFloat(document.getElementById('txn-fee').value) || 0,
+                    notes: document.getElementById('txn-notes').value.trim() || null,
+                }),
+            });
+            const data = await r.json();
+            if (data.status === 'success') {
+                _txnModal().hide();
+                if (typeof window.onTransactionChanged === 'function') window.onTransactionChanged();
+            } else {
+                status.innerHTML = `<span class="msg-error">${data.message || 'Failed'}</span>`;
+            }
+        } catch (e) {
+            status.innerHTML = `<span class="msg-error">${e.message}</span>`;
+        }
+        return;
+    }
+
     const body = {
-        txn_type: document.getElementById('txn-type').value,
-        txn_date: document.getElementById('txn-date').value,
+        txn_type: txnType,
+        txn_date: txnDate,
         ticker: document.getElementById('txn-ticker').value.trim() || null,
         company_name: document.getElementById('txn-company-name').value || null,
         currency: document.getElementById('txn-currency').value || null,
@@ -265,13 +472,9 @@ async function submitTransaction() {
         fee: parseFloat(document.getElementById('txn-fee').value) || 0,
         exchange_rate: document.getElementById('txn-fx').value === '' ? null : parseFloat(document.getElementById('txn-fx').value),
         notes: document.getElementById('txn-notes').value.trim() || null,
-        update_cash: document.getElementById('txn-update-cash').checked,
+        update_cash: true,
         price_in_pence: (document.getElementById('txn-currency').value || '') === 'GBp',
     };
-    if (!body.txn_date) {
-        status.innerHTML = '<span class="msg-error">Date is required.</span>';
-        return;
-    }
     status.innerHTML = '<span class="msg-info">Saving...</span>';
     try {
         const url = txnId ? `/api/accounts/${accountId}/transactions/${txnId}` : `/api/accounts/${accountId}/transactions`;
@@ -319,5 +522,6 @@ async function deleteTransaction(accountId, txnId) {
 
 document.addEventListener('DOMContentLoaded', () => {
     loadAccounts();
+    _populateCurrencySelect();
     document.getElementById('txn-ticker').addEventListener('input', _lookupTicker);
 });

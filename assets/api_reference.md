@@ -958,6 +958,7 @@ After saving, the scheduler is reloaded to apply any changed schedule configurat
   "APP_PASSWORD": "app-password",
   "CONVERSATION_TOKEN": "chat-token",
   "IGNORED_TICKERS": ["GMESTOP"],
+  "ACCOUNT_CURRENCIES": ["GBP", "GBp", "USD", "EUR"],
   "UI_PREFERENCES": {
     "LIVE_PORTFOLIO": true,
     "LIVE_WATCHLIST": true,
@@ -2560,10 +2561,10 @@ Creates a new account. Rate limit: 30/minute.
 
 **Request body:**
 ```json
-{ "name": "My ISA", "currency": "GBP", "initial_cash": 1000.0, "note": "optional" }
+{ "name": "My ISA", "currency": "GBP", "initial_cash": 1000.0, "opened_date": "2020-03-15", "note": "optional" }
 ```
 
-Returns `{"status": "success", "message": "...", "id": <new_account_id>}`.
+`opened_date` is optional — when set, it's the real-world account-opening date and is used as the Cash Balance History table's opening row date instead of `created_at` (useful when backfilling a historical account). Returns `{"status": "success", "message": "...", "id": <new_account_id>}`.
 
 ---
 
@@ -2592,7 +2593,7 @@ Returns all transactions for an account, ordered by `txn_date`. Returns 404 if t
       "id": 1, "account_id": 1, "txn_type": "Buy", "ticker": "AAPL", "company_name": "Apple Inc.",
       "currency": "USD", "txn_date": "2026-01-15", "quantity": 10.0, "unit_price": 150.0,
       "fee": 1.5, "exchange_rate": 0.8, "notes": null, "update_cash": 1, "price_in_pence": 0,
-      "ghostfolio_ref": null, "created_at": "2026-06-25 10:00:00"
+      "ghostfolio_ref": null, "linked_txn_id": null, "created_at": "2026-06-25 10:00:00"
     }
   ]
 }
@@ -2602,7 +2603,7 @@ Returns all transactions for an account, ordered by `txn_date`. Returns 404 if t
 
 ### `POST /api/accounts/{id}/transactions`
 
-Adds a transaction to the ledger. `txn_type` must be one of `Buy`, `Sell`, `Fee`, `Dividend`, `Interest`, `Cash`. If `currency` is omitted, the account's own currency is used. If `exchange_rate` is omitted, it is auto-filled via `accounts_engine.fx_rate_on_date(currency, txn_date)` (historical FX lookup, falling back to the live rate, then `1.0`). If `ticker` is provided and not yet present in `asset_profiles`, a background task calls `profile_engine.update_single_profile(ticker)` so it enters the scan pipeline. Rate limit: 30/minute.
+Adds a transaction to the ledger. `txn_type` must be one of `Buy`, `Sell`, `Fee`, `Dividend`, `Interest`, `Cash` (use `POST /api/accounts/{id}/transfer` for `Transfer` — it is rejected here with 422 since a transfer needs two linked rows across two accounts). If `currency` is omitted, the account's own currency is used. If `exchange_rate` is omitted, it is auto-filled via `accounts_engine.fx_rate_on_date(currency, txn_date)` (historical FX lookup, falling back to the live rate, then `1.0`). If `ticker` is provided and not yet present in `asset_profiles`, a background task calls `profile_engine.update_single_profile(ticker)` so it enters the scan pipeline. Rate limit: 30/minute.
 
 **Request body:**
 ```json
@@ -2613,19 +2614,43 @@ Adds a transaction to the ledger. `txn_type` must be one of `Buy`, `Sell`, `Fee`
 }
 ```
 
-Returns `{"status": "success", "message": "...", "id": <new_txn_id>}`. Returns 404 if the account does not exist, 422 if `txn_type` is invalid.
+Returns `{"status": "success", "message": "...", "id": <new_txn_id>}`. Returns 404 if the account does not exist, 422 if `txn_type` is invalid or is `Transfer`.
 
 ---
 
 ### `PUT /api/accounts/{id}/transactions/{txn_id}`
 
-Updates a transaction. Same body and FX auto-fill behaviour as POST. Returns 404 if the account or transaction does not exist, or if the transaction belongs to a different account. Rate limit: 30/minute.
+Updates a transaction. Same body and FX auto-fill behaviour as POST. Returns 404 if the account or transaction does not exist, or if the transaction belongs to a different account. Returns 422 if the existing transaction (or the requested new type) is `Transfer` — transfers can't be edited in place; delete and re-create instead. Rate limit: 30/minute.
+
+---
+
+### `POST /api/accounts/{id}/transfer`
+
+Records a cash transfer from this account to another of your built-in accounts. Creates two linked rows via `accounts_engine.create_transfer()` — a negative (`Transfer`) leg on this account and a positive leg on `to_account_id` — so both accounts' cash balances reflect it correctly. `fee` (if any) is charged on the source leg only. Rate limit: 30/minute.
+
+**Request body:**
+```json
+{ "to_account_id": 7, "amount": 250.0, "txn_date": "2026-01-15", "fee": 0, "notes": "optional" }
+```
+
+Returns `{"status": "success", "message": "Transfer recorded.", "out_txn_id": ..., "in_txn_id": ...}`. Returns 404 if either account does not exist; 422 if `amount` is not positive or the source and destination accounts are the same.
 
 ---
 
 ### `DELETE /api/accounts/{id}/transactions/{txn_id}`
 
-Deletes a transaction. Returns 404 if the transaction does not exist or belongs to a different account. Rate limit: 30/minute.
+Deletes a transaction. If it is one leg of a `Transfer`, the linked sibling leg on the other account is deleted too (`accounts_engine.delete_transaction_with_pair()`) so a transfer is never left half-deleted. Returns 404 if the transaction does not exist or belongs to a different account. Rate limit: 30/minute.
+
+---
+
+### `GET /api/fx-rate?currency=&date=`
+
+Returns the historical exchange rate from `currency` to `BASE_CURRENCY` on `date` (`accounts_engine.fx_rate_on_date`) — used by the Add/Edit Transaction modal to auto-fill the Exchange Rate field whenever the transaction's currency or date changes (e.g. correcting `GBp` to `GBP` updates the suggested rate from `0.01` to `1.0` automatically). Rate limit: 30/minute.
+
+**Response:**
+```json
+{ "status": "success", "rate": 0.79 }
+```
 
 ---
 
@@ -2656,16 +2681,42 @@ Returns `{"status": "queued", "message": "..."}` immediately.
 
 ---
 
+### `GET /api/accounts/ghostfolio-accounts`
+
+Lists the user's **active** Ghostfolio accounts (`id`, `name`, `currency`) from the cached `GHOSTFOLIO_ACCOUNTS.discovered`/`.active` config (no live Ghostfolio call) — used to populate the account picker before importing. Rate limit: 20/minute.
+
+**Response:**
+```json
+{ "status": "success", "accounts": [ { "id": "95ddec44-...", "name": "ISA", "currency": "GBP" } ] }
+```
+
+---
+
 ### `POST /api/accounts/{id}/import-ghostfolio`
 
-Imports the **entire** Ghostfolio activity history (`ghostfolio_sync.GhostfolioSyncEngine.fetch_activities`) into the given built-in account (`accounts_engine.import_ghostfolio_activities`). `BUY`/`SELL`/`DIVIDEND`/`FEE`/`INTEREST` activities map to the matching `txn_type`; ticker, company name, and currency come from the activity's `SymbolProfile`; `exchange_rate` is derived from `unitPrice` (Ghostfolio account currency) vs `unitPriceInAssetProfileCurrency` (asset-native currency). Every activity is imported, including Buy/Sell pairs for tickers no longer held, so they remain visible under Closed Positions with realized P&amp;L. Draft activities and unsupported types (`ITEM`, `LIABILITY`) are skipped. Re-importing is idempotent — already-imported activities are deduped via `ghostfolio_ref`. On success, schedules a background re-run of `accounts_engine.backfill_value_history` and a profile fetch for any newly-seen ticker. Rate limit: 10/minute.
+Imports the **entire** activity history of **one selected Ghostfolio account** (`ghostfolio_account_id`, required — see `GET /api/accounts/ghostfolio-accounts`) into the given built-in account, via `ghostfolio_sync.GhostfolioSyncEngine.fetch_activities(account_id=...)` (`accounts_engine.import_ghostfolio_activities`). Activities belonging to other Ghostfolio accounts are never pulled in. `BUY`/`SELL`/`DIVIDEND`/`FEE`/`INTEREST` activities map to the matching `txn_type`. Ticker and company name come from the activity's `SymbolProfile`; the asset's trading currency prefers the app's own cached `asset_profiles.currency` over Ghostfolio's self-reported value (Ghostfolio has been observed to report plain `GBP` for LSE pence stocks). The per-share price uses `unitPriceInAssetProfileCurrency` (the asset-native price); `exchange_rate` (native → `BASE_CURRENCY`) is always computed independently via `accounts_engine.fx_rate_on_date`, never from Ghostfolio's `unitPrice` — that field is priced in the *source Ghostfolio account's own currency*, which is not necessarily `BASE_CURRENCY`. `fee` is converted from the account-side currency to native using Ghostfolio's own per-activity price ratio. **Imported transactions affect the built-in account's cash balance the same way every other transaction does** (`update_cash=True`) — this is only accurate if the operator also records their real deposit/withdrawal history via `Cash`/`Transfer` rows; without that, `cash_balance()` reflects only the net effect of the imported trades, not the true remaining balance. Every activity for the selected account is imported, including Buy/Sell pairs for tickers no longer held, so they remain visible under Closed Positions with realized P&amp;L. Draft activities and unsupported types (`ITEM`, `LIABILITY`) are skipped. Re-importing is idempotent — already-imported activities are deduped via `ghostfolio_ref`. On success, schedules a background re-run of `accounts_engine.resnapshot_account` (recomputes the account's full value history, not just today) and a profile fetch for any newly-seen ticker. Rate limit: 10/minute.
 
-Returns 404 if the account does not exist; 400 if Ghostfolio is not configured (`GHOSTFOLIO_URL`/`API_TOKEN` missing).
+**Request:**
+```json
+{ "ghostfolio_account_id": "95ddec44-..." }
+```
+
+Returns 404 if the account does not exist; 422 if `ghostfolio_account_id` is missing/blank; 400 if Ghostfolio is not configured (`GHOSTFOLIO_URL`/`API_TOKEN` missing).
 
 **Response:**
 ```json
 { "status": "success", "message": "Imported 42 activities (3 skipped).", "imported": 42, "skipped": 3 }
 ```
+
+---
+
+### `GET /api/accounts/{id}/export`
+
+Exports the account's entire transaction ledger as a downloadable CSV (`accounts_engine.export_transactions_csv`), so the operator can verify the FX math against their own brokerage statements — useful when the ledger mixes multiple trade currencies (GBp/USD/GBP/etc.) and a quick eyeball sum on the Activities table would be misleading. Returns 404 if the account does not exist. Rate limit: 20/minute.
+
+**Columns:** `ticker`, `type`, `qty`, `price` (native currency), `total_original_currency` (`qty × price`), `transaction_currency`, `total_system_currency` (`qty × price × fx_rate`), `system_currency` (`BASE_CURRENCY`), `fx_rate`, `date`, `position` (`open`/`closed` for `Buy`/`Sell` rows only — blank for every other type, since open/closed doesn't apply to a deposit, withdrawal, transfer, dividend, or interest payment).
+
+**Response:** `text/csv` with a `Content-Disposition: attachment` header (browser downloads it directly).
 
 ---
 

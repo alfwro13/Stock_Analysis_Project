@@ -63,8 +63,8 @@
     <table id="holdingsTable" class="table table-hover w-100">
         <thead>
             <tr>
-                <th>Company</th><th>Ticker</th><th>First Activity</th><th>Shares</th>
-                <th>Buy Price</th><th>Market Value</th><th>Allocation %</th><th>Performance %</th>
+                <th>Company</th><th>Ticker</th><th><abbr title="The currency this asset trades in natively. Buy Price and Market Value below are always converted to your base currency, regardless of this column.">Currency</abbr></th><th>First Activity</th><th>Shares</th>
+                <th>Buy Price ({{ base_currency }})</th><th>Market Value ({{ base_currency }})</th><th>Allocation %</th><th>Performance %</th>
             </tr>
         </thead>
         <tbody>
@@ -72,6 +72,7 @@
             <tr>
                 <td>{{ h.company_name }}</td>
                 <td>{{ h.ticker }}</td>
+                <td>{{ h.currency or '—' }}</td>
                 <td>{{ h.first_activity or '—' }}</td>
                 <td>{{ h.shares }}</td>
                 <td>{{ "%.2f"|format(h.buy_price) }}</td>
@@ -94,8 +95,8 @@
     <table id="closedTable" class="table table-hover w-100">
         <thead>
             <tr>
-                <th>Company</th><th>Ticker</th><th>Bought Qty</th><th>Sold Qty</th>
-                <th>Realized P&amp;L</th><th>First Activity</th><th>Last Activity</th>
+                <th>Company</th><th>Ticker</th><th><abbr title="The currency this asset trades in natively. Realized P&L below is always converted to your base currency.">Currency</abbr></th><th>Bought Qty</th><th>Sold Qty</th>
+                <th>Realized P&amp;L ({{ base_currency }})</th><th>First Activity</th><th>Last Activity</th>
             </tr>
         </thead>
         <tbody>
@@ -103,6 +104,7 @@
             <tr>
                 <td>{{ c.company_name }}</td>
                 <td>{{ c.ticker }}</td>
+                <td>{{ c.currency or '—' }}</td>
                 <td>{{ c.bought_qty }}</td>
                 <td>{{ c.sold_qty }}</td>
                 <td class="{% if c.realized_pnl >= 0 %}prediction-change-pos{% else %}prediction-change-neg{% endif %}">{{ "%.2f"|format(c.realized_pnl) }}</td>
@@ -121,11 +123,24 @@
 <details class="settings-card" open>
     <summary>📜 Activities</summary>
     {% if activities %}
+    <div class="d-flex align-items-center gap-2 mb-2">
+        <label for="activity-type-filter" class="mb-0">Filter by type</label>
+        <select id="activity-type-filter" onchange="filterActivitiesByType(this.value)">
+            <option value="">All</option>
+            <option value="Buy">Buy</option>
+            <option value="Sell">Sell</option>
+            <option value="Dividend">Dividend</option>
+            <option value="Interest">Interest</option>
+            <option value="Fee">Fee</option>
+            <option value="Cash">Cash</option>
+            <option value="Transfer">Transfer</option>
+        </select>
+    </div>
     <table id="activitiesTable" class="table table-hover w-100">
         <thead>
             <tr>
                 <th>Date</th><th>Type</th><th>Ticker</th><th>Qty</th><th>Unit Price</th>
-                <th>Fee</th><th>Currency</th><th></th>
+                <th>Fee</th><th>Currency</th><th><abbr title="Quantity x Unit Price x Exchange Rate, converted into your base currency — use this to compare rows entered in different currencies (GBp/USD/GBP/etc.) on a like-for-like basis.">Total ({{ base_currency }})</abbr></th><th></th>
             </tr>
         </thead>
         <tbody>
@@ -138,6 +153,7 @@
                 <td>{{ t.unit_price if t.unit_price is not none else '—' }}</td>
                 <td>{{ t.fee }}</td>
                 <td>{{ t.currency or '—' }}</td>
+                <td>{{ "%.2f"|format(t.total_base) }}</td>
                 <td>
                     <button type="button" class="btn btn-outline-secondary btn-sm" onclick="editTransaction({{ account.id }}, {{ t.id }})">Edit</button>
                     <button type="button" class="btn btn-outline-danger btn-sm" onclick="deleteTransaction({{ account.id }}, {{ t.id }})">Delete</button>
@@ -156,10 +172,22 @@
     <summary>💵 Cash Balance History</summary>
     {% if cash_history %}
     <table id="cashTable" class="table table-hover w-100">
-        <thead><tr><th>Date</th><th>Balance</th></tr></thead>
+        <thead><tr><th>Date</th><th>Type</th><th>Balance ({{ base_currency }})</th><th></th></tr></thead>
         <tbody>
             {% for c in cash_history %}
-            <tr><td>{{ c.date }}</td><td>{{ "%.2f"|format(c.balance) }}</td></tr>
+            <tr>
+                <td>{{ c.date }}</td>
+                <td>{{ c.txn_type or '—' }}</td>
+                <td>{{ "%.2f"|format(c.balance) }}</td>
+                <td>
+                    {% if c.txn_id %}
+                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="editTransaction({{ account.id }}, {{ c.txn_id }})">Edit</button>
+                    <button type="button" class="btn btn-outline-danger btn-sm" onclick="deleteTransaction({{ account.id }}, {{ c.txn_id }})">Delete</button>
+                    {% else %}
+                    <abbr title="This is the account's opening cash balance, not a transaction — there's nothing to edit or delete. Edit the account itself to change it.">Opening balance</abbr>
+                    {% endif %}
+                </td>
+            </tr>
             {% endfor %}
         </tbody>
     </table>
@@ -174,6 +202,7 @@
 {% block scripts %}
 <script>
     window.BASE_CURRENCY = "{{ base_currency }}";
+    window.ACCOUNT_CURRENCIES = {{ account_currencies | tojson }};
     window.ACCOUNT_TRANSACTIONS = {{ activities | tojson }};
 </script>
 <script src="/static/js/accounts.js?v={{ css_version }}"></script>

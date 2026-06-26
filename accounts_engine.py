@@ -7,7 +7,10 @@ from typing import Optional
 import pandas as pd
 
 from config import BASE_CURRENCY, HISTORICAL_DIR, PORTFOLIO_PATH
-from db_accounts import add_transaction, get_account, get_accounts, get_transactions, upsert_value_snapshot
+from db_accounts import (
+    add_transaction, delete_transaction, get_account, get_accounts, get_transaction,
+    get_transactions, update_transaction, upsert_value_snapshot,
+)
 from database import get_connection
 from portfolio_service import get_rate_to_base
 from yahoo_engine import yahoo_engine
@@ -35,7 +38,7 @@ def _cash_delta(txn) -> float:
     ttype = txn["txn_type"]
     if ttype in ("Buy", "Fee"):
         return -(gross + fee_base)
-    if ttype in ("Sell", "Dividend", "Interest", "Cash"):
+    if ttype in ("Sell", "Dividend", "Interest", "Cash", "Transfer"):
         return gross - fee_base
     return 0.0
 
@@ -156,6 +159,53 @@ def closed_positions(account_id: int) -> list:
     return closed
 
 
+def transaction_total_base(txn) -> float:
+    """Total transaction value in BASE_CURRENCY (quantity * unit_price * exchange_rate). Surfaces
+    the same conversion `_cash_delta` already does internally, so a ledger mixing GBp/USD/GBP rows
+    can be read in one consistent currency on the Activities table and CSV export."""
+    return round(_gross_base(txn), 2)
+
+
+def export_transactions_csv(account_id: int) -> str:
+    """Full transaction ledger as CSV, in the asset's native currency and BASE_CURRENCY side by
+    side, so the operator can verify the FX math against their own brokerage statements. `position`
+    (open/closed) is only meaningful for Buy/Sell rows — every other type leaves it blank."""
+    import csv
+    import io
+
+    transactions = get_transactions(account_id)
+    open_holdings, closed, _realized = _ledger_for_account(account_id)
+    closed_tickers = {c["ticker"] for c in closed}
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow([
+        "ticker", "type", "qty", "price", "total_original_currency", "transaction_currency",
+        "total_system_currency", "system_currency", "fx_rate", "date", "position",
+    ])
+    for t in transactions:
+        qty = t["quantity"] if t["quantity"] is not None else 1.0
+        price = t["unit_price"] or 0.0
+        fx = t["exchange_rate"] if t["exchange_rate"] is not None else 1.0
+        position = ""
+        if t["txn_type"] in ("Buy", "Sell") and t["ticker"]:
+            position = "open" if t["ticker"] in open_holdings else ("closed" if t["ticker"] in closed_tickers else "")
+        writer.writerow([
+            t["ticker"] or "",
+            t["txn_type"],
+            t["quantity"] if t["quantity"] is not None else "",
+            t["unit_price"] if t["unit_price"] is not None else "",
+            round(qty * price, 4),
+            t["currency"] or "",
+            round(qty * price * fx, 4),
+            BASE_CURRENCY,
+            fx,
+            t["txn_date"],
+            position,
+        ])
+    return buf.getvalue()
+
+
 def holdings_with_market_value(account_id: int) -> list:
     """Open holdings for one account enriched with current price, market value, allocation %,
     and unrealized performance — shape required by the account detail page's Holdings table."""
@@ -180,6 +230,7 @@ def holdings_with_market_value(account_id: int) -> list:
         rows.append({
             "ticker": ticker,
             "company_name": h["company_name"],
+            "currency": h["currency"],
             "first_activity": first_dates.get(ticker),
             "shares": h["global_shares"],
             "buy_price": h["global_buy_price"],
@@ -269,18 +320,107 @@ def _cash_balance_as_of(acc: dict, transactions: list, as_of_date: str) -> float
     return balance
 
 
+_CONTRIBUTION_TYPES = ("Cash", "Transfer")
+
+
+def net_contributions(account_id: int) -> float:
+    """Cumulative money put into (or taken out of) the account — `initial_cash` plus every
+    Cash/Transfer movement — deliberately excluding Buy/Sell/Dividend/Interest/Fee, which are
+    investment activity rather than money moved in or out. Comparing this against equity+cash
+    (`total_value`) shows at a glance whether the account is up or down versus what was put in."""
+    acc = get_account(account_id)
+    if not acc:
+        return 0.0
+    total = acc["initial_cash"] or 0.0
+    for txn in get_transactions(account_id):
+        if txn["update_cash"] and txn["txn_type"] in _CONTRIBUTION_TYPES:
+            total += _cash_delta(txn)
+    return round(total, 2)
+
+
+def _net_contributions_as_of(acc: dict, transactions: list, as_of_date: str) -> float:
+    total = acc["initial_cash"] or 0.0
+    for txn in transactions:
+        if txn["txn_date"] > as_of_date:
+            continue
+        if txn["update_cash"] and txn["txn_type"] in _CONTRIBUTION_TYPES:
+            total += _cash_delta(txn)
+    return total
+
+
 def cash_history(account_id: int) -> list:
+    """Running cash balance after each cash-affecting transaction. The opening row (`txn_id=None`)
+    is the account's `initial_cash` baseline, not a transaction — it has nothing to edit/delete."""
     acc = get_account(account_id)
     if not acc:
         return []
     balance = acc["initial_cash"] or 0.0
-    opening_date = acc["created_at"][:10] if acc["created_at"] else None
-    history = [{"date": opening_date, "balance": round(balance, 2)}]
+    opening_date = acc["opened_date"] or (acc["created_at"][:10] if acc["created_at"] else None)
+    history = [{"date": opening_date, "balance": round(balance, 2), "txn_id": None, "txn_type": None}]
     for txn in get_transactions(account_id):
         if txn["update_cash"]:
             balance += _cash_delta(txn)
-            history.append({"date": txn["txn_date"], "balance": round(balance, 2)})
+            history.append({
+                "date": txn["txn_date"],
+                "balance": round(balance, 2),
+                "txn_id": txn["id"],
+                "txn_type": txn["txn_type"],
+            })
     return history
+
+
+def create_transfer(
+    from_account_id: int,
+    to_account_id: int,
+    amount: float,
+    txn_date: str,
+    fee: float = 0.0,
+    notes: Optional[str] = None,
+) -> dict:
+    """Records a cash transfer as two linked `Transfer` rows — a negative leg on the source account
+    and a positive leg on the destination — so each side's cash_balance() reflects it correctly with
+    no special-cased sign logic (same convention as the `Cash` type: amount sign is the direction).
+    The two rows reference each other via `linked_txn_id` so delete_transaction_with_pair() can keep
+    them in sync; the pair is otherwise treated as immutable (edit by delete + recreate)."""
+    from_acc = get_account(from_account_id)
+    to_acc = get_account(to_account_id)
+    if not from_acc or not to_acc:
+        return {"error": "Account not found."}
+    if from_account_id == to_account_id:
+        return {"error": "Cannot transfer to the same account."}
+    amount = abs(amount)
+
+    out_id = add_transaction(
+        from_account_id, "Transfer", txn_date, currency=from_acc["currency"],
+        quantity=1, unit_price=-amount, fee=fee, exchange_rate=1.0,
+        notes=notes or f"Transfer to {to_acc['name']}",
+    )
+    if out_id is None:
+        return {"error": "Failed to record the outgoing transfer leg."}
+
+    in_id = add_transaction(
+        to_account_id, "Transfer", txn_date, currency=to_acc["currency"],
+        quantity=1, unit_price=amount, fee=0.0, exchange_rate=1.0,
+        notes=notes or f"Transfer from {from_acc['name']}", linked_txn_id=out_id,
+    )
+    if in_id is None:
+        delete_transaction(out_id)
+        return {"error": "Failed to record the incoming transfer leg."}
+
+    update_transaction(out_id, linked_txn_id=in_id)
+    return {"out_txn_id": out_id, "in_txn_id": in_id}
+
+
+def delete_transaction_with_pair(txn_id: int) -> bool:
+    """Deletes a transaction; if it is one leg of a Transfer, also deletes the linked sibling leg so
+    a transfer is never left half-deleted (which would silently unbalance both accounts' cash)."""
+    txn = get_transaction(txn_id)
+    if txn is None:
+        return False
+    ok = delete_transaction(txn_id)
+    if ok and txn["txn_type"] == "Transfer" and txn["linked_txn_id"]:
+        delete_transaction(txn["linked_txn_id"])
+    return ok
 
 
 def _current_price_map(tickers: list) -> dict:
@@ -374,9 +514,26 @@ def snapshot_all_accounts() -> int:
         open_holdings, _closed, _realized = _ledger_for_account(aid)
         equity = _equity_value(open_holdings)
         cash = cash_balance(aid)
-        upsert_value_snapshot(aid, today, round(cash + equity, 2), round(cash, 2), round(equity, 2))
+        contributions = net_contributions(aid)
+        upsert_value_snapshot(aid, today, round(cash + equity, 2), round(cash, 2), round(equity, 2), contributions)
         written += 1
     return written
+
+
+def resnapshot_account(account_id: int) -> None:
+    """Recomputes an account's entire value history (including today), so the chart and Net
+    Contributions line reflect a transaction change immediately rather than waiting for the
+    nightly snapshot job. Called as a background task after every transaction/transfer/import."""
+    backfill_value_history(account_id)
+    acc = get_account(account_id)
+    if not acc:
+        return
+    today = datetime.now(timezone.utc).date().isoformat()
+    open_holdings, _closed, _realized = _ledger_for_account(account_id)
+    equity = _equity_value(open_holdings)
+    cash = cash_balance(account_id)
+    contributions = net_contributions(account_id)
+    upsert_value_snapshot(account_id, today, round(cash + equity, 2), round(cash, 2), round(equity, 2), contributions)
 
 
 def backfill_value_history(account_id: int) -> int:
@@ -424,7 +581,8 @@ def backfill_value_history(account_id: int) -> int:
                 continue
             native_price = price * 0.01 if holding["price_in_pence"] else price
             equity += holding["shares"] * native_price * fx_rate_on_date(holding["currency"], date_str)
-        upsert_value_snapshot(account_id, date_str, round(cash + equity, 2), round(cash, 2), round(equity, 2))
+        contributions = _net_contributions_as_of(acc, transactions, date_str)
+        upsert_value_snapshot(account_id, date_str, round(cash + equity, 2), round(cash, 2), round(equity, 2), round(contributions, 2))
         written += 1
     return written
 
@@ -438,33 +596,67 @@ _GHOSTFOLIO_TYPE_MAP = {
 }
 
 
+def _cached_ticker_currency(ticker: str) -> Optional[str]:
+    """asset_profiles is the app's own authoritative source for a ticker's trading currency (the
+    GBp/GBX pence convention is built around this field everywhere else) — trusted over Ghostfolio's
+    self-reported SymbolProfile.currency, which has been observed to report GBP for LSE pence stocks."""
+    if not ticker:
+        return None
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT currency FROM asset_profiles WHERE ticker = ?", (ticker,))
+        row = cursor.fetchone()
+        return row["currency"] if row and row["currency"] else None
+    except Exception as e:
+        logger.error("Failed to look up cached currency for %s: %s", ticker, e)
+        return None
+    finally:
+        if conn:
+            conn.close()
+
+
 def _map_ghostfolio_activity(act: dict) -> Optional[dict]:
     """One Ghostfolio activity -> add_transaction() kwargs, or None to skip (draft / unsupported type).
-    `unitPrice` is in the Ghostfolio account currency (== BASE_CURRENCY per decision #1); when a
-    SymbolProfile is present, `unitPriceInAssetProfileCurrency` is the same price in the asset's
-    native currency, so their ratio gives the native->base exchange_rate."""
+    `unitPrice` is priced in the source Ghostfolio ACCOUNT's own currency, not necessarily
+    BASE_CURRENCY (a Ghostfolio account can be denominated in USD/EUR/etc.) — so it is never used to
+    derive an FX rate here. The native asset price comes from `unitPriceInAssetProfileCurrency`, and
+    `exchange_rate` (native -> BASE_CURRENCY) is computed independently via `fx_rate_on_date`, the
+    same trusted FX engine used for manually-entered transactions. Ghostfolio's own
+    unitPrice/unitPriceInAssetProfileCurrency ratio is still used for `fee`, since the fee figure and
+    `unitPrice` are reported in the same (account-side) currency within one activity record.
+    `update_cash=True` like every other transaction — imported Buy/Sell/Dividend/Interest/Fee rows
+    affect cash the same way a manually-entered one would. This relies on the operator separately
+    recording their real deposit/withdrawal history (via Cash/Transfer); without that, cash_balance()
+    will reflect only the net effect of the imported trades, not the true remaining balance."""
     txn_type = _GHOSTFOLIO_TYPE_MAP.get(act.get("type"))
     if not txn_type or act.get("isDraft"):
         return None
 
     profile = act.get("SymbolProfile") or {}
-    currency = profile.get("currency") or act.get("currency")
+    ticker = profile.get("symbol") or None
+    currency = _cached_ticker_currency(ticker) or profile.get("currency") or act.get("currency")
+    txn_date = (act.get("date") or "")[:10]
+
     unit_price_native = act.get("unitPriceInAssetProfileCurrency")
-    unit_price_base = act.get("unitPrice")
+    unit_price_acct_side = act.get("unitPrice")
     if unit_price_native:
         unit_price = float(unit_price_native)
-        exchange_rate = float(unit_price_base) / unit_price if unit_price_base else 1.0
+        native_to_acct_rate = float(unit_price_acct_side) / unit_price if unit_price_acct_side else 1.0
     else:
-        unit_price = float(unit_price_base) if unit_price_base is not None else None
-        exchange_rate = 1.0
+        unit_price = float(unit_price_acct_side) if unit_price_acct_side is not None else None
+        native_to_acct_rate = 1.0
 
-    fee_base = float(act.get("fee") or 0.0)
-    fee_native = fee_base / exchange_rate if exchange_rate else fee_base
+    exchange_rate = fx_rate_on_date(currency, txn_date) if currency else 1.0
+
+    fee_acct_side = float(act.get("fee") or 0.0)
+    fee_native = fee_acct_side / native_to_acct_rate if native_to_acct_rate else fee_acct_side
 
     return {
         "txn_type": txn_type,
-        "txn_date": (act.get("date") or "")[:10],
-        "ticker": profile.get("symbol") or None,
+        "txn_date": txn_date,
+        "ticker": ticker,
         "company_name": profile.get("name") or None,
         "currency": currency,
         "quantity": act.get("quantity"),
@@ -473,20 +665,26 @@ def _map_ghostfolio_activity(act: dict) -> Optional[dict]:
         "exchange_rate": exchange_rate,
         "price_in_pence": currency == "GBp",
         "ghostfolio_ref": act.get("id"),
+        "update_cash": True,
     }
 
 
-def import_ghostfolio_activities(account_id: int) -> dict:
-    """Imports the entire Ghostfolio activity history into one built-in account, deduped by
-    `ghostfolio_ref` so re-import is idempotent. Imports every activity (incl. tickers no longer
-    held) so fully-sold positions still land in closed_positions with realized P&L."""
+def import_ghostfolio_activities(account_id: int, ghostfolio_account_id: str) -> dict:
+    """Imports the entire activity history of ONE Ghostfolio account (`ghostfolio_account_id`) into
+    one built-in account, deduped by `ghostfolio_ref` so re-import is idempotent. Imports every
+    activity for that Ghostfolio account (incl. tickers no longer held) so fully-sold positions still
+    land in closed_positions with realized P&L. Does not touch other Ghostfolio accounts — Ghostfolio
+    activities have no implicit grouping otherwise, so importing without this filter would dump every
+    Ghostfolio account's transactions into a single built-in account. Imported transactions affect
+    cash the same way every other transaction does (see `_map_ghostfolio_activity`) — accurate only
+    if the operator also records their real deposit/withdrawal history via Cash/Transfer rows."""
     from ghostfolio_sync import GhostfolioSyncEngine
 
     engine = GhostfolioSyncEngine()
     if not engine.is_configured:
         return {"imported": 0, "skipped": 0, "error": "Ghostfolio is not configured."}
 
-    activities = engine.fetch_activities()
+    activities = engine.fetch_activities(account_id=ghostfolio_account_id)
     existing_refs = {t["ghostfolio_ref"] for t in get_transactions(account_id) if t["ghostfolio_ref"]}
 
     imported = 0
