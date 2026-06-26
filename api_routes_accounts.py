@@ -1,14 +1,16 @@
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, Request
+from fastapi import APIRouter, BackgroundTasks, File, Request, UploadFile
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 
 from accounts_engine import (
-    create_transfer, delete_transaction_with_pair, export_transactions_csv,
-    fx_rate_on_date, import_ghostfolio_activities, is_unresolved_ticker, resnapshot_account,
+    _ticker_known, create_transfer, delete_transaction_with_pair, export_transactions_csv,
+    fx_rate_on_date, import_csv_activities, import_ghostfolio_activities, is_unresolved_ticker,
+    resnapshot_account,
 )
+import notification_engine
 from api_deps import limiter, _error_500
 from config import load_config
 from database import (
@@ -60,20 +62,6 @@ class TransactionBody(BaseModel):
 
 class ImportGhostfolioBody(BaseModel):
     ghostfolio_account_id: str
-
-
-def _ticker_known(ticker: str) -> bool:
-    conn = None
-    try:
-        conn = get_connection()
-        row = conn.execute("SELECT 1 FROM asset_profiles WHERE ticker = ?", (ticker,)).fetchone()
-        return row is not None
-    except Exception as e:
-        logger.error("_ticker_known check failed for %s: %s", ticker, e)
-        return True
-    finally:
-        if conn:
-            conn.close()
 
 
 def _resolve_exchange_rate(currency: Optional[str], exchange_rate: Optional[float], txn_date: str) -> float:
@@ -385,6 +373,54 @@ async def api_import_ghostfolio(request: Request, account_id: int, body: ImportG
         })
     except Exception as e:
         logger.error("api_import_ghostfolio account=%s failed: %s", account_id, e)
+        return _error_500(e)
+
+
+def _notify_csv_import_skips(account_id: int, account_name: str, skipped_rows: list) -> None:
+    lines = [f"{r['date'] or '?'}  {r['ticker'] or '?'}  — {r['reason']}" for r in skipped_rows]
+    notification_engine.notify(
+        "accounts_csv_import",
+        "CSV Import — Skipped Rows",
+        f"Account '{account_name}': {len(skipped_rows)} row(s) skipped during CSV import:\n" + "\n".join(lines),
+        level="warning",
+    )
+
+
+@accounts_router.post("/accounts/{account_id}/import-csv")
+@limiter.limit("10/minute")
+async def api_import_csv(request: Request, account_id: int, background_tasks: BackgroundTasks, file: UploadFile = File(...)):
+    try:
+        acc = get_account(account_id)
+        if acc is None:
+            return JSONResponse(status_code=404, content={"status": "error", "message": "Account not found."})
+        raw = await file.read()
+        csv_text = raw.decode("utf-8-sig")
+        result = import_csv_activities(account_id, csv_text)
+        if result.get("error"):
+            return JSONResponse(status_code=422, content={"status": "error", "message": result["error"]})
+        tickers = {txn["ticker"] for txn in get_transactions(account_id) if txn["ticker"]}
+        for ticker in tickers:
+            if not _ticker_known(ticker):
+                background_tasks.add_task(update_single_profile, ticker)
+        background_tasks.add_task(resnapshot_account, account_id)
+        skipped_rows = result["skipped_rows"]
+        if skipped_rows:
+            background_tasks.add_task(_notify_csv_import_skips, account_id, acc["name"], skipped_rows)
+        message = f"Imported {result['imported']} rows ({result['skipped']} skipped, {result['ignored']} ignored)."
+        if skipped_rows:
+            message += " See the Notifications panel for the per-row detail (date, ticker, reason)."
+        return JSONResponse(content={
+            "status": "success",
+            "message": message,
+            "imported": result["imported"],
+            "skipped": result["skipped"],
+            "ignored": result["ignored"],
+            "skipped_rows": skipped_rows,
+        })
+    except UnicodeDecodeError:
+        return JSONResponse(status_code=422, content={"status": "error", "message": "File is not a valid UTF-8 CSV."})
+    except Exception as e:
+        logger.error("api_import_csv account=%s failed: %s", account_id, e)
         return _error_500(e)
 
 

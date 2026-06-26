@@ -18,6 +18,10 @@ function _gfImportModal() {
     return bootstrap.Modal.getOrCreateInstance(document.getElementById('gfImportModal'));
 }
 
+function _csvImportModal() {
+    return bootstrap.Modal.getOrCreateInstance(document.getElementById('csvImportModal'));
+}
+
 async function loadAccounts() {
     const list = document.getElementById('accounts-list');
     try {
@@ -57,6 +61,7 @@ function _accountCardHtml(acc) {
                 <button type="button" class="btn btn-primary btn-sm" onclick="openTxnModal(${acc.id})">+ Add Transaction</button>
                 <button type="button" class="btn btn-outline-secondary btn-sm" onclick="toggleTransactions(${acc.id})">Show Transactions</button>
                 <button type="button" class="btn btn-outline-secondary btn-sm" onclick="importGhostfolio(${acc.id})">Import from Ghostfolio</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="importCsv(${acc.id})">Import from CSV</button>
                 <a href="/api/accounts/${acc.id}/export" class="btn btn-outline-secondary btn-sm">Export to CSV</a>
             </div>
             <div id="account-import-status-${acc.id}" class="status-msg-sm mt-2"></div>
@@ -202,6 +207,57 @@ async function confirmImportGhostfolio() {
         }
         if (data.status === 'success') {
             _gfImportModal().hide();
+            const box = document.getElementById(`account-txns-${accountId}`);
+            if (box && !box.classList.contains('d-none')) {
+                box.classList.add('d-none');
+                toggleTransactions(accountId);
+            }
+            if (typeof window.onTransactionChanged === 'function') window.onTransactionChanged();
+        } else {
+            status.innerHTML = `<span class="msg-error">${_escapeHtml(data.message || 'Import failed.')}</span>`;
+        }
+    } catch (e) {
+        status.innerHTML = `<span class="msg-error">${_escapeHtml(e.message)}</span>`;
+    }
+}
+
+function _skippedRowsHtml(skippedRows) {
+    if (!skippedRows || skippedRows.length === 0) return '';
+    const items = skippedRows.map(r =>
+        `<li>${_escapeHtml(r.date || '?')} — ${_escapeHtml(r.ticker || '?')}: ${_escapeHtml(r.reason)}</li>`
+    ).join('');
+    return `<ul class="small text-muted mb-0 mt-1">${items}</ul>`;
+}
+
+function importCsv(accountId) {
+    document.getElementById('csv-import-account-id').value = accountId;
+    document.getElementById('csv-import-file').value = '';
+    document.getElementById('csv-import-status').innerHTML = '';
+    _csvImportModal().show();
+}
+
+async function confirmImportCsv() {
+    const accountId = document.getElementById('csv-import-account-id').value;
+    const fileInput = document.getElementById('csv-import-file');
+    const status = document.getElementById('csv-import-status');
+    const file = fileInput.files[0];
+    if (!file) {
+        status.innerHTML = '<span class="msg-error">Choose a CSV file.</span>';
+        return;
+    }
+    status.innerHTML = '<span class="msg-info">Importing...</span>';
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+        const r = await fetch(`/api/accounts/${accountId}/import-csv`, { method: 'POST', body: formData });
+        const data = await r.json();
+        const pageStatus = document.getElementById(`account-import-status-${accountId}`);
+        if (data.status === 'success') {
+            if (pageStatus) {
+                pageStatus.innerHTML = `<span class="msg-success">${_escapeHtml(data.message)}</span>`
+                    + _skippedRowsHtml(data.skipped_rows);
+            }
+            _csvImportModal().hide();
             const box = document.getElementById(`account-txns-${accountId}`);
             if (box && !box.classList.contains('d-none')) {
                 box.classList.add('d-none');

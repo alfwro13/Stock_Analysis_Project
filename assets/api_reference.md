@@ -2710,6 +2710,30 @@ Returns 404 if the account does not exist; 422 if `ghostfolio_account_id` is mis
 
 ---
 
+### `POST /api/accounts/{id}/import-csv`
+
+Imports a GIA/broker-style activity export CSV (multipart file upload, field name `file`) into the given built-in account (`accounts_engine.import_csv_activities`). The required column layout, the four recognised `Type` values (`TOP_UP`, `INTEREST_FROM_CASH`, `ORDER`, `DIVIDEND` — `INTERNAL_TRANSFER` is ignored), and how the GBP exchange rate and fees are derived per row are documented in `assets/csv_import_format.md`. Columns are matched by exact header name, independent of order; a missing required column fails the whole import up front with a 422 naming it. Unlike Ghostfolio import, a row whose ticker can't be resolved (checked against the app's own `asset_profiles` cache, then a live Yahoo Finance lookup) is skipped outright rather than imported and flagged. Every skipped row — unresolved ticker, no ticker in the file, unparseable date, unrecognized `Type`, already-imported duplicate, or a DB write failure — is reported back individually under `skipped_rows` with its date, ticker, and a human-readable reason, so the operator can find the exact row in their file rather than just a per-ticker count. If any rows were skipped, the full list is also dispatched via `notification_engine.notify("accounts_csv_import", ...)` (source registered in `NOTIFICATION_SOURCES`, grouped under "Other" in the Settings Notification Settings panel since it has no parent scheduled job) so it's visible in the in-app Notifications panel after the modal is closed. Re-importing the same file is idempotent — each row is fingerprinted (date, type, ticker, amount, quantity, plus an occurrence counter for exact-duplicate rows) and stored in the transaction's `ghostfolio_ref` column prefixed `csv:`, the same dedup slot Ghostfolio import uses, so the two can never collide. On success, schedules the same background tasks as Ghostfolio import: a profile fetch for any newly-resolved ticker not yet in `asset_profiles`, and `accounts_engine.resnapshot_account`. Rate limit: 10/minute.
+
+**Request:** `multipart/form-data` with a `file` field (the CSV).
+
+Returns 404 if the account does not exist; 422 if the CSV is missing a required column or is not valid UTF-8.
+
+**Response:**
+```json
+{
+  "status": "success",
+  "message": "Imported 240 rows (3 skipped, 7 ignored). See the Notifications panel for the per-row detail (date, ticker, reason).",
+  "imported": 240,
+  "skipped": 3,
+  "ignored": 7,
+  "skipped_rows": [
+    { "date": "2021-04-19", "ticker": "ZZZNOPE", "reason": "ticker not found (possibly delisted or mistyped)" }
+  ]
+}
+```
+
+---
+
 ### `GET /api/accounts/{id}/export`
 
 Exports the account's entire transaction ledger as a downloadable CSV (`accounts_engine.export_transactions_csv`), so the operator can verify the FX math against their own brokerage statements — useful when the ledger mixes multiple trade currencies (GBp/USD/GBP/etc.) and a quick eyeball sum on the Activities table would be misleading. Returns 404 if the account does not exist. Rate limit: 20/minute.

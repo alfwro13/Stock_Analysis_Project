@@ -41,6 +41,7 @@ NOTIFICATION_SOURCES: dict[str, dict] = {
     "forensic_alert":          {"label": "Forensic Accounting Alert",       "job_id": "forensic_scores_job",    "default": dict(_ON)},
     "etf_predictor":           {"label": "ETF Predictor",                   "job_id": None,                     "default": dict(_NO_TALK)},
     "treasury_auction_alert":  {"label": "Sovereign Debt Auction Alert",    "job_id": "macro_auction_job_am",   "default": dict(_ON)},
+    "accounts_csv_import":     {"label": "Accounts CSV Import",             "job_id": None,                     "default": dict(_NO_TALK)},
 }
 
 CATEGORY_LABELS = {

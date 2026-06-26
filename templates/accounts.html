@@ -79,6 +79,29 @@
     </div>
   </div>
 </div>
+
+<div class="modal fade" id="csvImportModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Import from CSV</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="csv-import-account-id">
+        <div class="form-group">
+            <label for="csv-import-file">CSV File</label>
+            <input type="file" id="csv-import-file" accept=".csv">
+        </div>
+        <p class="text-muted">Required column layout is documented in <code>assets/csv_import_format.md</code>. Rows with a ticker that can't be resolved are skipped and listed after import. Re-importing the same file is safe — already-imported rows are skipped automatically.</p>
+        <div id="csv-import-status" class="status-msg-sm"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-save" onclick="confirmImportCsv()">Import</button>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}

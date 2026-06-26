@@ -401,6 +401,92 @@ def test_import_ghostfolio_missing_account_id_returns_422(client):
 
 
 @pytest.mark.api
+def test_import_csv_returns_counts(client):
+    with patch("api_routes_accounts.resnapshot_account"):
+        account_id = _create_account(client, name="CsvImportApiAcc")
+    csv_bytes = b"Title,Type,Timestamp\nTop up,TOP_UP,01/02/2021\n"
+    with (
+        patch("api_routes_accounts.import_csv_activities", return_value={
+            "imported": 1, "skipped": 0, "ignored": 0, "skipped_rows": [],
+        }) as mock_import,
+        patch("api_routes_accounts.resnapshot_account"),
+    ):
+        resp = client.post(
+            f"/api/accounts/{account_id}/import-csv",
+            files={"file": ("activity.csv", csv_bytes, "text/csv")},
+        )
+    assert resp.status_code == 200
+    data = _json(resp)
+    assert data["status"] == "success"
+    assert data["imported"] == 1
+    assert data["skipped_rows"] == []
+    mock_import.assert_called_once_with(account_id, "Title,Type,Timestamp\nTop up,TOP_UP,01/02/2021\n")
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_import_csv_reports_skipped_rows_with_date_and_ticker(client):
+    with patch("api_routes_accounts.resnapshot_account"):
+        account_id = _create_account(client, name="CsvImportApiUnresolvedAcc")
+    csv_bytes = b"Title,Type,Timestamp\nDelisted,ORDER,01/02/2021\n"
+    skipped_rows = [{"date": "2021-02-01", "ticker": "ZZZNOPE", "reason": "ticker not found (possibly delisted or mistyped)"}]
+    with (
+        patch("api_routes_accounts.import_csv_activities", return_value={
+            "imported": 0, "skipped": 1, "ignored": 0, "skipped_rows": skipped_rows,
+        }),
+        patch("api_routes_accounts.resnapshot_account"),
+        patch("api_routes_accounts.notification_engine.notify") as mock_notify,
+    ):
+        resp = client.post(
+            f"/api/accounts/{account_id}/import-csv",
+            files={"file": ("activity.csv", csv_bytes, "text/csv")},
+        )
+    assert resp.status_code == 200
+    data = _json(resp)
+    assert data["skipped_rows"] == skipped_rows
+    assert "Notifications panel" in data["message"]
+    mock_notify.assert_called_once()
+    notify_args = mock_notify.call_args[0]
+    assert notify_args[0] == "accounts_csv_import"
+    assert "ZZZNOPE" in notify_args[2]
+    assert "2021-02-01" in notify_args[2]
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_import_csv_missing_column_returns_422(client):
+    with patch("api_routes_accounts.resnapshot_account"):
+        account_id = _create_account(client, name="CsvImportApiBadColAcc")
+    csv_bytes = b"Title,Type,Timestamp\nTop up,TOP_UP,01/02/2021\n"
+    with patch("api_routes_accounts.import_csv_activities", return_value={
+        "error": "CSV is missing required column(s): Account Currency"
+    }):
+        resp = client.post(
+            f"/api/accounts/{account_id}/import-csv",
+            files={"file": ("activity.csv", csv_bytes, "text/csv")},
+        )
+    assert resp.status_code == 422
+    assert _json(resp)["status"] == "error"
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_import_csv_unknown_account_returns_404(client):
+    csv_bytes = b"Title,Type,Timestamp\n"
+    resp = client.post(
+        "/api/accounts/999999/import-csv",
+        files={"file": ("activity.csv", csv_bytes, "text/csv")},
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.api
 def test_list_ghostfolio_accounts_returns_active_discovered_accounts(client):
     fake_config = {
         "GHOSTFOLIO_ACCOUNTS": {
