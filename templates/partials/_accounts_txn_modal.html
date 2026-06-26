@@ -29,10 +29,16 @@
             <label for="txn-to-account">To Account</label>
             <select id="txn-to-account"></select>
         </div>
-        <div class="form-group" id="txn-ticker-group">
-            <label for="txn-ticker">Ticker</label>
-            <input type="text" id="txn-ticker" placeholder="AAPL" autocomplete="off">
-            <div id="txn-ticker-result" class="status-msg-sm"></div>
+        <div class="flex-gap-15" id="txn-ticker-group">
+            <div class="form-group flex-2">
+                <label for="txn-ticker">Ticker</label>
+                <input type="text" id="txn-ticker" placeholder="AAPL" autocomplete="off">
+                <div id="txn-ticker-result" class="status-msg-sm"></div>
+            </div>
+            <div class="form-group">
+                <label for="txn-isin"><abbr title="International Securities Identification Number — optional, identifies the instrument independent of ticker symbol changes.">ISIN</abbr></label>
+                <input type="text" id="txn-isin" placeholder="Optional" autocomplete="off">
+            </div>
         </div>
         <div class="form-group">
             <label for="txn-date">Date</label>

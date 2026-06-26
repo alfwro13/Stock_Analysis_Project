@@ -156,6 +156,7 @@ def add_transaction(
     txn_type: str,
     txn_date: str,
     ticker: Optional[str] = None,
+    isin: Optional[str] = None,
     company_name: Optional[str] = None,
     currency: Optional[str] = None,
     quantity: Optional[float] = None,
@@ -174,11 +175,11 @@ def add_transaction(
         cursor = conn.cursor()
         cursor.execute(
             """INSERT INTO account_transactions
-                   (account_id, txn_type, ticker, company_name, currency, txn_date,
+                   (account_id, txn_type, ticker, isin, company_name, currency, txn_date,
                     quantity, unit_price, fee, exchange_rate, notes, update_cash,
                     price_in_pence, ghostfolio_ref, linked_txn_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (account_id, txn_type, ticker, company_name, currency, txn_date,
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (account_id, txn_type, ticker, isin, company_name, currency, txn_date,
              quantity, unit_price, fee, exchange_rate, notes,
              1 if update_cash else 0, 1 if price_in_pence else 0, ghostfolio_ref, linked_txn_id)
         )
@@ -193,7 +194,7 @@ def add_transaction(
 
 
 _ALLOWED_TXN_COLUMNS = frozenset({
-    "txn_type", "ticker", "company_name", "currency", "txn_date", "quantity",
+    "txn_type", "ticker", "isin", "company_name", "currency", "txn_date", "quantity",
     "unit_price", "fee", "exchange_rate", "notes", "update_cash", "price_in_pence",
     "linked_txn_id",
 })

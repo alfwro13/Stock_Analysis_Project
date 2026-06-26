@@ -2603,14 +2603,14 @@ Returns all transactions for an account, ordered by `txn_date`. Returns 404 if t
 
 ### `POST /api/accounts/{id}/transactions`
 
-Adds a transaction to the ledger. `txn_type` must be one of `Buy`, `Sell`, `Fee`, `Dividend`, `Interest`, `Cash` (use `POST /api/accounts/{id}/transfer` for `Transfer` — it is rejected here with 422 since a transfer needs two linked rows across two accounts). If `currency` is omitted, the account's own currency is used. If `exchange_rate` is omitted, it is auto-filled via `accounts_engine.fx_rate_on_date(currency, txn_date)` (historical FX lookup, falling back to the live rate, then `1.0`). If `ticker` is provided and not yet present in `asset_profiles`, a background task calls `profile_engine.update_single_profile(ticker)` so it enters the scan pipeline. Rate limit: 30/minute.
+Adds a transaction to the ledger. `txn_type` must be one of `Buy`, `Sell`, `Fee`, `Dividend`, `Interest`, `Cash` (use `POST /api/accounts/{id}/transfer` for `Transfer` — it is rejected here with 422 since a transfer needs two linked rows across two accounts). If `currency` is omitted, the account's own currency is used. If `exchange_rate` is omitted, it is auto-filled via `accounts_engine.fx_rate_on_date(currency, txn_date)` (historical FX lookup, falling back to the live rate, then `1.0`). If `ticker` is provided and not yet present in `asset_profiles`, a background task calls `profile_engine.update_single_profile(ticker)` so it enters the scan pipeline. `isin` is optional, free-text, and purely informational — the instrument's ISIN, which stays stable across a ticker symbol change/delisting, unlike `ticker`; not validated or looked up against any external source. Rate limit: 30/minute.
 
 **Request body:**
 ```json
 {
-  "txn_type": "Buy", "txn_date": "2026-01-15", "ticker": "AAPL", "company_name": "Apple Inc.",
-  "currency": "USD", "quantity": 10, "unit_price": 150.0, "fee": 1.5, "exchange_rate": 0.8,
-  "notes": "optional", "update_cash": true, "price_in_pence": false
+  "txn_type": "Buy", "txn_date": "2026-01-15", "ticker": "AAPL", "isin": "US0378331005",
+  "company_name": "Apple Inc.", "currency": "USD", "quantity": 10, "unit_price": 150.0, "fee": 1.5,
+  "exchange_rate": 0.8, "notes": "optional", "update_cash": true, "price_in_pence": false
 }
 ```
 

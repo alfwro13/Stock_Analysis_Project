@@ -413,6 +413,7 @@ function openTxnModal(accountId = null, txn = null) {
     document.getElementById('txn-account').value = accountId || (Object.values(_accountsCache)[0] || {}).id || '';
     document.getElementById('txn-type').value = txn ? txn.txn_type : 'Buy';
     document.getElementById('txn-ticker').value = txn ? (txn.ticker || '') : '';
+    document.getElementById('txn-isin').value = txn ? (txn.isin || '') : '';
     _setCurrencySelectValue(txn ? (txn.currency || window.BASE_CURRENCY) : window.BASE_CURRENCY);
     document.getElementById('txn-company-name').value = txn ? (txn.company_name || '') : '';
     document.getElementById('txn-date').value = txn ? txn.txn_date : new Date().toISOString().slice(0, 10);
@@ -521,6 +522,7 @@ async function submitTransaction() {
         txn_type: txnType,
         txn_date: txnDate,
         ticker: document.getElementById('txn-ticker').value.trim() || null,
+        isin: document.getElementById('txn-isin').value.trim() || null,
         company_name: document.getElementById('txn-company-name').value || null,
         currency: document.getElementById('txn-currency').value || null,
         quantity: document.getElementById('txn-quantity').value === '' ? null : parseFloat(document.getElementById('txn-quantity').value),

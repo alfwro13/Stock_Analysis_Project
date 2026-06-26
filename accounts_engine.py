@@ -783,6 +783,7 @@ def _map_csv_row(row: dict) -> tuple:
 
     currency = (row.get("Instrument Currency") or account_currency).strip()
     company_name = row.get("Title") or None
+    isin = row.get("ISIN") or None
 
     # Brokers commonly report LSE trade prices already converted to GBP, but this app's own
     # market-data feed (Yahoo via asset_profiles/stock_signals/Parquet) always quotes these same
@@ -806,6 +807,7 @@ def _map_csv_row(row: dict) -> tuple:
             "txn_type": txn_type,
             "txn_date": txn_date,
             "ticker": ticker,
+            "isin": isin,
             "company_name": company_name,
             "currency": currency,
             "quantity": _csv_float(row.get("Quantity")),
@@ -822,6 +824,7 @@ def _map_csv_row(row: dict) -> tuple:
             "txn_type": "Dividend",
             "txn_date": txn_date,
             "ticker": ticker,
+            "isin": isin,
             "company_name": company_name,
             "currency": currency,
             "quantity": _csv_float(row.get("Dividend Eligible Quantity")),
@@ -851,7 +854,14 @@ def _csv_row_fingerprint(account_id: int, row: dict, occurrence: int) -> str:
 
 
 def _ticker_resolvable(ticker: str) -> bool:
-    return _ticker_known(ticker) or bool(yahoo_engine.get_ticker_info(ticker))
+    """A live Yahoo miss is retried once. `get_ticker_info` swallows every exception (including the
+    HTTP 429 circuit breaker), so a single transient rate-limit hit on an otherwise-valid ticker
+    looks identical to a genuinely delisted one — without a retry it gets permanently skipped from
+    the import. The retry's own `get_ticker_info` call waits out any in-progress 429 cooldown via
+    yahoo_engine's existing rate-limit lock before trying again, so no extra backoff is needed here."""
+    if _ticker_known(ticker):
+        return True
+    return bool(yahoo_engine.get_ticker_info(ticker)) or bool(yahoo_engine.get_ticker_info(ticker))
 
 
 _CSV_SKIP_REASON_LABELS = {

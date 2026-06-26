@@ -86,6 +86,24 @@ def test_transaction_add_update_delete_roundtrip():
 
 
 @pytest.mark.db
+def test_transaction_isin_roundtrip():
+    aid = create_account("IsinAcc", "GBP")
+    tid = add_transaction(aid, "Buy", "2026-01-05", ticker="ZISIN", isin="GB0003452173",
+                          currency="GBP", quantity=1, unit_price=10)
+    assert get_transaction(tid)["isin"] == "GB0003452173"
+
+    assert update_transaction(tid, isin="GB00B15FWH70") is True
+    assert get_transaction(tid)["isin"] == "GB00B15FWH70"
+
+
+@pytest.mark.db
+def test_transaction_isin_defaults_to_none():
+    aid = create_account("NoIsinAcc", "GBP")
+    tid = add_transaction(aid, "Cash", "2026-01-05", unit_price=50)
+    assert get_transaction(tid)["isin"] is None
+
+
+@pytest.mark.db
 def test_value_snapshot_upsert_is_idempotent():
     aid = create_account("SnapAcc", "GBP")
     upsert_value_snapshot(aid, "2026-01-05", 3000.0, 1000.0, 2000.0)

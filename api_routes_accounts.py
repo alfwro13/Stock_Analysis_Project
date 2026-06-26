@@ -49,6 +49,7 @@ class TransactionBody(BaseModel):
     txn_type: str
     txn_date: str
     ticker: Optional[str] = None
+    isin: Optional[str] = None
     company_name: Optional[str] = None
     currency: Optional[str] = None
     quantity: Optional[float] = None
@@ -166,6 +167,7 @@ async def api_create_transaction(
             txn_type=body.txn_type,
             txn_date=body.txn_date,
             ticker=ticker,
+            isin=body.isin,
             company_name=body.company_name,
             currency=currency,
             quantity=body.quantity,
@@ -215,6 +217,7 @@ async def api_update_transaction(
             txn_type=body.txn_type,
             txn_date=body.txn_date,
             ticker=ticker,
+            isin=body.isin,
             company_name=body.company_name,
             currency=currency,
             quantity=body.quantity,

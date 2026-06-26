@@ -224,6 +224,28 @@ def test_update_transaction(client):
 
 
 @pytest.mark.api
+def test_create_and_update_transaction_isin_roundtrip(client):
+    account_id = _create_account(client)
+    with patch("api_routes_accounts.update_single_profile"):
+        create_resp = client.post(f"/api/accounts/{account_id}/transactions", json={
+            "txn_type": "Buy", "txn_date": "2026-01-15", "ticker": "FGP.L", "isin": "GB0003452173",
+            "currency": "GBP", "quantity": 6, "unit_price": 0.73,
+        })
+    txn_id = _json(create_resp)["id"]
+
+    import database as _db
+    assert _db.get_transaction(txn_id)["isin"] == "GB0003452173"
+
+    resp = client.put(f"/api/accounts/{account_id}/transactions/{txn_id}", json={
+        "txn_type": "Buy", "txn_date": "2026-01-15", "ticker": "FGP.L", "isin": "GB00B15FWH70",
+        "currency": "GBP", "quantity": 6, "unit_price": 0.73,
+    })
+    assert resp.status_code == 200
+    assert _db.get_transaction(txn_id)["isin"] == "GB00B15FWH70"
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
 def test_update_transaction_for_wrong_account_returns_404(client):
     account_a = _create_account(client, name="Account A")
     account_b = _create_account(client, name="Account B")

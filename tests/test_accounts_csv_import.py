@@ -45,6 +45,32 @@ def test_map_gbp_buy_exchange_rate_is_one():
 
 
 @pytest.mark.db
+def test_map_captures_isin_for_order_and_dividend_blank_for_cash():
+    order_row = _row({
+        "Title": "FirstGroup", "Type": "ORDER", "Timestamp": "01/02/2021", "Account Currency": "GBP",
+        "Total Amount in Account Currency": "4.41", "Buy / Sell": "BUY", "Ticker": "FGP.L",
+        "ISIN": "GB0003452173", "Price per Share in Account Currency": "0.731667", "Stamp Duty": "0.02",
+        "Quantity": "6", "Instrument Currency": "GBP", "Price per Share": "0.731667",
+    })
+    mapped, _, _ = accounts_engine._map_csv_row(order_row)
+    assert mapped["isin"] == "GB0003452173"
+
+    dividend_row = _row({
+        "Title": "GSK.L", "Type": "DIVIDEND", "Timestamp": "13/04/2023", "Account Currency": "GBP",
+        "Total Amount in Account Currency": "0.13", "Ticker": "GSK.L", "ISIN": "GB00BN7SWP63",
+        "Instrument Currency": "GBP", "Dividend Eligible Quantity": "1", "Dividend Amount Per Share": "0.1375",
+        "Dividend Net Distribution Amount": "0.1375", "Dividend Withheld Tax Amount": "0.00",
+    })
+    mapped, _, _ = accounts_engine._map_csv_row(dividend_row)
+    assert mapped["isin"] == "GB00BN7SWP63"
+
+    top_up_row = _row({"Title": "Top up", "Type": "TOP_UP", "Timestamp": "01/02/2021",
+                        "Account Currency": "GBP", "Total Amount in Account Currency": "50.00"})
+    mapped, _, _ = accounts_engine._map_csv_row(top_up_row)
+    assert "isin" not in mapped
+
+
+@pytest.mark.db
 def test_map_fx_buy_derives_rate_from_dual_currency_prices_and_converts_fee():
     """SPCE buy from the sample file: Price per Share in Account Currency / Price per Share gives the
     mid-market GBP rate; Stamp Duty + FX Fee Amount (both in GBP) must be divided by that rate to land
@@ -243,6 +269,41 @@ def test_import_reimport_same_file_is_idempotent():
     assert second["imported"] == 0
     assert second["skipped"] == 2
     assert cash_balance(aid) == pytest.approx(100.0)
+
+
+@pytest.mark.db
+def test_ticker_resolvable_retries_once_after_transient_lookup_failure():
+    """Regression for a reported false-negative: a real, resolvable mutual fund ticker
+    (0P0001RI3X.L) was skipped during import. `get_ticker_info` swallows every exception
+    including a transient HTTP 429, so a one-off network blip looks identical to a genuinely
+    bad ticker without a retry."""
+    with patch.object(accounts_engine, "_ticker_known", return_value=False), \
+         patch.object(accounts_engine.yahoo_engine, "get_ticker_info", side_effect=[None, {"longName": "HL Fund"}]) as mock_info:
+        assert accounts_engine._ticker_resolvable("0P0001RI3X.L") is True
+    assert mock_info.call_count == 2
+
+
+@pytest.mark.db
+def test_ticker_resolvable_returns_false_after_two_consecutive_failures():
+    with patch.object(accounts_engine, "_ticker_known", return_value=False), \
+         patch.object(accounts_engine.yahoo_engine, "get_ticker_info", return_value=None) as mock_info:
+        assert accounts_engine._ticker_resolvable("ZZZNOPE") is False
+    assert mock_info.call_count == 2
+
+
+@pytest.mark.db
+def test_import_recovers_ticker_after_one_transient_lookup_failure():
+    aid = create_account("TransientFailAcc", "GBP")
+    csv_text = _csv(
+        "HL Fund,ORDER,01/02/2021,GBP,10.00,BUY,0P0001RI3X.L,GB00B4NXY349,5.00,0.00,2,GBP,10.00,5.00,,,,,,,,,,,,",
+    )
+    with patch.object(accounts_engine, "_ticker_known", return_value=False), \
+         patch.object(accounts_engine.yahoo_engine, "get_ticker_info", side_effect=[None, {"longName": "HL Fund"}]):
+        result = accounts_engine.import_csv_activities(aid, csv_text)
+
+    assert result["imported"] == 1
+    assert result["skipped"] == 0
+    assert result["skipped_rows"] == []
 
 
 @pytest.mark.db

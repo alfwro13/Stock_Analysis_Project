@@ -719,6 +719,7 @@ def init_db() -> None:
                 account_id      INTEGER NOT NULL,
                 txn_type        TEXT NOT NULL,
                 ticker          TEXT,
+                isin            TEXT,
                 company_name    TEXT,
                 currency        TEXT,
                 txn_date        TEXT NOT NULL,
@@ -833,6 +834,12 @@ def migrate_db(conn, cursor) -> None:
         try:
             logger.info("[MIGRATION] Adding column: linked_txn_id to account_transactions...")
             cursor.execute("ALTER TABLE account_transactions ADD COLUMN linked_txn_id INTEGER")
+        except Exception as e:
+            logger.error("[MIGRATION ERROR] Failed on account_transactions: %s", e)
+    if 'isin' not in existing_account_txn_columns:
+        try:
+            logger.info("[MIGRATION] Adding column: isin to account_transactions...")
+            cursor.execute("ALTER TABLE account_transactions ADD COLUMN isin TEXT")
         except Exception as e:
             logger.error("[MIGRATION ERROR] Failed on account_transactions: %s", e)
 

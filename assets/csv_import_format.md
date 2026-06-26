@@ -11,9 +11,9 @@ ledger. This is the second bulk-import path alongside **Import from Ghostfolio**
 Columns are matched **by exact header name, not position** — the file's columns can be in
 any order. Every column below must be present in the header row (even if blank on a given
 row) or the import is rejected up front with a message naming the missing column(s).
-Columns not listed here (e.g. `ISIN`, `FX Rate`, `Base FX Rate`, `Dividend Ex Date`) are
-ignored — the importer never relies on the broker's own FX-rate column (see "Exchange rate
-derivation" below).
+Columns not listed here (e.g. `FX Rate`, `Base FX Rate`, `Dividend Ex Date`) are ignored — the
+importer never relies on the broker's own FX-rate column (see "Exchange rate derivation"
+below).
 
 | Column | Required for |
 |---|---|
@@ -34,6 +34,7 @@ derivation" below).
 | `Dividend Amount Per Share` | `DIVIDEND` |
 | `Dividend Withheld Tax Amount` | `DIVIDEND` |
 | `Dividend Net Distribution Amount` | `DIVIDEND` |
+| `ISIN` | optional for `ORDER`/`DIVIDEND` — captured into the transaction's `isin` field when present, but its absence never blocks an import (no header-presence check, unlike the columns above) |
 
 A row whose `Type` is missing/blank is silently skipped (e.g. trailing blank lines). A row
 whose `Type` is `ORDER`/`DIVIDEND` but has no `Ticker` is skipped and reported under
