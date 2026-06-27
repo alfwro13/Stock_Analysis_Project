@@ -9,15 +9,13 @@ API endpoints under test:
   POST  /api/v1/auth/anonymous           → authenticate()
   GET   /api/v1/account                  → discover_accounts()
   GET   /api/v1/portfolio/holdings       → sync_portfolio()
-  GET   /api/v1/watchlist                → sync_watchlist()
-  POST  /api/v1/watchlist                → add_to_watchlist()
-  DELETE /api/v1/watchlist/YAHOO/{sym}   → remove_from_watchlist()
 
 FastAPI routes under test:
   POST /api/sync-ghostfolio
   POST /api/ghostfolio/discover
-  POST /api/watchlist/add
-  POST /api/watchlist/remove
+
+Native /api/watchlist/add and /api/watchlist/remove (now backed by the
+Watchlist account, not Ghostfolio) are tested in test_03_api_post_endpoints.py.
 
 Regression tests:
   BUG-2024-06-04  Ghostfolio API moved symbol/name/currency from top-level
@@ -572,80 +570,6 @@ class TestSyncPortfolio:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# 4. sync_watchlist()
-# ──────────────────────────────────────────────────────────────────────────────
-
-class TestSyncWatchlist:
-
-    def _run_sync(self, monkeypatch, api_payload, tmp_path):
-        engine = _engine_with_bearer(monkeypatch)
-        watchlist_path = tmp_path / "watchlist.json"
-        with patch("requests.get", return_value=_mock_resp(200, api_payload)), \
-             patch("ghostfolio_sync.WATCHLIST_PATH", watchlist_path):
-            result = engine.sync_watchlist()
-        data = json.loads(watchlist_path.read_text())
-        return result, data
-
-    def test_dict_format_with_watchlist_key(self, monkeypatch, tmp_path):
-        """
-        CONTRACT: Ghostfolio returns {"watchlist": [{"symbol": "TSLA"}, ...]}.
-        Tickers must be extracted and saved.
-        """
-        payload = {"watchlist": [{"symbol": "TSLA"}, {"symbol": "NVDA"}]}
-        result, data = self._run_sync(monkeypatch, payload, tmp_path)
-        assert result is True
-        assert set(data["watchlist"]) == {"TSLA", "NVDA"}
-
-    def test_direct_list_format(self, monkeypatch, tmp_path):
-        """
-        BACKWARD COMPAT: Ghostfolio may return a bare list instead of a dict.
-        sync_watchlist() must handle both.
-        """
-        payload = [{"symbol": "TSLA"}, {"symbol": "NVDA"}]
-        result, data = self._run_sync(monkeypatch, payload, tmp_path)
-        assert result is True
-        assert set(data["watchlist"]) == {"TSLA", "NVDA"}
-
-    def test_items_without_symbol_excluded(self, monkeypatch, tmp_path):
-        """Items missing a symbol field must be silently dropped."""
-        payload = {"watchlist": [{"symbol": "TSLA"}, {"name": "No ticker here"}]}
-        _, data = self._run_sync(monkeypatch, payload, tmp_path)
-        assert data["watchlist"] == ["TSLA"]
-
-    def test_empty_watchlist_writes_empty_list(self, monkeypatch, tmp_path):
-        payload = {"watchlist": []}
-        result, data = self._run_sync(monkeypatch, payload, tmp_path)
-        assert result is True
-        assert data["watchlist"] == []
-
-    def test_http_error_returns_false(self, monkeypatch, tmp_path):
-        engine = _engine_with_bearer(monkeypatch)
-        with patch("requests.get", side_effect=Exception("timeout")), \
-             patch("ghostfolio_sync.WATCHLIST_PATH", tmp_path / "watchlist.json"):
-            result = engine.sync_watchlist()
-        assert result is False
-
-    def test_file_written_with_watchlist_key(self, monkeypatch, tmp_path):
-        """Output file must be {"watchlist": [...]} regardless of API format."""
-        payload = {"watchlist": [{"symbol": "VOO"}]}
-        _, data = self._run_sync(monkeypatch, payload, tmp_path)
-        assert "watchlist" in data
-        assert isinstance(data["watchlist"], list)
-
-    def test_watchlist_endpoint_url(self, monkeypatch, tmp_path):
-        """CONTRACT: watchlist endpoint must be GET /api/v1/watchlist."""
-        engine = _engine_with_bearer(monkeypatch)
-        called_urls = []
-        with patch("requests.get", side_effect=lambda url, **kw: called_urls.append(url) or _mock_resp(200, {"watchlist": []})), \
-             patch("ghostfolio_sync.WATCHLIST_PATH", tmp_path / "watchlist.json"):
-            engine.sync_watchlist()
-        assert any("/api/v1/watchlist" in u for u in called_urls), (
-            "CONTRACT VIOLATION: Ghostfolio watchlist GET endpoint changed. "
-            "Expected GET /api/v1/watchlist"
-        )
-
-
-# ──────────────────────────────────────────────────────────────────────────────
 # 4b. fetch_activities()
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -689,139 +613,6 @@ class TestFetchActivities:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# 5. add_to_watchlist()
-# ──────────────────────────────────────────────────────────────────────────────
-
-class TestAddToWatchlist:
-
-    def test_success_on_201(self, monkeypatch):
-        engine = _engine_with_bearer(monkeypatch)
-        with patch("requests.post", return_value=_mock_resp(201, {})) as mock_post, \
-             patch.object(engine, "authenticate", return_value=True):
-            result = engine.add_to_watchlist("TSLA")
-        assert result is True
-
-    def test_success_on_200(self, monkeypatch):
-        engine = _engine_with_bearer(monkeypatch)
-        with patch("requests.post", return_value=_mock_resp(200, {})), \
-             patch.object(engine, "authenticate", return_value=True):
-            result = engine.add_to_watchlist("TSLA")
-        assert result is True
-
-    def test_failure_on_400(self, monkeypatch):
-        engine = _engine_with_bearer(monkeypatch)
-        with patch("requests.post", return_value=_mock_resp(400, {"error": "bad request"})), \
-             patch.object(engine, "authenticate", return_value=True):
-            result = engine.add_to_watchlist("TSLA")
-        assert result is False
-
-    def test_auth_failure_returns_false(self, monkeypatch):
-        engine = _engine_with_bearer(monkeypatch)
-        with patch.object(engine, "authenticate", return_value=False):
-            result = engine.add_to_watchlist("TSLA")
-        assert result is False
-
-    def test_network_exception_returns_false(self, monkeypatch):
-        engine = _engine_with_bearer(monkeypatch)
-        with patch("requests.post", side_effect=Exception("timeout")), \
-             patch.object(engine, "authenticate", return_value=True):
-            result = engine.add_to_watchlist("TSLA")
-        assert result is False
-
-    def test_payload_shape(self, monkeypatch):
-        """
-        CONTRACT: POST /api/v1/watchlist must receive {"symbol": ..., "dataSource": "YAHOO"}.
-        If Ghostfolio changes the required payload fields this test will fail.
-        """
-        engine = _engine_with_bearer(monkeypatch)
-        captured_payloads = []
-
-        def capture(url, json=None, **kw):
-            captured_payloads.append(json)
-            return _mock_resp(201, {})
-
-        with patch("requests.post", side_effect=capture), \
-             patch.object(engine, "authenticate", return_value=True):
-            engine.add_to_watchlist("NVDA")
-
-        assert len(captured_payloads) == 1
-        payload = captured_payloads[0]
-        assert payload.get("symbol") == "NVDA", "Payload must include symbol"
-        assert payload.get("dataSource") == "YAHOO", (
-            "CONTRACT VIOLATION: add_to_watchlist payload must include dataSource=YAHOO"
-        )
-
-    def test_endpoint_url(self, monkeypatch):
-        """CONTRACT: add_to_watchlist must POST to /api/v1/watchlist."""
-        engine = _engine_with_bearer(monkeypatch)
-        called_urls = []
-        with patch("requests.post", side_effect=lambda url, **kw: called_urls.append(url) or _mock_resp(201, {})), \
-             patch.object(engine, "authenticate", return_value=True):
-            engine.add_to_watchlist("AMD")
-        assert any("/api/v1/watchlist" in u for u in called_urls), (
-            "CONTRACT VIOLATION: add_to_watchlist endpoint changed. "
-            "Expected POST /api/v1/watchlist"
-        )
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# 6. remove_from_watchlist()
-# ──────────────────────────────────────────────────────────────────────────────
-
-class TestRemoveFromWatchlist:
-
-    def test_success_on_200(self, monkeypatch):
-        engine = _engine_with_bearer(monkeypatch)
-        with patch("requests.delete", return_value=_mock_resp(200, {})), \
-             patch.object(engine, "authenticate", return_value=True):
-            result = engine.remove_from_watchlist("TSLA")
-        assert result is True
-
-    def test_success_on_204(self, monkeypatch):
-        engine = _engine_with_bearer(monkeypatch)
-        with patch("requests.delete", return_value=_mock_resp(204, {})), \
-             patch.object(engine, "authenticate", return_value=True):
-            result = engine.remove_from_watchlist("TSLA")
-        assert result is True
-
-    def test_failure_on_404(self, monkeypatch):
-        engine = _engine_with_bearer(monkeypatch)
-        with patch("requests.delete", return_value=_mock_resp(404, {})), \
-             patch.object(engine, "authenticate", return_value=True):
-            result = engine.remove_from_watchlist("TSLA")
-        assert result is False
-
-    def test_auth_failure_returns_false(self, monkeypatch):
-        engine = _engine_with_bearer(monkeypatch)
-        with patch.object(engine, "authenticate", return_value=False):
-            result = engine.remove_from_watchlist("TSLA")
-        assert result is False
-
-    def test_network_exception_returns_false(self, monkeypatch):
-        engine = _engine_with_bearer(monkeypatch)
-        with patch("requests.delete", side_effect=Exception("timeout")), \
-             patch.object(engine, "authenticate", return_value=True):
-            result = engine.remove_from_watchlist("TSLA")
-        assert result is False
-
-    def test_endpoint_url_includes_datasource_and_symbol(self, monkeypatch):
-        """
-        CONTRACT: remove_from_watchlist must DELETE /api/v1/watchlist/YAHOO/{symbol}.
-        If Ghostfolio changes the DELETE route structure this test will fail loudly.
-        """
-        engine = _engine_with_bearer(monkeypatch)
-        called_urls = []
-        with patch("requests.delete", side_effect=lambda url, **kw: called_urls.append(url) or _mock_resp(204, {})), \
-             patch.object(engine, "authenticate", return_value=True):
-            engine.remove_from_watchlist("NVDA")
-        assert len(called_urls) == 1
-        url = called_urls[0]
-        assert "/api/v1/watchlist/YAHOO/NVDA" in url, (
-            f"CONTRACT VIOLATION: Expected DELETE /api/v1/watchlist/YAHOO/NVDA, got {url}"
-        )
-
-
-# ──────────────────────────────────────────────────────────────────────────────
 # 7. run_full_sync()
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -843,33 +634,21 @@ class TestRunFullSync:
         assert result is False
 
     def test_success_calls_all_steps_in_order(self, monkeypatch, tmp_path):
-        """run_full_sync() must call authenticate → discover_accounts → sync_portfolio → sync_watchlist."""
+        """run_full_sync() must call authenticate → discover_accounts → sync_portfolio."""
         engine = _engine_with_bearer(monkeypatch)
         call_order = []
         with patch.object(engine, "authenticate",    side_effect=lambda: call_order.append("auth")     or True), \
              patch.object(engine, "discover_accounts", side_effect=lambda: call_order.append("discover") or []), \
-             patch.object(engine, "sync_portfolio",  side_effect=lambda: call_order.append("portfolio") or True), \
-             patch.object(engine, "sync_watchlist",  side_effect=lambda: call_order.append("watchlist") or True):
+             patch.object(engine, "sync_portfolio",  side_effect=lambda: call_order.append("portfolio") or True):
             engine.run_full_sync()
-        assert call_order == ["auth", "discover", "portfolio", "watchlist"]
+        assert call_order == ["auth", "discover", "portfolio"]
 
     def test_portfolio_failure_returns_false(self, monkeypatch):
         """run_full_sync() returns False when sync_portfolio fails."""
         engine = _engine_with_bearer(monkeypatch)
         with patch.object(engine, "authenticate",     return_value=True), \
              patch.object(engine, "discover_accounts", return_value=[]), \
-             patch.object(engine, "sync_portfolio",   return_value=False), \
-             patch.object(engine, "sync_watchlist",   return_value=True):
-            result = engine.run_full_sync()
-        assert result is False
-
-    def test_watchlist_failure_returns_false(self, monkeypatch):
-        """run_full_sync() returns False when sync_watchlist fails."""
-        engine = _engine_with_bearer(monkeypatch)
-        with patch.object(engine, "authenticate",     return_value=True), \
-             patch.object(engine, "discover_accounts", return_value=[]), \
-             patch.object(engine, "sync_portfolio",   return_value=True), \
-             patch.object(engine, "sync_watchlist",   return_value=False):
+             patch.object(engine, "sync_portfolio",   return_value=False):
             result = engine.run_full_sync()
         assert result is False
 
@@ -919,76 +698,6 @@ class TestGhostfolioApiRoutes:
         with patch("api_routes_triggers.GhostfolioSyncEngine", return_value=mock_engine):
             resp = client.post("/api/ghostfolio/discover")
         assert resp.status_code == 500
-
-    def test_watchlist_add_success(self, client):
-        """POST /api/watchlist/add returns success when Ghostfolio add succeeds."""
-        mock_engine = MagicMock()
-        mock_engine.add_to_watchlist.return_value = True
-        mock_engine.sync_watchlist.return_value = True
-        with patch("api_routes.GhostfolioSyncEngine", return_value=mock_engine):
-            resp = client.post("/api/watchlist/add", json={"ticker": "NVDA"})
-        assert resp.status_code == 200
-        assert resp.json().get("status") == "success"
-
-    def test_watchlist_add_triggers_sync(self, client):
-        """POST /api/watchlist/add must re-sync the watchlist file after a successful add."""
-        mock_engine = MagicMock()
-        mock_engine.add_to_watchlist.return_value = True
-        mock_engine.sync_watchlist.return_value = True
-        with patch("api_routes.GhostfolioSyncEngine", return_value=mock_engine):
-            client.post("/api/watchlist/add", json={"ticker": "NVDA"})
-        mock_engine.sync_watchlist.assert_called_once()
-
-    def test_watchlist_add_failure_returns_500(self, client):
-        """POST /api/watchlist/add returns 500 when Ghostfolio rejects the add."""
-        mock_engine = MagicMock()
-        mock_engine.add_to_watchlist.return_value = False
-        with patch("api_routes.GhostfolioSyncEngine", return_value=mock_engine):
-            resp = client.post("/api/watchlist/add", json={"ticker": "NVDA"})
-        assert resp.status_code == 500
-
-    def test_watchlist_add_no_sync_on_failure(self, client):
-        """POST /api/watchlist/add must NOT call sync_watchlist when add fails."""
-        mock_engine = MagicMock()
-        mock_engine.add_to_watchlist.return_value = False
-        with patch("api_routes.GhostfolioSyncEngine", return_value=mock_engine):
-            client.post("/api/watchlist/add", json={"ticker": "NVDA"})
-        mock_engine.sync_watchlist.assert_not_called()
-
-    def test_watchlist_remove_success(self, client):
-        """POST /api/watchlist/remove returns success when Ghostfolio remove succeeds."""
-        mock_engine = MagicMock()
-        mock_engine.remove_from_watchlist.return_value = True
-        mock_engine.sync_watchlist.return_value = True
-        with patch("api_routes.GhostfolioSyncEngine", return_value=mock_engine):
-            resp = client.post("/api/watchlist/remove", json={"ticker": "NVDA"})
-        assert resp.status_code == 200
-        assert resp.json().get("status") == "success"
-
-    def test_watchlist_remove_triggers_sync(self, client):
-        """POST /api/watchlist/remove must re-sync the watchlist file after a successful remove."""
-        mock_engine = MagicMock()
-        mock_engine.remove_from_watchlist.return_value = True
-        mock_engine.sync_watchlist.return_value = True
-        with patch("api_routes.GhostfolioSyncEngine", return_value=mock_engine):
-            client.post("/api/watchlist/remove", json={"ticker": "NVDA"})
-        mock_engine.sync_watchlist.assert_called_once()
-
-    def test_watchlist_remove_failure_returns_500(self, client):
-        """POST /api/watchlist/remove returns 500 when Ghostfolio rejects the remove."""
-        mock_engine = MagicMock()
-        mock_engine.remove_from_watchlist.return_value = False
-        with patch("api_routes.GhostfolioSyncEngine", return_value=mock_engine):
-            resp = client.post("/api/watchlist/remove", json={"ticker": "NVDA"})
-        assert resp.status_code == 500
-
-    def test_watchlist_remove_no_sync_on_failure(self, client):
-        """POST /api/watchlist/remove must NOT call sync_watchlist when remove fails."""
-        mock_engine = MagicMock()
-        mock_engine.remove_from_watchlist.return_value = False
-        with patch("api_routes.GhostfolioSyncEngine", return_value=mock_engine):
-            client.post("/api/watchlist/remove", json={"ticker": "NVDA"})
-        mock_engine.sync_watchlist.assert_not_called()
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1062,16 +771,6 @@ class TestApiContractShape:
         holding = HOLDING_AAPL
         assert "quantity"   in holding, "CONTRACT: 'quantity' must be at top level of holding"
         assert "investment" in holding, "CONTRACT: 'investment' must be at top level of holding"
-
-    def test_watchlist_response_uses_watchlist_key(self):
-        """
-        GET /api/v1/watchlist → {"watchlist": [{"symbol": "..."}, ...]}
-        Watchlist items must be under 'watchlist' key and each item must have 'symbol'.
-        """
-        response_payload = {"watchlist": [{"symbol": "TSLA"}, {"symbol": "NVDA"}]}
-        assert "watchlist" in response_payload
-        for item in response_payload["watchlist"]:
-            assert "symbol" in item, f"Watchlist item missing 'symbol' field: {item}"
 
     def test_pence_currency_identifier(self):
         """

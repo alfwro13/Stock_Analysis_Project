@@ -3,6 +3,8 @@ import os
 import logging
 
 from database import get_connection
+from config import BASE_CURRENCY, WATCHLIST_PATH
+import time_engine
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +53,67 @@ def _seed_exchange_hours_json() -> None:
         logger.info("Created default exchange_hours.json at %s", _EXCHANGE_HOURS_PATH)
     except Exception as exc:
         logger.warning("Could not write exchange_hours.json: %s", exc)
+
+
+def _ensure_watchlist_account() -> None:
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM accounts WHERE account_type = 'Watchlist' AND deleted_at IS NULL LIMIT 1")
+        if cursor.fetchone() is None:
+            cursor.execute(
+                "INSERT INTO accounts (name, currency, initial_cash, account_type) VALUES (?, ?, 0, 'Watchlist')",
+                ("Watchlist", BASE_CURRENCY)
+            )
+            conn.commit()
+            logger.info("Created default Watchlist account.")
+    except Exception as e:
+        logger.error("Failed to ensure Watchlist account exists: %s", e)
+    finally:
+        if conn:
+            conn.close()
+
+
+def _import_legacy_watchlist_json() -> None:
+    """One-time import: watchlist_items replaces watchlist.json as the watchlist's source of truth."""
+    if not os.path.exists(WATCHLIST_PATH):
+        return
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM watchlist_items")
+        if cursor.fetchone()[0] != 0:
+            return
+        with open(WATCHLIST_PATH) as f:
+            tickers = json.load(f).get("watchlist", [])
+        cursor.execute("SELECT id FROM accounts WHERE account_type = 'Watchlist' AND deleted_at IS NULL LIMIT 1")
+        wl_row = cursor.fetchone()
+        if not wl_row or not tickers:
+            return
+        logger.info("[MIGRATION] Importing %s tickers from watchlist.json into watchlist_items...", len(tickers))
+        for ticker in tickers:
+            cursor.execute(
+                "SELECT company_name, currency, quote_type FROM stock_signals WHERE ticker = ?", (ticker,)
+            )
+            cached = cursor.fetchone()
+            company_name = cached["company_name"] if cached else None
+            currency = cached["currency"] if cached else None
+            quote_type = cached["quote_type"] if cached else None
+            exchange = time_engine.ticker_exchange(ticker, currency) if currency else None
+            cursor.execute(
+                """INSERT OR IGNORE INTO watchlist_items
+                       (account_id, ticker, company_name, currency, quote_type, exchange)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (wl_row["id"], ticker, company_name, currency, quote_type, exchange)
+            )
+        conn.commit()
+    except Exception as e:
+        logger.error("[MIGRATION ERROR] watchlist.json import failed: %s", e)
+    finally:
+        if conn:
+            conn.close()
 
 
 def init_db() -> None:
@@ -750,10 +813,26 @@ def init_db() -> None:
             )
         ''')
 
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS watchlist_items (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id    INTEGER NOT NULL,
+                ticker        TEXT NOT NULL,
+                company_name  TEXT,
+                currency      TEXT,
+                quote_type    TEXT,
+                exchange      TEXT,
+                added_at      TEXT DEFAULT (datetime('now')),
+                UNIQUE(account_id, ticker)
+            )
+        ''')
+
         conn.commit()
 
         migrate_db(conn, cursor)
         _seed_exchange_hours_json()
+        _ensure_watchlist_account()
+        _import_legacy_watchlist_json()
 
         logger.info("Database connection verified and schema is fully up-to-date.")
 

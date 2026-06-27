@@ -19,9 +19,9 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
-from config import load_config, PORTFOLIO_PATH, WATCHLIST_PATH, HISTORICAL_DIR, INTRADAY_DIR, BASE_CURRENCY, ACCOUNT_CURRENCIES
+from config import load_config, PORTFOLIO_PATH, HISTORICAL_DIR, INTRADAY_DIR, BASE_CURRENCY, ACCOUNT_CURRENCIES
 import time_engine
-from database import get_connection
+from database import get_connection, get_watchlist_tickers
 from market_pulse import get_all_cached_pulse, INDEX_TICKERS
 from utils import normalize_ticker
 from visuals import (
@@ -399,12 +399,22 @@ async def account_detail_page(request: Request, account_id: int):
         account_summary, cash_history, closed_positions, holdings_with_market_value,
         is_unresolved_ticker, transaction_total_base,
     )
-    from database import get_account, get_transactions, get_value_history
+    from database import get_account, get_transactions, get_value_history, get_watchlist_items
     from visuals import create_account_value_chart
 
     acc = get_account(account_id)
     if acc is None:
         return RedirectResponse("/accounts", status_code=302)
+
+    if acc["account_type"] == "Watchlist":
+        return templates.TemplateResponse(
+            request=request, name="watchlist_account_detail.html",
+            context={
+                "account": acc,
+                "items": get_watchlist_items(acc["id"]),
+                "unread_count": get_unread_count(),
+            }
+        )
 
     activities = get_transactions(account_id)
     for a in activities:
@@ -487,8 +497,7 @@ async def watchlist_page(request: Request, embed: bool = False):
     finally:
         conn.close()
 
-    watchlist_json = get_json_data(WATCHLIST_PATH)
-    watchlist_tickers = watchlist_json.get("watchlist", [])
+    watchlist_tickers = get_watchlist_tickers()
 
     watchlist_data = []
     for row in db_rows:
@@ -1024,9 +1033,7 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
     ticker = normalize_ticker(ticker)
     if ticker in INDEX_TICKERS:
         return RedirectResponse(f"/index/{ticker}", status_code=302)
-    watchlist_json = get_json_data(WATCHLIST_PATH)
-    watchlist_tickers = watchlist_json.get("watchlist", [])
-    is_in_watchlist = ticker in watchlist_tickers
+    is_in_watchlist = ticker in get_watchlist_tickers()
 
     conn = get_connection()
     try:

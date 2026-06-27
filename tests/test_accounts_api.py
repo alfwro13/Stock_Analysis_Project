@@ -79,12 +79,55 @@ def test_create_account_defaults_to_trading_type(client):
 @pytest.mark.api
 def test_create_account_with_each_valid_account_type(client):
     import database as _db
-    for account_type in ("Trading", "House", "Pension", "Watchlist"):
+    for account_type in ("Trading", "House", "Pension"):
         account_id = _create_account(client, name=f"{account_type} Acc", account_type=account_type)
         resp = client.get("/api/accounts")
         acc = next(a for a in _json(resp)["accounts"] if a["id"] == account_id)
         assert acc["account_type"] == account_type
         _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_create_account_rejects_watchlist_type(client):
+    resp = client.post("/api/accounts", json={
+        "name": "Sneaky Watchlist", "currency": "GBP", "account_type": "Watchlist",
+    })
+    assert resp.status_code == 400
+    assert _json(resp)["status"] == "error"
+
+
+@pytest.mark.api
+def test_update_account_rejects_converting_into_watchlist(client):
+    account_id = _create_account(client)
+    resp = client.put(f"/api/accounts/{account_id}", json={
+        "name": "Renamed", "currency": "GBP", "account_type": "Watchlist",
+    })
+    assert resp.status_code == 400
+    assert _json(resp)["status"] == "error"
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_update_account_rejects_converting_watchlist_out(client):
+    import database as _db
+    wl = _db.get_watchlist_account()
+    resp = client.put(f"/api/accounts/{wl['id']}", json={
+        "name": wl["name"], "currency": wl["currency"], "account_type": "Trading",
+    })
+    assert resp.status_code == 400
+    assert _json(resp)["status"] == "error"
+
+
+@pytest.mark.api
+def test_delete_watchlist_account_rejected(client):
+    import database as _db
+    wl = _db.get_watchlist_account()
+    resp = client.delete(f"/api/accounts/{wl['id']}")
+    assert resp.status_code == 400
+    assert _json(resp)["status"] == "error"
+    assert _db.get_account(wl["id"]) is not None
 
 
 @pytest.mark.api
@@ -770,3 +813,94 @@ def test_fx_rate_endpoint_returns_rate(client):
     assert data["status"] == "success"
     assert data["rate"] == 0.79
     mock_fx.assert_called_once_with("USD", "2026-01-15")
+
+
+@pytest.mark.api
+def test_watchlist_account_auto_created_and_singular(client):
+    import database as _db
+    wl = _db.get_watchlist_account()
+    assert wl is not None
+    assert wl["account_type"] == "Watchlist"
+    accounts = _db.get_accounts()
+    assert sum(1 for a in accounts if a["account_type"] == "Watchlist") == 1
+
+    from db_schema import _ensure_watchlist_account
+    _ensure_watchlist_account()
+    accounts_after = _db.get_accounts()
+    assert sum(1 for a in accounts_after if a["account_type"] == "Watchlist") == 1
+
+
+@pytest.mark.api
+def test_ticker_search_returns_mapped_fields(client):
+    fake_quotes = [{"symbol": "AAPL", "longname": "Apple Inc.", "quoteType": "EQUITY"}]
+    with patch("api_routes_accounts.yahoo_engine.search_ticker", return_value=[
+        {"ticker": q["symbol"], "company_name": q["longname"], "quote_type": q["quoteType"]} for q in fake_quotes
+    ]) as mock_search:
+        resp = client.get("/api/ticker-search?q=Apple")
+    assert resp.status_code == 200
+    data = _json(resp)
+    assert data["status"] == "success"
+    assert data["results"] == [{"ticker": "AAPL", "company_name": "Apple Inc.", "quote_type": "EQUITY"}]
+    mock_search.assert_called_once_with("Apple")
+
+
+@pytest.mark.api
+def test_ticker_search_requires_query(client):
+    resp = client.get("/api/ticker-search?q=")
+    assert resp.status_code == 422
+
+
+@pytest.mark.api
+def test_watchlist_items_add_list_and_bulk_delete(client):
+    import database as _db
+    wl_id = _db.get_watchlist_account()["id"]
+
+    with patch("api_routes_accounts.resolve_watchlist_metadata", return_value={
+        "company_name": "Apple Inc.", "currency": "USD", "quote_type": "EQUITY", "exchange": "NYSE",
+    }):
+        resp = client.post(f"/api/accounts/{wl_id}/watchlist-items", json={"ticker": "AAPL"})
+    assert resp.status_code == 200
+    item_id = _json(resp)["id"]
+
+    resp = client.get(f"/api/accounts/{wl_id}/watchlist-items")
+    assert resp.status_code == 200
+    items = _json(resp)["items"]
+    added = next(i for i in items if i["id"] == item_id)
+    assert added["ticker"] == "AAPL"
+    assert added["company_name"] == "Apple Inc."
+    assert added["exchange"] == "NYSE"
+
+    resp = client.post(f"/api/accounts/{wl_id}/watchlist-items/bulk-delete", json={"ids": [item_id]})
+    assert resp.status_code == 200
+    assert _json(resp)["deleted"] == 1
+
+    resp = client.get(f"/api/accounts/{wl_id}/watchlist-items")
+    assert not any(i["id"] == item_id for i in _json(resp)["items"])
+
+
+@pytest.mark.api
+def test_watchlist_item_readd_is_idempotent(client):
+    import database as _db
+    wl_id = _db.get_watchlist_account()["id"]
+
+    with patch("api_routes_accounts.resolve_watchlist_metadata", return_value={
+        "company_name": "Microsoft Corp.", "currency": "USD", "quote_type": "EQUITY", "exchange": "NYSE",
+    }):
+        first = _json(client.post(f"/api/accounts/{wl_id}/watchlist-items", json={"ticker": "MSFT"}))
+        second = _json(client.post(f"/api/accounts/{wl_id}/watchlist-items", json={"ticker": "MSFT"}))
+    assert first["id"] == second["id"]
+
+    _db.delete_watchlist_items(wl_id, [first["id"]])
+
+
+@pytest.mark.api
+def test_watchlist_items_endpoints_reject_non_watchlist_account(client):
+    account_id = _create_account(client)
+    resp = client.get(f"/api/accounts/{account_id}/watchlist-items")
+    assert resp.status_code == 400
+
+    resp = client.post(f"/api/accounts/{account_id}/watchlist-items", json={"ticker": "AAPL"})
+    assert resp.status_code == 400
+
+    import database as _db
+    _db.soft_delete_account(account_id)

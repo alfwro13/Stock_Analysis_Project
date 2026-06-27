@@ -279,3 +279,14 @@ def test_account_detail_page_loads_for_real_account(client):
         _assert_page_ok(client, f"/accounts/{account_id}", label="Account Detail")
     finally:
         _db.soft_delete_account(account_id)
+
+
+@pytest.mark.pages
+def test_account_detail_page_renders_compact_view_for_watchlist_account(client):
+    """GET /accounts/{watchlist_id} must render the compact watchlist_account_detail.html, not the ledger view."""
+    import database as _db
+    wl = _db.get_watchlist_account()
+    resp = client.get(f"/accounts/{wl['id']}")
+    assert resp.status_code == 200
+    assert "wl-items-table" in resp.text
+    assert "watchlist_account.js" in resp.text

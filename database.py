@@ -89,6 +89,12 @@ from db_accounts import (  # noqa: E402
     delete_transaction,
     upsert_value_snapshot,
     get_value_history,
+    get_watchlist_account,
+    get_watchlist_items,
+    add_watchlist_item,
+    delete_watchlist_items,
+    remove_watchlist_ticker,
+    get_watchlist_tickers,
 )
 
 __all__ = [
@@ -125,4 +131,10 @@ __all__ = [
     "delete_transaction",
     "upsert_value_snapshot",
     "get_value_history",
+    "get_watchlist_account",
+    "get_watchlist_items",
+    "add_watchlist_item",
+    "delete_watchlist_items",
+    "remove_watchlist_ticker",
+    "get_watchlist_tickers",
 ]

@@ -87,20 +87,14 @@ class TestBuildTickerSourceMap:
         with open(path, "w") as f:
             json.dump(data, f)
 
-    def _write_watchlist(self, path, tickers):
-        with open(path, "w") as f:
-            json.dump({"watchlist": tickers}, f)
-
     def _run(self, portfolio_tickers, watchlist_tickers, ignored=None):
         with tempfile.TemporaryDirectory() as tmpdir:
             p_path = os.path.join(tmpdir, "portfolio.json")
-            w_path = os.path.join(tmpdir, "watchlist.json")
             self._write_portfolio(p_path, portfolio_tickers)
-            self._write_watchlist(w_path, watchlist_tickers)
             cfg = {"IGNORED_TICKERS": ignored or []}
             with (
                 patch("news_feed_engine.PORTFOLIO_PATH", p_path),
-                patch("news_feed_engine.WATCHLIST_PATH", w_path),
+                patch("news_feed_engine.get_watchlist_tickers", return_value=watchlist_tickers),
                 patch("news_feed_engine.load_config", return_value=cfg),
             ):
                 return _build_ticker_source_map()

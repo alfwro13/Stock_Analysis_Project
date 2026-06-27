@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from accounts_engine import (
     _ticker_known, create_transfer, delete_transaction_with_pair, export_transactions_csv,
     fx_rate_on_date, import_csv_activities, import_ghostfolio_activities, is_unresolved_ticker,
-    resnapshot_account,
+    resnapshot_account, resolve_watchlist_metadata,
 )
 import notification_engine
 from api_deps import limiter, _error_500
@@ -24,6 +24,9 @@ from database import (
     add_transaction,
     update_transaction,
     get_connection,
+    get_watchlist_items,
+    add_watchlist_item,
+    delete_watchlist_items,
 )
 from profile_engine import update_single_profile
 from scheduler_engine import run_account_value_snapshot
@@ -67,6 +70,14 @@ class ImportGhostfolioBody(BaseModel):
     ghostfolio_account_id: str
 
 
+class WatchlistItemBody(BaseModel):
+    ticker: str
+
+
+class WatchlistBulkDeleteBody(BaseModel):
+    ids: list[int]
+
+
 def _resolve_exchange_rate(currency: Optional[str], exchange_rate: Optional[float], txn_date: str) -> float:
     if exchange_rate is not None:
         return exchange_rate
@@ -84,6 +95,8 @@ async def api_create_account(request: Request, body: AccountBody, background_tas
     try:
         if body.account_type not in _ACCOUNT_TYPES:
             return JSONResponse(status_code=400, content={"status": "error", "message": f"Invalid account_type. Must be one of: {sorted(_ACCOUNT_TYPES)}"})
+        if body.account_type == "Watchlist":
+            return JSONResponse(status_code=400, content={"status": "error", "message": "Watchlist accounts are created automatically and cannot be created manually."})
         account_id = create_account(
             name=body.name.strip(),
             currency=body.currency.upper().strip(),
@@ -105,10 +118,13 @@ async def api_create_account(request: Request, body: AccountBody, background_tas
 @limiter.limit("30/minute")
 async def api_update_account(request: Request, account_id: int, body: AccountBody):
     try:
-        if get_account(account_id) is None:
+        existing = get_account(account_id)
+        if existing is None:
             return JSONResponse(status_code=404, content={"status": "error", "message": "Account not found."})
         if body.account_type not in _ACCOUNT_TYPES:
             return JSONResponse(status_code=400, content={"status": "error", "message": f"Invalid account_type. Must be one of: {sorted(_ACCOUNT_TYPES)}"})
+        if (body.account_type == "Watchlist") != (existing["account_type"] == "Watchlist"):
+            return JSONResponse(status_code=400, content={"status": "error", "message": "The Watchlist account type cannot be assigned to or removed from an account."})
         ok = update_account(
             account_id,
             name=body.name.strip(),
@@ -130,8 +146,11 @@ async def api_update_account(request: Request, account_id: int, body: AccountBod
 @limiter.limit("30/minute")
 async def api_delete_account(request: Request, account_id: int):
     try:
-        if get_account(account_id) is None:
+        existing = get_account(account_id)
+        if existing is None:
             return JSONResponse(status_code=404, content={"status": "error", "message": "Account not found."})
+        if existing["account_type"] == "Watchlist":
+            return JSONResponse(status_code=400, content={"status": "error", "message": "The Watchlist account is managed by the system and cannot be deleted."})
         soft_delete_account(account_id)
         return JSONResponse(content={"status": "success", "message": "Account deleted."})
     except Exception as e:
@@ -339,6 +358,72 @@ async def api_ticker_lookup(request: Request, q: str):
         })
     except Exception as e:
         logger.error("api_ticker_lookup failed for %r: %s", q, e)
+        return _error_500(e)
+
+
+@accounts_router.get("/ticker-search")
+@limiter.limit("30/minute")
+async def api_ticker_search(request: Request, q: str):
+    try:
+        if not q or not q.strip():
+            return JSONResponse(status_code=422, content={"status": "error", "message": "q is required."})
+        results = yahoo_engine.search_ticker(q.strip())
+        return JSONResponse(content={"status": "success", "results": results})
+    except Exception as e:
+        logger.error("api_ticker_search failed for %r: %s", q, e)
+        return _error_500(e)
+
+
+def _require_watchlist_account(account_id: int):
+    acc = get_account(account_id)
+    if acc is None:
+        return None, JSONResponse(status_code=404, content={"status": "error", "message": "Account not found."})
+    if acc["account_type"] != "Watchlist":
+        return None, JSONResponse(status_code=400, content={"status": "error", "message": "This account is not a Watchlist account."})
+    return acc, None
+
+
+@accounts_router.get("/accounts/{account_id}/watchlist-items")
+async def api_list_watchlist_items(account_id: int):
+    acc, error = _require_watchlist_account(account_id)
+    if error:
+        return error
+    return JSONResponse(content={"status": "success", "items": get_watchlist_items(acc["id"])})
+
+
+@accounts_router.post("/accounts/{account_id}/watchlist-items")
+@limiter.limit("30/minute")
+async def api_add_watchlist_item(request: Request, account_id: int, body: WatchlistItemBody):
+    try:
+        acc, error = _require_watchlist_account(account_id)
+        if error:
+            return error
+        ticker = normalize_ticker(body.ticker)
+        if not ticker:
+            return JSONResponse(status_code=422, content={"status": "error", "message": "ticker is required."})
+        meta = resolve_watchlist_metadata(ticker)
+        item_id = add_watchlist_item(
+            acc["id"], ticker, meta["company_name"], meta["currency"], meta["quote_type"], meta["exchange"]
+        )
+        if item_id is None:
+            return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to add ticker to watchlist."})
+        return JSONResponse(content={"status": "success", "id": item_id})
+    except Exception as e:
+        logger.error("api_add_watchlist_item failed for account %s: %s", account_id, e)
+        return _error_500(e)
+
+
+@accounts_router.post("/accounts/{account_id}/watchlist-items/bulk-delete")
+@limiter.limit("30/minute")
+async def api_bulk_delete_watchlist_items(request: Request, account_id: int, body: WatchlistBulkDeleteBody):
+    try:
+        acc, error = _require_watchlist_account(account_id)
+        if error:
+            return error
+        deleted = delete_watchlist_items(acc["id"], body.ids)
+        return JSONResponse(content={"status": "success", "deleted": deleted})
+    except Exception as e:
+        logger.error("api_bulk_delete_watchlist_items failed for account %s: %s", account_id, e)
         return _error_500(e)
 
 

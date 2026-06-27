@@ -7,7 +7,8 @@ from pathlib import Path
 import pandas as pd
 from typing import Set, List, Dict, Any
 
-from config import PORTFOLIO_PATH, WATCHLIST_PATH, HISTORICAL_DIR, INTRADAY_DIR, FUNDAMENTALS_DIR, load_config
+from config import PORTFOLIO_PATH, HISTORICAL_DIR, INTRADAY_DIR, FUNDAMENTALS_DIR, load_config
+from database import get_watchlist_tickers
 from gilt_engine import GiltDataService
 from yahoo_engine import yahoo_engine
 
@@ -19,7 +20,7 @@ logger = logging.getLogger(__name__)
 class DataEngine:
     def __init__(self) -> None:
         self.portfolio: Dict[str, Any] = self._load_json(PORTFOLIO_PATH)
-        self.watchlist: Dict[str, Any] = self._load_json(WATCHLIST_PATH)
+        self.watchlist: Dict[str, Any] = {"watchlist": get_watchlist_tickers()}
         self._ensure_directories()
 
     @staticmethod

@@ -180,32 +180,33 @@ def test_post_settings_with_position_sizing(client, confirm_token):
     assert data.get("status") == "success"
 
 
-# ── Watchlist (mocked Ghostfolio) ─────────────────────────────────────────────
+# ── Watchlist (native store, no Ghostfolio) ──────────────────────────────────
 
 @pytest.mark.api
 def test_post_watchlist_add_with_mock(client):
-    """POST /api/watchlist/add must not crash (Ghostfolio is mocked)."""
-    with patch("api_routes.GhostfolioSyncEngine") as MockEngine:
-        instance = MockEngine.return_value
-        instance.add_to_watchlist.return_value = True
-        instance.sync_watchlist.return_value = None
+    """POST /api/watchlist/add inserts into watchlist_items without calling Yahoo."""
+    import database as _db
+    fake_meta = {"company_name": "Apple Inc.", "currency": "USD", "quote_type": "EQUITY", "exchange": "NYSE"}
+    with patch("api_routes.resolve_watchlist_metadata", return_value=fake_meta):
         resp = client.post("/api/watchlist/add", json={"ticker": "AAPL"})
-    assert resp.status_code in (200, 400, 422), (
-        f"Unexpected status code {resp.status_code} for watchlist add"
-    )
+    assert resp.status_code == 200
+    assert _json(resp)["status"] == "success"
+    wl = _db.get_watchlist_account()
+    assert "AAPL" in _db.get_watchlist_tickers()
+    _db.remove_watchlist_ticker(wl["id"], "AAPL")
 
 
 @pytest.mark.api
 def test_post_watchlist_remove_with_mock(client):
-    """POST /api/watchlist/remove must not crash (Ghostfolio is mocked)."""
-    with patch("api_routes.GhostfolioSyncEngine") as MockEngine:
-        instance = MockEngine.return_value
-        instance.remove_from_watchlist.return_value = True
-        instance.sync_watchlist.return_value = None
-        resp = client.post("/api/watchlist/remove", json={"ticker": "AAPL"})
-    assert resp.status_code in (200, 400, 422), (
-        f"Unexpected status code {resp.status_code} for watchlist remove"
-    )
+    """POST /api/watchlist/remove deletes from watchlist_items."""
+    import database as _db
+    wl = _db.get_watchlist_account()
+    _db.add_watchlist_item(wl["id"], "MSFT", "Microsoft Corp.", "USD", "EQUITY", "NYSE")
+
+    resp = client.post("/api/watchlist/remove", json={"ticker": "MSFT"})
+    assert resp.status_code == 200
+    assert _json(resp)["status"] == "success"
+    assert "MSFT" not in _db.get_watchlist_tickers()
 
 
 # ── Options payoff (pure math, no external calls) ────────────────────────────

@@ -76,6 +76,7 @@ EXPECTED_TABLES = [
     "price_hmm_states",
     "etf_predictor_configs",
     "etf_predictor_predictions",
+    "watchlist_items",
 ]
 
 
@@ -342,6 +343,92 @@ def test_scheduler_run_log_upsert():
         conn.execute("DELETE FROM scheduler_run_log WHERE job_id = 'test_job'")
         conn.commit()
         conn.close()
+
+
+# ── Watchlist migration (db_schema._import_legacy_watchlist_json) ────────────
+
+@pytest.mark.db
+def test_import_legacy_watchlist_json_enriches_from_stock_signals(tmp_path):
+    """A ticker already cached in stock_signals gets its metadata carried into watchlist_items."""
+    import json
+    import database as db_module
+    import db_schema
+
+    temp_db_path = tmp_path / "migration_test.db"
+    watchlist_path = tmp_path / "watchlist.json"
+    watchlist_path.write_text(json.dumps({"watchlist": ["AAPL", "MSFT"]}))
+
+    original_db_path = db_module.DB_PATH
+    db_module.DB_PATH = temp_db_path
+    try:
+        conn = db_module.get_connection()
+        conn.execute("CREATE TABLE accounts (id INTEGER PRIMARY KEY, account_type TEXT, deleted_at TEXT)")
+        conn.execute("INSERT INTO accounts (id, account_type, deleted_at) VALUES (1, 'Watchlist', NULL)")
+        conn.execute(
+            "CREATE TABLE watchlist_items (id INTEGER PRIMARY KEY, account_id INTEGER, ticker TEXT, "
+            "company_name TEXT, currency TEXT, quote_type TEXT, exchange TEXT, UNIQUE(account_id, ticker))"
+        )
+        conn.execute("CREATE TABLE stock_signals (ticker TEXT PRIMARY KEY, company_name TEXT, currency TEXT, quote_type TEXT)")
+        conn.execute(
+            "INSERT INTO stock_signals (ticker, company_name, currency, quote_type) VALUES (?, ?, ?, ?)",
+            ("AAPL", "Apple Inc.", "USD", "EQUITY")
+        )
+        conn.commit()
+        conn.close()
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(db_schema, "WATCHLIST_PATH", watchlist_path)
+            db_schema._import_legacy_watchlist_json()
+
+        conn = db_module.get_connection()
+        rows = {r["ticker"]: dict(r) for r in conn.execute("SELECT * FROM watchlist_items").fetchall()}
+        conn.close()
+    finally:
+        db_module.DB_PATH = original_db_path
+
+    assert set(rows) == {"AAPL", "MSFT"}
+    assert rows["AAPL"]["company_name"] == "Apple Inc."
+    assert rows["AAPL"]["exchange"] == "NYSE"
+    assert rows["MSFT"]["company_name"] is None
+
+
+@pytest.mark.db
+def test_import_legacy_watchlist_json_is_idempotent(tmp_path):
+    """Running the import twice must not duplicate rows or error on a non-empty table."""
+    import json
+    import database as db_module
+    import db_schema
+
+    temp_db_path = tmp_path / "migration_test_2.db"
+    watchlist_path = tmp_path / "watchlist.json"
+    watchlist_path.write_text(json.dumps({"watchlist": ["TSLA"]}))
+
+    original_db_path = db_module.DB_PATH
+    db_module.DB_PATH = temp_db_path
+    try:
+        conn = db_module.get_connection()
+        conn.execute("CREATE TABLE accounts (id INTEGER PRIMARY KEY, account_type TEXT, deleted_at TEXT)")
+        conn.execute("INSERT INTO accounts (id, account_type, deleted_at) VALUES (1, 'Watchlist', NULL)")
+        conn.execute(
+            "CREATE TABLE watchlist_items (id INTEGER PRIMARY KEY, account_id INTEGER, ticker TEXT, "
+            "company_name TEXT, currency TEXT, quote_type TEXT, exchange TEXT, UNIQUE(account_id, ticker))"
+        )
+        conn.execute("CREATE TABLE stock_signals (ticker TEXT PRIMARY KEY, company_name TEXT, currency TEXT, quote_type TEXT)")
+        conn.commit()
+        conn.close()
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(db_schema, "WATCHLIST_PATH", watchlist_path)
+            db_schema._import_legacy_watchlist_json()
+            db_schema._import_legacy_watchlist_json()
+
+        conn = db_module.get_connection()
+        count = conn.execute("SELECT COUNT(*) AS cnt FROM watchlist_items").fetchone()["cnt"]
+        conn.close()
+    finally:
+        db_module.DB_PATH = original_db_path
+
+    assert count == 1
 
 
 @pytest.mark.db

@@ -35,13 +35,13 @@
             <input type="text" id="acct-currency" placeholder="GBP" value="{{ base_currency }}">
         </div>
         <div class="form-group">
-            <label for="acct-type"><abbr title="Trading accounts feed the Portfolio page and X-ray. House, Pension, and Watchlist accounts are tracked separately and excluded from portfolio-wide aggregation.">Account Type</abbr></label>
+            <label for="acct-type"><abbr title="Trading accounts feed the Portfolio page and X-ray. House and Pension accounts are tracked separately and excluded from portfolio-wide aggregation. The Watchlist account is created automatically by the system and isn't selectable here.">Account Type</abbr></label>
             <select id="acct-type">
                 <option value="Trading">Trading</option>
                 <option value="House">House</option>
                 <option value="Pension">Pension</option>
-                <option value="Watchlist">Watchlist</option>
             </select>
+            <input type="text" id="acct-type-readonly" class="form-control d-none" value="Watchlist" disabled>
         </div>
         <div class="form-group">
             <label for="acct-cash">Initial Cash</label>

@@ -10,6 +10,7 @@ from typing import Optional
 
 import pandas as pd
 
+import time_engine
 from config import BASE_CURRENCY, HISTORICAL_DIR, PORTFOLIO_PATH
 from db_accounts import (
     add_transaction, delete_transaction, get_account, get_accounts, get_transaction,
@@ -30,6 +31,18 @@ _UUID_RE = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
 def is_unresolved_ticker(ticker: Optional[str]) -> bool:
     """Ghostfolio reports a raw asset UUID as `symbol` for custom/manual assets with no real market ticker."""
     return bool(ticker) and bool(_UUID_RE.match(ticker))
+
+
+def resolve_watchlist_metadata(ticker: str) -> dict:
+    """Authoritative per-ticker metadata for a watchlist insert; exchange always comes from time_engine, never Yahoo's free-text exchDisp."""
+    info = yahoo_engine.get_ticker_info(ticker) or {}
+    currency = info.get("currency")
+    return {
+        "company_name": info.get("longName") or info.get("shortName"),
+        "currency": currency,
+        "quote_type": info.get("quoteType"),
+        "exchange": time_engine.ticker_exchange(ticker, currency) if currency else None,
+    }
 
 
 def _ticker_known(ticker: str) -> bool:

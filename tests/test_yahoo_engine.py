@@ -811,6 +811,59 @@ class TestGetAnnualFinancials:
         assert result == (None, None, None)
 
 
+# ─── TestSearchTicker ─────────────────────────────────────────────────────────
+
+class TestSearchTicker:
+
+    def setup_method(self):
+        self.eng = YahooEngine()
+
+    @patch("yahoo_engine.yahoo_connection_boundary")
+    def test_maps_quotes_to_result_dicts(self, mock_ctx):
+        mock_ctx.return_value.__enter__ = lambda s: MagicMock()
+        mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
+        fake_quotes = [
+            {"symbol": "AAPL", "longname": "Apple Inc.", "quoteType": "EQUITY"},
+            {"symbol": "AAPL.TO", "shortname": "Apple Inc CDR", "quoteType": "EQUITY"},
+        ]
+
+        with patch("yahoo_engine.yf.Search") as mock_search_cls:
+            mock_search_cls.return_value.quotes = fake_quotes
+            result = self.eng.search_ticker("Apple")
+
+        assert result == [
+            {"ticker": "AAPL", "company_name": "Apple Inc.", "quote_type": "EQUITY"},
+            {"ticker": "AAPL.TO", "company_name": "Apple Inc CDR", "quote_type": "EQUITY"},
+        ]
+
+    @patch("yahoo_engine.yahoo_connection_boundary")
+    def test_drops_quotes_without_symbol(self, mock_ctx):
+        mock_ctx.return_value.__enter__ = lambda s: MagicMock()
+        mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
+
+        with patch("yahoo_engine.yf.Search") as mock_search_cls:
+            mock_search_cls.return_value.quotes = [{"longname": "No Symbol Here"}]
+            result = self.eng.search_ticker("nonsense")
+
+        assert result == []
+
+    @patch("yahoo_engine.yahoo_connection_boundary")
+    def test_caches_result(self, mock_ctx):
+        mock_ctx.return_value.__enter__ = lambda s: MagicMock()
+        mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
+
+        with patch("yahoo_engine.yf.Search") as mock_search_cls:
+            mock_search_cls.return_value.quotes = [{"symbol": "MSFT", "longname": "Microsoft"}]
+            self.eng.search_ticker("Microsoft")
+            self.eng.search_ticker("Microsoft")
+            assert mock_search_cls.call_count == 1
+
+    @patch("yahoo_engine.yahoo_connection_boundary")
+    def test_returns_empty_list_on_exception(self, mock_ctx):
+        mock_ctx.side_effect = RuntimeError("network down")
+        assert self.eng.search_ticker("anything") == []
+
+
 # ─── TestSingleton ────────────────────────────────────────────────────────────
 
 class TestSingleton:

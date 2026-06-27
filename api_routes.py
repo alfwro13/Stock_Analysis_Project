@@ -30,17 +30,18 @@ from config import (
     BASE_DIR,
     DB_PATH,
     PORTFOLIO_PATH,
-    WATCHLIST_PATH,
     FUNDAMENTALS_DIR,
     HISTORICAL_DIR,
     INTRADAY_DIR
 )
-from database import get_connection, get_universe_tickers
+from database import (
+    get_connection, get_universe_tickers, get_watchlist_account, add_watchlist_item, remove_watchlist_ticker,
+)
+from accounts_engine import resolve_watchlist_metadata
 from scheduler_engine import run_update_pipeline, run_ghostfolio_sync, run_freetrade_sync, reload_scheduler, run_sentiment_scan, run_index_scraper, run_fundamentals_profiler, run_universe_deep_sync_job, get_all_job_last_runs, run_xray_risk_cache_job, run_anomaly_training_job, record_job_run, run_maintenance_engine, build_workflow_graph, detect_workflow_conflicts, CONFIG_KEY_TO_JOB
 from maintenance_engine import MaintenanceEngine
 from xray_engine import assemble_xray_report, GhostfolioXRayClient
 from fx_drag_engine import portfolio_fx_breakdown, portfolio_lifetime_fx_breakdown
-from ghostfolio_sync import GhostfolioSyncEngine
 from market_pulse import get_cached_pulse_from_db, fetch_and_save_pulse
 from sentiment_engine import run_nextcloud_alert
 from huggingface_engine import update_all_sentiment
@@ -105,21 +106,28 @@ class NameOverrideRequest(BaseModel):
 
 @api_router.post("/watchlist/add")
 async def api_watchlist_add(req: TickerRequest):
-    engine = GhostfolioSyncEngine()
-    added = await asyncio.to_thread(engine.add_to_watchlist, req.ticker)
-    if added:
-        await asyncio.to_thread(engine.sync_watchlist)
+    ticker = normalize_ticker(req.ticker)
+    wl = get_watchlist_account()
+    if wl is None:
+        return JSONResponse(status_code=500, content={"status": "error", "message": "Watchlist account not found."})
+    meta = await asyncio.to_thread(resolve_watchlist_metadata, ticker)
+    item_id = await asyncio.to_thread(
+        add_watchlist_item, wl["id"], ticker, meta["company_name"], meta["currency"], meta["quote_type"], meta["exchange"]
+    )
+    if item_id is not None:
         return JSONResponse(content={"status": "success"})
-    return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to add to Ghostfolio."})
+    return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to add to watchlist."})
 
 @api_router.post("/watchlist/remove")
 async def api_watchlist_remove(req: TickerRequest):
-    engine = GhostfolioSyncEngine()
-    removed = await asyncio.to_thread(engine.remove_from_watchlist, req.ticker)
+    ticker = normalize_ticker(req.ticker)
+    wl = get_watchlist_account()
+    if wl is None:
+        return JSONResponse(status_code=500, content={"status": "error", "message": "Watchlist account not found."})
+    removed = await asyncio.to_thread(remove_watchlist_ticker, wl["id"], ticker)
     if removed:
-        await asyncio.to_thread(engine.sync_watchlist)
         return JSONResponse(content={"status": "success"})
-    return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to remove from Ghostfolio."})
+    return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to remove from watchlist."})
 
 @api_router.post("/data/refresh-single")
 async def api_data_refresh_single(req: TickerRequest):

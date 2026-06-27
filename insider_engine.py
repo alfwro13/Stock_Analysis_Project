@@ -3,24 +3,21 @@ import os
 import json
 import pandas as pd
 from datetime import datetime, timedelta, timezone
-from database import get_connection
-from config import PORTFOLIO_PATH, WATCHLIST_PATH, load_config
+from database import get_connection, get_watchlist_tickers
+from config import PORTFOLIO_PATH, load_config
 from yahoo_engine import yahoo_engine
 from notification_engine import notify
 
 logger = logging.getLogger(__name__)
 
-def get_tickers_from_json(filepath: str, is_watchlist: bool = False) -> list:
-    """Safely extracts tickers from either portfolio.json or watchlist.json."""
+def get_tickers_from_json(filepath: str) -> list:
+    """Safely extracts tickers from portfolio.json."""
     if not os.path.exists(filepath):
         return []
     try:
         with open(filepath, 'r') as f:
             data = json.load(f)
-            if is_watchlist:
-                return data.get("watchlist", [])
-            else:
-                return [v.get('ticker') for v in data.values() if v.get('ticker')]
+            return [v.get('ticker') for v in data.values() if v.get('ticker')]
     except Exception:
         return []
 
@@ -44,9 +41,9 @@ def run_insider_alert():
 
         target_tickers = set()
         if enable_portfolio:
-            target_tickers.update(get_tickers_from_json(PORTFOLIO_PATH, False))
+            target_tickers.update(get_tickers_from_json(PORTFOLIO_PATH))
         if enable_watchlist:
-            target_tickers.update(get_tickers_from_json(WATCHLIST_PATH, True))
+            target_tickers.update(get_watchlist_tickers())
 
         target_tickers = [
             t for t in target_tickers

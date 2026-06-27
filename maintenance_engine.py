@@ -6,10 +6,10 @@ from datetime import datetime, timedelta, timezone
 
 logger = logging.getLogger(__name__)
 from config import (
-    PORTFOLIO_PATH, WATCHLIST_PATH, HISTORICAL_DIR,
+    PORTFOLIO_PATH, HISTORICAL_DIR,
     INTRADAY_DIR, FUNDAMENTALS_DIR, load_config
 )
-from database import get_connection, log_notification as _db_log_notification
+from database import get_connection, get_watchlist_tickers, log_notification as _db_log_notification
 
 class MaintenanceEngine:
     """Weekly housekeeping: prune notification logs, delete orphaned files, VACUUM the DB."""
@@ -28,7 +28,7 @@ class MaintenanceEngine:
         }
 
     def _get_active_tickers(self) -> set:
-        """Collects tickers from portfolio JSON, watchlist JSON, and every DB table; any hit → file must not be deleted."""
+        """Collects tickers from portfolio JSON, the Watchlist account, and every DB table; any hit → file must not be deleted."""
         active_tickers = set()
 
         if os.path.exists(PORTFOLIO_PATH):
@@ -41,14 +41,7 @@ class MaintenanceEngine:
             except Exception:
                 logger.warning("Failed to parse portfolio.json for active tickers", exc_info=True)
 
-        if os.path.exists(WATCHLIST_PATH):
-            try:
-                with open(WATCHLIST_PATH, 'r') as f:
-                    data = json.load(f)
-                    if 'watchlist' in data:
-                        active_tickers.update(data['watchlist'])
-            except Exception:
-                logger.warning("Failed to parse watchlist.json for active tickers", exc_info=True)
+        active_tickers.update(get_watchlist_tickers())
 
         # Universe engine tracks thousands of equities not in portfolio/watchlist whose files we still want.
         ticker_tables = [

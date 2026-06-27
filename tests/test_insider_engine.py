@@ -118,15 +118,8 @@ class TestGetTickersFromJson:
         }
         path = tmp_path / "portfolio.json"
         path.write_text(json.dumps(data))
-        result = get_tickers_from_json(str(path), is_watchlist=False)
+        result = get_tickers_from_json(str(path))
         assert set(result) == {"AAPL", "MSFT"}
-
-    def test_watchlist_tickers_extracted(self, tmp_path):
-        data = {"watchlist": ["TSLA", "NVDA"]}
-        path = tmp_path / "watchlist.json"
-        path.write_text(json.dumps(data))
-        result = get_tickers_from_json(str(path), is_watchlist=True)
-        assert result == ["TSLA", "NVDA"]
 
     def test_corrupted_json_returns_empty(self, tmp_path):
         path = tmp_path / "bad.json"
@@ -134,12 +127,23 @@ class TestGetTickersFromJson:
         result = get_tickers_from_json(str(path))
         assert result == []
 
-    def test_empty_watchlist_returns_empty(self, tmp_path):
-        data = {"watchlist": []}
-        path = tmp_path / "watchlist.json"
-        path.write_text(json.dumps(data))
-        result = get_tickers_from_json(str(path), is_watchlist=True)
-        assert result == []
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 1b. run_insider_alert() sources watchlist tickers from the DB
+# ──────────────────────────────────────────────────────────────────────────────
+
+class TestWatchlistSourcedFromDb:
+
+    def test_enabled_watchlist_uses_get_watchlist_tickers(self):
+        cfg = {"NOTIFICATIONS": {"INSIDER_TRADING": {
+            "ENABLED_PORTFOLIO": False, "ENABLED_WATCHLIST": True,
+        }}, "IGNORED_TICKERS": []}
+        with patch("insider_engine.load_config", return_value=cfg), \
+             patch("insider_engine.get_watchlist_tickers", return_value=["AAPL"]) as mock_wl, \
+             patch("insider_engine.get_connection") as mock_conn:
+            mock_conn.return_value.cursor.return_value.fetchall.return_value = []
+            run_insider_alert()
+        mock_wl.assert_called_once()
 
 
 # ──────────────────────────────────────────────────────────────────────────────

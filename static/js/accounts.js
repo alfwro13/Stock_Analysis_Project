@@ -42,6 +42,7 @@ async function loadAccounts() {
 }
 
 function _accountCardHtml(acc) {
+    const isWatchlist = acc.account_type === 'Watchlist';
     return `
     <div class="col-12 col-lg-6">
         <div class="guide-card h-100" id="account-card-${acc.id}">
@@ -53,16 +54,17 @@ function _accountCardHtml(acc) {
                 </div>
                 <div class="d-flex gap-2">
                     <button type="button" class="btn btn-outline-secondary btn-sm" onclick="openAccountModal(${acc.id})">Edit</button>
-                    <button type="button" class="btn btn-outline-danger btn-sm" onclick="deleteAccount(${acc.id}, '${_escapeHtml(acc.name)}')">Delete</button>
+                    ${isWatchlist ? '' : `<button type="button" class="btn btn-outline-danger btn-sm" onclick="deleteAccount(${acc.id}, '${_escapeHtml(acc.name)}')">Delete</button>`}
                 </div>
             </div>
             <div class="d-flex gap-2 mt-3">
                 <a href="/accounts/${acc.id}" class="btn btn-outline-primary btn-sm">View Details</a>
+                ${isWatchlist ? '' : `
                 <button type="button" class="btn btn-primary btn-sm" onclick="openTxnModal(${acc.id})">+ Add Transaction</button>
                 <button type="button" class="btn btn-outline-secondary btn-sm" onclick="toggleTransactions(${acc.id})">Show Transactions</button>
                 <button type="button" class="btn btn-outline-secondary btn-sm" onclick="importGhostfolio(${acc.id})">Import from Ghostfolio</button>
                 <button type="button" class="btn btn-outline-secondary btn-sm" onclick="importCsv(${acc.id})">Import from CSV</button>
-                <a href="/api/accounts/${acc.id}/export" class="btn btn-outline-secondary btn-sm">Export to CSV</a>
+                <a href="/api/accounts/${acc.id}/export" class="btn btn-outline-secondary btn-sm">Export to CSV</a>`}
             </div>
             <div id="account-import-status-${acc.id}" class="status-msg-sm mt-2"></div>
             <div id="account-txns-${acc.id}" class="mt-3 d-none"></div>
@@ -73,7 +75,9 @@ function _accountCardHtml(acc) {
 function _populateAccountSelect() {
     const sel = document.getElementById('txn-account');
     const current = sel.value;
-    sel.innerHTML = Object.values(_accountsCache).map(a => `<option value="${a.id}">${_escapeHtml(a.name)}</option>`).join('');
+    sel.innerHTML = Object.values(_accountsCache)
+        .filter(a => a.account_type !== 'Watchlist')
+        .map(a => `<option value="${a.id}">${_escapeHtml(a.name)}</option>`).join('');
     if (current) sel.value = current;
 }
 
@@ -97,18 +101,21 @@ function _populateToAccountSelect() {
     const sel = document.getElementById('txn-to-account');
     const current = sel.value;
     sel.innerHTML = Object.values(_accountsCache)
-        .filter(a => String(a.id) !== String(sourceId))
+        .filter(a => String(a.id) !== String(sourceId) && a.account_type !== 'Watchlist')
         .map(a => `<option value="${a.id}">${_escapeHtml(a.name)}</option>`).join('');
     if (current) sel.value = current;
 }
 
 function openAccountModal(id = null) {
     const acc = id ? _accountsCache[id] : null;
+    const isWatchlist = acc && acc.account_type === 'Watchlist';
     document.getElementById('accountModalTitle').textContent = acc ? 'Edit Account' : 'New Account';
     document.getElementById('acct-id').value = acc ? acc.id : '';
     document.getElementById('acct-name').value = acc ? acc.name : '';
     document.getElementById('acct-currency').value = acc ? acc.currency : window.BASE_CURRENCY;
-    document.getElementById('acct-type').value = acc ? acc.account_type : 'Trading';
+    document.getElementById('acct-type').value = acc && !isWatchlist ? acc.account_type : 'Trading';
+    document.getElementById('acct-type').classList.toggle('d-none', isWatchlist);
+    document.getElementById('acct-type-readonly').classList.toggle('d-none', !isWatchlist);
     document.getElementById('acct-cash').value = acc ? acc.initial_cash : 0;
     document.getElementById('acct-opened-date').value = acc ? (acc.opened_date || '') : '';
     document.getElementById('acct-note').value = acc ? (acc.note || '') : '';
@@ -125,10 +132,11 @@ async function saveAccount() {
         status.innerHTML = '<span class="msg-error">Name and currency are required.</span>';
         return;
     }
+    const isWatchlist = !document.getElementById('acct-type-readonly').classList.contains('d-none');
     const body = {
         name,
         currency,
-        account_type: document.getElementById('acct-type').value,
+        account_type: isWatchlist ? 'Watchlist' : document.getElementById('acct-type').value,
         initial_cash: parseFloat(document.getElementById('acct-cash').value) || 0,
         opened_date: document.getElementById('acct-opened-date').value || null,
         note: document.getElementById('acct-note').value.trim() || null,

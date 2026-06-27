@@ -191,7 +191,7 @@ Authenticates with Ghostfolio and discovers all available portfolio accounts. Sa
 
 ### `POST /api/watchlist/add`
 
-Adds a ticker to the Ghostfolio watchlist and triggers a watchlist sync.
+Adds a ticker to the native Watchlist account (the star toggle on `/stock/{ticker}` calls this). Resolves company name/currency/quote type via Yahoo and exchange via `time_engine.ticker_exchange()` before inserting into `watchlist_items`. Re-adding an already-watched ticker is a no-op.
 
 **Request body**
 
@@ -212,7 +212,7 @@ Adds a ticker to the Ghostfolio watchlist and triggers a watchlist sync.
 ```json
 {
   "status": "error",
-  "message": "Failed to add to Ghostfolio."
+  "message": "Failed to add to watchlist."
 }
 ```
 
@@ -220,7 +220,7 @@ Adds a ticker to the Ghostfolio watchlist and triggers a watchlist sync.
 
 ### `POST /api/watchlist/remove`
 
-Removes a ticker from the Ghostfolio watchlist.
+Removes a ticker from the native Watchlist account (the star toggle on `/stock/{ticker}` calls this).
 
 **Request body**
 
@@ -234,6 +234,76 @@ Removes a ticker from the Ghostfolio watchlist.
 
 ```json
 { "status": "success" }
+```
+
+---
+
+### `GET /api/ticker-search?q=`
+
+Company-name or ticker autocomplete (wraps `yfinance.Search`), used by the "+ Add Ticker" modal on the Watchlist account's detail page. Cached 1 hour per query.
+
+**Response**
+
+```json
+{
+  "status": "success",
+  "results": [
+    { "ticker": "AAPL", "company_name": "Apple Inc.", "quote_type": "EQUITY" }
+  ]
+}
+```
+
+---
+
+### `GET /api/accounts/{account_id}/watchlist-items`
+
+Lists every ticker on the given Watchlist account. 400 if `account_id` is not a Watchlist-type account.
+
+**Response**
+
+```json
+{
+  "status": "success",
+  "items": [
+    { "id": 1, "account_id": 3, "ticker": "AAPL", "company_name": "Apple Inc.", "currency": "USD", "quote_type": "EQUITY", "exchange": "NYSE", "added_at": "2026-06-27 12:00:00" }
+  ]
+}
+```
+
+---
+
+### `POST /api/accounts/{account_id}/watchlist-items`
+
+Adds a ticker to the given Watchlist account via the "+ Add Ticker" modal. Resolves metadata server-side the same way `/api/watchlist/add` does.
+
+**Request body**
+
+```json
+{ "ticker": "AAPL" }
+```
+
+**Response**
+
+```json
+{ "status": "success", "id": 1 }
+```
+
+---
+
+### `POST /api/accounts/{account_id}/watchlist-items/bulk-delete`
+
+Deletes the given watchlist item rows (by id) from the Watchlist account — powers the checkbox multi-select delete on the compact management table.
+
+**Request body**
+
+```json
+{ "ids": [1, 2, 3] }
+```
+
+**Response**
+
+```json
+{ "status": "success", "deleted": 3 }
 ```
 
 ---
@@ -1627,8 +1697,12 @@ Sends a test insider trading alert via Nextcloud Talk.
 | `POST` | `/api/update` | Full portfolio pipeline update |
 | `POST` | `/api/sync-ghostfolio` | Sync Ghostfolio holdings |
 | `POST` | `/api/ghostfolio/discover` | Discover Ghostfolio accounts |
-| `POST` | `/api/watchlist/add` | Add ticker to watchlist |
-| `POST` | `/api/watchlist/remove` | Remove ticker from watchlist |
+| `POST` | `/api/watchlist/add` | Add ticker to watchlist (native, via Watchlist account) |
+| `POST` | `/api/watchlist/remove` | Remove ticker from watchlist (native, via Watchlist account) |
+| `GET` | `/api/ticker-search` | Company-name/ticker autocomplete for add-ticker UI |
+| `GET` | `/api/accounts/{id}/watchlist-items` | List a Watchlist account's tickers |
+| `POST` | `/api/accounts/{id}/watchlist-items` | Add a ticker to a Watchlist account |
+| `POST` | `/api/accounts/{id}/watchlist-items/bulk-delete` | Bulk-delete tickers from a Watchlist account |
 | `POST` | `/api/ticker/{ticker}/name-override` | Set or clear a user display name override |
 | `POST` | `/api/trigger-freetrade-sync` | Sync Freetrade securities |
 | `POST` | `/api/data/refresh-single` | Deep refresh one ticker |
@@ -2569,7 +2643,7 @@ Creates a new account. Rate limit: 30/minute.
 { "name": "My ISA", "currency": "GBP", "account_type": "Trading", "initial_cash": 1000.0, "opened_date": "2020-03-15", "note": "optional" }
 ```
 
-`account_type` is optional and defaults to `"Trading"` — must be one of `Trading`, `House`, `Pension`, `Watchlist` (400 if not). Only `Trading` accounts are aggregated into the Portfolio page / X-ray; `House`/`Pension`/`Watchlist` are placeholders for future standalone tracking features. `opened_date` is optional — when set, it's the real-world account-opening date and is used as the Cash Balance History table's opening row date instead of `created_at` (useful when backfilling a historical account). Returns `{"status": "success", "message": "...", "id": <new_account_id>}`.
+`account_type` is optional and defaults to `"Trading"` — must be one of `Trading`, `House`, `Pension`, `Watchlist` (400 if not), but `"Watchlist"` is additionally rejected (400) since that account is created automatically by the system and can't be created, deleted, or converted to/from manually. Only `Trading` accounts are aggregated into the Portfolio page / X-ray; `House`/`Pension` are placeholders for future standalone tracking features. `opened_date` is optional — when set, it's the real-world account-opening date and is used as the Cash Balance History table's opening row date instead of `created_at` (useful when backfilling a historical account). Returns `{"status": "success", "message": "...", "id": <new_account_id>}`.
 
 ---
 

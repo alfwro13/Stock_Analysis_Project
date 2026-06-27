@@ -51,6 +51,7 @@ _TTLS: dict[str, int] = {
     "fx_rate":                 600,  # 10 min
     "annual_financials":     86400,  # 24 h — annual statements change quarterly
     "isin_search":           86400,  # 24 h — ISIN→ticker mapping is stable
+    "ticker_search":          3600,  # 1 h — company-name/ticker autocomplete
 }
 
 
@@ -399,6 +400,30 @@ class YahooEngine:
         except Exception:
             logger.debug("ISIN search failed for %s", isin, exc_info=True)
         return None
+
+    def search_ticker(self, query: str, max_results: int = 8) -> list[dict]:
+        """Company-name or ticker autocomplete for the watchlist add-ticker UI, cached 1 h."""
+        key = f"ticker_search:{query.lower()}:{max_results}"
+        cached = self._get(key)
+        if cached is not None:
+            return cached
+        result: list[dict] = []
+        try:
+            with _yf_singleton_lock:
+                with yahoo_connection_boundary(f"Ticker Search: {query}") as session:
+                    quotes = yf.Search(query, max_results=max_results, session=session).quotes
+            result = [
+                {
+                    "ticker": q.get("symbol"),
+                    "company_name": q.get("longname") or q.get("shortname"),
+                    "quote_type": q.get("quoteType"),
+                }
+                for q in quotes if q.get("symbol")
+            ]
+            self._set(key, result, _TTLS["ticker_search"])
+        except Exception:
+            logger.error("search_ticker failed for %s", query, exc_info=True)
+        return result
 
     def get_stats(self) -> dict:
         with self._lock:

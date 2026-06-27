@@ -295,3 +295,115 @@ def get_value_history(account_id: int) -> list:
     finally:
         if conn:
             conn.close()
+
+
+def get_watchlist_account() -> Optional[dict]:
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM accounts WHERE account_type = 'Watchlist' AND deleted_at IS NULL LIMIT 1")
+        row = cursor.fetchone()
+        return dict(row) if row else None
+    except Exception as e:
+        logger.error("Failed to get watchlist account: %s", e)
+        return None
+    finally:
+        if conn:
+            conn.close()
+
+
+def get_watchlist_items(account_id: int) -> list:
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM watchlist_items WHERE account_id = ? ORDER BY ticker", (account_id,))
+        return [dict(row) for row in cursor.fetchall()]
+    except Exception as e:
+        logger.error("Failed to get watchlist items for account %s: %s", account_id, e)
+        return []
+    finally:
+        if conn:
+            conn.close()
+
+
+def add_watchlist_item(
+    account_id: int,
+    ticker: str,
+    company_name: Optional[str] = None,
+    currency: Optional[str] = None,
+    quote_type: Optional[str] = None,
+    exchange: Optional[str] = None,
+) -> Optional[int]:
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """INSERT OR IGNORE INTO watchlist_items
+                   (account_id, ticker, company_name, currency, quote_type, exchange)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (account_id, ticker, company_name, currency, quote_type, exchange)
+        )
+        conn.commit()
+        if cursor.lastrowid and cursor.rowcount > 0:
+            return cursor.lastrowid
+        cursor.execute(
+            "SELECT id FROM watchlist_items WHERE account_id = ? AND ticker = ?", (account_id, ticker)
+        )
+        row = cursor.fetchone()
+        return row["id"] if row else None
+    except Exception as e:
+        logger.error("Failed to add watchlist item %s for account %s: %s", ticker, account_id, e)
+        return None
+    finally:
+        if conn:
+            conn.close()
+
+
+def delete_watchlist_items(account_id: int, item_ids: list) -> int:
+    if not item_ids:
+        return 0
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        placeholders = ", ".join("?" for _ in item_ids)
+        cursor.execute(
+            f"DELETE FROM watchlist_items WHERE account_id = ? AND id IN ({placeholders})",
+            [account_id] + list(item_ids)
+        )
+        conn.commit()
+        return cursor.rowcount
+    except Exception as e:
+        logger.error("Failed to delete watchlist items %s for account %s: %s", item_ids, account_id, e)
+        return 0
+    finally:
+        if conn:
+            conn.close()
+
+
+def remove_watchlist_ticker(account_id: int, ticker: str) -> bool:
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "DELETE FROM watchlist_items WHERE account_id = ? AND ticker = ?", (account_id, ticker)
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    except Exception as e:
+        logger.error("Failed to remove watchlist ticker %s for account %s: %s", ticker, account_id, e)
+        return False
+    finally:
+        if conn:
+            conn.close()
+
+
+def get_watchlist_tickers() -> list:
+    account = get_watchlist_account()
+    if not account:
+        return []
+    return [item["ticker"] for item in get_watchlist_items(account["id"])]

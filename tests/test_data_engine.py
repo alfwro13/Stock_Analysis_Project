@@ -105,3 +105,17 @@ def test_get_all_tickers_result_is_sorted():
         tickers = engine.get_all_tickers()
 
     assert tickers == sorted(tickers)
+
+
+# ── __init__ sources the watchlist from the DB, not watchlist.json ───────────
+
+def test_init_populates_watchlist_from_db():
+    """DataEngine() must source self.watchlist from get_watchlist_tickers(), not a JSON file."""
+    from data_engine import DataEngine
+
+    with patch("data_engine.get_watchlist_tickers", return_value=["NVDA", "AMD"]), \
+         patch("data_engine.DataEngine._load_json", return_value={}), \
+         patch("data_engine.DataEngine._ensure_directories"):
+        engine = DataEngine()
+
+    assert engine.watchlist == {"watchlist": ["NVDA", "AMD"]}

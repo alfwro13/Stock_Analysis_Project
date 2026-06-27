@@ -13,7 +13,6 @@ from config import (
     GHOSTFOLIO_URL,
     GHOSTFOLIO_TOKEN,
     PORTFOLIO_PATH,
-    WATCHLIST_PATH,
     GHOSTFOLIO_ACCOUNTS,
 )
 
@@ -175,60 +174,6 @@ class GhostfolioSyncEngine:
             logger.error(f"Failed to sync portfolio: {e}")
             return False
 
-    def sync_watchlist(self) -> bool:
-        try:
-            logger.info("Fetching watchlist from Ghostfolio...")
-            response = requests.get(f"{self.url}/api/v1/watchlist", headers=self.headers, verify=False, timeout=10)
-            response.raise_for_status()
-            
-            # The API might return a dict with a 'watchlist' key, or a direct list
-            resp_data = response.json()
-            watchlist_items = resp_data.get('watchlist', []) if isinstance(resp_data, dict) else resp_data
-            
-            tickers = [item.get('symbol') for item in watchlist_items if item.get('symbol')]
-            output_data = {"watchlist": tickers}
-
-            with open(WATCHLIST_PATH, 'w') as f:
-                json.dump(output_data, f, indent=4)
-                
-            logger.info(f"Synced {len(tickers)} tickers to watchlist.json.")
-            return True
-
-        except Exception as e:
-            logger.error(f"Failed to sync watchlist: {e}")
-            return False
-
-    def add_to_watchlist(self, symbol: str) -> bool:
-        if not self.authenticate():
-            return False
-        try:
-            payload = {"symbol": symbol, "dataSource": "YAHOO"}
-            response = requests.post(f"{self.url}/api/v1/watchlist", json=payload, headers=self.headers, verify=False, timeout=10)
-            if response.status_code in [200, 201]:
-                logger.info(f"Added {symbol} to Ghostfolio Watchlist.")
-                return True
-            else:
-                logger.error(f"Failed to add {symbol} to Watchlist: HTTP {response.status_code}")
-                return False
-        except Exception as e:
-            logger.error(f"Exception adding {symbol} to Watchlist: {e}")
-            return False
-
-    def remove_from_watchlist(self, symbol: str) -> bool:
-        if not self.authenticate():
-            return False
-        try:
-            response = requests.delete(f"{self.url}/api/v1/watchlist/YAHOO/{symbol}", headers=self.headers, verify=False, timeout=10)
-            if response.status_code in [200, 204]:
-                logger.info(f"Removed {symbol} from Ghostfolio Watchlist.")
-                return True
-            else:
-                logger.error(f"Failed to remove {symbol} from Watchlist: HTTP {response.status_code}")
-                return False
-        except Exception as e:
-            logger.error(f"Exception removing {symbol} from Watchlist: {e}")
-            return False
-
     def fetch_activities(self, account_id: Optional[str] = None) -> list[dict]:
         if not self.headers:
             if not self.authenticate():
@@ -262,10 +207,9 @@ class GhostfolioSyncEngine:
 
         self.discover_accounts()
         p_success = self.sync_portfolio()
-        w_success = self.sync_watchlist()
 
         logger.info("Ghostfolio sync complete.")
-        return p_success and w_success
+        return p_success
 
 
 if __name__ == "__main__":

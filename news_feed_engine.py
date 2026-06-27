@@ -5,9 +5,9 @@ import time
 from datetime import datetime, timezone
 from typing import Dict, Optional
 
-from config import load_config, PORTFOLIO_PATH, WATCHLIST_PATH
+from config import load_config, PORTFOLIO_PATH
 from yahoo_engine import yahoo_engine
-from database import get_connection
+from database import get_connection, get_watchlist_tickers
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,6 @@ def _load_json_file(path) -> dict:
 
 def _build_ticker_source_map() -> Dict[str, str]:
     portfolio_data = _load_json_file(PORTFOLIO_PATH)
-    watchlist_data = _load_json_file(WATCHLIST_PATH)
 
     config = load_config()
     ignored = {t.upper() for t in config.get("IGNORED_TICKERS", [])}
@@ -34,10 +33,7 @@ def _build_ticker_source_map() -> Dict[str, str]:
             if ticker:
                 portfolio_tickers.add(ticker.upper())
 
-    watchlist_tickers = set()
-    for ticker in watchlist_data.get("watchlist", []):
-        if ticker:
-            watchlist_tickers.add(ticker.upper())
+    watchlist_tickers = {t.upper() for t in get_watchlist_tickers() if t}
 
     ticker_map: Dict[str, str] = {}
     for t in portfolio_tickers - ignored:

@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+
+{% block title %}Quantamental - {{ account.name }}{% endblock %}
+
+{% block content %}
+<h1 class="mb-1">⭐ {{ account.name }}</h1>
+<p class="text-muted mb-3">
+    Tickers you're following without holding — added here, or via the star on a stock's
+    detail page. This is a compact management view; see the full <a href="/watchlist" class="text-accent-cyan">Watchlist</a>
+    page for scores, signals, and technicals.
+</p>
+
+<div class="d-flex align-items-center gap-3 mb-3 flex-wrap">
+    <a href="/accounts" class="btn btn-outline-secondary btn-sm">&#8592; Back to Accounts</a>
+</div>
+
+<div class="row g-2 mb-3 align-items-center">
+    <div class="col-12 col-md">
+        <input type="text" id="wl-search" class="form-control" placeholder="🔍 Search ticker or company...">
+    </div>
+    <div class="col-6 col-md-auto">
+        <select id="wl-exchange-filter" class="form-select">
+            <option value="">All Exchanges</option>
+        </select>
+    </div>
+    <div class="col-6 col-md-auto">
+        <select id="wl-type-filter" class="form-select">
+            <option value="">All Types</option>
+        </select>
+    </div>
+    <div class="col-6 col-md-auto">
+        <button type="button" class="btn btn-primary btn-sm w-100" onclick="openAddTickerModal()">+ Add Ticker</button>
+    </div>
+    <div class="col-6 col-md-auto">
+        <button type="button" class="btn btn-outline-danger btn-sm w-100" id="wl-delete-selected" disabled onclick="deleteSelectedWatchlistItems()">Delete Selected</button>
+    </div>
+</div>
+
+<table id="wl-items-table" class="table table-hover w-100">
+    <thead>
+        <tr>
+            <th><input type="checkbox" id="wl-select-all" class="form-check-input"></th>
+            <th>Ticker</th>
+            <th>Company Name</th>
+            <th>Exchange</th>
+            <th>Type</th>
+        </tr>
+    </thead>
+    <tbody id="wl-items-tbody"></tbody>
+</table>
+<p id="wl-empty-msg" class="text-muted small d-none">No tickers on your watchlist yet.</p>
+
+<div class="modal fade" id="addTickerModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Add Ticker</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+            <label for="wl-add-search">Company Name or Ticker</label>
+            <input type="text" id="wl-add-search" placeholder="e.g. Apple or AAPL" autocomplete="off">
+        </div>
+        <div id="wl-add-results"></div>
+        <div id="wl-add-status" class="status-msg-sm"></div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    window.ACCOUNT_ID = {{ account.id }};
+    window.WATCHLIST_ITEMS = {{ items | tojson }};
+</script>
+<script src="/static/js/watchlist_account.js?v={{ css_version }}"></script>
+{% endblock %}
