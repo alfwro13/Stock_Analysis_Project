@@ -148,12 +148,6 @@
                 {% endif %}
             </td>
         </tr>
-        {% else %}
-        <tr>
-            <td colspan="{% if active_filter == 'portfolio' %}9{% else %}8{% endif %}" class="empty-table-msg">
-                No score events recorded yet{% if active_filter != 'all' %} for this filter{% endif %}. Wait for the next scan run.
-            </td>
-        </tr>
         {% endfor %}
     </tbody>
 </table>
@@ -166,7 +160,11 @@ $(function() {
         responsive: true,
         order: [[1, 'desc']],
         pageLength: 25,
-        language: { search: '', searchPlaceholder: '🔍 Search…' }
+        language: {
+            search: '',
+            searchPlaceholder: '🔍 Search…',
+            emptyTable: 'No score events recorded yet{% if active_filter != "all" %} for this filter{% endif %}. Wait for the next scan run.'
+        }
     });
 });
 </script>
