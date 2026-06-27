@@ -32,10 +32,6 @@
             </td>
             <td>{{ "{:,.0f}".format(row.options_volume) }}</td>
         </tr>
-        {% else %}
-        <tr>
-            <td colspan="6" class="empty-table-msg">No upcoming earnings volatility data found. Ensure the background <code>weekend_earnings_vol_scan_job</code> has run successfully.</td>
-        </tr>
         {% endfor %}
     </tbody>
 </table>
@@ -106,7 +102,11 @@ $(function() {
         responsive: true,
         order: [[1, 'asc']],
         pageLength: 25,
-        language: { search: '', searchPlaceholder: '🔍 Search…' }
+        language: {
+            search: '',
+            searchPlaceholder: '🔍 Search…',
+            emptyTable: 'No upcoming earnings volatility data found. Ensure the background <code>weekend_earnings_vol_scan_job</code> has run successfully.'
+        }
     });
 });
 </script>

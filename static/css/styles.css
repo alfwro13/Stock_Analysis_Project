@@ -561,7 +561,7 @@ table.dataTable tbody tr td { color: #ccc; }
 .text-white { color: #fff; }
 .report-container-wide { max-width: 1400px; }
 .text-neutral-bold { color: #cccccc; font-weight: bold; }
-.empty-table-msg { text-align: center; color: #888; padding: 20px; }
+.empty-table-msg, table.dataTable td.dataTables_empty { text-align: center; color: #888; padding: 20px; }
 .text-accent-cyan { color: #00ffcc; }
 .text-accent-blue { color: #4da6ff; }
 .border-top-blue { border-top-color: #4da6ff; }
