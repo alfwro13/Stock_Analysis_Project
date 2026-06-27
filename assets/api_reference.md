@@ -942,6 +942,15 @@ Saves application settings. Only fields present in the request body are updated 
 
 After saving, the scheduler is reloaded to apply any changed schedule configurations.
 
+`SettingsConfig` (`api_routes_system.py`) declares `extra: "forbid"` — any field not in its schema is rejected with a 422. Credentials are **not** part of this schema; they are `.env` secrets saved through their own dedicated endpoints and read back at runtime via `os.environ.get(...)`, never through `POST /api/settings`:
+
+| Credential | Save endpoint | `.env` key(s) |
+|---|---|---|
+| FRED API key | `POST /api/save-fred-api-key` | `FRED_API_KEY` |
+| Ghostfolio URL + token | `POST /api/save-ghostfolio-settings` | `GHOSTFOLIO_URL`, `GHOSTFOLIO_TOKEN` |
+| Nextcloud Talk credentials | `POST /api/save-nextcloud-settings` | `NEXTCLOUD_URL`, `NEXTCLOUD_BOT_USERNAME`, `NEXTCLOUD_APP_PASSWORD`, `NEXTCLOUD_CONVERSATION_TOKEN` |
+| HuggingFace token | `POST /api/save-hf-token` | `HF_TOKEN` |
+
 **Request body** — all fields optional, send only what you want to change
 
 ```json
@@ -949,14 +958,7 @@ After saving, the scheduler is reloaded to apply any changed schedule configurat
   "SERVER_URL": "http://192.168.1.100",
   "PORT": 8090,
   "BASE_CURRENCY": "GBP",
-  "GHOSTFOLIO_URL": "http://ghostfolio:3333",
-  "API_TOKEN": "your-ghostfolio-token",
-  "FRED_API_KEY": "your-fred-api-key",
   "YAHOO_IPV6_ADDRESS": "2a00:1450:400f:804::200e",
-  "NEXTCLOUD_URL": "https://nextcloud.example.com/...",
-  "BOT_USERNAME": "alertbot",
-  "APP_PASSWORD": "app-password",
-  "CONVERSATION_TOKEN": "chat-token",
   "IGNORED_TICKERS": ["GMESTOP"],
   "ACCOUNT_CURRENCIES": ["GBP", "GBp", "USD", "EUR"],
   "UI_PREFERENCES": {
@@ -1638,6 +1640,9 @@ Sends a test insider trading alert via Nextcloud Talk.
 | `POST` | `/api/trigger-morning-briefing` | Generate and dispatch morning briefing |
 | `POST` | `/api/trigger-lunch-briefing` | Generate and dispatch lunchtime briefing |
 | `POST` | `/api/save-hf-token` | Persist HuggingFace API token to `.env` |
+| `POST` | `/api/save-fred-api-key` | Persist FRED API key to `.env` |
+| `POST` | `/api/save-ghostfolio-settings` | Persist Ghostfolio URL + token to `.env` |
+| `POST` | `/api/save-nextcloud-settings` | Persist Nextcloud Talk credentials to `.env` |
 | `POST` | `/api/test-hf-token` | Verify HuggingFace token via `whoami` |
 | `GET` | `/api/screener-data` | Latest quant screener results |
 | `GET` | `/api/market-pulse` | Live market index pulse (cached) |
