@@ -269,7 +269,8 @@ async def portfolio_page(request: Request, account_id: str = "all", embed: bool 
     from accounts_engine import get_combined_holdings
     from database import get_accounts
     for acc in get_accounts():
-        account_options.append({"id": f"acct:{acc['id']}", "name": acc["name"]})
+        if acc["account_type"] == "Trading":
+            account_options.append({"id": f"acct:{acc['id']}", "name": acc["name"]})
 
     portfolio_json = get_combined_holdings()
     portfolio_tickers = []

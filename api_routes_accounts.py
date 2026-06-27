@@ -35,6 +35,7 @@ logger = logging.getLogger(__name__)
 accounts_router = APIRouter()
 
 _TXN_TYPES = frozenset({"Buy", "Sell", "Fee", "Dividend", "Interest", "Cash", "Transfer"})
+_ACCOUNT_TYPES = frozenset({"Trading", "House", "Pension", "Watchlist"})
 
 
 class AccountBody(BaseModel):
@@ -43,6 +44,7 @@ class AccountBody(BaseModel):
     initial_cash: float = 0.0
     note: Optional[str] = None
     opened_date: Optional[str] = None
+    account_type: str = "Trading"
 
 
 class TransactionBody(BaseModel):
@@ -80,12 +82,15 @@ async def api_list_accounts():
 @limiter.limit("60/minute")
 async def api_create_account(request: Request, body: AccountBody, background_tasks: BackgroundTasks):
     try:
+        if body.account_type not in _ACCOUNT_TYPES:
+            return JSONResponse(status_code=400, content={"status": "error", "message": f"Invalid account_type. Must be one of: {sorted(_ACCOUNT_TYPES)}"})
         account_id = create_account(
             name=body.name.strip(),
             currency=body.currency.upper().strip(),
             initial_cash=body.initial_cash,
             note=body.note,
             opened_date=body.opened_date,
+            account_type=body.account_type,
         )
         if account_id is None:
             return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to create account."})
@@ -102,6 +107,8 @@ async def api_update_account(request: Request, account_id: int, body: AccountBod
     try:
         if get_account(account_id) is None:
             return JSONResponse(status_code=404, content={"status": "error", "message": "Account not found."})
+        if body.account_type not in _ACCOUNT_TYPES:
+            return JSONResponse(status_code=400, content={"status": "error", "message": f"Invalid account_type. Must be one of: {sorted(_ACCOUNT_TYPES)}"})
         ok = update_account(
             account_id,
             name=body.name.strip(),
@@ -109,6 +116,7 @@ async def api_update_account(request: Request, account_id: int, body: AccountBod
             initial_cash=body.initial_cash,
             note=body.note,
             opened_date=body.opened_date,
+            account_type=body.account_type,
         )
         if not ok:
             return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to update account."})

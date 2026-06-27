@@ -708,6 +708,7 @@ def init_db() -> None:
                 initial_cash  REAL NOT NULL DEFAULT 0,
                 note          TEXT,
                 opened_date   TEXT,
+                account_type  TEXT NOT NULL DEFAULT 'Trading',
                 deleted_at    TEXT DEFAULT NULL,
                 created_at    TEXT DEFAULT (datetime('now'))
             )
@@ -825,6 +826,13 @@ def migrate_db(conn, cursor) -> None:
         try:
             logger.info("[MIGRATION] Adding column: opened_date to accounts...")
             cursor.execute("ALTER TABLE accounts ADD COLUMN opened_date TEXT")
+        except Exception as e:
+            logger.error("[MIGRATION ERROR] Failed on accounts: %s", e)
+
+    if 'account_type' not in existing_account_columns:
+        try:
+            logger.info("[MIGRATION] Adding column: account_type to accounts...")
+            cursor.execute("ALTER TABLE accounts ADD COLUMN account_type TEXT NOT NULL DEFAULT 'Trading'")
         except Exception as e:
             logger.error("[MIGRATION ERROR] Failed on accounts: %s", e)
 

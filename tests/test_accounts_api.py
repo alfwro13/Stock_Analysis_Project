@@ -66,6 +66,50 @@ def test_update_account(client):
 
 
 @pytest.mark.api
+def test_create_account_defaults_to_trading_type(client):
+    account_id = _create_account(client)
+    resp = client.get("/api/accounts")
+    acc = next(a for a in _json(resp)["accounts"] if a["id"] == account_id)
+    assert acc["account_type"] == "Trading"
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_create_account_with_each_valid_account_type(client):
+    import database as _db
+    for account_type in ("Trading", "House", "Pension", "Watchlist"):
+        account_id = _create_account(client, name=f"{account_type} Acc", account_type=account_type)
+        resp = client.get("/api/accounts")
+        acc = next(a for a in _json(resp)["accounts"] if a["id"] == account_id)
+        assert acc["account_type"] == account_type
+        _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_create_account_rejects_invalid_account_type(client):
+    resp = client.post("/api/accounts", json={
+        "name": "Bad Type Acc", "currency": "GBP", "account_type": "Bogus",
+    })
+    assert resp.status_code == 400
+    assert _json(resp)["status"] == "error"
+
+
+@pytest.mark.api
+def test_update_account_rejects_invalid_account_type(client):
+    account_id = _create_account(client)
+    resp = client.put(f"/api/accounts/{account_id}", json={
+        "name": "Renamed", "currency": "GBP", "account_type": "Bogus",
+    })
+    assert resp.status_code == 400
+    assert _json(resp)["status"] == "error"
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
 def test_create_and_update_account_opened_date_roundtrip(client):
     account_id = _create_account(client, opened_date="2020-03-15")
 

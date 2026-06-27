@@ -2553,7 +2553,7 @@ Returns all non-deleted accounts.
 {
   "status": "success",
   "accounts": [
-    {"id": 1, "name": "My ISA", "currency": "GBP", "initial_cash": 1000.0, "note": null, "deleted_at": null, "created_at": "2026-06-25 10:00:00"}
+    {"id": 1, "name": "My ISA", "currency": "GBP", "account_type": "Trading", "initial_cash": 1000.0, "note": null, "deleted_at": null, "created_at": "2026-06-25 10:00:00"}
   ]
 }
 ```
@@ -2566,10 +2566,10 @@ Creates a new account. Rate limit: 30/minute.
 
 **Request body:**
 ```json
-{ "name": "My ISA", "currency": "GBP", "initial_cash": 1000.0, "opened_date": "2020-03-15", "note": "optional" }
+{ "name": "My ISA", "currency": "GBP", "account_type": "Trading", "initial_cash": 1000.0, "opened_date": "2020-03-15", "note": "optional" }
 ```
 
-`opened_date` is optional — when set, it's the real-world account-opening date and is used as the Cash Balance History table's opening row date instead of `created_at` (useful when backfilling a historical account). Returns `{"status": "success", "message": "...", "id": <new_account_id>}`.
+`account_type` is optional and defaults to `"Trading"` — must be one of `Trading`, `House`, `Pension`, `Watchlist` (400 if not). Only `Trading` accounts are aggregated into the Portfolio page / X-ray; `House`/`Pension`/`Watchlist` are placeholders for future standalone tracking features. `opened_date` is optional — when set, it's the real-world account-opening date and is used as the Cash Balance History table's opening row date instead of `created_at` (useful when backfilling a historical account). Returns `{"status": "success", "message": "...", "id": <new_account_id>}`.
 
 ---
 

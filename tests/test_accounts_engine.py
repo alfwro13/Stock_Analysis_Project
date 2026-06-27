@@ -178,6 +178,23 @@ def test_get_combined_holdings_sums_ghostfolio_and_builtin(monkeypatch):
 
 
 @pytest.mark.db
+def test_derive_account_holdings_all_accounts_excludes_non_trading_types():
+    trading_aid = create_account("TradingAcc", "GBP", account_type="Trading")
+    house_aid = create_account("HouseAcc", "GBP", account_type="House")
+    add_transaction(trading_aid, "Buy", "2026-01-02", ticker="ZZTRD", currency="GBP",
+                    quantity=4, unit_price=50, exchange_rate=1.0)
+    add_transaction(house_aid, "Buy", "2026-01-02", ticker="ZZHSE", currency="GBP",
+                    quantity=1, unit_price=300000, exchange_rate=1.0)
+
+    all_holdings = accounts_engine.derive_account_holdings(None)
+    assert "ZZTRD" in all_holdings
+    assert "ZZHSE" not in all_holdings
+
+    house_only = accounts_engine.derive_account_holdings(house_aid)
+    assert "ZZHSE" in house_only
+
+
+@pytest.mark.db
 def test_fx_rate_on_date_base_and_pence_shortcuts():
     assert accounts_engine.BASE_CURRENCY == "GBP"
     assert accounts_engine.fx_rate_on_date("GBP", "2026-01-01") == 1.0

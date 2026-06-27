@@ -47,7 +47,7 @@ function _accountCardHtml(acc) {
         <div class="guide-card h-100" id="account-card-${acc.id}">
             <div class="d-flex justify-content-between align-items-start">
                 <div>
-                    <h4 class="mb-0">${_escapeHtml(acc.name)}</h4>
+                    <h4 class="mb-0">${_escapeHtml(acc.name)} <span class="account-badge">${_escapeHtml(acc.account_type)}</span></h4>
                     <p class="text-muted small mb-0">${_escapeHtml(acc.currency)} &middot; initial cash ${acc.initial_cash}</p>
                     ${acc.note ? `<p class="text-secondary small mb-0">${_escapeHtml(acc.note)}</p>` : ''}
                 </div>
@@ -108,6 +108,7 @@ function openAccountModal(id = null) {
     document.getElementById('acct-id').value = acc ? acc.id : '';
     document.getElementById('acct-name').value = acc ? acc.name : '';
     document.getElementById('acct-currency').value = acc ? acc.currency : window.BASE_CURRENCY;
+    document.getElementById('acct-type').value = acc ? acc.account_type : 'Trading';
     document.getElementById('acct-cash').value = acc ? acc.initial_cash : 0;
     document.getElementById('acct-opened-date').value = acc ? (acc.opened_date || '') : '';
     document.getElementById('acct-note').value = acc ? (acc.note || '') : '';
@@ -127,6 +128,7 @@ async function saveAccount() {
     const body = {
         name,
         currency,
+        account_type: document.getElementById('acct-type').value,
         initial_cash: parseFloat(document.getElementById('acct-cash').value) || 0,
         opened_date: document.getElementById('acct-opened-date').value || null,
         note: document.getElementById('acct-note').value.trim() || null,

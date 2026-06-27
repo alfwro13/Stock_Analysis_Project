@@ -243,8 +243,8 @@ Tables added after initial schema creation. All managed via `db_schema.py:init_d
 * **Reads:** `database.get_yahoo_api_stats(days=8)` → `GET /api/system/yahoo-api-stats`.
 
 #### `accounts`
-* **Purpose:** User-defined trading accounts for the built-in (non-Ghostfolio) portfolio system. One row per account; powers the `/accounts` page and feeds the Portfolio page alongside Ghostfolio holdings.
-* **Key Columns:** `id` (PK autoincrement), `name`, `currency` (account reporting currency; equals the system `BASE_CURRENCY` for now), `initial_cash` (opening cash balance), `opened_date` (user-set real-world account-opening date, e.g. for backfilled historical accounts; falls back to `created_at`'s date when not set — used as the Cash Balance History table's opening row date), `note`, `deleted_at` (soft-delete), `created_at` (DB-row creation timestamp, not user-editable).
+* **Purpose:** User-defined accounts for the built-in (non-Ghostfolio) portfolio system. One row per account; powers the `/accounts` page and feeds the Portfolio page alongside Ghostfolio holdings.
+* **Key Columns:** `id` (PK autoincrement), `name`, `currency` (account reporting currency; equals the system `BASE_CURRENCY` for now), `account_type` (`Trading` | `House` | `Pension` | `Watchlist`, default `Trading` — only `Trading` accounts are aggregated by `accounts_engine.derive_account_holdings(None)`/`get_combined_holdings()` and therefore appear on the Portfolio page and its account-filter dropdown; `House`/`Pension`/`Watchlist` are placeholders for future standalone tracking features and are excluded from portfolio-wide ticker aggregation), `initial_cash` (opening cash balance), `opened_date` (user-set real-world account-opening date, e.g. for backfilled historical accounts; falls back to `created_at`'s date when not set — used as the Cash Balance History table's opening row date), `note`, `deleted_at` (soft-delete), `created_at` (DB-row creation timestamp, not user-editable).
 * **CRUD:** `db_accounts.py` (re-exported from `database.py`). Soft-delete preserves transaction history.
 
 #### `account_transactions`

@@ -54,6 +54,15 @@ def test_account_dropdown_includes_builtin_accounts(client):
 
 
 @pytest.mark.pages
+def test_account_dropdown_excludes_non_trading_account(client):
+    aid = create_account("Integ House", "GBP", account_type="House")
+
+    resp = client.get("/portfolio")
+    assert resp.status_code == 200
+    assert f'value="acct:{aid}"' not in resp.text
+
+
+@pytest.mark.pages
 def test_summary_math_correct_for_builtin_account(client):
     aid = create_account("Integ Summary", "GBP")
     add_transaction(aid, "Buy", "2026-01-05", ticker="ZZPGI2", company_name="Integ Two",

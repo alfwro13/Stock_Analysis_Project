@@ -153,7 +153,7 @@ def derive_account_holdings(account_id: Optional[int] = None) -> dict:
     if account_id is not None:
         account_ids = [account_id]
     else:
-        account_ids = [acc["id"] for acc in get_accounts()]
+        account_ids = [acc["id"] for acc in get_accounts() if acc["account_type"] == "Trading"]
 
     result: dict[str, dict] = {}
     for aid in account_ids:

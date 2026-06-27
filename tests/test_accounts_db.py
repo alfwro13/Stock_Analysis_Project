@@ -47,6 +47,25 @@ def test_update_account_opened_date():
 
 
 @pytest.mark.db
+def test_create_account_defaults_account_type_to_trading():
+    aid = create_account("DefaultTypeAcc", "GBP")
+    assert get_account(aid)["account_type"] == "Trading"
+
+
+@pytest.mark.db
+def test_create_account_with_explicit_account_type_roundtrip():
+    aid = create_account("HouseAcc", "GBP", account_type="House")
+    assert get_account(aid)["account_type"] == "House"
+
+
+@pytest.mark.db
+def test_update_account_type():
+    aid = create_account("RetypeAcc", "GBP")
+    assert update_account(aid, account_type="Pension") is True
+    assert get_account(aid)["account_type"] == "Pension"
+
+
+@pytest.mark.db
 def test_update_account_rejects_unknown_columns():
     aid = create_account("Guard", "GBP")
     assert update_account(aid, name="Renamed") is True

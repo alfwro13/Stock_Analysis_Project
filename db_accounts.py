@@ -49,14 +49,15 @@ def create_account(
     initial_cash: float = 0.0,
     note: Optional[str] = None,
     opened_date: Optional[str] = None,
+    account_type: str = "Trading",
 ) -> Optional[int]:
     conn = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO accounts (name, currency, initial_cash, note, opened_date) VALUES (?, ?, ?, ?, ?)",
-            (name, currency, initial_cash, note, opened_date)
+            "INSERT INTO accounts (name, currency, initial_cash, note, opened_date, account_type) VALUES (?, ?, ?, ?, ?, ?)",
+            (name, currency, initial_cash, note, opened_date, account_type)
         )
         conn.commit()
         return cursor.lastrowid
@@ -68,7 +69,7 @@ def create_account(
             conn.close()
 
 
-_ALLOWED_ACCOUNT_COLUMNS = frozenset({"name", "currency", "initial_cash", "note", "opened_date"})
+_ALLOWED_ACCOUNT_COLUMNS = frozenset({"name", "currency", "initial_cash", "note", "opened_date", "account_type"})
 
 
 def update_account(account_id: int, **fields) -> bool:
