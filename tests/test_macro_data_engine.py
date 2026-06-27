@@ -11,6 +11,7 @@ Covers:
 
 import io
 import json
+import os
 import sys
 import sqlite3
 from datetime import datetime
@@ -262,7 +263,7 @@ class TestUpdateMacroIndicators:
 
     def test_missing_fred_key_logs_error_but_does_not_raise(self):
         """When FRED_API_KEY is absent the pipeline must not raise."""
-        with patch("macro_data_engine.load_config", return_value={}), \
+        with patch.dict(os.environ, {"FRED_API_KEY": ""}), \
              patch("macro_data_engine.get_retry_session") as mock_sess, \
              patch("macro_data_engine.fetch_boe_data", return_value=pd.DataFrame()), \
              patch("macro_data_engine.fetch_ons_taxonomy_data", return_value=pd.DataFrame()):
@@ -270,7 +271,7 @@ class TestUpdateMacroIndicators:
 
     def test_all_sources_empty_returns_early_without_db_write(self):
         """When every source returns an empty DataFrame, the DB must not be touched."""
-        with patch("macro_data_engine.load_config", return_value={"FRED_API_KEY": "key"}), \
+        with patch.dict(os.environ, {"FRED_API_KEY": "key"}), \
              patch("macro_data_engine.get_retry_session"), \
              patch("macro_data_engine.fetch_fred_api", return_value=pd.DataFrame()), \
              patch("macro_data_engine.fetch_boe_data", return_value=pd.DataFrame()), \
@@ -292,7 +293,7 @@ class TestUpdateMacroIndicators:
             return cpi_df if series_id == "CPIAUCSL" else pd.DataFrame()
 
         try:
-            with patch("macro_data_engine.load_config", return_value={"FRED_API_KEY": "key"}), \
+            with patch.dict(os.environ, {"FRED_API_KEY": "key"}), \
                  patch("macro_data_engine.get_retry_session"), \
                  patch("macro_data_engine.fetch_fred_api", side_effect=fred_side_effect), \
                  patch("macro_data_engine.fetch_boe_data", return_value=pd.DataFrame()), \
@@ -338,7 +339,7 @@ class TestUpdateMacroIndicators:
             return wm2ns_df if series_id == "WM2NS" else pd.DataFrame()
 
         try:
-            with patch("macro_data_engine.load_config", return_value={"FRED_API_KEY": "key"}), \
+            with patch.dict(os.environ, {"FRED_API_KEY": "key"}), \
                  patch("macro_data_engine.get_retry_session"), \
                  patch("macro_data_engine.fetch_fred_api", side_effect=fred_side_effect), \
                  patch("macro_data_engine.fetch_boe_data", return_value=pd.DataFrame()), \

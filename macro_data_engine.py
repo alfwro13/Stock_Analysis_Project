@@ -1,4 +1,5 @@
 import logging
+import os
 import requests
 import io
 import sqlite3
@@ -8,7 +9,6 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from typing import Dict
 
-from config import load_config
 from database import get_connection, init_db
 import time_engine
 
@@ -166,8 +166,7 @@ def fetch_ons_taxonomy_data(session: requests.Session, series_id: str, start_dat
         return pd.DataFrame()
 
 def update_macro_indicators() -> None:
-    config = load_config()
-    fred_api_key = config.get("FRED_API_KEY")
+    fred_api_key = os.environ.get("FRED_API_KEY", "")
     if not fred_api_key:
         logger.error("FRED_API_KEY is not configured in settings. Aborting FRED API fetch.")
 
