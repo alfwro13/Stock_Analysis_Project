@@ -496,22 +496,38 @@ def delete_transaction_with_pair(txn_id: int) -> bool:
 def _current_price_map(tickers: list) -> dict:
     if not tickers:
         return {}
+    from account_scraper_engine import latest_price, parse_pension_account_id
+
+    result: dict[str, tuple] = {}
+    market_tickers = []
+    for ticker in tickers:
+        pension_id = parse_pension_account_id(ticker)
+        if pension_id is not None:
+            priced = latest_price(pension_id)
+            if priced:
+                result[ticker] = priced
+        else:
+            market_tickers.append(ticker)
+    if not market_tickers:
+        return result
+
     conn = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
-        placeholders = ",".join("?" * len(tickers))
+        placeholders = ",".join("?" * len(market_tickers))
         cursor.execute(
             f"SELECT ticker, current_price, currency FROM stock_signals WHERE ticker IN ({placeholders})",
-            tickers
+            market_tickers
         )
-        return {r["ticker"]: (r["current_price"], r["currency"]) for r in cursor.fetchall()}
+        for r in cursor.fetchall():
+            result[r["ticker"]] = (r["current_price"], r["currency"])
     except Exception as e:
         logger.error("Failed to load current prices: %s", e)
-        return {}
     finally:
         if conn:
             conn.close()
+    return result
 
 
 def _equity_value(open_holdings: dict) -> float:
@@ -527,6 +543,19 @@ def _equity_value(open_holdings: dict) -> float:
         price, currency = priced
         total += holding["shares"] * price * get_rate_to_base(currency or holding["currency"])
     return total
+
+
+def _equity_value_for_account(acc: dict, open_holdings: dict) -> float:
+    """House has no Buy/Sell ledger at all (per design — it's a single scraped valuation, not a
+    holding), so `_equity_value` would always see an empty `open_holdings` and return 0."""
+    if acc["account_type"] != "House":
+        return _equity_value(open_holdings)
+    from account_scraper_engine import latest_price
+    priced = latest_price(acc["id"])
+    if not priced or not priced[0]:
+        return 0.0
+    price, currency = priced
+    return price * get_rate_to_base(currency or acc["currency"])
 
 
 def account_summary(account_id: int) -> dict:
@@ -546,7 +575,7 @@ def account_summary(account_id: int) -> dict:
         "interest": round(interest, 2),
         "dividend": round(dividend, 2),
         "activity_count": len(transactions),
-        "equity_value": round(_equity_value(open_holdings), 2),
+        "equity_value": round(_equity_value_for_account(acc, open_holdings), 2),
         "realized_pnl": realized,
     }
 
@@ -582,7 +611,7 @@ def snapshot_all_accounts() -> int:
     for acc in get_accounts():
         aid = acc["id"]
         open_holdings, _closed, _realized, _realized_by_txn = _ledger_for_account(aid)
-        equity = _equity_value(open_holdings)
+        equity = _equity_value_for_account(acc, open_holdings)
         cash = cash_balance(aid)
         contributions = net_contributions(aid)
         upsert_value_snapshot(aid, today, round(cash + equity, 2), round(cash, 2), round(equity, 2), contributions)
@@ -600,7 +629,7 @@ def resnapshot_account(account_id: int) -> None:
         return
     today = datetime.now(timezone.utc).date().isoformat()
     open_holdings, _closed, _realized, _realized_by_txn = _ledger_for_account(account_id)
-    equity = _equity_value(open_holdings)
+    equity = _equity_value_for_account(acc, open_holdings)
     cash = cash_balance(account_id)
     contributions = net_contributions(account_id)
     upsert_value_snapshot(account_id, today, round(cash + equity, 2), round(cash, 2), round(equity, 2), contributions)
@@ -612,8 +641,13 @@ def backfill_value_history(account_id: int) -> int:
     yesterday (today is left to the nightly snapshot job). Returns rows written; 0 if there are no
     transactions yet."""
     acc = get_account(account_id)
+    if not acc:
+        return 0
+    if acc["account_type"] == "House":
+        return _backfill_house_value_history(account_id, acc)
+
     transactions = get_transactions(account_id)
-    if not acc or not transactions:
+    if not transactions:
         return 0
 
     start_date = transactions[0]["txn_date"]
@@ -621,9 +655,18 @@ def backfill_value_history(account_id: int) -> int:
     if start_date > end_date:
         return 0
 
+    from account_scraper_engine import parse_pension_account_id
+    from account_scraper_engine import price_series as scraped_price_series
+
     tickers = sorted({t["ticker"] for t in transactions if t["ticker"]})
     price_series: dict[str, pd.Series] = {}
     for ticker in tickers:
+        pension_id = parse_pension_account_id(ticker)
+        if pension_id is not None:
+            series = scraped_price_series(pension_id)
+            if not series.empty:
+                price_series[ticker] = series
+            continue
         parquet_path = HISTORICAL_DIR / f"{ticker}.parquet"
         if not parquet_path.exists():
             continue
@@ -655,6 +698,96 @@ def backfill_value_history(account_id: int) -> int:
         upsert_value_snapshot(account_id, date_str, round(cash + equity, 2), round(cash, 2), round(equity, 2), round(contributions, 2))
         written += 1
     return written
+
+
+def _backfill_house_value_history(account_id: int, acc: dict) -> int:
+    """House has no transactions at all, so the date range comes from the scraped price history
+    itself rather than from the earliest transaction (as the generic path above does)."""
+    from account_scraper_engine import price_series as scraped_price_series
+    series = scraped_price_series(account_id)
+    if series.empty:
+        return 0
+
+    transactions = get_transactions(account_id)
+    start_date = series.index[0].date().isoformat()
+    end_date = (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
+    if start_date > end_date:
+        return 0
+
+    written = 0
+    for date_str in pd.date_range(start_date, end_date, freq="D").strftime("%Y-%m-%d"):
+        window = series.loc[:date_str]
+        if window.empty:
+            continue
+        equity = float(window.iloc[-1]) * get_rate_to_base(acc["currency"])
+        cash = _cash_balance_as_of(acc, transactions, date_str)
+        contributions = _net_contributions_as_of(acc, transactions, date_str)
+        upsert_value_snapshot(account_id, date_str, round(cash + equity, 2), round(cash, 2), round(equity, 2), round(contributions, 2))
+        written += 1
+    return written
+
+
+def record_pension_contribution(account_id: int, txn_date: str, amount: float, unit_price: Optional[float] = None) -> dict:
+    """'Pay In': resolves that date's unit price (overridable) and buys units = amount / price.
+    `update_cash=False` — the money never sits in this account as cash, it's invested same-day, so
+    there is no cash sub-ledger for a Pension account to keep consistent (see `cash_balance`)."""
+    acc = get_account(account_id)
+    if not acc:
+        return {"error": "Account not found."}
+    if acc["account_type"] != "Pension":
+        return {"error": "Only Pension accounts support contributions."}
+    from account_scraper_engine import pension_ticker
+    from account_scraper_engine import price_as_of as scraped_price_as_of
+
+    price = unit_price if unit_price is not None else scraped_price_as_of(account_id, txn_date)
+    if not price:
+        return {"error": "No unit price available for that date — import or scrape price history first, or supply unit_price."}
+    units = amount / price
+    txn_id = add_transaction(
+        account_id, "Buy", txn_date, ticker=pension_ticker(account_id),
+        company_name=acc["name"], currency=acc["currency"], quantity=units, unit_price=price,
+        update_cash=False, price_in_pence=False, notes="Pension contribution",
+    )
+    if txn_id is None:
+        return {"error": "Failed to record the contribution."}
+    return {"txn_id": txn_id, "units": round(units, 6), "unit_price": price}
+
+
+def pension_units_as_of(account_id: int, date_str: str) -> float:
+    from account_scraper_engine import pension_ticker
+    ticker = pension_ticker(account_id)
+    open_holdings, _closed, _realized, _realized_by_txn = _ledger_for_account(account_id, as_of_date=date_str)
+    return open_holdings.get(ticker, {}).get("shares", 0.0)
+
+
+def record_pension_fee(account_id: int, txn_date: str, units_after: float, unit_price: Optional[float] = None) -> dict:
+    """'Admin Fee': the user reads `units_after` off the pension provider's portal; units held
+    *before* the fee already come from the existing ledger, so the delta — not a separate £ amount
+    the provider rarely discloses — is what determines the fee's monetary cost."""
+    acc = get_account(account_id)
+    if not acc:
+        return {"error": "Account not found."}
+    if acc["account_type"] != "Pension":
+        return {"error": "Only Pension accounts support admin fees."}
+    from account_scraper_engine import pension_ticker
+    from account_scraper_engine import price_as_of as scraped_price_as_of
+
+    ticker = pension_ticker(account_id)
+    units_before = pension_units_as_of(account_id, txn_date)
+    units_removed = units_before - units_after
+    if units_removed <= _EPS:
+        return {"error": f"units_after ({units_after}) must be less than the units currently held ({units_before})."}
+    price = unit_price if unit_price is not None else scraped_price_as_of(account_id, txn_date)
+    if not price:
+        return {"error": "No unit price available for that date — import or scrape price history first, or supply unit_price."}
+    txn_id = add_transaction(
+        account_id, "Sell", txn_date, ticker=ticker,
+        company_name=acc["name"], currency=acc["currency"], quantity=units_removed, unit_price=price,
+        update_cash=False, price_in_pence=False, notes="Pension admin fee",
+    )
+    if txn_id is None:
+        return {"error": "Failed to record the admin fee."}
+    return {"txn_id": txn_id, "units_removed": round(units_removed, 6), "unit_price": price, "fee_cost": round(units_removed * price, 2)}
 
 
 _GHOSTFOLIO_TYPE_MAP = {

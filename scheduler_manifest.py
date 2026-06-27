@@ -48,6 +48,7 @@ JOB_GRAPH: dict[str, dict] = {
     "macro_auction_job_am":           {"label": "Sovereign Debt Auction Monitor (AM)",             "category": "macro",       "engine": "treasury_auction_engine.py",    "produces": ["treasury_auction_results"],                                   "consumes": [],                                                                   "settings_anchor": "macro-data-card"},
     "macro_auction_job_pm":           {"label": "Sovereign Debt Auction Monitor (PM)",             "category": "macro",       "engine": "treasury_auction_engine.py",    "produces": ["treasury_auction_results"],                                   "consumes": [],                                                                   "settings_anchor": "macro-data-card"},
     "account_value_snapshot_job":     {"label": "Account Value Snapshot",                         "category": "portfolio",   "engine": "accounts_engine.py",            "produces": ["account_value_history"],                                      "consumes": ["stock_signals"],                                                    "settings_anchor": "automation-schedulers-card"},
+    "account_scraper_dynamic":        {"label": "Account Price Scraper",                          "category": "portfolio",   "engine": "account_scraper_engine.py",     "produces": ["account_price_history"],                                      "consumes": [],                        "dynamic": True,                          "settings_anchor": None},
 }
 
 # Canonical config-key → job-id map. `config.json` SCHEDULING/NOTIFICATIONS keys and code
@@ -93,6 +94,7 @@ CONFIG_KEY_TO_JOB: dict[str, str] = {
 }
 
 _DYNAMIC_ETF_RE = re.compile(r"^etf_predictor_\d+_(pre|post)_job$")
+_DYNAMIC_ACCOUNT_SCRAPER_RE = re.compile(r"^account_scraper_\d+_job$")
 
 
 def job_label(job_id: str) -> str:
@@ -117,4 +119,6 @@ def _resolve_manifest(job_id: str) -> dict | None:
         return None if meta.get("dynamic") else meta
     if _DYNAMIC_ETF_RE.match(job_id):
         return JOB_GRAPH["etf_predictor_dynamic"]
+    if _DYNAMIC_ACCOUNT_SCRAPER_RE.match(job_id):
+        return JOB_GRAPH["account_scraper_dynamic"]
     return None

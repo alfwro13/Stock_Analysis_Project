@@ -41,25 +41,36 @@ async function loadAccounts() {
     }
 }
 
+const _ACCOUNT_CASH_TILE_LABELS = { House: 'Initial Purchase', Pension: 'Opening Balance' };
+
+function _accountCashLine(acc) {
+    const label = _ACCOUNT_CASH_TILE_LABELS[acc.account_type];
+    return label
+        ? `${label}: ${acc.initial_cash} ${_escapeHtml(acc.currency)}`
+        : `${_escapeHtml(acc.currency)} &middot; initial cash ${acc.initial_cash}`;
+}
+
 function _accountCardHtml(acc) {
     const isWatchlist = acc.account_type === 'Watchlist';
+    const isScraperType = acc.account_type === 'House' || acc.account_type === 'Pension';
     return `
     <div class="col-12 col-lg-6">
         <div class="guide-card h-100" id="account-card-${acc.id}">
             <div class="d-flex justify-content-between align-items-start">
                 <div>
                     <h4 class="mb-0">${_escapeHtml(acc.name)} <span class="account-badge">${_escapeHtml(acc.account_type)}</span></h4>
-                    <p class="text-muted small mb-0">${_escapeHtml(acc.currency)} &middot; initial cash ${acc.initial_cash}</p>
+                    <p class="text-muted small mb-0">${_accountCashLine(acc)}</p>
                     ${acc.note ? `<p class="text-secondary small mb-0">${_escapeHtml(acc.note)}</p>` : ''}
                 </div>
                 <div class="d-flex gap-2">
                     <button type="button" class="btn btn-outline-secondary btn-sm" onclick="openAccountModal(${acc.id})">Edit</button>
+                    ${isScraperType ? `<button type="button" class="btn btn-outline-secondary btn-sm" onclick="openScraperModal(${acc.id})">&#9881; Scraper</button>` : ''}
                     ${isWatchlist ? '' : `<button type="button" class="btn btn-outline-danger btn-sm" onclick="deleteAccount(${acc.id}, '${_escapeHtml(acc.name)}')">Delete</button>`}
                 </div>
             </div>
             <div class="d-flex gap-2 mt-3">
                 <a href="/accounts/${acc.id}" class="btn btn-outline-primary btn-sm">View Details</a>
-                ${isWatchlist ? '' : `
+                ${isWatchlist || isScraperType ? '' : `
                 <button type="button" class="btn btn-primary btn-sm" onclick="openTxnModal(${acc.id})">+ Add Transaction</button>
                 <button type="button" class="btn btn-outline-secondary btn-sm" onclick="toggleTransactions(${acc.id})">Show Transactions</button>
                 <button type="button" class="btn btn-outline-secondary btn-sm" onclick="importGhostfolio(${acc.id})">Import from Ghostfolio</button>
@@ -106,6 +117,19 @@ function _populateToAccountSelect() {
     if (current) sel.value = current;
 }
 
+const _ACCOUNT_FIELD_LABELS = {
+    House: { cash: 'Purchase Value', date: 'Purchase Date' },
+    Pension: { cash: 'Opening Balance', date: 'Opening Balance Date' },
+};
+
+function _updateAccountFieldLabelsForType() {
+    const type = document.getElementById('acct-type').value;
+    const labels = _ACCOUNT_FIELD_LABELS[type] || { cash: 'Initial Cash', date: 'Opening Date' };
+    document.getElementById('acct-cash-label').textContent = labels.cash;
+    document.getElementById('acct-opened-date-label').textContent = labels.date;
+    document.getElementById('acct-pension-start-date-group').classList.toggle('d-none', type !== 'Pension');
+}
+
 function openAccountModal(id = null) {
     const acc = id ? _accountsCache[id] : null;
     const isWatchlist = acc && acc.account_type === 'Watchlist';
@@ -118,8 +142,10 @@ function openAccountModal(id = null) {
     document.getElementById('acct-type-readonly').classList.toggle('d-none', !isWatchlist);
     document.getElementById('acct-cash').value = acc ? acc.initial_cash : 0;
     document.getElementById('acct-opened-date').value = acc ? (acc.opened_date || '') : '';
+    document.getElementById('acct-pension-start-date').value = acc ? (acc.pension_start_date || '') : '';
     document.getElementById('acct-note').value = acc ? (acc.note || '') : '';
     document.getElementById('account-status').innerHTML = '';
+    _updateAccountFieldLabelsForType();
     _accountModal().show();
 }
 
@@ -139,6 +165,7 @@ async function saveAccount() {
         account_type: isWatchlist ? 'Watchlist' : document.getElementById('acct-type').value,
         initial_cash: parseFloat(document.getElementById('acct-cash').value) || 0,
         opened_date: document.getElementById('acct-opened-date').value || null,
+        pension_start_date: document.getElementById('acct-pension-start-date').value || null,
         note: document.getElementById('acct-note').value.trim() || null,
     };
     status.innerHTML = '<span class="msg-info">Saving...</span>';

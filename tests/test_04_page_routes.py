@@ -290,3 +290,33 @@ def test_account_detail_page_renders_compact_view_for_watchlist_account(client):
     assert resp.status_code == 200
     assert "wl-items-table" in resp.text
     assert "watchlist_account.js" in resp.text
+
+
+@pytest.mark.pages
+def test_account_detail_page_loads_for_house_account_and_hides_holdings(client):
+    """House has no holdings/closed-positions concept — the page must render without crashing and
+    must not show the Holdings/Closed Positions tables (always-empty for House)."""
+    import database as _db
+    account_id = _db.create_account("Page Test House", "GBP", account_type="House")
+    try:
+        _assert_page_ok(client, f"/accounts/{account_id}", label="House Account Detail")
+        resp = client.get(f"/accounts/{account_id}")
+        assert 'id="holdingsTable"' not in resp.text
+        assert 'id="closedTable"' not in resp.text
+        assert "Scraper" in resp.text
+    finally:
+        _db.soft_delete_account(account_id)
+
+
+@pytest.mark.pages
+def test_account_detail_page_loads_for_pension_account_with_actions(client):
+    """Pension keeps Holdings/Closed Positions and gets the Pay In / Admin Fee action buttons."""
+    import database as _db
+    account_id = _db.create_account("Page Test Pension", "GBP", account_type="Pension")
+    try:
+        _assert_page_ok(client, f"/accounts/{account_id}", label="Pension Account Detail")
+        resp = client.get(f"/accounts/{account_id}")
+        assert "Pay In" in resp.text
+        assert "Admin Fee" in resp.text
+    finally:
+        _db.soft_delete_account(account_id)

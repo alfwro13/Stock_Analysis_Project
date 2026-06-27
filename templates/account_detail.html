@@ -16,6 +16,13 @@
 <div class="d-flex align-items-center gap-3 mb-3 flex-wrap">
     <a href="/accounts" class="btn btn-outline-secondary btn-sm">&#8592; Back to Accounts</a>
     <button type="button" class="btn btn-primary btn-sm" onclick="openTxnModal({{ account.id }})">+ Add Transaction</button>
+    {% if account.account_type in ('House', 'Pension') %}
+    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="openScraperModal({{ account.id }}, window.CURRENT_ACCOUNT)">&#9881; Scraper</button>
+    {% endif %}
+    {% if account.account_type == 'Pension' %}
+    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="openPensionContributionModal({{ account.id }})">Pay In</button>
+    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="openPensionFeeModal({{ account.id }})">Admin Fee</button>
+    {% endif %}
 </div>
 
 {# ── Account value chart ── #}
@@ -56,6 +63,7 @@
     </div>
 </div>
 
+{% if account.account_type != 'House' %}
 {# ── Holdings ── #}
 <details class="settings-card" open>
     <summary>📦 Holdings</summary>
@@ -118,6 +126,7 @@
     <p class="text-muted small">No closed positions.</p>
     {% endif %}
 </details>
+{% endif %}
 
 {# ── Activities ── #}
 <details class="settings-card" open>
@@ -204,6 +213,8 @@
 </details>
 
 {% include "partials/_accounts_txn_modal.html" %}
+{% include "partials/_account_scraper_modal.html" %}
+{% include "partials/_pension_actions_modal.html" %}
 {% endblock %}
 
 {% block scripts %}
@@ -211,7 +222,9 @@
     window.BASE_CURRENCY = "{{ base_currency }}";
     window.ACCOUNT_CURRENCIES = {{ account_currencies | tojson }};
     window.ACCOUNT_TRANSACTIONS = {{ activities | tojson }};
+    window.CURRENT_ACCOUNT = {{ account | tojson }};
 </script>
 <script src="/static/js/accounts.js?v={{ css_version }}"></script>
+<script src="/static/js/account_scraper.js?v={{ css_version }}"></script>
 <script src="/static/js/account_detail.js?v={{ css_version }}"></script>
 {% endblock %}

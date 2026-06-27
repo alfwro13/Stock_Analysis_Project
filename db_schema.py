@@ -765,15 +765,21 @@ def init_db() -> None:
 
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS accounts (
-                id            INTEGER PRIMARY KEY AUTOINCREMENT,
-                name          TEXT NOT NULL,
-                currency      TEXT NOT NULL,
-                initial_cash  REAL NOT NULL DEFAULT 0,
-                note          TEXT,
-                opened_date   TEXT,
-                account_type  TEXT NOT NULL DEFAULT 'Trading',
-                deleted_at    TEXT DEFAULT NULL,
-                created_at    TEXT DEFAULT (datetime('now'))
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                name            TEXT NOT NULL,
+                currency        TEXT NOT NULL,
+                initial_cash    REAL NOT NULL DEFAULT 0,
+                note            TEXT,
+                opened_date     TEXT,
+                account_type    TEXT NOT NULL DEFAULT 'Trading',
+                scraper_url      TEXT,
+                scraper_selector TEXT,
+                scraper_headers  TEXT NOT NULL DEFAULT '{}',
+                scrape_time      TEXT NOT NULL DEFAULT '02:00',
+                scraper_enabled  INTEGER NOT NULL DEFAULT 0,
+                pension_start_date TEXT,
+                deleted_at      TEXT DEFAULT NULL,
+                created_at      TEXT DEFAULT (datetime('now'))
             )
         ''')
 
@@ -810,6 +816,18 @@ def init_db() -> None:
                 equity_value      REAL,
                 net_contributions REAL,
                 UNIQUE(account_id, snapshot_date)
+            )
+        ''')
+
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS account_price_history (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id  INTEGER NOT NULL,
+                price_date  TEXT NOT NULL,
+                price       REAL NOT NULL,
+                source      TEXT NOT NULL,
+                created_at  TEXT DEFAULT (datetime('now')),
+                UNIQUE(account_id, price_date)
             )
         ''')
 
@@ -914,6 +932,21 @@ def migrate_db(conn, cursor) -> None:
             cursor.execute("ALTER TABLE accounts ADD COLUMN account_type TEXT NOT NULL DEFAULT 'Trading'")
         except Exception as e:
             logger.error("[MIGRATION ERROR] Failed on accounts: %s", e)
+
+    for col, ddl in (
+        ('scraper_url', "ALTER TABLE accounts ADD COLUMN scraper_url TEXT"),
+        ('scraper_selector', "ALTER TABLE accounts ADD COLUMN scraper_selector TEXT"),
+        ('scraper_headers', "ALTER TABLE accounts ADD COLUMN scraper_headers TEXT NOT NULL DEFAULT '{}'"),
+        ('scrape_time', "ALTER TABLE accounts ADD COLUMN scrape_time TEXT NOT NULL DEFAULT '02:00'"),
+        ('scraper_enabled', "ALTER TABLE accounts ADD COLUMN scraper_enabled INTEGER NOT NULL DEFAULT 0"),
+        ('pension_start_date', "ALTER TABLE accounts ADD COLUMN pension_start_date TEXT"),
+    ):
+        if col not in existing_account_columns:
+            try:
+                logger.info("[MIGRATION] Adding column: %s to accounts...", col)
+                cursor.execute(ddl)
+            except Exception as e:
+                logger.error("[MIGRATION ERROR] Failed on accounts: %s", e)
 
     cursor.execute("PRAGMA table_info(account_transactions)")
     existing_account_txn_columns = [info['name'] for info in cursor.fetchall()]

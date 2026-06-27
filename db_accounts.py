@@ -50,14 +50,15 @@ def create_account(
     note: Optional[str] = None,
     opened_date: Optional[str] = None,
     account_type: str = "Trading",
+    pension_start_date: Optional[str] = None,
 ) -> Optional[int]:
     conn = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO accounts (name, currency, initial_cash, note, opened_date, account_type) VALUES (?, ?, ?, ?, ?, ?)",
-            (name, currency, initial_cash, note, opened_date, account_type)
+            "INSERT INTO accounts (name, currency, initial_cash, note, opened_date, account_type, pension_start_date) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (name, currency, initial_cash, note, opened_date, account_type, pension_start_date)
         )
         conn.commit()
         return cursor.lastrowid
@@ -69,7 +70,11 @@ def create_account(
             conn.close()
 
 
-_ALLOWED_ACCOUNT_COLUMNS = frozenset({"name", "currency", "initial_cash", "note", "opened_date", "account_type"})
+_ALLOWED_ACCOUNT_COLUMNS = frozenset({
+    "name", "currency", "initial_cash", "note", "opened_date", "account_type",
+    "scraper_url", "scraper_selector", "scraper_headers", "scrape_time", "scraper_enabled",
+    "pension_start_date",
+})
 
 
 def update_account(account_id: int, **fields) -> bool:
@@ -292,6 +297,85 @@ def get_value_history(account_id: int) -> list:
     except Exception as e:
         logger.error("Failed to get value history for account %s: %s", account_id, e)
         return []
+    finally:
+        if conn:
+            conn.close()
+
+
+def add_price_history(account_id: int, price_date: str, price: float, source: str) -> bool:
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """INSERT INTO account_price_history (account_id, price_date, price, source)
+               VALUES (?, ?, ?, ?)
+               ON CONFLICT(account_id, price_date) DO UPDATE SET
+                   price = excluded.price,
+                   source = excluded.source""",
+            (account_id, price_date, price, source)
+        )
+        conn.commit()
+        return True
+    except Exception as e:
+        logger.error("Failed to add price history for account %s: %s", account_id, e)
+        return False
+    finally:
+        if conn:
+            conn.close()
+
+
+def get_price_history(account_id: int) -> list:
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT * FROM account_price_history WHERE account_id = ? ORDER BY price_date",
+            (account_id,)
+        )
+        return [dict(row) for row in cursor.fetchall()]
+    except Exception as e:
+        logger.error("Failed to get price history for account %s: %s", account_id, e)
+        return []
+    finally:
+        if conn:
+            conn.close()
+
+
+def get_latest_price(account_id: int) -> Optional[dict]:
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT * FROM account_price_history WHERE account_id = ? ORDER BY price_date DESC LIMIT 1",
+            (account_id,)
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else None
+    except Exception as e:
+        logger.error("Failed to get latest price for account %s: %s", account_id, e)
+        return None
+    finally:
+        if conn:
+            conn.close()
+
+
+def get_price_as_of(account_id: int, date_str: str) -> Optional[dict]:
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT * FROM account_price_history WHERE account_id = ? AND price_date <= ? ORDER BY price_date DESC LIMIT 1",
+            (account_id, date_str)
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else None
+    except Exception as e:
+        logger.error("Failed to get price as of %s for account %s: %s", date_str, account_id, e)
+        return None
     finally:
         if conn:
             conn.close()

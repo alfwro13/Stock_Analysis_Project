@@ -904,3 +904,205 @@ def test_watchlist_items_endpoints_reject_non_watchlist_account(client):
 
     import database as _db
     _db.soft_delete_account(account_id)
+
+
+def _mock_html_resp(text: str):
+    from unittest.mock import MagicMock
+    m = MagicMock()
+    m.status_code = 200
+    m.text = text
+    m.raise_for_status = MagicMock()
+    return m
+
+
+@pytest.mark.api
+def test_scraper_config_endpoints_reject_trading_account(client):
+    account_id = _create_account(client)
+    resp = client.put(f"/api/accounts/{account_id}/scraper-config", json={
+        "scraper_url": "http://example.test/x.html", "scraper_selector": "#gf-price",
+    })
+    assert resp.status_code == 400
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_scraper_test_endpoint_does_not_persist(client):
+    account_id = _create_account(client, account_type="House")
+    with patch("requests.get", return_value=_mock_html_resp('<div id="gf-price">487000</div>')):
+        resp = client.post(f"/api/accounts/{account_id}/scraper/test", json={
+            "url": "http://example.test/house.html", "selector": "#gf-price",
+        })
+    assert resp.status_code == 200
+    assert _json(resp)["price"] == 487000.0
+
+    import database as _db
+    assert _db.get_price_history(account_id) == []
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_scraper_save_and_run_now_round_trip(client):
+    account_id = _create_account(client, account_type="House")
+    resp = client.put(f"/api/accounts/{account_id}/scraper-config", json={
+        "scraper_url": "http://example.test/house.html", "scraper_selector": "#gf-price",
+        "scrape_time": "03:00", "scraper_enabled": True,
+    })
+    assert resp.status_code == 200
+
+    with patch("requests.get", return_value=_mock_html_resp('<div id="gf-price">512345</div>')):
+        resp = client.post(f"/api/accounts/{account_id}/scraper/run-now")
+    assert resp.status_code == 200
+    assert _json(resp)["price"] == 512345.0
+
+    import database as _db
+    history = _db.get_price_history(account_id)
+    assert history and history[-1]["price"] == 512345.0
+
+    import scheduler_engine
+    live_ids = {j.id for j in scheduler_engine.scheduler.get_jobs()}
+    assert f"account_scraper_{account_id}_job" in live_ids
+
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_scraper_config_save_with_disabled_unregisters_job(client):
+    account_id = _create_account(client, account_type="House")
+    client.put(f"/api/accounts/{account_id}/scraper-config", json={
+        "scraper_url": "http://example.test/house.html", "scraper_selector": "#gf-price",
+        "scraper_enabled": True,
+    })
+    resp = client.put(f"/api/accounts/{account_id}/scraper-config", json={
+        "scraper_url": "http://example.test/house.html", "scraper_selector": "#gf-price",
+        "scraper_enabled": False,
+    })
+    assert resp.status_code == 200
+
+    import scheduler_engine
+    live_ids = {j.id for j in scheduler_engine.scheduler.get_jobs()}
+    assert f"account_scraper_{account_id}_job" not in live_ids
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_price_history_import_csv_endpoint(client):
+    account_id = _create_account(client, account_type="Pension")
+    resp = client.post(f"/api/accounts/{account_id}/price-history/import-csv", json={
+        "csv_text": "date;marketPrice\n2026-01-01;1.50\n2026-01-02;1.55\n",
+    })
+    assert resp.status_code == 200
+    data = _json(resp)
+    assert data["imported"] == 2
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_pension_contribution_and_fee_endpoints(client):
+    account_id = _create_account(client, account_type="Pension")
+    client.post(f"/api/accounts/{account_id}/price-history/import-csv", json={
+        "csv_text": "date;marketPrice\n2026-01-01;1.00\n",
+    })
+    resp = client.post(f"/api/accounts/{account_id}/pension/contribution", json={
+        "txn_date": "2026-01-01", "amount": 500.0,
+    })
+    assert resp.status_code == 200
+    data = _json(resp)
+    assert data["units"] == 500.0
+
+    resp = client.post(f"/api/accounts/{account_id}/pension/fee", json={
+        "txn_date": "2026-01-01", "units_after": 498.0,
+    })
+    assert resp.status_code == 200
+    fee_data = _json(resp)
+    assert fee_data["units_removed"] == 2.0
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_pension_endpoints_reject_non_pension_account(client):
+    account_id = _create_account(client, account_type="House")
+    resp = client.post(f"/api/accounts/{account_id}/pension/contribution", json={
+        "txn_date": "2026-01-01", "amount": 100.0, "unit_price": 1.0,
+    })
+    assert resp.status_code == 400
+
+    resp = client.post(f"/api/accounts/{account_id}/pension/fee", json={
+        "txn_date": "2026-01-01", "units_after": 1.0, "unit_price": 1.0,
+    })
+    assert resp.status_code == 400
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_price_at_date_endpoint(client):
+    account_id = _create_account(client, account_type="Pension")
+    client.post(f"/api/accounts/{account_id}/price-history/import-csv", json={
+        "csv_text": "date;marketPrice\n2026-01-01;1.50\n2026-01-10;1.60\n",
+    })
+    resp = client.get(f"/api/accounts/{account_id}/price-history/at-date?date=2026-01-05")
+    assert resp.status_code == 200
+    assert _json(resp)["price"] == 1.5
+
+    resp = client.get(f"/api/accounts/{account_id}/price-history/at-date?date=2025-01-01")
+    assert _json(resp)["price"] is None
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_price_at_date_endpoint_rejects_trading_account(client):
+    account_id = _create_account(client)
+    resp = client.get(f"/api/accounts/{account_id}/price-history/at-date?date=2026-01-05")
+    assert resp.status_code == 400
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_pension_units_as_of_endpoint(client):
+    account_id = _create_account(client, account_type="Pension")
+    client.post(f"/api/accounts/{account_id}/pension/contribution", json={
+        "txn_date": "2026-01-01", "amount": 500.0, "unit_price": 1.0,
+    })
+    resp = client.get(f"/api/accounts/{account_id}/pension/units-as-of?date=2026-01-01")
+    assert resp.status_code == 200
+    assert _json(resp)["units"] == 500.0
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_pension_start_date_create_and_update_roundtrip(client):
+    resp = client.post("/api/accounts", json={
+        "name": "PensionStartDateApiAcc", "currency": "GBP", "account_type": "Pension",
+        "pension_start_date": "2015-03-01",
+    })
+    account_id = _json(resp)["id"]
+
+    resp = client.get("/api/accounts")
+    acc = next(a for a in _json(resp)["accounts"] if a["id"] == account_id)
+    assert acc["pension_start_date"] == "2015-03-01"
+
+    client.put(f"/api/accounts/{account_id}", json={
+        "name": "PensionStartDateApiAcc", "currency": "GBP", "account_type": "Pension",
+        "pension_start_date": "2016-04-01",
+    })
+    resp = client.get("/api/accounts")
+    acc = next(a for a in _json(resp)["accounts"] if a["id"] == account_id)
+    assert acc["pension_start_date"] == "2016-04-01"
+
+    import database as _db
+    _db.soft_delete_account(account_id)

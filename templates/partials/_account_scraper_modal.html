@@ -1,0 +1,53 @@
+<div class="modal fade" id="scraperModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="scraperModalTitle">Price Scraper</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="scraper-account-id">
+
+        <h6>Scraper Configuration</h6>
+        <div class="form-group">
+            <label for="scraper-url"><abbr title="The URL the scraper fetches each run — typically your own self-hosted static HTML file, but any page works.">Url</abbr></label>
+            <input type="text" id="scraper-url" placeholder="http://192.168.1.71:8123/house_valuation.html">
+        </div>
+        <div class="form-group">
+            <label for="scraper-selector"><abbr title="A CSS selector identifying the element whose text contains the price, e.g. #gf-price.">Selector</abbr></label>
+            <input type="text" id="scraper-selector" placeholder="#gf-price">
+        </div>
+        <div class="form-group">
+            <label for="scraper-headers"><abbr title="Optional custom HTTP request headers as a JSON object. Leave as {} unless the target site requires specific headers.">HTTP Request Headers</abbr></label>
+            <input type="text" id="scraper-headers" placeholder="{}">
+        </div>
+        <div class="flex-gap-15">
+            <div class="form-group">
+                <label for="scraper-time"><abbr title="The time of day (in your local timezone) the scraper runs automatically once a day.">Daily Run Time</abbr></label>
+                <input type="time" id="scraper-time" value="02:00">
+            </div>
+            <div class="form-group d-flex align-items-end">
+                <div class="form-check">
+                    <input type="checkbox" class="form-check-input" id="scraper-enabled">
+                    <label class="form-check-label" for="scraper-enabled">Enabled</label>
+                </div>
+            </div>
+        </div>
+        <div id="scraper-config-status" class="status-msg-sm"></div>
+
+        <h6 class="mt-3">Historical Data Import</h6>
+        <div class="form-group">
+            <label for="scraper-csv"><abbr title="Paste semicolon-delimited rows with a date;marketPrice header to backfill price history.">Historical Data (CSV)</abbr></label>
+            <textarea id="scraper-csv" class="etf-import-textarea" rows="4" placeholder="date;marketPrice&#10;2026-06-27;123.45"></textarea>
+        </div>
+        <div id="scraper-csv-status" class="status-msg-sm"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="testScraperConfig()">Test</button>
+        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="runScraperNow()">Scrape Now</button>
+        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="importScraperCsv()">Import CSV</button>
+        <button type="button" class="btn-save" onclick="saveScraperConfig()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>

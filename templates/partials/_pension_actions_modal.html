@@ -1,0 +1,62 @@
+<div class="modal fade" id="pensionContributionModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Pay In</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="pension-contrib-account-id">
+        <div class="form-group">
+            <label for="pension-contrib-date">Date</label>
+            <input type="date" id="pension-contrib-date" onchange="_onPensionContribDateChange()">
+        </div>
+        <div class="form-group">
+            <label for="pension-contrib-amount">Amount Paid In ({{ account.currency }})</label>
+            <input type="number" id="pension-contrib-amount" step="0.01" oninput="_updatePensionContribPreview()">
+        </div>
+        <div class="form-group">
+            <label for="pension-contrib-price"><abbr title="Auto-resolved from price history for the date above — editable if you need to override it.">Unit Price</abbr></label>
+            <input type="number" id="pension-contrib-price" step="0.0001" oninput="_updatePensionContribPreview()">
+        </div>
+        <div id="pension-contrib-preview" class="status-msg-sm text-accent-cyan mb-2"></div>
+        <div id="pension-contrib-status" class="status-msg-sm"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-save" onclick="submitPensionContribution()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="pensionFeeModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Admin Fee</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="pension-fee-account-id">
+        <div class="form-group">
+            <label for="pension-fee-date">Date</label>
+            <input type="date" id="pension-fee-date" onchange="_onPensionFeeDateChange()">
+        </div>
+        <div class="form-group">
+            <label for="pension-fee-units-after"><abbr title="The units balance shown on the pension provider's portal after the fee was deducted. The units removed (and their cost) are computed from the difference against units currently held.">Units Remaining After Fee</abbr></label>
+            <input type="number" id="pension-fee-units-after" step="0.000001" oninput="_updatePensionFeePreview()">
+        </div>
+        <div class="form-group">
+            <label for="pension-fee-price"><abbr title="Auto-resolved from price history for the date above — editable if you need to override it.">Unit Price</abbr></label>
+            <input type="number" id="pension-fee-price" step="0.0001" oninput="_updatePensionFeePreview()">
+        </div>
+        <div id="pension-fee-units-before" class="text-muted small mb-1"></div>
+        <div id="pension-fee-preview" class="status-msg-sm text-accent-cyan mb-2"></div>
+        <div id="pension-fee-status" class="status-msg-sm"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-save" onclick="submitPensionFee()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>

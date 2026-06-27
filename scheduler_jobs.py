@@ -3,10 +3,10 @@ import threading as _threading
 from datetime import datetime, timezone
 
 from apscheduler.triggers.cron import CronTrigger
-from accounts_engine import snapshot_all_accounts
+from accounts_engine import resnapshot_account, snapshot_all_accounts
 from config import load_config
 from data_engine import DataEngine
-from database import get_connection, get_universe_tickers
+from database import get_account, get_connection, get_universe_tickers
 from earnings_engine import run_earnings_alert
 from insider_engine import run_insider_alert
 from earnings_vol_engine import run_earnings_vol_scan
@@ -868,6 +868,56 @@ def unregister_etf_predictor_jobs(config_id: int) -> None:
             scheduler.remove_job(f"etf_predictor_{config_id}_{suffix}_job")
         except (JobLookupError, Exception):
             pass
+
+
+def _run_account_scraper_job(account_id: int) -> None:
+    job_id = f"account_scraper_{account_id}_job"
+    acc = get_account(account_id)
+    job_name = f"Account Price Scraper — {acc['name'] if acc else account_id}"
+    _mark_job_started(job_name)
+    try:
+        from account_scraper_engine import run_scrape_for_account
+        result = run_scrape_for_account(account_id)
+        if result.get("status") != "success":
+            log_sched_notification("Warning", f"{job_name}: {result.get('message', 'unknown error')}")
+            return
+        resnapshot_account(account_id)
+        log_sched_notification("Success", f"{job_name}: price={result['price']}")
+    except Exception as e:
+        logger.error("Account scraper job %s failed: %s", job_id, e)
+        log_sched_notification("Error", f"{job_name} failed: {e}")
+    finally:
+        _mark_job_done(job_name)
+        record_job_run(job_id)
+
+
+def register_account_scraper_job(account: dict) -> None:
+    if not account.get("scraper_enabled") or not account.get("scraper_url") or not account.get("scraper_selector"):
+        return
+    account_id = account["id"]
+    try:
+        import time_engine
+        hour, minute = map(int, (account.get("scrape_time") or "02:00").split(":"))
+        scheduler.add_job(
+            _run_account_scraper_job,
+            CronTrigger(hour=hour, minute=minute, timezone=time_engine.get_user_tz()),
+            id=f"account_scraper_{account_id}_job",
+            kwargs={"account_id": account_id},
+            replace_existing=True,
+            misfire_grace_time=300,
+        )
+        logger.info("Account scraper job registered for account %s at %s.", account_id, account.get("scrape_time"))
+    except Exception as e:
+        logger.error("Failed to register account scraper job for account %s: %s", account_id, e)
+
+
+def unregister_account_scraper_job(account_id: int) -> None:
+    """Remove the scraper job for a given account. Silently ignores a missing job."""
+    from apscheduler.jobstores.base import JobLookupError
+    try:
+        scheduler.remove_job(f"account_scraper_{account_id}_job")
+    except (JobLookupError, Exception):
+        pass
 
 
 def run_forensic_quarterly_fetch_job():

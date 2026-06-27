@@ -392,6 +392,24 @@ class TestWorkflowManifest:
     def test_dynamic_template_not_resolved_as_static(self):
         assert _resolve_manifest("etf_predictor_dynamic") is None
 
+    def test_dynamic_account_scraper_job_resolves(self):
+        assert _resolve_manifest("account_scraper_7_job") is not None
+        assert _resolve_manifest("account_scraper_dynamic") is None
+
+    @pytest.mark.db
+    def test_scraper_enabled_account_registers_a_live_resolvable_job(self):
+        from database import create_account, update_account
+        aid = create_account("ManifestScraperAcc", "GBP", account_type="House")
+        update_account(
+            aid, scraper_url="http://example.test/x.html", scraper_selector="#gf-price",
+            scraper_enabled=True,
+        )
+        reload_scheduler()
+        job_id = f"account_scraper_{aid}_job"
+        live_ids = {j.id for j in _sched_module.scheduler.get_jobs()}
+        assert job_id in live_ids
+        assert _resolve_manifest(job_id) is not None
+
 
 class TestBuildWorkflowGraph:
     def test_returns_nodes_and_edges(self):

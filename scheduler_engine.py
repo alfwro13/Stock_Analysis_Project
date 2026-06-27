@@ -11,7 +11,7 @@ from apscheduler.events import EVENT_JOB_SUBMITTED, EVENT_JOB_EXECUTED, EVENT_JO
 from config import load_config
 import time_engine
 from notification_engine import notify, set_job_source, clear_job_source, current_job_source, SCHEDULER_STATUS_SOURCE
-from database import get_connection, get_etf_predictor_configs
+from database import get_accounts, get_connection, get_etf_predictor_configs
 from news_feed_engine import run_news_feed_job
 
 logger = logging.getLogger(__name__)
@@ -743,6 +743,13 @@ def reload_scheduler():
     except Exception as e:
         logger.error("Failed to register ETF predictor jobs from DB: %s", e)
 
+    try:
+        for _acc in get_accounts():
+            if _acc["account_type"] in ("House", "Pension"):
+                register_account_scraper_job(_acc)
+    except Exception as e:
+        logger.error("Failed to register account scraper jobs from DB: %s", e)
+
     auction_cfg = scheduling.get("MACRO_AUCTIONS", {})
     if auction_cfg.get("ENABLED", True):
         _user_tz = time_engine.get_user_tz()
@@ -819,4 +826,5 @@ from scheduler_jobs import (
     run_bubble_radar_job, register_etf_predictor_jobs, unregister_etf_predictor_jobs,
     run_forensic_quarterly_fetch_job, run_forensic_scores_job, run_etf_actual_fill_job,
     run_system_check_job, run_treasury_auction_check, run_account_value_snapshot,
+    register_account_scraper_job, unregister_account_scraper_job, _run_account_scraper_job,
 )

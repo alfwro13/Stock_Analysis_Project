@@ -36,7 +36,7 @@
         </div>
         <div class="form-group">
             <label for="acct-type"><abbr title="Trading accounts feed the Portfolio page and X-ray. House and Pension accounts are tracked separately and excluded from portfolio-wide aggregation. The Watchlist account is created automatically by the system and isn't selectable here.">Account Type</abbr></label>
-            <select id="acct-type">
+            <select id="acct-type" onchange="_updateAccountFieldLabelsForType()">
                 <option value="Trading">Trading</option>
                 <option value="House">House</option>
                 <option value="Pension">Pension</option>
@@ -44,12 +44,16 @@
             <input type="text" id="acct-type-readonly" class="form-control d-none" value="Watchlist" disabled>
         </div>
         <div class="form-group">
-            <label for="acct-cash">Initial Cash</label>
+            <label for="acct-cash" id="acct-cash-label">Initial Cash</label>
             <input type="number" id="acct-cash" step="0.01" value="0">
         </div>
         <div class="form-group">
-            <label for="acct-opened-date"><abbr title="The real-world date this account was opened. Used as the starting point for the Cash Balance History table — leave blank to use today.">Opening Date</abbr></label>
+            <label for="acct-opened-date"><abbr id="acct-opened-date-label" title="The real-world date this account was opened. Used as the starting point for the Cash Balance History table — leave blank to use today.">Opening Date</abbr></label>
             <input type="date" id="acct-opened-date">
+        </div>
+        <div class="form-group d-none" id="acct-pension-start-date-group">
+            <label for="acct-pension-start-date"><abbr title="When the pension itself started accumulating, if earlier than when you began tracking it here. Optional, purely informational.">Pension Start Date</abbr></label>
+            <input type="date" id="acct-pension-start-date">
         </div>
         <div class="form-group">
             <label for="acct-note">Note</label>
@@ -65,6 +69,7 @@
 </div>
 
 {% include "partials/_accounts_txn_modal.html" %}
+{% include "partials/_account_scraper_modal.html" %}
 
 <div class="modal fade" id="gfImportModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog">
@@ -119,4 +124,5 @@
     window.ACCOUNT_CURRENCIES = {{ account_currencies | tojson }};
 </script>
 <script src="/static/js/accounts.js?v={{ css_version }}"></script>
+<script src="/static/js/account_scraper.js?v={{ css_version }}"></script>
 {% endblock %}

@@ -2608,7 +2608,7 @@ Each percentile array has length `horizon_years + 1` (index 0 = current year, in
 
 ## 19. Accounts
 
-Native, database-backed brokerage accounts + transaction ledger (`/accounts`). Coexists with Ghostfolio — built-in account holdings are merged into the Portfolio page alongside any Ghostfolio-synced accounts (see `accounts_engine.get_combined_holdings`). Backed by the `accounts`, `account_transactions`, and `account_value_history` SQLite tables.
+Native, database-backed brokerage accounts + transaction ledger (`/accounts`). Coexists with Ghostfolio — built-in account holdings are merged into the Portfolio page alongside any Ghostfolio-synced accounts (see `accounts_engine.get_combined_holdings`). Backed by the `accounts`, `account_transactions`, `account_value_history`, and `account_price_history` SQLite tables. `House`/`Pension` accounts are tracked standalone via the **Account Price Scraper** (a generic URL + CSS-selector price feed, configured from the account's own tile/detail page rather than the Settings page) — see the dedicated endpoints below.
 
 ### `GET /accounts`
 
@@ -2640,10 +2640,10 @@ Creates a new account. Rate limit: 30/minute.
 
 **Request body:**
 ```json
-{ "name": "My ISA", "currency": "GBP", "account_type": "Trading", "initial_cash": 1000.0, "opened_date": "2020-03-15", "note": "optional" }
+{ "name": "My ISA", "currency": "GBP", "account_type": "Trading", "initial_cash": 1000.0, "opened_date": "2020-03-15", "pension_start_date": null, "note": "optional" }
 ```
 
-`account_type` is optional and defaults to `"Trading"` — must be one of `Trading`, `House`, `Pension`, `Watchlist` (400 if not), but `"Watchlist"` is additionally rejected (400) since that account is created automatically by the system and can't be created, deleted, or converted to/from manually. Only `Trading` accounts are aggregated into the Portfolio page / X-ray; `House`/`Pension` are placeholders for future standalone tracking features. `opened_date` is optional — when set, it's the real-world account-opening date and is used as the Cash Balance History table's opening row date instead of `created_at` (useful when backfilling a historical account). Returns `{"status": "success", "message": "...", "id": <new_account_id>}`.
+`account_type` is optional and defaults to `"Trading"` — must be one of `Trading`, `House`, `Pension`, `Watchlist` (400 if not), but `"Watchlist"` is additionally rejected (400) since that account is created automatically by the system and can't be created, deleted, or converted to/from manually. Only `Trading` accounts are aggregated into the Portfolio page / X-ray; `House`/`Pension` are tracked standalone via the Account Price Scraper (see below). `opened_date` is optional — when set, it's the real-world account-opening date and is used as the Cash Balance History table's opening row date instead of `created_at` (useful when backfilling a historical account); for House/Pension the create/edit form relabels this field (and `initial_cash`) to fit — "Purchase Date"/"Purchase Value" for House, "Opening Balance Date"/"Opening Balance" for Pension — but they're the same two underlying fields. `pension_start_date` is optional and Pension-only in the UI (accepted for any type, but only shown/used for Pension) — a separate, earlier date recording when the pension itself started accumulating, distinct from `opened_date`/"Opening Balance Date"; currently just stored, with no display built from it yet. Returns `{"status": "success", "message": "...", "id": <new_account_id>}`.
 
 ---
 
@@ -2822,6 +2822,102 @@ Exports the account's entire transaction ledger as a downloadable CSV (`accounts
 Re-importing an export as-is will fail the importer's required-column check, since `Stamp Duty`, `FX Fee Amount`, and the four `Dividend *` columns aren't present — the header needs editing first (e.g. renaming `Fee` back to whichever column a row needs). `Fee`/`Transfer`-type rows aren't recognised by the importer at all and would need re-entering via the UI.
 
 **Response:** `text/csv` with a `Content-Disposition: attachment` header (browser downloads it directly).
+
+---
+
+### Account Price Scraper (House / Pension)
+
+A generic URL + CSS-selector price feed, replicating what Ghostfolio's "manual asset" scraper does — fetches a configured URL, extracts a number via a CSS selector (e.g. `#gf-price`), and records it in `account_price_history`. Typically pointed at a small static HTML file the operator's own external cron job writes (e.g. `<div id="gf-price">123.45</div>`); not limited to that — any URL/selector works. Configured per-account from the Accounts page (tile gear icon / detail page), not the Settings page. All six endpoints below 400 if the account is not `House`/`Pension` (the contribution/fee endpoints further require `Pension` specifically).
+
+### `PUT /api/accounts/{id}/scraper-config`
+
+Saves the scraper configuration and (re)registers the account's dynamic scheduled job (`scheduler_jobs.register_account_scraper_job`/`unregister_account_scraper_job`, job id `account_scraper_{id}_job`) accordingly — unregistered first unconditionally, then re-registered only if `scraper_enabled` is true. Rate limit: 30/minute.
+
+**Request body:**
+```json
+{ "scraper_url": "http://192.168.1.71:8123/house_valuation.html", "scraper_selector": "#gf-price", "scraper_headers": {}, "scrape_time": "02:00", "scraper_enabled": true }
+```
+
+Returns `{"status": "success", "message": "Scraper configuration saved."}`. Returns 404 if the account does not exist; 400 if it is not `House`/`Pension`.
+
+---
+
+### `POST /api/accounts/{id}/scraper/test`
+
+Fetches and extracts using the supplied (not-yet-saved) `url`/`selector`/`headers` — does **not** persist anything. Used by the config modal's "Test" button to validate a selector before saving. Rate limit: 20/minute.
+
+**Request body:**
+```json
+{ "url": "http://192.168.1.71:8123/house_valuation.html", "selector": "#gf-price", "headers": {} }
+```
+
+Returns `{"status": "success", "price": 487000.0}`, or 422 with `{"status": "error", "message": "..."}` if the fetch fails or the selector matches nothing/non-numeric text.
+
+---
+
+### `POST /api/accounts/{id}/scraper/run-now`
+
+Runs the account's **saved** scraper config immediately (`account_scraper_engine.run_scrape_for_account`) — fetches, extracts, and writes a real `account_price_history` row dated today (`source="scrape"`), then schedules a background `accounts_engine.resnapshot_account` so the value chart reflects it without waiting for the next nightly run. Used by the "Scrape Now" button — doubles as a config test and an ad-hoc backfill trigger. Rate limit: 20/minute.
+
+Returns `{"status": "success", "price": 487000.0}`, or 422 if the saved config is missing/the fetch fails.
+
+---
+
+### `POST /api/accounts/{id}/price-history/import-csv`
+
+Bulk-imports historical prices from pasted CSV text (semicolon-delimited, header `date;marketPrice` — the same format Ghostfolio's manual-asset historical import uses), via `account_scraper_engine.import_price_csv`. Each row is upserted into `account_price_history` with `source="csv_import"`. Malformed rows (bad date, non-numeric price, too few columns) are silently skipped and counted. Schedules a background `accounts_engine.resnapshot_account` on completion. Rate limit: 10/minute.
+
+**Request body:**
+```json
+{ "csv_text": "date;marketPrice\n2026-06-27;123.45\n2026-06-28;124.10\n" }
+```
+
+**Response:**
+```json
+{ "status": "success", "message": "Imported 2 price row(s) (0 skipped).", "imported": 2, "skipped": 0 }
+```
+
+---
+
+### `GET /api/accounts/{id}/price-history/at-date?date=`
+
+Looks up the resolved unit price for `date` from `account_price_history` (`account_scraper_engine.price_as_of` — most recent row on or before `date`), with no side effects. Used by the Pay In and Admin Fee modals to auto-fill the Unit Price field whenever the date changes, so the operator sees a real number to accept or override rather than a blank "optional override" field. House/Pension-only; 400 otherwise. Rate limit: 60/minute.
+
+**Response:** `{ "status": "success", "price": 1.6 }` (or `"price": null` if no price history exists on/before that date).
+
+---
+
+### `GET /api/accounts/{id}/pension/units-as-of?date=`
+
+Returns the Pension account's synthetic-ticker units held as of `date` (`accounts_engine.pension_units_as_of` — the same ledger lookup `POST .../pension/fee` itself uses internally for `units_before`), with no side effects. Used by the Admin Fee modal to show "Units currently held" and compute the live units-removed/cost preview before saving. Pension-only; 400 otherwise. Rate limit: 60/minute.
+
+**Response:** `{ "status": "success", "units": 1000.0 }`.
+
+---
+
+### `POST /api/accounts/{id}/pension/contribution`
+
+**"Pay In"** — records a Pension contribution. Resolves the unit price for `txn_date` from `account_price_history` (or uses `unit_price` if supplied as an override), computes `units = amount / price`, and creates a `Buy` transaction against the account's synthetic ticker (`PENSION-{id}`, internal-only — never shown in the UI) with `update_cash=False` (the contribution never passes through the account's cash balance — it's invested the same day). Pension-only; 400 otherwise. Rate limit: 30/minute.
+
+**Request body:**
+```json
+{ "txn_date": "2026-06-27", "amount": 500.0, "unit_price": null }
+```
+
+**Response:** `{ "status": "success", "txn_id": 42, "units": 312.5, "unit_price": 1.6 }`. Returns 422 if no price can be resolved for that date and no override was supplied.
+
+---
+
+### `POST /api/accounts/{id}/pension/fee`
+
+**"Admin Fee"** — automates the arithmetic of a unit-based fee deduction. The operator supplies `units_after` (the units balance read off the pension provider's portal, after the fee). Units held *before* the fee come from the existing ledger as of `txn_date`; `units_removed = units_before - units_after` and its monetary cost (`units_removed × that date's price`) are computed automatically, then recorded as a `Sell` against the synthetic ticker (`update_cash=False`). The trigger stays manual — this only automates the calculation the operator previously did by hand. Pension-only; 400 otherwise. Rate limit: 30/minute.
+
+**Request body:**
+```json
+{ "txn_date": "2026-07-01", "units_after": 995.0, "unit_price": null }
+```
+
+**Response:** `{ "status": "success", "txn_id": 43, "units_removed": 5.0, "unit_price": 1.1, "fee_cost": 5.5 }`. Returns 422 if `units_after` is not lower than the units currently held, or if no price can be resolved and no override was supplied.
 
 ---
 

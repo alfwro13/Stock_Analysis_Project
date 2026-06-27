@@ -228,6 +228,30 @@ def test_run_account_value_snapshot_job_runner_is_wired():
 
 
 @pytest.mark.db
+def test_run_account_scraper_job_runner_is_wired():
+    """scheduler_jobs._run_account_scraper_job must actually call account_scraper_engine.run_scrape_for_account
+    (which persists the scraped price) and then accounts_engine.resnapshot_account — a regression guard for
+    the runner's import wiring, not just the engine functions in isolation."""
+    from unittest.mock import MagicMock, patch
+    import scheduler_jobs
+    from database import update_account
+    aid = create_account("ScraperJobRunnerWiringAcc", "GBP", account_type="House")
+    update_account(aid, scraper_url="http://example.test/x.html", scraper_selector="#gf-price")
+
+    resp = MagicMock()
+    resp.status_code = 200
+    resp.text = '<div id="gf-price">123456.0</div>'
+    resp.raise_for_status = MagicMock()
+    with patch("requests.get", return_value=resp):
+        scheduler_jobs._run_account_scraper_job(aid)
+
+    from database import get_value_history
+    history = get_value_history(aid)
+    assert history, "_run_account_scraper_job did not trigger a resnapshot"
+    assert history[-1]["equity_value"] == 123456.0
+
+
+@pytest.mark.db
 def test_holdings_with_market_value_allocation_sums_to_100():
     _seed_stock_signal("ZZHMV1", 100.0, "GBP")
     _seed_stock_signal("ZZHMV2", 50.0, "GBP")
@@ -507,3 +531,154 @@ def test_export_transactions_csv_shape_and_position_status():
     assert dividend_row["Ticker"] == "ZZEXPOPEN"
     assert dividend_row["Position"] == ""            # ZZEXPOPEN is still held
     assert dividend_row["Dividend Net Amount"] == "19.5"    # 10*2 - 0.5
+
+
+@pytest.mark.db
+def test_house_account_summary_equity_value_from_scraped_price():
+    from account_scraper_engine import import_price_csv
+    aid = create_account("HouseEquityAcc", "GBP", account_type="House")
+    import_price_csv(aid, "date;marketPrice\n2026-02-01;487000\n")
+
+    summary = accounts_engine.account_summary(aid)
+    assert summary["equity_value"] == 487000.0
+
+
+@pytest.mark.db
+def test_house_account_with_no_scraped_price_has_zero_equity():
+    aid = create_account("HouseNoPriceAcc", "GBP", account_type="House")
+    summary = accounts_engine.account_summary(aid)
+    assert summary["equity_value"] == 0.0
+
+
+@pytest.mark.db
+def test_snapshot_all_accounts_writes_house_equity_from_scraped_price():
+    from account_scraper_engine import import_price_csv
+    aid = create_account("HouseSnapAcc", "GBP", account_type="House")
+    import_price_csv(aid, "date;marketPrice\n2026-02-01;300000\n")
+
+    accounts_engine.snapshot_all_accounts()
+
+    from database import get_value_history
+    history = get_value_history(aid)
+    assert history[-1]["equity_value"] == 300000.0
+    assert history[-1]["cash_value"] == 0.0
+
+
+@pytest.mark.db
+def test_resnapshot_account_writes_house_equity_from_scraped_price():
+    from account_scraper_engine import import_price_csv
+    aid = create_account("HouseResnapAcc", "GBP", account_type="House")
+    import_price_csv(aid, "date;marketPrice\n2026-02-01;250000\n")
+
+    accounts_engine.resnapshot_account(aid)
+
+    from database import get_value_history
+    history = get_value_history(aid)
+    assert history[-1]["equity_value"] == 250000.0
+
+
+@pytest.mark.db
+def test_backfill_value_history_for_house_uses_scraped_price_series():
+    from account_scraper_engine import import_price_csv
+    aid = create_account("HouseBackfillAcc", "GBP", account_type="House")
+    import_price_csv(aid, "date;marketPrice\n2026-01-01;400000\n2026-01-05;410000\n")
+
+    written = accounts_engine.backfill_value_history(aid)
+    assert written > 0
+
+    from database import get_value_history
+    history = {row["snapshot_date"]: row for row in get_value_history(aid)}
+    assert history["2026-01-01"]["equity_value"] == 400000.0
+    assert history["2026-01-06"]["equity_value"] == 410000.0   # carries forward last known price
+
+
+@pytest.mark.db
+def test_pension_holdings_market_value_uses_scraped_price():
+    from account_scraper_engine import import_price_csv, pension_ticker
+    aid = create_account("PensionHoldingsAcc", "GBP", account_type="Pension")
+    import_price_csv(aid, "date;marketPrice\n2026-01-10;1.60\n")
+    add_transaction(aid, "Buy", "2026-01-10", ticker=pension_ticker(aid), currency="GBP",
+                     quantity=100, unit_price=1.50, exchange_rate=1.0, update_cash=False)
+
+    rows = accounts_engine.holdings_with_market_value(aid)
+    assert len(rows) == 1
+    assert rows[0]["market_value"] == 160.0   # 100 units * 1.60 latest scraped price
+
+
+@pytest.mark.db
+def test_pension_buy_with_update_cash_false_does_not_touch_cash_balance():
+    from account_scraper_engine import pension_ticker
+    aid = create_account("PensionCashAcc", "GBP", account_type="Pension", initial_cash=0.0)
+    add_transaction(aid, "Buy", "2026-01-10", ticker=pension_ticker(aid), currency="GBP",
+                     quantity=100, unit_price=1.50, exchange_rate=1.0, update_cash=False)
+    assert accounts_engine.cash_balance(aid) == 0.0
+
+
+@pytest.mark.db
+def test_record_pension_contribution_computes_units_from_price():
+    from account_scraper_engine import import_price_csv
+    aid = create_account("PensionPayInAcc", "GBP", account_type="Pension")
+    import_price_csv(aid, "date;marketPrice\n2026-01-10;2.00\n")
+
+    result = accounts_engine.record_pension_contribution(aid, "2026-01-10", 200.0)
+    assert result["units"] == 100.0
+    assert result["unit_price"] == 2.0
+    assert accounts_engine.cash_balance(aid) == 0.0   # update_cash=False — never touches cash
+
+    rows = accounts_engine.holdings_with_market_value(aid)
+    assert rows[0]["shares"] == 100.0
+
+
+@pytest.mark.db
+def test_record_pension_contribution_rejects_non_pension_account():
+    aid = create_account("NotAPensionAcc", "GBP", account_type="House")
+    result = accounts_engine.record_pension_contribution(aid, "2026-01-10", 100.0, unit_price=1.0)
+    assert "error" in result
+
+
+@pytest.mark.db
+def test_record_pension_contribution_requires_a_resolvable_price():
+    aid = create_account("PensionNoPriceAcc", "GBP", account_type="Pension")
+    result = accounts_engine.record_pension_contribution(aid, "2026-01-10", 100.0)
+    assert "error" in result
+
+
+@pytest.mark.db
+def test_record_pension_fee_computes_units_removed_and_cost():
+    aid = create_account("PensionFeeAcc", "GBP", account_type="Pension")
+    accounts_engine.record_pension_contribution(aid, "2026-01-01", 1000.0, unit_price=1.00)
+    # 1000 units held; portal now shows 995 remaining after the admin fee
+    result = accounts_engine.record_pension_fee(aid, "2026-02-01", 995.0, unit_price=1.10)
+    assert result["units_removed"] == 5.0
+    assert result["fee_cost"] == 5.5   # 5 units * 1.10
+
+    rows = accounts_engine.holdings_with_market_value(aid)
+    assert rows[0]["shares"] == 995.0
+
+
+@pytest.mark.db
+def test_record_pension_fee_rejects_units_after_not_lower_than_current():
+    aid = create_account("PensionFeeBadAcc", "GBP", account_type="Pension")
+    accounts_engine.record_pension_contribution(aid, "2026-01-01", 1000.0, unit_price=1.00)
+    result = accounts_engine.record_pension_fee(aid, "2026-02-01", 1000.0, unit_price=1.0)
+    assert "error" in result
+
+
+@pytest.mark.db
+def test_pension_units_as_of_reflects_ledger_at_date():
+    aid = create_account("PensionUnitsAsOfAcc", "GBP", account_type="Pension")
+    assert accounts_engine.pension_units_as_of(aid, "2026-01-01") == 0.0
+    accounts_engine.record_pension_contribution(aid, "2026-01-01", 1000.0, unit_price=1.00)
+    assert accounts_engine.pension_units_as_of(aid, "2026-01-01") == 1000.0
+    accounts_engine.record_pension_contribution(aid, "2026-02-01", 500.0, unit_price=1.25)
+    assert accounts_engine.pension_units_as_of(aid, "2026-01-15") == 1000.0
+    assert accounts_engine.pension_units_as_of(aid, "2026-02-01") == 1400.0
+
+
+@pytest.mark.db
+def test_pension_start_date_round_trips_via_create_and_update():
+    aid = create_account("PensionStartDateAcc", "GBP", account_type="Pension", pension_start_date="2015-03-01")
+    from database import get_account, update_account
+    assert get_account(aid)["pension_start_date"] == "2015-03-01"
+    update_account(aid, pension_start_date="2016-04-01")
+    assert get_account(aid)["pension_start_date"] == "2016-04-01"

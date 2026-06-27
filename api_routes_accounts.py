@@ -1,3 +1,4 @@
+import json
 import logging
 from typing import Optional
 
@@ -8,8 +9,10 @@ from pydantic import BaseModel
 from accounts_engine import (
     _ticker_known, create_transfer, delete_transaction_with_pair, export_transactions_csv,
     fx_rate_on_date, import_csv_activities, import_ghostfolio_activities, is_unresolved_ticker,
-    resnapshot_account, resolve_watchlist_metadata,
+    pension_units_as_of, record_pension_contribution, record_pension_fee, resnapshot_account,
+    resolve_watchlist_metadata,
 )
+from account_scraper_engine import import_price_csv, price_as_of, run_scrape_for_account, test_scrape
 import notification_engine
 from api_deps import limiter, _error_500
 from config import load_config
@@ -29,7 +32,7 @@ from database import (
     delete_watchlist_items,
 )
 from profile_engine import update_single_profile
-from scheduler_engine import run_account_value_snapshot
+from scheduler_engine import register_account_scraper_job, run_account_value_snapshot, unregister_account_scraper_job
 from utils import normalize_ticker
 from yahoo_engine import yahoo_engine
 
@@ -48,6 +51,7 @@ class AccountBody(BaseModel):
     note: Optional[str] = None
     opened_date: Optional[str] = None
     account_type: str = "Trading"
+    pension_start_date: Optional[str] = None
 
 
 class TransactionBody(BaseModel):
@@ -78,6 +82,36 @@ class WatchlistBulkDeleteBody(BaseModel):
     ids: list[int]
 
 
+class ScraperConfigBody(BaseModel):
+    scraper_url: str
+    scraper_selector: str
+    scraper_headers: dict = {}
+    scrape_time: str = "02:00"
+    scraper_enabled: bool = False
+
+
+class ScraperTestBody(BaseModel):
+    url: str
+    selector: str
+    headers: dict = {}
+
+
+class PriceCsvImportBody(BaseModel):
+    csv_text: str
+
+
+class PensionContributionBody(BaseModel):
+    txn_date: str
+    amount: float
+    unit_price: Optional[float] = None
+
+
+class PensionFeeBody(BaseModel):
+    txn_date: str
+    units_after: float
+    unit_price: Optional[float] = None
+
+
 def _resolve_exchange_rate(currency: Optional[str], exchange_rate: Optional[float], txn_date: str) -> float:
     if exchange_rate is not None:
         return exchange_rate
@@ -104,6 +138,7 @@ async def api_create_account(request: Request, body: AccountBody, background_tas
             note=body.note,
             opened_date=body.opened_date,
             account_type=body.account_type,
+            pension_start_date=body.pension_start_date,
         )
         if account_id is None:
             return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to create account."})
@@ -133,6 +168,7 @@ async def api_update_account(request: Request, account_id: int, body: AccountBod
             note=body.note,
             opened_date=body.opened_date,
             account_type=body.account_type,
+            pension_start_date=body.pension_start_date,
         )
         if not ok:
             return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to update account."})
@@ -527,3 +563,160 @@ async def api_trigger_account_value_snapshot(background_tasks: BackgroundTasks):
         "status": "queued",
         "message": "Account Value Snapshot job queued. Check system notifications for completion.",
     })
+
+
+def _require_scraper_account(account_id: int):
+    acc = get_account(account_id)
+    if acc is None:
+        return None, JSONResponse(status_code=404, content={"status": "error", "message": "Account not found."})
+    if acc["account_type"] not in ("House", "Pension"):
+        return None, JSONResponse(status_code=400, content={"status": "error", "message": "Only House and Pension accounts support a price scraper."})
+    return acc, None
+
+
+def _require_pension_account(account_id: int):
+    acc = get_account(account_id)
+    if acc is None:
+        return None, JSONResponse(status_code=404, content={"status": "error", "message": "Account not found."})
+    if acc["account_type"] != "Pension":
+        return None, JSONResponse(status_code=400, content={"status": "error", "message": "This action is only available on Pension accounts."})
+    return acc, None
+
+
+@accounts_router.put("/accounts/{account_id}/scraper-config")
+@limiter.limit("30/minute")
+async def api_update_scraper_config(request: Request, account_id: int, body: ScraperConfigBody):
+    try:
+        acc, error = _require_scraper_account(account_id)
+        if error:
+            return error
+        ok = update_account(
+            account_id,
+            scraper_url=body.scraper_url.strip(),
+            scraper_selector=body.scraper_selector.strip(),
+            scraper_headers=json.dumps(body.scraper_headers or {}),
+            scrape_time=body.scrape_time,
+            scraper_enabled=body.scraper_enabled,
+        )
+        if not ok:
+            return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to save scraper config."})
+        unregister_account_scraper_job(account_id)
+        if body.scraper_enabled:
+            register_account_scraper_job(get_account(account_id))
+        return JSONResponse(content={"status": "success", "message": "Scraper configuration saved."})
+    except Exception as e:
+        logger.error("api_update_scraper_config account=%s failed: %s", account_id, e)
+        return _error_500(e)
+
+
+@accounts_router.post("/accounts/{account_id}/scraper/test")
+@limiter.limit("20/minute")
+async def api_test_scraper(request: Request, account_id: int, body: ScraperTestBody):
+    try:
+        _acc, error = _require_scraper_account(account_id)
+        if error:
+            return error
+        result = test_scrape(body.url, body.selector, body.headers)
+        if result["status"] != "success":
+            return JSONResponse(status_code=422, content={"status": "error", "message": result["message"]})
+        return JSONResponse(content={"status": "success", "price": result["price"]})
+    except Exception as e:
+        logger.error("api_test_scraper account=%s failed: %s", account_id, e)
+        return _error_500(e)
+
+
+@accounts_router.post("/accounts/{account_id}/scraper/run-now")
+@limiter.limit("20/minute")
+async def api_run_scraper_now(request: Request, account_id: int, background_tasks: BackgroundTasks):
+    try:
+        _acc, error = _require_scraper_account(account_id)
+        if error:
+            return error
+        result = run_scrape_for_account(account_id)
+        if result["status"] != "success":
+            return JSONResponse(status_code=422, content={"status": "error", "message": result["message"]})
+        background_tasks.add_task(resnapshot_account, account_id)
+        return JSONResponse(content={"status": "success", "price": result["price"]})
+    except Exception as e:
+        logger.error("api_run_scraper_now account=%s failed: %s", account_id, e)
+        return _error_500(e)
+
+
+@accounts_router.post("/accounts/{account_id}/price-history/import-csv")
+@limiter.limit("10/minute")
+async def api_import_price_csv(request: Request, account_id: int, body: PriceCsvImportBody, background_tasks: BackgroundTasks):
+    try:
+        _acc, error = _require_scraper_account(account_id)
+        if error:
+            return error
+        result = import_price_csv(account_id, body.csv_text)
+        background_tasks.add_task(resnapshot_account, account_id)
+        return JSONResponse(content={
+            "status": "success",
+            "message": f"Imported {result['imported']} price row(s) ({result['skipped']} skipped).",
+            "imported": result["imported"],
+            "skipped": result["skipped"],
+        })
+    except Exception as e:
+        logger.error("api_import_price_csv account=%s failed: %s", account_id, e)
+        return _error_500(e)
+
+
+@accounts_router.get("/accounts/{account_id}/price-history/at-date")
+@limiter.limit("60/minute")
+async def api_price_at_date(request: Request, account_id: int, date: str):
+    try:
+        _acc, error = _require_scraper_account(account_id)
+        if error:
+            return error
+        return JSONResponse(content={"status": "success", "price": price_as_of(account_id, date)})
+    except Exception as e:
+        logger.error("api_price_at_date account=%s failed: %s", account_id, e)
+        return _error_500(e)
+
+
+@accounts_router.get("/accounts/{account_id}/pension/units-as-of")
+@limiter.limit("60/minute")
+async def api_pension_units_as_of(request: Request, account_id: int, date: str):
+    try:
+        _acc, error = _require_pension_account(account_id)
+        if error:
+            return error
+        return JSONResponse(content={"status": "success", "units": pension_units_as_of(account_id, date)})
+    except Exception as e:
+        logger.error("api_pension_units_as_of account=%s failed: %s", account_id, e)
+        return _error_500(e)
+
+
+@accounts_router.post("/accounts/{account_id}/pension/contribution")
+@limiter.limit("30/minute")
+async def api_record_pension_contribution(request: Request, account_id: int, body: PensionContributionBody, background_tasks: BackgroundTasks):
+    try:
+        _acc, error = _require_pension_account(account_id)
+        if error:
+            return error
+        result = record_pension_contribution(account_id, body.txn_date, body.amount, body.unit_price)
+        if result.get("error"):
+            return JSONResponse(status_code=422, content={"status": "error", "message": result["error"]})
+        background_tasks.add_task(resnapshot_account, account_id)
+        return JSONResponse(content={"status": "success", **result})
+    except Exception as e:
+        logger.error("api_record_pension_contribution account=%s failed: %s", account_id, e)
+        return _error_500(e)
+
+
+@accounts_router.post("/accounts/{account_id}/pension/fee")
+@limiter.limit("30/minute")
+async def api_record_pension_fee(request: Request, account_id: int, body: PensionFeeBody, background_tasks: BackgroundTasks):
+    try:
+        _acc, error = _require_pension_account(account_id)
+        if error:
+            return error
+        result = record_pension_fee(account_id, body.txn_date, body.units_after, body.unit_price)
+        if result.get("error"):
+            return JSONResponse(status_code=422, content={"status": "error", "message": result["error"]})
+        background_tasks.add_task(resnapshot_account, account_id)
+        return JSONResponse(content={"status": "success", **result})
+    except Exception as e:
+        logger.error("api_record_pension_fee account=%s failed: %s", account_id, e)
+        return _error_500(e)
