@@ -431,25 +431,62 @@ def test_transaction_total_base_handles_pence_and_cash_rows():
 
 @pytest.mark.db
 def test_export_transactions_csv_shape_and_position_status():
+    import csv
+    import io
+
     aid = create_account("ExportAcc", "GBP")
     add_transaction(aid, "Buy", "2026-01-01", ticker="ZZEXPOPEN", currency="GBP",
+                     company_name="OpenCo", isin="GB0000000001",
                      quantity=10, unit_price=100, exchange_rate=1.0)
-    add_transaction(aid, "Buy", "2026-01-02", ticker="ZZEXPCLOSED", currency="GBP",
+    add_transaction(aid, "Buy", "2026-01-02", ticker="ZZEXPPARTIAL", currency="GBP",
+                     quantity=10, unit_price=50, exchange_rate=1.0)
+    add_transaction(aid, "Sell", "2026-01-03", ticker="ZZEXPPARTIAL", currency="GBP",
+                     quantity=4, unit_price=70, exchange_rate=1.0)
+    add_transaction(aid, "Buy", "2026-01-04", ticker="ZZEXPCLOSED", currency="GBP",
                      quantity=5, unit_price=50, exchange_rate=1.0)
-    add_transaction(aid, "Sell", "2026-01-03", ticker="ZZEXPCLOSED", currency="GBP",
-                     quantity=5, unit_price=60, exchange_rate=1.0)
-    add_transaction(aid, "Cash", "2026-01-04", unit_price=200)
+    sell_id = add_transaction(aid, "Sell", "2026-01-05", ticker="ZZEXPCLOSED", currency="GBP",
+                               quantity=5, unit_price=60, exchange_rate=1.0)
+    add_transaction(aid, "Cash", "2026-01-06", currency="GBP", unit_price=200, notes="Initial deposit")
+    add_transaction(aid, "Dividend", "2026-01-07", ticker="ZZEXPOPEN", currency="GBP",
+                     quantity=10, unit_price=2, fee=0.5, exchange_rate=1.0)
 
     csv_text = accounts_engine.export_transactions_csv(aid)
     lines = [l.rstrip("\r") for l in csv_text.strip().split("\n")]
     assert lines[0] == (
-        "ticker,type,qty,price,total_original_currency,transaction_currency,"
-        "total_system_currency,system_currency,fx_rate,date,position"
+        "Title,Type,Timestamp,Account Currency,Total Amount in Account Currency,Buy / Sell,"
+        "Ticker,ISIN,Price per Share in Account Currency,Fee,Quantity,Instrument Currency,"
+        "Price per Share,Dividend Net Amount,FX Rate,Position,Total Amount in Instrument Currency,"
+        "Realized P&L (Account Currency),Notes,Account Name,Transaction ID"
     )
-    rows = {tuple(l.split(",")[:2]): l for l in lines[1:]}
-    assert rows[("ZZEXPOPEN", "Buy")].endswith("open")
-    assert rows[("ZZEXPCLOSED", "Buy")].endswith("closed")
-    assert rows[("ZZEXPCLOSED", "Sell")].endswith("closed")
-    cash_row = next(l for l in lines[1:] if ",Cash," in l)
-    assert cash_row.endswith(",")            # position column blank for Cash
-    assert cash_row.startswith(",Cash,")     # ticker column blank for Cash
+
+    rows = list(csv.DictReader(io.StringIO(csv_text)))
+    by_key = {(r["Ticker"], r["Type"], r["Buy / Sell"]): r for r in rows}
+
+    open_row = by_key[("ZZEXPOPEN", "ORDER", "BUY")]
+    assert open_row["Title"] == "OpenCo"
+    assert open_row["ISIN"] == "GB0000000001"
+    assert open_row["Position"] == ""
+    assert open_row["Total Amount in Account Currency"] == "1000.0"
+
+    partial_buy = by_key[("ZZEXPPARTIAL", "ORDER", "BUY")]
+    partial_sell = by_key[("ZZEXPPARTIAL", "ORDER", "SELL")]
+    assert partial_buy["Position"] == ""      # still holds 6 shares — not fully exited
+    assert partial_sell["Position"] == ""
+
+    closed_buy = by_key[("ZZEXPCLOSED", "ORDER", "BUY")]
+    closed_sell = by_key[("ZZEXPCLOSED", "ORDER", "SELL")]
+    assert closed_buy["Position"] == "closed"
+    assert closed_sell["Position"] == "closed"
+    assert closed_sell["Realized P&L (Account Currency)"] == "50.0"
+    assert closed_sell["Transaction ID"] == str(sell_id)
+
+    cash_row = next(r for r in rows if r["Type"] == "TOP_UP")
+    assert cash_row["Title"] == "Initial deposit"    # falls back to notes — no company_name
+    assert cash_row["Ticker"] == ""
+    assert cash_row["Position"] == ""
+    assert cash_row["Total Amount in Account Currency"] == "200.0"
+
+    dividend_row = next(r for r in rows if r["Type"] == "DIVIDEND")
+    assert dividend_row["Ticker"] == "ZZEXPOPEN"
+    assert dividend_row["Position"] == ""            # ZZEXPOPEN is still held
+    assert dividend_row["Dividend Net Amount"] == "19.5"    # 10*2 - 0.5

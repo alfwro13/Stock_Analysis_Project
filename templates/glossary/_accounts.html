@@ -44,6 +44,12 @@
                 <p>Unlike Ghostfolio import, a row whose ticker can't be resolved against this app's own ticker cache or Yahoo Finance (typically a delisted or mistyped symbol) is <strong>skipped outright</strong> rather than imported and flagged — there's no real ticker to attach the trade to. Every skipped row — unresolved ticker, no ticker in the file, an unparseable date, or an already-imported duplicate — is listed individually with its date and ticker, both in the result message and in a persistent entry on the <strong>Notifications</strong> panel, so nothing silently goes missing and you can find the exact row in your file after the fact. Re-uploading the same file (or a later export that just appends new rows) is safe — already-imported rows are recognised and skipped, the same dedup convention Ghostfolio import uses.</p>
             </div>
 
+            <div class="term-box">
+                <span class="term-title">Export to CSV</span>
+                <p>The <strong>"Export to CSV"</strong> link on each account card downloads its entire transaction ledger with column headers that deliberately mirror the Import from CSV format, so the file doubles as a practical backup — easy to read against a brokerage statement and close to ready for re-import. <code>Fee</code> stands in for the import format's separate <code>Stamp Duty</code> and <code>Dividend Withheld Tax Amount</code> columns, since the ledger doesn't track those separately — re-importing an export as-is will fail the importer's required-column check until those headers are restored by hand. <strong>Fee</strong> and <strong>Transfer</strong> rows have no equivalent in the GIA <code>Type</code> vocabulary and are written as <code>FEE</code>/<code>TRANSFER</code>, which the importer skips on re-import exactly like it already skips <code>INTERNAL_TRANSFER</code>.</p>
+                <p>The <strong>Position</strong> column reads <code>closed</code> only once a ticker has been <strong>fully exited</strong> — every share sold, none remaining — and is left blank otherwise, including while a position is only partially sold down. It's also populated on a ticker's Dividend rows, not just its Buy/Sell rows, so a dividend received before a position was later closed out still shows the right status with hindsight.</p>
+            </div>
+
         </div>
     </div>
 </div>

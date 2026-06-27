@@ -704,8 +704,8 @@ def test_export_transactions_returns_csv(client):
     assert resp.status_code == 200
     assert resp.headers["content-type"].startswith("text/csv")
     assert "attachment" in resp.headers["content-disposition"]
-    assert resp.text.startswith("ticker,type,qty,price,total_original_currency")
-    assert ",Cash," in resp.text
+    assert resp.text.startswith("Title,Type,Timestamp,Account Currency")
+    assert ",TOP_UP," in resp.text
 
     import database as _db
     _db.soft_delete_account(account_id)

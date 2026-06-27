@@ -70,9 +70,11 @@ def _cash_delta(txn) -> float:
 
 
 def _ledger_for_account(account_id: int, as_of_date: Optional[str] = None, transactions: Optional[list] = None):
-    """Average-cost pass per ticker → (open_holdings, closed_positions, realized_total_base).
-    `as_of_date` restricts the pass to transactions on/before that date (used by the historical
-    backfill); `transactions` lets a caller reuse an already-fetched list across many dates."""
+    """Average-cost pass per ticker → (open_holdings, closed_positions, realized_total_base,
+    realized_by_txn_id). `as_of_date` restricts the pass to transactions on/before that date (used
+    by the historical backfill); `transactions` lets a caller reuse an already-fetched list across
+    many dates. `realized_by_txn_id` keys each individual Sell row's own realized P&L by `id`, for
+    callers (e.g. the CSV export) that want per-transaction rather than per-ticker figures."""
     by_ticker: dict[str, list] = {}
     for txn in (transactions if transactions is not None else get_transactions(account_id)):
         if as_of_date and txn["txn_date"] > as_of_date:
@@ -84,6 +86,7 @@ def _ledger_for_account(account_id: int, as_of_date: Optional[str] = None, trans
     open_holdings: dict[str, dict] = {}
     closed: list[dict] = []
     realized_total = 0.0
+    realized_by_txn_id: dict[int, float] = {}
 
     for ticker, rows in by_ticker.items():
         shares = 0.0
@@ -106,13 +109,16 @@ def _ledger_for_account(account_id: int, as_of_date: Optional[str] = None, trans
                 shares += qty
                 bought += qty
             else:
+                sell_realized = 0.0
                 if shares > _EPS:
                     avg = cost_base / shares
                     sell_qty = min(qty, shares)
-                    realized += sell_qty * (unit * fx - avg)
+                    sell_realized = sell_qty * (unit * fx - avg)
+                    realized += sell_realized
                     cost_base -= sell_qty * avg
                     shares -= sell_qty
                 sold += qty
+                realized_by_txn_id[txn["id"]] = round(sell_realized, 2)
 
         realized_total += realized
         if shares > 1e-6:
@@ -138,7 +144,7 @@ def _ledger_for_account(account_id: int, as_of_date: Optional[str] = None, trans
                 "last_date": rows[-1]["txn_date"],
             })
 
-    return open_holdings, closed, round(realized_total, 2)
+    return open_holdings, closed, round(realized_total, 2), realized_by_txn_id
 
 
 def derive_account_holdings(account_id: Optional[int] = None) -> dict:
@@ -154,7 +160,7 @@ def derive_account_holdings(account_id: Optional[int] = None) -> dict:
         acc = get_account(aid)
         if not acc:
             continue
-        open_holdings, _closed, _realized = _ledger_for_account(aid)
+        open_holdings, _closed, _realized, _realized_by_txn = _ledger_for_account(aid)
         for ticker, holding in open_holdings.items():
             acc_entry = {
                 "id": f"acct:{aid}",
@@ -181,7 +187,7 @@ def derive_account_holdings(account_id: Optional[int] = None) -> dict:
 
 
 def closed_positions(account_id: int) -> list:
-    _open, closed, _realized = _ledger_for_account(account_id)
+    _open, closed, _realized, _realized_by_txn = _ledger_for_account(account_id)
     return closed
 
 
@@ -192,42 +198,67 @@ def transaction_total_base(txn) -> float:
     return round(_gross_base(txn), 2)
 
 
-def export_transactions_csv(account_id: int) -> str:
-    """Full transaction ledger as CSV, in the asset's native currency and BASE_CURRENCY side by
-    side, so the operator can verify the FX math against their own brokerage statements. `position`
-    (open/closed) is only meaningful for Buy/Sell rows — every other type leaves it blank."""
-    import csv
-    import io
+_CSV_EXPORT_TYPE_MAP = {"Buy": "ORDER", "Sell": "ORDER", "Cash": "TOP_UP", "Interest": "INTEREST_FROM_CASH", "Dividend": "DIVIDEND"}
+_CSV_EXPORT_SHARE_TYPES = ("Buy", "Sell", "Dividend")
 
+
+def export_transactions_csv(account_id: int) -> str:
+    """Full transaction ledger as a CSV whose columns deliberately mirror the GIA-style file the
+    Import from CSV control accepts (see assets/csv_import_format.md), so an export doubles as a
+    practical backup/restore file rather than just a verification aid. `Stamp Duty` and `Dividend
+    Withheld Tax Amount` aren't tracked as separate ledger fields, so both collapse into the single
+    `Fee` column here — restoring via Import from CSV needs that header split back out by hand.
+    `Fee`/`Transfer` rows have no GIA `Type` equivalent and are written as `FEE`/`TRANSFER`, which
+    the importer skips on re-import exactly as it already skips `INTERNAL_TRANSFER`. `Position` is
+    `closed` only once a ticker has been fully exited (no shares left) — blank otherwise, including
+    while still partially held."""
+    acc = get_account(account_id)
+    if not acc:
+        return ""
     transactions = get_transactions(account_id)
-    open_holdings, closed, _realized = _ledger_for_account(account_id)
-    closed_tickers = {c["ticker"] for c in closed}
+    _open_holdings, closed, _realized, realized_by_txn = _ledger_for_account(account_id)
+    fully_exited = {c["ticker"] for c in closed if abs(c["remaining_qty"]) < 1e-6}
 
     buf = io.StringIO()
     writer = csv.writer(buf)
     writer.writerow([
-        "ticker", "type", "qty", "price", "total_original_currency", "transaction_currency",
-        "total_system_currency", "system_currency", "fx_rate", "date", "position",
+        "Title", "Type", "Timestamp", "Account Currency", "Total Amount in Account Currency",
+        "Buy / Sell", "Ticker", "ISIN", "Price per Share in Account Currency", "Fee", "Quantity",
+        "Instrument Currency", "Price per Share", "Dividend Net Amount", "FX Rate", "Position",
+        "Total Amount in Instrument Currency", "Realized P&L (Account Currency)", "Notes",
+        "Account Name", "Transaction ID",
     ])
     for t in transactions:
-        qty = t["quantity"] if t["quantity"] is not None else 1.0
-        price = t["unit_price"] or 0.0
-        fx = t["exchange_rate"] if t["exchange_rate"] is not None else 1.0
-        position = ""
-        if t["txn_type"] in ("Buy", "Sell") and t["ticker"]:
-            position = "open" if t["ticker"] in open_holdings else ("closed" if t["ticker"] in closed_tickers else "")
+        ttype = t["txn_type"]
+        qty = t["quantity"]
+        price = t["unit_price"]
+        fee = t["fee"] or 0.0
+        fx = _fx(t)
+        is_share_row = ttype in _CSV_EXPORT_SHARE_TYPES
+        qty_for_total = qty if qty is not None else 1.0
+
         writer.writerow([
+            t["company_name"] or t["notes"] or "",
+            _CSV_EXPORT_TYPE_MAP.get(ttype, ttype.upper()),
+            datetime.strptime(t["txn_date"], "%Y-%m-%d").strftime("%d/%m/%Y"),
+            acc["currency"],
+            round(_gross_base(t), 4),
+            "BUY" if ttype == "Buy" else ("SELL" if ttype == "Sell" else ""),
             t["ticker"] or "",
-            t["txn_type"],
-            t["quantity"] if t["quantity"] is not None else "",
-            t["unit_price"] if t["unit_price"] is not None else "",
-            round(qty * price, 4),
+            t["isin"] or "",
+            round(price * fx, 4) if is_share_row and price is not None else "",
+            round(fee, 6),
+            qty if qty is not None else "",
             t["currency"] or "",
-            round(qty * price * fx, 4),
-            BASE_CURRENCY,
+            price if is_share_row and price is not None else "",
+            round((qty or 0.0) * (price or 0.0) - fee, 4) if ttype == "Dividend" else "",
             fx,
-            t["txn_date"],
-            position,
+            "closed" if t["ticker"] and t["ticker"] in fully_exited else "",
+            round(qty_for_total * (price or 0.0), 4),
+            realized_by_txn.get(t["id"], "") if ttype == "Sell" else "",
+            t["notes"] or "",
+            acc["name"],
+            t["id"],
         ])
     return buf.getvalue()
 
@@ -492,7 +523,7 @@ def account_summary(account_id: int) -> dict:
     transactions = get_transactions(account_id)
     interest = sum(_gross_base(t) for t in transactions if t["txn_type"] == "Interest")
     dividend = sum(_gross_base(t) for t in transactions if t["txn_type"] == "Dividend")
-    open_holdings, _closed, realized = _ledger_for_account(account_id)
+    open_holdings, _closed, realized, _realized_by_txn = _ledger_for_account(account_id)
     return {
         "account_id": account_id,
         "name": acc["name"],
@@ -537,7 +568,7 @@ def snapshot_all_accounts() -> int:
     written = 0
     for acc in get_accounts():
         aid = acc["id"]
-        open_holdings, _closed, _realized = _ledger_for_account(aid)
+        open_holdings, _closed, _realized, _realized_by_txn = _ledger_for_account(aid)
         equity = _equity_value(open_holdings)
         cash = cash_balance(aid)
         contributions = net_contributions(aid)
@@ -555,7 +586,7 @@ def resnapshot_account(account_id: int) -> None:
     if not acc:
         return
     today = datetime.now(timezone.utc).date().isoformat()
-    open_holdings, _closed, _realized = _ledger_for_account(account_id)
+    open_holdings, _closed, _realized, _realized_by_txn = _ledger_for_account(account_id)
     equity = _equity_value(open_holdings)
     cash = cash_balance(account_id)
     contributions = net_contributions(account_id)
@@ -590,7 +621,7 @@ def backfill_value_history(account_id: int) -> int:
 
     written = 0
     for date_str in pd.date_range(start_date, end_date, freq="D").strftime("%Y-%m-%d"):
-        open_holdings, _closed, _realized = _ledger_for_account(
+        open_holdings, _closed, _realized, _realized_by_txn = _ledger_for_account(
             account_id, as_of_date=date_str, transactions=transactions
         )
         cash = _cash_balance_as_of(acc, transactions, date_str)

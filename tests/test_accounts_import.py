@@ -123,7 +123,7 @@ def test_import_buy_and_sell_net_to_zero_lands_in_closed_positions(monkeypatch):
 
     mock_engine.fetch_activities.assert_called_once_with(account_id="gf-acc-1")
     assert result == {"imported": 2, "skipped": 0}
-    open_holdings, closed, realized = accounts_engine._ledger_for_account(aid)
+    open_holdings, closed, realized, _realized_by_txn = accounts_engine._ledger_for_account(aid)
     assert "ZZNFLX" not in open_holdings
     assert len(closed) == 1
     assert closed[0]["ticker"] == "ZZNFLX"
