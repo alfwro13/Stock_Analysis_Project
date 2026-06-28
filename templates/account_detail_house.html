@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}Quantamental - {{ account.name }}{% endblock %}
+
+{% block extra_head %}
+<script src="/static/vendor/plotly/plotly-3.5.0.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<h1 class="mb-1">🏠 {{ account.name }} <span class="account-badge">House</span></h1>
+<p class="text-muted mb-3">
+    {{ account.currency }}
+    {% if account.note %}&middot; {{ account.note }}{% endif %}
+</p>
+
+<div class="d-flex align-items-center gap-3 mb-3 flex-wrap">
+    <a href="/accounts" class="btn btn-outline-secondary btn-sm">&#8592; Back to Accounts</a>
+    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="openScraperModal({{ account.id }}, window.CURRENT_ACCOUNT)">&#9881; Scraper</button>
+</div>
+
+{# ── House value chart ── #}
+<div class="sentiment-module module-cyan sentiment-module--spaced">
+    <div class="chart-wrapper">
+        <button class="fullscreen-btn" onclick="toggleFullscreen('house-chart-wrapper')">&#9638; Fullscreen</button>
+        <div id="house-chart-wrapper">
+            {{ chart_html | safe }}
+        </div>
+    </div>
+</div>
+
+{% include "partials/_account_scraper_modal.html" %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+    window.BASE_CURRENCY = "{{ base_currency }}";
+    window.CURRENT_ACCOUNT = {{ account | tojson }};
+</script>
+<script src="/static/js/account_scraper.js?v={{ css_version }}"></script>
+<script src="/static/js/account_detail_house.js?v={{ css_version }}"></script>
+{% endblock %}

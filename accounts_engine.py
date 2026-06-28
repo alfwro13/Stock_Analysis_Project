@@ -13,9 +13,9 @@ import pandas as pd
 import time_engine
 from config import BASE_CURRENCY, HISTORICAL_DIR, PORTFOLIO_PATH
 from db_accounts import (
-    add_transaction, delete_transaction, get_account, get_accounts, get_price_as_of,
-    get_price_history, get_transaction, get_transactions, update_account, update_transaction,
-    upsert_value_snapshot,
+    add_price_history, add_transaction, delete_transaction, get_account, get_accounts,
+    get_price_as_of, get_price_history, get_transaction, get_transactions, update_account,
+    update_transaction, upsert_value_snapshot,
 )
 from database import get_connection
 from portfolio_service import get_rate_to_base
@@ -764,6 +764,20 @@ def sync_pension_opening_balance(account_id: int) -> None:
         )
         if txn_id is not None:
             update_account(account_id, opening_balance_txn_id=txn_id)
+
+
+def sync_house_purchase_price(account_id: int) -> None:
+    """Seeds the purchase price as the earliest row in `account_price_history`, so the House value
+    chart's first data point is the real purchase value/date rather than whenever the scraper first
+    ran. Keyed on `opened_date` (falling back to `created_at`), so re-saving the account with the
+    same date just upserts this row in place via `add_price_history`'s own ON CONFLICT handling —
+    never duplicates it. Call after every create/update of a House account — a no-op for any other
+    account type or when `initial_cash` is unset."""
+    acc = get_account(account_id)
+    if not acc or acc["account_type"] != "House" or not acc["initial_cash"]:
+        return
+    purchase_date = acc["opened_date"] or acc["created_at"][:10]
+    add_price_history(account_id, purchase_date, acc["initial_cash"], source="purchase")
 
 
 def record_pension_contribution(account_id: int, txn_date: str, amount: float, unit_price: Optional[float] = None) -> dict:

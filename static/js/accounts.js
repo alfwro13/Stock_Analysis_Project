@@ -65,11 +65,13 @@ function _scraperStatusBadgeHtml(acc) {
     return '';
 }
 
+const _ACCOUNT_DETAIL_URL_SUFFIX = { Pension: '/pension', House: '/house' };
+
 function _accountCardHtml(acc) {
     const isWatchlist = acc.account_type === 'Watchlist';
     const isPension = acc.account_type === 'Pension';
     const isScraperType = acc.account_type === 'House' || isPension;
-    const detailUrl = isPension ? `/accounts/${acc.id}/pension` : `/accounts/${acc.id}`;
+    const detailUrl = `/accounts/${acc.id}${_ACCOUNT_DETAIL_URL_SUFFIX[acc.account_type] || ''}`;
     return `
     <div class="col-12 col-lg-6">
         <div class="guide-card h-100" id="account-card-${acc.id}">
@@ -151,14 +153,15 @@ function _updateAccountFieldLabelsForType() {
 
 function openAccountModal(id = null) {
     const acc = id ? _accountsCache[id] : null;
-    const isWatchlist = acc && acc.account_type === 'Watchlist';
+    const isEditing = !!acc;
     document.getElementById('accountModalTitle').textContent = acc ? 'Edit Account' : 'New Account';
     document.getElementById('acct-id').value = acc ? acc.id : '';
     document.getElementById('acct-name').value = acc ? acc.name : '';
     document.getElementById('acct-currency').value = acc ? acc.currency : window.BASE_CURRENCY;
-    document.getElementById('acct-type').value = acc && !isWatchlist ? acc.account_type : 'Trading';
-    document.getElementById('acct-type').classList.toggle('d-none', isWatchlist);
-    document.getElementById('acct-type-readonly').classList.toggle('d-none', !isWatchlist);
+    document.getElementById('acct-type').value = acc ? acc.account_type : 'Trading';
+    document.getElementById('acct-type').classList.toggle('d-none', isEditing);
+    document.getElementById('acct-type-readonly').classList.toggle('d-none', !isEditing);
+    document.getElementById('acct-type-readonly').value = acc ? acc.account_type : '';
     document.getElementById('acct-cash').value = acc ? acc.initial_cash : 0;
     document.getElementById('acct-opening-balance-units').value = acc ? (acc.opening_balance_units ?? '') : '';
     document.getElementById('acct-opened-date').value = acc ? (acc.opened_date || '') : '';
@@ -179,11 +182,11 @@ async function saveAccount() {
         status.innerHTML = '<span class="msg-error">Name and currency are required.</span>';
         return;
     }
-    const isWatchlist = !document.getElementById('acct-type-readonly').classList.contains('d-none');
+    const existingAcc = id ? _accountsCache[id] : null;
     const body = {
         name,
         currency,
-        account_type: isWatchlist ? 'Watchlist' : document.getElementById('acct-type').value,
+        account_type: existingAcc ? existingAcc.account_type : document.getElementById('acct-type').value,
         initial_cash: parseFloat(document.getElementById('acct-cash').value) || 0,
         opening_balance_units: document.getElementById('acct-opening-balance-units').value === ''
             ? null : parseFloat(document.getElementById('acct-opening-balance-units').value),

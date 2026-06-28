@@ -848,3 +848,46 @@ def test_sync_pension_opening_balance_noop_for_house_account():
     aid = create_account("SyncOpeningBalanceHouseAcc", "GBP", account_type="House")
     accounts_engine.sync_pension_opening_balance(aid)
     assert get_account(aid)["opening_balance_txn_id"] is None
+
+
+@pytest.mark.db
+def test_sync_house_purchase_price_seeds_first_price_history_row():
+    from database import get_price_history, update_account
+    aid = create_account("SyncHousePurchaseAcc", "GBP", account_type="House")
+    update_account(aid, initial_cash=300000.0, opened_date="2020-03-15")
+
+    accounts_engine.sync_house_purchase_price(aid)
+
+    history = get_price_history(aid)
+    assert history == [{
+        "id": history[0]["id"], "account_id": aid, "price_date": "2020-03-15",
+        "price": 300000.0, "source": "purchase", "created_at": history[0]["created_at"],
+    }]
+
+
+@pytest.mark.db
+def test_sync_house_purchase_price_updates_in_place_not_duplicated():
+    from database import get_price_history, update_account
+    aid = create_account("SyncHousePurchaseUpdateAcc", "GBP", account_type="House")
+    update_account(aid, initial_cash=300000.0, opened_date="2020-03-15")
+    accounts_engine.sync_house_purchase_price(aid)
+
+    update_account(aid, initial_cash=325000.0)
+    accounts_engine.sync_house_purchase_price(aid)
+
+    history = get_price_history(aid)
+    assert len(history) == 1
+    assert history[0]["price"] == 325000.0
+    assert history[0]["price_date"] == "2020-03-15"
+
+
+@pytest.mark.db
+def test_sync_house_purchase_price_noop_for_pension_account_or_unset_cash():
+    from database import get_price_history
+    aid = create_account("SyncHousePurchaseNoopAcc", "GBP", account_type="Pension")
+    accounts_engine.sync_house_purchase_price(aid)
+    assert get_price_history(aid) == []
+
+    aid2 = create_account("SyncHousePurchaseNoCashAcc", "GBP", account_type="House")
+    accounts_engine.sync_house_purchase_price(aid2)
+    assert get_price_history(aid2) == []

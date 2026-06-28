@@ -10,7 +10,8 @@ from accounts_engine import (
     _ticker_known, account_summary, create_transfer, delete_transaction_with_pair,
     export_transactions_csv, fx_rate_on_date, import_csv_activities, import_ghostfolio_activities,
     is_unresolved_ticker, pension_units_as_of, record_pension_contribution, record_pension_fee,
-    resnapshot_account, resolve_watchlist_metadata, sync_pension_opening_balance,
+    resnapshot_account, resolve_watchlist_metadata, sync_house_purchase_price,
+    sync_pension_opening_balance,
 )
 from account_scraper_engine import import_price_csv, price_as_of, run_scrape_for_account, test_scrape
 import notification_engine
@@ -162,6 +163,8 @@ async def api_create_account(request: Request, body: AccountBody, background_tas
             return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to create account."})
         if body.account_type == "Pension":
             sync_pension_opening_balance(account_id)
+        elif body.account_type == "House":
+            sync_house_purchase_price(account_id)
         background_tasks.add_task(resnapshot_account, account_id)
         return JSONResponse(content={"status": "success", "message": "Account created.", "id": account_id})
     except Exception as e:
@@ -178,8 +181,8 @@ async def api_update_account(request: Request, account_id: int, body: AccountBod
             return JSONResponse(status_code=404, content={"status": "error", "message": "Account not found."})
         if body.account_type not in _ACCOUNT_TYPES:
             return JSONResponse(status_code=400, content={"status": "error", "message": f"Invalid account_type. Must be one of: {sorted(_ACCOUNT_TYPES)}"})
-        if (body.account_type == "Watchlist") != (existing["account_type"] == "Watchlist"):
-            return JSONResponse(status_code=400, content={"status": "error", "message": "The Watchlist account type cannot be assigned to or removed from an account."})
+        if body.account_type != existing["account_type"]:
+            return JSONResponse(status_code=400, content={"status": "error", "message": "Account type cannot be changed after creation."})
         ok = update_account(
             account_id,
             name=body.name.strip(),
@@ -196,6 +199,9 @@ async def api_update_account(request: Request, account_id: int, body: AccountBod
             return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to update account."})
         if body.account_type == "Pension":
             sync_pension_opening_balance(account_id)
+            background_tasks.add_task(resnapshot_account, account_id)
+        elif body.account_type == "House":
+            sync_house_purchase_price(account_id)
             background_tasks.add_task(resnapshot_account, account_id)
         return JSONResponse(content={"status": "success", "message": "Account updated."})
     except Exception as e:

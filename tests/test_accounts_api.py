@@ -930,6 +930,9 @@ def test_scraper_config_endpoints_reject_trading_account(client):
 @pytest.mark.api
 def test_scraper_test_endpoint_does_not_persist(client):
     account_id = _create_account(client, account_type="House")
+    import database as _db
+    before = _db.get_price_history(account_id)   # House creation seeds a purchase-value row — not the Test action's concern
+
     with patch("requests.get", return_value=_mock_html_resp('<div id="gf-price">487000</div>')):
         resp = client.post(f"/api/accounts/{account_id}/scraper/test", json={
             "url": "http://example.test/house.html", "selector": "#gf-price",
@@ -937,8 +940,7 @@ def test_scraper_test_endpoint_does_not_persist(client):
     assert resp.status_code == 200
     assert _json(resp)["price"] == 487000.0
 
-    import database as _db
-    assert _db.get_price_history(account_id) == []
+    assert _db.get_price_history(account_id) == before
     _db.soft_delete_account(account_id)
 
 
@@ -1286,6 +1288,60 @@ def test_editing_pension_opening_balance_updates_holding_not_duplicates(client):
     buys = [t for t in _json(resp)["transactions"] if t["txn_type"] == "Buy"]
     assert len(buys) == 1
     assert buys[0]["unit_price"] == 2.0
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_creating_house_account_seeds_purchase_price_history(client):
+    resp = client.post("/api/accounts", json={
+        "name": "HousePurchaseApiAcc", "currency": "GBP", "account_type": "House",
+        "initial_cash": 300000.0, "opened_date": "2020-03-15",
+    })
+    account_id = _json(resp)["id"]
+
+    import database as _db
+    history = _db.get_price_history(account_id)
+    assert len(history) == 1
+    assert history[0]["price_date"] == "2020-03-15"
+    assert history[0]["price"] == 300000.0
+    assert history[0]["source"] == "purchase"
+
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_editing_house_purchase_value_updates_price_history_in_place(client):
+    account_id = _create_account(client, account_type="House", initial_cash=300000.0, opened_date="2020-03-15")
+
+    client.put(f"/api/accounts/{account_id}", json={
+        "name": "API Test Account", "currency": "GBP", "account_type": "House",
+        "initial_cash": 325000.0, "opened_date": "2020-03-15",
+    })
+
+    import database as _db
+    history = _db.get_price_history(account_id)
+    assert len(history) == 1
+    assert history[0]["price"] == 325000.0
+
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_update_account_rejects_changing_account_type_between_real_types(client):
+    """account_type is immutable after creation for every type, not just Watchlist — changing it
+    could silently corrupt the ledger (e.g. House->Pension would expose a non-existent synthetic
+    holding ticker)."""
+    account_id = _create_account(client, account_type="Trading")
+    resp = client.put(f"/api/accounts/{account_id}", json={
+        "name": "API Test Account", "currency": "GBP", "account_type": "House",
+    })
+    assert resp.status_code == 400
+
+    resp = client.get("/api/accounts")
+    acc = next(a for a in _json(resp)["accounts"] if a["id"] == account_id)
+    assert acc["account_type"] == "Trading"   # unchanged
 
     import database as _db
     _db.soft_delete_account(account_id)

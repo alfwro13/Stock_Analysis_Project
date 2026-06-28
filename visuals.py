@@ -514,6 +514,23 @@ def create_pension_unit_price_chart(df: pd.DataFrame) -> str:
     return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
 
 
+def create_house_value_chart(df: pd.DataFrame) -> str:
+    # df indexed by price_date (DatetimeIndex) with a 'price' column from account_price_history —
+    # the raw scraped/imported/purchase points are the House's value directly (no units/shares).
+    fig = go.Figure()
+    if not df.empty and 'price' in df.columns:
+        fig.add_trace(go.Scatter(x=df.index, y=df['price'], name="House Value", line=dict(color="#00ffcc", width=2), connectgaps=True))
+
+    fig.update_layout(
+        title=dict(text="House Value Over Time", x=0.5, xanchor='center'),
+        template="plotly_dark", height=350,
+        margin=dict(l=20, r=20, t=50, b=20), hovermode="x unified",
+        showlegend=False,
+    )
+    fig.update_yaxes(title_text="Value", showgrid=True, gridcolor="#333333", rangemode="normal", autorange=True)
+    return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
+
+
 def create_pension_value_chart(df: pd.DataFrame) -> str:
     # df indexed by snapshot_date (DatetimeIndex) with a 'total_value' column from account_value_history.
     # Cash/Net Contributions are omitted (always ~0 for Pension, no cash sub-ledger) so the y-axis

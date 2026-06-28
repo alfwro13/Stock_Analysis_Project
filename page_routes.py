@@ -414,6 +414,9 @@ async def account_detail_page(request: Request, account_id: int):
     if acc["account_type"] == "Pension":
         return RedirectResponse(f"/accounts/{account_id}/pension", status_code=302)
 
+    if acc["account_type"] == "House":
+        return RedirectResponse(f"/accounts/{account_id}/house", status_code=302)
+
     if acc["account_type"] == "Watchlist":
         return templates.TemplateResponse(
             request=request, name="watchlist_account_detail.html",
@@ -493,6 +496,34 @@ async def pension_account_detail_page(request: Request, account_id: int):
             "activities": pension_activities(account_id),
             "price_chart_html": price_chart_html,
             "value_chart_html": value_chart_html,
+            "base_currency": BASE_CURRENCY,
+            "unread_count": get_unread_count(),
+        }
+    )
+
+
+@page_router.get("/accounts/{account_id}/house", response_class=HTMLResponse)
+async def house_account_detail_page(request: Request, account_id: int):
+    from database import get_account, get_price_history
+
+    acc = get_account(account_id)
+    if acc is None or acc["account_type"] != "House":
+        return RedirectResponse("/accounts", status_code=302)
+
+    price_history = get_price_history(account_id)
+    if price_history:
+        from visuals import create_house_value_chart
+        price_df = pd.DataFrame(price_history).set_index("price_date")
+        price_df.index = pd.to_datetime(price_df.index)
+        chart_html = create_house_value_chart(price_df)
+    else:
+        chart_html = "<p class='text-muted'>No value history yet — scrape or import one to see this chart.</p>"
+
+    return templates.TemplateResponse(
+        request=request, name="account_detail_house.html",
+        context={
+            "account": acc,
+            "chart_html": chart_html,
             "base_currency": BASE_CURRENCY,
             "unread_count": get_unread_count(),
         }

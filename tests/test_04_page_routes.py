@@ -319,17 +319,52 @@ def test_account_detail_page_renders_compact_view_for_watchlist_account(client):
 
 
 @pytest.mark.pages
-def test_account_detail_page_loads_for_house_account_and_hides_holdings(client):
-    """House has no holdings/closed-positions concept — the page must render without crashing and
-    must not show the Holdings/Closed Positions tables (always-empty for House)."""
+def test_account_detail_page_redirects_house_to_dedicated_page(client):
+    """The generic ledger page is for Trading only now — House has its own dedicated page."""
     import database as _db
     account_id = _db.create_account("Page Test House", "GBP", account_type="House")
     try:
-        _assert_page_ok(client, f"/accounts/{account_id}", label="House Account Detail")
-        resp = client.get(f"/accounts/{account_id}")
+        resp = client.get(f"/accounts/{account_id}", follow_redirects=False)
+        assert resp.status_code in (302, 303, 307, 308)
+        assert resp.headers["location"] == f"/accounts/{account_id}/house"
+    finally:
+        _db.soft_delete_account(account_id)
+
+
+@pytest.mark.pages
+def test_house_detail_unknown_id_redirects(client):
+    """GET /accounts/99999/house with no such account must redirect (not 500)."""
+    resp = client.get("/accounts/99999/house", follow_redirects=False)
+    assert resp.status_code in (302, 303, 307, 308)
+    assert "/accounts" in resp.headers["location"]
+
+
+@pytest.mark.pages
+def test_house_detail_rejects_non_house_account(client):
+    """GET /accounts/{id}/house for a non-House account must redirect, not render the wrong page."""
+    import database as _db
+    account_id = _db.create_account("Page Test Trading2", "GBP", account_type="Trading")
+    try:
+        resp = client.get(f"/accounts/{account_id}/house", follow_redirects=False)
+        assert resp.status_code in (302, 303, 307, 308)
+    finally:
+        _db.soft_delete_account(account_id)
+
+
+@pytest.mark.pages
+def test_house_detail_page_loads_with_chart_and_scraper(client):
+    """House's dedicated page renders the value chart and the Scraper action, with no
+    holdings/closed-positions/activities tables (House has no transaction ledger concept)."""
+    import database as _db
+    account_id = _db.create_account("Page Test House", "GBP", account_type="House")
+    _db.add_price_history(account_id, "2026-01-01", 300000.0, source="purchase")
+    try:
+        _assert_page_ok(client, f"/accounts/{account_id}/house", label="House Account Detail")
+        resp = client.get(f"/accounts/{account_id}/house")
+        assert "Scraper" in resp.text
+        assert "House Value Over Time" in resp.text
         assert 'id="holdingsTable"' not in resp.text
         assert 'id="closedTable"' not in resp.text
-        assert "Scraper" in resp.text
     finally:
         _db.soft_delete_account(account_id)
 
