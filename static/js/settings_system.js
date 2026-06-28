@@ -413,6 +413,7 @@ function toggleBackupLocationFields() {
     document.getElementById('backup-local-path-group').classList.toggle('d-none', isNfs);
     document.getElementById('backup-nfs-server-group').classList.toggle('d-none', !isNfs);
     document.getElementById('backup-nfs-path-group').classList.toggle('d-none', !isNfs);
+    document.getElementById('backup-nfs-setup-note').classList.toggle('d-none', !isNfs);
 }
 
 async function runBackupNow() {

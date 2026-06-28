@@ -249,6 +249,10 @@
                     </div>
                 </div>
 
+                <p class="settings-desc-sm {% if backup_loc != 'nfs' %}d-none{% endif %}" id="backup-nfs-setup-note">
+                    ⚠️ <strong>One-time server setup required</strong> — the app needs passwordless <code>sudo</code> rights to mount NFS shares. Run <code>tools/setup_nfs_backup.sh</code> on the host that runs the app (not via <code>sudo</code> — it asks for your password itself), or see <a href="/glossary#doc-nfs-backup-setup">Glossary → Technical Documentation → NFS Backup Setup</a> for the manual steps. Without this, NFS backups fail with a clear error in the Backup Status panel below.
+                </p>
+
                 <div class="flex-gap-15 mb-10 align-end">
                     <div class="form-group flex-1 mb-0">
                         <label>What to Back Up</label>

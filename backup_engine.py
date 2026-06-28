@@ -46,6 +46,13 @@ def _resolve_backup_dir(cfg: dict) -> Path:
     return target
 
 
+def _destination_label(cfg: dict, backup_dir: Path) -> str:
+    """User-facing destination — the NFS share, not the internal scratch mountpoint, since the latter means nothing to the operator."""
+    if cfg.get("LOCATION") == "nfs":
+        return f"NFS {(cfg.get('NFS_SERVER') or '').strip()}:{(cfg.get('NFS_PATH') or '').strip()}"
+    return str(backup_dir)
+
+
 def _release_backup_dir(cfg: dict) -> None:
     if cfg.get("LOCATION") == "nfs" and os.path.ismount(_NFS_MOUNT_POINT):
         subprocess.run(
@@ -131,17 +138,18 @@ def run_backup(trigger_type: str = "scheduled") -> dict:
 
         size_bytes = archive_path.stat().st_size
         _enforce_retention(backup_dir, int(cfg.get("RETENTION_COUNT", 7) or 7))
+        destination = _destination_label(cfg, backup_dir)
 
         finished_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         _record_backup_history(
             started_at=started_at, finished_at=finished_at, trigger_type=trigger_type,
-            location_type=location_type, destination=str(backup_dir), components=",".join(components),
+            location_type=location_type, destination=destination, components=",".join(components),
             filename=filename, size_bytes=size_bytes, status="success", error_message=None,
         )
 
         size_mb = size_bytes / (1024 * 1024)
-        msg = f"Backup completed: {filename} ({size_mb:.1f} MB) -> {backup_dir}"
-        logger.info("Backup completed: %s (%.1f MB) -> %s", filename, size_mb, backup_dir)
+        msg = f"Backup completed: {filename} ({size_mb:.1f} MB) -> {destination}"
+        logger.info("Backup completed: %s (%.1f MB) -> %s", filename, size_mb, destination)
         notify("backup_status", "Success", msg, level="info")
         return {"status": "success", "filename": filename, "size_bytes": size_bytes}
 
@@ -155,7 +163,7 @@ def run_backup(trigger_type: str = "scheduled") -> dict:
         logger.error("Backup failed: %s", e)
         _record_backup_history(
             started_at=started_at, finished_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
-            trigger_type=trigger_type, location_type=location_type, destination=str(backup_dir),
+            trigger_type=trigger_type, location_type=location_type, destination=_destination_label(cfg, backup_dir),
             components=",".join(components), filename=None, size_bytes=None,
             status="error", error_message=str(e),
         )
