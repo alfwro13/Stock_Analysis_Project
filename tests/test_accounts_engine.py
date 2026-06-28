@@ -278,6 +278,56 @@ def test_holdings_with_market_value_empty_account_returns_empty_list():
 
 
 @pytest.mark.db
+def test_holdings_with_market_value_flags_priced_at_cost_when_no_price_data():
+    """A holding with no stock_signals row (no Parquet/price fetched yet) must be flagged
+    priced_at_cost=True and valued at cost basis — this is the exact ISA/XUKX.L bug scenario."""
+    aid = create_account("NoPriceDataAcc", "GBP")
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZNOPRICE", currency="GBP",
+                     quantity=10, unit_price=80, exchange_rate=1.0)
+
+    rows = accounts_engine.holdings_with_market_value(aid)
+    row = next(r for r in rows if r["ticker"] == "ZZNOPRICE")
+    assert row["priced_at_cost"] is True
+    assert row["market_value"] == row["total_investment"] == 800.0
+
+
+@pytest.mark.db
+def test_holdings_with_market_value_priced_at_cost_false_when_priced():
+    _seed_stock_signal("ZZPRICED", 100.0, "GBP")
+    aid = create_account("PricedAcc", "GBP")
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZPRICED", currency="GBP",
+                     quantity=10, unit_price=80, exchange_rate=1.0)
+
+    rows = accounts_engine.holdings_with_market_value(aid)
+    row = next(r for r in rows if r["ticker"] == "ZZPRICED")
+    assert row["priced_at_cost"] is False
+
+
+@pytest.mark.db
+def test_stale_pricing_warning_none_when_all_holdings_priced():
+    _seed_stock_signal("ZZALLPRICED", 100.0, "GBP")
+    aid = create_account("AllPricedAcc", "GBP")
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZALLPRICED", currency="GBP",
+                     quantity=10, unit_price=80, exchange_rate=1.0)
+
+    rows = accounts_engine.holdings_with_market_value(aid)
+    assert accounts_engine.stale_pricing_warning(rows) is None
+
+
+@pytest.mark.db
+def test_stale_pricing_warning_names_unpriced_tickers():
+    aid = create_account("WarnAcc", "GBP")
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZWARN1", currency="GBP",
+                     quantity=10, unit_price=80, exchange_rate=1.0)
+
+    rows = accounts_engine.holdings_with_market_value(aid)
+    warning = accounts_engine.stale_pricing_warning(rows)
+    assert warning is not None
+    assert "ZZWARN1" in warning
+    assert "1 holding" in warning
+
+
+@pytest.mark.db
 def test_snapshot_all_accounts_writes_row_per_account():
     _seed_stock_signal("ZZSNAP", 120.0, "GBP")
     aid = create_account("SnapshotAcc", "GBP", initial_cash=500.0)

@@ -23,6 +23,7 @@ def test_get_all_tickers_deduplicates_portfolio_and_watchlist():
     engine = DataEngine.__new__(DataEngine)
     engine.portfolio = {"pos1": {"ticker": "AAPL"}}
     engine.watchlist = {"watchlist": ["AAPL", "MSFT"]}
+    engine.account_tickers = []
 
     with patch("data_engine.load_config", return_value={"IGNORED_TICKERS": []}):
         tickers = engine.get_all_tickers()
@@ -38,6 +39,7 @@ def test_get_all_tickers_normalises_case():
     engine = DataEngine.__new__(DataEngine)
     engine.portfolio = {"pos1": {"ticker": "aapl"}}
     engine.watchlist = {"watchlist": []}
+    engine.account_tickers = []
 
     with patch("data_engine.load_config", return_value={"IGNORED_TICKERS": []}):
         tickers = engine.get_all_tickers()
@@ -52,6 +54,7 @@ def test_get_all_tickers_excludes_ignored():
     engine = DataEngine.__new__(DataEngine)
     engine.portfolio = {"pos1": {"ticker": "TSLA"}, "pos2": {"ticker": "AAPL"}}
     engine.watchlist = {"watchlist": []}
+    engine.account_tickers = []
 
     with patch("data_engine.load_config", return_value={"IGNORED_TICKERS": ["TSLA"]}):
         tickers = engine.get_all_tickers()
@@ -72,6 +75,7 @@ def test_get_all_tickers_skips_malformed_portfolio_entries():
         "bad_empty_ticker": {"ticker": ""},
     }
     engine.watchlist = {"watchlist": []}
+    engine.account_tickers = []
 
     with patch("data_engine.load_config", return_value={"IGNORED_TICKERS": []}):
         tickers = engine.get_all_tickers()
@@ -86,6 +90,7 @@ def test_get_all_tickers_empty_inputs_returns_empty_list():
     engine = DataEngine.__new__(DataEngine)
     engine.portfolio = {}
     engine.watchlist = {}
+    engine.account_tickers = []
 
     with patch("data_engine.load_config", return_value={"IGNORED_TICKERS": []}):
         tickers = engine.get_all_tickers()
@@ -100,6 +105,7 @@ def test_get_all_tickers_result_is_sorted():
     engine = DataEngine.__new__(DataEngine)
     engine.portfolio = {"p1": {"ticker": "ZM"}, "p2": {"ticker": "AAPL"}}
     engine.watchlist = {"watchlist": ["MSFT"]}
+    engine.account_tickers = []
 
     with patch("data_engine.load_config", return_value={"IGNORED_TICKERS": []}):
         tickers = engine.get_all_tickers()
@@ -107,15 +113,78 @@ def test_get_all_tickers_result_is_sorted():
     assert tickers == sorted(tickers)
 
 
-# ── __init__ sources the watchlist from the DB, not watchlist.json ───────────
+def test_get_all_tickers_includes_account_transaction_tickers():
+    """Tickers that exist only in account_transactions (e.g. bought in an ISA, never
+    watchlisted) must be included — regression test for the missing-Parquet bug."""
+    from data_engine import DataEngine
+
+    engine = DataEngine.__new__(DataEngine)
+    engine.portfolio = {}
+    engine.watchlist = {"watchlist": []}
+    engine.account_tickers = ["XUKX.L", "IGLG.L"]
+
+    with patch("data_engine.load_config", return_value={"IGNORED_TICKERS": []}):
+        tickers = engine.get_all_tickers()
+
+    assert "XUKX.L" in tickers
+    assert "IGLG.L" in tickers
+
+
+def test_get_all_tickers_deduplicates_account_tickers_with_portfolio():
+    """An account-only ticker already present in portfolio.json must appear once."""
+    from data_engine import DataEngine
+
+    engine = DataEngine.__new__(DataEngine)
+    engine.portfolio = {"pos1": {"ticker": "AAPL"}}
+    engine.watchlist = {"watchlist": []}
+    engine.account_tickers = ["AAPL", "MSFT"]
+
+    with patch("data_engine.load_config", return_value={"IGNORED_TICKERS": []}):
+        tickers = engine.get_all_tickers()
+
+    assert tickers.count("AAPL") == 1
+    assert "MSFT" in tickers
+
+
+def test_get_all_tickers_excludes_ignored_account_tickers():
+    """IGNORED_TICKERS filtering must still apply to account-sourced tickers."""
+    from data_engine import DataEngine
+
+    engine = DataEngine.__new__(DataEngine)
+    engine.portfolio = {}
+    engine.watchlist = {"watchlist": []}
+    engine.account_tickers = ["XUKX.L", "BADTICKER"]
+
+    with patch("data_engine.load_config", return_value={"IGNORED_TICKERS": ["BADTICKER"]}):
+        tickers = engine.get_all_tickers()
+
+    assert "BADTICKER" not in tickers
+    assert "XUKX.L" in tickers
+
+
+# ── __init__ sources the watchlist/account tickers from the DB, not JSON files ──
 
 def test_init_populates_watchlist_from_db():
     """DataEngine() must source self.watchlist from get_watchlist_tickers(), not a JSON file."""
     from data_engine import DataEngine
 
     with patch("data_engine.get_watchlist_tickers", return_value=["NVDA", "AMD"]), \
+         patch("data_engine.get_all_account_tickers", return_value=[]), \
          patch("data_engine.DataEngine._load_json", return_value={}), \
          patch("data_engine.DataEngine._ensure_directories"):
         engine = DataEngine()
 
     assert engine.watchlist == {"watchlist": ["NVDA", "AMD"]}
+
+
+def test_init_populates_account_tickers_from_db():
+    """DataEngine() must source self.account_tickers from get_all_account_tickers()."""
+    from data_engine import DataEngine
+
+    with patch("data_engine.get_watchlist_tickers", return_value=[]), \
+         patch("data_engine.get_all_account_tickers", return_value=["XUKX.L", "IGLG.L"]), \
+         patch("data_engine.DataEngine._load_json", return_value={}), \
+         patch("data_engine.DataEngine._ensure_directories"):
+        engine = DataEngine()
+
+    assert engine.account_tickers == ["XUKX.L", "IGLG.L"]

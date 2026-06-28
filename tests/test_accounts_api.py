@@ -267,6 +267,26 @@ def test_create_transaction_with_unknown_ticker_triggers_profile_update(client):
 
 
 @pytest.mark.api
+def test_create_transaction_with_unknown_ticker_triggers_price_fetch(client):
+    """Regression test: a brand-new ticker must also get an immediate price-history fetch,
+    not just a metadata update — otherwise it stays unpriced until the next nightly run."""
+    account_id = _create_account(client)
+    with (
+        patch("api_routes_accounts.update_single_profile"),
+        patch("api_routes_accounts.fetch_and_save_single_ticker") as mock_fetch,
+    ):
+        resp = client.post(f"/api/accounts/{account_id}/transactions", json={
+            "txn_type": "Buy", "txn_date": "2026-01-15", "ticker": "ZZZNOTREAL2",
+            "currency": "USD", "quantity": 1, "unit_price": 1.0, "exchange_rate": 1.0,
+        })
+        assert resp.status_code == 200
+        mock_fetch.assert_called_once_with("ZZZNOTREAL2")
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
 def test_create_transaction_blank_exchange_rate_is_auto_filled(client):
     account_id = _create_account(client)
     with (

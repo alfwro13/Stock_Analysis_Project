@@ -402,7 +402,7 @@ async def accounts_page(request: Request):
 async def account_detail_page(request: Request, account_id: int):
     from accounts_engine import (
         account_summary, cash_history, closed_positions, holdings_with_market_value,
-        is_unresolved_ticker, transaction_total_base,
+        is_unresolved_ticker, stale_pricing_warning, transaction_total_base,
     )
     from database import get_account, get_transactions, get_value_history, get_watchlist_items
     from visuals import create_account_value_chart
@@ -440,12 +440,16 @@ async def account_detail_page(request: Request, account_id: int):
     else:
         chart_html = "<p class='text-muted'>No value history yet — check back after the next nightly snapshot.</p>"
 
+    holdings = holdings_with_market_value(account_id)
+    pricing_warning = stale_pricing_warning(holdings)
+
     return templates.TemplateResponse(
         request=request, name="account_detail.html",
         context={
             "account": acc,
             "summary": account_summary(account_id),
-            "holdings": holdings_with_market_value(account_id),
+            "holdings": holdings,
+            "pricing_warning": pricing_warning,
             "closed_positions": closed_positions(account_id),
             "activities": activities,
             "cash_history": cash_history(account_id),

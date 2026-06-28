@@ -56,6 +56,12 @@
     </div>
 </div>
 
+{% if pricing_warning %}
+<div class="xray-warnings">
+    <div class="xray-warning-item">&#9888; {{ pricing_warning }}</div>
+</div>
+{% endif %}
+
 {# ── Holdings ── #}
 <details class="settings-card" open>
     <summary>📦 Holdings</summary>

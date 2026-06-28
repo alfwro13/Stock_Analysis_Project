@@ -13,6 +13,7 @@ from database import (
     delete_transaction,
     upsert_value_snapshot,
     get_value_history,
+    get_all_account_tickers,
 )
 
 
@@ -131,3 +132,57 @@ def test_value_snapshot_upsert_is_idempotent():
     assert len(history) == 1
     assert history[0]["total_value"] == 3500.0
     assert history[0]["equity_value"] == 2300.0
+
+
+@pytest.mark.db
+def test_get_all_account_tickers_returns_distinct_tickers():
+    aid = create_account("AllTickersAcc", "GBP")
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZAATX", currency="GBP",
+                     quantity=10, unit_price=50, exchange_rate=1.0)
+    add_transaction(aid, "Buy", "2026-01-06", ticker="ZZAATX", currency="GBP",
+                     quantity=5, unit_price=55, exchange_rate=1.0)
+    add_transaction(aid, "Buy", "2026-01-07", ticker="ZZAATY", currency="GBP",
+                     quantity=3, unit_price=20, exchange_rate=1.0)
+
+    tickers = get_all_account_tickers()
+
+    assert tickers.count("ZZAATX") == 1
+    assert "ZZAATY" in tickers
+
+
+@pytest.mark.db
+def test_get_all_account_tickers_excludes_cash_rows_and_pension_synthetic_ticker():
+    aid = create_account("AllTickersCashAcc", "GBP")
+    add_transaction(aid, "Cash", "2026-01-05", unit_price=100)
+    add_transaction(aid, "Buy", "2026-01-06", ticker="PENSION-99999", currency="GBP",
+                     quantity=1, unit_price=1, exchange_rate=1.0, update_cash=False)
+
+    tickers = get_all_account_tickers()
+
+    assert "PENSION-99999" not in tickers
+    assert None not in tickers
+
+
+@pytest.mark.db
+def test_get_all_account_tickers_excludes_non_holding_ticker_values():
+    """Interest/Dividend/Fee/Cash rows can carry non-ticker values (e.g. a CSV-imported
+    transaction GUID) in the ticker column — only Buy/Sell represent an actual holding."""
+    aid = create_account("InterestGuidAcc", "GBP")
+    add_transaction(aid, "Interest", "2026-01-05", ticker="055c6097-2e06-4f56-9467-26d555b04178",
+                     unit_price=1.50)
+
+    tickers = get_all_account_tickers()
+
+    assert "055c6097-2e06-4f56-9467-26d555b04178" not in tickers
+
+
+@pytest.mark.db
+def test_get_all_account_tickers_excludes_soft_deleted_accounts():
+    aid = create_account("SoftDeletedTickerAcc", "GBP")
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZDELETEDACC", currency="GBP",
+                     quantity=1, unit_price=10, exchange_rate=1.0)
+    soft_delete_account(aid)
+
+    tickers = get_all_account_tickers()
+
+    assert "ZZDELETEDACC" not in tickers

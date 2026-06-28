@@ -293,7 +293,8 @@ def holdings_with_market_value(account_id: int) -> list:
     for ticker, h in holdings.items():
         total_investment = h["accounts"][0]["total_investment"]
         priced = prices.get(ticker)
-        if priced and priced[0]:
+        has_price = bool(priced and priced[0])
+        if has_price:
             price, currency = priced
             market_value = h["global_shares"] * price * get_rate_to_base(currency or h["currency"])
         else:
@@ -308,12 +309,27 @@ def holdings_with_market_value(account_id: int) -> list:
             "market_value": round(market_value, 2),
             "total_investment": total_investment,
             "performance_pct": round((market_value / total_investment - 1) * 100, 2) if total_investment else 0.0,
+            "priced_at_cost": not has_price,
         })
 
     total_value = sum(r["market_value"] for r in rows) or 1.0
     for r in rows:
         r["allocation_pct"] = round(r["market_value"] / total_value * 100, 2)
     return rows
+
+
+def stale_pricing_warning(holdings: list) -> Optional[str]:
+    """Mirrors xray_engine's data_warnings pattern — surfaces holdings priced at cost basis
+    instead of market value because no price data exists yet, so this is never silent."""
+    unpriced = [h["ticker"] for h in holdings if h.get("priced_at_cost")]
+    if not unpriced:
+        return None
+    return (
+        f"{len(unpriced)} holding(s) priced at cost basis, not market value — price data missing for: "
+        + ", ".join(unpriced[:5])
+        + (f" and {len(unpriced) - 5} more" if len(unpriced) > 5 else "")
+        + ". This resolves automatically after the next nightly data pipeline run (22:00 Mon-Fri)."
+    )
 
 
 def _recompute_globals(entry: dict) -> None:

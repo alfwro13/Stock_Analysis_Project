@@ -8,7 +8,7 @@ import pandas as pd
 from typing import Set, List, Dict, Any
 
 from config import PORTFOLIO_PATH, HISTORICAL_DIR, INTRADAY_DIR, FUNDAMENTALS_DIR, load_config
-from database import get_watchlist_tickers
+from database import get_watchlist_tickers, get_all_account_tickers
 from gilt_engine import GiltDataService
 from yahoo_engine import yahoo_engine
 
@@ -21,6 +21,7 @@ class DataEngine:
     def __init__(self) -> None:
         self.portfolio: Dict[str, Any] = self._load_json(PORTFOLIO_PATH)
         self.watchlist: Dict[str, Any] = {"watchlist": get_watchlist_tickers()}
+        self.account_tickers: List[str] = get_all_account_tickers()
         self._ensure_directories()
 
     @staticmethod
@@ -65,6 +66,10 @@ class DataEngine:
             for ticker in self.watchlist["watchlist"]:
                 if ticker:
                     tickers.add(normalize_ticker(ticker))
+
+        for ticker in self.account_tickers:
+            if ticker:
+                tickers.add(normalize_ticker(ticker))
 
         # normalized to match the uppercased ticker set
         config_data = load_config()
@@ -215,18 +220,25 @@ class DataEngine:
 
     def update_all_data(self) -> None:
         self.fetch_market_baseline()
-        
+
         tickers = self.get_all_tickers()
         logger.info(f"Target Acquisition: Found {len(tickers)} unique assets.")
-        
+
         if not tickers:
             return
-            
+
         self.bulk_download_historical(tickers)
         self.bulk_download_intraday(tickers)
         self.drip_feed_fundamentals(tickers)
-        
+
         logger.info("Massive data pipeline ingestion completed successfully.")
+
+
+def fetch_and_save_single_ticker(ticker: str) -> bool:
+    """Background-task entry point for a brand-new account ticker — avoids DataEngine.__init__'s
+    portfolio/watchlist/account-ticker DB reads, which are irrelevant for a single fetch."""
+    return DataEngine.__new__(DataEngine).fetch_and_save_data(ticker)
+
 
 _EXPECTED_YFINANCE_COLUMNS = {"Open", "High", "Low", "Close", "Volume"}
 

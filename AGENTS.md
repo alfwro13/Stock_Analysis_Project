@@ -192,7 +192,7 @@ Schema changes must go through `db_schema.py:init_db()` (new tables) and `db_sch
 
 1. **Dual-storage:** Relational metadata → SQLite. Heavy time-series → Parquet. Never swap these.
 2. **Self-healing:** If Yahoo Finance fails, fall back to local Parquet/JSON cache — never crash the server.
-3. **Priority arbitration:** Portfolio/Watchlist > LSE universe > US universe. Delisted tickers are appended to `freetrade_blacklist.json` automatically.
+3. **Priority arbitration:** Portfolio/Watchlist/Account Transactions > LSE universe > US universe. The daily fetch universe (`data_engine.py:get_all_tickers()`) unions `portfolio.json`, the Watchlist account, and every ticker in `account_transactions` across all account types (excluding the Pension synthetic `PENSION-{id}` ticker). A newly-bought unknown ticker also gets an immediate one-off fetch (`fetch_and_save_single_ticker`) as a background task, so it doesn't wait for the next 22:00 run. Delisted tickers are appended to `freetrade_blacklist.json` automatically.
 4. **No LLM for sentiment:** Market sentiment uses FinBERT locally. `ai_engine.py` generates prompts for *external* LLMs but is not itself an LLM.
 5. **APScheduler only:** Do not introduce external cron jobs. All scheduled work is wired through `scheduler_engine.py` (APScheduler setup, `reload_scheduler`, `start_scheduler`). Job runner functions live in `scheduler_jobs.py`; the job manifest and label helpers live in `scheduler_manifest.py`; the Workflow Monitor graph logic lives in `scheduler_monitor.py`. All three are re-exported from `scheduler_engine` so external callers need not change their imports.
 6. **CSRF + session auth:** All POST endpoints are protected. Session cookies only. See `auth.py`.

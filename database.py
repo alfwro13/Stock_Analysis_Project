@@ -99,6 +99,7 @@ from db_accounts import (  # noqa: E402
     delete_watchlist_items,
     remove_watchlist_ticker,
     get_watchlist_tickers,
+    get_all_account_tickers,
 )
 
 __all__ = [
@@ -145,4 +146,5 @@ __all__ = [
     "delete_watchlist_items",
     "remove_watchlist_ticker",
     "get_watchlist_tickers",
+    "get_all_account_tickers",
 ]

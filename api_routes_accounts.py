@@ -16,6 +16,7 @@ from accounts_engine import (
 from account_scraper_engine import import_price_csv, price_as_of, run_scrape_for_account, test_scrape
 import notification_engine
 from api_deps import limiter, _error_500
+from data_engine import fetch_and_save_single_ticker
 from database import (
     get_accounts,
     get_account,
@@ -258,6 +259,7 @@ async def api_create_transaction(
         ticker = normalize_ticker(body.ticker) if body.ticker else None
         if ticker and not _ticker_known(ticker):
             background_tasks.add_task(update_single_profile, ticker)
+            background_tasks.add_task(fetch_and_save_single_ticker, ticker)
         currency = body.currency or acc["currency"]
         exchange_rate = _resolve_exchange_rate(currency, body.exchange_rate, body.txn_date)
         txn_id = add_transaction(
@@ -524,6 +526,7 @@ async def api_import_csv(request: Request, account_id: int, background_tasks: Ba
         for ticker in tickers:
             if not _ticker_known(ticker):
                 background_tasks.add_task(update_single_profile, ticker)
+                background_tasks.add_task(fetch_and_save_single_ticker, ticker)
         background_tasks.add_task(resnapshot_account, account_id)
         skipped_rows = result["skipped_rows"]
         if skipped_rows:

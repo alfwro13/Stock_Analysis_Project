@@ -494,3 +494,27 @@ def get_watchlist_tickers() -> list:
     if not account:
         return []
     return [item["ticker"] for item in get_watchlist_items(account["id"])]
+
+
+def get_all_account_tickers() -> list:
+    """Distinct tickers backing an actual open/closed holding (Buy/Sell only — Interest/Dividend/
+    Fee/Cash rows can carry non-ticker values, e.g. a CSV-imported transaction GUID) across
+    non-deleted accounts. Excludes the Pension synthetic 'PENSION-{id}' ticker
+    (account_scraper_engine.py), which has no Yahoo Finance listing."""
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT DISTINCT t.ticker FROM account_transactions t "
+            "JOIN accounts a ON a.id = t.account_id "
+            "WHERE a.deleted_at IS NULL AND t.txn_type IN ('Buy', 'Sell') "
+            "AND t.ticker IS NOT NULL AND t.ticker != '' AND t.ticker NOT LIKE 'PENSION-%'"
+        )
+        return [row["ticker"] for row in cursor.fetchall()]
+    except Exception as e:
+        logger.error("Failed to get all account tickers: %s", e)
+        return []
+    finally:
+        if conn:
+            conn.close()
