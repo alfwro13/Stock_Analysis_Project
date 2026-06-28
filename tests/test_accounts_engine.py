@@ -374,6 +374,28 @@ def test_backfill_value_history_writes_rows_from_parquet(monkeypatch, tmp_path):
 
 
 @pytest.mark.db
+def test_backfill_value_history_gbp_pence_holding_not_double_converted(monkeypatch, tmp_path):
+    """Regression test: a GBp (pence) holding's Parquet close price must be converted to
+    pounds exactly once. fx_rate_on_date('GBp', ...) already applies the 0.01 conversion, so
+    backfill_value_history must not also pre-divide via price_in_pence — doing both silently
+    undervalued GBp holdings by 100x in account_value_history."""
+    idx = pd.date_range("2025-01-01", "2025-01-10", freq="D")
+    df = pd.DataFrame({"Close": [1000.0 + i for i in range(len(idx))]}, index=idx)  # price in pence
+    df.to_parquet(tmp_path / "ZZPENCEBACKFILL.parquet")
+    monkeypatch.setattr(accounts_engine, "HISTORICAL_DIR", tmp_path)
+
+    aid = create_account("PenceBackfillAcc", "GBP", initial_cash=1000.0)
+    add_transaction(aid, "Buy", "2025-01-03", ticker="ZZPENCEBACKFILL", currency="GBp",
+                     quantity=2, unit_price=1000, exchange_rate=0.01, price_in_pence=True)
+
+    accounts_engine.backfill_value_history(aid)
+
+    from database import get_value_history
+    history = {row["snapshot_date"]: row for row in get_value_history(aid)}
+    assert history["2025-01-03"]["equity_value"] == 20.04         # 2 shares * 1002p -> £10.02/share
+
+
+@pytest.mark.db
 def test_cash_history_opening_row_has_no_txn_id():
     aid = create_account("CashHistOpenAcc", "GBP", initial_cash=200.0)
     history = accounts_engine.cash_history(aid)

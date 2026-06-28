@@ -724,8 +724,9 @@ def backfill_value_history(account_id: int) -> int:
             if price is None:
                 equity += holding["total_investment"]
                 continue
-            native_price = price * 0.01 if holding["price_in_pence"] else price
-            equity += holding["shares"] * native_price * fx_rate_on_date(holding["currency"], date_str)
+            # fx_rate_on_date already halves GBp->GBP by 0.01 — applying price_in_pence here too
+            # would divide by 100 twice (the bug behind a 100x equity undervaluation on backfilled rows).
+            equity += holding["shares"] * price * fx_rate_on_date(holding["currency"], date_str)
         contributions = _net_contributions_as_of(acc, transactions, date_str)
         upsert_value_snapshot(account_id, date_str, round(cash + equity, 2), round(cash, 2), round(equity, 2), round(contributions, 2))
         written += 1
