@@ -434,82 +434,6 @@ def test_create_account_triggers_backfill_in_background(client):
 
 
 @pytest.mark.api
-def test_import_ghostfolio_returns_counts(client):
-    with patch("api_routes_accounts.resnapshot_account"):
-        account_id = _create_account(client, name="ImportApiAcc")
-    with (
-        patch("api_routes_accounts.import_ghostfolio_activities", return_value={"imported": 2, "skipped": 1}) as mock_import,
-        patch("api_routes_accounts.resnapshot_account"),
-    ):
-        resp = client.post(f"/api/accounts/{account_id}/import-ghostfolio", json={"ghostfolio_account_id": "gf-acc-1"})
-    assert resp.status_code == 200
-    data = _json(resp)
-    assert data["status"] == "success"
-    assert data["imported"] == 2
-    assert data["skipped"] == 1
-    mock_import.assert_called_once_with(account_id, "gf-acc-1")
-
-    import database as _db
-    _db.soft_delete_account(account_id)
-
-
-@pytest.mark.api
-def test_import_ghostfolio_skips_profile_fetch_for_uuid_ticker(client):
-    """Ghostfolio reports a raw asset UUID as the symbol for custom/manual assets — queueing a
-    profile fetch for that string only produces a guaranteed Yahoo Finance failure and permanently
-    blacklists the UUID. The import endpoint must not queue update_single_profile for it."""
-    with patch("api_routes_accounts.resnapshot_account"):
-        account_id = _create_account(client, name="ImportApiUuidAcc")
-    import database as _db
-    _db.add_transaction(
-        account_id=account_id, txn_type="Buy", txn_date="2026-01-10",
-        ticker="507f6948-db0b-4877-bec0-030a6996431d", quantity=1, unit_price=1.0,
-    )
-    with (
-        patch("api_routes_accounts.import_ghostfolio_activities", return_value={"imported": 0, "skipped": 0}),
-        patch("api_routes_accounts.resnapshot_account"),
-        patch("api_routes_accounts.update_single_profile") as mock_profile,
-    ):
-        resp = client.post(f"/api/accounts/{account_id}/import-ghostfolio", json={"ghostfolio_account_id": "gf-acc-1"})
-    assert resp.status_code == 200
-    mock_profile.assert_not_called()
-
-    _db.soft_delete_account(account_id)
-
-
-@pytest.mark.api
-def test_import_ghostfolio_not_configured_returns_400(client):
-    with patch("api_routes_accounts.resnapshot_account"):
-        account_id = _create_account(client, name="ImportApiNotConfiguredAcc")
-    with patch("api_routes_accounts.import_ghostfolio_activities", return_value={"imported": 0, "skipped": 0, "error": "Ghostfolio is not configured."}):
-        resp = client.post(f"/api/accounts/{account_id}/import-ghostfolio", json={"ghostfolio_account_id": "gf-acc-1"})
-    assert resp.status_code == 400
-    assert _json(resp)["status"] == "error"
-
-    import database as _db
-    _db.soft_delete_account(account_id)
-
-
-@pytest.mark.api
-def test_import_ghostfolio_unknown_account_returns_404(client):
-    resp = client.post("/api/accounts/999999/import-ghostfolio", json={"ghostfolio_account_id": "gf-acc-1"})
-    assert resp.status_code == 404
-
-
-@pytest.mark.api
-def test_import_ghostfolio_missing_account_id_returns_422(client):
-    """Regression guard: importing without naming a single Ghostfolio account must be rejected,
-    not silently fall back to pulling every Ghostfolio account's activities."""
-    with patch("api_routes_accounts.resnapshot_account"):
-        account_id = _create_account(client, name="ImportApiMissingFieldAcc")
-    resp = client.post(f"/api/accounts/{account_id}/import-ghostfolio", json={})
-    assert resp.status_code == 422
-
-    import database as _db
-    _db.soft_delete_account(account_id)
-
-
-@pytest.mark.api
 def test_import_csv_returns_counts(client):
     with patch("api_routes_accounts.resnapshot_account"):
         account_id = _create_account(client, name="CsvImportApiAcc")
@@ -593,25 +517,6 @@ def test_import_csv_unknown_account_returns_404(client):
         files={"file": ("activity.csv", csv_bytes, "text/csv")},
     )
     assert resp.status_code == 404
-
-
-@pytest.mark.api
-def test_list_ghostfolio_accounts_returns_active_discovered_accounts(client):
-    fake_config = {
-        "GHOSTFOLIO_ACCOUNTS": {
-            "discovered": [
-                {"id": "gf-1", "name": "ISA", "currency": "GBP"},
-                {"id": "gf-2", "name": "Excluded", "currency": "GBP"},
-            ],
-            "active": ["gf-1"],
-        }
-    }
-    with patch("api_routes_accounts.load_config", return_value=fake_config):
-        resp = client.get("/api/accounts/ghostfolio-accounts")
-    assert resp.status_code == 200
-    data = _json(resp)
-    assert data["status"] == "success"
-    assert data["accounts"] == [{"id": "gf-1", "name": "ISA", "currency": "GBP"}]
 
 
 @pytest.mark.api

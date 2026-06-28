@@ -18,10 +18,6 @@ function _txnModal() {
     return bootstrap.Modal.getOrCreateInstance(document.getElementById('txnModal'));
 }
 
-function _gfImportModal() {
-    return bootstrap.Modal.getOrCreateInstance(document.getElementById('gfImportModal'));
-}
-
 function _csvImportModal() {
     return bootstrap.Modal.getOrCreateInstance(document.getElementById('csvImportModal'));
 }
@@ -110,7 +106,6 @@ function _accountCardHtml(acc) {
                 ${isWatchlist || isScraperType ? '' : `
                 <button type="button" class="btn btn-primary btn-sm" onclick="openTxnModal(${acc.id})">+ Add Transaction</button>
                 <button type="button" class="btn btn-outline-secondary btn-sm" onclick="toggleTransactions(${acc.id})">Show Transactions</button>
-                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="importGhostfolio(${acc.id})">Import from Ghostfolio</button>
                 <button type="button" class="btn btn-outline-secondary btn-sm" onclick="importCsv(${acc.id})">Import from CSV</button>
                 <a href="/api/accounts/${acc.id}/export" class="btn btn-outline-secondary btn-sm">Export to CSV</a>`}
             </div>
@@ -233,65 +228,6 @@ async function saveAccount() {
         }
     } catch (e) {
         status.innerHTML = `<span class="msg-error">${e.message}</span>`;
-    }
-}
-
-async function importGhostfolio(accountId) {
-    document.getElementById('gf-import-account-id').value = accountId;
-    const select = document.getElementById('gf-import-select');
-    const status = document.getElementById('gf-import-status');
-    status.innerHTML = '';
-    select.innerHTML = '<option>Loading...</option>';
-    _gfImportModal().show();
-    try {
-        const r = await fetch('/api/accounts/ghostfolio-accounts');
-        const data = await r.json();
-        const accounts = data.accounts || [];
-        if (accounts.length === 0) {
-            select.innerHTML = '<option value="">No Ghostfolio accounts available</option>';
-            return;
-        }
-        select.innerHTML = accounts.map(a => `<option value="${_escapeHtml(a.id)}">${_escapeHtml(a.name)} (${_escapeHtml(a.currency)})</option>`).join('');
-    } catch (e) {
-        select.innerHTML = '<option value="">Failed to load Ghostfolio accounts</option>';
-    }
-}
-
-async function confirmImportGhostfolio() {
-    const accountId = document.getElementById('gf-import-account-id').value;
-    const ghostfolioAccountId = document.getElementById('gf-import-select').value;
-    const status = document.getElementById('gf-import-status');
-    if (!ghostfolioAccountId) {
-        status.innerHTML = '<span class="msg-error">Select a Ghostfolio account.</span>';
-        return;
-    }
-    status.innerHTML = '<span class="msg-info">Importing...</span>';
-    try {
-        const r = await fetch(`/api/accounts/${accountId}/import-ghostfolio`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ghostfolio_account_id: ghostfolioAccountId }),
-        });
-        const data = await r.json();
-        const pageStatus = document.getElementById(`account-import-status-${accountId}`);
-        if (pageStatus) {
-            pageStatus.innerHTML = data.status === 'success'
-                ? `<span class="msg-success">${_escapeHtml(data.message)}</span>`
-                : `<span class="msg-error">${_escapeHtml(data.message || 'Import failed.')}</span>`;
-        }
-        if (data.status === 'success') {
-            _gfImportModal().hide();
-            const box = document.getElementById(`account-txns-${accountId}`);
-            if (box && !box.classList.contains('d-none')) {
-                box.classList.add('d-none');
-                toggleTransactions(accountId);
-            }
-            if (typeof window.onTransactionChanged === 'function') window.onTransactionChanged();
-        } else {
-            status.innerHTML = `<span class="msg-error">${_escapeHtml(data.message || 'Import failed.')}</span>`;
-        }
-    } catch (e) {
-        status.innerHTML = `<span class="msg-error">${_escapeHtml(e.message)}</span>`;
     }
 }
 

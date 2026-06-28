@@ -79,29 +79,6 @@
 {% include "partials/_accounts_txn_modal.html" %}
 {% include "partials/_account_scraper_modal.html" %}
 
-<div class="modal fade" id="gfImportModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title">Import from Ghostfolio</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body">
-        <input type="hidden" id="gf-import-account-id">
-        <div class="form-group">
-            <label for="gf-import-select">Ghostfolio Account</label>
-            <select id="gf-import-select"></select>
-        </div>
-        <p class="text-muted">Only activities belonging to the selected Ghostfolio account are imported. Already-imported activities are skipped automatically.</p>
-        <div id="gf-import-status" class="status-msg-sm"></div>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn-save" onclick="confirmImportGhostfolio()">Import</button>
-      </div>
-    </div>
-  </div>
-</div>
-
 <div class="modal fade" id="csvImportModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog">
     <div class="modal-content">

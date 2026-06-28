@@ -2830,35 +2830,6 @@ Returns `{"status": "queued", "message": "..."}` immediately.
 
 ---
 
-### `GET /api/accounts/ghostfolio-accounts`
-
-Lists the user's **active** Ghostfolio accounts (`id`, `name`, `currency`) from the cached `GHOSTFOLIO_ACCOUNTS.discovered`/`.active` config (no live Ghostfolio call) — used to populate the account picker before importing. Rate limit: 20/minute.
-
-**Response:**
-```json
-{ "status": "success", "accounts": [ { "id": "95ddec44-...", "name": "ISA", "currency": "GBP" } ] }
-```
-
----
-
-### `POST /api/accounts/{id}/import-ghostfolio`
-
-Imports the **entire** activity history of **one selected Ghostfolio account** (`ghostfolio_account_id`, required — see `GET /api/accounts/ghostfolio-accounts`) into the given built-in account, via `ghostfolio_sync.GhostfolioSyncEngine.fetch_activities(account_id=...)` (`accounts_engine.import_ghostfolio_activities`). Activities belonging to other Ghostfolio accounts are never pulled in. `BUY`/`SELL`/`DIVIDEND`/`FEE`/`INTEREST` activities map to the matching `txn_type`. Ticker and company name come from the activity's `SymbolProfile`; the asset's trading currency prefers the app's own cached `asset_profiles.currency` over Ghostfolio's self-reported value (Ghostfolio has been observed to report plain `GBP` for LSE pence stocks). The per-share price uses `unitPriceInAssetProfileCurrency` (the asset-native price); `exchange_rate` (native → `BASE_CURRENCY`) is always computed independently via `accounts_engine.fx_rate_on_date`, never from Ghostfolio's `unitPrice` — that field is priced in the *source Ghostfolio account's own currency*, which is not necessarily `BASE_CURRENCY`. `fee` is converted from the account-side currency to native using Ghostfolio's own per-activity price ratio. **Imported transactions affect the built-in account's cash balance the same way every other transaction does** (`update_cash=True`) — this is only accurate if the operator also records their real deposit/withdrawal history via `Cash`/`Transfer` rows; without that, `cash_balance()` reflects only the net effect of the imported trades, not the true remaining balance. Every activity for the selected account is imported, including Buy/Sell pairs for tickers no longer held, so they remain visible under Closed Positions with realized P&amp;L. Draft activities and unsupported types (`ITEM`, `LIABILITY`) are skipped. Re-importing is idempotent — already-imported activities are deduped via `ghostfolio_ref`. On success, schedules a background re-run of `accounts_engine.resnapshot_account` (recomputes the account's full value history, not just today) and a profile fetch for any newly-seen ticker. Rate limit: 10/minute.
-
-**Request:**
-```json
-{ "ghostfolio_account_id": "95ddec44-..." }
-```
-
-Returns 404 if the account does not exist; 422 if `ghostfolio_account_id` is missing/blank; 400 if Ghostfolio is not configured (`GHOSTFOLIO_URL`/`API_TOKEN` missing).
-
-**Response:**
-```json
-{ "status": "success", "message": "Imported 42 activities (3 skipped).", "imported": 42, "skipped": 3 }
-```
-
----
-
 ### `POST /api/accounts/{id}/import-csv`
 
 Imports a GIA/broker-style activity export CSV (multipart file upload, field name `file`) into the given built-in account (`accounts_engine.import_csv_activities`). The required column layout, the four recognised `Type` values (`TOP_UP`, `INTEREST_FROM_CASH`, `ORDER`, `DIVIDEND` — `INTERNAL_TRANSFER` is ignored), and how the GBP exchange rate and fees are derived per row are documented in `assets/csv_import_format.md`. Columns are matched by exact header name, independent of order; a missing required column fails the whole import up front with a 422 naming it. Unlike Ghostfolio import, a row whose ticker can't be resolved (checked against the app's own `asset_profiles` cache, then a live Yahoo Finance lookup) is skipped outright rather than imported and flagged. Every skipped row — unresolved ticker, no ticker in the file, unparseable date, unrecognized `Type`, already-imported duplicate, or a DB write failure — is reported back individually under `skipped_rows` with its date, ticker, and a human-readable reason, so the operator can find the exact row in their file rather than just a per-ticker count. If any rows were skipped, the full list is also dispatched via `notification_engine.notify("accounts_csv_import", ...)` (source registered in `NOTIFICATION_SOURCES`, grouped under "Other" in the Settings Notification Settings panel since it has no parent scheduled job) so it's visible in the in-app Notifications panel after the modal is closed. Re-importing the same file is idempotent — each row is fingerprinted (date, type, ticker, amount, quantity, plus an occurrence counter for exact-duplicate rows) and stored in the transaction's `ghostfolio_ref` column prefixed `csv:`, the same dedup slot Ghostfolio import uses, so the two can never collide. On success, schedules the same background tasks as Ghostfolio import: a profile fetch for any newly-resolved ticker not yet in `asset_profiles`, and `accounts_engine.resnapshot_account`. Rate limit: 10/minute.

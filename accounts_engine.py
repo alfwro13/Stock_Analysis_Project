@@ -916,19 +916,10 @@ def record_pension_fee(
     return {"txn_id": txn_id, "units_removed": round(units_removed, 6), "unit_price": price, "fee_cost": round(units_removed * price, 2)}
 
 
-_GHOSTFOLIO_TYPE_MAP = {
-    "BUY": "Buy",
-    "SELL": "Sell",
-    "DIVIDEND": "Dividend",
-    "FEE": "Fee",
-    "INTEREST": "Interest",
-}
-
-
 def _cached_ticker_currency(ticker: str) -> Optional[str]:
     """asset_profiles is the app's own authoritative source for a ticker's trading currency (the
-    GBp/GBX pence convention is built around this field everywhere else) — trusted over Ghostfolio's
-    self-reported SymbolProfile.currency, which has been observed to report GBP for LSE pence stocks."""
+    GBp/GBX pence convention is built around this field everywhere else) — trusted over a broker
+    export's self-reported currency, which has been observed to report GBP for LSE pence stocks."""
     if not ticker:
         return None
     conn = None
@@ -944,91 +935,6 @@ def _cached_ticker_currency(ticker: str) -> Optional[str]:
     finally:
         if conn:
             conn.close()
-
-
-def _map_ghostfolio_activity(act: dict) -> Optional[dict]:
-    """One Ghostfolio activity -> add_transaction() kwargs, or None to skip (draft / unsupported type).
-    `unitPrice` is priced in the source Ghostfolio ACCOUNT's own currency, not necessarily
-    BASE_CURRENCY (a Ghostfolio account can be denominated in USD/EUR/etc.) — so it is never used to
-    derive an FX rate here. The native asset price comes from `unitPriceInAssetProfileCurrency`, and
-    `exchange_rate` (native -> BASE_CURRENCY) is computed independently via `fx_rate_on_date`, the
-    same trusted FX engine used for manually-entered transactions. Ghostfolio's own
-    unitPrice/unitPriceInAssetProfileCurrency ratio is still used for `fee`, since the fee figure and
-    `unitPrice` are reported in the same (account-side) currency within one activity record.
-    `update_cash=True` like every other transaction — imported Buy/Sell/Dividend/Interest/Fee rows
-    affect cash the same way a manually-entered one would. This relies on the operator separately
-    recording their real deposit/withdrawal history (via Cash/Transfer); without that, cash_balance()
-    will reflect only the net effect of the imported trades, not the true remaining balance."""
-    txn_type = _GHOSTFOLIO_TYPE_MAP.get(act.get("type"))
-    if not txn_type or act.get("isDraft"):
-        return None
-
-    profile = act.get("SymbolProfile") or {}
-    ticker = profile.get("symbol") or None
-    currency = _cached_ticker_currency(ticker) or profile.get("currency") or act.get("currency")
-    txn_date = (act.get("date") or "")[:10]
-
-    unit_price_native = act.get("unitPriceInAssetProfileCurrency")
-    unit_price_acct_side = act.get("unitPrice")
-    if unit_price_native:
-        unit_price = float(unit_price_native)
-        native_to_acct_rate = float(unit_price_acct_side) / unit_price if unit_price_acct_side else 1.0
-    else:
-        unit_price = float(unit_price_acct_side) if unit_price_acct_side is not None else None
-        native_to_acct_rate = 1.0
-
-    exchange_rate = fx_rate_on_date(currency, txn_date) if currency else 1.0
-
-    fee_acct_side = float(act.get("fee") or 0.0)
-    fee_native = fee_acct_side / native_to_acct_rate if native_to_acct_rate else fee_acct_side
-
-    return {
-        "txn_type": txn_type,
-        "txn_date": txn_date,
-        "ticker": ticker,
-        "company_name": profile.get("name") or None,
-        "currency": currency,
-        "quantity": act.get("quantity"),
-        "unit_price": unit_price,
-        "fee": round(fee_native, 4),
-        "exchange_rate": exchange_rate,
-        "price_in_pence": currency == "GBp",
-        "ghostfolio_ref": act.get("id"),
-        "update_cash": True,
-    }
-
-
-def import_ghostfolio_activities(account_id: int, ghostfolio_account_id: str) -> dict:
-    """Imports the entire activity history of ONE Ghostfolio account (`ghostfolio_account_id`) into
-    one built-in account, deduped by `ghostfolio_ref` so re-import is idempotent. Imports every
-    activity for that Ghostfolio account (incl. tickers no longer held) so fully-sold positions still
-    land in closed_positions with realized P&L. Does not touch other Ghostfolio accounts — Ghostfolio
-    activities have no implicit grouping otherwise, so importing without this filter would dump every
-    Ghostfolio account's transactions into a single built-in account. Imported transactions affect
-    cash the same way every other transaction does (see `_map_ghostfolio_activity`) — accurate only
-    if the operator also records their real deposit/withdrawal history via Cash/Transfer rows."""
-    from ghostfolio_sync import GhostfolioSyncEngine
-
-    engine = GhostfolioSyncEngine()
-    if not engine.is_configured:
-        return {"imported": 0, "skipped": 0, "error": "Ghostfolio is not configured."}
-
-    activities = engine.fetch_activities(account_id=ghostfolio_account_id)
-    existing_refs = {t["ghostfolio_ref"] for t in get_transactions(account_id) if t["ghostfolio_ref"]}
-
-    imported = 0
-    skipped = 0
-    for act in activities:
-        mapped = _map_ghostfolio_activity(act)
-        if mapped is None or mapped["ghostfolio_ref"] in existing_refs:
-            skipped += 1
-            continue
-        if add_transaction(account_id=account_id, **mapped) is None:
-            skipped += 1
-            continue
-        imported += 1
-
-    return {"imported": imported, "skipped": skipped}
 
 
 _CSV_CASH_TYPE_MAP = {"TOP_UP": "Cash", "INTEREST_FROM_CASH": "Interest"}
@@ -1179,10 +1085,10 @@ _CSV_SKIP_REASON_LABELS = {
 
 def import_csv_activities(account_id: int, csv_text: str) -> dict:
     """Imports a GIA/broker-export CSV (see assets/csv_import_format.md) into one built-in account.
-    Unlike `import_ghostfolio_activities`, rows whose ticker can't be resolved are skipped outright
-    (not imported with a "Needs Review" flag) — there is no real market data to attach them to.
-    Every skipped row (other than `INTERNAL_TRANSFER`/blank rows, which are expected noise) is
-    reported back with its date and ticker so the operator can find the exact row in their file."""
+    Rows whose ticker can't be resolved are skipped outright (not imported with a "Needs Review"
+    flag) — there is no real market data to attach them to. Every skipped row (other than
+    `INTERNAL_TRANSFER`/blank rows, which are expected noise) is reported back with its date and
+    ticker so the operator can find the exact row in their file."""
     reader = csv.DictReader(io.StringIO(csv_text))
     header = set(reader.fieldnames or [])
     missing = [c for c in _CSV_REQUIRED_COLUMNS if c not in header]

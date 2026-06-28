@@ -8,15 +8,14 @@ from pydantic import BaseModel
 
 from accounts_engine import (
     _ticker_known, account_summary, create_transfer, delete_transaction_with_pair,
-    export_transactions_csv, fx_rate_on_date, import_csv_activities, import_ghostfolio_activities,
-    is_unresolved_ticker, pension_units_as_of, record_pension_contribution, record_pension_fee,
-    resnapshot_account, resolve_watchlist_metadata, sync_house_purchase_price,
-    sync_pension_opening_balance, watchlist_summary,
+    export_transactions_csv, fx_rate_on_date, import_csv_activities, pension_units_as_of,
+    record_pension_contribution, record_pension_fee, resnapshot_account,
+    resolve_watchlist_metadata, sync_house_purchase_price, sync_pension_opening_balance,
+    watchlist_summary,
 )
 from account_scraper_engine import import_price_csv, price_as_of, run_scrape_for_account, test_scrape
 import notification_engine
 from api_deps import limiter, _error_500
-from config import load_config
 from database import (
     get_accounts,
     get_account,
@@ -74,10 +73,6 @@ class TransactionBody(BaseModel):
     notes: Optional[str] = None
     update_cash: bool = True
     price_in_pence: bool = False
-
-
-class ImportGhostfolioBody(BaseModel):
-    ghostfolio_account_id: str
 
 
 class WatchlistItemBody(BaseModel):
@@ -500,51 +495,6 @@ async def api_bulk_delete_watchlist_items(request: Request, account_id: int, bod
         return JSONResponse(content={"status": "success", "deleted": deleted})
     except Exception as e:
         logger.error("api_bulk_delete_watchlist_items failed for account %s: %s", account_id, e)
-        return _error_500(e)
-
-
-@accounts_router.get("/accounts/ghostfolio-accounts")
-@limiter.limit("20/minute")
-async def api_list_ghostfolio_accounts(request: Request):
-    try:
-        config_data = load_config()
-        gf_accounts = config_data.get("GHOSTFOLIO_ACCOUNTS", {})
-        discovered = {a["id"]: a for a in gf_accounts.get("discovered", [])}
-        active_ids = gf_accounts.get("active", [])
-        accounts = [
-            {"id": acc_id, "name": discovered[acc_id]["name"], "currency": discovered[acc_id]["currency"]}
-            for acc_id in active_ids if acc_id in discovered
-        ]
-        return JSONResponse(content={"status": "success", "accounts": accounts})
-    except Exception as e:
-        logger.error("api_list_ghostfolio_accounts failed: %s", e)
-        return _error_500(e)
-
-
-@accounts_router.post("/accounts/{account_id}/import-ghostfolio")
-@limiter.limit("10/minute")
-async def api_import_ghostfolio(request: Request, account_id: int, body: ImportGhostfolioBody, background_tasks: BackgroundTasks):
-    try:
-        if get_account(account_id) is None:
-            return JSONResponse(status_code=404, content={"status": "error", "message": "Account not found."})
-        if not body.ghostfolio_account_id:
-            return JSONResponse(status_code=422, content={"status": "error", "message": "ghostfolio_account_id is required."})
-        result = import_ghostfolio_activities(account_id, body.ghostfolio_account_id)
-        if result.get("error"):
-            return JSONResponse(status_code=400, content={"status": "error", "message": result["error"]})
-        tickers = {txn["ticker"] for txn in get_transactions(account_id) if txn["ticker"]}
-        for ticker in tickers:
-            if not _ticker_known(ticker) and not is_unresolved_ticker(ticker):
-                background_tasks.add_task(update_single_profile, ticker)
-        background_tasks.add_task(resnapshot_account, account_id)
-        return JSONResponse(content={
-            "status": "success",
-            "message": f"Imported {result['imported']} activities ({result['skipped']} skipped).",
-            "imported": result["imported"],
-            "skipped": result["skipped"],
-        })
-    except Exception as e:
-        logger.error("api_import_ghostfolio account=%s failed: %s", account_id, e)
         return _error_500(e)
 
 
