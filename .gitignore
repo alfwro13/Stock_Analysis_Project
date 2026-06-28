@@ -16,6 +16,7 @@ backups/
 
 # Ignore Ghostfolio ha integration files - here only for the migration
 ghostfolio_ha_integration/
+Stock_Analysis_Project_ha_integration/
 
 # Ignore specific files
 static/js/mermaid.min.js
