@@ -11,7 +11,7 @@ from accounts_engine import (
     export_transactions_csv, fx_rate_on_date, import_csv_activities, import_ghostfolio_activities,
     is_unresolved_ticker, pension_units_as_of, record_pension_contribution, record_pension_fee,
     resnapshot_account, resolve_watchlist_metadata, sync_house_purchase_price,
-    sync_pension_opening_balance,
+    sync_pension_opening_balance, watchlist_summary,
 )
 from account_scraper_engine import import_price_csv, price_as_of, run_scrape_for_account, test_scrape
 import notification_engine
@@ -137,6 +137,15 @@ async def api_list_accounts():
             acc["scraper_last_status"] = None
         if acc["account_type"] == "Pension":
             acc["current_balance"] = account_summary(acc["id"]).get("equity_value", 0.0)
+        elif acc["account_type"] == "Trading":
+            summary = account_summary(acc["id"])
+            acc["holdings_count"] = summary.get("holdings_count", 0)
+            acc["equity_value"] = summary.get("equity_value", 0.0)
+            acc["cash_balance"] = summary.get("cash_balance", 0.0)
+        elif acc["account_type"] == "Watchlist":
+            breakdown = watchlist_summary(acc["id"])
+            acc["watchlist_count"] = breakdown["count"]
+            acc["watchlist_breakdown"] = breakdown["by_type"]
     return JSONResponse(content={"status": "success", "accounts": accounts})
 
 

@@ -52,9 +52,28 @@ function _accountCashLine(acc) {
     if (acc.account_type === 'Pension') {
         return `${label}: ${_formatThousands(acc.current_balance ?? acc.initial_cash)} ${_escapeHtml(acc.currency)}`;
     }
-    return label
-        ? `${label}: ${acc.initial_cash} ${_escapeHtml(acc.currency)}`
-        : `${_escapeHtml(acc.currency)} &middot; initial cash ${acc.initial_cash}`;
+    return `${label}: ${acc.initial_cash} ${_escapeHtml(acc.currency)}`;
+}
+
+const _WATCHLIST_BREAKDOWN_LABELS = { equity: 'Equity', etf: 'ETF', fund: 'Fund', other: 'Other' };
+
+function _watchlistBreakdownText(acc) {
+    const breakdown = acc.watchlist_breakdown || {};
+    const parts = Object.keys(_WATCHLIST_BREAKDOWN_LABELS)
+        .filter(key => breakdown[key])
+        .map(key => `${breakdown[key]} ${_WATCHLIST_BREAKDOWN_LABELS[key]}`);
+    return parts.length ? ` (${parts.join(', ')})` : '';
+}
+
+function _accountStatsLine(acc) {
+    if (acc.account_type === 'Watchlist') {
+        const count = acc.watchlist_count ?? 0;
+        return `${count} ticker${count === 1 ? '' : 's'}${_watchlistBreakdownText(acc)}`;
+    }
+    if (acc.account_type === 'Trading') {
+        return `Holdings: ${acc.holdings_count ?? 0} &middot; Equity: ${_formatThousands(acc.equity_value ?? 0)} ${_escapeHtml(acc.currency)} &middot; Cash: ${_formatThousands(acc.cash_balance ?? 0)} ${_escapeHtml(acc.currency)}`;
+    }
+    return _accountCashLine(acc);
 }
 
 function _scraperStatusBadgeHtml(acc) {
@@ -78,7 +97,7 @@ function _accountCardHtml(acc) {
             <div class="d-flex justify-content-between align-items-start">
                 <div>
                     <h4 class="mb-0">${_escapeHtml(acc.name)} <span class="account-badge">${_escapeHtml(acc.account_type)}</span></h4>
-                    <p class="text-muted small mb-0">${_accountCashLine(acc)}</p>
+                    <p class="text-muted small mb-0">${_accountStatsLine(acc)}</p>
                     ${acc.note ? `<p class="text-secondary small mb-0">${_escapeHtml(acc.note)}</p>` : ''}
                 </div>
                 <div class="d-flex gap-2">
@@ -168,6 +187,10 @@ function openAccountModal(id = null) {
     document.getElementById('acct-pension-ticker-label').value = acc ? (acc.pension_ticker_label || '') : '';
     document.getElementById('acct-note').value = acc ? (acc.note || '') : '';
     document.getElementById('account-status').innerHTML = '';
+    const isWatchlist = isEditing && acc.account_type === 'Watchlist';
+    document.getElementById('acct-currency-group').classList.toggle('d-none', isWatchlist);
+    document.getElementById('acct-cash-group').classList.toggle('d-none', isWatchlist);
+    document.getElementById('acct-opened-date-group').classList.toggle('d-none', isWatchlist);
     _updateAccountFieldLabelsForType();
     _accountModal().show();
 }

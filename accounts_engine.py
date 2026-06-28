@@ -14,8 +14,8 @@ import time_engine
 from config import BASE_CURRENCY, HISTORICAL_DIR, PORTFOLIO_PATH
 from db_accounts import (
     add_price_history, add_transaction, delete_transaction, get_account, get_accounts,
-    get_price_as_of, get_price_history, get_transaction, get_transactions, update_account,
-    update_transaction, upsert_value_snapshot,
+    get_price_as_of, get_price_history, get_transaction, get_transactions, get_watchlist_items,
+    update_account, update_transaction, upsert_value_snapshot,
 )
 from database import get_connection
 from portfolio_service import get_rate_to_base
@@ -576,9 +576,24 @@ def account_summary(account_id: int) -> dict:
         "interest": round(interest, 2),
         "dividend": round(dividend, 2),
         "activity_count": len(transactions),
+        "holdings_count": len(open_holdings),
         "equity_value": round(_equity_value_for_account(acc, open_holdings), 2),
         "realized_pnl": realized,
     }
+
+
+_WATCHLIST_TYPE_BUCKETS = {"EQUITY": "equity", "ETF": "etf", "MUTUALFUND": "fund"}
+
+
+def watchlist_summary(account_id: int) -> dict:
+    """Ticker count + breakdown by equity/etf/fund/other for the Watchlist tile — bucketed from
+    each item's `quote_type` (the raw value Yahoo's quoteType field reports, e.g. "EQUITY")."""
+    items = get_watchlist_items(account_id)
+    by_type = {"equity": 0, "etf": 0, "fund": 0, "other": 0}
+    for item in items:
+        bucket = _WATCHLIST_TYPE_BUCKETS.get((item["quote_type"] or "").upper(), "other")
+        by_type[bucket] += 1
+    return {"count": len(items), "by_type": by_type}
 
 
 def fx_rate_on_date(currency: str, date_str: Optional[str]) -> float:

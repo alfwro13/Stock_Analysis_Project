@@ -30,7 +30,7 @@
             <label for="acct-name">Name</label>
             <input type="text" id="acct-name" placeholder="e.g. My ISA">
         </div>
-        <div class="form-group">
+        <div class="form-group" id="acct-currency-group">
             <label for="acct-currency">Currency</label>
             <input type="text" id="acct-currency" placeholder="GBP" value="{{ base_currency }}">
         </div>
@@ -43,7 +43,7 @@
             </select>
             <input type="text" id="acct-type-readonly" class="form-control d-none" disabled>
         </div>
-        <div class="form-group">
+        <div class="form-group" id="acct-cash-group">
             <label for="acct-cash" id="acct-cash-label">Initial Cash</label>
             <input type="number" id="acct-cash" step="0.01" value="0">
         </div>
@@ -51,7 +51,7 @@
             <label for="acct-opening-balance-units"><abbr title="How many fund units the Opening Balance amount represents. Optional, purely informational for now.">Opening Balance Units</abbr></label>
             <input type="number" id="acct-opening-balance-units" step="0.000001">
         </div>
-        <div class="form-group">
+        <div class="form-group" id="acct-opened-date-group">
             <label for="acct-opened-date"><abbr id="acct-opened-date-label" title="The real-world date this account was opened. Used as the starting point for the Cash Balance History table — leave blank to use today.">Opening Date</abbr></label>
             <input type="date" id="acct-opened-date">
         </div>

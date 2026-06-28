@@ -749,6 +749,42 @@ def test_pension_display_label_falls_back_to_internal_ticker():
 
 
 @pytest.mark.db
+def test_watchlist_summary_buckets_by_quote_type():
+    from database import add_watchlist_item, get_watchlist_account
+    wl = get_watchlist_account()
+    add_watchlist_item(wl["id"], "AAPL", quote_type="EQUITY")
+    add_watchlist_item(wl["id"], "MSFT", quote_type="EQUITY")
+    add_watchlist_item(wl["id"], "VUSA.L", quote_type="ETF")
+    add_watchlist_item(wl["id"], "FUNDX", quote_type="MUTUALFUND")
+    add_watchlist_item(wl["id"], "WEIRD", quote_type="CRYPTOCURRENCY")
+
+    result = accounts_engine.watchlist_summary(wl["id"])
+    assert result["count"] == 5
+    assert result["by_type"] == {"equity": 2, "etf": 1, "fund": 1, "other": 1}
+
+    for ticker in ("AAPL", "MSFT", "VUSA.L", "FUNDX", "WEIRD"):
+        from database import remove_watchlist_ticker
+        remove_watchlist_ticker(wl["id"], ticker)
+
+
+@pytest.mark.db
+def test_watchlist_summary_empty():
+    from database import get_watchlist_account
+    wl = get_watchlist_account()
+    result = accounts_engine.watchlist_summary(wl["id"])
+    assert result == {"count": 0, "by_type": {"equity": 0, "etf": 0, "fund": 0, "other": 0}}
+
+
+@pytest.mark.db
+def test_account_summary_includes_holdings_count():
+    aid = create_account("HoldingsCountAcc", "GBP", account_type="Trading")
+    add_transaction(aid, "Buy", "2026-01-01", ticker="AAPL", currency="USD", quantity=10, unit_price=100, exchange_rate=1.0)
+    add_transaction(aid, "Buy", "2026-01-02", ticker="MSFT", currency="USD", quantity=5, unit_price=200, exchange_rate=1.0)
+    summary = accounts_engine.account_summary(aid)
+    assert summary["holdings_count"] == 2
+
+
+@pytest.mark.db
 def test_pension_performance_returns_none_without_enough_history():
     from account_scraper_engine import import_price_csv
     aid = create_account("PensionPerfShortAcc", "GBP", account_type="Pension")

@@ -1258,6 +1258,40 @@ def test_list_accounts_includes_current_balance_for_pension_only(client):
 
 
 @pytest.mark.api
+def test_list_accounts_includes_holdings_count_equity_value_cash_balance_for_trading(client):
+    trading_id = _create_account(client, account_type="Trading", initial_cash=1000.0)
+    client.post(f"/api/accounts/{trading_id}/transactions", json={
+        "txn_type": "Buy", "txn_date": "2026-01-01", "ticker": "AAPL", "currency": "USD",
+        "quantity": 5, "unit_price": 100.0, "exchange_rate": 1.0,
+    })
+
+    resp = client.get("/api/accounts")
+    acc = next(a for a in _json(resp)["accounts"] if a["id"] == trading_id)
+    assert acc["holdings_count"] == 1
+    assert "equity_value" in acc
+    assert "cash_balance" in acc
+
+    import database as _db
+    _db.soft_delete_account(trading_id)
+
+
+@pytest.mark.api
+def test_list_accounts_includes_watchlist_count_and_breakdown(client):
+    import database as _db
+    wl = _db.get_watchlist_account()
+    _db.add_watchlist_item(wl["id"], "AAPL", quote_type="EQUITY")
+    _db.add_watchlist_item(wl["id"], "VUSA.L", quote_type="ETF")
+
+    resp = client.get("/api/accounts")
+    acc = next(a for a in _json(resp)["accounts"] if a["id"] == wl["id"])
+    assert acc["watchlist_count"] == 2
+    assert acc["watchlist_breakdown"] == {"equity": 1, "etf": 1, "fund": 0, "other": 0}
+
+    _db.remove_watchlist_ticker(wl["id"], "AAPL")
+    _db.remove_watchlist_ticker(wl["id"], "VUSA.L")
+
+
+@pytest.mark.api
 def test_creating_pension_account_with_opening_balance_creates_real_holding(client):
     """Regression: opening_balance_units entered via the API must actually show up as units held,
     not just sit on the account row — otherwise Admin Fee has nothing to deduct from."""
