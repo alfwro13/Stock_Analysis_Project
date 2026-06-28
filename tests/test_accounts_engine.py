@@ -726,3 +726,67 @@ def test_opening_balance_units_round_trips_via_create_and_update():
     assert get_account(aid)["opening_balance_units"] == 3125.5
     update_account(aid, opening_balance_units=4000.0)
     assert get_account(aid)["opening_balance_units"] == 4000.0
+
+
+@pytest.mark.db
+def test_sync_pension_opening_balance_creates_holding():
+    """Regression: opening_balance_units/initial_cash were stored but never materialized into the
+    ledger, so units_as_of stayed 0 and Admin Fee could never deduct from a pre-existing balance."""
+    from database import get_account, get_transactions, update_account
+    aid = create_account("SyncOpeningBalanceAcc", "GBP", account_type="Pension")
+    update_account(aid, initial_cash=70000.0, opening_balance_units=70000.0, opened_date="2024-01-01")
+
+    accounts_engine.sync_pension_opening_balance(aid)
+
+    assert accounts_engine.pension_units_as_of(aid, "2024-01-01") == 70000.0
+    rows = accounts_engine.holdings_with_market_value(aid)
+    assert rows[0]["shares"] == 70000.0
+    assert rows[0]["buy_price"] == 1.0   # 70000 / 70000
+
+    acc = get_account(aid)
+    txn_id = acc["opening_balance_txn_id"]
+    assert txn_id is not None
+    txns = get_transactions(aid)
+    assert any(t["id"] == txn_id and t["txn_date"] == "2024-01-01" for t in txns)
+
+
+@pytest.mark.db
+def test_sync_pension_opening_balance_updates_in_place_not_duplicated():
+    from database import get_account, get_transactions, update_account
+    aid = create_account("SyncOpeningBalanceUpdateAcc", "GBP", account_type="Pension")
+    update_account(aid, initial_cash=1000.0, opening_balance_units=1000.0, opened_date="2024-01-01")
+    accounts_engine.sync_pension_opening_balance(aid)
+    first_txn_id = get_account(aid)["opening_balance_txn_id"]
+
+    update_account(aid, initial_cash=2000.0, opening_balance_units=1000.0)
+    accounts_engine.sync_pension_opening_balance(aid)
+
+    acc = get_account(aid)
+    assert acc["opening_balance_txn_id"] == first_txn_id   # same transaction, updated in place
+    assert accounts_engine.pension_units_as_of(aid, "2024-01-01") == 1000.0
+    rows = accounts_engine.holdings_with_market_value(aid)
+    assert rows[0]["buy_price"] == 2.0   # 2000 / 1000
+    assert len([t for t in get_transactions(aid) if t["txn_type"] == "Buy"]) == 1
+
+
+@pytest.mark.db
+def test_sync_pension_opening_balance_removed_when_fields_cleared():
+    from database import get_account, update_account
+    aid = create_account("SyncOpeningBalanceClearAcc", "GBP", account_type="Pension")
+    update_account(aid, initial_cash=1000.0, opening_balance_units=1000.0, opened_date="2024-01-01")
+    accounts_engine.sync_pension_opening_balance(aid)
+    assert get_account(aid)["opening_balance_txn_id"] is not None
+
+    update_account(aid, opening_balance_units=None)
+    accounts_engine.sync_pension_opening_balance(aid)
+
+    assert get_account(aid)["opening_balance_txn_id"] is None
+    assert accounts_engine.pension_units_as_of(aid, "2024-01-01") == 0.0
+
+
+@pytest.mark.db
+def test_sync_pension_opening_balance_noop_for_house_account():
+    from database import get_account
+    aid = create_account("SyncOpeningBalanceHouseAcc", "GBP", account_type="House")
+    accounts_engine.sync_pension_opening_balance(aid)
+    assert get_account(aid)["opening_balance_txn_id"] is None

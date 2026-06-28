@@ -1172,3 +1172,39 @@ def test_opening_balance_units_create_and_update_roundtrip(client):
 
     import database as _db
     _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_creating_pension_account_with_opening_balance_creates_real_holding(client):
+    """Regression: opening_balance_units entered via the API must actually show up as units held,
+    not just sit on the account row — otherwise Admin Fee has nothing to deduct from."""
+    resp = client.post("/api/accounts", json={
+        "name": "OpeningBalanceHoldingAcc", "currency": "GBP", "account_type": "Pension",
+        "initial_cash": 70000.0, "opening_balance_units": 70000.0, "opened_date": "2024-01-01",
+    })
+    account_id = _json(resp)["id"]
+
+    resp = client.get(f"/api/accounts/{account_id}/pension/units-as-of?date=2024-01-01")
+    assert _json(resp)["units"] == 70000.0
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_editing_pension_opening_balance_updates_holding_not_duplicates(client):
+    account_id = _create_account(client, account_type="Pension", initial_cash=1000.0, opening_balance_units=1000.0)
+
+    resp = client.put(f"/api/accounts/{account_id}", json={
+        "name": "API Test Account", "currency": "GBP", "account_type": "Pension",
+        "initial_cash": 2000.0, "opening_balance_units": 1000.0,
+    })
+    assert resp.status_code == 200
+
+    resp = client.get(f"/api/accounts/{account_id}/transactions")
+    buys = [t for t in _json(resp)["transactions"] if t["txn_type"] == "Buy"]
+    assert len(buys) == 1
+    assert buys[0]["unit_price"] == 2.0
+
+    import database as _db
+    _db.soft_delete_account(account_id)

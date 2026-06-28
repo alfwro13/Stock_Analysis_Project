@@ -10,7 +10,7 @@ from accounts_engine import (
     _ticker_known, create_transfer, delete_transaction_with_pair, export_transactions_csv,
     fx_rate_on_date, import_csv_activities, import_ghostfolio_activities, is_unresolved_ticker,
     pension_units_as_of, record_pension_contribution, record_pension_fee, resnapshot_account,
-    resolve_watchlist_metadata,
+    resolve_watchlist_metadata, sync_pension_opening_balance,
 )
 from account_scraper_engine import import_price_csv, price_as_of, run_scrape_for_account, test_scrape
 import notification_engine
@@ -145,6 +145,8 @@ async def api_create_account(request: Request, body: AccountBody, background_tas
         )
         if account_id is None:
             return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to create account."})
+        if body.account_type == "Pension":
+            sync_pension_opening_balance(account_id)
         background_tasks.add_task(resnapshot_account, account_id)
         return JSONResponse(content={"status": "success", "message": "Account created.", "id": account_id})
     except Exception as e:
@@ -154,7 +156,7 @@ async def api_create_account(request: Request, body: AccountBody, background_tas
 
 @accounts_router.put("/accounts/{account_id}")
 @limiter.limit("30/minute")
-async def api_update_account(request: Request, account_id: int, body: AccountBody):
+async def api_update_account(request: Request, account_id: int, body: AccountBody, background_tasks: BackgroundTasks):
     try:
         existing = get_account(account_id)
         if existing is None:
@@ -176,6 +178,9 @@ async def api_update_account(request: Request, account_id: int, body: AccountBod
         )
         if not ok:
             return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to update account."})
+        if body.account_type == "Pension":
+            sync_pension_opening_balance(account_id)
+            background_tasks.add_task(resnapshot_account, account_id)
         return JSONResponse(content={"status": "success", "message": "Account updated."})
     except Exception as e:
         logger.error("api_update_account %s failed: %s", account_id, e)

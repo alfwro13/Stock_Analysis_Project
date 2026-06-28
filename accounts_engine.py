@@ -14,7 +14,7 @@ import time_engine
 from config import BASE_CURRENCY, HISTORICAL_DIR, PORTFOLIO_PATH
 from db_accounts import (
     add_transaction, delete_transaction, get_account, get_accounts, get_transaction,
-    get_transactions, update_transaction, upsert_value_snapshot,
+    get_transactions, update_account, update_transaction, upsert_value_snapshot,
 )
 from database import get_connection
 from portfolio_service import get_rate_to_base
@@ -725,6 +725,44 @@ def _backfill_house_value_history(account_id: int, acc: dict) -> int:
         upsert_value_snapshot(account_id, date_str, round(cash + equity, 2), round(cash, 2), round(equity, 2), round(contributions, 2))
         written += 1
     return written
+
+
+def sync_pension_opening_balance(account_id: int) -> None:
+    """Materialises 'Opening Balance' + 'Opening Balance Units' as a real Buy transaction against
+    the synthetic ticker, so a pre-existing pension balance shows real units/holdings from day one
+    instead of starting at zero until the first Pay In. `opening_balance_txn_id` tracks which
+    transaction (if any) represents this, so a later edit updates it in place rather than
+    duplicating it, and clearing either field removes it. Call after every create/update of a
+    Pension account — a no-op for any other account type or when either field is blank/zero."""
+    acc = get_account(account_id)
+    if not acc or acc["account_type"] != "Pension":
+        return
+    units = acc["opening_balance_units"]
+    amount = acc["initial_cash"]
+    existing_txn_id = acc["opening_balance_txn_id"]
+
+    if not units or not amount:
+        if existing_txn_id:
+            delete_transaction(existing_txn_id)
+            update_account(account_id, opening_balance_txn_id=None)
+        return
+
+    from account_scraper_engine import pension_ticker
+    txn_date = acc["opened_date"] or acc["created_at"][:10]
+    price = amount / units
+    if existing_txn_id and get_transaction(existing_txn_id):
+        update_transaction(
+            existing_txn_id, txn_date=txn_date, quantity=units, unit_price=price,
+            company_name=acc["name"], currency=acc["currency"],
+        )
+    else:
+        txn_id = add_transaction(
+            account_id, "Buy", txn_date, ticker=pension_ticker(account_id),
+            company_name=acc["name"], currency=acc["currency"], quantity=units, unit_price=price,
+            update_cash=False, price_in_pence=False, notes="Opening balance",
+        )
+        if txn_id is not None:
+            update_account(account_id, opening_balance_txn_id=txn_id)
 
 
 def record_pension_contribution(account_id: int, txn_date: str, amount: float, unit_price: Optional[float] = None) -> dict:

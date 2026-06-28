@@ -74,7 +74,7 @@ def create_account(
 _ALLOWED_ACCOUNT_COLUMNS = frozenset({
     "name", "currency", "initial_cash", "note", "opened_date", "account_type",
     "scraper_url", "scraper_selector", "scraper_headers", "scrape_time", "scraper_enabled",
-    "pension_start_date", "opening_balance_units",
+    "pension_start_date", "opening_balance_units", "opening_balance_txn_id",
 })
 
 
