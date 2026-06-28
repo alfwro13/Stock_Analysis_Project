@@ -50,6 +50,30 @@ def get_universe_tickers() -> List[str]:
             conn.close()
 
 
+def get_mutual_fund_tickers(tickers: List[str]) -> set:
+    """Subset of `tickers` classified MUTUALFUND in market_universe — these have no intraday
+    trading (one NAV print per day), so Yahoo Finance always returns empty for 5m bars."""
+    if not tickers:
+        return set()
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        placeholders = ",".join("?" * len(tickers))
+        cursor.execute(
+            f"SELECT ticker FROM market_universe WHERE quote_type = 'MUTUALFUND' "
+            f"AND ticker IN ({placeholders})",
+            tickers,
+        )
+        return {row["ticker"] for row in cursor.fetchall()}
+    except Exception as e:
+        logger.error("Failed to fetch mutual fund tickers: %s", e)
+        return set()
+    finally:
+        if conn:
+            conn.close()
+
+
 def upsert_quant_signal(
     ticker: str,
     date: str,

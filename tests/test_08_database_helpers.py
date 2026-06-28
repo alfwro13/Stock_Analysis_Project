@@ -191,6 +191,38 @@ def test_get_universe_tickers_freetrade_only_mode_filters():
         conn.close()
 
 
+# ── get_mutual_fund_tickers ───────────────────────────────────────────────────
+
+@pytest.mark.db
+def test_get_mutual_fund_tickers_returns_only_mutualfund_quote_type():
+    conn = _conn()
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO market_universe (ticker, quote_type) VALUES ('GU_FUND', 'MUTUALFUND')"
+        )
+        conn.execute(
+            "INSERT OR IGNORE INTO market_universe (ticker, quote_type) VALUES ('GU_STOCK', 'EQUITY')"
+        )
+        conn.commit()
+        result = _db.get_mutual_fund_tickers(["GU_FUND", "GU_STOCK"])
+        assert result == {"GU_FUND"}
+    finally:
+        conn.execute("DELETE FROM market_universe WHERE ticker IN ('GU_FUND', 'GU_STOCK')")
+        conn.commit()
+        conn.close()
+
+
+@pytest.mark.db
+def test_get_mutual_fund_tickers_empty_input_returns_empty_set():
+    assert _db.get_mutual_fund_tickers([]) == set()
+
+
+@pytest.mark.db
+def test_get_mutual_fund_tickers_unknown_ticker_excluded():
+    """A ticker not yet in market_universe (e.g. brand-new, unclassified) is not a fund match."""
+    assert _db.get_mutual_fund_tickers(["GU_UNKNOWN_TICKER"]) == set()
+
+
 # ── batch_update_trap_phase_actuals ───────────────────────────────────────────
 
 @pytest.mark.db

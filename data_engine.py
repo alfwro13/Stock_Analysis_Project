@@ -8,7 +8,7 @@ import pandas as pd
 from typing import Set, List, Dict, Any
 
 from config import PORTFOLIO_PATH, HISTORICAL_DIR, INTRADAY_DIR, FUNDAMENTALS_DIR, load_config
-from database import get_watchlist_tickers, get_all_account_tickers
+from database import get_watchlist_tickers, get_all_account_tickers, get_mutual_fund_tickers
 from gilt_engine import GiltDataService
 from yahoo_engine import yahoo_engine
 
@@ -141,6 +141,12 @@ class DataEngine:
             logger.error(f"Fatal error during bulk historical download: {e}")
 
     def bulk_download_intraday(self, tickers: List[str]) -> None:
+        if not tickers:
+            return
+
+        mutual_funds = get_mutual_fund_tickers(tickers)
+        if mutual_funds:
+            tickers = [t for t in tickers if t not in mutual_funds]
         if not tickers:
             return
 

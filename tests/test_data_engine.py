@@ -188,3 +188,32 @@ def test_init_populates_account_tickers_from_db():
         engine = DataEngine()
 
     assert engine.account_tickers == ["XUKX.L", "IGLG.L"]
+
+
+# ── bulk_download_intraday: mutual funds have no intraday data ───────────────
+
+def test_bulk_download_intraday_excludes_mutual_funds():
+    """Mutual funds print one NAV/day and have no 5m bars — fetching them always returns
+    empty and logs a misleading 'possibly delisted' error, so they must be filtered out
+    before the Yahoo Finance call is even made."""
+    from data_engine import DataEngine
+
+    engine = DataEngine.__new__(DataEngine)
+
+    with patch("data_engine.get_mutual_fund_tickers", return_value={"0P00018XAR.L"}), \
+         patch("data_engine.yahoo_engine.get_intraday", return_value={}) as mock_intraday:
+        engine.bulk_download_intraday(["0P00018XAR.L", "AAPL"])
+
+    mock_intraday.assert_called_once_with(["AAPL"], period="1d", interval="5m")
+
+
+def test_bulk_download_intraday_skips_yahoo_call_when_all_mutual_funds():
+    from data_engine import DataEngine
+
+    engine = DataEngine.__new__(DataEngine)
+
+    with patch("data_engine.get_mutual_fund_tickers", return_value={"0P00018XAR.L"}), \
+         patch("data_engine.yahoo_engine.get_intraday") as mock_intraday:
+        engine.bulk_download_intraday(["0P00018XAR.L"])
+
+    mock_intraday.assert_not_called()

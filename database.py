@@ -69,6 +69,7 @@ from db_etf import (  # noqa: E402
 from db_helpers import (  # noqa: E402
     log_score_event,
     get_universe_tickers,
+    get_mutual_fund_tickers,
     upsert_quant_signal,
     log_trap_phase,
     get_unresolved_trap_phases,
@@ -118,6 +119,7 @@ __all__ = [
     "get_etf_accuracy",
     "log_score_event",
     "get_universe_tickers",
+    "get_mutual_fund_tickers",
     "upsert_quant_signal",
     "log_trap_phase",
     "get_unresolved_trap_phases",

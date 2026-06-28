@@ -175,6 +175,50 @@ def test_stock_detail_missing_data_does_not_crash(client):
     )
 
 
+@pytest.mark.pages
+def test_stock_detail_quant_signals_only_does_not_crash(client, tmp_path, monkeypatch):
+    """A ticker that has a quant_signals row but no stock_signals row yet (e.g. freshly
+    fetched, before the full nightly pipeline has run) hits the 'UNIVERSE SCAN ONLY'
+    fallback in page_routes.py — that dict must carry every key stock_detail.html reads
+    (fifty_two_week_low/high, ma_50_day, ma_200_day, country), or the template 500s.
+    The page_action block that reads those keys only renders when a daily Parquet file
+    exists for the ticker, so one must be written here to actually exercise that path."""
+    import pandas as pd
+    import database as _db
+
+    historical_dir = tmp_path / "historical"
+    historical_dir.mkdir()
+    df = pd.DataFrame({
+        "Open": [100.0, 101.0], "High": [102.0, 103.0],
+        "Low": [99.0, 100.0], "Close": [101.0, 102.0], "Volume": [1000, 1100],
+    }, index=pd.date_range("2026-01-01", periods=2))
+    df.to_parquet(historical_dir / "ZZQUANTONLY.parquet")
+    monkeypatch.setattr("page_routes.HISTORICAL_DIR", historical_dir)
+
+    conn = _db.get_connection()
+    try:
+        conn.execute(
+            "INSERT INTO quant_signals (ticker, date, close_price, volume, sma_50, sma_200) "
+            "VALUES ('ZZQUANTONLY', '2026-01-05', 100.0, 1000, 95.0, 90.0)"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    resp = client.get("/stock/ZZQUANTONLY", follow_redirects=True)
+    assert resp.status_code < 500, (
+        f"Stock detail page crashed for quant_signals-only ticker: HTTP {resp.status_code}\n"
+        f"Body: {resp.text[:500]}"
+    )
+
+    conn = _db.get_connection()
+    try:
+        conn.execute("DELETE FROM quant_signals WHERE ticker = 'ZZQUANTONLY'")
+        conn.commit()
+    finally:
+        conn.close()
+
+
 # ── Safety net: no page returns 500 ──────────────────────────────────────────
 
 @pytest.mark.pages
