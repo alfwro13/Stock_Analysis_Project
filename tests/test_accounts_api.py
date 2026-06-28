@@ -1236,6 +1236,26 @@ def test_list_accounts_includes_scraper_last_status(client):
 
 
 @pytest.mark.api
+def test_list_accounts_includes_current_balance_for_pension_only(client):
+    """The tile shows the live equity value ('Current Balance'), not the static initial_cash —
+    only computed for Pension, where the account's own ledger is the source of truth."""
+    pension_id = _create_account(client, account_type="Pension", opening_balance_units=100.0, initial_cash=200.0)
+    trading_id = _create_account(client, account_type="Trading")
+
+    resp = client.get("/api/accounts")
+    accounts = _json(resp)["accounts"]
+    pension_acc = next(a for a in accounts if a["id"] == pension_id)
+    trading_acc = next(a for a in accounts if a["id"] == trading_id)
+
+    assert pension_acc["current_balance"] == 200.0   # no scraped price yet — falls back to cost basis
+    assert "current_balance" not in trading_acc
+
+    import database as _db
+    _db.soft_delete_account(pension_id)
+    _db.soft_delete_account(trading_id)
+
+
+@pytest.mark.api
 def test_creating_pension_account_with_opening_balance_creates_real_holding(client):
     """Regression: opening_balance_units entered via the API must actually show up as units held,
     not just sit on the account row — otherwise Admin Fee has nothing to deduct from."""

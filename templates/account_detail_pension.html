@@ -43,7 +43,7 @@
 <div class="xray-cards-row">
     <div class="xray-metric-card xray-metric-card--purple">
         <div class="xray-metric-label">Pension Value ({{ base_currency }})</div>
-        <div class="xray-metric-value">{{ "%.2f"|format(summary.equity_value | default(0)) }}</div>
+        <div class="xray-metric-value">{{ "{:,.2f}".format(summary.equity_value | default(0)).replace(",", " ") }}</div>
     </div>
     <div class="xray-metric-card">
         <div class="xray-metric-label"><abbr title="Change in the scraped/imported unit price over the trailing 1 month — used as a proxy for fund performance even before a full month of value-snapshot history exists.">Performance 1M</abbr></div>

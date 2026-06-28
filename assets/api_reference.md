@@ -2686,7 +2686,7 @@ HTML page. Dedicated Pension account detail view (replaces the generic ledger pa
 
 ### `GET /api/accounts`
 
-Returns all non-deleted accounts, each annotated with `scraper_last_status` (`"success"` | `"error"` | `null`) — the most recent run outcome of that account's `account_scraper_{id}_job` from `scheduler_run_log`, or `null` if the scraper is disabled or has never run. Powers the green/red status dot next to the Scraper button on House/Pension tiles.
+Returns all non-deleted accounts, each annotated with `scraper_last_status` (`"success"` | `"error"` | `null`) — the most recent run outcome of that account's `account_scraper_{id}_job` from `scheduler_run_log`, or `null` if the scraper is disabled or has never run. Powers the green/red status dot next to the Scraper button on House/Pension tiles. Pension accounts are additionally annotated with `current_balance` (`accounts_engine.account_summary()`'s `equity_value` — the live valuation from the latest scraped/imported unit price, falling back to cost basis if no price exists yet), which the tile shows instead of the static `initial_cash`/"Opening Balance".
 
 **Response:**
 ```json

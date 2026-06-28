@@ -7,10 +7,10 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 
 from accounts_engine import (
-    _ticker_known, create_transfer, delete_transaction_with_pair, export_transactions_csv,
-    fx_rate_on_date, import_csv_activities, import_ghostfolio_activities, is_unresolved_ticker,
-    pension_units_as_of, record_pension_contribution, record_pension_fee, resnapshot_account,
-    resolve_watchlist_metadata, sync_pension_opening_balance,
+    _ticker_known, account_summary, create_transfer, delete_transaction_with_pair,
+    export_transactions_csv, fx_rate_on_date, import_csv_activities, import_ghostfolio_activities,
+    is_unresolved_ticker, pension_units_as_of, record_pension_contribution, record_pension_fee,
+    resnapshot_account, resolve_watchlist_metadata, sync_pension_opening_balance,
 )
 from account_scraper_engine import import_price_csv, price_as_of, run_scrape_for_account, test_scrape
 import notification_engine
@@ -134,6 +134,8 @@ async def api_list_accounts():
             acc["scraper_last_status"] = job["last_status"] if job else None
         else:
             acc["scraper_last_status"] = None
+        if acc["account_type"] == "Pension":
+            acc["current_balance"] = account_summary(acc["id"]).get("equity_value", 0.0)
     return JSONResponse(content={"status": "success", "accounts": accounts})
 
 

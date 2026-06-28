@@ -6,6 +6,10 @@ function _escapeHtml(s) {
     return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+function _formatThousands(value) {
+    return Number(value).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+}
+
 function _accountModal() {
     return bootstrap.Modal.getOrCreateInstance(document.getElementById('accountModal'));
 }
@@ -41,10 +45,13 @@ async function loadAccounts() {
     }
 }
 
-const _ACCOUNT_CASH_TILE_LABELS = { House: 'Initial Purchase', Pension: 'Opening Balance' };
+const _ACCOUNT_CASH_TILE_LABELS = { House: 'Initial Purchase', Pension: 'Current Balance' };
 
 function _accountCashLine(acc) {
     const label = _ACCOUNT_CASH_TILE_LABELS[acc.account_type];
+    if (acc.account_type === 'Pension') {
+        return `${label}: ${_formatThousands(acc.current_balance ?? acc.initial_cash)} ${_escapeHtml(acc.currency)}`;
+    }
     return label
         ? `${label}: ${acc.initial_cash} ${_escapeHtml(acc.currency)}`
         : `${_escapeHtml(acc.currency)} &middot; initial cash ${acc.initial_cash}`;
