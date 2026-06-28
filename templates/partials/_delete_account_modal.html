@@ -1,0 +1,22 @@
+<div class="modal fade" id="deleteAccountModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Delete Account</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p>Are you sure you want to delete <strong>{{ account.name }}</strong>? Its transaction history will be preserved in the database but the account will no longer appear anywhere in the app.</p>
+        <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="delete-account-confirm-checkbox" onchange="_onDeleteAccountCheckboxChange()">
+            <label class="form-check-label" for="delete-account-confirm-checkbox">Yes, delete this account</label>
+        </div>
+        <div id="delete-account-status" class="status-msg-sm mt-2"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" id="delete-account-confirm-btn" class="btn btn-outline-danger btn-sm" disabled onclick="confirmDeleteAccount()">Delete</button>
+      </div>
+    </div>
+  </div>
+</div>

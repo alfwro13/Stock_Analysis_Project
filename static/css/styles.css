@@ -226,6 +226,8 @@ details.settings-card > summary::-webkit-details-marker { display: none; }
 details.settings-card > summary::after { content: '▼'; color: #4da6ff; transition: transform 0.3s ease; font-size: 14px; }
 details.settings-card[open] > summary::after { transform: rotate(180deg); }
 details.settings-card[open] > summary { border-bottom: 1px solid #333; margin-bottom: 20px; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+details.settings-card.danger-zone { border-left-color: #dc3545; }
+details.settings-card.danger-zone > summary::after { color: #dc3545; }
 .summary-box { background-color: #1e1e1e; padding: 20px; border-radius: 8px; margin-bottom: 20px; border-left: 5px solid #4da6ff; }
 .portfolio-box { background-color: #1a2636; padding: 20px; border-radius: 8px; margin-bottom: 20px; border-left: 5px solid #00ff00; }
 .explanation-box { background-color: #2c2c2c; padding: 15px; border-radius: 5px; margin-bottom: 20px; line-height: 1.6; font-size: var(--font-size-body); color: #ccc; }

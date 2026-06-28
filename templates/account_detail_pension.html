@@ -102,9 +102,17 @@
     {% endif %}
 </details>
 
+{# ── Danger Zone ── #}
+<details class="settings-card danger-zone">
+    <summary>⚠️ Danger Zone</summary>
+    <p class="text-muted small">Deleting an account preserves its transaction history in the database but removes it from every list and page in the app.</p>
+    <button type="button" class="btn btn-outline-danger btn-sm" onclick="openDeleteAccountModal()">Delete Account</button>
+</details>
+
 {% include "partials/_accounts_txn_modal.html" %}
 {% include "partials/_account_scraper_modal.html" %}
 {% include "partials/_pension_actions_modal.html" %}
+{% include "partials/_delete_account_modal.html" %}
 {% endblock %}
 
 {% block scripts %}
@@ -116,4 +124,5 @@
 <script src="/static/js/accounts.js?v={{ css_version }}"></script>
 <script src="/static/js/account_scraper.js?v={{ css_version }}"></script>
 <script src="/static/js/account_detail_pension.js?v={{ css_version }}"></script>
+<script src="/static/js/account_danger_zone.js?v={{ css_version }}"></script>
 {% endblock %}

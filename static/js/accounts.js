@@ -84,7 +84,6 @@ function _accountCardHtml(acc) {
                 <div class="d-flex gap-2">
                     <button type="button" class="btn btn-outline-secondary btn-sm" onclick="openAccountModal(${acc.id})">Edit</button>
                     ${isScraperType ? `<button type="button" class="btn btn-outline-secondary btn-sm" onclick="openScraperModal(${acc.id})">&#9881; Scraper ${_scraperStatusBadgeHtml(acc)}</button>` : ''}
-                    ${isWatchlist ? '' : `<button type="button" class="btn btn-outline-danger btn-sm" onclick="deleteAccount(${acc.id}, '${_escapeHtml(acc.name)}')">Delete</button>`}
                 </div>
             </div>
             <div class="d-flex gap-2 mt-3">
@@ -211,18 +210,6 @@ async function saveAccount() {
         }
     } catch (e) {
         status.innerHTML = `<span class="msg-error">${e.message}</span>`;
-    }
-}
-
-async function deleteAccount(id, name) {
-    if (!confirm(`Delete account "${name}"? Its transaction history will be preserved but the account will no longer appear in lists.`)) return;
-    try {
-        const r = await fetch(`/api/accounts/${id}`, { method: 'DELETE' });
-        const data = await r.json();
-        if (data.status === 'success') loadAccounts();
-        else alert(data.message || 'Failed to delete account.');
-    } catch (e) {
-        alert(e.message);
     }
 }
 

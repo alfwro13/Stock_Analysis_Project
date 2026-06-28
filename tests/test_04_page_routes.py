@@ -421,3 +421,25 @@ def test_pension_detail_page_loads_with_actions(client):
         assert "Pension Value" in resp.text
     finally:
         _db.soft_delete_account(account_id)
+
+
+@pytest.mark.pages
+def test_danger_zone_with_delete_confirmation_on_all_three_detail_pages(client):
+    """Delete moved off the account tile onto each detail page's Danger Zone, gated behind a
+    checkbox-confirmation modal rather than a one-click browser confirm()."""
+    import database as _db
+    trading_id = _db.create_account("Danger Zone Trading", "GBP", account_type="Trading")
+    pension_id = _db.create_account("Danger Zone Pension", "GBP", account_type="Pension")
+    house_id = _db.create_account("Danger Zone House", "GBP", account_type="House")
+    try:
+        for url in (f"/accounts/{trading_id}", f"/accounts/{pension_id}/pension", f"/accounts/{house_id}/house"):
+            resp = client.get(url)
+            assert resp.status_code == 200
+            assert "Danger Zone" in resp.text
+            assert 'id="deleteAccountModal"' in resp.text
+            assert 'id="delete-account-confirm-checkbox"' in resp.text
+            assert "account_danger_zone.js" in resp.text
+    finally:
+        _db.soft_delete_account(trading_id)
+        _db.soft_delete_account(pension_id)
+        _db.soft_delete_account(house_id)
