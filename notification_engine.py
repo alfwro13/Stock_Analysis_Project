@@ -43,6 +43,7 @@ NOTIFICATION_SOURCES: dict[str, dict] = {
     "treasury_auction_alert":  {"label": "Sovereign Debt Auction Alert",    "job_id": "macro_auction_job_am",   "default": dict(_ON)},
     "accounts_csv_import":     {"label": "Accounts CSV Import",             "job_id": None,                     "default": dict(_NO_TALK)},
     "backup_status":           {"label": "Automated Backup",                "job_id": "backup_job",             "default": dict(_NO_TALK)},
+    "account_value_snapshot_status": {"label": "Account Value Snapshot",    "job_id": "account_value_snapshot_job", "default": dict(_NO_TALK)},
 }
 
 CATEGORY_LABELS = {

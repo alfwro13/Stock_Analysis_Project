@@ -145,7 +145,13 @@ def run_backup_job():
 
 def run_account_value_snapshot():
     try:
-        snapshot_all_accounts()
+        written = snapshot_all_accounts()
+        notify("account_value_snapshot_status", "Success",
+               f"Account Value Snapshot completed: {written} account(s) updated.", level="info")
+    except Exception as e:
+        notify("account_value_snapshot_status", "Error",
+               f"Account Value Snapshot failed: {e}", level="error")
+        raise
     finally:
         record_job_run('account_value_snapshot_job')
 

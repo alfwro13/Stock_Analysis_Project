@@ -346,6 +346,41 @@ def test_snapshot_all_accounts_writes_row_per_account():
 
 
 @pytest.mark.db
+def test_run_account_value_snapshot_notifies_on_success_and_failure():
+    """The job runner (not just the engine function) must report through the unified
+    notification router — the 'Run Now' button previously gave no feedback at all."""
+    import scheduler_jobs
+    from unittest.mock import patch
+
+    with patch("scheduler_jobs.snapshot_all_accounts", return_value=3), \
+         patch("scheduler_jobs.notify") as mock_notify:
+        scheduler_jobs.run_account_value_snapshot()
+    mock_notify.assert_called_once()
+    args, kwargs = mock_notify.call_args
+    assert args[0] == "account_value_snapshot_status"
+    assert args[1] == "Success"
+    assert "3" in args[2]
+
+    with patch("scheduler_jobs.snapshot_all_accounts", side_effect=RuntimeError("db locked")), \
+         patch("scheduler_jobs.notify") as mock_notify:
+        with pytest.raises(RuntimeError):
+            scheduler_jobs.run_account_value_snapshot()
+    mock_notify.assert_called_once()
+    args, kwargs = mock_notify.call_args
+    assert args[0] == "account_value_snapshot_status"
+    assert args[1] == "Error"
+
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT last_run FROM scheduler_run_log WHERE job_id = 'account_value_snapshot_job'"
+        ).fetchone()
+    finally:
+        conn.close()
+    assert row is not None and row["last_run"] is not None
+
+
+@pytest.mark.db
 def test_backfill_value_history_returns_zero_with_no_transactions():
     aid = create_account("BackfillEmptyAcc", "GBP")
     assert accounts_engine.backfill_value_history(aid) == 0
