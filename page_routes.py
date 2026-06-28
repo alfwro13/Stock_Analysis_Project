@@ -158,9 +158,14 @@ async def notifications_page(request: Request):
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM system_notifications ORDER BY timestamp DESC LIMIT 100")
-        notifications = cursor.fetchall()
+        rows = cursor.fetchall()
     finally:
         conn.close()
+    notifications = []
+    for row in rows:
+        note = dict(row)
+        note["timestamp"] = _utc_str_to_local(note["timestamp"])
+        notifications.append(note)
     return templates.TemplateResponse(
         request=request,
         name="notifications.html",

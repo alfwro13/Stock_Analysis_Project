@@ -15,6 +15,7 @@ All "trigger" POST endpoints are tested separately in test_03_*.
 import sys
 import json
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -623,3 +624,26 @@ def test_monte_carlo_accounts_returns_200(client):
         assert "total" in data and isinstance(data["total"], (int, float))
     else:
         assert "message" in data
+
+
+# ── Backup & Recovery ──────────────────────────────────────────────────────────
+
+@pytest.mark.api
+def test_backup_status_returns_200(client):
+    """GET /api/backup/status must return 200 with the expected aggregate shape."""
+    fake_status = {
+        "last_backup": {"started_at": "2026-06-28 03:30:00", "finished_at": "2026-06-28 03:30:05",
+                         "status": "success", "components": "data,models,database",
+                         "destination": "/tmp/backups", "size_bytes": 1048576, "error_message": None},
+        "stored_count": 2,
+        "stored_size_bytes": 2097152,
+        "backups": [{"filename": "backup_20260628_033000.tar.gz", "size_bytes": 1048576, "mtime": "2026-06-28 03:30:05"}],
+    }
+    with patch("api_routes_triggers.get_backup_status", return_value=fake_status):
+        resp = client.get("/api/backup/status")
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
+    data = _json(resp)
+    assert data.get("status") == "success"
+    assert data["stored_count"] == 2
+    assert data["last_backup"]["status"] == "success"
+    assert len(data["backups"]) == 1

@@ -5,11 +5,11 @@ from pathlib import Path
 from typing import List
 
 import time_engine
-from fastapi import APIRouter, BackgroundTasks, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from api_deps import limiter, _error_500
+from api_deps import limiter, _error_500, require_confirm_token
 
 from config import BASE_DIR, DATA_DIR, update_config_atomic
 from database import get_connection, get_universe_tickers
@@ -21,6 +21,7 @@ from scheduler_engine import (
     run_maintenance_engine,
 )
 from maintenance_engine import MaintenanceEngine
+from backup_engine import get_backup_status, restore_backup, run_backup
 from ghostfolio_sync import GhostfolioSyncEngine
 from report_dispatcher import push_morning_quant_briefing, push_lunchtime_quant_briefing
 from data_engine import DataEngine
@@ -43,6 +44,10 @@ IMPORT_DIR = BASE_DIR / "tools" / "data" / "imports"
 
 
 class ImportRequest(BaseModel):
+    filename: str
+
+
+class RestoreBackupRequest(BaseModel):
     filename: str
 
 
@@ -449,6 +454,59 @@ async def trigger_maintenance_dry_run(request: Request):
     except Exception as e:
         logger.exception("Maintenance dry-run failed")
         return _error_500(e)
+
+def bg_execute_backup_run():
+    try:
+        run_backup(trigger_type="manual")
+    finally:
+        record_job_run('backup_job')
+
+
+@triggers_router.post("/backup/run")
+@limiter.limit("5/minute")
+async def trigger_backup_run(request: Request, background_tasks: BackgroundTasks):
+    background_tasks.add_task(bg_execute_backup_run)
+    return JSONResponse(content={"status": "success", "message": "Backup started in the background. Check System Notifications for the summary."})
+
+
+def _localise_backup_ts(ts):
+    if not ts:
+        return ts
+    try:
+        return time_engine.fmt_datetime(datetime.strptime(ts, "%Y-%m-%d %H:%M:%S"))
+    except ValueError:
+        return ts
+
+
+@triggers_router.get("/backup/status")
+async def get_backup_status_endpoint():
+    try:
+        result = get_backup_status()
+        if result.get("last_backup"):
+            result["last_backup"]["started_at"] = _localise_backup_ts(result["last_backup"].get("started_at"))
+            result["last_backup"]["finished_at"] = _localise_backup_ts(result["last_backup"].get("finished_at"))
+        for b in result.get("backups", []):
+            b["mtime"] = _localise_backup_ts(b.get("mtime"))
+        return JSONResponse(content={"status": "success", **result})
+    except Exception as e:
+        logger.exception("Failed to fetch backup status")
+        return _error_500(e)
+
+
+@triggers_router.post("/backup/restore", dependencies=[Depends(require_confirm_token)])
+@limiter.limit("5/minute")
+async def trigger_backup_restore(request: Request, body: RestoreBackupRequest):
+    try:
+        result = restore_backup(body.filename)
+        if result["status"] == "success":
+            return JSONResponse(content=result)
+        return JSONResponse(status_code=500, content=result)
+    except ValueError as e:
+        return JSONResponse(status_code=400, content={"status": "error", "message": str(e)})
+    except Exception as e:
+        logger.exception("Backup restore failed")
+        return _error_500(e)
+
 
 @triggers_router.post("/ghostfolio/discover")
 async def trigger_discovery():

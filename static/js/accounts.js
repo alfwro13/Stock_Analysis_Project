@@ -128,6 +128,7 @@ function _updateAccountFieldLabelsForType() {
     document.getElementById('acct-cash-label').textContent = labels.cash;
     document.getElementById('acct-opened-date-label').textContent = labels.date;
     document.getElementById('acct-pension-start-date-group').classList.toggle('d-none', type !== 'Pension');
+    document.getElementById('acct-opening-balance-units-group').classList.toggle('d-none', type !== 'Pension');
 }
 
 function openAccountModal(id = null) {
@@ -141,6 +142,7 @@ function openAccountModal(id = null) {
     document.getElementById('acct-type').classList.toggle('d-none', isWatchlist);
     document.getElementById('acct-type-readonly').classList.toggle('d-none', !isWatchlist);
     document.getElementById('acct-cash').value = acc ? acc.initial_cash : 0;
+    document.getElementById('acct-opening-balance-units').value = acc ? (acc.opening_balance_units ?? '') : '';
     document.getElementById('acct-opened-date').value = acc ? (acc.opened_date || '') : '';
     document.getElementById('acct-pension-start-date').value = acc ? (acc.pension_start_date || '') : '';
     document.getElementById('acct-note').value = acc ? (acc.note || '') : '';
@@ -164,6 +166,8 @@ async function saveAccount() {
         currency,
         account_type: isWatchlist ? 'Watchlist' : document.getElementById('acct-type').value,
         initial_cash: parseFloat(document.getElementById('acct-cash').value) || 0,
+        opening_balance_units: document.getElementById('acct-opening-balance-units').value === ''
+            ? null : parseFloat(document.getElementById('acct-opening-balance-units').value),
         opened_date: document.getElementById('acct-opened-date').value || null,
         pension_start_date: document.getElementById('acct-pension-start-date').value || null,
         note: document.getElementById('acct-note').value.trim() || null,

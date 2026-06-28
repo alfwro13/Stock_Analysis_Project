@@ -204,10 +204,15 @@ class TestParseCbNlpMessage:
         result = _parse_cb_nlp_message(HAWKISH_MSG, "2026-06-08 09:00:00")
         assert result["currency"] == "EUR"
 
-    def test_timestamp_preserved(self):
+    def test_timestamp_converted_to_local_time(self):
+        """Regression: the raw UTC timestamp must be converted for display, not passed through
+        as-is — otherwise the page shows the wrong hour whenever local time differs from UTC."""
+        from datetime import datetime, timezone
+        import time_engine
         ts = "2026-06-08 09:30:00"
         result = _parse_cb_nlp_message(DOVISH_MSG, ts)
-        assert result["timestamp"] == ts
+        expected = time_engine.fmt_datetime(datetime(2026, 6, 8, 9, 30, 0, tzinfo=timezone.utc))
+        assert result["timestamp"] == expected
 
 
 # ---------------------------------------------------------------------------

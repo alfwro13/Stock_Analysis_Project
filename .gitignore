@@ -11,6 +11,9 @@ audit/
 # Ignore data folder and all its contents
 data/
 
+# Default local destination for the Backup & Recovery feature
+backups/
+
 # Ignore specific files
 static/js/mermaid.min.js
 to_do*.txt

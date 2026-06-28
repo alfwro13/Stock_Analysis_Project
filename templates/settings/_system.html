@@ -199,9 +199,115 @@
                         <div id="maintenance-dry-run-content" class="settings-panel border-left-cyan dry-run-output"></div>
                     </div>
                 </div>
+
+                <div class="settings-panel-md border-left-cyan mt-20">
+                    <h4 class="settings-panel-header text-cyan">📦 Backup Status</h4>
+                    <table class="diag-table">
+                        <thead><tr><th>Metric</th><th>Value</th><th>Context</th></tr></thead>
+                        <tbody>
+                            <tr><td>Last Backup</td><td class="val-col" id="diag-backup-last">--</td><td class="sub-val-col" id="diag-backup-last-status">--</td></tr>
+                            <tr><td>Components Backed Up</td><td class="val-col" id="diag-backup-components">--</td><td class="sub-val-col" id="diag-backup-dest">--</td></tr>
+                            <tr><td>Last Backup Size</td><td class="val-col" id="diag-backup-size">--</td><td class="sub-val-col">archive size</td></tr>
+                            <tr><td>Stored Backups</td><td class="val-col" id="diag-backup-count">--</td><td class="sub-val-col" id="diag-backup-total-size">--</td></tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </details>
 
+
+        <details class="settings-card" id="backup-recovery-card" ontoggle="handleBackupCardToggle(this)">
+            <summary>💾 Backup &amp; Recovery</summary>
+            <p class="settings-desc">Back up the database, cached market data, and trained ML models to a local folder or an NFS share, on a schedule or on demand.</p>
+
+            {% set backup_cfg = config.SCHEDULING.BACKUP if config.SCHEDULING.BACKUP else {} %}
+            {% set backup_days = backup_cfg.DAYS if backup_cfg.DAYS else ['sun'] %}
+            {% set backup_loc = backup_cfg.LOCATION | default('local') %}
+
+            <div class="settings-panel border-left-cyan">
+                <h4 class="settings-panel-header text-cyan">📦 Automated Backup</h4>
+
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1 mb-0">
+                        <label>Location</label>
+                        <select id="BACKUP_LOCATION" class="form-select" onchange="toggleBackupLocationFields()">
+                            <option value="local" {% if backup_loc != 'nfs' %}selected{% endif %}>Local Folder</option>
+                            <option value="nfs" {% if backup_loc == 'nfs' %}selected{% endif %}>NFS Share</option>
+                        </select>
+                    </div>
+                    <div class="form-group flex-2 mb-0 {% if backup_loc == 'nfs' %}d-none{% endif %}" id="backup-local-path-group">
+                        <label>Local Path <span class="text-muted text-xs">(relative to app root)</span></label>
+                        <input type="text" id="BACKUP_LOCAL_PATH" class="form-control" value="{{ backup_cfg.LOCAL_PATH | default('backups') }}" placeholder="backups">
+                    </div>
+                    <div class="form-group flex-1 mb-0 {% if backup_loc != 'nfs' %}d-none{% endif %}" id="backup-nfs-server-group">
+                        <label>NFS Server <span class="text-muted text-xs">(IP or FQDN)</span></label>
+                        <input type="text" id="BACKUP_NFS_SERVER" class="form-control" value="{{ backup_cfg.NFS_SERVER | default('') }}" placeholder="192.168.1.50">
+                    </div>
+                    <div class="form-group flex-1 mb-0 {% if backup_loc != 'nfs' %}d-none{% endif %}" id="backup-nfs-path-group">
+                        <label>NFS Export Path</label>
+                        <input type="text" id="BACKUP_NFS_PATH" class="form-control" value="{{ backup_cfg.NFS_PATH | default('') }}" placeholder="/exports/backups">
+                    </div>
+                </div>
+
+                <div class="flex-gap-15 mb-10 align-end">
+                    <div class="form-group flex-1 mb-0">
+                        <label>What to Back Up</label>
+                        <div class="flex-gap-15">
+                            <label class="checkbox-label"><input type="checkbox" id="BACKUP_INCLUDE_DATA" {% if backup_cfg.INCLUDE_DATA | default(true) %}checked{% endif %}> Data</label>
+                            <label class="checkbox-label"><input type="checkbox" id="BACKUP_INCLUDE_MODELS" {% if backup_cfg.INCLUDE_MODELS | default(true) %}checked{% endif %}> Models</label>
+                            <label class="checkbox-label"><input type="checkbox" id="BACKUP_INCLUDE_DATABASE" {% if backup_cfg.INCLUDE_DATABASE | default(true) %}checked{% endif %}> Database</label>
+                        </div>
+                    </div>
+                    <div class="form-group w-130 flex-shrink-0 mb-0">
+                        <label><abbr title="How many most-recent backup archives to keep at the destination — older ones are deleted automatically after each run.">Retention</abbr></label>
+                        <input type="number" id="BACKUP_RETENTION_COUNT" class="form-control" min="1" max="365" value="{{ backup_cfg.RETENTION_COUNT | default(7) }}">
+                    </div>
+                </div>
+
+                <div class="checkbox-group">
+                    <input type="checkbox" id="BACKUP_ENABLED" {% if backup_cfg.ENABLED %}checked{% endif %}>
+                    <label for="BACKUP_ENABLED">Enable automated backup</label>
+                </div>
+
+                <div class="flex-gap-15 mb-10 align-end">
+                    <div class="form-group flex-1 mb-0">
+                        <label>Days</label>
+                        <div class="day-checkbox-row">
+                            {% for d in ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] %}
+                            <label class="day-checkbox">
+                                <input type="checkbox" class="backup-day" value="{{ d }}" {% if d in backup_days %}checked{% endif %}>
+                                {{ d | upper }}
+                            </label>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <div class="form-group w-130 flex-shrink-0 mb-0">
+                        <label>Time</label>
+                        <input type="time" id="BACKUP_TIME" class="form-control" value="{{ backup_cfg.TIME | default('03:30') }}">
+                    </div>
+                </div>
+
+                <div class="flex-gap-15 mt-5">
+                    <button type="button" id="backupRunBtn" class="btn btn-primary flex-1" onclick="runBackupNow()">▶ Run Backup Now</button>
+                </div>
+                <div id="backup-run-msg" class="mt-10"></div>
+            </div>
+
+            <div class="settings-panel border-left-orange">
+                <h4 class="settings-panel-header text-orange">♻️ Recovery</h4>
+                <p class="settings-desc-sm">Restoring overwrites the live database, data files, and models with the contents of the selected archive. Restart the service afterward so every in-memory cache reloads the restored data.</p>
+                <div class="flex-gap-15 align-end">
+                    <div class="form-group flex-1 mb-0">
+                        <label>Backup file</label>
+                        <select id="backup-restore-select" class="form-select">
+                            <option value="">Loading…</option>
+                        </select>
+                    </div>
+                    <button type="button" class="btn btn-primary mt-0" onclick="restoreSelectedBackup()">⚠ Restore</button>
+                </div>
+                <div id="backup-restore-msg" class="mt-10"></div>
+            </div>
+        </details>
 
         <details class="settings-card" id="core-system-card">
             <summary>🌐 Core System &amp; Currencies</summary>

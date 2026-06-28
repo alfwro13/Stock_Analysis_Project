@@ -699,6 +699,9 @@ table.dataTable tbody tr td { color: #ccc; }
 .text-pink { color: #ff4da6; }
 .text-magenta { color: #ff00ff; }
 .flex-gap-15 { display: flex; gap: 15px; }
+.day-checkbox-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.day-checkbox { display: flex; align-items: center; gap: 4px; background: #1a1a1a; border: 1px solid #333; border-radius: 4px; padding: 4px 8px; font-size: var(--font-size-form); color: #ccc; cursor: pointer; }
+.day-checkbox input { margin: 0; cursor: pointer; }
 .align-end { align-items: flex-end; }
 .mb-25 { margin-bottom: 25px; }
 .mt-30 { margin-top: 30px; }

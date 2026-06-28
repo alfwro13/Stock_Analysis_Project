@@ -778,6 +778,7 @@ def init_db() -> None:
                 scrape_time      TEXT NOT NULL DEFAULT '02:00',
                 scraper_enabled  INTEGER NOT NULL DEFAULT 0,
                 pension_start_date TEXT,
+                opening_balance_units REAL,
                 deleted_at      TEXT DEFAULT NULL,
                 created_at      TEXT DEFAULT (datetime('now'))
             )
@@ -828,6 +829,22 @@ def init_db() -> None:
                 source      TEXT NOT NULL,
                 created_at  TEXT DEFAULT (datetime('now')),
                 UNIQUE(account_id, price_date)
+            )
+        ''')
+
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS backup_history (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                started_at      TEXT NOT NULL,
+                finished_at     TEXT,
+                trigger_type    TEXT NOT NULL,
+                location_type   TEXT NOT NULL,
+                destination     TEXT,
+                components      TEXT,
+                filename        TEXT,
+                size_bytes      INTEGER,
+                status          TEXT NOT NULL,
+                error_message   TEXT
             )
         ''')
 
@@ -940,6 +957,7 @@ def migrate_db(conn, cursor) -> None:
         ('scrape_time', "ALTER TABLE accounts ADD COLUMN scrape_time TEXT NOT NULL DEFAULT '02:00'"),
         ('scraper_enabled', "ALTER TABLE accounts ADD COLUMN scraper_enabled INTEGER NOT NULL DEFAULT 0"),
         ('pension_start_date', "ALTER TABLE accounts ADD COLUMN pension_start_date TEXT"),
+        ('opening_balance_units', "ALTER TABLE accounts ADD COLUMN opening_balance_units REAL"),
     ):
         if col not in existing_account_columns:
             try:

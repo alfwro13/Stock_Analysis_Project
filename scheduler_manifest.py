@@ -49,6 +49,7 @@ JOB_GRAPH: dict[str, dict] = {
     "macro_auction_job_pm":           {"label": "Sovereign Debt Auction Monitor (PM)",             "category": "macro",       "engine": "treasury_auction_engine.py",    "produces": ["treasury_auction_results"],                                   "consumes": [],                                                                   "settings_anchor": "macro-data-card"},
     "account_value_snapshot_job":     {"label": "Account Value Snapshot",                         "category": "portfolio",   "engine": "accounts_engine.py",            "produces": ["account_value_history"],                                      "consumes": ["stock_signals"],                                                    "settings_anchor": "automation-schedulers-card"},
     "account_scraper_dynamic":        {"label": "Account Price Scraper",                          "category": "portfolio",   "engine": "account_scraper_engine.py",     "produces": ["account_price_history"],                                      "consumes": [],                        "dynamic": True,                          "settings_anchor": None},
+    "backup_job":                     {"label": "Automated Backup",                               "category": "maintenance", "engine": "backup_engine.py",              "produces": ["backup_archive"],                                             "consumes": ["analysis.db", "data", "models"],                                    "settings_anchor": "backup-recovery-card"},
 }
 
 # Canonical config-key → job-id map. `config.json` SCHEDULING/NOTIFICATIONS keys and code
@@ -91,6 +92,7 @@ CONFIG_KEY_TO_JOB: dict[str, str] = {
     "FORENSIC_SCORES":          "forensic_scores_job",
     "MACRO_AUCTIONS":           "macro_auction_job_am",
     "ACCOUNT_VALUE_SNAPSHOT":   "account_value_snapshot_job",
+    "BACKUP":                   "backup_job",
 }
 
 _DYNAMIC_ETF_RE = re.compile(r"^etf_predictor_\d+_(pre|post)_job$")

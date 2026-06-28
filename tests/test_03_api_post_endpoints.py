@@ -92,6 +92,7 @@ TRIGGER_ENDPOINTS = [
     ("/api/sync-ghostfolio",             "Ghostfolio Sync"),
     ("/api/trigger-freetrade-sync",      "Freetrade Sync"),
     ("/api/news-feed/run-now",           "News Feed Run Now"),
+    ("/api/backup/run",                  "Automated Backup"),
 ]
 
 
@@ -520,3 +521,61 @@ def test_monte_carlo_rejects_nonpositive_portfolio_value(client):
         payload = {"portfolio_value": bad_value, "horizon_years": 10}
         resp = client.post("/api/monte-carlo/run", json=payload)
         assert resp.status_code == 422, f"Expected 422 for pv={bad_value}, got {resp.status_code}"
+
+
+# ── Backup & Recovery ────────────────────────────────────────────────────────
+
+@pytest.mark.api
+def test_backup_restore_missing_confirm_token_returns_422(client):
+    """POST /api/backup/restore without the required X-Confirm-Token header must return 422."""
+    resp = client.post("/api/backup/restore", json={"filename": "backup_20260101_000000.tar.gz"})
+    assert resp.status_code == 422, f"Expected 422, got {resp.status_code}"
+
+
+@pytest.mark.api
+def test_backup_restore_wrong_confirm_token_returns_403(client):
+    """POST /api/backup/restore with an incorrect X-Confirm-Token must return 403."""
+    resp = client.post(
+        "/api/backup/restore",
+        json={"filename": "backup_20260101_000000.tar.gz"},
+        headers={"X-Confirm-Token": "wrong-token"},
+    )
+    assert resp.status_code == 403, f"Expected 403, got {resp.status_code}"
+
+
+@pytest.mark.api
+def test_backup_restore_rejects_path_traversal(client, confirm_token):
+    """POST /api/backup/restore with a path-traversal filename must return 400, not touch disk."""
+    resp = client.post(
+        "/api/backup/restore",
+        json={"filename": "../../etc/passwd"},
+        headers={"X-Confirm-Token": confirm_token},
+    )
+    assert resp.status_code == 400, f"Expected 400, got {resp.status_code}: {resp.text}"
+    assert _json(resp).get("status") == "error"
+
+
+@pytest.mark.api
+def test_backup_restore_success(client, confirm_token):
+    """POST /api/backup/restore with a valid filename must return status=success when the engine succeeds."""
+    with patch("api_routes_triggers.restore_backup", return_value={"status": "success", "message": "Restore completed."}):
+        resp = client.post(
+            "/api/backup/restore",
+            json={"filename": "backup_20260101_000000.tar.gz"},
+            headers={"X-Confirm-Token": confirm_token},
+        )
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
+    assert _json(resp).get("status") == "success"
+
+
+@pytest.mark.api
+def test_backup_restore_engine_error_returns_500(client, confirm_token):
+    """POST /api/backup/restore must surface an engine-level failure as a 500 with status=error."""
+    with patch("api_routes_triggers.restore_backup", return_value={"status": "error", "message": "Backup file not found"}):
+        resp = client.post(
+            "/api/backup/restore",
+            json={"filename": "backup_missing.tar.gz"},
+            headers={"X-Confirm-Token": confirm_token},
+        )
+    assert resp.status_code == 500, f"Expected 500, got {resp.status_code}"
+    assert _json(resp).get("status") == "error"

@@ -39,6 +39,7 @@ async function saveSettings(silent = false) {
     const indexDays        = Array.from(document.querySelectorAll('.index-day:checked')).map(cb => cb.value);
     const profilerDays     = Array.from(document.querySelectorAll('.profiler-day:checked')).map(cb => cb.value);
     const udsDays          = Array.from(document.querySelectorAll('.uds-day:checked')).map(cb => cb.value);
+    const backupDays       = Array.from(document.querySelectorAll('.backup-day:checked')).map(cb => cb.value);
     const activeIndices    = Array.from(document.querySelectorAll('.index-target:checked')).map(cb => cb.value);
 
     const payload = {
@@ -252,6 +253,19 @@ async function saveSettings(silent = false) {
                 "ENABLED": document.getElementById('MACRO_AUCTIONS_ENABLED').checked,
                 "AM_TIME": document.getElementById('MACRO_AUCTIONS_AM_TIME').value,
                 "PM_TIME": document.getElementById('MACRO_AUCTIONS_PM_TIME').value
+            },
+            "BACKUP": {
+                "ENABLED": document.getElementById('BACKUP_ENABLED').checked,
+                "LOCATION": document.getElementById('BACKUP_LOCATION').value,
+                "LOCAL_PATH": document.getElementById('BACKUP_LOCAL_PATH').value.trim() || 'backups',
+                "NFS_SERVER": document.getElementById('BACKUP_NFS_SERVER').value.trim(),
+                "NFS_PATH": document.getElementById('BACKUP_NFS_PATH').value.trim(),
+                "INCLUDE_DATA": document.getElementById('BACKUP_INCLUDE_DATA').checked,
+                "INCLUDE_MODELS": document.getElementById('BACKUP_INCLUDE_MODELS').checked,
+                "INCLUDE_DATABASE": document.getElementById('BACKUP_INCLUDE_DATABASE').checked,
+                "DAYS": backupDays,
+                "TIME": document.getElementById('BACKUP_TIME').value,
+                "RETENTION_COUNT": parseInt(document.getElementById('BACKUP_RETENTION_COUNT').value) || 7
             }
         },
         "NOTIFICATIONS": {

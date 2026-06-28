@@ -106,6 +106,14 @@ class ScheduleItemConfig(BaseModel):
     MONITOR_PORTFOLIO: Optional[bool] = None
     WATCH_THRESHOLD: Optional[int] = None
     FLAG_THRESHOLD: Optional[int] = None
+    LOCATION: Optional[str] = None
+    LOCAL_PATH: Optional[str] = None
+    NFS_SERVER: Optional[str] = None
+    NFS_PATH: Optional[str] = None
+    INCLUDE_DATA: Optional[bool] = None
+    INCLUDE_MODELS: Optional[bool] = None
+    INCLUDE_DATABASE: Optional[bool] = None
+    RETENTION_COUNT: Optional[int] = None
 
 class SchedulingConfig(BaseModel):
     SYNC_INDICES: Optional[ScheduleItemConfig] = None
@@ -136,6 +144,7 @@ class SchedulingConfig(BaseModel):
     FORENSIC_QUARTERLY_FETCH: Optional[ScheduleItemConfig] = None
     FORENSIC_SCORES: Optional[ScheduleItemConfig] = None
     MACRO_AUCTIONS: Optional[ScheduleItemConfig] = None
+    BACKUP: Optional[ScheduleItemConfig] = None
 
 class ReportsDefaultsConfig(BaseModel):
     MR_MAX_RSI: Optional[int] = None

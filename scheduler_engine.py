@@ -778,6 +778,22 @@ def reload_scheduler():
         except Exception as e:
             logger.error("Failed to schedule Sovereign Debt Auction Monitor (PM): %s", e)
 
+    backup_cfg = scheduling.get("BACKUP", {})
+    if backup_cfg.get("ENABLED", False):
+        backup_days_list = backup_cfg.get("DAYS", ["sun"])
+        backup_days = ",".join(backup_days_list) if backup_days_list else "sun"
+        backup_time = backup_cfg.get("TIME", "03:30")
+        try:
+            hour, minute = map(int, backup_time.split(':'))
+            scheduler.add_job(
+                run_backup_job,
+                CronTrigger(day_of_week=backup_days, hour=hour, minute=minute, timezone=user_tz),
+                id='backup_job'
+            )
+            logger.info("Automated Backup scheduled for %s at %s", backup_days, backup_time)
+        except Exception as e:
+            logger.error("Failed to schedule Automated Backup: %s", e)
+
     sys_check_cfg = scheduling.get("SYSTEM_CHECK", {})
     if sys_check_cfg.get("ENABLED", True):
         sys_check_days_list = sys_check_cfg.get("DAYS", ["mon", "tue", "wed", "thu", "fri", "sat", "sun"])
@@ -827,4 +843,5 @@ from scheduler_jobs import (
     run_forensic_quarterly_fetch_job, run_forensic_scores_job, run_etf_actual_fill_job,
     run_system_check_job, run_treasury_auction_check, run_account_value_snapshot,
     register_account_scraper_job, unregister_account_scraper_job, _run_account_scraper_job,
+    run_backup_job,
 )

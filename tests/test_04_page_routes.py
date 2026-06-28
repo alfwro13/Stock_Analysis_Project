@@ -71,6 +71,32 @@ def test_notifications_page_loads(client):
 
 
 @pytest.mark.pages
+def test_notifications_page_converts_timestamp_to_local_time(client):
+    """Notification timestamps are stored in UTC and must be displayed in local time — regression
+    for a bug where the raw UTC string was rendered as-is, showing the wrong hour whenever local
+    time differs from UTC (e.g. British Summer Time)."""
+    import database as _db
+    from datetime import datetime, timezone
+    import time_engine
+
+    conn = _db.get_connection()
+    try:
+        conn.execute(
+            "INSERT INTO system_notifications (message_type, message_text, timestamp) VALUES (?, ?, ?)",
+            ("Scheduler", "Regression test notification — tz check", "2026-01-15 01:00:00"),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    expected_local = time_engine.fmt_datetime(datetime(2026, 1, 15, 1, 0, 0, tzinfo=timezone.utc))
+    resp = client.get("/notifications")
+    assert resp.status_code == 200
+    assert expected_local in resp.text
+    assert "2026-01-15 01:00:00" not in resp.text
+
+
+@pytest.mark.pages
 def test_glossary_page_loads(client):
     """GET /glossary must load the educational glossary."""
     _assert_page_ok(client, "/glossary", label="Glossary")

@@ -77,6 +77,7 @@ EXPECTED_TABLES = [
     "etf_predictor_configs",
     "etf_predictor_predictions",
     "watchlist_items",
+    "backup_history",
 ]
 
 

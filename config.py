@@ -249,6 +249,19 @@ DEFAULT_CONFIG = {
             "ENABLED": False,
             "DAY_OF_MONTH": 1,
             "TIME": "07:00"
+        },
+        "BACKUP": {
+            "ENABLED": False,
+            "LOCATION": "local",
+            "LOCAL_PATH": "backups",
+            "NFS_SERVER": "",
+            "NFS_PATH": "",
+            "INCLUDE_DATA": True,
+            "INCLUDE_MODELS": True,
+            "INCLUDE_DATABASE": True,
+            "DAYS": ["sun"],
+            "TIME": "03:30",
+            "RETENTION_COUNT": 7
         }
     },
     "REPORTS_DEFAULTS": {

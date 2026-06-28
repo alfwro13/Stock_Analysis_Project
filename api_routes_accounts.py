@@ -52,6 +52,7 @@ class AccountBody(BaseModel):
     opened_date: Optional[str] = None
     account_type: str = "Trading"
     pension_start_date: Optional[str] = None
+    opening_balance_units: Optional[float] = None
 
 
 class TransactionBody(BaseModel):
@@ -124,7 +125,7 @@ async def api_list_accounts():
 
 
 @accounts_router.post("/accounts")
-@limiter.limit("60/minute")
+@limiter.limit("120/minute")
 async def api_create_account(request: Request, body: AccountBody, background_tasks: BackgroundTasks):
     try:
         if body.account_type not in _ACCOUNT_TYPES:
@@ -139,6 +140,7 @@ async def api_create_account(request: Request, body: AccountBody, background_tas
             opened_date=body.opened_date,
             account_type=body.account_type,
             pension_start_date=body.pension_start_date,
+            opening_balance_units=body.opening_balance_units,
         )
         if account_id is None:
             return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to create account."})
@@ -169,6 +171,7 @@ async def api_update_account(request: Request, account_id: int, body: AccountBod
             opened_date=body.opened_date,
             account_type=body.account_type,
             pension_start_date=body.pension_start_date,
+            opening_balance_units=body.opening_balance_units,
         )
         if not ok:
             return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to update account."})

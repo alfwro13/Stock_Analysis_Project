@@ -682,3 +682,12 @@ def test_pension_start_date_round_trips_via_create_and_update():
     assert get_account(aid)["pension_start_date"] == "2015-03-01"
     update_account(aid, pension_start_date="2016-04-01")
     assert get_account(aid)["pension_start_date"] == "2016-04-01"
+
+
+@pytest.mark.db
+def test_opening_balance_units_round_trips_via_create_and_update():
+    aid = create_account("OpeningBalanceUnitsAcc", "GBP", account_type="Pension", opening_balance_units=3125.5)
+    from database import get_account, update_account
+    assert get_account(aid)["opening_balance_units"] == 3125.5
+    update_account(aid, opening_balance_units=4000.0)
+    assert get_account(aid)["opening_balance_units"] == 4000.0

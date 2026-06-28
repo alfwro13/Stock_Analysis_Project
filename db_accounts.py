@@ -51,14 +51,15 @@ def create_account(
     opened_date: Optional[str] = None,
     account_type: str = "Trading",
     pension_start_date: Optional[str] = None,
+    opening_balance_units: Optional[float] = None,
 ) -> Optional[int]:
     conn = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO accounts (name, currency, initial_cash, note, opened_date, account_type, pension_start_date) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (name, currency, initial_cash, note, opened_date, account_type, pension_start_date)
+            "INSERT INTO accounts (name, currency, initial_cash, note, opened_date, account_type, pension_start_date, opening_balance_units) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (name, currency, initial_cash, note, opened_date, account_type, pension_start_date, opening_balance_units)
         )
         conn.commit()
         return cursor.lastrowid
@@ -73,7 +74,7 @@ def create_account(
 _ALLOWED_ACCOUNT_COLUMNS = frozenset({
     "name", "currency", "initial_cash", "note", "opened_date", "account_type",
     "scraper_url", "scraper_selector", "scraper_headers", "scrape_time", "scraper_enabled",
-    "pension_start_date",
+    "pension_start_date", "opening_balance_units",
 })
 
 

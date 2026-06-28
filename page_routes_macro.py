@@ -154,7 +154,7 @@ def enrich_macro_events(events_list: List[Dict[str, Any]]) -> List[Dict[str, Any
 
 def _parse_cb_nlp_message(msg_text: str, timestamp: str) -> dict | None:
     try:
-        result: dict = {"timestamp": timestamp}
+        result: dict = {"timestamp": _utc_str_to_local(timestamp)}
         for line in msg_text.split('\n'):
             if '**Event:**' in line:
                 part = line.split('**Event:** ', 1)[1]

@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 
 from apscheduler.triggers.cron import CronTrigger
 from accounts_engine import resnapshot_account, snapshot_all_accounts
+from backup_engine import run_backup
 from config import load_config
 from data_engine import DataEngine
 from database import get_account, get_connection, get_universe_tickers
@@ -135,6 +136,12 @@ def run_maintenance_engine():
         MaintenanceEngine().run()
     finally:
         record_job_run('maintenance_job')
+
+def run_backup_job():
+    try:
+        run_backup(trigger_type="scheduled")
+    finally:
+        record_job_run('backup_job')
 
 def run_account_value_snapshot():
     try:

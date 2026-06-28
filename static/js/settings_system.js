@@ -394,6 +394,120 @@ function handleDiagnosticsToggle(detailsElement) {
     if (detailsElement.open && !metricsLoaded) {
         fetchSystemMetrics();
     }
+    if (detailsElement.open) {
+        loadBackupStatus();
+    }
+}
+
+let backupCardLoaded = false;
+
+function handleBackupCardToggle(detailsElement) {
+    if (detailsElement.open && !backupCardLoaded) {
+        backupCardLoaded = true;
+        loadBackupStatus();
+    }
+}
+
+function toggleBackupLocationFields() {
+    const isNfs = document.getElementById('BACKUP_LOCATION').value === 'nfs';
+    document.getElementById('backup-local-path-group').classList.toggle('d-none', isNfs);
+    document.getElementById('backup-nfs-server-group').classList.toggle('d-none', !isNfs);
+    document.getElementById('backup-nfs-path-group').classList.toggle('d-none', !isNfs);
+}
+
+async function runBackupNow() {
+    const btn = document.getElementById('backupRunBtn');
+    btn.innerText = "Running..."; btn.disabled = true;
+    try {
+        const resp = await fetch('/api/backup/run', { method: 'POST' });
+        const data = await resp.json();
+        if (data.status === 'success') {
+            setBoxStatus('backup-run-msg', 'success', '✅ ' + data.message);
+        } else {
+            setBoxStatus('backup-run-msg', 'error', '❌ ' + (data.message || 'Unknown error'));
+        }
+    } catch (e) {
+        setBoxStatus('backup-run-msg', 'error', '❌ Network error triggering backup.');
+    }
+    setTimeout(() => { btn.innerText = "▶ Run Backup Now"; btn.disabled = false; loadBackupStatus(); }, 8000);
+}
+
+function _formatBytes(bytes) {
+    if (!bytes) return '0 MB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+async function loadBackupStatus() {
+    try {
+        const resp = await fetch('/api/backup/status', { cache: 'no-store' });
+        const data = await resp.json();
+        if (data.status !== 'success') return;
+
+        const last = data.last_backup;
+        const lastEl = document.getElementById('diag-backup-last');
+        if (lastEl) {
+            if (last) {
+                lastEl.innerText = last.started_at || 'Unknown';
+                const statusEl = document.getElementById('diag-backup-last-status');
+                statusEl.innerText = last.status === 'success' ? 'Success' : ('Failed: ' + (last.error_message || 'Unknown error'));
+                statusEl.style.color = last.status === 'success' ? '' : '#ff4d4d';
+                document.getElementById('diag-backup-components').innerText = last.components || '--';
+                document.getElementById('diag-backup-dest').innerText = last.destination || '--';
+                document.getElementById('diag-backup-size').innerText = last.size_bytes ? _formatBytes(last.size_bytes) : '--';
+            } else {
+                lastEl.innerText = 'Never';
+                document.getElementById('diag-backup-last-status').innerText = 'No backups recorded yet';
+            }
+            document.getElementById('diag-backup-count').innerText = data.stored_count;
+            document.getElementById('diag-backup-total-size').innerText = _formatBytes(data.stored_size_bytes) + ' total';
+        }
+
+        const select = document.getElementById('backup-restore-select');
+        if (select) {
+            if (!data.backups || data.backups.length === 0) {
+                select.innerHTML = '<option value="">No backups available</option>';
+            } else {
+                select.innerHTML = data.backups.map(b =>
+                    `<option value="${b.filename}">${b.filename} (${_formatBytes(b.size_bytes)}, ${b.mtime})</option>`
+                ).join('');
+            }
+        }
+    } catch (e) {
+        const lastEl = document.getElementById('diag-backup-last');
+        if (lastEl) lastEl.innerText = 'Error loading';
+    }
+}
+
+async function restoreSelectedBackup() {
+    const select = document.getElementById('backup-restore-select');
+    const filename = select.value;
+    if (!filename) {
+        setBoxStatus('backup-restore-msg', 'warning', '⚠️ Select a backup file first.');
+        return;
+    }
+    if (!confirm(`Restore from "${filename}"? This overwrites the live database, data files, and models. Continue?`)) return;
+
+    const btn = document.querySelector('button[onclick="restoreSelectedBackup()"]');
+    btn.disabled = true;
+    btn.innerText = '⏳ Restoring…';
+    setBoxStatus('backup-restore-msg', 'info', '⏳ Restoring — do not navigate away…');
+    try {
+        const resp = await fetch('/api/backup/restore', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Confirm-Token': CONFIRM_TOKEN },
+            body: JSON.stringify({ filename }),
+        });
+        const data = await resp.json();
+        if (resp.ok && data.status === 'success') {
+            setBoxStatus('backup-restore-msg', 'success', '✅ ' + data.message);
+        } else {
+            setBoxStatus('backup-restore-msg', 'error', '❌ ' + (data.message || 'Restore failed.'));
+        }
+    } catch (e) {
+        setBoxStatus('backup-restore-msg', 'error', '❌ Network error during restore.');
+    }
+    btn.disabled = false;
+    btn.innerText = '⚠ Restore';
 }
 
 async function fetchSystemMetrics() {

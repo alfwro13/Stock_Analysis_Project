@@ -1435,6 +1435,65 @@ Scans the data directories exactly as `MaintenanceEngine.garbage_collect_files()
 
 ---
 
+### `POST /api/backup/run`
+
+Triggers an Automated Backup as a background task using the currently saved `SCHEDULING.BACKUP` config (location, components, retention). Returns immediately; the result (success/error, archive size) is dispatched via the Notification Router (`backup_status` source) and recorded in `backup_history`.
+
+**Request body:** none
+
+**Response**
+
+```json
+{ "status": "success", "message": "Backup started in the background. Check System Notifications for the summary." }
+```
+
+---
+
+### `GET /api/backup/status`
+
+Returns the most recent backup run plus the list of archives currently stored at the configured destination — feeds both the Backup Status diagnostics sub-panel and the Recovery file-selector dropdown.
+
+**Response**
+
+```json
+{
+  "status": "success",
+  "last_backup": {
+    "started_at": "2026-06-28 03:30:00", "finished_at": "2026-06-28 03:30:05",
+    "trigger_type": "scheduled", "location_type": "local", "destination": "/app/backups",
+    "components": "data,models,database", "filename": "backup_20260628_033000.tar.gz",
+    "size_bytes": 1048576, "status": "success", "error_message": null
+  },
+  "stored_count": 7,
+  "stored_size_bytes": 7340032,
+  "backups": [
+    { "filename": "backup_20260628_033000.tar.gz", "size_bytes": 1048576, "mtime": "2026-06-28 03:30:05" }
+  ]
+}
+```
+
+---
+
+### `POST /api/backup/restore`
+
+Extracts the named archive back into place, overwriting the live database, data files, and models with whatever components that archive contains. **Destructive — requires `X-Confirm-Token`.** Restart the service afterward so in-memory caches reload the restored data.
+
+**Request body**
+
+```json
+{ "filename": "backup_20260628_033000.tar.gz" }
+```
+
+**Response**
+
+```json
+{ "status": "success", "message": "Restore completed from backup_20260628_033000.tar.gz. Restart the service so all in-memory caches reload the restored data." }
+```
+
+A filename containing `/` or `..` is rejected with `400` before any file is touched. A missing archive or extraction failure returns `500` with `status: "error"`.
+
+---
+
 ### `GET /api/system/metrics`
 
 Returns a comprehensive diagnostic snapshot of the system: universe coverage, ML model state, storage, and macro data counts.
@@ -1748,6 +1807,9 @@ Sends a test insider trading alert via Nextcloud Talk.
 | `GET` | `/api/ai-prompt/{ticker}` | AI-consumable analysis prompt (stock) |
 | `POST` | `/api/settings` | Save configuration |
 | `POST` | `/api/settings/test-yahoo-ipv6` | Test IPv6 connection |
+| `POST` | `/api/backup/run` | Run an Automated Backup now |
+| `GET` | `/api/backup/status` | Last backup result + stored archive list |
+| `POST` | `/api/backup/restore` | Restore from a backup archive (destructive) |
 | `GET` | `/api/settings/network-status` | Current routing health and mode |
 | `GET` | `/api/system/yahoo-api-stats` | Daily Yahoo Finance API call counts |
 | `GET` | `/api/ui-theme.css` | Dynamic font-size CSS variables |
@@ -2640,10 +2702,10 @@ Creates a new account. Rate limit: 30/minute.
 
 **Request body:**
 ```json
-{ "name": "My ISA", "currency": "GBP", "account_type": "Trading", "initial_cash": 1000.0, "opened_date": "2020-03-15", "pension_start_date": null, "note": "optional" }
+{ "name": "My ISA", "currency": "GBP", "account_type": "Trading", "initial_cash": 1000.0, "opened_date": "2020-03-15", "pension_start_date": null, "opening_balance_units": null, "note": "optional" }
 ```
 
-`account_type` is optional and defaults to `"Trading"` — must be one of `Trading`, `House`, `Pension`, `Watchlist` (400 if not), but `"Watchlist"` is additionally rejected (400) since that account is created automatically by the system and can't be created, deleted, or converted to/from manually. Only `Trading` accounts are aggregated into the Portfolio page / X-ray; `House`/`Pension` are tracked standalone via the Account Price Scraper (see below). `opened_date` is optional — when set, it's the real-world account-opening date and is used as the Cash Balance History table's opening row date instead of `created_at` (useful when backfilling a historical account); for House/Pension the create/edit form relabels this field (and `initial_cash`) to fit — "Purchase Date"/"Purchase Value" for House, "Opening Balance Date"/"Opening Balance" for Pension — but they're the same two underlying fields. `pension_start_date` is optional and Pension-only in the UI (accepted for any type, but only shown/used for Pension) — a separate, earlier date recording when the pension itself started accumulating, distinct from `opened_date`/"Opening Balance Date"; currently just stored, with no display built from it yet. Returns `{"status": "success", "message": "...", "id": <new_account_id>}`.
+`account_type` is optional and defaults to `"Trading"` — must be one of `Trading`, `House`, `Pension`, `Watchlist` (400 if not), but `"Watchlist"` is additionally rejected (400) since that account is created automatically by the system and can't be created, deleted, or converted to/from manually. Only `Trading` accounts are aggregated into the Portfolio page / X-ray; `House`/`Pension` are tracked standalone via the Account Price Scraper (see below). `opened_date` is optional — when set, it's the real-world account-opening date and is used as the Cash Balance History table's opening row date instead of `created_at` (useful when backfilling a historical account); for House/Pension the create/edit form relabels this field (and `initial_cash`) to fit — "Purchase Date"/"Purchase Value" for House, "Opening Balance Date"/"Opening Balance" for Pension — but they're the same two underlying fields. `pension_start_date` is optional and Pension-only in the UI (accepted for any type, but only shown/used for Pension) — a separate, earlier date recording when the pension itself started accumulating, distinct from `opened_date`/"Opening Balance Date"; currently just stored, with no display built from it yet. `opening_balance_units` is optional and Pension-only in the UI — how many fund units the Opening Balance (`initial_cash`) amount represents; like `pension_start_date`, currently just stored for the operator's own record-keeping, not yet wired into the units-held calculation (that still only comes from Pay In/Admin Fee transactions). Returns `{"status": "success", "message": "...", "id": <new_account_id>}`.
 
 ---
 

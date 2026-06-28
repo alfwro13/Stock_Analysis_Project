@@ -1106,3 +1106,27 @@ def test_pension_start_date_create_and_update_roundtrip(client):
 
     import database as _db
     _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_opening_balance_units_create_and_update_roundtrip(client):
+    resp = client.post("/api/accounts", json={
+        "name": "OpeningBalanceUnitsApiAcc", "currency": "GBP", "account_type": "Pension",
+        "opening_balance_units": 3125.5,
+    })
+    account_id = _json(resp)["id"]
+
+    resp = client.get("/api/accounts")
+    acc = next(a for a in _json(resp)["accounts"] if a["id"] == account_id)
+    assert acc["opening_balance_units"] == 3125.5
+
+    client.put(f"/api/accounts/{account_id}", json={
+        "name": "OpeningBalanceUnitsApiAcc", "currency": "GBP", "account_type": "Pension",
+        "opening_balance_units": 4000.0,
+    })
+    resp = client.get("/api/accounts")
+    acc = next(a for a in _json(resp)["accounts"] if a["id"] == account_id)
+    assert acc["opening_balance_units"] == 4000.0
+
+    import database as _db
+    _db.soft_delete_account(account_id)

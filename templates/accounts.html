@@ -47,6 +47,10 @@
             <label for="acct-cash" id="acct-cash-label">Initial Cash</label>
             <input type="number" id="acct-cash" step="0.01" value="0">
         </div>
+        <div class="form-group d-none" id="acct-opening-balance-units-group">
+            <label for="acct-opening-balance-units"><abbr title="How many fund units the Opening Balance amount represents. Optional, purely informational for now.">Opening Balance Units</abbr></label>
+            <input type="number" id="acct-opening-balance-units" step="0.000001">
+        </div>
         <div class="form-group">
             <label for="acct-opened-date"><abbr id="acct-opened-date-label" title="The real-world date this account was opened. Used as the starting point for the Cash Balance History table — leave blank to use today.">Opening Date</abbr></label>
             <input type="date" id="acct-opened-date">
