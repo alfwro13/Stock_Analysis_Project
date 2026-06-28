@@ -780,6 +780,7 @@ def init_db() -> None:
                 pension_start_date TEXT,
                 opening_balance_units REAL,
                 opening_balance_txn_id INTEGER,
+                pension_ticker_label TEXT,
                 deleted_at      TEXT DEFAULT NULL,
                 created_at      TEXT DEFAULT (datetime('now'))
             )
@@ -960,6 +961,7 @@ def migrate_db(conn, cursor) -> None:
         ('pension_start_date', "ALTER TABLE accounts ADD COLUMN pension_start_date TEXT"),
         ('opening_balance_units', "ALTER TABLE accounts ADD COLUMN opening_balance_units REAL"),
         ('opening_balance_txn_id', "ALTER TABLE accounts ADD COLUMN opening_balance_txn_id INTEGER"),
+        ('pension_ticker_label', "ALTER TABLE accounts ADD COLUMN pension_ticker_label TEXT"),
     ):
         if col not in existing_account_columns:
             try:

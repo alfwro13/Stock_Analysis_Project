@@ -729,6 +729,64 @@ def test_opening_balance_units_round_trips_via_create_and_update():
 
 
 @pytest.mark.db
+def test_pension_ticker_label_round_trips_via_create_and_update():
+    aid = create_account("PensionLabelAcc", "GBP", account_type="Pension", pension_ticker_label="My Workplace Pension")
+    from database import get_account, update_account
+    assert get_account(aid)["pension_ticker_label"] == "My Workplace Pension"
+    update_account(aid, pension_ticker_label="Renamed Pension")
+    assert get_account(aid)["pension_ticker_label"] == "Renamed Pension"
+
+
+@pytest.mark.db
+def test_pension_display_label_falls_back_to_internal_ticker():
+    from account_scraper_engine import pension_ticker
+    from database import get_account
+    aid = create_account("PensionNoLabelAcc", "GBP", account_type="Pension")
+    assert accounts_engine.pension_display_label(get_account(aid)) == pension_ticker(aid)
+
+    aid2 = create_account("PensionLabelAcc2", "GBP", account_type="Pension", pension_ticker_label="Friendly Name")
+    assert accounts_engine.pension_display_label(get_account(aid2)) == "Friendly Name"
+
+
+@pytest.mark.db
+def test_pension_performance_returns_none_without_enough_history():
+    from account_scraper_engine import import_price_csv
+    aid = create_account("PensionPerfShortAcc", "GBP", account_type="Pension")
+    import_price_csv(aid, "date;marketPrice\n2026-06-27;1.00\n2026-06-28;1.10\n")
+    result = accounts_engine.pension_performance(aid)
+    # Only 1-2 days of history exist, so there's no price as far back as 1 month/YTD/1 year ago.
+    assert result["1m"] is None
+    assert result["1y"] is None
+
+
+@pytest.mark.db
+def test_pension_performance_returns_none_with_no_history():
+    aid = create_account("PensionPerfEmptyAcc", "GBP", account_type="Pension")
+    result = accounts_engine.pension_performance(aid)
+    assert result == {"1m": None, "ytd": None, "1y": None}
+
+
+@pytest.mark.db
+def test_pension_performance_computes_pct_change_from_unit_price():
+    from account_scraper_engine import import_price_csv
+    aid = create_account("PensionPerfAcc", "GBP", account_type="Pension")
+    import_price_csv(aid, "date;marketPrice\n2025-06-28;1.00\n2026-06-28;1.50\n")
+    result = accounts_engine.pension_performance(aid)
+    assert result["1y"] == 50.0   # (1.50 - 1.00) / 1.00 * 100
+
+
+@pytest.mark.db
+def test_pension_activities_running_units_tracks_buys_and_sells():
+    aid = create_account("PensionActivitiesAcc", "GBP", account_type="Pension")
+    accounts_engine.record_pension_contribution(aid, "2026-01-01", 1000.0, unit_price=1.00)
+    accounts_engine.record_pension_fee(aid, "2026-02-01", units_removed=5.0, unit_price=1.10)
+    accounts_engine.record_pension_contribution(aid, "2026-03-01", 500.0, unit_price=1.25)
+
+    rows = accounts_engine.pension_activities(aid)
+    assert [r["running_units"] for r in rows] == [1000.0, 995.0, 1395.0]
+
+
+@pytest.mark.db
 def test_sync_pension_opening_balance_creates_holding():
     """Regression: opening_balance_units/initial_cash were stored but never materialized into the
     ledger, so units_as_of stayed 0 and Admin Fee could never deduct from a pre-existing balance."""

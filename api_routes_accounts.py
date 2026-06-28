@@ -32,7 +32,10 @@ from database import (
     delete_watchlist_items,
 )
 from profile_engine import update_single_profile
-from scheduler_engine import register_account_scraper_job, run_account_value_snapshot, unregister_account_scraper_job
+from scheduler_engine import (
+    get_all_job_last_runs, register_account_scraper_job, run_account_value_snapshot,
+    unregister_account_scraper_job,
+)
 from utils import normalize_ticker
 from yahoo_engine import yahoo_engine
 
@@ -53,6 +56,7 @@ class AccountBody(BaseModel):
     account_type: str = "Trading"
     pension_start_date: Optional[str] = None
     opening_balance_units: Optional[float] = None
+    pension_ticker_label: Optional[str] = None
 
 
 class TransactionBody(BaseModel):
@@ -122,7 +126,15 @@ def _resolve_exchange_rate(currency: Optional[str], exchange_rate: Optional[floa
 
 @accounts_router.get("/accounts")
 async def api_list_accounts():
-    return JSONResponse(content={"status": "success", "accounts": get_accounts()})
+    accounts = get_accounts()
+    job_runs = get_all_job_last_runs()
+    for acc in accounts:
+        if acc.get("scraper_enabled"):
+            job = job_runs.get(f"account_scraper_{acc['id']}_job")
+            acc["scraper_last_status"] = job["last_status"] if job else None
+        else:
+            acc["scraper_last_status"] = None
+    return JSONResponse(content={"status": "success", "accounts": accounts})
 
 
 @accounts_router.post("/accounts")
@@ -142,6 +154,7 @@ async def api_create_account(request: Request, body: AccountBody, background_tas
             account_type=body.account_type,
             pension_start_date=body.pension_start_date,
             opening_balance_units=body.opening_balance_units,
+            pension_ticker_label=body.pension_ticker_label,
         )
         if account_id is None:
             return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to create account."})
@@ -175,6 +188,7 @@ async def api_update_account(request: Request, account_id: int, body: AccountBod
             account_type=body.account_type,
             pension_start_date=body.pension_start_date,
             opening_balance_units=body.opening_balance_units,
+            pension_ticker_label=body.pension_ticker_label,
         )
         if not ok:
             return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to update account."})

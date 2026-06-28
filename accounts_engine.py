@@ -13,8 +13,9 @@ import pandas as pd
 import time_engine
 from config import BASE_CURRENCY, HISTORICAL_DIR, PORTFOLIO_PATH
 from db_accounts import (
-    add_transaction, delete_transaction, get_account, get_accounts, get_transaction,
-    get_transactions, update_account, update_transaction, upsert_value_snapshot,
+    add_transaction, delete_transaction, get_account, get_accounts, get_price_as_of,
+    get_price_history, get_transaction, get_transactions, update_account, update_transaction,
+    upsert_value_snapshot,
 )
 from database import get_connection
 from portfolio_service import get_rate_to_base
@@ -796,6 +797,56 @@ def pension_units_as_of(account_id: int, date_str: str) -> float:
     ticker = pension_ticker(account_id)
     open_holdings, _closed, _realized, _realized_by_txn = _ledger_for_account(account_id, as_of_date=date_str)
     return open_holdings.get(ticker, {}).get("shares", 0.0)
+
+
+def pension_display_label(acc: dict) -> str:
+    from account_scraper_engine import pension_ticker
+    return acc.get("pension_ticker_label") or pension_ticker(acc["id"])
+
+
+_PENSION_PERFORMANCE_WINDOWS = (("1m", 30), ("ytd", None), ("1y", 365))
+
+
+def pension_performance(account_id: int) -> dict:
+    """Performance % over 1 month / YTD / 1 year, derived from the scraped/imported unit price
+    history rather than the value snapshot history — gives a meaningful number from day one since
+    the unit price itself is a like-for-like return series, unaffected by contribution timing."""
+    history = get_price_history(account_id)
+    if not history:
+        return {"1m": None, "ytd": None, "1y": None}
+    latest_price = history[-1]["price"]
+    today = datetime.now(timezone.utc).date()
+
+    result = {}
+    for key, days_back in _PENSION_PERFORMANCE_WINDOWS:
+        as_of_date = (today.replace(month=1, day=1) if key == "ytd" else today - timedelta(days=days_back)).isoformat()
+        as_of_row = get_price_as_of(account_id, as_of_date)
+        if not as_of_row or not as_of_row["price"]:
+            result[key] = None
+            continue
+        result[key] = round((latest_price - as_of_row["price"]) / as_of_row["price"] * 100, 2)
+    return result
+
+
+def pension_activities(account_id: int) -> list:
+    """Activities enriched with a running total-units balance, walked chronologically (oldest
+    first, matching get_transactions' own order) before the page reverses it for newest-first
+    display — a Pension ledger has no cash balance to sanity-check against, so this running total
+    is the equivalent cross-check."""
+    running_units = 0.0
+    rows = []
+    for txn in get_transactions(account_id):
+        qty = txn["quantity"] or 0.0
+        if txn["txn_type"] == "Buy":
+            running_units += qty
+        elif txn["txn_type"] == "Sell":
+            running_units -= qty
+        rows.append({
+            **txn,
+            "total_base": transaction_total_base(txn),
+            "running_units": round(running_units, 6),
+        })
+    return rows
 
 
 def record_pension_fee(

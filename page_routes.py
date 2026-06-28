@@ -411,6 +411,9 @@ async def account_detail_page(request: Request, account_id: int):
     if acc is None:
         return RedirectResponse("/accounts", status_code=302)
 
+    if acc["account_type"] == "Pension":
+        return RedirectResponse(f"/accounts/{account_id}/pension", status_code=302)
+
     if acc["account_type"] == "Watchlist":
         return templates.TemplateResponse(
             request=request, name="watchlist_account_detail.html",
@@ -446,6 +449,51 @@ async def account_detail_page(request: Request, account_id: int):
             "chart_html": chart_html,
             "base_currency": BASE_CURRENCY,
             "account_currencies": ACCOUNT_CURRENCIES,
+            "unread_count": get_unread_count(),
+        }
+    )
+
+
+@page_router.get("/accounts/{account_id}/pension", response_class=HTMLResponse)
+async def pension_account_detail_page(request: Request, account_id: int):
+    from accounts_engine import (
+        account_summary, pension_activities, pension_display_label, pension_performance,
+    )
+    from database import get_account, get_price_history, get_value_history
+    from visuals import create_pension_unit_price_chart, create_pension_value_chart
+
+    acc = get_account(account_id)
+    if acc is None or acc["account_type"] != "Pension":
+        return RedirectResponse("/accounts", status_code=302)
+
+    price_history = get_price_history(account_id)
+    if price_history:
+        price_df = pd.DataFrame(price_history).set_index("price_date")
+        price_df.index = pd.to_datetime(price_df.index)
+        price_chart_html = create_pension_unit_price_chart(price_df)
+    else:
+        price_chart_html = "<p class='text-muted'>No unit price history yet — scrape or import one to see this chart.</p>"
+
+    value_history = get_value_history(account_id)
+    if value_history:
+        value_df = pd.DataFrame(value_history).set_index("snapshot_date")
+        value_df.index = pd.to_datetime(value_df.index)
+        value_chart_html = create_pension_value_chart(value_df)
+    else:
+        value_chart_html = "<p class='text-muted'>No value history yet — check back after the next nightly snapshot.</p>"
+
+    summary = account_summary(account_id)
+    return templates.TemplateResponse(
+        request=request, name="account_detail_pension.html",
+        context={
+            "account": acc,
+            "ticker_label": pension_display_label(acc),
+            "summary": summary,
+            "performance": pension_performance(account_id),
+            "activities": pension_activities(account_id),
+            "price_chart_html": price_chart_html,
+            "value_chart_html": value_chart_html,
+            "base_currency": BASE_CURRENCY,
             "unread_count": get_unread_count(),
         }
     )

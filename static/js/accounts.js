@@ -50,9 +50,19 @@ function _accountCashLine(acc) {
         : `${_escapeHtml(acc.currency)} &middot; initial cash ${acc.initial_cash}`;
 }
 
+function _scraperStatusBadgeHtml(acc) {
+    if (!acc.scraper_enabled) return '';
+    const status = acc.scraper_last_status;
+    if (status === 'success') return '<span class="badge bg-success" title="Last scraper run succeeded.">&#9679;</span>';
+    if (status === 'error') return '<span class="badge bg-danger" title="Last scraper run failed.">&#9679;</span>';
+    return '';
+}
+
 function _accountCardHtml(acc) {
     const isWatchlist = acc.account_type === 'Watchlist';
-    const isScraperType = acc.account_type === 'House' || acc.account_type === 'Pension';
+    const isPension = acc.account_type === 'Pension';
+    const isScraperType = acc.account_type === 'House' || isPension;
+    const detailUrl = isPension ? `/accounts/${acc.id}/pension` : `/accounts/${acc.id}`;
     return `
     <div class="col-12 col-lg-6">
         <div class="guide-card h-100" id="account-card-${acc.id}">
@@ -64,12 +74,12 @@ function _accountCardHtml(acc) {
                 </div>
                 <div class="d-flex gap-2">
                     <button type="button" class="btn btn-outline-secondary btn-sm" onclick="openAccountModal(${acc.id})">Edit</button>
-                    ${isScraperType ? `<button type="button" class="btn btn-outline-secondary btn-sm" onclick="openScraperModal(${acc.id})">&#9881; Scraper</button>` : ''}
+                    ${isScraperType ? `<button type="button" class="btn btn-outline-secondary btn-sm" onclick="openScraperModal(${acc.id})">&#9881; Scraper ${_scraperStatusBadgeHtml(acc)}</button>` : ''}
                     ${isWatchlist ? '' : `<button type="button" class="btn btn-outline-danger btn-sm" onclick="deleteAccount(${acc.id}, '${_escapeHtml(acc.name)}')">Delete</button>`}
                 </div>
             </div>
             <div class="d-flex gap-2 mt-3">
-                <a href="/accounts/${acc.id}" class="btn btn-outline-primary btn-sm">View Details</a>
+                <a href="${detailUrl}" class="btn btn-outline-primary btn-sm">View Details</a>
                 ${isWatchlist || isScraperType ? '' : `
                 <button type="button" class="btn btn-primary btn-sm" onclick="openTxnModal(${acc.id})">+ Add Transaction</button>
                 <button type="button" class="btn btn-outline-secondary btn-sm" onclick="toggleTransactions(${acc.id})">Show Transactions</button>
@@ -129,6 +139,7 @@ function _updateAccountFieldLabelsForType() {
     document.getElementById('acct-opened-date-label').textContent = labels.date;
     document.getElementById('acct-pension-start-date-group').classList.toggle('d-none', type !== 'Pension');
     document.getElementById('acct-opening-balance-units-group').classList.toggle('d-none', type !== 'Pension');
+    document.getElementById('acct-pension-ticker-label-group').classList.toggle('d-none', type !== 'Pension');
 }
 
 function openAccountModal(id = null) {
@@ -145,6 +156,7 @@ function openAccountModal(id = null) {
     document.getElementById('acct-opening-balance-units').value = acc ? (acc.opening_balance_units ?? '') : '';
     document.getElementById('acct-opened-date').value = acc ? (acc.opened_date || '') : '';
     document.getElementById('acct-pension-start-date').value = acc ? (acc.pension_start_date || '') : '';
+    document.getElementById('acct-pension-ticker-label').value = acc ? (acc.pension_ticker_label || '') : '';
     document.getElementById('acct-note').value = acc ? (acc.note || '') : '';
     document.getElementById('account-status').innerHTML = '';
     _updateAccountFieldLabelsForType();
@@ -170,6 +182,7 @@ async function saveAccount() {
             ? null : parseFloat(document.getElementById('acct-opening-balance-units').value),
         opened_date: document.getElementById('acct-opened-date').value || null,
         pension_start_date: document.getElementById('acct-pension-start-date').value || null,
+        pension_ticker_label: document.getElementById('acct-pension-ticker-label').value.trim() || null,
         note: document.getElementById('acct-note').value.trim() || null,
     };
     status.innerHTML = '<span class="msg-info">Saving...</span>';

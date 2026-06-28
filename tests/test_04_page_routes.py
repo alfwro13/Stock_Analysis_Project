@@ -335,14 +335,54 @@ def test_account_detail_page_loads_for_house_account_and_hides_holdings(client):
 
 
 @pytest.mark.pages
-def test_account_detail_page_loads_for_pension_account_with_actions(client):
-    """Pension keeps Holdings/Closed Positions and gets the Pay In / Admin Fee action buttons."""
+def test_account_detail_page_redirects_pension_to_dedicated_page(client):
+    """The generic ledger page is for Trading/House — Pension has its own dedicated page now."""
     import database as _db
     account_id = _db.create_account("Page Test Pension", "GBP", account_type="Pension")
     try:
-        _assert_page_ok(client, f"/accounts/{account_id}", label="Pension Account Detail")
-        resp = client.get(f"/accounts/{account_id}")
+        resp = client.get(f"/accounts/{account_id}", follow_redirects=False)
+        assert resp.status_code in (302, 303, 307, 308)
+        assert resp.headers["location"] == f"/accounts/{account_id}/pension"
+    finally:
+        _db.soft_delete_account(account_id)
+
+
+@pytest.mark.pages
+def test_pension_detail_unknown_id_redirects(client):
+    """GET /accounts/99999/pension with no such account must redirect (not 500)."""
+    resp = client.get("/accounts/99999/pension", follow_redirects=False)
+    assert resp.status_code in (302, 303, 307, 308)
+    assert "/accounts" in resp.headers["location"]
+
+
+@pytest.mark.pages
+def test_pension_detail_rejects_non_pension_account(client):
+    """GET /accounts/{id}/pension for a non-Pension account must redirect, not render the wrong page."""
+    import database as _db
+    account_id = _db.create_account("Page Test Trading", "GBP", account_type="Trading")
+    try:
+        resp = client.get(f"/accounts/{account_id}/pension", follow_redirects=False)
+        assert resp.status_code in (302, 303, 307, 308)
+    finally:
+        _db.soft_delete_account(account_id)
+
+
+@pytest.mark.pages
+def test_pension_detail_page_loads_with_actions(client):
+    """Pension's dedicated page renders both charts, the Pay In / Admin Fee actions, and the
+    Running Total Units / Notes activities columns."""
+    import database as _db
+    account_id = _db.create_account("Page Test Pension", "GBP", account_type="Pension")
+    _db.add_transaction(
+        account_id, "Buy", "2026-01-01", ticker=f"PENSION-{account_id}",
+        quantity=10, unit_price=1.0, update_cash=False, notes="Opening balance",
+    )
+    try:
+        _assert_page_ok(client, f"/accounts/{account_id}/pension", label="Pension Account Detail")
+        resp = client.get(f"/accounts/{account_id}/pension")
         assert "Pay In" in resp.text
         assert "Admin Fee" in resp.text
+        assert "Running Total Units" in resp.text
+        assert "Pension Value" in resp.text
     finally:
         _db.soft_delete_account(account_id)

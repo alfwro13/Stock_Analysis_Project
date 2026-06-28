@@ -1175,6 +1175,67 @@ def test_opening_balance_units_create_and_update_roundtrip(client):
 
 
 @pytest.mark.api
+def test_pension_ticker_label_create_and_update_roundtrip(client):
+    resp = client.post("/api/accounts", json={
+        "name": "PensionLabelApiAcc", "currency": "GBP", "account_type": "Pension",
+        "pension_ticker_label": "My Workplace Pension",
+    })
+    account_id = _json(resp)["id"]
+
+    resp = client.get("/api/accounts")
+    acc = next(a for a in _json(resp)["accounts"] if a["id"] == account_id)
+    assert acc["pension_ticker_label"] == "My Workplace Pension"
+
+    client.put(f"/api/accounts/{account_id}", json={
+        "name": "PensionLabelApiAcc", "currency": "GBP", "account_type": "Pension",
+        "pension_ticker_label": "Renamed Pension",
+    })
+    resp = client.get("/api/accounts")
+    acc = next(a for a in _json(resp)["accounts"] if a["id"] == account_id)
+    assert acc["pension_ticker_label"] == "Renamed Pension"
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_list_accounts_includes_scraper_last_status(client):
+    account_id = _create_account(client, account_type="House")
+    client.put(f"/api/accounts/{account_id}/scraper-config", json={
+        "scraper_url": "http://example.com", "scraper_selector": "#price", "scraper_enabled": True,
+    })
+
+    resp = client.get("/api/accounts")
+    acc = next(a for a in _json(resp)["accounts"] if a["id"] == account_id)
+    assert acc["scraper_last_status"] is None   # scraper job has never run yet
+
+    import database as _db
+    conn = _db.get_connection()
+    conn.execute(
+        "INSERT INTO scheduler_run_log (job_id, last_run, last_status) VALUES (?, datetime('now'), 'success')",
+        (f"account_scraper_{account_id}_job",)
+    )
+    conn.commit()
+    conn.close()
+    resp = client.get("/api/accounts")
+    acc = next(a for a in _json(resp)["accounts"] if a["id"] == account_id)
+    assert acc["scraper_last_status"] == "success"
+
+    conn = _db.get_connection()
+    conn.execute(
+        "UPDATE scheduler_run_log SET last_status = 'error' WHERE job_id = ?",
+        (f"account_scraper_{account_id}_job",)
+    )
+    conn.commit()
+    conn.close()
+    resp = client.get("/api/accounts")
+    acc = next(a for a in _json(resp)["accounts"] if a["id"] == account_id)
+    assert acc["scraper_last_status"] == "error"
+
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
 def test_creating_pension_account_with_opening_balance_creates_real_holding(client):
     """Regression: opening_balance_units entered via the API must actually show up as units held,
     not just sit on the account row — otherwise Admin Fee has nothing to deduct from."""
