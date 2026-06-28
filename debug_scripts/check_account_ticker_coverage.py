@@ -1,3 +1,8 @@
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 from config import HISTORICAL_DIR
 from database import get_all_account_tickers, get_mutual_fund_tickers
 
