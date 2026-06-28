@@ -644,7 +644,9 @@ def snapshot_all_accounts() -> int:
         aid = acc["id"]
         open_holdings, _closed, _realized, _realized_by_txn = _ledger_for_account(aid)
         equity = _equity_value_for_account(acc, open_holdings)
-        cash = cash_balance(aid)
+        # Pension has no real cash sub-ledger — cash_balance() would just return initial_cash
+        # as a phantom baseline, double-counting money already represented in equity_value.
+        cash = 0.0 if acc["account_type"] == "Pension" else cash_balance(aid)
         contributions = net_contributions(aid)
         upsert_value_snapshot(aid, today, round(cash + equity, 2), round(cash, 2), round(equity, 2), contributions)
         written += 1
@@ -662,7 +664,7 @@ def resnapshot_account(account_id: int) -> None:
     today = datetime.now(timezone.utc).date().isoformat()
     open_holdings, _closed, _realized, _realized_by_txn = _ledger_for_account(account_id)
     equity = _equity_value_for_account(acc, open_holdings)
-    cash = cash_balance(account_id)
+    cash = 0.0 if acc["account_type"] == "Pension" else cash_balance(account_id)
     contributions = net_contributions(account_id)
     upsert_value_snapshot(account_id, today, round(cash + equity, 2), round(cash, 2), round(equity, 2), contributions)
 
@@ -712,7 +714,7 @@ def backfill_value_history(account_id: int) -> int:
         open_holdings, _closed, _realized, _realized_by_txn = _ledger_for_account(
             account_id, as_of_date=date_str, transactions=transactions
         )
-        cash = _cash_balance_as_of(acc, transactions, date_str)
+        cash = 0.0 if acc["account_type"] == "Pension" else _cash_balance_as_of(acc, transactions, date_str)
         equity = 0.0
         for ticker, holding in open_holdings.items():
             series = price_series.get(ticker)

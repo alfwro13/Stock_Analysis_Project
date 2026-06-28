@@ -90,7 +90,6 @@
                 <td>{{ t.running_units }}</td>
                 <td>{{ t.notes or '—' }}</td>
                 <td>
-                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="editTransaction({{ account.id }}, {{ t.id }})">Edit</button>
                     <button type="button" class="btn btn-outline-danger btn-sm" onclick="deleteTransaction({{ account.id }}, {{ t.id }})">Delete</button>
                 </td>
             </tr>
@@ -109,7 +108,6 @@
     <button type="button" class="btn btn-outline-danger btn-sm" onclick="openDeleteAccountModal()">Delete Account</button>
 </details>
 
-{% include "partials/_accounts_txn_modal.html" %}
 {% include "partials/_account_scraper_modal.html" %}
 {% include "partials/_pension_actions_modal.html" %}
 {% include "partials/_delete_account_modal.html" %}

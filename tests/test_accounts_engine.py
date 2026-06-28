@@ -346,6 +346,19 @@ def test_snapshot_all_accounts_writes_row_per_account():
 
 
 @pytest.mark.db
+def test_snapshot_all_accounts_excludes_pension_cash_balance():
+    aid = create_account("SnapshotPensionAcc", "GBP", account_type="Pension", initial_cash=1000.0)
+    accounts_engine.record_pension_contribution(aid, "2026-01-01", 1000.0, unit_price=1.00)
+
+    accounts_engine.snapshot_all_accounts()
+
+    from database import get_value_history
+    today = get_value_history(aid)[-1]
+    assert today["cash_value"] == 0.0
+    assert today["total_value"] == today["equity_value"]
+
+
+@pytest.mark.db
 def test_run_account_value_snapshot_notifies_on_success_and_failure():
     """The job runner (not just the engine function) must report through the unified
     notification router — the 'Run Now' button previously gave no feedback at all."""
@@ -927,6 +940,23 @@ def test_pension_activities_running_units_tracks_buys_and_sells():
 
     rows = accounts_engine.pension_activities(aid)
     assert [r["running_units"] for r in rows] == [1000.0, 995.0, 1395.0]
+
+
+@pytest.mark.db
+def test_pension_value_snapshot_excludes_cash_balance():
+    """Regression: cash_balance() returns initial_cash as a baseline for every account type, but
+    Pension has no real cash sub-ledger — that baseline must not leak into the value snapshot's
+    cash_value/total_value, or the chart (total_value) stops matching the Pension Value tile
+    (equity_value alone)."""
+    aid = create_account("PensionSnapshotCashAcc", "GBP", account_type="Pension", initial_cash=1000.0)
+    accounts_engine.record_pension_contribution(aid, "2026-01-01", 1000.0, unit_price=1.00)
+
+    accounts_engine.resnapshot_account(aid)
+
+    from database import get_value_history
+    today = get_value_history(aid)[-1]
+    assert today["cash_value"] == 0.0
+    assert today["total_value"] == today["equity_value"]
 
 
 @pytest.mark.db

@@ -468,6 +468,25 @@ def test_pension_detail_page_loads_with_actions(client):
 
 
 @pytest.mark.pages
+def test_pension_activities_table_has_no_edit_button(client):
+    """Every Pension activity row is system-generated (Opening Balance / Pay In / Admin Fee) —
+    editing one through the generic Buy/Sell modal silently forces update_cash back to True,
+    corrupting the cash-free Pension ledger. Edit must not be offered; Delete still is."""
+    import database as _db
+    account_id = _db.create_account("Page Test Pension NoEdit", "GBP", account_type="Pension")
+    _db.add_transaction(
+        account_id, "Buy", "2026-01-01", ticker=f"PENSION-{account_id}",
+        quantity=10, unit_price=1.0, update_cash=False, notes="Opening balance",
+    )
+    try:
+        resp = client.get(f"/accounts/{account_id}/pension")
+        assert "editTransaction(" not in resp.text
+        assert "deleteTransaction(" in resp.text
+    finally:
+        _db.soft_delete_account(account_id)
+
+
+@pytest.mark.pages
 def test_danger_zone_with_delete_confirmation_on_all_three_detail_pages(client):
     """Delete moved off the account tile onto each detail page's Danger Zone, gated behind a
     checkbox-confirmation modal rather than a one-click browser confirm()."""
