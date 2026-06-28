@@ -31,7 +31,7 @@ def _resolve_backup_dir(cfg: dict) -> Path:
         _NFS_MOUNT_POINT.mkdir(parents=True, exist_ok=True)
         if not os.path.ismount(_NFS_MOUNT_POINT):
             result = subprocess.run(
-                ["mount", "-t", "nfs", f"{server}:{share_path}", str(_NFS_MOUNT_POINT)],
+                ["sudo", "-n", "/usr/local/sbin/quant-backup-nfs-mount", f"{server}:{share_path}"],
                 capture_output=True, text=True, timeout=30,
             )
             if result.returncode != 0:
@@ -48,7 +48,7 @@ def _resolve_backup_dir(cfg: dict) -> Path:
 
 def _release_backup_dir(cfg: dict) -> None:
     if cfg.get("LOCATION") == "nfs" and os.path.ismount(_NFS_MOUNT_POINT):
-        subprocess.run(["umount", str(_NFS_MOUNT_POINT)], capture_output=True, text=True, timeout=30)
+        subprocess.run(["sudo", "-n", "/usr/local/sbin/quant-backup-nfs-umount"], capture_output=True, text=True, timeout=30)
 
 
 def _enforce_retention(backup_dir: Path, retention_count: int) -> None:
