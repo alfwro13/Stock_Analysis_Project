@@ -2678,11 +2678,11 @@ HTML page. Renders the account list, create-account form, and the shared Buy/Sel
 
 ### `GET /accounts/{id}`
 
-HTML page. Renders the account detail view: value-over-time chart (`visuals.create_account_value_chart`, sourced from `account_value_history`), summary tiles (cash balance, equity value, realized P&amp;L, dividend/interest income, activity count), Holdings (with current market value, allocation %, and unrealized performance %), Closed Positions, the full Activities ledger (inline edit/delete via the shared transaction modal), and Cash Balance History. Used by Trading accounts only now — redirects to `/accounts` for an unknown or soft-deleted account id, to `/accounts/{id}/pension` for a Pension account, and to `/accounts/{id}/house` for a House account (both have their own dedicated pages below).
+HTML page. Renders the account detail view: value-over-time chart with 1M/1Y/YTD/MAX range buttons (client-side Plotly, fed by `GET /api/accounts/{id}/value-history`, sourced from `account_value_history`), summary tiles (cash balance, equity value, realized P&amp;L, dividend/interest income, activity count), Holdings (with current market value, allocation %, and unrealized performance %), Closed Positions, the full Activities ledger (inline edit/delete via the shared transaction modal), and Cash Balance History. Used by Trading accounts only now — redirects to `/accounts` for an unknown or soft-deleted account id, to `/accounts/{id}/pension` for a Pension account, and to `/accounts/{id}/house` for a House account (both have their own dedicated pages below). The selected chart range is read server-side from the `acct_chart_period` cookie (default `max`) to pick the initial dataset, then persisted client-side in `static/js/account_detail.js` whenever a range button is clicked, so it carries over to every other Trading account.
 
 ### `GET /accounts/{id}/pension`
 
-HTML page. Dedicated Pension account detail view (replaces the generic ledger page above for this account type): unit price chart (`visuals.create_pension_unit_price_chart`, sourced from `account_price_history` — the scraped/imported fund unit value) and value-over-time chart (`visuals.create_pension_value_chart`, sourced from `account_value_history` — plots `total_value` only, with the y-axis auto-ranging to the data rather than the generic page's `create_account_value_chart`, which also plots Cash/Net Contributions). A Pension's snapshot always stores `cash_value = 0` (`accounts_engine.snapshot_all_accounts`/`resnapshot_account`/`backfill_value_history`) — Pension has no real cash sub-ledger, so `cash_balance()`'s `initial_cash` baseline must not leak in, or `total_value` stops matching the "Pension Value" tile's `equity_value`. Summary tiles show Pension Value plus Performance % over 1 month / YTD / 1 year, computed from the unit price history via `accounts_engine.pension_performance` (`null`/`—` for any window not yet covered by price history), Pay In / Admin Fee actions, the Account Price Scraper config, and an Activities table (Date, Type, Ticker — using the account's `pension_ticker_label` if set, else the internal `PENSION-{id}` ticker — Qty, Unit Price, Total, Running Total Units, Notes, Delete only — no Edit, since every row is system-generated and the generic Buy/Sell edit modal always submits `update_cash: true`, which would corrupt the cash-free ledger), sorted newest-first. Redirects to `/accounts` for an unknown account id or a non-Pension account.
+HTML page. Dedicated Pension account detail view (replaces the generic ledger page above for this account type): unit price chart (`visuals.create_pension_unit_price_chart`, sourced from `account_price_history` — the scraped/imported fund unit value) and value-over-time chart (`visuals.create_pension_value_chart`, sourced from `account_value_history` — plots `total_value` only, with the y-axis auto-ranging to the data, and has no range buttons — unlike the Trading account detail page's client-side chart, which also plots Cash/Net Contributions and supports 1M/1Y/YTD/MAX). A Pension's snapshot always stores `cash_value = 0` (`accounts_engine.snapshot_all_accounts`/`resnapshot_account`/`backfill_value_history`) — Pension has no real cash sub-ledger, so `cash_balance()`'s `initial_cash` baseline must not leak in, or `total_value` stops matching the "Pension Value" tile's `equity_value`. Summary tiles show Pension Value plus Performance % over 1 month / YTD / 1 year, computed from the unit price history via `accounts_engine.pension_performance` (`null`/`—` for any window not yet covered by price history), Pay In / Admin Fee actions, the Account Price Scraper config, and an Activities table (Date, Type, Ticker — using the account's `pension_ticker_label` if set, else the internal `PENSION-{id}` ticker — Qty, Unit Price, Total, Running Total Units, Notes, Delete only — no Edit, since every row is system-generated and the generic Buy/Sell edit modal always submits `update_cash: true`, which would corrupt the cash-free ledger), sorted newest-first. Redirects to `/accounts` for an unknown account id or a non-Pension account.
 
 ### `GET /accounts/{id}/house`
 
@@ -2744,6 +2744,23 @@ Returns all transactions for an account, ordered by `txn_date`. Returns 404 if t
       "fee": 1.5, "exchange_rate": 0.8, "notes": null, "update_cash": 1, "price_in_pence": 0,
       "ghostfolio_ref": null, "linked_txn_id": null, "created_at": "2026-06-25 10:00:00"
     }
+  ]
+}
+```
+
+---
+
+### `GET /api/accounts/{id}/value-history?period=`
+
+Returns the account's `account_value_history` rows filtered to a chart range — `1m` (30 days), `ytd` (since 1 Jan), `1y` (365 days), or `max` (full history, the default). Powers the 1M/1Y/YTD/MAX range buttons on the Trading account detail page (`accounts_engine.filter_value_history_by_period`). Returns 404 if the account does not exist.
+
+**Response:**
+```json
+{
+  "status": "success",
+  "period": "1y",
+  "data": [
+    {"account_id": 1, "snapshot_date": "2026-01-02", "total_value": 1050.0, "cash_value": 50.0, "equity_value": 1000.0, "net_contributions": 1000.0}
   ]
 }
 ```

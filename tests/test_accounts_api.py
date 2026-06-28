@@ -199,6 +199,35 @@ def test_create_transaction_for_unknown_account_returns_404(client):
 
 
 @pytest.mark.api
+def test_value_history_unknown_account_returns_404(client):
+    resp = client.get("/api/accounts/999998/value-history")
+    assert resp.status_code == 404
+
+
+@pytest.mark.api
+def test_value_history_filters_by_period(client):
+    from datetime import datetime, timedelta, timezone
+    import database as _db
+
+    account_id = _create_account(client)
+    today = datetime.now(timezone.utc).date()
+    _db.upsert_value_snapshot(account_id, (today - timedelta(days=400)).isoformat(), 100, 100, 0, 0)
+    _db.upsert_value_snapshot(account_id, today.isoformat(), 130, 130, 0, 0)
+
+    resp = client.get(f"/api/accounts/{account_id}/value-history?period=1y")
+    data = _json(resp)
+    assert data["status"] == "success"
+    assert data["period"] == "1y"
+    assert len(data["data"]) == 1
+    assert data["data"][0]["total_value"] == 130
+
+    resp_max = _json(client.get(f"/api/accounts/{account_id}/value-history?period=max"))
+    assert len(resp_max["data"]) == 2
+
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
 def test_create_transaction_rejects_invalid_txn_type(client):
     account_id = _create_account(client)
     resp = client.post(f"/api/accounts/{account_id}/transactions", json={

@@ -1064,3 +1064,19 @@ def test_sync_house_purchase_price_noop_for_pension_account_or_unset_cash():
     aid2 = create_account("SyncHousePurchaseNoCashAcc", "GBP", account_type="House")
     accounts_engine.sync_house_purchase_price(aid2)
     assert get_price_history(aid2) == []
+
+
+def test_filter_value_history_by_period():
+    from datetime import datetime, timedelta, timezone
+    today = datetime.now(timezone.utc).date()
+    history = [
+        {"snapshot_date": (today - timedelta(days=400)).isoformat(), "total_value": 100},
+        {"snapshot_date": (today - timedelta(days=200)).isoformat(), "total_value": 110},
+        {"snapshot_date": (today - timedelta(days=40)).isoformat(), "total_value": 120},
+        {"snapshot_date": (today - timedelta(days=5)).isoformat(), "total_value": 130},
+    ]
+
+    assert accounts_engine.filter_value_history_by_period(history, "max") == history
+    assert [r["total_value"] for r in accounts_engine.filter_value_history_by_period(history, "1y")] == [110, 120, 130]
+    assert [r["total_value"] for r in accounts_engine.filter_value_history_by_period(history, "1m")] == [130]
+    assert accounts_engine.filter_value_history_by_period([], "1m") == []

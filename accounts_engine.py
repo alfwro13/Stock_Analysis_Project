@@ -636,6 +636,19 @@ def fx_rate_on_date(currency: str, date_str: Optional[str]) -> float:
     return rate if rate else 1.0
 
 
+VALUE_CHART_PERIODS = ("1m", "ytd", "1y", "max")
+
+
+def filter_value_history_by_period(history: list, period: str) -> list:
+    """Slices a snapshot_date-ordered value_history list to the chart's selected range."""
+    if period == "max" or not history:
+        return history
+    today = datetime.now(timezone.utc).date()
+    cutoff = today.replace(month=1, day=1) if period == "ytd" else today - timedelta(days=30 if period == "1m" else 365)
+    cutoff_str = cutoff.isoformat()
+    return [row for row in history if row["snapshot_date"] >= cutoff_str]
+
+
 def snapshot_all_accounts() -> int:
     """Nightly job body: writes today's value snapshot for every account. Returns rows written."""
     today = datetime.now(timezone.utc).date().isoformat()

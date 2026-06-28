@@ -20,11 +20,16 @@
 
 {# ── Account value chart ── #}
 <div class="sentiment-module module-cyan sentiment-module--spaced">
+    <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
+        <span class="text-muted small">Range:</span>
+        <button class="btn btn-sm btn-outline-secondary acct-period-btn" data-period="1m">1M</button>
+        <button class="btn btn-sm btn-outline-secondary acct-period-btn" data-period="1y">1Y</button>
+        <button class="btn btn-sm btn-outline-secondary acct-period-btn" data-period="ytd">YTD</button>
+        <button class="btn btn-sm btn-outline-secondary acct-period-btn" data-period="max">MAX</button>
+    </div>
     <div class="chart-wrapper">
         <button class="fullscreen-btn" onclick="toggleFullscreen('acct-chart-wrapper')">&#9638; Fullscreen</button>
-        <div id="acct-chart-wrapper">
-            {{ chart_html | safe }}
-        </div>
+        <div id="acct-chart-wrapper"></div>
     </div>
 </div>
 
@@ -227,6 +232,8 @@
     window.ACCOUNT_CURRENCIES = {{ account_currencies | tojson }};
     window.ACCOUNT_TRANSACTIONS = {{ activities | tojson }};
     window.CURRENT_ACCOUNT = {{ account | tojson }};
+    window.ACCT_CHART_INITIAL = {{ chart_initial | tojson }};
+    window.ACCT_CHART_PERIOD = {{ chart_period | tojson }};
 </script>
 <script src="/static/js/accounts.js?v={{ css_version }}"></script>
 <script src="/static/js/account_scraper.js?v={{ css_version }}"></script>

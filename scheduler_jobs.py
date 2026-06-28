@@ -34,11 +34,6 @@ from treasury_auction_engine import check_auction_results
 from universe_deep_sync_engine import run_universe_deep_sync
 from universe_engine import update_market_universe
 from xray_engine import run_xray_precompute
-
-from scheduler_engine import (
-    scheduler, record_job_run, log_sched_notification,
-    _mark_job_started, _mark_job_done,
-)
 from scheduler_manifest import job_label
 
 logger = logging.getLogger(__name__)
@@ -1187,3 +1182,11 @@ def run_treasury_auction_check(slot: str) -> None:
     finally:
         _mark_job_done(job_label(job_id))
         record_job_run(job_id)
+
+
+# Imported last (not at module top) — scheduler_engine.py itself imports every run_* function
+# from this module, so importing it before they're all defined deadlocks the circular import.
+from scheduler_engine import (
+    scheduler, record_job_run, log_sched_notification,
+    _mark_job_started, _mark_job_done,
+)

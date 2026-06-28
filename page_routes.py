@@ -401,11 +401,11 @@ async def accounts_page(request: Request):
 @page_router.get("/accounts/{account_id}", response_class=HTMLResponse)
 async def account_detail_page(request: Request, account_id: int):
     from accounts_engine import (
-        account_summary, cash_history, closed_positions, holdings_with_market_value,
-        is_unresolved_ticker, stale_pricing_warning, transaction_total_base,
+        account_summary, cash_history, closed_positions, filter_value_history_by_period,
+        holdings_with_market_value, is_unresolved_ticker, stale_pricing_warning,
+        transaction_total_base, VALUE_CHART_PERIODS,
     )
     from database import get_account, get_transactions, get_value_history, get_watchlist_items
-    from visuals import create_account_value_chart
 
     acc = get_account(account_id)
     if acc is None:
@@ -432,13 +432,10 @@ async def account_detail_page(request: Request, account_id: int):
         a["total_base"] = transaction_total_base(a)
         a["needs_review"] = is_unresolved_ticker(a.get("ticker"))
 
-    value_history = get_value_history(account_id)
-    if value_history:
-        chart_df = pd.DataFrame(value_history).set_index("snapshot_date")
-        chart_df.index = pd.to_datetime(chart_df.index)
-        chart_html = create_account_value_chart(chart_df)
-    else:
-        chart_html = "<p class='text-muted'>No value history yet — check back after the next nightly snapshot.</p>"
+    chart_period = request.cookies.get("acct_chart_period", "max")
+    if chart_period not in VALUE_CHART_PERIODS:
+        chart_period = "max"
+    chart_initial = filter_value_history_by_period(get_value_history(account_id), chart_period)
 
     holdings = holdings_with_market_value(account_id)
     pricing_warning = stale_pricing_warning(holdings)
@@ -453,7 +450,8 @@ async def account_detail_page(request: Request, account_id: int):
             "closed_positions": closed_positions(account_id),
             "activities": activities,
             "cash_history": cash_history(account_id),
-            "chart_html": chart_html,
+            "chart_initial": chart_initial,
+            "chart_period": chart_period,
             "base_currency": BASE_CURRENCY,
             "account_currencies": ACCOUNT_CURRENCIES,
             "unread_count": get_unread_count(),

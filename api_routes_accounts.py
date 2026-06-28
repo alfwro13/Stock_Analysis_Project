@@ -2,16 +2,16 @@ import json
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, File, Request, UploadFile
+from fastapi import APIRouter, BackgroundTasks, File, Query, Request, UploadFile
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 
 from accounts_engine import (
     _ticker_known, account_summary, create_transfer, delete_transaction_with_pair,
-    export_transactions_csv, fx_rate_on_date, import_csv_activities, pension_units_as_of,
-    record_pension_contribution, record_pension_fee, resnapshot_account,
-    resolve_watchlist_metadata, sync_house_purchase_price, sync_pension_opening_balance,
-    watchlist_summary,
+    export_transactions_csv, filter_value_history_by_period, fx_rate_on_date,
+    import_csv_activities, pension_units_as_of, record_pension_contribution,
+    record_pension_fee, resnapshot_account, resolve_watchlist_metadata,
+    sync_house_purchase_price, sync_pension_opening_balance, watchlist_summary,
 )
 from account_scraper_engine import import_price_csv, price_as_of, run_scrape_for_account, test_scrape
 import notification_engine
@@ -28,6 +28,7 @@ from database import (
     add_transaction,
     update_transaction,
     get_connection,
+    get_value_history,
     get_watchlist_items,
     add_watchlist_item,
     delete_watchlist_items,
@@ -235,6 +236,17 @@ async def api_list_transactions(account_id: int):
     if get_account(account_id) is None:
         return JSONResponse(status_code=404, content={"status": "error", "message": "Account not found."})
     return JSONResponse(content={"status": "success", "transactions": get_transactions(account_id)})
+
+
+@accounts_router.get("/accounts/{account_id}/value-history")
+async def api_account_value_history(
+    account_id: int,
+    period: str = Query(default="max", pattern=r"^(1m|ytd|1y|max)$"),
+):
+    if get_account(account_id) is None:
+        return JSONResponse(status_code=404, content={"status": "error", "message": "Account not found."})
+    history = filter_value_history_by_period(get_value_history(account_id), period)
+    return JSONResponse(content={"status": "success", "period": period, "data": history})
 
 
 @accounts_router.post("/accounts/{account_id}/transactions")

@@ -547,23 +547,3 @@ def create_pension_value_chart(df: pd.DataFrame) -> str:
     )
     fig.update_yaxes(title_text="Value", showgrid=True, gridcolor="#333333", rangemode="normal", autorange=True)
     return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
-
-
-def create_account_value_chart(df: pd.DataFrame) -> str:
-    # df indexed by snapshot_date (DatetimeIndex) with 'total_value'/'cash_value'/'net_contributions' columns from account_value_history.
-    fig = go.Figure()
-    if not df.empty and 'total_value' in df.columns:
-        fig.add_trace(go.Scatter(x=df.index, y=df['total_value'], name="Total Value", line=dict(color="#00ffcc", width=2), connectgaps=True))
-    if not df.empty and 'cash_value' in df.columns:
-        fig.add_trace(go.Scatter(x=df.index, y=df['cash_value'], name="Cash", line=dict(color="#bb86fc", width=1.5, dash='dot'), connectgaps=True))
-    if not df.empty and 'net_contributions' in df.columns:
-        fig.add_trace(go.Scatter(x=df.index, y=df['net_contributions'], name="Net Contributions", line=dict(color="#ffb74d", width=1.5, dash='dash'), connectgaps=True))
-
-    fig.update_layout(
-        title=dict(text="Account Value Over Time", x=0.5, xanchor='center'),
-        template="plotly_dark", height=350,
-        margin=dict(l=20, r=20, t=50, b=20), hovermode="x unified",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-    )
-    fig.update_yaxes(title_text="Value", showgrid=True, gridcolor="#333333")
-    return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
