@@ -109,7 +109,8 @@ class PensionContributionBody(BaseModel):
 
 class PensionFeeBody(BaseModel):
     txn_date: str
-    units_after: float
+    units_after: Optional[float] = None
+    units_removed: Optional[float] = None
     unit_price: Optional[float] = None
 
 
@@ -715,7 +716,7 @@ async def api_record_pension_fee(request: Request, account_id: int, body: Pensio
         _acc, error = _require_pension_account(account_id)
         if error:
             return error
-        result = record_pension_fee(account_id, body.txn_date, body.units_after, body.unit_price)
+        result = record_pension_fee(account_id, body.txn_date, body.units_after, body.units_removed, body.unit_price)
         if result.get("error"):
             return JSONResponse(status_code=422, content={"status": "error", "message": result["error"]})
         background_tasks.add_task(resnapshot_account, account_id)

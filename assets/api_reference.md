@@ -2972,14 +2972,19 @@ Returns the Pension account's synthetic-ticker units held as of `date` (`account
 
 ### `POST /api/accounts/{id}/pension/fee`
 
-**"Admin Fee"** — automates the arithmetic of a unit-based fee deduction. The operator supplies `units_after` (the units balance read off the pension provider's portal, after the fee). Units held *before* the fee come from the existing ledger as of `txn_date`; `units_removed = units_before - units_after` and its monetary cost (`units_removed × that date's price`) are computed automatically, then recorded as a `Sell` against the synthetic ticker (`update_cash=False`). The trigger stays manual — this only automates the calculation the operator previously did by hand. Pension-only; 400 otherwise. Rate limit: 30/minute.
+**"Admin Fee"** — automates the arithmetic of a unit-based fee deduction. Accepts **exactly one** of two alternative inputs, since pension providers disclose this differently: `units_after` (the units balance read off the portal *after* the fee — units held *before* come from the existing ledger as of `txn_date`, and `units_removed = units_before - units_after`), or `units_removed` directly (if the provider states the deducted unit count itself). Either way, the monetary cost (`units_removed × that date's price`) is computed automatically and recorded as a `Sell` against the synthetic ticker (`update_cash=False`). The trigger stays manual — this only automates the calculation the operator previously did by hand. Pension-only; 400 otherwise. Rate limit: 30/minute.
 
-**Request body:**
+**Request body (units remaining after fee):**
 ```json
 { "txn_date": "2026-07-01", "units_after": 995.0, "unit_price": null }
 ```
 
-**Response:** `{ "status": "success", "txn_id": 43, "units_removed": 5.0, "unit_price": 1.1, "fee_cost": 5.5 }`. Returns 422 if `units_after` is not lower than the units currently held, or if no price can be resolved and no override was supplied.
+**Request body (units deducted, stated directly):**
+```json
+{ "txn_date": "2026-07-01", "units_removed": 5.0, "unit_price": null }
+```
+
+**Response:** `{ "status": "success", "txn_id": 43, "units_removed": 5.0, "unit_price": 1.1, "fee_cost": 5.5 }`. Returns 422 if neither or both of `units_after`/`units_removed` are supplied, if the resulting `units_removed` is not positive or exceeds the units currently held, or if no price can be resolved and no override was supplied.
 
 ---
 

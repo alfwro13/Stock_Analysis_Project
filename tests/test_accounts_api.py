@@ -1027,6 +1027,48 @@ def test_pension_contribution_and_fee_endpoints(client):
 
 
 @pytest.mark.api
+def test_pension_fee_endpoint_accepts_units_removed_directly(client):
+    account_id = _create_account(client, account_type="Pension")
+    client.post(f"/api/accounts/{account_id}/price-history/import-csv", json={
+        "csv_text": "date;marketPrice\n2026-01-01;1.00\n",
+    })
+    client.post(f"/api/accounts/{account_id}/pension/contribution", json={
+        "txn_date": "2026-01-01", "amount": 500.0,
+    })
+
+    resp = client.post(f"/api/accounts/{account_id}/pension/fee", json={
+        "txn_date": "2026-01-01", "units_removed": 2.0,
+    })
+    assert resp.status_code == 200
+    assert _json(resp)["units_removed"] == 2.0
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_pension_fee_endpoint_rejects_neither_or_both_units_args(client):
+    account_id = _create_account(client, account_type="Pension")
+    client.post(f"/api/accounts/{account_id}/price-history/import-csv", json={
+        "csv_text": "date;marketPrice\n2026-01-01;1.00\n",
+    })
+    client.post(f"/api/accounts/{account_id}/pension/contribution", json={
+        "txn_date": "2026-01-01", "amount": 500.0,
+    })
+
+    resp = client.post(f"/api/accounts/{account_id}/pension/fee", json={"txn_date": "2026-01-01"})
+    assert resp.status_code == 422
+
+    resp = client.post(f"/api/accounts/{account_id}/pension/fee", json={
+        "txn_date": "2026-01-01", "units_after": 498.0, "units_removed": 2.0,
+    })
+    assert resp.status_code == 422
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
 def test_pension_endpoints_reject_non_pension_account(client):
     account_id = _create_account(client, account_type="House")
     resp = client.post(f"/api/accounts/{account_id}/pension/contribution", json={

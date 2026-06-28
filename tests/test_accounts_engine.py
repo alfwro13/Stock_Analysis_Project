@@ -665,6 +665,41 @@ def test_record_pension_fee_rejects_units_after_not_lower_than_current():
 
 
 @pytest.mark.db
+def test_record_pension_fee_accepts_units_removed_directly():
+    aid = create_account("PensionFeeUnitsRemovedAcc", "GBP", account_type="Pension")
+    accounts_engine.record_pension_contribution(aid, "2026-01-01", 1000.0, unit_price=1.00)
+    # Provider states 5 units were deducted as the fee, rather than showing the new balance.
+    result = accounts_engine.record_pension_fee(aid, "2026-02-01", units_removed=5.0, unit_price=1.10)
+    assert result["units_removed"] == 5.0
+    assert result["fee_cost"] == 5.5
+
+    rows = accounts_engine.holdings_with_market_value(aid)
+    assert rows[0]["shares"] == 995.0
+
+
+@pytest.mark.db
+def test_record_pension_fee_rejects_neither_or_both_units_args():
+    aid = create_account("PensionFeeBothArgsAcc", "GBP", account_type="Pension")
+    accounts_engine.record_pension_contribution(aid, "2026-01-01", 1000.0, unit_price=1.00)
+
+    result = accounts_engine.record_pension_fee(aid, "2026-02-01", unit_price=1.0)
+    assert "error" in result
+
+    result = accounts_engine.record_pension_fee(
+        aid, "2026-02-01", units_after=995.0, units_removed=5.0, unit_price=1.0
+    )
+    assert "error" in result
+
+
+@pytest.mark.db
+def test_record_pension_fee_rejects_units_removed_exceeding_units_held():
+    aid = create_account("PensionFeeTooManyUnitsAcc", "GBP", account_type="Pension")
+    accounts_engine.record_pension_contribution(aid, "2026-01-01", 1000.0, unit_price=1.00)
+    result = accounts_engine.record_pension_fee(aid, "2026-02-01", units_removed=1500.0, unit_price=1.0)
+    assert "error" in result
+
+
+@pytest.mark.db
 def test_pension_units_as_of_reflects_ledger_at_date():
     aid = create_account("PensionUnitsAsOfAcc", "GBP", account_type="Pension")
     assert accounts_engine.pension_units_as_of(aid, "2026-01-01") == 0.0

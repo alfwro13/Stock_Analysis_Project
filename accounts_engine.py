@@ -760,23 +760,31 @@ def pension_units_as_of(account_id: int, date_str: str) -> float:
     return open_holdings.get(ticker, {}).get("shares", 0.0)
 
 
-def record_pension_fee(account_id: int, txn_date: str, units_after: float, unit_price: Optional[float] = None) -> dict:
-    """'Admin Fee': the user reads `units_after` off the pension provider's portal; units held
-    *before* the fee already come from the existing ledger, so the delta — not a separate £ amount
-    the provider rarely discloses — is what determines the fee's monetary cost."""
+def record_pension_fee(
+    account_id: int, txn_date: str, units_after: Optional[float] = None,
+    units_removed: Optional[float] = None, unit_price: Optional[float] = None,
+) -> dict:
+    """'Admin Fee': the provider's portal sometimes shows the units remaining after the fee, and
+    sometimes states the units deducted directly — accepts either. When given `units_after`, units
+    held *before* the fee already come from the existing ledger, so the delta is the fee size."""
     acc = get_account(account_id)
     if not acc:
         return {"error": "Account not found."}
     if acc["account_type"] != "Pension":
         return {"error": "Only Pension accounts support admin fees."}
+    if (units_after is None) == (units_removed is None):
+        return {"error": "Provide exactly one of units_after or units_removed."}
     from account_scraper_engine import pension_ticker
     from account_scraper_engine import price_as_of as scraped_price_as_of
 
     ticker = pension_ticker(account_id)
     units_before = pension_units_as_of(account_id, txn_date)
-    units_removed = units_before - units_after
+    if units_removed is None:
+        units_removed = units_before - units_after
     if units_removed <= _EPS:
         return {"error": f"units_after ({units_after}) must be less than the units currently held ({units_before})."}
+    if units_removed > units_before + _EPS:
+        return {"error": f"units_removed ({units_removed}) cannot exceed the units currently held ({units_before})."}
     price = unit_price if unit_price is not None else scraped_price_as_of(account_id, txn_date)
     if not price:
         return {"error": "No unit price available for that date — import or scrape price history first, or supply unit_price."}

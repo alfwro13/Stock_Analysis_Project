@@ -122,15 +122,29 @@ async function submitPensionContribution() {
 
 let _pensionFeeUnitsBefore = null;
 
+function _pensionFeeMode() {
+    return document.querySelector('input[name="pension-fee-mode"]:checked').value;
+}
+
+function _onPensionFeeModeChange() {
+    const mode = _pensionFeeMode();
+    document.getElementById('pension-fee-units-after-group').classList.toggle('d-none', mode !== 'after');
+    document.getElementById('pension-fee-units-removed-group').classList.toggle('d-none', mode !== 'removed');
+    _updatePensionFeePreview();
+}
+
 function openPensionFeeModal(accountId) {
     document.getElementById('pension-fee-account-id').value = accountId;
     document.getElementById('pension-fee-date').value = new Date().toISOString().slice(0, 10);
+    document.getElementById('pension-fee-mode-after').checked = true;
     document.getElementById('pension-fee-units-after').value = '';
+    document.getElementById('pension-fee-units-removed').value = '';
     document.getElementById('pension-fee-price').value = '';
     document.getElementById('pension-fee-units-before').textContent = '';
     document.getElementById('pension-fee-preview').innerHTML = '';
     document.getElementById('pension-fee-status').innerHTML = '';
     _pensionFeeUnitsBefore = null;
+    _onPensionFeeModeChange();
     _pensionFeeModal().show();
     _onPensionFeeDateChange();
 }
@@ -151,15 +165,29 @@ async function _onPensionFeeDateChange() {
 
 function _updatePensionFeePreview() {
     const preview = document.getElementById('pension-fee-preview');
-    const unitsAfter = parseFloat(document.getElementById('pension-fee-units-after').value);
     const price = parseFloat(document.getElementById('pension-fee-price').value);
-    if (_pensionFeeUnitsBefore === null || isNaN(unitsAfter) || isNaN(price)) {
+    const mode = _pensionFeeMode();
+    let removed;
+    if (mode === 'after') {
+        const unitsAfter = parseFloat(document.getElementById('pension-fee-units-after').value);
+        if (_pensionFeeUnitsBefore === null || isNaN(unitsAfter)) {
+            preview.textContent = '';
+            return;
+        }
+        removed = _pensionFeeUnitsBefore - unitsAfter;
+    } else {
+        removed = parseFloat(document.getElementById('pension-fee-units-removed').value);
+        if (isNaN(removed)) {
+            preview.textContent = '';
+            return;
+        }
+    }
+    if (isNaN(price)) {
         preview.textContent = '';
         return;
     }
-    const removed = _pensionFeeUnitsBefore - unitsAfter;
-    if (removed <= 0) {
-        preview.innerHTML = '<span class="msg-error">Units after must be less than units currently held.</span>';
+    if (removed <= 0 || (_pensionFeeUnitsBefore !== null && removed > _pensionFeeUnitsBefore)) {
+        preview.innerHTML = '<span class="msg-error">Units removed must be positive and no more than the units currently held.</span>';
         return;
     }
     const currency = (window.CURRENT_ACCOUNT && window.CURRENT_ACCOUNT.currency) || '';
@@ -170,9 +198,11 @@ async function submitPensionFee() {
     const status = document.getElementById('pension-fee-status');
     const accountId = document.getElementById('pension-fee-account-id').value;
     const txnDate = document.getElementById('pension-fee-date').value;
+    const mode = _pensionFeeMode();
     const unitsAfter = document.getElementById('pension-fee-units-after').value;
-    if (!txnDate || unitsAfter === '') {
-        status.innerHTML = '<span class="msg-error">Date and units remaining are required.</span>';
+    const unitsRemoved = document.getElementById('pension-fee-units-removed').value;
+    if (!txnDate || (mode === 'after' ? unitsAfter === '' : unitsRemoved === '')) {
+        status.innerHTML = '<span class="msg-error">Date and the units field are required.</span>';
         return;
     }
     const priceOverride = document.getElementById('pension-fee-price').value;
@@ -183,7 +213,8 @@ async function submitPensionFee() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 txn_date: txnDate,
-                units_after: parseFloat(unitsAfter),
+                units_after: mode === 'after' ? parseFloat(unitsAfter) : null,
+                units_removed: mode === 'removed' ? parseFloat(unitsRemoved) : null,
                 unit_price: priceOverride === '' ? null : parseFloat(priceOverride),
             }),
         });
