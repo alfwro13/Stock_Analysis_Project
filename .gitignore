@@ -14,6 +14,9 @@ data/
 # Default local destination for the Backup & Recovery feature
 backups/
 
+# Ignore Ghostfolio ha integration files - here only for the migration
+ghostfolio_ha_integration/
+
 # Ignore specific files
 static/js/mermaid.min.js
 to_do*.txt
