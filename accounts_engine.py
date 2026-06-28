@@ -397,6 +397,23 @@ def cash_balance(account_id: int) -> float:
     return round(balance, 2)
 
 
+def reconcile_cash(account_id: int, actual_balance: float) -> dict:
+    """Books a 'Cash' adjustment transaction (tagged `is_adjustment`) for the difference between
+    the ledger's computed cash_balance() and the real-world actual_balance the user reports —
+    both already in BASE_CURRENCY, so no FX lookup is needed for the adjustment itself."""
+    computed = cash_balance(account_id)
+    delta = round(actual_balance - computed, 2)
+    if abs(delta) < 0.005:
+        return {"txn_id": None, "delta": 0.0, "computed_balance": computed}
+    today = datetime.now(timezone.utc).date().isoformat()
+    txn_id = add_transaction(
+        account_id, "Cash", today, currency=BASE_CURRENCY, quantity=1, unit_price=delta,
+        fee=0.0, exchange_rate=1.0, update_cash=True, notes="Reconciliation adjustment",
+        is_adjustment=True,
+    )
+    return {"txn_id": txn_id, "delta": delta, "computed_balance": computed}
+
+
 def _cash_balance_as_of(acc: dict, transactions: list, as_of_date: str) -> float:
     balance = acc["initial_cash"] or 0.0
     for txn in transactions:

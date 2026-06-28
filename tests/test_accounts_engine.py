@@ -1080,3 +1080,31 @@ def test_filter_value_history_by_period():
     assert [r["total_value"] for r in accounts_engine.filter_value_history_by_period(history, "1y")] == [110, 120, 130]
     assert [r["total_value"] for r in accounts_engine.filter_value_history_by_period(history, "1m")] == [130]
     assert accounts_engine.filter_value_history_by_period([], "1m") == []
+
+
+@pytest.mark.db
+def test_reconcile_cash_books_signed_adjustment():
+    from database import get_transactions
+    aid = create_account("ReconcileAcc", "GBP", initial_cash=1000.0)
+
+    result = accounts_engine.reconcile_cash(aid, 990.0)
+    assert result["delta"] == -10.0
+    assert result["computed_balance"] == 1000.0
+    assert result["txn_id"] is not None
+
+    txns = get_transactions(aid)
+    adj = next(t for t in txns if t["id"] == result["txn_id"])
+    assert adj["txn_type"] == "Cash"
+    assert adj["unit_price"] == -10.0
+    assert bool(adj["is_adjustment"]) is True
+    assert accounts_engine.cash_balance(aid) == 990.0
+
+
+@pytest.mark.db
+def test_reconcile_cash_is_noop_when_already_balanced():
+    aid = create_account("ReconcileNoopAcc", "GBP", initial_cash=500.0)
+
+    result = accounts_engine.reconcile_cash(aid, 500.0)
+    assert result["txn_id"] is None
+    assert result["delta"] == 0.0
+    assert result["computed_balance"] == 500.0

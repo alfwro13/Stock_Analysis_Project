@@ -805,6 +805,7 @@ def init_db() -> None:
                 price_in_pence  INTEGER NOT NULL DEFAULT 0,
                 ghostfolio_ref  TEXT,
                 linked_txn_id   INTEGER,
+                is_adjustment   INTEGER NOT NULL DEFAULT 0,
                 created_at      TEXT DEFAULT (datetime('now'))
             )
         ''')
@@ -982,6 +983,12 @@ def migrate_db(conn, cursor) -> None:
         try:
             logger.info("[MIGRATION] Adding column: isin to account_transactions...")
             cursor.execute("ALTER TABLE account_transactions ADD COLUMN isin TEXT")
+        except Exception as e:
+            logger.error("[MIGRATION ERROR] Failed on account_transactions: %s", e)
+    if 'is_adjustment' not in existing_account_txn_columns:
+        try:
+            logger.info("[MIGRATION] Adding column: is_adjustment to account_transactions...")
+            cursor.execute("ALTER TABLE account_transactions ADD COLUMN is_adjustment INTEGER NOT NULL DEFAULT 0")
         except Exception as e:
             logger.error("[MIGRATION ERROR] Failed on account_transactions: %s", e)
 

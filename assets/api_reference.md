@@ -2767,6 +2767,27 @@ Returns the account's `account_value_history` rows filtered to a chart range —
 
 ---
 
+### `POST /api/accounts/{id}/reconcile-cash`
+
+Books a `Cash` adjustment transaction for the difference between `accounts_engine.cash_balance()` and the `actual_balance` (in `BASE_CURRENCY`) the caller reports, e.g. to true up FX rounding drift against a real broker statement (`accounts_engine.reconcile_cash`). If the difference is less than half a penny, no transaction is created and `delta` is `0.0`. The booked transaction is dated today, denominated directly in `BASE_CURRENCY` with `exchange_rate=1.0` (no FX lookup needed), and flagged `is_adjustment=True` so it can be tagged/filtered in the UI. Returns 404 if the account does not exist; 500 if the transaction fails to write. Rate limit: 30/minute.
+
+**Request:**
+```json
+{"actual_balance": 1005.32}
+```
+
+**Response (adjustment booked):**
+```json
+{"status": "success", "txn_id": 42, "delta": 5.32, "computed_balance": 1000.0}
+```
+
+**Response (already balanced):**
+```json
+{"status": "success", "delta": 0.0, "computed_balance": 1000.0, "message": "Already balanced — no adjustment needed."}
+```
+
+---
+
 ### `POST /api/accounts/{id}/transactions`
 
 Adds a transaction to the ledger. `txn_type` must be one of `Buy`, `Sell`, `Fee`, `Dividend`, `Interest`, `Cash` (use `POST /api/accounts/{id}/transfer` for `Transfer` — it is rejected here with 422 since a transfer needs two linked rows across two accounts). If `currency` is omitted, the account's own currency is used. If `exchange_rate` is omitted, it is auto-filled via `accounts_engine.fx_rate_on_date(currency, txn_date)` (historical FX lookup, falling back to the live rate, then `1.0`). If `ticker` is provided and not yet present in `asset_profiles`, a background task calls `profile_engine.update_single_profile(ticker)` so it enters the scan pipeline. `isin` is optional, free-text, and purely informational — the instrument's ISIN, which stays stable across a ticker symbol change/delisting, unlike `ticker`; not validated or looked up against any external source. Rate limit: 30/minute.

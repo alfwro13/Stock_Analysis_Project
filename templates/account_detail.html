@@ -16,6 +16,7 @@
 <div class="d-flex align-items-center gap-3 mb-3 flex-wrap">
     <a href="/accounts" class="btn btn-outline-secondary btn-sm">&#8592; Back to Accounts</a>
     <button type="button" class="btn btn-primary btn-sm" onclick="openTxnModal({{ account.id }})">+ Add Transaction</button>
+    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="openReconcileModal({{ account.id }})">&#128260; Reconcile</button>
 </div>
 
 {# ── Account value chart ── #}
@@ -145,6 +146,7 @@
             <option value="Fee">Fee</option>
             <option value="Cash">Cash</option>
             <option value="Transfer">Transfer</option>
+            <option value="Adjustment">Adjustment</option>
         </select>
     </div>
     <table id="activitiesTable" class="table table-hover w-100">
@@ -158,7 +160,7 @@
             {% for t in activities %}
             <tr>
                 <td>{{ t.txn_date }}</td>
-                <td>{{ t.txn_type }}</td>
+                <td>{{ t.txn_type }}{% if t.is_adjustment %} <span class="badge-source">Adjustment</span>{% endif %}</td>
                 <td>
                     {% if t.needs_review %}
                     <abbr title="Ghostfolio reported a raw asset ID instead of a ticker for this holding (typically a custom/manual asset with no market data symbol). Click Edit to set the correct ticker, or leave as-is.">{{ t.company_name or t.ticker }}</abbr>
@@ -224,6 +226,7 @@
 {% include "partials/_accounts_txn_modal.html" %}
 {% include "partials/_account_scraper_modal.html" %}
 {% include "partials/_delete_account_modal.html" %}
+{% include "partials/_reconcile_cash_modal.html" %}
 {% endblock %}
 
 {% block scripts %}
@@ -232,6 +235,7 @@
     window.ACCOUNT_CURRENCIES = {{ account_currencies | tojson }};
     window.ACCOUNT_TRANSACTIONS = {{ activities | tojson }};
     window.CURRENT_ACCOUNT = {{ account | tojson }};
+    window.ACCOUNT_SUMMARY = {{ summary | tojson }};
     window.ACCT_CHART_INITIAL = {{ chart_initial | tojson }};
     window.ACCT_CHART_PERIOD = {{ chart_period | tojson }};
 </script>

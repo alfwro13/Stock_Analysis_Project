@@ -1,0 +1,24 @@
+<div class="modal fade" id="reconcileCashModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Reconcile Cash</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="reconcile-account-id">
+        <p class="text-muted small">Enter the actual cash balance shown on your broker statement, in {{ base_currency }}. The app will book a Cash adjustment for the difference against its own computed balance — useful for clearing small drift from FX rounding or a missed fee.</p>
+        <div id="reconcile-computed" class="text-muted small mb-2"></div>
+        <div class="form-group">
+            <label for="reconcile-actual-balance">Actual Balance ({{ base_currency }})</label>
+            <input type="number" id="reconcile-actual-balance" step="0.01" oninput="_updateReconcilePreview()">
+        </div>
+        <div id="reconcile-preview" class="status-msg-sm text-accent-cyan mb-2"></div>
+        <div id="reconcile-status" class="status-msg-sm"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-save" onclick="submitReconcile()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>

@@ -177,6 +177,7 @@ def add_transaction(
     price_in_pence: bool = False,
     ghostfolio_ref: Optional[str] = None,
     linked_txn_id: Optional[int] = None,
+    is_adjustment: bool = False,
 ) -> Optional[int]:
     conn = None
     try:
@@ -186,11 +187,12 @@ def add_transaction(
             """INSERT INTO account_transactions
                    (account_id, txn_type, ticker, isin, company_name, currency, txn_date,
                     quantity, unit_price, fee, exchange_rate, notes, update_cash,
-                    price_in_pence, ghostfolio_ref, linked_txn_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    price_in_pence, ghostfolio_ref, linked_txn_id, is_adjustment)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (account_id, txn_type, ticker, isin, company_name, currency, txn_date,
              quantity, unit_price, fee, exchange_rate, notes,
-             1 if update_cash else 0, 1 if price_in_pence else 0, ghostfolio_ref, linked_txn_id)
+             1 if update_cash else 0, 1 if price_in_pence else 0, ghostfolio_ref, linked_txn_id,
+             1 if is_adjustment else 0)
         )
         conn.commit()
         return cursor.lastrowid

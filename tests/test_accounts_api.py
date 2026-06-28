@@ -228,6 +228,48 @@ def test_value_history_filters_by_period(client):
 
 
 @pytest.mark.api
+def test_reconcile_cash_unknown_account_returns_404(client):
+    resp = client.post("/api/accounts/999996/reconcile-cash", json={"actual_balance": 100.0})
+    assert resp.status_code == 404
+
+
+@pytest.mark.api
+def test_reconcile_cash_books_adjustment(client):
+    import database as _db
+
+    account_id = _create_account(client)
+    resp = client.post(f"/api/accounts/{account_id}/reconcile-cash", json={"actual_balance": 1005.0})
+    data = _json(resp)
+    assert data["status"] == "success"
+    assert data["delta"] == 5.0
+    assert data["txn_id"] is not None
+
+    list_resp = _json(client.get(f"/api/accounts/{account_id}/transactions"))
+    adj = next(t for t in list_resp["transactions"] if t["id"] == data["txn_id"])
+    assert adj["txn_type"] == "Cash"
+    assert bool(adj["is_adjustment"]) is True
+
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_reconcile_cash_noop_when_already_balanced(client):
+    import database as _db
+
+    account_id = _create_account(client)
+    resp = client.post(f"/api/accounts/{account_id}/reconcile-cash", json={"actual_balance": 1000.0})
+    data = _json(resp)
+    assert data["status"] == "success"
+    assert data["delta"] == 0.0
+    assert "txn_id" not in data or data.get("txn_id") is None
+
+    list_resp = _json(client.get(f"/api/accounts/{account_id}/transactions"))
+    assert list_resp["transactions"] == []
+
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
 def test_create_transaction_rejects_invalid_txn_type(client):
     account_id = _create_account(client)
     resp = client.post(f"/api/accounts/{account_id}/transactions", json={

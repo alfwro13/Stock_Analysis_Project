@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from accounts_engine import (
     _ticker_known, account_summary, create_transfer, delete_transaction_with_pair,
     export_transactions_csv, filter_value_history_by_period, fx_rate_on_date,
-    import_csv_activities, pension_units_as_of, record_pension_contribution,
+    import_csv_activities, pension_units_as_of, reconcile_cash, record_pension_contribution,
     record_pension_fee, resnapshot_account, resolve_watchlist_metadata,
     sync_house_purchase_price, sync_pension_opening_balance, watchlist_summary,
 )
@@ -75,6 +75,10 @@ class TransactionBody(BaseModel):
     notes: Optional[str] = None
     update_cash: bool = True
     price_in_pence: bool = False
+
+
+class ReconcileCashBody(BaseModel):
+    actual_balance: float
 
 
 class WatchlistItemBody(BaseModel):
@@ -247,6 +251,28 @@ async def api_account_value_history(
         return JSONResponse(status_code=404, content={"status": "error", "message": "Account not found."})
     history = filter_value_history_by_period(get_value_history(account_id), period)
     return JSONResponse(content={"status": "success", "period": period, "data": history})
+
+
+@accounts_router.post("/accounts/{account_id}/reconcile-cash")
+@limiter.limit("30/minute")
+async def api_reconcile_cash(
+    request: Request, account_id: int, body: ReconcileCashBody, background_tasks: BackgroundTasks
+):
+    if get_account(account_id) is None:
+        return JSONResponse(status_code=404, content={"status": "error", "message": "Account not found."})
+    result = reconcile_cash(account_id, body.actual_balance)
+    if result["txn_id"] is None and result["delta"] == 0.0:
+        return JSONResponse(content={
+            "status": "success", "delta": 0.0, "computed_balance": result["computed_balance"],
+            "message": "Already balanced — no adjustment needed.",
+        })
+    if result["txn_id"] is None:
+        return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to book the adjustment transaction."})
+    background_tasks.add_task(resnapshot_account, account_id)
+    return JSONResponse(content={
+        "status": "success", "txn_id": result["txn_id"], "delta": result["delta"],
+        "computed_balance": result["computed_balance"],
+    })
 
 
 @accounts_router.post("/accounts/{account_id}/transactions")

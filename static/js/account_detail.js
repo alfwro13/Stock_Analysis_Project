@@ -24,6 +24,10 @@ function _initAccountDetailTable(id, priorities) {
 
 function filterActivitiesByType(type) {
     if (!window._activitiesTable) return;
+    if (type === 'Adjustment') {
+        window._activitiesTable.column(1).search('Adjustment', false, true).draw();
+        return;
+    }
     window._activitiesTable.column(1).search(type ? `^${type}$` : '', true, false).draw();
 }
 
@@ -87,4 +91,65 @@ function initAccountValueChart() {
     });
     _setAcctPeriodButtons(window.ACCT_CHART_PERIOD || 'max');
     _renderAccountValueChart(window.ACCT_CHART_INITIAL || []);
+}
+
+function _reconcileCashModal() {
+    return bootstrap.Modal.getOrCreateInstance(document.getElementById('reconcileCashModal'));
+}
+
+function openReconcileModal(accountId) {
+    document.getElementById('reconcile-account-id').value = accountId;
+    document.getElementById('reconcile-actual-balance').value = '';
+    document.getElementById('reconcile-preview').innerHTML = '';
+    document.getElementById('reconcile-status').innerHTML = '';
+    const computed = (window.ACCOUNT_SUMMARY && window.ACCOUNT_SUMMARY.cash_balance) || 0;
+    document.getElementById('reconcile-computed').textContent =
+        `App's computed cash balance: ${computed.toFixed(2)} ${window.BASE_CURRENCY}`;
+    _reconcileCashModal().show();
+}
+
+function _updateReconcilePreview() {
+    const preview = document.getElementById('reconcile-preview');
+    const actual = parseFloat(document.getElementById('reconcile-actual-balance').value);
+    if (isNaN(actual)) {
+        preview.textContent = '';
+        return;
+    }
+    const computed = (window.ACCOUNT_SUMMARY && window.ACCOUNT_SUMMARY.cash_balance) || 0;
+    const delta = Math.round((actual - computed) * 100) / 100;
+    if (Math.abs(delta) < 0.005) {
+        preview.textContent = 'Already balanced — no adjustment needed.';
+        return;
+    }
+    const sign = delta > 0 ? '+' : '';
+    preview.textContent = `This will book a ${sign}${delta.toFixed(2)} ${window.BASE_CURRENCY} adjustment.`;
+}
+
+async function submitReconcile() {
+    const status = document.getElementById('reconcile-status');
+    const accountId = document.getElementById('reconcile-account-id').value;
+    const actual = parseFloat(document.getElementById('reconcile-actual-balance').value);
+    if (isNaN(actual)) {
+        status.innerHTML = '<span class="msg-error">Enter the actual balance.</span>';
+        return;
+    }
+    status.innerHTML = '<span class="msg-info">Saving...</span>';
+    try {
+        const r = await fetch(`/api/accounts/${accountId}/reconcile-cash`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ actual_balance: actual }),
+        });
+        const data = await r.json();
+        if (data.status === 'success' && data.txn_id) {
+            _reconcileCashModal().hide();
+            if (typeof window.onTransactionChanged === 'function') window.onTransactionChanged();
+        } else if (data.status === 'success') {
+            status.innerHTML = `<span class="msg-success">${data.message || 'Already balanced.'}</span>`;
+        } else {
+            status.innerHTML = `<span class="msg-error">${data.message || 'Failed.'}</span>`;
+        }
+    } catch (e) {
+        status.innerHTML = `<span class="msg-error">${e.message}</span>`;
+    }
 }
