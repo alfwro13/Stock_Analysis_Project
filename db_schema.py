@@ -482,8 +482,10 @@ def init_db() -> None:
             )
         ''')
 
-        # Weighted daily portfolio return series used for historical VaR/CVaR,
-        # tracking error, Sharpe, and skewness/kurtosis.  One row per benchmark.
+        # Orphaned (2026-06-29) — superseded by xray_returns_cache below, which stores per-ticker
+        # series so a weighted return series can be derived for any account scope, not just a
+        # Ghostfolio-only global one. Table kept (not dropped) per this codebase's convention for
+        # superseded cache tables (see smgb_predictions); no code reads or writes it anymore.
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS xray_portfolio_returns_cache (
                 benchmark TEXT PRIMARY KEY,
@@ -491,6 +493,21 @@ def init_db() -> None:
                 dates_json TEXT NOT NULL,
                 returns_json TEXT NOT NULL,
                 benchmark_returns_json TEXT NOT NULL
+            )
+        ''')
+
+        # Per-ticker daily return series (same data already fetched for beta/vol/correlation in
+        # XRayRiskComputer.compute_and_cache) so assemble_xray_report can derive a weighted
+        # portfolio return series for ANY account scope at request time, with no live yfinance
+        # call and no Ghostfolio dependency.
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS xray_returns_cache (
+                ticker TEXT NOT NULL,
+                benchmark TEXT NOT NULL,
+                last_updated TEXT NOT NULL,
+                dates_json TEXT NOT NULL,
+                returns_json TEXT NOT NULL,
+                PRIMARY KEY (ticker, benchmark)
             )
         ''')
 

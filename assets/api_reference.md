@@ -2330,7 +2330,7 @@ Returns the full X-ray report JSON for the given account scope.
 | `account_id=<ghostfolio-uuid>` | One active Ghostfolio account only |
 | `account_id=acct:{id}` | One built-in Trading account only (no Ghostfolio) |
 
-Historical VaR, CVaR, Sharpe/Calmar ratio, tracking error and skewness are computed from a Ghostfolio-only cached return series (`xray_portfolio_returns_cache`) — they are omitted (`null`) with an entry in `data_warnings` whenever built-in account holdings are part of the scope, since no equivalent return series exists for those holdings. Sector and country/continent breakdowns for built-in holdings come from `asset_profiles` as a single 100%-weight bucket per holding (no Ghostfolio-style ETF look-through decomposition).
+Historical VaR, CVaR, Sharpe/Calmar ratio, tracking error and skewness are derived at request time from per-ticker cached daily returns (`xray_returns_cache`), weighted by the current scope's holdings — this works for any scope (Ghostfolio, built-in, or combined). They are `null` with an entry in `data_warnings` only when fewer than 30 overlapping cached trading days exist across the in-scope tickers (e.g. newly-added holdings, before the next nightly risk cache run). Sector and country/continent breakdowns for built-in holdings come from `asset_profiles` as a single 100%-weight bucket per holding (no Ghostfolio-style ETF look-through decomposition).
 
 Returns `503` with `{"error": "..."}` if the resolved scope has no holdings (e.g. Ghostfolio not configured and no built-in Trading accounts exist).
 

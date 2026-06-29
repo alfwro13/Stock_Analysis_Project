@@ -402,6 +402,25 @@ class XRayRiskComputer:
                     (sym, BENCHMARK_SYMBOL, today, beta, vol),
                 )
 
+            # Per-ticker series (incl. benchmark) so assemble_xray_report can derive a weighted
+            # portfolio return series for any account scope, not just a precomputed global one.
+            for sym in all_symbols:
+                if sym not in returns_df.columns:
+                    continue
+                sym_rets = returns_df[sym].dropna()
+                if sym_rets.empty:
+                    continue
+                conn.execute(
+                    """INSERT OR REPLACE INTO xray_returns_cache
+                       (ticker, benchmark, last_updated, dates_json, returns_json)
+                       VALUES (?, ?, ?, ?, ?)""",
+                    (
+                        sym, BENCHMARK_SYMBOL, today,
+                        json.dumps(sym_rets.index.strftime("%Y-%m-%d").tolist()),
+                        json.dumps(sym_rets.tolist()),
+                    ),
+                )
+
             available = [s for s in portfolio_symbols if s in returns_df.columns]
             if len(available) >= 2:
                 # Pairwise correlation — each pair uses its own overlapping window
@@ -443,65 +462,6 @@ class XRayRiskComputer:
         finally:
             if conn:
                 conn.close()
-
-
-    def compute_and_cache_portfolio_returns(self, holdings_with_weights: List[Dict]) -> bool:
-        # Never called on page load — requires live Ghostfolio holdings with weights.
-        weighted = [(h["symbol"], h.get("weight", 0.0)) for h in holdings_with_weights
-                    if h.get("symbol") and h.get("weight", 0.0) > 0]
-        if not weighted:
-            return False
-
-        symbols = [s for s, _ in weighted]
-        all_symbols = list(set(symbols + [BENCHMARK_SYMBOL]))
-        returns_df = self._fetch_returns(all_symbols)
-        if returns_df.empty:
-            return False
-
-        clean = returns_df.dropna(how="any")
-        if len(clean) < 30:
-            logger.warning("X-ray portfolio returns: fewer than 30 aligned trading days.")
-            return False
-
-        weight_series = pd.Series(
-            {sym: w for sym, w in weighted if sym in clean.columns}
-        )
-        if weight_series.empty:
-            return False
-        weight_series /= weight_series.sum()  # re-normalise to 1.0
-        available_cols = [s for s in weight_series.index if s in clean.columns]
-        port_rets = (clean[available_cols] * weight_series[available_cols]).sum(axis=1)
-
-        bench_rets = clean[BENCHMARK_SYMBOL] if BENCHMARK_SYMBOL in clean.columns else None
-
-        today = datetime.datetime.now(datetime.timezone.utc).date().isoformat()
-        conn = None
-        try:
-            conn = get_connection()
-            conn.execute(
-                """INSERT OR REPLACE INTO xray_portfolio_returns_cache
-                   (benchmark, last_updated, dates_json, returns_json, benchmark_returns_json)
-                   VALUES (?, ?, ?, ?, ?)""",
-                (
-                    BENCHMARK_SYMBOL,
-                    today,
-                    json.dumps(port_rets.index.strftime("%Y-%m-%d").tolist()),
-                    json.dumps(port_rets.tolist()),
-                    json.dumps(bench_rets.tolist() if bench_rets is not None else []),
-                ),
-            )
-            conn.commit()
-            logger.info("X-ray portfolio returns cache updated: %s trading days.", len(port_rets))
-            return True
-        except Exception as e:
-            logger.error("X-ray portfolio returns cache write failed: %s", e)
-            if conn:
-                conn.rollback()
-            return False
-        finally:
-            if conn:
-                conn.close()
-
 
 
 def cache_xray_dividends(holdings: List[Dict], client: GhostfolioXRayClient) -> None:
@@ -552,7 +512,7 @@ def run_xray_precompute() -> bool:
 
     risk_ok = XRayRiskComputer().compute_and_cache(holdings)
 
-    # Dividend + portfolio returns caches — require live Ghostfolio; treat as non-fatal
+    # Dividend cache requires live Ghostfolio (no equivalent for built-in holdings); non-fatal
     try:
         client = GhostfolioXRayClient()
         if client.is_configured and client.authenticate():
@@ -562,9 +522,8 @@ def run_xray_precompute() -> bool:
                 live_holdings, _ = client.get_holdings(active_ids)
                 if live_holdings:
                     cache_xray_dividends(live_holdings, client)
-                    XRayRiskComputer().compute_and_cache_portfolio_returns(live_holdings)
     except Exception as e:
-        logger.warning("X-ray dividend/returns cache step failed (non-fatal): %s", e)
+        logger.warning("X-ray dividend cache step failed (non-fatal): %s", e)
 
     logger.info("X-ray pre-compute finished. Risk cache: %s.", "OK" if risk_ok else "FAILED")
     return risk_ok
@@ -991,8 +950,7 @@ def assemble_xray_report(account_id: str) -> Dict:
     _raw_matrix: Optional[List] = None
     cache_date: Optional[str] = None
     div_cache: Dict[str, Dict] = {}
-    port_rets_series: Optional[List[float]] = None
-    bench_rets_series: Optional[List[float]] = None
+    returns_cache: Dict[str, Tuple[List[str], List[float]]] = {}
 
     conn = None
     try:
@@ -1037,14 +995,17 @@ def assemble_xray_report(account_id: str) -> Dict:
             for row in div_rows
         }
 
-        port_ret_row = conn.execute(
-            "SELECT returns_json, benchmark_returns_json "
-            "FROM xray_portfolio_returns_cache WHERE benchmark = ?",
-            (BENCHMARK_SYMBOL,),
-        ).fetchone()
-        if port_ret_row:
-            port_rets_series = json.loads(port_ret_row["returns_json"])
-            bench_rets_series = json.loads(port_ret_row["benchmark_returns_json"])
+        returns_tickers = list(set(portfolio_symbols + [BENCHMARK_SYMBOL]))
+        rt_placeholders = ",".join("?" * len(returns_tickers))
+        returns_rows = conn.execute(
+            f"SELECT ticker, dates_json, returns_json FROM xray_returns_cache "
+            f"WHERE benchmark = ? AND ticker IN ({rt_placeholders})",
+            [BENCHMARK_SYMBOL] + returns_tickers,
+        ).fetchall()
+        returns_cache = {
+            row["ticker"]: (json.loads(row["dates_json"]), json.loads(row["returns_json"]))
+            for row in returns_rows
+        }
     except Exception as e:
         logger.error("X-ray DB read failed: %s", e)
         raise
@@ -1066,6 +1027,34 @@ def assemble_xray_report(account_id: str) -> Dict:
         dc = div_cache.get(sym, {})
         h["dividend_yield_pct"] = dc.get("yield_pct", 0.0)
         h["dividend_income"] = dc.get("income", 0.0)
+
+    # --- Weighted portfolio return series, derived for THIS scope from per-ticker cached
+    # series (xray_returns_cache) — works for any account scope (Ghostfolio, built-in, or
+    # combined), unlike the old single Ghostfolio-only cached series this replaced.
+    port_rets_series: Optional[List[float]] = None
+    bench_rets_series: Optional[List[float]] = None
+    if BENCHMARK_SYMBOL in returns_cache:
+        series_map: Dict[str, pd.Series] = {}
+        for h in holdings_sorted:
+            sym = h["symbol"]
+            if sym in returns_cache and h["weight"] > 0:
+                dates, rets = returns_cache[sym]
+                series_map[sym] = pd.Series(rets, index=pd.to_datetime(dates))
+        bench_dates, bench_rets_raw = returns_cache[BENCHMARK_SYMBOL]
+        series_map[BENCHMARK_SYMBOL] = pd.Series(bench_rets_raw, index=pd.to_datetime(bench_dates))
+
+        if len(series_map) >= 2:
+            combined_df = pd.DataFrame(series_map).dropna(how="any")
+            if len(combined_df) >= 30:
+                weights = pd.Series({
+                    h["symbol"]: h["weight"] for h in holdings_sorted
+                    if h["symbol"] in combined_df.columns
+                })
+                port_cols = [c for c in weights.index if c != BENCHMARK_SYMBOL]
+                if port_cols and weights[port_cols].sum() > 0:
+                    weights = weights[port_cols] / weights[port_cols].sum()
+                    port_rets_series = (combined_df[port_cols] * weights[port_cols]).sum(axis=1).tolist()
+                    bench_rets_series = combined_df[BENCHMARK_SYMBOL].tolist()
 
     # --- Data warnings (initialised early so risk blocks can append to it) ------
     data_warnings: List[str] = []
@@ -1179,15 +1168,7 @@ def assemble_xray_report(account_id: str) -> Dict:
     skewness: Optional[float] = None
     excess_kurtosis: Optional[float] = None
 
-    # The cached return series is computed only from Ghostfolio holdings (run_xray_precompute) —
-    # applying it whenever built-in account holdings are also in scope would silently mix two
-    # unrelated portfolios, so these metrics are skipped (not approximated) in that case.
-    if builtin_holdings:
-        data_warnings.append(
-            "Historical VaR, CVaR, Sharpe/Calmar ratio, tracking error and skewness are not shown "
-            "for this scope — the cached return series only covers Ghostfolio holdings."
-        )
-    elif port_rets_series and len(port_rets_series) >= 30:
+    if port_rets_series and len(port_rets_series) >= 30:
         try:
             import scipy.stats as _stats
             pr = np.array(port_rets_series)
@@ -1218,6 +1199,12 @@ def assemble_xray_report(account_id: str) -> Dict:
 
         except Exception as e:
             logger.warning("Portfolio return stats computation failed: %s", e)
+    elif risk_cache:
+        data_warnings.append(
+            "Historical VaR, CVaR, Sharpe/Calmar ratio, tracking error and skewness need at least "
+            "30 overlapping cached trading days across this scope's holdings — not yet available. "
+            "Wait for the next nightly risk cache run, or trigger it from Settings → Scheduler."
+        )
 
     if not risk_cache:
         data_warnings.append(

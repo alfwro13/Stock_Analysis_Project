@@ -45,6 +45,7 @@ T1 = "XRAY_T1"
 T2 = "XRAY_T2"
 T3 = "XRAY_T3"
 T_STALE = "XRAY_STALE"   # in cache but NOT in current portfolio
+T_NORETURNS = "XRAY_NORETURNS"   # never seeded into xray_returns_cache by any other test
 
 
 # ─── Seed helpers ────────────────────────────────────────────────────────────
@@ -89,27 +90,18 @@ def _seed_div_cache(rows):
     conn.close()
 
 
-def _seed_portfolio_returns(dates, port_rets, bench_rets, last_updated="2026-06-03"):
-    """Seed xray_portfolio_returns_cache if the table exists."""
+def _seed_returns_cache(series_by_ticker, dates, last_updated="2026-06-03"):
+    """series_by_ticker: {ticker: [daily returns...]}; seeds xray_returns_cache, one row per ticker."""
     conn = db.get_connection()
-    try:
+    for ticker, rets in series_by_ticker.items():
         conn.execute(
-            """INSERT OR REPLACE INTO xray_portfolio_returns_cache
-               (benchmark, last_updated, dates_json, returns_json, benchmark_returns_json)
+            """INSERT OR REPLACE INTO xray_returns_cache
+               (ticker, benchmark, last_updated, dates_json, returns_json)
                VALUES (?, ?, ?, ?, ?)""",
-            (
-                BENCHMARK_SYMBOL,
-                last_updated,
-                json.dumps(dates),
-                json.dumps(port_rets),
-                json.dumps(bench_rets),
-            ),
+            (ticker, BENCHMARK_SYMBOL, last_updated, json.dumps(dates), json.dumps(rets)),
         )
-        conn.commit()
-    except Exception:
-        pass  # table may not exist yet
-    finally:
-        conn.close()
+    conn.commit()
+    conn.close()
 
 
 def _make_holdings(specs):
@@ -529,12 +521,13 @@ class TestNewFeatures:
         _seed_corr_matrix([T1, T2], [[1.0, 0.4], [0.4, 1.0]])
         _seed_div_cache([(T1, 2.0, 120.0), (T2, 1.5, 60.0)])
 
-        # Seed a portfolio returns cache for the new stats
+        # Seed per-ticker returns so assemble_xray_report can derive the weighted series itself
         rng = np.random.default_rng(99)
-        port_rets = rng.normal(0.0004, 0.008, 252).tolist()
+        t1_rets = rng.normal(0.0004, 0.012, 252).tolist()
+        t2_rets = rng.normal(0.0004, 0.010, 252).tolist()
         bench_rets = rng.normal(0.0003, 0.007, 252).tolist()
         dates = [f"2025-{(i//21)+1:02d}-{(i%21)+1:02d}" for i in range(252)]
-        _seed_portfolio_returns(dates, port_rets, bench_rets)
+        _seed_returns_cache({T1: t1_rets, T2: t2_rets, BENCHMARK_SYMBOL: bench_rets}, dates)
 
         self._holdings = holdings
         self._total = total
@@ -1016,12 +1009,16 @@ class TestRecommendationsInReport:
 
     @pytest.fixture(autouse=True)
     def _seed(self):
+        # Values are deliberately huge — "all" scope now also merges every built-in Trading
+        # account in the (shared) test DB, so the Ghostfolio mock must dominate by orders of
+        # magnitude for the country-concentration percentage assertions below to stay robust
+        # regardless of how much small-value test-account noise other test modules have seeded.
         holdings, total = _make_holdings([
-            {"symbol": T1, "value": 7000,
+            {"symbol": T1, "value": 7_000_000,
              "sectors": [{"name": "Technology", "weight": 1.0}],
              "countries": [{"code": "US", "name": "United States",
                             "continent": "North America", "weight": 1.0}]},
-            {"symbol": T2, "value": 3000,
+            {"symbol": T2, "value": 3_000_000,
              "sectors": [{"name": "Financials", "weight": 1.0}],
              "countries": [{"code": "GB", "name": "United Kingdom",
                             "continent": "Europe", "weight": 1.0}]},
@@ -1244,18 +1241,41 @@ class TestBuiltinAccountXrayScope:
         assert "Healthcare" in sectors
         assert "Europe" in regions
 
-    def test_acct_scope_data_warning_for_historical_return_metrics(self):
-        _seed_stock_signal(T1, 100.0, "GBP")
-        _seed_asset_profile(T1, "Technology", "United States")
+    def test_acct_scope_warns_when_return_series_not_cached(self):
+        _seed_stock_signal(T_NORETURNS, 100.0, "GBP")
+        _seed_asset_profile(T_NORETURNS, "Technology", "United States")
+        _seed_risk_cache([(T_NORETURNS, 1.0, 0.18, "2026-06-03")])
         aid = create_account("XrayBuiltinAcc4", "GBP")
-        add_transaction(aid, "Buy", "2026-01-05", ticker=T1, currency="GBP",
+        add_transaction(aid, "Buy", "2026-01-05", ticker=T_NORETURNS, currency="GBP",
                          quantity=10, unit_price=80, exchange_rate=1.0)
 
         with patch("xray_engine.load_config", return_value=_builtin_config()):
             result = assemble_xray_report(f"acct:{aid}")
 
         assert result["risk_metrics"]["historical_var_95_1d"] is None
-        assert any("Ghostfolio holdings" in w for w in result["data_warnings"])
+        assert any("overlapping cached trading days" in w for w in result["data_warnings"])
+
+    def test_acct_scope_computes_historical_var_from_per_ticker_returns_cache(self):
+        """The actual fix: built-in-only scope (no Ghostfolio at all) gets historical VaR/skewness
+        computed from xray_returns_cache, not just from a Ghostfolio-only cached series."""
+        _seed_stock_signal(T1, 100.0, "GBP")
+        _seed_asset_profile(T1, "Technology", "United States")
+        _seed_risk_cache([(T1, 1.0, 0.18, "2026-06-03")])
+        rng = np.random.default_rng(123)
+        dates = [f"2025-{(i // 21) + 1:02d}-{(i % 21) + 1:02d}" for i in range(252)]
+        t1_rets = rng.normal(0.0004, 0.012, 252).tolist()
+        bench_rets = rng.normal(0.0003, 0.007, 252).tolist()
+        _seed_returns_cache({T1: t1_rets, BENCHMARK_SYMBOL: bench_rets}, dates)
+
+        aid = create_account("XrayBuiltinReturnsAcc", "GBP")
+        add_transaction(aid, "Buy", "2026-01-05", ticker=T1, currency="GBP",
+                         quantity=10, unit_price=80, exchange_rate=1.0)
+
+        with patch("xray_engine.load_config", return_value=_builtin_config()):
+            result = assemble_xray_report(f"acct:{aid}")
+
+        assert result["risk_metrics"]["historical_var_95_1d"] is not None
+        assert result["risk_metrics"]["skewness"] is not None
 
     def test_empty_builtin_account_raises_runtime_error(self):
         aid = create_account("XrayEmptyBuiltinAcc", "GBP")

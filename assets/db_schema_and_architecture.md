@@ -171,8 +171,12 @@ Tables added after initial schema creation. All managed via `db_schema.py:init_d
 * **Key Columns:** `ticker`, `data_source` (composite PK), `last_updated`, `dividend_yield_pct`, `dividend_in_base_currency`.
 
 #### `xray_portfolio_returns_cache`
-* **Purpose:** Weighted daily portfolio return series for historical VaR/CVaR, tracking error, Sharpe, and skewness/kurtosis. Ghostfolio holdings only — built-in account holdings have no equivalent series, so these metrics are omitted (with a `data_warnings` entry) whenever a built-in account is part of the requested X-ray scope.
+* **Purpose:** Orphaned (2026-06-29) — superseded by `xray_returns_cache` below. Previously held a single Ghostfolio-only weighted return series; no code reads or writes it anymore. Kept rather than dropped, per this codebase's convention for superseded cache tables (see `smgb_predictions`).
 * **Key Columns:** `benchmark` (PK), `last_updated`, `dates_json`, `returns_json`, `benchmark_returns_json`.
+
+#### `xray_returns_cache`
+* **Purpose:** Per-ticker daily return series (same data already fetched for beta/vol/correlation), one row per ticker covering every ticker in the risk-cache universe (Ghostfolio + built-in Trading accounts). `assemble_xray_report` derives a weighted portfolio return series for whatever account scope was requested by combining the relevant tickers' cached series with that scope's current weights — historical VaR/CVaR, Sharpe/Calmar ratio, tracking error, and skewness/kurtosis work for any scope (Ghostfolio, built-in, or combined), not just a precomputed global one.
+* **Key Columns:** `ticker`, `benchmark` (composite PK), `last_updated`, `dates_json`, `returns_json`.
 
 #### `ai_contagion_snapshots`
 * **Purpose:** AI sector contagion scan results — payload JSON + alert flag. Pruned to last 7 days automatically.
