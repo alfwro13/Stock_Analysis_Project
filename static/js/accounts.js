@@ -86,6 +86,7 @@ function _accountCardHtml(acc) {
     const isWatchlist = acc.account_type === 'Watchlist';
     const isPension = acc.account_type === 'Pension';
     const isScraperType = acc.account_type === 'House' || isPension;
+    const isTrading = acc.account_type === 'Trading';
     const detailUrl = `/accounts/${acc.id}${_ACCOUNT_DETAIL_URL_SUFFIX[acc.account_type] || ''}`;
     return `
     <div class="col-12 col-lg-6">
@@ -103,6 +104,7 @@ function _accountCardHtml(acc) {
             </div>
             <div class="d-flex gap-2 mt-3">
                 <a href="${detailUrl}" class="btn btn-outline-primary btn-sm">View Details</a>
+                ${isTrading ? `<a href="/portfolio?account_id=acct:${acc.id}&xray=1" class="btn btn-outline-info btn-sm">&#128302; X-ray</a>` : ''}
                 ${isWatchlist || isScraperType ? '' : `
                 <button type="button" class="btn btn-primary btn-sm" onclick="openTxnModal(${acc.id})">+ Add Transaction</button>
                 <button type="button" class="btn btn-outline-secondary btn-sm" onclick="toggleTransactions(${acc.id})">Show Transactions</button>

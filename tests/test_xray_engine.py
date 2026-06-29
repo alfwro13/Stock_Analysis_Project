@@ -26,6 +26,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import database as db
+from database import create_account, add_transaction
 from xray_engine import (
     XRayRiskComputer,
     GhostfolioXRayClient,
@@ -1167,3 +1168,134 @@ class TestSanitizeFloats:
         assert _sanitize_floats("string") == "string"
         assert _sanitize_floats(42) == 42
         assert _sanitize_floats(None) is None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 14. Built-in Trading account X-ray scope ("acct:{id}") and combined "all" scope
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _seed_stock_signal(ticker: str, price: float, currency: str) -> None:
+    conn = db.get_connection()
+    conn.execute(
+        "INSERT OR REPLACE INTO stock_signals (ticker, current_price, currency) VALUES (?, ?, ?)",
+        (ticker, price, currency),
+    )
+    conn.commit()
+    conn.close()
+
+
+def _seed_asset_profile(ticker: str, sector: str, country: str, quote_type: str = "EQUITY") -> None:
+    conn = db.get_connection()
+    conn.execute(
+        "INSERT OR REPLACE INTO asset_profiles (ticker, sector, country, quote_type) VALUES (?, ?, ?, ?)",
+        (ticker, sector, country, quote_type),
+    )
+    conn.commit()
+    conn.close()
+
+
+def _builtin_config(extra=None):
+    cfg = {"GHOSTFOLIO_ACCOUNTS": {"active": []}, "BASE_CURRENCY": "GBP", "RISK_FREE_RATE": 0.045}
+    cfg.update(extra or {})
+    return cfg
+
+
+class TestBuiltinAccountXrayScope:
+    def test_acct_scope_returns_only_that_accounts_holdings(self):
+        _seed_stock_signal(T1, 100.0, "GBP")
+        _seed_asset_profile(T1, "Technology", "United States")
+        aid = create_account("XrayBuiltinAcc", "GBP")
+        add_transaction(aid, "Buy", "2026-01-05", ticker=T1, currency="GBP",
+                         quantity=10, unit_price=80, exchange_rate=1.0)
+
+        with patch("xray_engine.load_config", return_value=_builtin_config()):
+            result = assemble_xray_report(f"acct:{aid}")
+
+        symbols = {h["symbol"] for h in result["holdings"]}
+        assert symbols == {T1}
+        assert result["portfolio_total_value"] == 1000.0
+
+    def test_acct_scope_never_calls_ghostfolio_client(self):
+        _seed_stock_signal(T1, 100.0, "GBP")
+        _seed_asset_profile(T1, "Technology", "United States")
+        aid = create_account("XrayBuiltinAcc2", "GBP")
+        add_transaction(aid, "Buy", "2026-01-05", ticker=T1, currency="GBP",
+                         quantity=10, unit_price=80, exchange_rate=1.0)
+
+        mock_client_cls = MagicMock()
+        with patch("xray_engine.load_config", return_value=_builtin_config()), \
+             patch("xray_engine.GhostfolioXRayClient", mock_client_cls):
+            assemble_xray_report(f"acct:{aid}")
+
+        mock_client_cls.assert_not_called()
+
+    def test_acct_scope_uses_asset_profile_sector_and_country(self):
+        _seed_stock_signal(T1, 100.0, "GBP")
+        _seed_asset_profile(T1, "Healthcare", "Germany")
+        aid = create_account("XrayBuiltinAcc3", "GBP")
+        add_transaction(aid, "Buy", "2026-01-05", ticker=T1, currency="GBP",
+                         quantity=10, unit_price=80, exchange_rate=1.0)
+
+        with patch("xray_engine.load_config", return_value=_builtin_config()):
+            result = assemble_xray_report(f"acct:{aid}")
+
+        sectors = {s["name"] for s in result["sector_allocation"]}
+        regions = {g["name"] for g in result["geographic_allocation"]}
+        assert "Healthcare" in sectors
+        assert "Europe" in regions
+
+    def test_acct_scope_data_warning_for_historical_return_metrics(self):
+        _seed_stock_signal(T1, 100.0, "GBP")
+        _seed_asset_profile(T1, "Technology", "United States")
+        aid = create_account("XrayBuiltinAcc4", "GBP")
+        add_transaction(aid, "Buy", "2026-01-05", ticker=T1, currency="GBP",
+                         quantity=10, unit_price=80, exchange_rate=1.0)
+
+        with patch("xray_engine.load_config", return_value=_builtin_config()):
+            result = assemble_xray_report(f"acct:{aid}")
+
+        assert result["risk_metrics"]["historical_var_95_1d"] is None
+        assert any("Ghostfolio holdings" in w for w in result["data_warnings"])
+
+    def test_empty_builtin_account_raises_runtime_error(self):
+        aid = create_account("XrayEmptyBuiltinAcc", "GBP")
+        with patch("xray_engine.load_config", return_value=_builtin_config()):
+            with pytest.raises(RuntimeError):
+                assemble_xray_report(f"acct:{aid}")
+
+    def test_all_scope_combines_ghostfolio_and_builtin_holdings(self):
+        _seed_stock_signal(T2, 50.0, "GBP")
+        _seed_asset_profile(T2, "Financials", "United Kingdom")
+        aid = create_account("XrayCombinedAcc", "GBP")
+        add_transaction(aid, "Buy", "2026-01-05", ticker=T2, currency="GBP",
+                         quantity=10, unit_price=40, exchange_rate=1.0)
+
+        ghost_holdings, ghost_total = _make_holdings([
+            {"symbol": T1, "value": 6000, "currency": "USD",
+             "sectors": [{"name": "Technology", "weight": 1.0}],
+             "countries": [{"continent": "North America", "weight": 1.0}]},
+        ])
+        _seed_risk_cache([(T1, 1.10, 0.18, "2026-06-03")])
+        _seed_div_cache([(T1, 0.0, 0.0)])
+
+        patches, mock_inst = _patch_report(ghost_holdings, ghost_total)
+        with patches[0], patches[1]:
+            result = assemble_xray_report("all")
+
+        symbols = {h["symbol"] for h in result["holdings"]}
+        assert {T1, T2}.issubset(symbols)
+        assert result["portfolio_total_value"] >= 6000.0 + 500.0
+
+    def test_all_scope_with_no_ghostfolio_uses_builtin_only(self):
+        _seed_stock_signal(T2, 50.0, "GBP")
+        _seed_asset_profile(T2, "Financials", "United Kingdom")
+        aid = create_account("XrayBuiltinOnlyAllAcc", "GBP")
+        add_transaction(aid, "Buy", "2026-01-05", ticker=T2, currency="GBP",
+                         quantity=10, unit_price=40, exchange_rate=1.0)
+
+        with patch("xray_engine.load_config", return_value=_builtin_config()):
+            result = assemble_xray_report("all")
+
+        symbols = {h["symbol"] for h in result["holdings"]}
+        assert T2 in symbols
+        assert result["portfolio_total_value"] >= 500.0

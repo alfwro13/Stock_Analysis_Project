@@ -36,7 +36,7 @@ def run_system_checks() -> List[Dict[str, Any]]:
     training_enabled = ml_training.get("ENABLED", True)
     backfill_enabled = ml_backfill.get("ENABLED", False)
 
-    if not config.get("GHOSTFOLIO_ENABLED", True) and (PORTFOLIO_PATH.exists() or WATCHLIST_PATH.exists()):
+    if not config.get("GHOSTFOLIO_ENABLED", False) and (PORTFOLIO_PATH.exists() or WATCHLIST_PATH.exists()):
         issues.append({
             "key": "ghostfolio_files_not_purged",
             "level": "warning",

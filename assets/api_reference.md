@@ -2314,6 +2314,34 @@ Returns HTTP 400 if `scenario_id` is unknown or `custom_drop` is missing for a c
 
 ---
 
+## 20a. Portfolio X-ray
+
+Risk/diagnostics view for the Portfolio page, combining holdings from Ghostfolio and/or built-in Trading accounts with SQLite-cached risk stats (beta, volatility, correlation, VaR). Implemented in `xray_engine.py`; risk cache populated by the nightly `xray_risk_cache_job` scheduler job (19:00).
+
+### `GET /api/xray`
+
+Returns the full X-ray report JSON for the given account scope.
+
+**Query params:**
+
+| Param | Meaning |
+|-------|---------|
+| `account_id=all` (default) | Every configured source — Ghostfolio (if configured) + every built-in Trading account, combined (same ticker from both sources is summed) |
+| `account_id=<ghostfolio-uuid>` | One active Ghostfolio account only |
+| `account_id=acct:{id}` | One built-in Trading account only (no Ghostfolio) |
+
+Historical VaR, CVaR, Sharpe/Calmar ratio, tracking error and skewness are computed from a Ghostfolio-only cached return series (`xray_portfolio_returns_cache`) — they are omitted (`null`) with an entry in `data_warnings` whenever built-in account holdings are part of the scope, since no equivalent return series exists for those holdings. Sector and country/continent breakdowns for built-in holdings come from `asset_profiles` as a single 100%-weight bucket per holding (no Ghostfolio-style ETF look-through decomposition).
+
+Returns `503` with `{"error": "..."}` if the resolved scope has no holdings (e.g. Ghostfolio not configured and no built-in Trading accounts exist).
+
+Rate limit: 10/minute.
+
+### `POST /api/xray/trigger`
+
+Manually triggers the X-ray risk cache pre-compute job in the background (recomputes beta/vol/correlation for every ticker across portfolio.json and built-in Trading accounts). Returns `{"status": "queued", "message": "..."}` immediately; progress visible in Notifications.
+
+---
+
 ## 21. Macro Regime & Yield Curve Allocator
 
 Synthesises live macro signals (yield curve, CPI, HY credit spread, real yield, HMM state) into a named economic regime label and returns the historically optimal asset class allocation for that regime. Requires the Macro Data Engine to have run at least once (`POST /api/macro/run-pipeline`). Portfolio alignment requires Ghostfolio to be configured.

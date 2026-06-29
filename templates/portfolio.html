@@ -15,6 +15,7 @@ window.BASE_CURRENCY = "{{ position_sizing.base_currency }}";
 window.FX_RATES = {{ position_sizing.fx_rates | tojson }};
 window.ENABLE_LIVE_ASSETS = {% if not embed and config and config.UI_PREFERENCES and config.UI_PREFERENCES.LIVE_PORTFOLIO %}true{% else %}false{% endif %};
 window.REFRESH_RATE_MS = {% if not embed %}{{ config.UI_PREFERENCES.REFRESH_RATE | default(60) }} * 1000{% else %}60000{% endif %};
+window.AUTO_XRAY = {% if auto_xray %}true{% else %}false{% endif %};
 </script>
 
 {% if not embed %}

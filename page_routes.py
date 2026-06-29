@@ -213,7 +213,7 @@ async def home():
 
 
 @page_router.get("/portfolio", response_class=HTMLResponse)
-async def portfolio_page(request: Request, account_id: str = "all", embed: bool = False):
+async def portfolio_page(request: Request, account_id: str = "all", embed: bool = False, xray: bool = False):
     conn = get_connection()
     try:
         cursor = conn.cursor()
@@ -377,6 +377,7 @@ async def portfolio_page(request: Request, account_id: str = "all", embed: bool 
             "unread_count": get_unread_count(),
             "account_options": account_options,
             "selected_account": account_id,
+            "auto_xray": xray,
             "summary_math": formatted_summary,
             "config": config_data,
             "cached_pulse": live_pulse,

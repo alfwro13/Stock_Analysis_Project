@@ -14,6 +14,7 @@ from urllib.parse import quote
 from config import GHOSTFOLIO_URL, GHOSTFOLIO_TOKEN, PORTFOLIO_PATH, load_config
 from database import get_connection
 from fundamentals_helpers import get_instrument_type as _get_instrument_type
+from accounts_engine import derive_account_holdings, market_values_for_xray
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -46,6 +47,44 @@ _EMERGING_MARKET_CODES: frozenset = frozenset({
 _APAC_CODES: frozenset = frozenset({
     "AU", "NZ", "HK", "SG", "KR", "TW", "TH", "MY", "ID", "PH",
 })
+
+# Built-in accounts have no Ghostfolio-style look-through country/continent breakdown — only a
+# single yfinance `country` string (asset_profiles.country). This maps that string to the
+# (ISO 3166-1 alpha-2 code, continent) pair the rest of this module expects from Ghostfolio.
+_COUNTRY_NAME_TO_CODE_CONTINENT: Dict[str, Tuple[str, str]] = {
+    "United States": ("US", "North America"), "Canada": ("CA", "North America"),
+    "Mexico": ("MX", "North America"), "Bermuda": ("BM", "North America"),
+    "Cayman Islands": ("KY", "North America"), "British Virgin Islands": ("VG", "North America"),
+    "Panama": ("PA", "North America"), "Bahamas": ("BS", "North America"),
+    "United Kingdom": ("GB", "Europe"), "Germany": ("DE", "Europe"), "France": ("FR", "Europe"),
+    "Netherlands": ("NL", "Europe"), "Switzerland": ("CH", "Europe"), "Sweden": ("SE", "Europe"),
+    "Denmark": ("DK", "Europe"), "Norway": ("NO", "Europe"), "Finland": ("FI", "Europe"),
+    "Ireland": ("IE", "Europe"), "Belgium": ("BE", "Europe"), "Luxembourg": ("LU", "Europe"),
+    "Spain": ("ES", "Europe"), "Italy": ("IT", "Europe"), "Poland": ("PL", "Europe"),
+    "Greece": ("GR", "Europe"), "Austria": ("AT", "Europe"), "Portugal": ("PT", "Europe"),
+    "Czech Republic": ("CZ", "Europe"), "Hungary": ("HU", "Europe"), "Cyprus": ("CY", "Europe"),
+    "Isle of Man": ("IM", "Europe"), "Guernsey": ("GG", "Europe"), "Jersey": ("JE", "Europe"),
+    "Monaco": ("MC", "Europe"), "Iceland": ("IS", "Europe"), "Malta": ("MT", "Europe"),
+    "Lithuania": ("LT", "Europe"), "Latvia": ("LV", "Europe"), "Estonia": ("EE", "Europe"),
+    "Romania": ("RO", "Europe"), "Bulgaria": ("BG", "Europe"), "Croatia": ("HR", "Europe"),
+    "Slovenia": ("SI", "Europe"), "Slovakia": ("SK", "Europe"), "Russia": ("RU", "Europe"),
+    "Georgia": ("GE", "Europe"), "Azerbaijan": ("AZ", "Europe"),
+    "China": ("CN", "Asia"), "Japan": ("JP", "Asia"), "South Korea": ("KR", "Asia"),
+    "Hong Kong": ("HK", "Asia"), "Taiwan": ("TW", "Asia"), "Singapore": ("SG", "Asia"),
+    "India": ("IN", "Asia"), "Indonesia": ("ID", "Asia"), "Malaysia": ("MY", "Asia"),
+    "Thailand": ("TH", "Asia"), "Philippines": ("PH", "Asia"), "Vietnam": ("VN", "Asia"),
+    "Israel": ("IL", "Asia"), "United Arab Emirates": ("AE", "Asia"), "Saudi Arabia": ("SA", "Asia"),
+    "Qatar": ("QA", "Asia"), "Kuwait": ("KW", "Asia"), "Macau": ("MO", "Asia"),
+    "Australia": ("AU", "Oceania"), "New Zealand": ("NZ", "Oceania"),
+    "Brazil": ("BR", "South America"), "Chile": ("CL", "South America"),
+    "Colombia": ("CO", "South America"), "Peru": ("PE", "South America"),
+    "Argentina": ("AR", "South America"), "Uruguay": ("UY", "South America"),
+    "South Africa": ("ZA", "Africa"), "Egypt": ("EG", "Africa"), "Nigeria": ("NG", "Africa"),
+}
+
+
+def _country_code_continent(country_name: Optional[str]) -> Tuple[str, str]:
+    return _COUNTRY_NAME_TO_CODE_CONTINENT.get(country_name or "", ("", "Other"))
 
 # Serialised into the API response so the frontend never hard-codes tooltip definitions.
 XRAY_TOOLTIPS: Dict[str, str] = {
@@ -499,16 +538,16 @@ def run_xray_precompute() -> bool:
         with open(PORTFOLIO_PATH) as f:
             portfolio_json: Dict = json.load(f)
     except Exception as e:
-        logger.error("X-ray pre-compute: could not read portfolio.json — %s", e)
-        return False
+        logger.warning("X-ray pre-compute: could not read portfolio.json — %s", e)
+        portfolio_json = {}
 
-    holdings = [
-        {"symbol": data["ticker"], "data_source": "YAHOO", "currency": ""}
-        for data in portfolio_json.values()
-        if data.get("ticker")
-    ]
+    # Tickers from built-in Trading accounts must also be in the risk cache — assemble_xray_report
+    # needs their beta/vol/correlation regardless of which account scope is later requested.
+    symbols = {data["ticker"] for data in portfolio_json.values() if data.get("ticker")}
+    symbols.update(derive_account_holdings(None).keys())
+    holdings = [{"symbol": sym, "data_source": "YAHOO", "currency": ""} for sym in symbols]
     if not holdings:
-        logger.warning("X-ray pre-compute: portfolio.json has no tickers.")
+        logger.warning("X-ray pre-compute: no tickers found in portfolio.json or built-in Trading accounts.")
         return False
 
     risk_ok = XRayRiskComputer().compute_and_cache(holdings)
@@ -785,32 +824,125 @@ def _sanitize_floats(obj):
     return obj
 
 
+def _asset_profile_map(tickers: List[str]) -> Dict[str, Dict]:
+    if not tickers:
+        return {}
+    conn = None
+    try:
+        conn = get_connection()
+        placeholders = ",".join("?" * len(tickers))
+        rows = conn.execute(
+            f"SELECT ticker, sector, country, quote_type FROM asset_profiles WHERE ticker IN ({placeholders})",
+            tickers,
+        ).fetchall()
+        return {row["ticker"]: dict(row) for row in rows}
+    except Exception as e:
+        logger.error("X-ray asset_profiles lookup failed: %s", e)
+        return {}
+    finally:
+        if conn:
+            conn.close()
+
+
+def _builtin_account_holdings(account_id: Optional[int]) -> List[Dict]:
+    # No Ghostfolio look-through data exists for built-in holdings — sector/country come from
+    # asset_profiles as a single 100%-weight bucket per holding, not a weighted breakdown.
+    rows = market_values_for_xray(account_id)
+    if not rows:
+        return []
+    profiles = _asset_profile_map([r["ticker"] for r in rows])
+    holdings: List[Dict] = []
+    for r in rows:
+        profile = profiles.get(r["ticker"], {})
+        sector = profile.get("sector") or "Unknown"
+        country_name = profile.get("country")
+        code, continent = _country_code_continent(country_name)
+        asset_class = (profile.get("quote_type") or "EQUITY").upper()
+        value = r["market_value"]
+        quantity = r["shares"]
+        holdings.append({
+            "symbol": r["ticker"],
+            "name": r["company_name"] or r["ticker"],
+            "asset_class": asset_class,
+            "asset_sub_class": "",
+            "currency": r["currency"] or "",
+            "data_source": "YAHOO",
+            "value": value,
+            "investment": r["total_investment"],
+            "quantity": quantity,
+            "market_price": r["market_price"] or 0.0,
+            "gross_perf": round(value - r["total_investment"], 2),
+            "gross_perf_pct": round((value / r["total_investment"] - 1), 4) if r["total_investment"] else 0.0,
+            "sectors": [{"name": sector, "weight": 1.0}],
+            "countries": [{"name": country_name or "Unknown", "code": code, "continent": continent, "weight": 1.0}],
+            "weight": 0.0,
+        })
+    return holdings
+
+
+def _merge_holdings(primary: List[Dict], secondary: List[Dict]) -> List[Dict]:
+    # Used to combine Ghostfolio + built-in account holdings for the "all" scope — same ticker
+    # from both sources is summed (mirrors accounts_engine._merge_into's coexistence model).
+    merged: Dict[str, Dict] = {h["symbol"]: dict(h) for h in primary}
+    for h in secondary:
+        sym = h["symbol"]
+        if sym not in merged:
+            merged[sym] = dict(h)
+            continue
+        existing = merged[sym]
+        existing["value"] += h["value"]
+        existing["investment"] += h["investment"]
+        existing["quantity"] += h["quantity"]
+        existing["gross_perf"] = existing["value"] - existing["investment"]
+        existing["gross_perf_pct"] = (
+            round(existing["gross_perf"] / existing["investment"], 4) if existing["investment"] else 0.0
+        )
+    return list(merged.values())
+
+
 def assemble_xray_report(account_id: str) -> Dict:
-    # Combines live Ghostfolio (Tier A) with SQLite risk cache (Tier C); account_id="all" for global scope.
+    # Combines live Ghostfolio (Tier A) + built-in Trading accounts with SQLite risk cache (Tier C).
+    # account_id: "all" = every configured source; a Ghostfolio UUID = that account only;
+    # "acct:{id}" = that one built-in Trading account only (db_accounts namespacing convention).
     config = load_config()
     active_ids: List[str] = config.get("GHOSTFOLIO_ACCOUNTS", {}).get("active", [])
     base_currency: str = config.get("BASE_CURRENCY", "GBP")
 
-    # Resolve scope using the app's active list — never use Ghostfolio's isExcluded flag
-    if account_id == "all":
-        scope_ids = active_ids
+    ghost_scope_ids: List[str] = []
+    builtin_account_id: Optional[int] = None
+    include_builtin = False
+
+    if account_id.startswith("acct:"):
+        builtin_account_id = int(account_id.split(":", 1)[1])
+        include_builtin = True
     elif account_id in active_ids:
-        scope_ids = [account_id]
+        ghost_scope_ids = [account_id]
     else:
-        scope_ids = active_ids  # fallback to global for unknown IDs
+        # "all" (or an unrecognised id, preserving the previous fallback-to-global behaviour) —
+        # combine every configured source, mirroring accounts_engine.get_combined_holdings().
+        # GHOSTFOLIO_ACCOUNTS.active is only ever populated when Ghostfolio is configured and
+        # enabled (set via Settings → Ghostfolio discovery), so no separate enabled check is needed.
+        ghost_scope_ids = active_ids
+        include_builtin = True
 
-    if not scope_ids:
-        raise RuntimeError("No active Ghostfolio accounts configured.")
+    client: Optional[GhostfolioXRayClient] = None
+    ghost_holdings: List[Dict] = []
+    if ghost_scope_ids:
+        client = GhostfolioXRayClient()
+        if not client.is_configured:
+            raise RuntimeError("Ghostfolio is not configured (check GHOSTFOLIO_URL / GHOSTFOLIO_TOKEN).")
+        if not client.authenticate():
+            raise RuntimeError("Ghostfolio authentication failed.")
+        ghost_holdings, _ = client.get_holdings(ghost_scope_ids)
 
-    client = GhostfolioXRayClient()
-    if not client.is_configured:
-        raise RuntimeError("Ghostfolio is not configured (check GHOSTFOLIO_URL / GHOSTFOLIO_TOKEN).")
-    if not client.authenticate():
-        raise RuntimeError("Ghostfolio authentication failed.")
+    builtin_holdings = _builtin_account_holdings(builtin_account_id) if include_builtin else []
 
-    holdings, total_value = client.get_holdings(scope_ids)
+    holdings = _merge_holdings(ghost_holdings, builtin_holdings)
     if not holdings:
-        raise RuntimeError("No holdings returned from Ghostfolio (all accounts may be empty or cash-only).")
+        raise RuntimeError("No holdings found for this scope (Ghostfolio and/or built-in accounts may be empty).")
+    total_value = sum(h["value"] for h in holdings)
+    for h in holdings:
+        h["weight"] = h["value"] / total_value if total_value else 0.0
 
     holdings_sorted = sorted(holdings, key=lambda h: h["weight"], reverse=True)
 
@@ -999,7 +1131,8 @@ def assemble_xray_report(account_id: str) -> Dict:
 
     max_drawdown: Optional[float] = None
     try:
-        perf_chart = client.get_performance_chart(scope_ids)
+        # Ghostfolio-only — no equivalent performance-chart endpoint exists for built-in accounts.
+        perf_chart = client.get_performance_chart(ghost_scope_ids) if client else []
         if perf_chart:
             max_drawdown = _compute_max_drawdown(perf_chart)
             if max_drawdown is not None:
@@ -1046,7 +1179,15 @@ def assemble_xray_report(account_id: str) -> Dict:
     skewness: Optional[float] = None
     excess_kurtosis: Optional[float] = None
 
-    if port_rets_series and len(port_rets_series) >= 30:
+    # The cached return series is computed only from Ghostfolio holdings (run_xray_precompute) —
+    # applying it whenever built-in account holdings are also in scope would silently mix two
+    # unrelated portfolios, so these metrics are skipped (not approximated) in that case.
+    if builtin_holdings:
+        data_warnings.append(
+            "Historical VaR, CVaR, Sharpe/Calmar ratio, tracking error and skewness are not shown "
+            "for this scope — the cached return series only covers Ghostfolio holdings."
+        )
+    elif port_rets_series and len(port_rets_series) >= 30:
         try:
             import scipy.stats as _stats
             pr = np.array(port_rets_series)

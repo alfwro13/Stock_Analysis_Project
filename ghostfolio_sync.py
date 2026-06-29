@@ -211,7 +211,7 @@ class GhostfolioSyncEngine:
     def run_full_sync(self) -> bool:
         logger.info("Ghostfolio sync starting...")
 
-        if not load_config().get("GHOSTFOLIO_ENABLED", True):
+        if not load_config().get("GHOSTFOLIO_ENABLED", False):
             logger.info("Ghostfolio integration disabled; skipping sync.")
             return False
 

@@ -159,7 +159,7 @@ Tables added after initial schema creation. All managed via `db_schema.py:init_d
 * **Key Columns:** `ticker`, `date` (composite PK), `score`, `signal`, `close_price`.
 
 #### `xray_risk_cache`
-* **Purpose:** Per-ticker beta and annualised volatility vs the configured benchmark, pre-computed by the scheduler job.
+* **Purpose:** Per-ticker beta and annualised volatility vs the configured benchmark, pre-computed by the scheduler job. Universe = every ticker in `portfolio.json` (Ghostfolio) **and** every ticker held by a built-in Trading account, so X-ray works whichever scope (`all`, a Ghostfolio account, or `acct:{id}`) is requested.
 * **Key Columns:** `ticker`, `benchmark` (composite PK), `last_updated`, `beta`, `annualized_vol`.
 
 #### `xray_correlation_matrix`
@@ -171,7 +171,7 @@ Tables added after initial schema creation. All managed via `db_schema.py:init_d
 * **Key Columns:** `ticker`, `data_source` (composite PK), `last_updated`, `dividend_yield_pct`, `dividend_in_base_currency`.
 
 #### `xray_portfolio_returns_cache`
-* **Purpose:** Weighted daily portfolio return series for historical VaR/CVaR, tracking error, Sharpe, and skewness/kurtosis.
+* **Purpose:** Weighted daily portfolio return series for historical VaR/CVaR, tracking error, Sharpe, and skewness/kurtosis. Ghostfolio holdings only — built-in account holdings have no equivalent series, so these metrics are omitted (with a `data_warnings` entry) whenever a built-in account is part of the requested X-ray scope.
 * **Key Columns:** `benchmark` (PK), `last_updated`, `dates_json`, `returns_json`, `benchmark_returns_json`.
 
 #### `ai_contagion_snapshots`

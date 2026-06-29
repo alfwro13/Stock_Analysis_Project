@@ -768,6 +768,7 @@ $(document).ready(function () {
         order: [],
         initComplete: function () {
             try { if (localStorage.getItem('portfolio_heatmap_active')) _enterHeatmapMode(); } catch(e) {}
+            if (window.AUTO_XRAY) toggleXray();
         },
         columnDefs: [
             { responsivePriority: 1, targets: [0, 2, 5] },

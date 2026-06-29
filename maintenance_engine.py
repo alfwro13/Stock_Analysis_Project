@@ -31,7 +31,7 @@ class MaintenanceEngine:
 
     def enforce_ghostfolio_disabled(self):
         """Backstop: portfolio.json/watchlist.json must not linger once Ghostfolio integration is disabled."""
-        if load_config().get("GHOSTFOLIO_ENABLED", True):
+        if load_config().get("GHOSTFOLIO_ENABLED", False):
             return
         self.metrics["ghostfolio_files_purged"] = purge_ghostfolio_files()
         if self.metrics["ghostfolio_files_purged"]:

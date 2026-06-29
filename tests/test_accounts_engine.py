@@ -346,6 +346,42 @@ def test_stale_pricing_warning_names_unpriced_tickers():
 
 
 @pytest.mark.db
+def test_market_values_for_xray_single_account():
+    _seed_stock_signal("ZZXR1", 100.0, "GBP")
+    aid = create_account("XrayAcc", "GBP")
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZXR1", currency="GBP",
+                     quantity=10, unit_price=80, exchange_rate=1.0)
+
+    rows = accounts_engine.market_values_for_xray(aid)
+    row = next(r for r in rows if r["ticker"] == "ZZXR1")
+    assert row["market_value"] == 1000.0
+    assert row["total_investment"] == 800.0
+    assert row["priced_at_cost"] is False
+
+
+@pytest.mark.db
+def test_market_values_for_xray_none_merges_all_trading_accounts():
+    _seed_stock_signal("ZZXR2", 50.0, "GBP")
+    a1 = create_account("XrayAcc1", "GBP")
+    a2 = create_account("XrayAcc2", "GBP")
+    add_transaction(a1, "Buy", "2026-01-05", ticker="ZZXR2", currency="GBP",
+                     quantity=10, unit_price=40, exchange_rate=1.0)
+    add_transaction(a2, "Buy", "2026-01-06", ticker="ZZXR2", currency="GBP",
+                     quantity=5, unit_price=40, exchange_rate=1.0)
+
+    rows = accounts_engine.market_values_for_xray(None)
+    row = next(r for r in rows if r["ticker"] == "ZZXR2")
+    assert row["total_investment"] == 600.0   # 400 + 200 summed across both accounts
+    assert row["market_value"] == 750.0       # (10 + 5) shares * 50
+
+
+@pytest.mark.db
+def test_market_values_for_xray_empty_account_returns_empty_list():
+    aid = create_account("XrayEmptyAcc", "GBP")
+    assert accounts_engine.market_values_for_xray(aid) == []
+
+
+@pytest.mark.db
 def test_snapshot_all_accounts_writes_row_per_account():
     _seed_stock_signal("ZZSNAP", 120.0, "GBP")
     aid = create_account("SnapshotAcc", "GBP", initial_cash=500.0)

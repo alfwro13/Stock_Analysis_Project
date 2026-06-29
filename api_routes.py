@@ -422,11 +422,15 @@ async def get_data_freshness():
 async def get_xray_report(request: Request, account_id: str = "all"):
     """
     Returns the full Portfolio X-ray report JSON for the given account scope.
-    account_id: "all" for global (all active accounts) or a Ghostfolio account UUID.
+    account_id: "all" for every configured source (Ghostfolio + built-in Trading accounts,
+    combined); a Ghostfolio account UUID for that Ghostfolio account only; or "acct:{id}"
+    for one built-in Trading account only.
 
-    Combines live Ghostfolio holdings/allocations with SQLite-cached risk stats
-    (beta, vol, correlation, VaR). The cache is populated by the nightly
-    xray_risk_cache_job scheduler job.
+    Combines live Ghostfolio holdings/allocations and/or built-in account holdings with
+    SQLite-cached risk stats (beta, vol, correlation, VaR). The cache is populated by the
+    nightly xray_risk_cache_job scheduler job. Historical VaR/CVaR, Sharpe/Calmar ratio,
+    tracking error and skewness are Ghostfolio-only (no return-series cache exists for
+    built-in accounts) and are omitted with a data_warning when built-in holdings are in scope.
     """
     try:
         report = assemble_xray_report(account_id)

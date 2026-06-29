@@ -318,6 +318,36 @@ def holdings_with_market_value(account_id: int) -> list:
     return rows
 
 
+def market_values_for_xray(account_id: Optional[int] = None) -> list:
+    """Holdings for one Trading account, or all merged when account_id is None — feeds xray_engine."""
+    holdings = derive_account_holdings(account_id)
+    if not holdings:
+        return []
+    prices = _current_price_map(list(holdings.keys()))
+    rows = []
+    for ticker, h in holdings.items():
+        total_investment = sum(a["total_investment"] for a in h["accounts"])
+        priced = prices.get(ticker)
+        has_price = bool(priced and priced[0])
+        if has_price:
+            price, currency = priced
+            market_value = h["global_shares"] * price * get_rate_to_base(currency or h["currency"])
+        else:
+            price = None
+            market_value = total_investment
+        rows.append({
+            "ticker": ticker,
+            "company_name": h["company_name"],
+            "currency": h["currency"],
+            "shares": h["global_shares"],
+            "market_price": price,
+            "market_value": round(market_value, 2),
+            "total_investment": round(total_investment, 2),
+            "priced_at_cost": not has_price,
+        })
+    return rows
+
+
 def stale_pricing_warning(holdings: list) -> Optional[str]:
     """Mirrors xray_engine's data_warnings pattern — surfaces holdings priced at cost basis
     instead of market value because no price data exists yet, so this is never silent."""
@@ -340,7 +370,7 @@ def _recompute_globals(entry: dict) -> None:
 
 
 def _read_portfolio_json() -> dict:
-    if not load_config().get("GHOSTFOLIO_ENABLED", True):
+    if not load_config().get("GHOSTFOLIO_ENABLED", False):
         return {}
     try:
         with open(PORTFOLIO_PATH, "r") as f:
