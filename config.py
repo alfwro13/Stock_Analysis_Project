@@ -71,17 +71,17 @@ DEFAULT_CONFIG = {
     "HOME_EXCHANGE": "LSE",             # NYSE | LSE | XETRA | TSE — drives default market-window logic
     "IGNORED_TICKERS": ["GBP", "USD", "EUR"],
     "ACCOUNT_CURRENCIES": ["GBP", "GBp", "USD", "EUR"],
-    "GHOSTFOLIO_ENABLED": True,
+    "GHOSTFOLIO_ENABLED": False,
     "GHOSTFOLIO_ACCOUNTS": {
         "discovered": [],
         "active": []
     },
     "UI_PREFERENCES": {
-        "LIVE_PORTFOLIO": False,
-        "LIVE_WATCHLIST": False,
-        "LIVE_DETAILS": False,
+        "LIVE_PORTFOLIO": True,
+        "LIVE_WATCHLIST": True,
+        "LIVE_DETAILS": True,
         "REFRESH_RATE": 60,
-        "FREETRADE_ONLY_MODE": False,
+        "FREETRADE_ONLY_MODE": True,
         "FONT_SIZE_NAV": 12,
         "FONT_SIZE_TABLE": 12,
         "FONT_SIZE_DT_TABLE": 12,
@@ -107,7 +107,7 @@ DEFAULT_CONFIG = {
     },
     "SCHEDULING": {
         "SYNC_INDICES": {
-            "ENABLED": False,
+            "ENABLED": True,
             "INDICES": ["SP500", "FTSE100"],
             "DAYS": ["sat"],
             "TIME": "03:00"
@@ -130,20 +130,20 @@ DEFAULT_CONFIG = {
             "TIME": "06:00"
         },
         "QUANT_ANALYSIS": {
-            "ENABLED": False,
+            "ENABLED": True,
             "FREQUENCY": "mon-fri",
             "INTERVAL_HOURS": 0,
             "TIME": "18:00"
         },
         "SENTIMENT_ENGINE": {
-            "ENABLED": False,
+            "ENABLED": True,
             "FREQUENCY": "mon-fri",
             "START_TIME": "08:00",   # UTC — covers LSE open; set "" to derive from HOME_EXCHANGE
             "END_TIME": "21:00",     # UTC — covers NYSE close
             "INTERVAL_HOURS": 4
         },
         "CRASH_ALERTS": {
-            "ENABLED": False,
+            "ENABLED": True,
             "FREQUENCY": "mon-fri",
             "START_TIME": "08:00",   # UTC — covers LSE open; set "" to derive from HOME_EXCHANGE
             "END_TIME": "21:00",     # UTC — covers NYSE close
@@ -151,7 +151,7 @@ DEFAULT_CONFIG = {
             "FLASH_CRASH_THRESHOLD": 3.0
         },
         "MOONSHOT_ALERTS": {
-            "ENABLED": False,
+            "ENABLED": True,
             "FREQUENCY": "mon-fri",
             "START_TIME": "08:00",   # UTC — covers LSE open; set "" to derive from HOME_EXCHANGE
             "END_TIME": "21:00",     # UTC — covers NYSE close
@@ -187,7 +187,7 @@ DEFAULT_CONFIG = {
             "INTERVAL_MINUTES": 30
         },
         "ML_BACKFILL": {
-            "ENABLED": False,
+            "ENABLED": True,
             "DAYS": ["sat"],
             "TIME": "02:00"
         },
@@ -242,12 +242,12 @@ DEFAULT_CONFIG = {
             "FLAG_THRESHOLD": 85
         },
         "FORENSIC_QUARTERLY_FETCH": {
-            "ENABLED": False,
+            "ENABLED": True,
             "DAY_OF_MONTH": 1,
             "TIME": "06:00"
         },
         "FORENSIC_SCORES": {
-            "ENABLED": False,
+            "ENABLED": True,
             "DAY_OF_MONTH": 1,
             "TIME": "07:00"
         },
