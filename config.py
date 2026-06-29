@@ -71,6 +71,7 @@ DEFAULT_CONFIG = {
     "HOME_EXCHANGE": "LSE",             # NYSE | LSE | XETRA | TSE — drives default market-window logic
     "IGNORED_TICKERS": ["GBP", "USD", "EUR"],
     "ACCOUNT_CURRENCIES": ["GBP", "GBp", "USD", "EUR"],
+    "GHOSTFOLIO_ENABLED": True,
     "GHOSTFOLIO_ACCOUNTS": {
         "discovered": [],
         "active": []

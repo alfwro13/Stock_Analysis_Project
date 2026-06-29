@@ -60,6 +60,7 @@ async function saveSettings(silent = false) {
         "YAHOO_IPV6_ADDRESS": document.getElementById('YAHOO_IPV6_ADDRESS').value.trim(),
         "YAHOO_USE_IPV4": document.getElementById('YAHOO_USE_IPV4').checked,
         "YAHOO_USE_IPV6": document.getElementById('YAHOO_USE_IPV6').checked,
+        "GHOSTFOLIO_ENABLED": document.getElementById('GHOSTFOLIO_ENABLED').checked,
         "GHOSTFOLIO_ACCOUNTS": {
             "discovered": currentDiscoveredAccounts,
             "active": activeAccounts

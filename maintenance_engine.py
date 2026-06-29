@@ -10,6 +10,7 @@ from config import (
     INTRADAY_DIR, FUNDAMENTALS_DIR, load_config
 )
 from database import get_connection, get_watchlist_tickers, log_notification as _db_log_notification
+from ghostfolio_sync import purge_ghostfolio_files
 
 class MaintenanceEngine:
     """Weekly housekeeping: prune notification logs, delete orphaned files, VACUUM the DB."""
@@ -24,8 +25,17 @@ class MaintenanceEngine:
             "files_deleted": 0,
             "deleted_files": [],
             "pulse_cache_deleted": 0,
-            "vacuum_success": False
+            "vacuum_success": False,
+            "ghostfolio_files_purged": 0
         }
+
+    def enforce_ghostfolio_disabled(self):
+        """Backstop: portfolio.json/watchlist.json must not linger once Ghostfolio integration is disabled."""
+        if load_config().get("GHOSTFOLIO_ENABLED", True):
+            return
+        self.metrics["ghostfolio_files_purged"] = purge_ghostfolio_files()
+        if self.metrics["ghostfolio_files_purged"]:
+            logger.info("Purged %d stale Ghostfolio file(s) (integration disabled)", self.metrics["ghostfolio_files_purged"])
 
     def _get_active_tickers(self) -> set:
         """Collects tickers from portfolio JSON, the Watchlist account, and every DB table; any hit → file must not be deleted."""
@@ -184,6 +194,7 @@ class MaintenanceEngine:
                 f"• Stale Logs Trimmed: {self.metrics['logs_deleted']}\n"
                 f"• Stale Pulse Cache Records Removed: {self.metrics['pulse_cache_deleted']}"
                 f"{files_section}\n"
+                f"• Ghostfolio Files Purged (integration disabled): {self.metrics['ghostfolio_files_purged']}\n"
                 f"• DB Defragmentation: {vac_status}"
             )
             _db_log_notification("Maintenance", msg)
@@ -249,6 +260,7 @@ class MaintenanceEngine:
         self.prune_database_logs()
         self.prune_pulse_cache()
         self.garbage_collect_files()
+        self.enforce_ghostfolio_disabled()
         self.vacuum_database()
         self.log_notification()
         logger.info("Maintenance engine complete")

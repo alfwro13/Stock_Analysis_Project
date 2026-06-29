@@ -166,6 +166,38 @@ def test_post_settings_with_notification_routing(client, confirm_token):
 
 
 @pytest.mark.api
+def test_post_settings_ghostfolio_disabled_purges_files_and_clears_accounts(client, confirm_token):
+    """POST /api/settings with GHOSTFOLIO_ENABLED=False must purge portfolio.json/watchlist.json,
+    clear GHOSTFOLIO_ACCOUNTS, and force GHOSTFOLIO_SYNC.ENABLED off."""
+    import config as _config
+    payload = {
+        "GHOSTFOLIO_ENABLED": False,
+        "GHOSTFOLIO_ACCOUNTS": {"discovered": [{"id": "acc-1", "name": "Test", "currency": "GBP"}], "active": ["acc-1"]},
+        "SCHEDULING": {"GHOSTFOLIO_SYNC": {"ENABLED": True, "FREQUENCY": "mon-fri", "INTERVAL_HOURS": 0, "TIME": "06:00"}},
+    }
+    with patch("api_routes_system.purge_ghostfolio_files") as mock_purge:
+        resp = client.post("/api/settings", json=payload, headers={"X-Confirm-Token": confirm_token})
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}\n{resp.text}"
+    assert _json(resp).get("status") == "success"
+    mock_purge.assert_called_once()
+    cfg = _config.load_config()
+    assert cfg.get("GHOSTFOLIO_ENABLED") is False
+    assert cfg.get("GHOSTFOLIO_ACCOUNTS") == {"discovered": [], "active": []}
+    assert cfg.get("SCHEDULING", {}).get("GHOSTFOLIO_SYNC", {}).get("ENABLED") is False
+
+
+@pytest.mark.api
+def test_post_settings_ghostfolio_enabled_does_not_purge(client, confirm_token):
+    """POST /api/settings with GHOSTFOLIO_ENABLED=True must not touch portfolio.json/watchlist.json."""
+    payload = {"GHOSTFOLIO_ENABLED": True}
+    with patch("api_routes_system.purge_ghostfolio_files") as mock_purge:
+        resp = client.post("/api/settings", json=payload, headers={"X-Confirm-Token": confirm_token})
+    assert resp.status_code == 200
+    assert _json(resp).get("status") == "success"
+    mock_purge.assert_not_called()
+
+
+@pytest.mark.api
 def test_post_settings_with_position_sizing(client, confirm_token):
     """POST /api/settings with position sizing values must return status=success."""
     payload = {

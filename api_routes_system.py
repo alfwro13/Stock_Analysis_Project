@@ -24,6 +24,7 @@ from config import (
     update_config_atomic,
 )
 from database import get_connection
+from ghostfolio_sync import purge_ghostfolio_files
 from log_config import configure_file_logging as _configure_file_logging
 from market_pulse import get_cached_pulse_from_db, fetch_and_save_pulse
 from notification_engine import notify
@@ -216,6 +217,7 @@ class SettingsConfig(BaseModel):
     HOME_EXCHANGE: Optional[str] = None
     IGNORED_TICKERS: Optional[List[str]] = None
     ACCOUNT_CURRENCIES: Optional[List[str]] = None
+    GHOSTFOLIO_ENABLED: Optional[bool] = None
     GHOSTFOLIO_ACCOUNTS: Optional[GhostfolioAccountsConfig] = None
     UI_PREFERENCES: Optional[UIPreferencesConfig] = None
     POSITION_SIZING: Optional[PositionSizingConfig] = None
@@ -689,6 +691,11 @@ async def terminate_active_jobs():
 async def save_settings(config: SettingsConfig):
     try:
         incoming_data = config.model_dump(exclude_none=True)
+        if incoming_data.get("GHOSTFOLIO_ENABLED") is False:
+            incoming_data["GHOSTFOLIO_ACCOUNTS"] = {"discovered": [], "active": []}
+            scheduling = incoming_data.setdefault("SCHEDULING", {})
+            scheduling["GHOSTFOLIO_SYNC"] = {**scheduling.get("GHOSTFOLIO_SYNC", {}), "ENABLED": False}
+            purge_ghostfolio_files()
         update_config_atomic(incoming_data)
         reload_scheduler()
         _configure_file_logging(load_config())

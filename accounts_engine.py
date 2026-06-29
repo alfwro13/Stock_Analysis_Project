@@ -11,7 +11,7 @@ from typing import Optional
 import pandas as pd
 
 import time_engine
-from config import BASE_CURRENCY, HISTORICAL_DIR, PORTFOLIO_PATH
+from config import BASE_CURRENCY, HISTORICAL_DIR, PORTFOLIO_PATH, load_config
 from db_accounts import (
     add_price_history, add_transaction, delete_transaction, get_account, get_accounts,
     get_price_as_of, get_price_history, get_transaction, get_transactions, get_watchlist_items,
@@ -340,6 +340,8 @@ def _recompute_globals(entry: dict) -> None:
 
 
 def _read_portfolio_json() -> dict:
+    if not load_config().get("GHOSTFOLIO_ENABLED", True):
+        return {}
     try:
         with open(PORTFOLIO_PATH, "r") as f:
             return json.load(f)

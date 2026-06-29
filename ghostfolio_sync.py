@@ -13,11 +13,25 @@ from config import (
     GHOSTFOLIO_URL,
     GHOSTFOLIO_TOKEN,
     PORTFOLIO_PATH,
+    WATCHLIST_PATH,
     GHOSTFOLIO_ACCOUNTS,
 )
 
 # Disable insecure request warnings for self-hosted instances using IP addresses
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+
+def purge_ghostfolio_files() -> int:
+    """Deletes portfolio.json/watchlist.json; called when Ghostfolio integration is disabled."""
+    deleted = 0
+    for path in (PORTFOLIO_PATH, WATCHLIST_PATH):
+        try:
+            if path.exists():
+                path.unlink()
+                deleted += 1
+        except OSError as e:
+            logger.error("Failed to delete %s: %s", path, e)
+    return deleted
 
 
 class GhostfolioSyncEngine:
@@ -196,6 +210,10 @@ class GhostfolioSyncEngine:
 
     def run_full_sync(self) -> bool:
         logger.info("Ghostfolio sync starting...")
+
+        if not load_config().get("GHOSTFOLIO_ENABLED", True):
+            logger.info("Ghostfolio integration disabled; skipping sync.")
+            return False
 
         if not self.is_configured:
             logger.error("Sync aborted: engine not configured.")

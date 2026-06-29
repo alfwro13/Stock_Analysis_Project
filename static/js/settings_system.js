@@ -410,6 +410,11 @@ function handleBackupCardToggle(detailsElement) {
     }
 }
 
+function toggleGhostfolioFields() {
+    const enabled = document.getElementById('GHOSTFOLIO_ENABLED').checked;
+    document.getElementById('ghostfolio-fields-group').classList.toggle('d-none', !enabled);
+}
+
 function toggleBackupLocationFields() {
     const isNfs = document.getElementById('BACKUP_LOCATION').value === 'nfs';
     document.getElementById('backup-local-path-group').classList.toggle('d-none', isNfs);

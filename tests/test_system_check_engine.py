@@ -141,6 +141,41 @@ class TestLowInferenceCoverage:
 
 
 # ---------------------------------------------------------------------------
+# Check 4 — ghostfolio_files_not_purged
+# ---------------------------------------------------------------------------
+
+class TestGhostfolioFilesNotPurged:
+    def test_warns_when_disabled_and_portfolio_json_exists(self, monkeypatch, tmp_path):
+        portfolio_path = tmp_path / "portfolio.json"
+        watchlist_path = tmp_path / "watchlist.json"
+        portfolio_path.write_text("{}")
+        monkeypatch.setattr(_sce, "PORTFOLIO_PATH", portfolio_path)
+        monkeypatch.setattr(_sce, "WATCHLIST_PATH", watchlist_path)
+        monkeypatch.setattr(_sce, "load_config", lambda: {**_BASE_CONFIG, "GHOSTFOLIO_ENABLED": False})
+        issues = _sce.run_system_checks()
+        keys = [i["key"] for i in issues]
+        assert "ghostfolio_files_not_purged" in keys
+
+    def test_no_warning_when_disabled_and_files_absent(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(_sce, "PORTFOLIO_PATH", tmp_path / "portfolio.json")
+        monkeypatch.setattr(_sce, "WATCHLIST_PATH", tmp_path / "watchlist.json")
+        monkeypatch.setattr(_sce, "load_config", lambda: {**_BASE_CONFIG, "GHOSTFOLIO_ENABLED": False})
+        issues = _sce.run_system_checks()
+        keys = [i["key"] for i in issues]
+        assert "ghostfolio_files_not_purged" not in keys
+
+    def test_no_warning_when_enabled_even_if_files_exist(self, monkeypatch, tmp_path):
+        portfolio_path = tmp_path / "portfolio.json"
+        portfolio_path.write_text("{}")
+        monkeypatch.setattr(_sce, "PORTFOLIO_PATH", portfolio_path)
+        monkeypatch.setattr(_sce, "WATCHLIST_PATH", tmp_path / "watchlist.json")
+        monkeypatch.setattr(_sce, "load_config", lambda: {**_BASE_CONFIG, "GHOSTFOLIO_ENABLED": True})
+        issues = _sce.run_system_checks()
+        keys = [i["key"] for i in issues]
+        assert "ghostfolio_files_not_purged" not in keys
+
+
+# ---------------------------------------------------------------------------
 # API endpoint
 # ---------------------------------------------------------------------------
 

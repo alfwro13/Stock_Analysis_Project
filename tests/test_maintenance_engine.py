@@ -315,3 +315,24 @@ class TestDryRun:
         mtime = time.time() - (age_days * 86400)
         os.utime(str(p), (mtime, mtime))
         return Path(tmpdir), p
+
+
+# ── enforce_ghostfolio_disabled ────────────────────────────────────────────────
+
+class TestEnforceGhostfolioDisabled:
+
+    def test_purges_files_when_disabled(self):
+        eng = _engine()
+        with patch("maintenance_engine.load_config", return_value={"GHOSTFOLIO_ENABLED": False}), \
+             patch("maintenance_engine.purge_ghostfolio_files", return_value=2) as mock_purge:
+            eng.enforce_ghostfolio_disabled()
+        mock_purge.assert_called_once()
+        assert eng.metrics["ghostfolio_files_purged"] == 2
+
+    def test_leaves_files_when_enabled(self):
+        eng = _engine()
+        with patch("maintenance_engine.load_config", return_value={"GHOSTFOLIO_ENABLED": True}), \
+             patch("maintenance_engine.purge_ghostfolio_files") as mock_purge:
+            eng.enforce_ghostfolio_disabled()
+        mock_purge.assert_not_called()
+        assert eng.metrics["ghostfolio_files_purged"] == 0

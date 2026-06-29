@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional
 
 import joblib
 
-from config import load_config
+from config import PORTFOLIO_PATH, WATCHLIST_PATH, load_config
 from database import get_connection
 
 logger = logging.getLogger(__name__)
@@ -35,6 +35,16 @@ def run_system_checks() -> List[Dict[str, Any]]:
     ml_backfill = scheduling.get("ML_BACKFILL", {})
     training_enabled = ml_training.get("ENABLED", True)
     backfill_enabled = ml_backfill.get("ENABLED", False)
+
+    if not config.get("GHOSTFOLIO_ENABLED", True) and (PORTFOLIO_PATH.exists() or WATCHLIST_PATH.exists()):
+        issues.append({
+            "key": "ghostfolio_files_not_purged",
+            "level": "warning",
+            "message": (
+                "Ghostfolio Integration is disabled but portfolio.json/watchlist.json still exist on disk. "
+                "They will be removed by the next Database & File Maintenance run, or immediately via Settings → System Diagnostics → Database & File Maintenance → Run Now."
+            ),
+        })
 
     if training_enabled and not backfill_enabled:
         issues.append({

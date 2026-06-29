@@ -585,67 +585,76 @@
             <div id="nc-status-msg"></div>
         </details>
 
+        {% set ghostfolio_enabled = config.GHOSTFOLIO_ENABLED | default(true) %}
         <details class="settings-card" id="ghostfolio-integration-card">
             <summary>👻 Ghostfolio Integration</summary>
-            <p class="settings-desc">Credentials are stored in <code>.env</code> and applied at runtime. Changes take effect immediately without a restart.</p>
-            <div class="form-group">
-                <label>Ghostfolio Server URL</label>
-                <input type="text" id="GHOSTFOLIO_URL" class="form-control" value="{{ ghostfolio_url }}" placeholder="http://192.168.1.x:3333">
+            <div class="checkbox-group">
+                <input type="checkbox" id="GHOSTFOLIO_ENABLED" {% if ghostfolio_enabled %}checked{% endif %} onchange="toggleGhostfolioFields()">
+                <label for="GHOSTFOLIO_ENABLED">Enable Ghostfolio Integration</label>
             </div>
-            <div class="form-group">
-                <label>Security API Token</label>
-                <input type="password" id="API_TOKEN" class="form-control" value="{{ ghostfolio_token }}" autocomplete="new-password">
-            </div>
-            <button type="button" class="btn btn-primary mt-0" onclick="saveGhostfolioSettings()">💾 Save Ghostfolio Credentials</button>
-            <div id="ghostfolio-creds-msg"></div>
+            <p class="settings-desc">When disabled, credentials, sync scheduling and account syncing below are deactivated, and <code>portfolio.json</code>/<code>watchlist.json</code> are deleted on Save so the Portfolio page's Global Values stop reflecting stale Ghostfolio data.</p>
 
-            <div class="settings-panel mt-20">
-                <h4 class="settings-panel-header text-blue">🔄 Ghostfolio Sync</h4>
-                <div class="checkbox-group">
-                    <input type="checkbox" id="GHOSTFOLIO_SYNC_ENABLED" {% if config.SCHEDULING.GHOSTFOLIO_SYNC.ENABLED %}checked{% endif %}>
-                    <label for="GHOSTFOLIO_SYNC_ENABLED">Auto-sync portfolio</label>
+            <div id="ghostfolio-fields-group" class="{% if not ghostfolio_enabled %}d-none{% endif %}">
+                <p class="settings-desc">Credentials are stored in <code>.env</code> and applied at runtime. Changes take effect immediately without a restart.</p>
+                <div class="form-group">
+                    <label>Ghostfolio Server URL</label>
+                    <input type="text" id="GHOSTFOLIO_URL" class="form-control" value="{{ ghostfolio_url }}" placeholder="http://192.168.1.x:3333">
                 </div>
-                <div class="flex-gap-15 mb-10">
-                    <div class="form-group flex-1">
-                        <label>Frequency</label>
-                        <select id="GHOSTFOLIO_SYNC_FREQ" class="form-select">
-                            <option value="mon-fri" {% if config.SCHEDULING.GHOSTFOLIO_SYNC.FREQUENCY == 'mon-fri' %}selected{% endif %}>Mon-Fri</option>
-                            <option value="*" {% if config.SCHEDULING.GHOSTFOLIO_SYNC.FREQUENCY == '*' %}selected{% endif %}>Every Day</option>
-                        </select>
-                    </div>
-                    <div class="form-group flex-1">
-                        <label>Interval (Hours)</label>
-                        <input type="number" id="GHOSTFOLIO_SYNC_INTERVAL" class="form-control" value="{{ config.SCHEDULING.GHOSTFOLIO_SYNC.INTERVAL_HOURS }}" min="0" placeholder="0 to run once">
-                    </div>
-                    <div class="form-group flex-1">
-                        <label>Specific Time (if Interval = 0)</label>
-                        <input type="time" id="GHOSTFOLIO_SYNC_TIME" class="form-control" value="{{ config.SCHEDULING.GHOSTFOLIO_SYNC.TIME }}">
-                    </div>
+                <div class="form-group">
+                    <label>Security API Token</label>
+                    <input type="password" id="API_TOKEN" class="form-control" value="{{ ghostfolio_token }}" autocomplete="new-password">
                 </div>
-                <button type="button" id="syncBtn" class="btn btn-primary mt-0" onclick="triggerGhostfolioSync()">⬇️ Sync Ghostfolio Data</button>
-            </div>
+                <button type="button" class="btn btn-primary mt-0" onclick="saveGhostfolioSettings()">💾 Save Ghostfolio Credentials</button>
+                <div id="ghostfolio-creds-msg"></div>
 
-            <div class="settings-panel mt-20">
-                <h4 class="settings-panel-header text-blue">Opt-In Account Syncing</h4>
-                <p class="settings-desc">Select which accounts the Data Engine is permitted to synchronize. This dramatically reduces API loads and allows you to exclude specific portfolios from the system math.</p>
-                <div class="account-list" id="accountListContainer">
-                    {% if config.GHOSTFOLIO_ACCOUNTS.discovered %}
-                        {% for acc in config.GHOSTFOLIO_ACCOUNTS.discovered %}
-                        <div class="account-item">
-                            <input type="checkbox" id="acc_{{ acc.id }}" value="{{ acc.id }}" class="ghostfolio-account-checkbox"
-                                   {% if acc.id in config.GHOSTFOLIO_ACCOUNTS.active %}checked{% endif %}>
-                            <label for="acc_{{ acc.id }}">
-                                <span>{{ acc.name }}</span>
-                                <span class="account-badge">{{ acc.currency }}</span>
-                            </label>
+                <div class="settings-panel mt-20">
+                    <h4 class="settings-panel-header text-blue">🔄 Ghostfolio Sync</h4>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="GHOSTFOLIO_SYNC_ENABLED" {% if config.SCHEDULING.GHOSTFOLIO_SYNC.ENABLED %}checked{% endif %}>
+                        <label for="GHOSTFOLIO_SYNC_ENABLED">Auto-sync portfolio</label>
+                    </div>
+                    <div class="flex-gap-15 mb-10">
+                        <div class="form-group flex-1">
+                            <label>Frequency</label>
+                            <select id="GHOSTFOLIO_SYNC_FREQ" class="form-select">
+                                <option value="mon-fri" {% if config.SCHEDULING.GHOSTFOLIO_SYNC.FREQUENCY == 'mon-fri' %}selected{% endif %}>Mon-Fri</option>
+                                <option value="*" {% if config.SCHEDULING.GHOSTFOLIO_SYNC.FREQUENCY == '*' %}selected{% endif %}>Every Day</option>
+                            </select>
                         </div>
-                        {% endfor %}
-                    {% else %}
-                        <div class="empty-table-msg">No accounts discovered. Please click the discovery button below.</div>
-                    {% endif %}
+                        <div class="form-group flex-1">
+                            <label>Interval (Hours)</label>
+                            <input type="number" id="GHOSTFOLIO_SYNC_INTERVAL" class="form-control" value="{{ config.SCHEDULING.GHOSTFOLIO_SYNC.INTERVAL_HOURS }}" min="0" placeholder="0 to run once">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Specific Time (if Interval = 0)</label>
+                            <input type="time" id="GHOSTFOLIO_SYNC_TIME" class="form-control" value="{{ config.SCHEDULING.GHOSTFOLIO_SYNC.TIME }}">
+                        </div>
+                    </div>
+                    <button type="button" id="syncBtn" class="btn btn-primary mt-0" onclick="triggerGhostfolioSync()">⬇️ Sync Ghostfolio Data</button>
                 </div>
-                <button type="button" class="btn btn-primary mt-0" onclick="discoverGhostfolioAccounts()">🔍 Discover Accounts on Server</button>
-                <div id="discovery-status-msg"></div>
+
+                <div class="settings-panel mt-20">
+                    <h4 class="settings-panel-header text-blue">Opt-In Account Syncing</h4>
+                    <p class="settings-desc">Select which accounts the Data Engine is permitted to synchronize. This dramatically reduces API loads and allows you to exclude specific portfolios from the system math.</p>
+                    <div class="account-list" id="accountListContainer">
+                        {% if config.GHOSTFOLIO_ACCOUNTS.discovered %}
+                            {% for acc in config.GHOSTFOLIO_ACCOUNTS.discovered %}
+                            <div class="account-item">
+                                <input type="checkbox" id="acc_{{ acc.id }}" value="{{ acc.id }}" class="ghostfolio-account-checkbox"
+                                       {% if acc.id in config.GHOSTFOLIO_ACCOUNTS.active %}checked{% endif %}>
+                                <label for="acc_{{ acc.id }}">
+                                    <span>{{ acc.name }}</span>
+                                    <span class="account-badge">{{ acc.currency }}</span>
+                                </label>
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="empty-table-msg">No accounts discovered. Please click the discovery button below.</div>
+                        {% endif %}
+                    </div>
+                    <button type="button" class="btn btn-primary mt-0" onclick="discoverGhostfolioAccounts()">🔍 Discover Accounts on Server</button>
+                    <div id="discovery-status-msg"></div>
+                </div>
             </div>
         </details>
 

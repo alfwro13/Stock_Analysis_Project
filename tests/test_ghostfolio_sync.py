@@ -618,6 +618,15 @@ class TestFetchActivities:
 
 class TestRunFullSync:
 
+    def test_integration_disabled_returns_false_without_authenticating(self, monkeypatch):
+        """run_full_sync() must skip entirely when GHOSTFOLIO_ENABLED is False."""
+        engine = _engine_with_bearer(monkeypatch)
+        with patch("ghostfolio_sync.load_config", return_value={"GHOSTFOLIO_ENABLED": False}), \
+             patch.object(engine, "authenticate") as mock_auth:
+            result = engine.run_full_sync()
+        assert result is False
+        mock_auth.assert_not_called()
+
     def test_not_configured_returns_false(self, monkeypatch):
         """run_full_sync() must abort early when credentials are missing."""
         with patch("ghostfolio_sync.GHOSTFOLIO_URL", ""), \
@@ -651,6 +660,35 @@ class TestRunFullSync:
              patch.object(engine, "sync_portfolio",   return_value=False):
             result = engine.run_full_sync()
         assert result is False
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 7b. purge_ghostfolio_files() — backstop deletion when integration is disabled
+# ──────────────────────────────────────────────────────────────────────────────
+
+class TestPurgeGhostfolioFiles:
+
+    def test_deletes_both_files_and_returns_count(self, tmp_path):
+        from ghostfolio_sync import purge_ghostfolio_files
+        portfolio_path = tmp_path / "portfolio.json"
+        watchlist_path = tmp_path / "watchlist.json"
+        portfolio_path.write_text("{}")
+        watchlist_path.write_text("[]")
+        with patch("ghostfolio_sync.PORTFOLIO_PATH", portfolio_path), \
+             patch("ghostfolio_sync.WATCHLIST_PATH", watchlist_path):
+            deleted = purge_ghostfolio_files()
+        assert deleted == 2
+        assert not portfolio_path.exists()
+        assert not watchlist_path.exists()
+
+    def test_missing_files_returns_zero(self, tmp_path):
+        from ghostfolio_sync import purge_ghostfolio_files
+        portfolio_path = tmp_path / "portfolio.json"
+        watchlist_path = tmp_path / "watchlist.json"
+        with patch("ghostfolio_sync.PORTFOLIO_PATH", portfolio_path), \
+             patch("ghostfolio_sync.WATCHLIST_PATH", watchlist_path):
+            deleted = purge_ghostfolio_files()
+        assert deleted == 0
 
 
 # ──────────────────────────────────────────────────────────────────────────────

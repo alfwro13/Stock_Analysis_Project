@@ -1031,6 +1031,7 @@ After saving, the scheduler is reloaded to apply any changed schedule configurat
   "YAHOO_IPV6_ADDRESS": "2a00:1450:400f:804::200e",
   "IGNORED_TICKERS": ["GMESTOP"],
   "ACCOUNT_CURRENCIES": ["GBP", "GBp", "USD", "EUR"],
+  "GHOSTFOLIO_ENABLED": true,
   "UI_PREFERENCES": {
     "LIVE_PORTFOLIO": true,
     "LIVE_WATCHLIST": true,
@@ -1061,6 +1062,8 @@ After saving, the scheduler is reloaded to apply any changed schedule configurat
 ```
 
 `NOTIFICATION_ROUTING` is keyed by notification source: a scheduled job id (its start/success/error status) or an alert source key (e.g. `crash_alert`, `moonshot_alert`, `earnings_alert`, `trap_monitor_alert`, `dip_radar_alert`, `cb_nlp_alert`, `network_fault`). Each value selects the delivery channels — `log_file`, `in_app`, `nextcloud_talk`. Any source omitted from this object falls back to its built-in default routing. This drives the **Notification Settings** panel in Settings and is consumed by `notification_engine.notify()`.
+
+`GHOSTFOLIO_ENABLED` (default `true`) is the master switch for the **Ghostfolio Integration** card. Setting it to `false` has side effects beyond the usual deep-merge: `save_settings()` synchronously deletes `data/portfolio.json` and `data/watchlist.json`, clears `GHOSTFOLIO_ACCOUNTS.discovered`/`active`, and forces `SCHEDULING.GHOSTFOLIO_SYNC.ENABLED` to `false` regardless of what was submitted for it. `accounts_engine.get_combined_holdings()` (the Portfolio page's Global Values) and `GhostfolioSyncEngine.run_full_sync()` both also check this flag directly, so a stray manual sync or a restored `portfolio.json` cannot resurrect Ghostfolio data while disabled. The nightly **Database & File Maintenance** job (`maintenance_engine.enforce_ghostfolio_disabled`) re-deletes both files as a backstop, and **System Configuration Check** (`system_check_engine.py`) raises a `ghostfolio_files_not_purged` warning if they still exist between maintenance runs.
 
 **Response**
 

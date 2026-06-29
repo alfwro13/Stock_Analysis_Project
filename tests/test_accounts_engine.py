@@ -143,6 +143,24 @@ def test_account_summary_equity_dividend_interest():
     assert summary["activity_count"] == 3
 
 
+def test_read_portfolio_json_skips_file_when_ghostfolio_disabled(monkeypatch, tmp_path):
+    portfolio_path = tmp_path / "portfolio.json"
+    portfolio_path.write_text('{"foo": {"ticker": "ZZSTL"}}')
+    monkeypatch.setattr(accounts_engine, "PORTFOLIO_PATH", portfolio_path)
+    monkeypatch.setattr(accounts_engine, "load_config", lambda: {"GHOSTFOLIO_ENABLED": False})
+
+    assert accounts_engine._read_portfolio_json() == {}
+
+
+def test_read_portfolio_json_reads_file_when_ghostfolio_enabled(monkeypatch, tmp_path):
+    portfolio_path = tmp_path / "portfolio.json"
+    portfolio_path.write_text('{"foo": {"ticker": "ZZSTL"}}')
+    monkeypatch.setattr(accounts_engine, "PORTFOLIO_PATH", portfolio_path)
+    monkeypatch.setattr(accounts_engine, "load_config", lambda: {"GHOSTFOLIO_ENABLED": True})
+
+    assert accounts_engine._read_portfolio_json() == {"foo": {"ticker": "ZZSTL"}}
+
+
 @pytest.mark.db
 def test_get_combined_holdings_sums_ghostfolio_and_builtin(monkeypatch):
     ghost = {
