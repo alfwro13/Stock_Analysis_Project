@@ -54,32 +54,6 @@
                     <button type="button" id="updateBtn" class="btn btn-primary mt-0" onclick="triggerUpdate()">↻ Force Update Analysis Models</button>
                 </div>
 
-                <div class="settings-panel">
-                    <h4 class="settings-panel-header text-blue">🔄 Ghostfolio Sync</h4>
-                    <div class="checkbox-group">
-                        <input type="checkbox" id="GHOSTFOLIO_SYNC_ENABLED" {% if config.SCHEDULING.GHOSTFOLIO_SYNC.ENABLED %}checked{% endif %}>
-                        <label for="GHOSTFOLIO_SYNC_ENABLED">Auto-sync portfolio</label>
-                    </div>
-                    <div class="flex-gap-15 mb-10">
-                        <div class="form-group flex-1">
-                            <label>Frequency</label>
-                            <select id="GHOSTFOLIO_SYNC_FREQ" class="form-select">
-                                <option value="mon-fri" {% if config.SCHEDULING.GHOSTFOLIO_SYNC.FREQUENCY == 'mon-fri' %}selected{% endif %}>Mon-Fri</option>
-                                <option value="*" {% if config.SCHEDULING.GHOSTFOLIO_SYNC.FREQUENCY == '*' %}selected{% endif %}>Every Day</option>
-                            </select>
-                        </div>
-                        <div class="form-group flex-1">
-                            <label>Interval (Hours)</label>
-                            <input type="number" id="GHOSTFOLIO_SYNC_INTERVAL" class="form-control" value="{{ config.SCHEDULING.GHOSTFOLIO_SYNC.INTERVAL_HOURS }}" min="0" placeholder="0 to run once">
-                        </div>
-                        <div class="form-group flex-1">
-                            <label>Specific Time (if Interval = 0)</label>
-                            <input type="time" id="GHOSTFOLIO_SYNC_TIME" class="form-control" value="{{ config.SCHEDULING.GHOSTFOLIO_SYNC.TIME }}">
-                        </div>
-                    </div>
-                    <button type="button" id="syncBtn" class="btn btn-primary mt-0" onclick="triggerGhostfolioSync()">⬇️ Sync Ghostfolio Data</button>
-                </div>
-
                 {% set q_engine = config.SCHEDULING.QUANT_ENGINE if config.SCHEDULING.QUANT_ENGINE else {} %}
                 {% set q_days = q_engine.DAYS if q_engine.DAYS else ['mon', 'tue', 'wed', 'thu', 'fri'] %}
 

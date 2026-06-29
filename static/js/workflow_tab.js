@@ -62,7 +62,7 @@
         return null;
     }
 
-    var statusColors = { green: "#43a047", amber: "#ffb300", red: "#ef5350", disabled: "#555", external: "#00bcd4" };
+    var statusColors = { green: "#43a047", amber: "#ffb300", red: "#ef5350", disabled: "#555", external: "#00bcd4", manual: "#ab47bc" };
 
     function formatDuration(sec) {
         if (!sec) return "—";

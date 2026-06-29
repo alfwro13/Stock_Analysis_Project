@@ -22,6 +22,7 @@ function _wfBuildMermaid(nodes, edges) {
     lines.push("classDef red fill:#7f1d1d,stroke:#ef5350,color:#ffebee;");
     lines.push("classDef disabled fill:#2a2a2a,stroke:#555,color:#888;");
     lines.push("classDef external fill:#004d54,stroke:#00bcd4,color:#b2ebf2;");
+    lines.push("classDef manual fill:#4a148c,stroke:#ab47bc,color:#f3e5f5;");
     return lines.join("\n");
 }
 
@@ -94,7 +95,7 @@ html,body{height:100%;background:#0e0e0e;color:#ccc;font-family:system-ui,sans-s
 .wf-legend{display:flex;align-items:center;gap:10px;font-size:11px}
 .wf-legend span{display:flex;align-items:center;gap:4px}
 .wf-dot{width:10px;height:10px;border-radius:50%;display:inline-block}
-.wf-dot-green{background:#43a047}.wf-dot-amber{background:#ffb300}.wf-dot-red{background:#ef5350}.wf-dot-grey{background:#555}.wf-dot-cyan{background:#00bcd4}
+.wf-dot-green{background:#43a047}.wf-dot-amber{background:#ffb300}.wf-dot-red{background:#ef5350}.wf-dot-grey{background:#555}.wf-dot-cyan{background:#00bcd4}.wf-dot-purple{background:#ab47bc}
 .wf-zoom{display:flex;align-items:center;gap:6px}
 .wf-zoom button{background:#222;border:1px solid #444;color:#ccc;padding:3px 9px;border-radius:4px;cursor:pointer;font-size:13px}
 .wf-zoom button:hover{background:#333}
@@ -134,6 +135,7 @@ html,body{height:100%;background:#0e0e0e;color:#ccc;font-family:system-ui,sans-s
       <span><span class="wf-dot wf-dot-red"></span>Failed</span>
       <span><span class="wf-dot wf-dot-grey"></span>Disabled</span>
       <span><span class="wf-dot wf-dot-cyan"></span>External</span>
+      <span><span class="wf-dot wf-dot-purple"></span>Manual entry</span>
     </div>
     <div class="wf-zoom">
       <button onclick="wfZoomIn()">+</button>

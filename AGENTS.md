@@ -243,6 +243,8 @@ Schema changes must go through `db_schema.py:init_db()` (new tables) and `db_sch
 
     **Before touching a large file:** read only the section you need (use `offset` and `limit` on the Read tool, or a targeted `grep`). If a file is so large that understanding one feature requires reading more than ~400 lines, flag it as [NEEDS REVIEW] for splitting rather than loading it wholesale.
 
+13. **Every subsystem must be visible in the Workflow Monitor.** When a new engine, page, or feature produces or consumes any data artifact already tracked in `scheduler_manifest.JOB_GRAPH` (or starts a new artifact chain other jobs will read), it must get a `JOB_GRAPH` entry in the same change — even if it isn't a scheduled job. Non-scheduled processes (manual data entry, external integrations) get a `non_job: True` or `category: "external"` entry with accurate `produces`/`consumes` so the graph shows where data actually originates. Don't leave this for a later audit pass — the Built-in Accounts subsystem (Trading/Pension/House) went unrepresented on the graph for several sessions after it was added before this was caught.
+
 ---
 
 ## Running the App

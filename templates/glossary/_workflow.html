@@ -13,6 +13,7 @@
                 <span class="term-title">Workflow Monitor</span>
                 <p>The app runs many background jobs automatically: downloading price data, training ML models, scanning for signals, generating briefings, running anomaly detection. These jobs do not run independently — they depend on each other in a specific order. The ML model needs price data to already be downloaded. The quant screener needs the ML scores to already exist. The morning briefing needs the screener to have run. If any job in this chain fails silently, everything downstream produces stale or empty results.</p>
                 <p>The <strong>Workflow Monitor</strong> (found in Settings → Workflow Monitor) makes this entire dependency chain visible as a flow-chart. Each job is a box connected to the jobs that must run before it — you can see at a glance which job feeds which. Each box is colour-coded by its current health, letting you immediately spot where in the pipeline something has gone wrong without trawling through log files.</p>
+                <p>Not every box on the graph is a scheduled job. Some data originates outside the scheduler entirely — an external source like Yahoo Finance, or a manual process like hand-entering Built-in Account transactions — and those still need to be shown so you can see where a downstream job's input actually comes from. <strong>Manual Account Entry</strong> feeds the <strong>Trading</strong>, <strong>Pension</strong>, and <strong>House</strong> Account boxes, which in turn feed the same downstream jobs as Ghostfolio Sync (for Trading) or the per-account <strong>Account Price Scraper</strong> job (for Pension/House).</p>
             </div>
 
             <div class="term-box">
@@ -22,6 +23,7 @@
                 <div class="rule border-left-orange"><strong>Amber:</strong> The job is mildly overdue, has never recorded a run since the app was installed, or is due to run soon. Not a crisis but worth checking if it stays amber.</div>
                 <div class="rule border-left-red"><strong>Red:</strong> The job either failed on its last attempt (an error was recorded) or is significantly overdue well beyond its normal schedule. This needs investigation — downstream jobs may be producing stale data.</div>
                 <div class="rule"><strong>Grey:</strong> The job is disabled in Settings. Downstream jobs that depend on it are flagged with a warning since they will read stale data.</div>
+                <div class="rule"><strong>Purple:</strong> Not a scheduled job at all — a manual data-entry process (e.g. Built-in Accounts). Always shown as active since there is no schedule to fall behind on.</div>
             </div>
 
             <div class="term-box">

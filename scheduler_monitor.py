@@ -1,7 +1,10 @@
 from collections import defaultdict
 from datetime import datetime, timezone
 
-from scheduler_manifest import JOB_GRAPH, _DYNAMIC_ETF_RE, _resolve_manifest, job_label
+from db_accounts import get_account
+from scheduler_manifest import JOB_GRAPH, _DYNAMIC_ETF_RE, _DYNAMIC_ACCOUNT_SCRAPER_RE, _resolve_manifest, job_label
+
+_ACCOUNT_TYPE_ARTIFACT = {"Pension": "pension_account_data", "House": "house_account_data"}
 
 _OVERLAP_BUFFER_MIN = 2
 _UNKNOWN_GAP_MIN = 30
@@ -123,6 +126,24 @@ def _build_node(job_id: str, meta: dict, job, run_row: dict) -> dict:
             "status_reason": "External data source — not a scheduled job",
             "settings_anchor": meta.get("settings_anchor"),
         }
+    if meta.get("non_job"):
+        return {
+            "id": job_id,
+            "label": meta["label"],
+            "category": "manual",
+            "engine": meta["engine"],
+            "produces": list(meta.get("produces", [])),
+            "consumes": list(meta.get("consumes", [])),
+            "enabled": True,
+            "last_run": None,
+            "last_status": None,
+            "avg_duration_sec": None,
+            "next_run": None,
+            "schedule": None,
+            "status": "manual",
+            "status_reason": "Manual data entry — not a scheduled job",
+            "settings_anchor": meta.get("settings_anchor"),
+        }
     enabled = job is not None
     schedule = None
     if enabled:
@@ -131,10 +152,18 @@ def _build_node(job_id: str, meta: dict, job, run_row: dict) -> dict:
             weekdays, minute_of_day = slot
             schedule = {"weekdays": sorted(weekdays), "minute_of_day": minute_of_day}
     label = meta["label"]
+    consumes = list(meta.get("consumes", []))
     if _DYNAMIC_ETF_RE.match(job_id):
         cfg_id = job_id.split("_")[2]
         phase = "pre-open" if job_id.endswith("pre_job") else "post-close"
         label = f"ETF Price Predictor #{cfg_id} ({phase})"
+    elif _DYNAMIC_ACCOUNT_SCRAPER_RE.match(job_id):
+        account_id = int(job_id.split("_")[2])
+        acc = get_account(account_id)
+        label = f"Account Price Scraper — {acc['name'] if acc else account_id}"
+        artifact = _ACCOUNT_TYPE_ARTIFACT.get(acc["account_type"] if acc else None)
+        if artifact:
+            consumes = [artifact]
     runs = run_row or {}
     next_run = None
     next_run_time = getattr(job, "next_run_time", None) if enabled else None
@@ -146,7 +175,7 @@ def _build_node(job_id: str, meta: dict, job, run_row: dict) -> dict:
         "category": meta["category"],
         "engine": meta["engine"],
         "produces": list(meta.get("produces", [])),
-        "consumes": list(meta.get("consumes", [])),
+        "consumes": consumes,
         "enabled": enabled,
         "last_run": runs.get("last_run"),
         "last_status": runs.get("last_status"),

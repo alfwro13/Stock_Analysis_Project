@@ -579,3 +579,100 @@ def test_backup_restore_engine_error_returns_500(client, confirm_token):
         )
     assert resp.status_code == 500, f"Expected 500, got {resp.status_code}"
     assert _json(resp).get("status") == "error"
+
+
+@pytest.mark.api
+def test_git_pull_flags_requirements_txt_change(client, confirm_token):
+    """POST /api/system/git-pull must flag requirements_changed when it appears in the pulled diff."""
+    import api_routes_system
+
+    def fake_run(cmd, **kwargs):
+        if cmd[:2] == ["git", "rev-parse"]:
+            return MagicMock(returncode=0, stdout="oldsha\n", stderr="")
+        if cmd[:2] == ["git", "pull"]:
+            return MagicMock(returncode=0, stdout="Updating oldsha..newsha\n", stderr="")
+        if cmd[:2] == ["git", "diff"]:
+            return MagicMock(returncode=0, stdout="requirements.txt\nmain.py\n", stderr="")
+        raise AssertionError(f"Unexpected subprocess call: {cmd}")
+
+    api_routes_system._requirements_changed_pending = False
+    with patch("api_routes_system.subprocess.run", side_effect=fake_run):
+        resp = client.post("/api/system/git-pull", headers={"X-Confirm-Token": confirm_token})
+    assert resp.status_code == 200
+    body = _json(resp)
+    assert body["requirements_changed"] is True
+    assert api_routes_system._requirements_changed_pending is True
+    api_routes_system._requirements_changed_pending = False
+
+
+@pytest.mark.api
+def test_git_pull_does_not_flag_unrelated_changes(client, confirm_token):
+    """POST /api/system/git-pull must not flag requirements_changed when requirements.txt wasn't touched."""
+    import api_routes_system
+
+    def fake_run(cmd, **kwargs):
+        if cmd[:2] == ["git", "rev-parse"]:
+            return MagicMock(returncode=0, stdout="oldsha\n", stderr="")
+        if cmd[:2] == ["git", "pull"]:
+            return MagicMock(returncode=0, stdout="Updating oldsha..newsha\n", stderr="")
+        if cmd[:2] == ["git", "diff"]:
+            return MagicMock(returncode=0, stdout="main.py\n", stderr="")
+        raise AssertionError(f"Unexpected subprocess call: {cmd}")
+
+    api_routes_system._requirements_changed_pending = False
+    with patch("api_routes_system.subprocess.run", side_effect=fake_run):
+        resp = client.post("/api/system/git-pull", headers={"X-Confirm-Token": confirm_token})
+    assert resp.status_code == 200
+    assert _json(resp)["requirements_changed"] is False
+    assert api_routes_system._requirements_changed_pending is False
+
+
+@pytest.mark.api
+def test_active_jobs_reports_requirements_changed_pending(client):
+    """GET /api/system/active-jobs must surface the pending pip-install flag."""
+    import api_routes_system
+
+    api_routes_system._requirements_changed_pending = True
+    resp = client.get("/api/system/active-jobs")
+    assert resp.status_code == 200
+    assert _json(resp)["requirements_changed_pending"] is True
+    api_routes_system._requirements_changed_pending = False
+
+
+def test_execute_restart_installs_pip_dependencies_when_pending():
+    """execute_restart() must run pip install before signalling shutdown when requirements.txt changed."""
+    import asyncio
+    import api_routes_system
+
+    api_routes_system._requirements_changed_pending = True
+    fake_pip_result = MagicMock(returncode=0, stdout="", stderr="")
+    with (
+        patch("api_routes_system.subprocess.run", return_value=fake_pip_result) as mock_run,
+        patch("api_routes_system.notify") as mock_notify,
+        patch("api_routes_system.asyncio.sleep", new=AsyncMock()),
+        patch("api_routes_system.os.kill"),
+    ):
+        asyncio.run(api_routes_system.execute_restart())
+
+    assert mock_run.call_args[0][0][:3] == [sys.executable, "-m", "pip"]
+    mock_notify.assert_called_once()
+    assert mock_notify.call_args[0][0] == "system_update_status"
+    assert api_routes_system._requirements_changed_pending is False
+
+
+def test_execute_restart_skips_pip_install_when_not_pending():
+    """execute_restart() must not touch pip when no requirements.txt change is pending."""
+    import asyncio
+    import api_routes_system
+
+    api_routes_system._requirements_changed_pending = False
+    with (
+        patch("api_routes_system.subprocess.run") as mock_run,
+        patch("api_routes_system.notify") as mock_notify,
+        patch("api_routes_system.asyncio.sleep", new=AsyncMock()),
+        patch("api_routes_system.os.kill"),
+    ):
+        asyncio.run(api_routes_system.execute_restart())
+
+    mock_run.assert_not_called()
+    mock_notify.assert_not_called()

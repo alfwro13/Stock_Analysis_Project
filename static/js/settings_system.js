@@ -148,6 +148,7 @@ async function refreshActiveJobs() {
     try {
         const resp = await fetch('/api/system/active-jobs', { cache: 'no-store' });
         const data = await resp.json();
+        document.getElementById('requirements-changed-banner')?.classList.toggle('d-none', !data.requirements_changed_pending);
         const el = document.getElementById('active-jobs-display');
         if (!el) return;
         if (!data.busy) {
@@ -303,6 +304,7 @@ async function gitPull() {
         const result = await response.json();
         if (response.ok) {
             setStatus('git-status-msg', 'success', result.message);
+            refreshActiveJobs();
         } else {
             setStatus('git-status-msg', 'error', result.message);
         }

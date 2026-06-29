@@ -427,6 +427,40 @@ class TestBuildWorkflowGraph:
         graph = build_workflow_graph()
         assert all(e["from"] != e["to"] for e in graph["edges"])
 
+    def test_trading_accounts_node_feeds_same_consumers_as_ghostfolio_sync(self):
+        graph = build_workflow_graph()
+        pairs = {(e["from"], e["to"], e["via"]) for e in graph["edges"]}
+        ghostfolio_consumers = {to for (frm, to, via) in pairs if frm == "ghostfolio_sync_job" and via == "portfolio"}
+        trading_consumers = {to for (frm, to, via) in pairs if frm == "trading_accounts_node" and via == "portfolio"}
+        assert ghostfolio_consumers
+        assert trading_consumers == ghostfolio_consumers
+
+    def test_manual_entry_feeds_trading_pension_house_nodes(self):
+        graph = build_workflow_graph()
+        pairs = {(e["from"], e["to"]) for e in graph["edges"]}
+        for target in ("trading_accounts_node", "pension_accounts_node", "house_accounts_node"):
+            assert ("manual_account_entry_source", target) in pairs
+
+    def test_manual_nodes_carry_manual_status(self):
+        graph = build_workflow_graph()
+        nodes = {n["id"]: n for n in graph["nodes"]}
+        for node_id in ("manual_account_entry_source", "trading_accounts_node", "pension_accounts_node", "house_accounts_node"):
+            assert nodes[node_id]["status"] == "manual"
+            assert nodes[node_id]["enabled"] is True
+
+    @pytest.mark.db
+    def test_pension_scraper_job_labelled_and_linked_to_pension_node(self):
+        from database import create_account, update_account
+        aid = create_account("ManifestPensionAcc", "GBP", account_type="Pension")
+        update_account(aid, scraper_url="http://example.test/x.html", scraper_selector="#price", scraper_enabled=True)
+        reload_scheduler()
+        graph = build_workflow_graph()
+        node = next(n for n in graph["nodes"] if n["id"] == f"account_scraper_{aid}_job")
+        assert node["label"] == "Account Price Scraper — ManifestPensionAcc"
+        assert node["consumes"] == ["pension_account_data"]
+        pairs = {(e["from"], e["to"]) for e in graph["edges"]}
+        assert ("pension_accounts_node", f"account_scraper_{aid}_job") in pairs
+
 
 class TestWorkflowConflicts:
     def test_backwards_ordering_flagged(self):

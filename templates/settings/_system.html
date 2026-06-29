@@ -585,8 +585,8 @@
             <div id="nc-status-msg"></div>
         </details>
 
-        <details class="settings-card">
-            <summary>👻 Ghostfolio Integration API</summary>
+        <details class="settings-card" id="ghostfolio-integration-card">
+            <summary>👻 Ghostfolio Integration</summary>
             <p class="settings-desc">Credentials are stored in <code>.env</code> and applied at runtime. Changes take effect immediately without a restart.</p>
             <div class="form-group">
                 <label>Ghostfolio Server URL</label>
@@ -598,6 +598,32 @@
             </div>
             <button type="button" class="btn btn-primary mt-0" onclick="saveGhostfolioSettings()">💾 Save Ghostfolio Credentials</button>
             <div id="ghostfolio-creds-msg"></div>
+
+            <div class="settings-panel mt-20">
+                <h4 class="settings-panel-header text-blue">🔄 Ghostfolio Sync</h4>
+                <div class="checkbox-group">
+                    <input type="checkbox" id="GHOSTFOLIO_SYNC_ENABLED" {% if config.SCHEDULING.GHOSTFOLIO_SYNC.ENABLED %}checked{% endif %}>
+                    <label for="GHOSTFOLIO_SYNC_ENABLED">Auto-sync portfolio</label>
+                </div>
+                <div class="flex-gap-15 mb-10">
+                    <div class="form-group flex-1">
+                        <label>Frequency</label>
+                        <select id="GHOSTFOLIO_SYNC_FREQ" class="form-select">
+                            <option value="mon-fri" {% if config.SCHEDULING.GHOSTFOLIO_SYNC.FREQUENCY == 'mon-fri' %}selected{% endif %}>Mon-Fri</option>
+                            <option value="*" {% if config.SCHEDULING.GHOSTFOLIO_SYNC.FREQUENCY == '*' %}selected{% endif %}>Every Day</option>
+                        </select>
+                    </div>
+                    <div class="form-group flex-1">
+                        <label>Interval (Hours)</label>
+                        <input type="number" id="GHOSTFOLIO_SYNC_INTERVAL" class="form-control" value="{{ config.SCHEDULING.GHOSTFOLIO_SYNC.INTERVAL_HOURS }}" min="0" placeholder="0 to run once">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label>Specific Time (if Interval = 0)</label>
+                        <input type="time" id="GHOSTFOLIO_SYNC_TIME" class="form-control" value="{{ config.SCHEDULING.GHOSTFOLIO_SYNC.TIME }}">
+                    </div>
+                </div>
+                <button type="button" id="syncBtn" class="btn btn-primary mt-0" onclick="triggerGhostfolioSync()">⬇️ Sync Ghostfolio Data</button>
+            </div>
 
             <div class="settings-panel mt-20">
                 <h4 class="settings-panel-header text-blue">Opt-In Account Syncing</h4>
@@ -939,6 +965,8 @@
         <div class="system-updates-panel">
             <h3 class="text-orange mb-5 mt-0">🔄 System Updates &amp; Power</h3>
             <p class="text-muted text-sm mt-0">Pull the latest code from the main GitHub repository, or manually restart the background service.</p>
+
+            <div id="requirements-changed-banner" class="box-warning d-none mb-15">⚠️ The last pull updated <code>requirements.txt</code>. Dependencies will be reinstalled automatically before the service restarts.</div>
 
             <div id="active-jobs-panel" class="mt-10 mb-15">
                 <div id="active-jobs-display">

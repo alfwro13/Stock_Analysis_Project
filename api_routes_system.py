@@ -5,6 +5,7 @@ import os
 import shutil
 import signal
 import subprocess
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, List, Optional
@@ -25,6 +26,7 @@ from config import (
 from database import get_connection
 from log_config import configure_file_logging as _configure_file_logging
 from market_pulse import get_cached_pulse_from_db, fetch_and_save_pulse
+from notification_engine import notify
 from scheduler_engine import (
     build_workflow_graph, detect_workflow_conflicts, get_all_job_last_runs,
     reload_scheduler, run_xray_risk_cache_job, CONFIG_KEY_TO_JOB,
@@ -226,7 +228,25 @@ class SettingsConfig(BaseModel):
     FILE_LOGGING: Optional[FileLoggingConfig] = None
 
 
+_requirements_changed_pending = False
+
+
 async def execute_restart():
+    global _requirements_changed_pending
+    if _requirements_changed_pending:
+        try:
+            result = subprocess.run(
+                [sys.executable, "-m", "pip", "install", "-r", str(BASE_DIR / "requirements.txt")],
+                capture_output=True, text=True, timeout=300, cwd=str(BASE_DIR),
+            )
+            if result.returncode == 0:
+                notify("system_update_status", "Success", "requirements.txt changed on the last pull — dependencies were reinstalled before restart.")
+            else:
+                notify("system_update_status", "Error", f"pip install failed before restart:\n{result.stderr[-2000:]}", level="error")
+        except Exception as e:
+            logger.error("pip install before restart failed: %s", e)
+            notify("system_update_status", "Error", f"pip install before restart failed: {e}", level="error")
+        _requirements_changed_pending = False
     await asyncio.sleep(2)
     os.kill(os.getpid(), signal.SIGTERM)
 
@@ -612,12 +632,19 @@ async def get_system_checks(request: Request):
 
 @system_router.post("/system/git-pull", dependencies=[Depends(require_confirm_token)])
 async def git_pull_update():
+    global _requirements_changed_pending
     try:
+        old_head = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, timeout=15, cwd=str(BASE_DIR)).stdout.strip()
         result = subprocess.run(["git", "pull"], capture_output=True, text=True, timeout=15, cwd=str(BASE_DIR))
-        if result.returncode == 0:
-            return JSONResponse(content={"status": "success", "message": f"Update successful. Please restart the service if required.\n\n{result.stdout}"})
-        else:
+        if result.returncode != 0:
             return JSONResponse(status_code=500, content={"status": "error", "message": f"Git Pull Failed:\n{result.stderr}"})
+        diff = subprocess.run(["git", "diff", "--name-only", old_head, "HEAD"], capture_output=True, text=True, timeout=15, cwd=str(BASE_DIR))
+        requirements_changed = "requirements.txt" in diff.stdout.splitlines()
+        _requirements_changed_pending = _requirements_changed_pending or requirements_changed
+        message = f"Update successful. Please restart the service if required.\n\n{result.stdout}"
+        if requirements_changed:
+            message += "\n\n⚠️ requirements.txt changed — dependencies will be reinstalled automatically before the next restart."
+        return JSONResponse(content={"status": "success", "message": message, "requirements_changed": requirements_changed})
     except Exception as e:
         return _error_500(e)
 
@@ -626,7 +653,7 @@ async def git_pull_update():
 async def get_active_jobs_status():
     from scheduler_engine import get_active_jobs
     jobs = get_active_jobs()
-    return JSONResponse(content={"status": "success", "active_jobs": jobs, "busy": bool(jobs)})
+    return JSONResponse(content={"status": "success", "active_jobs": jobs, "busy": bool(jobs), "requirements_changed_pending": _requirements_changed_pending})
 
 
 @system_router.post("/system/restart", dependencies=[Depends(require_confirm_token)])

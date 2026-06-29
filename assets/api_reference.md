@@ -1388,6 +1388,8 @@ Returns the scheduled-job dependency graph and detected scheduling conflicts for
 }
 ```
 
+Most nodes are scheduled jobs (`status` of `green`/`amber`/`red`/`disabled`). Two `status` values represent non-job processes that are always `enabled: true` with no `schedule`: `external` (a data source outside the scheduler, e.g. Yahoo Finance) and `manual` (a hand-entered data source, e.g. Built-in Accounts' Manual Account Entry / Trading / Pension / House nodes).
+
 `status` per node is one of `green` / `amber` / `red` / `disabled`. `conflicts[].type` is one of `overlap_risk`, `backwards_ordering`, `disabled_upstream`, `stale_never_run`, `last_run_error`; `severity` is `critical` / `warning` / `info`.
 
 ---
@@ -1587,7 +1589,7 @@ Returns the current list of active system-health warnings and errors detected by
 
 ### `POST /api/system/git-pull`
 
-Pulls the latest code from the Git remote. Returns the git output.
+Pulls the latest code from the Git remote. Returns the git output. Also diffs the pre-pull and post-pull commits to detect whether `requirements.txt` changed; if so, `requirements_changed` is `true` and a pending flag is set so the next restart (see below) reinstalls dependencies automatically before shutting down.
 
 **Request body:** none
 
@@ -1596,7 +1598,8 @@ Pulls the latest code from the Git remote. Returns the git output.
 ```json
 {
   "status": "success",
-  "message": "Update successful. Please restart the service if required.\n\nAlready up to date."
+  "message": "Update successful. Please restart the service if required.\n\nAlready up to date.",
+  "requirements_changed": false
 }
 ```
 
@@ -1615,17 +1618,18 @@ Returns a snapshot of all scheduler jobs that are currently executing. The regis
   "active_jobs": {
     "Global Model Training (Walk-Forward)": "2026-06-10T14:32:01",
     "Daily Quant Screener (Portfolio & Watchlist)": "2026-06-10T14:28:45"
-  }
+  },
+  "requirements_changed_pending": false
 }
 ```
 
-`active_jobs` is an empty object `{}` when the server is idle. Timestamps are UTC ISO-8601 strings representing when each job started. The Settings page polls this endpoint every 30 seconds to display a live status indicator.
+`active_jobs` is an empty object `{}` when the server is idle. Timestamps are UTC ISO-8601 strings representing when each job started. `requirements_changed_pending` mirrors the flag set by the last `POST /api/system/git-pull` — the Settings page polls this endpoint every 30 seconds to display a live status indicator and the "dependencies will be reinstalled on restart" warning banner.
 
 ---
 
 ### `POST /api/system/restart`
 
-Sends a `SIGTERM` to the running process after a 2-second delay, triggering a graceful shutdown. The process manager (e.g. systemd or Docker) is expected to restart it automatically.
+Sends a `SIGTERM` to the running process after a 2-second delay, triggering a graceful shutdown. The process manager (e.g. systemd or Docker) is expected to restart it automatically. If the last git pull changed `requirements.txt`, runs `pip install -r requirements.txt` in the current interpreter's environment first and dispatches a `system_update_status` notification with the outcome.
 
 Returns HTTP **409** if any scheduler jobs are currently running (see `GET /api/system/active-jobs`), with a message listing the active processes. In that case the restart is not initiated.
 
