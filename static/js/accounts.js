@@ -48,6 +48,11 @@ function _accountCashLine(acc) {
     if (acc.account_type === 'Pension') {
         return `${label}: ${_formatThousands(acc.current_balance ?? acc.initial_cash)} ${_escapeHtml(acc.currency)}`;
     }
+    if (acc.account_type === 'House') {
+        const current = acc.current_balance ?? acc.initial_cash;
+        const gain = acc.initial_cash ? ((current - acc.initial_cash) / acc.initial_cash) * 100 : 0;
+        return `${label}: ${_formatThousands(acc.initial_cash)} ${_escapeHtml(acc.currency)} &middot; Current Estimate: ${_formatThousands(current)} ${_escapeHtml(acc.currency)} &middot; Value gain: ${gain.toFixed(2)}%`;
+    }
     return `${label}: ${acc.initial_cash} ${_escapeHtml(acc.currency)}`;
 }
 
@@ -94,7 +99,7 @@ function _accountCardHtml(acc) {
             <div class="d-flex justify-content-between align-items-start">
                 <div>
                     <h4 class="mb-0">${_escapeHtml(acc.name)} <span class="account-badge">${_escapeHtml(acc.account_type)}</span></h4>
-                    <p class="text-muted small mb-0">${_accountStatsLine(acc)}</p>
+                    <p class="text-muted account-stats-line mb-0">${_accountStatsLine(acc)}</p>
                     ${acc.note ? `<p class="text-secondary small mb-0">${_escapeHtml(acc.note)}</p>` : ''}
                 </div>
                 <div class="d-flex gap-2">

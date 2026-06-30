@@ -136,7 +136,7 @@ async def api_list_accounts():
             acc["scraper_last_status"] = job["last_status"] if job else None
         else:
             acc["scraper_last_status"] = None
-        if acc["account_type"] == "Pension":
+        if acc["account_type"] in ("Pension", "House"):
             acc["current_balance"] = account_summary(acc["id"]).get("equity_value", 0.0)
         elif acc["account_type"] == "Trading":
             summary = account_summary(acc["id"])

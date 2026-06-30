@@ -383,6 +383,7 @@ table.dataTable.display tbody tr.even > .sorting_1, table.dataTable.order-column
 .guide-card:hover { transform: translateY(-5px); border-top-color: #00ffcc; }
 .guide-card h4 { color: #00ffcc; margin-top: 0; margin-bottom: 10px; font-size: var(--font-size-h3); }
 .guide-card p { color: #ccc; font-size: var(--font-size-body); line-height: 1.5; margin-bottom: 15px; }
+.guide-card .account-stats-line { font-size: var(--font-size-h3); }
 .guide-card .setup { background: #121212; padding: 12px; border-radius: 4px; border-left: 3px solid #4da6ff; font-family: monospace; font-size: 13px; color: #e0e0e0; }
 .guide-card .why-use-it { font-style: italic; color: #aaa; font-size: 13px; margin-top: 10px; border-top: 1px dashed #333; padding-top: 10px; }
 /* --- DIVIDEND HARVEST REPORT STYLES --- */
