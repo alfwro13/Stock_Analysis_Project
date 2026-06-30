@@ -78,6 +78,7 @@
 
 {% include "partials/_accounts_txn_modal.html" %}
 {% include "partials/_account_scraper_modal.html" %}
+{% include "partials/_account_autotopup_modal.html" %}
 
 <div class="modal fade" id="csvImportModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog">
@@ -110,4 +111,5 @@
 </script>
 <script src="/static/js/accounts.js?v={{ css_version }}"></script>
 <script src="/static/js/account_scraper.js?v={{ css_version }}"></script>
+<script src="/static/js/account_autotopup.js?v={{ css_version }}"></script>
 {% endblock %}

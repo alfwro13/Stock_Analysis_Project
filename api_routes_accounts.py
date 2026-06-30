@@ -7,9 +7,10 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 
 from accounts_engine import (
-    _ticker_known, account_summary, create_transfer, delete_transaction_with_pair,
-    export_transactions_csv, filter_value_history_by_period, fx_rate_on_date,
-    import_csv_activities, pension_units_as_of, reconcile_cash, record_pension_contribution,
+    _ticker_known, account_summary, confirm_autotopup, create_transfer,
+    delete_transaction_with_pair, dismiss_autotopup, export_transactions_csv,
+    filter_value_history_by_period, fx_rate_on_date, import_csv_activities,
+    pension_units_as_of, reconcile_cash, record_pension_contribution,
     record_pension_fee, resnapshot_account, resolve_watchlist_metadata,
     sync_house_purchase_price, sync_pension_opening_balance, watchlist_summary,
 )
@@ -32,11 +33,12 @@ from database import (
     get_watchlist_items,
     add_watchlist_item,
     delete_watchlist_items,
+    get_unresolved_pending_topups,
 )
 from profile_engine import update_single_profile
 from scheduler_engine import (
-    get_all_job_last_runs, register_account_scraper_job, run_account_value_snapshot,
-    unregister_account_scraper_job,
+    get_all_job_last_runs, register_account_scraper_job, register_account_topup_job,
+    run_account_value_snapshot, unregister_account_scraper_job, unregister_account_topup_job,
 )
 from utils import normalize_ticker
 from yahoo_engine import yahoo_engine
@@ -103,6 +105,25 @@ class ScraperTestBody(BaseModel):
     headers: dict = {}
 
 
+class AutoTopupConfigBody(BaseModel):
+    enabled: bool = False
+    amount: Optional[float] = None
+    frequency: Optional[str] = None
+    day_of_month: Optional[int] = None
+    day_of_week: Optional[int] = None
+    notes: Optional[str] = None
+
+
+class AutoTopupConfirmBody(BaseModel):
+    pending_id: int
+    amount: float
+    txn_date: str
+
+
+class AutoTopupDismissBody(BaseModel):
+    pending_id: int
+
+
 class PriceCsvImportBody(BaseModel):
     csv_text: str
 
@@ -143,6 +164,7 @@ async def api_list_accounts():
             acc["holdings_count"] = summary.get("holdings_count", 0)
             acc["equity_value"] = summary.get("equity_value", 0.0)
             acc["cash_balance"] = summary.get("cash_balance", 0.0)
+            acc["pending_topups"] = get_unresolved_pending_topups(acc["id"])
         elif acc["account_type"] == "Watchlist":
             breakdown = watchlist_summary(acc["id"])
             acc["watchlist_count"] = breakdown["count"]
@@ -612,6 +634,86 @@ def _require_pension_account(account_id: int):
     if acc["account_type"] != "Pension":
         return None, JSONResponse(status_code=400, content={"status": "error", "message": "This action is only available on Pension accounts."})
     return acc, None
+
+
+def _require_trading_account(account_id: int):
+    acc = get_account(account_id)
+    if acc is None:
+        return None, JSONResponse(status_code=404, content={"status": "error", "message": "Account not found."})
+    if acc["account_type"] != "Trading":
+        return None, JSONResponse(status_code=400, content={"status": "error", "message": "Auto Top-up is only available on Trading accounts."})
+    return acc, None
+
+
+_AUTOTOPUP_FREQUENCIES = frozenset({"monthly", "weekly"})
+
+
+@accounts_router.put("/accounts/{account_id}/autotopup-config")
+@limiter.limit("30/minute")
+async def api_update_autotopup_config(request: Request, account_id: int, body: AutoTopupConfigBody):
+    try:
+        acc, error = _require_trading_account(account_id)
+        if error:
+            return error
+        if body.enabled:
+            if not body.amount or body.amount <= 0:
+                return JSONResponse(status_code=400, content={"status": "error", "message": "amount must be greater than 0."})
+            if body.frequency not in _AUTOTOPUP_FREQUENCIES:
+                return JSONResponse(status_code=400, content={"status": "error", "message": "frequency must be 'monthly' or 'weekly'."})
+            if body.frequency == "monthly" and not (body.day_of_month and 1 <= body.day_of_month <= 31):
+                return JSONResponse(status_code=400, content={"status": "error", "message": "day_of_month must be between 1 and 31."})
+            if body.frequency == "weekly" and not (body.day_of_week and 1 <= body.day_of_week <= 5):
+                return JSONResponse(status_code=400, content={"status": "error", "message": "day_of_week must be between 1 (Mon) and 5 (Fri)."})
+        ok = update_account(
+            account_id,
+            autotopup_enabled=body.enabled,
+            autotopup_amount=body.amount,
+            autotopup_frequency=body.frequency,
+            autotopup_day_of_month=body.day_of_month,
+            autotopup_day_of_week=body.day_of_week,
+            autotopup_notes=body.notes,
+        )
+        if not ok:
+            return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to save Auto Top-up config."})
+        unregister_account_topup_job(account_id)
+        if body.enabled:
+            register_account_topup_job(get_account(account_id))
+        return JSONResponse(content={"status": "success", "message": "Auto Top-up configuration saved."})
+    except Exception as e:
+        logger.error("api_update_autotopup_config account=%s failed: %s", account_id, e)
+        return _error_500(e)
+
+
+@accounts_router.post("/accounts/{account_id}/autotopup/confirm")
+@limiter.limit("30/minute")
+async def api_confirm_autotopup(request: Request, account_id: int, body: AutoTopupConfirmBody):
+    try:
+        _acc, error = _require_trading_account(account_id)
+        if error:
+            return error
+        result = confirm_autotopup(account_id, body.pending_id, body.amount, body.txn_date)
+        if "error" in result:
+            return JSONResponse(status_code=400, content={"status": "error", "message": result["error"]})
+        return JSONResponse(content={"status": "success", "message": "Top-up confirmed.", "txn_id": result["txn_id"]})
+    except Exception as e:
+        logger.error("api_confirm_autotopup account=%s failed: %s", account_id, e)
+        return _error_500(e)
+
+
+@accounts_router.post("/accounts/{account_id}/autotopup/dismiss")
+@limiter.limit("30/minute")
+async def api_dismiss_autotopup(request: Request, account_id: int, body: AutoTopupDismissBody):
+    try:
+        _acc, error = _require_trading_account(account_id)
+        if error:
+            return error
+        result = dismiss_autotopup(account_id, body.pending_id)
+        if "error" in result:
+            return JSONResponse(status_code=400, content={"status": "error", "message": result["error"]})
+        return JSONResponse(content={"status": "success", "message": "Top-up dismissed."})
+    except Exception as e:
+        logger.error("api_dismiss_autotopup account=%s failed: %s", account_id, e)
+        return _error_500(e)
 
 
 @accounts_router.put("/accounts/{account_id}/scraper-config")

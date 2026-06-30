@@ -928,6 +928,72 @@ def unregister_account_scraper_job(account_id: int) -> None:
         pass
 
 
+def _run_account_topup_job(account_id: int) -> None:
+    job_id = f"account_autotopup_{account_id}_job"
+    acc = get_account(account_id)
+    job_name = f"Account Auto Top-up — {acc['name'] if acc else account_id}"
+    _mark_job_started(job_name)
+    try:
+        if not acc or not acc.get("autotopup_enabled"):
+            return
+        from database import create_pending_topup
+        today = datetime.now(timezone.utc).date().isoformat()
+        pending_id = create_pending_topup(account_id, today, acc["autotopup_amount"])
+        if pending_id is None:
+            notify("account_autotopup_status", "Error", f"{job_name}: failed to record pending top-up.", level="error")
+            return
+        notify("account_autotopup_status", "Success",
+               f"{job_name}: {acc['autotopup_amount']} {acc['currency']} due — confirm on the Accounts page.",
+               level="info")
+    except Exception as e:
+        logger.error("Account Auto Top-up job %s failed: %s", job_id, e)
+        notify("account_autotopup_status", "Error", f"{job_name} failed: {e}", level="error")
+    finally:
+        _mark_job_done(job_name)
+        record_job_run(job_id)
+
+
+_AUTOTOPUP_WEEKDAY_NAMES = {1: "mon", 2: "tue", 3: "wed", 4: "thu", 5: "fri"}
+
+
+def register_account_topup_job(account: dict) -> None:
+    if not account.get("autotopup_enabled") or not account.get("autotopup_amount"):
+        return
+    account_id = account["id"]
+    try:
+        import time_engine
+        frequency = account.get("autotopup_frequency")
+        if frequency == "monthly":
+            day = int(account["autotopup_day_of_month"])
+            trigger = CronTrigger(day=day, hour=8, minute=0, timezone=time_engine.get_user_tz())
+        elif frequency == "weekly":
+            day_name = _AUTOTOPUP_WEEKDAY_NAMES[int(account["autotopup_day_of_week"])]
+            trigger = CronTrigger(day_of_week=day_name, hour=8, minute=0, timezone=time_engine.get_user_tz())
+        else:
+            logger.error("Account Auto Top-up: unknown frequency %r for account %s", frequency, account_id)
+            return
+        scheduler.add_job(
+            _run_account_topup_job,
+            trigger,
+            id=f"account_autotopup_{account_id}_job",
+            kwargs={"account_id": account_id},
+            replace_existing=True,
+            misfire_grace_time=300,
+        )
+        logger.info("Account Auto Top-up job registered for account %s (%s).", account_id, frequency)
+    except Exception as e:
+        logger.error("Failed to register Account Auto Top-up job for account %s: %s", account_id, e)
+
+
+def unregister_account_topup_job(account_id: int) -> None:
+    """Remove the Auto Top-up job for a given account. Silently ignores a missing job."""
+    from apscheduler.jobstores.base import JobLookupError
+    try:
+        scheduler.remove_job(f"account_autotopup_{account_id}_job")
+    except (JobLookupError, Exception):
+        pass
+
+
 def run_forensic_quarterly_fetch_job():
     # GUI name: "Forensic Quarterly Data Fetch". Canonical scheduled-job name lives in scheduler_engine.JOB_GRAPH.
     import json

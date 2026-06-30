@@ -1379,3 +1379,186 @@ def test_update_account_rejects_changing_account_type_between_real_types(client)
 
     import database as _db
     _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_autotopup_config_rejects_non_trading_account(client):
+    account_id = _create_account(client, account_type="House")
+    resp = client.put(f"/api/accounts/{account_id}/autotopup-config", json={
+        "enabled": True, "amount": 100.0, "frequency": "monthly", "day_of_month": 26,
+    })
+    assert resp.status_code == 400
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_autotopup_config_validates_required_fields_when_enabling(client):
+    account_id = _create_account(client)
+    resp = client.put(f"/api/accounts/{account_id}/autotopup-config", json={"enabled": True})
+    assert resp.status_code == 400
+
+    resp = client.put(f"/api/accounts/{account_id}/autotopup-config", json={
+        "enabled": True, "amount": 50.0, "frequency": "weekly", "day_of_week": 6,
+    })
+    assert resp.status_code == 400
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_autotopup_config_save_registers_and_unregister_disable(client):
+    account_id = _create_account(client)
+    resp = client.put(f"/api/accounts/{account_id}/autotopup-config", json={
+        "enabled": True, "amount": 300.0, "frequency": "monthly", "day_of_month": 26,
+    })
+    assert resp.status_code == 200
+
+    import scheduler_engine
+    live_ids = {j.id for j in scheduler_engine.scheduler.get_jobs()}
+    assert f"account_autotopup_{account_id}_job" in live_ids
+
+    resp = client.put(f"/api/accounts/{account_id}/autotopup-config", json={"enabled": False})
+    assert resp.status_code == 200
+    live_ids = {j.id for j in scheduler_engine.scheduler.get_jobs()}
+    assert f"account_autotopup_{account_id}_job" not in live_ids
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_autotopup_job_runner_creates_pending_not_a_transaction(client):
+    """Direct runner-level test per AGENTS.md — exercising only the engine wouldn't catch a
+    wiring bug in the job function itself. notify() is mocked, same as
+    test_run_account_value_snapshot_notifies_on_success_and_failure, so this doesn't fire a real
+    Nextcloud message — account_autotopup_status defaults to nextcloud_talk=True."""
+    account_id = _create_account(client, initial_cash=500.0)
+    client.put(f"/api/accounts/{account_id}/autotopup-config", json={
+        "enabled": True, "amount": 200.0, "frequency": "monthly", "day_of_month": 26,
+    })
+
+    import scheduler_jobs
+    with patch("scheduler_jobs.notify"):
+        scheduler_jobs._run_account_topup_job(account_id)
+
+    import database as _db
+    pending = _db.get_unresolved_pending_topups(account_id)
+    assert len(pending) == 1
+    assert pending[0]["expected_amount"] == 200.0
+
+    from accounts_engine import account_summary
+    assert account_summary(account_id)["cash_balance"] == 500.0   # unchanged until confirmed
+
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_autotopup_confirm_posts_cash_transaction_and_updates_balance(client):
+    account_id = _create_account(client, initial_cash=1000.0)
+    import database as _db
+    pending_id = _db.create_pending_topup(account_id, "2026-06-26", 250.0)
+
+    resp = client.post(f"/api/accounts/{account_id}/autotopup/confirm", json={
+        "pending_id": pending_id, "amount": 252.0, "txn_date": "2026-06-27",
+    })
+    assert resp.status_code == 200
+    txn_id = _json(resp)["txn_id"]
+
+    from accounts_engine import account_summary
+    assert account_summary(account_id)["cash_balance"] == 1252.0
+
+    pending = _db.get_pending_topup(pending_id)
+    assert pending["status"] == "confirmed"
+    assert pending["txn_id"] == txn_id
+    assert pending["confirmed_amount"] == 252.0
+
+    assert _db.get_unresolved_pending_topups(account_id) == []
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_autotopup_confirm_rejects_already_resolved_pending(client):
+    account_id = _create_account(client)
+    import database as _db
+    pending_id = _db.create_pending_topup(account_id, "2026-06-26", 100.0)
+    client.post(f"/api/accounts/{account_id}/autotopup/dismiss", json={"pending_id": pending_id})
+
+    resp = client.post(f"/api/accounts/{account_id}/autotopup/confirm", json={
+        "pending_id": pending_id, "amount": 100.0, "txn_date": "2026-06-27",
+    })
+    assert resp.status_code == 400
+
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_autotopup_confirm_rejects_pending_id_belonging_to_another_account(client):
+    """A pending row created for one account must not be confirmable/dismissable through a
+    different account's URL — the route's account_id must be cross-checked, not just used for
+    the Trading-type gate."""
+    account_a = _create_account(client, initial_cash=0.0)
+    account_b = _create_account(client, initial_cash=0.0)
+    import database as _db
+    pending_id = _db.create_pending_topup(account_a, "2026-06-26", 100.0)
+
+    resp = client.post(f"/api/accounts/{account_b}/autotopup/confirm", json={
+        "pending_id": pending_id, "amount": 100.0, "txn_date": "2026-06-27",
+    })
+    assert resp.status_code == 400
+
+    resp = client.post(f"/api/accounts/{account_b}/autotopup/dismiss", json={"pending_id": pending_id})
+    assert resp.status_code == 400
+
+    assert _db.get_pending_topup(pending_id)["status"] == "pending"
+
+    _db.soft_delete_account(account_a)
+    _db.soft_delete_account(account_b)
+
+
+@pytest.mark.api
+def test_autotopup_dismiss_does_not_post_a_transaction(client):
+    account_id = _create_account(client, initial_cash=1000.0)
+    import database as _db
+    pending_id = _db.create_pending_topup(account_id, "2026-06-26", 250.0)
+
+    resp = client.post(f"/api/accounts/{account_id}/autotopup/dismiss", json={"pending_id": pending_id})
+    assert resp.status_code == 200
+
+    from accounts_engine import account_summary
+    assert account_summary(account_id)["cash_balance"] == 1000.0
+    assert _db.get_pending_topup(pending_id)["status"] == "dismissed"
+
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_autotopup_pending_topups_stack_and_resolve_independently(client):
+    account_id = _create_account(client)
+    import database as _db
+    pid1 = _db.create_pending_topup(account_id, "2026-05-26", 100.0)
+    pid2 = _db.create_pending_topup(account_id, "2026-06-26", 100.0)
+
+    unresolved = _db.get_unresolved_pending_topups(account_id)
+    assert [p["id"] for p in unresolved] == [pid1, pid2]   # oldest first
+
+    client.post(f"/api/accounts/{account_id}/autotopup/dismiss", json={"pending_id": pid1})
+    unresolved = _db.get_unresolved_pending_topups(account_id)
+    assert [p["id"] for p in unresolved] == [pid2]
+
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_list_accounts_includes_pending_topups_for_trading(client):
+    account_id = _create_account(client)
+    import database as _db
+    _db.create_pending_topup(account_id, "2026-06-26", 100.0)
+
+    resp = client.get("/api/accounts")
+    acc = next(a for a in _json(resp)["accounts"] if a["id"] == account_id)
+    assert len(acc["pending_topups"]) == 1
+
+    _db.soft_delete_account(account_id)

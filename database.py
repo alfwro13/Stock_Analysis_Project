@@ -101,6 +101,10 @@ from db_accounts import (  # noqa: E402
     remove_watchlist_ticker,
     get_watchlist_tickers,
     get_all_account_tickers,
+    create_pending_topup,
+    get_unresolved_pending_topups,
+    get_pending_topup,
+    resolve_pending_topup,
 )
 
 __all__ = [
@@ -149,4 +153,8 @@ __all__ = [
     "remove_watchlist_ticker",
     "get_watchlist_tickers",
     "get_all_account_tickers",
+    "create_pending_topup",
+    "get_unresolved_pending_topups",
+    "get_pending_topup",
+    "resolve_pending_topup",
 ]

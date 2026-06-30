@@ -17,7 +17,28 @@
     <a href="/accounts" class="btn btn-outline-secondary btn-sm">&#8592; Back to Accounts</a>
     <button type="button" class="btn btn-primary btn-sm" onclick="openTxnModal({{ account.id }})">+ Add Transaction</button>
     <button type="button" class="btn btn-outline-secondary btn-sm" onclick="openReconcileModal({{ account.id }})">&#128260; Reconcile</button>
+    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="openAutoTopupModal({{ account.id }}, window.CURRENT_ACCOUNT)">&#9200; Auto Top-up</button>
 </div>
+
+{% for p in pending_topups %}
+<div class="availability-banner no-data" id="autotopup-pending-{{ p.id }}">
+    <strong>&#9888; Auto Top-up due — confirm payment received</strong>
+    <p class="mb-2">Scheduled for {{ p.scheduled_date }}, expected {{ "%.2f"|format(p.expected_amount) }} {{ account.currency }}. Direct debits often land a day or two later (weekends/holidays) — adjust the amount/date below to match what actually arrived, then confirm.</p>
+    <div class="d-flex align-items-end gap-2 flex-wrap">
+        <div class="form-group mb-0">
+            <label for="autotopup-confirm-amount-{{ p.id }}">Amount</label>
+            <input type="number" id="autotopup-confirm-amount-{{ p.id }}" step="0.01" value="{{ p.expected_amount }}">
+        </div>
+        <div class="form-group mb-0">
+            <label for="autotopup-confirm-date-{{ p.id }}">Date Received</label>
+            <input type="date" id="autotopup-confirm-date-{{ p.id }}" value="{{ p.scheduled_date }}">
+        </div>
+        <button type="button" class="btn btn-primary btn-sm" onclick="confirmAutotopup({{ account.id }}, {{ p.id }})">Confirm Payment</button>
+        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="dismissAutotopup({{ account.id }}, {{ p.id }})">Dismiss</button>
+    </div>
+    <div id="autotopup-confirm-status-{{ p.id }}" class="status-msg-sm mt-2"></div>
+</div>
+{% endfor %}
 
 {# ── Account value chart ── #}
 <div class="sentiment-module module-cyan sentiment-module--spaced">
@@ -225,6 +246,7 @@
 
 {% include "partials/_accounts_txn_modal.html" %}
 {% include "partials/_account_scraper_modal.html" %}
+{% include "partials/_account_autotopup_modal.html" %}
 {% include "partials/_delete_account_modal.html" %}
 {% include "partials/_reconcile_cash_modal.html" %}
 {% endblock %}
@@ -241,6 +263,7 @@
 </script>
 <script src="/static/js/accounts.js?v={{ css_version }}"></script>
 <script src="/static/js/account_scraper.js?v={{ css_version }}"></script>
+<script src="/static/js/account_autotopup.js?v={{ css_version }}"></script>
 <script src="/static/js/account_detail.js?v={{ css_version }}"></script>
 <script src="/static/js/account_danger_zone.js?v={{ css_version }}"></script>
 {% endblock %}

@@ -77,6 +77,8 @@ _ALLOWED_ACCOUNT_COLUMNS = frozenset({
     "scraper_url", "scraper_selector", "scraper_headers", "scrape_time", "scraper_enabled",
     "pension_start_date", "opening_balance_units", "opening_balance_txn_id",
     "pension_ticker_label",
+    "autotopup_enabled", "autotopup_amount", "autotopup_frequency",
+    "autotopup_day_of_month", "autotopup_day_of_week", "autotopup_notes",
 })
 
 
@@ -517,6 +519,90 @@ def get_all_account_tickers() -> list:
     except Exception as e:
         logger.error("Failed to get all account tickers: %s", e)
         return []
+    finally:
+        if conn:
+            conn.close()
+
+
+def create_pending_topup(account_id: int, scheduled_date: str, expected_amount: float) -> Optional[int]:
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO account_autotopup_pending (account_id, scheduled_date, expected_amount) VALUES (?, ?, ?)",
+            (account_id, scheduled_date, expected_amount)
+        )
+        conn.commit()
+        return cursor.lastrowid
+    except Exception as e:
+        logger.error("Failed to create pending top-up for account %s: %s", account_id, e)
+        return None
+    finally:
+        if conn:
+            conn.close()
+
+
+def get_unresolved_pending_topups(account_id: Optional[int] = None) -> list:
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        if account_id is None:
+            cursor.execute(
+                "SELECT * FROM account_autotopup_pending WHERE status = 'pending' ORDER BY scheduled_date"
+            )
+        else:
+            cursor.execute(
+                "SELECT * FROM account_autotopup_pending WHERE status = 'pending' AND account_id = ? ORDER BY scheduled_date",
+                (account_id,)
+            )
+        return [dict(row) for row in cursor.fetchall()]
+    except Exception as e:
+        logger.error("Failed to get unresolved pending top-ups: %s", e)
+        return []
+    finally:
+        if conn:
+            conn.close()
+
+
+def get_pending_topup(pending_id: int) -> Optional[dict]:
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM account_autotopup_pending WHERE id = ?", (pending_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+    except Exception as e:
+        logger.error("Failed to get pending top-up %s: %s", pending_id, e)
+        return None
+    finally:
+        if conn:
+            conn.close()
+
+
+def resolve_pending_topup(
+    pending_id: int,
+    status: str,
+    confirmed_amount: Optional[float] = None,
+    confirmed_date: Optional[str] = None,
+    txn_id: Optional[int] = None,
+) -> bool:
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE account_autotopup_pending SET status = ?, confirmed_amount = ?, confirmed_date = ?, txn_id = ? "
+            "WHERE id = ? AND status = 'pending'",
+            (status, confirmed_amount, confirmed_date, txn_id, pending_id)
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    except Exception as e:
+        logger.error("Failed to resolve pending top-up %s: %s", pending_id, e)
+        return False
     finally:
         if conn:
             conn.close()

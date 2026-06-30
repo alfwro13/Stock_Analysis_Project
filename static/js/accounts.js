@@ -87,6 +87,13 @@ function _scraperStatusBadgeHtml(acc) {
 
 const _ACCOUNT_DETAIL_URL_SUFFIX = { Pension: '/pension', House: '/house' };
 
+function _pendingTopupTagHtml(acc) {
+    const count = (acc.pending_topups || []).length;
+    if (!count) return '';
+    const suffix = count > 1 ? ` &times;${count}` : '';
+    return ` <span class="account-badge account-badge-pending">[PENDING ACTION${suffix}]</span>`;
+}
+
 function _accountCardHtml(acc) {
     const isWatchlist = acc.account_type === 'Watchlist';
     const isPension = acc.account_type === 'Pension';
@@ -98,13 +105,14 @@ function _accountCardHtml(acc) {
         <div class="guide-card h-100" id="account-card-${acc.id}">
             <div class="d-flex justify-content-between align-items-start">
                 <div>
-                    <h4 class="mb-0">${_escapeHtml(acc.name)} <span class="account-badge">${_escapeHtml(acc.account_type)}</span></h4>
+                    <h4 class="mb-0">${_escapeHtml(acc.name)} <span class="account-badge">${_escapeHtml(acc.account_type)}</span>${isTrading ? _pendingTopupTagHtml(acc) : ''}</h4>
                     <p class="text-muted account-stats-line mb-0">${_accountStatsLine(acc)}</p>
                     ${acc.note ? `<p class="text-secondary small mb-0">${_escapeHtml(acc.note)}</p>` : ''}
                 </div>
                 <div class="d-flex gap-2">
                     <button type="button" class="btn btn-outline-secondary btn-sm" onclick="openAccountModal(${acc.id})">Edit</button>
                     ${isScraperType ? `<button type="button" class="btn btn-outline-secondary btn-sm" onclick="openScraperModal(${acc.id})">&#9881; Scraper ${_scraperStatusBadgeHtml(acc)}</button>` : ''}
+                    ${isTrading ? `<button type="button" class="btn btn-outline-secondary btn-sm" onclick="openAutoTopupModal(${acc.id})">&#9200; Auto Top-up</button>` : ''}
                 </div>
             </div>
             <div class="d-flex gap-2 mt-3">

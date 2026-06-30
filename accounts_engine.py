@@ -14,8 +14,9 @@ import time_engine
 from config import BASE_CURRENCY, HISTORICAL_DIR, PORTFOLIO_PATH, load_config
 from db_accounts import (
     add_price_history, add_transaction, delete_transaction, get_account, get_accounts,
-    get_price_as_of, get_price_history, get_transaction, get_transactions, get_watchlist_items,
-    update_account, update_transaction, upsert_value_snapshot,
+    get_pending_topup, get_price_as_of, get_price_history, get_transaction, get_transactions,
+    get_watchlist_items, resolve_pending_topup, update_account, update_transaction,
+    upsert_value_snapshot,
 )
 from database import get_connection
 from portfolio_service import get_rate_to_base
@@ -995,6 +996,38 @@ def record_pension_fee(
     if txn_id is None:
         return {"error": "Failed to record the admin fee."}
     return {"txn_id": txn_id, "units_removed": round(units_removed, 6), "unit_price": price, "fee_cost": round(units_removed * price, 2)}
+
+
+def confirm_autotopup(account_id: int, pending_id: int, amount: float, txn_date: str) -> dict:
+    """Posts the deferred Auto Top-up as a real 'Cash' deposit only once the user confirms the
+    amount/date that actually landed — the scheduled date alone never touches the cash balance."""
+    pending = get_pending_topup(pending_id)
+    if not pending or pending["account_id"] != account_id:
+        return {"error": "Pending top-up not found."}
+    if pending["status"] != "pending":
+        return {"error": f"This top-up has already been {pending['status']}."}
+    acc = get_account(account_id)
+    if not acc:
+        return {"error": "Account not found."}
+    exchange_rate = fx_rate_on_date(acc["currency"], txn_date)
+    txn_id = add_transaction(
+        acc["id"], "Cash", txn_date, currency=acc["currency"], quantity=1, unit_price=amount,
+        exchange_rate=exchange_rate, update_cash=True, notes=acc.get("autotopup_notes") or "Auto Top-up",
+    )
+    if txn_id is None:
+        return {"error": "Failed to record the top-up transaction."}
+    resolve_pending_topup(pending_id, "confirmed", confirmed_amount=amount, confirmed_date=txn_date, txn_id=txn_id)
+    return {"txn_id": txn_id}
+
+
+def dismiss_autotopup(account_id: int, pending_id: int) -> dict:
+    pending = get_pending_topup(pending_id)
+    if not pending or pending["account_id"] != account_id:
+        return {"error": "Pending top-up not found."}
+    if pending["status"] != "pending":
+        return {"error": f"This top-up has already been {pending['status']}."}
+    resolve_pending_topup(pending_id, "dismissed")
+    return {"status": "success"}
 
 
 def _cached_ticker_currency(ticker: str) -> Optional[str]:

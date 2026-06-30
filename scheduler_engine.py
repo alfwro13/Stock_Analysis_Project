@@ -750,6 +750,13 @@ def reload_scheduler():
     except Exception as e:
         logger.error("Failed to register account scraper jobs from DB: %s", e)
 
+    try:
+        for _acc in get_accounts():
+            if _acc["account_type"] == "Trading" and _acc.get("autotopup_enabled"):
+                register_account_topup_job(_acc)
+    except Exception as e:
+        logger.error("Failed to register account Auto Top-up jobs from DB: %s", e)
+
     auction_cfg = scheduling.get("MACRO_AUCTIONS", {})
     if auction_cfg.get("ENABLED", True):
         _user_tz = time_engine.get_user_tz()
@@ -843,5 +850,6 @@ from scheduler_jobs import (
     run_forensic_quarterly_fetch_job, run_forensic_scores_job, run_etf_actual_fill_job,
     run_system_check_job, run_treasury_auction_check, run_account_value_snapshot,
     register_account_scraper_job, unregister_account_scraper_job, _run_account_scraper_job,
+    register_account_topup_job, unregister_account_topup_job, _run_account_topup_job,
     run_backup_job,
 )

@@ -2725,7 +2725,7 @@ HTML page. Dedicated House account detail view (replaces the generic ledger page
 
 ### `GET /api/accounts`
 
-Returns all non-deleted accounts, each annotated with `scraper_last_status` (`"success"` | `"error"` | `null`) — the most recent run outcome of that account's `account_scraper_{id}_job` from `scheduler_run_log`, or `null` if the scraper is disabled or has never run. Powers the green/red status dot next to the Scraper button on House/Pension tiles. Pension and House accounts are additionally annotated with `current_balance` (`accounts_engine.account_summary()`'s `equity_value` — the live valuation from the latest scraped/imported price, falling back to cost basis if no price exists yet). The Pension tile shows `current_balance` instead of the static `initial_cash`/"Opening Balance". The House tile shows "Initial Purchase" (`initial_cash`), "Current Estimate" (`current_balance`), and "Value gain" (the percentage change of `current_balance` over `initial_cash`, computed client-side in `static/js/accounts.js`) together on one line. Trading accounts are annotated with `holdings_count`, `equity_value`, and `cash_balance` (all from `account_summary()`), which the tile shows instead of `initial_cash`. Watchlist accounts are annotated with `watchlist_count` and `watchlist_breakdown` (`accounts_engine.watchlist_summary()` — `{"equity": n, "etf": n, "fund": n, "other": n}`, bucketed from each `watchlist_items.quote_type`), shown on the tile instead of `initial_cash`/currency (irrelevant for a Watchlist).
+Returns all non-deleted accounts, each annotated with `scraper_last_status` (`"success"` | `"error"` | `null`) — the most recent run outcome of that account's `account_scraper_{id}_job` from `scheduler_run_log`, or `null` if the scraper is disabled or has never run. Powers the green/red status dot next to the Scraper button on House/Pension tiles. Pension and House accounts are additionally annotated with `current_balance` (`accounts_engine.account_summary()`'s `equity_value` — the live valuation from the latest scraped/imported price, falling back to cost basis if no price exists yet). The Pension tile shows `current_balance` instead of the static `initial_cash`/"Opening Balance". The House tile shows "Initial Purchase" (`initial_cash`), "Current Estimate" (`current_balance`), and "Value gain" (the percentage change of `current_balance` over `initial_cash`, computed client-side in `static/js/accounts.js`) together on one line. Trading accounts are annotated with `holdings_count`, `equity_value`, `cash_balance` (all from `account_summary()`), and `pending_topups` (unresolved rows from `account_autotopup_pending`, oldest first — powers the `[PENDING ACTION]` tile tag). Watchlist accounts are annotated with `watchlist_count` and `watchlist_breakdown` (`accounts_engine.watchlist_summary()` — `{"equity": n, "etf": n, "fund": n, "other": n}`, bucketed from each `watchlist_items.quote_type`), shown on the tile instead of `initial_cash`/currency (irrelevant for a Watchlist).
 
 **Response:**
 ```json
@@ -3037,6 +3037,49 @@ Returns the Pension account's synthetic-ticker units held as of `date` (`account
 ```
 
 **Response:** `{ "status": "success", "txn_id": 43, "units_removed": 5.0, "unit_price": 1.1, "fee_cost": 5.5 }`. Returns 422 if neither or both of `units_after`/`units_removed` are supplied, if the resulting `units_removed` is not positive or exceeds the units currently held, or if no price can be resolved and no override was supplied.
+
+---
+
+### Auto Top-up (Trading)
+
+Records a recurring direct-debit schedule on a Trading account and, on the scheduled date, creates a *pending* confirmation rather than posting cash automatically — see the Auto Top-up glossary entry for the full rationale. All three endpoints below 400 if the account is not `Trading`.
+
+### `PUT /api/accounts/{id}/autotopup-config`
+
+Saves the Auto Top-up configuration and (re)registers the account's dynamic scheduled job (`scheduler_jobs.register_account_topup_job`/`unregister_account_topup_job`, job id `account_autotopup_{id}_job`, fires at 08:00 in `USER_TIMEZONE`) accordingly — unregistered first unconditionally, then re-registered only if `enabled` is true. When `enabled` is true, `amount` must be greater than 0, `frequency` must be `"monthly"`/`"weekly"`, and the matching day field must be in range (`day_of_month` 1-31, `day_of_week` 1-5 = Mon-Fri). Rate limit: 30/minute.
+
+**Request body:**
+```json
+{ "enabled": true, "amount": 250.0, "frequency": "monthly", "day_of_month": 26, "day_of_week": null, "notes": "Monthly ISA direct debit" }
+```
+
+Returns `{"status": "success", "message": "Auto Top-up configuration saved."}`. Returns 404 if the account does not exist; 400 if it is not `Trading` or the body fails validation.
+
+---
+
+### `POST /api/accounts/{id}/autotopup/confirm`
+
+Posts the deferred top-up as a real `Cash` transaction (`update_cash=True`) for the given (possibly edited) `amount`/`txn_date`, and marks the pending row `confirmed` with the new transaction's id. Used by the "Confirm Payment" button on the account detail page's pending-action banner. Rate limit: 30/minute.
+
+**Request body:**
+```json
+{ "pending_id": 7, "amount": 252.0, "txn_date": "2026-06-27" }
+```
+
+**Response:** `{ "status": "success", "message": "Top-up confirmed.", "txn_id": 101 }`. Returns 400 if the pending row doesn't exist or has already been resolved.
+
+---
+
+### `POST /api/accounts/{id}/autotopup/dismiss`
+
+Marks a pending top-up `dismissed` with no transaction created — used when a direct debit failed or was skipped that period.
+
+**Request body:**
+```json
+{ "pending_id": 7 }
+```
+
+**Response:** `{ "status": "success", "message": "Top-up dismissed." }`. Returns 400 if the pending row doesn't exist or has already been resolved.
 
 ---
 

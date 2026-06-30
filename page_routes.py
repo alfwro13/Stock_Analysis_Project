@@ -406,7 +406,10 @@ async def account_detail_page(request: Request, account_id: int):
         holdings_with_market_value, is_unresolved_ticker, stale_pricing_warning,
         transaction_total_base, VALUE_CHART_PERIODS,
     )
-    from database import get_account, get_transactions, get_value_history, get_watchlist_items
+    from database import (
+        get_account, get_transactions, get_unresolved_pending_topups, get_value_history,
+        get_watchlist_items,
+    )
 
     acc = get_account(account_id)
     if acc is None:
@@ -456,6 +459,7 @@ async def account_detail_page(request: Request, account_id: int):
             "base_currency": BASE_CURRENCY,
             "account_currencies": ACCOUNT_CURRENCIES,
             "unread_count": get_unread_count(),
+            "pending_topups": get_unresolved_pending_topups(account_id),
         }
     )
 

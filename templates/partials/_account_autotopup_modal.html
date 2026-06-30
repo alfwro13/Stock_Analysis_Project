@@ -1,0 +1,51 @@
+<div class="modal fade" id="autotopupModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Auto Top-up</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="autotopup-account-id">
+
+        <div class="form-check mb-2">
+            <input type="checkbox" class="form-check-input" id="autotopup-enabled" onchange="_updateAutoTopupFrequencyFields()">
+            <label class="form-check-label" for="autotopup-enabled">Enable Auto Top-up</label>
+        </div>
+        <div class="form-group">
+            <label for="autotopup-amount"><abbr title="The amount your direct debit deposits each time. The app never posts this automatically — it only reminds you to confirm once a top-up is due.">Top-up Amount</abbr></label>
+            <input type="number" id="autotopup-amount" step="0.01" min="0">
+        </div>
+        <div class="form-group">
+            <label for="autotopup-frequency">Frequency</label>
+            <select id="autotopup-frequency" onchange="_updateAutoTopupFrequencyFields()">
+                <option value="monthly">Monthly</option>
+                <option value="weekly">Weekly</option>
+            </select>
+        </div>
+        <div class="form-group" id="autotopup-day-of-month-group">
+            <label for="autotopup-day-of-month"><abbr title="Day of the month the direct debit is due. Some months don't have a 29th-31st — those months are skipped, same as a bank would do.">Day of Month</abbr></label>
+            <input type="number" id="autotopup-day-of-month" min="1" max="31" value="1">
+        </div>
+        <div class="form-group d-none" id="autotopup-day-of-week-group">
+            <label for="autotopup-day-of-week">Day of Week</label>
+            <select id="autotopup-day-of-week">
+                <option value="1">Monday</option>
+                <option value="2">Tuesday</option>
+                <option value="3">Wednesday</option>
+                <option value="4">Thursday</option>
+                <option value="5">Friday</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="autotopup-notes">Notes (optional)</label>
+            <input type="text" id="autotopup-notes" placeholder="e.g. Monthly ISA direct debit">
+        </div>
+        <div id="autotopup-config-status" class="status-msg-sm"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-save" onclick="saveAutoTopupConfig()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>

@@ -264,6 +264,7 @@ details.settings-card.danger-zone > summary::after { color: #dc3545; }
 .account-item input { margin-right: 15px; width: 18px; height: 18px; cursor: pointer; }
 .account-item label { flex: 1; cursor: pointer; font-size: var(--font-size-form); display: flex; justify-content: space-between; }
 .account-badge { font-size: 11px; background: #333; padding: 2px 6px; border-radius: 4px; color: #aaa; }
+.account-badge-pending { background: #4d3300; color: #ffaa00; }
 .sub-account-row { display: flex; gap: 40px; font-size: var(--font-size-body); margin-top: 10px; padding-top: 10px; border-top: 1px dashed #333; }
 .sub-account-name { font-weight: bold; color: #00ffcc; min-width: 150px; }
 /* Glossary Hub Enhancements */

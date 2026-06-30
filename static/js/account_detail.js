@@ -93,6 +93,52 @@ function initAccountValueChart() {
     _renderAccountValueChart(window.ACCT_CHART_INITIAL || []);
 }
 
+async function confirmAutotopup(accountId, pendingId) {
+    const status = document.getElementById(`autotopup-confirm-status-${pendingId}`);
+    const amount = parseFloat(document.getElementById(`autotopup-confirm-amount-${pendingId}`).value);
+    const txnDate = document.getElementById(`autotopup-confirm-date-${pendingId}`).value;
+    if (isNaN(amount) || !txnDate) {
+        status.innerHTML = '<span class="msg-error">Enter a valid amount and date.</span>';
+        return;
+    }
+    status.innerHTML = '<span class="msg-info">Confirming...</span>';
+    try {
+        const r = await fetch(`/api/accounts/${accountId}/autotopup/confirm`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pending_id: pendingId, amount, txn_date: txnDate }),
+        });
+        const data = await r.json();
+        if (data.status === 'success') {
+            location.reload();
+        } else {
+            status.innerHTML = `<span class="msg-error">${data.message || 'Failed to confirm.'}</span>`;
+        }
+    } catch (e) {
+        status.innerHTML = `<span class="msg-error">${e.message}</span>`;
+    }
+}
+
+async function dismissAutotopup(accountId, pendingId) {
+    const status = document.getElementById(`autotopup-confirm-status-${pendingId}`);
+    status.innerHTML = '<span class="msg-info">Dismissing...</span>';
+    try {
+        const r = await fetch(`/api/accounts/${accountId}/autotopup/dismiss`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pending_id: pendingId }),
+        });
+        const data = await r.json();
+        if (data.status === 'success') {
+            location.reload();
+        } else {
+            status.innerHTML = `<span class="msg-error">${data.message || 'Failed to dismiss.'}</span>`;
+        }
+    } catch (e) {
+        status.innerHTML = `<span class="msg-error">${e.message}</span>`;
+    }
+}
+
 function _reconcileCashModal() {
     return bootstrap.Modal.getOrCreateInstance(document.getElementById('reconcileCashModal'));
 }

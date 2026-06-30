@@ -57,6 +57,7 @@ JOB_GRAPH: dict[str, dict] = {
     "macro_auction_job_pm":           {"label": "Sovereign Debt Auction Monitor (PM)",             "category": "macro",       "engine": "treasury_auction_engine.py",    "produces": ["treasury_auction_results"],                                   "consumes": [],                                                                   "settings_anchor": "macro-data-card"},
     "account_value_snapshot_job":     {"label": "Account Value Snapshot",                         "category": "portfolio",   "engine": "accounts_engine.py",            "produces": ["account_value_history"],                                      "consumes": ["stock_signals"],                                                    "settings_anchor": "automation-schedulers-card"},
     "account_scraper_dynamic":        {"label": "Account Price Scraper",                          "category": "portfolio",   "engine": "account_scraper_engine.py",     "produces": ["account_price_history"],                                      "consumes": [],                        "dynamic": True,                          "settings_anchor": None},
+    "account_autotopup_dynamic":      {"label": "Account Auto Top-up",                            "category": "portfolio",   "engine": "accounts_engine.py",            "produces": ["account_autotopup_pending"],                                  "consumes": [],                        "dynamic": True,                          "settings_anchor": None},
     "backup_job":                     {"label": "Automated Backup",                               "category": "maintenance", "engine": "backup_engine.py",              "produces": ["backup_archive"],                                             "consumes": ["analysis.db", "data", "models"],                                    "settings_anchor": "backup-recovery-card"},
 }
 
@@ -105,6 +106,7 @@ CONFIG_KEY_TO_JOB: dict[str, str] = {
 
 _DYNAMIC_ETF_RE = re.compile(r"^etf_predictor_\d+_(pre|post)_job$")
 _DYNAMIC_ACCOUNT_SCRAPER_RE = re.compile(r"^account_scraper_\d+_job$")
+_DYNAMIC_ACCOUNT_TOPUP_RE = re.compile(r"^account_autotopup_\d+_job$")
 
 
 def job_label(job_id: str) -> str:
@@ -131,4 +133,6 @@ def _resolve_manifest(job_id: str) -> dict | None:
         return JOB_GRAPH["etf_predictor_dynamic"]
     if _DYNAMIC_ACCOUNT_SCRAPER_RE.match(job_id):
         return JOB_GRAPH["account_scraper_dynamic"]
+    if _DYNAMIC_ACCOUNT_TOPUP_RE.match(job_id):
+        return JOB_GRAPH["account_autotopup_dynamic"]
     return None

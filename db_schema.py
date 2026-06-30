@@ -798,6 +798,12 @@ def init_db() -> None:
                 opening_balance_units REAL,
                 opening_balance_txn_id INTEGER,
                 pension_ticker_label TEXT,
+                autotopup_enabled INTEGER NOT NULL DEFAULT 0,
+                autotopup_amount REAL,
+                autotopup_frequency TEXT,
+                autotopup_day_of_month INTEGER,
+                autotopup_day_of_week INTEGER,
+                autotopup_notes TEXT,
                 deleted_at      TEXT DEFAULT NULL,
                 created_at      TEXT DEFAULT (datetime('now'))
             )
@@ -849,6 +855,20 @@ def init_db() -> None:
                 source      TEXT NOT NULL,
                 created_at  TEXT DEFAULT (datetime('now')),
                 UNIQUE(account_id, price_date)
+            )
+        ''')
+
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS account_autotopup_pending (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id      INTEGER NOT NULL,
+                scheduled_date  TEXT NOT NULL,
+                expected_amount REAL NOT NULL,
+                status          TEXT NOT NULL DEFAULT 'pending',
+                confirmed_amount REAL,
+                confirmed_date  TEXT,
+                txn_id          INTEGER,
+                created_at      TEXT DEFAULT (datetime('now'))
             )
         ''')
 
@@ -980,6 +1000,12 @@ def migrate_db(conn, cursor) -> None:
         ('opening_balance_units', "ALTER TABLE accounts ADD COLUMN opening_balance_units REAL"),
         ('opening_balance_txn_id', "ALTER TABLE accounts ADD COLUMN opening_balance_txn_id INTEGER"),
         ('pension_ticker_label', "ALTER TABLE accounts ADD COLUMN pension_ticker_label TEXT"),
+        ('autotopup_enabled', "ALTER TABLE accounts ADD COLUMN autotopup_enabled INTEGER NOT NULL DEFAULT 0"),
+        ('autotopup_amount', "ALTER TABLE accounts ADD COLUMN autotopup_amount REAL"),
+        ('autotopup_frequency', "ALTER TABLE accounts ADD COLUMN autotopup_frequency TEXT"),
+        ('autotopup_day_of_month', "ALTER TABLE accounts ADD COLUMN autotopup_day_of_month INTEGER"),
+        ('autotopup_day_of_week', "ALTER TABLE accounts ADD COLUMN autotopup_day_of_week INTEGER"),
+        ('autotopup_notes', "ALTER TABLE accounts ADD COLUMN autotopup_notes TEXT"),
     ):
         if col not in existing_account_columns:
             try:
