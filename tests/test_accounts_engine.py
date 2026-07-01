@@ -1273,6 +1273,28 @@ def test_period_returns_excludes_deposit_effect():
 
 
 @pytest.mark.db
+def test_period_returns_are_currency_not_percent():
+    """A real gain against a tiny starting baseline must stay a sane £ figure, not blow up into
+    a huge percentage — this is the whole reason period_returns returns currency, not %. If this
+    were still dividing by start_value, a real gain of £500 on a £10 baseline would read as
+    +5000.0 instead of +500.0."""
+    from database import upsert_value_snapshot
+    from datetime import datetime, timedelta, timezone
+
+    aid = create_account("CurrencyReturnAcc", "GBP", initial_cash=10.0)
+    yesterday = (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
+    upsert_value_snapshot(aid, yesterday, 10.0, 10.0, 0.0, 10.0)
+
+    # No contributions today — the whole £500 move is a real gain, not a deposit.
+    add_transaction(aid, "Buy", datetime.now(timezone.utc).date().isoformat(),
+                     ticker="ZZCURRENCY", currency="GBP", quantity=1, unit_price=1, exchange_rate=1.0)
+    _seed_stock_signal("ZZCURRENCY", 501.0, "GBP")
+
+    returns = accounts_engine.period_returns(aid)
+    assert returns["1d"] == 500.0
+
+
+@pytest.mark.db
 def test_period_returns_falls_back_to_earliest_snapshot_for_young_account():
     from database import upsert_value_snapshot
     from datetime import datetime, timedelta, timezone

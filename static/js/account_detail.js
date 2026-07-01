@@ -226,12 +226,12 @@ async function submitReconcile() {
             }
             _renderTile('tile-unrealized-pnl-value', data.unrealized_pnl, false);
             _renderTile('tile-mwrr-value', data.mwrr, true);
-            _renderTile('tile-return-1d-value', data.return_1d, true);
-            _renderTile('tile-return-1w-value', data.return_1w, true);
-            _renderTile('tile-return-1m-value', data.return_1m, true);
-            _renderTile('tile-return-3m-value', data.return_3m, true);
-            _renderTile('tile-return-6m-value', data.return_6m, true);
-            _renderTile('tile-return-1y-value', data.return_1y, true);
+            _renderTile('tile-return-1d-value', data.return_1d, false);
+            _renderTile('tile-return-1w-value', data.return_1w, false);
+            _renderTile('tile-return-1m-value', data.return_1m, false);
+            _renderTile('tile-return-3m-value', data.return_3m, false);
+            _renderTile('tile-return-6m-value', data.return_6m, false);
+            _renderTile('tile-return-1y-value', data.return_1y, false);
         } catch (e) { }
     }
 

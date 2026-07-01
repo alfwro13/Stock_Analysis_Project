@@ -694,8 +694,12 @@ _RETURN_WINDOWS = {"1d": 1, "1w": 7, "1m": 30, "3m": 91, "6m": 182, "1y": 365}
 
 
 def period_returns(account_id: int) -> dict:
-    """1D/1W/1M/3M/6M/1Y % return, excluding the effect of deposits/withdrawals during the
-    period. Each value is a float or None when there isn't enough snapshot history yet."""
+    """1D/1W/1M/3M/6M/1Y gain/loss in BASE_CURRENCY, excluding the effect of deposits/withdrawals
+    during the period. Deliberately currency, not %: dividing by the period's starting value blows
+    up into a meaningless number whenever that baseline is small (e.g. a lookback window older than
+    the account itself falls back to the earliest snapshot, which can be near-zero right after
+    opening) — the currency amount stays sane and bounded regardless. Each value is a float, or
+    None only when there's no snapshot history at all yet."""
     history = get_value_history(account_id)
     if not history:
         return {key: None for key in _RETURN_WINDOWS}
@@ -712,12 +716,9 @@ def period_returns(account_id: int) -> dict:
         target_date = (today - timedelta(days=days)).isoformat()
         candidates = [row for row in history if row["snapshot_date"] <= target_date]
         baseline = candidates[-1] if candidates else history[0]
-        start_value = baseline["total_value"]
-        if not start_value or abs(start_value) < _EPS:
-            returns[key] = None
-            continue
+        start_value = baseline["total_value"] or 0.0
         contributions_delta = net_contributions_now - baseline["net_contributions"]
-        returns[key] = round((end_value - start_value - contributions_delta) / start_value * 100, 2)
+        returns[key] = round(end_value - start_value - contributions_delta, 2)
     return returns
 
 
