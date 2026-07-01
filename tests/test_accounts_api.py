@@ -1615,3 +1615,95 @@ def test_list_accounts_includes_pending_topups_for_trading(client):
     assert len(acc["pending_topups"]) == 1
 
     _db.soft_delete_account(account_id)
+
+
+# ── Home Assistant integration endpoints ──────────────────────────────────────
+
+@pytest.mark.api
+def test_portfolio_totals_happy_path_with_trading_account(client):
+    with patch("api_routes_accounts.resnapshot_account"):
+        account_id = _create_account(client, name="PortfolioTotalsAcc")
+
+    resp = client.get("/api/accounts/portfolio-totals")
+    assert resp.status_code == 200
+    data = _json(resp)
+    assert data["status"] == "success"
+    for key in (
+        "account_count", "base_currency", "current_value", "total_investment",
+        "portfolio_gain", "portfolio_gain_fx", "unrealized_pnl", "twr_pct",
+        "twr_fx_pct", "portfolio_dividends",
+    ):
+        assert key in data, f"Missing '{key}' in portfolio-totals response: {data}"
+    assert data["account_count"] >= 1
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_portfolio_totals_zero_trading_accounts_returns_all_zero_shape(client):
+    import database as _db
+    for acc in _db.get_accounts():
+        if acc["account_type"] == "Trading":
+            _db.soft_delete_account(acc["id"])
+
+    resp = client.get("/api/accounts/portfolio-totals")
+    assert resp.status_code == 200
+    data = _json(resp)
+    assert data["status"] == "success"
+    assert data["account_count"] == 0
+    assert data["current_value"] == 0.0
+    assert data["total_investment"] == 0.0
+    assert data["portfolio_gain"] == 0.0
+    assert data["portfolio_gain_pct"] is None
+    assert data["twr_pct"] is None
+
+
+@pytest.mark.api
+def test_refresh_now_returns_queued_immediately(client):
+    with patch("api_routes_accounts.fetch_and_save_pulse") as mock_fetch, \
+         patch("api_routes_accounts.refresh_performance_cache") as mock_refresh:
+        resp = client.post("/api/accounts/refresh-now")
+    assert resp.status_code == 200
+    data = _json(resp)
+    assert data["status"] == "queued"
+    mock_fetch.assert_called_once()
+    mock_refresh.assert_not_called()  # no Trading accounts created in this test
+
+
+@pytest.mark.api
+def test_refresh_now_invokes_background_task_functions(client):
+    with patch("api_routes_accounts.resnapshot_account"):
+        account_id = _create_account(client, name="RefreshNowAcc")
+
+    with patch("api_routes_accounts.fetch_and_save_pulse") as mock_fetch, \
+         patch("api_routes_accounts.refresh_performance_cache") as mock_refresh, \
+         patch("api_routes_accounts.notify") as mock_notify:
+        resp = client.post("/api/accounts/refresh-now")
+    assert resp.status_code == 200
+    assert _json(resp)["status"] == "queued"
+    mock_fetch.assert_called_once()
+    mock_refresh.assert_called_once_with(account_id)
+    mock_notify.assert_called_once()
+    assert mock_notify.call_args[0][0] == "ha_refresh_now_status"
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_refresh_now_notifies_error_on_failure(client):
+    with patch("api_routes_accounts.resnapshot_account"):
+        account_id = _create_account(client, name="RefreshNowFailAcc")
+
+    with patch("api_routes_accounts.fetch_and_save_pulse", side_effect=RuntimeError("boom")), \
+         patch("api_routes_accounts.notify") as mock_notify:
+        resp = client.post("/api/accounts/refresh-now")
+    assert resp.status_code == 200
+    assert _json(resp)["status"] == "queued"
+    mock_notify.assert_called_once()
+    assert mock_notify.call_args[0][0] == "ha_refresh_now_status"
+    assert mock_notify.call_args[0][1] == "Error"
+
+    import database as _db
+    _db.soft_delete_account(account_id)

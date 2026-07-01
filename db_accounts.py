@@ -309,6 +309,54 @@ def get_value_history(account_id: int) -> list:
             conn.close()
 
 
+def upsert_value_snapshot_currency(
+    account_id: int,
+    snapshot_date: str,
+    currency: str,
+    native_value: float,
+    base_value: float,
+    fx_rate: float,
+) -> None:
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """INSERT INTO account_value_history_currency
+                   (account_id, snapshot_date, currency, equity_value_native, equity_value_base, fx_rate)
+               VALUES (?, ?, ?, ?, ?, ?)
+               ON CONFLICT(account_id, snapshot_date, currency) DO UPDATE SET
+                   equity_value_native = excluded.equity_value_native,
+                   equity_value_base = excluded.equity_value_base,
+                   fx_rate = excluded.fx_rate""",
+            (account_id, snapshot_date, currency, native_value, base_value, fx_rate)
+        )
+        conn.commit()
+    except Exception as e:
+        logger.error("Failed to upsert currency value snapshot for account %s: %s", account_id, e)
+    finally:
+        if conn:
+            conn.close()
+
+
+def get_value_history_currency(account_id: int) -> list:
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT * FROM account_value_history_currency WHERE account_id = ? ORDER BY snapshot_date",
+            (account_id,)
+        )
+        return [dict(row) for row in cursor.fetchall()]
+    except Exception as e:
+        logger.error("Failed to get currency value history for account %s: %s", account_id, e)
+        return []
+    finally:
+        if conn:
+            conn.close()
+
+
 _PERFORMANCE_CACHE_COLUMNS = (
     "total_value", "equity_value", "cash_balance", "unrealized_pnl",
     "return_1d", "return_1w", "return_1m", "return_3m", "return_6m", "return_1y",

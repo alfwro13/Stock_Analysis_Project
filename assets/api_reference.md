@@ -1590,6 +1590,26 @@ Returns the current list of active system-health warnings and errors detected by
 
 ---
 
+### `GET /api/system/market-status`
+
+At-a-glance market/system status for the Home Assistant integration's sensors. `us_market_open`/`uk_market_open` use `time_engine.is_trading_session(exchange)` (weekday- and hours-aware — closed on weekends even during nominal trading hours). `yahoo_ok` reflects real Yahoo Finance call history from `database.get_yahoo_api_stats()` (at least one non-error call recorded on the most recent tracked day), not the in-process cache hit-rate, which reads 0% right after every server restart regardless of Yahoo's actual health. `system_ok` is `len(issues) == 0` from the same System Check Engine used by `GET /api/system/checks`.
+
+**Authentication:** none required beyond the global `X-API-Key`/session middleware (read-only)
+
+**Response**
+
+```json
+{
+  "status": "success",
+  "us_market_open": true,
+  "uk_market_open": false,
+  "yahoo_ok": true,
+  "system_ok": true
+}
+```
+
+---
+
 ### `POST /api/system/git-pull`
 
 Pulls the latest code from the Git remote. Returns the git output. Also diffs the pre-pull and post-pull commits to detect whether `requirements.txt` changed; if so, `requirements_changed` is `true` and a pending flag is set so the next restart (see below) reinstalls dependencies automatically before shutting down.
@@ -3108,6 +3128,46 @@ Marks a pending top-up `dismissed` with no transaction created — used when a d
 ```
 
 **Response:** `{ "status": "success", "message": "Top-up dismissed." }`. Returns 400 if the pending row doesn't exist or has already been resolved.
+
+---
+
+### `GET /api/accounts/portfolio-totals`
+
+Aggregates live figures across every non-deleted Trading account — the Home Assistant integration's portfolio-summary sensor data source. Thin wrapper around `accounts_engine.portfolio_totals()`. With zero Trading accounts, returns the same shape with all monetary fields at `0.0` and all percentage/return fields `null` rather than erroring.
+
+**Response**
+
+```json
+{
+  "status": "success",
+  "account_count": 2,
+  "base_currency": "GBP",
+  "as_of": 1751364000.0,
+  "current_value": 18420.55,
+  "total_investment": 15000.0,
+  "portfolio_gain": 3100.10,
+  "portfolio_gain_pct": 20.67,
+  "portfolio_gain_fx": 3420.55,
+  "portfolio_gain_fx_pct": 22.8,
+  "unrealized_pnl": 3420.55,
+  "unrealized_pnl_pct": 22.8,
+  "twr_pct": 19.9,
+  "twr_fx_pct": 21.4,
+  "portfolio_dividends": 214.30
+}
+```
+
+`portfolio_gain`/`portfolio_gain_pct` re-express the open-holdings unrealized gain at each holding's own purchase-time exchange rate, isolating the equity-only return from FX movement (FX-neutral). `portfolio_gain_fx`/`portfolio_gain_fx_pct` are the actual (FX-inclusive) unrealized gain at today's live exchange rate — matching `unrealized_pnl`. `twr_pct`/`twr_fx_pct` are the equivalent pairing for the chain-linked Time-Weighted Return derived from `account_value_history` (FX-neutral / actual-with-FX).
+
+---
+
+### `POST /api/accounts/refresh-now`
+
+On-demand data refresh for the Home Assistant integration's "Refresh Data" button. Returns immediately with `{"status": "queued", ...}` and runs the refresh as a background task: refreshes live prices for every currently-held ticker (`market_pulse.fetch_and_save_pulse`) and recomputes the live-performance cache for every Trading account (`accounts_engine.refresh_performance_cache`). Deliberately does **not** call the Crash & Moonshot Alerts scan (`IntradayOrchestrator().run()`) directly — that scan silently no-ops outside configured market hours, which would make the button appear broken most of the day. Completion (or failure) is dispatched via `notification_engine.notify("ha_refresh_now_status", ...)` (source registered in `NOTIFICATION_SOURCES`, no parent scheduled job — grouped under "Other" in the Settings Notification Settings panel).
+
+**Request body:** none
+
+**Response:** `{ "status": "queued", "message": "Refresh queued." }` immediately; check the Notifications panel for completion status.
 
 ---
 

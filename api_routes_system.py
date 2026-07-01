@@ -632,6 +632,33 @@ async def get_system_checks(request: Request):
     return JSONResponse(content={"status": "success", "issues": issues})
 
 
+def _yahoo_ok() -> bool:
+    # yahoo_engine.get_stats()'s hit_rate_pct is an in-process cache stat that reads 0% right after
+    # a restart even when Yahoo itself is perfectly healthy — get_yahoo_api_stats() is real call
+    # history, so the most recent day's row is used to check for at least one non-error call.
+    from database import get_yahoo_api_stats
+    rows = get_yahoo_api_stats(days=1)
+    if not rows:
+        return False
+    row = rows[0]
+    total = row.get("total_calls") or 0
+    errors = (row.get("rate_limit_429") or 0) + (row.get("other_errors") or 0)
+    return total > errors
+
+
+@system_router.get("/system/market-status")
+async def api_market_status():
+    from system_check_engine import run_system_checks
+    issues = run_system_checks()
+    return JSONResponse(content={
+        "status": "success",
+        "us_market_open": time_engine.is_trading_session("NYSE"),
+        "uk_market_open": time_engine.is_trading_session("LSE"),
+        "yahoo_ok": _yahoo_ok(),
+        "system_ok": len(issues) == 0,
+    })
+
+
 @system_router.post("/system/git-pull", dependencies=[Depends(require_confirm_token)])
 async def git_pull_update():
     global _requirements_changed_pending

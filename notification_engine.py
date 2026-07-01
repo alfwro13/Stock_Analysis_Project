@@ -46,6 +46,7 @@ NOTIFICATION_SOURCES: dict[str, dict] = {
     "account_value_snapshot_status": {"label": "Account Value Snapshot",    "job_id": "account_value_snapshot_job", "default": dict(_NO_TALK)},
     "account_autotopup_status": {"label": "Account Auto Top-up",            "job_id": None,                     "default": dict(_ON)},
     "system_update_status":    {"label": "System Updates & Power",          "job_id": None,                     "default": dict(_NO_TALK)},
+    "ha_refresh_now_status":   {"label": "Home Assistant Refresh Now",      "job_id": None,                     "default": dict(_NO_TALK)},
 }
 
 CATEGORY_LABELS = {

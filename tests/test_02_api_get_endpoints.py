@@ -131,6 +131,75 @@ def test_get_yahoo_api_stats_returns_200(client):
     assert isinstance(data["rows"], list)
 
 
+# ── Market Status (Home Assistant) ────────────────────────────────────────────
+
+@pytest.mark.api
+def test_get_market_status_returns_200_with_expected_keys(client):
+    """GET /api/system/market-status must return 200 with the four status fields."""
+    resp = client.get("/api/system/market-status")
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
+    data = _json(resp)
+    assert data["status"] == "success"
+    for key in ("us_market_open", "uk_market_open", "yahoo_ok", "system_ok"):
+        assert key in data, f"Missing '{key}' in market-status response: {data}"
+
+
+@pytest.mark.api
+def test_get_market_status_reflects_trading_session_true(client):
+    with patch("api_routes_system.time_engine.is_trading_session", side_effect=lambda exchange=None: exchange == "NYSE"):
+        resp = client.get("/api/system/market-status")
+    data = _json(resp)
+    assert data["us_market_open"] is True
+    assert data["uk_market_open"] is False
+
+
+@pytest.mark.api
+def test_get_market_status_reflects_trading_session_false(client):
+    with patch("api_routes_system.time_engine.is_trading_session", return_value=False):
+        resp = client.get("/api/system/market-status")
+    data = _json(resp)
+    assert data["us_market_open"] is False
+    assert data["uk_market_open"] is False
+
+
+@pytest.mark.api
+def test_get_market_status_yahoo_ok_true_when_recent_success(client):
+    with patch(
+        "database.get_yahoo_api_stats",
+        return_value=[{"date": "2026-07-01", "total_calls": 10, "ipv4_calls": 10, "ipv6_calls": 0, "rate_limit_429": 0, "other_errors": 0}],
+    ):
+        resp = client.get("/api/system/market-status")
+    assert _json(resp)["yahoo_ok"] is True
+
+
+@pytest.mark.api
+def test_get_market_status_yahoo_ok_false_when_no_recent_calls(client):
+    with patch("database.get_yahoo_api_stats", return_value=[]):
+        resp = client.get("/api/system/market-status")
+    assert _json(resp)["yahoo_ok"] is False
+
+
+@pytest.mark.api
+def test_get_market_status_yahoo_ok_false_when_all_calls_errored(client):
+    with patch(
+        "database.get_yahoo_api_stats",
+        return_value=[{"date": "2026-07-01", "total_calls": 5, "ipv4_calls": 5, "ipv6_calls": 0, "rate_limit_429": 5, "other_errors": 0}],
+    ):
+        resp = client.get("/api/system/market-status")
+    assert _json(resp)["yahoo_ok"] is False
+
+
+@pytest.mark.api
+def test_get_market_status_system_ok_reflects_issue_count(client):
+    with patch("system_check_engine.run_system_checks", return_value=[]):
+        resp = client.get("/api/system/market-status")
+    assert _json(resp)["system_ok"] is True
+
+    with patch("system_check_engine.run_system_checks", return_value=[{"key": "x", "level": "warning", "message": "m"}]):
+        resp = client.get("/api/system/market-status")
+    assert _json(resp)["system_ok"] is False
+
+
 # ── Market Pulse ──────────────────────────────────────────────────────────────
 
 @pytest.mark.api

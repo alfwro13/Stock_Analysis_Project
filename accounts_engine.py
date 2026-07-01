@@ -16,8 +16,9 @@ from config import BASE_CURRENCY, HISTORICAL_DIR, PORTFOLIO_PATH, load_config
 from db_accounts import (
     add_price_history, add_transaction, delete_transaction, get_account, get_accounts,
     get_pending_topup, get_price_as_of, get_price_history, get_transaction, get_transactions,
-    get_value_history, get_watchlist_items, resolve_pending_topup, update_account,
-    update_transaction, upsert_performance_cache, upsert_value_snapshot,
+    get_value_history, get_value_history_currency, get_watchlist_items, resolve_pending_topup,
+    update_account, update_transaction, upsert_performance_cache, upsert_value_snapshot,
+    upsert_value_snapshot_currency,
 )
 from database import get_connection
 from market_pulse import is_price_fresh
@@ -622,19 +623,50 @@ def _current_price_map(tickers: list) -> dict:
     return result
 
 
-def _equity_value(open_holdings: dict) -> float:
-    if not open_holdings:
-        return 0.0
-    prices = _current_price_map(list(open_holdings.keys()))
+def _bucket_equity_by_currency(open_holdings: dict, price_lookup) -> tuple:
+    """Shared by the live (_equity_value) and historical (backfill_value_history) equity paths.
+    `price_lookup(ticker, holding) -> Optional[(price, currency, fx_rate)]`, or None if unpriced.
+    Returns (total_base, {currency: {"native": float, "base": float, "fx_rate": float}}). An
+    unpriced holding falls back to cost basis for the total (matching the pre-existing behaviour
+    of both callers) and contributes nothing to the per-currency breakdown."""
     total = 0.0
+    breakdown: dict[str, dict] = {}
     for ticker, holding in open_holdings.items():
-        priced = prices.get(ticker)
+        priced = price_lookup(ticker, holding)
         if not priced or not priced[0]:
             total += holding["total_investment"]
             continue
-        price, currency = priced
-        total += holding["shares"] * price * get_rate_to_base(currency or holding["currency"])
+        price, currency, fx_rate = priced
+        currency = currency or holding["currency"]
+        native = holding["shares"] * price
+        base = native * fx_rate
+        total += base
+        bucket = breakdown.setdefault(currency, {"native": 0.0, "base": 0.0, "fx_rate": fx_rate})
+        bucket["native"] += native
+        bucket["base"] += base
+        bucket["fx_rate"] = fx_rate
+    return total, breakdown
+
+
+def _equity_value(open_holdings: dict) -> float:
+    total, _breakdown = _equity_value_with_breakdown(open_holdings)
     return total
+
+
+def _equity_value_with_breakdown(open_holdings: dict) -> tuple:
+    if not open_holdings:
+        return 0.0, {}
+    prices = _current_price_map(list(open_holdings.keys()))
+
+    def _lookup(ticker, holding):
+        priced = prices.get(ticker)
+        if not priced or not priced[0]:
+            return None
+        price, currency = priced
+        currency = currency or holding["currency"]
+        return price, currency, get_rate_to_base(currency)
+
+    return _bucket_equity_by_currency(open_holdings, _lookup)
 
 
 def _equity_value_for_account(acc: dict, open_holdings: dict) -> float:
@@ -648,6 +680,24 @@ def _equity_value_for_account(acc: dict, open_holdings: dict) -> float:
         return 0.0
     price, currency = priced
     return price * get_rate_to_base(currency or acc["currency"])
+
+
+def _equity_value_for_account_with_breakdown(acc: dict, open_holdings: dict) -> tuple:
+    """Currency-breakdown-aware counterpart of `_equity_value_for_account`, for callers
+    (snapshot_all_accounts/resnapshot_account) that need both the total and the per-currency
+    split from a single pass. House is always single-currency = acc['currency']."""
+    if acc["account_type"] != "House":
+        return _equity_value_with_breakdown(open_holdings)
+    from account_scraper_engine import latest_price
+    priced = latest_price(acc["id"])
+    if not priced or not priced[0]:
+        return 0.0, {}
+    price, currency = priced
+    currency = currency or acc["currency"]
+    fx_rate = get_rate_to_base(currency)
+    native = price
+    base = native * fx_rate
+    return base, {currency: {"native": native, "base": base, "fx_rate": fx_rate}}
 
 
 def account_summary(account_id: int) -> dict:
@@ -835,6 +885,14 @@ def filter_value_history_by_period(history: list, period: str) -> list:
     return [row for row in history if row["snapshot_date"] >= cutoff_str]
 
 
+def _write_currency_breakdown(account_id: int, snapshot_date: str, breakdown: dict) -> None:
+    for currency, bucket in breakdown.items():
+        upsert_value_snapshot_currency(
+            account_id, snapshot_date, currency,
+            round(bucket["native"], 2), round(bucket["base"], 2), bucket["fx_rate"],
+        )
+
+
 def snapshot_all_accounts() -> int:
     """Nightly job body: writes today's value snapshot for every account. Returns rows written."""
     today = datetime.now(timezone.utc).date().isoformat()
@@ -842,12 +900,13 @@ def snapshot_all_accounts() -> int:
     for acc in get_accounts():
         aid = acc["id"]
         open_holdings, _closed, _realized, _realized_by_txn = _ledger_for_account(aid)
-        equity = _equity_value_for_account(acc, open_holdings)
+        equity, breakdown = _equity_value_for_account_with_breakdown(acc, open_holdings)
         # Pension has no real cash sub-ledger — cash_balance() would just return initial_cash
         # as a phantom baseline, double-counting money already represented in equity_value.
         cash = 0.0 if acc["account_type"] == "Pension" else cash_balance(aid)
         contributions = net_contributions(aid)
         upsert_value_snapshot(aid, today, round(cash + equity, 2), round(cash, 2), round(equity, 2), contributions)
+        _write_currency_breakdown(aid, today, breakdown)
         written += 1
     return written
 
@@ -862,10 +921,11 @@ def resnapshot_account(account_id: int) -> None:
         return
     today = datetime.now(timezone.utc).date().isoformat()
     open_holdings, _closed, _realized, _realized_by_txn = _ledger_for_account(account_id)
-    equity = _equity_value_for_account(acc, open_holdings)
+    equity, breakdown = _equity_value_for_account_with_breakdown(acc, open_holdings)
     cash = 0.0 if acc["account_type"] == "Pension" else cash_balance(account_id)
     contributions = net_contributions(account_id)
     upsert_value_snapshot(account_id, today, round(cash + equity, 2), round(cash, 2), round(equity, 2), contributions)
+    _write_currency_breakdown(account_id, today, breakdown)
 
 
 def backfill_value_history(account_id: int) -> int:
@@ -914,22 +974,23 @@ def backfill_value_history(account_id: int) -> int:
             account_id, as_of_date=date_str, transactions=transactions
         )
         cash = 0.0 if acc["account_type"] == "Pension" else _cash_balance_as_of(acc, transactions, date_str)
-        equity = 0.0
-        for ticker, holding in open_holdings.items():
+
+        def _lookup(ticker, holding, date_str=date_str):
             series = price_series.get(ticker)
-            price = None
-            if series is not None:
-                window = series.loc[:date_str]
-                if not window.empty:
-                    price = float(window.iloc[-1])
-            if price is None:
-                equity += holding["total_investment"]
-                continue
+            if series is None:
+                return None
+            window = series.loc[:date_str]
+            if window.empty:
+                return None
+            price = float(window.iloc[-1])
             # fx_rate_on_date already halves GBp->GBP by 0.01 — applying price_in_pence here too
             # would divide by 100 twice (the bug behind a 100x equity undervaluation on backfilled rows).
-            equity += holding["shares"] * price * fx_rate_on_date(holding["currency"], date_str)
+            return price, holding["currency"], fx_rate_on_date(holding["currency"], date_str)
+
+        equity, breakdown = _bucket_equity_by_currency(open_holdings, _lookup)
         contributions = _net_contributions_as_of(acc, transactions, date_str)
         upsert_value_snapshot(account_id, date_str, round(cash + equity, 2), round(cash, 2), round(equity, 2), round(contributions, 2))
+        _write_currency_breakdown(account_id, date_str, breakdown)
         written += 1
     return written
 
@@ -953,10 +1014,13 @@ def _backfill_house_value_history(account_id: int, acc: dict) -> int:
         window = series.loc[:date_str]
         if window.empty:
             continue
-        equity = float(window.iloc[-1]) * get_rate_to_base(acc["currency"])
+        native = float(window.iloc[-1])
+        fx_rate = get_rate_to_base(acc["currency"])
+        equity = native * fx_rate
         cash = _cash_balance_as_of(acc, transactions, date_str)
         contributions = _net_contributions_as_of(acc, transactions, date_str)
         upsert_value_snapshot(account_id, date_str, round(cash + equity, 2), round(cash, 2), round(equity, 2), round(contributions, 2))
+        _write_currency_breakdown(account_id, date_str, {acc["currency"]: {"native": native, "base": equity, "fx_rate": fx_rate}})
         written += 1
     return written
 
@@ -1392,3 +1456,194 @@ def import_csv_activities(account_id: int, csv_text: str) -> dict:
         "ignored": ignored,
         "skipped_rows": skipped_rows,
     }
+
+
+def _trading_accounts() -> list:
+    return [a for a in get_accounts() if a["account_type"] == "Trading"]
+
+
+def portfolio_totals() -> dict:
+    """Aggregates live figures across every non-deleted Trading account — the Home Assistant
+    portfolio-summary sensor's data source. Zero Trading accounts (fresh install) returns an
+    all-zero/None shape rather than raising or dividing by zero."""
+    accounts = _trading_accounts()
+    result = {
+        "account_count": len(accounts),
+        "base_currency": BASE_CURRENCY,
+        "as_of": time.time(),
+        "current_value": 0.0,
+        "total_investment": 0.0,
+        "portfolio_gain": 0.0,
+        "portfolio_gain_pct": None,
+        "portfolio_gain_fx": 0.0,
+        "portfolio_gain_fx_pct": None,
+        "unrealized_pnl": 0.0,
+        "unrealized_pnl_pct": None,
+        "twr_pct": None,
+        "twr_fx_pct": None,
+        "portfolio_dividends": 0.0,
+    }
+    if not accounts:
+        return result
+
+    account_ids = [a["id"] for a in accounts]
+    current_value = sum(total_value(aid) or 0.0 for aid in account_ids)
+    total_investment = 0.0
+    unrealized = 0.0
+    dividends = 0.0
+    for aid in account_ids:
+        for row in holdings_with_market_value(aid):
+            total_investment += row["total_investment"]
+            unrealized += row["market_value"] - row["total_investment"]
+        dividends += account_summary(aid).get("dividend", 0.0)
+
+    gain_ex_fx, gain_actual = portfolio_gain_fx_decomposition(account_ids)
+
+    result["current_value"] = round(current_value, 2)
+    result["total_investment"] = round(total_investment, 2)
+    result["portfolio_gain"] = round(gain_ex_fx, 2)
+    result["portfolio_gain_fx"] = round(gain_actual, 2)
+    result["unrealized_pnl"] = round(unrealized, 2)
+    result["portfolio_dividends"] = round(dividends, 2)
+    if total_investment:
+        result["portfolio_gain_pct"] = round(gain_ex_fx / total_investment * 100, 2)
+        result["portfolio_gain_fx_pct"] = round(gain_actual / total_investment * 100, 2)
+        result["unrealized_pnl_pct"] = round(unrealized / total_investment * 100, 2)
+    result["twr_pct"] = portfolio_twr_ex_fx(account_ids)
+    result["twr_fx_pct"] = portfolio_twr_fx(account_ids)
+    return result
+
+
+def _avg_purchase_fx_rate(account_id: int, tickers: set) -> dict:
+    """Purchase-quantity-weighted-average `exchange_rate` across still-open Buy legs, per ticker —
+    isolates the FX rate actually paid at purchase, as opposed to today's live rate."""
+    weighted: dict[str, float] = {}
+    qty_total: dict[str, float] = {}
+    for txn in get_transactions(account_id):
+        ticker = txn["ticker"]
+        if txn["txn_type"] != "Buy" or ticker not in tickers:
+            continue
+        qty = txn["quantity"] or 0.0
+        weighted[ticker] = weighted.get(ticker, 0.0) + qty * _fx(txn)
+        qty_total[ticker] = qty_total.get(ticker, 0.0) + qty
+    return {t: (weighted[t] / qty_total[t]) for t in tickers if qty_total.get(t)}
+
+
+def portfolio_gain_fx_decomposition(account_ids: list) -> tuple:
+    """Decomposes OPEN-holdings unrealized gain, summed in BASE_CURRENCY across account_ids, into
+    (gain_ex_fx, gain_actual). gain_actual re-derives unrealized_pnl()'s math (today's live FX
+    rate); gain_ex_fx re-expresses today's market value using each holding's own purchase-
+    quantity-weighted-average exchange rate instead, isolating the equity-only return. Unpriced
+    holdings are excluded from both legs, matching holdings_with_market_value()'s own behaviour."""
+    gain_ex_fx = 0.0
+    gain_actual = 0.0
+    for aid in account_ids:
+        holdings = derive_account_holdings(aid)
+        if not holdings:
+            continue
+        prices = _current_price_map(list(holdings.keys()))
+        avg_fx = _avg_purchase_fx_rate(aid, set(holdings.keys()))
+        for ticker, h in holdings.items():
+            total_investment = h["accounts"][0]["total_investment"]
+            priced = prices.get(ticker)
+            if not priced or not priced[0]:
+                continue
+            price, currency = priced
+            currency = currency or h["currency"]
+            shares = h["global_shares"]
+            market_value = shares * price * get_rate_to_base(currency)
+            gain_actual += market_value - total_investment
+            purchase_fx = avg_fx.get(ticker, get_rate_to_base(currency))
+            market_value_ex_fx = shares * price * purchase_fx
+            gain_ex_fx += market_value_ex_fx - total_investment
+    return gain_ex_fx, gain_actual
+
+
+def _chain_link_twr(series: list) -> Optional[float]:
+    """Shared chain-linking core for portfolio_twr_fx()/portfolio_twr_ex_fx(). `series` is a list of
+    (date, total_value, net_contributions) tuples, sorted by date. Sub-periods whose starting value
+    is ~0 are skipped rather than included as 0% or blown up by near-zero division. Fewer than 2
+    points → None (not 0%)."""
+    if len(series) < 2:
+        return None
+    growth = 1.0
+    counted = 0
+    for (_prev_date, v_start, nc_start), (_date, v_end, nc_end) in zip(series, series[1:]):
+        if abs(v_start) < _EPS:
+            continue
+        flow = nc_end - nc_start
+        sub_return = (v_end - v_start - flow) / v_start
+        growth *= (1.0 + sub_return)
+        counted += 1
+    if not counted:
+        return None
+    return round((growth - 1.0) * 100, 2)
+
+
+def _merge_value_history(account_ids: list) -> list:
+    """Sums `total_value`/`net_contributions` across accounts per date — a date missing from one
+    account's history simply contributes 0 for it (not an inner join), so an account opened later
+    still contributes from its own start date without distorting earlier dates."""
+    by_date: dict[str, dict] = {}
+    for aid in account_ids:
+        for row in get_value_history(aid):
+            d = row["snapshot_date"]
+            entry = by_date.setdefault(d, {"total_value": 0.0, "net_contributions": 0.0})
+            entry["total_value"] += row["total_value"] or 0.0
+            entry["net_contributions"] += row["net_contributions"] or 0.0
+    return [(d, by_date[d]["total_value"], by_date[d]["net_contributions"]) for d in sorted(by_date)]
+
+
+def portfolio_twr_fx(account_ids: list) -> Optional[float]:
+    """True chain-linked Time-Weighted Return (%), 'actual/with-FX' variant, from the existing
+    account_value_history table merged across account_ids."""
+    series = _merge_value_history(account_ids)
+    return _chain_link_twr(series)
+
+
+def portfolio_twr_ex_fx(account_ids: list) -> Optional[float]:
+    """FX-neutral TWR variant (%): synthesizes a total_value series where each currency's equity
+    contribution is revalued at its own earliest-observed ('baseline') fx_rate instead of the
+    fx_rate actually in effect on each date, isolating the equity-only return from FX movement.
+    A date/holding with no currency-breakdown row (e.g. a ticker whose price history doesn't reach
+    that far back) falls back to its actual (FX-inclusive) equity contribution for that slice rather
+    than silently dropping to 0 — collapsing to 0 would fabricate a near-total-loss sub-period the
+    first time coverage is incomplete, which previously drove the whole chain-linked result to -100%."""
+    by_date_currency: dict[str, dict] = {}
+    baseline_fx: dict[str, float] = {}
+    baseline_date: dict[str, str] = {}
+    covered_base_by_date: dict[str, float] = {}
+    for aid in account_ids:
+        for row in get_value_history_currency(aid):
+            d, currency = row["snapshot_date"], row["currency"]
+            entry = by_date_currency.setdefault(d, {})
+            entry[currency] = entry.get(currency, 0.0) + (row["equity_value_native"] or 0.0)
+            covered_base_by_date[d] = covered_base_by_date.get(d, 0.0) + (row["equity_value_base"] or 0.0)
+            if currency not in baseline_date or d < baseline_date[currency]:
+                baseline_date[currency] = d
+                baseline_fx[currency] = row["fx_rate"]
+
+    cash_and_contrib_by_date: dict[str, dict] = {}
+    for aid in account_ids:
+        for row in get_value_history(aid):
+            d = row["snapshot_date"]
+            entry = cash_and_contrib_by_date.setdefault(
+                d, {"cash_value": 0.0, "net_contributions": 0.0, "equity_value": 0.0}
+            )
+            entry["cash_value"] += row["cash_value"] or 0.0
+            entry["net_contributions"] += row["net_contributions"] or 0.0
+            entry["equity_value"] += row["equity_value"] or 0.0
+
+    series = []
+    for d in sorted(cash_and_contrib_by_date):
+        cash = cash_and_contrib_by_date[d]["cash_value"]
+        nc = cash_and_contrib_by_date[d]["net_contributions"]
+        equity_actual = cash_and_contrib_by_date[d]["equity_value"]
+        covered_ex_fx = sum(
+            native * baseline_fx.get(currency, 1.0)
+            for currency, native in by_date_currency.get(d, {}).items()
+        )
+        uncovered_actual = equity_actual - covered_base_by_date.get(d, 0.0)
+        equity_ex_fx = covered_ex_fx + uncovered_actual
+        series.append((d, cash + equity_ex_fx, nc))
+    return _chain_link_twr(series)

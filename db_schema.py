@@ -859,6 +859,18 @@ def init_db() -> None:
         ''')
 
         cursor.execute('''
+            CREATE TABLE IF NOT EXISTS account_value_history_currency (
+                account_id            INTEGER NOT NULL,
+                snapshot_date         TEXT NOT NULL,
+                currency              TEXT NOT NULL,
+                equity_value_native   REAL NOT NULL,
+                equity_value_base     REAL NOT NULL,
+                fx_rate               REAL NOT NULL,
+                PRIMARY KEY (account_id, snapshot_date, currency)
+            )
+        ''')
+
+        cursor.execute('''
             CREATE TABLE IF NOT EXISTS account_performance_cache (
                 account_id      INTEGER PRIMARY KEY,
                 total_value     REAL,
@@ -1476,6 +1488,22 @@ def migrate_db(conn, cursor) -> None:
         conn.commit()
     except Exception as e:
         logger.debug("yahoo_api_stats migration: %s", e)
+
+    # account_value_history_currency (guard for pre-feature DBs)
+    try:
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS account_value_history_currency (
+                account_id            INTEGER NOT NULL,
+                snapshot_date         TEXT NOT NULL,
+                currency              TEXT NOT NULL,
+                equity_value_native   REAL NOT NULL,
+                equity_value_base     REAL NOT NULL,
+                fx_rate               REAL NOT NULL,
+                PRIMARY KEY (account_id, snapshot_date, currency)
+            )
+        ''')
+    except Exception as e:
+        logger.error("[MIGRATION ERROR] Failed to create account_value_history_currency: %s", e)
 
     try:
         conn.commit()

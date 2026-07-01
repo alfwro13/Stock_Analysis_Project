@@ -9,10 +9,10 @@ from pydantic import BaseModel
 from accounts_engine import (
     _ticker_known, account_summary, confirm_autotopup, create_transfer,
     delete_transaction_with_pair, dismiss_autotopup, export_transactions_csv,
-    filter_value_history_by_period, fx_rate_on_date, import_csv_activities,
-    pension_units_as_of, reconcile_cash, record_pension_contribution,
-    record_pension_fee, refresh_performance_cache, resnapshot_account,
-    resolve_watchlist_metadata, sync_house_purchase_price,
+    filter_value_history_by_period, fx_rate_on_date, get_combined_holdings,
+    import_csv_activities, pension_units_as_of, portfolio_totals, reconcile_cash,
+    record_pension_contribution, record_pension_fee, refresh_performance_cache,
+    resnapshot_account, resolve_watchlist_metadata, sync_house_purchase_price,
     sync_pension_opening_balance, watchlist_summary,
 )
 from account_scraper_engine import import_price_csv, price_as_of, run_scrape_for_account, test_scrape
@@ -37,6 +37,8 @@ from database import (
     delete_watchlist_items,
     get_unresolved_pending_topups,
 )
+from market_pulse import fetch_and_save_pulse
+from notification_engine import notify
 from profile_engine import update_single_profile
 from scheduler_engine import (
     get_all_job_last_runs, register_account_scraper_job, register_account_topup_job,
@@ -632,6 +634,35 @@ async def api_trigger_account_value_snapshot(background_tasks: BackgroundTasks):
         "status": "queued",
         "message": "Account Value Snapshot job queued. Check system notifications for completion.",
     })
+
+
+@accounts_router.get("/accounts/portfolio-totals")
+async def api_portfolio_totals():
+    try:
+        return JSONResponse(content={"status": "success", **portfolio_totals()})
+    except Exception as e:
+        logger.error("api_portfolio_totals failed: %s", e)
+        return _error_500(e)
+
+
+def _run_refresh_now(tickers: list) -> None:
+    try:
+        if tickers:
+            fetch_and_save_pulse(tickers)
+        for acc in get_accounts():
+            if acc["account_type"] == "Trading":
+                refresh_performance_cache(acc["id"])
+        notify("ha_refresh_now_status", "Success", "Home Assistant refresh-now completed.", level="info")
+    except Exception as e:
+        logger.error("HA refresh-now failed: %s", e)
+        notify("ha_refresh_now_status", "Error", f"Home Assistant refresh-now failed: {e}", level="error")
+
+
+@accounts_router.post("/accounts/refresh-now")
+async def api_refresh_now(background_tasks: BackgroundTasks):
+    tickers = list(get_combined_holdings().keys())
+    background_tasks.add_task(_run_refresh_now, tickers)
+    return JSONResponse(content={"status": "queued", "message": "Refresh queued."})
 
 
 def _require_scraper_account(account_id: int):

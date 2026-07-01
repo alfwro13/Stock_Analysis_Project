@@ -59,6 +59,10 @@ JOB_GRAPH: dict[str, dict] = {
     "account_scraper_dynamic":        {"label": "Account Price Scraper",                          "category": "portfolio",   "engine": "account_scraper_engine.py",     "produces": ["account_price_history"],                                      "consumes": [],                        "dynamic": True,                          "settings_anchor": None},
     "account_autotopup_dynamic":      {"label": "Account Auto Top-up",                            "category": "portfolio",   "engine": "accounts_engine.py",            "produces": ["account_autotopup_pending"],                                  "consumes": [],                        "dynamic": True,                          "settings_anchor": None},
     "backup_job":                     {"label": "Automated Backup",                               "category": "maintenance", "engine": "backup_engine.py",              "produces": ["backup_archive"],                                             "consumes": ["analysis.db", "data", "models"],                                    "settings_anchor": "backup-recovery-card"},
+
+    # Home Assistant "Refresh Data" button — not a scheduled job; an on-demand HTTP trigger that
+    # rides the same market_pulse_cache/account_performance_cache artifacts as the intraday scan.
+    "ha_refresh_now_source":         {"label": "Home Assistant Refresh Now",                     "category": "manual",      "engine": "api_routes_accounts.py",        "produces": ["market_pulse_cache", "account_performance_cache"],           "consumes": ["yahoo_price_data"],                                                 "non_job": True, "settings_anchor": None},
 }
 
 # Canonical config-key → job-id map. `config.json` SCHEDULING/NOTIFICATIONS keys and code
