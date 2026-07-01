@@ -17,6 +17,7 @@ from crash_engine import CrashEngine
 from moonshot_engine import MoonshotEngine
 from anomaly_engine import AnomalyEngine
 from notification_engine import notify
+from market_pulse import upsert_live_price
 from utils import clamp_beta
 
 logger = logging.getLogger(__name__)
@@ -567,6 +568,7 @@ class IntradayOrchestrator:
 
                 last_hist_close = df_hist['Close'].iloc[-1]
                 if last_hist_close > 0:
+                    upsert_live_price(ticker, metadata.get(ticker, {}).get('company_name') or ticker, current_price, float(last_hist_close), conn=conn)
                     raw_gap_pct = abs((current_price - last_hist_close) / last_hist_close) * 100.0
                     if raw_gap_pct > _CORP_ACTION_GAP_PCT:
                         if self._has_corporate_action_today(ticker):

@@ -137,8 +137,9 @@ Tables added after initial schema creation. All managed via `db_schema.py:init_d
 * **Key Columns:** `ticker` (PK), `sector`, `beta`, `market_cap`.
 
 #### `market_pulse_cache`
-* **Purpose:** Cached CNN Fear & Greed + major-index snapshot to avoid re-fetching on every page load.
+* **Purpose:** Shared, timestamped live-price cache — the single place any engine that derives a fresh ticker price from a Yahoo Finance fetch shares it, so other engines/pages reuse it instead of re-fetching. Originally just the index/asset snapshot behind `/market-sentiment` JS polling; now also written by the Crash & Moonshot scan (`intraday_orchestrator.py`) and Dip Radar (`intraday_bottom_engine.py`) from OHLCV data they already pull for their own pattern detection. Read by `market_pulse.get_cached_pulse_from_db()` (JS polling, with a `needs_refresh` staleness check that skips a fetch once another engine has updated a ticker) and by the Portfolio page's live-price overlay (`page_routes.py`).
 * **Key Columns:** `ticker` (PK), `name`, `price`, `change_pts`, `change_pct`, `is_positive`, `last_updated`.
+* **Written by:** `market_pulse.upsert_live_price()` (shared writer, name preserved via `COALESCE` if already on record) or `market_pulse.fetch_and_save_pulse()`'s own insert (index/mutual-fund/gilt fallback paths).
 
 #### `alert_state`
 * **Purpose:** Dedup ledger for intraday alert engines. Decoupled from `system_notifications` so display and dedup logic never interfere.

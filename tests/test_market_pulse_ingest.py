@@ -311,3 +311,60 @@ class TestFallbackSingleHistory:
 
         mock_single.assert_not_called()
         _clear_cache(index_ticker)
+
+
+class TestUpsertLivePrice:
+    """upsert_live_price(): shares a price another engine already fetched, without a new Yahoo call."""
+
+    TICKER = "_PULSE_UPSERT_TEST"
+
+    def setup_method(self):
+        _clear_cache(self.TICKER)
+
+    def teardown_method(self):
+        _clear_cache(self.TICKER)
+
+    def test_writes_correct_row_for_a_gain(self):
+        _mp.upsert_live_price(self.TICKER, "Test Co", 110.0, 100.0)
+        row = _read_cache(self.TICKER)
+        assert row["price"] == 110.0
+        assert row["change_pts"] == pytest.approx(10.0)
+        assert row["change_pct"] == pytest.approx(10.0)
+        assert row["is_positive"] == 1
+        assert row["name"] == "Test Co"
+
+    def test_writes_correct_row_for_a_loss(self):
+        _mp.upsert_live_price(self.TICKER, "Test Co", 90.0, 100.0)
+        row = _read_cache(self.TICKER)
+        assert row["change_pts"] == pytest.approx(-10.0)
+        assert row["change_pct"] == pytest.approx(-10.0)
+        assert row["is_positive"] == 0
+
+    def test_none_price_is_a_noop(self):
+        _mp.upsert_live_price(self.TICKER, "Test Co", None, 100.0)
+        assert _read_cache(self.TICKER) is None
+
+    def test_zero_prev_close_is_a_noop(self):
+        _mp.upsert_live_price(self.TICKER, "Test Co", 100.0, 0.0)
+        assert _read_cache(self.TICKER) is None
+
+    def test_none_prev_close_is_a_noop(self):
+        _mp.upsert_live_price(self.TICKER, "Test Co", 100.0, None)
+        assert _read_cache(self.TICKER) is None
+
+    def test_second_call_updates_price_but_preserves_original_name(self):
+        _mp.upsert_live_price(self.TICKER, "Original Name", 100.0, 90.0)
+        _mp.upsert_live_price(self.TICKER, self.TICKER, 105.0, 90.0)
+        row = _read_cache(self.TICKER)
+        assert row["name"] == "Original Name"
+        assert row["price"] == 105.0
+
+    def test_accepts_an_existing_open_connection_without_closing_it(self):
+        conn = _conn()
+        _mp.upsert_live_price(self.TICKER, "Test Co", 110.0, 100.0, conn=conn)
+        _mp.upsert_live_price(self.TICKER, "Test Co", 120.0, 100.0, conn=conn)
+        row = conn.execute(
+            "SELECT * FROM market_pulse_cache WHERE ticker = ?", (self.TICKER,)
+        ).fetchone()
+        assert row["price"] == 120.0
+        conn.close()

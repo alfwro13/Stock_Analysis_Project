@@ -251,6 +251,12 @@ Schema changes must go through `db_schema.py:init_db()` (new tables) and `db_sch
 
    **Bypasses to flag as bugs:** any `open(PORTFOLIO_PATH)`, `_load_json(PORTFOLIO_PATH)`, `get_tickers_from_json(PORTFOLIO_PATH, ...)`, or `engine.portfolio` attribute access outside `accounts_engine.py` and `ghostfolio_sync.py` will silently return an empty portfolio when Ghostfolio is disabled.
 
+15. **Never let a fetched value die with the engine that fetched it — share it via a timestamped cache.** Any engine that fetches external data (Yahoo Finance price/OHLCV, macro data, news, etc.) for its own narrow purpose must also persist any generally-useful derived value (e.g. a ticker's current price) to a shared, timestamped cache table, so other engines and pages can reuse it instead of re-fetching. Before writing new fetch logic for something another part of the app already tracks, check the relevant shared cache first (with a freshness/staleness check) and only fetch if it's missing or stale — never fetch unconditionally just because it's convenient for the caller.
+
+    The canonical example is live/current price: `market_pulse_cache` (`market_pulse.py`) is the single shared cache — `market_pulse.upsert_live_price()` writes to it, `market_pulse.get_cached_pulse_from_db()`'s `needs_refresh` flag is the check-before-fetch read path. The Crash & Moonshot scan (`intraday_orchestrator.py`) and Dip Radar (`intraday_bottom_engine.py`) both write into it from data they already fetch for their own pattern detection; the Portfolio page and the `/api/market-pulse` JS-polling loop both read from it. Neither of the two heavy scanners re-fetches from this cache themselves — they need actual OHLCV bars at a specific resolution their own pattern math requires, which a single cached price can't substitute for — but they never discard the price they derive along the way.
+
+    **When adding or materially changing an engine that fetches external data, or when you notice one engine re-fetching something another engine already holds fresh:** wire the new engine into the existing shared cache (extending it if the existing schema doesn't fit) rather than adding another isolated fetch-and-discard path. Flag it as a bug if a code review finds a fetch that duplicates data another engine already has timestamped in a shared table.
+
 ---
 
 ## Running the App

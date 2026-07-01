@@ -7,6 +7,8 @@ import time_engine
 
 import numpy as np
 import pandas as pd
+from config import HISTORICAL_DIR
+from market_pulse import upsert_live_price
 from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
@@ -256,6 +258,17 @@ class IntradayBottomEngine:
                 "vol_climax": bool(cur["Vol_Climax"]),
             }
             self._persist_result(result)
+
+            try:
+                hist_path = HISTORICAL_DIR / f"{ticker}.parquet"
+                if hist_path.exists():
+                    df_hist = pd.read_parquet(hist_path)
+                    df_hist = df_hist[df_hist['Close'].notna()]
+                    if not df_hist.empty:
+                        upsert_live_price(ticker, ticker, close, float(df_hist['Close'].iloc[-1]))
+            except Exception:
+                logger.warning("DipRadar: failed to share live price for %s", ticker, exc_info=True)
+
             return result
 
         except Exception as e:

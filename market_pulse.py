@@ -170,6 +170,36 @@ def get_cached_pulse_from_db(asset_tickers: List[str], refresh_rate: int) -> Dic
     return results
 
 
+def upsert_live_price(ticker: str, name: str, price: Any, prev_close: Any, conn: Any = None) -> None:
+    """Shares a price another engine already fetched for its own use instead of it being discarded; keeps an existing name if one is already on record."""
+    if price is None or not prev_close:
+        return
+    change_pts = price - prev_close
+    change_pct = (change_pts / prev_close) * 100.0
+    owns_conn = conn is None
+    if owns_conn:
+        conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO market_pulse_cache (ticker, name, price, change_pts, change_pct, is_positive, last_updated)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(ticker) DO UPDATE SET
+                name = COALESCE(market_pulse_cache.name, excluded.name),
+                price = excluded.price,
+                change_pts = excluded.change_pts,
+                change_pct = excluded.change_pct,
+                is_positive = excluded.is_positive,
+                last_updated = excluded.last_updated
+        ''', (ticker, name, price, change_pts, change_pct, int(change_pts >= 0), time.time()))
+        conn.commit()
+    except Exception as e:
+        logger.error("[MARKET PULSE] Failed to upsert live price for %s: %s", ticker, e)
+    finally:
+        if owns_conn and conn:
+            conn.close()
+
+
 def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
     """Fetches live ticks from Yahoo Finance and saves to DB; UK10YG is sourced exclusively from FT.com."""
     if not _FETCH_LOCK.acquire(blocking=False):
