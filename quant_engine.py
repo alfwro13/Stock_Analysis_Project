@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from typing import List
 
 import pandas as pd
-from yahoo_engine import yahoo_engine
+from data_engine import load_or_fetch_daily_history
 from indicators import (
     compute_rsi,
     compute_macd,
@@ -73,9 +73,10 @@ def run_daily_quant_scan(ticker_list: List[str], scan_type: str = 'daily') -> No
             logger.info("Processing %s (%d/%d) [%s]...", ticker, i + 1, total_tickers, scan_type)
             
             try:
-                # Fetch 2-years of data to guarantee an accurate 200-day SMA baseline
-                _result = yahoo_engine.get_price_history([ticker], period="2y", interval="1d")
-                df = _result.get(ticker, pd.DataFrame())
+                # 2 years guarantees an accurate 200-day SMA baseline
+                df = load_or_fetch_daily_history(ticker)
+                if df is None:
+                    df = pd.DataFrame()
 
                 if df.empty:
                     logger.warning("No OHLCV data returned for %s. Skipping.", ticker)

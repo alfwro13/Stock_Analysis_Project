@@ -7,6 +7,7 @@ from typing import List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
+from data_engine import load_or_fetch_daily_history
 from database import get_connection, log_notification
 from yahoo_engine import yahoo_engine
 
@@ -25,8 +26,7 @@ def get_historical_earnings_move(ticker: str) -> Optional[float]:
         if len(past_dates) == 0:
             return None
 
-        _full = yahoo_engine.get_price_history([ticker], period="2y", interval="1d")
-        full_hist = _full.get(ticker)
+        full_hist = load_or_fetch_daily_history(ticker)
 
         moves = []
         for e_date in past_dates[:4]:
@@ -193,8 +193,8 @@ def run_earnings_vol_scan(ticker_list: List[str]) -> None:
 
                 logger.info("Analyzing %s (Live Earnings Date: %s)...", ticker, e_date_str)
 
-                _hist_result = yahoo_engine.get_price_history([ticker], period="1mo", interval="1d")
-                hist = _hist_result.get(ticker, pd.DataFrame())
+                hist = load_or_fetch_daily_history(ticker)
+                hist = hist.tail(30) if hist is not None else pd.DataFrame()
 
                 if hist.empty or len(hist) < 20:
                     logger.warning("Insufficient underlying price data available for %s. Skipping.", ticker)

@@ -8,6 +8,7 @@ from typing import Optional
 import pandas as pd
 
 from config import HISTORICAL_DIR
+from market_pulse import upsert_live_price
 from time_engine import is_market_open
 from yahoo_engine import yahoo_engine
 
@@ -130,6 +131,8 @@ class AIContagionEngine:
             prev_close = float(prev_df["Close"].iloc[-1])
             if prev_close <= 0.0:
                 return None
+
+            upsert_live_price(ticker, ticker, current_price, prev_close)
 
             drawdown = (current_price - prev_close) / prev_close
             threshold = self.etf_threshold if is_etf else self.leader_threshold

@@ -6,16 +6,17 @@ import numpy as np
 import pandas as pd
 from typing import Optional
 
+from data_engine import load_or_fetch_daily_history
 from database import get_connection
-from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
 
 def calculate_tail_risk(ticker: str, target_date: Optional[str] = None) -> None:
     """Historical Simulation VaR/CVaR at 95% CI; uses empirical percentiles to avoid the normal-distribution assumption (returns are leptokurtic)."""
     try:
-        _result = yahoo_engine.get_price_history([ticker], period="2y", interval="1d")
-        df = _result.get(ticker, pd.DataFrame())
+        df = load_or_fetch_daily_history(ticker)
+        if df is None:
+            df = pd.DataFrame()
 
         if df.empty or len(df) < 50:
             logger.warning("Insufficient historical data to calculate tail risk for %s.", ticker)

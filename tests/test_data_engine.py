@@ -199,3 +199,60 @@ def test_bulk_download_intraday_skips_yahoo_call_when_all_mutual_funds():
         engine.bulk_download_intraday(["0P00018XAR.L"])
 
     mock_intraday.assert_not_called()
+
+
+# ── load_or_fetch_daily_history ────────────────────────────────────────────────
+
+class TestLoadOrFetchDailyHistory:
+
+    def test_reads_existing_parquet_without_fetching(self, tmp_path):
+        import pandas as pd
+        from data_engine import load_or_fetch_daily_history
+
+        df = pd.DataFrame(
+            {"Open": [1.0], "High": [1.5], "Low": [0.9], "Close": [1.2], "Volume": [100]},
+            index=pd.DatetimeIndex(["2026-01-01"]),
+        )
+        df.to_parquet(tmp_path / "AAPL.parquet", engine="pyarrow")
+
+        with (
+            patch("data_engine.HISTORICAL_DIR", tmp_path),
+            patch("data_engine.yahoo_engine.get_price_history") as mock_fetch,
+        ):
+            result = load_or_fetch_daily_history("AAPL")
+
+        mock_fetch.assert_not_called()
+        assert result is not None
+        assert result["Close"].iloc[0] == 1.2
+
+    def test_fetches_and_caches_when_parquet_missing(self, tmp_path):
+        import pandas as pd
+        from data_engine import load_or_fetch_daily_history
+
+        fetched_df = pd.DataFrame(
+            {"Open": [1.0], "High": [1.5], "Low": [0.9], "Close": [1.2], "Volume": [100]},
+            index=pd.DatetimeIndex(["2026-01-01"]),
+        )
+
+        with (
+            patch("data_engine.HISTORICAL_DIR", tmp_path),
+            patch("data_engine.yahoo_engine.get_price_history", return_value={"NEWTICK": fetched_df}) as mock_fetch,
+        ):
+            result = load_or_fetch_daily_history("NEWTICK")
+
+        mock_fetch.assert_called_once_with(["NEWTICK"], period="2y", interval="1d")
+        assert result is not None
+        assert result["Close"].iloc[0] == 1.2
+        assert (tmp_path / "NEWTICK.parquet").exists()
+
+    def test_returns_none_when_fetch_returns_empty(self, tmp_path):
+        from data_engine import load_or_fetch_daily_history
+
+        with (
+            patch("data_engine.HISTORICAL_DIR", tmp_path),
+            patch("data_engine.yahoo_engine.get_price_history", return_value={}),
+        ):
+            result = load_or_fetch_daily_history("MISSING")
+
+        assert result is None
+        assert not (tmp_path / "MISSING.parquet").exists()

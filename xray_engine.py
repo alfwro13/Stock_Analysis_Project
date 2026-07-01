@@ -8,10 +8,10 @@ import pandas as pd
 import requests
 import urllib3
 from typing import Dict, List, Optional, Tuple
-from yahoo_engine import yahoo_engine
 from urllib.parse import quote
 
 from config import GHOSTFOLIO_URL, GHOSTFOLIO_TOKEN, load_config
+from data_engine import load_or_fetch_daily_history
 from database import get_connection
 from fundamentals_helpers import get_instrument_type as _get_instrument_type
 from accounts_engine import derive_account_holdings, market_values_for_xray, get_combined_holdings
@@ -330,13 +330,17 @@ class XRayRiskComputer:
     # Benchmark SWDA.L is always fetched independently — never assumed to be a portfolio holding.
 
     def _fetch_returns(self, symbols: List[str]) -> pd.DataFrame:
-        """Downloads 1-year adjusted daily close returns via yahoo_engine."""
+        """1-year daily close returns, read from each symbol's own historical parquet (only hits Yahoo for a symbol with no parquet cached yet)."""
         if not symbols:
             return pd.DataFrame()
-        ticker_dfs = yahoo_engine.get_price_history(symbols, period="1y", interval="1d")
-        if not ticker_dfs:
+        closes: Dict[str, pd.Series] = {}
+        for t in symbols:
+            df = load_or_fetch_daily_history(t)
+            if df is not None and "Close" in df.columns:
+                closes[t] = df["Close"].tail(252)
+        if not closes:
             return pd.DataFrame()
-        prices = pd.DataFrame({t: df["Close"] for t, df in ticker_dfs.items() if "Close" in df.columns})
+        prices = pd.DataFrame(closes)
         prices = prices.dropna(axis=1, how="all")
         return prices.pct_change().dropna(how="all")
 

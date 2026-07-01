@@ -91,10 +91,10 @@ class TestCompletedScanBypass:
         conn.close()
 
         from quant_engine import run_daily_quant_scan
-        with patch("quant_engine.yahoo_engine") as mock_ye, \
+        with patch("quant_engine.load_or_fetch_daily_history") as mock_fetch, \
              patch("quant_engine.time"):
             run_daily_quant_scan(["AAPL", "MSFT"], scan_type=scan_type)
-            mock_ye.get_price_history.assert_not_called()
+            mock_fetch.assert_not_called()
 
 
 class TestNewScanCreatesState:
@@ -105,9 +105,9 @@ class TestNewScanCreatesState:
         fake_data = {"AAPL": _fake_ohlcv()}
 
         from quant_engine import run_daily_quant_scan
-        with patch("quant_engine.yahoo_engine") as mock_ye, \
+        with patch("quant_engine.load_or_fetch_daily_history") as mock_fetch, \
              patch("quant_engine.time"):
-            mock_ye.get_price_history.return_value = fake_data
+            mock_fetch.return_value = fake_data["AAPL"]
             run_daily_quant_scan(["AAPL"], scan_type=scan_type)
 
         state = _get_state(scan_type)
@@ -119,9 +119,9 @@ class TestNewScanCreatesState:
         fake_data = {"AAPL": _fake_ohlcv()}
 
         from quant_engine import run_daily_quant_scan
-        with patch("quant_engine.yahoo_engine") as mock_ye, \
+        with patch("quant_engine.load_or_fetch_daily_history") as mock_fetch, \
              patch("quant_engine.time"):
-            mock_ye.get_price_history.return_value = fake_data
+            mock_fetch.return_value = fake_data["AAPL"]
             run_daily_quant_scan(["AAPL"], scan_type=scan_type)
 
         state = _get_state(scan_type)
@@ -133,9 +133,9 @@ class TestNewScanCreatesState:
         fake_data = {"AAPL": _fake_ohlcv()}
 
         from quant_engine import run_daily_quant_scan
-        with patch("quant_engine.yahoo_engine") as mock_ye, \
+        with patch("quant_engine.load_or_fetch_daily_history") as mock_fetch, \
              patch("quant_engine.time"):
-            mock_ye.get_price_history.return_value = fake_data
+            mock_fetch.return_value = fake_data["AAPL"]
             run_daily_quant_scan(["AAPL"], scan_type=scan_type)
 
         conn = database.get_connection()
@@ -168,13 +168,12 @@ class TestResumability:
         }
 
         from quant_engine import run_daily_quant_scan
-        with patch("quant_engine.yahoo_engine") as mock_ye, \
+        with patch("quant_engine.load_or_fetch_daily_history") as mock_fetch, \
              patch("quant_engine.time"):
-            mock_ye.get_price_history.side_effect = lambda tickers, **_: {t: fake_data.get(t, pd.DataFrame()) for t in tickers}
+            mock_fetch.side_effect = lambda ticker: fake_data.get(ticker, pd.DataFrame())
             run_daily_quant_scan(["AAPL", "MSFT", "NVDA"], scan_type=scan_type)
 
-        calls = [call.args[0] for call in mock_ye.get_price_history.call_args_list]
-        fetched = [t for sublist in calls for t in sublist]
+        fetched = [call.args[0] for call in mock_fetch.call_args_list]
         assert "AAPL" not in fetched, "AAPL was already processed; must be skipped on resume"
         assert "MSFT" in fetched
         assert "NVDA" in fetched
@@ -185,9 +184,9 @@ class TestResumability:
         short_df = _fake_ohlcv(n=50)  # too few rows
 
         from quant_engine import run_daily_quant_scan
-        with patch("quant_engine.yahoo_engine") as mock_ye, \
+        with patch("quant_engine.load_or_fetch_daily_history") as mock_fetch, \
              patch("quant_engine.time"):
-            mock_ye.get_price_history.return_value = {"TINY": short_df}
+            mock_fetch.return_value = short_df
             run_daily_quant_scan(["TINY"], scan_type=scan_type)
 
         conn = database.get_connection()
@@ -206,9 +205,9 @@ class TestMomentumFieldsPersisted:
         fake_data = {"MU": _fake_ohlcv(n=210)}
 
         from quant_engine import run_daily_quant_scan
-        with patch("quant_engine.yahoo_engine") as mock_ye, \
+        with patch("quant_engine.load_or_fetch_daily_history") as mock_fetch, \
              patch("quant_engine.time"):
-            mock_ye.get_price_history.return_value = fake_data
+            mock_fetch.return_value = fake_data["MU"]
             run_daily_quant_scan(["MU"], scan_type=scan_type)
 
         conn = database.get_connection()
@@ -228,9 +227,9 @@ class TestMomentumFieldsPersisted:
         fake_data = {"AAPL": _fake_ohlcv(n=260)}
 
         from quant_engine import run_daily_quant_scan
-        with patch("quant_engine.yahoo_engine") as mock_ye, \
+        with patch("quant_engine.load_or_fetch_daily_history") as mock_fetch, \
              patch("quant_engine.time"):
-            mock_ye.get_price_history.return_value = fake_data
+            mock_fetch.return_value = fake_data["AAPL"]
             run_daily_quant_scan(["AAPL"], scan_type=scan_type)
 
         conn = database.get_connection()
@@ -260,9 +259,9 @@ class TestMomentumFieldsPersisted:
         conn.close()
 
         from quant_engine import run_daily_quant_scan
-        with patch("quant_engine.yahoo_engine") as mock_ye, \
+        with patch("quant_engine.load_or_fetch_daily_history") as mock_fetch, \
              patch("quant_engine.time"):
-            mock_ye.get_price_history.return_value = fake_data
+            mock_fetch.return_value = fake_data["NVDA"]
             run_daily_quant_scan(["NVDA"], scan_type=scan_type)
 
         conn = database.get_connection()

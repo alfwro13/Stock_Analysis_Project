@@ -239,17 +239,17 @@ def _run_backfill_mocked(tickers):
     from ai_prediction_engine import run_historical_backfill
     fetched = []
 
-    def _fake_get_price(ticker_list, **_):
-        fetched.extend(ticker_list)
-        return {}
+    def _fake_get_price(ticker):
+        fetched.append(ticker)
+        return None
 
     with (
         patch("ai_prediction_engine.sync_ticker_metadata"),
         patch("ai_prediction_engine._download_spy_benchmark", return_value=None),
-        patch("ai_prediction_engine.yahoo_engine") as mock_ye,
+        patch("ai_prediction_engine.load_or_fetch_daily_history") as mock_fetch,
         patch("ai_prediction_engine.time"),
     ):
-        mock_ye.get_price_history.side_effect = _fake_get_price
+        mock_fetch.side_effect = _fake_get_price
         run_historical_backfill(tickers)
 
     return fetched

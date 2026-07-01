@@ -247,55 +247,30 @@ class TestGetInstrumentType:
 # ─────────────────────────────────────────────────────────────────────────────
 
 class TestFetchReturns:
-    """Bug 5: single-ticker download must always return a DataFrame, not a Series."""
+    """_fetch_returns reads each symbol's own historical parquet via load_or_fetch_daily_history."""
 
     def _make_flat_df(self, tickers):
-        """Flat (non-MultiIndex) DataFrame as yfinance returns for a single ticker."""
+        """Flat DataFrame as load_or_fetch_daily_history returns for one ticker."""
         idx = pd.date_range("2025-01-02", periods=30, freq="B")
         return pd.DataFrame({"Close": np.linspace(100, 110, 30)}, index=idx)
-
-    def _make_multi_df(self, tickers):
-        """MultiIndex DataFrame as yfinance returns for multiple tickers."""
-        idx = pd.date_range("2025-01-02", periods=30, freq="B")
-        arrays = [["Close"] * len(tickers), tickers]
-        cols = pd.MultiIndex.from_arrays(arrays)
-        data = np.tile(np.linspace(100, 110, 30), (len(tickers), 1)).T
-        return pd.DataFrame(data, index=idx, columns=cols)
-
-    def _make_multi_single(self, ticker):
-        """MultiIndex DataFrame that yfinance sometimes returns for a 1-element list."""
-        idx = pd.date_range("2025-01-02", periods=30, freq="B")
-        arrays = [["Close"], [ticker]]
-        cols = pd.MultiIndex.from_arrays(arrays)
-        data = np.linspace(100, 110, 30).reshape(-1, 1)
-        return pd.DataFrame(data, index=idx, columns=cols)
 
     def test_multi_ticker_returns_dataframe(self):
         symbols = [T1, T2]
         flat = self._make_flat_df([T1])
-        with patch("xray_engine.yahoo_engine.get_price_history", return_value={T1: flat, T2: flat}):
+        with patch("xray_engine.load_or_fetch_daily_history", return_value=flat):
             result = XRayRiskComputer()._fetch_returns(symbols)
         assert isinstance(result, pd.DataFrame)
         assert set(result.columns) == {T1, T2}
 
-    def test_single_ticker_flat_columns_returns_dataframe(self):
-        """Single ticker — yahoo_engine always returns a per-ticker flat DataFrame."""
+    def test_single_ticker_returns_dataframe(self):
         flat = self._make_flat_df([T1])
-        with patch("xray_engine.yahoo_engine.get_price_history", return_value={T1: flat}):
+        with patch("xray_engine.load_or_fetch_daily_history", return_value=flat):
             result = XRayRiskComputer()._fetch_returns([T1])
         assert isinstance(result, pd.DataFrame), "Must return DataFrame, not Series"
         assert T1 in result.columns
 
-    def test_single_ticker_multiindex_returns_dataframe(self):
-        """yahoo_engine strips MultiIndex internally; callers always get flat DataFrames."""
-        flat = self._make_flat_df([T1])
-        with patch("xray_engine.yahoo_engine.get_price_history", return_value={T1: flat}):
-            result = XRayRiskComputer()._fetch_returns([T1])
-        assert isinstance(result, pd.DataFrame), "Must return DataFrame, not Series"
-        assert T1 in result.columns
-
-    def test_empty_on_yfinance_failure(self):
-        with patch("xray_engine.yahoo_engine.get_price_history", return_value={}):
+    def test_empty_when_history_missing_for_all_symbols(self):
+        with patch("xray_engine.load_or_fetch_daily_history", return_value=None):
             result = XRayRiskComputer()._fetch_returns([T1])
         assert result.empty
 

@@ -3,7 +3,7 @@ import random
 import logging
 from pathlib import Path
 import pandas as pd
-from typing import Set, List, Dict, Any
+from typing import Set, List, Dict, Any, Optional
 
 from config import HISTORICAL_DIR, INTRADAY_DIR, FUNDAMENTALS_DIR, load_config
 from database import get_watchlist_tickers, get_all_account_tickers, get_mutual_fund_tickers
@@ -226,6 +226,29 @@ def fetch_and_save_single_ticker(ticker: str) -> bool:
     """Background-task entry point for a brand-new account ticker — avoids DataEngine.__init__'s
     portfolio/watchlist/account-ticker DB reads, which are irrelevant for a single fetch."""
     return DataEngine.__new__(DataEngine).fetch_and_save_data(ticker)
+
+
+def load_or_fetch_daily_history(ticker: str) -> Optional[pd.DataFrame]:
+    """Reads the daily parquet this ticker's own nightly fetch already wrote; only hits Yahoo (and caches the result) when no parquet exists yet for it."""
+    path = HISTORICAL_DIR / f"{ticker}.parquet"
+    if not path.exists():
+        try:
+            data = yahoo_engine.get_price_history([ticker], period="2y", interval="1d")
+            df = data.get(ticker)
+            if df is None or df.empty:
+                return None
+            if df.index.tz is not None:
+                df.index = df.index.tz_convert(None)
+            HISTORICAL_DIR.mkdir(parents=True, exist_ok=True)
+            df.to_parquet(path, engine="pyarrow")
+        except Exception as e:
+            logger.error("Failed to fetch fallback history for %s: %s", ticker, e)
+            return None
+    try:
+        return pd.read_parquet(path)
+    except Exception as e:
+        logger.error("Failed to read historical parquet for %s: %s", ticker, e)
+        return None
 
 
 _EXPECTED_YFINANCE_COLUMNS = {"Open", "High", "Low", "Close", "Volume"}

@@ -9,6 +9,7 @@ from typing import List, Tuple, Dict, Optional, Any
 import pandas as pd
 import numpy as np
 import joblib
+from data_engine import load_or_fetch_daily_history
 from yahoo_engine import yahoo_engine
 from indicators import (
     compute_rsi,
@@ -228,14 +229,15 @@ def _winsorize_and_impute_fundamentals(df: pd.DataFrame) -> pd.DataFrame:
 
 
 
-def _download_spy_benchmark(period: str = "2y") -> Optional[pd.DataFrame]:
+def _download_spy_benchmark() -> Optional[pd.DataFrame]:
     """
-    Downloads SPY OHLCV data for relative strength calculations.
+    Loads SPY OHLCV data for relative strength calculations.
     Called once before the main ticker loop. Returns None on failure.
     """
     try:
-        _spy_result = yahoo_engine.get_price_history(["SPY"], period=period, interval="1d")
-        spy = _spy_result.get("SPY", pd.DataFrame())
+        spy = load_or_fetch_daily_history("SPY")
+        if spy is None:
+            spy = pd.DataFrame()
         if spy.empty:
             logger.warning("SPY download returned empty. Relative strength will be skipped.")
             return None
@@ -368,7 +370,7 @@ def run_historical_backfill(tickers: Optional[List[str]] = None) -> None:
             )
             conn.commit()
 
-        spy_df = _download_spy_benchmark(period="2y")
+        spy_df = _download_spy_benchmark()
 
         log_notification("Info", f"ML Historical Backfill initiated for {len(tickers)} assets.")
 
@@ -380,8 +382,9 @@ def run_historical_backfill(tickers: Optional[List[str]] = None) -> None:
             logger.info("[%d/%d] Processing 2y historical data for %s...", i + 1, total_tickers, ticker)
 
             try:
-                _result = yahoo_engine.get_price_history([ticker], period="2y", interval="1d")
-                df = _result.get(ticker, pd.DataFrame())
+                df = load_or_fetch_daily_history(ticker)
+                if df is None:
+                    df = pd.DataFrame()
 
                 if df.empty:
                     continue

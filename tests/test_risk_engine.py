@@ -141,13 +141,13 @@ class TestCalculateTailRiskIntegration:
     _PRICES  = _build_price_series(_RETURNS)
 
     @patch("risk_engine.get_connection")
-    @patch("risk_engine.yahoo_engine.get_price_history")
+    @patch("risk_engine.load_or_fetch_daily_history")
     def test_writes_correct_var_cvar(
         self, mock_get_history: MagicMock, mock_get_conn: MagicMock
     ) -> None:
-        # --- mock yahoo_engine ---
+        # --- mock the parquet-backed history loader ---
         df = pd.DataFrame({"Close": self._PRICES})
-        mock_get_history.return_value = {"SPY": df}
+        mock_get_history.return_value = df
 
         # --- mock DB connection ---
         mock_cursor = MagicMock()
@@ -178,12 +178,12 @@ class TestCalculateTailRiskIntegration:
         )
 
     @patch("risk_engine.get_connection")
-    @patch("risk_engine.yahoo_engine.get_price_history")
+    @patch("risk_engine.load_or_fetch_daily_history")
     def test_empty_dataframe_does_not_write(
         self, mock_get_history: MagicMock, mock_get_conn: MagicMock
     ) -> None:
-        """If yahoo_engine returns empty data the function should bail without DB write."""
-        mock_get_history.return_value = {}
+        """If no history is available the function should bail without DB write."""
+        mock_get_history.return_value = None
         mock_cursor = MagicMock()
         mock_conn = MagicMock()
         mock_conn.cursor.return_value = mock_cursor

@@ -50,6 +50,7 @@ Stored metadata and relational signals map to specific SQLite tables:
 Massive raw data matrices are directed here:
 * **Folder Structure:** `data/historical/*.parquet` and `data/fundamentals/*.json`.
 * **Content:** 2 years of daily OHLCV (Open, High, Low, Close, Volume) data and raw `.info` JSON dumps.
+* **Shared reader:** `data_engine.load_or_fetch_daily_history(ticker)` is the canonical way for any engine to get a ticker's daily history — it reads the parquet already written for that ticker and only falls back to a live Yahoo fetch (caching the result for next time) when no parquet exists yet. `quant_engine.py`, `risk_engine.py`, `earnings_vol_engine.py`, `ai_prediction_engine.py`, and `xray_engine.py` all read through it rather than independently re-downloading the same 1–2 year window from Yahoo.
 
 ### 4. Frontend Render Layer ( JINJA2 / JS / Charting)
 Finally, the schematic maps how the Web Terminal combines both data streams to render the UI you use:

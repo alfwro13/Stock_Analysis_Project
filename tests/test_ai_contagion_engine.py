@@ -312,3 +312,38 @@ class TestRecordScanSnapshot:
         finally:
             conn.close()
         assert count == 0, "Rows older than 7 days should be pruned"
+
+
+# ── shared live-price cache write-back ────────────────────────────────────────
+
+class TestSharesLivePriceOnEveryScan:
+    """_evaluate_ticker() must upsert market_pulse_cache even when no event fires."""
+
+    def test_writes_market_pulse_cache_even_without_an_event(self):
+        prev = 100.0
+        basket = {
+            "NVDA": _make_intraday_df(prev, prev * 0.98),
+            "AMD":  _make_intraday_df(prev, prev * 0.98),
+            "SMH":  _make_intraday_df(prev, prev * 0.98),
+        }
+        engine = AIContagionEngine(_CFG)
+        conn = _get_conn()
+        try:
+            conn.execute("DELETE FROM market_pulse_cache WHERE ticker IN ('NVDA','AMD','SMH')")
+            conn.commit()
+            with (
+                patch("ai_contagion_engine.is_market_open", return_value=True),
+                patch.object(engine, "_fetch_basket_data", return_value=basket),
+                patch.object(engine, "_check_volume_spike", return_value=False),
+            ):
+                result = engine.scan()
+            row = conn.execute(
+                "SELECT price FROM market_pulse_cache WHERE ticker = 'NVDA'"
+            ).fetchone()
+        finally:
+            conn.execute("DELETE FROM market_pulse_cache WHERE ticker IN ('NVDA','AMD','SMH')")
+            conn.commit()
+            conn.close()
+        assert result == []
+        assert row is not None
+        assert row["price"] == pytest.approx(98.0)
