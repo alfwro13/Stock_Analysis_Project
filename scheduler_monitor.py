@@ -2,7 +2,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 
 from db_accounts import get_account
-from scheduler_manifest import JOB_GRAPH, _DYNAMIC_ETF_RE, _DYNAMIC_ACCOUNT_SCRAPER_RE, _resolve_manifest, job_label
+from scheduler_manifest import JOB_GRAPH, _DYNAMIC_ETF_RE, _DYNAMIC_ACCOUNT_SCRAPER_RE, _DYNAMIC_ACCOUNT_TOPUP_RE, _resolve_manifest, job_label
 
 _ACCOUNT_TYPE_ARTIFACT = {"Pension": "pension_account_data", "House": "house_account_data"}
 
@@ -164,6 +164,10 @@ def _build_node(job_id: str, meta: dict, job, run_row: dict) -> dict:
         artifact = _ACCOUNT_TYPE_ARTIFACT.get(acc["account_type"] if acc else None)
         if artifact:
             consumes = [artifact]
+    elif _DYNAMIC_ACCOUNT_TOPUP_RE.match(job_id):
+        account_id = int(job_id.split("_")[2])
+        acc = get_account(account_id)
+        label = f"Account Auto Top-up — {acc['name'] if acc else account_id}"
     runs = run_row or {}
     next_run = None
     next_run_time = getattr(job, "next_run_time", None) if enabled else None

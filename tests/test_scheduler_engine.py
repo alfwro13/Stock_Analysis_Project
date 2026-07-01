@@ -461,6 +461,23 @@ class TestBuildWorkflowGraph:
         pairs = {(e["from"], e["to"]) for e in graph["edges"]}
         assert ("pension_accounts_node", f"account_scraper_{aid}_job") in pairs
 
+    @pytest.mark.db
+    def test_autotopup_job_labelled_and_linked_to_trading_accounts_node(self):
+        from database import create_account, update_account
+        aid = create_account("ManifestTopupAcc", "GBP", account_type="Trading")
+        update_account(
+            aid, autotopup_enabled=True, autotopup_amount=100.0,
+            autotopup_frequency="monthly", autotopup_day_of_month=1,
+        )
+        reload_scheduler()
+        graph = build_workflow_graph()
+        job_id = f"account_autotopup_{aid}_job"
+        node = next((n for n in graph["nodes"] if n["id"] == job_id), None)
+        assert node is not None
+        assert node["label"] == "Account Auto Top-up — ManifestTopupAcc"
+        pairs = {(e["from"], e["to"]) for e in graph["edges"]}
+        assert (job_id, "trading_accounts_node") in pairs
+
 
 class TestWorkflowConflicts:
     def test_backwards_ordering_flagged(self):
