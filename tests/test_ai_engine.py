@@ -652,12 +652,9 @@ class TestGeneratePrompt:
         with (
             patch("ai_engine.get_rate_to_base", return_value=1.0),
             patch("ai_engine.get_latest_regime", return_value=None),
-            patch("ai_engine.PORTFOLIO_PATH") as mock_path,
+            patch("accounts_engine.get_combined_holdings", return_value={}),
         ):
-            mock_path.__str__ = lambda self: "/nonexistent/portfolio.json"
-            mock_open = MagicMock(side_effect=FileNotFoundError)
-            with patch("builtins.open", mock_open):
-                result = ENGINE.generate_prompt(CORE_TICKER, mode)
+            result = ENGINE.generate_prompt(CORE_TICKER, mode)
         assert result is not None
         assert len(result) > 100
 

@@ -1,38 +1,22 @@
 import hashlib
-import json
 import logging
 import time
 from datetime import datetime, timezone
 from typing import Dict, Optional
 
-from config import load_config, PORTFOLIO_PATH
+from config import load_config
 from yahoo_engine import yahoo_engine
 from database import get_connection, get_watchlist_tickers
 
 logger = logging.getLogger(__name__)
 
 
-def _load_json_file(path) -> dict:
-    try:
-        with open(path, "r") as f:
-            return json.load(f)
-    except Exception:
-        return {}
-
-
 def _build_ticker_source_map() -> Dict[str, str]:
-    portfolio_data = _load_json_file(PORTFOLIO_PATH)
-
+    from accounts_engine import get_combined_holdings
     config = load_config()
     ignored = {t.upper() for t in config.get("IGNORED_TICKERS", [])}
 
-    portfolio_tickers = set()
-    for asset_data in portfolio_data.values():
-        if isinstance(asset_data, dict):
-            ticker = asset_data.get("ticker", "")
-            if ticker:
-                portfolio_tickers.add(ticker.upper())
-
+    portfolio_tickers = {t.upper() for t in get_combined_holdings().keys() if t}
     watchlist_tickers = {t.upper() for t in get_watchlist_tickers() if t}
 
     ticker_map: Dict[str, str] = {}

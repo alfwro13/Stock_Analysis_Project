@@ -1,12 +1,11 @@
 # GUI name: "FX Drag Analyzer". No scheduled job — on-demand only.
-import json
 import logging
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 import pandas as pd
 
-from config import HISTORICAL_DIR, PORTFOLIO_PATH, BASE_CURRENCY, GHOSTFOLIO_URL, GHOSTFOLIO_TOKEN
+from config import HISTORICAL_DIR, BASE_CURRENCY, GHOSTFOLIO_URL, GHOSTFOLIO_TOKEN
 from database import get_connection
 from ghostfolio_sync import GhostfolioSyncEngine
 from yahoo_engine import yahoo_engine
@@ -110,10 +109,10 @@ def portfolio_fx_breakdown(period_days: int) -> list[dict]:
         return []
 
     try:
-        with open(PORTFOLIO_PATH) as f:
-            portfolio = json.load(f)
+        from accounts_engine import get_combined_holdings
+        portfolio = get_combined_holdings()
     except Exception as e:
-        logger.error("Failed to read portfolio.json: %s", e)
+        logger.error("Failed to load portfolio holdings: %s", e)
         return []
 
     all_tickers = [v["ticker"] for v in portfolio.values() if v.get("ticker")]
@@ -231,10 +230,10 @@ def portfolio_lifetime_fx_breakdown() -> list[dict]:
         return []
 
     try:
-        with open(PORTFOLIO_PATH) as f:
-            portfolio = json.load(f)
+        from accounts_engine import get_combined_holdings
+        portfolio = get_combined_holdings()
     except Exception as e:
-        logger.error("Failed to read portfolio.json: %s", e)
+        logger.error("Failed to load portfolio holdings: %s", e)
         return []
 
     all_tickers = [v["ticker"] for v in portfolio.values() if v.get("ticker")]

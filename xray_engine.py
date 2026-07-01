@@ -11,10 +11,10 @@ from typing import Dict, List, Optional, Tuple
 from yahoo_engine import yahoo_engine
 from urllib.parse import quote
 
-from config import GHOSTFOLIO_URL, GHOSTFOLIO_TOKEN, PORTFOLIO_PATH, load_config
+from config import GHOSTFOLIO_URL, GHOSTFOLIO_TOKEN, load_config
 from database import get_connection
 from fundamentals_helpers import get_instrument_type as _get_instrument_type
-from accounts_engine import derive_account_holdings, market_values_for_xray
+from accounts_engine import derive_account_holdings, market_values_for_xray, get_combined_holdings
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -494,20 +494,10 @@ def cache_xray_dividends(holdings: List[Dict], client: GhostfolioXRayClient) -> 
 
 def run_xray_precompute() -> bool:
     logger.info("X-ray pre-compute job started.")
-    try:
-        with open(PORTFOLIO_PATH) as f:
-            portfolio_json: Dict = json.load(f)
-    except Exception as e:
-        logger.warning("X-ray pre-compute: could not read portfolio.json — %s", e)
-        portfolio_json = {}
-
-    # Tickers from built-in Trading accounts must also be in the risk cache — assemble_xray_report
-    # needs their beta/vol/correlation regardless of which account scope is later requested.
-    symbols = {data["ticker"] for data in portfolio_json.values() if data.get("ticker")}
-    symbols.update(derive_account_holdings(None).keys())
+    symbols = set(get_combined_holdings().keys())
     holdings = [{"symbol": sym, "data_source": "YAHOO", "currency": ""} for sym in symbols]
     if not holdings:
-        logger.warning("X-ray pre-compute: no tickers found in portfolio.json or built-in Trading accounts.")
+        logger.warning("X-ray pre-compute: no tickers found in portfolio or built-in Trading accounts.")
         return False
 
     risk_ok = XRayRiskComputer().compute_and_cache(holdings)

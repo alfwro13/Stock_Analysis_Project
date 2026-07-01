@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -9,7 +8,7 @@ import numpy as np
 import pandas as pd
 import ta
 
-from config import HISTORICAL_DIR, PORTFOLIO_PATH
+from config import HISTORICAL_DIR
 from database import get_connection, log_trap_phase, get_unresolved_trap_phases, batch_update_trap_phase_actuals
 from yahoo_engine import yahoo_engine
 
@@ -381,14 +380,9 @@ class TrapEngine:
         tickers: set[str] = set(self.proxy_tickers)
         if self.monitor_portfolio:
             try:
-                if PORTFOLIO_PATH.exists():
-                    with open(PORTFOLIO_PATH) as f:
-                        portfolio = json.load(f)
-                    items = portfolio.values() if isinstance(portfolio, dict) else portfolio
-                    for item in items:
-                        t = item.get("ticker") or item.get("symbol")
-                        if t:
-                            tickers.add(t.upper())
+                from accounts_engine import get_combined_holdings
+                for t in get_combined_holdings().keys():
+                    tickers.add(t.upper())
             except Exception as e:
                 logger.warning("TrapEngine: could not load portfolio tickers: %s", e)
         tickers -= self.ignored_tickers

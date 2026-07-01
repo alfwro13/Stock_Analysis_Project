@@ -14,6 +14,10 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
+def _combined(*tickers):
+    return {t: {"ticker": t} for t in tickers}
+
+
 # ── get_all_tickers ───────────────────────────────────────────────────────────
 
 def test_get_all_tickers_deduplicates_portfolio_and_watchlist():
@@ -21,11 +25,11 @@ def test_get_all_tickers_deduplicates_portfolio_and_watchlist():
     from data_engine import DataEngine
 
     engine = DataEngine.__new__(DataEngine)
-    engine.portfolio = {"pos1": {"ticker": "AAPL"}}
     engine.watchlist = {"watchlist": ["AAPL", "MSFT"]}
     engine.account_tickers = []
 
-    with patch("data_engine.load_config", return_value={"IGNORED_TICKERS": []}):
+    with patch("data_engine.load_config", return_value={"IGNORED_TICKERS": []}), \
+         patch("accounts_engine.get_combined_holdings", return_value=_combined("AAPL")):
         tickers = engine.get_all_tickers()
 
     assert tickers.count("AAPL") == 1
@@ -37,11 +41,11 @@ def test_get_all_tickers_normalises_case():
     from data_engine import DataEngine
 
     engine = DataEngine.__new__(DataEngine)
-    engine.portfolio = {"pos1": {"ticker": "aapl"}}
     engine.watchlist = {"watchlist": []}
     engine.account_tickers = []
 
-    with patch("data_engine.load_config", return_value={"IGNORED_TICKERS": []}):
+    with patch("data_engine.load_config", return_value={"IGNORED_TICKERS": []}), \
+         patch("accounts_engine.get_combined_holdings", return_value=_combined("aapl")):
         tickers = engine.get_all_tickers()
 
     assert "AAPL" in tickers
@@ -52,35 +56,15 @@ def test_get_all_tickers_excludes_ignored():
     from data_engine import DataEngine
 
     engine = DataEngine.__new__(DataEngine)
-    engine.portfolio = {"pos1": {"ticker": "TSLA"}, "pos2": {"ticker": "AAPL"}}
     engine.watchlist = {"watchlist": []}
     engine.account_tickers = []
 
-    with patch("data_engine.load_config", return_value={"IGNORED_TICKERS": ["TSLA"]}):
+    with patch("data_engine.load_config", return_value={"IGNORED_TICKERS": ["TSLA"]}), \
+         patch("accounts_engine.get_combined_holdings", return_value=_combined("TSLA", "AAPL")):
         tickers = engine.get_all_tickers()
 
     assert "TSLA" not in tickers
     assert "AAPL" in tickers
-
-
-def test_get_all_tickers_skips_malformed_portfolio_entries():
-    """Non-dict entries and entries without 'ticker' key must be silently skipped."""
-    from data_engine import DataEngine
-
-    engine = DataEngine.__new__(DataEngine)
-    engine.portfolio = {
-        "good": {"ticker": "MSFT"},
-        "bad_str": "just-a-string",
-        "bad_no_ticker": {"name": "No ticker here"},
-        "bad_empty_ticker": {"ticker": ""},
-    }
-    engine.watchlist = {"watchlist": []}
-    engine.account_tickers = []
-
-    with patch("data_engine.load_config", return_value={"IGNORED_TICKERS": []}):
-        tickers = engine.get_all_tickers()
-
-    assert tickers == ["MSFT"]
 
 
 def test_get_all_tickers_empty_inputs_returns_empty_list():
@@ -88,11 +72,11 @@ def test_get_all_tickers_empty_inputs_returns_empty_list():
     from data_engine import DataEngine
 
     engine = DataEngine.__new__(DataEngine)
-    engine.portfolio = {}
     engine.watchlist = {}
     engine.account_tickers = []
 
-    with patch("data_engine.load_config", return_value={"IGNORED_TICKERS": []}):
+    with patch("data_engine.load_config", return_value={"IGNORED_TICKERS": []}), \
+         patch("accounts_engine.get_combined_holdings", return_value={}):
         tickers = engine.get_all_tickers()
 
     assert tickers == []
@@ -103,11 +87,11 @@ def test_get_all_tickers_result_is_sorted():
     from data_engine import DataEngine
 
     engine = DataEngine.__new__(DataEngine)
-    engine.portfolio = {"p1": {"ticker": "ZM"}, "p2": {"ticker": "AAPL"}}
     engine.watchlist = {"watchlist": ["MSFT"]}
     engine.account_tickers = []
 
-    with patch("data_engine.load_config", return_value={"IGNORED_TICKERS": []}):
+    with patch("data_engine.load_config", return_value={"IGNORED_TICKERS": []}), \
+         patch("accounts_engine.get_combined_holdings", return_value=_combined("ZM", "AAPL")):
         tickers = engine.get_all_tickers()
 
     assert tickers == sorted(tickers)
@@ -119,11 +103,11 @@ def test_get_all_tickers_includes_account_transaction_tickers():
     from data_engine import DataEngine
 
     engine = DataEngine.__new__(DataEngine)
-    engine.portfolio = {}
     engine.watchlist = {"watchlist": []}
     engine.account_tickers = ["XUKX.L", "IGLG.L"]
 
-    with patch("data_engine.load_config", return_value={"IGNORED_TICKERS": []}):
+    with patch("data_engine.load_config", return_value={"IGNORED_TICKERS": []}), \
+         patch("accounts_engine.get_combined_holdings", return_value={}):
         tickers = engine.get_all_tickers()
 
     assert "XUKX.L" in tickers
@@ -131,15 +115,15 @@ def test_get_all_tickers_includes_account_transaction_tickers():
 
 
 def test_get_all_tickers_deduplicates_account_tickers_with_portfolio():
-    """An account-only ticker already present in portfolio.json must appear once."""
+    """An account-only ticker already present in combined holdings must appear once."""
     from data_engine import DataEngine
 
     engine = DataEngine.__new__(DataEngine)
-    engine.portfolio = {"pos1": {"ticker": "AAPL"}}
     engine.watchlist = {"watchlist": []}
     engine.account_tickers = ["AAPL", "MSFT"]
 
-    with patch("data_engine.load_config", return_value={"IGNORED_TICKERS": []}):
+    with patch("data_engine.load_config", return_value={"IGNORED_TICKERS": []}), \
+         patch("accounts_engine.get_combined_holdings", return_value=_combined("AAPL")):
         tickers = engine.get_all_tickers()
 
     assert tickers.count("AAPL") == 1
@@ -151,11 +135,11 @@ def test_get_all_tickers_excludes_ignored_account_tickers():
     from data_engine import DataEngine
 
     engine = DataEngine.__new__(DataEngine)
-    engine.portfolio = {}
     engine.watchlist = {"watchlist": []}
     engine.account_tickers = ["XUKX.L", "BADTICKER"]
 
-    with patch("data_engine.load_config", return_value={"IGNORED_TICKERS": ["BADTICKER"]}):
+    with patch("data_engine.load_config", return_value={"IGNORED_TICKERS": ["BADTICKER"]}), \
+         patch("accounts_engine.get_combined_holdings", return_value={}):
         tickers = engine.get_all_tickers()
 
     assert "BADTICKER" not in tickers
@@ -170,7 +154,6 @@ def test_init_populates_watchlist_from_db():
 
     with patch("data_engine.get_watchlist_tickers", return_value=["NVDA", "AMD"]), \
          patch("data_engine.get_all_account_tickers", return_value=[]), \
-         patch("data_engine.DataEngine._load_json", return_value={}), \
          patch("data_engine.DataEngine._ensure_directories"):
         engine = DataEngine()
 
@@ -183,7 +166,6 @@ def test_init_populates_account_tickers_from_db():
 
     with patch("data_engine.get_watchlist_tickers", return_value=[]), \
          patch("data_engine.get_all_account_tickers", return_value=["XUKX.L", "IGLG.L"]), \
-         patch("data_engine.DataEngine._load_json", return_value={}), \
          patch("data_engine.DataEngine._ensure_directories"):
         engine = DataEngine()
 

@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Literal, Optional
 import pandas as pd
 import ta
 
-from config import PORTFOLIO_PATH, HISTORICAL_DIR
+from config import HISTORICAL_DIR
 from database import get_connection
 from portfolio_service import get_rate_to_base
 from time_engine import now_local
@@ -120,15 +120,10 @@ class AIPromptEngine:
     def _get_portfolio_context(self, ticker: str) -> Dict[str, Any]:
         """Extracts holdings, VWAP, and account splits for the specific ticker."""
         try:
-            with open(PORTFOLIO_PATH, 'r') as f:
-                portfolio = json.load(f)
-
-            for _, data in portfolio.items():
-                if data.get("ticker") == ticker:
-                    return data
-            return {}
+            from accounts_engine import get_combined_holdings
+            return get_combined_holdings().get(ticker, {})
         except Exception as e:
-            logger.warning(f"[AI ENGINE] Could not read portfolio context for {ticker}: {e}")
+            logger.warning("Could not read portfolio context for %s: %s", ticker, e)
             return {}
 
     def _get_technical_indicators(self, ticker: str) -> Dict[str, str]:

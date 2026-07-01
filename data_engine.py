@@ -1,5 +1,3 @@
-# data_engine.py
-import json
 import time
 import random
 import logging
@@ -7,7 +5,7 @@ from pathlib import Path
 import pandas as pd
 from typing import Set, List, Dict, Any
 
-from config import PORTFOLIO_PATH, HISTORICAL_DIR, INTRADAY_DIR, FUNDAMENTALS_DIR, load_config
+from config import HISTORICAL_DIR, INTRADAY_DIR, FUNDAMENTALS_DIR, load_config
 from database import get_watchlist_tickers, get_all_account_tickers, get_mutual_fund_tickers
 from gilt_engine import GiltDataService
 from yahoo_engine import yahoo_engine
@@ -19,7 +17,6 @@ logger = logging.getLogger(__name__)
 
 class DataEngine:
     def __init__(self) -> None:
-        self.portfolio: Dict[str, Any] = self._load_json(PORTFOLIO_PATH)
         self.watchlist: Dict[str, Any] = {"watchlist": get_watchlist_tickers()}
         self.account_tickers: List[str] = get_all_account_tickers()
         self._ensure_directories()
@@ -39,28 +36,13 @@ class DataEngine:
             df.index = df.index.tz_convert(None)
         return df
 
-    def _load_json(self, filepath: str) -> Dict[str, Any]:
-        """Safely loads JSON files, logging missing/corrupt files without crashing init."""
-        try:
-            with open(filepath, 'r') as f:
-                return json.load(f)
-        except FileNotFoundError:
-            logger.error(f"Missing JSON file: {filepath}")
-            return {}
-        except json.JSONDecodeError as e:
-            logger.error(f"Corrupt JSON in {filepath} (line {e.lineno}, col {e.colno}): {e.msg}")
-            return {}
-        except Exception as e:
-            logger.error(f"Unexpected error reading {filepath}: {e}")
-            return {}
-            
     def get_all_tickers(self) -> List[str]:
+        from accounts_engine import get_combined_holdings
         tickers: Set[str] = set()
 
-        # defensive against malformed non-dict entries in portfolio.json
-        for _asset_key, asset_data in self.portfolio.items():
-            if isinstance(asset_data, dict) and asset_data.get("ticker"):
-                tickers.add(normalize_ticker(asset_data["ticker"]))
+        for ticker in get_combined_holdings().keys():
+            if ticker:
+                tickers.add(normalize_ticker(ticker))
 
         if isinstance(self.watchlist.get("watchlist"), list):
             for ticker in self.watchlist["watchlist"]:

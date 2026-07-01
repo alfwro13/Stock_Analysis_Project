@@ -1,10 +1,7 @@
-# earnings_engine.py
 import logging
-import os
-import json
 from datetime import datetime
 from database import get_connection
-from config import PORTFOLIO_PATH, load_config
+from config import load_config
 from time_engine import now_local
 from notification_engine import notify
 
@@ -12,23 +9,14 @@ logger = logging.getLogger(__name__)
 
 def run_earnings_alert():
     try:
+        from accounts_engine import get_combined_holdings
         config = load_config()
         earnings_cfg = config.get("NOTIFICATIONS", {}).get("EARNINGS_ALERTS", {})
         days_ahead = int(earnings_cfg.get("DAYS_AHEAD", 7))
         alert_type = earnings_cfg.get("ALERT_TYPE", "daily") # "daily" or "once"
 
-        if not os.path.exists(PORTFOLIO_PATH):
-            return False, "Portfolio file not found."
-        
-        with open(PORTFOLIO_PATH, 'r') as f:
-            try:
-                portfolio = json.load(f)
-            except json.JSONDecodeError:
-                return False, "Portfolio JSON is corrupted."
-                
         # 0P prefix = Morningstar fund IDs (not equities, no earnings dates)
-        tickers = [data.get('ticker') for data in portfolio.values()
-                   if data.get('ticker') and not data.get('ticker').startswith('0P')]
+        tickers = [t for t in get_combined_holdings().keys() if not t.startswith('0P')]
 
         if not tickers:
             return True, "No valid equity tickers found in portfolio."

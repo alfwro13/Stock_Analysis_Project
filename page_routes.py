@@ -19,7 +19,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
-from config import load_config, PORTFOLIO_PATH, HISTORICAL_DIR, INTRADAY_DIR, BASE_CURRENCY, ACCOUNT_CURRENCIES
+from config import load_config, HISTORICAL_DIR, INTRADAY_DIR, BASE_CURRENCY, ACCOUNT_CURRENCIES
 import time_engine
 from database import get_connection, get_watchlist_tickers
 from market_pulse import get_all_cached_pulse, INDEX_TICKERS
@@ -91,13 +91,6 @@ async def admin_reset_password_page(request: Request):
         return RedirectResponse("/login", status_code=302)
     return templates.TemplateResponse(request=request, name="admin_reset_password.html")
 
-
-def get_json_data(filepath: str) -> Dict[str, Any]:
-    try:
-        with open(filepath, 'r') as f:
-            return json.load(f)
-    except Exception:
-        return {}
 
 
 @page_router.get("/settings", response_class=HTMLResponse)
@@ -1018,8 +1011,8 @@ async def etf_predictor_detail_page(request: Request, config_id: int):
 
     etf_pnl = None
     try:
-        portfolio = get_json_data(PORTFOLIO_PATH)
-        position = next((v for v in portfolio.values() if v.get("ticker") == cfg["etf_ticker"]), None)
+        from accounts_engine import get_combined_holdings
+        position = get_combined_holdings().get(cfg["etf_ticker"])
         if position and prediction.get("status") == "success":
             shares = float(position.get("global_shares", 0))
             avg_buy = float(position.get("global_buy_price", 0))
@@ -1408,8 +1401,8 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
         except Exception:
             logger.warning("Could not parse next_earnings_date for %s: %s", ticker, stock_data.get('next_earnings_date'))
 
-    portfolio_json = get_json_data(PORTFOLIO_PATH)
-    user_asset = next((data for key, data in portfolio_json.items() if data.get("ticker") == ticker), None)
+    from accounts_engine import get_combined_holdings
+    user_asset = get_combined_holdings().get(ticker)
 
     portfolio_math = None
     if user_asset and stock_data and stock_data.get('current_price'):

@@ -7,9 +7,6 @@ Covers:
   _build_ticker_source_map()— portfolio/watchlist union, 'both' label, ignored filter
 """
 import sys
-import json
-import tempfile
-import os
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
@@ -82,22 +79,15 @@ class TestExtractPublishedAt:
 # ── _build_ticker_source_map ──────────────────────────────────────────────────
 
 class TestBuildTickerSourceMap:
-    def _write_portfolio(self, path, tickers):
-        data = {t: {"ticker": t} for t in tickers}
-        with open(path, "w") as f:
-            json.dump(data, f)
-
     def _run(self, portfolio_tickers, watchlist_tickers, ignored=None):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            p_path = os.path.join(tmpdir, "portfolio.json")
-            self._write_portfolio(p_path, portfolio_tickers)
-            cfg = {"IGNORED_TICKERS": ignored or []}
-            with (
-                patch("news_feed_engine.PORTFOLIO_PATH", p_path),
-                patch("news_feed_engine.get_watchlist_tickers", return_value=watchlist_tickers),
-                patch("news_feed_engine.load_config", return_value=cfg),
-            ):
-                return _build_ticker_source_map()
+        combined = {t: {"ticker": t} for t in portfolio_tickers}
+        cfg = {"IGNORED_TICKERS": ignored or []}
+        with (
+            patch("accounts_engine.get_combined_holdings", return_value=combined),
+            patch("news_feed_engine.get_watchlist_tickers", return_value=watchlist_tickers),
+            patch("news_feed_engine.load_config", return_value=cfg),
+        ):
+            return _build_ticker_source_map()
 
     def test_portfolio_only_ticker_labelled_portfolio(self):
         result = self._run(["AAPL"], [])

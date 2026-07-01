@@ -1,6 +1,5 @@
 """Generates the Morning Quant Briefing: overnight portfolio news, US futures, UK pre-open context, and quant screener signals."""
 
-import json
 import logging
 import os
 import time
@@ -11,7 +10,7 @@ import pandas as pd
 from yahoo_engine import yahoo_engine
 
 import time_engine
-from config import PORTFOLIO_PATH, HISTORICAL_DIR
+from config import HISTORICAL_DIR
 from database import get_connection
 from quant_screener import fetch_latest_signals, generate_markdown_briefing
 from regime_engine import get_latest_regime
@@ -39,9 +38,8 @@ _UK_DISPLAY_NAMES = {
 
 def _load_portfolio_tickers() -> list[str]:
     try:
-        with open(PORTFOLIO_PATH, "r") as f:
-            data = json.load(f)
-        return [normalize_ticker(v["ticker"]) for v in data.values() if "ticker" in v]
+        from accounts_engine import get_combined_holdings
+        return [normalize_ticker(t) for t in get_combined_holdings().keys()]
     except Exception:
         logger.warning("Could not load portfolio tickers for morning briefing.")
         return []

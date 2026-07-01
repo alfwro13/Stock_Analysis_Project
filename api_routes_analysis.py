@@ -168,12 +168,9 @@ async def get_forensic_scores(request: Request):
     """Returns Piotroski F-Score, Altman Z-Score, and Beneish M-Score for all portfolio and watchlist tickers."""
     conn = None
     try:
+        from accounts_engine import get_combined_holdings
         engine = DataEngine()
-        portfolio_tickers = {
-            normalize_ticker(v["ticker"])
-            for v in engine.portfolio.values()
-            if isinstance(v, dict) and v.get("ticker")
-        }
+        portfolio_tickers = {normalize_ticker(t) for t in get_combined_holdings().keys() if t}
         watchlist_tickers = {
             normalize_ticker(t)
             for t in (engine.watchlist.get("watchlist") or [])

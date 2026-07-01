@@ -1,17 +1,18 @@
 import logging
-import os
-import json
 import pandas as pd
 from datetime import datetime, timedelta, timezone
 from database import get_connection, get_watchlist_tickers
-from config import PORTFOLIO_PATH, load_config
+from config import load_config
 from yahoo_engine import yahoo_engine
 from notification_engine import notify
 
 logger = logging.getLogger(__name__)
 
+
 def get_tickers_from_json(filepath: str) -> list:
-    """Safely extracts tickers from portfolio.json."""
+    """Safely extracts tickers from a portfolio.json-shaped file. Used by external callers."""
+    import os
+    import json
     if not os.path.exists(filepath):
         return []
     try:
@@ -21,9 +22,11 @@ def get_tickers_from_json(filepath: str) -> list:
     except Exception:
         return []
 
+
 def run_insider_alert():
     """Scrapes recent SEC Form 4 filings for massive insider buying and aligns with quant scores."""
     try:
+        from accounts_engine import get_combined_holdings
         logger.info("Starting Insider Trading Alert Check...")
 
         config = load_config()
@@ -41,7 +44,7 @@ def run_insider_alert():
 
         target_tickers = set()
         if enable_portfolio:
-            target_tickers.update(get_tickers_from_json(PORTFOLIO_PATH))
+            target_tickers.update(get_combined_holdings().keys())
         if enable_watchlist:
             target_tickers.update(get_watchlist_tickers())
 

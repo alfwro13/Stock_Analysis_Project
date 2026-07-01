@@ -167,7 +167,7 @@ class TestRunInsiderAlertGuards:
             "MIN_VALUE": 50000, "DAYS_BACK": 7,
         }}}
         with patch("insider_engine.load_config", return_value=cfg), \
-             patch("insider_engine.get_tickers_from_json", return_value=[]):
+             patch("accounts_engine.get_combined_holdings", return_value={}):
             ok, msg = run_insider_alert()
         assert ok is True
         assert "no valid" in msg.lower()
@@ -179,7 +179,7 @@ class TestRunInsiderAlertGuards:
             "MIN_VALUE": 50000, "DAYS_BACK": 7,
         }}}
         with patch("insider_engine.load_config", return_value=cfg), \
-             patch("insider_engine.get_tickers_from_json", return_value=["0P0000ABC", "0P9999XYZ"]), \
+             patch("accounts_engine.get_combined_holdings", return_value={'0P0000ABC': {'ticker': '0P0000ABC'}, '0P9999XYZ': {'ticker': '0P9999XYZ'}}), \
              patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)):
             ok, msg = run_insider_alert()
         assert ok is True
@@ -194,7 +194,7 @@ class TestRunInsiderAlertGuards:
             "IGNORED_TICKERS": ["GBP", "USD"],
         }
         with patch("insider_engine.load_config", return_value=cfg), \
-             patch("insider_engine.get_tickers_from_json", return_value=["GBP", "USD"]), \
+             patch("accounts_engine.get_combined_holdings", return_value={'GBP': {'ticker': 'GBP'}, 'USD': {'ticker': 'USD'}}), \
              patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)):
             ok, msg = run_insider_alert()
         assert ok is True
@@ -206,7 +206,7 @@ class TestRunInsiderAlertGuards:
             "MIN_VALUE": 50000, "DAYS_BACK": 7,
         }}}
         with patch("insider_engine.load_config", return_value=cfg), \
-             patch("insider_engine.get_tickers_from_json", return_value=["ES=F", "NQ=F"]), \
+             patch("accounts_engine.get_combined_holdings", return_value={'ES=F': {'ticker': 'ES=F'}, 'NQ=F': {'ticker': 'NQ=F'}}), \
              patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)):
             ok, msg = run_insider_alert()
         assert ok is True
@@ -218,7 +218,7 @@ class TestRunInsiderAlertGuards:
             "MIN_VALUE": 50000, "DAYS_BACK": 7,
         }}}
         with patch("insider_engine.load_config", return_value=cfg), \
-             patch("insider_engine.get_tickers_from_json", return_value=["GBP=X", "EUR=X"]), \
+             patch("accounts_engine.get_combined_holdings", return_value={'GBP=X': {'ticker': 'GBP=X'}, 'EUR=X': {'ticker': 'EUR=X'}}), \
              patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)):
             ok, msg = run_insider_alert()
         assert ok is True
@@ -230,7 +230,7 @@ class TestRunInsiderAlertGuards:
             "MIN_VALUE": 50000, "DAYS_BACK": 7,
         }}}
         with patch("insider_engine.load_config", return_value=cfg), \
-             patch("insider_engine.get_tickers_from_json", return_value=["^GSPC", "^FTSE"]), \
+             patch("accounts_engine.get_combined_holdings", return_value={'^GSPC': {'ticker': '^GSPC'}, '^FTSE': {'ticker': '^FTSE'}}), \
              patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)):
             ok, msg = run_insider_alert()
         assert ok is True
@@ -257,7 +257,7 @@ class TestRunInsiderAlertFiltering:
         old_df = _insider_df(days_ago=30, action="Purchase", value=200_000)
 
         with patch("insider_engine.load_config", return_value=cfg), \
-             patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
+             patch("accounts_engine.get_combined_holdings", return_value={'AAPL': {'ticker': 'AAPL'}}), \
              patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
              patch("insider_engine.yahoo_engine.get_insider_transactions", return_value=old_df):
             ok, msg = run_insider_alert()
@@ -272,7 +272,7 @@ class TestRunInsiderAlertFiltering:
         sale_df = _insider_df(days_ago=1, action="Sale", value=500_000)
 
         with patch("insider_engine.load_config", return_value=cfg), \
-             patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
+             patch("accounts_engine.get_combined_holdings", return_value={'AAPL': {'ticker': 'AAPL'}}), \
              patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
              patch("insider_engine.yahoo_engine.get_insider_transactions", return_value=sale_df):
             ok, msg = run_insider_alert()
@@ -286,7 +286,7 @@ class TestRunInsiderAlertFiltering:
         cheap_df = _insider_df(days_ago=1, action="Purchase", value=10_000)
 
         with patch("insider_engine.load_config", return_value=cfg), \
-             patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
+             patch("accounts_engine.get_combined_holdings", return_value={'AAPL': {'ticker': 'AAPL'}}), \
              patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
              patch("insider_engine.yahoo_engine.get_insider_transactions", return_value=cheap_df):
             ok, msg = run_insider_alert()
@@ -300,7 +300,7 @@ class TestRunInsiderAlertFiltering:
         buy_df = _insider_df(days_ago=1, action="Purchase", value=200_000, shares=1000)
 
         with patch("insider_engine.load_config", return_value=cfg), \
-             patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
+             patch("accounts_engine.get_combined_holdings", return_value={'AAPL': {'ticker': 'AAPL'}}), \
              patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
              patch("notification_engine.load_config", return_value=cfg), \
              patch("notification_engine.nextcloud_talk.send_text_message", return_value=True), \
@@ -319,7 +319,7 @@ class TestRunInsiderAlertFiltering:
         buy_df = _insider_df(days_ago=1, action="Purchase", value=200_000)
 
         with patch("insider_engine.load_config", return_value=cfg), \
-             patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
+             patch("accounts_engine.get_combined_holdings", return_value={'AAPL': {'ticker': 'AAPL'}}), \
              patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
              patch("notification_engine.load_config", return_value=cfg), \
              patch("notification_engine.nextcloud_talk.send_text_message", return_value=True), \
@@ -333,7 +333,7 @@ class TestRunInsiderAlertFiltering:
         cfg = self._base_cfg()
 
         with patch("insider_engine.load_config", return_value=cfg), \
-             patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
+             patch("accounts_engine.get_combined_holdings", return_value={'AAPL': {'ticker': 'AAPL'}}), \
              patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
              patch("insider_engine.yahoo_engine.get_insider_transactions", return_value=pd.DataFrame()):
             ok, _ = run_insider_alert()
@@ -346,7 +346,7 @@ class TestRunInsiderAlertFiltering:
         cfg = self._base_cfg()
 
         with patch("insider_engine.load_config", return_value=cfg), \
-             patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
+             patch("accounts_engine.get_combined_holdings", return_value={'AAPL': {'ticker': 'AAPL'}}), \
              patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
              patch("insider_engine.yahoo_engine.get_insider_transactions", return_value=None):
             ok, _ = run_insider_alert()
@@ -367,7 +367,7 @@ class TestRunInsiderAlertFiltering:
             return buy_df
 
         with patch("insider_engine.load_config", return_value=cfg), \
-             patch("insider_engine.get_tickers_from_json", return_value=["BADFEED", "GOOD"]), \
+             patch("accounts_engine.get_combined_holdings", return_value={'BADFEED': {'ticker': 'BADFEED'}, 'GOOD': {'ticker': 'GOOD'}}), \
              patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
              patch("notification_engine.load_config", return_value=cfg), \
              patch("notification_engine.nextcloud_talk.send_text_message", return_value=True), \
@@ -385,7 +385,7 @@ class TestRunInsiderAlertFiltering:
         buy_df = _insider_df(days_ago=1, action="Purchase", value=200_000)
 
         with patch("insider_engine.load_config", return_value=cfg), \
-             patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
+             patch("accounts_engine.get_combined_holdings", return_value={'AAPL': {'ticker': 'AAPL'}}), \
              patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
              patch("notification_engine.load_config", return_value=cfg), \
              patch("notification_engine.nextcloud_talk.send_text_message", return_value=False), \
@@ -420,7 +420,7 @@ class TestRunInsiderAlertQuantamentalAlignment:
         buy_df = _insider_df(days_ago=1, action="Purchase", value=200_000)
 
         with patch("insider_engine.load_config", return_value=self._base_cfg()), \
-             patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
+             patch("accounts_engine.get_combined_holdings", return_value={'AAPL': {'ticker': 'AAPL'}}), \
              patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
              patch("notification_engine.load_config", return_value=self._base_cfg()), \
              patch("notification_engine.nextcloud_talk.send_text_message", return_value=True), \
@@ -443,7 +443,7 @@ class TestRunInsiderAlertQuantamentalAlignment:
         buy_df = _insider_df(days_ago=1, action="Purchase", value=200_000)
 
         with patch("insider_engine.load_config", return_value=self._base_cfg()), \
-             patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
+             patch("accounts_engine.get_combined_holdings", return_value={'AAPL': {'ticker': 'AAPL'}}), \
              patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
              patch("notification_engine.load_config", return_value=self._base_cfg()), \
              patch("notification_engine.nextcloud_talk.send_text_message", return_value=True), \
@@ -466,7 +466,7 @@ class TestRunInsiderAlertQuantamentalAlignment:
         buy_df = _insider_df(days_ago=1, action="Purchase", value=200_000)
 
         with patch("insider_engine.load_config", return_value=self._base_cfg()), \
-             patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
+             patch("accounts_engine.get_combined_holdings", return_value={'AAPL': {'ticker': 'AAPL'}}), \
              patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
              patch("notification_engine.load_config", return_value=self._base_cfg()), \
              patch("notification_engine.nextcloud_talk.send_text_message", return_value=True), \
@@ -491,7 +491,7 @@ class TestRunInsiderAlertConnectionLifecycle:
         mock_cursor.fetchall.return_value = []
 
         with patch("insider_engine.load_config", return_value=cfg), \
-             patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
+             patch("accounts_engine.get_combined_holdings", return_value={'AAPL': {'ticker': 'AAPL'}}), \
              patch("insider_engine.get_connection", return_value=mock_conn), \
              patch("insider_engine.yahoo_engine.get_insider_transactions", return_value=pd.DataFrame()):
             run_insider_alert()
@@ -510,7 +510,7 @@ class TestRunInsiderAlertConnectionLifecycle:
         mock_cursor.fetchall.return_value = []
 
         with patch("insider_engine.load_config", return_value=cfg), \
-             patch("insider_engine.get_tickers_from_json", return_value=["BOOM"]), \
+             patch("accounts_engine.get_combined_holdings", return_value={'BOOM': {'ticker': 'BOOM'}}), \
              patch("insider_engine.get_connection", return_value=mock_conn), \
              patch("insider_engine.yahoo_engine.get_insider_transactions", side_effect=RuntimeError("engine exploded")):
             ok, _ = run_insider_alert()
@@ -531,7 +531,7 @@ class TestRunInsiderAlertConnectionLifecycle:
         buy_df = _insider_df(days_ago=0, action="Purchase", value=5_000)
 
         with patch("insider_engine.load_config", return_value=cfg), \
-             patch("insider_engine.get_tickers_from_json", return_value=["AAPL"]), \
+             patch("accounts_engine.get_combined_holdings", return_value={'AAPL': {'ticker': 'AAPL'}}), \
              patch("insider_engine.get_connection", side_effect=lambda: _get_conn(db_path)), \
              patch("notification_engine.load_config", return_value=cfg), \
              patch("notification_engine.nextcloud_talk.send_text_message", return_value=True), \
