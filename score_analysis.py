@@ -1,14 +1,10 @@
-import json
 import logging
-import os
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
 import pandas as pd
 
-from config import PORTFOLIO_PATH, WATCHLIST_PATH
-from database import get_connection
-from insider_engine import get_tickers_from_json
+from database import get_connection, get_watchlist_tickers
 
 logger = logging.getLogger(__name__)
 
@@ -25,32 +21,27 @@ def _compute_return(entry_price: float, future_price: Optional[float]) -> Option
     return None
 
 
-def _build_ticker_accounts_map() -> dict[str, list[str]]:
-    if not os.path.exists(PORTFOLIO_PATH):
-        return {}
-    try:
-        with open(PORTFOLIO_PATH, "r") as f:
-            data = json.load(f)
-        result = {}
-        for entry in data.values():
-            ticker = entry.get("ticker")
-            accounts = [a.get("name", "") for a in entry.get("accounts", []) if a.get("name")]
-            if ticker and accounts:
-                result[ticker] = accounts
-        return result
-    except Exception:
-        return {}
+def _build_ticker_accounts_map(combined_holdings: dict) -> dict[str, list[str]]:
+    result = {}
+    for entry in combined_holdings.values():
+        ticker = entry.get("ticker")
+        accounts = [a.get("name", "") for a in entry.get("accounts", []) if a.get("name")]
+        if ticker and accounts:
+            result[ticker] = accounts
+    return result
 
 
 def get_score_analysis(filter_name: str = "all") -> dict:
     """Forward-returns analysis from score_history; filter_name: 'all' | 'portfolio' | 'watchlist'."""
+    from accounts_engine import get_combined_holdings
     filter_tickers: Optional[list] = None
     ticker_accounts: dict[str, list[str]] = {}
     if filter_name == "portfolio":
-        filter_tickers = get_tickers_from_json(PORTFOLIO_PATH, is_watchlist=False) or None
-        ticker_accounts = _build_ticker_accounts_map()
+        combined = get_combined_holdings()
+        filter_tickers = list(combined.keys()) or None
+        ticker_accounts = _build_ticker_accounts_map(combined)
     elif filter_name == "watchlist":
-        filter_tickers = get_tickers_from_json(WATCHLIST_PATH, is_watchlist=True) or None
+        filter_tickers = get_watchlist_tickers() or None
 
     conn = None
     try:
