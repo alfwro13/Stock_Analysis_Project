@@ -1,16 +1,14 @@
 import hashlib
 import ipaddress
-import os
 import re
 import time
-import json
 import logging
 import sqlite3
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 import pandas as pd
 from datetime import datetime, timezone
-from config import load_config, PORTFOLIO_PATH, INTRADAY_DIR, HISTORICAL_DIR, PORT, SERVER_URL
+from config import load_config, INTRADAY_DIR, HISTORICAL_DIR, PORT, SERVER_URL
 from yahoo_engine import yahoo_engine
 import time_engine
 from utils import normalize_ticker
@@ -91,15 +89,11 @@ class IntradayOrchestrator:
         self._corp_action_cache: Dict[tuple, bool] = {}
 
     def get_portfolio_tickers(self) -> List[str]:
-        """Safely extracts all unique tickers currently held in the portfolio."""
-        if not os.path.exists(PORTFOLIO_PATH):
-            return []
+        from accounts_engine import get_combined_holdings
         try:
-            with open(PORTFOLIO_PATH, 'r') as f:
-                data = json.load(f)
-                return [normalize_ticker(v['ticker']) for v in data.values() if 'ticker' in v]
+            return [normalize_ticker(t) for t in get_combined_holdings().keys()]
         except Exception:
-            logger.error("Failed to load portfolio from %s", PORTFOLIO_PATH, exc_info=True)
+            logger.error("Failed to load portfolio tickers from accounts engine", exc_info=True)
             return []
 
     def get_asset_metadata(self, tickers: List[str]) -> Dict[str, Dict[str, Any]]:
