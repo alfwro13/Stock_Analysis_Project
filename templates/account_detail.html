@@ -63,7 +63,7 @@
     </div>
     <div class="xray-metric-card">
         <div class="xray-metric-label">Equity Value ({{ base_currency }})</div>
-        <div class="xray-metric-value">{{ "%.2f"|format(summary.equity_value | default(0)) }}</div>
+        <div class="xray-metric-value" id="tile-equity-value-value">{{ "%.2f"|format(summary.equity_value | default(0)) }}</div>
     </div>
     <div class="xray-metric-card">
         <div class="xray-metric-label"><abbr title="Gains/losses already locked in on sold-down or fully-closed positions, computed via the average-cost method.">Realized P&amp;L</abbr></div>
@@ -80,6 +80,31 @@
     <div class="xray-metric-card">
         <div class="xray-metric-label">Activity Count</div>
         <div class="xray-metric-value">{{ summary.activity_count | default(0) }}</div>
+    </div>
+</div>
+
+{# ── Live return tiles ── #}
+<div class="xray-cards-row">
+    {% for key, label in [("1d", "1 Day"), ("1w", "1 Week"), ("1m", "1 Month"), ("3m", "3 Month"), ("6m", "6 Month"), ("1y", "1 Year")] %}
+    {% set value = performance["return_" ~ key] if performance else none %}
+    <div class="xray-metric-card">
+        <div class="xray-metric-label">{{ label }} Return</div>
+        <div class="xray-metric-value {% if value is not none %}{% if value >= 0 %}prediction-change-pos{% else %}prediction-change-neg{% endif %}{% endif %}" id="tile-return-{{ key }}-value">{{ "%+.2f"|format(value) ~ "%" if value is not none else "—" }}</div>
+    </div>
+    {% endfor %}
+</div>
+
+{# ── Unrealized P&L / MWRR tiles ── #}
+<div class="xray-cards-row">
+    <div class="xray-metric-card">
+        <div class="xray-metric-label"><abbr title="Live equity value minus the cost basis of currently-open holdings — the gain or loss you'd realize if you sold everything right now.">Unrealized P&amp;L</abbr> ({{ base_currency }})</div>
+        {% set upnl = performance.unrealized_pnl if performance else none %}
+        <div class="xray-metric-value {% if upnl is not none %}{% if upnl >= 0 %}prediction-change-pos{% else %}prediction-change-neg{% endif %}{% endif %}" id="tile-unrealized-pnl-value">{{ "%+.2f"|format(upnl) if upnl is not none else "—" }}</div>
+    </div>
+    <div class="xray-metric-card">
+        <div class="xray-metric-label"><abbr title="Since-inception money-weighted return (Modified Dietz method), accounting for the size and timing of every deposit and withdrawal.">Money-Weighted Rate of Return</abbr></div>
+        {% set mwrr = performance.mwrr if performance else none %}
+        <div class="xray-metric-value {% if mwrr is not none %}{% if mwrr >= 0 %}prediction-change-pos{% else %}prediction-change-neg{% endif %}{% endif %}" id="tile-mwrr-value">{{ "%+.2f"|format(mwrr) ~ "%" if mwrr is not none else "—" }}</div>
     </div>
 </div>
 
@@ -260,6 +285,9 @@
     window.ACCOUNT_SUMMARY = {{ summary | tojson }};
     window.ACCT_CHART_INITIAL = {{ chart_initial | tojson }};
     window.ACCT_CHART_PERIOD = {{ chart_period | tojson }};
+    window.ACCOUNT_ID = {{ account.id }};
+    window.ENABLE_LIVE_ASSETS = {% if config and config.UI_PREFERENCES and config.UI_PREFERENCES.LIVE_DETAILS %}true{% else %}false{% endif %};
+    window.REFRESH_RATE_MS = {{ config.UI_PREFERENCES.REFRESH_RATE | default(60) }} * 1000;
 </script>
 <script src="/static/js/accounts.js?v={{ css_version }}"></script>
 <script src="/static/js/account_scraper.js?v={{ css_version }}"></script>

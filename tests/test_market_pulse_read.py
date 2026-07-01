@@ -256,3 +256,23 @@ class TestClosedMarketStaleness:
              patch("market_pulse.is_trading_session", return_value=False):
             result = _mp.get_all_cached_pulse()
         assert result[ASSET_TICKER]["is_stale"] is False
+
+
+# ── is_price_fresh (shared helper) ────────────────────────────────────────────
+
+class TestIsPriceFresh:
+    def test_no_data_is_never_fresh(self):
+        with patch("market_pulse.is_trading_session", return_value=False):
+            assert _mp.is_price_fresh(0, 0.0, 60) is False
+
+    def test_fresh_when_market_closed_regardless_of_age(self):
+        with patch("market_pulse.is_trading_session", return_value=False):
+            assert _mp.is_price_fresh(time.time() - 3600, 100.0, 60) is True
+
+    def test_fresh_when_market_open_and_within_window(self):
+        with patch("market_pulse.is_trading_session", return_value=True):
+            assert _mp.is_price_fresh(time.time() - 30, 100.0, 60) is True
+
+    def test_stale_when_market_open_and_beyond_window(self):
+        with patch("market_pulse.is_trading_session", return_value=True):
+            assert _mp.is_price_fresh(time.time() - 130, 100.0, 60) is False

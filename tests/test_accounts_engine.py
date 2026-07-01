@@ -1162,3 +1162,157 @@ def test_reconcile_cash_is_noop_when_already_balanced():
     assert result["txn_id"] is None
     assert result["delta"] == 0.0
     assert result["computed_balance"] == 500.0
+
+
+def _seed_market_pulse(ticker: str, price: float, last_updated: float) -> None:
+    conn = None
+    try:
+        conn = get_connection()
+        conn.execute(
+            "INSERT OR REPLACE INTO market_pulse_cache "
+            "(ticker, name, price, change_pts, change_pct, is_positive, last_updated) "
+            "VALUES (?, ?, ?, 0, 0, 1, ?)",
+            (ticker, ticker, price, last_updated),
+        )
+        conn.commit()
+    finally:
+        if conn:
+            conn.close()
+
+
+@pytest.mark.db
+def test_current_price_map_prefers_fresh_market_pulse_cache():
+    import time
+    from unittest.mock import patch
+
+    aid = create_account("LivePriceAcc", "GBP")
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZLIVE", currency="GBP",
+                    quantity=10, unit_price=100, exchange_rate=1.0)
+    _seed_stock_signal("ZZLIVE", 100.0, "GBP")
+    _seed_market_pulse("ZZLIVE", 150.0, time.time())
+
+    with patch("accounts_engine.is_price_fresh", return_value=True):
+        prices = accounts_engine._current_price_map(["ZZLIVE"])
+    assert prices["ZZLIVE"] == (150.0, "GBP")
+
+
+@pytest.mark.db
+def test_current_price_map_falls_back_to_stock_signals_when_cache_stale():
+    import time
+    from unittest.mock import patch
+
+    aid = create_account("StalePriceAcc", "GBP")
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZSTALE", currency="GBP",
+                    quantity=10, unit_price=100, exchange_rate=1.0)
+    _seed_stock_signal("ZZSTALE", 100.0, "GBP")
+    _seed_market_pulse("ZZSTALE", 150.0, time.time() - 99999)
+
+    with patch("accounts_engine.is_price_fresh", return_value=False):
+        prices = accounts_engine._current_price_map(["ZZSTALE"])
+    assert prices["ZZSTALE"] == (100.0, "GBP")
+
+
+@pytest.mark.db
+def test_current_price_map_falls_back_when_no_cache_row():
+    aid = create_account("NoCachePriceAcc", "GBP")
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZNOCACHE", currency="GBP",
+                    quantity=10, unit_price=100, exchange_rate=1.0)
+    _seed_stock_signal("ZZNOCACHE", 100.0, "GBP")
+
+    prices = accounts_engine._current_price_map(["ZZNOCACHE"])
+    assert prices["ZZNOCACHE"] == (100.0, "GBP")
+
+
+@pytest.mark.db
+def test_total_value_is_cash_plus_equity():
+    aid = create_account("TotalValueAcc", "GBP", initial_cash=500.0)
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZTOTVAL", currency="GBP",
+                    quantity=10, unit_price=100, exchange_rate=1.0)
+    _seed_stock_signal("ZZTOTVAL", 120.0, "GBP")
+
+    assert accounts_engine.total_value(aid) == 500.0 - 1000.0 + 1200.0
+
+
+@pytest.mark.db
+def test_total_value_none_for_missing_account():
+    assert accounts_engine.total_value(999999) is None
+
+
+@pytest.mark.db
+def test_unrealized_pnl_matches_holdings_delta():
+    aid = create_account("UnrealizedAcc", "GBP")
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZUNREAL", currency="GBP",
+                    quantity=10, unit_price=100, exchange_rate=1.0)
+    _seed_stock_signal("ZZUNREAL", 130.0, "GBP")
+
+    assert accounts_engine.unrealized_pnl(aid) == 300.0            # 10 * (130 - 100)
+
+
+@pytest.mark.db
+def test_period_returns_none_with_no_snapshot_history():
+    aid = create_account("NoHistoryAcc", "GBP", initial_cash=100.0)
+    returns = accounts_engine.period_returns(aid)
+    assert set(returns) == set(accounts_engine._RETURN_WINDOWS)
+    assert all(v is None for v in returns.values())
+
+
+@pytest.mark.db
+def test_period_returns_excludes_deposit_effect():
+    from database import upsert_value_snapshot
+    from datetime import datetime, timedelta, timezone
+
+    aid = create_account("PeriodReturnAcc", "GBP", initial_cash=1000.0)
+    yesterday = (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
+    upsert_value_snapshot(aid, yesterday, 1000.0, 1000.0, 0.0, 1000.0)
+
+    # A same-day £500 top-up should not look like a £500 gain in the 1-day return.
+    add_transaction(aid, "Cash", datetime.now(timezone.utc).date().isoformat(), unit_price=500)
+
+    returns = accounts_engine.period_returns(aid)
+    assert returns["1d"] == 0.0
+
+
+@pytest.mark.db
+def test_period_returns_falls_back_to_earliest_snapshot_for_young_account():
+    from database import upsert_value_snapshot
+    from datetime import datetime, timedelta, timezone
+
+    aid = create_account("YoungAcc", "GBP", initial_cash=1000.0)
+    ten_days_ago = (datetime.now(timezone.utc).date() - timedelta(days=10)).isoformat()
+    upsert_value_snapshot(aid, ten_days_ago, 1000.0, 1000.0, 0.0, 1000.0)
+
+    returns = accounts_engine.period_returns(aid)
+    # 1y window has no snapshot that old, so it must fall back to the earliest (only) snapshot
+    # rather than returning None or erroring.
+    assert returns["1y"] == 0.0
+
+
+@pytest.mark.db
+def test_money_weighted_return_none_with_no_contributions():
+    aid = create_account("NoContribAcc", "GBP", initial_cash=0.0, opened_date="2026-01-01")
+    assert accounts_engine.money_weighted_return(aid) is None
+
+
+@pytest.mark.db
+def test_money_weighted_return_flat_when_value_matches_contributions():
+    aid = create_account("FlatMwrrAcc", "GBP", initial_cash=1000.0, opened_date="2026-01-01")
+    result = accounts_engine.money_weighted_return(aid)
+    assert result == 0.0
+
+
+@pytest.mark.db
+def test_refresh_performance_cache_writes_a_row_get_performance_cache_returns():
+    from database import get_performance_cache
+
+    aid = create_account("RefreshCacheAcc", "GBP", initial_cash=1000.0)
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZREFRESH", currency="GBP",
+                    quantity=10, unit_price=100, exchange_rate=1.0)
+    _seed_stock_signal("ZZREFRESH", 120.0, "GBP")
+
+    accounts_engine.refresh_performance_cache(aid)
+
+    cached = get_performance_cache(aid)
+    assert cached is not None
+    assert cached["total_value"] == accounts_engine.total_value(aid)
+    assert cached["unrealized_pnl"] == 200.0
+    assert cached["last_updated"] is not None and cached["last_updated"] > 0

@@ -309,6 +309,59 @@ def get_value_history(account_id: int) -> list:
             conn.close()
 
 
+_PERFORMANCE_CACHE_COLUMNS = (
+    "total_value", "equity_value", "cash_balance", "unrealized_pnl",
+    "return_1d", "return_1w", "return_1m", "return_3m", "return_6m", "return_1y",
+    "mwrr", "last_updated",
+)
+
+
+def upsert_performance_cache(account_id: int, **fields) -> None:
+    """Persists the last computed live-performance snapshot for one account, shared by every
+    browser/tab that polls it — see accounts_engine.refresh_performance_cache()."""
+    columns = [c for c in _PERFORMANCE_CACHE_COLUMNS if c in fields]
+    if not columns:
+        return
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        col_list = ", ".join(["account_id"] + columns)
+        placeholders = ", ".join(["?"] * (len(columns) + 1))
+        update_clause = ", ".join(f"{c} = excluded.{c}" for c in columns)
+        cursor.execute(
+            f"""INSERT INTO account_performance_cache ({col_list})
+                   VALUES ({placeholders})
+               ON CONFLICT(account_id) DO UPDATE SET {update_clause}""",
+            [account_id] + [fields[c] for c in columns]
+        )
+        conn.commit()
+    except Exception as e:
+        logger.error("Failed to upsert performance cache for account %s: %s", account_id, e)
+    finally:
+        if conn:
+            conn.close()
+
+
+def get_performance_cache(account_id: int) -> Optional[dict]:
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT * FROM account_performance_cache WHERE account_id = ?",
+            (account_id,)
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else None
+    except Exception as e:
+        logger.error("Failed to get performance cache for account %s: %s", account_id, e)
+        return None
+    finally:
+        if conn:
+            conn.close()
+
+
 def add_price_history(account_id: int, price_date: str, price: float, source: str) -> bool:
     conn = None
     try:

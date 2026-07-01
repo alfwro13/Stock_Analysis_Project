@@ -228,6 +228,59 @@ def test_value_history_filters_by_period(client):
 
 
 @pytest.mark.api
+def test_live_performance_unknown_account_returns_404(client):
+    resp = client.get("/api/accounts/999996/live-performance")
+    assert resp.status_code == 404
+
+
+@pytest.mark.api
+def test_live_performance_rejects_non_trading_account_type(client):
+    account_id = _create_account(client, account_type="House")
+    resp = client.get(f"/api/accounts/{account_id}/live-performance")
+    assert resp.status_code == 400
+
+
+@pytest.mark.api
+def test_live_performance_returns_cached_row_without_recomputing(client):
+    import database as _db
+
+    account_id = _create_account(client)
+    _db.upsert_performance_cache(
+        account_id, total_value=999.0, equity_value=0.0, cash_balance=999.0,
+        unrealized_pnl=0.0, return_1d=1.0, return_1w=2.0, return_1m=3.0,
+        return_3m=4.0, return_6m=5.0, return_1y=6.0, mwrr=7.0, last_updated=123.0,
+    )
+
+    resp = client.get(f"/api/accounts/{account_id}/live-performance")
+    data = _json(resp)
+
+    assert resp.status_code == 200
+    assert data["status"] == "success"
+    assert data["total_value"] == 999.0        # proves it served the seeded cache row, not a recompute
+    assert data["mwrr"] == 7.0
+
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_live_performance_computes_on_first_view_when_no_cache_row_yet(client):
+    import database as _db
+
+    account_id = _create_account(client)
+    assert _db.get_performance_cache(account_id) is None
+
+    resp = client.get(f"/api/accounts/{account_id}/live-performance")
+    data = _json(resp)
+
+    assert resp.status_code == 200
+    assert data["status"] == "success"
+    assert data["total_value"] == 1000.0        # initial_cash from _create_account's default body
+    assert _db.get_performance_cache(account_id) is not None
+
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
 def test_reconcile_cash_unknown_account_returns_404(client):
     resp = client.post("/api/accounts/999996/reconcile-cash", json={"actual_balance": 100.0})
     assert resp.status_code == 404

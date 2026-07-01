@@ -31,6 +31,17 @@ INDEX_TICKERS: Dict[str, str] = {
 _FETCH_LOCK = threading.Lock()
 
 
+def is_price_fresh(last_updated: float, price: float, refresh_rate: int) -> bool:
+    """A cache row counts as fresh outside market hours as long as it has ever been populated;
+    during market hours it must also be within 2x the refresh interval."""
+    has_data = last_updated > 0 and price != 0.0
+    if not has_data:
+        return False
+    if not is_trading_session():
+        return True
+    return (time.time() - last_updated) <= refresh_rate * 2
+
+
 def get_all_cached_pulse() -> Dict[str, Dict[str, Any]]:
     """Returns all pulse data from DB for Jinja template pre-rendering."""
     conn = get_connection()
@@ -46,17 +57,10 @@ def get_all_cached_pulse() -> Dict[str, Dict[str, Any]]:
 
     config_data = load_config()
     refresh_rate: int = int(config_data.get("UI_PREFERENCES", {}).get("REFRESH_RATE", 60))
-    current_time: float = time.time()
-    trading_now: bool = is_trading_session()
 
     cache: Dict[str, Dict[str, Any]] = {}
     for row in rows:
-        age = current_time - row['last_updated']
-        has_data = row['last_updated'] > 0 and row['price'] != 0.0
-        if not trading_now:
-            is_stale: bool = not has_data
-        else:
-            is_stale = not has_data or age > refresh_rate * 2
+        is_stale = not is_price_fresh(row['last_updated'], row['price'], refresh_rate)
         cache[row['ticker']] = {
             "ticker": row['ticker'],
             "name": row['name'],
@@ -132,12 +136,8 @@ def get_cached_pulse_from_db(asset_tickers: List[str], refresh_rate: int) -> Dic
             row = db_map[t]
             age = current_time - row['last_updated']
             has_data = row['last_updated'] > 0 and row['price'] != 0.0
-            if not trading_now:
-                is_stale: bool = not has_data
-                needs_refresh: bool = False
-            else:
-                is_stale = not has_data or age > refresh_rate * 2
-                needs_refresh = not has_data or age > int(refresh_rate)
+            is_stale: bool = not is_price_fresh(row['last_updated'], row['price'], refresh_rate)
+            needs_refresh: bool = False if not trading_now else (not has_data or age > int(refresh_rate))
             data_obj: Dict[str, Any] = {
                 "ticker": t,
                 "name": row['name'],

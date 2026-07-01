@@ -13,6 +13,8 @@ from database import (
     delete_transaction,
     upsert_value_snapshot,
     get_value_history,
+    upsert_performance_cache,
+    get_performance_cache,
     get_all_account_tickers,
 )
 
@@ -132,6 +134,35 @@ def test_value_snapshot_upsert_is_idempotent():
     assert len(history) == 1
     assert history[0]["total_value"] == 3500.0
     assert history[0]["equity_value"] == 2300.0
+
+
+@pytest.mark.db
+def test_performance_cache_upsert_and_get_roundtrip():
+    aid = create_account("PerfCacheAcc", "GBP")
+    upsert_performance_cache(
+        aid, total_value=1200.0, equity_value=700.0, cash_balance=500.0,
+        unrealized_pnl=50.0, return_1d=1.0, return_1w=2.0, return_1m=3.0,
+        return_3m=4.0, return_6m=5.0, return_1y=6.0, mwrr=7.0, last_updated=123.456,
+    )
+    cached = get_performance_cache(aid)
+    assert cached["total_value"] == 1200.0
+    assert cached["mwrr"] == 7.0
+    assert cached["last_updated"] == 123.456
+
+
+@pytest.mark.db
+def test_performance_cache_upsert_is_idempotent():
+    aid = create_account("PerfCacheIdemAcc", "GBP")
+    upsert_performance_cache(aid, total_value=100.0, last_updated=1.0)
+    upsert_performance_cache(aid, total_value=200.0, last_updated=2.0)
+    cached = get_performance_cache(aid)
+    assert cached["total_value"] == 200.0
+    assert cached["last_updated"] == 2.0
+
+
+@pytest.mark.db
+def test_performance_cache_get_returns_none_when_absent():
+    assert get_performance_cache(999999) is None
 
 
 @pytest.mark.db

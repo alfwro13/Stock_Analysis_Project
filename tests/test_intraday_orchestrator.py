@@ -15,7 +15,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from intraday_orchestrator import format_currency, build_stock_url
+from database import create_account, get_performance_cache
+from intraday_orchestrator import IntradayOrchestrator, format_currency, build_stock_url
 
 
 # ── format_currency ───────────────────────────────────────────────────────────
@@ -91,3 +92,29 @@ class TestBuildStockUrl:
     def test_lse_ticker_with_dot(self):
         url = build_stock_url("http://localhost", 8090, "BARC.L")
         assert url.endswith("/stock/BARC.L")
+
+
+# ── _refresh_account_performance_cache ────────────────────────────────────────
+
+class TestRefreshAccountPerformanceCache:
+    """Job-runner-level coverage per AGENTS.md: confirms the scan cycle actually populates
+    account_performance_cache for Trading accounts, not just that accounts_engine's own
+    refresh_performance_cache() works in isolation."""
+
+    @pytest.mark.db
+    def test_populates_cache_for_trading_accounts(self):
+        aid = create_account("IntradayScanAcc", "GBP", initial_cash=1000.0)
+
+        IntradayOrchestrator()._refresh_account_performance_cache()
+
+        cached = get_performance_cache(aid)
+        assert cached is not None
+        assert cached["total_value"] == 1000.0
+
+    @pytest.mark.db
+    def test_skips_non_trading_accounts(self):
+        aid = create_account("IntradayScanPensionAcc", "GBP", account_type="Pension")
+
+        IntradayOrchestrator()._refresh_account_performance_cache()
+
+        assert get_performance_cache(aid) is None

@@ -199,3 +199,53 @@ async function submitReconcile() {
         status.innerHTML = `<span class="msg-error">${e.message}</span>`;
     }
 }
+
+(function () {
+    if (!window.ENABLE_LIVE_ASSETS || !window.ACCOUNT_ID) return;
+    const refreshRate = window.REFRESH_RATE_MS || 60000;
+    let interval;
+
+    function _renderTile(id, value, isPercent) {
+        const el = document.getElementById(id);
+        if (!el || value === null || value === undefined) return;
+        const sign = value >= 0 ? '+' : '';
+        el.innerText = `${sign}${Number(value).toFixed(2)}${isPercent ? '%' : ''}`;
+        el.className = el.className.replace(/\bprediction-change-(pos|neg)\b/g, '').trim();
+        el.classList.add(value >= 0 ? 'prediction-change-pos' : 'prediction-change-neg');
+    }
+
+    async function fetchLivePerformance() {
+        try {
+            const res = await fetch(`/api/accounts/${window.ACCOUNT_ID}/live-performance`);
+            const data = await res.json();
+            if (!res.ok || data.status !== 'success') return;
+
+            const equityEl = document.getElementById('tile-equity-value-value');
+            if (equityEl && data.equity_value !== null && data.equity_value !== undefined) {
+                equityEl.innerText = Number(data.equity_value).toFixed(2);
+            }
+            _renderTile('tile-unrealized-pnl-value', data.unrealized_pnl, false);
+            _renderTile('tile-mwrr-value', data.mwrr, true);
+            _renderTile('tile-return-1d-value', data.return_1d, true);
+            _renderTile('tile-return-1w-value', data.return_1w, true);
+            _renderTile('tile-return-1m-value', data.return_1m, true);
+            _renderTile('tile-return-3m-value', data.return_3m, true);
+            _renderTile('tile-return-6m-value', data.return_6m, true);
+            _renderTile('tile-return-1y-value', data.return_1y, true);
+        } catch (e) { }
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        fetchLivePerformance();
+        interval = setInterval(fetchLivePerformance, refreshRate);
+    });
+
+    document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState === 'hidden') {
+            clearInterval(interval);
+        } else {
+            fetchLivePerformance();
+            interval = setInterval(fetchLivePerformance, refreshRate);
+        }
+    });
+})();

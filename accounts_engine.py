@@ -5,6 +5,7 @@ import io
 import json
 import logging
 import re
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -15,10 +16,11 @@ from config import BASE_CURRENCY, HISTORICAL_DIR, PORTFOLIO_PATH, load_config
 from db_accounts import (
     add_price_history, add_transaction, delete_transaction, get_account, get_accounts,
     get_pending_topup, get_price_as_of, get_price_history, get_transaction, get_transactions,
-    get_watchlist_items, resolve_pending_topup, update_account, update_transaction,
-    upsert_value_snapshot,
+    get_value_history, get_watchlist_items, resolve_pending_topup, update_account,
+    update_transaction, upsert_performance_cache, upsert_value_snapshot,
 )
 from database import get_connection
+from market_pulse import is_price_fresh
 from portfolio_service import get_rate_to_base
 from utils import normalize_ticker
 from yahoo_engine import yahoo_engine
@@ -561,6 +563,8 @@ def delete_transaction_with_pair(txn_id: int) -> bool:
 
 
 def _current_price_map(tickers: list) -> dict:
+    """Live-aware: prefers a fresh `market_pulse_cache` price (kept warm by the 5-minute intraday
+    scan for every held ticker) over `stock_signals.current_price`, which only updates nightly."""
     if not tickers:
         return {}
     from account_scraper_engine import latest_price, parse_pension_account_id
@@ -578,6 +582,26 @@ def _current_price_map(tickers: list) -> dict:
     if not market_tickers:
         return result
 
+    refresh_rate = int(load_config().get("UI_PREFERENCES", {}).get("REFRESH_RATE", 60))
+    live_prices: dict[str, float] = {}
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        placeholders = ",".join("?" * len(market_tickers))
+        cursor.execute(
+            f"SELECT ticker, price, last_updated FROM market_pulse_cache WHERE ticker IN ({placeholders})",
+            market_tickers
+        )
+        for r in cursor.fetchall():
+            if is_price_fresh(r["last_updated"], r["price"], refresh_rate):
+                live_prices[r["ticker"]] = r["price"]
+    except Exception as e:
+        logger.error("Failed to load live prices from market_pulse_cache: %s", e)
+    finally:
+        if conn:
+            conn.close()
+
     conn = None
     try:
         conn = get_connection()
@@ -588,7 +612,8 @@ def _current_price_map(tickers: list) -> dict:
             market_tickers
         )
         for r in cursor.fetchall():
-            result[r["ticker"]] = (r["current_price"], r["currency"])
+            price = live_prices.get(r["ticker"], r["current_price"])
+            result[r["ticker"]] = (price, r["currency"])
     except Exception as e:
         logger.error("Failed to load current prices: %s", e)
     finally:
@@ -646,6 +671,116 @@ def account_summary(account_id: int) -> dict:
         "equity_value": round(_equity_value_for_account(acc, open_holdings), 2),
         "realized_pnl": realized,
     }
+
+
+def total_value(account_id: int) -> Optional[float]:
+    """Live cash + live equity, right now — the current total value used by the return tiles."""
+    acc = get_account(account_id)
+    if not acc:
+        return None
+    open_holdings, _closed, _realized, _realized_by_txn = _ledger_for_account(account_id)
+    equity = _equity_value_for_account(acc, open_holdings)
+    cash = 0.0 if acc["account_type"] == "Pension" else cash_balance(account_id)
+    return round(cash + equity, 2)
+
+
+def unrealized_pnl(account_id: int) -> float:
+    """Live equity value minus cost basis of currently-open holdings."""
+    rows = holdings_with_market_value(account_id)
+    return round(sum(r["market_value"] - r["total_investment"] for r in rows), 2)
+
+
+_RETURN_WINDOWS = {"1d": 1, "1w": 7, "1m": 30, "3m": 91, "6m": 182, "1y": 365}
+
+
+def period_returns(account_id: int) -> dict:
+    """1D/1W/1M/3M/6M/1Y % return, excluding the effect of deposits/withdrawals during the
+    period. Each value is a float or None when there isn't enough snapshot history yet."""
+    history = get_value_history(account_id)
+    if not history:
+        return {key: None for key in _RETURN_WINDOWS}
+
+    end_value = total_value(account_id)
+    if end_value is None:
+        return {key: None for key in _RETURN_WINDOWS}
+
+    net_contributions_now = net_contributions(account_id)
+    today = datetime.now(timezone.utc).date()
+
+    returns: dict = {}
+    for key, days in _RETURN_WINDOWS.items():
+        target_date = (today - timedelta(days=days)).isoformat()
+        candidates = [row for row in history if row["snapshot_date"] <= target_date]
+        baseline = candidates[-1] if candidates else history[0]
+        start_value = baseline["total_value"]
+        if not start_value or abs(start_value) < _EPS:
+            returns[key] = None
+            continue
+        contributions_delta = net_contributions_now - baseline["net_contributions"]
+        returns[key] = round((end_value - start_value - contributions_delta) / start_value * 100, 2)
+    return returns
+
+
+def money_weighted_return(account_id: int) -> Optional[float]:
+    """Since-inception Modified Dietz return, % — a closed-form approximation of true
+    money-weighted (IRR-style) return that avoids iterative solving."""
+    acc = get_account(account_id)
+    if not acc:
+        return None
+
+    opened_date_str = acc["opened_date"] or (acc["created_at"][:10] if acc["created_at"] else None)
+    if not opened_date_str:
+        return None
+    opened_date = datetime.strptime(opened_date_str, "%Y-%m-%d").date()
+    today = datetime.now(timezone.utc).date()
+    cd = max((today - opened_date).days, 0)
+
+    flows: list[tuple[float, int]] = []
+    initial_cash = acc["initial_cash"] or 0.0
+    if abs(initial_cash) > _EPS:
+        flows.append((initial_cash, 0))
+    for txn in get_transactions(account_id):
+        if txn["update_cash"] and txn["txn_type"] in _CONTRIBUTION_TYPES:
+            txn_date = datetime.strptime(txn["txn_date"], "%Y-%m-%d").date()
+            d_i = min(max((txn_date - opened_date).days, 0), cd) if cd else 0
+            flows.append((_cash_delta(txn), d_i))
+
+    if not flows:
+        return None
+
+    emv = total_value(account_id)
+    if emv is None:
+        return None
+
+    total_cf = sum(amount for amount, _ in flows)
+    if cd == 0:
+        denominator = total_cf
+    else:
+        denominator = sum(amount * (cd - d_i) / cd for amount, d_i in flows)
+    if abs(denominator) < _EPS:
+        return None
+
+    numerator = emv - total_cf
+    return round(numerator / denominator * 100, 2)
+
+
+def refresh_performance_cache(account_id: int) -> None:
+    """Computes the live-performance figures once and persists them to `account_performance_cache`
+    so every browser/tab that later polls the account detail page reads a cheap cached row instead
+    of re-deriving MWRR/period-returns from the full transaction history on every request. Called
+    by the 5-minute intraday scan for every Trading account after it refreshes holding prices."""
+    returns = period_returns(account_id)
+    upsert_performance_cache(
+        account_id,
+        total_value=total_value(account_id),
+        equity_value=account_summary(account_id)["equity_value"],
+        cash_balance=cash_balance(account_id),
+        unrealized_pnl=unrealized_pnl(account_id),
+        return_1d=returns["1d"], return_1w=returns["1w"], return_1m=returns["1m"],
+        return_3m=returns["3m"], return_6m=returns["6m"], return_1y=returns["1y"],
+        mwrr=money_weighted_return(account_id),
+        last_updated=time.time(),
+    )
 
 
 _WATCHLIST_TYPE_BUCKETS = {"EQUITY": "equity", "ETF": "etf", "MUTUALFUND": "fund"}

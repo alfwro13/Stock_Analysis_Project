@@ -11,8 +11,9 @@ from accounts_engine import (
     delete_transaction_with_pair, dismiss_autotopup, export_transactions_csv,
     filter_value_history_by_period, fx_rate_on_date, import_csv_activities,
     pension_units_as_of, reconcile_cash, record_pension_contribution,
-    record_pension_fee, resnapshot_account, resolve_watchlist_metadata,
-    sync_house_purchase_price, sync_pension_opening_balance, watchlist_summary,
+    record_pension_fee, refresh_performance_cache, resnapshot_account,
+    resolve_watchlist_metadata, sync_house_purchase_price,
+    sync_pension_opening_balance, watchlist_summary,
 )
 from account_scraper_engine import import_price_csv, price_as_of, run_scrape_for_account, test_scrape
 import notification_engine
@@ -29,6 +30,7 @@ from database import (
     add_transaction,
     update_transaction,
     get_connection,
+    get_performance_cache,
     get_value_history,
     get_watchlist_items,
     add_watchlist_item,
@@ -273,6 +275,20 @@ async def api_account_value_history(
         return JSONResponse(status_code=404, content={"status": "error", "message": "Account not found."})
     history = filter_value_history_by_period(get_value_history(account_id), period)
     return JSONResponse(content={"status": "success", "period": period, "data": history})
+
+
+@accounts_router.get("/accounts/{account_id}/live-performance")
+async def api_account_live_performance(account_id: int):
+    acc = get_account(account_id)
+    if acc is None:
+        return JSONResponse(status_code=404, content={"status": "error", "message": "Account not found."})
+    if acc["account_type"] != "Trading":
+        return JSONResponse(status_code=400, content={"status": "error", "message": "Live performance is only available for Trading accounts."})
+    cached = get_performance_cache(account_id)
+    if cached is None:
+        refresh_performance_cache(account_id)
+        cached = get_performance_cache(account_id)
+    return JSONResponse(content={"status": "success", **cached})
 
 
 @accounts_router.post("/accounts/{account_id}/reconcile-cash")

@@ -2713,7 +2713,7 @@ HTML page. Renders the account list, create-account form, and the shared Buy/Sel
 
 ### `GET /accounts/{id}`
 
-HTML page. Renders the account detail view: value-over-time chart with 1M/1Y/YTD/MAX range buttons (client-side Plotly, fed by `GET /api/accounts/{id}/value-history`, sourced from `account_value_history`), summary tiles (cash balance, equity value, realized P&amp;L, dividend/interest income, activity count), Holdings (with current market value, allocation %, and unrealized performance %), Closed Positions, the full Activities ledger (inline edit/delete via the shared transaction modal), and Cash Balance History. Used by Trading accounts only now — redirects to `/accounts` for an unknown or soft-deleted account id, to `/accounts/{id}/pension` for a Pension account, and to `/accounts/{id}/house` for a House account (both have their own dedicated pages below). The selected chart range is read server-side from the `acct_chart_period` cookie (default `max`) to pick the initial dataset, then persisted client-side in `static/js/account_detail.js` whenever a range button is clicked, so it carries over to every other Trading account.
+HTML page. Renders the account detail view: value-over-time chart with 1M/1Y/YTD/MAX range buttons (client-side Plotly, fed by `GET /api/accounts/{id}/value-history`, sourced from `account_value_history`), summary tiles (cash balance, equity value, realized P&amp;L, dividend/interest income, activity count), live return tiles (1D/1W/1M/3M/6M/1Y return, Unrealized P&amp;L, Money-Weighted Rate of Return — fed by `GET /api/accounts/{id}/live-performance`, auto-refreshing while the page stays open when `UI_PREFERENCES.LIVE_DETAILS` is enabled), Holdings (with current market value, allocation %, and unrealized performance %, live-priced from `market_pulse_cache` when fresh), Closed Positions, the full Activities ledger (inline edit/delete via the shared transaction modal), and Cash Balance History. Used by Trading accounts only now — redirects to `/accounts` for an unknown or soft-deleted account id, to `/accounts/{id}/pension` for a Pension account, and to `/accounts/{id}/house` for a House account (both have their own dedicated pages below). The selected chart range is read server-side from the `acct_chart_period` cookie (default `max`) to pick the initial dataset, then persisted client-side in `static/js/account_detail.js` whenever a range button is clicked, so it carries over to every other Trading account.
 
 ### `GET /accounts/{id}/pension`
 
@@ -2797,6 +2797,32 @@ Returns the account's `account_value_history` rows filtered to a chart range —
   "data": [
     {"account_id": 1, "snapshot_date": "2026-01-02", "total_value": 1050.0, "cash_value": 50.0, "equity_value": 1000.0, "net_contributions": 1000.0}
   ]
+}
+```
+
+---
+
+### `GET /api/accounts/{id}/live-performance`
+
+Returns the account's live performance figures — equity value, cash balance, total value, unrealized P&amp;L, 1D/1W/1M/3M/6M/1Y period returns, and since-inception Money-Weighted Rate of Return (Modified Dietz method) — powering the live tile rows on the Trading account detail page. Serves the persisted `account_performance_cache` row rather than recomputing on every call; the 5-minute intraday scan (`intraday_orchestrator_job`) refreshes this cache for every Trading account as a side effect of its existing price refresh (`accounts_engine.refresh_performance_cache`), so every browser/tab that polls this endpoint shares one server-side computation instead of each re-deriving it. If no cache row exists yet (e.g. a brand-new account before the next scan cycle), computes and persists one on the fly. Only valid for `Trading`-type accounts — returns 400 for House/Pension/Watchlist. Returns 404 if the account does not exist.
+
+**Response:**
+```json
+{
+  "status": "success",
+  "account_id": 4,
+  "total_value": 11797.83,
+  "equity_value": 11788.68,
+  "cash_balance": 9.15,
+  "unrealized_pnl": 185.19,
+  "return_1d": -0.71,
+  "return_1w": -1.37,
+  "return_1m": -2.57,
+  "return_3m": 35.56,
+  "return_6m": 149.3,
+  "return_1y": 1273.97,
+  "mwrr": 40.01,
+  "last_updated": 1782928049.32
 }
 ```
 

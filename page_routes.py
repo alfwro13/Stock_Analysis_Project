@@ -396,12 +396,12 @@ async def accounts_page(request: Request):
 async def account_detail_page(request: Request, account_id: int):
     from accounts_engine import (
         account_summary, cash_history, closed_positions, filter_value_history_by_period,
-        holdings_with_market_value, is_unresolved_ticker, stale_pricing_warning,
-        transaction_total_base, VALUE_CHART_PERIODS,
+        holdings_with_market_value, is_unresolved_ticker, refresh_performance_cache,
+        stale_pricing_warning, transaction_total_base, VALUE_CHART_PERIODS,
     )
     from database import (
-        get_account, get_transactions, get_unresolved_pending_topups, get_value_history,
-        get_watchlist_items,
+        get_account, get_performance_cache, get_transactions, get_unresolved_pending_topups,
+        get_value_history, get_watchlist_items,
     )
 
     acc = get_account(account_id)
@@ -437,6 +437,11 @@ async def account_detail_page(request: Request, account_id: int):
     holdings = holdings_with_market_value(account_id)
     pricing_warning = stale_pricing_warning(holdings)
 
+    performance = get_performance_cache(account_id)
+    if performance is None:
+        refresh_performance_cache(account_id)
+        performance = get_performance_cache(account_id)
+
     return templates.TemplateResponse(
         request=request, name="account_detail.html",
         context={
@@ -453,6 +458,8 @@ async def account_detail_page(request: Request, account_id: int):
             "account_currencies": ACCOUNT_CURRENCIES,
             "unread_count": get_unread_count(),
             "pending_topups": get_unresolved_pending_topups(account_id),
+            "performance": performance,
+            "config": load_config(),
         }
     )
 

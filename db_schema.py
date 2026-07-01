@@ -859,6 +859,24 @@ def init_db() -> None:
         ''')
 
         cursor.execute('''
+            CREATE TABLE IF NOT EXISTS account_performance_cache (
+                account_id      INTEGER PRIMARY KEY,
+                total_value     REAL,
+                equity_value    REAL,
+                cash_balance    REAL,
+                unrealized_pnl  REAL,
+                return_1d       REAL,
+                return_1w       REAL,
+                return_1m       REAL,
+                return_3m       REAL,
+                return_6m       REAL,
+                return_1y       REAL,
+                mwrr            REAL,
+                last_updated    REAL
+            )
+        ''')
+
+        cursor.execute('''
             CREATE TABLE IF NOT EXISTS account_autotopup_pending (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
                 account_id      INTEGER NOT NULL,

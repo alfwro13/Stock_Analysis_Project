@@ -12,7 +12,8 @@ from config import load_config, INTRADAY_DIR, HISTORICAL_DIR, PORT, SERVER_URL
 from yahoo_engine import yahoo_engine
 import time_engine
 from utils import normalize_ticker
-from database import get_connection
+from database import get_accounts, get_connection
+import accounts_engine
 from crash_engine import CrashEngine
 from moonshot_engine import MoonshotEngine
 from anomaly_engine import AnomalyEngine
@@ -312,6 +313,18 @@ class IntradayOrchestrator:
         if ts.tzinfo is not None:
             return (now_utc - ts.tz_convert(timezone.utc)).total_seconds()
         return (now_utc - ts.tz_localize(timezone.utc)).total_seconds()
+
+    def _refresh_account_performance_cache(self) -> None:
+        """Rides along on this scan cycle so account performance figures are refreshed server-side
+        once, shared by every browser tab that later polls the account detail page, rather than
+        each poll re-deriving MWRR/period-returns from scratch."""
+        for acc in get_accounts():
+            if acc["account_type"] != "Trading":
+                continue
+            try:
+                accounts_engine.refresh_performance_cache(acc["id"])
+            except Exception:
+                logger.error("Failed to refresh performance cache for account %s", acc["id"], exc_info=True)
 
     def _prune_alert_state(self, conn: sqlite3.Connection) -> None:
         """Deletes alert_state rows older than 7 days; only delisted/removed tickers accumulate; conn is caller-scoped."""
@@ -736,6 +749,8 @@ class IntradayOrchestrator:
                 f"Anomaly Score: {a.get('anomaly_score', 0):.2f} detected for {t} at {p}"
             ),
         )
+
+        self._refresh_account_performance_cache()
 
         logger.info(
             "Scan complete. Dispatched %d crashes, %d moonshots, %d anomalies.",
