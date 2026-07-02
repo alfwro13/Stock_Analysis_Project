@@ -174,6 +174,8 @@ def add_transaction(
     unit_price: Optional[float] = None,
     fee: float = 0.0,
     exchange_rate: Optional[float] = None,
+    fee_currency: Optional[str] = None,
+    fee_exchange_rate: Optional[float] = None,
     notes: Optional[str] = None,
     update_cash: bool = True,
     price_in_pence: bool = False,
@@ -188,11 +190,11 @@ def add_transaction(
         cursor.execute(
             """INSERT INTO account_transactions
                    (account_id, txn_type, ticker, isin, company_name, currency, txn_date,
-                    quantity, unit_price, fee, exchange_rate, notes, update_cash,
-                    price_in_pence, ghostfolio_ref, linked_txn_id, is_adjustment)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    quantity, unit_price, fee, exchange_rate, fee_currency, fee_exchange_rate,
+                    notes, update_cash, price_in_pence, ghostfolio_ref, linked_txn_id, is_adjustment)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (account_id, txn_type, ticker, isin, company_name, currency, txn_date,
-             quantity, unit_price, fee, exchange_rate, notes,
+             quantity, unit_price, fee, exchange_rate, fee_currency, fee_exchange_rate, notes,
              1 if update_cash else 0, 1 if price_in_pence else 0, ghostfolio_ref, linked_txn_id,
              1 if is_adjustment else 0)
         )
@@ -208,8 +210,8 @@ def add_transaction(
 
 _ALLOWED_TXN_COLUMNS = frozenset({
     "txn_type", "ticker", "isin", "company_name", "currency", "txn_date", "quantity",
-    "unit_price", "fee", "exchange_rate", "notes", "update_cash", "price_in_pence",
-    "linked_txn_id",
+    "unit_price", "fee", "exchange_rate", "fee_currency", "fee_exchange_rate", "notes",
+    "update_cash", "price_in_pence", "linked_txn_id",
 })
 
 

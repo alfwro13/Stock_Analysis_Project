@@ -356,6 +356,46 @@ def test_create_and_list_buy_transaction(client):
 
 
 @pytest.mark.api
+def test_create_transaction_with_explicit_fee_currency_and_rate(client):
+    account_id = _create_account(client)
+    with patch("api_routes_accounts.update_single_profile"):
+        resp = client.post(f"/api/accounts/{account_id}/transactions", json={
+            "txn_type": "Buy", "txn_date": "2026-01-15", "ticker": "AAPL",
+            "currency": "USD", "quantity": 10, "unit_price": 150.0, "fee": 1.54,
+            "exchange_rate": 0.8, "fee_currency": "GBP", "fee_exchange_rate": 1.0,
+        })
+    assert resp.status_code == 200
+    txn_id = _json(resp)["id"]
+
+    import database as _db
+    txn = _db.get_transaction(txn_id)
+    assert txn["fee_currency"] == "GBP"
+    assert txn["fee_exchange_rate"] == 1.0
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_create_transaction_fee_currency_defaults_to_trade_currency(client):
+    """No fee_currency supplied — must default to the trade currency/rate, matching pre-existing
+    behaviour where the fee was always assumed to share the trade's currency."""
+    account_id = _create_account(client)
+    with patch("api_routes_accounts.update_single_profile"):
+        resp = client.post(f"/api/accounts/{account_id}/transactions", json={
+            "txn_type": "Buy", "txn_date": "2026-01-15", "ticker": "AAPL",
+            "currency": "USD", "quantity": 10, "unit_price": 150.0, "fee": 1.54,
+            "exchange_rate": 0.8,
+        })
+    assert resp.status_code == 200
+    txn_id = _json(resp)["id"]
+
+    import database as _db
+    txn = _db.get_transaction(txn_id)
+    assert txn["fee_currency"] == "USD"
+    assert txn["fee_exchange_rate"] == 0.8
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
 def test_create_transaction_preserves_gbp_pence_currency_case(client):
     """Currency must not be uppercased server-side — 'GBp' (pence) and 'GBP' (pounds) are
     distinct codes and uppercasing would silently break the pence-conversion logic."""

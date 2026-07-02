@@ -217,7 +217,7 @@
                 </td>
                 <td>{{ t.quantity if t.quantity is not none else '—' }}</td>
                 <td>{{ t.unit_price if t.unit_price is not none else '—' }}</td>
-                <td>{{ t.fee }}</td>
+                <td>{{ t.fee }}{% if t.fee_currency and t.fee_currency != t.currency %} {{ t.fee_currency }}{% endif %}</td>
                 <td>{{ t.currency or '—' }}</td>
                 <td>{{ "%.2f"|format(t.total_base) }}</td>
                 <td>

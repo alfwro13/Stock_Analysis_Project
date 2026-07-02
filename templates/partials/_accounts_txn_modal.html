@@ -61,12 +61,22 @@
         </div>
         <div class="flex-gap-15">
             <div class="form-group flex-2">
-                <label for="txn-fee">Fee <span id="txn-fee-currency-label" class="text-muted text-xs"></span></label>
+                <label for="txn-fee">Fee</label>
                 <input type="number" id="txn-fee" step="0.01" value="0" oninput="_updateTxnTotalPreview()">
             </div>
+            <div class="form-group" id="txn-fee-currency-group">
+                <label for="txn-fee-currency"><abbr title="The currency the fee itself is billed in — independent of the trade currency (e.g. a broker's FX fee shown in your base currency on a foreign-currency trade).">Fee Currency</abbr></label>
+                <select id="txn-fee-currency" onchange="_onFeeCurrencyOrDateChange()"></select>
+            </div>
+        </div>
+        <div class="flex-gap-15">
             <div class="form-group" id="txn-fx-group">
                 <label for="txn-fx"><abbr title="Multiplier that converts the trade currency to your base currency. Auto-filled from the historical FX rate on the transaction date — still editable.">Exchange Rate</abbr></label>
                 <input type="number" id="txn-fx" step="0.000001" placeholder="auto" oninput="_updateTxnTotalPreview()">
+            </div>
+            <div class="form-group" id="txn-fee-fx-group">
+                <label for="txn-fee-fx"><abbr title="Multiplier that converts the fee currency to your base currency. Auto-filled from the historical FX rate on the transaction date — still editable.">Fee Exchange Rate</abbr></label>
+                <input type="number" id="txn-fee-fx" step="0.000001" placeholder="auto" oninput="_updateTxnTotalPreview()">
             </div>
         </div>
         <div class="form-group">

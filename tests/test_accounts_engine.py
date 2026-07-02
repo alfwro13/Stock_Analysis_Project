@@ -118,6 +118,31 @@ def test_cash_balance_across_all_transaction_types():
 
 
 @pytest.mark.db
+def test_cash_balance_fee_in_own_currency_independent_of_trade_rate():
+    """Regression: a fee billed in a different currency than the trade itself (e.g. an FX spread
+    fee already quoted in base currency on a USD trade) must convert at its own rate, not the
+    trade's exchange_rate — previously `fee * trade_exchange_rate` silently mis-converted it."""
+    aid = create_account("FeeCcy", "GBP", initial_cash=1000.0)
+    add_transaction(aid, "Buy", "2026-01-02", ticker="ZZFEE", currency="USD",
+                     quantity=10, unit_price=100, exchange_rate=0.75,
+                     fee=1.54, fee_currency="GBP", fee_exchange_rate=1.0)
+
+    # gross = 10 * 100 * 0.75 = 750 GBP; fee_base = 1.54 * 1.0 = 1.54 GBP (not 1.54 * 0.75)
+    assert accounts_engine.cash_balance(aid) == 1000.0 - 750.0 - 1.54
+
+
+@pytest.mark.db
+def test_cash_balance_fee_currency_defaults_to_trade_currency_when_unset():
+    """Pre-migration rows have fee_exchange_rate = NULL — must fall back to the trade's own rate,
+    identical to behaviour before fee_currency/fee_exchange_rate existed."""
+    aid = create_account("FeeCcyDefault", "GBP", initial_cash=1000.0)
+    add_transaction(aid, "Buy", "2026-01-02", ticker="ZZFEE2", currency="USD",
+                     quantity=10, unit_price=100, exchange_rate=0.75, fee=2.0)
+
+    assert accounts_engine.cash_balance(aid) == 1000.0 - 750.0 - (2.0 * 0.75)
+
+
+@pytest.mark.db
 def test_update_cash_flag_excludes_transaction_from_cash_but_not_holdings():
     aid = create_account("NoCashImpact", "GBP", initial_cash=1000.0)
     add_transaction(aid, "Buy", "2026-01-02", ticker="ZZNCB", currency="GBP",

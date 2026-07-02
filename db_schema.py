@@ -823,6 +823,8 @@ def init_db() -> None:
                 unit_price      REAL,
                 fee             REAL NOT NULL DEFAULT 0,
                 exchange_rate   REAL,
+                fee_currency    TEXT,
+                fee_exchange_rate REAL,
                 notes           TEXT,
                 update_cash     INTEGER NOT NULL DEFAULT 1,
                 price_in_pence  INTEGER NOT NULL DEFAULT 0,
@@ -1062,6 +1064,18 @@ def migrate_db(conn, cursor) -> None:
         try:
             logger.info("[MIGRATION] Adding column: is_adjustment to account_transactions...")
             cursor.execute("ALTER TABLE account_transactions ADD COLUMN is_adjustment INTEGER NOT NULL DEFAULT 0")
+        except Exception as e:
+            logger.error("[MIGRATION ERROR] Failed on account_transactions: %s", e)
+    if 'fee_currency' not in existing_account_txn_columns:
+        try:
+            logger.info("[MIGRATION] Adding column: fee_currency to account_transactions...")
+            cursor.execute("ALTER TABLE account_transactions ADD COLUMN fee_currency TEXT")
+        except Exception as e:
+            logger.error("[MIGRATION ERROR] Failed on account_transactions: %s", e)
+    if 'fee_exchange_rate' not in existing_account_txn_columns:
+        try:
+            logger.info("[MIGRATION] Adding column: fee_exchange_rate to account_transactions...")
+            cursor.execute("ALTER TABLE account_transactions ADD COLUMN fee_exchange_rate REAL")
         except Exception as e:
             logger.error("[MIGRATION ERROR] Failed on account_transactions: %s", e)
 

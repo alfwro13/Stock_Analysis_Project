@@ -69,6 +69,15 @@ def _fx(txn) -> float:
     return rate if rate is not None else 1.0
 
 
+def _fee_fx(txn) -> float:
+    """The fee's own exchange rate, independent of the trade leg's `_fx()` — a fee can be billed in
+    a different currency than the trade itself (e.g. an FX spread fee already quoted in GBP on a
+    USD trade). Falls back to the trade's own rate when no fee-specific rate was resolved, which
+    also keeps pre-migration rows (where `fee_exchange_rate` is NULL) behaving exactly as before."""
+    rate = txn["fee_exchange_rate"]
+    return rate if rate is not None else _fx(txn)
+
+
 def _gross_base(txn) -> float:
     """Monetary value of a transaction in base currency (qty defaults to 1 for cash-type rows)."""
     qty = txn["quantity"] if txn["quantity"] is not None else 1.0
@@ -78,7 +87,7 @@ def _gross_base(txn) -> float:
 
 def _cash_delta(txn) -> float:
     gross = _gross_base(txn)
-    fee_base = (txn["fee"] or 0.0) * _fx(txn)
+    fee_base = (txn["fee"] or 0.0) * _fee_fx(txn)
     ttype = txn["txn_type"]
     if ttype in ("Buy", "Fee"):
         return -(gross + fee_base)

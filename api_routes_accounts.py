@@ -78,6 +78,8 @@ class TransactionBody(BaseModel):
     unit_price: Optional[float] = None
     fee: float = 0.0
     exchange_rate: Optional[float] = None
+    fee_currency: Optional[str] = None
+    fee_exchange_rate: Optional[float] = None
     notes: Optional[str] = None
     update_cash: bool = True
     price_in_pence: bool = False
@@ -149,6 +151,21 @@ def _resolve_exchange_rate(currency: Optional[str], exchange_rate: Optional[floa
     if exchange_rate is not None:
         return exchange_rate
     return fx_rate_on_date(currency, txn_date)
+
+
+def _resolve_fee_currency_and_rate(
+    fee_currency: Optional[str], fee_exchange_rate: Optional[float],
+    trade_currency: str, trade_exchange_rate: float, txn_date: str,
+) -> tuple:
+    """A fee can be billed in a different currency than the trade itself (e.g. a broker's FX spread
+    fee already quoted in base currency on a foreign-currency trade) — resolved independently of
+    the trade leg so `_cash_delta` never has to reuse the trade's rate for a fee in another currency."""
+    resolved_currency = fee_currency or trade_currency
+    if fee_exchange_rate is not None:
+        return resolved_currency, fee_exchange_rate
+    if resolved_currency == trade_currency:
+        return resolved_currency, trade_exchange_rate
+    return resolved_currency, fx_rate_on_date(resolved_currency, txn_date)
 
 
 @accounts_router.get("/accounts")
@@ -340,6 +357,9 @@ async def api_create_transaction(
             background_tasks.add_task(fetch_and_save_single_ticker, ticker)
         currency = body.currency or acc["currency"]
         exchange_rate = _resolve_exchange_rate(currency, body.exchange_rate, body.txn_date)
+        fee_currency, fee_exchange_rate = _resolve_fee_currency_and_rate(
+            body.fee_currency, body.fee_exchange_rate, currency, exchange_rate, body.txn_date
+        )
         txn_id = add_transaction(
             account_id=account_id,
             txn_type=body.txn_type,
@@ -352,6 +372,8 @@ async def api_create_transaction(
             unit_price=body.unit_price,
             fee=body.fee,
             exchange_rate=exchange_rate,
+            fee_currency=fee_currency,
+            fee_exchange_rate=fee_exchange_rate,
             notes=body.notes,
             update_cash=body.update_cash,
             price_in_pence=body.price_in_pence or currency == "GBp",
@@ -390,6 +412,9 @@ async def api_update_transaction(
         ticker = normalize_ticker(body.ticker) if body.ticker else None
         currency = body.currency or acc["currency"]
         exchange_rate = _resolve_exchange_rate(currency, body.exchange_rate, body.txn_date)
+        fee_currency, fee_exchange_rate = _resolve_fee_currency_and_rate(
+            body.fee_currency, body.fee_exchange_rate, currency, exchange_rate, body.txn_date
+        )
         ok = update_transaction(
             txn_id,
             txn_type=body.txn_type,
@@ -402,6 +427,8 @@ async def api_update_transaction(
             unit_price=body.unit_price,
             fee=body.fee,
             exchange_rate=exchange_rate,
+            fee_currency=fee_currency,
+            fee_exchange_rate=fee_exchange_rate,
             notes=body.notes,
             update_cash=body.update_cash,
             price_in_pence=body.price_in_pence or currency == "GBp",

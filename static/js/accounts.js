@@ -143,10 +143,22 @@ function _populateCurrencySelect() {
     const sel = document.getElementById('txn-currency');
     sel.innerHTML = (window.ACCOUNT_CURRENCIES || ['GBP', 'GBp', 'USD', 'EUR'])
         .map(c => `<option value="${_escapeHtml(c)}">${_escapeHtml(c)}</option>`).join('');
+    const feeSel = document.getElementById('txn-fee-currency');
+    feeSel.innerHTML = (window.ACCOUNT_CURRENCIES || ['GBP', 'GBp', 'USD', 'EUR'])
+        .map(c => `<option value="${_escapeHtml(c)}">${_escapeHtml(c)}</option>`).join('');
 }
 
 function _setCurrencySelectValue(currency) {
     const sel = document.getElementById('txn-currency');
+    if (!currency) return;
+    if (!Array.from(sel.options).some(o => o.value === currency)) {
+        sel.insertAdjacentHTML('beforeend', `<option value="${_escapeHtml(currency)}">${_escapeHtml(currency)}</option>`);
+    }
+    sel.value = currency;
+}
+
+function _setFeeCurrencySelectValue(currency) {
+    const sel = document.getElementById('txn-fee-currency');
     if (!currency) return;
     if (!Array.from(sel.options).some(o => o.value === currency)) {
         sel.insertAdjacentHTML('beforeend', `<option value="${_escapeHtml(currency)}">${_escapeHtml(currency)}</option>`);
@@ -325,7 +337,7 @@ function _transactionsTableHtml(accountId, txns) {
             <td>${t.ticker || '—'}</td>
             <td>${t.quantity ?? '—'}</td>
             <td>${t.unit_price ?? '—'}</td>
-            <td>${t.fee}</td>
+            <td>${t.fee}${t.fee_currency && t.fee_currency !== t.currency ? ' ' + t.fee_currency : ''}</td>
             <td>${t.currency || '—'}</td>
             <td>
                 <button type="button" class="btn btn-outline-secondary btn-sm" onclick="editTransaction(${accountId}, ${t.id})">Edit</button>
@@ -374,32 +386,56 @@ function _refreshTxnCurrencyUI() {
     const base = window.BASE_CURRENCY || '';
     // Cash/Transfer are always base-currency — the (hidden) currency select's last value is stale.
     const currency = hideAssetFields ? base : document.getElementById('txn-currency').value;
-    const feeLabel = document.getElementById('txn-fee-currency-label');
-    if (feeLabel) feeLabel.textContent = currency ? `(${currency})` : '';
 
     const showFx = !hideAssetFields && currency && currency !== base;
     document.getElementById('txn-fx-group').classList.toggle('d-none', !showFx);
+
+    document.getElementById('txn-fee-currency-group').classList.toggle('d-none', hideAssetFields);
+    if (hideAssetFields) _setFeeCurrencySelectValue(base);
+    const feeCurrency = document.getElementById('txn-fee-currency').value || base;
+    const showFeeFx = !hideAssetFields && feeCurrency && feeCurrency !== base;
+    document.getElementById('txn-fee-fx-group').classList.toggle('d-none', !showFeeFx);
+    if (!showFeeFx) document.getElementById('txn-fee-fx').value = 1.0;
 }
 
 async function _onTxnCurrencyOrDateChange() {
-    _refreshTxnCurrencyUI();
     const currency = document.getElementById('txn-currency').value;
     const base = window.BASE_CURRENCY || '';
     const type = document.getElementById('txn-type').value;
     const hideAssetFields = type === 'Cash' || type === 'Transfer';
-    const fxInput = document.getElementById('txn-fx');
-    if (hideAssetFields) {
-        _updateTxnTotalPreview();
-        return;
+    _setFeeCurrencySelectValue(hideAssetFields ? base : currency);
+    _refreshTxnCurrencyUI();
+    if (!hideAssetFields) {
+        const fxInput = document.getElementById('txn-fx');
+        if (!currency || currency === base) {
+            fxInput.value = 1.0;
+        } else {
+            const date = document.getElementById('txn-date').value || new Date().toISOString().slice(0, 10);
+            try {
+                const r = await fetch(`/api/fx-rate?currency=${encodeURIComponent(currency)}&date=${encodeURIComponent(date)}`);
+                const data = await r.json();
+                if (data.status === 'success') fxInput.value = data.rate;
+            } catch (e) {
+                // leave whatever was there — user can still enter a rate manually
+            }
+        }
     }
-    if (!currency || currency === base) {
+    await _onFeeCurrencyOrDateChange();
+}
+
+async function _onFeeCurrencyOrDateChange() {
+    _refreshTxnCurrencyUI();
+    const feeCurrency = document.getElementById('txn-fee-currency').value;
+    const base = window.BASE_CURRENCY || '';
+    const fxInput = document.getElementById('txn-fee-fx');
+    if (!feeCurrency || feeCurrency === base) {
         fxInput.value = 1.0;
         _updateTxnTotalPreview();
         return;
     }
     const date = document.getElementById('txn-date').value || new Date().toISOString().slice(0, 10);
     try {
-        const r = await fetch(`/api/fx-rate?currency=${encodeURIComponent(currency)}&date=${encodeURIComponent(date)}`);
+        const r = await fetch(`/api/fx-rate?currency=${encodeURIComponent(feeCurrency)}&date=${encodeURIComponent(date)}`);
         const data = await r.json();
         if (data.status === 'success') fxInput.value = data.rate;
     } catch (e) {
@@ -422,13 +458,20 @@ function _updateTxnTotalPreview() {
     const price = parseFloat(document.getElementById('txn-price').value);
     const fx = document.getElementById('txn-fx').value === '' ? 1.0 : parseFloat(document.getElementById('txn-fx').value);
     const currency = document.getElementById('txn-currency').value || base;
-    if (isNaN(price) || isNaN(qty) || isNaN(fx)) {
+    const fee = document.getElementById('txn-fee').value === '' ? 0 : parseFloat(document.getElementById('txn-fee').value);
+    const feeFx = document.getElementById('txn-fee-fx').value === '' ? 1.0 : parseFloat(document.getElementById('txn-fee-fx').value);
+    const feeCurrency = document.getElementById('txn-fee-currency').value || base;
+    if (isNaN(price) || isNaN(qty) || isNaN(fx) || isNaN(fee) || isNaN(feeFx)) {
         preview.textContent = '';
         return;
     }
     const totalNative = qty * price;
     const totalBase = totalNative * fx;
-    preview.textContent = `Total: ${totalNative.toFixed(2)} ${currency} = ${totalBase.toFixed(2)} ${base}`;
+    const feeBase = fee * feeFx;
+    const isDebit = type === 'Buy' || type === 'Fee';
+    const cashImpact = isDebit ? -(totalBase + feeBase) : (totalBase - feeBase);
+    const feeText = fee ? ` + Fee ${fee.toFixed(2)} ${feeCurrency}` : '';
+    preview.textContent = `Total: ${totalNative.toFixed(2)} ${currency}${feeText} → Cash impact: ${cashImpact >= 0 ? '+' : ''}${cashImpact.toFixed(2)} ${base}`;
 }
 
 function openTxnModal(accountId = null, txn = null) {
@@ -446,6 +489,8 @@ function openTxnModal(accountId = null, txn = null) {
     document.getElementById('txn-price').value = txn ? (txn.unit_price ?? '') : '';
     document.getElementById('txn-fee').value = txn ? txn.fee : 0;
     document.getElementById('txn-fx').value = txn ? (txn.exchange_rate ?? '') : '';
+    _setFeeCurrencySelectValue(txn ? (txn.fee_currency || txn.currency || window.BASE_CURRENCY) : window.BASE_CURRENCY);
+    document.getElementById('txn-fee-fx').value = txn ? (txn.fee_exchange_rate ?? '') : '';
     document.getElementById('txn-notes').value = txn ? (txn.notes || '') : '';
     document.getElementById('txn-ticker-result').innerHTML = '';
     document.getElementById('txn-status').innerHTML = '';
@@ -554,6 +599,8 @@ async function submitTransaction() {
         unit_price: document.getElementById('txn-price').value === '' ? null : parseFloat(document.getElementById('txn-price').value),
         fee: parseFloat(document.getElementById('txn-fee').value) || 0,
         exchange_rate: document.getElementById('txn-fx').value === '' ? null : parseFloat(document.getElementById('txn-fx').value),
+        fee_currency: document.getElementById('txn-fee-currency').value || null,
+        fee_exchange_rate: document.getElementById('txn-fee-fx').value === '' ? null : parseFloat(document.getElementById('txn-fee-fx').value),
         notes: document.getElementById('txn-notes').value.trim() || null,
         update_cash: true,
         price_in_pence: (document.getElementById('txn-currency').value || '') === 'GBp',
