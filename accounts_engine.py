@@ -15,10 +15,10 @@ import time_engine
 from config import BASE_CURRENCY, HISTORICAL_DIR, PORTFOLIO_PATH, load_config
 from db_accounts import (
     add_price_history, add_transaction, delete_transaction, get_account, get_accounts,
-    get_pending_topup, get_price_as_of, get_price_history, get_transaction, get_transactions,
-    get_value_history, get_value_history_currency, get_watchlist_items, resolve_pending_topup,
-    update_account, update_transaction, upsert_performance_cache, upsert_value_snapshot,
-    upsert_value_snapshot_currency,
+    get_pending_topup, get_performance_cache, get_price_as_of, get_price_history, get_transaction,
+    get_transactions, get_value_history, get_value_history_currency, get_watchlist_items,
+    resolve_pending_topup, update_account, update_transaction, upsert_performance_cache,
+    upsert_value_snapshot, upsert_value_snapshot_currency,
 )
 from database import get_connection
 from market_pulse import is_price_fresh
@@ -1521,6 +1521,37 @@ def portfolio_totals() -> dict:
     result["twr_pct"] = portfolio_twr_ex_fx(account_ids)
     result["twr_fx_pct"] = portfolio_twr_fx(account_ids)
     return result
+
+
+def account_metrics_list() -> dict:
+    """Per-Trading-account metrics for the Home Assistant per-account sensor set — composes
+    the cached performance snapshot (lazily refreshed like the live-performance endpoint) with
+    account_summary()'s dividend/interest/realized_pnl, which the cache doesn't track."""
+    accounts = []
+    for acc in _trading_accounts():
+        account_id = acc["id"]
+        cached = get_performance_cache(account_id)
+        if cached is None:
+            refresh_performance_cache(account_id)
+            cached = get_performance_cache(account_id)
+        summary = account_summary(account_id)
+        accounts.append({
+            "account_id": account_id,
+            "name": acc["name"],
+            "cash_balance": cached["cash_balance"],
+            "equity_value": cached["equity_value"],
+            "unrealized_pnl": cached["unrealized_pnl"],
+            "realized_pnl": summary["realized_pnl"],
+            "dividend_income": summary["dividend"],
+            "interest_income": summary["interest"],
+            "gain_1d": cached["return_1d"],
+            "gain_1w": cached["return_1w"],
+            "gain_1m": cached["return_1m"],
+            "gain_3m": cached["return_3m"],
+            "gain_1y": cached["return_1y"],
+            "mwrr_pct": cached["mwrr"],
+        })
+    return {"base_currency": BASE_CURRENCY, "accounts": accounts}
 
 
 def _avg_purchase_fx_rate(account_id: int, tickers: set) -> dict:

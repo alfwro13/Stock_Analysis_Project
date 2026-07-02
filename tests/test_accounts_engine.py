@@ -1419,6 +1419,69 @@ def test_portfolio_totals_only_counts_trading_accounts():
 
 
 @pytest.mark.db
+def test_account_metrics_list_fields_map_to_correct_source(monkeypatch):
+    """Regression test: account_metrics_list() merges account_performance_cache with
+    account_summary() — each of the 12 fields must come from its own correct source, not a
+    swapped/aliased one (the same bug class portfolio_totals()'s FX-leg regression test guards
+    against)."""
+    from database import get_performance_cache
+
+    _seed_stock_signal("ZZACCTMET", 120.0, "GBP")
+    aid = create_account("AcctMetricsAcc", "GBP", initial_cash=1000.0)
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZACCTMET", currency="GBP",
+                     quantity=10, unit_price=100, exchange_rate=1.0)
+    add_transaction(aid, "Dividend", "2026-01-06", ticker="ZZACCTMET", unit_price=15)
+    add_transaction(aid, "Interest", "2026-01-07", unit_price=7)
+
+    monkeypatch.setattr(accounts_engine, "_trading_accounts", lambda: [accounts_engine.get_account(aid)])
+
+    result = accounts_engine.account_metrics_list()
+    assert result["base_currency"] == "GBP"
+    assert len(result["accounts"]) == 1
+    row = result["accounts"][0]
+    cached = get_performance_cache(aid)
+    summary = accounts_engine.account_summary(aid)
+
+    assert row["account_id"] == aid
+    assert row["name"] == "AcctMetricsAcc"
+    assert row["cash_balance"] == cached["cash_balance"]
+    assert row["equity_value"] == cached["equity_value"]
+    assert row["unrealized_pnl"] == cached["unrealized_pnl"]
+    assert row["gain_1d"] == cached["return_1d"]
+    assert row["gain_1w"] == cached["return_1w"]
+    assert row["gain_1m"] == cached["return_1m"]
+    assert row["gain_3m"] == cached["return_3m"]
+    assert row["gain_1y"] == cached["return_1y"]
+    assert row["mwrr_pct"] == cached["mwrr"]
+    assert row["realized_pnl"] == summary["realized_pnl"]
+    assert row["dividend_income"] == summary["dividend"] == 15.0
+    assert row["interest_income"] == summary["interest"] == 7.0
+
+
+@pytest.mark.db
+def test_account_metrics_list_zero_trading_accounts_returns_empty_list(monkeypatch):
+    monkeypatch.setattr(accounts_engine, "_trading_accounts", lambda: [])
+
+    result = accounts_engine.account_metrics_list()
+    assert result["accounts"] == []
+    assert result["base_currency"] == "GBP"
+
+
+@pytest.mark.db
+def test_account_metrics_list_only_includes_trading_accounts():
+    _seed_stock_signal("ZZACCTMIX", 100.0, "GBP")
+    trading_aid = create_account("AcctMetricsMixTrading", "GBP")
+    pension_aid = create_account("AcctMetricsMixPension", "GBP", account_type="Pension")
+    add_transaction(trading_aid, "Buy", "2026-01-05", ticker="ZZACCTMIX", currency="GBP",
+                     quantity=5, unit_price=80, exchange_rate=1.0)
+
+    result = accounts_engine.account_metrics_list()
+    account_ids = {row["account_id"] for row in result["accounts"]}
+    assert trading_aid in account_ids
+    assert pension_aid not in account_ids
+
+
+@pytest.mark.db
 def test_portfolio_gain_fx_decomposition_base_currency_holding_matches():
     _seed_stock_signal("ZZFXBASE", 120.0, "GBP")
     aid = create_account("FxDecompBaseAcc", "GBP")

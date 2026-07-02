@@ -3172,4 +3172,39 @@ On-demand data refresh for the Home Assistant integration's "Refresh Data" butto
 
 ---
 
+### `GET /api/accounts/list-with-metrics`
+
+Per-Trading-account metrics for the Home Assistant integration's Phase 2 per-account sensors. Thin wrapper around `accounts_engine.account_metrics_list()`, which composes `account_performance_cache` (lazily refreshed the same way `GET /accounts/{account_id}/live-performance` is, if empty) with `account_summary()`'s dividend/interest/realized P&L, which the cache doesn't track. All monetary fields are in `BASE_CURRENCY` (the single top-level `base_currency` key), not the account's own native transaction currency. With zero Trading accounts, returns `"accounts": []`.
+
+**Response**
+
+```json
+{
+  "status": "success",
+  "base_currency": "GBP",
+  "accounts": [
+    {
+      "account_id": 3,
+      "name": "Trading - ISA",
+      "cash_balance": 512.68,
+      "equity_value": 9840.20,
+      "unrealized_pnl": 1120.40,
+      "realized_pnl": 340.00,
+      "dividend_income": 84.30,
+      "interest_income": 12.50,
+      "gain_1d": 45.10,
+      "gain_1w": 120.60,
+      "gain_1m": 310.20,
+      "gain_3m": 890.15,
+      "gain_1y": 2140.00,
+      "mwrr_pct": 18.4
+    }
+  ]
+}
+```
+
+`gain_1d`/`gain_1w`/`gain_1m`/`gain_3m`/`gain_1y` are `period_returns()`'s currency gain/loss over each window, excluding the effect of deposits/withdrawals during the period. `mwrr_pct` is `money_weighted_return()` — a since-inception Modified Dietz approximation of IRR, `null` if the account has no contribution history yet.
+
+---
+
 *Generated: 2026-06-06 · Quantamental Dashboard*

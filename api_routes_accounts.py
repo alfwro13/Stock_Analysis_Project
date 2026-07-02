@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 
 from accounts_engine import (
-    _ticker_known, account_summary, confirm_autotopup, create_transfer,
+    _ticker_known, account_metrics_list, account_summary, confirm_autotopup, create_transfer,
     delete_transaction_with_pair, dismiss_autotopup, export_transactions_csv,
     filter_value_history_by_period, fx_rate_on_date, get_combined_holdings,
     import_csv_activities, pension_units_as_of, portfolio_totals, reconcile_cash,
@@ -669,6 +669,15 @@ async def api_portfolio_totals():
         return JSONResponse(content={"status": "success", **portfolio_totals()})
     except Exception as e:
         logger.error("api_portfolio_totals failed: %s", e)
+        return _error_500(e)
+
+
+@accounts_router.get("/accounts/list-with-metrics")
+async def api_accounts_list_with_metrics():
+    try:
+        return JSONResponse(content={"status": "success", **account_metrics_list()})
+    except Exception as e:
+        logger.error("api_accounts_list_with_metrics failed: %s", e)
         return _error_500(e)
 
 

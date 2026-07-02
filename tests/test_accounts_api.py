@@ -1747,3 +1747,40 @@ def test_refresh_now_notifies_error_on_failure(client):
 
     import database as _db
     _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_accounts_list_with_metrics_happy_path_with_trading_account(client):
+    with patch("api_routes_accounts.resnapshot_account"):
+        account_id = _create_account(client, name="AcctListMetricsAcc")
+
+    resp = client.get("/api/accounts/list-with-metrics")
+    assert resp.status_code == 200
+    data = _json(resp)
+    assert data["status"] == "success"
+    assert data["base_currency"]
+    assert isinstance(data["accounts"], list)
+    row = next(r for r in data["accounts"] if r["account_id"] == account_id)
+    for key in (
+        "account_id", "name", "cash_balance", "equity_value", "unrealized_pnl",
+        "realized_pnl", "dividend_income", "interest_income",
+        "gain_1d", "gain_1w", "gain_1m", "gain_3m", "gain_1y", "mwrr_pct",
+    ):
+        assert key in row, f"Missing '{key}' in list-with-metrics account row: {row}"
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_accounts_list_with_metrics_zero_trading_accounts_returns_empty_list(client):
+    import database as _db
+    for acc in _db.get_accounts():
+        if acc["account_type"] == "Trading":
+            _db.soft_delete_account(acc["id"])
+
+    resp = client.get("/api/accounts/list-with-metrics")
+    assert resp.status_code == 200
+    data = _json(resp)
+    assert data["status"] == "success"
+    assert data["accounts"] == []
