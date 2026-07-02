@@ -201,6 +201,29 @@ def test_bulk_download_intraday_skips_yahoo_call_when_all_mutual_funds():
     mock_intraday.assert_not_called()
 
 
+# ── drip_feed_fundamentals: nightly universe fetch's fundamentals JSON writer ──
+
+def test_drip_feed_fundamentals_writes_json_for_each_ticker(tmp_path):
+    """Regression test for the same NameError('json' not defined) covered in
+    test_fetch_and_save_data_writes_fundamentals_json, but for the nightly
+    update_all_data() path — it swallows the error per-ticker (logs a warning),
+    so a broken import here would silently drop every fundamentals refresh."""
+    from data_engine import DataEngine
+
+    engine = DataEngine.__new__(DataEngine)
+
+    with (
+        patch("data_engine.FUNDAMENTALS_DIR", tmp_path),
+        patch("data_engine.yahoo_engine.get_ticker_info", return_value={"sector": "Technology"}),
+        patch("data_engine.time.sleep"),
+    ):
+        engine.drip_feed_fundamentals(["AAPL", "MSFT"])
+
+    import json as json_module
+    assert json_module.loads((tmp_path / "AAPL.json").read_text()) == {"sector": "Technology"}
+    assert json_module.loads((tmp_path / "MSFT.json").read_text()) == {"sector": "Technology"}
+
+
 # ── load_or_fetch_daily_history ────────────────────────────────────────────────
 
 class TestLoadOrFetchDailyHistory:
@@ -256,3 +279,31 @@ class TestLoadOrFetchDailyHistory:
 
         assert result is None
         assert not (tmp_path / "MISSING.parquet").exists()
+
+
+# ── fetch_and_save_data: manual single-ticker refresh (details-page button) ────
+
+def test_fetch_and_save_data_writes_fundamentals_json(tmp_path):
+    """Regression test for a NameError('json' not defined) that broke the manual
+    details-page refresh button: json.dump was called with no `import json`."""
+    import pandas as pd
+    from data_engine import DataEngine
+
+    engine = DataEngine.__new__(DataEngine)
+    price_df = pd.DataFrame(
+        {"Open": [1.0], "High": [1.5], "Low": [0.9], "Close": [1.2], "Volume": [100]},
+        index=pd.DatetimeIndex(["2026-01-01"]),
+    )
+
+    with (
+        patch("data_engine.HISTORICAL_DIR", tmp_path),
+        patch("data_engine.INTRADAY_DIR", tmp_path),
+        patch("data_engine.FUNDAMENTALS_DIR", tmp_path),
+        patch("data_engine.yahoo_engine.get_price_history", return_value={"KO": price_df}),
+        patch("data_engine.yahoo_engine.get_intraday", return_value={}),
+        patch("data_engine.yahoo_engine.get_ticker_info", return_value={"sector": "Consumer Defensive"}),
+    ):
+        result = engine.fetch_and_save_data("KO")
+
+    assert result is True
+    assert (tmp_path / "KO.json").exists()

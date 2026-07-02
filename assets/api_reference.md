@@ -3185,7 +3185,7 @@ Per-Trading-account metrics for the Home Assistant integration's Phase 2 per-acc
   "accounts": [
     {
       "account_id": 3,
-      "name": "Trading - ISA",
+      "name": "ISA",
       "cash_balance": 512.68,
       "equity_value": 9840.20,
       "unrealized_pnl": 1120.40,
