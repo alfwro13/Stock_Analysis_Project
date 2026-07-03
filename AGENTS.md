@@ -257,6 +257,12 @@ Schema changes must go through `db_schema.py:init_db()` (new tables) and `db_sch
 
     **When adding or materially changing an engine that fetches external data, or when you notice one engine re-fetching something another engine already holds fresh:** wire the new engine into the existing shared cache (extending it if the existing schema doesn't fit) rather than adding another isolated fetch-and-discard path. Flag it as a bug if a code review finds a fetch that duplicates data another engine already has timestamped in a shared table.
 
+16. **One canonical function per shared calculation — never recompute the same concept independently in multiple places.** This applies to derived business math, not just raw fetched values (rule 15 covers the latter). If two or more features need "the current price for a ticker," "P&L for a position," "an FX conversion," etc., there must be exactly **one** function that computes it, and every caller uses that function — not a parallel reimplementation with its own logic for freshness, fallback, or edge cases.
+
+    **Bypass to flag as a bug:** a new page/engine/endpoint writing its own inline logic to derive a value that an existing engine already computes (e.g. picking a "current price" from `market_pulse_cache` vs. `stock_signals` with bespoke freshness rules, when `accounts_engine.current_price_map()` already does this canonically). Independent reimplementations drift apart over time even when they start out equivalent, and the divergence is invisible until two pages are compared side by side — see the Portfolio/Stock Detail/Accounts price-consistency bug (fixed 2026-07-03) where three separate "get the current price" implementations had quietly diverged.
+
+    **Before writing new calculation logic:** grep for the concept first (e.g. `current_price`, `exchange_rate`, `pnl`) to check whether a canonical engine function already exists. If it does, use it. If a genuinely new calculation is needed that overlaps with an existing one, extend the existing canonical function rather than writing a sibling.
+
 ---
 
 ## Running the App
