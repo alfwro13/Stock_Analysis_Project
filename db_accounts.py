@@ -417,7 +417,7 @@ _HOLDING_LIMIT_COLUMNS = ("low_limit", "high_limit", "updated_at")
 
 def get_all_holding_price_limits() -> dict:
     """Returns {(account_id, ticker): {"low_limit": .., "high_limit": ..}} across every account —
-    batched lookup for accounts_engine.holdings_with_metrics_all_accounts()."""
+    batched lookup for portfolio_metrics_engine.holdings_with_metrics_all_accounts()."""
     conn = None
     try:
         conn = get_connection()

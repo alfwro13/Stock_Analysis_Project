@@ -1,8 +1,9 @@
-"""Tests for GIA/broker-CSV activity import into a built-in account (accounts_engine.import_csv_activities)."""
+"""Tests for GIA/broker-CSV activity import into a built-in account (account_csv_import_engine.import_csv_activities)."""
 from unittest.mock import patch
 
 import pytest
 
+import account_csv_import_engine
 import accounts_engine
 from accounts_engine import cash_balance
 from database import create_account
@@ -36,7 +37,7 @@ def test_map_gbp_buy_exchange_rate_is_one():
         "Price per Share in Account Currency": "0.731667", "Stamp Duty": "0.02", "Quantity": "6",
         "Instrument Currency": "GBP", "Price per Share": "0.731667",
     })
-    mapped, reason, _ = accounts_engine._map_csv_row(row)
+    mapped, reason, _ = account_csv_import_engine._map_csv_row(row)
     assert reason is None
     assert mapped["txn_type"] == "Buy"
     assert mapped["ticker"] == "FGP.L"
@@ -52,7 +53,7 @@ def test_map_captures_isin_for_order_and_dividend_blank_for_cash():
         "ISIN": "GB0003452173", "Price per Share in Account Currency": "0.731667", "Stamp Duty": "0.02",
         "Quantity": "6", "Instrument Currency": "GBP", "Price per Share": "0.731667",
     })
-    mapped, _, _ = accounts_engine._map_csv_row(order_row)
+    mapped, _, _ = account_csv_import_engine._map_csv_row(order_row)
     assert mapped["isin"] == "GB0003452173"
 
     dividend_row = _row({
@@ -61,12 +62,12 @@ def test_map_captures_isin_for_order_and_dividend_blank_for_cash():
         "Instrument Currency": "GBP", "Dividend Eligible Quantity": "1", "Dividend Amount Per Share": "0.1375",
         "Dividend Net Distribution Amount": "0.1375", "Dividend Withheld Tax Amount": "0.00",
     })
-    mapped, _, _ = accounts_engine._map_csv_row(dividend_row)
+    mapped, _, _ = account_csv_import_engine._map_csv_row(dividend_row)
     assert mapped["isin"] == "GB00BN7SWP63"
 
     top_up_row = _row({"Title": "Top up", "Type": "TOP_UP", "Timestamp": "01/02/2021",
                         "Account Currency": "GBP", "Total Amount in Account Currency": "50.00"})
-    mapped, _, _ = accounts_engine._map_csv_row(top_up_row)
+    mapped, _, _ = account_csv_import_engine._map_csv_row(top_up_row)
     assert "isin" not in mapped
 
 
@@ -81,7 +82,7 @@ def test_map_fx_buy_derives_rate_from_dual_currency_prices_and_converts_fee():
         "Price per Share in Account Currency": "764.27896", "Stamp Duty": "0.00", "Quantity": "0.05072755",
         "Instrument Currency": "USD", "Price per Share": "1044.60", "FX Fee Amount": "0.17",
     })
-    mapped, reason, _ = accounts_engine._map_csv_row(row)
+    mapped, reason, _ = account_csv_import_engine._map_csv_row(row)
     assert reason is None
     assert mapped["currency"] == "USD"
     assert mapped["exchange_rate"] == pytest.approx(764.27896 / 1044.60, rel=1e-6)
@@ -102,8 +103,8 @@ def test_map_buy_overrides_to_pence_when_cache_disagrees_with_csv_currency():
         "Price per Share in Account Currency": "4.188", "Stamp Duty": "0.10", "Quantity": "5",
         "Instrument Currency": "GBP", "Price per Share": "4.188",
     })
-    with patch.object(accounts_engine, "_cached_ticker_currency", return_value="GBp"):
-        mapped, reason, _ = accounts_engine._map_csv_row(row)
+    with patch.object(account_csv_import_engine, "_cached_ticker_currency", return_value="GBp"):
+        mapped, reason, _ = account_csv_import_engine._map_csv_row(row)
     assert reason is None
     assert mapped["currency"] == "GBp"
     assert mapped["price_in_pence"] is True
@@ -126,8 +127,8 @@ def test_map_dividend_overrides_to_pence_when_cache_disagrees_with_csv_currency(
         "Dividend Eligible Quantity": "8", "Dividend Amount Per Share": "0.0193",
         "Dividend Net Distribution Amount": "0.15", "Dividend Withheld Tax Amount": "0.00",
     })
-    with patch.object(accounts_engine, "_cached_ticker_currency", return_value="GBp"):
-        mapped, reason, _ = accounts_engine._map_csv_row(row)
+    with patch.object(account_csv_import_engine, "_cached_ticker_currency", return_value="GBp"):
+        mapped, reason, _ = account_csv_import_engine._map_csv_row(row)
     assert reason is None
     assert mapped["currency"] == "GBp"
     assert mapped["price_in_pence"] is True
@@ -145,7 +146,7 @@ def test_map_sell_uses_sell_type():
         "Price per Share in Account Currency": "1.29", "Quantity": "2", "Instrument Currency": "GBP",
         "Price per Share": "1.29",
     })
-    mapped, reason, _ = accounts_engine._map_csv_row(row)
+    mapped, reason, _ = account_csv_import_engine._map_csv_row(row)
     assert reason is None
     assert mapped["txn_type"] == "Sell"
 
@@ -161,7 +162,7 @@ def test_map_dividend_derives_rate_from_total_and_net_and_keeps_tax_native():
         "Dividend Eligible Quantity": "0.282854", "Dividend Amount Per Share": "0.205",
         "Dividend Net Distribution Amount": "0.05", "Dividend Withheld Tax Amount": "0.01",
     })
-    mapped, reason, _ = accounts_engine._map_csv_row(row)
+    mapped, reason, _ = account_csv_import_engine._map_csv_row(row)
     assert reason is None
     assert mapped["txn_type"] == "Dividend"
     assert mapped["exchange_rate"] == pytest.approx(0.04 / 0.05)
@@ -178,7 +179,7 @@ def test_map_gbp_dividend_exchange_rate_is_one():
         "Dividend Eligible Quantity": "1", "Dividend Amount Per Share": "0.1375",
         "Dividend Net Distribution Amount": "0.1375", "Dividend Withheld Tax Amount": "0.00",
     })
-    mapped, reason, _ = accounts_engine._map_csv_row(row)
+    mapped, reason, _ = account_csv_import_engine._map_csv_row(row)
     assert reason is None
     assert mapped["exchange_rate"] == pytest.approx(1.0)
 
@@ -187,7 +188,7 @@ def test_map_gbp_dividend_exchange_rate_is_one():
 def test_map_top_up_and_interest():
     top_up = _row({"Title": "Top up", "Type": "TOP_UP", "Timestamp": "01/02/2021",
                     "Account Currency": "GBP", "Total Amount in Account Currency": "50.00"})
-    mapped, reason, _ = accounts_engine._map_csv_row(top_up)
+    mapped, reason, _ = account_csv_import_engine._map_csv_row(top_up)
     assert reason is None
     assert mapped["txn_type"] == "Cash"
     assert mapped["unit_price"] == pytest.approx(50.0)
@@ -195,7 +196,7 @@ def test_map_top_up_and_interest():
 
     interest = _row({"Title": "Interest", "Type": "INTEREST_FROM_CASH", "Timestamp": "15/05/2024",
                       "Account Currency": "GBP", "Total Amount in Account Currency": "0.01"})
-    mapped, reason, _ = accounts_engine._map_csv_row(interest)
+    mapped, reason, _ = account_csv_import_engine._map_csv_row(interest)
     assert reason is None
     assert mapped["txn_type"] == "Interest"
 
@@ -204,15 +205,15 @@ def test_map_top_up_and_interest():
 def test_map_internal_transfer_is_ignored_blank_row_and_unknown_type():
     transfer = _row({"Title": "Internal Transfer to ISA", "Type": "INTERNAL_TRANSFER", "Timestamp": "16/02/2026",
                       "Account Currency": "GBP"})
-    mapped, reason, _ = accounts_engine._map_csv_row(transfer)
+    mapped, reason, _ = account_csv_import_engine._map_csv_row(transfer)
     assert mapped is None and reason == "ignored"
 
     blank = _row({"Type": ""})
-    mapped, reason, _ = accounts_engine._map_csv_row(blank)
+    mapped, reason, _ = account_csv_import_engine._map_csv_row(blank)
     assert mapped is None and reason == "blank_row"
 
     unknown = _row({"Title": "X", "Type": "WEIRD_TYPE", "Timestamp": "01/01/2025", "Account Currency": "GBP"})
-    mapped, reason, _ = accounts_engine._map_csv_row(unknown)
+    mapped, reason, _ = account_csv_import_engine._map_csv_row(unknown)
     assert mapped is None and reason == "unknown_type"
 
 
@@ -220,7 +221,7 @@ def test_map_internal_transfer_is_ignored_blank_row_and_unknown_type():
 def test_map_dividend_with_blank_ticker_is_skipped():
     row = _row({"Title": "Apple", "Type": "DIVIDEND", "Timestamp": "13/05/2021", "Account Currency": "GBP",
                 "Total Amount in Account Currency": "0.05", "Ticker": ""})
-    mapped, reason, key = accounts_engine._map_csv_row(row)
+    mapped, reason, key = account_csv_import_engine._map_csv_row(row)
     assert mapped is None
     assert reason == "no_ticker"
     assert key == "(no ticker)"
@@ -230,7 +231,7 @@ def test_map_dividend_with_blank_ticker_is_skipped():
 def test_import_rejects_csv_missing_required_column():
     aid = create_account("MissingColAcc", "GBP")
     bad_csv = "Title,Type,Timestamp\nTop up,TOP_UP,01/02/2021\n"
-    result = accounts_engine.import_csv_activities(aid, bad_csv)
+    result = account_csv_import_engine.import_csv_activities(aid, bad_csv)
     assert "error" in result
     assert "missing required column" in result["error"].lower()
 
@@ -245,7 +246,7 @@ def test_import_end_to_end_with_duplicate_top_ups_and_a_trade():
         "FirstGroup,ORDER,01/02/2021,GBP,4.41,BUY,FGP.L,GB0003452173,0.731667,0.02,6,GBP,4.39,0.731667,,,,,,,,,,,,",
     )
     with patch.object(accounts_engine, "_ticker_known", return_value=True):
-        result = accounts_engine.import_csv_activities(aid, csv_text)
+        result = account_csv_import_engine.import_csv_activities(aid, csv_text)
 
     assert result["imported"] == 4
     assert result["skipped"] == 0
@@ -262,8 +263,8 @@ def test_import_reimport_same_file_is_idempotent():
         "Top up,TOP_UP,01/02/2021,GBP,50.00,,,,,,,,,,,,,,,,,,,,,",
     )
     with patch.object(accounts_engine, "_ticker_known", return_value=True):
-        first = accounts_engine.import_csv_activities(aid, csv_text)
-        second = accounts_engine.import_csv_activities(aid, csv_text)
+        first = account_csv_import_engine.import_csv_activities(aid, csv_text)
+        second = account_csv_import_engine.import_csv_activities(aid, csv_text)
 
     assert first["imported"] == 2
     assert second["imported"] == 0
@@ -278,16 +279,16 @@ def test_ticker_resolvable_retries_once_after_transient_lookup_failure():
     including a transient HTTP 429, so a one-off network blip looks identical to a genuinely
     bad ticker without a retry."""
     with patch.object(accounts_engine, "_ticker_known", return_value=False), \
-         patch.object(accounts_engine.yahoo_engine, "get_ticker_info", side_effect=[None, {"longName": "HL Fund"}]) as mock_info:
-        assert accounts_engine._ticker_resolvable("0P0001RI3X.L") is True
+         patch.object(account_csv_import_engine.yahoo_engine, "get_ticker_info", side_effect=[None, {"longName": "HL Fund"}]) as mock_info:
+        assert account_csv_import_engine._ticker_resolvable("0P0001RI3X.L") is True
     assert mock_info.call_count == 2
 
 
 @pytest.mark.db
 def test_ticker_resolvable_returns_false_after_two_consecutive_failures():
     with patch.object(accounts_engine, "_ticker_known", return_value=False), \
-         patch.object(accounts_engine.yahoo_engine, "get_ticker_info", return_value=None) as mock_info:
-        assert accounts_engine._ticker_resolvable("ZZZNOPE") is False
+         patch.object(account_csv_import_engine.yahoo_engine, "get_ticker_info", return_value=None) as mock_info:
+        assert account_csv_import_engine._ticker_resolvable("ZZZNOPE") is False
     assert mock_info.call_count == 2
 
 
@@ -298,8 +299,8 @@ def test_import_recovers_ticker_after_one_transient_lookup_failure():
         "HL Fund,ORDER,01/02/2021,GBP,10.00,BUY,0P0001RI3X.L,GB00B4NXY349,5.00,0.00,2,GBP,10.00,5.00,,,,,,,,,,,,",
     )
     with patch.object(accounts_engine, "_ticker_known", return_value=False), \
-         patch.object(accounts_engine.yahoo_engine, "get_ticker_info", side_effect=[None, {"longName": "HL Fund"}]):
-        result = accounts_engine.import_csv_activities(aid, csv_text)
+         patch.object(account_csv_import_engine.yahoo_engine, "get_ticker_info", side_effect=[None, {"longName": "HL Fund"}]):
+        result = account_csv_import_engine.import_csv_activities(aid, csv_text)
 
     assert result["imported"] == 1
     assert result["skipped"] == 0
@@ -313,8 +314,8 @@ def test_import_skips_and_reports_unresolved_ticker_with_date():
         "Delisted Co,ORDER,01/02/2021,GBP,10.00,BUY,ZZZNOPE,XX0000000000,5.00,0.00,2,GBP,10.00,5.00,,,,,,,,,,,,",
     )
     with patch.object(accounts_engine, "_ticker_known", return_value=False), \
-         patch.object(accounts_engine.yahoo_engine, "get_ticker_info", return_value=None):
-        result = accounts_engine.import_csv_activities(aid, csv_text)
+         patch.object(account_csv_import_engine.yahoo_engine, "get_ticker_info", return_value=None):
+        result = account_csv_import_engine.import_csv_activities(aid, csv_text)
 
     assert result["imported"] == 0
     assert result["skipped"] == 1
@@ -330,7 +331,7 @@ def test_map_unparseable_timestamp_is_skipped_not_crashed():
     the whole import — `Timestamp` is a required column but a single row's value can still be
     missing/garbled without the rest of the file being lost."""
     row = _row({"Title": "X", "Type": "ORDER", "Timestamp": "not-a-date", "Account Currency": "GBP"})
-    mapped, reason, _ = accounts_engine._map_csv_row(row)
+    mapped, reason, _ = account_csv_import_engine._map_csv_row(row)
     assert mapped is None
     assert reason == "bad_date"
 
@@ -341,5 +342,5 @@ def test_import_counts_internal_transfer_as_ignored():
     csv_text = _csv(
         "Internal Transfer to ISA,INTERNAL_TRANSFER,16/02/2026,GBP,94.39,,,,,,,,,,,,,,,,,,,,,",
     )
-    result = accounts_engine.import_csv_activities(aid, csv_text)
+    result = account_csv_import_engine.import_csv_activities(aid, csv_text)
     assert result == {"imported": 0, "skipped": 0, "ignored": 1, "skipped_rows": []}
