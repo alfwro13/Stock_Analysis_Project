@@ -1678,6 +1678,23 @@ Returns HTTP **409** if any scheduler jobs are currently running (see `GET /api/
 
 ---
 
+### `POST /api/system/force-restart`
+
+Identical to `POST /api/system/restart` except it skips the active-jobs check — it shares the same `execute_restart()` background task, so the same pip-install-before-shutdown behavior (when the last git pull changed `requirements.txt`) applies here too. Used by the Settings UI to restart even while a scheduler job is running.
+
+**Request body:** none
+
+**Response**
+
+```json
+{
+  "status": "success",
+  "message": "Force restart signal sent. The dashboard will be back online in ~5-10 seconds."
+}
+```
+
+---
+
 ## 15. Log Viewer
 
 These endpoints expose the active rotating log file (`app.log`) for the in-browser live viewer. Both endpoints require a valid session (same auth as all other routes).
@@ -1846,6 +1863,7 @@ Sends a test insider trading alert via Nextcloud Talk.
 | `GET` | `/api/system/active-jobs` | Currently executing scheduler jobs (busy indicator) |
 | `POST` | `/api/system/git-pull` | Pull latest code from git |
 | `POST` | `/api/system/restart` | Graceful application restart (409 if jobs running) |
+| `POST` | `/api/system/force-restart` | Graceful application restart, skips active-jobs check |
 | `POST` | `/api/test-sentiment-alert` | Test Nextcloud sentiment alert |
 | `POST` | `/api/test-earnings-alert` | Test Nextcloud earnings alert |
 | `POST` | `/api/test-insider-alert` | Test Nextcloud insider alert |
