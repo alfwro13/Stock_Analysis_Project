@@ -1301,7 +1301,7 @@ def test_current_price_map_prefers_market_pulse_cache_when_newer_than_stock_sign
     _seed_stock_signal("ZZLIVE", 100.0, "GBP", last_updated=_yesterday_utc_str())
     _seed_market_pulse("ZZLIVE", 150.0, time.time())
 
-    prices = accounts_engine._current_price_map(["ZZLIVE"])
+    prices = accounts_engine.current_price_map(["ZZLIVE"])
     assert prices["ZZLIVE"] == (150.0, "GBP")
 
 
@@ -1319,7 +1319,7 @@ def test_current_price_map_prefers_cache_even_when_many_minutes_old():
     _seed_stock_signal("ZZOLDCACHE", 100.0, "GBP", last_updated=_yesterday_utc_str())
     _seed_market_pulse("ZZOLDCACHE", 150.0, time.time() - 900)  # 15 minutes old
 
-    prices = accounts_engine._current_price_map(["ZZOLDCACHE"])
+    prices = accounts_engine.current_price_map(["ZZOLDCACHE"])
     assert prices["ZZOLDCACHE"] == (150.0, "GBP")
 
 
@@ -1341,7 +1341,7 @@ def test_current_price_map_falls_back_to_stock_signals_when_cache_older_than_sig
         last_updated=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
     )
 
-    prices = accounts_engine._current_price_map(["ZZSTALE"])
+    prices = accounts_engine.current_price_map(["ZZSTALE"])
     assert prices["ZZSTALE"] == (100.0, "GBP")
 
 
@@ -1352,7 +1352,7 @@ def test_current_price_map_falls_back_when_no_cache_row():
                     quantity=10, unit_price=100, exchange_rate=1.0)
     _seed_stock_signal("ZZNOCACHE", 100.0, "GBP")
 
-    prices = accounts_engine._current_price_map(["ZZNOCACHE"])
+    prices = accounts_engine.current_price_map(["ZZNOCACHE"])
     assert prices["ZZNOCACHE"] == (100.0, "GBP")
 
 

@@ -310,13 +310,18 @@ async def portfolio_page(request: Request, account_id: str = "all", embed: bool 
 
     live_pulse = get_all_cached_pulse()
 
+    from accounts_engine import current_price_map
+    price_map = current_price_map(list(set(portfolio_tickers)))
+
     for row_dict in portfolio_data:
         row_dict['market_value_base'] = None
         row_dict['global_market_value'] = None
         row_dict['global_unrealized_pnl'] = None
         row_dict['global_unrealized_pnl_pct'] = None
         asset = next((d for d in portfolio_json.values() if d.get("ticker") == row_dict['ticker']), None)
-        if asset and row_dict['current_price']:
+        priced = price_map.get(row_dict['ticker'])
+        current_price = priced[0] if priced and priced[0] else row_dict['current_price']
+        if asset and current_price:
             shares = 0
             buy_price_base = 0
 
@@ -332,21 +337,16 @@ async def portfolio_page(request: Request, account_id: str = "all", embed: bool 
 
             cost_in_base = shares * buy_price_base
             exchange_rate = get_rate_to_base(row_dict['currency'])
-            val_in_base = (shares * row_dict['current_price']) * exchange_rate
+            val_in_base = (shares * current_price) * exchange_rate
             row_dict['market_value_base'] = round(val_in_base, 2)
+            row_dict['global_market_value'] = round(val_in_base, 2)
 
             summary_math["value"] += val_in_base
             summary_math["cost"] += cost_in_base
 
-            pulse_entry = live_pulse.get(row_dict['ticker'])
-            live_price = (pulse_entry['price'] if pulse_entry and pulse_entry['price'] > 0
-                          else row_dict['current_price'])
-            display_cost = shares * buy_price_base
-            display_val = (shares * live_price) * exchange_rate
-            row_dict['global_market_value'] = round(display_val, 2)
-            display_pnl = display_val - display_cost
-            row_dict['global_unrealized_pnl'] = round(display_pnl, 2)
-            row_dict['global_unrealized_pnl_pct'] = round((display_pnl / display_cost) * 100, 2) if display_cost else None
+            pnl_in_base = val_in_base - cost_in_base
+            row_dict['global_unrealized_pnl'] = round(pnl_in_base, 2)
+            row_dict['global_unrealized_pnl_pct'] = round((pnl_in_base / cost_in_base) * 100, 2) if cost_in_base else None
 
     if summary_math["cost"] > 0:
         summary_math["pnl"] = summary_math["value"] - summary_math["cost"]
@@ -1406,11 +1406,13 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
         except Exception:
             logger.warning("Could not parse next_earnings_date for %s: %s", ticker, stock_data.get('next_earnings_date'))
 
-    from accounts_engine import get_combined_holdings
+    from accounts_engine import get_combined_holdings, current_price_map
     user_asset = get_combined_holdings().get(ticker)
 
     portfolio_math = None
     if user_asset and stock_data and stock_data.get('current_price'):
+        priced = current_price_map([ticker]).get(ticker)
+        live_current_price = priced[0] if priced and priced[0] else stock_data['current_price']
         exchange_rate = get_rate_from_base(stock_data['currency'])
         price_in_pence = user_asset.get('price_in_pence', False)
 
@@ -1418,7 +1420,7 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
             user_asset.get('global_shares', 0),
             user_asset.get('global_buy_price', 0),
             exchange_rate,
-            stock_data['current_price'],
+            live_current_price,
             price_in_pence,
         )
         account_maths = []
@@ -1427,7 +1429,7 @@ async def stock_detail(request: Request, ticker: str, embed: bool = False):
                 acc.get('shares', 0),
                 acc.get('buy_price', 0),
                 exchange_rate,
-                stock_data['current_price'],
+                live_current_price,
                 price_in_pence,
             )
             if acc_m:

@@ -296,7 +296,7 @@ def holdings_with_market_value(account_id: int) -> list:
     holdings = derive_account_holdings(account_id)
     if not holdings:
         return []
-    prices = _current_price_map(list(holdings.keys()))
+    prices = current_price_map(list(holdings.keys()))
     first_dates: dict[str, str] = {}
     for txn in get_transactions(account_id):
         if txn["txn_type"] == "Buy" and txn["ticker"]:
@@ -355,7 +355,7 @@ def _stock_signals_map(tickers: list) -> dict:
 
 
 def _market_pulse_change_map(tickers: list) -> dict:
-    """Batched market_pulse_cache change_pts/change_pct lookup, mirroring _current_price_map()'s
+    """Batched market_pulse_cache change_pts/change_pct lookup, mirroring current_price_map()'s
     own market_pulse_cache query style."""
     if not tickers:
         return {}
@@ -402,7 +402,7 @@ def holdings_with_metrics_all_accounts() -> dict:
         account_holdings[acc["id"]] = holdings
         all_tickers.update(h["ticker"] for h in holdings)
 
-    price_map = _current_price_map(list(all_tickers))
+    price_map = current_price_map(list(all_tickers))
     signals_map = _stock_signals_map(list(all_tickers))
     pulse_map = _market_pulse_change_map(list(all_tickers))
     limits_map = get_all_holding_price_limits()
@@ -481,7 +481,7 @@ def market_values_for_xray(account_id: Optional[int] = None) -> list:
     holdings = derive_account_holdings(account_id)
     if not holdings:
         return []
-    prices = _current_price_map(list(holdings.keys()))
+    prices = current_price_map(list(holdings.keys()))
     rows = []
     for ticker, h in holdings.items():
         total_investment = sum(a["total_investment"] for a in h["accounts"])
@@ -717,7 +717,7 @@ def delete_transaction_with_pair(txn_id: int) -> bool:
     return ok
 
 
-def _current_price_map(tickers: list) -> dict:
+def current_price_map(tickers: list) -> dict:
     """Live-aware: prefers `market_pulse_cache`'s price over `stock_signals.current_price`
     whenever the cache row is newer than stock_signals' own last update — not gated by an
     absolute-age cutoff, since the background jobs that keep market_pulse_cache warm (the
@@ -895,7 +895,7 @@ def _equity_value(open_holdings: dict) -> float:
 def _equity_value_with_breakdown(open_holdings: dict) -> tuple:
     if not open_holdings:
         return 0.0, {}
-    prices = _current_price_map(list(open_holdings.keys()))
+    prices = current_price_map(list(open_holdings.keys()))
 
     def _lookup(ticker, holding):
         priced = prices.get(ticker)
@@ -1841,7 +1841,7 @@ def portfolio_gain_fx_decomposition(account_ids: list) -> tuple:
         holdings = derive_account_holdings(aid)
         if not holdings:
             continue
-        prices = _current_price_map(list(holdings.keys()))
+        prices = current_price_map(list(holdings.keys()))
         avg_fx = _avg_purchase_fx_rate(aid, set(holdings.keys()))
         for ticker, h in holdings.items():
             total_investment = h["accounts"][0]["total_investment"]

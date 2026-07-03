@@ -40,7 +40,7 @@ _DISPLAY_STALE_FLOOR_SECONDS = 300
 
 def is_price_fresh(last_updated: float, price: float, refresh_rate: int) -> bool:
     """Display-only staleness check ('should the UI grey this out'), not a data-selection gate
-    — see accounts_engine._current_price_map() for the latter, which compares timestamps
+    — see accounts_engine.current_price_map() for the latter, which compares timestamps
     directly instead of using an absolute cutoff. A cache row counts as fresh outside market
     hours as long as it has ever been populated; during market hours it must also be within a
     floor of 5 minutes (or 2x the refresh interval if that's larger) — a floor comfortably
