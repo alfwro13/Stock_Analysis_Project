@@ -2,6 +2,7 @@ import logging
 import threading as _threading
 from datetime import datetime, timezone
 
+import time_engine
 from apscheduler.triggers.cron import CronTrigger
 from accounts_engine import resnapshot_account, snapshot_all_accounts
 from backup_engine import run_backup
@@ -707,6 +708,17 @@ def run_ai_contagion_job():
         record_job_run('ai_contagion_job')
 
 
+def _get_ticker_currency_map(tickers: list, conn) -> dict:
+    if not tickers:
+        return {}
+    placeholders = ",".join("?" * len(tickers))
+    rows = conn.execute(
+        f"SELECT ticker, currency FROM stock_signals WHERE ticker IN ({placeholders})",
+        tickers,
+    ).fetchall()
+    return {r["ticker"]: r["currency"] for r in rows}
+
+
 def run_trap_monitor_job():
     from bull_bear_trap_engine import TrapEngine
     config = load_config()
@@ -723,12 +735,25 @@ def run_trap_monitor_job():
         alert_phases = {"ACTIVE_SELLOFF", "BULL_TRAP_RISK", "CAPITULATION_FORMING", "BEAR_TRAP_RISK"}
         orch = IntradayOrchestrator()
 
+        candidate_tickers = [row["ticker"] for row in results if row.get("phase", "NEUTRAL") in alert_phases]
+        currency_map = _get_ticker_currency_map(candidate_tickers, conn)
+
         for row in results:
             phase = row.get("phase", "NEUTRAL")
             if phase not in alert_phases:
                 continue
 
             ticker = row["ticker"]
+            currency = currency_map.get(ticker, "")
+            if not currency and "." not in ticker:
+                # Proxy tickers (e.g. QQQ, SMH) have no stock_signals row to source currency
+                # from; a bare suffix-less symbol is always a US listing on Yahoo Finance.
+                currency = "USD"
+            exchange = time_engine.ticker_exchange(ticker, currency)
+            if not time_engine.is_market_open(exchange, include_premarket=(exchange == "NYSE")):
+                logger.debug("TrapMonitor: %s — %s market closed, suppressing alert.", ticker, exchange)
+                continue
+
             reason = f"TRAP MONITOR {phase.replace('_', ' ')}"
             suppress = orch._evaluate_alert_gate("TrapMonitor", ticker, None, reason, conn)
             if suppress:

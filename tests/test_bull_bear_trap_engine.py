@@ -315,6 +315,83 @@ class TestSaveResults:
         assert count == 3
 
 
+# ── run_trap_monitor_job() — market-hours alert gating ────────────────────────
+
+class TestRunTrapMonitorJobMarketGating:
+    @staticmethod
+    def _row(ticker: str, phase: str = "BULL_TRAP_RISK") -> dict:
+        return {
+            "ticker": ticker, "phase": phase,
+            "bull_trap_level": "SEVERE_TRAP_RISK", "bull_trap_vol_ratio": 0.42,
+            "bull_trap_notes": "Test note.",
+            "bear_trap_level": "SAFE", "bear_trap_notes": None,
+            "cap_level": "NONE", "cap_vol_zscore": 1.1, "cap_notes": None,
+            "wyckoff_level": "NONE", "wyckoff_bb_width": 3.5, "wyckoff_notes": None,
+            "ema_distance": -5.2, "rsi": 38.0,
+            "scan_ts": "2026-06-10 12:00:00",
+        }
+
+    def test_suppresses_alert_when_ticker_exchange_closed(self):
+        import scheduler_jobs
+
+        conn = db.get_connection()
+        try:
+            conn.execute("DELETE FROM alert_state WHERE engine = 'TrapMonitor'")
+            conn.commit()
+        finally:
+            conn.close()
+
+        with patch(
+            "bull_bear_trap_engine.TrapEngine.run_scan",
+            return_value=[self._row("AAPL")],
+        ), patch("scheduler_jobs.time_engine.is_market_open", return_value=False) as mock_open, \
+           patch("scheduler_jobs.notify") as mock_notify:
+            scheduler_jobs.run_trap_monitor_job()
+
+        mock_open.assert_called()
+        mock_notify.assert_not_called()
+
+    def test_proxy_ticker_without_stock_signals_row_resolves_to_nyse(self):
+        import scheduler_jobs
+
+        conn = db.get_connection()
+        try:
+            conn.execute("DELETE FROM alert_state WHERE engine = 'TrapMonitor'")
+            conn.execute("DELETE FROM stock_signals WHERE ticker = 'QQQ'")
+            conn.commit()
+        finally:
+            conn.close()
+
+        with patch(
+            "bull_bear_trap_engine.TrapEngine.run_scan",
+            return_value=[self._row("QQQ")],
+        ), patch("scheduler_jobs.time_engine.is_market_open", return_value=False) as mock_open, \
+           patch("scheduler_jobs.notify") as mock_notify:
+            scheduler_jobs.run_trap_monitor_job()
+
+        assert mock_open.call_args.args[0] == "NYSE"
+        mock_notify.assert_not_called()
+
+    def test_fires_alert_when_ticker_exchange_open(self):
+        import scheduler_jobs
+
+        conn = db.get_connection()
+        try:
+            conn.execute("DELETE FROM alert_state WHERE engine = 'TrapMonitor'")
+            conn.commit()
+        finally:
+            conn.close()
+
+        with patch(
+            "bull_bear_trap_engine.TrapEngine.run_scan",
+            return_value=[self._row("AAPL")],
+        ), patch("scheduler_jobs.time_engine.is_market_open", return_value=True), \
+           patch("scheduler_jobs.notify", return_value=True) as mock_notify:
+            scheduler_jobs.run_trap_monitor_job()
+
+        mock_notify.assert_called_once()
+
+
 # ── _load_history() — auto-fetch ──────────────────────────────────────────────
 
 class TestLoadHistoryAutoFetch:

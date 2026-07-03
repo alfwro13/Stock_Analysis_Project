@@ -154,6 +154,9 @@ Last-run time is written to `scheduler_run_log` via `record_job_run('trap_monito
 ### In-app notifications
 The scheduler job fires an in-app notification for any ticker whose phase is `ACTIVE_SELLOFF`, `BULL_TRAP_RISK`, `CAPITULATION_FORMING`, or `BEAR_TRAP_RISK`. Tickers at `ACCUMULATION`, `CAUTION`, or `NEUTRAL` are scanned but do not generate alerts.
 
+### Market-hours gating
+The scan runs on a fixed daily window in `USER_TIMEZONE` (Section 7) regardless of which exchange each scanned ticker belongs to, but each ticker's own alert is only fired while *that ticker's* exchange is open. Each candidate ticker's exchange is resolved via `time_engine.ticker_exchange(ticker, currency)` (currency looked up from `stock_signals`), then gated with `time_engine.is_market_open(exchange, include_premarket=(exchange == "NYSE"))`. A phase computed from a stale daily close (e.g. a US proxy ticker or portfolio holding scanned before the US session opens) is still saved to `trap_monitor_results` for display, but does not fire a notification until its own exchange opens — this prevents a flood of alerts about the prior US session the moment the scan's daily window starts in a UK morning.
+
 ### Nextcloud Talk
 Channel delivery is controlled by the **Notification Settings** panel in Settings (source key `trap_monitor_alert`); Nextcloud Talk is off by default for this source. The dispatch is centralised through `notification_engine.notify()`. Message format:
 
