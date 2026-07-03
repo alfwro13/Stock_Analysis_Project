@@ -1,5 +1,6 @@
 """Tests for scheduler_engine pure-function helpers and DB utilities."""
 import threading
+import time
 from datetime import datetime, timezone
 from unittest.mock import patch, MagicMock
 
@@ -230,6 +231,16 @@ def _seed_scan_state(scan_type: str, status: str, last_ticker: str = '', scan_da
     conn.close()
 
 
+def _wait_for_call(mock_fn, timeout: float = 5.0):
+    """Polls until the daemon thread calls mock_fn; a fixed sleep flakes once the shared
+    test DB has accumulated enough accounts/transactions to slow real pre-mock work down."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if mock_fn.called:
+            return
+        time.sleep(0.01)
+
+
 class TestResumeInterruptedScans:
 
     def test_no_interrupted_scans_dispatches_nothing(self):
@@ -299,7 +310,7 @@ class TestResumeInterruptedScans:
         _seed_scan_state('tail_risk_daily', 'IN_PROGRESS', last_ticker='AAPL')
         with patch("scheduler_jobs.update_all_tail_risks") as mock_fn:
             resume_interrupted_scans()
-            import time; time.sleep(0.1)
+            _wait_for_call(mock_fn)
             mock_fn.assert_called_once()
             _, kwargs = mock_fn.call_args
             assert kwargs.get('scan_type') == 'tail_risk_daily'
@@ -321,7 +332,7 @@ class TestResumeInterruptedScans:
         _seed_scan_state('tail_risk_universe', 'IN_PROGRESS', last_ticker='VOD.L')
         with patch("scheduler_jobs.update_all_tail_risks") as mock_fn:
             resume_interrupted_scans()
-            import time; time.sleep(0.1)
+            _wait_for_call(mock_fn)
             mock_fn.assert_called_once()
             _, kwargs = mock_fn.call_args
             assert kwargs.get('scan_type') == 'tail_risk_universe'
