@@ -186,12 +186,13 @@ class DataEngine:
                 df_daily.to_parquet(HISTORICAL_DIR / f"{ticker}.parquet", engine='pyarrow')
                 persisted = True
 
-            _intraday = yahoo_engine.get_intraday([ticker], period="1d", interval="5m")
-            df_intraday = _intraday.get(ticker, pd.DataFrame())
-            if not df_intraday.empty:
-                self._strip_tz(df_intraday)
-                df_intraday.to_parquet(INTRADAY_DIR / f"{ticker}_intraday.parquet", engine='pyarrow')
-                persisted = True
+            if ticker not in get_mutual_fund_tickers([ticker]):
+                _intraday = yahoo_engine.get_intraday([ticker], period="1d", interval="5m")
+                df_intraday = _intraday.get(ticker, pd.DataFrame())
+                if not df_intraday.empty:
+                    self._strip_tz(df_intraday)
+                    df_intraday.to_parquet(INTRADAY_DIR / f"{ticker}_intraday.parquet", engine='pyarrow')
+                    persisted = True
 
             fundamentals = yahoo_engine.get_ticker_info(ticker) or {}
             if fundamentals:

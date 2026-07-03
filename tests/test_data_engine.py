@@ -307,3 +307,30 @@ def test_fetch_and_save_data_writes_fundamentals_json(tmp_path):
 
     assert result is True
     assert (tmp_path / "KO.json").exists()
+
+
+def test_fetch_and_save_data_skips_intraday_for_mutual_fund(tmp_path):
+    """Same 'possibly delisted' log-noise bug as bulk_download_intraday, but for the
+    manual single-ticker refresh path — a mutual fund has no 5m bars to fetch."""
+    import pandas as pd
+    from data_engine import DataEngine
+
+    engine = DataEngine.__new__(DataEngine)
+    price_df = pd.DataFrame(
+        {"Open": [1.0], "High": [1.5], "Low": [0.9], "Close": [1.2], "Volume": [100]},
+        index=pd.DatetimeIndex(["2026-01-01"]),
+    )
+
+    with (
+        patch("data_engine.HISTORICAL_DIR", tmp_path),
+        patch("data_engine.INTRADAY_DIR", tmp_path),
+        patch("data_engine.FUNDAMENTALS_DIR", tmp_path),
+        patch("data_engine.yahoo_engine.get_price_history", return_value={"0P00018XAR.L": price_df}),
+        patch("data_engine.get_mutual_fund_tickers", return_value={"0P00018XAR.L"}),
+        patch("data_engine.yahoo_engine.get_intraday") as mock_intraday,
+        patch("data_engine.yahoo_engine.get_ticker_info", return_value={}),
+    ):
+        result = engine.fetch_and_save_data("0P00018XAR.L")
+
+    assert result is True
+    mock_intraday.assert_not_called()

@@ -7,7 +7,7 @@ import pandas as pd
 
 import notification_engine
 from config import load_config, HISTORICAL_DIR
-from database import get_connection
+from database import get_connection, get_mutual_fund_tickers
 from utils import normalize_ticker
 from gilt_engine import GiltDataService
 from yahoo_engine import yahoo_engine
@@ -264,7 +264,10 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
 
         if tickers_to_fetch:
             daily_dfs = yahoo_engine.get_price_history(tickers_to_fetch, period="5d", interval="1d")
-            live_dfs = yahoo_engine.get_intraday(tickers_to_fetch, period="2d", interval="2m", prepost=True)
+            mutual_funds = get_mutual_fund_tickers(tickers_to_fetch)
+            intraday_targets = [t for t in tickers_to_fetch if t not in mutual_funds]
+            if intraday_targets:
+                live_dfs = yahoo_engine.get_intraday(intraday_targets, period="2d", interval="2m", prepost=True)
                 
         conn = get_connection()
         cursor = conn.cursor()

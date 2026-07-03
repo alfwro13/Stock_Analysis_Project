@@ -165,6 +165,31 @@ class TestDailyOnlyInstrument:
 
         mock_err.assert_not_called()
 
+    def test_skips_yahoo_intraday_call_for_mutual_fund(self):
+        """The actual log spam comes from yfinance's own internal logger inside
+        get_intraday(), which fires before our code ever sees an exception — the only
+        fix is to never make the doomed call for a ticker that never has 5m bars."""
+        daily = _flat_daily_df([100.0, 102.0])
+        with patch("market_pulse.yahoo_engine.get_price_history", return_value={MUTUAL_FUND: daily}), \
+             patch("market_pulse.get_mutual_fund_tickers", return_value={MUTUAL_FUND}), \
+             patch("market_pulse.yahoo_engine.get_intraday") as mock_intraday:
+            _mp.fetch_and_save_pulse([MUTUAL_FUND])
+
+        mock_intraday.assert_not_called()
+
+    def test_intraday_call_excludes_mutual_fund_from_mixed_batch(self):
+        """A portfolio poll mixing a mutual fund with a normal ticker must still fetch
+        intraday for the normal ticker, just with the mutual fund filtered out."""
+        daily = _flat_daily_df([100.0, 102.0])
+        with patch("market_pulse.yahoo_engine.get_price_history",
+                    return_value={MUTUAL_FUND: daily, NORMAL_TICKER: daily}), \
+             patch("market_pulse.get_mutual_fund_tickers", return_value={MUTUAL_FUND}), \
+             patch("market_pulse.yahoo_engine.get_intraday", return_value={}) as mock_intraday:
+            _mp.fetch_and_save_pulse([MUTUAL_FUND, NORMAL_TICKER])
+
+        mock_intraday.assert_called_once_with([NORMAL_TICKER], period="2d", interval="2m", prepost=True)
+        _clear_cache(NORMAL_TICKER)
+
 
 class TestEmptyDailyPath:
     """When daily data is also unavailable (true failure / genuine delisting)."""
