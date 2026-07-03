@@ -163,6 +163,28 @@ def test_get_market_status_reflects_trading_session_false(client):
 
 
 @pytest.mark.api
+def test_get_market_status_self_triggers_refresh_for_stale_proxy_tickers(client):
+    """Regression test: without this, a caller that only ever polls market-status (e.g. Home
+    Assistant, with no browser dashboard open to drive /api/market-pulse's own polling) would
+    never populate market_state at all, and us_market_open/uk_market_open would silently fall
+    back to the naive weekday/hours heuristic forever."""
+    with patch("api_routes_system.proxy_tickers_needing_refresh", return_value=["^GSPC", "^FTSE"]), \
+         patch("api_routes_system.fetch_and_save_pulse") as mock_fetch:
+        resp = client.get("/api/system/market-status")
+    assert resp.status_code == 200
+    mock_fetch.assert_called_once_with(["^GSPC", "^FTSE"])
+
+
+@pytest.mark.api
+def test_get_market_status_does_not_trigger_refresh_when_proxies_fresh(client):
+    with patch("api_routes_system.proxy_tickers_needing_refresh", return_value=[]), \
+         patch("api_routes_system.fetch_and_save_pulse") as mock_fetch:
+        resp = client.get("/api/system/market-status")
+    assert resp.status_code == 200
+    mock_fetch.assert_not_called()
+
+
+@pytest.mark.api
 def test_get_market_status_yahoo_ok_true_when_recent_success(client):
     with patch(
         "database.get_yahoo_api_stats",

@@ -345,3 +345,34 @@ class TestIsExchangeOpen:
         with patch("market_pulse.is_trading_session", return_value=True) as mock_ts:
             assert _mp.is_exchange_open("XETRA") is True
             mock_ts.assert_called_once_with("XETRA")
+
+
+# ── proxy_tickers_needing_refresh ─────────────────────────────────────────────
+
+class TestProxyTickersNeedingRefresh:
+    """Regression coverage: without this self-refresh, a caller that only ever polls
+    GET /api/system/market-status (e.g. Home Assistant, with no browser dashboard open to
+    drive /api/market-pulse's own JS polling) would never populate market_state at all, and
+    is_exchange_open() would fall back to the naive heuristic forever."""
+
+    def teardown_method(self):
+        _clear("^GSPC", "^FTSE")
+
+    def test_both_proxies_stale_when_no_cache_rows_exist(self):
+        assert set(_mp.proxy_tickers_needing_refresh()) == {"^GSPC", "^FTSE"}
+
+    def test_fresh_row_is_not_flagged(self):
+        _seed_pulse("^GSPC", last_updated=time.time())
+        _seed_pulse("^FTSE", last_updated=time.time())
+        assert _mp.proxy_tickers_needing_refresh() == []
+
+    def test_stale_row_is_flagged(self):
+        _seed_pulse("^GSPC", last_updated=time.time() - 3600)
+        _seed_pulse("^FTSE", last_updated=time.time())
+        assert _mp.proxy_tickers_needing_refresh() == ["^GSPC"]
+
+    def test_custom_max_age_respected(self):
+        _seed_pulse("^GSPC", last_updated=time.time() - 120)
+        _seed_pulse("^FTSE", last_updated=time.time() - 120)
+        assert _mp.proxy_tickers_needing_refresh(max_age_seconds=60) == ["^GSPC", "^FTSE"]
+        assert _mp.proxy_tickers_needing_refresh(max_age_seconds=300) == []

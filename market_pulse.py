@@ -86,6 +86,39 @@ def is_exchange_open(exchange: str) -> bool:
     return row["market_state"] in _OPEN_MARKET_STATES
 
 
+def proxy_tickers_needing_refresh(max_age_seconds: int = 300) -> List[str]:
+    """Which of the NYSE/LSE proxy tickers (see _MARKET_STATUS_PROXY) have a missing or stale
+    market_state row — lets GET /api/system/market-status self-trigger a background refresh,
+    the same needs_refresh pattern GET /api/market-pulse and the accounts endpoints already use.
+    Without this, is_exchange_open() would only ever see fresh data when something else (the
+    market-sentiment page's JS polling) happens to be fetching these tickers too — a caller that
+    only ever polls market-status (e.g. Home Assistant) would keep falling back to the naive
+    weekday/hours heuristic forever."""
+    proxies = list(_MARKET_STATUS_PROXY.values())
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        placeholders = ','.join('?' for _ in proxies)
+        cursor.execute(
+            f"SELECT ticker, last_updated FROM market_pulse_cache WHERE ticker IN ({placeholders})",
+            proxies,
+        )
+        last_updated_map = {row['ticker']: row['last_updated'] for row in cursor.fetchall()}
+    except Exception as e:
+        logger.error("[MARKET PULSE] Failed to check proxy ticker staleness: %s", e)
+        return proxies
+    finally:
+        if conn:
+            conn.close()
+
+    now = time.time()
+    return [
+        t for t in proxies
+        if now - last_updated_map.get(t, 0) > max_age_seconds
+    ]
+
+
 def get_all_cached_pulse() -> Dict[str, Dict[str, Any]]:
     """Returns all pulse data from DB for Jinja template pre-rendering."""
     conn = get_connection()

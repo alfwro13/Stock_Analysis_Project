@@ -26,7 +26,7 @@ from config import (
 from database import get_connection
 from ghostfolio_sync import purge_ghostfolio_files
 from log_config import configure_file_logging as _configure_file_logging
-from market_pulse import get_cached_pulse_from_db, fetch_and_save_pulse, is_exchange_open
+from market_pulse import get_cached_pulse_from_db, fetch_and_save_pulse, is_exchange_open, proxy_tickers_needing_refresh
 from notification_engine import notify
 from scheduler_engine import (
     build_workflow_graph, detect_workflow_conflicts, get_all_job_last_runs,
@@ -647,9 +647,12 @@ def _yahoo_ok() -> bool:
 
 
 @system_router.get("/system/market-status")
-async def api_market_status():
+async def api_market_status(background_tasks: BackgroundTasks):
     from system_check_engine import run_system_checks
     issues = run_system_checks()
+    stale_proxies = proxy_tickers_needing_refresh()
+    if stale_proxies:
+        background_tasks.add_task(fetch_and_save_pulse, stale_proxies)
     return JSONResponse(content={
         "status": "success",
         "us_market_open": is_exchange_open("NYSE"),

@@ -22,6 +22,13 @@ ticker with no market_pulse_cache row whenever a test happens to run during real
 Individual tests that want to assert on this call still work as before via their own local
 `patch("api_routes_accounts.fetch_and_save_pulse")`, which layers over this one for the
 duration of their own `with` block.
+
+Same treatment for `api_routes_system.fetch_and_save_pulse`: GET /api/system/market-status
+self-triggers a background refresh of the ^GSPC/^FTSE proxy tickers whenever their cached
+market_state is missing/stale (market_pulse.proxy_tickers_needing_refresh()), which — unlike
+the accounts case above — is unconditional on wall-clock market hours, so an unpatched test DB
+(no cache rows yet) would trigger a real fetch on every single run, not just during real market
+hours.
 """
 
 import os
@@ -96,6 +103,7 @@ def client():
         patch("main.shutdown_scheduler"),
         patch("main.resume_interrupted_scans"),
         patch("api_routes_accounts.fetch_and_save_pulse"),
+        patch("api_routes_system.fetch_and_save_pulse"),
     ):
         import main as _main_module
         with TestClient(
