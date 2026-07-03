@@ -4,7 +4,7 @@ from typing import Dict, List, Optional
 
 from config import load_config
 from database import get_connection
-from xray_engine import GhostfolioXRayClient
+from xray_engine import resolve_scope_holdings
 
 logger = logging.getLogger(__name__)
 
@@ -132,28 +132,9 @@ def run_stress_test(
     sector_mults: Dict[str, float] = scenario.get("sector_multipliers") or {}
 
     config = load_config()
-    active_ids: List[str] = config.get("GHOSTFOLIO_ACCOUNTS", {}).get("active", [])
     base_currency: str = config.get("BASE_CURRENCY", "GBP")
 
-    if account_id == "all":
-        scope_ids = active_ids
-    elif account_id in active_ids:
-        scope_ids = [account_id]
-    else:
-        scope_ids = active_ids
-
-    if not scope_ids:
-        raise RuntimeError("No active Ghostfolio accounts configured.")
-
-    client = GhostfolioXRayClient()
-    if not client.is_configured:
-        raise RuntimeError("Ghostfolio is not configured (check GHOSTFOLIO_URL / GHOSTFOLIO_TOKEN).")
-    if not client.authenticate():
-        raise RuntimeError("Ghostfolio authentication failed.")
-
-    holdings, total_value = client.get_holdings(scope_ids)
-    if not holdings:
-        raise RuntimeError("No holdings returned from Ghostfolio.")
+    holdings, total_value = resolve_scope_holdings(account_id)
 
     tickers = [h["symbol"] for h in holdings]
     beta_map: Dict[str, Optional[float]] = {}

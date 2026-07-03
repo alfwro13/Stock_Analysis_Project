@@ -2296,9 +2296,11 @@ Runs the stress simulation for the requested scenario and portfolio scope.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `account_id` | string | `"all"` | Ghostfolio account ID or `"all"` for the combined portfolio |
+| `account_id` | string | `"all"` | `"all"` (every configured source — Ghostfolio if configured + every built-in Trading account, combined), a Ghostfolio account UUID, or `acct:{id}` for one built-in Trading account only |
 | `scenario_id` | string | required | One of `gfc_2008`, `dotcom_2000`, `covid_2020`, `inflation_2022`, `custom` |
 | `custom_drop` | float \| null | `null` | Required when `scenario_id == "custom"`. Decimal e.g. `-0.30` for a 30% crash |
+
+Holdings for the requested scope are resolved via `xray_engine.resolve_scope_holdings()` — the same helper used by `assemble_xray_report()` and the Monte Carlo accounts endpoint — so this works whether Ghostfolio is enabled, disabled, or absent.
 
 **Response**
 
@@ -2639,7 +2641,7 @@ Triggers an immediate background run of the **Forensic Accounting Scores** job, 
 
 ### `GET /api/monte-carlo/accounts`
 
-Returns per-account portfolio values for all active Ghostfolio accounts, plus the grand total. Used to populate the account-selector bar on the Monte Carlo page. Requires Ghostfolio to be configured and authenticated; returns `status=error` with a message when it is not.
+Returns per-account portfolio values for every active Ghostfolio account (if Ghostfolio is configured) plus every built-in Trading account, using `xray_engine.resolve_scope_holdings()` for the built-in tiles — so this populates correctly with Ghostfolio disabled. Used to populate the account-selector bar on the Monte Carlo page.
 
 **Auth:** Required (session cookie).
 
@@ -2652,16 +2654,16 @@ Returns per-account portfolio values for all active Ghostfolio accounts, plus th
   "status": "success",
   "accounts": [
     {"id": "<uuid>", "name": "ISA", "value": 45321.50},
-    {"id": "<uuid>", "name": "SIPP", "value": 12890.00}
+    {"id": "acct:3", "name": "Trading (Built-in)", "value": 12890.00}
   ],
   "total": 58211.50
 }
 ```
 
-**Response (Ghostfolio not configured / no active accounts):**
+**Response (no Ghostfolio accounts and no built-in Trading accounts with holdings):**
 
 ```json
-{"status": "error", "message": "Ghostfolio not configured."}
+{"status": "error", "message": "No accounts with holdings configured."}
 ```
 
 ---

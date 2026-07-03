@@ -33,6 +33,7 @@ from xray_engine import (
     _compute_max_drawdown,
     _generate_xray_recommendations,
     assemble_xray_report,
+    resolve_scope_holdings,
     BENCHMARK_SYMBOL,
     _DEVELOPED_MARKET_CODES,
     _EMERGING_MARKET_CODES,
@@ -1294,3 +1295,55 @@ class TestBuiltinAccountXrayScope:
         symbols = {h["symbol"] for h in result["holdings"]}
         assert T2 in symbols
         assert result["portfolio_total_value"] >= 500.0
+
+
+class TestResolveScopeHoldings:
+    """resolve_scope_holdings is the shared holdings resolver reused outside xray_engine
+    (stress_engine, the Monte Carlo accounts endpoint) — must work with Ghostfolio disabled."""
+
+    def test_builtin_only_scope_populates_weight(self):
+        _seed_stock_signal(T1, 100.0, "GBP")
+        _seed_asset_profile(T1, "Technology", "United States")
+        aid = create_account("ResolveScopeAcc", "GBP")
+        add_transaction(aid, "Buy", "2026-01-05", ticker=T1, currency="GBP",
+                         quantity=10, unit_price=80, exchange_rate=1.0)
+
+        with patch("xray_engine.load_config", return_value=_builtin_config()):
+            holdings, total_value = resolve_scope_holdings(f"acct:{aid}")
+
+        assert total_value == 1000.0
+        assert holdings[0]["symbol"] == T1
+        assert holdings[0]["weight"] == pytest.approx(1.0)
+
+    def test_all_scope_with_no_ghostfolio_uses_builtin_only(self):
+        _seed_stock_signal(T2, 50.0, "GBP")
+        _seed_asset_profile(T2, "Financials", "United Kingdom")
+        aid = create_account("ResolveScopeAllAcc", "GBP")
+        add_transaction(aid, "Buy", "2026-01-05", ticker=T2, currency="GBP",
+                         quantity=10, unit_price=40, exchange_rate=1.0)
+
+        with patch("xray_engine.load_config", return_value=_builtin_config()):
+            holdings, total_value = resolve_scope_holdings("all")
+
+        symbols = {h["symbol"] for h in holdings}
+        assert T2 in symbols
+        assert total_value >= 500.0
+
+    def test_empty_scope_raises_runtime_error(self):
+        aid = create_account("ResolveScopeEmptyAcc", "GBP")
+        with patch("xray_engine.load_config", return_value=_builtin_config()):
+            with pytest.raises(RuntimeError, match="No holdings found"):
+                resolve_scope_holdings(f"acct:{aid}")
+
+    def test_ghostfolio_scope_still_computes_max_drawdown(self):
+        # Regression guard: assemble_xray_report's max-drawdown chart lookup used to reuse the
+        # holdings-fetch `client`/`ghost_scope_ids` locals directly; extracting resolve_scope_holdings()
+        # moved those out of this function's scope, which a broad try/except silently swallowed
+        # (NameError logged as a warning, max_drawdown left None) instead of failing loudly.
+        holdings, total = _make_holdings([{"symbol": T1, "value": 10_000}])
+        patches, mock_inst = _patch_report(holdings, total)
+        with patches[0], patches[1]:
+            result = assemble_xray_report("all")
+
+        assert result["risk_metrics"]["max_drawdown"] is not None
+        mock_inst.get_performance_chart.assert_called()

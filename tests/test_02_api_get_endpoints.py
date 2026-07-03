@@ -683,7 +683,7 @@ def test_ai_prompt_sentiment_uk(client):
 
 @pytest.mark.api
 def test_monte_carlo_accounts_returns_200(client):
-    """GET /api/monte-carlo/accounts returns 200; when Ghostfolio is unconfigured, status=error."""
+    """GET /api/monte-carlo/accounts returns 200; when nothing is configured, status=error."""
     resp = client.get("/api/monte-carlo/accounts")
     assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
     data = _json(resp)
@@ -693,6 +693,36 @@ def test_monte_carlo_accounts_returns_200(client):
         assert "total" in data and isinstance(data["total"], (int, float))
     else:
         assert "message" in data
+
+
+@pytest.mark.api
+def test_monte_carlo_accounts_uses_builtin_trading_accounts_when_ghostfolio_disabled(client):
+    """With Ghostfolio disabled, a built-in Trading account with holdings must still populate
+    the account tiles and total (previously required an active Ghostfolio account)."""
+    import database as _db
+
+    conn = _db.get_connection()
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO stock_signals (ticker, current_price, currency) VALUES (?, ?, ?)",
+            ("MCTEST", 100.0, "GBP"),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    account_id = _db.create_account("MC Builtin Test", "GBP")
+    _db.add_transaction(account_id, "Buy", "2026-01-05", ticker="MCTEST", currency="GBP",
+                         quantity=10, unit_price=80, exchange_rate=1.0)
+
+    with patch("api_routes.load_config", return_value={"GHOSTFOLIO_ACCOUNTS": {"active": []}}):
+        resp = client.get("/api/monte-carlo/accounts")
+
+    assert resp.status_code == 200
+    data = _json(resp)
+    assert data["status"] == "success"
+    assert any(a["id"] == f"acct:{account_id}" for a in data["accounts"])
+    assert data["total"] >= 1000.0
 
 
 # ── Backup & Recovery ──────────────────────────────────────────────────────────

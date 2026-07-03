@@ -40,7 +40,7 @@ from database import (
 from accounts_engine import resolve_watchlist_metadata
 from scheduler_engine import run_update_pipeline, run_ghostfolio_sync, run_freetrade_sync, reload_scheduler, run_sentiment_scan, run_index_scraper, run_fundamentals_profiler, run_universe_deep_sync_job, get_all_job_last_runs, run_xray_risk_cache_job, run_anomaly_training_job, record_job_run, run_maintenance_engine, build_workflow_graph, detect_workflow_conflicts, CONFIG_KEY_TO_JOB
 from maintenance_engine import MaintenanceEngine
-from xray_engine import assemble_xray_report, GhostfolioXRayClient
+from xray_engine import assemble_xray_report, resolve_scope_holdings, GhostfolioXRayClient
 from fx_drag_engine import portfolio_fx_breakdown, portfolio_lifetime_fx_breakdown
 from market_pulse import get_cached_pulse_from_db, fetch_and_save_pulse
 from sentiment_engine import run_nextcloud_alert
@@ -882,21 +882,34 @@ class MonteCarloRequest(BaseModel):
 @limiter.limit("10/minute")
 async def api_monte_carlo_accounts(request: Request):
     try:
+        from db_accounts import get_accounts
+
         config = load_config()
         gf_accounts = config.get("GHOSTFOLIO_ACCOUNTS", {})
         discovered = {a["id"]: a["name"] for a in gf_accounts.get("discovered", [])}
         active_ids = gf_accounts.get("active", [])
-        if not active_ids:
-            return JSONResponse(content={"status": "error", "message": "No active accounts configured."})
-        client = GhostfolioXRayClient()
-        if not client.is_configured:
-            return JSONResponse(content={"status": "error", "message": "Ghostfolio not configured."})
-        if not client.authenticate():
-            return JSONResponse(content={"status": "error", "message": "Ghostfolio authentication failed."})
+
         accounts = []
-        for acc_id in active_ids:
-            _, value = client.get_holdings([acc_id])
-            accounts.append({"id": acc_id, "name": discovered.get(acc_id, acc_id), "value": round(value, 2)})
+        if active_ids:
+            client = GhostfolioXRayClient()
+            if client.is_configured and client.authenticate():
+                for acc_id in active_ids:
+                    _, value = client.get_holdings([acc_id])
+                    accounts.append({"id": acc_id, "name": discovered.get(acc_id, acc_id), "value": round(value, 2)})
+
+        for acc in get_accounts():
+            if acc["account_type"] != "Trading":
+                continue
+            scope_id = f"acct:{acc['id']}"
+            try:
+                _, value = resolve_scope_holdings(scope_id)
+            except RuntimeError:
+                continue
+            accounts.append({"id": scope_id, "name": acc["name"], "value": round(value, 2)})
+
+        if not accounts:
+            return JSONResponse(content={"status": "error", "message": "No accounts with holdings configured."})
+
         total = round(sum(a["value"] for a in accounts), 2)
         return JSONResponse(content={"status": "success", "accounts": accounts, "total": total})
     except Exception as e:

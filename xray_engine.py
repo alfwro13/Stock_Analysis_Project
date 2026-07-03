@@ -853,32 +853,31 @@ def _merge_holdings(primary: List[Dict], secondary: List[Dict]) -> List[Dict]:
     return list(merged.values())
 
 
-def assemble_xray_report(account_id: str) -> Dict:
-    # Combines live Ghostfolio (Tier A) + built-in Trading accounts with SQLite risk cache (Tier C).
-    # account_id: "all" = every configured source; a Ghostfolio UUID = that account only;
-    # "acct:{id}" = that one built-in Trading account only (db_accounts namespacing convention).
+def _classify_scope(account_id: str, active_ids: List[str]) -> Tuple[List[str], Optional[int], bool]:
+    # Returns (ghost_scope_ids, builtin_account_id, include_builtin) for the given account_id.
+    if account_id.startswith("acct:"):
+        return [], int(account_id.split(":", 1)[1]), True
+    if account_id in active_ids:
+        return [account_id], None, False
+    # "all" (or an unrecognised id, preserving the previous fallback-to-global behaviour) —
+    # combine every configured source, mirroring accounts_engine.get_combined_holdings().
+    # GHOSTFOLIO_ACCOUNTS.active is only ever populated when Ghostfolio is configured and
+    # enabled (set via Settings → Ghostfolio discovery), so no separate enabled check is needed.
+    return active_ids, None, True
+
+
+def resolve_scope_holdings(account_id: str) -> Tuple[List[Dict], float]:
+    """Canonical holdings resolver for any account scope — Ghostfolio (optional) + Built-in Accounts.
+
+    account_id: "all" = every configured source; a Ghostfolio UUID = that account only;
+    "acct:{id}" = that one built-in Trading account only (db_accounts namespacing convention).
+    Returns (holdings with "weight" populated, total_value). Raises RuntimeError if the
+    resolved scope has no holdings, or if Ghostfolio is in scope but unreachable.
+    """
     config = load_config()
     active_ids: List[str] = config.get("GHOSTFOLIO_ACCOUNTS", {}).get("active", [])
-    base_currency: str = config.get("BASE_CURRENCY", "GBP")
+    ghost_scope_ids, builtin_account_id, include_builtin = _classify_scope(account_id, active_ids)
 
-    ghost_scope_ids: List[str] = []
-    builtin_account_id: Optional[int] = None
-    include_builtin = False
-
-    if account_id.startswith("acct:"):
-        builtin_account_id = int(account_id.split(":", 1)[1])
-        include_builtin = True
-    elif account_id in active_ids:
-        ghost_scope_ids = [account_id]
-    else:
-        # "all" (or an unrecognised id, preserving the previous fallback-to-global behaviour) —
-        # combine every configured source, mirroring accounts_engine.get_combined_holdings().
-        # GHOSTFOLIO_ACCOUNTS.active is only ever populated when Ghostfolio is configured and
-        # enabled (set via Settings → Ghostfolio discovery), so no separate enabled check is needed.
-        ghost_scope_ids = active_ids
-        include_builtin = True
-
-    client: Optional[GhostfolioXRayClient] = None
     ghost_holdings: List[Dict] = []
     if ghost_scope_ids:
         client = GhostfolioXRayClient()
@@ -896,6 +895,18 @@ def assemble_xray_report(account_id: str) -> Dict:
     total_value = sum(h["value"] for h in holdings)
     for h in holdings:
         h["weight"] = h["value"] / total_value if total_value else 0.0
+
+    return holdings, total_value
+
+
+def assemble_xray_report(account_id: str) -> Dict:
+    # Combines live Ghostfolio (Tier A) + built-in Trading accounts with SQLite risk cache (Tier C).
+    config = load_config()
+    base_currency: str = config.get("BASE_CURRENCY", "GBP")
+    active_ids: List[str] = config.get("GHOSTFOLIO_ACCOUNTS", {}).get("active", [])
+    ghost_scope_ids, _, _ = _classify_scope(account_id, active_ids)
+
+    holdings, total_value = resolve_scope_holdings(account_id)
 
     holdings_sorted = sorted(holdings, key=lambda h: h["weight"], reverse=True)
 
@@ -1115,7 +1126,11 @@ def assemble_xray_report(account_id: str) -> Dict:
     max_drawdown: Optional[float] = None
     try:
         # Ghostfolio-only — no equivalent performance-chart endpoint exists for built-in accounts.
-        perf_chart = client.get_performance_chart(ghost_scope_ids) if client else []
+        perf_chart = []
+        if ghost_scope_ids:
+            chart_client = GhostfolioXRayClient()
+            if chart_client.is_configured and chart_client.authenticate():
+                perf_chart = chart_client.get_performance_chart(ghost_scope_ids)
         if perf_chart:
             max_drawdown = _compute_max_drawdown(perf_chart)
             if max_drawdown is not None:

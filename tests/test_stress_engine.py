@@ -8,7 +8,7 @@ Covers:
 """
 
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import database as _db_module
 from stress_engine import _primary_sector, _get_betas, run_stress_test, SCENARIOS
@@ -31,13 +31,6 @@ def _make_holding(symbol: str, value: float, sectors=None, name: str = "Co", wei
         "asset_sub_class": "",
     }
 
-
-def _mock_client(holdings, total_value=10_000.0, is_configured=True, auth_ok=True):
-    client = MagicMock()
-    client.is_configured = is_configured
-    client.authenticate.return_value = auth_ok
-    client.get_holdings.return_value = (holdings, total_value)
-    return client
 
 
 def _seed_beta(ticker: str, beta: float) -> None:
@@ -159,33 +152,13 @@ class TestRunStressTestGuards:
         with pytest.raises(ValueError, match="custom_drop"):
             run_stress_test("all", "custom")
 
-    def test_no_active_accounts_raises_runtime_error(self):
-        empty_config = {"GHOSTFOLIO_ACCOUNTS": {"active": []}, "BASE_CURRENCY": "GBP"}
-        client = _mock_client([])
-        with patch("stress_engine.load_config", return_value=empty_config), \
-             patch("stress_engine.GhostfolioXRayClient", return_value=client):
-            with pytest.raises(RuntimeError, match="No active Ghostfolio accounts"):
-                run_stress_test("all", "covid_2020")
-
-    def test_ghostfolio_not_configured_raises_runtime_error(self):
-        client = _mock_client([], is_configured=False)
+    def test_propagates_runtime_error_from_resolve_scope_holdings(self):
+        # run_stress_test no longer resolves accounts itself — it delegates entirely to
+        # xray_engine.resolve_scope_holdings (shared with Monte Carlo), so any RuntimeError
+        # from that resolver (empty scope, Ghostfolio down, etc.) must propagate unchanged.
         with patch("stress_engine.load_config", return_value=_CONFIG), \
-             patch("stress_engine.GhostfolioXRayClient", return_value=client):
-            with pytest.raises(RuntimeError, match="Ghostfolio is not configured"):
-                run_stress_test("all", "covid_2020")
-
-    def test_auth_failure_raises_runtime_error(self):
-        client = _mock_client([], auth_ok=False)
-        with patch("stress_engine.load_config", return_value=_CONFIG), \
-             patch("stress_engine.GhostfolioXRayClient", return_value=client):
-            with pytest.raises(RuntimeError, match="authentication failed"):
-                run_stress_test("all", "covid_2020")
-
-    def test_no_holdings_raises_runtime_error(self):
-        client = _mock_client([], total_value=0.0)
-        with patch("stress_engine.load_config", return_value=_CONFIG), \
-             patch("stress_engine.GhostfolioXRayClient", return_value=client):
-            with pytest.raises(RuntimeError, match="No holdings returned"):
+             patch("stress_engine.resolve_scope_holdings", side_effect=RuntimeError("No holdings found for this scope.")):
+            with pytest.raises(RuntimeError, match="No holdings found"):
                 run_stress_test("all", "covid_2020")
 
 
@@ -199,9 +172,8 @@ class TestRunStressTestCalculation:
         _clear_betas()
 
     def _run(self, holdings, total_value=10_000.0, scenario="covid_2020", custom_drop=None):
-        client = _mock_client(holdings, total_value)
         with patch("stress_engine.load_config", return_value=_CONFIG), \
-             patch("stress_engine.GhostfolioXRayClient", return_value=client):
+             patch("stress_engine.resolve_scope_holdings", return_value=(holdings, total_value)):
             return run_stress_test("all", scenario, custom_drop=custom_drop)
 
     def test_result_has_required_keys(self):
@@ -271,13 +243,12 @@ class TestRunStressTestCalculation:
         result = self._run(h, scenario="custom", custom_drop=-0.30)
         assert "-30.0%" in result["scenario"]["name"]
 
-    def test_account_id_all_uses_active_ids(self):
+    def test_account_id_passed_through_to_resolve_scope_holdings(self):
         h = [_make_holding("AAPL", 1000.0)]
-        client = _mock_client(h, total_value=1000.0)
         with patch("stress_engine.load_config", return_value=_CONFIG), \
-             patch("stress_engine.GhostfolioXRayClient", return_value=client):
-            run_stress_test("all", "gfc_2008")
-        client.get_holdings.assert_called_once_with(["acc1"])
+             patch("stress_engine.resolve_scope_holdings", return_value=(h, 1000.0)) as mock_resolve:
+            run_stress_test("acct:5", "gfc_2008")
+        mock_resolve.assert_called_once_with("acct:5")
 
     def test_sector_impact_groups_by_sector(self):
         _seed_beta("A", 1.0)
