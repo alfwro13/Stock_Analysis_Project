@@ -26,7 +26,7 @@ from config import (
 from database import get_connection
 from ghostfolio_sync import purge_ghostfolio_files
 from log_config import configure_file_logging as _configure_file_logging
-from market_pulse import get_cached_pulse_from_db, fetch_and_save_pulse
+from market_pulse import get_cached_pulse_from_db, fetch_and_save_pulse, is_exchange_open
 from notification_engine import notify
 from scheduler_engine import (
     build_workflow_graph, detect_workflow_conflicts, get_all_job_last_runs,
@@ -652,8 +652,8 @@ async def api_market_status():
     issues = run_system_checks()
     return JSONResponse(content={
         "status": "success",
-        "us_market_open": time_engine.is_trading_session("NYSE"),
-        "uk_market_open": time_engine.is_trading_session("LSE"),
+        "us_market_open": is_exchange_open("NYSE"),
+        "uk_market_open": is_exchange_open("LSE"),
         "yahoo_ok": _yahoo_ok(),
         "system_ok": len(issues) == 0,
     })

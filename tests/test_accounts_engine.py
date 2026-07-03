@@ -1909,7 +1909,7 @@ def test_held_tickers_lightweight_excludes_ignored_tickers(monkeypatch):
 
 @pytest.mark.db
 def test_tickers_needing_refresh_empty_when_market_closed(monkeypatch):
-    monkeypatch.setattr(accounts_engine.time_engine, "is_trading_session", lambda exchange=None: False)
+    monkeypatch.setattr(accounts_engine.market_pulse, "is_exchange_open", lambda exchange: False)
     assert accounts_engine.tickers_needing_refresh(["ZZANYTHING"], 60) == []
 
 
@@ -1918,8 +1918,8 @@ def test_tickers_needing_refresh_includes_stale_and_missing_when_market_open(mon
     import time
 
     monkeypatch.setattr(
-        accounts_engine.time_engine, "is_trading_session",
-        lambda exchange=None: exchange == "LSE",
+        accounts_engine.market_pulse, "is_exchange_open",
+        lambda exchange: exchange == "LSE",
     )
     _seed_market_pulse("ZZFRESHREF", 100.0, time.time())
     _seed_market_pulse("ZZSTALEREF", 100.0, time.time() - 3600)

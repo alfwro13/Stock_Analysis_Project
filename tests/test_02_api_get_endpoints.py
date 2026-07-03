@@ -146,7 +146,7 @@ def test_get_market_status_returns_200_with_expected_keys(client):
 
 @pytest.mark.api
 def test_get_market_status_reflects_trading_session_true(client):
-    with patch("api_routes_system.time_engine.is_trading_session", side_effect=lambda exchange=None: exchange == "NYSE"):
+    with patch("api_routes_system.is_exchange_open", side_effect=lambda exchange: exchange == "NYSE"):
         resp = client.get("/api/system/market-status")
     data = _json(resp)
     assert data["us_market_open"] is True
@@ -155,7 +155,7 @@ def test_get_market_status_reflects_trading_session_true(client):
 
 @pytest.mark.api
 def test_get_market_status_reflects_trading_session_false(client):
-    with patch("api_routes_system.time_engine.is_trading_session", return_value=False):
+    with patch("api_routes_system.is_exchange_open", return_value=False):
         resp = client.get("/api/system/market-status")
     data = _json(resp)
     assert data["us_market_open"] is False

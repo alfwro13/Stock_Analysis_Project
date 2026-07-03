@@ -12,6 +12,7 @@ from typing import Optional
 import pandas as pd
 
 import time_engine
+import market_pulse
 from config import BASE_CURRENCY, HISTORICAL_DIR, PORTFOLIO_PATH, load_config
 from db_accounts import (
     add_price_history, add_transaction, delete_transaction, get_account, get_accounts,
@@ -839,7 +840,7 @@ def tickers_needing_refresh(tickers: list, refresh_rate: int) -> list:
     needs_refresh pattern GET /api/market-pulse already uses."""
     if not tickers:
         return []
-    if not (time_engine.is_trading_session("LSE") or time_engine.is_trading_session("NYSE")):
+    if not (market_pulse.is_exchange_open("LSE") or market_pulse.is_exchange_open("NYSE")):
         return []
     conn = None
     try:

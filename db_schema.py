@@ -239,7 +239,8 @@ def init_db() -> None:
                 change_pts REAL,
                 change_pct REAL,
                 is_positive BOOLEAN,
-                last_updated REAL
+                last_updated REAL,
+                market_state TEXT
             )
         ''')
 
@@ -1016,6 +1017,15 @@ def migrate_db(conn, cursor) -> None:
                 break
     except Exception as e:
         logger.error("[MIGRATION ERROR] Failed on market_pulse_cache numeric enforcement: %s", e)
+
+    cursor.execute("PRAGMA table_info(market_pulse_cache)")
+    existing_pulse_columns = [info['name'] for info in cursor.fetchall()]
+    if 'market_state' not in existing_pulse_columns:
+        try:
+            logger.info("[MIGRATION] Adding column: market_state to market_pulse_cache...")
+            cursor.execute("ALTER TABLE market_pulse_cache ADD COLUMN market_state TEXT")
+        except Exception as e:
+            logger.error("[MIGRATION ERROR] Failed on market_pulse_cache: %s", e)
 
     cursor.execute("PRAGMA table_info(accounts)")
     existing_account_columns = [info['name'] for info in cursor.fetchall()]

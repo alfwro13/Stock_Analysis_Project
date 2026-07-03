@@ -52,6 +52,7 @@ _TTLS: dict[str, int] = {
     "annual_financials":     86400,  # 24 h — annual statements change quarterly
     "isin_search":           86400,  # 24 h — ISIN→ticker mapping is stable
     "ticker_search":          3600,  # 1 h — company-name/ticker autocomplete
+    "market_state":            300,  # 5 min — needs to reflect the live open/closed transition
 }
 
 
@@ -186,6 +187,27 @@ class YahooEngine:
                 return info
         except Exception:
             logger.error("get_ticker_info failed for %s", ticker, exc_info=True)
+        return None
+
+    def get_market_state(self, ticker: str) -> Optional[str]:
+        """Live yfinance marketState ('REGULAR'/'PRE'/'POST'/'CLOSED'/...), cached 5 min —
+        deliberately much shorter than get_ticker_info's 6h TTL since this must reflect the
+        live open/closed transition, including exchange holidays get_ticker_info's cache would
+        otherwise mask for hours."""
+        key = f"market_state:{ticker}"
+        cached = self._get(key)
+        if cached is not None:
+            return cached
+        try:
+            with _yf_singleton_lock:
+                with yahoo_connection_boundary(f"Market State: {ticker}") as session:
+                    info = yf.Ticker(ticker, session=session).info
+            state = info.get("marketState") if info else None
+            if state:
+                self._set(key, state, _TTLS["market_state"])
+                return state
+        except Exception:
+            logger.error("get_market_state failed for %s", ticker, exc_info=True)
         return None
 
     def get_options_expirations(self, ticker: str) -> Optional[list]:

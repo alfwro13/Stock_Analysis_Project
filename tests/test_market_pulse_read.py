@@ -290,3 +290,58 @@ class TestIsPriceFresh:
         with patch("market_pulse.is_trading_session", return_value=True):
             assert _mp.is_price_fresh(time.time() - 700, 100.0, 400) is True
             assert _mp.is_price_fresh(time.time() - 900, 100.0, 400) is False
+
+
+# ── is_exchange_open ──────────────────────────────────────────────────────────
+
+def _set_market_state(ticker: str, state: str | None):
+    c = _conn()
+    c.execute(
+        "INSERT INTO market_pulse_cache (ticker, name, price, change_pts, change_pct, "
+        "is_positive, last_updated, market_state) VALUES (?, ?, 0, 0, 0, 1, 0, ?) "
+        "ON CONFLICT(ticker) DO UPDATE SET market_state = excluded.market_state",
+        (ticker, f"Name_{ticker}", state),
+    )
+    c.commit()
+    c.close()
+
+
+class TestIsExchangeOpen:
+    def teardown_method(self):
+        _clear("^GSPC", "^FTSE")
+
+    def test_regular_state_is_open(self):
+        _set_market_state("^GSPC", "REGULAR")
+        assert _mp.is_exchange_open("NYSE") is True
+
+    def test_closed_state_is_not_open(self):
+        _set_market_state("^GSPC", "CLOSED")
+        assert _mp.is_exchange_open("NYSE") is False
+
+    def test_holiday_regression_ignores_naive_weekday_hours_heuristic(self):
+        """The exact bug this feature fixes: a normal Friday during NYSE hours (the naive
+        heuristic would say open) but Yahoo's live marketState says the exchange is actually
+        closed for a holiday — is_exchange_open must trust the live state, not the calendar."""
+        _set_market_state("^GSPC", "CLOSED")
+        with patch("market_pulse.is_trading_session", return_value=True):
+            assert _mp.is_exchange_open("NYSE") is False
+
+    def test_postpost_state_is_not_open(self):
+        _set_market_state("^FTSE", "POSTPOST")
+        assert _mp.is_exchange_open("LSE") is False
+
+    def test_falls_back_to_heuristic_when_no_cached_row(self):
+        with patch("market_pulse.is_trading_session", return_value=True) as mock_ts:
+            assert _mp.is_exchange_open("NYSE") is True
+            mock_ts.assert_called_once_with("NYSE")
+
+    def test_falls_back_to_heuristic_when_cached_market_state_is_null(self):
+        _set_market_state("^GSPC", None)
+        with patch("market_pulse.is_trading_session", return_value=False) as mock_ts:
+            assert _mp.is_exchange_open("NYSE") is False
+            mock_ts.assert_called_once_with("NYSE")
+
+    def test_untracked_exchange_uses_heuristic_directly(self):
+        with patch("market_pulse.is_trading_session", return_value=True) as mock_ts:
+            assert _mp.is_exchange_open("XETRA") is True
+            mock_ts.assert_called_once_with("XETRA")

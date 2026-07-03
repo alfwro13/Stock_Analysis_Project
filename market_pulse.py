@@ -34,6 +34,11 @@ INDEX_TICKERS: Dict[str, str] = {
 # Non-blocking lock prevents duplicate concurrent fetches without a check-then-set race.
 _FETCH_LOCK = threading.Lock()
 
+# Live Yahoo marketState on these tracked index tickers stands in for exchange-holiday-aware
+# open/closed status, since time_engine's weekday+hours heuristic has no holiday calendar.
+_MARKET_STATUS_PROXY: Dict[str, str] = {"NYSE": "^GSPC", "LSE": "^FTSE"}
+_OPEN_MARKET_STATES = {"REGULAR"}
+
 
 _DISPLAY_STALE_FLOOR_SECONDS = 300
 
@@ -52,6 +57,33 @@ def is_price_fresh(last_updated: float, price: float, refresh_rate: int) -> bool
     if not is_trading_session():
         return True
     return (time.time() - last_updated) <= max(refresh_rate * 2, _DISPLAY_STALE_FLOOR_SECONDS)
+
+
+def is_exchange_open(exchange: str) -> bool:
+    """Exchange-holiday-aware market-open check for NYSE/LSE, backed by the live Yahoo
+    marketState cached from that exchange's proxy index ticker (see _MARKET_STATUS_PROXY) —
+    falls back to time_engine's weekday+hours heuristic for any other exchange, or if no
+    market_state has been cached yet (e.g. right after a fresh install)."""
+    proxy = _MARKET_STATUS_PROXY.get(exchange)
+    if proxy is None:
+        return is_trading_session(exchange)
+
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT market_state FROM market_pulse_cache WHERE ticker = ?", (proxy,))
+        row = cursor.fetchone()
+    except Exception as e:
+        logger.error("[MARKET PULSE] Failed to read market_state for %s: %s", proxy, e)
+        return is_trading_session(exchange)
+    finally:
+        if conn:
+            conn.close()
+
+    if row is None or row["market_state"] is None:
+        return is_trading_session(exchange)
+    return row["market_state"] in _OPEN_MARKET_STATES
 
 
 def get_all_cached_pulse() -> Dict[str, Dict[str, Any]]:
@@ -348,13 +380,31 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
 
                 name: str = INDEX_TICKERS.get(ticker, ticker)
                 is_positive: int = int(change_pts >= 0)
-                
+
                 cursor.execute('''
-                    INSERT OR REPLACE INTO market_pulse_cache 
+                    INSERT INTO market_pulse_cache
                     (ticker, name, price, change_pts, change_pct, is_positive, last_updated)
                     VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(ticker) DO UPDATE SET
+                        name = excluded.name,
+                        price = excluded.price,
+                        change_pts = excluded.change_pts,
+                        change_pct = excluded.change_pct,
+                        is_positive = excluded.is_positive,
+                        last_updated = excluded.last_updated
                 ''', (ticker, name, current_price, change_pts, change_pct, is_positive, current_time))
-                
+
+                if ticker in _MARKET_STATUS_PROXY.values():
+                    try:
+                        state = yahoo_engine.get_market_state(ticker)
+                        if state:
+                            cursor.execute(
+                                "UPDATE market_pulse_cache SET market_state = ? WHERE ticker = ?",
+                                (state, ticker),
+                            )
+                    except Exception as e:
+                        logger.error("[MARKET PULSE] Failed to fetch market_state for %s: %s", ticker, e)
+
             except Exception as e:
                 logger.error(f"[MARKET PULSE BACKGROUND] Error processing {ticker}: {e}")
                 

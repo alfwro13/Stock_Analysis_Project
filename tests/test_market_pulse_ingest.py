@@ -342,6 +342,67 @@ class TestNormalIntradayPath:
         assert row["last_updated"] > before
 
 
+class TestMarketStateProxy:
+    """fetch_and_save_pulse() must additionally capture live Yahoo marketState for the two
+    exchange-status proxy tickers (^GSPC/^FTSE), and leave it untouched for everything else."""
+
+    def teardown_method(self):
+        _clear_cache("^GSPC", NORMAL_TICKER)
+
+    def test_proxy_ticker_gets_market_state_written(self):
+        daily = _flat_daily_df([100.0, 100.5])
+        live = _flat_live_df(101.0)
+        p1, p2 = _pulse_patches("^GSPC", daily, live)
+        with p1, p2, patch("market_pulse.yahoo_engine.get_market_state", return_value="CLOSED"):
+            _mp.fetch_and_save_pulse(["^GSPC"])
+
+        row = _read_cache("^GSPC")
+        assert row["market_state"] == "CLOSED"
+
+    def test_non_proxy_ticker_market_state_stays_null(self):
+        daily = _flat_daily_df([100.0, 100.5])
+        live = _flat_live_df(101.0)
+        p1, p2 = _pulse_patches(NORMAL_TICKER, daily, live)
+        with p1, p2, patch("market_pulse.yahoo_engine.get_market_state") as mock_state:
+            _mp.fetch_and_save_pulse([NORMAL_TICKER])
+            mock_state.assert_not_called()
+
+        row = _read_cache(NORMAL_TICKER)
+        assert row["market_state"] is None
+
+    def test_price_refresh_preserves_previously_written_market_state(self):
+        """Regression: switching the price write from INSERT OR REPLACE to an upsert that
+        preserves unspecified columns — a plain REPLACE would silently wipe market_state back
+        to NULL on every subsequent price refresh."""
+        daily = _flat_daily_df([100.0, 100.5])
+        live = _flat_live_df(101.0)
+        p1, p2 = _pulse_patches("^GSPC", daily, live)
+        with p1, p2, patch("market_pulse.yahoo_engine.get_market_state", return_value="REGULAR"):
+            _mp.fetch_and_save_pulse(["^GSPC"])
+
+        # Second refresh: market_state fetch itself fails/returns nothing this time.
+        daily2 = _flat_daily_df([100.5, 102.0])
+        live2 = _flat_live_df(102.5)
+        p3, p4 = _pulse_patches("^GSPC", daily2, live2)
+        with p3, p4, patch("market_pulse.yahoo_engine.get_market_state", return_value=None):
+            _mp.fetch_and_save_pulse(["^GSPC"])
+
+        row = _read_cache("^GSPC")
+        assert row["price"] == pytest.approx(102.5)
+        assert row["market_state"] == "REGULAR"
+
+    def test_market_state_fetch_failure_does_not_block_price_write(self):
+        daily = _flat_daily_df([100.0, 100.5])
+        live = _flat_live_df(101.0)
+        p1, p2 = _pulse_patches("^GSPC", daily, live)
+        with p1, p2, patch("market_pulse.yahoo_engine.get_market_state", side_effect=RuntimeError("boom")):
+            _mp.fetch_and_save_pulse(["^GSPC"])
+
+        row = _read_cache("^GSPC")
+        assert row["price"] == pytest.approx(101.0)
+        assert row["market_state"] is None
+
+
 class TestFallbackSingleHistory:
     """Mutual fund real-world path: get_price_history empty, get_single_ticker_history fallback must compute correct change."""
 

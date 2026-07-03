@@ -346,6 +346,70 @@ class TestGetTickerInfo:
         assert result is None
 
 
+class TestGetMarketState:
+
+    def setup_method(self):
+        self.eng = YahooEngine()
+
+    @patch("yahoo_engine.yahoo_connection_boundary")
+    def test_returns_market_state(self, mock_ctx):
+        mock_ctx.return_value.__enter__ = lambda s: MagicMock()
+        mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
+
+        with patch("yahoo_engine.yf.Ticker") as mock_tk_cls:
+            mock_tk_cls.return_value.info = {"marketState": "REGULAR"}
+            result = self.eng.get_market_state("^GSPC")
+
+        assert result == "REGULAR"
+
+    @patch("yahoo_engine.yahoo_connection_boundary")
+    def test_caches_result(self, mock_ctx):
+        mock_ctx.return_value.__enter__ = lambda s: MagicMock()
+        mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
+
+        with patch("yahoo_engine.yf.Ticker") as mock_tk_cls:
+            mock_tk_cls.return_value.info = {"marketState": "CLOSED"}
+            self.eng.get_market_state("^GSPC")
+            self.eng.get_market_state("^GSPC")
+            assert mock_tk_cls.call_count == 1
+
+    @patch("yahoo_engine.yahoo_connection_boundary")
+    def test_cache_key_independent_from_get_ticker_info(self, mock_ctx):
+        """A prior get_ticker_info() call for the same ticker must not satisfy get_market_state()
+        from its (much longer-lived) cache entry."""
+        mock_ctx.return_value.__enter__ = lambda s: MagicMock()
+        mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
+
+        with patch("yahoo_engine.yf.Ticker") as mock_tk_cls:
+            mock_tk_cls.return_value.info = {"marketState": "REGULAR", "symbol": "^GSPC"}
+            self.eng.get_ticker_info("^GSPC")
+            result = self.eng.get_market_state("^GSPC")
+
+        assert result == "REGULAR"
+        assert mock_tk_cls.call_count == 2
+
+    @patch("yahoo_engine.yahoo_connection_boundary")
+    def test_returns_none_when_marketstate_missing(self, mock_ctx):
+        mock_ctx.return_value.__enter__ = lambda s: MagicMock()
+        mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
+
+        with patch("yahoo_engine.yf.Ticker") as mock_tk_cls:
+            mock_tk_cls.return_value.info = {"symbol": "^GSPC"}
+            result = self.eng.get_market_state("^GSPC")
+
+        assert result is None
+
+    @patch("yahoo_engine.yahoo_connection_boundary")
+    def test_returns_none_on_exception(self, mock_ctx):
+        mock_ctx.return_value.__enter__ = lambda s: MagicMock()
+        mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
+
+        with patch("yahoo_engine.yf.Ticker", side_effect=RuntimeError("no data")):
+            result = self.eng.get_market_state("BAD")
+
+        assert result is None
+
+
 class TestGetOptionsExpirations:
 
     def setup_method(self):
