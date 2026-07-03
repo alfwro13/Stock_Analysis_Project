@@ -159,7 +159,7 @@ aspect_ratio: 100%
 
 ### **Native Home Assistant Integration (Sensors)**
 
-Beyond the iframe embed above, a dedicated companion project — [Stock Analysis Project](Stock_Analysis_Project_ha_integration/) — installs as a proper HACS custom component and pulls your portfolio totals (value, gain, FX-adjusted gain, Time-Weighted Return, dividends) plus system/market health straight into Home Assistant as native sensors, rather than an embedded webpage. It requires generating an API key from **Settings → User Account** in this app and pointing the integration at this instance's URL. See that project's own README for installation and entity details. Individual account and per-holding sensors are planned for future phases.
+Beyond the iframe embed above, a dedicated companion project — [Stock Analysis Project](Stock_Analysis_Project_ha_integration/) — installs as a proper HACS custom component and pulls your portfolio totals (value, gain, FX-adjusted gain, Time-Weighted Return, dividends), per-account metrics, and per-holding data (market value, gain, dividends, RSI, moving-average trend, earnings date, plus optional price-alert limits) straight into Home Assistant as native sensors, rather than an embedded webpage. It requires generating an API key from **Settings → User Account** in this app and pointing the integration at this instance's URL. See that project's own README for installation and entity details. Pension/House account sensors are planned for a future phase.
 
 ## **⚙️ Running as a Background Service (Linux)**
 

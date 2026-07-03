@@ -3207,4 +3207,83 @@ Per-Trading-account metrics for the Home Assistant integration's Phase 2 per-acc
 
 ---
 
+### `GET /api/accounts/holdings-list`
+
+Per-holding metrics across every non-deleted Trading account, for the Home Assistant integration's Phase 3 per-holding sensor (one HA device per (account, ticker) pair — the same ticker held in two accounts produces two separate rows, never merged). Thin wrapper around `accounts_engine.holdings_with_metrics_all_accounts()`, which reuses `holdings_with_market_value()` per account and enriches each row with native price (`accounts_engine._current_price_map()`), technicals from `stock_signals` (RSI, 50d/200d trend, next earnings date), 24h change from `market_pulse_cache`, accumulated dividends (summed from `Dividend`-type transactions for that ticker in that account), and any stored price limit from `holding_price_limits`. With zero Trading accounts, returns `"holdings": []`.
+
+**Response**
+
+```json
+{
+  "status": "success",
+  "base_currency": "GBP",
+  "holdings": [
+    {
+      "account_id": 3,
+      "account_name": "ISA",
+      "ticker": "GOOGL",
+      "company_name": "Alphabet Inc.",
+      "shares": 2.544544,
+      "currency_asset": "USD",
+      "currency_base": "GBP",
+      "market_price": 354.44,
+      "market_price_currency": "USD",
+      "market_price_in_base_currency": 265.34,
+      "average_buy_price": 282.39,
+      "average_buy_price_currency": "GBP",
+      "market_value": 675.16,
+      "total_investment": 718.56,
+      "gain_value": -43.40,
+      "gain_value_currency": "GBP",
+      "gain_pct": -6.04,
+      "profit_and_loss": -43.40,
+      "accumulated_dividends": 0.14,
+      "accumulated_dividends_currency": "GBP",
+      "trend_vs_buy": "down",
+      "asset_class": "EQUITY",
+      "data_source": "YAHOO",
+      "market_change_24h": -6.77,
+      "market_change_pct_24h": -1.87,
+      "rsi": 46.36,
+      "trend_50d": "UP",
+      "trend_200d": "UP",
+      "next_earnings_date": "2026-09-07",
+      "priced_at_cost": false,
+      "allocation_pct": 8.51,
+      "low_limit": null,
+      "low_limit_set": false,
+      "low_limit_reached": false,
+      "high_limit": null,
+      "high_limit_set": false,
+      "high_limit_reached": false
+    }
+  ]
+}
+```
+
+`gain_value`/`profit_and_loss` are the same figure (`market_value - total_investment`, in `BASE_CURRENCY`) exposed under two keys for parity with the prior Ghostfolio-based integration's attribute naming. `market_price`/`market_price_currency` are the instrument's native (uncoverted) price; `market_price_in_base_currency` and `average_buy_price` are both in `BASE_CURRENCY`. `rsi`/`trend_50d`/`trend_200d`/`next_earnings_date`/`asset_class` (from `stock_signals.quote_type`) may be `null` for a ticker the nightly quant scan hasn't priced yet. `low_limit`/`high_limit` come from `holding_price_limits` (see `POST /api/accounts/holding-price-limit` below); `*_reached` compares the native `market_price` against the stored limit.
+
+---
+
+### `POST /api/accounts/holding-price-limit`
+
+Sets one holding's low and/or high price alert limit, called by the Home Assistant integration's per-holding Low Limit / High Limit number entities. Thin wrapper around `accounts_engine.set_holding_price_limit()`.
+
+**Request body**
+
+```json
+{
+  "account_id": 3,
+  "ticker": "GOOGL",
+  "low_limit": 150.0,
+  "high_limit": 220.0
+}
+```
+
+`low_limit`/`high_limit` are each optional and independently settable — a request that includes only `low_limit` leaves any previously-stored `high_limit` untouched (partial-update semantics via `db_accounts.upsert_holding_price_limit()`'s dynamic-column upsert; a field omitted from the request body is never written, so it can't silently clear a sibling value already set by an earlier request).
+
+**Response:** `{ "status": "success" }`.
+
+---
+
 *Generated: 2026-06-06 · Quantamental Dashboard*

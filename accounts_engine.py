@@ -15,9 +15,10 @@ import time_engine
 from config import BASE_CURRENCY, HISTORICAL_DIR, PORTFOLIO_PATH, load_config
 from db_accounts import (
     add_price_history, add_transaction, delete_transaction, get_account, get_accounts,
-    get_pending_topup, get_performance_cache, get_price_as_of, get_price_history, get_transaction,
-    get_transactions, get_value_history, get_value_history_currency, get_watchlist_items,
-    resolve_pending_topup, update_account, update_transaction, upsert_performance_cache,
+    get_all_holding_price_limits, get_pending_topup, get_performance_cache, get_price_as_of,
+    get_price_history, get_transaction, get_transactions, get_value_history,
+    get_value_history_currency, get_watchlist_items, resolve_pending_topup, update_account,
+    update_transaction, upsert_holding_price_limit, upsert_performance_cache,
     upsert_value_snapshot, upsert_value_snapshot_currency,
 )
 from database import get_connection
@@ -329,6 +330,151 @@ def holdings_with_market_value(account_id: int) -> list:
     for r in rows:
         r["allocation_pct"] = round(r["market_value"] / total_value * 100, 2)
     return rows
+
+
+def _stock_signals_map(tickers: list) -> dict:
+    """Batched stock_signals lookup keyed by ticker, for the technicals holdings_with_metrics_all_accounts() needs."""
+    if not tickers:
+        return {}
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        placeholders = ",".join("?" * len(tickers))
+        cursor.execute(
+            f"""SELECT ticker, quote_type, rsi_14, trend_50d, trend_200d, next_earnings_date
+                FROM stock_signals WHERE ticker IN ({placeholders})""",
+            tickers
+        )
+        return {r["ticker"]: dict(r) for r in cursor.fetchall()}
+    except Exception as e:
+        logger.error("Failed to load stock_signals map: %s", e)
+        return {}
+    finally:
+        if conn:
+            conn.close()
+
+
+def _market_pulse_change_map(tickers: list) -> dict:
+    """Batched market_pulse_cache change_pts/change_pct lookup, mirroring _current_price_map()'s
+    own market_pulse_cache query style."""
+    if not tickers:
+        return {}
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        placeholders = ",".join("?" * len(tickers))
+        cursor.execute(
+            f"SELECT ticker, change_pts, change_pct FROM market_pulse_cache WHERE ticker IN ({placeholders})",
+            tickers
+        )
+        return {r["ticker"]: {"change_pts": r["change_pts"], "change_pct": r["change_pct"]} for r in cursor.fetchall()}
+    except Exception as e:
+        logger.error("Failed to load market_pulse_cache change map: %s", e)
+        return {}
+    finally:
+        if conn:
+            conn.close()
+
+
+def _dividends_by_ticker(account_id: int) -> dict:
+    """Sum of _gross_base() over Dividend transactions, grouped by ticker, for one account."""
+    totals: dict = {}
+    for txn in get_transactions(account_id):
+        if txn["txn_type"] == "Dividend" and txn["ticker"]:
+            totals[txn["ticker"]] = totals.get(txn["ticker"], 0.0) + _gross_base(txn)
+    return {t: round(v, 2) for t, v in totals.items()}
+
+
+def holdings_with_metrics_all_accounts() -> dict:
+    """One row per (account_id, ticker) across every non-deleted Trading account — the Home
+    Assistant integration's Phase 3 per-holding sensor data source. Reuses
+    holdings_with_market_value() per account rather than rewriting the ledger math, then enriches
+    each row with native price, stock_signals technicals, 24h change, dividends, and stored price
+    limits. Holdings are deliberately NOT merged across accounts — the same ticker held in two
+    accounts produces two separate rows, matching how the Home Assistant integration surfaces
+    each account as its own device."""
+    accounts = _trading_accounts()
+    account_holdings: dict = {}
+    all_tickers: set = set()
+    for acc in accounts:
+        holdings = holdings_with_market_value(acc["id"])
+        account_holdings[acc["id"]] = holdings
+        all_tickers.update(h["ticker"] for h in holdings)
+
+    price_map = _current_price_map(list(all_tickers))
+    signals_map = _stock_signals_map(list(all_tickers))
+    pulse_map = _market_pulse_change_map(list(all_tickers))
+    limits_map = get_all_holding_price_limits()
+
+    rows = []
+    for acc in accounts:
+        account_id = acc["id"]
+        dividends_by_ticker = _dividends_by_ticker(account_id)
+        for h in account_holdings[account_id]:
+            ticker = h["ticker"]
+            priced = price_map.get(ticker)
+            has_price = bool(priced and priced[0])
+            native_price, native_currency = priced if has_price else (None, h["currency"])
+            market_price_in_base = None
+            if native_price is not None:
+                market_price_in_base = round(native_price * get_rate_to_base(native_currency or h["currency"]), 4)
+            signals = signals_map.get(ticker, {})
+            pulse = pulse_map.get(ticker, {})
+            limits = limits_map.get((account_id, ticker), {})
+            low_limit = limits.get("low_limit")
+            high_limit = limits.get("high_limit")
+            gain_value = round(h["market_value"] - h["total_investment"], 2)
+            rows.append({
+                "account_id": account_id,
+                "account_name": acc["name"],
+                "ticker": ticker,
+                "company_name": h["company_name"],
+                "shares": h["shares"],
+                "currency_asset": h["currency"],
+                "currency_base": BASE_CURRENCY,
+                "market_price": native_price,
+                "market_price_currency": native_currency,
+                "market_price_in_base_currency": market_price_in_base,
+                "average_buy_price": h["buy_price"],
+                "average_buy_price_currency": BASE_CURRENCY,
+                "market_value": h["market_value"],
+                "total_investment": h["total_investment"],
+                "gain_value": gain_value,
+                "gain_value_currency": BASE_CURRENCY,
+                "gain_pct": h["performance_pct"],
+                "profit_and_loss": gain_value,
+                "accumulated_dividends": dividends_by_ticker.get(ticker, 0.0),
+                "accumulated_dividends_currency": BASE_CURRENCY,
+                "trend_vs_buy": "up" if (market_price_in_base is not None and h["buy_price"] and market_price_in_base >= h["buy_price"]) else "down",
+                "asset_class": signals.get("quote_type"),
+                "data_source": "YAHOO",
+                "market_change_24h": pulse.get("change_pts"),
+                "market_change_pct_24h": pulse.get("change_pct"),
+                "rsi": signals.get("rsi_14"),
+                "trend_50d": signals.get("trend_50d"),
+                "trend_200d": signals.get("trend_200d"),
+                "next_earnings_date": signals.get("next_earnings_date"),
+                "priced_at_cost": h["priced_at_cost"],
+                "allocation_pct": h["allocation_pct"],
+                "low_limit": low_limit,
+                "low_limit_set": low_limit is not None,
+                "low_limit_reached": bool(low_limit is not None and native_price is not None and native_price <= low_limit),
+                "high_limit": high_limit,
+                "high_limit_set": high_limit is not None,
+                "high_limit_reached": bool(high_limit is not None and native_price is not None and native_price >= high_limit),
+            })
+    return {"base_currency": BASE_CURRENCY, "holdings": rows}
+
+
+def set_holding_price_limit(account_id: int, ticker: str, **fields) -> None:
+    """Thin wrapper so api_routes_accounts.py never calls db_accounts directly, matching the
+    existing convention (list-with-metrics/portfolio-totals routes always call accounts_engine).
+    Only forwards the kwarg(s) the caller actually passed, so setting one limit never clears the
+    other — see db_accounts.upsert_holding_price_limit()'s partial-update semantics."""
+    fields["updated_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    upsert_holding_price_limit(account_id, ticker, **fields)
 
 
 def market_values_for_xray(account_id: Optional[int] = None) -> list:

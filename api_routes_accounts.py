@@ -10,10 +10,11 @@ from accounts_engine import (
     _ticker_known, account_metrics_list, account_summary, confirm_autotopup, create_transfer,
     delete_transaction_with_pair, dismiss_autotopup, export_transactions_csv,
     filter_value_history_by_period, fx_rate_on_date, get_combined_holdings,
-    import_csv_activities, pension_units_as_of, portfolio_totals, reconcile_cash,
-    record_pension_contribution, record_pension_fee, refresh_performance_cache,
-    resnapshot_account, resolve_watchlist_metadata, sync_house_purchase_price,
-    sync_pension_opening_balance, watchlist_summary,
+    holdings_with_metrics_all_accounts, import_csv_activities, pension_units_as_of,
+    portfolio_totals, reconcile_cash, record_pension_contribution, record_pension_fee,
+    refresh_performance_cache, resnapshot_account, resolve_watchlist_metadata,
+    set_holding_price_limit, sync_house_purchase_price, sync_pension_opening_balance,
+    watchlist_summary,
 )
 from account_scraper_engine import import_price_csv, price_as_of, run_scrape_for_account, test_scrape
 import notification_engine
@@ -132,6 +133,13 @@ class AutoTopupDismissBody(BaseModel):
 
 class PriceCsvImportBody(BaseModel):
     csv_text: str
+
+
+class HoldingPriceLimitBody(BaseModel):
+    account_id: int
+    ticker: str
+    low_limit: Optional[float] = None
+    high_limit: Optional[float] = None
 
 
 class PensionContributionBody(BaseModel):
@@ -678,6 +686,26 @@ async def api_accounts_list_with_metrics():
         return JSONResponse(content={"status": "success", **account_metrics_list()})
     except Exception as e:
         logger.error("api_accounts_list_with_metrics failed: %s", e)
+        return _error_500(e)
+
+
+@accounts_router.get("/accounts/holdings-list")
+async def api_holdings_list():
+    try:
+        return JSONResponse(content={"status": "success", **holdings_with_metrics_all_accounts()})
+    except Exception as e:
+        logger.error("api_holdings_list failed: %s", e)
+        return _error_500(e)
+
+
+@accounts_router.post("/accounts/holding-price-limit")
+async def api_set_holding_price_limit(body: HoldingPriceLimitBody):
+    try:
+        fields = body.model_dump(include={"low_limit", "high_limit"}, exclude_unset=True)
+        set_holding_price_limit(body.account_id, body.ticker, **fields)
+        return JSONResponse(content={"status": "success"})
+    except Exception as e:
+        logger.error("api_set_holding_price_limit failed: %s", e)
         return _error_500(e)
 
 

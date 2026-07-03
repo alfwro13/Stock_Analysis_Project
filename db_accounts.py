@@ -412,6 +412,57 @@ def get_performance_cache(account_id: int) -> Optional[dict]:
             conn.close()
 
 
+_HOLDING_LIMIT_COLUMNS = ("low_limit", "high_limit", "updated_at")
+
+
+def get_all_holding_price_limits() -> dict:
+    """Returns {(account_id, ticker): {"low_limit": .., "high_limit": ..}} across every account —
+    batched lookup for accounts_engine.holdings_with_metrics_all_accounts()."""
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT account_id, ticker, low_limit, high_limit FROM holding_price_limits")
+        return {
+            (r["account_id"], r["ticker"]): {"low_limit": r["low_limit"], "high_limit": r["high_limit"]}
+            for r in cursor.fetchall()
+        }
+    except Exception as e:
+        logger.error("Failed to get all holding price limits: %s", e)
+        return {}
+    finally:
+        if conn:
+            conn.close()
+
+
+def upsert_holding_price_limit(account_id: int, ticker: str, **fields) -> None:
+    """Partial-update upsert for one (account_id, ticker)'s price limit(s) — only overwrites the
+    field(s) present in fields, mirroring upsert_performance_cache()'s dynamic-column idiom so a
+    caller setting only low_limit never clobbers an already-stored high_limit."""
+    columns = [c for c in _HOLDING_LIMIT_COLUMNS if c in fields]
+    if not columns:
+        return
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        col_list = ", ".join(["account_id", "ticker"] + columns)
+        placeholders = ", ".join(["?"] * (len(columns) + 2))
+        update_clause = ", ".join(f"{c} = excluded.{c}" for c in columns)
+        cursor.execute(
+            f"""INSERT INTO holding_price_limits ({col_list})
+                   VALUES ({placeholders})
+               ON CONFLICT(account_id, ticker) DO UPDATE SET {update_clause}""",
+            [account_id, ticker] + [fields[c] for c in columns]
+        )
+        conn.commit()
+    except Exception as e:
+        logger.error("Failed to upsert holding price limit for account %s ticker %s: %s", account_id, ticker, e)
+    finally:
+        if conn:
+            conn.close()
+
+
 def add_price_history(account_id: int, price_date: str, price: float, source: str) -> bool:
     conn = None
     try:

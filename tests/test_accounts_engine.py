@@ -358,6 +358,87 @@ def test_stale_pricing_warning_none_when_all_holdings_priced():
 
 
 @pytest.mark.db
+def test_holdings_with_metrics_all_accounts_two_accounts_same_ticker_not_merged():
+    """Core Phase 3 regression: the same ticker held in two Trading accounts must produce two
+    separate rows, never merged into one — the Home Assistant integration surfaces each account
+    as its own device, so a merged row would silently lose the per-account distinction."""
+    _seed_stock_signal("ZZDUP", 100.0, "GBP")
+    aid1 = create_account("DupAcc1", "GBP")
+    aid2 = create_account("DupAcc2", "GBP")
+    add_transaction(aid1, "Buy", "2026-01-05", ticker="ZZDUP", currency="GBP",
+                     quantity=10, unit_price=80, exchange_rate=1.0)
+    add_transaction(aid2, "Buy", "2026-01-06", ticker="ZZDUP", currency="GBP",
+                     quantity=4, unit_price=90, exchange_rate=1.0)
+
+    result = accounts_engine.holdings_with_metrics_all_accounts()
+    assert result["base_currency"]
+    rows = [r for r in result["holdings"] if r["ticker"] == "ZZDUP"]
+    assert len(rows) == 2
+    by_account = {r["account_id"]: r for r in rows}
+    assert by_account[aid1]["shares"] == 10
+    assert by_account[aid2]["shares"] == 4
+    assert by_account[aid1]["market_value"] == 1000.0
+    assert by_account[aid2]["market_value"] == 400.0
+
+
+@pytest.mark.db
+def test_holdings_with_metrics_all_accounts_zero_trading_accounts_returns_empty_list():
+    import database as _db
+    for acc in _db.get_accounts():
+        if acc["account_type"] == "Trading":
+            _db.soft_delete_account(acc["id"])
+
+    result = accounts_engine.holdings_with_metrics_all_accounts()
+    assert result["holdings"] == []
+
+
+@pytest.mark.db
+def test_holdings_with_metrics_all_accounts_includes_technicals_and_limits():
+    conn = None
+    try:
+        conn = get_connection()
+        conn.execute(
+            """INSERT OR REPLACE INTO stock_signals
+               (ticker, current_price, currency, quote_type, rsi_14, trend_50d, trend_200d, next_earnings_date)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            ("ZZTECH", 100.0, "GBP", "EQUITY", 55.5, "up", "down", "2026-08-01"),
+        )
+        conn.commit()
+    finally:
+        if conn:
+            conn.close()
+
+    aid = create_account("TechAcc", "GBP")
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZTECH", currency="GBP",
+                     quantity=10, unit_price=80, exchange_rate=1.0)
+    accounts_engine.set_holding_price_limit(aid, "ZZTECH", low_limit=50.0)
+
+    row = next(r for r in accounts_engine.holdings_with_metrics_all_accounts()["holdings"] if r["ticker"] == "ZZTECH")
+    assert row["asset_class"] == "EQUITY"
+    assert row["rsi"] == 55.5
+    assert row["trend_50d"] == "up"
+    assert row["trend_200d"] == "down"
+    assert row["next_earnings_date"] == "2026-08-01"
+    assert row["low_limit"] == 50.0
+    assert row["low_limit_set"] is True
+    assert row["high_limit_set"] is False
+    assert row["gain_value"] == row["market_value"] - row["total_investment"]
+    assert row["profit_and_loss"] == row["gain_value"]
+
+
+@pytest.mark.db
+def test_set_holding_price_limit_partial_update_preserves_other_field():
+    aid = create_account("LimitPartialAcc", "GBP")
+    accounts_engine.set_holding_price_limit(aid, "ZZLIMIT", low_limit=10.0)
+    accounts_engine.set_holding_price_limit(aid, "ZZLIMIT", high_limit=20.0)
+
+    from db_accounts import get_all_holding_price_limits
+    limits = get_all_holding_price_limits()[(aid, "ZZLIMIT")]
+    assert limits["low_limit"] == 10.0
+    assert limits["high_limit"] == 20.0
+
+
+@pytest.mark.db
 def test_stale_pricing_warning_names_unpriced_tickers():
     aid = create_account("WarnAcc", "GBP")
     add_transaction(aid, "Buy", "2026-01-05", ticker="ZZWARN1", currency="GBP",

@@ -934,6 +934,17 @@ def init_db() -> None:
             )
         ''')
 
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS holding_price_limits (
+                account_id  INTEGER NOT NULL,
+                ticker      TEXT NOT NULL,
+                low_limit   REAL,
+                high_limit  REAL,
+                updated_at  TEXT,
+                PRIMARY KEY (account_id, ticker)
+            )
+        ''')
+
         conn.commit()
 
         migrate_db(conn, cursor)
@@ -1518,6 +1529,21 @@ def migrate_db(conn, cursor) -> None:
         ''')
     except Exception as e:
         logger.error("[MIGRATION ERROR] Failed to create account_value_history_currency: %s", e)
+
+    # holding_price_limits (guard for pre-feature DBs)
+    try:
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS holding_price_limits (
+                account_id  INTEGER NOT NULL,
+                ticker      TEXT NOT NULL,
+                low_limit   REAL,
+                high_limit  REAL,
+                updated_at  TEXT,
+                PRIMARY KEY (account_id, ticker)
+            )
+        ''')
+    except Exception as e:
+        logger.error("[MIGRATION ERROR] Failed to create holding_price_limits: %s", e)
 
     try:
         conn.commit()

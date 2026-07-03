@@ -1784,3 +1784,59 @@ def test_accounts_list_with_metrics_zero_trading_accounts_returns_empty_list(cli
     data = _json(resp)
     assert data["status"] == "success"
     assert data["accounts"] == []
+
+
+@pytest.mark.api
+def test_api_holdings_list_status_success(client):
+    with patch("api_routes_accounts.resnapshot_account"), \
+         patch("api_routes_accounts.update_single_profile"):
+        account_id = _create_account(client, name="HoldingsListAcc")
+        client.post(f"/api/accounts/{account_id}/transactions", json={
+            "txn_type": "Buy", "txn_date": "2026-01-15", "ticker": "ZZHOLDLIST",
+            "currency": "GBP", "quantity": 5, "unit_price": 100.0, "exchange_rate": 1.0,
+            "update_cash": True,
+        })
+
+    resp = client.get("/api/accounts/holdings-list")
+    assert resp.status_code == 200
+    data = _json(resp)
+    assert data["status"] == "success"
+    assert data["base_currency"]
+    row = next(r for r in data["holdings"] if r["ticker"] == "ZZHOLDLIST" and r["account_id"] == account_id)
+    for key in (
+        "account_id", "account_name", "ticker", "shares", "market_value", "total_investment",
+        "gain_value", "gain_pct", "profit_and_loss", "accumulated_dividends", "trend_vs_buy",
+        "asset_class", "data_source", "market_change_24h", "market_change_pct_24h", "rsi",
+        "trend_50d", "trend_200d", "next_earnings_date", "low_limit_set", "high_limit_set",
+        "low_limit_reached", "high_limit_reached",
+    ):
+        assert key in row, f"Missing '{key}' in holdings-list row: {row}"
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_api_set_holding_price_limit_low_only_does_not_clear_high(client):
+    with patch("api_routes_accounts.resnapshot_account"):
+        account_id = _create_account(client, name="LimitApiAcc")
+
+    resp1 = client.post("/api/accounts/holding-price-limit", json={
+        "account_id": account_id, "ticker": "ZZLIMITAPI", "low_limit": 10.0,
+    })
+    assert resp1.status_code == 200
+    assert _json(resp1)["status"] == "success"
+
+    resp2 = client.post("/api/accounts/holding-price-limit", json={
+        "account_id": account_id, "ticker": "ZZLIMITAPI", "high_limit": 20.0,
+    })
+    assert resp2.status_code == 200
+    assert _json(resp2)["status"] == "success"
+
+    from db_accounts import get_all_holding_price_limits
+    limits = get_all_holding_price_limits()[(account_id, "ZZLIMITAPI")]
+    assert limits["low_limit"] == 10.0
+    assert limits["high_limit"] == 20.0
+
+    import database as _db
+    _db.soft_delete_account(account_id)
