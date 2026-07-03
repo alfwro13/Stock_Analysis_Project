@@ -22,7 +22,6 @@ from db_accounts import (
     upsert_value_snapshot, upsert_value_snapshot_currency,
 )
 from database import get_connection
-from market_pulse import is_price_fresh
 from portfolio_service import get_rate_to_base
 from utils import normalize_ticker
 from yahoo_engine import yahoo_engine
@@ -719,8 +718,12 @@ def delete_transaction_with_pair(txn_id: int) -> bool:
 
 
 def _current_price_map(tickers: list) -> dict:
-    """Live-aware: prefers a fresh `market_pulse_cache` price (kept warm by the 5-minute intraday
-    scan for every held ticker) over `stock_signals.current_price`, which only updates nightly."""
+    """Live-aware: prefers `market_pulse_cache`'s price over `stock_signals.current_price`
+    whenever the cache row is newer than stock_signals' own last update — not gated by an
+    absolute-age cutoff, since the background jobs that keep market_pulse_cache warm (the
+    10-minute intraday scan, on-demand refresh triggers) run far coarser than the UI's own
+    REFRESH_RATE, and a price a few minutes old is still far better than the once-nightly
+    stock_signals snapshot it would otherwise fall back to."""
     if not tickers:
         return {}
     from account_scraper_engine import latest_price, parse_pension_account_id
@@ -738,7 +741,6 @@ def _current_price_map(tickers: list) -> dict:
     if not market_tickers:
         return result
 
-    refresh_rate = int(load_config().get("UI_PREFERENCES", {}).get("REFRESH_RATE", 60))
     live_prices: dict[str, float] = {}
     conn = None
     try:
@@ -750,8 +752,8 @@ def _current_price_map(tickers: list) -> dict:
             market_tickers
         )
         for r in cursor.fetchall():
-            if is_price_fresh(r["last_updated"], r["price"], refresh_rate):
-                live_prices[r["ticker"]] = r["price"]
+            if r["last_updated"] and r["price"]:
+                live_prices[r["ticker"]] = (r["price"], r["last_updated"])
     except Exception as e:
         logger.error("Failed to load live prices from market_pulse_cache: %s", e)
     finally:
@@ -764,11 +766,14 @@ def _current_price_map(tickers: list) -> dict:
         cursor = conn.cursor()
         placeholders = ",".join("?" * len(market_tickers))
         cursor.execute(
-            f"SELECT ticker, current_price, currency FROM stock_signals WHERE ticker IN ({placeholders})",
+            f"SELECT ticker, current_price, currency, last_updated FROM stock_signals WHERE ticker IN ({placeholders})",
             market_tickers
         )
         for r in cursor.fetchall():
-            price = live_prices.get(r["ticker"], r["current_price"])
+            live = live_prices.get(r["ticker"])
+            price = r["current_price"]
+            if live and live[1] >= _epoch(r["last_updated"]):
+                price = live[0]
             result[r["ticker"]] = (price, r["currency"])
     except Exception as e:
         logger.error("Failed to load current prices: %s", e)
@@ -776,6 +781,83 @@ def _current_price_map(tickers: list) -> dict:
         if conn:
             conn.close()
     return result
+
+
+def _epoch(stored_utc: Optional[str]) -> float:
+    """Parses a `"%Y-%m-%d %H:%M:%S"` UTC timestamp (SQLite storage format) to a Unix epoch,
+    for comparing against market_pulse_cache's own epoch-float `last_updated`."""
+    if not stored_utc:
+        return 0.0
+    try:
+        return datetime.strptime(stored_utc, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc).timestamp()
+    except ValueError:
+        return 0.0
+
+
+def held_tickers_lightweight() -> list:
+    """Cheap approximation of get_combined_holdings().keys() for callers that only need the
+    ticker universe (e.g. deciding what to keep warm in market_pulse_cache) — a single query
+    against account_transactions instead of a full per-account average-cost ledger walk, since
+    that computation is wasted work when all that's actually needed is 'which tickers exist'.
+    May include a recently-closed position's ticker for a little while after it's fully sold —
+    harmless for a keep-warm check, unlike get_combined_holdings()'s own open-holdings-only
+    scope which the ledger math actually needs to get right."""
+    tickers: set = set()
+    for value in _read_portfolio_json().values():
+        t = value.get("ticker")
+        if t:
+            tickers.add(t)
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT DISTINCT t.ticker FROM account_transactions t
+            JOIN accounts a ON a.id = t.account_id
+            WHERE a.account_type = 'Trading' AND a.deleted_at IS NULL AND t.ticker IS NOT NULL
+        """)
+        tickers.update(r["ticker"] for r in cursor.fetchall())
+    except Exception as e:
+        logger.error("Failed to load lightweight held-ticker list: %s", e)
+    finally:
+        if conn:
+            conn.close()
+    return list(tickers)
+
+
+def tickers_needing_refresh(tickers: list, refresh_rate: int) -> list:
+    """Held tickers whose market_pulse_cache row is older than refresh_rate seconds, while
+    either of the two markets this app tracks (`GET /api/system/market-status`'s own scope —
+    UK/US) is open. Gated once per call rather than per-ticker via time_engine.ticker_exchange()
+    — that call falls back to a config read for any ticker with no recognised suffix/currency,
+    which is cheap for one ticker but adds up badly across every held ticker on every poll of
+    the accounts-API endpoints; a plain LSE-or-NYSE-open check is the same practical scope
+    GET /api/system/market-status already exposes, at a small, constant cost per call. Used by
+    the HA-polled accounts endpoints to trigger a real fetch when due, mirroring the same
+    needs_refresh pattern GET /api/market-pulse already uses."""
+    if not tickers:
+        return []
+    if not (time_engine.is_trading_session("LSE") or time_engine.is_trading_session("NYSE")):
+        return []
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        placeholders = ",".join("?" * len(tickers))
+        cursor.execute(
+            f"SELECT ticker, last_updated FROM market_pulse_cache WHERE ticker IN ({placeholders})",
+            tickers
+        )
+        cache_map = {r["ticker"]: r["last_updated"] for r in cursor.fetchall()}
+    except Exception as e:
+        logger.error("Failed to check tickers needing refresh: %s", e)
+        return []
+    finally:
+        if conn:
+            conn.close()
+
+    now = time.time()
+    return [t for t in tickers if now - cache_map.get(t, 0) > refresh_rate]
 
 
 def _bucket_equity_by_currency(open_holdings: dict, price_lookup) -> tuple:

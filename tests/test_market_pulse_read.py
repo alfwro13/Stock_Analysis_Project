@@ -4,7 +4,7 @@ tests/test_market_pulse_read.py — MARKET PULSE READ FUNCTIONS
 Covers get_cached_pulse_from_db() and get_all_cached_pulse():
   - index/asset split is determined by INDEX_TICKERS membership
   - de-duplication: same ticker in portfolio and watchlist appears once in assets
-  - staleness flag: is_stale only when age > refresh_rate * 2 AND market is open
+  - staleness flag: is_stale only when age > max(refresh_rate * 2, 300s floor) AND market is open
   - sentinel row for missing cache entry (price=0, is_stale=True when market open)
   - IGNORED_TICKERS filtering
   - needs_refresh flag: True when age > refresh_rate AND market is open
@@ -104,7 +104,7 @@ class TestGetCachedPulseFromDb:
         assert asset["is_stale"] is False
 
     def test_is_stale_true_when_old(self):
-        _seed_pulse(ASSET_TICKER, last_updated=time.time() - 130)  # > refresh_rate * 2
+        _seed_pulse(ASSET_TICKER, last_updated=time.time() - 301)  # beyond the 5-minute floor
         with patch("market_pulse.is_trading_session", return_value=True):
             result = _mp.get_cached_pulse_from_db([ASSET_TICKER], refresh_rate=60)
         asset = next(r for r in result["assets"] if r["ticker"] == ASSET_TICKER)
@@ -222,16 +222,16 @@ class TestClosedMarketStaleness:
         assert asset["is_stale"] is False
         assert asset["needs_refresh"] is False
 
-    def test_between_refresh_rate_and_double_needs_refresh_but_not_stale(self):
-        _seed_pulse(ASSET_TICKER, last_updated=time.time() - 90)  # 90s > 60s but < 120s
+    def test_between_refresh_rate_and_display_floor_needs_refresh_but_not_stale(self):
+        _seed_pulse(ASSET_TICKER, last_updated=time.time() - 130)  # 130s > 60s but < 300s floor
         with patch("market_pulse.is_trading_session", return_value=True):
             result = _mp.get_cached_pulse_from_db([ASSET_TICKER], refresh_rate=60)
         asset = next(r for r in result["assets"] if r["ticker"] == ASSET_TICKER)
         assert asset["is_stale"] is False
         assert asset["needs_refresh"] is True
 
-    def test_beyond_double_refresh_rate_is_stale(self):
-        _seed_pulse(ASSET_TICKER, last_updated=time.time() - 130)  # 130s > 60*2=120s
+    def test_beyond_display_floor_is_stale(self):
+        _seed_pulse(ASSET_TICKER, last_updated=time.time() - 301)  # beyond the 5-minute floor
         with patch("market_pulse.is_trading_session", return_value=True):
             result = _mp.get_cached_pulse_from_db([ASSET_TICKER], refresh_rate=60)
         asset = next(r for r in result["assets"] if r["ticker"] == ASSET_TICKER)
@@ -273,6 +273,20 @@ class TestIsPriceFresh:
         with patch("market_pulse.is_trading_session", return_value=True):
             assert _mp.is_price_fresh(time.time() - 30, 100.0, 60) is True
 
-    def test_stale_when_market_open_and_beyond_window(self):
+    def test_fresh_within_the_5_minute_floor_even_beyond_2x_refresh_rate(self):
+        """Regression test: a 130s-old price at refresh_rate=60 (2x = 120s) must still count
+        as fresh — the display floor is 5 minutes, comfortably wider than the ~10-minute
+        background scan cadence, to avoid flashing stale/fresh every poll cycle."""
         with patch("market_pulse.is_trading_session", return_value=True):
-            assert _mp.is_price_fresh(time.time() - 130, 100.0, 60) is False
+            assert _mp.is_price_fresh(time.time() - 130, 100.0, 60) is True
+
+    def test_stale_when_market_open_and_beyond_5_minute_floor(self):
+        with patch("market_pulse.is_trading_session", return_value=True):
+            assert _mp.is_price_fresh(time.time() - 301, 100.0, 60) is False
+
+    def test_stale_when_market_open_and_beyond_2x_refresh_rate_larger_than_floor(self):
+        """When 2x refresh_rate exceeds the 5-minute floor (a large configured refresh_rate),
+        the larger of the two still governs."""
+        with patch("market_pulse.is_trading_session", return_value=True):
+            assert _mp.is_price_fresh(time.time() - 700, 100.0, 400) is True
+            assert _mp.is_price_fresh(time.time() - 900, 100.0, 400) is False

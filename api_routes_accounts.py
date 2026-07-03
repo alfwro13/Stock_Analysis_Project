@@ -9,16 +9,17 @@ from pydantic import BaseModel
 from accounts_engine import (
     _ticker_known, account_metrics_list, account_summary, confirm_autotopup, create_transfer,
     delete_transaction_with_pair, dismiss_autotopup, export_transactions_csv,
-    filter_value_history_by_period, fx_rate_on_date, get_combined_holdings,
+    filter_value_history_by_period, fx_rate_on_date, get_combined_holdings, held_tickers_lightweight,
     holdings_with_metrics_all_accounts, import_csv_activities, other_accounts_list, pension_units_as_of,
     portfolio_totals, reconcile_cash, record_pension_contribution, record_pension_fee,
     refresh_performance_cache, resnapshot_account, resolve_watchlist_metadata,
     set_holding_price_limit, sync_house_purchase_price, sync_pension_opening_balance,
-    watchlist_summary,
+    tickers_needing_refresh, watchlist_summary,
 )
 from account_scraper_engine import import_price_csv, price_as_of, run_scrape_for_account, test_scrape
 import notification_engine
 from api_deps import limiter, _error_500
+from config import load_config
 from data_engine import fetch_and_save_single_ticker
 from database import (
     get_accounts,
@@ -671,9 +672,23 @@ async def api_trigger_account_value_snapshot(background_tasks: BackgroundTasks):
     })
 
 
+def _maybe_trigger_price_refresh(background_tasks: BackgroundTasks) -> None:
+    """Backs the Home Assistant integration's polling-driven refresh: whatever interval it (or
+    a browser tab) actually polls these endpoints at becomes the real refresh cadence, capped by
+    UI_PREFERENCES.REFRESH_RATE so a fast poller doesn't hammer Yahoo Finance on every tick —
+    the same needs_refresh pattern GET /api/market-pulse already uses for the live-ticking
+    widget, extended here to cover every held ticker rather than only ones rendered on screen."""
+    refresh_rate = int(load_config().get("UI_PREFERENCES", {}).get("REFRESH_RATE", 60))
+    tickers = held_tickers_lightweight()
+    stale = tickers_needing_refresh(tickers, refresh_rate)
+    if stale:
+        background_tasks.add_task(fetch_and_save_pulse, stale)
+
+
 @accounts_router.get("/accounts/portfolio-totals")
-async def api_portfolio_totals():
+async def api_portfolio_totals(background_tasks: BackgroundTasks):
     try:
+        _maybe_trigger_price_refresh(background_tasks)
         return JSONResponse(content={"status": "success", **portfolio_totals()})
     except Exception as e:
         logger.error("api_portfolio_totals failed: %s", e)
@@ -681,8 +696,9 @@ async def api_portfolio_totals():
 
 
 @accounts_router.get("/accounts/list-with-metrics")
-async def api_accounts_list_with_metrics():
+async def api_accounts_list_with_metrics(background_tasks: BackgroundTasks):
     try:
+        _maybe_trigger_price_refresh(background_tasks)
         return JSONResponse(content={"status": "success", **account_metrics_list()})
     except Exception as e:
         logger.error("api_accounts_list_with_metrics failed: %s", e)
@@ -690,8 +706,9 @@ async def api_accounts_list_with_metrics():
 
 
 @accounts_router.get("/accounts/holdings-list")
-async def api_holdings_list():
+async def api_holdings_list(background_tasks: BackgroundTasks):
     try:
+        _maybe_trigger_price_refresh(background_tasks)
         return JSONResponse(content={"status": "success", **holdings_with_metrics_all_accounts()})
     except Exception as e:
         logger.error("api_holdings_list failed: %s", e)

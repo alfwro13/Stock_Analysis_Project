@@ -1732,6 +1732,96 @@ def test_refresh_now_invokes_background_task_functions(client):
 
 
 @pytest.mark.api
+def test_holdings_list_triggers_background_refresh_for_stale_held_ticker(client):
+    """Regression test: polling GET /accounts/holdings-list (what the Home Assistant
+    integration polls) must itself trigger a real Yahoo Finance refresh for a held ticker
+    whose market_pulse_cache is due — not just read whatever's already cached."""
+    with patch("api_routes_accounts.resnapshot_account"), \
+         patch("api_routes_accounts.update_single_profile"):
+        account_id = _create_account(client, name="HoldingsListRefreshTriggerAcc")
+        client.post(f"/api/accounts/{account_id}/transactions", json={
+            "txn_type": "Buy", "txn_date": "2026-01-15", "ticker": "ZZTRIGGERREF",
+            "currency": "GBP", "quantity": 5, "unit_price": 100.0, "exchange_rate": 1.0,
+            "update_cash": True,
+        })
+
+    with patch("api_routes_accounts.fetch_and_save_pulse") as mock_fetch, \
+         patch("accounts_engine.time_engine.is_trading_session", return_value=True):
+        resp = client.get("/api/accounts/holdings-list")
+    assert resp.status_code == 200
+    mock_fetch.assert_called_once()
+    assert "ZZTRIGGERREF" in mock_fetch.call_args[0][0]
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_holdings_list_does_not_trigger_refresh_when_market_closed(client):
+    with patch("api_routes_accounts.resnapshot_account"), \
+         patch("api_routes_accounts.update_single_profile"):
+        account_id = _create_account(client, name="HoldingsListNoRefreshAcc")
+        client.post(f"/api/accounts/{account_id}/transactions", json={
+            "txn_type": "Buy", "txn_date": "2026-01-15", "ticker": "ZZNOTRIGGERREF",
+            "currency": "GBP", "quantity": 5, "unit_price": 100.0, "exchange_rate": 1.0,
+            "update_cash": True,
+        })
+
+    with patch("api_routes_accounts.fetch_and_save_pulse") as mock_fetch, \
+         patch("accounts_engine.time_engine.is_trading_session", return_value=False):
+        resp = client.get("/api/accounts/holdings-list")
+    assert resp.status_code == 200
+    mock_fetch.assert_not_called()
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_portfolio_totals_triggers_background_refresh_for_stale_held_ticker(client):
+    with patch("api_routes_accounts.resnapshot_account"), \
+         patch("api_routes_accounts.update_single_profile"):
+        account_id = _create_account(client, name="PortfolioTotalsRefreshTriggerAcc")
+        client.post(f"/api/accounts/{account_id}/transactions", json={
+            "txn_type": "Buy", "txn_date": "2026-01-15", "ticker": "ZZPTTRIGGERREF",
+            "currency": "GBP", "quantity": 5, "unit_price": 100.0, "exchange_rate": 1.0,
+            "update_cash": True,
+        })
+
+    with patch("api_routes_accounts.fetch_and_save_pulse") as mock_fetch, \
+         patch("accounts_engine.time_engine.is_trading_session", return_value=True):
+        resp = client.get("/api/accounts/portfolio-totals")
+    assert resp.status_code == 200
+    mock_fetch.assert_called_once()
+    assert "ZZPTTRIGGERREF" in mock_fetch.call_args[0][0]
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_list_with_metrics_triggers_background_refresh_for_stale_held_ticker(client):
+    with patch("api_routes_accounts.resnapshot_account"), \
+         patch("api_routes_accounts.update_single_profile"):
+        account_id = _create_account(client, name="ListWithMetricsRefreshTriggerAcc")
+        client.post(f"/api/accounts/{account_id}/transactions", json={
+            "txn_type": "Buy", "txn_date": "2026-01-15", "ticker": "ZZLWMTRIGGERREF",
+            "currency": "GBP", "quantity": 5, "unit_price": 100.0, "exchange_rate": 1.0,
+            "update_cash": True,
+        })
+
+    with patch("api_routes_accounts.fetch_and_save_pulse") as mock_fetch, \
+         patch("accounts_engine.time_engine.is_trading_session", return_value=True):
+        resp = client.get("/api/accounts/list-with-metrics")
+    assert resp.status_code == 200
+    mock_fetch.assert_called_once()
+    assert "ZZLWMTRIGGERREF" in mock_fetch.call_args[0][0]
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
 def test_refresh_now_notifies_error_on_failure(client):
     with patch("api_routes_accounts.resnapshot_account"):
         account_id = _create_account(client, name="RefreshNowFailAcc")

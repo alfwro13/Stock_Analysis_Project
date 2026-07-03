@@ -14,6 +14,14 @@ patched out:
   - start_scheduler          (APScheduler background threads)
   - reload_scheduler         (reads DB and launches cron jobs)
   - shutdown_scheduler       (teardown hook)
+
+Also patched for the lifetime of the `client` fixture: `api_routes_accounts.fetch_and_save_pulse`
+— the accounts-API self-triggered live-price refresh (portfolio-totals/list-with-metrics/
+holdings-list) would otherwise fire a real Yahoo Finance background fetch for any held test
+ticker with no market_pulse_cache row whenever a test happens to run during real market hours.
+Individual tests that want to assert on this call still work as before via their own local
+`patch("api_routes_accounts.fetch_and_save_pulse")`, which layers over this one for the
+duration of their own `with` block.
 """
 
 import os
@@ -87,6 +95,7 @@ def client():
         patch("main.reload_scheduler"),
         patch("main.shutdown_scheduler"),
         patch("main.resume_interrupted_scans"),
+        patch("api_routes_accounts.fetch_and_save_pulse"),
     ):
         import main as _main_module
         with TestClient(

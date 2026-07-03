@@ -3136,6 +3136,8 @@ Marks a pending top-up `dismissed` with no transaction created — used when a d
 
 Aggregates live figures across every non-deleted Trading account — the Home Assistant integration's portfolio-summary sensor data source. Thin wrapper around `accounts_engine.portfolio_totals()`. With zero Trading accounts, returns the same shape with all monetary fields at `0.0` and all percentage/return fields `null` rather than erroring.
 
+Before reading, this endpoint also checks whether any held ticker's `market_pulse_cache` price is older than `UI_PREFERENCES.REFRESH_RATE` (while a relevant market is open) and, if so, kicks off a background `market_pulse.fetch_and_save_pulse()` for whichever tickers are due — the same `needs_refresh` pattern `GET /api/market-pulse` already uses for the live-ticking widget, extended to cover every held ticker rather than only ones rendered on screen. This means polling this endpoint (e.g. from Home Assistant) at a given interval makes that interval the real data-refresh cadence, not just a read cadence — see `accounts_engine.tickers_needing_refresh()`.
+
 **Response**
 
 ```json
@@ -3176,6 +3178,8 @@ On-demand data refresh for the Home Assistant integration's "Refresh Data" butto
 
 Per-Trading-account metrics for the Home Assistant integration's Phase 2 per-account sensors. Thin wrapper around `accounts_engine.account_metrics_list()`, which composes `account_performance_cache` (lazily refreshed the same way `GET /accounts/{account_id}/live-performance` is, if empty) with `account_summary()`'s dividend/interest/realized P&L, which the cache doesn't track. All monetary fields are in `BASE_CURRENCY` (the single top-level `base_currency` key), not the account's own native transaction currency. With zero Trading accounts, returns `"accounts": []`.
 
+Like `portfolio-totals` above, this endpoint also self-triggers a background live-price refresh for any held ticker whose `market_pulse_cache` row is due (see that endpoint's note).
+
 **Response**
 
 ```json
@@ -3210,6 +3214,8 @@ Per-Trading-account metrics for the Home Assistant integration's Phase 2 per-acc
 ### `GET /api/accounts/holdings-list`
 
 Per-holding metrics across every non-deleted Trading account, for the Home Assistant integration's Phase 3 per-holding sensor (one HA device per (account, ticker) pair — the same ticker held in two accounts produces two separate rows, never merged). Thin wrapper around `accounts_engine.holdings_with_metrics_all_accounts()`, which reuses `holdings_with_market_value()` per account and enriches each row with native price (`accounts_engine._current_price_map()`), technicals from `stock_signals` (RSI, 50d/200d trend, next earnings date), 24h change from `market_pulse_cache`, accumulated dividends (summed from `Dividend`-type transactions for that ticker in that account), and any stored price limit from `holding_price_limits`. With zero Trading accounts, returns `"holdings": []`.
+
+Like `portfolio-totals` above, this endpoint also self-triggers a background live-price refresh for any held ticker whose `market_pulse_cache` row is due (see that endpoint's note). `market_price`'s own freshness comes from `_current_price_map()` preferring `market_pulse_cache` whenever it's newer than `stock_signals.last_updated` — not gated by an absolute-age cutoff, since the background jobs that keep `market_pulse_cache` warm run far coarser than any UI poll rate, and a price a few minutes old is still far better than the once-nightly `stock_signals` fallback it would otherwise revert to.
 
 **Response**
 

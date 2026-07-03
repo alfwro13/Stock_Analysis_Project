@@ -171,6 +171,10 @@ class TestEmptyDailyPath:
 
     def teardown_method(self):
         _clear_cache(NORMAL_TICKER)
+        conn = _conn()
+        conn.execute("DELETE FROM alert_state WHERE engine = 'stale_price' AND ticker = ?", (NORMAL_TICKER,))
+        conn.commit()
+        conn.close()
 
     def test_new_ticker_seeds_stale_placeholder(self):
         p1, p2 = _pulse_patches(NORMAL_TICKER, pd.DataFrame(), pd.DataFrame())
@@ -204,6 +208,71 @@ class TestEmptyDailyPath:
 
         row = _read_cache(NORMAL_TICKER)
         assert row["last_updated"] == 0
+
+    def test_persistently_failing_ticker_during_market_hours_fires_notification(self):
+        """Regression test for the LCJP.L scenario: a held ticker whose fetch has been failing
+        for well over the alert threshold, during its own market's trading hours, must notify
+        once — not sit silently stale forever."""
+        import time as _time
+        _seed_cache(NORMAL_TICKER, price=150.0, last_updated=_time.time() - 3600)  # 1 hour stale
+
+        p1, p2 = _pulse_patches(NORMAL_TICKER, pd.DataFrame(), pd.DataFrame())
+        with p1, p2, \
+             patch("market_pulse.yahoo_engine.get_single_ticker_history", return_value=None), \
+             patch("market_pulse.ticker_exchange", return_value="LSE"), \
+             patch("market_pulse.is_trading_session", return_value=True), \
+             patch("market_pulse.notification_engine.notify") as mock_notify:
+            _mp.fetch_and_save_pulse([NORMAL_TICKER])
+
+        mock_notify.assert_called_once()
+        assert mock_notify.call_args[0][0] == "stale_price_alert"
+        assert NORMAL_TICKER in mock_notify.call_args[0][2]
+
+    def test_persistently_failing_ticker_does_not_notify_twice_same_day(self):
+        import time as _time
+        _seed_cache(NORMAL_TICKER, price=150.0, last_updated=_time.time() - 3600)
+
+        p1, p2 = _pulse_patches(NORMAL_TICKER, pd.DataFrame(), pd.DataFrame())
+        with p1, p2, \
+             patch("market_pulse.yahoo_engine.get_single_ticker_history", return_value=None), \
+             patch("market_pulse.ticker_exchange", return_value="LSE"), \
+             patch("market_pulse.is_trading_session", return_value=True), \
+             patch("market_pulse.notification_engine.notify") as mock_notify:
+            _mp.fetch_and_save_pulse([NORMAL_TICKER])
+            # The first call bumped last_updated to "now" (transient-outage leniency), so
+            # re-seed an old timestamp to simulate a second failed attempt later the same day.
+            _seed_cache(NORMAL_TICKER, price=150.0, last_updated=_time.time() - 3600)
+            _mp.fetch_and_save_pulse([NORMAL_TICKER])
+
+        mock_notify.assert_called_once()
+
+    def test_no_notification_when_market_closed(self):
+        import time as _time
+        _seed_cache(NORMAL_TICKER, price=150.0, last_updated=_time.time() - 3600)
+
+        p1, p2 = _pulse_patches(NORMAL_TICKER, pd.DataFrame(), pd.DataFrame())
+        with p1, p2, \
+             patch("market_pulse.yahoo_engine.get_single_ticker_history", return_value=None), \
+             patch("market_pulse.ticker_exchange", return_value="LSE"), \
+             patch("market_pulse.is_trading_session", return_value=False), \
+             patch("market_pulse.notification_engine.notify") as mock_notify:
+            _mp.fetch_and_save_pulse([NORMAL_TICKER])
+
+        mock_notify.assert_not_called()
+
+    def test_no_notification_when_within_threshold(self):
+        import time as _time
+        _seed_cache(NORMAL_TICKER, price=150.0, last_updated=_time.time() - 60)  # only 1 min stale
+
+        p1, p2 = _pulse_patches(NORMAL_TICKER, pd.DataFrame(), pd.DataFrame())
+        with p1, p2, \
+             patch("market_pulse.yahoo_engine.get_single_ticker_history", return_value=None), \
+             patch("market_pulse.ticker_exchange", return_value="LSE"), \
+             patch("market_pulse.is_trading_session", return_value=True), \
+             patch("market_pulse.notification_engine.notify") as mock_notify:
+            _mp.fetch_and_save_pulse([NORMAL_TICKER])
+
+        mock_notify.assert_not_called()
 
 
 class TestNormalIntradayPath:

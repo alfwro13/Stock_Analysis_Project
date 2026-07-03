@@ -1,17 +1,21 @@
 import time
 import logging
 import threading
+from datetime import datetime, timezone
 from typing import List, Dict, Any
 import pandas as pd
 
+import notification_engine
 from config import load_config, HISTORICAL_DIR
 from database import get_connection
 from utils import normalize_ticker
 from gilt_engine import GiltDataService
 from yahoo_engine import yahoo_engine
-from time_engine import is_trading_session
+from time_engine import is_trading_session, ticker_exchange
 
 logger = logging.getLogger(__name__)
+
+_STALE_ALERT_THRESHOLD_SECONDS = 1800
 
 # UK10YG is registered directly below GBPUSD=X so its tile appears adjacent in the UI.
 INDEX_TICKERS: Dict[str, str] = {
@@ -31,15 +35,23 @@ INDEX_TICKERS: Dict[str, str] = {
 _FETCH_LOCK = threading.Lock()
 
 
+_DISPLAY_STALE_FLOOR_SECONDS = 300
+
+
 def is_price_fresh(last_updated: float, price: float, refresh_rate: int) -> bool:
-    """A cache row counts as fresh outside market hours as long as it has ever been populated;
-    during market hours it must also be within 2x the refresh interval."""
+    """Display-only staleness check ('should the UI grey this out'), not a data-selection gate
+    — see accounts_engine._current_price_map() for the latter, which compares timestamps
+    directly instead of using an absolute cutoff. A cache row counts as fresh outside market
+    hours as long as it has ever been populated; during market hours it must also be within a
+    floor of 5 minutes (or 2x the refresh interval if that's larger) — a floor comfortably
+    wider than the ~10-minute background scan that actually keeps the cache warm, so normal
+    scan-to-scan gaps and occasional fetch latency don't flip the display to stale every cycle."""
     has_data = last_updated > 0 and price != 0.0
     if not has_data:
         return False
     if not is_trading_session():
         return True
-    return (time.time() - last_updated) <= refresh_rate * 2
+    return (time.time() - last_updated) <= max(refresh_rate * 2, _DISPLAY_STALE_FLOOR_SECONDS)
 
 
 def get_all_cached_pulse() -> Dict[str, Dict[str, Any]]:
@@ -200,6 +212,41 @@ def upsert_live_price(ticker: str, name: str, price: Any, prev_close: Any, conn:
             conn.close()
 
 
+def _maybe_alert_stale_ticker(ticker: str, prior_last_updated: float, now: float, conn: Any) -> None:
+    """Fires a once-per-day notification when a held ticker's fetch has been failing for a
+    while during its own market hours — otherwise a persistently-failing ticker (e.g. a genuine
+    Yahoo Finance data gap) just sits silently stale forever with only a log line no one sees.
+    Checked against the cache row's age *before* this call's own fetch attempt, so a ticker that
+    has simply never been fetched yet (age 0) doesn't false-positive on its very first try."""
+    if ticker in INDEX_TICKERS:
+        return
+    if prior_last_updated <= 0 or (now - prior_last_updated) <= _STALE_ALERT_THRESHOLD_SECONDS:
+        return
+    exchange = ticker_exchange(ticker)
+    if not is_trading_session(exchange):
+        return
+
+    today = datetime.now(timezone.utc).date().isoformat()
+    cursor = conn.cursor()
+    cursor.execute("SELECT state_date FROM alert_state WHERE engine = 'stale_price' AND ticker = ?", (ticker,))
+    row = cursor.fetchone()
+    if row and row["state_date"] == today:
+        return
+
+    cursor.execute(
+        """INSERT INTO alert_state (engine, ticker, last_fired_utc, state_date)
+           VALUES ('stale_price', ?, ?, ?)
+           ON CONFLICT(engine, ticker) DO UPDATE SET last_fired_utc = excluded.last_fired_utc, state_date = excluded.state_date""",
+        (ticker, datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"), today),
+    )
+    age_minutes = round((now - prior_last_updated) / 60)
+    notification_engine.notify(
+        "stale_price_alert", "Warning",
+        f"{ticker}'s live price hasn't updated in {age_minutes} minutes despite {exchange} being open — the data fetch may be failing for this ticker.",
+        level="warning", conn=conn,
+    )
+
+
 def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
     """Fetches live ticks from Yahoo Finance and saves to DB; UK10YG is sourced exclusively from FT.com."""
     if not _FETCH_LOCK.acquire(blocking=False):
@@ -225,13 +272,16 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
 
         # Pre-fetch existing cache rows for all tickers in one query to avoid N+1 lookups
         existing_cache: dict = {}
+        existing_last_updated: dict = {}
         if tickers_to_fetch:
             placeholders = ','.join('?' for _ in tickers_to_fetch)
             cursor.execute(
-                f"SELECT ticker, price FROM market_pulse_cache WHERE ticker IN ({placeholders})",
+                f"SELECT ticker, price, last_updated FROM market_pulse_cache WHERE ticker IN ({placeholders})",
                 tickers_to_fetch,
             )
-            existing_cache = {row['ticker']: row['price'] for row in cursor.fetchall()}
+            for row in cursor.fetchall():
+                existing_cache[row['ticker']] = row['price']
+                existing_last_updated[row['ticker']] = row['last_updated']
 
         for ticker in tickers_to_fetch:
             try:
@@ -252,6 +302,7 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
 
                 if t_daily.empty:
                     # No daily data at all — transient outage or genuinely invalid ticker.
+                    _maybe_alert_stale_ticker(ticker, existing_last_updated.get(ticker, 0), current_time, conn)
                     price_in_cache = existing_cache.get(ticker)
                     in_cache = ticker in existing_cache
                     if in_cache and price_in_cache:

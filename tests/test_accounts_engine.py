@@ -9,13 +9,13 @@ from database import (
 )
 
 
-def _seed_stock_signal(ticker: str, price: float, currency: str) -> None:
+def _seed_stock_signal(ticker: str, price: float, currency: str, last_updated: str = None) -> None:
     conn = None
     try:
         conn = get_connection()
         conn.execute(
-            "INSERT OR REPLACE INTO stock_signals (ticker, current_price, currency) VALUES (?, ?, ?)",
-            (ticker, price, currency),
+            "INSERT OR REPLACE INTO stock_signals (ticker, current_price, currency, last_updated) VALUES (?, ?, ?, ?)",
+            (ticker, price, currency, last_updated),
         )
         conn.commit()
     finally:
@@ -1286,35 +1286,62 @@ def _seed_market_pulse(ticker: str, price: float, last_updated: float) -> None:
             conn.close()
 
 
+def _yesterday_utc_str() -> str:
+    from datetime import datetime, timedelta, timezone
+    return (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
+
+
 @pytest.mark.db
-def test_current_price_map_prefers_fresh_market_pulse_cache():
+def test_current_price_map_prefers_market_pulse_cache_when_newer_than_stock_signals():
     import time
-    from unittest.mock import patch
 
     aid = create_account("LivePriceAcc", "GBP")
     add_transaction(aid, "Buy", "2026-01-05", ticker="ZZLIVE", currency="GBP",
                     quantity=10, unit_price=100, exchange_rate=1.0)
-    _seed_stock_signal("ZZLIVE", 100.0, "GBP")
+    _seed_stock_signal("ZZLIVE", 100.0, "GBP", last_updated=_yesterday_utc_str())
     _seed_market_pulse("ZZLIVE", 150.0, time.time())
 
-    with patch("accounts_engine.is_price_fresh", return_value=True):
-        prices = accounts_engine._current_price_map(["ZZLIVE"])
+    prices = accounts_engine._current_price_map(["ZZLIVE"])
     assert prices["ZZLIVE"] == (150.0, "GBP")
 
 
 @pytest.mark.db
-def test_current_price_map_falls_back_to_stock_signals_when_cache_stale():
+def test_current_price_map_prefers_cache_even_when_many_minutes_old():
+    """Regression test: a market_pulse_cache price 15+ minutes old (well past the old 2x
+    REFRESH_RATE=120s cliff) must still be preferred over the once-nightly stock_signals value
+    — the background scan that keeps the cache warm runs every ~10 minutes, far coarser than
+    the UI's own poll rate, so an absolute-age cutoff discarded good data most of the time."""
     import time
-    from unittest.mock import patch
+
+    aid = create_account("SlightlyOldCacheAcc", "GBP")
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZOLDCACHE", currency="GBP",
+                    quantity=10, unit_price=100, exchange_rate=1.0)
+    _seed_stock_signal("ZZOLDCACHE", 100.0, "GBP", last_updated=_yesterday_utc_str())
+    _seed_market_pulse("ZZOLDCACHE", 150.0, time.time() - 900)  # 15 minutes old
+
+    prices = accounts_engine._current_price_map(["ZZOLDCACHE"])
+    assert prices["ZZOLDCACHE"] == (150.0, "GBP")
+
+
+@pytest.mark.db
+def test_current_price_map_falls_back_to_stock_signals_when_cache_older_than_signals():
+    """When market_pulse_cache holds a snapshot from before the last nightly scan (the narrow
+    overnight window right after the nightly close-price update but before the next session's
+    first live tick), stock_signals' own newer value should win."""
+    import time
+
+    from datetime import datetime, timezone
 
     aid = create_account("StalePriceAcc", "GBP")
     add_transaction(aid, "Buy", "2026-01-05", ticker="ZZSTALE", currency="GBP",
                     quantity=10, unit_price=100, exchange_rate=1.0)
-    _seed_stock_signal("ZZSTALE", 100.0, "GBP")
     _seed_market_pulse("ZZSTALE", 150.0, time.time() - 99999)
+    _seed_stock_signal(
+        "ZZSTALE", 100.0, "GBP",
+        last_updated=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+    )
 
-    with patch("accounts_engine.is_price_fresh", return_value=False):
-        prices = accounts_engine._current_price_map(["ZZSTALE"])
+    prices = accounts_engine._current_price_map(["ZZSTALE"])
     assert prices["ZZSTALE"] == (100.0, "GBP")
 
 
@@ -1847,3 +1874,54 @@ def test_migrate_db_creates_account_value_history_currency_table():
     columns = {row["name"] for row in cursor.fetchall()}
     assert columns == {"account_id", "snapshot_date", "currency", "equity_value_native", "equity_value_base", "fx_rate"}
     conn.close()
+
+
+@pytest.mark.db
+def test_held_tickers_lightweight_includes_trading_account_tickers():
+    aid = create_account("LightweightTickersAcc", "GBP")
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZLIGHT", currency="GBP",
+                    quantity=10, unit_price=100, exchange_rate=1.0)
+
+    tickers = accounts_engine.held_tickers_lightweight()
+    assert "ZZLIGHT" in tickers
+
+
+@pytest.mark.db
+def test_held_tickers_lightweight_excludes_non_trading_accounts():
+    pension_aid = create_account("LightweightPensionAcc", "GBP", account_type="Pension")
+    from account_scraper_engine import pension_ticker
+    accounts_engine.record_pension_contribution(pension_aid, "2026-01-01", 100.0, unit_price=1.0)
+
+    tickers = accounts_engine.held_tickers_lightweight()
+    assert pension_ticker(pension_aid) not in tickers
+
+
+@pytest.mark.db
+def test_tickers_needing_refresh_empty_when_market_closed(monkeypatch):
+    monkeypatch.setattr(accounts_engine.time_engine, "is_trading_session", lambda exchange=None: False)
+    assert accounts_engine.tickers_needing_refresh(["ZZANYTHING"], 60) == []
+
+
+@pytest.mark.db
+def test_tickers_needing_refresh_includes_stale_and_missing_when_market_open(monkeypatch):
+    import time
+
+    monkeypatch.setattr(
+        accounts_engine.time_engine, "is_trading_session",
+        lambda exchange=None: exchange == "LSE",
+    )
+    _seed_market_pulse("ZZFRESHREF", 100.0, time.time())
+    _seed_market_pulse("ZZSTALEREF", 100.0, time.time() - 3600)
+    # "ZZNOCACHEREF" has no market_pulse_cache row at all.
+
+    stale = accounts_engine.tickers_needing_refresh(
+        ["ZZFRESHREF", "ZZSTALEREF", "ZZNOCACHEREF"], 60,
+    )
+    assert "ZZFRESHREF" not in stale
+    assert "ZZSTALEREF" in stale
+    assert "ZZNOCACHEREF" in stale
+
+
+@pytest.mark.db
+def test_tickers_needing_refresh_empty_list_returns_empty():
+    assert accounts_engine.tickers_needing_refresh([], 60) == []
