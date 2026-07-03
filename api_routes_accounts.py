@@ -737,8 +737,7 @@ async def api_set_holding_price_limit(body: HoldingPriceLimitBody):
 
 def _run_refresh_now(tickers: list) -> None:
     try:
-        if tickers:
-            fetch_and_save_pulse(tickers)
+        fetch_and_save_pulse(tickers)
         for acc in get_accounts():
             if acc["account_type"] == "Trading":
                 refresh_performance_cache(acc["id"])
