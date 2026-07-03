@@ -175,6 +175,16 @@ async def trigger_macro_run_endpoint(request: Request, background_tasks: Backgro
     })
 
 
+@triggers_router.post("/trigger-treasury-auction-check")
+@limiter.limit("10/minute")
+async def trigger_treasury_auction_check_endpoint(request: Request, background_tasks: BackgroundTasks):
+    from scheduler_engine import run_treasury_auction_check, _with_job_source
+    background_tasks.add_task(_with_job_source("macro_auction_job_am", lambda: run_treasury_auction_check("am")))
+    return JSONResponse(content={
+        "status": "success",
+        "message": "Sovereign Debt Auction Monitor check initiated in the background. Check System Notifications for progress updates."
+    })
+
 @triggers_router.get("/macro-regime-allocation")
 @limiter.limit("30/minute")
 async def get_macro_regime_allocation(request: Request):

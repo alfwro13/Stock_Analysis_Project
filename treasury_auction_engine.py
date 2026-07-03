@@ -9,11 +9,11 @@ from notification_engine import notify
 
 logger = logging.getLogger(__name__)
 
-_API_BASE = "https://api.fiscaldata.treasury.gov/services/api/v1/accounting/od/auctions_query"
+_API_BASE = "https://api.fiscaldata.treasury.gov/services/api/fiscal_service/v1/accounting/od/auctions_query"
 _FIELDS = (
-    "cusip,security_term,security_type,auction_date,high_yield,median_yield,"
+    "cusip,security_term,security_type,auction_date,high_yield,avg_med_yield,"
     "bid_to_cover_ratio,direct_bidder_accepted,indirect_bidder_accepted,"
-    "primary_dealer_accepted,competitive_accepted,offering_amt"
+    "primary_dealer_accepted,comp_accepted,offering_amt"
 )
 
 _TERM_MAP: dict[str, str] = {
@@ -121,10 +121,10 @@ def check_auction_results() -> int:
 
             maturity = _maturity_label(security_term)
             high_yield = _safe_float(rec.get("high_yield"))
-            median_yield = _safe_float(rec.get("median_yield"))
+            median_yield = _safe_float(rec.get("avg_med_yield"))
             bid_to_cover = _safe_float(rec.get("bid_to_cover_ratio"))
             tail = _tail_bp(high_yield, median_yield)
-            competitive_accepted = _safe_float(rec.get("competitive_accepted"))
+            competitive_accepted = _safe_float(rec.get("comp_accepted"))
             direct_pct = _pct(rec.get("direct_bidder_accepted"), competitive_accepted)
             indirect_pct = _pct(rec.get("indirect_bidder_accepted"), competitive_accepted)
             dealer_pct = _pct(rec.get("primary_dealer_accepted"), competitive_accepted)

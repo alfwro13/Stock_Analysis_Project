@@ -279,6 +279,18 @@ def test_trap_monitor_page_loads(client):
     _assert_page_ok(client, "/trap-monitor", label="Trap Monitor")
 
 
+# ── Sovereign Debt Auction Monitor ────────────────────────────────────────────
+
+@pytest.mark.pages
+def test_treasury_auctions_page_has_back_to_tools_and_run_now(client):
+    """GET /treasury-auctions must expose a Back to Tools link and a Run Now trigger button."""
+    resp = client.get("/treasury-auctions")
+    assert resp.status_code == 200
+    assert b'href="/tools"' in resp.content
+    assert b'id="btn-run-auction-check"' in resp.content
+    assert b'/api/trigger-treasury-auction-check' in resp.content
+
+
 # ── Log Viewer ────────────────────────────────────────────────────────────────
 
 @pytest.mark.pages

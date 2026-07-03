@@ -1819,6 +1819,7 @@ Sends a test insider trading alert via Nextcloud Talk.
 | `POST` | `/api/ml/trigger-inference` | Run daily ML predictions |
 | `POST` | `/api/macro/init-pipeline` | First-time macro AI setup |
 | `POST` | `/api/macro/run-pipeline` | Daily macro AI update |
+| `POST` | `/api/trigger-treasury-auction-check` | Run the Sovereign Debt Auction Monitor now |
 | `GET` | `/api/universe/profiler-status` | Fundamentals profiler queue |
 | `POST` | `/api/trigger-universe-update` | Refresh universe ticker list |
 | `POST` | `/api/universe/sync-indices` | Scrape S&P 500 + FTSE 100 |
@@ -2636,6 +2637,16 @@ Triggers an immediate background run of the **Forensic Accounting Scores** job, 
 **Auth:** Required (session cookie + CSRF token).
 
 **Response:** `{"status": "success", "message": "Forensic Accounting Scores started."}`
+
+---
+
+### `POST /api/trigger-treasury-auction-check`
+
+Triggers an immediate background run of the **Sovereign Debt Auction Monitor** (`treasury_auction_engine.check_auction_results()`), fetching today's US Treasury auction results and firing a weakness alert if warranted. Used by the "Run Now" button on the `/treasury-auctions` tools page; shares the same job id (`macro_auction_job_am`) as the scheduled AM check, so it updates the same Master APScheduler Matrix row.
+
+**Auth:** Required (session cookie + CSRF token).
+
+**Response:** `{"status": "success", "message": "Sovereign Debt Auction Monitor check initiated in the background. Check System Notifications for progress updates."}`
 
 ---
 

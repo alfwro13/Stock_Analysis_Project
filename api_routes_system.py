@@ -582,6 +582,9 @@ async def get_system_metrics():
             cfg_key: (job_last_runs.get(job_id) or {}).get("last_run") or ""
             for cfg_key, job_id in config_key_to_job.items()
         }
+        for auction_job_id in ("macro_auction_job_am", "macro_auction_job_pm"):
+            scheduler_last_runs[auction_job_id] = _localise_ts((job_last_runs.get(auction_job_id) or {}).get("last_run", "Never"))
+            scheduler_last_runs_sort[auction_job_id] = (job_last_runs.get(auction_job_id) or {}).get("last_run") or ""
 
         return JSONResponse(content={
             "status": "success",

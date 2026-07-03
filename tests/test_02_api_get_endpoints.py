@@ -108,6 +108,15 @@ def test_get_system_metrics_returns_200(client):
     assert isinstance(body["scheduler_last_runs"], dict), "'scheduler_last_runs' must be a dict"
 
 
+@pytest.mark.api
+def test_get_system_metrics_includes_auction_job_keys(client):
+    """The Master APScheduler Matrix keys its auction rows by job id, not config key — both must be present."""
+    resp = client.get("/api/system/metrics")
+    body = _json(resp)
+    assert "macro_auction_job_am" in body["scheduler_last_runs"]
+    assert "macro_auction_job_pm" in body["scheduler_last_runs"]
+
+
 # ── Network / Settings ────────────────────────────────────────────────────────
 
 @pytest.mark.api

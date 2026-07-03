@@ -11,6 +11,11 @@
     Refreshed twice daily at {{ auction_am_input }} and {{ auction_pm_input }} (local time) on weekdays.
 </p>
 
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+    <a href="/tools" class="btn btn-outline-secondary btn-sm mb-0">&#8592; Back to Tools</a>
+    <button id="btn-run-auction-check" class="btn btn-outline-primary btn-sm">Run Now</button>
+</div>
+
 {% if summary and summary.total %}
 <div class="regime-callout mb-3">
     <div class="regime-callout-title">📊 Data Summary</div>
@@ -121,4 +126,23 @@ $(document).ready(function () {
 });
 </script>
 {% endif %}
+<script>
+document.getElementById('btn-run-auction-check').addEventListener('click', function () {
+    const btn = this;
+    btn.disabled = true;
+    btn.textContent = 'Running…';
+    fetch('/api/trigger-treasury-auction-check', { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+        .then(r => r.json())
+        .then(d => {
+            btn.disabled = false;
+            btn.textContent = 'Run Now';
+            alert(d.message || 'Triggered. Check System Notifications for progress.');
+        })
+        .catch(() => {
+            btn.disabled = false;
+            btn.textContent = 'Run Now';
+            alert('Request failed. Check System Notifications.');
+        });
+});
+</script>
 {% endblock %}

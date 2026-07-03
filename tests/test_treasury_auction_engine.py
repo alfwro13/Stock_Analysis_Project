@@ -199,12 +199,12 @@ class TestCheckAuctionResults:
         "security_type": "Note",
         "auction_date": "2026-06-21",
         "high_yield": "4.52",
-        "median_yield": "4.50",
+        "avg_med_yield": "4.50",
         "bid_to_cover_ratio": "2.65",
         "direct_bidder_accepted": "10000000",
         "indirect_bidder_accepted": "25000000",
         "primary_dealer_accepted": "4000000",
-        "competitive_accepted": "39000000",
+        "comp_accepted": "39000000",
         "offering_amt": "39000000",
     }
 

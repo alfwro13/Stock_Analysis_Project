@@ -93,6 +93,7 @@ TRIGGER_ENDPOINTS = [
     ("/api/trigger-freetrade-sync",      "Freetrade Sync"),
     ("/api/news-feed/run-now",           "News Feed Run Now"),
     ("/api/backup/run",                  "Automated Backup"),
+    ("/api/trigger-treasury-auction-check", "Treasury Auction Check"),
 ]
 
 
