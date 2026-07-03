@@ -35,7 +35,7 @@ Stock_Analysis_Project/
 ├── database.py               # Thin hub (~80 lines): get_connection(), log_notification(), re-exports from sub-modules below
 ├── db_schema.py              # init_db() (all CREATE TABLE statements) + migrate_db() (all ALTER TABLE migrations) + _seed_exchange_hours_json()
 ├── db_etf.py                 # ETF predictor CRUD: get/create/update/soft-delete configs, log_etf_prediction, fill_etf_actual, get_etf_accuracy
-├── db_helpers.py             # Quant/trap/score helpers: upsert_quant_signal, log_score_event, log_trap_phase, get_unresolved_trap_phases, batch_update_trap_phase_actuals, get_trap_phase_accuracy, get_universe_tickers
+├── db_helpers.py             # Quant/trap/score helpers: upsert_quant_signal, log_score_event, log_trap_phase, get_unresolved_trap_phases, batch_update_trap_phase_actuals, get_trap_phase_accuracy, get_universe_tickers, get_mutual_fund_tickers
 ├── db_accounts.py            # Built-in Accounts CRUD: accounts + account_transactions + account_value_history
 ├── accounts_engine.py        # Built-in Accounts ledger math: average-cost holdings/closed-positions, cash balance, FX backfill, Ghostfolio merge
 ├── account_scraper_engine.py # Account Price Scraper: generic URL+CSS-selector price fetch/extract, CSV import, price lookups (House/Pension accounts)
@@ -87,7 +87,7 @@ Stock_Analysis_Project/
 ├── index_engine.py           # Index data (SPY, FTSE…)
 ├── freetrade_engine.py       # Freetrade CSV import
 ├── ghostfolio_sync.py        # Ghostfolio API sync
-├── fundamentals_helpers.py   # Shared fundamentals utilities
+├── fundamentals_helpers.py   # Shared fundamentals calculations: calculate_piotroski_f_score, calculate_altman_z_score, calculate_beneish_m_score, calculate_peter_lynch_peg, get_instrument_type
 ├── visuals.py                # OHLCV, macro, and anomaly Plotly charts
 ├── visuals_etf.py            # ETF charts: correlation, prediction, contributions, overlay
 ├── visuals_ai.py             # AI contagion charts: performance chart, correlation heatmap
@@ -262,6 +262,21 @@ Schema changes must go through `db_schema.py:init_db()` (new tables) and `db_sch
     **Bypass to flag as a bug:** a new page/engine/endpoint writing its own inline logic to derive a value that an existing engine already computes (e.g. picking a "current price" from `market_pulse_cache` vs. `stock_signals` with bespoke freshness rules, when `accounts_engine.current_price_map()` already does this canonically). Independent reimplementations drift apart over time even when they start out equivalent, and the divergence is invisible until two pages are compared side by side — see the Portfolio/Stock Detail/Accounts price-consistency bug (fixed 2026-07-03) where three separate "get the current price" implementations had quietly diverged.
 
     **Before writing new calculation logic:** grep for the concept first (e.g. `current_price`, `exchange_rate`, `pnl`) to check whether a canonical engine function already exists. If it does, use it. If a genuinely new calculation is needed that overlaps with an existing one, extend the existing canonical function rather than writing a sibling.
+
+17. **Helper files are the canonical home for shared utility/calculation logic — check them before writing new logic, and extend rather than duplicate.** This codebase has four dedicated shared-helper modules, each scoped to a layer:
+
+    | Helper file | Scope | Examples |
+    |---|---|---|
+    | `db_helpers.py` | DB-layer query/write helpers used by more than one engine or route (quant/trap/score persistence, universe/ticker classification queries) | `upsert_quant_signal`, `log_trap_phase`, `get_universe_tickers`, `get_mutual_fund_tickers` |
+    | `fundamentals_helpers.py` | Pure calculation helpers derived from fundamentals data (accounting-forensics scores, valuation ratios, instrument classification) | `calculate_piotroski_f_score`, `calculate_altman_z_score`, `calculate_beneish_m_score`, `calculate_peter_lynch_peg`, `get_instrument_type` |
+    | `page_helpers.py` | Page-route-layer display/formatting helpers shared across `page_routes*.py` | `_fmt_currency`, `_fmt_volume`, `calculate_pnl`, `_build_position_sizing_context` |
+    | `utils.py` | Generic, layer-agnostic utilities with no DB/page dependency | `normalize_ticker` |
+
+    **Before writing a new utility function, calculation, or query helper:** grep the relevant helper file(s) above for the concept first. If an existing function already does it, or is close enough to extend (e.g. an extra parameter), use/extend it — do not write a second, parallel implementation in the calling module. Same failure mode as rule 16, generalised beyond business calculations to any reusable helper: duplicated logic drifts apart silently (a fix applied to one copy doesn't propagate to the other) until two callers disagree on something that should be identical — see the `get_mutual_fund_tickers()` gap (fixed 2026-07-03) where `intraday_orchestrator.py` had its own undocumented ad-hoc `ticker.startswith('0P')` mutual-fund check instead of using the canonical `db_helpers` function, which itself hadn't been wired into every `get_intraday()` call site that needed it.
+
+    **Search by purpose, not exact name.** A duplicate is rarely named the same as the original — `_get_current_price`, `resolve_price`, and `latest_quote` can all be the same concept reimplemented three times. Grep for the underlying noun/verb (`price`, `pnl`, `mutual_fund`, `exchange_rate`) across the four helper files above rather than just the function name you're about to write.
+
+    **When no existing helper file fits:** if a genuinely new domain of shared logic emerges, create a new `<domain>_helpers.py` rather than forcing it into an unrelated file or leaving it duplicated inline. Keep each helper file scoped to one concern; if it grows too large for a single Read, that's the rule 12 split signal.
 
 ---
 
