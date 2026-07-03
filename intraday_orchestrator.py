@@ -12,7 +12,7 @@ from config import load_config, INTRADAY_DIR, HISTORICAL_DIR, PORT, SERVER_URL
 from yahoo_engine import yahoo_engine
 import time_engine
 from utils import normalize_ticker
-from database import get_accounts, get_connection
+from database import get_accounts, get_connection, get_mutual_fund_tickers
 import accounts_engine
 from crash_engine import CrashEngine
 from moonshot_engine import MoonshotEngine
@@ -418,9 +418,10 @@ class IntradayOrchestrator:
 
         tickers = self.get_portfolio_tickers()
         ignored = self.config.get("IGNORED_TICKERS", [])
-        
-        tickers = [t for t in tickers if t not in ignored and not t.startswith('0P')]
-        
+        mutual_funds = get_mutual_fund_tickers(tickers)
+
+        tickers = [t for t in tickers if t not in ignored and t not in mutual_funds]
+
         if not tickers:
             logger.warning("No valid portfolio items found for intraday scan.")
             return

@@ -51,24 +51,33 @@ def get_universe_tickers() -> List[str]:
 
 
 def get_mutual_fund_tickers(tickers: List[str]) -> set:
-    """Subset of `tickers` classified MUTUALFUND in market_universe — these have no intraday
-    trading (one NAV print per day), so Yahoo Finance always returns empty for 5m bars."""
+    """Subset of `tickers` classified MUTUALFUND — these have no intraday trading (one NAV
+    print per day), so Yahoo Finance always returns empty for 5m bars. Checks asset_profiles
+    and stock_signals as well as market_universe: a portfolio-only ticker bought via a
+    Built-in Account (rather than imported from a Freetrade CSV export) never gets a
+    market_universe row, and only picks up its quote_type via the nightly quant scan
+    (stock_signals) and fundamentals profiler (asset_profiles) — which may not have run yet
+    for a ticker at all (e.g. a just-closed position). Yahoo's own OEIC/mutual-fund symbol
+    scheme always starts with "0P" (e.g. "0P0001RI3X.L"), so that prefix is matched directly
+    without a DB round trip, guaranteeing correct classification even before any table has a row."""
     if not tickers:
         return set()
+    prefix_matches = {t for t in tickers if t.startswith('0P')}
     conn = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
         placeholders = ",".join("?" * len(tickers))
         cursor.execute(
-            f"SELECT ticker FROM market_universe WHERE quote_type = 'MUTUALFUND' "
-            f"AND ticker IN ({placeholders})",
-            tickers,
+            f"SELECT ticker FROM market_universe WHERE quote_type = 'MUTUALFUND' AND ticker IN ({placeholders}) "
+            f"UNION SELECT ticker FROM asset_profiles WHERE quote_type = 'MUTUALFUND' AND ticker IN ({placeholders}) "
+            f"UNION SELECT ticker FROM stock_signals WHERE quote_type = 'MUTUALFUND' AND ticker IN ({placeholders})",
+            tickers * 3,
         )
-        return {row["ticker"] for row in cursor.fetchall()}
+        return prefix_matches | {row["ticker"] for row in cursor.fetchall()}
     except Exception as e:
         logger.error("Failed to fetch mutual fund tickers: %s", e)
-        return set()
+        return prefix_matches
     finally:
         if conn:
             conn.close()

@@ -223,6 +223,46 @@ def test_get_mutual_fund_tickers_unknown_ticker_excluded():
     assert _db.get_mutual_fund_tickers(["GU_UNKNOWN_TICKER"]) == set()
 
 
+@pytest.mark.db
+def test_get_mutual_fund_tickers_matches_0P_prefix_with_no_db_row():
+    """Yahoo's OEIC/mutual-fund symbol scheme always starts with '0P' — a ticker not yet
+    classified anywhere in the DB (e.g. a just-closed position never scanned) must still be
+    caught, since waiting on the nightly quant scan/profiler is what caused the original bug."""
+    assert _db.get_mutual_fund_tickers(["0P0001RI3X.L"]) == {"0P0001RI3X.L"}
+
+
+@pytest.mark.db
+def test_get_mutual_fund_tickers_finds_asset_profiles_classification():
+    """A portfolio-only ticker bought via a Built-in Account has no market_universe row —
+    only asset_profiles (fundamentals profiler) or stock_signals (quant scan) ever get it."""
+    conn = _conn()
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO asset_profiles (ticker, quote_type) VALUES ('GU_AP_FUND', 'MUTUALFUND')"
+        )
+        conn.commit()
+        assert _db.get_mutual_fund_tickers(["GU_AP_FUND"]) == {"GU_AP_FUND"}
+    finally:
+        conn.execute("DELETE FROM asset_profiles WHERE ticker = 'GU_AP_FUND'")
+        conn.commit()
+        conn.close()
+
+
+@pytest.mark.db
+def test_get_mutual_fund_tickers_finds_stock_signals_classification():
+    conn = _conn()
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO stock_signals (ticker, quote_type) VALUES ('GU_SS_FUND', 'MUTUALFUND')"
+        )
+        conn.commit()
+        assert _db.get_mutual_fund_tickers(["GU_SS_FUND"]) == {"GU_SS_FUND"}
+    finally:
+        conn.execute("DELETE FROM stock_signals WHERE ticker = 'GU_SS_FUND'")
+        conn.commit()
+        conn.close()
+
+
 # ── batch_update_trap_phase_actuals ───────────────────────────────────────────
 
 @pytest.mark.db
