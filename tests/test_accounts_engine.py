@@ -792,6 +792,42 @@ def test_backfill_value_history_for_house_uses_scraped_price_series():
 
 
 @pytest.mark.db
+def test_house_total_value_excludes_initial_cash_purchase_price_memo():
+    from account_scraper_engine import import_price_csv
+    aid = create_account("HouseTotalValueAcc", "GBP", account_type="House", initial_cash=300000.0)
+    import_price_csv(aid, "date;marketPrice\n2026-02-01;350000\n")
+
+    assert accounts_engine.total_value(aid) == 350000.0
+
+
+@pytest.mark.db
+def test_snapshot_all_accounts_house_cash_ignores_initial_cash_purchase_price_memo():
+    from account_scraper_engine import import_price_csv
+    aid = create_account("HouseSnapInitCashAcc", "GBP", account_type="House", initial_cash=300000.0)
+    import_price_csv(aid, "date;marketPrice\n2026-02-01;350000\n")
+
+    accounts_engine.snapshot_all_accounts()
+
+    from database import get_value_history
+    history = get_value_history(aid)
+    assert history[-1]["cash_value"] == 0.0
+    assert history[-1]["total_value"] == 350000.0
+
+
+@pytest.mark.db
+def test_backfill_house_value_history_cash_ignores_initial_cash_purchase_price_memo():
+    from account_scraper_engine import import_price_csv
+    aid = create_account("HouseBackfillInitCashAcc", "GBP", account_type="House", initial_cash=300000.0)
+    import_price_csv(aid, "date;marketPrice\n2026-01-01;350000\n")
+
+    accounts_engine.backfill_value_history(aid)
+
+    from database import get_value_history
+    history = get_value_history(aid)
+    assert all(row["cash_value"] == 0.0 for row in history)
+
+
+@pytest.mark.db
 def test_pension_holdings_market_value_uses_scraped_price():
     from account_scraper_engine import import_price_csv, pension_ticker
     aid = create_account("PensionHoldingsAcc", "GBP", account_type="Pension")

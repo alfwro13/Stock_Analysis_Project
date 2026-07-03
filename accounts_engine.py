@@ -823,7 +823,7 @@ def total_value(account_id: int) -> Optional[float]:
         return None
     open_holdings, _closed, _realized, _realized_by_txn = _ledger_for_account(account_id)
     equity = _equity_value_for_account(acc, open_holdings)
-    cash = 0.0 if acc["account_type"] == "Pension" else cash_balance(account_id)
+    cash = 0.0 if acc["account_type"] in ("Pension", "House") else cash_balance(account_id)
     return round(cash + equity, 2)
 
 
@@ -1001,9 +1001,9 @@ def snapshot_all_accounts() -> int:
         aid = acc["id"]
         open_holdings, _closed, _realized, _realized_by_txn = _ledger_for_account(aid)
         equity, breakdown = _equity_value_for_account_with_breakdown(acc, open_holdings)
-        # Pension has no real cash sub-ledger — cash_balance() would just return initial_cash
+        # Pension/House have no real cash sub-ledger — cash_balance() would just return initial_cash
         # as a phantom baseline, double-counting money already represented in equity_value.
-        cash = 0.0 if acc["account_type"] == "Pension" else cash_balance(aid)
+        cash = 0.0 if acc["account_type"] in ("Pension", "House") else cash_balance(aid)
         contributions = net_contributions(aid)
         upsert_value_snapshot(aid, today, round(cash + equity, 2), round(cash, 2), round(equity, 2), contributions)
         _write_currency_breakdown(aid, today, breakdown)
@@ -1022,7 +1022,7 @@ def resnapshot_account(account_id: int) -> None:
     today = datetime.now(timezone.utc).date().isoformat()
     open_holdings, _closed, _realized, _realized_by_txn = _ledger_for_account(account_id)
     equity, breakdown = _equity_value_for_account_with_breakdown(acc, open_holdings)
-    cash = 0.0 if acc["account_type"] == "Pension" else cash_balance(account_id)
+    cash = 0.0 if acc["account_type"] in ("Pension", "House") else cash_balance(account_id)
     contributions = net_contributions(account_id)
     upsert_value_snapshot(account_id, today, round(cash + equity, 2), round(cash, 2), round(equity, 2), contributions)
     _write_currency_breakdown(account_id, today, breakdown)
@@ -1117,7 +1117,8 @@ def _backfill_house_value_history(account_id: int, acc: dict) -> int:
         native = float(window.iloc[-1])
         fx_rate = get_rate_to_base(acc["currency"])
         equity = native * fx_rate
-        cash = _cash_balance_as_of(acc, transactions, date_str)
+        # House has no real cash sub-ledger — its value is the scraped equity price alone.
+        cash = 0.0
         contributions = _net_contributions_as_of(acc, transactions, date_str)
         upsert_value_snapshot(account_id, date_str, round(cash + equity, 2), round(cash, 2), round(equity, 2), round(contributions, 2))
         _write_currency_breakdown(account_id, date_str, {acc["currency"]: {"native": native, "base": equity, "fx_rate": fx_rate}})
