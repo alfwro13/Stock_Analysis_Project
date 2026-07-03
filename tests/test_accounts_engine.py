@@ -1897,6 +1897,17 @@ def test_held_tickers_lightweight_excludes_non_trading_accounts():
 
 
 @pytest.mark.db
+def test_held_tickers_lightweight_excludes_ignored_tickers(monkeypatch):
+    aid = create_account("LightweightIgnoredAcc", "GBP")
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZIGNORED", currency="GBP",
+                    quantity=10, unit_price=100, exchange_rate=1.0)
+    monkeypatch.setattr(accounts_engine, "load_config", lambda: {"IGNORED_TICKERS": ["ZZIGNORED"]})
+
+    tickers = accounts_engine.held_tickers_lightweight()
+    assert "ZZIGNORED" not in tickers
+
+
+@pytest.mark.db
 def test_tickers_needing_refresh_empty_when_market_closed(monkeypatch):
     monkeypatch.setattr(accounts_engine.time_engine, "is_trading_session", lambda exchange=None: False)
     assert accounts_engine.tickers_needing_refresh(["ZZANYTHING"], 60) == []

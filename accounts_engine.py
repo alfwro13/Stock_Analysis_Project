@@ -822,7 +822,9 @@ def held_tickers_lightweight() -> list:
     finally:
         if conn:
             conn.close()
-    return list(tickers)
+
+    ignored = {normalize_ticker(t) for t in load_config().get("IGNORED_TICKERS", [])}
+    return [t for t in tickers if normalize_ticker(t) not in ignored]
 
 
 def tickers_needing_refresh(tickers: list, refresh_rate: int) -> list:

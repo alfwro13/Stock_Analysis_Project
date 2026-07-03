@@ -154,5 +154,5 @@
         btn.addEventListener("click", function () { fetchPeriod(btn.dataset.period); });
     });
 
-    render(window.FXD_INITIAL || [], window.FXD_PERIOD || "ytd");
+    render(window.FXD_INITIAL || [], window.FXD_PERIOD || "lifetime");
 })();

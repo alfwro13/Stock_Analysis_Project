@@ -111,7 +111,7 @@ Full schema: see `assets/api_reference.md` → section 20.
 ## UI surfaces
 
 ### `/fx-drag` (Tools page)
-Full portfolio-level view: period selector, summary hero cards (total USD exposure, avg equity return, FX effect, avg GBP return), table per position, and a Plotly stacked bar chart (equity vs FX contribution per ticker).
+Full portfolio-level view: period selector, summary hero cards (total USD exposure, avg equity return, FX effect, avg GBP return), table per position, and a Plotly stacked bar chart (equity vs FX contribution per ticker). **Lifetime** is the default period on page load (`page_routes.fx_drag_page` calls `portfolio_lifetime_fx_breakdown()` server-side); YTD/1Y/2Y are one click away.
 
 ### Stock detail page (`/stock/{ticker}`)
 A compact inline "FX Breakdown (YTD)" row appended to the "Your Position" box for USD-quoted stocks that have a position. Shows three numbers: Equity (USD) / FX Effect / Total GBP (YTD). Links to `/fx-drag` for the full breakdown.

@@ -43,7 +43,7 @@ from visuals_ai import (
     create_ai_contagion_correlation_heatmap,
 )
 from portfolio_service import get_rate_to_base, get_rate_from_base
-from fx_drag_engine import compute_fx_breakdown, portfolio_fx_breakdown
+from fx_drag_engine import compute_fx_breakdown, portfolio_fx_breakdown, portfolio_lifetime_fx_breakdown
 from quant_signals import get_candlestick_patterns
 from quant_screener import fetch_latest_signals, generate_markdown_briefing
 from constants import PREDICTION_HORIZON_DAYS, PREDICTION_RETURN_THRESHOLD, CSS_VERSION
@@ -821,9 +821,7 @@ async def forensic_screener_page(request: Request):
 
 @page_router.get("/fx-drag", response_class=HTMLResponse)
 async def fx_drag_page(request: Request):
-    now = datetime.now(timezone.utc)
-    ytd_days = (now.date() - now.date().replace(month=1, day=1)).days or 1
-    initial_data = portfolio_fx_breakdown(ytd_days)
+    initial_data = portfolio_lifetime_fx_breakdown()
     return templates.TemplateResponse(
         request=request,
         name="fx_drag.html",
@@ -831,7 +829,7 @@ async def fx_drag_page(request: Request):
             "unread_count": get_unread_count(),
             "config": load_config(),
             "initial_data": initial_data,
-            "initial_period": "ytd",
+            "initial_period": "lifetime",
             "css_version": CSS_VERSION,
         },
     )
