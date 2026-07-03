@@ -3265,6 +3265,43 @@ Per-holding metrics across every non-deleted Trading account, for the Home Assis
 
 ---
 
+### `GET /api/accounts/other-accounts-list`
+
+Current value + basic performance for every non-deleted Pension/House account, for the Home Assistant integration's Phase 4 "Other Accounts" sensors (one sensor per account). Thin wrapper around `accounts_engine.other_accounts_list()`. With zero Pension/House accounts, returns `"accounts": []`.
+
+**Response**
+
+```json
+{
+  "status": "success",
+  "base_currency": "GBP",
+  "accounts": [
+    {
+      "account_id": 9,
+      "name": "Aviva Pension",
+      "account_type": "Pension",
+      "currency": "GBP",
+      "current_value": 84210.55,
+      "performance": {"1m": 1.8, "ytd": 6.4, "1y": 11.2},
+      "last_updated": "2026-07-02"
+    },
+    {
+      "account_id": 11,
+      "name": "House - Alicia Avenue",
+      "account_type": "House",
+      "currency": "GBP",
+      "current_value": 350000.0,
+      "performance": {"1m": null, "ytd": 0.0, "1y": 2.9},
+      "last_updated": "2026-06-01"
+    }
+  ]
+}
+```
+
+`current_value` is `accounts_engine.account_summary()`'s `equity_value` — deliberately **not** `total_value()`. `total_value()` also adds `cash_balance()`, which for a House account starts from `initial_cash` (a purchase-price memo, not real cash — House has no cash sub-ledger), which would double-count it against the scraped valuation; `GET /accounts` already sources its own House/Pension tile figure the same way. `performance` is `accounts_engine.scraped_price_performance()` (1 month / YTD / 1 year %, derived from `account_price_history`, `null` for a window with no price that far back yet). `last_updated` is the most recent `account_price_history.price_date` for that account, `null` if it has never been scraped/imported.
+
+---
+
 ### `POST /api/accounts/holding-price-limit`
 
 Sets one holding's low and/or high price alert limit, called by the Home Assistant integration's per-holding Low Limit / High Limit number entities. Thin wrapper around `accounts_engine.set_holding_price_limit()`.

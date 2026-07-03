@@ -1817,6 +1817,27 @@ def test_api_holdings_list_status_success(client):
 
 
 @pytest.mark.api
+def test_api_other_accounts_list_status_success(client):
+    account_id = _create_account(client, name="OtherAcctsApiPension", account_type="Pension")
+    client.post(f"/api/accounts/{account_id}/pension/contribution", json={
+        "txn_date": "2026-06-01", "amount": 150.0, "unit_price": 1.5,
+    })
+
+    resp = client.get("/api/accounts/other-accounts-list")
+    assert resp.status_code == 200
+    data = _json(resp)
+    assert data["status"] == "success"
+    assert data["base_currency"]
+    row = next(r for r in data["accounts"] if r["account_id"] == account_id)
+    for key in ("account_id", "name", "account_type", "currency", "current_value", "performance", "last_updated"):
+        assert key in row, f"Missing '{key}' in other-accounts-list row: {row}"
+    assert row["account_type"] == "Pension"
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
 def test_api_set_holding_price_limit_low_only_does_not_clear_high(client):
     with patch("api_routes_accounts.resnapshot_account"):
         account_id = _create_account(client, name="LimitApiAcc")

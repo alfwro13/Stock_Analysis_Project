@@ -1273,10 +1273,12 @@ def pension_display_label(acc: dict) -> str:
 _PENSION_PERFORMANCE_WINDOWS = (("1m", 30), ("ytd", None), ("1y", 365))
 
 
-def pension_performance(account_id: int) -> dict:
-    """Performance % over 1 month / YTD / 1 year, derived from the scraped/imported unit price
-    history rather than the value snapshot history — gives a meaningful number from day one since
-    the unit price itself is a like-for-like return series, unaffected by contribution timing."""
+def scraped_price_performance(account_id: int) -> dict:
+    """Performance % over 1 month / YTD / 1 year, derived from the scraped/imported price
+    history (`account_price_history`) rather than the value snapshot history — gives a
+    meaningful number from day one since the price itself is a like-for-like return series,
+    unaffected by contribution timing. Works for any account type backed by that table
+    (Pension, House)."""
     history = get_price_history(account_id)
     if not history:
         return {"1m": None, "ytd": None, "1y": None}
@@ -1696,6 +1698,34 @@ def account_metrics_list() -> dict:
             "gain_3m": cached["return_3m"],
             "gain_1y": cached["return_1y"],
             "mwrr_pct": cached["mwrr"],
+        })
+    return {"base_currency": BASE_CURRENCY, "accounts": accounts}
+
+
+def _other_accounts() -> list:
+    return [a for a in get_accounts() if a["account_type"] in ("Pension", "House")]
+
+
+def other_accounts_list() -> dict:
+    """Per-Pension/House-account current value for the Home Assistant Phase 4 sensor set.
+    `current_value` deliberately uses `account_summary()`'s `equity_value` rather than
+    `total_value()` — for House, `total_value()` adds `cash_balance()`, which starts from
+    `initial_cash` (the purchase price memo, not real cash), double-counting it against the
+    scraped valuation. `GET /accounts` already sources its own House/Pension tile figure the
+    same way (`account_summary(id).get("equity_value")`), so this stays consistent with it."""
+    accounts = []
+    for acc in _other_accounts():
+        account_id = acc["id"]
+        summary = account_summary(account_id)
+        history = get_price_history(account_id)
+        accounts.append({
+            "account_id": account_id,
+            "name": acc["name"],
+            "account_type": acc["account_type"],
+            "currency": acc["currency"],
+            "current_value": summary.get("equity_value", 0.0),
+            "performance": scraped_price_performance(account_id),
+            "last_updated": history[-1]["price_date"] if history else None,
         })
     return {"base_currency": BASE_CURRENCY, "accounts": accounts}
 

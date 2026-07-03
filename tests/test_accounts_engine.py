@@ -1065,29 +1065,29 @@ def test_account_summary_includes_holdings_count():
 
 
 @pytest.mark.db
-def test_pension_performance_returns_none_without_enough_history():
+def test_scraped_price_performance_returns_none_without_enough_history():
     from account_scraper_engine import import_price_csv
     aid = create_account("PensionPerfShortAcc", "GBP", account_type="Pension")
     import_price_csv(aid, "date;marketPrice\n2026-06-27;1.00\n2026-06-28;1.10\n")
-    result = accounts_engine.pension_performance(aid)
+    result = accounts_engine.scraped_price_performance(aid)
     # Only 1-2 days of history exist, so there's no price as far back as 1 month/YTD/1 year ago.
     assert result["1m"] is None
     assert result["1y"] is None
 
 
 @pytest.mark.db
-def test_pension_performance_returns_none_with_no_history():
+def test_scraped_price_performance_returns_none_with_no_history():
     aid = create_account("PensionPerfEmptyAcc", "GBP", account_type="Pension")
-    result = accounts_engine.pension_performance(aid)
+    result = accounts_engine.scraped_price_performance(aid)
     assert result == {"1m": None, "ytd": None, "1y": None}
 
 
 @pytest.mark.db
-def test_pension_performance_computes_pct_change_from_unit_price():
+def test_scraped_price_performance_computes_pct_change_from_unit_price():
     from account_scraper_engine import import_price_csv
     aid = create_account("PensionPerfAcc", "GBP", account_type="Pension")
     import_price_csv(aid, "date;marketPrice\n2025-06-28;1.00\n2026-06-28;1.50\n")
-    result = accounts_engine.pension_performance(aid)
+    result = accounts_engine.scraped_price_performance(aid)
     assert result["1y"] == 50.0   # (1.50 - 1.00) / 1.00 * 100
 
 
@@ -1560,6 +1560,59 @@ def test_account_metrics_list_only_includes_trading_accounts():
     account_ids = {row["account_id"] for row in result["accounts"]}
     assert trading_aid in account_ids
     assert pension_aid not in account_ids
+
+
+@pytest.mark.db
+def test_other_accounts_list_includes_pension_and_house(monkeypatch):
+    from account_scraper_engine import import_price_csv
+
+    pension_aid = create_account("OtherAcctsPension", "GBP", account_type="Pension")
+    import_price_csv(pension_aid, "date;marketPrice\n2026-06-01;1.50\n")
+    house_aid = create_account("OtherAcctsHouse", "GBP", account_type="House")
+    import_price_csv(house_aid, "date;marketPrice\n2026-06-01;350000\n")
+    trading_aid = create_account("OtherAcctsTrading", "GBP")
+
+    monkeypatch.setattr(
+        accounts_engine, "_other_accounts",
+        lambda: [accounts_engine.get_account(pension_aid), accounts_engine.get_account(house_aid)],
+    )
+
+    result = accounts_engine.other_accounts_list()
+    assert result["base_currency"] == "GBP"
+    account_ids = {row["account_id"] for row in result["accounts"]}
+    assert account_ids == {pension_aid, house_aid}
+    assert trading_aid not in account_ids
+
+    by_id = {row["account_id"]: row for row in result["accounts"]}
+    assert by_id[pension_aid]["account_type"] == "Pension"
+    assert by_id[pension_aid]["current_value"] == accounts_engine.account_summary(pension_aid)["equity_value"]
+    assert by_id[pension_aid]["last_updated"] == "2026-06-01"
+    assert by_id[house_aid]["account_type"] == "House"
+    assert by_id[house_aid]["current_value"] == 350000.0
+
+
+@pytest.mark.db
+def test_other_accounts_list_house_current_value_excludes_initial_cash():
+    """Regression test: current_value must use equity_value, not total_value() — total_value()
+    adds cash_balance(), which for House starts from initial_cash (the purchase price memo, not
+    real cash) and would double-count it against the scraped valuation."""
+    from account_scraper_engine import import_price_csv
+
+    aid = create_account("OtherAcctsHousePhantomCash", "GBP", account_type="House", initial_cash=300000.0)
+    import_price_csv(aid, "date;marketPrice\n2026-06-01;350000\n")
+
+    result = accounts_engine.other_accounts_list()
+    row = next(r for r in result["accounts"] if r["account_id"] == aid)
+    assert row["current_value"] == 350000.0
+
+
+@pytest.mark.db
+def test_other_accounts_list_empty_when_no_pension_or_house_accounts(monkeypatch):
+    monkeypatch.setattr(accounts_engine, "_other_accounts", lambda: [])
+
+    result = accounts_engine.other_accounts_list()
+    assert result["accounts"] == []
+    assert result["base_currency"] == "GBP"
 
 
 @pytest.mark.db

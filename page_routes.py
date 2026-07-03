@@ -467,7 +467,7 @@ async def account_detail_page(request: Request, account_id: int):
 @page_router.get("/accounts/{account_id}/pension", response_class=HTMLResponse)
 async def pension_account_detail_page(request: Request, account_id: int):
     from accounts_engine import (
-        account_summary, pension_activities, pension_display_label, pension_performance,
+        account_summary, pension_activities, pension_display_label, scraped_price_performance,
     )
     from database import get_account, get_price_history, get_value_history
     from visuals import create_pension_unit_price_chart, create_pension_value_chart
@@ -499,7 +499,7 @@ async def pension_account_detail_page(request: Request, account_id: int):
             "account": acc,
             "ticker_label": pension_display_label(acc),
             "summary": summary,
-            "performance": pension_performance(account_id),
+            "performance": scraped_price_performance(account_id),
             "activities": pension_activities(account_id),
             "price_chart_html": price_chart_html,
             "value_chart_html": value_chart_html,

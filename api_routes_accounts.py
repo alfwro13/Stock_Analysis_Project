@@ -10,7 +10,7 @@ from accounts_engine import (
     _ticker_known, account_metrics_list, account_summary, confirm_autotopup, create_transfer,
     delete_transaction_with_pair, dismiss_autotopup, export_transactions_csv,
     filter_value_history_by_period, fx_rate_on_date, get_combined_holdings,
-    holdings_with_metrics_all_accounts, import_csv_activities, pension_units_as_of,
+    holdings_with_metrics_all_accounts, import_csv_activities, other_accounts_list, pension_units_as_of,
     portfolio_totals, reconcile_cash, record_pension_contribution, record_pension_fee,
     refresh_performance_cache, resnapshot_account, resolve_watchlist_metadata,
     set_holding_price_limit, sync_house_purchase_price, sync_pension_opening_balance,
@@ -695,6 +695,15 @@ async def api_holdings_list():
         return JSONResponse(content={"status": "success", **holdings_with_metrics_all_accounts()})
     except Exception as e:
         logger.error("api_holdings_list failed: %s", e)
+        return _error_500(e)
+
+
+@accounts_router.get("/accounts/other-accounts-list")
+async def api_other_accounts_list():
+    try:
+        return JSONResponse(content={"status": "success", **other_accounts_list()})
+    except Exception as e:
+        logger.error("api_other_accounts_list failed: %s", e)
         return _error_500(e)
 
 
