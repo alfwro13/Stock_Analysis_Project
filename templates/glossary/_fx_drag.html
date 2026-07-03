@@ -41,10 +41,10 @@
 
             <div class="term-box">
                 <span class="term-title">Lifetime Mode</span>
-                <p>The standard FX Drag modes (YTD, 1-Year, 2-Year) compare your position against a shared start date. <strong>Lifetime Mode</strong> is more sophisticated: it uses the actual exchange rate at which you originally purchased each position, derived from your Ghostfolio trade history.</p>
-                <p>Ghostfolio stores every BUY activity with two prices: the price in the asset's native currency (USD) and the price in your base currency (GBP). From the ratio of these two values, the app can reverse-engineer the implied GBP/USD exchange rate at the time of purchase — without needing a separate historical FX database. If you bought Apple at $180 and Ghostfolio shows the purchase cost as £144, the implied buy-rate was £1 = $1.25.</p>
-                <p>This means Lifetime Mode shows you the true FX effect on your actual investment — not a hypothetical position opened at some arbitrary date, but your real cost basis. For long-held positions spanning multiple purchases at different exchange rates, the buy-rate is computed as a weighted average across all BUY trades.</p>
-                <div class="rule">Requires Ghostfolio to be configured and connected. Returns no data if Ghostfolio is unreachable or trade history is missing for the position.</div>
+                <p>The standard FX Drag modes (YTD, 1-Year, 2-Year) compare your position against a shared start date. <strong>Lifetime Mode</strong> is more sophisticated: it uses the actual exchange rate at which you originally purchased each position, derived from your account transaction history.</p>
+                <p>Every Buy transaction records the price in the asset's native currency (USD) alongside its own exchange rate to your base currency (GBP). From these two values, the app can reverse-engineer the implied GBP/USD exchange rate at the time of purchase — without needing a separate historical FX database. If you bought Apple at $180 with a stored exchange rate of 0.8, the implied buy-rate was £1 = $1.25.</p>
+                <p>This means Lifetime Mode shows you the true FX effect on your actual investment — not a hypothetical position opened at some arbitrary date, but your real cost basis. For long-held positions spanning multiple purchases at different exchange rates, the buy-rate is computed as a weighted average across all Buy transactions, across every built-in account.</p>
+                <div class="rule">Uses the built-in account transaction ledger (Trading/Pension/House accounts) — no Ghostfolio configuration required. Returns no data if the position has no recorded Buy transactions in a USD currency.</div>
             </div>
 
         </div>

@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pandas as pd
 
-from config import HISTORICAL_DIR, BASE_CURRENCY, GHOSTFOLIO_URL, GHOSTFOLIO_TOKEN
+from config import HISTORICAL_DIR, BASE_CURRENCY
 from database import get_connection
-from ghostfolio_sync import GhostfolioSyncEngine
+from db_accounts import get_accounts, get_transactions
 from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
@@ -154,57 +154,34 @@ def portfolio_fx_breakdown(period_days: int) -> list[dict]:
     return results
 
 
-def _compute_activities_gbpusd(
-    activities: list[dict], ticker: str, gbpusd_series: pd.Series
-) -> tuple[float, float, int, str] | None:
-    """Returns (vwap_buy_usd, weighted_avg_gbpusd_buy, buy_count, earliest_buy); GBP-account activities derive GBPUSD from unitPriceInAssetProfileCurrency/unitPrice, USD-account activities look up gbpusd_series at trade date."""
+def _lifetime_buy_stats(ticker: str) -> tuple[float, float, int, str] | None:
+    """Returns (vwap_buy_usd, weighted_avg_gbpusd_buy, buy_count, earliest_buy) from every Buy
+    transaction for `ticker` across all built-in accounts. `exchange_rate` on each row already
+    converts the trade's USD cost to BASE_CURRENCY (GBP), so the implied GBPUSD rate at buy time
+    is recovered as total_usd / total_gbp — consistent with `_load_gbpusd_series()`'s USD-per-GBP quoting."""
     total_usd = 0.0
     total_gbp = 0.0
     total_qty = 0.0
     buy_count = 0
     earliest_buy: str | None = None
 
-    for act in activities:
-        profile = act.get("SymbolProfile") or {}
-        if (
-            profile.get("symbol") != ticker
-            or profile.get("currency") != "USD"
-            or act.get("type") != "BUY"
-            or act.get("isDraft")
-        ):
-            continue
-        qty = float(act.get("quantity") or 0)
-        usd_price = float(act.get("unitPriceInAssetProfileCurrency") or 0)
-        if qty <= 0 or usd_price <= 0:
-            continue
+    for acc in get_accounts():
+        for txn in get_transactions(acc["id"]):
+            if txn["txn_type"] != "Buy" or txn["ticker"] != ticker or txn["currency"] != "USD":
+                continue
+            qty = float(txn["quantity"] or 0)
+            usd_price = float(txn["unit_price"] or 0)
+            if qty <= 0 or usd_price <= 0:
+                continue
+            fx = txn["exchange_rate"] if txn["exchange_rate"] is not None else 1.0
 
-        date_str = (act.get("date") or "")[:10]
-        act_currency = act.get("currency") or ""
-
-        if act_currency == "GBP":
-            gbp_price = float(act.get("unitPrice") or 0)
-            if gbp_price <= 0:
-                continue
-            gbp_cost = qty * gbp_price
-        else:
-            # USD-denominated account: unitPrice is in USD; look up historical GBPUSD at trade date.
-            if gbpusd_series.empty or not date_str:
-                continue
-            trade_ts = pd.Timestamp(date_str)
-            available = gbpusd_series[gbpusd_series.index <= trade_ts]
-            if available.empty:
-                continue
-            gbpusd_at_buy = float(available.iloc[-1])
-            if gbpusd_at_buy <= 0:
-                continue
-            gbp_cost = (qty * usd_price) / gbpusd_at_buy
-
-        total_usd += qty * usd_price
-        total_gbp += gbp_cost
-        total_qty += qty
-        buy_count += 1
-        if date_str and (earliest_buy is None or date_str < earliest_buy):
-            earliest_buy = date_str
+            total_usd += qty * usd_price
+            total_gbp += qty * usd_price * fx
+            total_qty += qty
+            buy_count += 1
+            date_str = (txn["txn_date"] or "")[:10]
+            if date_str and (earliest_buy is None or date_str < earliest_buy):
+                earliest_buy = date_str
 
     if buy_count == 0 or total_gbp == 0 or total_qty == 0:
         return None
@@ -216,17 +193,6 @@ def _compute_activities_gbpusd(
 
 def portfolio_lifetime_fx_breakdown() -> list[dict]:
     if BASE_CURRENCY != "GBP":
-        return []
-
-    if not GHOSTFOLIO_URL or not GHOSTFOLIO_TOKEN:
-        return []
-
-    engine = GhostfolioSyncEngine()
-    if not engine.is_configured:
-        return []
-
-    activities = engine.fetch_activities()
-    if not activities:
         return []
 
     try:
@@ -250,10 +216,10 @@ def portfolio_lifetime_fx_breakdown() -> list[dict]:
         if not ticker or ticker not in usd_tickers:
             continue
 
-        act_result = _compute_activities_gbpusd(activities, ticker, gbpusd_series)
-        if act_result is None:
+        stats = _lifetime_buy_stats(ticker)
+        if stats is None:
             continue
-        vwap_buy_usd, weighted_avg_gbpusd_buy, buy_count, earliest_buy = act_result
+        vwap_buy_usd, weighted_avg_gbpusd_buy, buy_count, earliest_buy = stats
 
         parquet_path = HISTORICAL_DIR / f"{ticker}.parquet"
         try:

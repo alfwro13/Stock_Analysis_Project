@@ -20,10 +20,10 @@ Key functions:
 | `_load_gbpusd_series()` | Loads GBPUSD daily close prices from `data/historical/GBPUSD_BASELINE.parquet`; falls back to a live yfinance fetch if the file is missing |
 | `compute_fx_breakdown(ticker, period_days)` | Returns equity%, fx%, total_gbp%, ref_date, gbpusd_ref, gbpusd_now for a single ticker |
 | `portfolio_fx_breakdown(period_days)` | Loops over all USD positions in `portfolio.json`, calls `compute_fx_breakdown` for each, appends GBP exposure |
-| `_compute_activities_gbpusd(activities, ticker)` | Filters Ghostfolio activities for a ticker and returns `(vwap_buy_usd, weighted_avg_gbpusd_buy, buy_count, earliest_buy)` |
-| `portfolio_lifetime_fx_breakdown()` | Lifetime mode: fetches activities from Ghostfolio, derives per-ticker purchase GBPUSD, computes full decomposition |
+| `_lifetime_buy_stats(ticker)` | Scans every Buy transaction for `ticker` across all built-in accounts and returns `(vwap_buy_usd, weighted_avg_gbpusd_buy, buy_count, earliest_buy)` |
+| `portfolio_lifetime_fx_breakdown()` | Lifetime mode: aggregates Buy transactions from `account_transactions` (all accounts), derives per-ticker purchase GBPUSD, computes full decomposition |
 
-`ghostfolio_sync.GhostfolioSyncEngine.fetch_activities()` is called by the lifetime function to retrieve raw activities.
+`db_accounts.get_accounts()` / `db_accounts.get_transactions(account_id)` are called by the lifetime function to read the built-in ledger — the same source `accounts_engine.get_combined_holdings()` and `_ledger_for_account()` use, per AGENTS.md rule 14 (Built-in Accounts is the primary portfolio source; Ghostfolio is opt-in only).
 
 ## Math
 
@@ -53,22 +53,22 @@ If no data exists within the period range, `compute_fx_breakdown` returns `None`
 
 ## Lifetime mode
 
-Lifetime mode replaces the shared reference date with the **actual weighted-average GBPUSD rate at which each position was purchased**, derived directly from Ghostfolio trade history. No exchange-rate API is required.
+Lifetime mode replaces the shared reference date with the **actual weighted-average GBPUSD rate at which each position was purchased**, derived directly from the built-in account transaction ledger (`account_transactions`, across every account — Trading, Pension, House). No exchange-rate API is required.
 
 ### How it works
 
-`GET /api/v1/activities` is called on the configured Ghostfolio instance. For each USD position, all BUY trades are collected and aggregated:
+`db_accounts.get_transactions(account_id)` is called for every account from `db_accounts.get_accounts()`. For each USD position, all `Buy` rows are collected and aggregated:
 
 ```
-total_usd = Σ (quantity_i × unitPriceInAssetProfileCurrency_i)
-total_gbp = Σ (quantity_i × unitPrice_i)
+total_usd = Σ (quantity_i × unit_price_i)
+total_gbp = Σ (quantity_i × unit_price_i × exchange_rate_i)
 total_qty = Σ quantity_i
 
 vwap_buy_usd            = total_usd / total_qty
 weighted_avg_gbpusd_buy = total_usd / total_gbp
 ```
 
-`unitPriceInAssetProfileCurrency` is the USD price of the asset at time of purchase; `unitPrice` is what was paid in the account currency (GBP). Their ratio gives the implied GBP/USD rate at the time of the trade — no external exchange rate lookup needed.
+`unit_price` is the USD price paid per share; `exchange_rate` is the trade's own USD→GBP rate (auto-filled from `accounts_engine.fx_rate_on_date()` when the transaction was entered without one). The ratio `total_usd / total_gbp` recovers the implied GBP/USD rate at the time of the trade — no separate exchange-rate lookup needed.
 
 Then:
 
@@ -80,20 +80,16 @@ total_gbp_pct = ((1 + equity_pct/100) × (1 + fx_pct/100) - 1) × 100
 
 `gbpusd_now` is read from the last row of `GBPUSD_BASELINE.parquet`.
 
-### Activity filters
+### Transaction filters
 
-Only activities matching all of the following are included:
-- `type == "BUY"`
-- `isDraft == False`
-- `SymbolProfile.currency == "USD"`
+Only `account_transactions` rows matching all of the following are included:
+- `txn_type == "Buy"`
+- `ticker` matches the position
+- `currency == "USD"`
 
 ### Approximation
 
-Uses all historical BUY orders. For positions with partial sells, the activities-derived VWAP may differ slightly from Ghostfolio's official average-cost (which deducts sold lots). For a buy-and-hold portfolio the difference is zero.
-
-### Ghostfolio dependency
-
-Lifetime mode returns an empty list if `GHOSTFOLIO_URL` or `GHOSTFOLIO_TOKEN` are not configured, or if the Ghostfolio instance is unreachable. The YTD / 1Y / 2Y modes are unaffected.
+Uses all historical Buy rows. For positions with partial sells, the ledger-derived VWAP may differ slightly from the account's official average-cost (which deducts sold lots via `accounts_engine._ledger_for_account`). For a buy-and-hold portfolio the difference is zero.
 
 ## Data sources
 
@@ -101,7 +97,8 @@ Lifetime mode returns an empty list if `GHOSTFOLIO_URL` or `GHOSTFOLIO_TOKEN` ar
 |------|--------|
 | Stock price history | `data/historical/{ticker}.parquet` (2-year daily OHLCV) |
 | GBPUSD history | `data/historical/GBPUSD_BASELINE.parquet` (fetched by `data_engine.py`) |
-| USD position list | `portfolio.json` + `stock_signals.currency` column in SQLite |
+| USD position list | `accounts_engine.get_combined_holdings()` + `stock_signals.currency` column in SQLite |
+| Lifetime buy history | `account_transactions` table (all accounts), via `db_accounts.get_accounts()` / `get_transactions()` |
 
 No new data pipeline or scheduled job is required.
 
