@@ -220,9 +220,9 @@ def portfolio_totals() -> dict:
 
 
 def account_metrics_list() -> dict:
-    """Per-Trading-account metrics for the Home Assistant per-account sensor set — composes
-    the cached performance snapshot (lazily refreshed like the live-performance endpoint) with
-    account_summary()'s dividend/interest/realized_pnl, which the cache doesn't track."""
+    """Per-Trading-account metrics for the Home Assistant per-account sensor set — reads every
+    field from the single `account_performance_cache` snapshot (lazily refreshed like the
+    live-performance endpoint) so the whole response is consistent as of one point in time."""
     accounts = []
     for acc in _trading_accounts():
         account_id = acc["id"]
@@ -230,16 +230,15 @@ def account_metrics_list() -> dict:
         if cached is None:
             refresh_performance_cache(account_id)
             cached = get_performance_cache(account_id)
-        summary = account_summary(account_id)
         accounts.append({
             "account_id": account_id,
             "name": acc["name"],
             "cash_balance": cached["cash_balance"],
             "equity_value": cached["equity_value"],
             "unrealized_pnl": cached["unrealized_pnl"],
-            "realized_pnl": summary["realized_pnl"],
-            "dividend_income": summary["dividend"],
-            "interest_income": summary["interest"],
+            "realized_pnl": cached["realized_pnl"],
+            "dividend_income": cached["dividend_income"],
+            "interest_income": cached["interest_income"],
             "gain_1d": cached["return_1d"],
             "gain_1w": cached["return_1w"],
             "gain_1m": cached["return_1m"],

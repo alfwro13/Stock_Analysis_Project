@@ -1389,6 +1389,10 @@ def test_refresh_performance_cache_writes_a_row_get_performance_cache_returns():
     assert cached is not None
     assert cached["total_value"] == accounts_engine.total_value(aid)
     assert cached["unrealized_pnl"] == 200.0
+    summary = accounts_engine.account_summary(aid)
+    assert cached["realized_pnl"] == summary["realized_pnl"]
+    assert cached["dividend_income"] == summary["dividend"]
+    assert cached["interest_income"] == summary["interest"]
 
 
 @pytest.mark.db

@@ -159,10 +159,12 @@ def test_portfolio_totals_only_counts_trading_accounts():
 
 @pytest.mark.db
 def test_account_metrics_list_fields_map_to_correct_source(monkeypatch):
-    """Regression test: account_metrics_list() merges account_performance_cache with
-    account_summary() — each of the 12 fields must come from its own correct source, not a
-    swapped/aliased one (the same bug class portfolio_totals()'s FX-leg regression test guards
-    against)."""
+    """Regression test: account_metrics_list() reads every field from the single
+    account_performance_cache snapshot — each of the 12 fields must come from its own correct
+    cache column, not a swapped/aliased one (the same bug class portfolio_totals()'s FX-leg
+    regression test guards against), and none may fall back to a live-computed value that could
+    diverge from the cache (fixed 2026-07-03 — see account_performance_cache realized_pnl/
+    dividend_income/interest_income columns)."""
     from database import get_performance_cache
 
     _seed_stock_signal("ZZACCTMET", 120.0, "GBP")
@@ -192,9 +194,9 @@ def test_account_metrics_list_fields_map_to_correct_source(monkeypatch):
     assert row["gain_3m"] == cached["return_3m"]
     assert row["gain_1y"] == cached["return_1y"]
     assert row["mwrr_pct"] == cached["mwrr"]
-    assert row["realized_pnl"] == summary["realized_pnl"]
-    assert row["dividend_income"] == summary["dividend"] == 15.0
-    assert row["interest_income"] == summary["interest"] == 7.0
+    assert row["realized_pnl"] == cached["realized_pnl"] == summary["realized_pnl"]
+    assert row["dividend_income"] == cached["dividend_income"] == summary["dividend"] == 15.0
+    assert row["interest_income"] == cached["interest_income"] == summary["interest"] == 7.0
 
 
 @pytest.mark.db

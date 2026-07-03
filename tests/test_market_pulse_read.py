@@ -333,18 +333,43 @@ class TestIsExchangeOpen:
     def test_falls_back_to_heuristic_when_no_cached_row(self):
         with patch("market_pulse.is_trading_session", return_value=True) as mock_ts:
             assert _mp.is_exchange_open("NYSE") is True
-            mock_ts.assert_called_once_with("NYSE")
+            mock_ts.assert_called_once_with("NYSE", include_premarket=False)
 
     def test_falls_back_to_heuristic_when_cached_market_state_is_null(self):
         _set_market_state("^GSPC", None)
         with patch("market_pulse.is_trading_session", return_value=False) as mock_ts:
             assert _mp.is_exchange_open("NYSE") is False
-            mock_ts.assert_called_once_with("NYSE")
+            mock_ts.assert_called_once_with("NYSE", include_premarket=False)
 
     def test_untracked_exchange_uses_heuristic_directly(self):
         with patch("market_pulse.is_trading_session", return_value=True) as mock_ts:
             assert _mp.is_exchange_open("XETRA") is True
-            mock_ts.assert_called_once_with("XETRA")
+            mock_ts.assert_called_once_with("XETRA", include_premarket=False)
+
+    def test_pre_state_not_open_by_default(self):
+        _set_market_state("^GSPC", "PRE")
+        assert _mp.is_exchange_open("NYSE") is False
+
+    def test_pre_state_is_open_with_include_premarket(self):
+        _set_market_state("^GSPC", "PRE")
+        assert _mp.is_exchange_open("NYSE", include_premarket=True) is True
+
+    def test_prepre_state_is_open_with_include_premarket(self):
+        _set_market_state("^GSPC", "PREPRE")
+        assert _mp.is_exchange_open("NYSE", include_premarket=True) is True
+
+    def test_regular_state_still_open_with_include_premarket(self):
+        _set_market_state("^GSPC", "REGULAR")
+        assert _mp.is_exchange_open("NYSE", include_premarket=True) is True
+
+    def test_closed_state_still_closed_with_include_premarket(self):
+        _set_market_state("^GSPC", "CLOSED")
+        assert _mp.is_exchange_open("NYSE", include_premarket=True) is False
+
+    def test_include_premarket_propagates_to_heuristic_fallback(self):
+        with patch("market_pulse.is_trading_session", return_value=True) as mock_ts:
+            assert _mp.is_exchange_open("XETRA", include_premarket=True) is True
+            mock_ts.assert_called_once_with("XETRA", include_premarket=True)
 
 
 # ── proxy_tickers_needing_refresh ─────────────────────────────────────────────

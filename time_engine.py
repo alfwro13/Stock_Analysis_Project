@@ -210,11 +210,11 @@ def is_market_open(
     return open_utc <= now <= close_utc
 
 
-def is_trading_session(exchange: Optional[str] = None) -> bool:
+def is_trading_session(exchange: Optional[str] = None, include_premarket: bool = False) -> bool:
     """True only if today is Mon–Fri AND current UTC time falls within exchange trading hours."""
     if datetime.now(timezone.utc).weekday() >= 5:
         return False
-    return is_market_open(exchange)
+    return is_market_open(exchange, include_premarket=include_premarket)
 
 
 def reset_cron_trigger_params(exchange: Optional[str] = None) -> dict:

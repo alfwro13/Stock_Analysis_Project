@@ -912,17 +912,24 @@ def refresh_performance_cache(account_id: int) -> None:
     """Computes the live-performance figures once and persists them to `account_performance_cache`
     so every browser/tab that later polls the account detail page reads a cheap cached row instead
     of re-deriving MWRR/period-returns from the full transaction history on every request. Called
-    by the 5-minute intraday scan for every Trading account after it refreshes holding prices."""
+    by the 5-minute intraday scan for every Trading account after it refreshes holding prices.
+    Also stores realized_pnl/dividend_income/interest_income from the same account_summary() call so
+    every field in the cache row is refreshed together — a consumer reading only this cache never
+    mixes a stale cached figure with a live one."""
+    summary = account_summary(account_id)
     returns = period_returns(account_id)
     upsert_performance_cache(
         account_id,
         total_value=total_value(account_id),
-        equity_value=account_summary(account_id)["equity_value"],
+        equity_value=summary["equity_value"],
         cash_balance=cash_balance(account_id),
         unrealized_pnl=unrealized_pnl(account_id),
         return_1d=returns["1d"], return_1w=returns["1w"], return_1m=returns["1m"],
         return_3m=returns["3m"], return_6m=returns["6m"], return_1y=returns["1y"],
         mwrr=money_weighted_return(account_id),
+        realized_pnl=summary["realized_pnl"],
+        dividend_income=summary["dividend"],
+        interest_income=summary["interest"],
         last_updated=time.time(),
     )
 

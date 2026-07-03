@@ -12,6 +12,7 @@ from database import get_account, get_connection, get_universe_tickers
 from earnings_engine import run_earnings_alert
 from insider_engine import run_insider_alert
 from earnings_vol_engine import run_earnings_vol_scan
+from market_pulse import is_exchange_open
 from freetrade_engine import sync_freetrade_universe
 from ghostfolio_sync import GhostfolioSyncEngine
 from huggingface_engine import update_all_sentiment, run_central_bank_nlp_alert
@@ -750,7 +751,7 @@ def run_trap_monitor_job():
                 # from; a bare suffix-less symbol is always a US listing on Yahoo Finance.
                 currency = "USD"
             exchange = time_engine.ticker_exchange(ticker, currency)
-            if not time_engine.is_market_open(exchange, include_premarket=(exchange == "NYSE")):
+            if not is_exchange_open(exchange, include_premarket=(exchange == "NYSE")):
                 logger.debug("TrapMonitor: %s — %s market closed, suppressing alert.", ticker, exchange)
                 continue
 

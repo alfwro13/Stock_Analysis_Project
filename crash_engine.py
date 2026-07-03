@@ -9,7 +9,7 @@ import ta
 
 from utils import clamp_beta
 from yahoo_engine import yahoo_engine
-import time_engine
+import market_pulse
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ class CrashEngine:
         self.ai_threshold_cap: float | None = None
 
     def _fetch_market_context(self) -> float | None:
-        if not time_engine.is_market_open("NYSE"):
+        if not market_pulse.is_exchange_open("NYSE"):
             return None
         try:
             _result = yahoo_engine.get_intraday(["SPY"], period="1d", interval="5m")
@@ -57,7 +57,7 @@ class CrashEngine:
 
         if self.spy_change_pct is not None:
             spy_drop: float | None = self.spy_change_pct
-        elif time_engine.is_market_open("NYSE"):
+        elif market_pulse.is_exchange_open("NYSE"):
             logger.warning(
                 "spy_change_pct not injected for %s — falling back to live SPY fetch. "
                 "This is expected only outside the orchestrator (tests, ad-hoc scripts).",

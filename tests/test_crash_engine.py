@@ -192,7 +192,7 @@ class TestSpyMarketContext:
         eng = _engine()
         eng.spy_change_pct = None
         df = self._context_df()
-        with patch("crash_engine.time_engine.is_market_open", return_value=False) as mock_open, \
+        with patch("crash_engine.market_pulse.is_exchange_open", return_value=False) as mock_open, \
              patch.object(eng, "_fetch_market_context") as mock_fetch:
             report = eng._generate_context_report("LCJP.L", -4.0, df, {"company_name": "Test"})
         mock_fetch.assert_not_called()
@@ -202,7 +202,7 @@ class TestSpyMarketContext:
         eng = _engine()
         eng.spy_change_pct = None
         df = self._context_df()
-        with patch("crash_engine.time_engine.is_market_open", return_value=True), \
+        with patch("crash_engine.market_pulse.is_exchange_open", return_value=True), \
              patch.object(eng, "_fetch_market_context", return_value=None) as mock_fetch:
             report = eng._generate_context_report("TEST", -4.0, df, {"company_name": "Test"})
         mock_fetch.assert_called_once()
@@ -210,7 +210,7 @@ class TestSpyMarketContext:
 
     def test_fetch_market_context_skips_when_nyse_closed(self):
         eng = _engine()
-        with patch("crash_engine.time_engine.is_market_open", return_value=False), \
+        with patch("crash_engine.market_pulse.is_exchange_open", return_value=False), \
              patch("crash_engine.yahoo_engine.get_intraday") as mock_intraday:
             result = eng._fetch_market_context()
         assert result is None
@@ -219,7 +219,7 @@ class TestSpyMarketContext:
     def test_fetch_market_context_fetches_when_nyse_open(self):
         eng = _engine()
         spy_df = pd.DataFrame({"Close": [400.0, 398.0, 396.0, 394.0, 392.0]})
-        with patch("crash_engine.time_engine.is_market_open", return_value=True), \
+        with patch("crash_engine.market_pulse.is_exchange_open", return_value=True), \
              patch("crash_engine.yahoo_engine.get_intraday", return_value={"SPY": spy_df}):
             result = eng._fetch_market_context()
         assert result is not None

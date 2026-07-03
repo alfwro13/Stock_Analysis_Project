@@ -887,6 +887,9 @@ def init_db() -> None:
                 return_6m       REAL,
                 return_1y       REAL,
                 mwrr            REAL,
+                realized_pnl    REAL,
+                dividend_income REAL,
+                interest_income REAL,
                 last_updated    REAL
             )
         ''')
@@ -1108,6 +1111,20 @@ def migrate_db(conn, cursor) -> None:
             cursor.execute("ALTER TABLE account_value_history ADD COLUMN net_contributions REAL")
         except Exception as e:
             logger.error("[MIGRATION ERROR] Failed on account_value_history: %s", e)
+
+    cursor.execute("PRAGMA table_info(account_performance_cache)")
+    existing_performance_cache_columns = [info['name'] for info in cursor.fetchall()]
+    for col, ddl in (
+        ('realized_pnl', "ALTER TABLE account_performance_cache ADD COLUMN realized_pnl REAL"),
+        ('dividend_income', "ALTER TABLE account_performance_cache ADD COLUMN dividend_income REAL"),
+        ('interest_income', "ALTER TABLE account_performance_cache ADD COLUMN interest_income REAL"),
+    ):
+        if col not in existing_performance_cache_columns:
+            try:
+                logger.info("[MIGRATION] Adding column: %s to account_performance_cache...", col)
+                cursor.execute(ddl)
+            except Exception as e:
+                logger.error("[MIGRATION ERROR] Failed on account_performance_cache: %s", e)
 
     cursor.execute("PRAGMA table_info(stock_signals)")
     existing_stock_columns = [info['name'] for info in cursor.fetchall()]

@@ -3189,7 +3189,7 @@ On-demand data refresh for the Home Assistant integration's "Refresh Data" butto
 
 ### `GET /api/accounts/list-with-metrics`
 
-Per-Trading-account metrics for the Home Assistant integration's Phase 2 per-account sensors. Thin wrapper around `portfolio_metrics_engine.account_metrics_list()`, which composes `account_performance_cache` (lazily refreshed the same way `GET /accounts/{account_id}/live-performance` is, if empty) with `account_summary()`'s dividend/interest/realized P&L, which the cache doesn't track. All monetary fields are in `BASE_CURRENCY` (the single top-level `base_currency` key), not the account's own native transaction currency. With zero Trading accounts, returns `"accounts": []`.
+Per-Trading-account metrics for the Home Assistant integration's Phase 2 per-account sensors. Thin wrapper around `portfolio_metrics_engine.account_metrics_list()`, which reads every field — including `realized_pnl`/`dividend_income`/`interest_income` — from the single `account_performance_cache` row (lazily refreshed the same way `GET /accounts/{account_id}/live-performance` is, if empty), so the whole response is consistent as of one cache refresh rather than mixing a cached figure with a separately-timed live one. All monetary fields are in `BASE_CURRENCY` (the single top-level `base_currency` key), not the account's own native transaction currency. With zero Trading accounts, returns `"accounts": []`.
 
 Like `portfolio-totals` above, this endpoint also self-triggers a background live-price refresh for any held ticker whose `market_pulse_cache` row is due (see that endpoint's note).
 

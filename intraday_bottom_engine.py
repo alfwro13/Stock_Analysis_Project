@@ -8,7 +8,7 @@ import time_engine
 import numpy as np
 import pandas as pd
 from config import HISTORICAL_DIR
-from market_pulse import upsert_live_price
+from market_pulse import is_exchange_open, upsert_live_price
 from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
@@ -325,7 +325,7 @@ class IntradayBottomEngine:
             currency = currency_map.get(ticker, "")
             exchange = time_engine.ticker_exchange(ticker, currency)
             premarket = exchange in ("NYSE",)
-            if time_engine.is_market_open(exchange, include_premarket=premarket):
+            if is_exchange_open(exchange, include_premarket=premarket):
                 open_tickers.append(ticker)
             else:
                 logger.debug("DipRadar: %s — %s market closed, skipping.", ticker, exchange)

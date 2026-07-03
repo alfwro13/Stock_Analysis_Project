@@ -38,6 +38,7 @@ _FETCH_LOCK = threading.Lock()
 # open/closed status, since time_engine's weekday+hours heuristic has no holiday calendar.
 _MARKET_STATUS_PROXY: Dict[str, str] = {"NYSE": "^GSPC", "LSE": "^FTSE"}
 _OPEN_MARKET_STATES = {"REGULAR"}
+_PRE_MARKET_STATES = {"PRE", "PREPRE"}
 
 
 _DISPLAY_STALE_FLOOR_SECONDS = 300
@@ -59,14 +60,16 @@ def is_price_fresh(last_updated: float, price: float, refresh_rate: int) -> bool
     return (time.time() - last_updated) <= max(refresh_rate * 2, _DISPLAY_STALE_FLOOR_SECONDS)
 
 
-def is_exchange_open(exchange: str) -> bool:
+def is_exchange_open(exchange: str, include_premarket: bool = False) -> bool:
     """Exchange-holiday-aware market-open check for NYSE/LSE, backed by the live Yahoo
     marketState cached from that exchange's proxy index ticker (see _MARKET_STATUS_PROXY) —
     falls back to time_engine's weekday+hours heuristic for any other exchange, or if no
-    market_state has been cached yet (e.g. right after a fresh install)."""
+    market_state has been cached yet (e.g. right after a fresh install). With
+    include_premarket=True, Yahoo's 'PRE'/'PREPRE' states also count as open, matching the
+    premarket window time_engine.market_window_utc() grants via its own include_premarket flag."""
     proxy = _MARKET_STATUS_PROXY.get(exchange)
     if proxy is None:
-        return is_trading_session(exchange)
+        return is_trading_session(exchange, include_premarket=include_premarket)
 
     conn = None
     try:
@@ -76,14 +79,15 @@ def is_exchange_open(exchange: str) -> bool:
         row = cursor.fetchone()
     except Exception as e:
         logger.error("[MARKET PULSE] Failed to read market_state for %s: %s", proxy, e)
-        return is_trading_session(exchange)
+        return is_trading_session(exchange, include_premarket=include_premarket)
     finally:
         if conn:
             conn.close()
 
     if row is None or row["market_state"] is None:
-        return is_trading_session(exchange)
-    return row["market_state"] in _OPEN_MARKET_STATES
+        return is_trading_session(exchange, include_premarket=include_premarket)
+    allowed_states = _OPEN_MARKET_STATES | _PRE_MARKET_STATES if include_premarket else _OPEN_MARKET_STATES
+    return row["market_state"] in allowed_states
 
 
 def proxy_tickers_needing_refresh(max_age_seconds: int = 300) -> List[str]:

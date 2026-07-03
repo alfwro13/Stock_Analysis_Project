@@ -8,8 +8,7 @@ from typing import Optional
 import pandas as pd
 
 from config import HISTORICAL_DIR
-from market_pulse import upsert_live_price
-from time_engine import is_market_open
+from market_pulse import is_exchange_open, upsert_live_price
 from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
@@ -50,7 +49,7 @@ class AIContagionEngine:
         The event dict uses ticker="SECTOR" as a synthetic dedup key so alert_state tracks
         one cooldown slot for the whole sector rather than per-ticker slots.
         """
-        if not is_market_open("NYSE", include_premarket=True):
+        if not is_exchange_open("NYSE", include_premarket=True):
             return []
 
         ticker_dfs = self._fetch_basket_data()

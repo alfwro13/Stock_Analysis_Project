@@ -362,7 +362,7 @@ def get_value_history_currency(account_id: int) -> list:
 _PERFORMANCE_CACHE_COLUMNS = (
     "total_value", "equity_value", "cash_balance", "unrealized_pnl",
     "return_1d", "return_1w", "return_1m", "return_3m", "return_6m", "return_1y",
-    "mwrr", "last_updated",
+    "mwrr", "realized_pnl", "dividend_income", "interest_income", "last_updated",
 )
 
 
