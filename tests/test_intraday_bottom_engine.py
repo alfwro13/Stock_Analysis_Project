@@ -220,3 +220,37 @@ class TestBottomingThreshold:
 
     def test_threshold_is_65(self):
         assert _BOTTOMING_THRESHOLD == 65
+
+
+class TestMutualFundGuard:
+    """Mutual funds have no intraday bars, so both get_intraday call sites must filter them out first."""
+
+    def test_analyze_ticker_skips_fetch_for_mutual_fund(self):
+        eng = _make_engine()
+        with patch("intraday_bottom_engine.get_mutual_fund_tickers", return_value={"0P00018XAR.L"}), \
+             patch("intraday_bottom_engine.yahoo_engine.get_intraday") as mock_intraday:
+            result = eng.analyze_ticker("0P00018XAR.L")
+        mock_intraday.assert_not_called()
+        assert result is None
+
+    def test_run_scan_excludes_mutual_funds_from_batch_fetch(self):
+        eng = _make_engine()
+        with patch.object(eng, "get_active_monitors", return_value=["0P00018XAR.L", "AAPL"]), \
+             patch.object(eng, "_get_currency_map", return_value={}), \
+             patch("intraday_bottom_engine.is_exchange_open", return_value=True), \
+             patch("intraday_bottom_engine.get_mutual_fund_tickers", return_value={"0P00018XAR.L"}), \
+             patch("intraday_bottom_engine.yahoo_engine.get_intraday", return_value={}) as mock_intraday, \
+             patch.object(eng, "analyze_ticker", return_value=None):
+            eng.run_scan()
+        mock_intraday.assert_called_once_with(["AAPL"], period="1d", interval="1m")
+
+    def test_run_scan_skips_yahoo_call_when_all_open_tickers_are_mutual_funds(self):
+        eng = _make_engine()
+        with patch.object(eng, "get_active_monitors", return_value=["0P00018XAR.L"]), \
+             patch.object(eng, "_get_currency_map", return_value={}), \
+             patch("intraday_bottom_engine.is_exchange_open", return_value=True), \
+             patch("intraday_bottom_engine.get_mutual_fund_tickers", return_value={"0P00018XAR.L"}), \
+             patch("intraday_bottom_engine.yahoo_engine.get_intraday") as mock_intraday, \
+             patch.object(eng, "analyze_ticker", return_value=None):
+            eng.run_scan()
+        mock_intraday.assert_not_called()

@@ -8,6 +8,7 @@ import time_engine
 import numpy as np
 import pandas as pd
 from config import HISTORICAL_DIR
+from database import get_mutual_fund_tickers
 from market_pulse import is_exchange_open, upsert_live_price
 from yahoo_engine import yahoo_engine
 
@@ -155,6 +156,8 @@ class IntradayBottomEngine:
     def analyze_ticker(self, ticker: str, data: Optional[pd.DataFrame] = None) -> Optional[Dict]:
         try:
             if data is None:
+                if ticker in get_mutual_fund_tickers([ticker]):
+                    return None
                 _result = yahoo_engine.get_intraday([ticker], period="1d", interval="1m")
                 data = _result.get(ticker, pd.DataFrame())
             if data.empty or len(data) < 32:
@@ -333,12 +336,16 @@ class IntradayBottomEngine:
         if not open_tickers:
             return []
 
+        mutual_funds = get_mutual_fund_tickers(open_tickers)
+        fetch_tickers = [t for t in open_tickers if t not in mutual_funds]
+
         # Batch-fetch 1m data for all open tickers in one yfinance call to avoid per-ticker rate limits
         batch_data: dict = {}
-        try:
-            batch_data = yahoo_engine.get_intraday(open_tickers, period="1d", interval="1m")
-        except Exception as e:
-            logger.error("DipRadar: batch 1m fetch failed: %s", e)
+        if fetch_tickers:
+            try:
+                batch_data = yahoo_engine.get_intraday(fetch_tickers, period="1d", interval="1m")
+            except Exception as e:
+                logger.error("DipRadar: batch 1m fetch failed: %s", e)
 
         hits = []
         for ticker in open_tickers:
