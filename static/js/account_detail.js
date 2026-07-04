@@ -1,24 +1,24 @@
-function toggleFullscreen(wrapperId) {
-    const el = document.getElementById(wrapperId);
-    if (!el) return;
-    if (!document.fullscreenElement) {
-        el.requestFullscreen().catch(() => {});
-    } else {
-        document.exitFullscreen();
-    }
+function _acctChartHeight() {
+    return window.innerWidth < 768 ? 260 : 350;
 }
 
-document.addEventListener('fullscreenchange', () => {
-    if (document.fullscreenElement) return;
-    if (!document.getElementById('acct-chart-wrapper') || !window.Plotly) return;
-    // Two problems compound here: (1) the browser hasn't finished collapsing the
-    // element back to its normal box on this tick, so measuring immediately
-    // captures the fullscreen size; (2) a plain resize() only rescales the SVG,
-    // it doesn't clear the axis ranges Plotly locked in while full-viewport-sized.
-    // Deferring a full re-render (the same path the Range buttons use, which is
-    // known to work) past two animation frames fixes both.
-    requestAnimationFrame(() => requestAnimationFrame(() => _renderAccountValueChart(_lastAcctChartData)));
-});
+function toggleFullscreen(wrapperId) {
+    const wrapper = document.getElementById(wrapperId);
+    if (!wrapper) return;
+    const isFullscreen = wrapper.classList.contains('is-fullscreen');
+    const btn = wrapper.querySelector('.fullscreen-btn');
+    const plotEl = wrapper.querySelector('.js-plotly-plot');
+    if (isFullscreen) {
+        wrapper.classList.remove('is-fullscreen');
+        if (btn) btn.innerHTML = '&#9638; Fullscreen';
+        if (plotEl && window.Plotly) Plotly.relayout(plotEl, { height: _acctChartHeight() });
+    } else {
+        wrapper.classList.add('is-fullscreen');
+        if (btn) btn.innerHTML = '&#10006; Exit Fullscreen';
+        if (plotEl && window.Plotly) Plotly.relayout(plotEl, { height: window.innerHeight - 120 });
+    }
+    window.dispatchEvent(new Event('resize'));
+}
 
 window.onTransactionChanged = function () {
     location.reload();
@@ -57,10 +57,7 @@ function _setAcctChartPeriodCookie(period) {
     document.cookie = 'acct_chart_period=' + period + ';path=/;max-age=31536000';
 }
 
-let _lastAcctChartData = [];
-
 function _renderAccountValueChart(data) {
-    _lastAcctChartData = data;
     const el = document.getElementById('acct-chart-wrapper');
     if (!data.length) {
         el.innerHTML = "<p class='text-muted'>No value history yet — check back after the next nightly snapshot.</p>";
@@ -72,10 +69,9 @@ function _renderAccountValueChart(data) {
         { x: dates, y: data.map(d => d.cash_value), name: 'Cash', line: { color: '#bb86fc', width: 1.5, dash: 'dot' }, connectgaps: true },
         { x: dates, y: data.map(d => d.net_contributions), name: 'Net Contributions', line: { color: '#ffb74d', width: 1.5, dash: 'dash' }, connectgaps: true },
     ];
-    const isMobile = window.innerWidth < 768;
     const layout = {
         title: { text: 'Account Value Over Time', x: 0.5, xanchor: 'center' },
-        template: 'plotly_dark', height: isMobile ? 260 : 350,
+        template: 'plotly_dark', height: _acctChartHeight(),
         margin: { l: 20, r: 20, t: 50, b: 60 }, hovermode: 'x unified',
         legend: { orientation: 'h', yanchor: 'top', y: -0.15, xanchor: 'center', x: 0.5 },
         paper_bgcolor: '#111', plot_bgcolor: '#111', font: { color: '#ccc' },
