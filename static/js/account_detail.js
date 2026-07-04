@@ -9,10 +9,12 @@ function toggleFullscreen(wrapperId) {
 }
 
 document.addEventListener('fullscreenchange', () => {
-    if (!document.fullscreenElement) {
-        const el = document.getElementById('acct-chart-wrapper');
-        if (el && window.Plotly) Plotly.Plots.resize(el);
-    }
+    if (document.fullscreenElement) return;
+    const el = document.getElementById('acct-chart-wrapper');
+    if (!el || !window.Plotly) return;
+    // The browser hasn't finished collapsing the element back to its normal box
+    // on this tick, so measuring/resizing immediately captures the fullscreen size.
+    requestAnimationFrame(() => requestAnimationFrame(() => Plotly.Plots.resize(el)));
 });
 
 window.onTransactionChanged = function () {
