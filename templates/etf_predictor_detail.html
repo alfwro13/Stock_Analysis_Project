@@ -149,7 +149,7 @@
 {# ── Time-aligned intraday overlay chart ── #}
 <div class="sentiment-module module-cyan sentiment-module--spaced">
     <div class="chart-wrapper">
-        <button class="fullscreen-btn" onclick="toggleFullscreen('etf-overlay-wrapper')">&#9638;<span class="fullscreen-btn-label"> Fullscreen</span></button>
+        <button class="fullscreen-btn" onclick="toggleFullscreen('etf-overlay-wrapper')">&#9638; Fullscreen</button>
         <div id="etf-overlay-wrapper">
             {{ overlay_chart_html | safe }}
         </div>
@@ -166,7 +166,7 @@
 {# ── Prediction chart ── #}
 <div class="sentiment-module module-purple sentiment-module--spaced">
     <div class="chart-wrapper">
-        <button class="fullscreen-btn" onclick="toggleFullscreen('etf-pred-wrapper')">&#9638;<span class="fullscreen-btn-label"> Fullscreen</span></button>
+        <button class="fullscreen-btn" onclick="toggleFullscreen('etf-pred-wrapper')">&#9638; Fullscreen</button>
         <div id="etf-pred-wrapper">
             {{ prediction_chart_html | safe }}
         </div>
@@ -183,7 +183,7 @@
 {% if prediction.holdings_engine and prediction.holdings_engine.contributions and contributions_chart_html %}
 <div class="sentiment-module module-yellow sentiment-module--spaced">
     <div class="chart-wrapper">
-        <button class="fullscreen-btn" onclick="toggleFullscreen('etf-contrib-wrapper')">&#9638;<span class="fullscreen-btn-label"> Fullscreen</span></button>
+        <button class="fullscreen-btn" onclick="toggleFullscreen('etf-contrib-wrapper')">&#9638; Fullscreen</button>
         <div id="etf-contrib-wrapper">
             {{ contributions_chart_html | safe }}
         </div>
@@ -202,7 +202,7 @@
 {# ── Correlation chart ── #}
 <div class="sentiment-module module-cyan sentiment-module--spaced">
     <div class="chart-wrapper">
-        <button class="fullscreen-btn" onclick="toggleFullscreen('etf-corr-wrapper')">&#9638;<span class="fullscreen-btn-label"> Fullscreen</span></button>
+        <button class="fullscreen-btn" onclick="toggleFullscreen('etf-corr-wrapper')">&#9638; Fullscreen</button>
         <div id="etf-corr-wrapper">
             {{ correlation_chart_html | safe }}
         </div>

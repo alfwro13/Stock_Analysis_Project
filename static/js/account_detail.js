@@ -8,6 +8,13 @@ function toggleFullscreen(wrapperId) {
     }
 }
 
+document.addEventListener('fullscreenchange', () => {
+    if (!document.fullscreenElement) {
+        const el = document.getElementById('acct-chart-wrapper');
+        if (el && window.Plotly) Plotly.Plots.resize(el);
+    }
+});
+
 window.onTransactionChanged = function () {
     location.reload();
 };
