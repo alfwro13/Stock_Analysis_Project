@@ -12,12 +12,13 @@ window.onTransactionChanged = function () {
     location.reload();
 };
 
-function _initAccountDetailTable(id, priorities) {
+function _initAccountDetailTable(id, priorities, order) {
     const el = document.getElementById(id);
     if (!el) return null;
     return $(el).DataTable({
         responsive: true,
         pageLength: 25,
+        order: order || [[0, 'asc']],
         columnDefs: priorities.map((targets, priority) => ({ responsivePriority: priority + 1, targets })),
     });
 }
@@ -35,8 +36,8 @@ document.addEventListener('DOMContentLoaded', () => {
     (window.ACCOUNT_TRANSACTIONS || []).forEach(t => { _txnCache[t.id] = t; });
     _initAccountDetailTable('holdingsTable', [[0], [1], [6], [4], [5], [7], [8], [2], [3]]);
     _initAccountDetailTable('closedTable', [[0], [1], [5], [3], [4], [6], [7], [2]]);
-    window._activitiesTable = _initAccountDetailTable('activitiesTable', [[0], [1], [8], [7], [2], [3], [4], [5], [6]]);
-    _initAccountDetailTable('cashTable', [[0], [2], [3], [1]]);
+    window._activitiesTable = _initAccountDetailTable('activitiesTable', [[0], [1], [8], [7], [2], [3], [4], [5], [6]], [[0, 'desc']]);
+    _initAccountDetailTable('cashTable', [[0], [2], [3], [1]], [[0, 'desc']]);
     initAccountValueChart();
 });
 
@@ -56,13 +57,14 @@ function _renderAccountValueChart(data) {
         { x: dates, y: data.map(d => d.cash_value), name: 'Cash', line: { color: '#bb86fc', width: 1.5, dash: 'dot' }, connectgaps: true },
         { x: dates, y: data.map(d => d.net_contributions), name: 'Net Contributions', line: { color: '#ffb74d', width: 1.5, dash: 'dash' }, connectgaps: true },
     ];
+    const isMobile = window.innerWidth < 768;
     const layout = {
         title: { text: 'Account Value Over Time', x: 0.5, xanchor: 'center' },
-        template: 'plotly_dark', height: 350,
-        margin: { l: 20, r: 20, t: 50, b: 20 }, hovermode: 'x unified',
-        legend: { orientation: 'h', yanchor: 'bottom', y: 1.02, xanchor: 'right', x: 1 },
+        template: 'plotly_dark', height: isMobile ? 260 : 350,
+        margin: { l: 20, r: 20, t: 50, b: 60 }, hovermode: 'x unified',
+        legend: { orientation: 'h', yanchor: 'top', y: -0.15, xanchor: 'center', x: 0.5 },
         paper_bgcolor: '#111', plot_bgcolor: '#111', font: { color: '#ccc' },
-        yaxis: { title: 'Value', showgrid: true, gridcolor: '#333333' },
+        yaxis: { title: 'Value', showgrid: true, gridcolor: '#333333', automargin: true },
     };
     Plotly.react(el, traces, layout, { responsive: true, displaylogo: false });
 }
