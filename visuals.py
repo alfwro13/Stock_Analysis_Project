@@ -507,10 +507,10 @@ def create_pension_unit_price_chart(df: pd.DataFrame) -> str:
     fig.update_layout(
         title=dict(text="Pension Unit Price Over Time", x=0.5, xanchor='center'),
         template="plotly_dark", height=350,
-        margin=dict(l=20, r=20, t=50, b=20), hovermode="x unified",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        margin=dict(l=20, r=20, t=50, b=60), hovermode="x unified",
+        legend=dict(orientation="h", yanchor="top", y=-0.15, xanchor="center", x=0.5),
     )
-    fig.update_yaxes(title_text="Unit Price", showgrid=True, gridcolor="#333333")
+    fig.update_yaxes(title_text="Unit Price", showgrid=True, gridcolor="#333333", automargin=True)
     return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
 
 
@@ -527,7 +527,7 @@ def create_house_value_chart(df: pd.DataFrame) -> str:
         margin=dict(l=20, r=20, t=50, b=20), hovermode="x unified",
         showlegend=False,
     )
-    fig.update_yaxes(title_text="Value", showgrid=True, gridcolor="#333333", rangemode="normal", autorange=True)
+    fig.update_yaxes(title_text="Value", showgrid=True, gridcolor="#333333", rangemode="normal", autorange=True, automargin=True)
     return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
 
 
@@ -545,5 +545,5 @@ def create_pension_value_chart(df: pd.DataFrame) -> str:
         margin=dict(l=20, r=20, t=50, b=20), hovermode="x unified",
         showlegend=False,
     )
-    fig.update_yaxes(title_text="Value", showgrid=True, gridcolor="#333333", rangemode="normal", autorange=True)
+    fig.update_yaxes(title_text="Value", showgrid=True, gridcolor="#333333", rangemode="normal", autorange=True, automargin=True)
     return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})

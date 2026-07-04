@@ -282,6 +282,30 @@ Schema changes must go through `db_schema.py:init_db()` (new tables) and `db_sch
 
     **When no existing helper file fits:** if a genuinely new domain of shared logic emerges, create a new `<domain>_helpers.py` rather than forcing it into an unrelated file or leaving it duplicated inline. Keep each helper file scoped to one concern; if it grows too large for a single Read, that's the rule 12 split signal.
 
+18. **Uniform Plotly chart conventions.** Every Plotly chart on a Jinja page (both JS-rendered and Python-rendered via `visuals*.py`) follows the same layout skeleton, established after fixing a string of mobile/fullscreen bugs on the Account Detail chart (2026-07-04). When building or reviewing a chart, check it against all of these:
+
+    **Title & legend**
+    - Title centered: `title: { text: '...', x: 0.5, xanchor: 'center' }`.
+    - Legend horizontal, positioned **below** the plot, not top-right: `legend: { orientation: 'h', yanchor: 'top', y: -0.15, xanchor: 'center', x: 0.5 }`. A top-right legend collides with the centered title on narrow/mobile widths.
+
+    **Margins & axes**
+    - `yaxis: { automargin: true, ... }` always — without it, wide tick labels (e.g. `10k`, `12k`) get clipped on the left edge.
+    - `margin.b` must be large enough (≥60) to fit the below-plot legend without it being cropped.
+
+    **Responsive height**
+    - Height must not be a single fixed value. Use a small helper (e.g. `_acctChartHeight()`) returning a shorter height under a 768px breakpoint and a taller one above it, so the chart doesn't render disproportionately tall on a mobile portrait screen. Both the normal render path and the fullscreen path must call the same helper — don't duplicate the breakpoint check.
+
+    **Fullscreen button**
+    - Use the **CSS class-toggle pattern** (`wrapper.classList.toggle('is-fullscreen')` + `window.dispatchEvent(new Event('resize'))`), never the native browser Fullscreen API (`requestFullscreen()`/`exitFullscreen()`). The native API was tried and abandoned on the Accounts page after repeated, unfixable bugs where exiting fullscreen left the chart corrupted (wrong axis range/zoomed, or blank) — root cause never fully isolated across several attempts, whereas the class-toggle pattern works reliably.
+    - **Structural requirement:** the `.fullscreen-btn` element must be a child of the *outer* wrapper div that receives the `.is-fullscreen` class — never a sibling of, or child of, the actual Plotly target div. Plotly's `react()`/`newPlot()` fully owns and can wipe the innerHTML of its target div on redraw, so the button must live one level up.
+    - On enter, `Plotly.relayout(plotEl, { height: window.innerHeight - 120 })` so the chart actually uses the available vertical space.
+    - On exit, `Plotly.relayout(plotEl, { height: <same responsive-height helper> })`.
+    - **On mobile (< 768px), hide the fullscreen button entirely** (`display: none` in the existing `.chart-wrapper`/`@media (max-width: 768px)` block) — a phone screen is already full-width, so "fullscreen" adds nothing there.
+
+    **Canonical reference implementation:** `templates/account_detail.html` + `static/js/account_detail.js` (`toggleFullscreen`, `_acctChartHeight`, `_renderAccountValueChart`).
+
+    **Known debt:** `toggleFullscreen` is still duplicated per-page rather than living in one shared file. Every page's copy must at minimum match the class-toggle + height-relayout + mobile-hide behavior above; do not reintroduce the native Fullscreen API on any page. See `audit/audit.md` Needs Review for the current migration status across pages.
+
 ---
 
 ## Running the App
