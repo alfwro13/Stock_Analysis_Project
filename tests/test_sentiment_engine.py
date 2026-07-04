@@ -3,7 +3,13 @@ import pandas as pd
 from datetime import date
 from unittest.mock import patch
 
-from sentiment_engine import fetch_parquet_data, fetch_stock_data
+import sentiment_engine
+from sentiment_engine import (
+    fetch_parquet_data,
+    fetch_stock_data,
+    _bucket_fear_greed,
+    get_latest_fear_greed,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -86,3 +92,59 @@ class TestFetchStockData:
             result = fetch_stock_data("SPY", "2025-06-01")
         assert len(result) == 2
         assert all(idx >= date(2025, 6, 1) for idx in result.index)
+
+
+# ---------------------------------------------------------------------------
+# _bucket_fear_greed — CNN's published boundaries
+# ---------------------------------------------------------------------------
+
+class TestBucketFearGreed:
+    def test_extreme_fear_below_25(self):
+        assert _bucket_fear_greed(0) == "Extreme Fear"
+        assert _bucket_fear_greed(24.9) == "Extreme Fear"
+
+    def test_fear_25_to_44(self):
+        assert _bucket_fear_greed(25) == "Fear"
+        assert _bucket_fear_greed(44.9) == "Fear"
+
+    def test_neutral_45_to_55(self):
+        assert _bucket_fear_greed(45) == "Neutral"
+        assert _bucket_fear_greed(55.9) == "Neutral"
+
+    def test_greed_56_to_75(self):
+        assert _bucket_fear_greed(56) == "Greed"
+        assert _bucket_fear_greed(75.9) == "Greed"
+
+    def test_extreme_greed_76_and_above(self):
+        assert _bucket_fear_greed(76) == "Extreme Greed"
+        assert _bucket_fear_greed(100) == "Extreme Greed"
+
+
+# ---------------------------------------------------------------------------
+# get_latest_fear_greed — isolated cache, no coupling to the heavy chart cache
+# ---------------------------------------------------------------------------
+
+class TestGetLatestFearGreed:
+    def test_returns_none_values_before_first_refresh(self):
+        with patch.object(sentiment_engine, "_MACRO_HTML_CACHE", {
+            "fear_greed_value": None, "fear_greed_label": None, "fear_greed_as_of": None,
+        }), patch("sentiment_engine._check_and_trigger_async_refresh"):
+            result = get_latest_fear_greed()
+        assert result == {"value": None, "label": None, "as_of": None}
+
+    def test_returns_cached_value_after_refresh(self):
+        with patch.object(sentiment_engine, "_MACRO_HTML_CACHE", {
+            "fear_greed_value": 62.0, "fear_greed_label": "Greed", "fear_greed_as_of": "2026-06-30",
+        }), patch("sentiment_engine._check_and_trigger_async_refresh"):
+            result = get_latest_fear_greed()
+        assert result == {"value": 62.0, "label": "Greed", "as_of": "2026-06-30"}
+
+    def test_does_not_touch_the_heavy_chart_html_cache_keys(self):
+        cache = {
+            "sentiment_html": "<div>existing chart</div>",
+            "fear_greed_value": 40.0, "fear_greed_label": "Fear", "fear_greed_as_of": "2026-06-30",
+        }
+        with patch.object(sentiment_engine, "_MACRO_HTML_CACHE", cache), \
+             patch("sentiment_engine._check_and_trigger_async_refresh"):
+            get_latest_fear_greed()
+        assert cache["sentiment_html"] == "<div>existing chart</div>"

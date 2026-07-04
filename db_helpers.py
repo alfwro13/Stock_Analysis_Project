@@ -286,3 +286,25 @@ def get_trap_phase_accuracy() -> dict:
     finally:
         if conn:
             conn.close()
+
+
+def get_auction_summary() -> List[dict]:
+    """Last 6 Treasury auctions (any maturity) within the last 30 days — the "any weak?" window
+    the Treasury Auction Demand banner/sensor is derived from."""
+    conn = None
+    try:
+        conn = get_connection()
+        rows = conn.execute(
+            """SELECT maturity_label, auction_date, bid_to_cover, tail_bp, alert_fired
+               FROM treasury_auction_results
+               WHERE auction_date >= date('now', '-30 days')
+               ORDER BY auction_date DESC, maturity_label ASC
+               LIMIT 6"""
+        ).fetchall()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        logger.error("get_auction_summary failed: %s", e)
+        return []
+    finally:
+        if conn:
+            conn.close()

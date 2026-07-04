@@ -11,7 +11,7 @@ from fastapi.templating import Jinja2Templates
 
 from config import load_config, HISTORICAL_DIR, INTRADAY_DIR
 import time_engine
-from database import get_connection
+from database import get_connection, get_auction_summary
 from regime_engine import get_latest_regime
 from sentiment_engine import (
     get_sentiment_html,
@@ -183,20 +183,6 @@ def _parse_cb_nlp_message(msg_text: str, timestamp: str) -> dict | None:
         return None
 
 
-def _get_auction_summary(conn):
-    try:
-        rows = conn.execute("""
-            SELECT maturity_label, auction_date, bid_to_cover, tail_bp, alert_fired
-            FROM treasury_auction_results
-            WHERE auction_date >= date('now', '-30 days')
-            ORDER BY auction_date DESC, maturity_label ASC
-            LIMIT 6
-        """).fetchall()
-        return [dict(r) for r in rows]
-    except Exception:
-        return []
-
-
 @page_router_macro.get("/market-sentiment", response_class=HTMLResponse)
 async def market_sentiment_page(request: Request):
     regime_data = get_latest_regime()
@@ -273,7 +259,7 @@ async def market_sentiment_page(request: Request):
         except Exception:
             pass  # table absent on first boot — silently ignore
 
-        auction_rows = _get_auction_summary(conn)
+        auction_rows = get_auction_summary()
 
         try:
             df_indicators = pd.read_sql_query("SELECT * FROM macro_indicators", conn)

@@ -694,6 +694,46 @@ Only needs to be run once. Runs asynchronously — may take 5–15 minutes.
 
 ---
 
+### `GET /api/macro-conditions`
+
+Single-call snapshot of sovereign-yield threat levels, US Treasury auction demand, and the CNN
+Fear & Greed Index — added for the Home Assistant integration's "Market Health" device, but usable
+by any caller. Threat levels are returned as the raw `GREEN`/`YELLOW`/`RED` values already used
+throughout the app (same convention as `GET /api/macro-regime-allocation`); a Low/Elevated/High
+presentation mapping is left to the caller. `treasury_auction.healthy` reuses the same "any of the
+last 6 auctions in the past 30 days flagged weak?" window as the `/market-sentiment` page's own
+banner (`database.get_auction_summary()`) — `null` when there are no auctions in that window (not
+`true`, which would misleadingly claim "healthy" when there's simply no data to judge). `fear_greed`
+is served from an in-memory cache refreshed by the same background cycle that builds the Fear &
+Greed chart on `/market-sentiment` (`sentiment_engine.get_latest_fear_greed()`) — `null` until that
+cycle has run at least once since the last restart.
+
+**Response:**
+```json
+{
+  "status": "success",
+  "as_of": "2026-07-01",
+  "us_threat_level": "YELLOW",
+  "uk_threat_level": "GREEN",
+  "us_yield_velocity": 18.5,
+  "uk_yield_velocity": 4.2,
+  "tyx_close": 4.55,
+  "tnx_close": 4.30,
+  "uk_gilt_close": 4.10,
+  "dxy_close": 104.2,
+  "gbpusd_close": 1.27,
+  "treasury_auction": {
+    "healthy": false,
+    "recent": [
+      {"maturity_label": "10Y", "auction_date": "2026-07-01", "bid_to_cover": 2.45, "tail_bp": 1.2, "alert_fired": 1}
+    ]
+  },
+  "fear_greed": {"value": 62.0, "label": "Greed", "as_of": "2026-06-30"}
+}
+```
+
+---
+
 ### `POST /api/macro/run-pipeline`
 
 Standard daily macro update (after initialisation is complete):
@@ -2094,13 +2134,19 @@ Price-action Hidden Markov Model (3 states: Bull / Chop / Crash) fitted on 5-yea
 
 ### `GET /api/market-regime/current`
 
-Returns the latest HMM regime state and the most recent regime transition. Lightweight; used by the Trap Monitor panel.
+Returns the latest HMM regime state and the most recent regime transition. Lightweight; used by the Trap Monitor panel. `current.us_regime_label`/`uk_regime_label` are a *different* taxonomy from
+`current.label` — the EWMA-turbulence classifier's per-country `Normal`/`Volatile`/`Crash` label
+(`regime_engine.calculate_market_regime()`), not the HMM's own `Bull`/`Chop`/`Crash` state — both
+happen to live on the same `market_regimes` row/date.
 
 **Response:**
 ```json
 {
   "status": "success",
-  "current": { "state": 0, "label": "Bull", "probability": 0.87, "as_of": "2026-06-11" },
+  "current": {
+    "state": 0, "label": "Bull", "probability": 0.87, "as_of": "2026-06-11",
+    "us_regime_label": "Normal", "uk_regime_label": "Volatile"
+  },
   "last_change": { "date": "2026-05-14", "from_label": "Chop", "to_label": "Bull" }
 }
 ```

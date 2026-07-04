@@ -13,11 +13,12 @@ from pydantic import BaseModel
 from api_deps import limiter, _error_500
 
 from config import HISTORICAL_DIR
-from database import get_connection
+from database import get_connection, get_auction_summary
 from ai_engine import AIPromptEngine
 from ai_regime_engine import AIRegimePromptEngine
 from ai_sentiment_engine import AISentimentPromptEngine
 from data_engine import DataEngine
+from sentiment_engine import get_latest_fear_greed
 from utils import normalize_ticker
 from yahoo_engine import yahoo_engine
 
@@ -259,7 +260,8 @@ async def get_market_regime_current(request: Request):
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT date, price_hmm_state, price_hmm_label, price_hmm_prob "
+            "SELECT date, price_hmm_state, price_hmm_label, price_hmm_prob, "
+            "us_regime_label, uk_regime_label "
             "FROM market_regimes WHERE price_hmm_state IS NOT NULL ORDER BY date DESC LIMIT 1"
         )
         row = cursor.fetchone()
@@ -271,6 +273,11 @@ async def get_market_regime_current(request: Request):
             "label": row["price_hmm_label"],
             "probability": row["price_hmm_prob"],
             "as_of": row["date"],
+            # us/uk_regime_label are the EWMA-turbulence classifier's Normal/Volatile/Crash
+            # labels (calculate_market_regime()) — a different taxonomy than the HMM's
+            # Bull/Chop/Crash above, though both live on this same row/date.
+            "us_regime_label": row["us_regime_label"],
+            "uk_regime_label": row["uk_regime_label"],
         }
 
         cursor.execute(
@@ -333,6 +340,57 @@ async def get_market_stress(request: Request):
         return JSONResponse(content={"status": "success", "current": current, "history": history})
     except Exception as e:
         logger.error("market-stress endpoint failed: %s", e)
+        return _error_500(e)
+    finally:
+        if conn:
+            conn.close()
+
+
+@analysis_router.get("/macro-conditions")
+@limiter.limit("30/minute")
+async def get_macro_conditions(request: Request):
+    """Returns the latest sovereign-yield threat levels, Treasury auction demand, and Fear &
+    Greed — the Home Assistant integration's "Market Health" device reads this in one call.
+    Threat levels are returned as raw GREEN/YELLOW/RED (same convention as
+    /api/macro-regime-allocation); Low/Elevated/High presentation mapping is a display-layer
+    concern for callers, not this endpoint."""
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT date, us_threat_level, uk_threat_level, us_yield_velocity, uk_yield_velocity, "
+            "tyx_close, tnx_close, uk_gilt_close, dxy_close, gbpusd_close "
+            "FROM macro_regimes ORDER BY date DESC LIMIT 1"
+        )
+        row = cursor.fetchone()
+
+        auction_rows = get_auction_summary()
+        if not auction_rows:
+            # Distinct from "auctions happened and were all fine" — no data to judge at all.
+            auction_healthy = None
+        else:
+            auction_healthy = not any(r["alert_fired"] for r in auction_rows)
+
+        fear_greed = get_latest_fear_greed()
+
+        return JSONResponse(content={
+            "status": "success",
+            "as_of": row["date"] if row else None,
+            "us_threat_level": row["us_threat_level"] if row else None,
+            "uk_threat_level": row["uk_threat_level"] if row else None,
+            "us_yield_velocity": row["us_yield_velocity"] if row else None,
+            "uk_yield_velocity": row["uk_yield_velocity"] if row else None,
+            "tyx_close": row["tyx_close"] if row else None,
+            "tnx_close": row["tnx_close"] if row else None,
+            "uk_gilt_close": row["uk_gilt_close"] if row else None,
+            "dxy_close": row["dxy_close"] if row else None,
+            "gbpusd_close": row["gbpusd_close"] if row else None,
+            "treasury_auction": {"healthy": auction_healthy, "recent": auction_rows},
+            "fear_greed": fear_greed,
+        })
+    except Exception as e:
+        logger.error("macro-conditions endpoint failed: %s", e)
         return _error_500(e)
     finally:
         if conn:

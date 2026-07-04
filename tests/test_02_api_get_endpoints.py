@@ -635,6 +635,41 @@ def test_market_regime_current_null_on_fresh_db(client):
 
 
 @pytest.mark.api
+def test_market_regime_current_includes_us_uk_regime_labels(client):
+    """Once a row has both HMM and turbulence-classifier columns, current must expose
+    us_regime_label/uk_regime_label alongside the HMM label — a distinct Normal/Volatile/Crash
+    taxonomy from the HMM's own Bull/Chop/Crash label on the same row.
+
+    Seeds every turbulence-classifier column (not just the two labels) because this INSERT OR
+    REPLACE can make this row "the latest" market_regimes row for the whole shared-session test
+    DB — regime_engine.get_latest_regime() (used by /market-sentiment) does a bare
+    `SELECT * ... ORDER BY date DESC LIMIT 1` with no NULL guard on us_turbulence/uk_turbulence,
+    so a partially-seeded row here previously broke that page's Jinja "%.2f" formatting."""
+    import database as _db
+
+    conn = _db.get_connection()
+    try:
+        conn.execute(
+            """INSERT OR REPLACE INTO market_regimes
+               (date, price_hmm_state, price_hmm_label, price_hmm_prob,
+                us_regime_label, us_turbulence, uk_regime_label, uk_turbulence,
+                vix_close, spy_volatility, ftse_volatility)
+               VALUES ('2026-06-11', 0, 'Bull', 0.87, 'Normal', 14.0, 'Volatile', 24.0,
+                       14.5, 14.0, 24.0)"""
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    resp = client.get("/api/market-regime/current")
+    assert resp.status_code == 200
+    data = _json(resp)
+    assert data["current"]["label"] == "Bull"
+    assert data["current"]["us_regime_label"] == "Normal"
+    assert data["current"]["uk_regime_label"] == "Volatile"
+
+
+@pytest.mark.api
 def test_market_regime_full_returns_200(client):
     """GET /api/market-regime must return 200 with current/history/transition_matrix/regime_stats keys."""
     resp = client.get("/api/market-regime")
@@ -665,6 +700,66 @@ def test_market_stress_null_on_fresh_db(client):
     data = _json(resp)
     assert data["current"] is None
     assert data["history"] == []
+
+
+# ── Macro Conditions ──────────────────────────────────────────────────────────
+
+@pytest.mark.api
+def test_macro_conditions_returns_200(client):
+    """GET /api/macro-conditions must return 200 with the expected top-level keys."""
+    resp = client.get("/api/macro-conditions")
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
+    data = _json(resp)
+    assert data["status"] == "success"
+    for key in ("us_threat_level", "uk_threat_level", "treasury_auction", "fear_greed"):
+        assert key in data
+
+
+@pytest.mark.api
+def test_macro_conditions_degrades_gracefully_with_no_macro_regimes_row(client):
+    """With no macro_regimes row and no recent auctions, threat levels/as_of must be None and
+    treasury_auction.healthy must be None (distinct from a false 'Healthy')."""
+    resp = client.get("/api/macro-conditions")
+    data = _json(resp)
+    assert data["as_of"] is None
+    assert data["us_threat_level"] is None
+    assert data["uk_threat_level"] is None
+    assert data["treasury_auction"]["healthy"] is None
+    assert data["treasury_auction"]["recent"] == []
+
+
+@pytest.mark.api
+def test_macro_conditions_includes_seeded_threat_levels_and_auction_health(client):
+    """Once macro_regimes and treasury_auction_results have rows, the endpoint must surface the
+    raw GREEN/YELLOW/RED threat levels and correctly flag auction weakness."""
+    import database as _db
+
+    conn = _db.get_connection()
+    try:
+        conn.execute(
+            """INSERT OR REPLACE INTO macro_regimes
+               (date, us_threat_level, uk_threat_level, us_yield_velocity, uk_yield_velocity,
+                tyx_close, tnx_close, uk_gilt_close, dxy_close, gbpusd_close)
+               VALUES ('2026-07-01', 'YELLOW', 'GREEN', 18.5, 4.2, 4.55, 4.30, 4.10, 104.2, 1.27)"""
+        )
+        conn.execute(
+            """INSERT OR REPLACE INTO treasury_auction_results
+               (cusip, maturity_label, auction_date, high_yield, bid_to_cover, tail_bp,
+                direct_pct, indirect_pct, dealer_pct, offering_amt, alert_fired)
+               VALUES ('TESTCUSIP1', '10Y', date('now'), 4.31, 2.45, 1.2, 18.0, 65.0, 17.0, 39000, 1)"""
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    resp = client.get("/api/macro-conditions")
+    data = _json(resp)
+    assert data["as_of"] == "2026-07-01"
+    assert data["us_threat_level"] == "YELLOW"
+    assert data["uk_threat_level"] == "GREEN"
+    assert data["treasury_auction"]["healthy"] is False
+    assert len(data["treasury_auction"]["recent"]) == 1
+    assert data["treasury_auction"]["recent"][0]["maturity_label"] == "10Y"
 
 
 # ── Stress Test ───────────────────────────────────────────────────────────────

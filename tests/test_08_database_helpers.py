@@ -296,3 +296,44 @@ def test_batch_update_trap_phase_actuals_updates_all_rows():
 @pytest.mark.db
 def test_batch_update_trap_phase_actuals_empty_payload_is_noop():
     _db.batch_update_trap_phase_actuals([])
+
+
+# ── get_auction_summary ───────────────────────────────────────────────────────
+
+@pytest.mark.db
+def test_get_auction_summary_empty_table_returns_empty_list():
+    conn = _conn()
+    try:
+        conn.execute("DELETE FROM treasury_auction_results")
+        conn.commit()
+        assert _db.get_auction_summary() == []
+    finally:
+        conn.close()
+
+
+@pytest.mark.db
+def test_get_auction_summary_returns_recent_rows_within_30_days():
+    conn = _conn()
+    try:
+        conn.execute("DELETE FROM treasury_auction_results")
+        conn.execute(
+            """INSERT INTO treasury_auction_results
+               (cusip, maturity_label, auction_date, high_yield, bid_to_cover, tail_bp,
+                direct_pct, indirect_pct, dealer_pct, offering_amt, alert_fired)
+               VALUES ('GAS1', '10Y', date('now'), 4.3, 2.5, 1.0, 18.0, 65.0, 17.0, 39000, 0)"""
+        )
+        conn.execute(
+            """INSERT INTO treasury_auction_results
+               (cusip, maturity_label, auction_date, high_yield, bid_to_cover, tail_bp,
+                direct_pct, indirect_pct, dealer_pct, offering_amt, alert_fired)
+               VALUES ('GAS2', '30Y', date('now', '-60 days'), 4.6, 2.2, 3.0, 15.0, 60.0, 25.0, 20000, 1)"""
+        )
+        conn.commit()
+        rows = _db.get_auction_summary()
+        assert len(rows) == 1
+        assert rows[0]["maturity_label"] == "10Y"
+        assert rows[0]["alert_fired"] == 0
+    finally:
+        conn.execute("DELETE FROM treasury_auction_results WHERE cusip IN ('GAS1', 'GAS2')")
+        conn.commit()
+        conn.close()

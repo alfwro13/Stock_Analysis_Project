@@ -76,6 +76,7 @@ from db_helpers import (  # noqa: E402
     update_trap_phase_actual,
     batch_update_trap_phase_actuals,
     get_trap_phase_accuracy,
+    get_auction_summary,
 )
 from db_accounts import (  # noqa: E402
     get_accounts,
@@ -134,6 +135,7 @@ __all__ = [
     "update_trap_phase_actual",
     "batch_update_trap_phase_actuals",
     "get_trap_phase_accuracy",
+    "get_auction_summary",
     "get_accounts",
     "get_account",
     "create_account",

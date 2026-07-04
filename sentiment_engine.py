@@ -6,7 +6,7 @@ import pandas as pd
 import requests
 from fake_useragent import UserAgent
 from datetime import datetime, timedelta, timezone
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import plotly.graph_objects as go
 from yahoo_engine import yahoo_engine
@@ -35,12 +35,15 @@ _IS_REFRESHING = False
 _LAST_CACHE_TIME = 0.0
 _UA = UserAgent()
 
-_MACRO_HTML_CACHE: Dict[str, str] = {
+_MACRO_HTML_CACHE: Dict[str, Any] = {
     "sentiment_html": "",
     "vix_spy_html": "",
     "yield_equity_html": "",
     "uk_yield_equity_html": "",
-    "ftse_gbp_html": ""
+    "ftse_gbp_html": "",
+    "fear_greed_value": None,
+    "fear_greed_label": None,
+    "fear_greed_as_of": None,
 }
 
 def fetch_fear_greed_data(start_date_str: str) -> pd.DataFrame:
@@ -106,8 +109,9 @@ def get_sentiment_data() -> Optional[pd.DataFrame]:
     return merged_df
 
 
-def generate_sentiment_figure() -> Optional[go.Figure]:
-    merged_df = get_sentiment_data()
+def generate_sentiment_figure(merged_df: Optional[pd.DataFrame] = None) -> Optional[go.Figure]:
+    if merged_df is None:
+        merged_df = get_sentiment_data()
     if merged_df is None:
         return None
 
@@ -319,6 +323,31 @@ def get_sentiment_html() -> str:
     return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
 
 
+def _bucket_fear_greed(value: float) -> str:
+    """CNN's own published Fear & Greed bucket boundaries."""
+    if value < 25:
+        return "Extreme Fear"
+    if value < 45:
+        return "Fear"
+    if value < 56:
+        return "Neutral"
+    if value < 76:
+        return "Greed"
+    return "Extreme Greed"
+
+
+def get_latest_fear_greed() -> Dict[str, Any]:
+    """Latest Fear & Greed value + label, piggybacked off the same background refresh cycle
+    that already fetches this data for the sentiment chart (see _async_chart_cruncher_worker) —
+    None values until that cycle has run at least once."""
+    _check_and_trigger_async_refresh()
+    return {
+        "value": _MACRO_HTML_CACHE.get("fear_greed_value"),
+        "label": _MACRO_HTML_CACHE.get("fear_greed_label"),
+        "as_of": _MACRO_HTML_CACHE.get("fear_greed_as_of"),
+    }
+
+
 def get_vix_spy_html() -> str:
     _check_and_trigger_async_refresh()
     if _MACRO_HTML_CACHE.get("vix_spy_html"):
@@ -350,10 +379,17 @@ def _async_chart_cruncher_worker() -> None:
     try:
         logger.info("Background cruncher started compiling Plotly HTML fragments...")
 
-        fig_sentiment = generate_sentiment_figure()
+        sentiment_df = get_sentiment_data()
+        fig_sentiment = generate_sentiment_figure(sentiment_df)
         html_sentiment = fig_sentiment.to_html(
             full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False}
         ) if fig_sentiment else ""
+
+        fear_greed_value = fear_greed_label = fear_greed_as_of = None
+        if sentiment_df is not None and not sentiment_df.empty:
+            fear_greed_value = float(sentiment_df['Fear_Greed_Index'].iloc[-1])
+            fear_greed_label = _bucket_fear_greed(fear_greed_value)
+            fear_greed_as_of = sentiment_df.index[-1].strftime('%Y-%m-%d')
 
         fig_vix = generate_vix_spy_figure()
         html_vix = fig_vix.to_html(
@@ -438,6 +474,10 @@ def _async_chart_cruncher_worker() -> None:
             if html_yield_equity: _MACRO_HTML_CACHE["yield_equity_html"] = html_yield_equity
             if html_uk_yield_equity: _MACRO_HTML_CACHE["uk_yield_equity_html"] = html_uk_yield_equity
             if html_ftse_gbp: _MACRO_HTML_CACHE["ftse_gbp_html"] = html_ftse_gbp
+            if fear_greed_value is not None:
+                _MACRO_HTML_CACHE["fear_greed_value"] = fear_greed_value
+                _MACRO_HTML_CACHE["fear_greed_label"] = fear_greed_label
+                _MACRO_HTML_CACHE["fear_greed_as_of"] = fear_greed_as_of
             _LAST_CACHE_TIME = time.time()
 
         logger.info("Visual macro caches synchronized successfully.")
