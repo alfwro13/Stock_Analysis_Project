@@ -10,11 +10,12 @@ function toggleFullscreen(wrapperId) {
 
 document.addEventListener('fullscreenchange', () => {
     if (document.fullscreenElement) return;
-    const el = document.getElementById('acct-chart-wrapper');
-    if (!el || !window.Plotly) return;
-    // The browser hasn't finished collapsing the element back to its normal box
-    // on this tick, so measuring/resizing immediately captures the fullscreen size.
-    requestAnimationFrame(() => requestAnimationFrame(() => Plotly.Plots.resize(el)));
+    if (!document.getElementById('acct-chart-wrapper') || !window.Plotly) return;
+    // A plain resize() only rescales the SVG — it doesn't clear the axis ranges
+    // Plotly locked in while the container was full-viewport-sized, so the chart
+    // comes back looking zoomed/cropped. A full re-render (same path the Range
+    // buttons use) recomputes autorange from scratch and is known to work.
+    _renderAccountValueChart(_lastAcctChartData);
 });
 
 window.onTransactionChanged = function () {
@@ -54,7 +55,10 @@ function _setAcctChartPeriodCookie(period) {
     document.cookie = 'acct_chart_period=' + period + ';path=/;max-age=31536000';
 }
 
+let _lastAcctChartData = [];
+
 function _renderAccountValueChart(data) {
+    _lastAcctChartData = data;
     const el = document.getElementById('acct-chart-wrapper');
     if (!data.length) {
         el.innerHTML = "<p class='text-muted'>No value history yet — check back after the next nightly snapshot.</p>";
