@@ -11,11 +11,13 @@ function toggleFullscreen(wrapperId) {
 document.addEventListener('fullscreenchange', () => {
     if (document.fullscreenElement) return;
     if (!document.getElementById('acct-chart-wrapper') || !window.Plotly) return;
-    // A plain resize() only rescales the SVG — it doesn't clear the axis ranges
-    // Plotly locked in while the container was full-viewport-sized, so the chart
-    // comes back looking zoomed/cropped. A full re-render (same path the Range
-    // buttons use) recomputes autorange from scratch and is known to work.
-    _renderAccountValueChart(_lastAcctChartData);
+    // Two problems compound here: (1) the browser hasn't finished collapsing the
+    // element back to its normal box on this tick, so measuring immediately
+    // captures the fullscreen size; (2) a plain resize() only rescales the SVG,
+    // it doesn't clear the axis ranges Plotly locked in while full-viewport-sized.
+    // Deferring a full re-render (the same path the Range buttons use, which is
+    // known to work) past two animation frames fixes both.
+    requestAnimationFrame(() => requestAnimationFrame(() => _renderAccountValueChart(_lastAcctChartData)));
 });
 
 window.onTransactionChanged = function () {
