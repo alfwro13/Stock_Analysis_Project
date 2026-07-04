@@ -16,34 +16,40 @@
     <button id="btn-run-auction-check" class="btn btn-outline-primary btn-sm">Run Now</button>
 </div>
 
-{% if summary and summary.total %}
-<div class="regime-callout mb-3">
-    <div class="regime-callout-title">📊 Data Summary</div>
-    <p class="regime-callout-text">
-        <strong>{{ summary.total }}</strong> auction(s) on record
-        {% if summary.first_date %} since <strong>{{ summary.first_date }}</strong>{% endif %}
-        &nbsp;|&nbsp;
-        <strong class="{% if summary.weak_count and summary.weak_count > 0 %}negative-val{% else %}positive-val{% endif %}">
-            {{ summary.weak_count or 0 }} weak auction(s) flagged
-        </strong>
-        {% if summary.last_check %} &nbsp;|&nbsp; Last auction date: <strong>{{ summary.last_check }}</strong>{% endif %}
-    </p>
-    {% if latest_weak_message %}
-    <p class="regime-callout-text mt-2 mb-0">
-        <strong>⚠ Most recent alert:</strong> {{ latest_weak_message }}
-    </p>
+{% if (summary and summary.total) or not rows %}
+<div class="sentiment-widgets">
+    {% if summary and summary.total %}
+    <div class="regime-callout mb-3 sentiment-widget">
+        <div class="regime-callout-title">📊 Data Summary</div>
+        <p class="regime-callout-text">
+            <strong>{{ summary.total }}</strong> auction(s) on record
+            {% if summary.first_date %} since <strong>{{ summary.first_date }}</strong>{% endif %}
+            &nbsp;|&nbsp;
+            <strong class="{% if summary.weak_count and summary.weak_count > 0 %}negative-val{% else %}positive-val{% endif %}">
+                {{ summary.weak_count or 0 }} weak auction(s) flagged
+            </strong>
+            {% if summary.last_check %} &nbsp;|&nbsp; Last auction date: <strong>{{ summary.last_check }}</strong>{% endif %}
+        </p>
+        {% if latest_weak_message %}
+        <p class="regime-callout-text mt-2 mb-0">
+            <strong>⚠ Most recent alert:</strong> {{ latest_weak_message }}
+        </p>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {% if not rows %}
+    <div class="risk-summary-row risk-summary-yellow sentiment-widget">
+        <p class="risk-summary-text mb-0">
+            No auction data yet. The monitor checks twice daily on weekdays at {{ auction_am_input }} and {{ auction_pm_input }} (local time).
+            Results will appear here after the first successful scheduled check.
+        </p>
+    </div>
     {% endif %}
 </div>
 {% endif %}
 
-{% if not rows %}
-<div class="risk-summary-row risk-summary-yellow">
-    <p class="risk-summary-text mb-0">
-        No auction data yet. The monitor checks twice daily on weekdays at {{ auction_am_input }} and {{ auction_pm_input }} (local time).
-        Results will appear here after the first successful scheduled check.
-    </p>
-</div>
-{% else %}
+{% if rows %}
 
 <table id="auctionTable" class="table table-hover w-100">
     <thead>

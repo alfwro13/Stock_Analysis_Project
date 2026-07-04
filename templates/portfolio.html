@@ -48,7 +48,9 @@ window.AUTO_XRAY = {% if auto_xray %}true{% else %}false{% endif %};
 {% endif %}
 
 {% if macro_regime %}
+<div class="sentiment-widgets">
     {% include 'partials/risk_summary.html' %}
+</div>
 {% endif %}
 
 <div id="xray-panel">
