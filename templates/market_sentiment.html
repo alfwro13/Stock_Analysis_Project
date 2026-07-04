@@ -9,7 +9,9 @@
 {% block content %}
 <h1 class="mb-3">Market Sentiment</h1>
 
-<div class="regime-callout">
+<div class="sentiment-widgets">
+
+<div class="regime-callout sentiment-widget">
     <div class="regime-callout-title">🌍 Market Regime Context (Volatility)</div>
     <p class="regime-callout-text">
         <strong>🇺🇸 US Classification:</strong>
@@ -77,7 +79,7 @@
 {% include 'partials/treasury_auction_summary.html' %}
 
 {% if cb_nlp_latest %}
-<div class="risk-summary-row {{ cb_nlp_latest.css_class }}">
+<div class="sentiment-widget risk-summary-row {{ cb_nlp_latest.css_class }}">
     <div class="risk-summary-flex risk-summary-contagion-flex">
         <div>
             <h3 class="risk-summary-header {{ cb_nlp_latest.header_class }} mb-1">
@@ -103,7 +105,7 @@
 {% if latest.severity_score >= 0.66 %}{% set sev_label = "HIGH" %}
 {% elif latest.severity_score >= 0.33 %}{% set sev_label = "MED" %}
 {% else %}{% set sev_label = "LOW" %}{% endif %}
-<div class="risk-summary-row {% if latest.alert_fired %}risk-summary-red{% endif %}">
+<div class="sentiment-widget risk-summary-row {% if latest.alert_fired %}risk-summary-red{% endif %}">
     <div class="risk-summary-flex risk-summary-contagion-flex">
         <div class="flex-grow-1">
             <h3 class="risk-summary-header {% if latest.alert_fired %}red{% else %}text-cyan{% endif %} mb-1">
@@ -152,6 +154,8 @@
     </div>
 </div>
 {% endif %}
+
+</div>
 
 <div class="row g-4">
 

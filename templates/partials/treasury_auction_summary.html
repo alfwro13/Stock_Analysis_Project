@@ -1,7 +1,7 @@
 {% if auction_rows %}
 {% set weak_rows = auction_rows | selectattr('alert_fired') | list %}
 {% set any_weak = weak_rows | length > 0 %}
-<div class="risk-summary-row {% if any_weak %}risk-summary-red{% else %}risk-summary-green{% endif %}">
+<div class="sentiment-widget risk-summary-row {% if any_weak %}risk-summary-red{% else %}risk-summary-green{% endif %}">
     <h3 class="risk-summary-header {% if any_weak %}red{% else %}green{% endif %} mb-2">
         🏛️ US Treasury Auction Demand —
         {% if any_weak %}🚨 WEAKNESS DETECTED{% else %}✅ HEALTHY{% endif %}
