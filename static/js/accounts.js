@@ -110,9 +110,9 @@ function _accountCardHtml(acc) {
                     ${acc.note ? `<p class="text-secondary small mb-0">${_escapeHtml(acc.note)}</p>` : ''}
                 </div>
                 <div class="d-flex gap-2">
-                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="openAccountModal(${acc.id})">Edit</button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm d-none d-md-inline-block" onclick="openAccountModal(${acc.id})">Edit</button>
                     ${isScraperType ? `<button type="button" class="btn btn-outline-secondary btn-sm" onclick="openScraperModal(${acc.id})">&#9881; Scraper ${_scraperStatusBadgeHtml(acc)}</button>` : ''}
-                    ${isTrading ? `<button type="button" class="btn btn-outline-secondary btn-sm" onclick="openAutoTopupModal(${acc.id})">&#9200; Auto Top-up</button>` : ''}
+                    ${isTrading ? `<button type="button" class="btn btn-outline-secondary btn-sm d-none d-md-inline-block" onclick="openAutoTopupModal(${acc.id})">&#9200; Auto Top-up</button>` : ''}
                 </div>
             </div>
             <div class="d-flex gap-2 mt-3">
@@ -120,9 +120,9 @@ function _accountCardHtml(acc) {
                 ${isTrading ? `<a href="/portfolio?account_id=acct:${acc.id}&xray=1" class="btn btn-outline-info btn-sm">&#128302; X-ray</a>` : ''}
                 ${isWatchlist || isScraperType ? '' : `
                 <button type="button" class="btn btn-primary btn-sm" onclick="openTxnModal(${acc.id})">+ Add Transaction</button>
-                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="toggleTransactions(${acc.id})">Show Transactions</button>
-                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="importCsv(${acc.id})">Import from CSV</button>
-                <a href="/api/accounts/${acc.id}/export" class="btn btn-outline-secondary btn-sm">Export to CSV</a>`}
+                <button type="button" class="btn btn-outline-secondary btn-sm d-none d-md-inline-block" onclick="toggleTransactions(${acc.id})">Show Transactions</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm d-none d-md-inline-block" onclick="importCsv(${acc.id})">Import from CSV</button>
+                <a href="/api/accounts/${acc.id}/export" class="btn btn-outline-secondary btn-sm d-none d-md-inline-block">Export to CSV</a>`}
             </div>
             <div id="account-import-status-${acc.id}" class="status-msg-sm mt-2"></div>
             <div id="account-txns-${acc.id}" class="mt-3 d-none"></div>
