@@ -1,5 +1,8 @@
 function _houseChartHeight() {
-    return window.innerWidth < 768 ? 260 : 350;
+    // Mobile can't go below 400 — static/css/styles.css forces a 400px min-height
+    // on .js-plotly-plot under 768px (for the Macro chart); a smaller value here
+    // leaves the chart pinned short inside a taller, CSS-floored container.
+    return window.innerWidth < 768 ? 400 : 350;
 }
 
 function toggleFullscreen(wrapperId) {
