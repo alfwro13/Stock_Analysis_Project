@@ -28,6 +28,11 @@
         </strong>
         {% if summary.last_check %} &nbsp;|&nbsp; Last auction date: <strong>{{ summary.last_check }}</strong>{% endif %}
     </p>
+    {% if latest_weak_message %}
+    <p class="regime-callout-text mt-2 mb-0">
+        <strong>⚠ Most recent alert:</strong> {{ latest_weak_message }}
+    </p>
+    {% endif %}
 </div>
 {% endif %}
 

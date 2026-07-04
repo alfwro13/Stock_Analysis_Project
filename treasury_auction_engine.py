@@ -91,14 +91,44 @@ def _get_baseline(conn, maturity_label: str, exclude_cusip: str, exclude_date: s
     return mean_btc, mean_tail
 
 
-def _is_weak(btc: Optional[float], mean_btc: Optional[float],
-             tail: Optional[float], mean_tail: Optional[float]) -> tuple[bool, list[str]]:
-    reasons: list[str] = []
-    if btc is not None and mean_btc is not None and btc < mean_btc - _WEAK_BTC_THRESHOLD:
-        reasons.append(f"bid-to-cover {btc:.2f} vs 6-auction mean {mean_btc:.2f}")
-    if tail is not None and mean_tail is not None and tail > mean_tail + _WEAK_TAIL_THRESHOLD:
-        reasons.append(f"tail {tail:.1f}bp vs 6-auction mean {mean_tail:.1f}bp")
-    return bool(reasons), reasons
+def is_weak(btc: Optional[float], mean_btc: Optional[float],
+            tail: Optional[float], mean_tail: Optional[float]) -> tuple[bool, bool, bool]:
+    weak_btc = btc is not None and mean_btc is not None and btc < mean_btc - _WEAK_BTC_THRESHOLD
+    weak_tail = tail is not None and mean_tail is not None and tail > mean_tail + _WEAK_TAIL_THRESHOLD
+    return weak_btc or weak_tail, weak_btc, weak_tail
+
+
+def format_weakness_message(
+    maturity: str, auction_date: str,
+    btc: Optional[float], mean_btc: Optional[float],
+    tail: Optional[float], mean_tail: Optional[float],
+    weak_btc: bool, weak_tail: bool,
+) -> str:
+    """Plain-English alert text for non-finance readers — always covers both signals, flagging whichever tripped."""
+    if btc is not None and mean_btc is not None:
+        btc_line = (
+            f"Demand (bid-to-cover): investors offered to buy ${btc:.2f} for every $1 of bonds on sale, "
+            f"vs a recent average of ${mean_btc:.2f}"
+            + (" — weaker than usual." if weak_btc else ".")
+        )
+    else:
+        btc_line = "Demand (bid-to-cover): no recent baseline yet to compare against."
+
+    if tail is not None and mean_tail is not None:
+        tail_line = (
+            f"Bid quality (yield tail): the gap between the priciest accepted bid and the average bid was "
+            f"{tail:.1f} basis points, vs a recent average of {mean_tail:.1f}"
+            + (" — wider than usual, meaning buyers demanded an extra premium." if weak_tail else ".")
+        )
+    else:
+        tail_line = "Bid quality (yield tail): no recent baseline yet to compare against."
+
+    return (
+        f"⚠ Weak {maturity} Treasury auction ({auction_date}). {btc_line} {tail_line} "
+        "Why it matters: weak demand can force the US government to offer higher interest rates to attract "
+        "buyers next time, and rising rates often put pressure on stock valuations. One weak auction on its "
+        "own isn't alarming — a repeated pattern is worth watching. Details: /treasury-auctions"
+    )
 
 
 def check_auction_results() -> int:
@@ -152,9 +182,11 @@ def check_auction_results() -> int:
                 continue
 
             mean_btc, mean_tail = _get_baseline(conn, maturity, cusip, auction_date)
-            weak, reasons = _is_weak(bid_to_cover, mean_btc, tail, mean_tail)
+            weak, weak_btc, weak_tail = is_weak(bid_to_cover, mean_btc, tail, mean_tail)
             if weak:
-                msg = f"Weak {maturity} Treasury auction ({auction_date}): {'; '.join(reasons)}"
+                msg = format_weakness_message(
+                    maturity, auction_date, bid_to_cover, mean_btc, tail, mean_tail, weak_btc, weak_tail
+                )
                 notify("treasury_auction_alert", "Auction Weakness", msg, level="warning")
                 conn.execute(
                     "UPDATE treasury_auction_results SET alert_fired = 1 WHERE cusip = ? AND auction_date = ?",

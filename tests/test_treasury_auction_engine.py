@@ -3,7 +3,7 @@ tests/test_treasury_auction_engine.py — Sovereign Debt Auction Monitor Tests
 
 Covers:
   • _safe_float / _pct / _tail_bp — numeric helpers
-  • _is_weak — alert threshold logic (both signals, each alone, neither)
+  • is_weak — alert threshold logic (both signals, each alone, neither)
   • _get_baseline — rolling 6-auction mean from real SQLite rows
   • check_auction_results — DB write + no-op when API returns nothing
   • check_auction_results — alert fires on weak bid-to-cover
@@ -24,7 +24,8 @@ from treasury_auction_engine import (
     _safe_float,
     _pct,
     _tail_bp,
-    _is_weak,
+    is_weak,
+    format_weakness_message,
     _get_baseline,
     check_auction_results,
 )
@@ -81,36 +82,65 @@ class TestTailBp:
 
 class TestIsWeak:
     def test_strong_auction_no_alert(self):
-        weak, reasons = _is_weak(btc=2.7, mean_btc=2.5, tail=1.0, mean_tail=1.0)
+        weak, weak_btc, weak_tail = is_weak(btc=2.7, mean_btc=2.5, tail=1.0, mean_tail=1.0)
         assert not weak
-        assert reasons == []
+        assert not weak_btc
+        assert not weak_tail
 
     def test_low_btc_triggers_alert(self):
-        weak, reasons = _is_weak(btc=2.1, mean_btc=2.5, tail=1.0, mean_tail=1.0)
+        weak, weak_btc, weak_tail = is_weak(btc=2.1, mean_btc=2.5, tail=1.0, mean_tail=1.0)
         assert weak
-        assert any("bid-to-cover" in r for r in reasons)
+        assert weak_btc
+        assert not weak_tail
 
     def test_high_tail_triggers_alert(self):
-        weak, reasons = _is_weak(btc=2.5, mean_btc=2.5, tail=5.0, mean_tail=1.0)
+        weak, weak_btc, weak_tail = is_weak(btc=2.5, mean_btc=2.5, tail=5.0, mean_tail=1.0)
         assert weak
-        assert any("tail" in r for r in reasons)
+        assert not weak_btc
+        assert weak_tail
 
     def test_both_signals_trigger(self):
-        weak, reasons = _is_weak(btc=2.0, mean_btc=2.5, tail=6.0, mean_tail=1.0)
+        weak, weak_btc, weak_tail = is_weak(btc=2.0, mean_btc=2.5, tail=6.0, mean_tail=1.0)
         assert weak
-        assert len(reasons) == 2
+        assert weak_btc
+        assert weak_tail
 
     def test_none_baseline_no_alert(self):
-        weak, reasons = _is_weak(btc=2.0, mean_btc=None, tail=6.0, mean_tail=None)
+        weak, weak_btc, weak_tail = is_weak(btc=2.0, mean_btc=None, tail=6.0, mean_tail=None)
         assert not weak
 
     def test_none_metric_no_alert(self):
-        weak, reasons = _is_weak(btc=None, mean_btc=2.5, tail=None, mean_tail=1.0)
+        weak, weak_btc, weak_tail = is_weak(btc=None, mean_btc=2.5, tail=None, mean_tail=1.0)
         assert not weak
 
     def test_btc_exactly_at_threshold_no_alert(self):
-        weak, reasons = _is_weak(btc=2.3, mean_btc=2.5, tail=1.0, mean_tail=1.0)
+        weak, weak_btc, weak_tail = is_weak(btc=2.3, mean_btc=2.5, tail=1.0, mean_tail=1.0)
         assert not weak
+
+
+# ── Plain-English alert message ──────────────────────────────────────────────
+
+class TestFormatWeaknessMessage:
+    def test_flags_weak_btc_only(self):
+        msg = format_weakness_message("10Y", "2026-06-25", 2.74, 2.99, 1.0, 1.0, weak_btc=True, weak_tail=False)
+        assert "weaker than usual" in msg
+        assert "wider than usual" not in msg
+        assert "Why it matters" in msg
+        assert "/treasury-auctions" in msg
+
+    def test_flags_weak_tail_only(self):
+        msg = format_weakness_message("10Y", "2026-06-25", 2.9, 2.99, 5.0, 1.0, weak_btc=False, weak_tail=True)
+        assert "wider than usual" in msg
+        assert "weaker than usual" not in msg
+
+    def test_always_covers_both_metrics(self):
+        msg = format_weakness_message("10Y", "2026-06-25", 2.74, 2.99, 5.0, 1.0, weak_btc=True, weak_tail=True)
+        assert "Demand (bid-to-cover)" in msg
+        assert "Bid quality (yield tail)" in msg
+
+    def test_missing_baseline_handled_gracefully(self):
+        msg = format_weakness_message("10Y", "2026-06-25", 2.74, None, None, None, weak_btc=False, weak_tail=False)
+        assert "no recent baseline yet" in msg
 
 
 # ── Baseline calculation ─────────────────────────────────────────────────────

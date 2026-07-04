@@ -884,6 +884,21 @@ async def treasury_auctions_page(request: Request):
         if conn:
             conn.close()
 
+    latest_weak_message = None
+    latest_weak_row = next((r for r in rows if r.get("alert_fired")), None)
+    if latest_weak_row:
+        from treasury_auction_engine import is_weak, format_weakness_message
+        weak, weak_btc, weak_tail = is_weak(
+            latest_weak_row["bid_to_cover"], latest_weak_row["baseline_btc"],
+            latest_weak_row["tail_bp"], latest_weak_row["baseline_tail"],
+        )
+        latest_weak_message = format_weakness_message(
+            latest_weak_row["maturity_label"], latest_weak_row["auction_date"],
+            latest_weak_row["bid_to_cover"], latest_weak_row["baseline_btc"],
+            latest_weak_row["tail_bp"], latest_weak_row["baseline_tail"],
+            weak_btc, weak_tail,
+        )
+
     cfg = load_config()
     auction_sched = cfg.get("SCHEDULING", {}).get("MACRO_AUCTIONS", {})
     auction_am_input = auction_sched.get("AM_TIME", time_engine.fmt_et_time_value("13:15"))
@@ -899,6 +914,7 @@ async def treasury_auctions_page(request: Request):
             "css_version": CSS_VERSION,
             "auction_am_input": auction_am_input,
             "auction_pm_input": auction_pm_input,
+            "latest_weak_message": latest_weak_message,
         },
     )
 

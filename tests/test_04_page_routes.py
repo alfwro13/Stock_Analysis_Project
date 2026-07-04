@@ -291,6 +291,42 @@ def test_treasury_auctions_page_has_back_to_tools_and_run_now(client):
     assert b'/api/trigger-treasury-auction-check' in resp.content
 
 
+@pytest.mark.pages
+def test_treasury_auctions_page_shows_plain_english_alert_in_summary(client):
+    """The Data Summary callout must additively surface the same plain-English text as the notification."""
+    import database as db
+    conn = db.get_connection()
+    try:
+        conn.executemany(
+            """INSERT INTO treasury_auction_results
+               (cusip, maturity_label, auction_date, high_yield, bid_to_cover, tail_bp,
+                direct_pct, indirect_pct, dealer_pct, offering_amt, alert_fired)
+               VALUES (?, '10Y', ?, 4.40, ?, 1.0, NULL, NULL, NULL, NULL, 0)""",
+            [
+                ("PAGEWEAK01", "2026-05-01", 2.8),
+                ("PAGEWEAK02", "2026-04-01", 2.9),
+                ("PAGEWEAK03", "2026-03-01", 2.7),
+            ],
+        )
+        conn.execute(
+            """INSERT INTO treasury_auction_results
+               (cusip, maturity_label, auction_date, high_yield, bid_to_cover, tail_bp,
+                direct_pct, indirect_pct, dealer_pct, offering_amt, alert_fired)
+               VALUES ('PAGEWEAKNOW', '10Y', '2026-06-01', 4.52, 2.3, 2.0, NULL, NULL, NULL, NULL, 1)"""
+        )
+        conn.commit()
+
+        resp = client.get("/treasury-auctions")
+        assert resp.status_code == 200
+        assert "Most recent alert" in resp.text
+        assert "Why it matters" in resp.text
+        assert "Demand (bid-to-cover)" in resp.text
+    finally:
+        conn.execute("DELETE FROM treasury_auction_results WHERE cusip LIKE 'PAGEWEAK%'")
+        conn.commit()
+        conn.close()
+
+
 # ── Log Viewer ────────────────────────────────────────────────────────────────
 
 @pytest.mark.pages
