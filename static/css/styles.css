@@ -431,6 +431,8 @@ table.dataTable.display tbody tr.even > .sorting_1, table.dataTable.order-column
   .fundamentals-grid { grid-template-columns: 1fr; }
   .action-buttons, .controls-container, .notification-actions { flex-direction: column; gap: 10px; }
   .filter-input, .filter-select { width: 100%; }
+  .fullscreen-btn { padding: 5px 8px; }
+  .fullscreen-btn-label { display: none; }
 }
 @media (max-width: 768px) {
   /* Macro cards: hide UK gilt + US 30Y yield; 4-per-row using explicit flex sizing */

@@ -24,7 +24,7 @@
 {# ── 30-day normalised performance ── #}
 <div class="sentiment-module module-cyan sentiment-module--spaced">
     <div class="chart-wrapper">
-        <button class="fullscreen-btn" onclick="toggleFullscreen('ai-perf-daily-wrapper')">&#x26F6; Fullscreen</button>
+        <button class="fullscreen-btn" onclick="toggleFullscreen('ai-perf-daily-wrapper')">&#x26F6;<span class="fullscreen-btn-label"> Fullscreen</span></button>
         <div id="ai-perf-daily-wrapper">
             {{ perf_daily_html | safe }}
         </div>
@@ -40,7 +40,7 @@
 {% if perf_intraday_html %}
 <div class="sentiment-module module-purple sentiment-module--spaced">
     <div class="chart-wrapper">
-        <button class="fullscreen-btn" onclick="toggleFullscreen('ai-perf-intraday-wrapper')">&#x26F6; Fullscreen</button>
+        <button class="fullscreen-btn" onclick="toggleFullscreen('ai-perf-intraday-wrapper')">&#x26F6;<span class="fullscreen-btn-label"> Fullscreen</span></button>
         <div id="ai-perf-intraday-wrapper">
             {{ perf_intraday_html | safe }}
         </div>
@@ -56,7 +56,7 @@
 {# ── Pairwise correlation heatmap ── #}
 <div class="sentiment-module module-yellow sentiment-module--spaced">
     <div class="chart-wrapper">
-        <button class="fullscreen-btn" onclick="toggleFullscreen('ai-corr-wrapper')">&#x26F6; Fullscreen</button>
+        <button class="fullscreen-btn" onclick="toggleFullscreen('ai-corr-wrapper')">&#x26F6;<span class="fullscreen-btn-label"> Fullscreen</span></button>
         <div id="ai-corr-wrapper">
             {{ corr_html | safe }}
         </div>

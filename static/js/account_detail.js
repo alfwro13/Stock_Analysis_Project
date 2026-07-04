@@ -67,6 +67,7 @@ function _renderAccountValueChart(data) {
         yaxis: { title: 'Value', showgrid: true, gridcolor: '#333333', automargin: true },
     };
     Plotly.react(el, traces, layout, { responsive: true, displaylogo: false });
+    Plotly.Plots.resize(el);
 }
 
 function _setAcctPeriodButtons(active) {

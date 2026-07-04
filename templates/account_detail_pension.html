@@ -23,7 +23,7 @@
 {# ── Charts ── #}
 <div class="sentiment-module module-cyan sentiment-module--spaced">
     <div class="chart-wrapper">
-        <button class="fullscreen-btn" onclick="toggleFullscreen('pension-price-chart-wrapper')">&#9638; Fullscreen</button>
+        <button class="fullscreen-btn" onclick="toggleFullscreen('pension-price-chart-wrapper')">&#9638;<span class="fullscreen-btn-label"> Fullscreen</span></button>
         <div id="pension-price-chart-wrapper">
             {{ price_chart_html | safe }}
         </div>
@@ -32,7 +32,7 @@
 
 <div class="sentiment-module module-cyan sentiment-module--spaced">
     <div class="chart-wrapper">
-        <button class="fullscreen-btn" onclick="toggleFullscreen('pension-value-chart-wrapper')">&#9638; Fullscreen</button>
+        <button class="fullscreen-btn" onclick="toggleFullscreen('pension-value-chart-wrapper')">&#9638;<span class="fullscreen-btn-label"> Fullscreen</span></button>
         <div id="pension-value-chart-wrapper">
             {{ value_chart_html | safe }}
         </div>
