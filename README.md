@@ -94,7 +94,7 @@ The **Yahoo Finance API Usage** panel immediately below shows daily request coun
 
 The active log is always `logs/app.log`. Rotated files are named `app.log.YYYY-MM-DD` (or `.gz` if archive is enabled). Changes take effect immediately without a restart.
 
-Once file logging is enabled, click **📄 Open Log Viewer** in the same Settings panel (or navigate to `/log-viewer` directly) to open a live log viewer in a new browser tab. The viewer displays the last 500 lines on load and then streams new lines in real time (equivalent to `tail -f`). You can filter by severity level (DEBUG / INFO / WARNING / ERROR / CRITICAL) and search across all visible lines.
+Once file logging is enabled, click **📄 Open Log Viewer** in the same Settings panel (or navigate to `/log-viewer` directly) to open a live log viewer in a new browser tab. The viewer displays the last 500 lines on load and then streams new lines in real time (equivalent to `tail -f`); a **Load Full File** button loads the entire active log file on demand. You can filter by severity level (DEBUG / INFO / WARNING / ERROR / CRITICAL) and search across all visible lines — your severity selection is remembered across page reloads.
 
 
 ### **Security — Dashboard Credentials**

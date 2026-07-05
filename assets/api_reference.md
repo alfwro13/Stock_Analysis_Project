@@ -1747,7 +1747,8 @@ Returns the last N lines of the active log file as a JSON array. Intended for th
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `lines` | integer | `500` | Number of tail lines to return. Min 1, max 5 000. |
+| `lines` | integer | `500` | Number of tail lines to return. Min 1, max 5 000. Ignored when `full=true`. |
+| `full` | boolean | `false` | When `true`, returns the entire active log file instead of the last `lines` lines. |
 
 **Response (logging enabled, file exists)**
 

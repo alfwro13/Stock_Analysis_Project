@@ -544,6 +544,17 @@ def test_logs_tail_lines_param_below_min_rejected(client):
     assert resp.status_code == 422, f"Expected 422 for lines=0, got {resp.status_code}"
 
 
+@pytest.mark.api
+def test_logs_tail_full_param_accepted(client):
+    """GET /api/logs/tail?full=true must not crash and returns the same success/error shape."""
+    resp = client.get("/api/logs/tail?full=true")
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
+    data = _json(resp)
+    assert data["status"] in ("success", "error"), f"Unexpected status value: {data}"
+    if data["status"] == "success":
+        assert isinstance(data["lines"], list), "'lines' must be a list"
+
+
 # ── FX Drag API ───────────────────────────────────────────────────────────────
 
 @pytest.mark.api

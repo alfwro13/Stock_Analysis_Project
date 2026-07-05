@@ -7,14 +7,39 @@
     const searchInput = document.getElementById('lv-search');
     const autoscrollChk = document.getElementById('lv-autoscroll');
     const clearBtn = document.getElementById('lv-clear-btn');
+    const loadFullBtn = document.getElementById('lv-loadfull-btn');
     const levelCheckboxes = Array.from(document.querySelectorAll('.lv-level-chk'));
 
     // Log format: "YYYY-MM-DD HH:MM:SS,mmm - module.name - LEVEL - message"
     const LINE_RE = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}[^ ]*) - ([^ ]+) - (DEBUG|INFO|WARNING|ERROR|CRITICAL) - (.*)$/;
+    const LEVEL_STORAGE_KEY = 'lv_active_levels';
+
+    function loadStoredLevels() {
+        try {
+            const raw = localStorage.getItem(LEVEL_STORAGE_KEY);
+            const arr = raw ? JSON.parse(raw) : null;
+            return Array.isArray(arr) ? arr : null;
+        } catch (_) {
+            return null;
+        }
+    }
+
+    function saveActiveLevels() {
+        try {
+            localStorage.setItem(LEVEL_STORAGE_KEY, JSON.stringify(Array.from(activeLevels)));
+        } catch (_) {}
+    }
+
+    const storedLevels = loadStoredLevels();
+    if (storedLevels) {
+        levelCheckboxes.forEach(chk => {
+            chk.checked = storedLevels.includes(chk.value);
+        });
+    }
 
     let totalLines = 0;
     let activeSearch = '';
-    let activeLevels = new Set(['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']);
+    let activeLevels = new Set(levelCheckboxes.filter(c => c.checked).map(c => c.value));
 
     function parseLevel(raw) {
         const m = LINE_RE.exec(raw);
@@ -116,6 +141,27 @@
             });
     }
 
+    // Full-file load (replaces the in-view buffer; the live stream keeps tailing independently)
+    function loadFull() {
+        if (!window.LV_LOGGING_ENABLED) return;
+        setStatus('Loading full file…');
+        fetch('/api/logs/tail?full=true')
+            .then(r => r.json())
+            .then(data => {
+                if (data.status !== 'success') {
+                    setStatus('Error: ' + (data.message || 'unknown'), true);
+                    return;
+                }
+                output.innerHTML = '';
+                totalLines = 0;
+                data.lines.forEach(appendRow);
+                setStatus('Live — streaming new lines…');
+            })
+            .catch(err => {
+                setStatus('Failed to load log: ' + err, true);
+            });
+    }
+
     // SSE live stream
     function startStream() {
         if (!window.LV_LOGGING_ENABLED) return;
@@ -151,6 +197,7 @@
             activeLevels = new Set(
                 levelCheckboxes.filter(c => c.checked).map(c => c.value)
             );
+            saveActiveLevels();
             applyFilters();
         });
     });
@@ -165,6 +212,8 @@
         totalLines = 0;
         lineCountEl.textContent = '';
     });
+
+    loadFullBtn.addEventListener('click', loadFull);
 
     loadTail();
 }());

@@ -822,14 +822,15 @@ def _active_log_path() -> Path | None:
 
 
 @api_router.get("/logs/tail")
-async def logs_tail(lines: int = Query(default=500, ge=1, le=5000)):
+async def logs_tail(lines: int = Query(default=500, ge=1, le=5000), full: bool = Query(default=False)):
     p = _active_log_path()
     if p is None:
         return JSONResponse({"status": "error", "message": "File logging is disabled or log file not found."})
     try:
         with open(p, "r", encoding="utf-8", errors="replace") as f:
             all_lines = f.readlines()
-        tail = [ln.rstrip("\n") for ln in all_lines[-lines:]]
+        selected = all_lines if full else all_lines[-lines:]
+        tail = [ln.rstrip("\n") for ln in selected]
         return JSONResponse({"status": "success", "lines": tail})
     except Exception as e:
         logger.error("logs/tail failed: %s", e)
