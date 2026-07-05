@@ -1246,6 +1246,36 @@ Returns daily Yahoo Finance request counts for the past 8 days, broken down by i
 
 ---
 
+### `GET /api/system/yahoo-api-stats/{date_str}`
+
+Returns a single day's Yahoo Finance requests bucketed into 15-minute local-time intervals, stacked by the scheduled job that was running when each call was made (from `yahoo_api_call_log`, retained 8 days). Feeds the detail chart opened by clicking a row in the Yahoo Finance API Usage panel. `date_str` must be `YYYY-MM-DD`; a malformed date returns `400`.
+
+**Response**
+
+```json
+{
+  "status": "success",
+  "date": "2026-06-22",
+  "buckets": ["00:00", "00:15", "...", "23:45"],
+  "job_labels": ["Quant Scan", "Universe Sync", "Manual / On-Demand"],
+  "series": {
+    "Quant Scan": [0, 0, 12, "..."],
+    "Universe Sync": [0, 0, 0, "..."],
+    "Manual / On-Demand": [1, 0, 0, "..."]
+  },
+  "errors_by_bucket": [0, 0, 1, "..."]
+}
+```
+
+| Field | Description |
+|---|---|
+| `buckets` | All 96 fixed 15-minute local-time labels for the day, in order |
+| `job_labels` | Distinct job labels with at least one call that day (a call made outside any scheduled job is labelled `Manual / On-Demand`); more than 7 distinct jobs collapse the smallest into `Other` |
+| `series` | Per-job array of call counts, one entry per bucket, aligned with `buckets` |
+| `errors_by_bucket` | Count of HTTP 429/error responses per bucket, aligned with `buckets` |
+
+---
+
 ### `POST /api/change-password`
 
 Changes the dashboard login password. Requires `X-Confirm-Token` header. The new password is stored as a PBKDF2-SHA256 hash in `.env`; the plaintext `DASHBOARD_PASSWORD` key is cleared.
@@ -1898,6 +1928,7 @@ Sends a test insider trading alert via Nextcloud Talk.
 | `POST` | `/api/backup/restore` | Restore from a backup archive (destructive) |
 | `GET` | `/api/settings/network-status` | Current routing health and mode |
 | `GET` | `/api/system/yahoo-api-stats` | Daily Yahoo Finance API call counts |
+| `GET` | `/api/system/yahoo-api-stats/{date_str}` | Per-day Yahoo Finance usage bucketed by 15-min interval and consuming job |
 | `GET` | `/api/ui-theme.css` | Dynamic font-size CSS variables |
 | `GET` | `/api/system/metrics` | System diagnostic data |
 | `GET` | `/api/system/checks` | Active scheduling health warnings/errors |

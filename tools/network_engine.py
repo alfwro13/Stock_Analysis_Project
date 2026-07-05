@@ -6,11 +6,11 @@ import traceback
 import threading
 import queue as _queue_module
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from curl_cffi import requests as cffi_requests
 
 from config import load_config, DATA_DIR
-from notification_engine import notify
+from notification_engine import notify, current_job_source
 
 _IPV6_FAULT_FLAG = DATA_DIR / "ipv6_fault.flag"
 
@@ -37,6 +37,10 @@ _routing_counter = 0
 _stats_queue: "_queue_module.Queue" = _queue_module.Queue()
 _stats_writer_started = False
 _stats_writer_init_lock = threading.Lock()
+
+_CALL_LOG_RETENTION_DAYS = 8
+_PRUNE_INTERVAL_SECS = 3600.0
+_last_call_log_prune = 0.0
 
 
 class _RateLimitedError(Exception):
@@ -296,14 +300,55 @@ def _ensure_stats_writer() -> None:
     def _writer() -> None:
         while True:
             try:
-                date_str, interface, status = _stats_queue.get(timeout=60)
+                call_time, date_str, interface, status, job_id, action_context = _stats_queue.get(timeout=60)
                 _write_api_stat(date_str, interface, status)
+                _write_call_log_entry(call_time, date_str, interface, status, job_id, action_context)
+                _maybe_prune_call_log()
             except _queue_module.Empty:
                 pass
             except Exception as e:
                 logger.debug("Stats writer error: %s", e)
 
     threading.Thread(target=_writer, daemon=True).start()
+
+
+def _write_call_log_entry(call_time: str, date_str: str, interface: str, status: str, job_id, action_context: str) -> None:
+    from database import get_connection
+    conn = None
+    try:
+        conn = get_connection()
+        conn.execute(
+            "INSERT INTO yahoo_api_call_log (call_time, date, interface, status, job_id, action_context) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (call_time, date_str, interface, status, job_id, action_context),
+        )
+        conn.commit()
+    except Exception as e:
+        logger.debug("Could not write Yahoo API call log entry: %s", e)
+    finally:
+        if conn:
+            conn.close()
+
+
+def _maybe_prune_call_log() -> None:
+    # Per-call rows would grow unbounded otherwise — keep only the window the detail chart covers.
+    global _last_call_log_prune
+    now = time.time()
+    if now - _last_call_log_prune < _PRUNE_INTERVAL_SECS:
+        return
+    _last_call_log_prune = now
+    from database import get_connection
+    conn = None
+    try:
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=_CALL_LOG_RETENTION_DAYS)).strftime("%Y-%m-%d")
+        conn = get_connection()
+        conn.execute("DELETE FROM yahoo_api_call_log WHERE date < ?", (cutoff,))
+        conn.commit()
+    except Exception as e:
+        logger.debug("Could not prune Yahoo API call log: %s", e)
+    finally:
+        if conn:
+            conn.close()
 
 
 def _write_api_stat(date_str: str, interface: str, status: str) -> None:
@@ -336,10 +381,12 @@ def _write_api_stat(date_str: str, interface: str, status: str) -> None:
         logger.debug("Could not write Yahoo API stat: %s", e)
 
 
-def _increment_api_stat(interface: str, status: str) -> None:
-    date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+def _increment_api_stat(interface: str, status: str, action_context: str = "") -> None:
+    now = datetime.now(timezone.utc)
+    call_time = now.strftime("%Y-%m-%d %H:%M:%S")
+    date_str = call_time[:10]
     _ensure_stats_writer()
-    _stats_queue.put((date_str, interface, status))
+    _stats_queue.put((call_time, date_str, interface, status, current_job_source(), action_context))
 
 
 @contextmanager
@@ -381,4 +428,4 @@ def yahoo_connection_boundary(action_context: str):
         raise
     finally:
         session.close()
-        _increment_api_stat(interface, stat_status)
+        _increment_api_stat(interface, stat_status, action_context)

@@ -55,6 +55,26 @@ def get_yahoo_api_stats(days: int = 8) -> list:
             conn.close()
 
 
+def get_yahoo_api_call_log(date_str: str) -> list:
+    conn = None
+    try:
+        conn = get_connection()
+        rows = conn.execute("""
+            SELECT substr(call_time, 1, 16) AS minute_ts, job_id, status, COUNT(*) AS call_count
+            FROM yahoo_api_call_log
+            WHERE date = ?
+            GROUP BY minute_ts, job_id, status
+            ORDER BY minute_ts ASC
+        """, (date_str,)).fetchall()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        logger.error("Failed to get Yahoo API call log for %s: %s", date_str, e)
+        return []
+    finally:
+        if conn:
+            conn.close()
+
+
 from db_schema import init_db, migrate_db  # noqa: E402
 from db_etf import (  # noqa: E402
     get_etf_predictor_configs,
@@ -116,6 +136,7 @@ __all__ = [
     "get_connection",
     "log_notification",
     "get_yahoo_api_stats",
+    "get_yahoo_api_call_log",
     "init_db",
     "migrate_db",
     "get_etf_predictor_configs",

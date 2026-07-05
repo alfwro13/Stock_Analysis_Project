@@ -428,6 +428,53 @@ async def get_yahoo_api_stats_endpoint():
     return JSONResponse(content={"status": "success", "rows": rows})
 
 
+@system_router.get("/system/yahoo-api-stats/{date_str}")
+async def get_yahoo_api_stats_detail_endpoint(date_str: str):
+    from collections import defaultdict
+    from database import get_yahoo_api_call_log
+    from scheduler_manifest import job_label
+
+    try:
+        datetime.strptime(date_str, "%Y-%m-%d")
+    except ValueError:
+        return JSONResponse(status_code=400, content={"status": "error", "message": "Invalid date, expected YYYY-MM-DD."})
+
+    try:
+        raw_rows = get_yahoo_api_call_log(date_str)
+        bucket_jobs: dict = defaultdict(lambda: defaultdict(lambda: {"count": 0, "errors": 0}))
+        for r in raw_rows:
+            naive = datetime.strptime(r["minute_ts"] + ":00", "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+            local_dt = time_engine.to_local(naive)
+            bucket_minute = (local_dt.minute // 15) * 15
+            bucket_label = local_dt.strftime("%H:") + "%02d" % bucket_minute
+            label = job_label(r["job_id"]) if r["job_id"] else "Manual / On-Demand"
+            entry = bucket_jobs[bucket_label][label]
+            entry["count"] += r["call_count"]
+            if r["status"] in ("429", "error"):
+                entry["errors"] += r["call_count"]
+
+        all_buckets = ["%02d:%02d" % (h, m) for h in range(24) for m in (0, 15, 30, 45)]
+        job_labels = sorted({label for jobs in bucket_jobs.values() for label in jobs})
+        series = {
+            label: [bucket_jobs.get(b, {}).get(label, {}).get("count", 0) for b in all_buckets]
+            for label in job_labels
+        }
+        errors_by_bucket = [
+            sum(job_counts["errors"] for job_counts in bucket_jobs.get(b, {}).values())
+            for b in all_buckets
+        ]
+        return JSONResponse(content={
+            "status": "success",
+            "date": date_str,
+            "buckets": all_buckets,
+            "job_labels": job_labels,
+            "series": series,
+            "errors_by_bucket": errors_by_bucket,
+        })
+    except Exception as e:
+        return _error_500(e)
+
+
 @system_router.get("/system/metrics")
 async def get_system_metrics():
     """Returns a comprehensive diagnostic payload of system hardware, DB, and ML states."""

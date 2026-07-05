@@ -15,7 +15,7 @@ from html import escape as html_escape
 from typing import Dict, Any, List
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
@@ -767,6 +767,17 @@ async def tools_page(request: Request):
         request=request,
         name="tools.html",
         context={"unread_count": get_unread_count(), "lse_open_time": lse_open_str},
+    )
+
+
+@page_router.get("/yahoo-api-usage", response_class=HTMLResponse)
+async def yahoo_api_usage_page(request: Request, date: str = Query(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$")):
+    if not date:
+        date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    return templates.TemplateResponse(
+        request=request,
+        name="yahoo_api_usage.html",
+        context={"unread_count": get_unread_count(), "usage_date": date},
     )
 
 

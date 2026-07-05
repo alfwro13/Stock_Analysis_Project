@@ -192,7 +192,7 @@ class TestYahooConnectionBoundary:
              patch("tools.network_engine._increment_api_stat") as mock_inc:
             with ne.yahoo_connection_boundary("test"):
                 pass
-        mock_inc.assert_called_once_with("ipv4", "success")
+        mock_inc.assert_called_once_with("ipv4", "success", "test")
 
     def test_stat_incremented_as_error_on_exception(self):
         mock_session = MagicMock()
@@ -204,7 +204,7 @@ class TestYahooConnectionBoundary:
             with pytest.raises(RuntimeError):
                 with ne.yahoo_connection_boundary("test"):
                     raise RuntimeError("boom")
-        mock_inc.assert_called_once_with("ipv4", "error")
+        mock_inc.assert_called_once_with("ipv4", "error", "test")
 
     def test_stat_incremented_as_429_on_rate_limit(self):
         mock_session = MagicMock()
@@ -216,7 +216,7 @@ class TestYahooConnectionBoundary:
             with pytest.raises(ne._RateLimitedError):
                 with ne.yahoo_connection_boundary("test"):
                     raise ne._RateLimitedError("rate limited")
-        mock_inc.assert_called_once_with("ipv4", "429")
+        mock_inc.assert_called_once_with("ipv4", "429", "test")
 
 
 # ── _select_interface ─────────────────────────────────────────────────────────
@@ -284,3 +284,96 @@ class TestGetYahooApiStats:
             conn.close()
         rows = db.get_yahoo_api_stats(days=3)
         assert len(rows) <= 3
+
+
+# ── yahoo_api_call_log (per-call detail + job attribution) ───────────────────
+
+class TestYahooApiCallLog:
+    def test_increment_api_stat_captures_job_source_and_action_context(self):
+        with patch("tools.network_engine.current_job_source", return_value="quant_analysis_job"), \
+             patch.object(ne, "_ensure_stats_writer"):
+            ne._increment_api_stat("ipv4", "success", "Ticker Info: AAPL")
+        call_time, date_str, interface, status, job_id, action_context = ne._stats_queue.get_nowait()
+        assert interface == "ipv4"
+        assert status == "success"
+        assert job_id == "quant_analysis_job"
+        assert action_context == "Ticker Info: AAPL"
+        assert date_str == call_time[:10]
+
+    def test_write_call_log_entry_inserts_row(self):
+        import database as db
+        ne._write_call_log_entry("2099-03-01 10:00:00", "2099-03-01", "ipv6", "success", "quant_analysis_job", "Ticker Info: MSFT")
+        conn = db.get_connection()
+        try:
+            row = conn.execute(
+                "SELECT * FROM yahoo_api_call_log WHERE date = '2099-03-01'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row is not None
+        assert row["interface"] == "ipv6"
+        assert row["job_id"] == "quant_analysis_job"
+        assert row["action_context"] == "Ticker Info: MSFT"
+
+    def test_write_call_log_entry_allows_null_job_id(self):
+        import database as db
+        ne._write_call_log_entry("2099-03-02 10:00:00", "2099-03-02", "ipv4", "error", None, "Ticker Info: TSLA")
+        conn = db.get_connection()
+        try:
+            row = conn.execute(
+                "SELECT * FROM yahoo_api_call_log WHERE date = '2099-03-02'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row is not None
+        assert row["job_id"] is None
+
+    def test_prune_call_log_removes_rows_older_than_retention(self):
+        import database as db
+        conn = db.get_connection()
+        try:
+            conn.execute(
+                "INSERT INTO yahoo_api_call_log (call_time, date, interface, status, job_id, action_context) "
+                "VALUES ('2000-01-01 00:00:00', '2000-01-01', 'ipv4', 'success', NULL, NULL)"
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        ne._last_call_log_prune = 0.0
+        ne._maybe_prune_call_log()
+        conn = db.get_connection()
+        try:
+            row = conn.execute("SELECT 1 FROM yahoo_api_call_log WHERE date = '2000-01-01'").fetchone()
+        finally:
+            conn.close()
+        assert row is None
+
+    def test_prune_call_log_throttled(self):
+        ne._last_call_log_prune = time.time()
+        with patch("database.get_connection") as mock_conn:
+            ne._maybe_prune_call_log()
+        mock_conn.assert_not_called()
+
+
+class TestGetYahooApiCallLog:
+    def test_returns_empty_list_for_unknown_date(self):
+        import database as db
+        assert db.get_yahoo_api_call_log("2099-04-01") == []
+
+    def test_aggregates_by_minute_job_and_status(self):
+        import database as db
+        conn = db.get_connection()
+        try:
+            for _ in range(3):
+                conn.execute(
+                    "INSERT INTO yahoo_api_call_log (call_time, date, interface, status, job_id, action_context) "
+                    "VALUES ('2099-04-02 09:05:12', '2099-04-02', 'ipv4', 'success', 'quant_analysis_job', 'x')"
+                )
+            conn.commit()
+        finally:
+            conn.close()
+        rows = db.get_yahoo_api_call_log("2099-04-02")
+        assert len(rows) == 1
+        assert rows[0]["minute_ts"] == "2099-04-02 09:05"
+        assert rows[0]["job_id"] == "quant_analysis_job"
+        assert rows[0]["call_count"] == 3

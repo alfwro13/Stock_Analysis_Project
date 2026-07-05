@@ -257,6 +257,7 @@ def test_no_page_route_returns_500(client):
         ("/market-regime",      "Market Regime (HMM)"),
         ("/score-history",      "Score History"),
         ("/treasury-auctions",  "Sovereign Debt Auction Monitor"),
+        ("/yahoo-api-usage",    "Yahoo Finance API Usage"),
     ]
     failures = []
     for url, label in pages:

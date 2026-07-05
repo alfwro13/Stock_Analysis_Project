@@ -37,6 +37,11 @@
                 <p>When conflicts are detected, they are shown on the Workflow Monitor with specific labels on the affected job boxes, allowing you to resolve scheduling gaps without reading the application logs.</p>
             </div>
 
+            <div class="term-box">
+                <span class="term-title">Yahoo Finance API Usage Detail</span>
+                <p>The Yahoo Finance API Usage panel in Settings → System Diagnostics shows one row per day (total calls, IPv4/IPv6 split, rate-limit hits, errors). Clicking a row opens a chart in a new tab breaking that day's requests into 15-minute intervals, stacked by which scheduled job was running at the time (or <strong>Manual / On-Demand</strong> for requests triggered by browsing a page rather than a background job). Rate-limited (HTTP 429) or errored requests are marked with a red triangle on the bar for that interval. Detail is kept for the past 8 days, matching the summary table's window.</p>
+            </div>
+
         </div>
     </div>
 </div>

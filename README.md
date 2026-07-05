@@ -83,7 +83,7 @@ The Quantamental system features an automated configuration engine. You do not n
 - **IPv4 only** (`YAHOO_USE_IPV4: true`, `YAHOO_USE_IPV6: false`): standard OS routing — the default.
 - **IPv6 only** (`YAHOO_USE_IPV4: false`, `YAHOO_USE_IPV6: true`): all requests are bound to the address in `YAHOO_IPV6_ADDRESS`. On a hard IPv6 fault, the session falls back to IPv4 for the remainder of the process lifetime and fires a Nextcloud alert.
 - **Dual round-robin** (both `true`): alternates between IPv4 and IPv6 on successive calls to spread load and bypass per-IP rate limits.
-The **Yahoo Finance API Usage** panel immediately below shows daily request counts, interface breakdown, HTTP 429 hits, and error counts for the past 8 days (sourced from `GET /api/system/yahoo-api-stats`).
+The **Yahoo Finance API Usage** panel immediately below shows daily request counts, interface breakdown, HTTP 429 hits, and error counts for the past 8 days (sourced from `GET /api/system/yahoo-api-stats`). Click a row to open a detail chart in a new tab, breaking that day's requests into 15-minute intervals stacked by which scheduled job was running at the time (or "Manual / On-Demand" for requests triggered by browsing a page).
 
 **File Logging:** To capture the full application log to disk, enable `FILE_LOGGING` in Settings → Core System & Currencies. Key options:
 - `ENABLED` — toggle file logging on/off without restarting the server

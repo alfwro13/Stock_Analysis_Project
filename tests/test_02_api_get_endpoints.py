@@ -140,6 +140,46 @@ def test_get_yahoo_api_stats_returns_200(client):
     assert isinstance(data["rows"], list)
 
 
+@pytest.mark.api
+def test_get_yahoo_api_stats_detail_returns_200(client):
+    """GET /api/system/yahoo-api-stats/{date} must return 200 with buckets/job_labels/series."""
+    resp = client.get("/api/system/yahoo-api-stats/2026-07-01")
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
+    data = _json(resp)
+    assert data["status"] == "success"
+    assert data["date"] == "2026-07-01"
+    assert len(data["buckets"]) == 96
+    assert isinstance(data["job_labels"], list)
+    assert isinstance(data["series"], dict)
+    assert len(data["errors_by_bucket"]) == 96
+
+
+@pytest.mark.api
+def test_get_yahoo_api_stats_detail_rejects_bad_date(client):
+    resp = client.get("/api/system/yahoo-api-stats/not-a-date")
+    assert resp.status_code == 400, f"Expected 400, got {resp.status_code}"
+    assert _json(resp)["status"] == "error"
+
+
+@pytest.mark.api
+def test_get_yahoo_api_stats_detail_reflects_call_log_rows(client):
+    import database as db
+    conn = db.get_connection()
+    try:
+        conn.execute(
+            "INSERT INTO yahoo_api_call_log (call_time, date, interface, status, job_id, action_context) "
+            "VALUES ('2026-07-02 09:05:00', '2026-07-02', 'ipv4', 'success', 'quant_analysis_job', 'Ticker Info: AAPL')"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    resp = client.get("/api/system/yahoo-api-stats/2026-07-02")
+    data = _json(resp)
+    assert data["job_labels"], f"Expected at least one job label: {data}"
+    total_calls = sum(sum(v) for v in data["series"].values())
+    assert total_calls == 1
+
+
 # ── Market Status (Home Assistant) ────────────────────────────────────────────
 
 @pytest.mark.api

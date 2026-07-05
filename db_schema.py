@@ -782,6 +782,19 @@ def init_db() -> None:
         ''')
 
         cursor.execute('''
+            CREATE TABLE IF NOT EXISTS yahoo_api_call_log (
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                call_time      TEXT NOT NULL,
+                date           TEXT NOT NULL,
+                interface      TEXT NOT NULL,
+                status         TEXT NOT NULL,
+                job_id         TEXT,
+                action_context TEXT
+            )
+        ''')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_yahoo_api_call_log_date ON yahoo_api_call_log(date)')
+
+        cursor.execute('''
             CREATE TABLE IF NOT EXISTS accounts (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
                 name            TEXT NOT NULL,
@@ -1540,6 +1553,23 @@ def migrate_db(conn, cursor) -> None:
         conn.commit()
     except Exception as e:
         logger.debug("yahoo_api_stats migration: %s", e)
+
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS yahoo_api_call_log (
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                call_time      TEXT NOT NULL,
+                date           TEXT NOT NULL,
+                interface      TEXT NOT NULL,
+                status         TEXT NOT NULL,
+                job_id         TEXT,
+                action_context TEXT
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_yahoo_api_call_log_date ON yahoo_api_call_log(date)")
+        conn.commit()
+    except Exception as e:
+        logger.debug("yahoo_api_call_log migration: %s", e)
 
     # account_value_history_currency (guard for pre-feature DBs)
     try:

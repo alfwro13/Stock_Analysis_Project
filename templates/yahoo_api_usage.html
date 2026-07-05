@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block title %}Quantamental - Yahoo Finance API Usage{% endblock %}
+
+{% block extra_head %}
+<script src="/static/vendor/plotly/plotly-3.5.0.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<h1 class="mb-1">Yahoo Finance API Usage</h1>
+<p class="text-muted mb-3">Request volume for <strong>{{ usage_date }}</strong>, broken down by <abbr title="The scheduled job (or 'Manual / On-Demand' if no scheduled job was running) that triggered each Yahoo Finance request.">consuming process</abbr> in 15-minute intervals.</p>
+
+<div class="mb-3">
+    <button class="btn btn-outline-secondary btn-sm" onclick="window.close()">&#8592; Close</button>
+</div>
+
+<div class="chart-wrapper" id="yau-chart-wrapper">
+    <button class="fullscreen-btn" onclick="toggleFullscreen('yau-chart-wrapper')">&#9638; Fullscreen</button>
+    <div id="yau-chart"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+window.YAHOO_API_USAGE_DATE = {{ usage_date | tojson }};
+</script>
+<script src="/static/js/yahoo_api_usage.js?v={{ css_version }}"></script>
+{% endblock %}

@@ -870,7 +870,7 @@ function loadYahooApiStats() {
             data.rows.forEach(r => {
                 const has429 = r.rate_limit_429 > 0;
                 const hasErr = r.other_errors > 0;
-                html += '<tr>'
+                html += '<tr class="yahoo-stats-row-clickable" title="Click to view usage detail chart" onclick="window.open(\'/yahoo-api-usage?date=' + r.date + '\', \'_blank\')">'
                     + '<td>' + r.date + '</td>'
                     + '<td>' + r.total_calls + '</td>'
                     + '<td>' + r.ipv4_calls + '</td>'
