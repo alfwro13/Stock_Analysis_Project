@@ -1515,9 +1515,22 @@ def test_held_tickers_lightweight_excludes_ignored_tickers(monkeypatch):
 
 
 @pytest.mark.db
-def test_tickers_needing_refresh_empty_when_market_closed(monkeypatch):
+def test_tickers_needing_refresh_skips_cached_ticker_when_market_closed(monkeypatch):
+    import time
+
+    # Market closed, but a cached (even stale) row exists — no need to re-fetch,
+    # since the price can't have moved since the market shut.
     monkeypatch.setattr(accounts_engine.market_pulse, "is_exchange_open", lambda exchange: False)
-    assert accounts_engine.tickers_needing_refresh(["ZZANYTHING"], 60) == []
+    _seed_market_pulse("ZZCLOSEDCACHED", 100.0, time.time() - 200000)
+    assert accounts_engine.tickers_needing_refresh(["ZZCLOSEDCACHED"], 60) == []
+
+
+@pytest.mark.db
+def test_tickers_needing_refresh_bootstraps_missing_ticker_even_when_market_closed(monkeypatch):
+    # Weekend/restart bootstrap case: a ticker with no cached row at all must still be
+    # refreshed even while the market is closed, or it can never self-heal until reopen.
+    monkeypatch.setattr(accounts_engine.market_pulse, "is_exchange_open", lambda exchange: False)
+    assert accounts_engine.tickers_needing_refresh(["ZZNOCACHECLOSED"], 60) == ["ZZNOCACHECLOSED"]
 
 
 @pytest.mark.db

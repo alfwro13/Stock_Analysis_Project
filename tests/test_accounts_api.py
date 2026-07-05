@@ -1700,13 +1700,15 @@ def test_portfolio_totals_zero_trading_accounts_returns_all_zero_shape(client):
 
 
 @pytest.mark.api
-def test_refresh_now_returns_queued_immediately(client):
+def test_refresh_now_completes_before_responding(client):
+    # The Home Assistant "Refresh Data" button re-polls its coordinator immediately after this
+    # call returns, so the fetch must be genuinely finished (not just queued) by response time.
     with patch("api_routes_accounts.fetch_and_save_pulse") as mock_fetch, \
          patch("api_routes_accounts.refresh_performance_cache") as mock_refresh:
         resp = client.post("/api/accounts/refresh-now")
     assert resp.status_code == 200
     data = _json(resp)
-    assert data["status"] == "queued"
+    assert data["status"] == "success"
     mock_fetch.assert_called_once()
     mock_refresh.assert_not_called()  # no Trading accounts created in this test
 
@@ -1721,7 +1723,7 @@ def test_refresh_now_invokes_background_task_functions(client):
          patch("api_routes_accounts.notify") as mock_notify:
         resp = client.post("/api/accounts/refresh-now")
     assert resp.status_code == 200
-    assert _json(resp)["status"] == "queued"
+    assert _json(resp)["status"] == "success"
     mock_fetch.assert_called_once()
     mock_refresh.assert_called_once_with(account_id)
     mock_notify.assert_called_once()
@@ -1757,7 +1759,7 @@ def test_holdings_list_triggers_background_refresh_for_stale_held_ticker(client)
 
 
 @pytest.mark.api
-def test_holdings_list_does_not_trigger_refresh_when_market_closed(client):
+def test_holdings_list_does_not_trigger_refresh_for_cached_ticker_when_market_closed(client):
     with patch("api_routes_accounts.resnapshot_account"), \
          patch("api_routes_accounts.update_single_profile"):
         account_id = _create_account(client, name="HoldingsListNoRefreshAcc")
@@ -1766,12 +1768,47 @@ def test_holdings_list_does_not_trigger_refresh_when_market_closed(client):
             "currency": "GBP", "quantity": 5, "unit_price": 100.0, "exchange_rate": 1.0,
             "update_cash": True,
         })
+    import time
+    import database as _db
+    conn = _db.get_connection()
+    conn.execute(
+        "INSERT OR REPLACE INTO market_pulse_cache "
+        "(ticker, name, price, change_pts, change_pct, is_positive, last_updated) "
+        "VALUES ('ZZNOTRIGGERREF', 'ZZNOTRIGGERREF', 100.0, 0, 0, 1, ?)",
+        (time.time() - 200000,),
+    )
+    conn.commit()
+    conn.close()
 
     with patch("api_routes_accounts.fetch_and_save_pulse") as mock_fetch, \
          patch("accounts_engine.market_pulse.is_exchange_open", return_value=False):
         resp = client.get("/api/accounts/holdings-list")
     assert resp.status_code == 200
     mock_fetch.assert_not_called()
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_holdings_list_bootstraps_missing_ticker_even_when_market_closed(client):
+    # Weekend/restart regression: a held ticker with no market_pulse_cache row at all must
+    # still get refreshed even while the market is closed, or it can never self-heal.
+    with patch("api_routes_accounts.resnapshot_account"), \
+         patch("api_routes_accounts.update_single_profile"):
+        account_id = _create_account(client, name="HoldingsListBootstrapAcc")
+        client.post(f"/api/accounts/{account_id}/transactions", json={
+            "txn_type": "Buy", "txn_date": "2026-01-15", "ticker": "ZZBOOTSTRAPREF",
+            "currency": "GBP", "quantity": 5, "unit_price": 100.0, "exchange_rate": 1.0,
+            "update_cash": True,
+        })
+
+    with patch("api_routes_accounts.fetch_and_save_pulse") as mock_fetch, \
+         patch("accounts_engine.market_pulse.is_exchange_open", return_value=False):
+        resp = client.get("/api/accounts/holdings-list")
+    assert resp.status_code == 200
+    mock_fetch.assert_called_once()
+    assert "ZZBOOTSTRAPREF" in mock_fetch.call_args[0][0]
 
     import database as _db
     _db.soft_delete_account(account_id)
@@ -1829,8 +1866,8 @@ def test_refresh_now_notifies_error_on_failure(client):
     with patch("api_routes_accounts.fetch_and_save_pulse", side_effect=RuntimeError("boom")), \
          patch("api_routes_accounts.notify") as mock_notify:
         resp = client.post("/api/accounts/refresh-now")
-    assert resp.status_code == 200
-    assert _json(resp)["status"] == "queued"
+    assert resp.status_code == 500
+    assert _json(resp)["status"] == "error"
     mock_notify.assert_called_once()
     assert mock_notify.call_args[0][0] == "ha_refresh_now_status"
     assert mock_notify.call_args[0][1] == "Error"

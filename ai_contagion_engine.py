@@ -212,13 +212,13 @@ def record_scan_snapshot(conn: sqlite3.Connection, alerts: list) -> None:
         logger.error(f"AIContagionEngine: failed to record scan snapshot: {e}")
 
 
-_AI_PAGE_TICKERS = ["NVDA", "AMD", "AVGO", "GOOGL", "MSFT", "META", "AAPL", "ORCL", "AMZN", "TSLA"]
+AI_ECOSYSTEM_TICKERS = ["NVDA", "AMD", "AVGO", "GOOGL", "MSFT", "META", "AAPL", "ORCL", "AMZN", "TSLA"]
 
 
 def get_ai_contagion_data(days: int = 30) -> dict:
     """Returns {"daily_dfs": ..., "intraday_dfs": ..., "error": str|None} for the AI ecosystem basket."""
     try:
-        daily_dfs = yahoo_engine.get_price_history(_AI_PAGE_TICKERS, period=f"{days + 5}d", interval="1d")
+        daily_dfs = yahoo_engine.get_price_history(AI_ECOSYSTEM_TICKERS, period=f"{days + 5}d", interval="1d")
         for ticker, df in daily_dfs.items():
             daily_dfs[ticker] = df.tail(days)
     except Exception as exc:
@@ -227,7 +227,7 @@ def get_ai_contagion_data(days: int = 30) -> dict:
 
     intraday_dfs: dict = {}
     try:
-        intraday_dfs = yahoo_engine.get_intraday(_AI_PAGE_TICKERS, period="1d", interval="5m", prepost=False)
+        intraday_dfs = yahoo_engine.get_intraday(AI_ECOSYSTEM_TICKERS, period="1d", interval="5m", prepost=False)
     except Exception as exc:
         logger.warning("get_ai_contagion_data intraday fetch failed: %s", exc)
 

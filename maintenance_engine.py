@@ -11,6 +11,9 @@ from config import (
 )
 from database import get_connection, get_watchlist_tickers, log_notification as _db_log_notification
 from ghostfolio_sync import purge_ghostfolio_files
+from accounts_engine import get_combined_holdings
+from market_pulse import INDEX_TICKERS
+from ai_contagion_engine import AI_ECOSYSTEM_TICKERS
 
 class MaintenanceEngine:
     """Weekly housekeeping: prune notification logs, delete orphaned files, VACUUM the DB."""
@@ -99,12 +102,49 @@ class MaintenanceEngine:
             if conn:
                 conn.close()
 
-    def prune_pulse_cache(self):
+    def _get_pulse_active_tickers(self) -> set:
+        """Every ticker any market_pulse_cache writer currently tracks (portfolio holdings,
+        watchlist, the fixed index/gilt list, the AI Contagion basket, active Dip Radar
+        monitors) — exempted from the age-based prune below so a currently-held ticker's last
+        known daily change survives a market closure (weekend/holiday) instead of being wiped
+        by the weekly maintenance run before the next session can refresh it. Deliberately not
+        _get_active_tickers(): that method's own ticker_tables list includes market_pulse_cache
+        itself, which would make every existing row protect itself and defeat pruning entirely."""
+        active_tickers = set(INDEX_TICKERS.keys()) | {"UK10YG"} | set(AI_ECOSYSTEM_TICKERS)
+        try:
+            active_tickers.update(get_combined_holdings().keys())
+        except Exception as e:
+            logger.warning("Failed to load combined holdings for pulse cache retention: %s", e)
+        try:
+            active_tickers.update(get_watchlist_tickers())
+        except Exception as e:
+            logger.warning("Failed to load watchlist tickers for pulse cache retention: %s", e)
+
         conn = None
         try:
             conn = get_connection()
             cursor = conn.cursor()
-            cursor.execute("DELETE FROM market_pulse_cache WHERE last_updated <= ?", (time.time() - 86400,))
+            cursor.execute("SELECT DISTINCT ticker FROM intraday_monitors WHERE is_active = 1")
+            active_tickers.update(row[0] for row in cursor.fetchall() if row[0])
+        except Exception as e:
+            logger.warning("Failed to load Dip Radar monitors for pulse cache retention: %s", e)
+        finally:
+            if conn:
+                conn.close()
+
+        return active_tickers
+
+    def prune_pulse_cache(self):
+        conn = None
+        try:
+            active_tickers = self._get_pulse_active_tickers()
+            conn = get_connection()
+            cursor = conn.cursor()
+            placeholders = ",".join("?" * len(active_tickers))
+            cursor.execute(
+                f"DELETE FROM market_pulse_cache WHERE last_updated <= ? AND ticker NOT IN ({placeholders})",
+                (time.time() - 86400, *active_tickers)
+            )
             self.metrics["pulse_cache_deleted"] = cursor.rowcount
             conn.commit()
             logger.info("Removed %d stale pulse records", self.metrics["pulse_cache_deleted"])

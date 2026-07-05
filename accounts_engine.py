@@ -684,16 +684,20 @@ def held_tickers_lightweight() -> list:
 def tickers_needing_refresh(tickers: list, refresh_rate: int) -> list:
     """Held tickers whose market_pulse_cache row is older than refresh_rate seconds, while
     either of the two markets this app tracks (`GET /api/system/market-status`'s own scope —
-    UK/US) is open. Gated once per call rather than per-ticker via time_engine.ticker_exchange()
-    — that call falls back to a config read for any ticker with no recognised suffix/currency,
-    which is cheap for one ticker but adds up badly across every held ticker on every poll of
-    the accounts-API endpoints; a plain LSE-or-NYSE-open check is the same practical scope
-    GET /api/system/market-status already exposes, at a small, constant cost per call. Used by
-    the HA-polled accounts endpoints to trigger a real fetch when due, mirroring the same
-    needs_refresh pattern GET /api/market-pulse already uses."""
+    UK/US) is open — plus any ticker with NO cached row at all, regardless of market hours.
+    The market-hours gate exists to avoid needlessly re-fetching a ticker whose price can't
+    have moved since the market shut, but that reasoning doesn't apply to a genuinely missing
+    row (a restart or maintenance-prune gap, or a newly-bought ticker) — without this bootstrap
+    exception a ticker with no row stays permanently unrecoverable for the rest of a closure,
+    since normal polling would never trigger a fetch to create the first row. Gated once per
+    call rather than per-ticker via time_engine.ticker_exchange() — that call falls back to a
+    config read for any ticker with no recognised suffix/currency, which is cheap for one ticker
+    but adds up badly across every held ticker on every poll of the accounts-API endpoints; a
+    plain LSE-or-NYSE-open check is the same practical scope GET /api/system/market-status
+    already exposes, at a small, constant cost per call. Used by the HA-polled accounts
+    endpoints to trigger a real fetch when due, mirroring the same needs_refresh pattern
+    GET /api/market-pulse already uses."""
     if not tickers:
-        return []
-    if not (market_pulse.is_exchange_open("LSE") or market_pulse.is_exchange_open("NYSE")):
         return []
     conn = None
     try:
@@ -711,6 +715,10 @@ def tickers_needing_refresh(tickers: list, refresh_rate: int) -> list:
     finally:
         if conn:
             conn.close()
+
+    missing = [t for t in tickers if t not in cache_map]
+    if not (market_pulse.is_exchange_open("LSE") or market_pulse.is_exchange_open("NYSE")):
+        return missing
 
     now = time.time()
     return [t for t in tickers if now - cache_map.get(t, 0) > refresh_rate]

@@ -3,7 +3,8 @@ tests/test_maintenance_engine.py — MAINTENANCE ENGINE
 
 Covers:
   - prune_database_logs: UTC cutoff, rows deleted correctly, conn closed on success
-  - prune_pulse_cache: removes records older than 24 h, leaves fresh ones
+  - prune_pulse_cache: removes records older than 24h AND orphaned; spares active
+    tickers regardless of age (weekend/market-closure retention)
   - garbage_collect_files: deletes orphaned old files, spares active tickers,
     spares fresh files, spares protected files
   - dry_run: returns correct would_delete / would_keep buckets without deleting
@@ -128,25 +129,51 @@ class TestPruneDatabaseLogs:
 class TestPrunePulseCache:
     STALE_TICKER = "_MAINT_TEST_STALE"
     FRESH_TICKER = "_MAINT_TEST_FRESH"
+    HELD_TICKER = "_MAINT_TEST_HELD"
 
     def teardown_method(self):
         c = _conn()
-        c.execute("DELETE FROM market_pulse_cache WHERE ticker IN (?, ?)", (self.STALE_TICKER, self.FRESH_TICKER))
+        c.execute(
+            "DELETE FROM market_pulse_cache WHERE ticker IN (?, ?, ?)",
+            (self.STALE_TICKER, self.FRESH_TICKER, self.HELD_TICKER),
+        )
         c.commit()
         c.close()
 
     def test_removes_record_older_than_24h(self):
         _insert_pulse(self.STALE_TICKER, time.time() - 90000)  # 25 h ago
         eng = _engine()
-        eng.prune_pulse_cache()
+        with patch.object(eng, "_get_pulse_active_tickers", return_value=set()):
+            eng.prune_pulse_cache()
         assert _count_pulse(self.STALE_TICKER) == 0
         assert eng.metrics["pulse_cache_deleted"] >= 1
 
     def test_keeps_record_younger_than_24h(self):
         _insert_pulse(self.FRESH_TICKER, time.time() - 3600)  # 1 h ago
         eng = _engine()
-        eng.prune_pulse_cache()
+        with patch.object(eng, "_get_pulse_active_tickers", return_value=set()):
+            eng.prune_pulse_cache()
         assert _count_pulse(self.FRESH_TICKER) == 1
+
+    def test_spares_stale_record_for_actively_held_ticker(self):
+        # Weekend/market-closure case: a currently-held ticker's last known change is >24h
+        # old (no scan has run since the market closed) but must survive the prune.
+        _insert_pulse(self.HELD_TICKER, time.time() - 200000)  # ~2.3 days ago
+        eng = _engine()
+        with patch.object(eng, "_get_pulse_active_tickers", return_value={self.HELD_TICKER}):
+            eng.prune_pulse_cache()
+        assert _count_pulse(self.HELD_TICKER) == 1
+
+    def test_active_tickers_include_index_and_ai_ecosystem_constants(self):
+        eng = _engine()
+        with (
+            patch("maintenance_engine.get_combined_holdings", return_value={}),
+            patch("maintenance_engine.get_watchlist_tickers", return_value=[]),
+        ):
+            active = eng._get_pulse_active_tickers()
+        assert "^GSPC" in active
+        assert "UK10YG" in active
+        assert "NVDA" in active
 
 
 # ── garbage_collect_files ─────────────────────────────────────────────────────

@@ -5,6 +5,7 @@ from typing import Optional
 from fastapi import APIRouter, BackgroundTasks, File, Query, Request, UploadFile
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
 
 from accounts_engine import (
     _ticker_known, account_summary, confirm_autotopup, create_transfer,
@@ -749,13 +750,21 @@ def _run_refresh_now(tickers: list) -> None:
     except Exception as e:
         logger.error("HA refresh-now failed: %s", e)
         notify("ha_refresh_now_status", "Error", f"Home Assistant refresh-now failed: {e}", level="error")
+        raise
 
 
 @accounts_router.post("/accounts/refresh-now")
-async def api_refresh_now(background_tasks: BackgroundTasks):
+async def api_refresh_now():
+    # Awaited (via a worker thread, so the event loop stays free for other requests) rather than
+    # fired-and-forgotten: the Home Assistant "Refresh Data" button re-polls its coordinator
+    # immediately after this call returns, so the fetch must actually be finished by then or the
+    # re-poll just sees the still-stale data it was trying to fix.
     tickers = list(get_combined_holdings().keys())
-    background_tasks.add_task(_run_refresh_now, tickers)
-    return JSONResponse(content={"status": "queued", "message": "Refresh queued."})
+    try:
+        await run_in_threadpool(_run_refresh_now, tickers)
+    except Exception as e:
+        return _error_500(e)
+    return JSONResponse(content={"status": "success", "message": "Refresh complete."})
 
 
 def _require_scraper_account(account_id: int):
