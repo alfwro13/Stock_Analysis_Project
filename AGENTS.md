@@ -91,6 +91,7 @@ Stock_Analysis_Project/
 ├── freetrade_engine.py       # Freetrade CSV import
 ├── ghostfolio_sync.py        # Ghostfolio API sync
 ├── fundamentals_helpers.py   # Shared fundamentals calculations: calculate_piotroski_f_score, calculate_altman_z_score, calculate_beneish_m_score, calculate_peter_lynch_peg, get_instrument_type
+├── price_history_helpers.py  # Per-ticker calendar-period return helpers (5D/1M/6M/YTD/1Y anchor closes, from parquet) — feeds the Portfolio page's Change Period toggle
 ├── visuals.py                # OHLCV, macro, and anomaly Plotly charts
 ├── visuals_etf.py            # ETF charts: correlation, prediction, contributions, overlay
 ├── visuals_ai.py             # AI contagion charts: performance chart, correlation heatmap
@@ -269,7 +270,7 @@ Schema changes must go through `db_schema.py:init_db()` (new tables) and `db_sch
 
     **Before writing new calculation logic:** grep for the concept first (e.g. `current_price`, `exchange_rate`, `pnl`) to check whether a canonical engine function already exists. If it does, use it. If a genuinely new calculation is needed that overlaps with an existing one, extend the existing canonical function rather than writing a sibling.
 
-17. **Helper files are the canonical home for shared utility/calculation logic — check them before writing new logic, and extend rather than duplicate.** This codebase has four dedicated shared-helper modules, each scoped to a layer:
+17. **Helper files are the canonical home for shared utility/calculation logic — check them before writing new logic, and extend rather than duplicate.** This codebase has five dedicated shared-helper modules, each scoped to a layer:
 
     | Helper file | Scope | Examples |
     |---|---|---|
@@ -277,10 +278,11 @@ Schema changes must go through `db_schema.py:init_db()` (new tables) and `db_sch
     | `fundamentals_helpers.py` | Pure calculation helpers derived from fundamentals data (accounting-forensics scores, valuation ratios, instrument classification) | `calculate_piotroski_f_score`, `calculate_altman_z_score`, `calculate_beneish_m_score`, `calculate_peter_lynch_peg`, `get_instrument_type` |
     | `page_helpers.py` | Page-route-layer display/formatting helpers shared across `page_routes*.py` | `_fmt_currency`, `_fmt_volume`, `calculate_pnl`, `_build_position_sizing_context` |
     | `utils.py` | Generic, layer-agnostic utilities with no DB/page dependency | `normalize_ticker` |
+    | `price_history_helpers.py` | Per-ticker calendar-period return calculations derived from parquet price history | `get_period_anchor_closes`, `pct_from_anchor` |
 
     **Before writing a new utility function, calculation, or query helper:** grep the relevant helper file(s) above for the concept first. If an existing function already does it, or is close enough to extend (e.g. an extra parameter), use/extend it — do not write a second, parallel implementation in the calling module. Same failure mode as rule 16, generalised beyond business calculations to any reusable helper: duplicated logic drifts apart silently (a fix applied to one copy doesn't propagate to the other) until two callers disagree on something that should be identical — see the `get_mutual_fund_tickers()` gap (fixed 2026-07-03) where `intraday_orchestrator.py` had its own undocumented ad-hoc `ticker.startswith('0P')` mutual-fund check instead of using the canonical `db_helpers` function, which itself hadn't been wired into every `get_intraday()` call site that needed it.
 
-    **Search by purpose, not exact name.** A duplicate is rarely named the same as the original — `_get_current_price`, `resolve_price`, and `latest_quote` can all be the same concept reimplemented three times. Grep for the underlying noun/verb (`price`, `pnl`, `mutual_fund`, `exchange_rate`) across the four helper files above rather than just the function name you're about to write.
+    **Search by purpose, not exact name.** A duplicate is rarely named the same as the original — `_get_current_price`, `resolve_price`, and `latest_quote` can all be the same concept reimplemented three times. Grep for the underlying noun/verb (`price`, `pnl`, `mutual_fund`, `exchange_rate`) across the five helper files above rather than just the function name you're about to write.
 
     **When no existing helper file fits:** if a genuinely new domain of shared logic emerges, create a new `<domain>_helpers.py` rather than forcing it into an unrelated file or leaving it duplicated inline. Keep each helper file scoped to one concern; if it grows too large for a single Read, that's the rule 12 split signal.
 
