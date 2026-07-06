@@ -181,6 +181,7 @@ class TreasuryBillAutoReinvestBody(BaseModel):
 
 class TreasuryBillConfirmYtmBody(BaseModel):
     confirmed_ytm: Optional[float] = None
+    face_value: Optional[float] = None
 
 
 def _resolve_exchange_rate(currency: Optional[str], exchange_rate: Optional[float], txn_date: str) -> float:
@@ -1106,7 +1107,7 @@ async def api_confirm_treasury_bill_ytm(request: Request, account_id: int, bill_
         bill = get_treasury_bill(bill_id)
         if not bill or bill["account_id"] != account_id:
             return JSONResponse(status_code=404, content={"status": "error", "message": "Treasury Bill not found."})
-        result = confirm_ytm(bill_id, body.confirmed_ytm)
+        result = confirm_ytm(bill_id, body.confirmed_ytm, body.face_value)
         if result.get("error"):
             return JSONResponse(status_code=422, content={"status": "error", "message": result["error"]})
         background_tasks.add_task(resnapshot_account, account_id)

@@ -142,6 +142,56 @@ def test_confirm_ytm_keep_estimate_leaves_values_unchanged():
 
 
 @pytest.mark.db
+def test_confirm_ytm_accepts_direct_face_value_override():
+    aid = create_account("TBillDirectFaceValueAcc", "GBP", initial_cash=2000.0)
+    result = tbe.buy_treasury_bill(aid, "2026-07-01", 501.43, 500.0, "2026-07-29", indicative_ytm=3.72)
+
+    outcome = tbe.confirm_ytm(result["bill_id"], face_value=502.00)
+    assert outcome["face_value"] == 502.00
+    # indicative_ytm is left as the prior estimate when only face_value is supplied directly.
+    assert outcome["indicative_ytm"] == pytest.approx(3.72)
+
+    bill = tbe.get_treasury_bill(result["bill_id"])
+    assert bill["face_value"] == 502.00
+
+
+@pytest.mark.db
+def test_confirm_ytm_rejects_face_value_not_exceeding_purchase_price():
+    aid = create_account("TBillEditBadFaceValueAcc", "GBP", initial_cash=2000.0)
+    result = tbe.buy_treasury_bill(aid, "2026-07-01", 501.43, 500.0, "2026-07-29", indicative_ytm=3.72)
+
+    outcome = tbe.confirm_ytm(result["bill_id"], face_value=499.0)
+    assert "error" in outcome
+    bill = tbe.get_treasury_bill(result["bill_id"])
+    assert bill["face_value"] == pytest.approx(501.43)
+
+
+@pytest.mark.db
+def test_confirm_ytm_on_matured_bill_corrects_sell_transaction_and_cash():
+    """Regression guard for the flagged edge case: editing a bill's valuation after it has already
+    matured must correct the posted maturity Sell too, not just the treasury_bills row, otherwise
+    the account's cash balance would silently disagree with the corrected face value."""
+    from accounts_engine import cash_balance
+    from database import get_transaction
+
+    aid = create_account("TBillEditMaturedAcc", "GBP", initial_cash=2000.0)
+    result = tbe.buy_treasury_bill(aid, "2026-05-01", 501.43, 500.0, "2026-05-29", indicative_ytm=3.72)
+    tbe.sweep_matured_bills()
+    assert cash_balance(aid) == pytest.approx(2000.0 - 500.0 + 501.43)
+
+    outcome = tbe.confirm_ytm(result["bill_id"], confirmed_ytm=4.0)
+    corrected_face_value = outcome["face_value"]
+    assert corrected_face_value != pytest.approx(501.43)
+
+    assert cash_balance(aid) == pytest.approx(2000.0 - 500.0 + corrected_face_value)
+    bill = tbe.get_treasury_bill(result["bill_id"])
+    assert bill["status"] == "Matured"
+    assert bill["face_value"] == pytest.approx(corrected_face_value)
+    sell_txn = get_transaction(bill["maturity_txn_id"])
+    assert sell_txn["unit_price"] == pytest.approx(corrected_face_value)
+
+
+@pytest.mark.db
 def test_two_concurrent_bills_do_not_blend_cost_basis():
     """Regression guard: concurrently-held bills must get different tickers so
     _ledger_for_account never averages their discount prices together."""

@@ -46,3 +46,35 @@
     </div>
   </div>
 </div>
+
+<div class="modal fade" id="editTreasuryBillModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Edit Treasury Bill</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="tbill-edit-account-id">
+        <input type="hidden" id="tbill-edit-bill-id">
+        <input type="hidden" id="tbill-edit-purchase-price">
+        <input type="hidden" id="tbill-edit-purchase-date">
+        <input type="hidden" id="tbill-edit-maturity-date">
+        <p class="text-muted small">Use this to correct the Face Value once you know the real redemption figure — if this bill has already matured, its posted cash credit is corrected to match.</p>
+        <div class="form-group">
+            <label for="tbill-edit-ytm"><abbr title="Optional — enter this instead of Face Value directly to have it recomputed from the amount paid and the number of days held.">Confirmed YTM (%)</abbr></label>
+            <input type="number" id="tbill-edit-ytm" step="0.01" oninput="_updateEditTBillPreview()">
+        </div>
+        <div class="form-group">
+            <label for="tbill-edit-face-value">Face Value ({{ account.currency }})</label>
+            <input type="number" id="tbill-edit-face-value" step="0.01" oninput="_updateEditTBillPreview()">
+        </div>
+        <div id="tbill-edit-preview" class="status-msg-sm text-accent-cyan mb-2"></div>
+        <div id="tbill-edit-status" class="status-msg-sm"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-save" onclick="submitEditTreasuryBill()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>

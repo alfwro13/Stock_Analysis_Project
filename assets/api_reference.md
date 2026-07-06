@@ -3243,13 +3243,15 @@ Toggles the `auto_reinvest` flag. Rate limit: 30/minute.
 
 ### `POST /api/accounts/{id}/treasury-bills/{bill_id}/confirm-ytm`
 
-Resolves the "Confirm the final YTM" banner (`treasury_bill_engine.confirm_ytm`) for a bill bought with an `indicative_ytm` whose Start Date has arrived — by then the Friday DMO tender has closed, so the real yield is knowable, unlike at purchase time. Given `confirmed_ytm`, recomputes `face_value` with the same formula the Buy T-Bill modal used initially (`purchase_price + purchase_price × confirmed_ytm × days/365`) and stores both; given `confirmed_ytm: null`, leaves `face_value`/`indicative_ytm` untouched ("Keep Estimate") and just clears the banner. Either way this is a one-time confirmation, not re-editable afterward — `ytm_confirmed` flips to `true` and the bill never reappears in the pending list. Rate limit: 30/minute.
+Doubles as the "Confirm the final YTM" banner action and the general **Edit** action on a Treasury Bill's valuation (`treasury_bill_engine.confirm_ytm`) — usable at any time, whether the bill is still `Open` or has already `Matured`. Given `confirmed_ytm`, recomputes `face_value` with the same formula the Buy T-Bill modal used initially (`purchase_price + purchase_price × confirmed_ytm × days/365`); given `face_value` directly (e.g. the operator knows the exact redemption figure without needing a rate), that value wins outright over recomputing from `confirmed_ytm`; given neither, leaves both untouched ("Keep Estimate", banner-only). Setting `ytm_confirmed=true` also clears the banner, so the Edit modal doubles as its resolution path. **If the bill has already matured**, the posted maturity Sell transaction's amount is corrected to match the new `face_value` too, so the account's cash balance stays consistent with the corrected figure — not just the `treasury_bills` row. Rate limit: 30/minute.
 
-**Request body (enter the real rate):** `{ "confirmed_ytm": 3.72 }`
+**Request body (enter the real rate, recompute face value):** `{ "confirmed_ytm": 3.72 }`
 
-**Request body (keep the original estimate):** `{ "confirmed_ytm": null }`
+**Request body (enter the exact redemption figure directly):** `{ "face_value": 501.83 }`
 
-**Response:** `{ "status": "success", "face_value": 501.83, "indicative_ytm": 3.72 }`. Returns 404 if the bill doesn't belong to this account.
+**Request body (keep the original estimate, clear the banner only):** `{ "confirmed_ytm": null }`
+
+**Response:** `{ "status": "success", "face_value": 501.83, "indicative_ytm": 3.72 }`. Returns 404 if the bill doesn't belong to this account, 422 if the resulting face value would not exceed the amount paid.
 
 ---
 

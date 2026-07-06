@@ -950,13 +950,15 @@ def get_treasury_bills_pending_ytm_confirmation(as_of_date: str, account_id: Opt
 
 
 def confirm_treasury_bill_ytm(bill_id: int, face_value: float, indicative_ytm: Optional[float]) -> bool:
+    """Not status-gated: also used to edit a bill's valuation after it has already matured
+    (treasury_bill_engine.confirm_ytm corrects the posted maturity Sell to match in that case)."""
     conn = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute(
             "UPDATE treasury_bills SET face_value = ?, indicative_ytm = ?, ytm_confirmed = 1 "
-            "WHERE id = ? AND status = 'Open'",
+            "WHERE id = ?",
             (face_value, indicative_ytm, bill_id)
         )
         conn.commit()

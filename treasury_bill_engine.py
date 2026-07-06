@@ -183,22 +183,35 @@ def bills_pending_ytm_confirmation(account_id: int) -> list:
     return get_treasury_bills_pending_ytm_confirmation(today, account_id)
 
 
-def confirm_ytm(bill_id: int, confirmed_ytm: Optional[float] = None) -> dict:
-    """Resolves the YTM-confirmation banner for one bill. Given a real `confirmed_ytm`, recomputes
-    Face Value from it (same formula as the initial estimate) and stores both; given None ('Keep
-    Estimate'), leaves Face Value/indicative_ytm untouched and just clears the banner."""
+def confirm_ytm(bill_id: int, confirmed_ytm: Optional[float] = None, face_value: Optional[float] = None) -> dict:
+    """Resolves the YTM-confirmation banner, and doubles as the general 'Edit' action for a bill's
+    valuation at any time — Open or already Matured. `face_value` (if given directly, e.g. the
+    operator knows the exact redemption figure) wins over recomputing from `confirmed_ytm`; given
+    neither, leaves Face Value/indicative_ytm untouched ('Keep Estimate'). If the bill has already
+    matured, also corrects the posted maturity Sell's amount to match, since that transaction — not
+    this row — is what the account's cash balance actually derives from."""
     bill = get_treasury_bill(bill_id)
     if not bill:
         return {"error": "Treasury Bill not found."}
-    if confirmed_ytm is not None:
-        face_value = estimate_face_value(bill["purchase_price"], confirmed_ytm, bill["purchase_date"], bill["maturity_date"])
-        indicative_ytm = confirmed_ytm
+    if face_value is not None:
+        new_face_value = face_value
+        new_indicative_ytm = confirmed_ytm if confirmed_ytm is not None else bill["indicative_ytm"]
+    elif confirmed_ytm is not None:
+        new_face_value = round(estimate_face_value(bill["purchase_price"], confirmed_ytm, bill["purchase_date"], bill["maturity_date"]), 2)
+        new_indicative_ytm = confirmed_ytm
     else:
-        face_value = bill["face_value"]
-        indicative_ytm = bill["indicative_ytm"]
-    if not confirm_treasury_bill_ytm(bill_id, face_value, indicative_ytm):
-        return {"error": "Failed to confirm the Treasury Bill's YTM."}
-    return {"face_value": round(face_value, 2), "indicative_ytm": indicative_ytm}
+        new_face_value = bill["face_value"]
+        new_indicative_ytm = bill["indicative_ytm"]
+    if new_face_value <= bill["purchase_price"]:
+        return {"error": "Face value must be greater than the amount paid — a Treasury Bill is bought at a discount."}
+
+    if not confirm_treasury_bill_ytm(bill_id, new_face_value, new_indicative_ytm):
+        return {"error": "Failed to update the Treasury Bill."}
+
+    if bill["status"] == "Matured" and bill["maturity_txn_id"]:
+        update_transaction(bill["maturity_txn_id"], unit_price=new_face_value)
+
+    return {"face_value": round(new_face_value, 2), "indicative_ytm": new_indicative_ytm}
 
 
 def delete_treasury_bill(bill_id: int) -> dict:

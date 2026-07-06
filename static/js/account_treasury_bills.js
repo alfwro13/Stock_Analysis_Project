@@ -177,6 +177,73 @@ async function keepTreasuryBillEstimate(accountId, billId) {
     }
 }
 
+function _editTreasuryBillModal() {
+    return bootstrap.Modal.getOrCreateInstance(document.getElementById('editTreasuryBillModal'));
+}
+
+function openEditTreasuryBillModal(accountId, billId, faceValue, ytm, purchasePrice, purchaseDate, maturityDate) {
+    document.getElementById('tbill-edit-account-id').value = accountId;
+    document.getElementById('tbill-edit-bill-id').value = billId;
+    document.getElementById('tbill-edit-purchase-price').value = purchasePrice;
+    document.getElementById('tbill-edit-purchase-date').value = purchaseDate;
+    document.getElementById('tbill-edit-maturity-date').value = maturityDate;
+    document.getElementById('tbill-edit-face-value').value = faceValue;
+    document.getElementById('tbill-edit-ytm').value = ytm === null ? '' : ytm;
+    document.getElementById('tbill-edit-preview').innerHTML = '';
+    document.getElementById('tbill-edit-status').innerHTML = '';
+    _editTreasuryBillModal().show();
+}
+
+// Recomputes Face Value from a newly-entered YTM using the same formula the Buy T-Bill modal
+// used initially — lets the operator just type the real rate instead of doing the maths by hand.
+function _updateEditTBillPreview() {
+    const preview = document.getElementById('tbill-edit-preview');
+    const ytm = document.getElementById('tbill-edit-ytm').value;
+    if (ytm === '') {
+        preview.textContent = '';
+        return;
+    }
+    const purchasePrice = parseFloat(document.getElementById('tbill-edit-purchase-price').value);
+    const purchaseDate = document.getElementById('tbill-edit-purchase-date').value;
+    const maturityDate = document.getElementById('tbill-edit-maturity-date').value;
+    const days = (new Date(maturityDate) - new Date(purchaseDate)) / 86400000;
+    if (days <= 0) {
+        preview.textContent = '';
+        return;
+    }
+    const faceValue = purchasePrice * (1 + (parseFloat(ytm) / 100) * (days / 365));
+    document.getElementById('tbill-edit-face-value').value = faceValue.toFixed(2);
+    preview.textContent = `Face Value recomputed at ${faceValue.toFixed(2)} from this YTM.`;
+}
+
+async function submitEditTreasuryBill() {
+    const status = document.getElementById('tbill-edit-status');
+    const accountId = document.getElementById('tbill-edit-account-id').value;
+    const billId = document.getElementById('tbill-edit-bill-id').value;
+    const faceValue = parseFloat(document.getElementById('tbill-edit-face-value').value);
+    const ytm = document.getElementById('tbill-edit-ytm').value;
+    if (isNaN(faceValue) || faceValue <= 0) {
+        status.innerHTML = '<span class="msg-error">Enter a valid Face Value.</span>';
+        return;
+    }
+    status.innerHTML = '<span class="msg-info">Saving...</span>';
+    try {
+        const r = await fetch(`/api/accounts/${accountId}/treasury-bills/${billId}/confirm-ytm`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ face_value: faceValue, confirmed_ytm: ytm === '' ? null : parseFloat(ytm) }),
+        });
+        const data = await r.json();
+        if (data.status === 'success') {
+            location.reload();
+        } else {
+            status.innerHTML = `<span class="msg-error">${data.message || 'Failed to save.'}</span>`;
+        }
+    } catch (e) {
+        status.innerHTML = `<span class="msg-error">${e.message}</span>`;
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     _initAccountDetailTable('treasuryBillsTable', [[3], [6], [5], [8], [4], [1], [0], [2], [7]], [[3, 'asc']]);
 });

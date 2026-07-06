@@ -191,6 +191,7 @@
                     <input type="checkbox" {% if b.auto_reinvest %}checked{% endif %} onchange="toggleTreasuryBillAutoReinvest({{ account.id }}, {{ b.id }}, this.checked)">
                 </td>
                 <td>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="openEditTreasuryBillModal({{ account.id }}, {{ b.id }}, {{ b.face_value }}, {{ b.indicative_ytm if b.indicative_ytm is not none else 'null' }}, {{ b.purchase_price }}, '{{ b.purchase_date }}', '{{ b.maturity_date }}')">Edit</button>
                     <button type="button" class="btn btn-outline-danger btn-sm" onclick="deleteTreasuryBill({{ account.id }}, {{ b.id }})">Delete</button>
                 </td>
             </tr>

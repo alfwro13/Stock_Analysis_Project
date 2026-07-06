@@ -1321,6 +1321,50 @@ def test_treasury_bill_confirm_ytm_keep_estimate_leaves_face_value_unchanged(cli
 
 
 @pytest.mark.api
+def test_treasury_bill_edit_endpoint_accepts_direct_face_value(client):
+    account_id = _create_account(client, initial_cash=2000.0)
+    resp = client.post(f"/api/accounts/{account_id}/treasury-bills", json={
+        "purchase_date": "2026-07-01", "face_value": 501.43, "purchase_price": 500.0,
+        "maturity_date": "2026-07-29", "indicative_ytm": 3.72,
+    })
+    bill_id = _json(resp)["bill_id"]
+
+    resp = client.post(f"/api/accounts/{account_id}/treasury-bills/{bill_id}/confirm-ytm", json={"face_value": 502.0})
+    assert resp.status_code == 200
+    assert _json(resp)["face_value"] == 502.0
+
+    bills = _json(client.get(f"/api/accounts/{account_id}/treasury-bills"))["treasury_bills"]
+    assert bills[0]["face_value"] == 502.0
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_treasury_bill_edit_after_maturity_corrects_cash_via_api(client):
+    account_id = _create_account(client, initial_cash=2000.0)
+    resp = client.post(f"/api/accounts/{account_id}/treasury-bills", json={
+        "purchase_date": "2026-05-01", "face_value": 501.43, "purchase_price": 500.0,
+        "maturity_date": "2026-05-29", "indicative_ytm": 3.72,
+    })
+    bill_id = _json(resp)["bill_id"]
+
+    import treasury_bill_engine as tbe
+    tbe.sweep_matured_bills()
+
+    resp = client.post(f"/api/accounts/{account_id}/treasury-bills/{bill_id}/confirm-ytm", json={"confirmed_ytm": 4.0})
+    assert resp.status_code == 200
+    corrected_face_value = _json(resp)["face_value"]
+    assert corrected_face_value != 501.43
+
+    from accounts_engine import cash_balance
+    assert cash_balance(account_id) == pytest.approx(2000.0 - 500.0 + corrected_face_value)
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
 def test_generic_transaction_endpoints_reject_tbill_ticker(client):
     account_id = _create_account(client, initial_cash=2000.0)
     resp = client.post(f"/api/accounts/{account_id}/treasury-bills", json={
