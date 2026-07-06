@@ -1276,6 +1276,51 @@ def test_treasury_bill_toggle_auto_reinvest_and_delete(client):
 
 
 @pytest.mark.api
+def test_treasury_bill_confirm_ytm_with_real_rate_recomputes_face_value(client):
+    account_id = _create_account(client, initial_cash=2000.0)
+    resp = client.post(f"/api/accounts/{account_id}/treasury-bills", json={
+        "purchase_date": "2026-07-01", "face_value": 501.43, "purchase_price": 500.0,
+        "maturity_date": "2026-07-29", "indicative_ytm": 3.72,
+    })
+    bill_id = _json(resp)["bill_id"]
+
+    resp = client.post(f"/api/accounts/{account_id}/treasury-bills/{bill_id}/confirm-ytm", json={"confirmed_ytm": 4.0})
+    assert resp.status_code == 200
+    data = _json(resp)
+    assert data["indicative_ytm"] == 4.0
+    assert data["face_value"] != 501.43
+
+    bills = _json(client.get(f"/api/accounts/{account_id}/treasury-bills"))["treasury_bills"]
+    assert bills[0]["ytm_confirmed"] == 1
+    assert bills[0]["indicative_ytm"] == 4.0
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_treasury_bill_confirm_ytm_keep_estimate_leaves_face_value_unchanged(client):
+    account_id = _create_account(client, initial_cash=2000.0)
+    resp = client.post(f"/api/accounts/{account_id}/treasury-bills", json={
+        "purchase_date": "2026-07-01", "face_value": 501.43, "purchase_price": 500.0,
+        "maturity_date": "2026-07-29", "indicative_ytm": 3.72,
+    })
+    bill_id = _json(resp)["bill_id"]
+
+    resp = client.post(f"/api/accounts/{account_id}/treasury-bills/{bill_id}/confirm-ytm", json={"confirmed_ytm": None})
+    assert resp.status_code == 200
+    data = _json(resp)
+    assert data["face_value"] == pytest.approx(501.43)
+    assert data["indicative_ytm"] == pytest.approx(3.72)
+
+    bills = _json(client.get(f"/api/accounts/{account_id}/treasury-bills"))["treasury_bills"]
+    assert bills[0]["ytm_confirmed"] == 1
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
 def test_generic_transaction_endpoints_reject_tbill_ticker(client):
     account_id = _create_account(client, initial_cash=2000.0)
     resp = client.post(f"/api/accounts/{account_id}/treasury-bills", json={

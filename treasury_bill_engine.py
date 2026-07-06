@@ -6,8 +6,9 @@ from typing import Optional
 
 import db_accounts
 from db_accounts import (
-    add_transaction, create_treasury_bill, delete_transaction, get_account, get_treasury_bill,
-    get_treasury_bill_by_ticker, get_treasury_bills_for_account, get_open_treasury_bills_due,
+    add_transaction, confirm_treasury_bill_ytm, create_treasury_bill, delete_transaction,
+    get_account, get_treasury_bill, get_treasury_bill_by_ticker, get_treasury_bills_for_account,
+    get_treasury_bills_pending_ytm_confirmation, get_open_treasury_bills_due,
     mark_treasury_bill_matured, update_transaction,
 )
 from notification_engine import notify
@@ -90,6 +91,7 @@ def buy_treasury_bill(
     bill_id = create_treasury_bill(
         account_id, txn_id, ticker, face_value, purchase_price,
         purchase_date, maturity_date, auto_reinvest, notes, indicative_ytm,
+        ytm_confirmed=indicative_ytm is None,
     )
     if bill_id is None:
         delete_transaction(txn_id)
@@ -171,6 +173,32 @@ def list_treasury_bills(account_id: int) -> list:
     for bill in bills:
         bill["current_value"] = round(accreted_price(bill, today), 2)
     return bills
+
+
+def bills_pending_ytm_confirmation(account_id: int) -> list:
+    """Bills bought with an indicative (pre-tender) YTM whose Start Date has arrived — by then the
+    Friday DMO tender has already happened, so the operator can now confirm the real yield instead
+    of the last-week estimate the Buy T-Bill modal computed Face Value from."""
+    today = datetime.now(timezone.utc).date().isoformat()
+    return get_treasury_bills_pending_ytm_confirmation(today, account_id)
+
+
+def confirm_ytm(bill_id: int, confirmed_ytm: Optional[float] = None) -> dict:
+    """Resolves the YTM-confirmation banner for one bill. Given a real `confirmed_ytm`, recomputes
+    Face Value from it (same formula as the initial estimate) and stores both; given None ('Keep
+    Estimate'), leaves Face Value/indicative_ytm untouched and just clears the banner."""
+    bill = get_treasury_bill(bill_id)
+    if not bill:
+        return {"error": "Treasury Bill not found."}
+    if confirmed_ytm is not None:
+        face_value = estimate_face_value(bill["purchase_price"], confirmed_ytm, bill["purchase_date"], bill["maturity_date"])
+        indicative_ytm = confirmed_ytm
+    else:
+        face_value = bill["face_value"]
+        indicative_ytm = bill["indicative_ytm"]
+    if not confirm_treasury_bill_ytm(bill_id, face_value, indicative_ytm):
+        return {"error": "Failed to confirm the Treasury Bill's YTM."}
+    return {"face_value": round(face_value, 2), "indicative_ytm": indicative_ytm}
 
 
 def delete_treasury_bill(bill_id: int) -> dict:

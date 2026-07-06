@@ -975,6 +975,7 @@ def init_db() -> None:
                 face_value      REAL NOT NULL,
                 purchase_price  REAL NOT NULL,
                 indicative_ytm  REAL,
+                ytm_confirmed   INTEGER NOT NULL DEFAULT 0,
                 purchase_date   TEXT NOT NULL,
                 maturity_date   TEXT NOT NULL,
                 auto_reinvest   INTEGER NOT NULL DEFAULT 0,
@@ -1638,6 +1639,7 @@ def migrate_db(conn, cursor) -> None:
                 face_value      REAL NOT NULL,
                 purchase_price  REAL NOT NULL,
                 indicative_ytm  REAL,
+                ytm_confirmed   INTEGER NOT NULL DEFAULT 0,
                 purchase_date   TEXT NOT NULL,
                 maturity_date   TEXT NOT NULL,
                 auto_reinvest   INTEGER NOT NULL DEFAULT 0,
@@ -1658,8 +1660,11 @@ def migrate_db(conn, cursor) -> None:
         if 'indicative_ytm' not in existing_tbill_columns:
             logger.info("[MIGRATION] Adding column: indicative_ytm to treasury_bills...")
             cursor.execute("ALTER TABLE treasury_bills ADD COLUMN indicative_ytm REAL")
+        if 'ytm_confirmed' not in existing_tbill_columns:
+            logger.info("[MIGRATION] Adding column: ytm_confirmed to treasury_bills...")
+            cursor.execute("ALTER TABLE treasury_bills ADD COLUMN ytm_confirmed INTEGER NOT NULL DEFAULT 0")
     except Exception as e:
-        logger.error("[MIGRATION ERROR] Failed to add indicative_ytm to treasury_bills: %s", e)
+        logger.error("[MIGRATION ERROR] Failed to add indicative_ytm/ytm_confirmed to treasury_bills: %s", e)
 
     cursor.execute("PRAGMA table_info(etf_predictor_predictions)")
     existing_etf_prediction_columns = [info['name'] for info in cursor.fetchall()]

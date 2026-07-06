@@ -132,6 +132,51 @@ async function deleteTreasuryBill(accountId, billId) {
     }
 }
 
+async function confirmTreasuryBillYtm(accountId, billId) {
+    const status = document.getElementById(`tbill-ytm-confirm-status-${billId}`);
+    const rate = parseFloat(document.getElementById(`tbill-ytm-confirm-rate-${billId}`).value);
+    if (isNaN(rate)) {
+        status.innerHTML = '<span class="msg-error">Enter a valid YTM.</span>';
+        return;
+    }
+    status.innerHTML = '<span class="msg-info">Confirming...</span>';
+    try {
+        const r = await fetch(`/api/accounts/${accountId}/treasury-bills/${billId}/confirm-ytm`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ confirmed_ytm: rate }),
+        });
+        const data = await r.json();
+        if (data.status === 'success') {
+            location.reload();
+        } else {
+            status.innerHTML = `<span class="msg-error">${data.message || 'Failed to confirm.'}</span>`;
+        }
+    } catch (e) {
+        status.innerHTML = `<span class="msg-error">${e.message}</span>`;
+    }
+}
+
+async function keepTreasuryBillEstimate(accountId, billId) {
+    const status = document.getElementById(`tbill-ytm-confirm-status-${billId}`);
+    status.innerHTML = '<span class="msg-info">Saving...</span>';
+    try {
+        const r = await fetch(`/api/accounts/${accountId}/treasury-bills/${billId}/confirm-ytm`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ confirmed_ytm: null }),
+        });
+        const data = await r.json();
+        if (data.status === 'success') {
+            location.reload();
+        } else {
+            status.innerHTML = `<span class="msg-error">${data.message || 'Failed.'}</span>`;
+        }
+    } catch (e) {
+        status.innerHTML = `<span class="msg-error">${e.message}</span>`;
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     _initAccountDetailTable('treasuryBillsTable', [[3], [6], [5], [8], [4], [1], [0], [2], [7]], [[3, 'asc']]);
 });

@@ -775,6 +775,7 @@ def create_treasury_bill(
     auto_reinvest: bool = False,
     notes: Optional[str] = None,
     indicative_ytm: Optional[float] = None,
+    ytm_confirmed: bool = True,
 ) -> Optional[int]:
     conn = None
     try:
@@ -783,10 +784,11 @@ def create_treasury_bill(
         cursor.execute(
             """INSERT INTO treasury_bills
                    (account_id, buy_txn_id, ticker, face_value, purchase_price,
-                    indicative_ytm, purchase_date, maturity_date, auto_reinvest, notes)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    indicative_ytm, purchase_date, maturity_date, auto_reinvest, notes, ytm_confirmed)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (account_id, buy_txn_id, ticker, face_value, purchase_price,
-             indicative_ytm, purchase_date, maturity_date, 1 if auto_reinvest else 0, notes)
+             indicative_ytm, purchase_date, maturity_date, 1 if auto_reinvest else 0, notes,
+             1 if ytm_confirmed else 0)
         )
         conn.commit()
         return cursor.lastrowid
@@ -915,6 +917,52 @@ def delete_treasury_bill(bill_id: int) -> bool:
         return cursor.rowcount > 0
     except Exception as e:
         logger.error("Failed to delete treasury bill %s: %s", bill_id, e)
+        return False
+    finally:
+        if conn:
+            conn.close()
+
+
+def get_treasury_bills_pending_ytm_confirmation(as_of_date: str, account_id: Optional[int] = None) -> list:
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        if account_id is None:
+            cursor.execute(
+                "SELECT * FROM treasury_bills WHERE status = 'Open' AND ytm_confirmed = 0 "
+                "AND purchase_date <= ? ORDER BY purchase_date",
+                (as_of_date,)
+            )
+        else:
+            cursor.execute(
+                "SELECT * FROM treasury_bills WHERE status = 'Open' AND ytm_confirmed = 0 "
+                "AND purchase_date <= ? AND account_id = ? ORDER BY purchase_date",
+                (as_of_date, account_id)
+            )
+        return [dict(row) for row in cursor.fetchall()]
+    except Exception as e:
+        logger.error("Failed to get treasury bills pending YTM confirmation: %s", e)
+        return []
+    finally:
+        if conn:
+            conn.close()
+
+
+def confirm_treasury_bill_ytm(bill_id: int, face_value: float, indicative_ytm: Optional[float]) -> bool:
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE treasury_bills SET face_value = ?, indicative_ytm = ?, ytm_confirmed = 1 "
+            "WHERE id = ? AND status = 'Open'",
+            (face_value, indicative_ytm, bill_id)
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    except Exception as e:
+        logger.error("Failed to confirm YTM for treasury bill %s: %s", bill_id, e)
         return False
     finally:
         if conn:

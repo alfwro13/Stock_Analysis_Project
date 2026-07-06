@@ -423,7 +423,7 @@ async def account_detail_page(request: Request, account_id: int):
         get_account, get_performance_cache, get_transactions, get_unresolved_pending_topups,
         get_value_history, get_watchlist_items,
     )
-    from treasury_bill_engine import list_treasury_bills
+    from treasury_bill_engine import bills_pending_ytm_confirmation, list_treasury_bills
 
     acc = get_account(account_id)
     if acc is None:
@@ -481,6 +481,7 @@ async def account_detail_page(request: Request, account_id: int):
             "pending_topups": get_unresolved_pending_topups(account_id),
             "performance": performance,
             "treasury_bills": list_treasury_bills(account_id),
+            "treasury_bills_pending_ytm": bills_pending_ytm_confirmation(account_id),
             "config": load_config(),
         }
     )

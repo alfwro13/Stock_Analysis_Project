@@ -80,6 +80,68 @@ def test_buy_treasury_bill_indicative_ytm_is_optional():
 
 
 @pytest.mark.db
+def test_buy_treasury_bill_with_indicative_ytm_needs_confirmation():
+    aid = create_account("TBillNeedsConfirmAcc", "GBP", initial_cash=2000.0)
+    result = tbe.buy_treasury_bill(aid, "2026-07-09", 501.43, 500.0, "2026-08-06", indicative_ytm=3.72)
+    bill = tbe.get_treasury_bill(result["bill_id"])
+    assert bill["ytm_confirmed"] == 0
+
+
+@pytest.mark.db
+def test_buy_treasury_bill_without_indicative_ytm_needs_no_confirmation():
+    aid = create_account("TBillNoConfirmNeededAcc", "GBP", initial_cash=2000.0)
+    result = tbe.buy_treasury_bill(aid, "2026-07-09", 501.43, 500.0, "2026-08-06")
+    bill = tbe.get_treasury_bill(result["bill_id"])
+    assert bill["ytm_confirmed"] == 1
+
+
+@pytest.mark.db
+def test_bills_pending_ytm_confirmation_excludes_future_start_dates():
+    aid = create_account("TBillFutureStartAcc", "GBP", initial_cash=2000.0)
+    tbe.buy_treasury_bill(aid, "2026-12-01", 1000.0, 990.0, "2026-12-29", indicative_ytm=3.5)
+    assert tbe.bills_pending_ytm_confirmation(aid) == []
+
+
+@pytest.mark.db
+def test_bills_pending_ytm_confirmation_includes_started_unconfirmed_bill():
+    aid = create_account("TBillStartedAcc", "GBP", initial_cash=2000.0)
+    result = tbe.buy_treasury_bill(aid, "2026-07-01", 501.43, 500.0, "2026-07-29", indicative_ytm=3.72)
+    pending = tbe.bills_pending_ytm_confirmation(aid)
+    assert len(pending) == 1
+    assert pending[0]["id"] == result["bill_id"]
+
+
+@pytest.mark.db
+def test_confirm_ytm_with_real_rate_recomputes_face_value_and_clears_pending():
+    aid = create_account("TBillConfirmRealAcc", "GBP", initial_cash=2000.0)
+    result = tbe.buy_treasury_bill(aid, "2026-07-01", 501.43, 500.0, "2026-07-29", indicative_ytm=3.72)
+
+    outcome = tbe.confirm_ytm(result["bill_id"], confirmed_ytm=4.0)
+    assert outcome["indicative_ytm"] == 4.0
+    assert outcome["face_value"] == pytest.approx(tbe.estimate_face_value(500.0, 4.0, "2026-07-01", "2026-07-29"), abs=0.01)
+
+    bill = tbe.get_treasury_bill(result["bill_id"])
+    assert bill["ytm_confirmed"] == 1
+    assert bill["indicative_ytm"] == 4.0
+    assert tbe.bills_pending_ytm_confirmation(aid) == []
+
+
+@pytest.mark.db
+def test_confirm_ytm_keep_estimate_leaves_values_unchanged():
+    aid = create_account("TBillKeepEstimateAcc", "GBP", initial_cash=2000.0)
+    result = tbe.buy_treasury_bill(aid, "2026-07-01", 501.43, 500.0, "2026-07-29", indicative_ytm=3.72)
+
+    outcome = tbe.confirm_ytm(result["bill_id"])
+    assert outcome["indicative_ytm"] == pytest.approx(3.72)
+    assert outcome["face_value"] == pytest.approx(501.43)
+
+    bill = tbe.get_treasury_bill(result["bill_id"])
+    assert bill["ytm_confirmed"] == 1
+    assert bill["face_value"] == pytest.approx(501.43)
+    assert tbe.bills_pending_ytm_confirmation(aid) == []
+
+
+@pytest.mark.db
 def test_two_concurrent_bills_do_not_blend_cost_basis():
     """Regression guard: concurrently-held bills must get different tickers so
     _ledger_for_account never averages their discount prices together."""

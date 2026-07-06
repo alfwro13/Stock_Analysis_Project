@@ -3227,17 +3227,29 @@ Tracks zero-coupon UK Treasury bills (`treasury_bill_engine.py`) as holdings ins
 
 Lists every Treasury Bill (open and matured) for the account (`treasury_bill_engine.list_treasury_bills`), each row annotated with a computed `current_value` — the bill's straight-line accreted value as of today, between the purchase price and face value. Rate limit: 60/minute.
 
-**Response:** `{ "status": "success", "treasury_bills": [{ "id": 5, "ticker": "TBILL-210", "face_value": 501.43, "purchase_price": 500.0, "indicative_ytm": 3.72, "purchase_date": "2026-07-09", "maturity_date": "2026-08-06", "auto_reinvest": 1, "status": "Open", "maturity_txn_id": null, "current_value": 500.34 }] }`.
+**Response:** `{ "status": "success", "treasury_bills": [{ "id": 5, "ticker": "TBILL-210", "face_value": 501.43, "purchase_price": 500.0, "indicative_ytm": 3.72, "ytm_confirmed": 0, "purchase_date": "2026-07-09", "maturity_date": "2026-08-06", "auto_reinvest": 1, "status": "Open", "maturity_txn_id": null, "current_value": 500.34 }] }`.
 
 ---
 
 ### `PUT /api/accounts/{id}/treasury-bills/{bill_id}`
 
-Toggles the `auto_reinvest` flag — the only field editable after purchase. Rate limit: 30/minute.
+Toggles the `auto_reinvest` flag. Rate limit: 30/minute.
 
 **Request body:** `{ "auto_reinvest": true }`
 
 **Response:** `{ "status": "success", "message": "Treasury Bill updated." }`. Returns 404 if the bill doesn't belong to this account.
+
+---
+
+### `POST /api/accounts/{id}/treasury-bills/{bill_id}/confirm-ytm`
+
+Resolves the "Confirm the final YTM" banner (`treasury_bill_engine.confirm_ytm`) for a bill bought with an `indicative_ytm` whose Start Date has arrived — by then the Friday DMO tender has closed, so the real yield is knowable, unlike at purchase time. Given `confirmed_ytm`, recomputes `face_value` with the same formula the Buy T-Bill modal used initially (`purchase_price + purchase_price × confirmed_ytm × days/365`) and stores both; given `confirmed_ytm: null`, leaves `face_value`/`indicative_ytm` untouched ("Keep Estimate") and just clears the banner. Either way this is a one-time confirmation, not re-editable afterward — `ytm_confirmed` flips to `true` and the bill never reappears in the pending list. Rate limit: 30/minute.
+
+**Request body (enter the real rate):** `{ "confirmed_ytm": 3.72 }`
+
+**Request body (keep the original estimate):** `{ "confirmed_ytm": null }`
+
+**Response:** `{ "status": "success", "face_value": 501.83, "indicative_ytm": 3.72 }`. Returns 404 if the bill doesn't belong to this account.
 
 ---
 

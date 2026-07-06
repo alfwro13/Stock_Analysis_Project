@@ -41,6 +41,22 @@
 </div>
 {% endfor %}
 
+{% for b in treasury_bills_pending_ytm %}
+<div class="availability-banner no-data" id="tbill-ytm-pending-{{ b.id }}">
+    <strong>&#9888; Confirm the final YTM for your Treasury Bill</strong>
+    <p class="mb-2">Started {{ b.purchase_date }}, matures {{ b.maturity_date }} — the Friday DMO tender has since closed, so the real yield is now known. It was estimated at {{ "%.2f"|format(b.indicative_ytm) }}% when bought; enter the confirmed rate below to recompute Face Value, or keep the estimate as-is.</p>
+    <div class="d-flex align-items-end gap-2 flex-wrap">
+        <div class="form-group mb-0">
+            <label for="tbill-ytm-confirm-rate-{{ b.id }}">Confirmed YTM (%)</label>
+            <input type="number" id="tbill-ytm-confirm-rate-{{ b.id }}" step="0.01" value="{{ b.indicative_ytm }}">
+        </div>
+        <button type="button" class="btn btn-primary btn-sm" onclick="confirmTreasuryBillYtm({{ account.id }}, {{ b.id }})">Confirm</button>
+        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="keepTreasuryBillEstimate({{ account.id }}, {{ b.id }})">Keep Estimate</button>
+    </div>
+    <div id="tbill-ytm-confirm-status-{{ b.id }}" class="status-msg-sm mt-2"></div>
+</div>
+{% endfor %}
+
 {# ── Account value chart ── #}
 <div class="sentiment-module module-cyan sentiment-module--spaced">
     <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">

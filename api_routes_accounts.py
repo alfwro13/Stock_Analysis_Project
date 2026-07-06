@@ -54,7 +54,7 @@ from scheduler_engine import (
     run_account_value_snapshot, run_treasury_bill_maturity_sweep, unregister_account_scraper_job,
     unregister_account_topup_job,
 )
-from treasury_bill_engine import buy_treasury_bill, delete_treasury_bill, list_treasury_bills
+from treasury_bill_engine import buy_treasury_bill, confirm_ytm, delete_treasury_bill, list_treasury_bills
 from utils import normalize_ticker
 from yahoo_engine import yahoo_engine
 
@@ -177,6 +177,10 @@ class TreasuryBillBuyBody(BaseModel):
 
 class TreasuryBillAutoReinvestBody(BaseModel):
     auto_reinvest: bool
+
+
+class TreasuryBillConfirmYtmBody(BaseModel):
+    confirmed_ytm: Optional[float] = None
 
 
 def _resolve_exchange_rate(currency: Optional[str], exchange_rate: Optional[float], txn_date: str) -> float:
@@ -1089,6 +1093,26 @@ async def api_update_treasury_bill(request: Request, account_id: int, bill_id: i
         return JSONResponse(content={"status": "success", "message": "Treasury Bill updated."})
     except Exception as e:
         logger.error("api_update_treasury_bill account=%s bill=%s failed: %s", account_id, bill_id, e)
+        return _error_500(e)
+
+
+@accounts_router.post("/accounts/{account_id}/treasury-bills/{bill_id}/confirm-ytm")
+@limiter.limit("30/minute")
+async def api_confirm_treasury_bill_ytm(request: Request, account_id: int, bill_id: int, body: TreasuryBillConfirmYtmBody, background_tasks: BackgroundTasks):
+    try:
+        _acc, error = _require_trading_account(account_id)
+        if error:
+            return error
+        bill = get_treasury_bill(bill_id)
+        if not bill or bill["account_id"] != account_id:
+            return JSONResponse(status_code=404, content={"status": "error", "message": "Treasury Bill not found."})
+        result = confirm_ytm(bill_id, body.confirmed_ytm)
+        if result.get("error"):
+            return JSONResponse(status_code=422, content={"status": "error", "message": result["error"]})
+        background_tasks.add_task(resnapshot_account, account_id)
+        return JSONResponse(content={"status": "success", **result})
+    except Exception as e:
+        logger.error("api_confirm_treasury_bill_ytm account=%s bill=%s failed: %s", account_id, bill_id, e)
         return _error_500(e)
 
 
