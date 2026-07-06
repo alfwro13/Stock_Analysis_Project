@@ -974,6 +974,7 @@ def init_db() -> None:
                 ticker          TEXT NOT NULL UNIQUE,
                 face_value      REAL NOT NULL,
                 purchase_price  REAL NOT NULL,
+                indicative_ytm  REAL,
                 purchase_date   TEXT NOT NULL,
                 maturity_date   TEXT NOT NULL,
                 auto_reinvest   INTEGER NOT NULL DEFAULT 0,
@@ -1636,6 +1637,7 @@ def migrate_db(conn, cursor) -> None:
                 ticker          TEXT NOT NULL UNIQUE,
                 face_value      REAL NOT NULL,
                 purchase_price  REAL NOT NULL,
+                indicative_ytm  REAL,
                 purchase_date   TEXT NOT NULL,
                 maturity_date   TEXT NOT NULL,
                 auto_reinvest   INTEGER NOT NULL DEFAULT 0,
@@ -1649,6 +1651,15 @@ def migrate_db(conn, cursor) -> None:
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_treasury_bills_status_maturity ON treasury_bills(status, maturity_date)')
     except Exception as e:
         logger.error("[MIGRATION ERROR] Failed to create treasury_bills: %s", e)
+
+    try:
+        cursor.execute("PRAGMA table_info(treasury_bills)")
+        existing_tbill_columns = [info['name'] for info in cursor.fetchall()]
+        if 'indicative_ytm' not in existing_tbill_columns:
+            logger.info("[MIGRATION] Adding column: indicative_ytm to treasury_bills...")
+            cursor.execute("ALTER TABLE treasury_bills ADD COLUMN indicative_ytm REAL")
+    except Exception as e:
+        logger.error("[MIGRATION ERROR] Failed to add indicative_ytm to treasury_bills: %s", e)
 
     cursor.execute("PRAGMA table_info(etf_predictor_predictions)")
     existing_etf_prediction_columns = [info['name'] for info in cursor.fetchall()]

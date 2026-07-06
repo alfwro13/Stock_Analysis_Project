@@ -1198,6 +1198,22 @@ def test_treasury_bill_buy_and_list_endpoints(client):
 
 
 @pytest.mark.api
+def test_treasury_bill_buy_stores_and_returns_indicative_ytm(client):
+    account_id = _create_account(client, initial_cash=2000.0)
+    resp = client.post(f"/api/accounts/{account_id}/treasury-bills", json={
+        "purchase_date": "2026-07-09", "face_value": 501.43, "purchase_price": 500.0,
+        "maturity_date": "2026-08-06", "indicative_ytm": 3.72,
+    })
+    assert resp.status_code == 200
+
+    bills = _json(client.get(f"/api/accounts/{account_id}/treasury-bills"))["treasury_bills"]
+    assert bills[0]["indicative_ytm"] == pytest.approx(3.72)
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
 def test_treasury_bill_buy_rejects_purchase_price_above_face_value(client):
     account_id = _create_account(client, initial_cash=2000.0)
     resp = client.post(f"/api/accounts/{account_id}/treasury-bills", json={

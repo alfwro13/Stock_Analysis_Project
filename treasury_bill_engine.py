@@ -32,6 +32,18 @@ def _parse_date(date_str: str):
     return datetime.strptime(date_str[:10], "%Y-%m-%d").date()
 
 
+def estimate_face_value(purchase_price: float, indicative_ytm: float, purchase_date: str, maturity_date: str) -> float:
+    """Freetrade never states a Treasury Bill's face value directly — only the amount paid and an
+    indicative yield, which is itself just an estimate ('you'll receive your yield on top of your
+    original investment') since the real yield isn't fixed until the Friday DMO tender. Estimates
+    the eventual redemption amount as amount + (amount x annualised yield x days/365), for the
+    operator to accept or correct by hand before saving."""
+    days = (_parse_date(maturity_date) - _parse_date(purchase_date)).days
+    if days <= 0:
+        return purchase_price
+    return purchase_price * (1 + (indicative_ytm / 100.0) * (days / 365.0))
+
+
 def buy_treasury_bill(
     account_id: int,
     purchase_date: str,
@@ -40,12 +52,16 @@ def buy_treasury_bill(
     maturity_date: str,
     auto_reinvest: bool = False,
     notes: Optional[str] = None,
+    indicative_ytm: Optional[float] = None,
 ) -> dict:
     """Books a purchase as a Buy against a unique per-purchase synthetic ticker (`TBILL-{txn_id}`),
     so concurrently-held bills never blend cost basis the way a shared ticker would in the
     average-cost ledger (_ledger_for_account). The ticker embeds the transaction's own id, so it
     can only be assigned after the row exists — insert, then backfill the ticker onto that same
-    row, mirroring how create_transfer() links its two legs after each is inserted."""
+    row, mirroring how create_transfer() links its two legs after each is inserted. `face_value` is
+    an estimate the caller computed (see estimate_face_value()) and may have hand-corrected — it's
+    the exact amount the maturity sweep will later credit to cash, not re-derived from
+    `indicative_ytm` at maturity time, since the real yield is never confirmed back to this app."""
     acc = get_account(account_id)
     if not acc:
         return {"error": "Account not found."}
@@ -73,7 +89,7 @@ def buy_treasury_bill(
 
     bill_id = create_treasury_bill(
         account_id, txn_id, ticker, face_value, purchase_price,
-        purchase_date, maturity_date, auto_reinvest, notes,
+        purchase_date, maturity_date, auto_reinvest, notes, indicative_ytm,
     )
     if bill_id is None:
         delete_transaction(txn_id)

@@ -8,22 +8,35 @@ function openBuyTreasuryBillModal(accountId) {
     document.getElementById('tbill-purchase-date').value = today;
     document.getElementById('tbill-face-value').value = '';
     document.getElementById('tbill-purchase-price').value = '';
+    document.getElementById('tbill-ytm').value = '';
     document.getElementById('tbill-maturity-date').value = '';
     document.getElementById('tbill-auto-reinvest').checked = false;
     document.getElementById('tbill-notes').value = '';
     document.getElementById('tbill-preview').innerHTML = '';
     document.getElementById('tbill-status').innerHTML = '';
     _treasuryBillModal().show();
-    _onTBillDateChange();
+    _onTBillInputChange();
 }
 
-function _onTBillDateChange() {
+// Freetrade shows Amount/Total Cost and an indicative YTM, never face value directly (the real
+// yield isn't fixed until the Friday DMO tender) — so Face Value is auto-estimated from those,
+// then left editable in case the operator later learns the exact redemption amount.
+function _onTBillInputChange() {
     const purchaseDate = document.getElementById('tbill-purchase-date').value;
     const maturityField = document.getElementById('tbill-maturity-date');
     if (purchaseDate && !maturityField.value) {
         const d = new Date(purchaseDate);
         d.setDate(d.getDate() + 28);
         maturityField.value = d.toISOString().slice(0, 10);
+    }
+    const amount = parseFloat(document.getElementById('tbill-purchase-price').value);
+    const ytm = parseFloat(document.getElementById('tbill-ytm').value);
+    const maturityDate = maturityField.value;
+    if (amount && !isNaN(ytm) && purchaseDate && maturityDate) {
+        const days = (new Date(maturityDate) - new Date(purchaseDate)) / 86400000;
+        if (days > 0) {
+            document.getElementById('tbill-face-value').value = (amount * (1 + (ytm / 100) * (days / 365))).toFixed(2);
+        }
     }
     _updateTBillPreview();
 }
@@ -39,22 +52,23 @@ function _updateTBillPreview() {
         return;
     }
     if (purchasePrice >= faceValue) {
-        preview.innerHTML = '<span class="msg-error">Purchase price must be less than face value.</span>';
+        preview.innerHTML = '<span class="msg-error">Amount must be less than face value.</span>';
         return;
     }
     const days = (new Date(maturityDate) - new Date(purchaseDate)) / 86400000;
     if (days <= 0) {
-        preview.innerHTML = '<span class="msg-error">Maturity date must be after the purchase date.</span>';
+        preview.innerHTML = '<span class="msg-error">Maturity date must be after the start date.</span>';
         return;
     }
-    const discount = faceValue - purchasePrice;
-    const annualisedYield = (discount / purchasePrice) * (365 / days) * 100;
-    preview.textContent = `Discount of ${discount.toFixed(2)} over ${days} day(s) — approx. ${annualisedYield.toFixed(2)}% annualised yield.`;
+    const gain = faceValue - purchasePrice;
+    const annualisedYield = (gain / purchasePrice) * (365 / days) * 100;
+    preview.textContent = `Estimated gain of ${gain.toFixed(2)} over ${days} day(s) — approx. ${annualisedYield.toFixed(2)}% annualised. This is an estimate; edit Face Value if you know the exact redemption amount.`;
 }
 
 async function submitBuyTreasuryBill() {
     const status = document.getElementById('tbill-status');
     const accountId = document.getElementById('tbill-account-id').value;
+    const ytm = document.getElementById('tbill-ytm').value;
     const body = {
         purchase_date: document.getElementById('tbill-purchase-date').value,
         face_value: parseFloat(document.getElementById('tbill-face-value').value),
@@ -62,9 +76,10 @@ async function submitBuyTreasuryBill() {
         maturity_date: document.getElementById('tbill-maturity-date').value,
         auto_reinvest: document.getElementById('tbill-auto-reinvest').checked,
         notes: document.getElementById('tbill-notes').value || null,
+        indicative_ytm: ytm === '' ? null : parseFloat(ytm),
     };
     if (!body.purchase_date || !body.face_value || !body.purchase_price || !body.maturity_date) {
-        status.innerHTML = '<span class="msg-error">Purchase date, face value, purchase price, and maturity date are all required.</span>';
+        status.innerHTML = '<span class="msg-error">Start date, amount, face value, and maturity date are all required.</span>';
         return;
     }
     status.innerHTML = '<span class="msg-info">Saving...</span>';
@@ -118,5 +133,5 @@ async function deleteTreasuryBill(accountId, billId) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    _initAccountDetailTable('treasuryBillsTable', [[3], [5], [4], [7], [0], [1], [2], [6]], [[3, 'asc']]);
+    _initAccountDetailTable('treasuryBillsTable', [[3], [6], [5], [8], [4], [1], [0], [2], [7]], [[3, 'asc']]);
 });

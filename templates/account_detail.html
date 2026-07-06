@@ -154,18 +154,21 @@
     <table id="treasuryBillsTable" class="table table-hover w-100">
         <thead>
             <tr>
-                <th>Face Value ({{ base_currency }})</th><th>Purchase Price ({{ base_currency }})</th>
-                <th>Purchase Date</th><th>Maturity Date</th><th><abbr title="The bill's value today, accreting in a straight line from the purchase price toward face value as maturity approaches.">Current Value</abbr> ({{ base_currency }})</th>
+                <th>Start Date</th><th>Amount ({{ base_currency }})</th>
+                <th><abbr title="The yield shown in the app at purchase time — only an estimate, since the real yield isn't fixed until the Friday DMO tender closes.">Indicative YTM</abbr></th>
+                <th>Maturity Date</th><th><abbr title="Estimated from Amount + Indicative YTM at purchase time — this is the exact amount credited to cash when the bill matures.">Face Value</abbr> ({{ base_currency }})</th>
+                <th><abbr title="The bill's value today, accreting in a straight line from the amount paid toward face value as maturity approaches.">Current Value</abbr> ({{ base_currency }})</th>
                 <th>Status</th><th><abbr title="A reminder only — the app can never auto-purchase a replacement bill, since the actual yield isn't known until the Friday DMO tender.">Auto-Reinvest</abbr></th><th></th>
             </tr>
         </thead>
         <tbody>
             {% for b in treasury_bills %}
             <tr>
-                <td>{{ "%.2f"|format(b.face_value) }}</td>
-                <td>{{ "%.2f"|format(b.purchase_price) }}</td>
                 <td>{{ b.purchase_date }}</td>
+                <td>{{ "%.2f"|format(b.purchase_price) }}</td>
+                <td>{{ "%.2f"|format(b.indicative_ytm) ~ "%" if b.indicative_ytm is not none else "—" }}</td>
                 <td>{{ b.maturity_date }}</td>
+                <td>{{ "%.2f"|format(b.face_value) }}</td>
                 <td>{{ "%.2f"|format(b.current_value) }}</td>
                 <td>{{ b.status }}</td>
                 <td>

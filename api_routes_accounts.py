@@ -172,6 +172,7 @@ class TreasuryBillBuyBody(BaseModel):
     maturity_date: str
     auto_reinvest: bool = False
     notes: Optional[str] = None
+    indicative_ytm: Optional[float] = None
 
 
 class TreasuryBillAutoReinvestBody(BaseModel):
@@ -1049,7 +1050,7 @@ async def api_buy_treasury_bill(request: Request, account_id: int, body: Treasur
             return error
         result = buy_treasury_bill(
             account_id, body.purchase_date, body.face_value, body.purchase_price,
-            body.maturity_date, body.auto_reinvest, body.notes,
+            body.maturity_date, body.auto_reinvest, body.notes, body.indicative_ytm,
         )
         if result.get("error"):
             return JSONResponse(status_code=422, content={"status": "error", "message": result["error"]})

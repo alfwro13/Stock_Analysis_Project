@@ -3210,12 +3210,14 @@ Tracks zero-coupon UK Treasury bills (`treasury_bill_engine.py`) as holdings ins
 
 ### `POST /api/accounts/{id}/treasury-bills`
 
-**"Buy T-Bill"** — records a purchase. Validates the account is `Trading`, `0 < purchase_price < face_value`, and `maturity_date > purchase_date`, then posts a `Buy` transaction (`update_cash=True` — real cash is spent) against a unique internal ticker (`TBILL-{txn_id}`), so concurrently-held bills never blend cost basis in the average-cost ledger. Rate limit: 30/minute.
+**"Buy T-Bill"** — records a purchase. `face_value` is a client-computed estimate, not looked up server-side: since Freetrade never states face value directly (only the amount debited and an indicative, pre-tender yield), the modal derives it as `purchase_price + purchase_price × indicative_ytm × days/365` and lets the operator hand-correct it before saving. Whatever `face_value` is submitted is treated as exact — it's what the maturity sweep later credits to cash unchanged, never re-derived from `indicative_ytm` at maturity time. Validates the account is `Trading`, `0 < purchase_price < face_value`, and `maturity_date > purchase_date`, then posts a `Buy` transaction (`update_cash=True` — real cash is spent) against a unique internal ticker (`TBILL-{txn_id}`), so concurrently-held bills never blend cost basis in the average-cost ledger. Rate limit: 30/minute.
 
 **Request body:**
 ```json
-{ "purchase_date": "2026-07-06", "face_value": 1000.0, "purchase_price": 996.16, "maturity_date": "2026-08-03", "auto_reinvest": true, "notes": null }
+{ "purchase_date": "2026-07-09", "face_value": 501.43, "purchase_price": 500.0, "maturity_date": "2026-08-06", "auto_reinvest": true, "notes": null, "indicative_ytm": 3.72 }
 ```
+
+`indicative_ytm` is optional (stored purely for later reference/display — the yield shown in the app at purchase time, which the operator's own message confirms is only an estimate: "we will know the yield only after tender").
 
 **Response:** `{ "status": "success", "bill_id": 5, "txn_id": 210, "ticker": "TBILL-210" }`. Returns 422 on a validation failure (bad price/date ordering) or 400 if the account is not `Trading`.
 
@@ -3225,7 +3227,7 @@ Tracks zero-coupon UK Treasury bills (`treasury_bill_engine.py`) as holdings ins
 
 Lists every Treasury Bill (open and matured) for the account (`treasury_bill_engine.list_treasury_bills`), each row annotated with a computed `current_value` — the bill's straight-line accreted value as of today, between the purchase price and face value. Rate limit: 60/minute.
 
-**Response:** `{ "status": "success", "treasury_bills": [{ "id": 5, "ticker": "TBILL-210", "face_value": 1000.0, "purchase_price": 996.16, "purchase_date": "2026-07-06", "maturity_date": "2026-08-03", "auto_reinvest": 1, "status": "Open", "maturity_txn_id": null, "current_value": 997.42 }] }`.
+**Response:** `{ "status": "success", "treasury_bills": [{ "id": 5, "ticker": "TBILL-210", "face_value": 501.43, "purchase_price": 500.0, "indicative_ytm": 3.72, "purchase_date": "2026-07-09", "maturity_date": "2026-08-06", "auto_reinvest": 1, "status": "Open", "maturity_txn_id": null, "current_value": 500.34 }] }`.
 
 ---
 

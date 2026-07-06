@@ -774,6 +774,7 @@ def create_treasury_bill(
     maturity_date: str,
     auto_reinvest: bool = False,
     notes: Optional[str] = None,
+    indicative_ytm: Optional[float] = None,
 ) -> Optional[int]:
     conn = None
     try:
@@ -782,10 +783,10 @@ def create_treasury_bill(
         cursor.execute(
             """INSERT INTO treasury_bills
                    (account_id, buy_txn_id, ticker, face_value, purchase_price,
-                    purchase_date, maturity_date, auto_reinvest, notes)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    indicative_ytm, purchase_date, maturity_date, auto_reinvest, notes)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (account_id, buy_txn_id, ticker, face_value, purchase_price,
-             purchase_date, maturity_date, 1 if auto_reinvest else 0, notes)
+             indicative_ytm, purchase_date, maturity_date, 1 if auto_reinvest else 0, notes)
         )
         conn.commit()
         return cursor.lastrowid

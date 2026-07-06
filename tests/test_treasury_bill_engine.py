@@ -51,6 +51,34 @@ def test_accreted_price_clamps_past_maturity():
     assert tbe.accreted_price(bill, "2026-09-01") == pytest.approx(1000.0)
 
 
+def test_estimate_face_value_matches_hand_computed_example():
+    # £500 paid, 3.72% indicative YTM, 28-day window (09/07 -> 06/08) -> ~£501.43 estimated redemption.
+    est = tbe.estimate_face_value(500.0, 3.72, "2026-07-09", "2026-08-06")
+    assert est == pytest.approx(500.0 * (1 + 0.0372 * 28 / 365))
+    assert est == pytest.approx(501.4268, abs=0.001)
+
+
+def test_estimate_face_value_zero_or_negative_window_returns_purchase_price():
+    assert tbe.estimate_face_value(500.0, 3.72, "2026-07-09", "2026-07-09") == 500.0
+    assert tbe.estimate_face_value(500.0, 3.72, "2026-07-09", "2026-07-01") == 500.0
+
+
+@pytest.mark.db
+def test_buy_treasury_bill_stores_indicative_ytm_for_later_display():
+    aid = create_account("TBillYTMAcc", "GBP", initial_cash=2000.0)
+    result = tbe.buy_treasury_bill(aid, "2026-07-09", 501.43, 500.0, "2026-08-06", indicative_ytm=3.72)
+    bill = tbe.get_treasury_bill(result["bill_id"])
+    assert bill["indicative_ytm"] == pytest.approx(3.72)
+
+
+@pytest.mark.db
+def test_buy_treasury_bill_indicative_ytm_is_optional():
+    aid = create_account("TBillNoYTMAcc", "GBP", initial_cash=2000.0)
+    result = tbe.buy_treasury_bill(aid, "2026-07-09", 501.43, 500.0, "2026-08-06")
+    bill = tbe.get_treasury_bill(result["bill_id"])
+    assert bill["indicative_ytm"] is None
+
+
 @pytest.mark.db
 def test_two_concurrent_bills_do_not_blend_cost_basis():
     """Regression guard: concurrently-held bills must get different tickers so

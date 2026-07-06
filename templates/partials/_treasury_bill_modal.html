@@ -8,20 +8,24 @@
       <div class="modal-body">
         <input type="hidden" id="tbill-account-id">
         <div class="form-group">
-            <label for="tbill-purchase-date">Purchase Date</label>
-            <input type="date" id="tbill-purchase-date" onchange="_onTBillDateChange()">
+            <label for="tbill-purchase-date">Start Date</label>
+            <input type="date" id="tbill-purchase-date" onchange="_onTBillInputChange()">
         </div>
         <div class="form-group">
-            <label for="tbill-face-value"><abbr title="The amount paid back at maturity — sometimes called the par or nominal value.">Face Value</abbr> ({{ account.currency }})</label>
-            <input type="number" id="tbill-face-value" step="0.01" oninput="_updateTBillPreview()">
+            <label for="tbill-purchase-price"><abbr title="What Freetrade actually debited you — shown as Amount / Total Cost in the app.">Amount (Total Cost)</abbr> ({{ account.currency }})</label>
+            <input type="number" id="tbill-purchase-price" step="0.01" oninput="_onTBillInputChange()">
         </div>
         <div class="form-group">
-            <label for="tbill-purchase-price"><abbr title="The price actually paid, from your broker's confirmation — always less than face value, since a Treasury Bill is a zero-coupon instrument bought at a discount.">Purchase Price</abbr> ({{ account.currency }})</label>
-            <input type="number" id="tbill-purchase-price" step="0.01" oninput="_updateTBillPreview()">
+            <label for="tbill-ytm"><abbr title="The yield shown in the app at the time you bought — only an estimate, since the real yield for your bill isn't fixed until the Friday DMO tender closes.">Indicative YTM (%)</abbr></label>
+            <input type="number" id="tbill-ytm" step="0.01" oninput="_onTBillInputChange()">
         </div>
         <div class="form-group">
             <label for="tbill-maturity-date">Maturity Date</label>
-            <input type="date" id="tbill-maturity-date" oninput="_updateTBillPreview()">
+            <input type="date" id="tbill-maturity-date" onchange="_onTBillInputChange()">
+        </div>
+        <div class="form-group">
+            <label for="tbill-face-value"><abbr title="Estimated from Amount + Indicative YTM, since Freetrade never states this directly — auto-filled but editable if you later learn the exact redemption amount. This is exactly what gets credited to cash when the bill matures.">Face Value (estimated)</abbr> ({{ account.currency }})</label>
+            <input type="number" id="tbill-face-value" step="0.01" oninput="_updateTBillPreview()">
         </div>
         <div class="form-check">
             <input class="form-check-input" type="checkbox" id="tbill-auto-reinvest">
