@@ -658,7 +658,8 @@ def get_all_account_tickers() -> list:
     """Distinct tickers backing an actual open/closed holding (Buy/Sell only — Interest/Dividend/
     Fee/Cash rows can carry non-ticker values, e.g. a CSV-imported transaction GUID) across
     non-deleted accounts. Excludes the Pension synthetic 'PENSION-{id}' ticker
-    (account_scraper_engine.py), which has no Yahoo Finance listing."""
+    (account_scraper_engine.py) and the Treasury Bill synthetic 'TBILL-{id}' ticker
+    (treasury_bill_engine.py), neither of which has a Yahoo Finance listing."""
     conn = None
     try:
         conn = get_connection()
@@ -667,7 +668,8 @@ def get_all_account_tickers() -> list:
             "SELECT DISTINCT t.ticker FROM account_transactions t "
             "JOIN accounts a ON a.id = t.account_id "
             "WHERE a.deleted_at IS NULL AND t.txn_type IN ('Buy', 'Sell') "
-            "AND t.ticker IS NOT NULL AND t.ticker != '' AND t.ticker NOT LIKE 'PENSION-%'"
+            "AND t.ticker IS NOT NULL AND t.ticker != '' "
+            "AND t.ticker NOT LIKE 'PENSION-%' AND t.ticker NOT LIKE 'TBILL-%'"
         )
         return [row["ticker"] for row in cursor.fetchall()]
     except Exception as e:
@@ -756,6 +758,162 @@ def resolve_pending_topup(
         return cursor.rowcount > 0
     except Exception as e:
         logger.error("Failed to resolve pending top-up %s: %s", pending_id, e)
+        return False
+    finally:
+        if conn:
+            conn.close()
+
+
+def create_treasury_bill(
+    account_id: int,
+    buy_txn_id: int,
+    ticker: str,
+    face_value: float,
+    purchase_price: float,
+    purchase_date: str,
+    maturity_date: str,
+    auto_reinvest: bool = False,
+    notes: Optional[str] = None,
+) -> Optional[int]:
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """INSERT INTO treasury_bills
+                   (account_id, buy_txn_id, ticker, face_value, purchase_price,
+                    purchase_date, maturity_date, auto_reinvest, notes)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (account_id, buy_txn_id, ticker, face_value, purchase_price,
+             purchase_date, maturity_date, 1 if auto_reinvest else 0, notes)
+        )
+        conn.commit()
+        return cursor.lastrowid
+    except Exception as e:
+        logger.error("Failed to create treasury bill for account %s: %s", account_id, e)
+        return None
+    finally:
+        if conn:
+            conn.close()
+
+
+def get_treasury_bill(bill_id: int) -> Optional[dict]:
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM treasury_bills WHERE id = ?", (bill_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+    except Exception as e:
+        logger.error("Failed to get treasury bill %s: %s", bill_id, e)
+        return None
+    finally:
+        if conn:
+            conn.close()
+
+
+def get_treasury_bill_by_ticker(ticker: str) -> Optional[dict]:
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM treasury_bills WHERE ticker = ?", (ticker,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+    except Exception as e:
+        logger.error("Failed to get treasury bill by ticker %s: %s", ticker, e)
+        return None
+    finally:
+        if conn:
+            conn.close()
+
+
+def get_treasury_bills_for_account(account_id: int) -> list:
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT * FROM treasury_bills WHERE account_id = ? ORDER BY purchase_date",
+            (account_id,)
+        )
+        return [dict(row) for row in cursor.fetchall()]
+    except Exception as e:
+        logger.error("Failed to get treasury bills for account %s: %s", account_id, e)
+        return []
+    finally:
+        if conn:
+            conn.close()
+
+
+def get_open_treasury_bills_due(as_of_date: str) -> list:
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT * FROM treasury_bills WHERE status = 'Open' AND maturity_date <= ?",
+            (as_of_date,)
+        )
+        return [dict(row) for row in cursor.fetchall()]
+    except Exception as e:
+        logger.error("Failed to get open treasury bills due by %s: %s", as_of_date, e)
+        return []
+    finally:
+        if conn:
+            conn.close()
+
+
+def mark_treasury_bill_matured(bill_id: int, maturity_txn_id: int) -> bool:
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE treasury_bills SET status = 'Matured', maturity_txn_id = ? "
+            "WHERE id = ? AND status = 'Open'",
+            (maturity_txn_id, bill_id)
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    except Exception as e:
+        logger.error("Failed to mark treasury bill %s matured: %s", bill_id, e)
+        return False
+    finally:
+        if conn:
+            conn.close()
+
+
+def update_treasury_bill_auto_reinvest(bill_id: int, auto_reinvest: bool) -> bool:
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE treasury_bills SET auto_reinvest = ? WHERE id = ?",
+            (1 if auto_reinvest else 0, bill_id)
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    except Exception as e:
+        logger.error("Failed to update auto_reinvest for treasury bill %s: %s", bill_id, e)
+        return False
+    finally:
+        if conn:
+            conn.close()
+
+
+def delete_treasury_bill(bill_id: int) -> bool:
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM treasury_bills WHERE id = ?", (bill_id,))
+        conn.commit()
+        return cursor.rowcount > 0
+    except Exception as e:
+        logger.error("Failed to delete treasury bill %s: %s", bill_id, e)
         return False
     finally:
         if conn:

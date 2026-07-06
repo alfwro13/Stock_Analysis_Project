@@ -33,6 +33,7 @@ from risk_engine import update_all_tail_risks
 from sentiment_engine import run_nextcloud_alert
 from system_check_engine import run_system_checks
 from treasury_auction_engine import check_auction_results
+from treasury_bill_engine import sweep_matured_bills
 from universe_deep_sync_engine import run_universe_deep_sync
 from universe_engine import update_market_universe
 from xray_engine import run_xray_precompute
@@ -151,6 +152,19 @@ def run_account_value_snapshot():
         raise
     finally:
         record_job_run('account_value_snapshot_job')
+
+def run_treasury_bill_maturity_sweep():
+    try:
+        result = sweep_matured_bills()
+        message = f"UK Treasury Bill Maturity Sweep completed: {result['matured']} bill(s) closed"
+        message += f", {result['reminders']} reinvest reminder(s) sent." if result['reminders'] else "."
+        notify("treasury_bill_maturity_status", "Success", message, level="info")
+    except Exception as e:
+        notify("treasury_bill_maturity_status", "Error",
+               f"UK Treasury Bill Maturity Sweep failed: {e}", level="error")
+        raise
+    finally:
+        record_job_run('treasury_bill_maturity_sweep_job')
 
 def run_earnings_alert_job():
     try:

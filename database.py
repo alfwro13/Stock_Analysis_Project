@@ -130,6 +130,8 @@ from db_accounts import (  # noqa: E402
     get_unresolved_pending_topups,
     get_pending_topup,
     resolve_pending_topup,
+    get_treasury_bill,
+    update_treasury_bill_auto_reinvest,
 )
 
 __all__ = [
@@ -188,4 +190,6 @@ __all__ = [
     "get_unresolved_pending_topups",
     "get_pending_topup",
     "resolve_pending_topup",
+    "get_treasury_bill",
+    "update_treasury_bill_auto_reinvest",
 ]

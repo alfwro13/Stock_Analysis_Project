@@ -725,6 +725,18 @@ def reload_scheduler():
     except Exception as e:
         logger.error("Failed to schedule X-ray Risk Cache job: %s", e)
 
+    # Always-on: UK Treasury Bill Maturity Sweep — runs daily (bills mature on weekends too), so a
+    # matured position never sits open corrupting cash/holdings. No config flag required.
+    try:
+        scheduler.add_job(
+            run_treasury_bill_maturity_sweep,
+            CronTrigger(day_of_week='mon-sun', hour=7, minute=0, timezone=user_tz),
+            id='treasury_bill_maturity_sweep_job',
+        )
+        logger.info("UK Treasury Bill Maturity Sweep scheduled daily at 07:00.")
+    except Exception as e:
+        logger.error("Failed to schedule UK Treasury Bill Maturity Sweep job: %s", e)
+
     # Always-on: ETF Predictor actual-fill — runs Mon–Fri at 09:20 UTC.
     try:
         scheduler.add_job(
@@ -851,5 +863,5 @@ from scheduler_jobs import (
     run_system_check_job, run_treasury_auction_check, run_account_value_snapshot,
     register_account_scraper_job, unregister_account_scraper_job, _run_account_scraper_job,
     register_account_topup_job, unregister_account_topup_job, _run_account_topup_job,
-    run_backup_job,
+    run_backup_job, run_treasury_bill_maturity_sweep,
 )

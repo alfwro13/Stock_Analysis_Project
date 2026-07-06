@@ -18,6 +18,7 @@
     <button type="button" class="btn btn-primary btn-sm" onclick="openTxnModal({{ account.id }})">+ Add Transaction</button>
     <button type="button" class="btn btn-outline-secondary btn-sm" onclick="openReconcileModal({{ account.id }})">&#128260; Reconcile</button>
     <button type="button" class="btn btn-outline-secondary btn-sm" onclick="openAutoTopupModal({{ account.id }}, window.CURRENT_ACCOUNT)">&#9200; Auto Top-up</button>
+    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="openBuyTreasuryBillModal({{ account.id }})">&#129534; Buy T-Bill</button>
 </div>
 
 {% for p in pending_topups %}
@@ -143,6 +144,42 @@
     </table>
     {% else %}
     <p class="text-muted small">No open holdings.</p>
+    {% endif %}
+</details>
+
+{# ── UK Treasury Bills ── #}
+<details class="settings-card" open>
+    <summary>🧾 UK Treasury Bills</summary>
+    {% if treasury_bills %}
+    <table id="treasuryBillsTable" class="table table-hover w-100">
+        <thead>
+            <tr>
+                <th>Face Value ({{ base_currency }})</th><th>Purchase Price ({{ base_currency }})</th>
+                <th>Purchase Date</th><th>Maturity Date</th><th><abbr title="The bill's value today, accreting in a straight line from the purchase price toward face value as maturity approaches.">Current Value</abbr> ({{ base_currency }})</th>
+                <th>Status</th><th><abbr title="A reminder only — the app can never auto-purchase a replacement bill, since the actual yield isn't known until the Friday DMO tender.">Auto-Reinvest</abbr></th><th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for b in treasury_bills %}
+            <tr>
+                <td>{{ "%.2f"|format(b.face_value) }}</td>
+                <td>{{ "%.2f"|format(b.purchase_price) }}</td>
+                <td>{{ b.purchase_date }}</td>
+                <td>{{ b.maturity_date }}</td>
+                <td>{{ "%.2f"|format(b.current_value) }}</td>
+                <td>{{ b.status }}</td>
+                <td>
+                    <input type="checkbox" {% if b.auto_reinvest %}checked{% endif %} onchange="toggleTreasuryBillAutoReinvest({{ account.id }}, {{ b.id }}, this.checked)">
+                </td>
+                <td>
+                    <button type="button" class="btn btn-outline-danger btn-sm" onclick="deleteTreasuryBill({{ account.id }}, {{ b.id }})">Delete</button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="text-muted small">No Treasury Bills yet.</p>
     {% endif %}
 </details>
 
@@ -272,6 +309,7 @@
 {% include "partials/_accounts_txn_modal.html" %}
 {% include "partials/_account_scraper_modal.html" %}
 {% include "partials/_account_autotopup_modal.html" %}
+{% include "partials/_treasury_bill_modal.html" %}
 {% include "partials/_delete_account_modal.html" %}
 {% include "partials/_reconcile_cash_modal.html" %}
 {% endblock %}
@@ -293,5 +331,6 @@
 <script src="/static/js/account_scraper.js?v={{ css_version }}"></script>
 <script src="/static/js/account_autotopup.js?v={{ css_version }}"></script>
 <script src="/static/js/account_detail.js?v={{ css_version }}"></script>
+<script src="/static/js/account_treasury_bills.js?v={{ css_version }}"></script>
 <script src="/static/js/account_danger_zone.js?v={{ css_version }}"></script>
 {% endblock %}

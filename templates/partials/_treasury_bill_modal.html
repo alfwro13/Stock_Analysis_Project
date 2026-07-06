@@ -1,0 +1,44 @@
+<div class="modal fade" id="treasuryBillModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Buy UK Treasury Bill</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="tbill-account-id">
+        <div class="form-group">
+            <label for="tbill-purchase-date">Purchase Date</label>
+            <input type="date" id="tbill-purchase-date" onchange="_onTBillDateChange()">
+        </div>
+        <div class="form-group">
+            <label for="tbill-face-value"><abbr title="The amount paid back at maturity — sometimes called the par or nominal value.">Face Value</abbr> ({{ account.currency }})</label>
+            <input type="number" id="tbill-face-value" step="0.01" oninput="_updateTBillPreview()">
+        </div>
+        <div class="form-group">
+            <label for="tbill-purchase-price"><abbr title="The price actually paid, from your broker's confirmation — always less than face value, since a Treasury Bill is a zero-coupon instrument bought at a discount.">Purchase Price</abbr> ({{ account.currency }})</label>
+            <input type="number" id="tbill-purchase-price" step="0.01" oninput="_updateTBillPreview()">
+        </div>
+        <div class="form-group">
+            <label for="tbill-maturity-date">Maturity Date</label>
+            <input type="date" id="tbill-maturity-date" oninput="_updateTBillPreview()">
+        </div>
+        <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="tbill-auto-reinvest">
+            <label class="form-check-label" for="tbill-auto-reinvest">
+                <abbr title="The app can never auto-purchase a replacement bill — the actual yield isn't known until the Friday DMO tender. This only sends a reminder when the bill matures.">Auto-Reinvest (reminder only)</abbr>
+            </label>
+        </div>
+        <div class="form-group">
+            <label for="tbill-notes">Notes</label>
+            <input type="text" id="tbill-notes">
+        </div>
+        <div id="tbill-preview" class="status-msg-sm text-accent-cyan mb-2"></div>
+        <div id="tbill-status" class="status-msg-sm"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-save" onclick="submitBuyTreasuryBill()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>

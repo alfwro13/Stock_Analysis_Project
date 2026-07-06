@@ -43,14 +43,18 @@ from database import (
     add_watchlist_item,
     delete_watchlist_items,
     get_unresolved_pending_topups,
+    get_treasury_bill,
+    update_treasury_bill_auto_reinvest,
 )
 from market_pulse import fetch_and_save_pulse
 from notification_engine import notify
 from profile_engine import update_single_profile
 from scheduler_engine import (
     get_all_job_last_runs, register_account_scraper_job, register_account_topup_job,
-    run_account_value_snapshot, unregister_account_scraper_job, unregister_account_topup_job,
+    run_account_value_snapshot, run_treasury_bill_maturity_sweep, unregister_account_scraper_job,
+    unregister_account_topup_job,
 )
+from treasury_bill_engine import buy_treasury_bill, delete_treasury_bill, list_treasury_bills
 from utils import normalize_ticker
 from yahoo_engine import yahoo_engine
 
@@ -159,6 +163,19 @@ class PensionFeeBody(BaseModel):
     units_after: Optional[float] = None
     units_removed: Optional[float] = None
     unit_price: Optional[float] = None
+
+
+class TreasuryBillBuyBody(BaseModel):
+    purchase_date: str
+    face_value: float
+    purchase_price: float
+    maturity_date: str
+    auto_reinvest: bool = False
+    notes: Optional[str] = None
+
+
+class TreasuryBillAutoReinvestBody(BaseModel):
+    auto_reinvest: bool
 
 
 def _resolve_exchange_rate(currency: Optional[str], exchange_rate: Optional[float], txn_date: str) -> float:
@@ -418,6 +435,11 @@ async def api_update_transaction(
                 status_code=422,
                 content={"status": "error", "message": "Transfers can't be edited — delete and recreate instead."},
             )
+        if existing["ticker"] and existing["ticker"].startswith("TBILL-"):
+            return JSONResponse(
+                status_code=422,
+                content={"status": "error", "message": "Treasury Bill transactions can't be edited directly — use the Treasury Bills panel, or delete the bill there to correct a mis-entry."},
+            )
         if body.txn_type not in _TXN_TYPES:
             return JSONResponse(
                 status_code=422,
@@ -463,6 +485,11 @@ async def api_delete_transaction(request: Request, account_id: int, txn_id: int,
         existing = get_transaction(txn_id)
         if existing is None or existing["account_id"] != account_id:
             return JSONResponse(status_code=404, content={"status": "error", "message": "Transaction not found."})
+        if existing["ticker"] and existing["ticker"].startswith("TBILL-"):
+            return JSONResponse(
+                status_code=422,
+                content={"status": "error", "message": "Treasury Bill transactions can't be deleted directly — delete the bill from the Treasury Bills panel instead."},
+            )
         delete_transaction_with_pair(txn_id)
         background_tasks.add_task(resnapshot_account, account_id)
         return JSONResponse(content={"status": "success", "message": "Transaction deleted."})
@@ -677,6 +704,15 @@ async def api_trigger_account_value_snapshot(background_tasks: BackgroundTasks):
     })
 
 
+@accounts_router.post("/accounts/treasury-bills/maturity-sweep/trigger")
+async def api_trigger_treasury_bill_maturity_sweep(background_tasks: BackgroundTasks):
+    background_tasks.add_task(run_treasury_bill_maturity_sweep)
+    return JSONResponse(content={
+        "status": "queued",
+        "message": "UK Treasury Bill Maturity Sweep queued. Check system notifications for completion.",
+    })
+
+
 def _maybe_trigger_price_refresh(background_tasks: BackgroundTasks) -> None:
     """Backs the Home Assistant integration's polling-driven refresh: whatever interval it (or
     a browser tab) actually polls these endpoints at becomes the real refresh cadence, capped by
@@ -790,7 +826,7 @@ def _require_trading_account(account_id: int):
     if acc is None:
         return None, JSONResponse(status_code=404, content={"status": "error", "message": "Account not found."})
     if acc["account_type"] != "Trading":
-        return None, JSONResponse(status_code=400, content={"status": "error", "message": "Auto Top-up is only available on Trading accounts."})
+        return None, JSONResponse(status_code=400, content={"status": "error", "message": "This action is only available on Trading accounts."})
     return acc, None
 
 
@@ -1001,4 +1037,75 @@ async def api_record_pension_fee(request: Request, account_id: int, body: Pensio
         return JSONResponse(content={"status": "success", **result})
     except Exception as e:
         logger.error("api_record_pension_fee account=%s failed: %s", account_id, e)
+        return _error_500(e)
+
+
+@accounts_router.post("/accounts/{account_id}/treasury-bills")
+@limiter.limit("30/minute")
+async def api_buy_treasury_bill(request: Request, account_id: int, body: TreasuryBillBuyBody, background_tasks: BackgroundTasks):
+    try:
+        _acc, error = _require_trading_account(account_id)
+        if error:
+            return error
+        result = buy_treasury_bill(
+            account_id, body.purchase_date, body.face_value, body.purchase_price,
+            body.maturity_date, body.auto_reinvest, body.notes,
+        )
+        if result.get("error"):
+            return JSONResponse(status_code=422, content={"status": "error", "message": result["error"]})
+        background_tasks.add_task(resnapshot_account, account_id)
+        return JSONResponse(content={"status": "success", **result})
+    except Exception as e:
+        logger.error("api_buy_treasury_bill account=%s failed: %s", account_id, e)
+        return _error_500(e)
+
+
+@accounts_router.get("/accounts/{account_id}/treasury-bills")
+@limiter.limit("60/minute")
+async def api_list_treasury_bills(request: Request, account_id: int):
+    try:
+        _acc, error = _require_trading_account(account_id)
+        if error:
+            return error
+        return JSONResponse(content={"status": "success", "treasury_bills": list_treasury_bills(account_id)})
+    except Exception as e:
+        logger.error("api_list_treasury_bills account=%s failed: %s", account_id, e)
+        return _error_500(e)
+
+
+@accounts_router.put("/accounts/{account_id}/treasury-bills/{bill_id}")
+@limiter.limit("30/minute")
+async def api_update_treasury_bill(request: Request, account_id: int, bill_id: int, body: TreasuryBillAutoReinvestBody):
+    try:
+        _acc, error = _require_trading_account(account_id)
+        if error:
+            return error
+        bill = get_treasury_bill(bill_id)
+        if not bill or bill["account_id"] != account_id:
+            return JSONResponse(status_code=404, content={"status": "error", "message": "Treasury Bill not found."})
+        if not update_treasury_bill_auto_reinvest(bill_id, body.auto_reinvest):
+            return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to update the Treasury Bill."})
+        return JSONResponse(content={"status": "success", "message": "Treasury Bill updated."})
+    except Exception as e:
+        logger.error("api_update_treasury_bill account=%s bill=%s failed: %s", account_id, bill_id, e)
+        return _error_500(e)
+
+
+@accounts_router.delete("/accounts/{account_id}/treasury-bills/{bill_id}")
+@limiter.limit("20/minute")
+async def api_delete_treasury_bill(request: Request, account_id: int, bill_id: int, background_tasks: BackgroundTasks):
+    try:
+        _acc, error = _require_trading_account(account_id)
+        if error:
+            return error
+        bill = get_treasury_bill(bill_id)
+        if not bill or bill["account_id"] != account_id:
+            return JSONResponse(status_code=404, content={"status": "error", "message": "Treasury Bill not found."})
+        result = delete_treasury_bill(bill_id)
+        if result.get("error"):
+            return JSONResponse(status_code=422, content={"status": "error", "message": result["error"]})
+        background_tasks.add_task(resnapshot_account, account_id)
+        return JSONResponse(content={"status": "success", "message": "Treasury Bill deleted."})
+    except Exception as e:
+        logger.error("api_delete_treasury_bill account=%s bill=%s failed: %s", account_id, bill_id, e)
         return _error_500(e)

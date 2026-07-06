@@ -1172,6 +1172,113 @@ def test_pension_endpoints_reject_non_pension_account(client):
     })
     assert resp.status_code == 400
 
+
+@pytest.mark.api
+def test_treasury_bill_buy_and_list_endpoints(client):
+    account_id = _create_account(client, initial_cash=2000.0)
+    resp = client.post(f"/api/accounts/{account_id}/treasury-bills", json={
+        "purchase_date": "2026-07-01", "face_value": 1000.0, "purchase_price": 996.16,
+        "maturity_date": "2026-07-29", "auto_reinvest": True,
+    })
+    assert resp.status_code == 200
+    data = _json(resp)
+    assert data["status"] == "success"
+    bill_id = data["bill_id"]
+
+    resp = client.get(f"/api/accounts/{account_id}/treasury-bills")
+    assert resp.status_code == 200
+    bills = _json(resp)["treasury_bills"]
+    assert len(bills) == 1
+    assert bills[0]["id"] == bill_id
+    assert bills[0]["face_value"] == 1000.0
+    assert bills[0]["status"] == "Open"
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_treasury_bill_buy_rejects_purchase_price_above_face_value(client):
+    account_id = _create_account(client, initial_cash=2000.0)
+    resp = client.post(f"/api/accounts/{account_id}/treasury-bills", json={
+        "purchase_date": "2026-07-01", "face_value": 1000.0, "purchase_price": 1000.0,
+        "maturity_date": "2026-07-29",
+    })
+    assert resp.status_code == 422
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_treasury_bill_buy_rejects_maturity_before_purchase(client):
+    account_id = _create_account(client, initial_cash=2000.0)
+    resp = client.post(f"/api/accounts/{account_id}/treasury-bills", json={
+        "purchase_date": "2026-07-29", "face_value": 1000.0, "purchase_price": 996.16,
+        "maturity_date": "2026-07-01",
+    })
+    assert resp.status_code == 422
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_treasury_bill_endpoints_reject_non_trading_account(client):
+    account_id = _create_account(client, account_type="House")
+    resp = client.post(f"/api/accounts/{account_id}/treasury-bills", json={
+        "purchase_date": "2026-07-01", "face_value": 1000.0, "purchase_price": 996.16,
+        "maturity_date": "2026-07-29",
+    })
+    assert resp.status_code == 400
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_treasury_bill_toggle_auto_reinvest_and_delete(client):
+    account_id = _create_account(client, initial_cash=2000.0)
+    resp = client.post(f"/api/accounts/{account_id}/treasury-bills", json={
+        "purchase_date": "2026-07-01", "face_value": 1000.0, "purchase_price": 996.16,
+        "maturity_date": "2026-07-29",
+    })
+    bill_id = _json(resp)["bill_id"]
+
+    resp = client.put(f"/api/accounts/{account_id}/treasury-bills/{bill_id}", json={"auto_reinvest": True})
+    assert resp.status_code == 200
+    bills = _json(client.get(f"/api/accounts/{account_id}/treasury-bills"))["treasury_bills"]
+    assert bills[0]["auto_reinvest"] == 1
+
+    resp = client.delete(f"/api/accounts/{account_id}/treasury-bills/{bill_id}")
+    assert resp.status_code == 200
+    bills = _json(client.get(f"/api/accounts/{account_id}/treasury-bills"))["treasury_bills"]
+    assert bills == []
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
+
+@pytest.mark.api
+def test_generic_transaction_endpoints_reject_tbill_ticker(client):
+    account_id = _create_account(client, initial_cash=2000.0)
+    resp = client.post(f"/api/accounts/{account_id}/treasury-bills", json={
+        "purchase_date": "2026-07-01", "face_value": 1000.0, "purchase_price": 996.16,
+        "maturity_date": "2026-07-29",
+    })
+    txn_id = _json(resp)["txn_id"]
+
+    resp = client.put(f"/api/accounts/{account_id}/transactions/{txn_id}", json={
+        "txn_type": "Buy", "txn_date": "2026-07-01", "ticker": "TBILL-999", "quantity": 1, "unit_price": 1.0,
+    })
+    assert resp.status_code == 422
+
+    resp = client.delete(f"/api/accounts/{account_id}/transactions/{txn_id}")
+    assert resp.status_code == 422
+
+    import database as _db
+    _db.soft_delete_account(account_id)
+
     import database as _db
     _db.soft_delete_account(account_id)
 

@@ -581,6 +581,7 @@ def current_price_map(tickers: list) -> dict:
     if not tickers:
         return {}
     from account_scraper_engine import latest_price, parse_pension_account_id
+    from treasury_bill_engine import current_price_for_ticker, parse_tbill_buy_txn_id
 
     result: dict[str, tuple] = {}
     market_tickers = []
@@ -588,6 +589,10 @@ def current_price_map(tickers: list) -> dict:
         pension_id = parse_pension_account_id(ticker)
         if pension_id is not None:
             priced = latest_price(pension_id)
+            if priced:
+                result[ticker] = priced
+        elif parse_tbill_buy_txn_id(ticker) is not None:
+            priced = current_price_for_ticker(ticker)
             if priced:
                 result[ticker] = priced
         else:
@@ -669,6 +674,7 @@ def held_tickers_lightweight() -> list:
             SELECT DISTINCT t.ticker FROM account_transactions t
             JOIN accounts a ON a.id = t.account_id
             WHERE a.account_type = 'Trading' AND a.deleted_at IS NULL AND t.ticker IS NOT NULL
+            AND t.ticker NOT LIKE 'TBILL-%'
         """)
         tickers.update(r["ticker"] for r in cursor.fetchall())
     except Exception as e:

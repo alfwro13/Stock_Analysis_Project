@@ -962,6 +962,26 @@ def init_db() -> None:
             )
         ''')
 
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS treasury_bills (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id      INTEGER NOT NULL,
+                buy_txn_id      INTEGER NOT NULL,
+                ticker          TEXT NOT NULL UNIQUE,
+                face_value      REAL NOT NULL,
+                purchase_price  REAL NOT NULL,
+                purchase_date   TEXT NOT NULL,
+                maturity_date   TEXT NOT NULL,
+                auto_reinvest   INTEGER NOT NULL DEFAULT 0,
+                status          TEXT NOT NULL DEFAULT 'Open',
+                maturity_txn_id INTEGER,
+                notes           TEXT,
+                created_at      TEXT DEFAULT (datetime('now'))
+            )
+        ''')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_treasury_bills_account ON treasury_bills(account_id)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_treasury_bills_status_maturity ON treasury_bills(status, maturity_date)')
+
         conn.commit()
 
         migrate_db(conn, cursor)
@@ -1601,6 +1621,30 @@ def migrate_db(conn, cursor) -> None:
         ''')
     except Exception as e:
         logger.error("[MIGRATION ERROR] Failed to create holding_price_limits: %s", e)
+
+    # treasury_bills (guard for pre-feature DBs)
+    try:
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS treasury_bills (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id      INTEGER NOT NULL,
+                buy_txn_id      INTEGER NOT NULL,
+                ticker          TEXT NOT NULL UNIQUE,
+                face_value      REAL NOT NULL,
+                purchase_price  REAL NOT NULL,
+                purchase_date   TEXT NOT NULL,
+                maturity_date   TEXT NOT NULL,
+                auto_reinvest   INTEGER NOT NULL DEFAULT 0,
+                status          TEXT NOT NULL DEFAULT 'Open',
+                maturity_txn_id INTEGER,
+                notes           TEXT,
+                created_at      TEXT DEFAULT (datetime('now'))
+            )
+        ''')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_treasury_bills_account ON treasury_bills(account_id)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_treasury_bills_status_maturity ON treasury_bills(status, maturity_date)')
+    except Exception as e:
+        logger.error("[MIGRATION ERROR] Failed to create treasury_bills: %s", e)
 
     try:
         conn.commit()

@@ -3198,6 +3198,57 @@ Returns the Pension account's synthetic-ticker units held as of `date` (`account
 
 ---
 
+### UK Treasury Bills (Trading)
+
+Tracks zero-coupon UK Treasury bills (`treasury_bill_engine.py`) as holdings inside a Trading account, via a dedicated action rather than the generic transaction form. All four endpoints below 400 if the account is not `Trading`.
+
+### `POST /api/accounts/{id}/treasury-bills`
+
+**"Buy T-Bill"** — records a purchase. Validates the account is `Trading`, `0 < purchase_price < face_value`, and `maturity_date > purchase_date`, then posts a `Buy` transaction (`update_cash=True` — real cash is spent) against a unique internal ticker (`TBILL-{txn_id}`), so concurrently-held bills never blend cost basis in the average-cost ledger. Rate limit: 30/minute.
+
+**Request body:**
+```json
+{ "purchase_date": "2026-07-06", "face_value": 1000.0, "purchase_price": 996.16, "maturity_date": "2026-08-03", "auto_reinvest": true, "notes": null }
+```
+
+**Response:** `{ "status": "success", "bill_id": 5, "txn_id": 210, "ticker": "TBILL-210" }`. Returns 422 on a validation failure (bad price/date ordering) or 400 if the account is not `Trading`.
+
+---
+
+### `GET /api/accounts/{id}/treasury-bills`
+
+Lists every Treasury Bill (open and matured) for the account (`treasury_bill_engine.list_treasury_bills`), each row annotated with a computed `current_value` — the bill's straight-line accreted value as of today, between the purchase price and face value. Rate limit: 60/minute.
+
+**Response:** `{ "status": "success", "treasury_bills": [{ "id": 5, "ticker": "TBILL-210", "face_value": 1000.0, "purchase_price": 996.16, "purchase_date": "2026-07-06", "maturity_date": "2026-08-03", "auto_reinvest": 1, "status": "Open", "maturity_txn_id": null, "current_value": 997.42 }] }`.
+
+---
+
+### `PUT /api/accounts/{id}/treasury-bills/{bill_id}`
+
+Toggles the `auto_reinvest` flag — the only field editable after purchase. Rate limit: 30/minute.
+
+**Request body:** `{ "auto_reinvest": true }`
+
+**Response:** `{ "status": "success", "message": "Treasury Bill updated." }`. Returns 404 if the bill doesn't belong to this account.
+
+---
+
+### `DELETE /api/accounts/{id}/treasury-bills/{bill_id}`
+
+Corrects a mis-entered bill: deletes the Buy transaction (and the maturity Sell transaction too, if the bill has already matured), then the `treasury_bills` row itself. This is the only way to remove a bill — the generic transaction `PUT`/`DELETE` endpoints reject any row whose ticker starts with `TBILL-`, pointing the operator back here. Rate limit: 20/minute.
+
+**Response:** `{ "status": "success", "message": "Treasury Bill deleted." }`. Returns 404 if the bill doesn't belong to this account.
+
+---
+
+### `POST /api/accounts/treasury-bills/maturity-sweep/trigger`
+
+Manually queues the UK Treasury Bill Maturity Sweep job (`treasury_bill_engine.sweep_matured_bills`) as a background task — closes any bill whose maturity date has arrived without waiting for the daily 07:00 schedule. Mirrors `POST /api/accounts/value-snapshot/trigger`.
+
+Returns `{"status": "queued", "message": "..."}` immediately.
+
+---
+
 ### Auto Top-up (Trading)
 
 Records a recurring direct-debit schedule on a Trading account and, on the scheduled date, creates a *pending* confirmation rather than posting cash automatically — see the Auto Top-up glossary entry for the full rationale. All three endpoints below 400 if the account is not `Trading`.

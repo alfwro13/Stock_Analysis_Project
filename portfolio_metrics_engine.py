@@ -14,6 +14,7 @@ from db_accounts import (
     get_transactions, get_value_history, get_value_history_currency, upsert_holding_price_limit,
 )
 from portfolio_service import get_rate_to_base
+from treasury_bill_engine import parse_tbill_buy_txn_id
 
 logger = logging.getLogger(__name__)
 
@@ -135,7 +136,7 @@ def holdings_with_metrics_all_accounts() -> dict:
                 "accumulated_dividends_currency": BASE_CURRENCY,
                 "trend_vs_buy": "up" if (market_price_in_base is not None and h["buy_price"] and market_price_in_base >= h["buy_price"]) else "down",
                 "asset_class": signals.get("quote_type"),
-                "data_source": "YAHOO",
+                "data_source": "TBILL" if parse_tbill_buy_txn_id(ticker) is not None else "YAHOO",
                 "market_change_24h": pulse.get("change_pts"),
                 "market_change_pct_24h": pulse.get("change_pct"),
                 "rsi": signals.get("rsi_14"),

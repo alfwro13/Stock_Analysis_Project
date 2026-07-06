@@ -44,6 +44,8 @@ NOTIFICATION_SOURCES: dict[str, dict] = {
     "accounts_csv_import":     {"label": "Accounts CSV Import",             "job_id": None,                     "default": dict(_NO_TALK)},
     "backup_status":           {"label": "Automated Backup",                "job_id": "backup_job",             "default": dict(_NO_TALK)},
     "account_value_snapshot_status": {"label": "Account Value Snapshot",    "job_id": "account_value_snapshot_job", "default": dict(_NO_TALK)},
+    "treasury_bill_maturity_status": {"label": "Treasury Bill Maturity Sweep", "job_id": "treasury_bill_maturity_sweep_job", "default": dict(_NO_TALK)},
+    "treasury_bill_reminder":        {"label": "Treasury Bill Reinvest Reminder", "job_id": "treasury_bill_maturity_sweep_job", "default": dict(_ON)},
     "account_autotopup_status": {"label": "Account Auto Top-up",            "job_id": None,                     "default": dict(_ON)},
     "system_update_status":    {"label": "System Updates & Power",          "job_id": None,                     "default": dict(_NO_TALK)},
     "ha_refresh_now_status":   {"label": "Home Assistant Refresh Now",      "job_id": None,                     "default": dict(_NO_TALK)},
