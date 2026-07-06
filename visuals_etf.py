@@ -16,7 +16,7 @@ def create_etf_correlation_chart(
     if normalized_df.empty:
         fig = go.Figure()
         fig.update_layout(template="plotly_dark", height=650,
-                          title=dict(text=f"{etf_ticker} Correlation — No Data", x=0.5))
+                          title=dict(text=f"{etf_ticker} Correlation — No Data", x=0.5, xanchor="center"))
         return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
 
     fig = make_subplots(
@@ -71,11 +71,11 @@ def create_etf_correlation_chart(
                    x=0.5, xanchor="center", font=dict(size=14), y=0.98),
         template="plotly_dark", height=720,
         margin=dict(l=20, r=20, t=130, b=160), hovermode="x unified",
-        legend=dict(orientation="h", yanchor="top", y=-0.06, xanchor="left", x=0,
+        legend=dict(orientation="h", yanchor="top", y=-0.06, xanchor="center", x=0.5,
                     font=dict(size=9), tracegroupgap=2),
     )
-    fig.update_yaxes(title_text="Indexed (100 = start)", row=1, col=1, showgrid=True, gridcolor="#333333")
-    fig.update_yaxes(title_text="Pearson r", row=2, col=1, showgrid=True, gridcolor="#333333", range=[-1.1, 1.1])
+    fig.update_yaxes(title_text="Indexed (100 = start)", row=1, col=1, showgrid=True, gridcolor="#333333", automargin=True)
+    fig.update_yaxes(title_text="Pearson r", row=2, col=1, showgrid=True, gridcolor="#333333", range=[-1.1, 1.1], automargin=True)
     return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
 
 
@@ -138,10 +138,10 @@ def create_etf_prediction_chart(
                    x=0.5, xanchor="center"),
         template="plotly_dark", height=450,
         margin=dict(l=20, r=20, t=90, b=100), hovermode="x unified",
-        legend=dict(orientation="h", yanchor="top", y=-0.08, xanchor="left", x=0,
+        legend=dict(orientation="h", yanchor="top", y=-0.08, xanchor="center", x=0.5,
                     font=dict(size=9), tracegroupgap=2),
     )
-    fig.update_yaxes(title_text=ccy, showgrid=True, gridcolor="#333333")
+    fig.update_yaxes(title_text=ccy, showgrid=True, gridcolor="#333333", automargin=True)
     return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
 
 
@@ -150,7 +150,7 @@ def create_etf_contributions_chart(etf_ticker: str, contributions: list) -> str:
     if not contributions:
         fig = go.Figure()
         fig.update_layout(template="plotly_dark", height=350,
-                          title=dict(text="Holdings Contributions — No Data", x=0.5))
+                          title=dict(text="Holdings Contributions — No Data", x=0.5, xanchor="center"))
         return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
 
     sorted_items = sorted(contributions, key=lambda x: abs(x.get("contribution_pct", 0)), reverse=True)
@@ -172,9 +172,9 @@ def create_etf_contributions_chart(etf_ticker: str, contributions: list) -> str:
                    x=0.5, xanchor="center"),
         template="plotly_dark",
         height=max(300, len(tickers) * 32 + 100),
-        margin=dict(l=20, r=20, t=50, b=40),
+        margin=dict(l=20, r=20, t=50, b=60),
         xaxis=dict(title="Contribution (%)", showgrid=True, gridcolor="#333333", zeroline=False),
-        yaxis=dict(autorange="reversed"),
+        yaxis=dict(autorange="reversed", automargin=True),
         showlegend=False,
     )
     return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})
@@ -400,7 +400,7 @@ def create_etf_overlay_chart(
         height=580,
         margin=dict(l=20, r=20, t=80, b=160),
         hovermode="x unified",
-        legend=dict(orientation="h", yanchor="top", y=-0.06, xanchor="left", x=0,
+        legend=dict(orientation="h", yanchor="top", y=-0.06, xanchor="center", x=0.5,
                     font=dict(size=9), tracegroupgap=2),
     )
     fig.update_yaxes(
@@ -408,6 +408,7 @@ def create_etf_overlay_chart(
         ticksuffix="%",
         zeroline=True, zerolinecolor="#555555", zerolinewidth=1.5,
         showgrid=True, gridcolor="#333333",
+        automargin=True,
     )
     fig.update_xaxes(range=[str(x_start), str(x_end)], showgrid=True, gridcolor="#333333")
     return fig.to_html(full_html=False, include_plotlyjs=False, config={'responsive': True, 'displaylogo': False})

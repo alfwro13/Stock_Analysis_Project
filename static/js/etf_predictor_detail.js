@@ -95,15 +95,60 @@ function renderAccuracyTable(rows, tbodyId) {
     }).join('');
 }
 
-function toggleFullscreen(wrapperId) {
-    const el = document.getElementById(wrapperId);
-    if (!el) return;
-    if (!document.fullscreenElement) {
-        el.requestFullscreen().catch(() => {});
-    } else {
-        document.exitFullscreen();
+// These 4 charts are embedded server-side (visuals_etf.py's fig.to_html()) rather than created
+// via the Plotly JS API, so config.responsive never reacts to container size changes (resize,
+// rotation, fullscreen) — width/height must be relayout'd explicitly, per AGENTS.md Rule 18.
+const _ETF_CHART_WRAPPERS = [
+    { outer: 'etf-overlay-outer-wrapper', inner: 'etf-overlay-wrapper' },
+    { outer: 'etf-pred-outer-wrapper', inner: 'etf-pred-wrapper' },
+    { outer: 'etf-contrib-outer-wrapper', inner: 'etf-contrib-wrapper' },
+    { outer: 'etf-corr-outer-wrapper', inner: 'etf-corr-wrapper' },
+];
+
+function _etfDesktopHeight(plotEl) {
+    // Captures the height Python originally rendered (fixed per chart, or dynamic-by-holdings-count
+    // for the contributions chart) once, before any relayout overrides it — avoids duplicating that
+    // formula here and drifting out of sync with visuals_etf.py.
+    if (plotEl._etfDesktopHeight == null) {
+        plotEl._etfDesktopHeight = (plotEl.layout && plotEl.layout.height) || 450;
     }
+    return plotEl._etfDesktopHeight;
 }
+
+function _relayoutEtfChart(innerWrapperId, isFullscreen) {
+    const plotEl = document.querySelector('#' + innerWrapperId + ' .js-plotly-plot');
+    if (!plotEl || !window.Plotly) return;
+    const height = isFullscreen
+        ? window.innerHeight - 120
+        : (window.innerWidth < 768 ? 400 : _etfDesktopHeight(plotEl));
+    Plotly.relayout(plotEl, { width: plotEl.getBoundingClientRect().width, height });
+}
+
+function toggleFullscreen(outerWrapperId, innerWrapperId) {
+    const wrapper = document.getElementById(outerWrapperId);
+    if (!wrapper) return;
+    const isFullscreen = wrapper.classList.contains('is-fullscreen');
+    const btn = wrapper.querySelector('.fullscreen-btn');
+    if (isFullscreen) {
+        wrapper.classList.remove('is-fullscreen');
+        if (btn) btn.innerHTML = '&#9638; Fullscreen';
+    } else {
+        wrapper.classList.add('is-fullscreen');
+        if (btn) btn.innerHTML = '&#10006; Exit Fullscreen';
+    }
+    _relayoutEtfChart(innerWrapperId, !isFullscreen);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    _ETF_CHART_WRAPPERS.forEach(w => _relayoutEtfChart(w.inner, false));
+    window.addEventListener('resize', () => {
+        _ETF_CHART_WRAPPERS.forEach(w => {
+            const outer = document.getElementById(w.outer);
+            const isFullscreen = outer && outer.classList.contains('is-fullscreen');
+            _relayoutEtfChart(w.inner, isFullscreen);
+        });
+    });
+});
 
 async function runNow(e) {
     const btn = e.target;
