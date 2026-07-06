@@ -16,6 +16,7 @@ window.FX_RATES = {{ position_sizing.fx_rates | tojson }};
 window.ENABLE_LIVE_ASSETS = {% if not embed and config and config.UI_PREFERENCES and config.UI_PREFERENCES.LIVE_PORTFOLIO %}true{% else %}false{% endif %};
 window.REFRESH_RATE_MS = {% if not embed %}{{ config.UI_PREFERENCES.REFRESH_RATE | default(60) }} * 1000{% else %}60000{% endif %};
 window.AUTO_XRAY = {% if auto_xray %}true{% else %}false{% endif %};
+window.PORTFOLIO_CHANGE_PERIOD = "{{ change_period }}";
 </script>
 
 {% if not embed %}
@@ -101,6 +102,14 @@ window.AUTO_XRAY = {% if auto_xray %}true{% else %}false{% endif %};
         <option value="👑 Market Leader">👑 Market Leaders</option>
         <option value="🚨 Divergence Warning">🚨 Divergence Warnings</option>
     </select>
+    <div class="btn-group change-period-group" id="changePeriodGroup" role="group" aria-label="Change Period">
+        <button type="button" class="btn btn-sm btn-outline-secondary change-period-btn" data-period="1d">1D</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary change-period-btn" data-period="5d">5D</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary change-period-btn" data-period="1m">1M</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary change-period-btn" data-period="6m">6M</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary change-period-btn" data-period="ytd">YTD</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary change-period-btn" data-period="1y">1Y</button>
+    </div>
 </div>
 
 <div id="heatmap-panel" class="heatmap-panel"></div>
@@ -111,7 +120,7 @@ window.AUTO_XRAY = {% if auto_xray %}true{% else %}false{% endif %};
             <th>Ticker</th>
             <th>Company Name</th>
             <th>Price</th>
-            <th>Daily Change</th>
+            <th>Change</th>
             <th><abbr title="Current market value across all accounts (in base currency)">Global Value</abbr></th>
             <th><abbr title="Unrealized P&amp;L across all accounts (in base currency)">Global P&amp;L</abbr></th>
             <th>50D</th>
@@ -136,7 +145,15 @@ window.AUTO_XRAY = {% if auto_xray %}true{% else %}false{% endif %};
         {% set cp = cached_pulse.get(item.ticker) %}
         <tr class="live-asset-row"
             data-ticker="{{ item.ticker }}"
-            data-change-pct="{{ cp.change_pct|float if cp else 0 }}"
+            data-change-pct="{{ item.change_pct|float if item.change_pct is not none else '' }}"
+            data-live-price="{{ cp.price if cp else (item.current_price if item.current_price is not none else '') }}"
+            data-day1-change-pct="{{ cp.change_pct if cp else '' }}"
+            data-day1-is-positive="{{ '1' if cp and cp.is_positive else '0' }}"
+            data-close5d="{{ item.period_anchors.get('5d') if item.period_anchors.get('5d') is not none else '' }}"
+            data-close1m="{{ item.period_anchors.get('1m') if item.period_anchors.get('1m') is not none else '' }}"
+            data-close6m="{{ item.period_anchors.get('6m') if item.period_anchors.get('6m') is not none else '' }}"
+            data-closeytd="{{ item.period_anchors.get('ytd') if item.period_anchors.get('ytd') is not none else '' }}"
+            data-close1y="{{ item.period_anchors.get('1y') if item.period_anchors.get('1y') is not none else '' }}"
             data-currency="{{ item.currency }}"
             data-signal="{{ item.overall_signal | upper }}"
             data-tags="{% for tag in item.setup_tags_list %}{{ tag.name }} {% endfor %}"
@@ -167,13 +184,15 @@ window.AUTO_XRAY = {% if auto_xray %}true{% else %}false{% endif %};
                 </span>
             </td>
 
-            <td data-sort="{{ cp.change_pct if cp else 0 }}" class="num-cell">
-                <span id="change-{{ item.ticker }}" class="{% if cp and cp.is_stale %}stale-text{% elif cp %}{% if cp.is_positive %}trend-up{% else %}trend-down{% endif %}{% endif %}">
-                    {% if cp %}
-                        {% set sign = '+' if cp.is_positive else '' %}
-                        {{ sign }}{{ "{:,.2f}".format(cp.change_pct|float) }}%
-                    {% else %}
+            <td data-sort="{{ item.change_pct if item.change_pct is not none else 0 }}" class="num-cell">
+                <span id="change-{{ item.ticker }}" class="{% if cp and cp.is_stale %}stale-text{% elif item.change_pct is not none %}{% if item.change_is_positive %}trend-up{% else %}trend-down{% endif %}{% endif %}">
+                    {% if item.change_pct is not none %}
+                        {% set sign = '+' if item.change_is_positive else '' %}
+                        {{ sign }}{{ "{:,.2f}".format(item.change_pct|float) }}%
+                    {% elif change_period == '1d' %}
                         -
+                    {% else %}
+                        N/A
                     {% endif %}
                 </span>
             </td>

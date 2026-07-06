@@ -46,9 +46,9 @@ function _buildHeatmap(panel) {
 
     var MIN_VALUE = 0.05;
     var items = rows.map(function (row) {
-        var change = parseFloat(row.dataset.changePct || '0');
+        var change = parseFloat(row.dataset.changePct);
         return { ticker: row.dataset.ticker || '', change: change, value: Math.max(Math.abs(change), MIN_VALUE) };
-    }).filter(function (d) { return d.ticker; });
+    }).filter(function (d) { return d.ticker && isFinite(d.change); });
 
     if (!items.length) {
         panel.innerHTML = '<p class="heatmap-empty">No data to display.</p>';

@@ -120,6 +120,70 @@ def test_same_ticker_coexistence_sums(client, tmp_path, monkeypatch):
 
 
 @pytest.mark.pages
+def test_change_period_defaults_to_1d_and_renders_change_header(client):
+    aid = create_account("Integ ChangeDef", "GBP")
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZCHG1", company_name="Change One",
+                     currency="GBP", quantity=1, unit_price=100, exchange_rate=1.0)
+    _seed_stock_signal("ZZCHG1", 100.0, "GBP")
+    _seed_market_pulse("ZZCHG1", 110.0)
+
+    resp = client.get(f"/portfolio?account_id=acct:{aid}")
+    assert resp.status_code == 200
+    assert 'window.PORTFOLIO_CHANGE_PERIOD = "1d";' in resp.text
+    assert "<th>Change</th>" in resp.text
+    assert "<th>Daily Change</th>" not in resp.text
+
+
+@pytest.mark.pages
+def test_change_period_invalid_cookie_falls_back_to_1d(client):
+    resp = client.get("/portfolio", cookies={"portfolio_change_period": "bogus"})
+    assert resp.status_code == 200
+    assert 'window.PORTFOLIO_CHANGE_PERIOD = "1d";' in resp.text
+
+
+@pytest.mark.pages
+def test_change_period_cookie_reflects_anchor_close_not_1d(client, monkeypatch):
+    aid = create_account("Integ Change6M", "GBP")
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZCHG6M", company_name="Change Six Month",
+                     currency="GBP", quantity=1, unit_price=100, exchange_rate=1.0)
+    _seed_stock_signal("ZZCHG6M", 100.0, "GBP")
+    _seed_market_pulse("ZZCHG6M", 120.0)  # live price used as the numerator for every period
+
+    monkeypatch.setattr(
+        "price_history_helpers.get_period_anchor_closes",
+        lambda tickers: {t: {"5d": None, "1m": None, "6m": 80.0, "ytd": None, "1y": None} for t in tickers},
+    )
+
+    resp = client.get(f"/portfolio?account_id=acct:{aid}", cookies={"portfolio_change_period": "6m"})
+    assert resp.status_code == 200
+    assert 'window.PORTFOLIO_CHANGE_PERIOD = "6m";' in resp.text
+    assert 'data-close6m="80.0"' in resp.text
+    row = re.search(r'data-ticker="ZZCHG6M".*?</tr>', resp.text, re.DOTALL).group(0)
+    # (120 - 80) / 80 * 100 == 50.00 — must reflect the 6M anchor, not the 1D change_pct (0 seeded above).
+    assert "+50.00%" in row
+
+
+@pytest.mark.pages
+def test_change_period_missing_history_renders_na(client, monkeypatch):
+    aid = create_account("Integ ChangeNA", "GBP")
+    add_transaction(aid, "Buy", "2026-01-05", ticker="ZZCHGNA", company_name="Change NA",
+                     currency="GBP", quantity=1, unit_price=100, exchange_rate=1.0)
+    _seed_stock_signal("ZZCHGNA", 100.0, "GBP")
+    _seed_market_pulse("ZZCHGNA", 120.0)
+
+    monkeypatch.setattr(
+        "price_history_helpers.get_period_anchor_closes",
+        lambda tickers: {t: {"5d": None, "1m": None, "6m": None, "ytd": None, "1y": None} for t in tickers},
+    )
+
+    resp = client.get(f"/portfolio?account_id=acct:{aid}", cookies={"portfolio_change_period": "1y"})
+    assert resp.status_code == 200
+    row = re.search(r'data-ticker="ZZCHGNA".*?</tr>', resp.text, re.DOTALL).group(0)
+    assert "N/A" in row
+    assert 'data-close1y=""' in row
+
+
+@pytest.mark.pages
 def test_stock_detail_position_value_matches_portfolio_page_live_price(client):
     """Regression: stock_detail's 'Your Position' math must use the same live price as the
     Portfolio page (a fresher market_pulse_cache row), not the stale stock_signals.current_price

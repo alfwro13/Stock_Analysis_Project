@@ -124,6 +124,78 @@ function switchAccountContext() {
     else { window.location.href = '/portfolio?account_id=' + selectedId; }
 }
 
+// ── Change Period (1D/5D/1M/6M/YTD/1Y) ─────────────────────────────────────────
+function _setChangePeriodCookie(period) {
+    document.cookie = 'portfolio_change_period=' + period + ';path=/;max-age=31536000';
+}
+
+function _setChangePeriodButtons(active) {
+    document.querySelectorAll('.change-period-btn').forEach(function (btn) {
+        var isActive = btn.dataset.period === active;
+        btn.classList.toggle('btn-primary', isActive);
+        btn.classList.toggle('btn-outline-secondary', !isActive);
+    });
+}
+
+// Shared with static/js/macro_cards.js so the live-poll tick and the button click
+// never diverge on how the Change cell is rendered.
+function _pctFromAnchor(livePrice, anchorClose) {
+    var live = parseFloat(livePrice);
+    var anchor = parseFloat(anchorClose);
+    if (!isFinite(live) || !isFinite(anchor) || anchor === 0) return null;
+    return (live - anchor) / anchor * 100;
+}
+window._pctFromAnchor = _pctFromAnchor;
+
+function _applyChangeCell(rowEl, pct, isPositive, isStale) {
+    var changeEl = document.getElementById('change-' + rowEl.dataset.ticker);
+    if (!changeEl) return;
+    if (isStale === undefined) isStale = changeEl.classList.contains('stale-text');
+    var cell = changeEl.closest('td');
+    if (pct === null || pct === undefined || !isFinite(pct)) {
+        changeEl.innerText = 'N/A';
+        changeEl.className = isStale ? 'stale-text' : '';
+        rowEl.setAttribute('data-change-pct', '');
+        if (cell) cell.setAttribute('data-sort', 0);
+    } else {
+        var sign = isPositive ? '+' : '';
+        changeEl.innerText = sign + pct.toFixed(2) + '%';
+        changeEl.className = isStale ? 'stale-text' : (isPositive ? 'trend-up' : 'trend-down');
+        rowEl.setAttribute('data-change-pct', pct);
+        if (cell) cell.setAttribute('data-sort', pct);
+    }
+}
+window._applyChangeCell = _applyChangeCell;
+
+function _recomputeChangeColumn(period) {
+    if (!window._portfolioTable) return;
+    window._portfolioTable.rows().nodes().each(function (rowEl) {
+        if (rowEl.classList.contains('child')) return;
+        var pct, isPositive;
+        if (period === '1d') {
+            var pct1d = rowEl.dataset.day1ChangePct;
+            pct = (pct1d === '' || pct1d === undefined) ? null : parseFloat(pct1d);
+            isPositive = rowEl.dataset.day1IsPositive === '1';
+        } else {
+            pct = _pctFromAnchor(rowEl.dataset.livePrice, rowEl.dataset['close' + period]);
+            isPositive = pct !== null && pct >= 0;
+        }
+        _applyChangeCell(rowEl, pct, isPositive);
+    });
+    window._portfolioTable.rows().invalidate('dom').draw(false);
+}
+
+function changePeriod(period) {
+    window.PORTFOLIO_CHANGE_PERIOD = period;
+    _setChangePeriodButtons(period);
+    _setChangePeriodCookie(period);
+    _recomputeChangeColumn(period);
+    if (window._heatmapMode) {
+        var panel = document.getElementById('heatmap-panel');
+        if (panel) _buildHeatmap(panel);
+    }
+}
+
 function _loadXray(accountId) {
     var loadEl = document.getElementById('xray-loading');
     var contEl = document.getElementById('xray-content');
@@ -806,4 +878,9 @@ $(document).ready(function () {
         if (val === 'ALL') { table.column(19).search('').draw(); }
         else { table.column(19).search(val).draw(); }
     });
+
+    $('.change-period-btn').on('click', function () {
+        changePeriod(this.dataset.period);
+    });
+    _setChangePeriodButtons(window.PORTFOLIO_CHANGE_PERIOD || '1d');
 });

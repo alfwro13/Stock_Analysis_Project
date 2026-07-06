@@ -313,6 +313,13 @@ async def portfolio_page(request: Request, account_id: str = "all", embed: bool 
     from accounts_engine import current_price_map
     price_map = current_price_map(list(set(portfolio_tickers)))
 
+    from price_history_helpers import get_period_anchor_closes, pct_from_anchor, CHANGE_PERIODS
+    anchor_closes = get_period_anchor_closes(list(set(portfolio_tickers)))
+
+    change_period = request.cookies.get("portfolio_change_period", "1d")
+    if change_period not in CHANGE_PERIODS:
+        change_period = "1d"
+
     for row_dict in portfolio_data:
         row_dict['market_value_base'] = None
         row_dict['global_market_value'] = None
@@ -321,6 +328,18 @@ async def portfolio_page(request: Request, account_id: str = "all", embed: bool 
         asset = next((d for d in portfolio_json.values() if d.get("ticker") == row_dict['ticker']), None)
         priced = price_map.get(row_dict['ticker'])
         current_price = priced[0] if priced and priced[0] else row_dict['current_price']
+
+        cp = live_pulse.get(row_dict['ticker'])
+        row_dict['period_anchors'] = anchor_closes.get(row_dict['ticker'], {})
+        if change_period == "1d":
+            row_dict['change_pct'] = cp['change_pct'] if cp else None
+            row_dict['change_is_positive'] = cp['is_positive'] if cp else None
+        else:
+            display_price = cp['price'] if cp and cp.get('price') is not None else row_dict['current_price']
+            pct = pct_from_anchor(display_price, row_dict['period_anchors'].get(change_period))
+            row_dict['change_pct'] = pct
+            row_dict['change_is_positive'] = (pct >= 0) if pct is not None else None
+
         if asset and current_price:
             shares = 0
             buy_price_base = 0
@@ -375,7 +394,8 @@ async def portfolio_page(request: Request, account_id: str = "all", embed: bool 
             "config": config_data,
             "cached_pulse": live_pulse,
             "macro_regime": macro_regime,
-            "position_sizing": position_sizing_context
+            "position_sizing": position_sizing_context,
+            "change_period": change_period
         }
     )
 

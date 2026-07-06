@@ -203,22 +203,35 @@ function updateAssetPrices(assets) {
                 formattedPrice += ' ' + currencyCode;
             }
 
-            const formattedChange = Number(asset.change_pct).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-
             priceEl.innerText = formattedPrice;
-            const sign = asset.is_positive ? '+' : '';
-            changeEl.innerText = `${sign}${formattedChange}%`;
-            if (rowEl) rowEl.setAttribute('data-change-pct', asset.change_pct);
 
-            // RESTORED AND ENHANCED: Apply stale/fresh color coding to BOTH elements
-            if (asset.is_stale) {
-                changeEl.className = 'stale-text';
-                priceEl.className = 'stale-text';
-            } else {
-                const trendClass = asset.is_positive ? 'trend-up' : 'trend-down';
-                changeEl.className = trendClass;
-                priceEl.className = trendClass;
+            // 1D change_pct/is_positive is always the value this poll response carries,
+            // regardless of which Change Period button is currently selected on the
+            // Portfolio page — keep it fresh on the row so switching back to 1D doesn't
+            // need a fresh fetch.
+            if (rowEl) {
+                rowEl.setAttribute('data-live-price', asset.price);
+                rowEl.setAttribute('data-day1-change-pct', asset.change_pct);
+                rowEl.setAttribute('data-day1-is-positive', asset.is_positive ? '1' : '0');
             }
+
+            const activePeriod = window.PORTFOLIO_CHANGE_PERIOD;
+            let isPositive = asset.is_positive;
+
+            if (rowEl && activePeriod && activePeriod !== '1d' && typeof window._applyChangeCell === 'function') {
+                const pct = window._pctFromAnchor(asset.price, rowEl.dataset['close' + activePeriod]);
+                isPositive = pct !== null && pct >= 0;
+                window._applyChangeCell(rowEl, pct, isPositive, asset.is_stale);
+            } else {
+                // 1D (Portfolio page) and Watchlist/Stock Detail (portfolio.js not loaded there) — unchanged rendering.
+                const formattedChange = Number(asset.change_pct).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                const sign = asset.is_positive ? '+' : '';
+                changeEl.innerText = `${sign}${formattedChange}%`;
+                if (rowEl) rowEl.setAttribute('data-change-pct', asset.change_pct);
+                changeEl.className = asset.is_stale ? 'stale-text' : (asset.is_positive ? 'trend-up' : 'trend-down');
+            }
+
+            priceEl.className = asset.is_stale ? 'stale-text' : (isPositive ? 'trend-up' : 'trend-down');
         }
     });
 }
@@ -236,7 +249,7 @@ function handlePulseError() {
 function startPulseEngine() {
     fetchMarketPulse();
     // Start with whichever interval state we are currently in
-    marketPulseInterval = setInterval(fetchMarketPulse, isFastPolling ? FAST_POLL_MS : REFRESH_RATE_MS);
+    marketPulseInterval = setInterval(fetchMarketPulse, isFastPolling ? fastPollDelayMs : REFRESH_RATE_MS);
 }
 
 function stopPulseEngine() {
