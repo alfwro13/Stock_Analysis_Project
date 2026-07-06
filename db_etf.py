@@ -169,8 +169,10 @@ def log_etf_prediction(config_id: int, result: dict) -> None:
                    config_id, run_at, prediction_date, target_date, prediction_type,
                    predicted_price, predicted_change_pct, last_etf_close,
                    holdings_predicted_price, regression_predicted_price,
+                   bias_corrected_price, bias_corrected_change_pct,
+                   blended_price, blended_change_pct,
                    signal_source, data_source, fx_rate, r_squared, constituent_snapshot
-               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT(config_id, target_date, prediction_type) DO NOTHING""",
             (
                 config_id,
@@ -183,6 +185,10 @@ def log_etf_prediction(config_id: int, result: dict) -> None:
                 result.get("last_etf_close"),
                 hold.get("predicted_price"),
                 reg.get("predicted_price"),
+                result.get("bias_corrected_price"),
+                result.get("bias_corrected_change_pct"),
+                result.get("blended_price"),
+                result.get("blended_change_pct"),
                 result.get("signal_source"),
                 result.get("data_source"),
                 result.get("fx_rate"),
@@ -245,6 +251,52 @@ def fill_etf_actual(
             conn.close()
 
 
+def get_recent_prediction_errors(config_id: int, prediction_type: str, limit: int = 10) -> list:
+    """Resolved predictions only, most recent first — feeds bias-correction and engine-blend weighting."""
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """SELECT predicted_change_pct, actual_change_pct, holdings_predicted_price,
+                      regression_predicted_price, last_etf_close, actual_open
+               FROM etf_predictor_predictions
+               WHERE config_id = ? AND prediction_type = ? AND actual_open IS NOT NULL
+               ORDER BY target_date DESC LIMIT ?""",
+            (config_id, prediction_type, limit)
+        )
+        return [dict(r) for r in cursor.fetchall()]
+    except Exception as e:
+        logger.error("Failed to get recent prediction errors for config %s (%s): %s",
+                     config_id, prediction_type, e)
+        return []
+    finally:
+        if conn:
+            conn.close()
+
+
+def _variant_summary(rows: list, price_col: str) -> dict:
+    """Direction accuracy / MAE / MAPE for an alternate predicted-price column, derived from already-fetched rows."""
+    directions, abs_errors, pct_errors = [], [], []
+    for r in rows:
+        pred = r.get(price_col)
+        actual = r.get("actual_open")
+        last_close = r.get("last_etf_close")
+        if pred is None or actual is None or not last_close:
+            continue
+        abs_err = abs(pred - actual)
+        abs_errors.append(abs_err)
+        if actual:
+            pct_errors.append(abs_err / actual * 100)
+        directions.append(1 if (pred - last_close >= 0) == (actual - last_close >= 0) else 0)
+    return {
+        "resolved_count": len(directions),
+        "direction_accuracy_pct": round(sum(directions) / len(directions) * 100, 1) if directions else None,
+        "mae": round(sum(abs_errors) / len(abs_errors), 4) if abs_errors else None,
+        "mape_pct": round(sum(pct_errors) / len(pct_errors), 2) if pct_errors else None,
+    }
+
+
 def get_etf_accuracy(config_id: int) -> dict:
     conn = None
     try:
@@ -292,6 +344,8 @@ def get_etf_accuracy(config_id: int) -> dict:
                     "mape_pct": round(agg["mape"], 2) if agg["mape"] is not None else None,
                     "last_10_direction_pct": _window_dir(10),
                     "last_30_direction_pct": _window_dir(30),
+                    "bias_corrected": _variant_summary(rows, "bias_corrected_price"),
+                    "blended": _variant_summary(rows, "blended_price"),
                 },
             }
 
@@ -302,10 +356,12 @@ def get_etf_accuracy(config_id: int) -> dict:
     except Exception as e:
         logger.error("Failed to get ETF accuracy for config %s: %s", config_id, e)
         def _empty():
+            empty_variant = {"resolved_count": 0, "direction_accuracy_pct": None, "mae": None, "mape_pct": None}
             return {"rows": [], "summary": {
                 "total_predictions": 0, "resolved_count": 0,
                 "direction_accuracy_pct": None, "mae": None, "mape_pct": None,
                 "last_10_direction_pct": None, "last_30_direction_pct": None,
+                "bias_corrected": empty_variant, "blended": empty_variant,
             }}
         return {"next_open": _empty(), "us_open_impact": _empty()}
     finally:

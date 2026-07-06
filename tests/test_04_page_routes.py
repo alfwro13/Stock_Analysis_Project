@@ -376,6 +376,69 @@ def test_etf_predictor_detail_unknown_id_redirects(client):
     assert "/etf-predictor" in resp.headers["location"]
 
 
+@pytest.mark.pages
+def test_etf_predictor_detail_renders_bias_and_blend_tiles(client, monkeypatch):
+    """GET /etf-predictor/{id} must render the new Bias-Corrected/Blend tiles without a Jinja crash."""
+    import database as _db
+    import pandas as pd
+    import etf_predictor_engine
+
+    config_id = _db.create_etf_predictor_config(
+        name="Page Test ETF", etf_ticker="PTEST.L",
+        constituents=[{"ticker": "A", "weight": 1.0}],
+    )
+    fake_prediction = {
+        "status": "success",
+        "config_id": config_id,
+        "predicted_price": 101.0,
+        "last_etf_close": 100.0,
+        "predicted_change_pct": 1.0,
+        "data_source": "holdings",
+        "signal_source": "intraday_premarket",
+        "prediction_type": "us_open_impact",
+        "session_relationship": "behind",
+        "constituent_exchanges": ["NYSE"],
+        "fx_rate": 1.0,
+        "fx_pair": None,
+        "as_of_utc": "2026-07-06 12:00 UTC",
+        "as_of_local": "2026-07-06 12:00",
+        "next_open_date": "2026-07-07",
+        "n_holdings_used": 1,
+        "holdings_engine": {"predicted_price": 101.0, "predicted_change_pct": 1.0, "contributions": [], "fx_adjustment_pct": 0.0},
+        "regression_engine": None,
+        "bias_corrected_price": 101.5,
+        "bias_corrected_change_pct": 1.5,
+        "blended_price": 101.2,
+        "blended_change_pct": 1.2,
+        "constituent_snapshot": "[]",
+        "etf_info": {"exchange": "LSE", "currency": "GBP", "name": "PTEST.L"},
+        "error": None,
+    }
+    try:
+        monkeypatch.setattr(etf_predictor_engine, "run_prediction", lambda cid: fake_prediction)
+        monkeypatch.setattr(
+            etf_predictor_engine, "get_etf_correlation_data",
+            lambda cfg, days=60: {"normalized_df": pd.DataFrame(), "rolling_corr": pd.Series(dtype=float), "error": "No data"},
+        )
+        monkeypatch.setattr(
+            etf_predictor_engine, "get_etf_intraday_overlay_data",
+            lambda cfg, prediction=None: {
+                "etf_series": pd.Series(dtype=float), "constituent_series": {}, "now_utc": None,
+                "trading_date": None, "etf_last_close": 100.0, "constituent_prev_closes": {},
+                "prediction": prediction or {}, "next_open_date": None,
+                "constituent_exchanges": ["NYSE"], "session_relationship": "behind",
+            },
+        )
+        resp = client.get(f"/etf-predictor/{config_id}")
+        assert resp.status_code == 200
+        assert "Bias-Corrected" in resp.text
+        assert "Confidence-Weighted Blend" in resp.text
+        assert "101.5" in resp.text
+        assert "101.2" in resp.text
+    finally:
+        _db.soft_delete_etf_predictor_config(config_id)
+
+
 # ── Account Detail ──────────────────────────────────────────────────────────────
 
 @pytest.mark.pages

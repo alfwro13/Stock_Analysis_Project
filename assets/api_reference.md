@@ -2647,6 +2647,8 @@ Returns prediction history and accuracy summary for a specific config.
         "id": 42,
         "target_date": "2026-06-11",
         "predicted_price": 8543.21,
+        "bias_corrected_price": 8560.00,
+        "blended_price": 8551.10,
         "actual_open": 8512.00,
         "pct_error": 0.37,
         "direction_correct": 1,
@@ -2660,12 +2662,16 @@ Returns prediction history and accuracy summary for a specific config.
       "mae": 31.4,
       "mape_pct": 0.38,
       "last_10_direction_pct": 70.0,
-      "last_30_direction_pct": 60.0
+      "last_30_direction_pct": 60.0,
+      "bias_corrected": { "resolved_count": 40, "direction_accuracy_pct": 65.0, "mae": 29.1, "mape_pct": 0.35 },
+      "blended": { "resolved_count": 40, "direction_accuracy_pct": 67.5, "mae": 27.8, "mape_pct": 0.33 }
     }
   },
   "us_open_impact": { "rows": [], "summary": {} }
 }
 ```
+
+`bias_corrected_price`/`bias_corrected_change_pct` and `blended_price`/`blended_change_pct` are tracked alongside the standard `predicted_price` for later comparison — they don't drive any other calculation. Both are `null` until a config has at least 10 resolved predictions of that `prediction_type` to calibrate from. `POST /run` below doesn't echo these (it only returns an "initiated" ack) — they show up here and on the `/etf-predictor/{id}` detail page, which calls the prediction engine directly.
 
 Returns 404 if config not found.
 

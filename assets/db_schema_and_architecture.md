@@ -200,6 +200,7 @@ Tables added after initial schema creation. All managed via `db_schema.py:init_d
 #### `etf_predictor_predictions`
 * **Purpose:** Prediction log per config — tracks predicted vs actual open prices and accuracy metrics over time.
 * **Key Columns:** `id` (PK autoincrement), `config_id` (FK to etf_predictor_configs), `run_at`, `prediction_date`, `target_date`, `prediction_type` (`next_open` | `us_open_impact`), `predicted_price`, `actual_open`, `absolute_error`, `pct_error`, `direction_correct`, `constituent_snapshot` (JSON weights at prediction time), `fx_rate`, `r_squared`.
+* **Bias/blend tracking columns** (added July 2026): `bias_corrected_price`, `bias_corrected_change_pct`, `blended_price`, `blended_change_pct` — two alternate predictions logged alongside the standard one purely for later comparison (`etf_predictor_engine._compute_bias_corrected_prediction()` / `_compute_blended_prediction()`). Neither drives any other calculation; both stay `NULL` until a config has at least 10 resolved predictions of that `prediction_type`. `db_etf.get_recent_prediction_errors()` feeds both calculations; `db_etf.get_etf_accuracy()`'s summary computes `bias_corrected`/`blended` direction-accuracy/MAE/MAPE from the same already-fetched rows.
 * **Constraint:** `UNIQUE(config_id, target_date, prediction_type)` — idempotent logging via `ON CONFLICT DO NOTHING`.
 
 #### `trap_monitor_results`

@@ -666,6 +666,10 @@ def init_db() -> None:
                 last_etf_close             REAL,
                 holdings_predicted_price   REAL,
                 regression_predicted_price REAL,
+                bias_corrected_price       REAL,
+                bias_corrected_change_pct  REAL,
+                blended_price              REAL,
+                blended_change_pct         REAL,
                 signal_source              TEXT,
                 data_source                TEXT,
                 fx_rate                    REAL,
@@ -1645,6 +1649,21 @@ def migrate_db(conn, cursor) -> None:
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_treasury_bills_status_maturity ON treasury_bills(status, maturity_date)')
     except Exception as e:
         logger.error("[MIGRATION ERROR] Failed to create treasury_bills: %s", e)
+
+    cursor.execute("PRAGMA table_info(etf_predictor_predictions)")
+    existing_etf_prediction_columns = [info['name'] for info in cursor.fetchall()]
+    for col, ddl in (
+        ('bias_corrected_price', "ALTER TABLE etf_predictor_predictions ADD COLUMN bias_corrected_price REAL"),
+        ('bias_corrected_change_pct', "ALTER TABLE etf_predictor_predictions ADD COLUMN bias_corrected_change_pct REAL"),
+        ('blended_price', "ALTER TABLE etf_predictor_predictions ADD COLUMN blended_price REAL"),
+        ('blended_change_pct', "ALTER TABLE etf_predictor_predictions ADD COLUMN blended_change_pct REAL"),
+    ):
+        if col not in existing_etf_prediction_columns:
+            try:
+                logger.info("[MIGRATION] Adding column: %s to etf_predictor_predictions...", col)
+                cursor.execute(ddl)
+            except Exception as e:
+                logger.error("[MIGRATION ERROR] Failed on etf_predictor_predictions: %s", e)
 
     try:
         conn.commit()

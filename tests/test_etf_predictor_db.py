@@ -58,6 +58,8 @@ def test_etf_predictor_predictions_has_required_columns():
             "prediction_type", "predicted_price", "actual_open",
             "predicted_change_pct", "actual_change_pct", "last_etf_close",
             "holdings_predicted_price", "regression_predicted_price",
+            "bias_corrected_price", "bias_corrected_change_pct",
+            "blended_price", "blended_change_pct",
             "signal_source", "data_source", "fx_rate", "r_squared",
             "absolute_error", "pct_error", "direction_correct",
             "constituent_snapshot", "created_at",
@@ -226,4 +228,85 @@ def test_get_etf_accuracy_returns_expected_shape():
     assert "us_open_impact" in accuracy
     assert "rows" in accuracy["next_open"]
     assert "summary" in accuracy["next_open"]
+    assert "bias_corrected" in accuracy["next_open"]["summary"]
+    assert "blended" in accuracy["next_open"]["summary"]
+    assert accuracy["next_open"]["summary"]["bias_corrected"]["resolved_count"] == 0
+    _db.soft_delete_etf_predictor_config(cid)
+
+
+@pytest.mark.db
+def test_log_etf_prediction_persists_bias_and_blend_columns():
+    cid = _db.create_etf_predictor_config(
+        name="Variant Log Test", etf_ticker="VAR.L",
+        constituents=[{"ticker": "A", "weight": 1.0}],
+    )
+    result = {
+        "predicted_price": 100.0,
+        "predicted_change_pct": 1.0,
+        "last_etf_close": 99.0,
+        "signal_source": "daily_close",
+        "data_source": "holdings",
+        "fx_rate": 1.0,
+        "holdings_engine": {"predicted_price": 100.0},
+        "regression_engine": {"predicted_price": 99.5, "r_squared": 0.6},
+        "bias_corrected_price": 100.5,
+        "bias_corrected_change_pct": 1.5,
+        "blended_price": 100.2,
+        "blended_change_pct": 1.2,
+        "constituent_snapshot": "[]",
+        "as_of_utc": "2099-08-01 10:00 UTC",
+        "next_open_date": "2099-08-02",
+    }
+    _db.log_etf_prediction(cid, result)
+
+    conn = _db.get_connection()
+    try:
+        row = conn.execute(
+            "SELECT bias_corrected_price, bias_corrected_change_pct, blended_price, blended_change_pct "
+            "FROM etf_predictor_predictions WHERE config_id=? AND target_date=?",
+            (cid, "2099-08-02")
+        ).fetchone()
+        assert row is not None
+        assert abs(row["bias_corrected_price"] - 100.5) < 0.001
+        assert abs(row["bias_corrected_change_pct"] - 1.5) < 0.001
+        assert abs(row["blended_price"] - 100.2) < 0.001
+        assert abs(row["blended_change_pct"] - 1.2) < 0.001
+    finally:
+        conn.execute("DELETE FROM etf_predictor_predictions WHERE config_id=?", (cid,))
+        conn.commit()
+        conn.close()
+    _db.soft_delete_etf_predictor_config(cid)
+
+
+@pytest.mark.db
+def test_get_recent_prediction_errors_only_returns_resolved_rows_for_type():
+    cid = _db.create_etf_predictor_config(
+        name="Errors Test", etf_ticker="ERR.L",
+        constituents=[{"ticker": "A", "weight": 1.0}],
+    )
+    base = {
+        "predicted_change_pct": 1.0, "last_etf_close": 99.0,
+        "signal_source": "daily_close", "data_source": "holdings", "fx_rate": 1.0,
+        "holdings_engine": {"predicted_price": 100.0},
+        "regression_engine": None, "constituent_snapshot": "[]",
+    }
+    resolved = {**base, "predicted_price": 100.0, "as_of_utc": "2099-09-01 10:00 UTC", "next_open_date": "2099-09-02"}
+    unresolved = {**base, "predicted_price": 101.0, "as_of_utc": "2099-09-02 10:00 UTC", "next_open_date": "2099-09-03"}
+    _db.log_etf_prediction(cid, resolved)
+    _db.log_etf_prediction(cid, unresolved)
+    _db.fill_etf_actual(cid, "2099-09-02", 102.0, "next_open")
+
+    from db_etf import get_recent_prediction_errors
+    rows = get_recent_prediction_errors(cid, "next_open", limit=10)
+    try:
+        assert len(rows) == 1
+        assert abs(rows[0]["actual_open"] - 102.0) < 0.001
+
+        other_type_rows = get_recent_prediction_errors(cid, "us_open_impact", limit=10)
+        assert other_type_rows == []
+    finally:
+        conn = _db.get_connection()
+        conn.execute("DELETE FROM etf_predictor_predictions WHERE config_id=?", (cid,))
+        conn.commit()
+        conn.close()
     _db.soft_delete_etf_predictor_config(cid)

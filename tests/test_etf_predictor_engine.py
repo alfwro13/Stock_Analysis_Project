@@ -4,7 +4,8 @@ import pytest
 import pandas as pd
 import numpy as np
 from pathlib import Path
-from datetime import date
+from datetime import date, datetime, timezone
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -12,12 +13,28 @@ from etf_predictor_engine import (
     detect_fx_pair,
     find_unknown_exchange_tickers,
     get_next_open_date,
+    _compute_bias_corrected_prediction,
+    _compute_blended_prediction,
     _compute_holdings_prediction,
+    _compute_intraday_returns,
     _filter_pre_constituent_open,
     _infer_constituent_exchanges,
     _session_relationship,
     _ticker_exchange_explicit,
+    _MIN_HISTORY_FOR_CALIBRATION,
 )
+
+
+def _fake_datetime(fixed_utc: datetime):
+    """Return a datetime subclass whose .now() always returns fixed_utc — mirrors test_time_engine.py."""
+    class _Fake(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return fixed_utc.astimezone(tz) if tz else fixed_utc
+        @classmethod
+        def combine(cls, *a, **kw):
+            return datetime.combine(*a, **kw)
+    return _Fake
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -298,3 +315,136 @@ class TestFilterPreConstituentOpen:
         df = self._make_intraday(["2026-01-06 15:00:00"])
         result = _filter_pre_constituent_open(df, "NYSE", ref_date=date(2026, 1, 6))
         assert result.empty
+
+
+# ── _compute_intraday_returns ─────────────────────────────────────────────────
+
+class TestComputeIntradayReturns:
+    """Regression coverage for the premarket-after-a-holiday-gap bug (2026-07-06)."""
+
+    def test_finds_premarket_bar_after_holiday_gap_in_daily_closes(self):
+        # Monday 2026-01-05, 12:00 UTC: NYSE hasn't opened yet (opens 14:30 UTC in winter),
+        # but a premarket bar for today already exists. The daily close history has a gap
+        # (last close is several days back, simulating a holiday the prior session) —
+        # this must not stop today's premarket bar from being picked up.
+        fixed_now = datetime(2026, 1, 5, 12, 0, tzinfo=timezone.utc)
+        intraday = {
+            "AAPL": pd.DataFrame(
+                {"Close": [105.0]},
+                index=pd.to_datetime(["2026-01-05 10:00:00"]),
+            )
+        }
+        daily_df = pd.DataFrame(
+            {"AAPL": [100.0, 100.0]},
+            index=pd.to_datetime(["2025-12-30", "2025-12-31"]),
+        )
+        with patch("etf_predictor_engine.datetime", _fake_datetime(fixed_now)):
+            returns, signal_source = _compute_intraday_returns(
+                intraday, ["AAPL"], "LSE", ["NYSE"],
+                ref_date=date(2026, 1, 5), daily_df=daily_df,
+            )
+        assert "AAPL" in returns
+        assert abs(returns["AAPL"] - 0.05) < 0.001
+        assert signal_source == "intraday_premarket"
+
+    def test_labels_intraday_live_once_constituent_exchange_is_open(self):
+        fixed_now = datetime(2026, 1, 5, 15, 0, tzinfo=timezone.utc)  # after NYSE's 14:30 UTC open
+        intraday = {
+            "AAPL": pd.DataFrame(
+                {"Close": [103.0]},
+                index=pd.to_datetime(["2026-01-05 14:45:00"]),
+            )
+        }
+        daily_df = pd.DataFrame(
+            {"AAPL": [100.0, 100.0]},
+            index=pd.to_datetime(["2025-12-30", "2025-12-31"]),
+        )
+        with patch("etf_predictor_engine.datetime", _fake_datetime(fixed_now)):
+            returns, signal_source = _compute_intraday_returns(
+                intraday, ["AAPL"], "LSE", ["NYSE"],
+                ref_date=date(2026, 1, 5), daily_df=daily_df,
+            )
+        assert "AAPL" in returns
+        assert signal_source == "intraday_live"
+
+    def test_no_bars_for_today_falls_back_to_daily_close(self):
+        fixed_now = datetime(2026, 1, 5, 12, 0, tzinfo=timezone.utc)
+        intraday = {
+            "AAPL": pd.DataFrame(
+                {"Close": [100.0]},
+                index=pd.to_datetime(["2025-12-31 20:00:00"]),
+            )
+        }
+        daily_df = pd.DataFrame(
+            {"AAPL": [100.0, 100.0]},
+            index=pd.to_datetime(["2025-12-30", "2025-12-31"]),
+        )
+        with patch("etf_predictor_engine.datetime", _fake_datetime(fixed_now)):
+            returns, signal_source = _compute_intraday_returns(
+                intraday, ["AAPL"], "LSE", ["NYSE"],
+                ref_date=date(2026, 1, 5), daily_df=daily_df,
+            )
+        assert returns == {}
+        assert signal_source == "daily_close"
+
+
+# ── _compute_bias_corrected_prediction ────────────────────────────────────────
+
+def _history_row(predicted_change_pct, actual_change_pct, holdings_price=None, regression_price=None, actual_open=100.0):
+    return {
+        "predicted_change_pct": predicted_change_pct,
+        "actual_change_pct": actual_change_pct,
+        "holdings_predicted_price": holdings_price,
+        "regression_predicted_price": regression_price,
+        "last_etf_close": 100.0,
+        "actual_open": actual_open,
+    }
+
+
+class TestComputeBiasCorrectedPrediction:
+    def test_returns_none_below_history_threshold(self):
+        with patch("etf_predictor_engine.get_recent_prediction_errors", return_value=[_history_row(1.0, 2.0)]):
+            result = _compute_bias_corrected_prediction(1, "next_open", 1.0, 100.0)
+        assert result is None
+
+    def test_shifts_prediction_by_mean_signed_error(self):
+        # predicted always 1% low vs actual → mean signed error = +1.0 → correction adds 1%
+        history = [_history_row(1.0, 2.0) for _ in range(_MIN_HISTORY_FOR_CALIBRATION)]
+        with patch("etf_predictor_engine.get_recent_prediction_errors", return_value=history):
+            result = _compute_bias_corrected_prediction(1, "next_open", 1.0, 100.0)
+        assert result is not None
+        assert abs(result["change_pct"] - 2.0) < 0.01
+        assert abs(result["price"] - 102.0) < 0.01
+
+
+# ── _compute_blended_prediction ───────────────────────────────────────────────
+
+class TestComputeBlendedPrediction:
+    def test_returns_none_when_no_engines_available(self):
+        result = _compute_blended_prediction(1, "next_open", None, None, 100.0)
+        assert result is None
+
+    def test_falls_back_to_single_engine_when_only_one_available(self):
+        holdings = {"predicted_price": 101.0, "predicted_change_pct": 1.0}
+        result = _compute_blended_prediction(1, "next_open", holdings, None, 100.0)
+        assert result == {"price": 101.0, "change_pct": 1.0}
+
+    def test_even_split_without_enough_history(self):
+        holdings = {"predicted_price": 102.0, "predicted_change_pct": 2.0}
+        regression = {"predicted_price": 100.0, "predicted_change_pct": 0.0}
+        with patch("etf_predictor_engine.get_recent_prediction_errors", return_value=[]):
+            result = _compute_blended_prediction(1, "next_open", holdings, regression, 100.0)
+        assert abs(result["change_pct"] - 1.0) < 0.01  # (2.0 + 0.0) / 2
+
+    def test_weights_toward_more_accurate_engine_once_history_exists(self):
+        holdings = {"predicted_price": 102.0, "predicted_change_pct": 2.0}
+        regression = {"predicted_price": 100.0, "predicted_change_pct": 0.0}
+        # Holdings engine has been consistently near-perfect; regression has been way off.
+        history = [
+            _history_row(2.0, 2.0, holdings_price=102.0, regression_price=90.0, actual_open=102.0)
+            for _ in range(_MIN_HISTORY_FOR_CALIBRATION)
+        ]
+        with patch("etf_predictor_engine.get_recent_prediction_errors", return_value=history):
+            result = _compute_blended_prediction(1, "next_open", holdings, regression, 100.0)
+        # Holdings (near-zero MAE) should dominate the blend, pulling the result close to 2.0%
+        assert result["change_pct"] > 1.5

@@ -37,6 +37,13 @@ function loadAccuracy() {
         });
 }
 
+function _variantTile(label, v) {
+    v = v || {};
+    const dir = v.direction_accuracy_pct != null ? v.direction_accuracy_pct + '%' : '—';
+    const mae = v.mae != null ? v.mae.toFixed(4) : '—';
+    return { label: label, value: dir, sub: 'MAE ' + mae + ' · n=' + (v.resolved_count || 0) };
+}
+
 function renderSummaryTiles(s, containerId) {
     const fmt = (v, suffix='') => v !== null && v !== undefined ? v + suffix : '—';
     const maeVal = s.mae != null ? s.mae.toFixed(4) + ' ' + _currency : '—';
@@ -47,6 +54,8 @@ function renderSummaryTiles(s, containerId) {
         { label: 'Mean Abs Error', value: maeVal, sub: 'MAE' },
         { label: 'Mean Abs % Error', value: fmt(s.mape_pct, '%'), sub: 'MAPE' },
         { label: 'Predictions', value: (s.resolved_count || 0) + ' / ' + (s.total_predictions || 0), sub: 'Resolved / Total' },
+        _variantTile('Bias-Corrected Dir.', s.bias_corrected),
+        _variantTile('Blend Dir.', s.blended),
     ];
     document.getElementById(containerId).innerHTML = tiles.map(t =>
         `<div class="xray-metric-card">
@@ -60,7 +69,7 @@ function renderSummaryTiles(s, containerId) {
 function renderAccuracyTable(rows, tbodyId) {
     if (!rows.length) {
         document.getElementById(tbodyId).innerHTML =
-            '<tr><td colspan="8" style="text-align:center;color:#888;">No predictions recorded yet.</td></tr>';
+            '<tr><td colspan="10" style="text-align:center;color:#888;">No predictions recorded yet.</td></tr>';
         return;
     }
     document.getElementById(tbodyId).innerHTML = rows.map(r => {
@@ -74,6 +83,8 @@ function renderAccuracyTable(rows, tbodyId) {
         return `<tr style="${rowColor}border-bottom:1px solid #2a2a2a;">
             <td style="padding:4px 8px;">${r.target_date}</td>
             <td style="text-align:right;padding:4px 8px;">${r.predicted_price != null ? r.predicted_price.toFixed(4) : '—'}</td>
+            <td style="text-align:right;padding:4px 8px;">${r.bias_corrected_price != null ? r.bias_corrected_price.toFixed(4) : '—'}</td>
+            <td style="text-align:right;padding:4px 8px;">${r.blended_price != null ? r.blended_price.toFixed(4) : '—'}</td>
             <td style="text-align:right;padding:4px 8px;">${r.actual_open != null ? r.actual_open.toFixed(4) : '—'}</td>
             <td style="text-align:right;padding:4px 8px;">${r.absolute_error != null ? r.absolute_error.toFixed(4) : '—'}</td>
             <td style="text-align:right;padding:4px 8px;">${r.predicted_change_pct != null ? (r.predicted_change_pct >= 0 ? '+' : '') + r.predicted_change_pct.toFixed(2) + '%' : '—'}</td>

@@ -11,12 +11,17 @@ from database import (
     fill_etf_actual,
     get_etf_predictor_config,
     get_etf_predictor_configs,
+    get_recent_prediction_errors,
     log_etf_prediction,
 )
 from notification_engine import notify
 from yahoo_engine import yahoo_engine
 
 logger = logging.getLogger(__name__)
+
+# Minimum resolved predictions before bias-correction/engine-blend weighting is trusted over
+# a naive default — below this, 17 days of noisy history would overfit to a handful of points.
+_MIN_HISTORY_FOR_CALIBRATION = 10
 
 def _exchange_currency(exchange: str) -> str:
     info = time_engine.EXCHANGE_HOURS.get(exchange, {})
@@ -210,6 +215,7 @@ def _compute_intraday_returns(
     daily_df: pd.DataFrame | None = None,
 ) -> tuple[dict[str, float], str]:
     """Returns ({ticker: return_fraction}, signal_source) with priority: post-ETF-close → intraday → daily."""
+    now_utc = datetime.now(timezone.utc)
     primary_exchange = constituent_exchanges[0] if constituent_exchanges else "NYSE"
     trading_date = ref_date or _last_trading_date_for_exchange(etf_exchange)
     etf_close = _exchange_close_utc_dt(etf_exchange, trading_date)
@@ -239,13 +245,15 @@ def _compute_intraday_returns(
                         found_post = True
                         continue
 
-        ticker_trading_date = _last_trading_date_for_exchange(ticker_exchange)
         if daily_df is not None and ticker in daily_df.columns:
             daily_series = daily_df[ticker].dropna()
             if len(daily_series) >= 2:
                 yesterday_close = float(daily_series.iloc[-1])
                 if yesterday_close > 0:
-                    today_bars = closes[closes.index.normalize() == pd.Timestamp(ticker_trading_date)]
+                    # Premarket/live bars are stamped with the real calendar date, not the
+                    # "last completed session" — matching against that heuristic misses today's
+                    # bars whenever the prior session was a holiday (skipped, not just a weekend).
+                    today_bars = closes[closes.index.normalize() == pd.Timestamp(now_utc.date())]
                     if not today_bars.empty:
                         r = float(today_bars.iloc[-1]) / yesterday_close - 1.0
                         if abs(r) <= 0.5:
@@ -255,12 +263,10 @@ def _compute_intraday_returns(
     if found_post:
         signal_source = "intraday_post_close"
     elif found_intraday:
-        now_utc = datetime.now(timezone.utc)
         primary_open_utc, _ = time_engine.market_window_utc(primary_exchange)
-        primary_trading_date = _last_trading_date_for_exchange(primary_exchange)
         signal_source = (
             "intraday_live"
-            if now_utc >= datetime.combine(primary_trading_date, primary_open_utc, tzinfo=timezone.utc)
+            if now_utc >= datetime.combine(now_utc.date(), primary_open_utc, tzinfo=timezone.utc)
             else "intraday_premarket"
         )
     else:
@@ -396,6 +402,68 @@ def _compute_regression_prediction(
     }
 
 
+def _compute_bias_corrected_prediction(
+    config_id: int,
+    prediction_type: str,
+    predicted_change_pct: float,
+    last_etf_close: float,
+) -> dict | None:
+    """Shifts the standard prediction by the trailing mean signed error over past resolved predictions."""
+    history = get_recent_prediction_errors(config_id, prediction_type, limit=_MIN_HISTORY_FOR_CALIBRATION)
+    if len(history) < _MIN_HISTORY_FOR_CALIBRATION:
+        return None
+    signed_errors = [
+        h["actual_change_pct"] - h["predicted_change_pct"] for h in history
+        if h.get("actual_change_pct") is not None and h.get("predicted_change_pct") is not None
+    ]
+    if not signed_errors:
+        return None
+    mean_signed_error = sum(signed_errors) / len(signed_errors)
+    corrected_change_pct = predicted_change_pct + mean_signed_error
+    return {
+        "price": round(last_etf_close * (1.0 + corrected_change_pct / 100), 2),
+        "change_pct": round(corrected_change_pct, 3),
+    }
+
+
+def _compute_blended_prediction(
+    config_id: int,
+    prediction_type: str,
+    holdings_result: dict | None,
+    regression_result: dict | None,
+    last_etf_close: float,
+) -> dict | None:
+    """Blends the Holdings and Regression engines, weighted inversely by each engine's trailing MAE."""
+    if holdings_result is None and regression_result is None:
+        return None
+    if holdings_result is None or regression_result is None:
+        single = holdings_result or regression_result
+        return {"price": single["predicted_price"], "change_pct": single["predicted_change_pct"]}
+
+    history = get_recent_prediction_errors(config_id, prediction_type, limit=_MIN_HISTORY_FOR_CALIBRATION)
+    usable = [
+        h for h in history
+        if h.get("holdings_predicted_price") is not None and h.get("regression_predicted_price") is not None
+    ]
+    if len(usable) < _MIN_HISTORY_FOR_CALIBRATION:
+        weight_holdings = 0.5
+    else:
+        mae_holdings = sum(abs(h["holdings_predicted_price"] - h["actual_open"]) for h in usable) / len(usable)
+        mae_regression = sum(abs(h["regression_predicted_price"] - h["actual_open"]) for h in usable) / len(usable)
+        inv_holdings = 1.0 / mae_holdings if mae_holdings > 0 else 1e6
+        inv_regression = 1.0 / mae_regression if mae_regression > 0 else 1e6
+        weight_holdings = inv_holdings / (inv_holdings + inv_regression)
+
+    blended_change_pct = (
+        weight_holdings * holdings_result["predicted_change_pct"]
+        + (1.0 - weight_holdings) * regression_result["predicted_change_pct"]
+    )
+    return {
+        "price": round(last_etf_close * (1.0 + blended_change_pct / 100), 2),
+        "change_pct": round(blended_change_pct, 3),
+    }
+
+
 def run_prediction(config_id: int) -> dict:
     config = get_etf_predictor_config(config_id)
     if config is None:
@@ -496,6 +564,18 @@ def run_prediction(config_id: int) -> dict:
             f"Add the exchange definition to data/exchange_hours.json to fix.",
         )
 
+    bias_result = None
+    blended_result = None
+    try:
+        bias_result = _compute_bias_corrected_prediction(
+            config_id, prediction_type, primary_change, last_etf_close
+        )
+        blended_result = _compute_blended_prediction(
+            config_id, prediction_type, holdings_result, regression_result, last_etf_close
+        )
+    except Exception as exc:
+        logger.warning("Bias/blend prediction variants failed for config %s: %s", config_id, exc)
+
     as_of_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     result = {
         "status": "success",
@@ -516,6 +596,10 @@ def run_prediction(config_id: int) -> dict:
         "n_holdings_used": holdings_result["n_holdings_used"] if holdings_result else 0,
         "holdings_engine": holdings_result,
         "regression_engine": regression_result,
+        "bias_corrected_price": bias_result["price"] if bias_result else None,
+        "bias_corrected_change_pct": bias_result["change_pct"] if bias_result else None,
+        "blended_price": blended_result["price"] if blended_result else None,
+        "blended_change_pct": blended_result["change_pct"] if blended_result else None,
         "constituent_snapshot": json.dumps(constituents),
         "etf_info": etf_info,
         "error": None,

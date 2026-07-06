@@ -85,6 +85,7 @@ from db_etf import (  # noqa: E402
     log_etf_prediction,
     fill_etf_actual,
     get_etf_accuracy,
+    get_recent_prediction_errors,
 )
 from db_helpers import (  # noqa: E402
     log_score_event,
@@ -149,6 +150,7 @@ __all__ = [
     "log_etf_prediction",
     "fill_etf_actual",
     "get_etf_accuracy",
+    "get_recent_prediction_errors",
     "log_score_event",
     "get_universe_tickers",
     "get_mutual_fund_tickers",

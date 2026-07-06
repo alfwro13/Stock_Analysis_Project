@@ -32,6 +32,13 @@
             </div>
 
             <div class="term-box">
+                <span class="term-title">Bias-Corrected &amp; Confidence-Weighted Blend Predictions</span>
+                <p>Two further prices are computed and logged alongside the standard prediction, purely to track which approach ends up closer to reality over time. Neither replaces the standard prediction — Portfolio Impact P&amp;L and every other calculation still use it.</p>
+                <p>The <strong>Bias-Corrected</strong> price takes the standard prediction and shifts it by the trailing mean signed error (actual minus predicted) over the basket's last 10 resolved predictions of the same type. If this basket has recently under-predicted the move by an average of 1%, the correction adds that 1% back.</p>
+                <p>The <strong>Confidence-Weighted Blend</strong> combines the Holdings and Regression engines, weighting each by the inverse of its own trailing mean absolute error — the engine that has been more accurate recently gets more say. Until 10 resolved predictions exist for a basket, both variants fall back to a simple average (blend) or don't display at all (bias-correction), since a handful of data points isn't enough to calibrate confidently.</p>
+            </div>
+
+            <div class="term-box">
                 <span class="term-title">Constituent Weights</span>
                 <p>The percentage allocation each ticker represents within the configured ETF prediction basket. Importantly, the weights you configure do not need to exactly match the ETF's actual underlying holdings — they are the weights you want to use for the prediction basket, which may be a simplified approximation of the full holdings.</p>
                 <p>If you configure Apple at 25%, Microsoft at 20%, NVIDIA at 15%, and others, but these sum to only 75%, the system normalises them to 100% (dividing each by 0.75) so that the weighted returns sum to a meaningful basket return. You always see the normalised weights used in the prediction.</p>

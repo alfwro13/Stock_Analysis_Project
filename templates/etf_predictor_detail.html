@@ -44,6 +44,24 @@
         </div>
         {% endif %}
     </div>
+    {% if prediction.bias_corrected_price is not none %}
+    <div class="xray-metric-card">
+        <div class="xray-metric-label"><abbr title="Standard prediction shifted by this basket's trailing mean prediction error over its last 10 resolved predictions. Tracked alongside the standard prediction, not used elsewhere.">Bias-Corrected</abbr></div>
+        <div class="xray-metric-value">{{ prediction.bias_corrected_price }}</div>
+        <div class="{% if prediction.bias_corrected_change_pct >= 0 %}prediction-change-pos{% else %}prediction-change-neg{% endif %}">
+            {{ "%+.2f"|format(prediction.bias_corrected_change_pct) }}%
+        </div>
+    </div>
+    {% endif %}
+    {% if prediction.blended_price is not none %}
+    <div class="xray-metric-card">
+        <div class="xray-metric-label"><abbr title="Holdings and Regression engines blended, weighted inversely by each engine's trailing mean absolute error. Tracked alongside the standard prediction, not used elsewhere.">Confidence-Weighted Blend</abbr></div>
+        <div class="xray-metric-value">{{ prediction.blended_price }}</div>
+        <div class="{% if prediction.blended_change_pct >= 0 %}prediction-change-pos{% else %}prediction-change-neg{% endif %}">
+            {{ "%+.2f"|format(prediction.blended_change_pct) }}%
+        </div>
+    </div>
+    {% endif %}
     <div class="xray-metric-card">
         <div class="xray-metric-label">Last Close ({{ etf_info.currency }})</div>
         <div class="xray-metric-value">{{ prediction.last_etf_close }}</div>
@@ -235,6 +253,8 @@
                     <tr>
                         <th>Date</th>
                         <th class="text-end">Predicted</th>
+                        <th class="text-end"><abbr title="Bias-corrected predicted price, tracked alongside the standard prediction.">Bias-Corr.</abbr></th>
+                        <th class="text-end"><abbr title="Confidence-weighted blend of the Holdings and Regression engines, tracked alongside the standard prediction.">Blend</abbr></th>
                         <th class="text-end">Actual Open</th>
                         <th class="text-end">Error</th>
                         <th class="text-end">Pred %</th>
@@ -244,7 +264,7 @@
                     </tr>
                 </thead>
                 <tbody id="accuracy-tbody-next">
-                    <tr><td colspan="8" class="etf-accuracy-loading-cell">Loading&hellip;</td></tr>
+                    <tr><td colspan="10" class="etf-accuracy-loading-cell">Loading&hellip;</td></tr>
                 </tbody>
             </table>
         </div>
@@ -259,6 +279,8 @@
                     <tr>
                         <th>Date</th>
                         <th class="text-end">Predicted</th>
+                        <th class="text-end"><abbr title="Bias-corrected predicted price, tracked alongside the standard prediction.">Bias-Corr.</abbr></th>
+                        <th class="text-end"><abbr title="Confidence-weighted blend of the Holdings and Regression engines, tracked alongside the standard prediction.">Blend</abbr></th>
                         <th class="text-end">Actual Close</th>
                         <th class="text-end">Error</th>
                         <th class="text-end">Pred %</th>
@@ -268,7 +290,7 @@
                     </tr>
                 </thead>
                 <tbody id="accuracy-tbody-impact">
-                    <tr><td colspan="8" class="etf-accuracy-loading-cell">Loading&hellip;</td></tr>
+                    <tr><td colspan="10" class="etf-accuracy-loading-cell">Loading&hellip;</td></tr>
                 </tbody>
             </table>
         </div>
@@ -276,7 +298,8 @@
         <div class="sentiment-footer mt-3">
             <strong>Next-Day Open:</strong> predicted vs actual {{ cfg.etf_ticker }} opening price the following morning. Filled daily at ~09:15 UTC.<br>
             <strong>Intraday Impact:</strong> predicted vs actual {{ cfg.etf_ticker }} closing price on the same day. Filled the following morning at ~09:15 UTC.
-            Direction = whether the predicted up/down move matched reality. Unresolved rows shown in grey.
+            Direction = whether the predicted up/down move matched reality. Unresolved rows shown in grey.<br>
+            <strong>Bias-Corr. / Blend:</strong> two alternate predictions tracked alongside the standard one — see the glossary for how each is derived. Neither drives Portfolio Impact or any other calculation; they exist purely to compare which approach tracks the actual price more closely once enough history accumulates.
         </div>
     </div>
 </div>
