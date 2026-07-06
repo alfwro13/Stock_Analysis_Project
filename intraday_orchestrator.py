@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from config import load_config, INTRADAY_DIR, HISTORICAL_DIR, PORT, SERVER_URL
 from yahoo_engine import yahoo_engine
 import time_engine
-from utils import normalize_ticker
+from utils import normalize_ticker, is_daily_bar_still_forming
 from database import get_accounts, get_connection, get_mutual_fund_tickers
 import accounts_engine
 from crash_engine import CrashEngine
@@ -581,6 +581,9 @@ class IntradayOrchestrator:
                 df_intraday.to_parquet(INTRADAY_DIR / f"{ticker}_intraday.parquet", engine='pyarrow')
 
                 last_hist_close = df_hist['Close'].iloc[-1]
+                # A mid-session refresh can leave today's own still-forming bar as the parquet's last row.
+                if is_daily_bar_still_forming(df_hist.index[-1].date(), df_intraday.index[-1].date()) and len(df_hist) >= 2:
+                    last_hist_close = df_hist['Close'].iloc[-2]
                 if last_hist_close > 0:
                     upsert_live_price(ticker, metadata.get(ticker, {}).get('company_name') or ticker, current_price, float(last_hist_close), conn=conn)
                     raw_gap_pct = abs((current_price - last_hist_close) / last_hist_close) * 100.0

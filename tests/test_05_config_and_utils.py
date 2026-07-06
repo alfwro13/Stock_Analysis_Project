@@ -290,6 +290,22 @@ def test_normalize_ticker_already_uppercase():
     assert normalize_ticker("AAPL") == normalize_ticker(normalize_ticker("AAPL"))
 
 
+@pytest.mark.config
+def test_is_daily_bar_still_forming_true_when_daily_matches_live_date():
+    """A daily bar dated the same as (or after) the live feed's last tick is still-forming, not a completed close."""
+    from datetime import date
+    from utils import is_daily_bar_still_forming
+    assert is_daily_bar_still_forming(date(2026, 7, 6), date(2026, 7, 6)) is True
+
+
+@pytest.mark.config
+def test_is_daily_bar_still_forming_false_when_daily_predates_live():
+    """A daily bar dated before the live feed's last tick is a genuinely completed prior close."""
+    from datetime import date
+    from utils import is_daily_bar_still_forming
+    assert is_daily_bar_still_forming(date(2026, 7, 2), date(2026, 7, 6)) is False
+
+
 # ── Constants sanity checks ───────────────────────────────────────────────────
 
 @pytest.mark.config

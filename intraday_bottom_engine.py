@@ -11,6 +11,7 @@ from config import HISTORICAL_DIR
 from database import get_mutual_fund_tickers
 from market_pulse import is_exchange_open, upsert_live_price
 from yahoo_engine import yahoo_engine
+from utils import is_daily_bar_still_forming
 
 logger = logging.getLogger(__name__)
 
@@ -268,7 +269,11 @@ class IntradayBottomEngine:
                     df_hist = pd.read_parquet(hist_path)
                     df_hist = df_hist[df_hist['Close'].notna()]
                     if not df_hist.empty:
-                        upsert_live_price(ticker, ticker, close, float(df_hist['Close'].iloc[-1]))
+                        last_hist_close = df_hist['Close'].iloc[-1]
+                        # A mid-session refresh can leave today's own still-forming bar as the parquet's last row.
+                        if is_daily_bar_still_forming(df_hist.index[-1].date(), cur.name.date()) and len(df_hist) >= 2:
+                            last_hist_close = df_hist['Close'].iloc[-2]
+                        upsert_live_price(ticker, ticker, close, float(last_hist_close))
             except Exception:
                 logger.warning("DipRadar: failed to share live price for %s", ticker, exc_info=True)
 

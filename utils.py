@@ -37,3 +37,8 @@ def clamp_beta(raw: Any, lo: float = 0.5, hi: float = 2.0, default: float = 1.0)
         return max(lo, min(hi, float(raw)))
     except (TypeError, ValueError):
         return default
+
+
+def is_daily_bar_still_forming(last_daily_date: Any, last_live_date: Any) -> bool:
+    """True when the daily feed's last date is on/after the live feed's last date — Yahoo's daily endpoint often returns today's still-forming session as the 'close' when queried mid-session."""
+    return last_daily_date >= last_live_date

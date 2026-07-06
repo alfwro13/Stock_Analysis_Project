@@ -8,7 +8,7 @@ import pandas as pd
 import notification_engine
 from config import load_config, HISTORICAL_DIR
 from database import get_connection, get_mutual_fund_tickers
-from utils import normalize_ticker
+from utils import normalize_ticker, is_daily_bar_still_forming
 from gilt_engine import GiltDataService
 from yahoo_engine import yahoo_engine
 from time_engine import is_trading_session, ticker_exchange
@@ -401,9 +401,7 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
                     prev_close = float(t_daily['Close'].iloc[-2]) if len(t_daily) >= 2 else current_price
                 else:
                     current_price = float(t_live['Close'].iloc[-1])
-                    last_daily_date = t_daily.index[-1].date()
-                    live_date = t_live.index[-1].date()
-                    if last_daily_date >= live_date and len(t_daily) >= 2:
+                    if is_daily_bar_still_forming(t_daily.index[-1].date(), t_live.index[-1].date()) and len(t_daily) >= 2:
                         prev_close = float(t_daily['Close'].iloc[-2])
                     else:
                         prev_close = float(t_daily['Close'].iloc[-1])

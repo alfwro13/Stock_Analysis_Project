@@ -334,3 +334,131 @@ def test_fetch_and_save_data_skips_intraday_for_mutual_fund(tmp_path):
 
     assert result is True
     mock_intraday.assert_not_called()
+
+
+# ── _drop_in_progress_last_bar / poisoned-history regression ───────────────────
+# A manual or scheduled historical refresh triggered while a ticker's market is still open can
+# have Yahoo return today's still-forming daily bar as the last row; intraday_orchestrator.py and
+# intraday_bottom_engine.py then read that row as "previous close" via market_pulse.upsert_live_price,
+# producing a wildly wrong 24h % change that fights with market_pulse.fetch_and_save_pulse's correct
+# value. These tests cover the fix at its root: the daily history file must never be written with
+# an in-progress bar as its last row.
+
+def _ohlcv(dates, closes):
+    import pandas as pd
+    return pd.DataFrame(
+        {"Open": closes, "High": closes, "Low": closes, "Close": closes, "Volume": [1_000_000] * len(closes)},
+        index=pd.DatetimeIndex(dates),
+    )
+
+
+class TestDropInProgressLastBar:
+    def test_trims_last_row_when_it_matches_live_feed_date(self):
+        from data_engine import _drop_in_progress_last_bar
+
+        daily = _ohlcv(["2026-07-02", "2026-07-06"], [100.0, 105.0])  # 07-06 is still-forming
+        live = _ohlcv(["2026-07-06 09:30", "2026-07-06 10:00"], [104.0, 105.0])
+
+        result = _drop_in_progress_last_bar(daily, live)
+
+        assert len(result) == 1
+        assert result["Close"].iloc[-1] == 100.0
+
+    def test_keeps_last_row_when_daily_predates_live_feed(self):
+        from data_engine import _drop_in_progress_last_bar
+
+        daily = _ohlcv(["2026-07-01", "2026-07-02"], [98.0, 100.0])  # genuinely completed close
+        live = _ohlcv(["2026-07-06 09:30"], [105.0])
+
+        result = _drop_in_progress_last_bar(daily, live)
+
+        assert len(result) == 2
+        assert result["Close"].iloc[-1] == 100.0
+
+    def test_noop_when_no_live_data_available(self):
+        import pandas as pd
+        from data_engine import _drop_in_progress_last_bar
+
+        daily = _ohlcv(["2026-07-02", "2026-07-06"], [100.0, 105.0])
+
+        assert len(_drop_in_progress_last_bar(daily, None)) == 2
+        assert len(_drop_in_progress_last_bar(daily, pd.DataFrame())) == 2
+
+    def test_noop_when_daily_has_fewer_than_two_rows(self):
+        from data_engine import _drop_in_progress_last_bar
+
+        daily = _ohlcv(["2026-07-06"], [105.0])
+        live = _ohlcv(["2026-07-06 09:30"], [105.0])
+
+        assert len(_drop_in_progress_last_bar(daily, live)) == 1
+
+
+def test_bulk_download_historical_trims_in_progress_last_bar(tmp_path):
+    """The bulk 2Y historical refresh must not persist today's still-forming bar as if it were
+    a completed close — regression for the root cause of the AMD 24h-change flip-flop bug."""
+    import pandas as pd
+    from data_engine import DataEngine
+
+    engine = DataEngine.__new__(DataEngine)
+    daily_df = _ohlcv(["2026-07-02", "2026-07-06"], [517.82, 560.86])
+    live_df = _ohlcv(["2026-07-06 09:30", "2026-07-06 15:45"], [560.86, 566.0])
+
+    with (
+        patch("data_engine.HISTORICAL_DIR", tmp_path),
+        patch("data_engine.yahoo_engine.get_price_history", return_value={"AMD": daily_df}),
+        patch("data_engine.get_mutual_fund_tickers", return_value=set()),
+        patch("data_engine.yahoo_engine.get_intraday", return_value={"AMD": live_df}),
+    ):
+        engine.bulk_download_historical(["AMD"])
+
+    saved = pd.read_parquet(tmp_path / "AMD.parquet")
+    assert len(saved) == 1
+    assert saved["Close"].iloc[-1] == 517.82
+
+
+def test_bulk_download_historical_keeps_completed_close_unchanged(tmp_path):
+    """When the refresh runs after close (no same-day live bar), the daily download is saved as-is."""
+    import pandas as pd
+    from data_engine import DataEngine
+
+    engine = DataEngine.__new__(DataEngine)
+    daily_df = _ohlcv(["2026-07-01", "2026-07-02"], [538.16, 517.82])
+
+    with (
+        patch("data_engine.HISTORICAL_DIR", tmp_path),
+        patch("data_engine.get_mutual_fund_tickers", return_value=set()),
+        patch("data_engine.yahoo_engine.get_price_history", return_value={"AMD": daily_df}),
+        patch("data_engine.yahoo_engine.get_intraday", return_value={}),
+    ):
+        engine.bulk_download_historical(["AMD"])
+
+    saved = pd.read_parquet(tmp_path / "AMD.parquet")
+    assert len(saved) == 2
+    assert saved["Close"].iloc[-1] == 517.82
+
+
+def test_fetch_and_save_data_trims_in_progress_last_bar(tmp_path):
+    """Single-ticker manual refresh (details-page button / POST /api/data/refresh-single) must
+    apply the same in-progress-bar guard as the bulk path."""
+    import pandas as pd
+    from data_engine import DataEngine
+
+    engine = DataEngine.__new__(DataEngine)
+    daily_df = _ohlcv(["2026-07-02", "2026-07-06"], [517.82, 560.86])
+    live_df = _ohlcv(["2026-07-06 09:30", "2026-07-06 15:45"], [560.86, 566.0])
+
+    with (
+        patch("data_engine.HISTORICAL_DIR", tmp_path),
+        patch("data_engine.INTRADAY_DIR", tmp_path),
+        patch("data_engine.FUNDAMENTALS_DIR", tmp_path),
+        patch("data_engine.get_mutual_fund_tickers", return_value=set()),
+        patch("data_engine.yahoo_engine.get_intraday", return_value={"AMD": live_df}),
+        patch("data_engine.yahoo_engine.get_price_history", return_value={"AMD": daily_df}),
+        patch("data_engine.yahoo_engine.get_ticker_info", return_value={}),
+    ):
+        result = engine.fetch_and_save_data("AMD")
+
+    assert result is True
+    saved = pd.read_parquet(tmp_path / "AMD.parquet")
+    assert len(saved) == 1
+    assert saved["Close"].iloc[-1] == 517.82

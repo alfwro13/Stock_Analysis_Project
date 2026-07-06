@@ -11,9 +11,18 @@ from database import get_watchlist_tickers, get_all_account_tickers, get_mutual_
 from gilt_engine import GiltDataService
 from yahoo_engine import yahoo_engine
 
-from utils import normalize_ticker  # noqa: F401 — re-exported for callers
+from utils import normalize_ticker, is_daily_bar_still_forming  # noqa: F401 — normalize_ticker re-exported for callers
 
 logger = logging.getLogger(__name__)
+
+
+def _drop_in_progress_last_bar(df_daily: pd.DataFrame, df_live: Optional[pd.DataFrame]) -> pd.DataFrame:
+    """Yahoo's daily endpoint often includes today's still-forming bar when queried mid-session; trim it so the stored daily history never stores a partial-session close as if it were final (same comparison market_pulse.fetch_and_save_pulse already makes against its own live feed)."""
+    if df_live is None or df_live.empty or len(df_daily) < 2:
+        return df_daily
+    if is_daily_bar_still_forming(df_daily.index[-1].date(), df_live.index[-1].date()):
+        return df_daily.iloc[:-1]
+    return df_daily
 
 
 class DataEngine:
@@ -111,6 +120,9 @@ class DataEngine:
             if not ticker_dfs:
                 logger.warning("Historical bulk download returned empty.")
                 return
+            mutual_funds = get_mutual_fund_tickers(tickers)
+            intraday_targets = [t for t in ticker_dfs if t not in mutual_funds]
+            live_dfs = yahoo_engine.get_intraday(intraday_targets, period="1d", interval="5m") if intraday_targets else {}
             for ticker, df in ticker_dfs.items():
                 if df is None or df.empty:
                     continue
@@ -118,6 +130,7 @@ class DataEngine:
                 for col in ('Open', 'High', 'Low'):
                     mask = (df[col] == 0) & (df['Close'] > 0)
                     df.loc[mask, col] = df.loc[mask, 'Close']
+                df = _drop_in_progress_last_bar(df, live_dfs.get(ticker))
                 if not df.empty:
                     df.to_parquet(HISTORICAL_DIR / f"{ticker}.parquet", engine='pyarrow')
         except Exception as e:
@@ -176,6 +189,16 @@ class DataEngine:
         try:
             persisted = False
 
+            df_live = None
+            if ticker not in get_mutual_fund_tickers([ticker]):
+                _intraday = yahoo_engine.get_intraday([ticker], period="1d", interval="5m")
+                df_intraday = _intraday.get(ticker, pd.DataFrame())
+                if not df_intraday.empty:
+                    self._strip_tz(df_intraday)
+                    df_intraday.to_parquet(INTRADAY_DIR / f"{ticker}_intraday.parquet", engine='pyarrow')
+                    persisted = True
+                    df_live = df_intraday
+
             _daily = yahoo_engine.get_price_history([ticker], period="2y", interval="1d")
             df_daily = _daily.get(ticker, pd.DataFrame())
             if not df_daily.empty:
@@ -183,15 +206,9 @@ class DataEngine:
                 for col in ('Open', 'High', 'Low'):
                     mask = (df_daily[col] == 0) & (df_daily['Close'] > 0)
                     df_daily.loc[mask, col] = df_daily.loc[mask, 'Close']
-                df_daily.to_parquet(HISTORICAL_DIR / f"{ticker}.parquet", engine='pyarrow')
-                persisted = True
-
-            if ticker not in get_mutual_fund_tickers([ticker]):
-                _intraday = yahoo_engine.get_intraday([ticker], period="1d", interval="5m")
-                df_intraday = _intraday.get(ticker, pd.DataFrame())
-                if not df_intraday.empty:
-                    self._strip_tz(df_intraday)
-                    df_intraday.to_parquet(INTRADAY_DIR / f"{ticker}_intraday.parquet", engine='pyarrow')
+                df_daily = _drop_in_progress_last_bar(df_daily, df_live)
+                if not df_daily.empty:
+                    df_daily.to_parquet(HISTORICAL_DIR / f"{ticker}.parquet", engine='pyarrow')
                     persisted = True
 
             fundamentals = yahoo_engine.get_ticker_info(ticker) or {}
