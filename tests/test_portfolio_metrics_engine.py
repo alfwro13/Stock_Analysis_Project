@@ -92,6 +92,48 @@ def test_holdings_with_metrics_all_accounts_includes_technicals_and_limits():
 
 
 @pytest.mark.db
+def test_holdings_with_metrics_all_accounts_tbill_row_gets_fixed_income_and_accretion_change():
+    """Treasury Bill rows have no stock_signals/market_pulse_cache row (synthetic ticker,
+    deliberately excluded from the Yahoo-fetch universe), so asset_class/market_change_24h/pct
+    must come from the bill's own known accretion rate instead of falling through to None."""
+    import treasury_bill_engine
+    from datetime import datetime, timedelta, timezone
+
+    conn = None
+    try:
+        conn = get_connection()
+        conn.execute(
+            """INSERT OR REPLACE INTO stock_signals
+               (ticker, current_price, currency, quote_type) VALUES (?, ?, ?, ?)""",
+            ("ZZNEIGHBOR", 50.0, "GBP", "EQUITY"),
+        )
+        conn.commit()
+    finally:
+        if conn:
+            conn.close()
+
+    aid = create_account("TBillMetricsAcc", "GBP", initial_cash=2000.0)
+    today = datetime.now(timezone.utc).date()
+    purchase_date = (today - timedelta(days=1)).isoformat()
+    maturity_date = (today + timedelta(days=59)).isoformat()
+    bought = treasury_bill_engine.buy_treasury_bill(aid, purchase_date, 1000.0, 996.16, maturity_date)
+    add_transaction(aid, "Buy", purchase_date, ticker="ZZNEIGHBOR", currency="GBP",
+                     quantity=5, unit_price=40, exchange_rate=1.0)
+
+    holdings = portfolio_metrics_engine.holdings_with_metrics_all_accounts()["holdings"]
+    tbill_row = next(r for r in holdings if r["ticker"] == bought["ticker"])
+    assert tbill_row["asset_class"] == "Fixed Income"
+    assert tbill_row["data_source"] == "TBILL"
+    assert tbill_row["market_change_24h"] is not None
+    assert tbill_row["market_change_24h"] > 0
+    assert tbill_row["market_change_pct_24h"] is not None
+
+    neighbor_row = next(r for r in holdings if r["ticker"] == "ZZNEIGHBOR")
+    assert neighbor_row["asset_class"] == "EQUITY"
+    assert neighbor_row["data_source"] == "YAHOO"
+
+
+@pytest.mark.db
 def test_set_holding_price_limit_partial_update_preserves_other_field():
     aid = create_account("LimitPartialAcc", "GBP")
     portfolio_metrics_engine.set_holding_price_limit(aid, "ZZLIMIT", low_limit=10.0)

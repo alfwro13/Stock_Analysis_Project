@@ -51,6 +51,40 @@ def test_accreted_price_clamps_past_maturity():
     assert tbe.accreted_price(bill, "2026-09-01") == pytest.approx(1000.0)
 
 
+def test_daily_accretion_change_one_day_after_purchase():
+    bill = {"purchase_price": 996.16, "face_value": 1000.0,
+            "purchase_date": "2026-07-01", "maturity_date": "2026-07-29"}
+    daily_increment = (1000.0 - 996.16) / 28
+    change, change_pct = tbe.daily_accretion_change(bill, "2026-07-02")
+    assert change == pytest.approx(daily_increment)
+    assert change_pct == pytest.approx(daily_increment / 996.16 * 100)
+
+
+def test_daily_accretion_change_on_purchase_day_is_zero():
+    bill = {"purchase_price": 996.16, "face_value": 1000.0,
+            "purchase_date": "2026-07-01", "maturity_date": "2026-07-29"}
+    change, change_pct = tbe.daily_accretion_change(bill, "2026-07-01")
+    assert change == pytest.approx(0.0, abs=1e-9)
+    assert change_pct == pytest.approx(0.0, abs=1e-9)
+
+
+def test_daily_accretion_change_day_after_maturity_is_zero():
+    # Maturity day itself still shows a normal increment; only elapsed > total_days gets clamped.
+    bill = {"purchase_price": 996.16, "face_value": 1000.0,
+            "purchase_date": "2026-07-01", "maturity_date": "2026-07-29"}
+    change, change_pct = tbe.daily_accretion_change(bill, "2026-07-30")
+    assert change == pytest.approx(0.0, abs=1e-9)
+    assert change_pct == pytest.approx(0.0, abs=1e-9)
+
+
+def test_daily_accretion_change_well_past_maturity_is_zero():
+    bill = {"purchase_price": 996.16, "face_value": 1000.0,
+            "purchase_date": "2026-07-01", "maturity_date": "2026-07-29"}
+    change, change_pct = tbe.daily_accretion_change(bill, "2026-09-01")
+    assert change == pytest.approx(0.0, abs=1e-9)
+    assert change_pct == pytest.approx(0.0, abs=1e-9)
+
+
 def test_estimate_face_value_matches_hand_computed_example():
     # £500 paid, 3.72% indicative YTM, 28-day window (09/07 -> 06/08) -> ~£501.43 estimated redemption.
     est = tbe.estimate_face_value(500.0, 3.72, "2026-07-09", "2026-08-06")

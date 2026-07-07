@@ -1,7 +1,7 @@
 # GUI name: "UK Treasury Bills". Canonical scheduled-job names live in scheduler_manifest.JOB_GRAPH.
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import db_accounts
@@ -113,6 +113,18 @@ def accreted_price(bill_row: dict, as_of_date: str) -> float:
     elapsed = (_parse_date(as_of_date) - purchase_date).days
     elapsed = max(0, min(elapsed, total_days))
     return purchase_price + (face_value - purchase_price) * (elapsed / total_days)
+
+
+def daily_accretion_change(bill_row: dict, as_of_date: str) -> tuple:
+    """24h change in accreted value — today's accreted_price() minus yesterday's. Reuses
+    accreted_price()'s own day-boundary clamping, so this is automatically ~0 on the purchase
+    day and ~0 on/after maturity with no extra guard code needed here."""
+    today_price = accreted_price(bill_row, as_of_date)
+    yesterday = (_parse_date(as_of_date) - timedelta(days=1)).isoformat()
+    yesterday_price = accreted_price(bill_row, yesterday)
+    change = today_price - yesterday_price
+    change_pct = (change / yesterday_price * 100) if yesterday_price else 0.0
+    return (change, change_pct)
 
 
 def current_price_for_ticker(ticker: str) -> Optional[tuple]:

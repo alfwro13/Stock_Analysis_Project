@@ -14,7 +14,7 @@ from db_accounts import (
     get_transactions, get_value_history, get_value_history_currency, upsert_holding_price_limit,
 )
 from portfolio_service import get_rate_to_base
-from treasury_bill_engine import parse_tbill_buy_txn_id
+from treasury_bill_engine import daily_accretion_change, get_treasury_bill_by_ticker, parse_tbill_buy_txn_id
 
 logger = logging.getLogger(__name__)
 
@@ -113,6 +113,16 @@ def holdings_with_metrics_all_accounts() -> dict:
             low_limit = limits.get("low_limit")
             high_limit = limits.get("high_limit")
             gain_value = round(h["market_value"] - h["total_investment"], 2)
+            tbill_txn_id = parse_tbill_buy_txn_id(ticker)
+            asset_class = signals.get("quote_type")
+            market_change_24h = pulse.get("change_pts")
+            market_change_pct_24h = pulse.get("change_pct")
+            if tbill_txn_id is not None:
+                asset_class = "Fixed Income"
+                bill = get_treasury_bill_by_ticker(ticker)
+                if bill:
+                    today = datetime.now(timezone.utc).date().isoformat()
+                    market_change_24h, market_change_pct_24h = daily_accretion_change(bill, today)
             rows.append({
                 "account_id": account_id,
                 "account_name": acc["name"],
@@ -135,10 +145,10 @@ def holdings_with_metrics_all_accounts() -> dict:
                 "accumulated_dividends": dividends_by_ticker.get(ticker, 0.0),
                 "accumulated_dividends_currency": BASE_CURRENCY,
                 "trend_vs_buy": "up" if (market_price_in_base is not None and h["buy_price"] and market_price_in_base >= h["buy_price"]) else "down",
-                "asset_class": signals.get("quote_type"),
-                "data_source": "TBILL" if parse_tbill_buy_txn_id(ticker) is not None else "YAHOO",
-                "market_change_24h": pulse.get("change_pts"),
-                "market_change_pct_24h": pulse.get("change_pct"),
+                "asset_class": asset_class,
+                "data_source": "TBILL" if tbill_txn_id is not None else "YAHOO",
+                "market_change_24h": market_change_24h,
+                "market_change_pct_24h": market_change_pct_24h,
                 "rsi": signals.get("rsi_14"),
                 "trend_50d": signals.get("trend_50d"),
                 "trend_200d": signals.get("trend_200d"),
