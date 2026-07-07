@@ -135,11 +135,13 @@ function _relayoutEtfChart(innerWrapperId, isFullscreen) {
     const desktopMarginB = _etfDesktopMarginBottom(plotEl);
     const marginB = (isMobile && !isFullscreen) ? Math.min(80, desktopMarginB) : desktopMarginB;
     Plotly.relayout(plotEl, { width: plotEl.getBoundingClientRect().width, height, 'margin.b': marginB });
-    // Plotly.relayout() shrinks/grows the drawing surface (.svg-container) but does not always
-    // sync the size of its own parent (.plot-container.plotly) — confirmed via DevTools on the
-    // contributions chart: .plot-container stayed at the original 740px desktop height while
-    // .svg-container correctly relaid out to 400px, leaving the difference as dead space below
-    // the chart. Force the container to match explicitly rather than trust Plotly to do it.
+    // Plotly.relayout() shrinks/grows the drawing surface (.svg-container) but does not reliably
+    // sync the size of the surrounding container elements — confirmed via DevTools on the
+    // contributions chart: both plotEl itself (.js-plotly-plot, the graph div relayout() is
+    // called on) and its child .plot-container.plotly independently kept a stale inline height
+    // from the original desktop render, leaving dead space below the correctly-resized SVG.
+    // Force both explicitly rather than trust Plotly to propagate the new size outward/inward.
+    plotEl.style.height = height + 'px';
     const innerContainer = plotEl.querySelector('.plot-container');
     if (innerContainer) innerContainer.style.height = height + 'px';
 }
