@@ -48,10 +48,11 @@ class DataEngine:
 
     def get_all_tickers(self) -> List[str]:
         from accounts_engine import get_combined_holdings
+        from treasury_bill_engine import parse_tbill_buy_txn_id
         tickers: Set[str] = set()
 
         for ticker in get_combined_holdings().keys():
-            if ticker:
+            if ticker and parse_tbill_buy_txn_id(ticker) is None:
                 tickers.add(normalize_ticker(ticker))
 
         if isinstance(self.watchlist.get("watchlist"), list):

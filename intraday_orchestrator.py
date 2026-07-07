@@ -92,8 +92,12 @@ class IntradayOrchestrator:
 
     def get_portfolio_tickers(self) -> List[str]:
         from accounts_engine import get_combined_holdings
+        from treasury_bill_engine import parse_tbill_buy_txn_id
         try:
-            return [normalize_ticker(t) for t in get_combined_holdings().keys()]
+            return [
+                normalize_ticker(t) for t in get_combined_holdings().keys()
+                if parse_tbill_buy_txn_id(t) is None
+            ]
         except Exception:
             logger.error("Failed to load portfolio tickers from accounts engine", exc_info=True)
             return []

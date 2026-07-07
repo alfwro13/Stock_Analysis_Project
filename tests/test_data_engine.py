@@ -67,6 +67,24 @@ def test_get_all_tickers_excludes_ignored():
     assert "AAPL" in tickers
 
 
+def test_get_all_tickers_excludes_tbill_synthetic_tickers():
+    """TBILL-{txn_id} synthetic tickers aren't real Yahoo Finance symbols -- including one in the
+    fetch universe produces a guaranteed-failing request every run (repeating 'possibly delisted'
+    errors in production logs) for a ticker that can never have real market data."""
+    from data_engine import DataEngine
+
+    engine = DataEngine.__new__(DataEngine)
+    engine.watchlist = {"watchlist": []}
+    engine.account_tickers = []
+
+    with patch("data_engine.load_config", return_value={"IGNORED_TICKERS": []}), \
+         patch("accounts_engine.get_combined_holdings", return_value=_combined("TBILL-606", "AAPL")):
+        tickers = engine.get_all_tickers()
+
+    assert "TBILL-606" not in tickers
+    assert "AAPL" in tickers
+
+
 def test_get_all_tickers_empty_inputs_returns_empty_list():
     """With empty portfolio and watchlist, result must be an empty list."""
     from data_engine import DataEngine
