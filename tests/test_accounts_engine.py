@@ -1462,7 +1462,7 @@ def test_snapshot_all_accounts_isolates_per_account_failure():
     """One account's pricing failure must not skip the snapshot for every account after it —
     prior behavior let a single exception abort the whole nightly loop, leaving later accounts
     with a stale baseline until a manual re-run."""
-    from datetime import datetime, timezone
+    from datetime import datetime, timedelta, timezone
     from unittest.mock import patch
 
     aid_ok = create_account("GoodAcc", "GBP", initial_cash=100.0)
@@ -1480,13 +1480,15 @@ def test_snapshot_all_accounts_isolates_per_account_failure():
         with pytest.raises(RuntimeError, match="BadAcc"):
             accounts_engine.snapshot_all_accounts()
 
-    today = datetime.now(timezone.utc).date().isoformat()
+    # snapshot_all_accounts() runs shortly after midnight and labels the row for the trading
+    # day that just closed (today - 1), not the calendar day the job happens to execute in.
+    snapshot_date = (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
     history_ok = accounts_engine.get_value_history(aid_ok)
     history_bad = accounts_engine.get_value_history(aid_bad)
     history_ok2 = accounts_engine.get_value_history(aid_ok2)
-    assert any(row["snapshot_date"] == today for row in history_ok)
-    assert not any(row["snapshot_date"] == today for row in history_bad)
-    assert any(row["snapshot_date"] == today for row in history_ok2)
+    assert any(row["snapshot_date"] == snapshot_date for row in history_ok)
+    assert not any(row["snapshot_date"] == snapshot_date for row in history_bad)
+    assert any(row["snapshot_date"] == snapshot_date for row in history_ok2)
 
 
 @pytest.mark.db

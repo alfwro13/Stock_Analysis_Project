@@ -1037,11 +1037,15 @@ def _write_currency_breakdown(account_id: int, snapshot_date: str, breakdown: di
 
 
 def snapshot_all_accounts() -> int:
-    """Nightly job body: writes today's value snapshot for every account. Returns rows written.
-    Each account is isolated so one account's pricing failure (e.g. a delisted ticker) can't
-    silently skip the snapshot for every account after it that night — a prior all-or-nothing
+    """Nightly job body: writes the value snapshot for every account for the trading day that just
+    closed. Runs shortly after midnight (see `ACCOUNT_VALUE_SNAPSHOT.TIME`, scheduled after
+    overnight_quant_scan_job so it reads the verified close) — the calendar date at that moment is
+    already tomorrow relative to the day being captured, so the row is dated `today - 1`, not the
+    run date itself, or every period_returns() baseline anchors one calendar day later than it
+    should. Each account is isolated so one account's pricing failure (e.g. a delisted ticker)
+    can't silently skip the snapshot for every account after it that night — a prior all-or-nothing
     loop left later accounts with a stale baseline until a manual re-run."""
-    today = datetime.now(timezone.utc).date().isoformat()
+    today = (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
     written = 0
     failed = []
     for acc in get_accounts():
