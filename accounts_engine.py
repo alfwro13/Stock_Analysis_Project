@@ -849,6 +849,12 @@ def unrealized_pnl(account_id: int) -> float:
 
 _RETURN_WINDOWS = {"1d": 1, "1w": 7, "1m": 30, "3m": 91, "6m": 182, "1y": 365}
 
+# Nightly snapshot writes one row per day, so the closest on-or-before-target row should
+# never be more than a day or two stale. A wider gap means a night's snapshot run failed
+# (e.g. snapshot_all_accounts() errored on an earlier account) rather than the account
+# genuinely predating the window — that case is None, not a misleadingly stale number.
+_MAX_BASELINE_GAP_DAYS = 2
+
 
 def period_returns(account_id: int) -> dict:
     """1D/1W/1M/3M/6M/1Y gain/loss in BASE_CURRENCY, excluding the effect of deposits/withdrawals
@@ -856,7 +862,8 @@ def period_returns(account_id: int) -> dict:
     up into a meaningless number whenever that baseline is small (e.g. a lookback window older than
     the account itself falls back to the earliest snapshot, which can be near-zero right after
     opening) — the currency amount stays sane and bounded regardless. Each value is a float, or
-    None only when there's no snapshot history at all yet."""
+    None when there's no snapshot history at all yet, or when the nearest available snapshot for
+    that window is stale by more than _MAX_BASELINE_GAP_DAYS (a missed nightly snapshot)."""
     history = get_value_history(account_id)
     if not history:
         return {key: None for key in _RETURN_WINDOWS}
@@ -870,9 +877,17 @@ def period_returns(account_id: int) -> dict:
 
     returns: dict = {}
     for key, days in _RETURN_WINDOWS.items():
-        target_date = (today - timedelta(days=days)).isoformat()
-        candidates = [row for row in history if row["snapshot_date"] <= target_date]
-        baseline = candidates[-1] if candidates else history[0]
+        target_date = today - timedelta(days=days)
+        target_date_str = target_date.isoformat()
+        candidates = [row for row in history if row["snapshot_date"] <= target_date_str]
+        if candidates:
+            baseline = candidates[-1]
+            gap_days = (target_date - datetime.strptime(baseline["snapshot_date"], "%Y-%m-%d").date()).days
+            if gap_days > _MAX_BASELINE_GAP_DAYS:
+                returns[key] = None
+                continue
+        else:
+            baseline = history[0]
         start_value = baseline["total_value"] or 0.0
         contributions_delta = net_contributions_now - baseline["net_contributions"]
         returns[key] = round(end_value - start_value - contributions_delta, 2)
@@ -1008,20 +1023,30 @@ def _write_currency_breakdown(account_id: int, snapshot_date: str, breakdown: di
 
 
 def snapshot_all_accounts() -> int:
-    """Nightly job body: writes today's value snapshot for every account. Returns rows written."""
+    """Nightly job body: writes today's value snapshot for every account. Returns rows written.
+    Each account is isolated so one account's pricing failure (e.g. a delisted ticker) can't
+    silently skip the snapshot for every account after it that night — a prior all-or-nothing
+    loop left later accounts with a stale baseline until a manual re-run."""
     today = datetime.now(timezone.utc).date().isoformat()
     written = 0
+    failed = []
     for acc in get_accounts():
         aid = acc["id"]
-        open_holdings, _closed, _realized, _realized_by_txn = _ledger_for_account(aid)
-        equity, breakdown = _equity_value_for_account_with_breakdown(acc, open_holdings)
-        # Pension/House have no real cash sub-ledger — cash_balance() would just return initial_cash
-        # as a phantom baseline, double-counting money already represented in equity_value.
-        cash = 0.0 if acc["account_type"] in ("Pension", "House") else cash_balance(aid)
-        contributions = net_contributions(aid)
-        upsert_value_snapshot(aid, today, round(cash + equity, 2), round(cash, 2), round(equity, 2), contributions)
-        _write_currency_breakdown(aid, today, breakdown)
-        written += 1
+        try:
+            open_holdings, _closed, _realized, _realized_by_txn = _ledger_for_account(aid)
+            equity, breakdown = _equity_value_for_account_with_breakdown(acc, open_holdings)
+            # Pension/House have no real cash sub-ledger — cash_balance() would just return initial_cash
+            # as a phantom baseline, double-counting money already represented in equity_value.
+            cash = 0.0 if acc["account_type"] in ("Pension", "House") else cash_balance(aid)
+            contributions = net_contributions(aid)
+            upsert_value_snapshot(aid, today, round(cash + equity, 2), round(cash, 2), round(equity, 2), contributions)
+            _write_currency_breakdown(aid, today, breakdown)
+            written += 1
+        except Exception as e:
+            logger.warning("Account Value Snapshot failed for account %s (%s): %s", acc["name"], aid, e)
+            failed.append(acc["name"])
+    if failed:
+        raise RuntimeError(f"Snapshot failed for account(s): {', '.join(failed)} ({written} succeeded)")
     return written
 
 

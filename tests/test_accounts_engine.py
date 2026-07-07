@@ -1398,6 +1398,57 @@ def test_period_returns_falls_back_to_earliest_snapshot_for_young_account():
 
 
 @pytest.mark.db
+def test_period_returns_none_when_nearest_snapshot_is_stale():
+    """A gap in account_value_history (e.g. a missed nightly snapshot run) must surface as None,
+    not silently compute a return against a stale baseline several days older than the window."""
+    from database import upsert_value_snapshot
+    from datetime import datetime, timedelta, timezone
+
+    aid = create_account("StaleGapAcc", "GBP", initial_cash=1000.0)
+    five_days_ago = (datetime.now(timezone.utc).date() - timedelta(days=5)).isoformat()
+    upsert_value_snapshot(aid, five_days_ago, 1000.0, 1000.0, 0.0, 1000.0)
+
+    returns = accounts_engine.period_returns(aid)
+    # No snapshot within _MAX_BASELINE_GAP_DAYS of "yesterday" (the 1d target) — gap too wide.
+    assert returns["1d"] is None
+    # 1y still legitimately falls back to the account's only (earliest) snapshot — young account,
+    # not a stale one, since there's nothing closer to fall back to.
+    assert returns["1y"] == 0.0
+
+
+@pytest.mark.db
+def test_snapshot_all_accounts_isolates_per_account_failure():
+    """One account's pricing failure must not skip the snapshot for every account after it —
+    prior behavior let a single exception abort the whole nightly loop, leaving later accounts
+    with a stale baseline until a manual re-run."""
+    from datetime import datetime, timezone
+    from unittest.mock import patch
+
+    aid_ok = create_account("GoodAcc", "GBP", initial_cash=100.0)
+    aid_bad = create_account("BadAcc", "GBP", initial_cash=100.0)
+    aid_ok2 = create_account("GoodAcc2", "GBP", initial_cash=100.0)
+
+    original = accounts_engine._equity_value_for_account_with_breakdown
+
+    def _boom(acc, open_holdings):
+        if acc["id"] == aid_bad:
+            raise RuntimeError("price fetch failed")
+        return original(acc, open_holdings)
+
+    with patch("accounts_engine._equity_value_for_account_with_breakdown", side_effect=_boom):
+        with pytest.raises(RuntimeError, match="BadAcc"):
+            accounts_engine.snapshot_all_accounts()
+
+    today = datetime.now(timezone.utc).date().isoformat()
+    history_ok = accounts_engine.get_value_history(aid_ok)
+    history_bad = accounts_engine.get_value_history(aid_bad)
+    history_ok2 = accounts_engine.get_value_history(aid_ok2)
+    assert any(row["snapshot_date"] == today for row in history_ok)
+    assert not any(row["snapshot_date"] == today for row in history_bad)
+    assert any(row["snapshot_date"] == today for row in history_ok2)
+
+
+@pytest.mark.db
 def test_money_weighted_return_none_with_no_contributions():
     aid = create_account("NoContribAcc", "GBP", initial_cash=0.0, opened_date="2026-01-01")
     assert accounts_engine.money_weighted_return(aid) is None
