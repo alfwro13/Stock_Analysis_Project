@@ -703,7 +703,7 @@ async def api_import_csv(request: Request, account_id: int, background_tasks: Ba
 
 @accounts_router.post("/accounts/value-snapshot/trigger")
 async def api_trigger_account_value_snapshot(background_tasks: BackgroundTasks):
-    background_tasks.add_task(run_account_value_snapshot)
+    background_tasks.add_task(run_account_value_snapshot, scheduled=False)
     return JSONResponse(content={
         "status": "queued",
         "message": "Account Value Snapshot job queued. Check system notifications for completion.",

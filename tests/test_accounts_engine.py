@@ -440,6 +440,22 @@ def test_snapshot_all_accounts_writes_row_per_account():
 
 
 @pytest.mark.db
+def test_snapshot_all_accounts_unscheduled_labels_today_not_yesterday():
+    """The Settings 'Run Now' trigger (scheduled=False) produces a live intraday snapshot for
+    today, not a reconstruction of last night's close -- it must not get the same today-1 label
+    as the real nightly job, or a manual run mid-day mislabels a still-forming price as an
+    official prior close (the bug behind the 1-day tile reading ~0 right after clicking Run Now)."""
+    from datetime import datetime, timezone
+
+    aid = create_account("SnapshotUnscheduledAcc", "GBP", initial_cash=250.0)
+    accounts_engine.snapshot_all_accounts(scheduled=False)
+
+    today_str = datetime.now(timezone.utc).date().isoformat()
+    history = accounts_engine.get_value_history(aid)
+    assert any(row["snapshot_date"] == today_str for row in history)
+
+
+@pytest.mark.db
 def test_snapshot_all_accounts_excludes_pension_cash_balance():
     aid = create_account("SnapshotPensionAcc", "GBP", account_type="Pension", initial_cash=1000.0)
     accounts_engine.record_pension_contribution(aid, "2026-01-01", 1000.0, unit_price=1.00)
