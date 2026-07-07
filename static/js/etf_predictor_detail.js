@@ -152,13 +152,23 @@ function toggleFullscreen(outerWrapperId, innerWrapperId) {
     _relayoutEtfChart(innerWrapperId, !isFullscreen);
 }
 
+function _relayoutEtfChartSafe(innerWrapperId, isFullscreen) {
+    // One chart's relayout throwing (e.g. Plotly not yet finished initialising that div) must
+    // not abort the forEach and silently skip relayout for the remaining charts on the page.
+    try {
+        _relayoutEtfChart(innerWrapperId, isFullscreen);
+    } catch (e) {
+        console.error('ETF chart relayout failed for', innerWrapperId, e);
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
-    _ETF_CHART_WRAPPERS.forEach(w => _relayoutEtfChart(w.inner, false));
+    _ETF_CHART_WRAPPERS.forEach(w => _relayoutEtfChartSafe(w.inner, false));
     window.addEventListener('resize', () => {
         _ETF_CHART_WRAPPERS.forEach(w => {
             const outer = document.getElementById(w.outer);
             const isFullscreen = outer && outer.classList.contains('is-fullscreen');
-            _relayoutEtfChart(w.inner, isFullscreen);
+            _relayoutEtfChartSafe(w.inner, isFullscreen);
         });
     });
 });
