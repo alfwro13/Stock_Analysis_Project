@@ -115,13 +115,26 @@ function _etfDesktopHeight(plotEl) {
     return plotEl._etfDesktopHeight;
 }
 
+function _etfDesktopMarginBottom(plotEl) {
+    if (plotEl._etfDesktopMarginB == null) {
+        plotEl._etfDesktopMarginB = (plotEl.layout && plotEl.layout.margin && plotEl.layout.margin.b) || 60;
+    }
+    return plotEl._etfDesktopMarginB;
+}
+
 function _relayoutEtfChart(innerWrapperId, isFullscreen) {
     const plotEl = document.querySelector('#' + innerWrapperId + ' .js-plotly-plot');
     if (!plotEl || !window.Plotly) return;
-    const height = isFullscreen
-        ? window.innerHeight - 120
-        : (window.innerWidth < 768 ? 400 : _etfDesktopHeight(plotEl));
-    Plotly.relayout(plotEl, { width: plotEl.getBoundingClientRect().width, height });
+    const isMobile = window.innerWidth < 768;
+    const height = isFullscreen ? window.innerHeight - 120 : (isMobile ? 400 : _etfDesktopHeight(plotEl));
+    // Some charts here reserve a generous bottom margin (desktop-height-tuned, for a below-plot
+    // legend that can wrap several rows with up to ~20 constituents) — at the 400px mobile floor
+    // that fixed pixel margin becomes a much larger fraction of the chart, showing as dead space
+    // below the plotted data. Shrink it on the non-fullscreen mobile branch only; fullscreen and
+    // desktop still get the room the legend may need to wrap.
+    const desktopMarginB = _etfDesktopMarginBottom(plotEl);
+    const marginB = (isMobile && !isFullscreen) ? Math.min(80, desktopMarginB) : desktopMarginB;
+    Plotly.relayout(plotEl, { width: plotEl.getBoundingClientRect().width, height, 'margin.b': marginB });
 }
 
 function toggleFullscreen(outerWrapperId, innerWrapperId) {
