@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 import time_engine
 from apscheduler.triggers.cron import CronTrigger
-from accounts_engine import resnapshot_account, snapshot_all_accounts
+from accounts_engine import refresh_all_trading_performance_caches, resnapshot_account, snapshot_all_accounts
 from backup_engine import run_backup
 from config import load_config
 from data_engine import DataEngine
@@ -152,6 +152,17 @@ def run_account_value_snapshot():
         raise
     finally:
         record_job_run('account_value_snapshot_job')
+
+def run_account_performance_refresh_job():
+    """Runs every minute during market hours (DB-only, no Yahoo calls) so account-detail period
+    returns stay close to live rather than only updating on the slower Crash/Moonshot scan tick.
+    Silent on success like the Dip Radar scan — errors only, to avoid flooding the notification feed."""
+    try:
+        refresh_all_trading_performance_caches()
+    except Exception as e:
+        log_sched_notification("Error", f"Account Performance Refresh failed: {e}")
+    finally:
+        record_job_run('account_performance_refresh_job')
 
 def run_treasury_bill_maturity_sweep():
     try:

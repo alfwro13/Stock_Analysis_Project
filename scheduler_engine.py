@@ -298,7 +298,9 @@ def reload_scheduler():
 
     snapshot_cfg = scheduling.get("ACCOUNT_VALUE_SNAPSHOT", {})
     if snapshot_cfg.get("ENABLED", True):
-        snapshot_time = snapshot_cfg.get("TIME", "23:30")
+        # Must run after overnight_quant_scan_job (default 01:00, ~5min) writes the verified
+        # daily close to stock_signals — snapshotting earlier bakes in a stale pre-close price.
+        snapshot_time = snapshot_cfg.get("TIME", "01:30")
         try:
             hour, minute = map(int, snapshot_time.split(':'))
             scheduler.add_job(
@@ -696,6 +698,20 @@ def reload_scheduler():
     except Exception as e:
         logger.error("Failed to schedule Intraday Dip Radar scan: %s", e)
 
+    # Always-on, DB-only (no Yahoo calls) — safe at a 1-minute cadence, independent of the
+    # heavier Yahoo-fetching Crash/Moonshot scan's own INTERVAL_MINUTES.
+    try:
+        scheduler.add_job(
+            run_account_performance_refresh_job,
+            CronTrigger(day_of_week='mon-fri', hour='7-21', minute='*/1', timezone=timezone.utc),
+            id='account_performance_refresh_job',
+            replace_existing=True,
+            misfire_grace_time=60,
+        )
+        logger.info("Account Performance Refresh scheduled mon-fri 07:00–21:59 UTC every 1 min.")
+    except Exception as e:
+        logger.error("Failed to schedule Account Performance Refresh: %s", e)
+
     for _exch in ("LSE", "NYSE"):
         try:
             _params = time_engine.reset_cron_trigger_params(_exch)
@@ -863,5 +879,5 @@ from scheduler_jobs import (
     run_system_check_job, run_treasury_auction_check, run_account_value_snapshot,
     register_account_scraper_job, unregister_account_scraper_job, _run_account_scraper_job,
     register_account_topup_job, unregister_account_topup_job, _run_account_topup_job,
-    run_backup_job, run_treasury_bill_maturity_sweep,
+    run_backup_job, run_treasury_bill_maturity_sweep, run_account_performance_refresh_job,
 )

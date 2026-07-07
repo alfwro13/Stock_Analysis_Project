@@ -271,6 +271,21 @@ def test_run_account_value_snapshot_job_runner_is_wired():
 
 
 @pytest.mark.db
+def test_run_account_performance_refresh_job_runner_is_wired():
+    """scheduler_jobs.run_account_performance_refresh_job must actually call
+    accounts_engine.refresh_all_trading_performance_caches — a regression guard for the job
+    runner's import wiring, not just the engine function in isolation."""
+    import scheduler_jobs
+    from database import get_performance_cache
+    aid = create_account("PerfRefreshWiringAcc", "GBP", initial_cash=100.0)
+    scheduler_jobs.run_account_performance_refresh_job()
+
+    performance = get_performance_cache(aid)
+    assert performance is not None, "run_account_performance_refresh_job did not populate account_performance_cache"
+    assert performance["total_value"] == 100.0
+
+
+@pytest.mark.db
 def test_run_account_scraper_job_runner_is_wired():
     """scheduler_jobs._run_account_scraper_job must actually call account_scraper_engine.run_scrape_for_account
     (which persists the scraped price) and then accounts_engine.resnapshot_account — a regression guard for
@@ -520,6 +535,32 @@ def test_backfill_value_history_gbp_pence_holding_not_double_converted(monkeypat
     from database import get_value_history
     history = {row["snapshot_date"]: row for row in get_value_history(aid)}
     assert history["2025-01-03"]["equity_value"] == 20.04         # 2 shares * 1002p -> £10.02/share
+
+
+@pytest.mark.db
+def test_backfill_value_history_prices_treasury_bill_by_accretion_not_flat_cost():
+    """Regression test: a held TBILL-* ticker has no parquet file, so backfill_value_history must
+    price it via treasury_bill_engine.accreted_price() (mirroring the live current_price_map()
+    path) rather than silently falling back to flat cost basis for every backfilled snapshot."""
+    import treasury_bill_engine as tbe
+
+    aid = create_account("BackfillTbillAcc", "GBP", initial_cash=1000.0)
+    result = tbe.buy_treasury_bill(aid, "2025-01-01", 1000.0, 900.0, "2025-01-31")
+    assert "bill_id" in result
+    ticker = result["ticker"]
+
+    written = accounts_engine.backfill_value_history(aid)
+    assert written > 0
+
+    from database import get_value_history
+    history = {row["snapshot_date"]: row for row in get_value_history(aid)}
+    from db_accounts import get_treasury_bill_by_ticker
+    bill_row = get_treasury_bill_by_ticker(ticker)
+
+    snapshot_date = "2025-01-16"  # 15 of 30 days elapsed -> halfway accreted
+    expected_price = tbe.accreted_price(bill_row, snapshot_date)
+    assert expected_price != bill_row["purchase_price"]  # sanity: accretion actually moved the price
+    assert history[snapshot_date]["equity_value"] == round(expected_price, 2)
 
 
 @pytest.mark.db

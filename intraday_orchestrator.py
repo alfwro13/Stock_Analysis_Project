@@ -12,7 +12,7 @@ from config import load_config, INTRADAY_DIR, HISTORICAL_DIR, PORT, SERVER_URL
 from yahoo_engine import yahoo_engine
 import time_engine
 from utils import normalize_ticker, is_daily_bar_still_forming
-from database import get_accounts, get_connection, get_mutual_fund_tickers
+from database import get_connection, get_mutual_fund_tickers
 import accounts_engine
 from crash_engine import CrashEngine
 from moonshot_engine import MoonshotEngine
@@ -318,13 +318,7 @@ class IntradayOrchestrator:
         """Rides along on this scan cycle so account performance figures are refreshed server-side
         once, shared by every browser tab that later polls the account detail page, rather than
         each poll re-deriving MWRR/period-returns from scratch."""
-        for acc in get_accounts():
-            if acc["account_type"] != "Trading":
-                continue
-            try:
-                accounts_engine.refresh_performance_cache(acc["id"])
-            except Exception:
-                logger.error("Failed to refresh performance cache for account %s", acc["id"], exc_info=True)
+        accounts_engine.refresh_all_trading_performance_caches()
 
     def _prune_alert_state(self, conn: sqlite3.Connection) -> None:
         """Deletes alert_state rows older than 7 days; only delisted/removed tickers accumulate; conn is caller-scoped."""

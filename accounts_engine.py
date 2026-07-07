@@ -941,10 +941,11 @@ def refresh_performance_cache(account_id: int) -> None:
     """Computes the live-performance figures once and persists them to `account_performance_cache`
     so every browser/tab that later polls the account detail page reads a cheap cached row instead
     of re-deriving MWRR/period-returns from the full transaction history on every request. Called
-    by the 5-minute intraday scan for every Trading account after it refreshes holding prices.
-    Also stores realized_pnl/dividend_income/interest_income from the same account_summary() call so
-    every field in the cache row is refreshed together — a consumer reading only this cache never
-    mixes a stale cached figure with a live one."""
+    by both the Crash/Moonshot scan and the dedicated per-minute Account Performance Refresh job
+    (see `refresh_all_trading_performance_caches`) for every Trading account. Also stores
+    realized_pnl/dividend_income/interest_income from the same account_summary() call so every
+    field in the cache row is refreshed together — a consumer reading only this cache never mixes
+    a stale cached figure with a live one."""
     summary = account_summary(account_id)
     returns = period_returns(account_id)
     upsert_performance_cache(
@@ -961,6 +962,19 @@ def refresh_performance_cache(account_id: int) -> None:
         interest_income=summary["interest"],
         last_updated=time.time(),
     )
+
+
+def refresh_all_trading_performance_caches() -> None:
+    """Refreshes `account_performance_cache` for every Trading account — the one canonical loop,
+    shared by the Crash/Moonshot scan and the faster dedicated per-minute refresh job, so the two
+    callers can't drift into separate account-filtering logic."""
+    for acc in get_accounts():
+        if acc["account_type"] != "Trading":
+            continue
+        try:
+            refresh_performance_cache(acc["id"])
+        except Exception:
+            logger.error("Failed to refresh performance cache for account %s", acc["id"], exc_info=True)
 
 
 _WATCHLIST_TYPE_BUCKETS = {"EQUITY": "equity", "ETF": "etf", "MUTUALFUND": "fund"}
@@ -1089,15 +1103,23 @@ def backfill_value_history(account_id: int) -> int:
 
     from account_scraper_engine import parse_pension_account_id
     from account_scraper_engine import price_series as scraped_price_series
+    from db_accounts import get_treasury_bill_by_ticker
+    from treasury_bill_engine import accreted_price, parse_tbill_buy_txn_id
 
     tickers = sorted({t["ticker"] for t in transactions if t["ticker"]})
     price_series: dict[str, pd.Series] = {}
+    tbill_rows: dict[str, dict] = {}
     for ticker in tickers:
         pension_id = parse_pension_account_id(ticker)
         if pension_id is not None:
             series = scraped_price_series(pension_id)
             if not series.empty:
                 price_series[ticker] = series
+            continue
+        if parse_tbill_buy_txn_id(ticker) is not None:
+            bill = get_treasury_bill_by_ticker(ticker)
+            if bill:
+                tbill_rows[ticker] = bill
             continue
         parquet_path = HISTORICAL_DIR / f"{ticker}.parquet"
         if not parquet_path.exists():
@@ -1115,6 +1137,9 @@ def backfill_value_history(account_id: int) -> int:
         cash = 0.0 if acc["account_type"] == "Pension" else _cash_balance_as_of(acc, transactions, date_str)
 
         def _lookup(ticker, holding, date_str=date_str):
+            bill = tbill_rows.get(ticker)
+            if bill is not None:
+                return accreted_price(bill, date_str), holding["currency"], fx_rate_on_date(holding["currency"], date_str)
             series = price_series.get(ticker)
             if series is None:
                 return None

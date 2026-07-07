@@ -165,7 +165,7 @@ DEFAULT_CONFIG = {
         },
         "ACCOUNT_VALUE_SNAPSHOT": {
             "ENABLED": True,
-            "TIME": "23:30"
+            "TIME": "01:30"
         },
         "FREETRADE_SYNC": {
             "ENABLED": False,
