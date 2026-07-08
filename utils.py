@@ -40,5 +40,15 @@ def clamp_beta(raw: Any, lo: float = 0.5, hi: float = 2.0, default: float = 1.0)
 
 
 def is_daily_bar_still_forming(last_daily_date: Any, last_live_date: Any) -> bool:
-    """True when the daily feed's last date is on/after the live feed's last date — Yahoo's daily endpoint often returns today's still-forming session as the 'close' when queried mid-session."""
-    return last_daily_date >= last_live_date
+    """True when the daily feed's last date is on/after the live feed's last date AND is today's
+    actual calendar date — Yahoo's daily endpoint often returns today's still-forming session as
+    the 'close' when queried mid-session. Comparing against the live feed's date alone produces a
+    false positive whenever the market is currently closed (pre-market, after-hours, weekend): the
+    live feed hasn't produced a new-day bar either, so its last date matches daily's last date even
+    though daily has already correctly caught up to a genuinely completed prior close. Requiring
+    the daily bar's own date to also be >= real "today" rules that case out. Found 2026-07-08:
+    fetch_and_save_data() was silently trimming a just-fetched, fully-closed prior-day bar every
+    pre-market morning, permanently discarding that day's verified close."""
+    from datetime import datetime, timezone
+    today = datetime.now(timezone.utc).date()
+    return last_daily_date >= last_live_date and last_daily_date >= today

@@ -372,10 +372,16 @@ def _ohlcv(dates, closes):
 
 class TestDropInProgressLastBar:
     def test_trims_last_row_when_it_matches_live_feed_date(self):
+        """Daily's last date must match BOTH the live feed's date AND today's real calendar date
+        to be trimmed -- a hardcoded past date here would test a scenario that's no longer "still
+        forming" as real time moves on (see is_daily_bar_still_forming's 2026-07-08 fix)."""
+        from datetime import datetime, timedelta, timezone
         from data_engine import _drop_in_progress_last_bar
 
-        daily = _ohlcv(["2026-07-02", "2026-07-06"], [100.0, 105.0])  # 07-06 is still-forming
-        live = _ohlcv(["2026-07-06 09:30", "2026-07-06 10:00"], [104.0, 105.0])
+        today = datetime.now(timezone.utc).date().isoformat()
+        yesterday = (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
+        daily = _ohlcv([yesterday, today], [100.0, 105.0])  # today's bar is still-forming
+        live = _ohlcv([f"{today} 09:30", f"{today} 10:00"], [104.0, 105.0])
 
         result = _drop_in_progress_last_bar(daily, live)
 
@@ -415,11 +421,14 @@ def test_bulk_download_historical_trims_in_progress_last_bar(tmp_path):
     """The bulk 2Y historical refresh must not persist today's still-forming bar as if it were
     a completed close — regression for the root cause of the AMD 24h-change flip-flop bug."""
     import pandas as pd
+    from datetime import datetime, timedelta, timezone
     from data_engine import DataEngine
 
     engine = DataEngine.__new__(DataEngine)
-    daily_df = _ohlcv(["2026-07-02", "2026-07-06"], [517.82, 560.86])
-    live_df = _ohlcv(["2026-07-06 09:30", "2026-07-06 15:45"], [560.86, 566.0])
+    today = datetime.now(timezone.utc).date().isoformat()
+    yesterday = (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
+    daily_df = _ohlcv([yesterday, today], [517.82, 560.86])
+    live_df = _ohlcv([f"{today} 09:30", f"{today} 15:45"], [560.86, 566.0])
 
     with (
         patch("data_engine.HISTORICAL_DIR", tmp_path),
@@ -459,11 +468,14 @@ def test_fetch_and_save_data_trims_in_progress_last_bar(tmp_path):
     """Single-ticker manual refresh (details-page button / POST /api/data/refresh-single) must
     apply the same in-progress-bar guard as the bulk path."""
     import pandas as pd
+    from datetime import datetime, timedelta, timezone
     from data_engine import DataEngine
 
     engine = DataEngine.__new__(DataEngine)
-    daily_df = _ohlcv(["2026-07-02", "2026-07-06"], [517.82, 560.86])
-    live_df = _ohlcv(["2026-07-06 09:30", "2026-07-06 15:45"], [560.86, 566.0])
+    today = datetime.now(timezone.utc).date().isoformat()
+    yesterday = (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
+    daily_df = _ohlcv([yesterday, today], [517.82, 560.86])
+    live_df = _ohlcv([f"{today} 09:30", f"{today} 15:45"], [560.86, 566.0])
 
     with (
         patch("data_engine.HISTORICAL_DIR", tmp_path),

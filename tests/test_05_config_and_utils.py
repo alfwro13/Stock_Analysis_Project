@@ -291,11 +291,13 @@ def test_normalize_ticker_already_uppercase():
 
 
 @pytest.mark.config
-def test_is_daily_bar_still_forming_true_when_daily_matches_live_date():
-    """A daily bar dated the same as (or after) the live feed's last tick is still-forming, not a completed close."""
-    from datetime import date
+def test_is_daily_bar_still_forming_true_when_daily_matches_live_date_and_is_today():
+    """A daily bar dated the same as (or after) the live feed's last tick, and matching today's
+    real calendar date, is still-forming, not a completed close."""
+    from datetime import datetime, timezone
     from utils import is_daily_bar_still_forming
-    assert is_daily_bar_still_forming(date(2026, 7, 6), date(2026, 7, 6)) is True
+    today = datetime.now(timezone.utc).date()
+    assert is_daily_bar_still_forming(today, today) is True
 
 
 @pytest.mark.config
@@ -304,6 +306,20 @@ def test_is_daily_bar_still_forming_false_when_daily_predates_live():
     from datetime import date
     from utils import is_daily_bar_still_forming
     assert is_daily_bar_still_forming(date(2026, 7, 2), date(2026, 7, 6)) is False
+
+
+@pytest.mark.config
+def test_is_daily_bar_still_forming_false_when_market_closed_and_both_dates_lag_today():
+    """Regression test (found 2026-07-08): when the market is currently closed (pre-market,
+    after-hours, weekend), the live feed's last available session can share daily's last date even
+    though daily has already correctly caught up to a completed prior close -- e.g. querying at
+    09:00 UTC before NYSE opens, when both feeds' last date is still yesterday. This must not be
+    mistaken for an in-progress session just because the two dates match each other; it's only
+    genuinely forming if that shared date is also today's real calendar date."""
+    from datetime import datetime, timedelta, timezone
+    from utils import is_daily_bar_still_forming
+    yesterday = datetime.now(timezone.utc).date() - timedelta(days=1)
+    assert is_daily_bar_still_forming(yesterday, yesterday) is False
 
 
 # ── Constants sanity checks ───────────────────────────────────────────────────
