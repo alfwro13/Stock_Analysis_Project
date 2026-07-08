@@ -883,6 +883,14 @@ def period_returns(account_id: int) -> dict:
         if candidates:
             baseline = candidates[-1]
             gap_days = (target_date - datetime.strptime(baseline["snapshot_date"], "%Y-%m-%d").date()).days
+            if gap_days > 0 and target_date_str > history[-1]["snapshot_date"]:
+                # target_date is more recent than any snapshot we have -- the nightly job hasn't
+                # written it yet (the gap between local midnight and ACCOUNT_VALUE_SNAPSHOT.TIME).
+                # Compute it live rather than silently using an extra day of staleness.
+                live_baseline = _value_as_of_date(account_id, target_date_str)
+                if live_baseline is not None:
+                    baseline = live_baseline
+                    gap_days = 0
             if gap_days > _MAX_BASELINE_GAP_DAYS:
                 returns[key] = None
                 continue
@@ -1073,6 +1081,64 @@ def snapshot_all_accounts(scheduled: bool = True) -> int:
     if failed:
         raise RuntimeError(f"Snapshot failed for account(s): {', '.join(failed)} ({written} succeeded)")
     return written
+
+
+def _value_as_of_date(account_id: int, date_str: str) -> Optional[dict]:
+    """Live, on-demand equivalent of a single backfill_value_history() day — used by
+    period_returns() when the nightly snapshot for `date_str` hasn't been written yet (the window
+    between local midnight and ACCOUNT_VALUE_SNAPSHOT.TIME each night), so a period tile shows a
+    genuine live-computed value instead of silently falling back to an extra day of staleness.
+    Deliberately a separate, simpler implementation from backfill_value_history()'s inner loop
+    rather than a shared call: that loop pre-loads each ticker's whole parquet Close series once
+    and slices it per day across a potentially year-long range, which would be wasteful work to
+    repeat here for what's normally exactly one date. House has no ledger to replay (see
+    backfill_value_history) so it isn't supported here — callers just get None and fall through."""
+    acc = get_account(account_id)
+    if not acc or acc["account_type"] == "House":
+        return None
+    transactions = get_transactions(account_id)
+
+    from account_scraper_engine import parse_pension_account_id
+    from account_scraper_engine import price_series as scraped_price_series
+    from db_accounts import get_treasury_bill_by_ticker
+    from treasury_bill_engine import accreted_price, parse_tbill_buy_txn_id
+
+    open_holdings, _closed, _realized, _realized_by_txn = _ledger_for_account(
+        account_id, as_of_date=date_str, transactions=transactions
+    )
+    cash = 0.0 if acc["account_type"] == "Pension" else _cash_balance_as_of(acc, transactions, date_str)
+
+    def _lookup(ticker, holding):
+        pension_id = parse_pension_account_id(ticker)
+        if pension_id is not None:
+            series = scraped_price_series(pension_id)
+            window = series.loc[:date_str] if not series.empty else series
+            return (float(window.iloc[-1]), holding["currency"], 1.0) if not window.empty else None
+        if parse_tbill_buy_txn_id(ticker) is not None:
+            bill = get_treasury_bill_by_ticker(ticker)
+            if not bill:
+                return None
+            return accreted_price(bill, date_str), holding["currency"], fx_rate_on_date(holding["currency"], date_str)
+        parquet_path = HISTORICAL_DIR / f"{ticker}.parquet"
+        if not parquet_path.exists():
+            return None
+        try:
+            series = pd.read_parquet(parquet_path)["Close"].sort_index()
+        except Exception:
+            return None
+        window = series.loc[:date_str]
+        if window.empty:
+            return None
+        return float(window.iloc[-1]), holding["currency"], fx_rate_on_date(holding["currency"], date_str)
+
+    equity, _breakdown = _bucket_equity_by_currency(open_holdings, _lookup)
+    contributions = _net_contributions_as_of(acc, transactions, date_str)
+    return {
+        "total_value": round(cash + equity, 2),
+        "cash_value": round(cash, 2),
+        "equity_value": round(equity, 2),
+        "net_contributions": round(contributions, 2),
+    }
 
 
 def resnapshot_account(account_id: int) -> None:

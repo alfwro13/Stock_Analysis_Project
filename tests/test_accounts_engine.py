@@ -532,6 +532,26 @@ def test_backfill_value_history_writes_rows_from_parquet(monkeypatch, tmp_path):
 
 
 @pytest.mark.db
+def test_value_as_of_date_prices_holding_from_parquet(monkeypatch, tmp_path):
+    """_value_as_of_date() must reconstruct the same equity/cash figures backfill_value_history()
+    would have written for that date, since it's the live-on-demand equivalent used by
+    period_returns() when the real snapshot doesn't exist yet."""
+    idx = pd.date_range("2025-01-01", "2025-01-10", freq="D")
+    df = pd.DataFrame({"Close": [100.0 + i for i in range(len(idx))]}, index=idx)
+    df.to_parquet(tmp_path / "ZZASOFDATE.parquet")
+    monkeypatch.setattr(accounts_engine, "HISTORICAL_DIR", tmp_path)
+
+    aid = create_account("ValueAsOfDateAcc", "GBP", initial_cash=1000.0)
+    add_transaction(aid, "Buy", "2025-01-03", ticker="ZZASOFDATE", currency="GBP",
+                     quantity=2, unit_price=100, exchange_rate=1.0)
+
+    result = accounts_engine._value_as_of_date(aid, "2025-01-03")
+    assert result["equity_value"] == 204.0          # 2 * 102 (Close on 2025-01-03)
+    assert result["cash_value"] == 800.0             # 1000 - 2*100
+    assert result["total_value"] == 1004.0
+
+
+@pytest.mark.db
 def test_backfill_value_history_gbp_pence_holding_not_double_converted(monkeypatch, tmp_path):
     """Regression test: a GBp (pence) holding's Parquet close price must be converted to
     pounds exactly once. fx_rate_on_date('GBp', ...) already applies the 0.01 conversion, so
@@ -1455,22 +1475,48 @@ def test_period_returns_falls_back_to_earliest_snapshot_for_young_account():
 
 
 @pytest.mark.db
-def test_period_returns_none_when_nearest_snapshot_is_stale():
-    """A gap in account_value_history (e.g. a missed nightly snapshot run) must surface as None,
-    not silently compute a return against a stale baseline several days older than the window."""
+def test_period_returns_computes_live_when_target_is_newer_than_latest_snapshot():
+    """When target_date falls after every snapshot we have (the nightly job hasn't caught up yet
+    -- e.g. the gap each night between local midnight and ACCOUNT_VALUE_SNAPSHOT.TIME, or several
+    consecutive missed runs), period_returns() must compute that day live from parquet/ledger via
+    _value_as_of_date() rather than either silently using an older stale baseline or giving up and
+    returning None -- a live-computed baseline is strictly better than both."""
     from database import upsert_value_snapshot
     from datetime import datetime, timedelta, timezone
 
-    aid = create_account("StaleGapAcc", "GBP", initial_cash=1000.0)
+    aid = create_account("RecentGapAcc", "GBP", initial_cash=1000.0)
     five_days_ago = (datetime.now(timezone.utc).date() - timedelta(days=5)).isoformat()
     upsert_value_snapshot(aid, five_days_ago, 1000.0, 1000.0, 0.0, 1000.0)
 
     returns = accounts_engine.period_returns(aid)
-    # No snapshot within _MAX_BASELINE_GAP_DAYS of "yesterday" (the 1d target) — gap too wide.
-    assert returns["1d"] is None
-    # 1y still legitimately falls back to the account's only (earliest) snapshot — young account,
-    # not a stale one, since there's nothing closer to fall back to.
+    # No stored snapshot for "yesterday" (the 1d target) — computed live instead: a cash-only
+    # account with no price-moving holdings has had no real gain, so this is genuinely 0.0, not None.
+    assert returns["1d"] == 0.0
     assert returns["1y"] == 0.0
+
+
+@pytest.mark.db
+def test_period_returns_none_when_gap_is_in_older_history():
+    """A gap *within* existing history (distinct from the target-is-newer-than-latest-snapshot
+    case above) — e.g. a genuinely missed nightly run weeks ago, with normal snapshots both before
+    and after it — must still surface as None for the window it falls in, since no live-fallback
+    applies once a more recent snapshot already exists."""
+    from database import upsert_value_snapshot
+    from datetime import datetime, timedelta, timezone
+
+    aid = create_account("OlderGapAcc", "GBP", initial_cash=1000.0)
+    ten_days_ago = (datetime.now(timezone.utc).date() - timedelta(days=10)).isoformat()
+    yesterday = (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
+    upsert_value_snapshot(aid, ten_days_ago, 1000.0, 1000.0, 0.0, 1000.0)
+    upsert_value_snapshot(aid, yesterday, 1000.0, 1000.0, 0.0, 1000.0)
+
+    returns = accounts_engine.period_returns(aid)
+    # 1w target (today-7) falls between the two snapshots, nearer to the 10-day-old one — a
+    # 3-day gap, over _MAX_BASELINE_GAP_DAYS, and not newer than the latest snapshot (yesterday's
+    # exists), so no live fallback applies.
+    assert returns["1w"] is None
+    # 1d target (yesterday) has an exact snapshot — unaffected by the gap further back.
+    assert returns["1d"] == 0.0
 
 
 @pytest.mark.db
