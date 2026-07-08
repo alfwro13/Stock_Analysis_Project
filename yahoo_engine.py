@@ -107,13 +107,22 @@ class YahooEngine:
         tickers: list[str],
         period: str = "2y",
         interval: str = "1d",
+        force_refresh: bool = False,
     ) -> dict[str, pd.DataFrame]:
         # Returns {ticker: DataFrame}; missing/failed tickers omitted — callers fall back to local Parquet.
         tickers = list(dict.fromkeys(tickers))
         ttl = self._ttl("history")
         key_fn = lambda t: f"history:{t}:{period}:{interval}"
 
-        result: dict[str, Optional[pd.DataFrame]] = {t: self._get(key_fn(t)) for t in tickers}
+        # force_refresh=True for the authoritative nightly writers (data_engine.bulk_download_historical,
+        # fetch_market_baseline) -- the 4h TTL exists to spare Yahoo from redundant same-session requests,
+        # but it can span across market close: an earlier same-day call (a manual single-ticker refresh, a
+        # stock-detail-page view) caches a pre-close bar, and the nightly job then silently writes that
+        # stale bar into stock_signals with a fresh last_updated timestamp -- current_price_map() then
+        # trusts it as the verified close purely because the timestamp looks new. Found 2026-07-08.
+        result: dict[str, Optional[pd.DataFrame]] = (
+            {t: None for t in tickers} if force_refresh else {t: self._get(key_fn(t)) for t in tickers}
+        )
         missing = [t for t, v in result.items() if v is None]
 
         if missing:

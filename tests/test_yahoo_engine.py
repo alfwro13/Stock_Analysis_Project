@@ -200,6 +200,23 @@ class TestGetPriceHistory:
 
     @patch("yahoo_engine.yf.download")
     @patch("yahoo_engine.yahoo_connection_boundary")
+    def test_force_refresh_bypasses_cache(self, mock_ctx, mock_dl):
+        """force_refresh=True must re-fetch even when a cached entry exists -- the authoritative
+        nightly writers (bulk_download_historical, fetch_market_baseline) need this so an earlier
+        same-day cache entry (e.g. a pre-market-close manual refresh) can never be silently served
+        back to them as if it were the verified close. Found 2026-07-08: a manual single-ticker
+        refresh before market close cached a stale bar, and the nightly job then wrote that stale
+        bar into stock_signals with a fresh timestamp, fooling current_price_map()'s freshness check."""
+        mock_ctx.return_value.__enter__ = lambda s: MagicMock()
+        mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
+        mock_dl.return_value = _yf_multi_df(["AAPL"])
+
+        self.eng.get_price_history(["AAPL"])
+        self.eng.get_price_history(["AAPL"], force_refresh=True)
+        assert mock_dl.call_count == 2
+
+    @patch("yahoo_engine.yf.download")
+    @patch("yahoo_engine.yahoo_connection_boundary")
     def test_only_missing_tickers_fetched(self, mock_ctx, mock_dl):
         mock_ctx.return_value.__enter__ = lambda s: MagicMock()
         mock_ctx.return_value.__exit__ = MagicMock(return_value=False)

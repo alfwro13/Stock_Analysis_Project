@@ -85,7 +85,7 @@ class DataEngine:
                 "RSP": "RSP_BASELINE",
             }
 
-            ticker_dfs = yahoo_engine.get_price_history(list(baselines.keys()), period="2y", interval="1d")
+            ticker_dfs = yahoo_engine.get_price_history(list(baselines.keys()), period="2y", interval="1d", force_refresh=True)
 
             if not ticker_dfs:
                 logger.warning("Baseline bulk download returned empty.")
@@ -117,7 +117,7 @@ class DataEngine:
 
         logger.info(f"Bulk downloading 2Y Macro Historical data for {len(tickers)} assets...")
         try:
-            ticker_dfs = yahoo_engine.get_price_history(tickers, period="2y", interval="1d")
+            ticker_dfs = yahoo_engine.get_price_history(tickers, period="2y", interval="1d", force_refresh=True)
             if not ticker_dfs:
                 logger.warning("Historical bulk download returned empty.")
                 return
