@@ -523,3 +523,149 @@ class TestUpsertLivePrice:
         ).fetchone()
         assert row["price"] == 120.0
         conn.close()
+
+
+def _read_sparkline(ticker: str):
+    conn = _conn()
+    rows = conn.execute(
+        "SELECT ts, price FROM market_pulse_sparkline WHERE ticker = ? ORDER BY ts", (ticker,)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def _clear_sparkline(*tickers):
+    conn = _conn()
+    for t in tickers:
+        conn.execute("DELETE FROM market_pulse_sparkline WHERE ticker = ?", (t,))
+    conn.commit()
+    conn.close()
+
+
+def _multi_point_live_df(prices: list) -> pd.DataFrame:
+    ref = _last_bday() + pd.Timedelta(hours=9)
+    dates = [ref + pd.Timedelta(minutes=2 * i) for i in range(len(prices))]
+    return pd.DataFrame(
+        {"Close": prices, "High": [p * 1.005 for p in prices], "Low": [p * 0.995 for p in prices],
+         "Open": prices, "Volume": [1000] * len(prices)},
+        index=dates,
+    )
+
+
+class TestSparklineWrite:
+    """fetch_and_save_pulse() must persist today's intraday points for the Markets page mini
+    chart, and leave prior points untouched (not wipe them) when there's no fresh intraday data."""
+
+    def teardown_method(self):
+        _clear_cache(NORMAL_TICKER)
+        _clear_sparkline(NORMAL_TICKER)
+
+    def test_writes_sparkline_points_from_live_intraday_data(self):
+        daily = _flat_daily_df([100.0, 100.5])
+        live = _multi_point_live_df([100.5, 100.7, 100.9])
+        p1, p2 = _pulse_patches(NORMAL_TICKER, daily, live)
+        with p1, p2:
+            _mp.fetch_and_save_pulse([NORMAL_TICKER])
+
+        points = _read_sparkline(NORMAL_TICKER)
+        assert len(points) == 3
+        assert points[-1]["price"] == pytest.approx(100.9)
+
+    def test_full_replace_on_each_fetch_cycle(self):
+        daily = _flat_daily_df([100.0, 100.5])
+        live1 = _multi_point_live_df([100.5, 100.7])
+        p1, p2 = _pulse_patches(NORMAL_TICKER, daily, live1)
+        with p1, p2:
+            _mp.fetch_and_save_pulse([NORMAL_TICKER])
+        assert len(_read_sparkline(NORMAL_TICKER)) == 2
+
+        live2 = _multi_point_live_df([101.0, 101.2, 101.4])
+        p3, p4 = _pulse_patches(NORMAL_TICKER, daily, live2)
+        with p3, p4:
+            _mp.fetch_and_save_pulse([NORMAL_TICKER])
+
+        points = _read_sparkline(NORMAL_TICKER)
+        assert len(points) == 3
+        assert points[0]["price"] == pytest.approx(101.0)
+
+    def test_empty_intraday_data_leaves_prior_sparkline_untouched(self):
+        """Market closed this cycle (t_live empty) — the last session's line must persist."""
+        daily = _flat_daily_df([100.0, 100.5])
+        live = _multi_point_live_df([100.5, 100.7])
+        p1, p2 = _pulse_patches(NORMAL_TICKER, daily, live)
+        with p1, p2:
+            _mp.fetch_and_save_pulse([NORMAL_TICKER])
+        assert len(_read_sparkline(NORMAL_TICKER)) == 2
+
+        with patch("market_pulse.yahoo_engine.get_price_history", return_value={NORMAL_TICKER: daily}), \
+             patch("market_pulse.yahoo_engine.get_intraday", return_value={}):
+            _mp.fetch_and_save_pulse([NORMAL_TICKER])
+
+        points = _read_sparkline(NORMAL_TICKER)
+        assert len(points) == 2
+
+
+class TestGetIntradayPoints:
+    def teardown_method(self):
+        _clear_sparkline(NORMAL_TICKER)
+
+    def test_returns_points_oldest_first(self):
+        conn = _conn()
+        conn.execute("INSERT INTO market_pulse_sparkline (ticker, ts, price) VALUES (?, ?, ?)", (NORMAL_TICKER, 200.0, 10.0))
+        conn.execute("INSERT INTO market_pulse_sparkline (ticker, ts, price) VALUES (?, ?, ?)", (NORMAL_TICKER, 100.0, 9.0))
+        conn.commit()
+        conn.close()
+
+        points = _mp.get_intraday_points(NORMAL_TICKER)
+        assert points == [[100.0, 9.0], [200.0, 10.0]]
+
+    def test_unknown_ticker_returns_empty_list(self):
+        assert _mp.get_intraday_points("_NO_SUCH_TICKER") == []
+
+    def test_respects_max_points_limit(self):
+        conn = _conn()
+        for i in range(5):
+            conn.execute(
+                "INSERT INTO market_pulse_sparkline (ticker, ts, price) VALUES (?, ?, ?)",
+                (NORMAL_TICKER, float(i), float(i)),
+            )
+        conn.commit()
+        conn.close()
+
+        points = _mp.get_intraday_points(NORMAL_TICKER, max_points=2)
+        assert len(points) == 2
+        assert points == [[3.0, 3.0], [4.0, 4.0]]
+
+
+class TestTickerRegistryAccessors:
+    """get_index_tickers()/get_pulse_index_tickers() read through market_ticker_registry;
+    reload_ticker_registry() must bust both caches after a registry write."""
+
+    def test_get_index_tickers_includes_full_registry(self):
+        tickers = _mp.get_index_tickers()
+        # A Markets-page-only ticker (not a static Market Pulse tile) must still resolve here.
+        assert "GC=F" in tickers
+        assert tickers["GC=F"] == "Gold"
+
+    def test_get_pulse_index_tickers_excludes_markets_only_tickers(self):
+        tickers = _mp.get_pulse_index_tickers()
+        assert "GC=F" not in tickers
+        assert "^GSPC" in tickers
+
+    def test_reload_ticker_registry_picks_up_new_row(self):
+        import db_helpers
+        db_helpers.upsert_ticker_registry_row(
+            ticker="_TST_REG_TICK", display_name="Test Reg Tick", region="Europe",
+            asset_type="Index", exchange="LSE", currency="GBP",
+        )
+        try:
+            # Cache was already warm from earlier tests in this session — must not see it yet.
+            assert "_TST_REG_TICK" not in _mp.get_index_tickers()
+            _mp.reload_ticker_registry()
+            assert "_TST_REG_TICK" in _mp.get_index_tickers()
+        finally:
+            conn = _conn()
+            conn.execute("DELETE FROM market_ticker_registry WHERE ticker = '_TST_REG_TICK'")
+            conn.commit()
+            conn.close()
+            _mp.reload_ticker_registry()

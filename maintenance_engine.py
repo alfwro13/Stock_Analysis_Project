@@ -12,7 +12,7 @@ from config import (
 from database import get_connection, get_watchlist_tickers, log_notification as _db_log_notification
 from ghostfolio_sync import purge_ghostfolio_files
 from accounts_engine import get_combined_holdings
-from market_pulse import INDEX_TICKERS
+from market_pulse import get_index_tickers
 from ai_contagion_engine import AI_ECOSYSTEM_TICKERS
 
 class MaintenanceEngine:
@@ -110,7 +110,7 @@ class MaintenanceEngine:
         by the weekly maintenance run before the next session can refresh it. Deliberately not
         _get_active_tickers(): that method's own ticker_tables list includes market_pulse_cache
         itself, which would make every existing row protect itself and defeat pruning entirely."""
-        active_tickers = set(INDEX_TICKERS.keys()) | {"UK10YG"} | set(AI_ECOSYSTEM_TICKERS)
+        active_tickers = set(get_index_tickers().keys()) | {"UK10YG"} | set(AI_ECOSYSTEM_TICKERS)
         try:
             active_tickers.update(get_combined_holdings().keys())
         except Exception as e:

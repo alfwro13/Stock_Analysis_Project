@@ -73,6 +73,40 @@ def _clear(*tickers):
     c.close()
 
 
+# ── _select_active_pulse_tickers ────────────────────────────────────────────────
+
+class TestSelectActivePulseTickers:
+    LEGACY_TEN = {"^FTSE", "^FTMC", "GBPUSD=X", "BZ=F", "UK10YG",
+                  "^GSPC", "^NDX", "^TYX", "^TNX", "DX-Y.NYB"}
+
+    def test_static_mode_returns_pulse_tile_set(self):
+        result = _mp._select_active_pulse_tickers({"UI_PREFERENCES": {"MARKET_PULSE_DYNAMIC": False}})
+        assert set(result.keys()) == self.LEGACY_TEN
+
+    def test_static_mode_respects_desktop_count_cap(self):
+        result = _mp._select_active_pulse_tickers({
+            "UI_PREFERENCES": {"MARKET_PULSE_DYNAMIC": False, "MARKET_PULSE_DESKTOP_COUNT": 3}
+        })
+        assert len(result) == 3
+
+    def test_dynamic_mode_delegates_to_markets_engine(self):
+        with patch("markets_engine.select_pulse_tickers", return_value={"desktop": ["^GSPC", "GC=F"], "mobile": ["^GSPC"]}) as mock_select:
+            result = _mp._select_active_pulse_tickers({
+                "UI_PREFERENCES": {"MARKET_PULSE_DYNAMIC": True, "MARKET_PULSE_DESKTOP_COUNT": 2, "MARKET_PULSE_MOBILE_COUNT": 1}
+            })
+        mock_select.assert_called_once_with(dynamic=True, desktop_count=2, mobile_count=1)
+        assert set(result.keys()) == {"^GSPC", "GC=F"}
+
+    def test_dynamic_mode_falls_back_to_static_on_error(self):
+        with patch("markets_engine.select_pulse_tickers", side_effect=RuntimeError("boom")):
+            result = _mp._select_active_pulse_tickers({"UI_PREFERENCES": {"MARKET_PULSE_DYNAMIC": True}})
+        assert set(result.keys()) == self.LEGACY_TEN
+
+    def test_default_config_missing_ui_preferences_uses_static(self):
+        result = _mp._select_active_pulse_tickers({})
+        assert set(result.keys()) == self.LEGACY_TEN
+
+
 # ── get_cached_pulse_from_db ──────────────────────────────────────────────────
 
 class TestGetCachedPulseFromDb:
@@ -380,24 +414,27 @@ class TestProxyTickersNeedingRefresh:
     drive /api/market-pulse's own JS polling) would never populate market_state at all, and
     is_exchange_open() would fall back to the naive heuristic forever."""
 
-    def teardown_method(self):
-        _clear("^GSPC", "^FTSE")
+    ALL_PROXIES = {"^GSPC", "^FTSE", "^GDAXI", "^N225", "^HSI", "000001.SS", "^AXJO", "^FCHI"}
 
-    def test_both_proxies_stale_when_no_cache_rows_exist(self):
-        assert set(_mp.proxy_tickers_needing_refresh()) == {"^GSPC", "^FTSE"}
+    def teardown_method(self):
+        _clear(*self.ALL_PROXIES)
+
+    def test_all_proxies_stale_when_no_cache_rows_exist(self):
+        assert set(_mp.proxy_tickers_needing_refresh()) == self.ALL_PROXIES
 
     def test_fresh_row_is_not_flagged(self):
-        _seed_pulse("^GSPC", last_updated=time.time())
-        _seed_pulse("^FTSE", last_updated=time.time())
+        for ticker in self.ALL_PROXIES:
+            _seed_pulse(ticker, last_updated=time.time())
         assert _mp.proxy_tickers_needing_refresh() == []
 
     def test_stale_row_is_flagged(self):
+        for ticker in self.ALL_PROXIES:
+            _seed_pulse(ticker, last_updated=time.time())
         _seed_pulse("^GSPC", last_updated=time.time() - 3600)
-        _seed_pulse("^FTSE", last_updated=time.time())
         assert _mp.proxy_tickers_needing_refresh() == ["^GSPC"]
 
     def test_custom_max_age_respected(self):
-        _seed_pulse("^GSPC", last_updated=time.time() - 120)
-        _seed_pulse("^FTSE", last_updated=time.time() - 120)
-        assert _mp.proxy_tickers_needing_refresh(max_age_seconds=60) == ["^GSPC", "^FTSE"]
+        for ticker in self.ALL_PROXIES:
+            _seed_pulse(ticker, last_updated=time.time() - 120)
+        assert set(_mp.proxy_tickers_needing_refresh(max_age_seconds=60)) == self.ALL_PROXIES
         assert _mp.proxy_tickers_needing_refresh(max_age_seconds=300) == []

@@ -78,6 +78,8 @@ EXPECTED_TABLES = [
     "etf_predictor_predictions",
     "watchlist_items",
     "backup_history",
+    "market_ticker_registry",
+    "market_pulse_sparkline",
 ]
 
 
@@ -241,6 +243,71 @@ def test_news_articles_has_required_columns():
     }
     missing = required - cols
     assert not missing, f"news_articles missing columns: {missing}"
+
+
+@pytest.mark.db
+def test_market_ticker_registry_has_required_columns():
+    """market_ticker_registry must carry region/asset_type/exchange/future-pairing/pulse-membership fields."""
+    cols = _columns("market_ticker_registry")
+    required = {
+        "ticker", "display_name", "region", "asset_type", "exchange", "currency",
+        "future_ticker", "future_display_name", "invert_color",
+        "is_pulse_tile", "pulse_sort_order", "is_pulse_mobile", "sort_order", "enabled",
+    }
+    missing = required - cols
+    assert not missing, f"market_ticker_registry missing columns: {missing}"
+
+
+@pytest.mark.db
+def test_market_pulse_sparkline_has_required_columns():
+    """market_pulse_sparkline must have a composite (ticker, ts) PK plus price."""
+    cols = _columns("market_pulse_sparkline")
+    required = {"ticker", "ts", "price"}
+    missing = required - cols
+    assert not missing, f"market_pulse_sparkline missing columns: {missing}"
+
+
+@pytest.mark.db
+def test_market_ticker_registry_seed_data_present():
+    """A fresh init_db() must seed the full ticker registry, preserving today's 10 Market Pulse tickers."""
+    conn = _conn()
+    try:
+        rows = conn.execute("SELECT ticker, region, is_pulse_tile FROM market_ticker_registry").fetchall()
+        tickers = {r["ticker"] for r in rows}
+        # Today's existing INDEX_TICKERS must all be present and still flagged as pulse tiles,
+        # so a fresh install reproduces current Market Pulse behavior with no regression.
+        legacy_tickers = {"^FTSE", "^FTMC", "GBPUSD=X", "BZ=F", "UK10YG", "^GSPC", "^NDX", "^TYX", "^TNX", "DX-Y.NYB"}
+        missing_legacy = legacy_tickers - tickers
+        assert not missing_legacy, f"Seed is missing legacy Market Pulse tickers: {missing_legacy}"
+        pulse_tickers = {r["ticker"] for r in rows if r["is_pulse_tile"]}
+        assert legacy_tickers == pulse_tickers, (
+            f"is_pulse_tile membership drifted from legacy set: {pulse_tickers ^ legacy_tickers}"
+        )
+        # New Markets-page tickers from the user's seed spec must also be present.
+        new_tickers = {"GC=F", "SI=F", "HG=F", "CL=F", "^N225", "^HSI", "000001.SS", "^AXJO",
+                        "^STOXX50E", "^GDAXI", "^FCHI", "EURUSD=X", "^DJI", "^RUT", "^VIX"}
+        missing_new = new_tickers - tickers
+        assert not missing_new, f"Seed is missing new Markets-page tickers: {missing_new}"
+    finally:
+        conn.close()
+
+
+@pytest.mark.db
+def test_market_ticker_registry_dual_ticker_rows_have_future_pairing():
+    """S&P 500, Nasdaq 100, Dow, Russell 2000, and Nikkei 225 must carry a paired future ticker."""
+    conn = _conn()
+    try:
+        expected_pairs = {
+            "^GSPC": "ES=F", "^NDX": "NQ=F", "^DJI": "YM=F", "^RUT": "RTY=F", "^N225": "NIY=F",
+        }
+        for spot, future in expected_pairs.items():
+            row = conn.execute(
+                "SELECT future_ticker FROM market_ticker_registry WHERE ticker = ?", (spot,)
+            ).fetchone()
+            assert row is not None, f"{spot} missing from market_ticker_registry"
+            assert row["future_ticker"] == future, f"{spot} expected future {future}, got {row['future_ticker']}"
+    finally:
+        conn.close()
 
 
 # ── Read / Write round-trips ──────────────────────────────────────────────────

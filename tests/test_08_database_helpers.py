@@ -337,3 +337,93 @@ def test_get_auction_summary_returns_recent_rows_within_30_days():
         conn.execute("DELETE FROM treasury_auction_results WHERE cusip IN ('GAS1', 'GAS2')")
         conn.commit()
         conn.close()
+
+
+# ── ticker registry CRUD ────────────────────────────────────────────────────────
+
+@pytest.mark.db
+def test_upsert_ticker_registry_row_inserts_new_row():
+    conn = _conn()
+    try:
+        ok = _db.upsert_ticker_registry_row(
+            ticker="TST_REG", display_name="Test Registry Row", region="Europe",
+            asset_type="Index", exchange="LSE", currency="GBP",
+        )
+        assert ok is True
+        row = _db.get_ticker_registry_row("TST_REG")
+        assert row is not None
+        assert row["display_name"] == "Test Registry Row"
+        assert row["region"] == "Europe"
+        assert row["enabled"] == 1
+    finally:
+        conn.execute("DELETE FROM market_ticker_registry WHERE ticker='TST_REG'")
+        conn.commit()
+        conn.close()
+
+
+@pytest.mark.db
+def test_upsert_ticker_registry_row_updates_on_conflict():
+    conn = _conn()
+    try:
+        _db.upsert_ticker_registry_row(
+            ticker="TST_REG", display_name="Original", region="Europe",
+            asset_type="Index", exchange="LSE", currency="GBP",
+        )
+        _db.upsert_ticker_registry_row(
+            ticker="TST_REG", display_name="Updated", region="Europe",
+            asset_type="Index", exchange="LSE", currency="GBP", sort_order=5,
+        )
+        row = _db.get_ticker_registry_row("TST_REG")
+        assert row["display_name"] == "Updated"
+        assert row["sort_order"] == 5
+    finally:
+        conn.execute("DELETE FROM market_ticker_registry WHERE ticker='TST_REG'")
+        conn.commit()
+        conn.close()
+
+
+@pytest.mark.db
+def test_get_ticker_registry_row_by_future_resolves_spot_row():
+    conn = _conn()
+    try:
+        row = _db.get_ticker_registry_row_by_future("ES=F")
+        assert row is not None
+        assert row["ticker"] == "^GSPC"
+    finally:
+        conn.close()
+
+
+@pytest.mark.db
+def test_get_ticker_registry_row_by_future_unknown_returns_none():
+    assert _db.get_ticker_registry_row_by_future("NOPE=F") is None
+
+
+@pytest.mark.db
+def test_soft_delete_ticker_registry_row_disables_without_deleting():
+    conn = _conn()
+    try:
+        _db.upsert_ticker_registry_row(
+            ticker="TST_REG", display_name="Original", region="Europe",
+            asset_type="Index", exchange="LSE", currency="GBP",
+        )
+        ok = _db.soft_delete_ticker_registry_row("TST_REG")
+        assert ok is True
+        row = _db.get_ticker_registry_row("TST_REG")
+        assert row is not None
+        assert row["enabled"] == 0
+        enabled_only = _db.get_ticker_registry(enabled_only=True)
+        assert "TST_REG" not in {r["ticker"] for r in enabled_only}
+        all_rows = _db.get_ticker_registry(enabled_only=False)
+        assert "TST_REG" in {r["ticker"] for r in all_rows}
+    finally:
+        conn.execute("DELETE FROM market_ticker_registry WHERE ticker='TST_REG'")
+        conn.commit()
+        conn.close()
+
+
+@pytest.mark.db
+def test_get_ticker_registry_enabled_only_excludes_disabled_rows():
+    rows = _db.get_ticker_registry(enabled_only=True)
+    assert all(r.get("enabled", 1) != 0 for r in rows)
+    tickers = {r["ticker"] for r in rows}
+    assert "^GSPC" in tickers

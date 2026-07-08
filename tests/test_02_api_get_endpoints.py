@@ -281,6 +281,93 @@ def test_get_market_pulse_returns_200(client):
     _json(resp)  # just verify valid JSON
 
 
+@pytest.mark.api
+def test_get_market_pulse_index_items_include_invert_color_and_asset_type(client):
+    resp = client.get("/api/market-pulse")
+    data = _json(resp)["data"]
+    assert len(data) > 0
+    for item in data:
+        assert "invert_color" in item
+        assert "asset_type" in item
+        assert "is_pulse_mobile" in item
+        assert "currency" in item
+
+
+@pytest.mark.api
+def test_get_market_pulse_dynamic_mode_returns_dynamic_selection(client):
+    from unittest.mock import patch as _patch
+    with _patch("database.load_config", return_value={"UI_PREFERENCES": {"MARKET_PULSE_DYNAMIC": True, "MARKET_PULSE_DESKTOP_COUNT": 3}}), \
+         _patch("market_pulse.load_config", return_value={"UI_PREFERENCES": {"MARKET_PULSE_DYNAMIC": True, "MARKET_PULSE_DESKTOP_COUNT": 3}}), \
+         _patch("api_routes_system.load_config", return_value={"UI_PREFERENCES": {"MARKET_PULSE_DYNAMIC": True, "MARKET_PULSE_DESKTOP_COUNT": 3}}):
+        resp = client.get("/api/market-pulse")
+    data = _json(resp)["data"]
+    assert len(data) == 3
+
+
+# ── Markets page ──────────────────────────────────────────────────────────────
+
+@pytest.mark.api
+def test_get_markets_dynamic_view_returns_200(client):
+    resp = client.get("/api/markets")
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
+    data = _json(resp)
+    assert data["status"] == "success"
+    assert data["data"]["view"] == "dynamic"
+    regions = {r["region"] for r in data["data"]["regions"]}
+    assert regions == {"Europe", "US", "Asia", "Commodities_FX"}
+
+
+@pytest.mark.api
+def test_get_markets_static_view_returns_fixed_order(client):
+    resp = client.get("/api/markets?view=static")
+    assert resp.status_code == 200
+    data = _json(resp)["data"]
+    assert data["view"] == "static"
+    assert [r["region"] for r in data["regions"]] == ["Europe", "US", "Asia", "Commodities_FX"]
+
+
+@pytest.mark.api
+def test_get_markets_tile_response_has_no_leaked_needs_refresh_field(client):
+    resp = client.get("/api/markets")
+    data = _json(resp)["data"]
+    for region in data["regions"]:
+        for tile in region["tiles"]:
+            assert "needs_refresh" not in tile
+
+
+@pytest.mark.api
+def test_get_market_status_all_returns_exchanges_and_regions(client):
+    resp = client.get("/api/system/market-status/all")
+    assert resp.status_code == 200
+    data = _json(resp)
+    assert data["status"] == "success"
+    assert "NYSE" in data["exchanges"]
+    assert "LSE" in data["exchanges"]
+    assert set(data["regions"].keys()) == {"US", "Europe", "Asia"}
+
+
+@pytest.mark.api
+def test_get_market_status_all_does_not_change_existing_market_status_contract(client):
+    """The original two-exchange /system/market-status endpoint must stay untouched — the
+    Home Assistant integration binds to exactly these four fields."""
+    resp = client.get("/api/system/market-status")
+    data = _json(resp)
+    for key in ("status", "us_market_open", "uk_market_open", "yahoo_ok", "system_ok"):
+        assert key in data
+    assert "exchanges" not in data
+
+
+@pytest.mark.api
+def test_get_markets_registry_returns_seeded_tickers(client):
+    resp = client.get("/api/markets/registry")
+    assert resp.status_code == 200
+    data = _json(resp)
+    assert data["status"] == "success"
+    tickers = {row["ticker"] for row in data["registry"]}
+    assert "^GSPC" in tickers
+    assert "GC=F" in tickers
+
+
 # ── Universe ──────────────────────────────────────────────────────────────────
 
 @pytest.mark.api

@@ -8,5 +8,6 @@
 
 <script>
 window.SHOW_INDEXES = {{ 'true' if show_indexes else 'false' }};
+window.MARKET_PULSE_MOBILE_COUNT = {{ config.UI_PREFERENCES.MARKET_PULSE_MOBILE_COUNT | default(8) if config is defined else 8 }};
 </script>
 <script src="/static/js/macro_cards.js?v={{ css_version }}"></script>

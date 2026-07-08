@@ -27,6 +27,7 @@
             </button>
             <div class="collapse navbar-collapse" id="appNav">
                 <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                    <li class="nav-item"><a class="nav-link{% if p.startswith('/markets') %} active{% endif %}" href="/markets">🌅 Markets</a></li>
                     <li class="nav-item"><a class="nav-link{% if p.startswith('/portfolio') %} active{% endif %}" href="/portfolio">💼 Portfolio</a></li>
                     <li class="nav-item"><a class="nav-link{% if p.startswith('/watchlist') %} active{% endif %}" href="/watchlist">👀 Watchlist</a></li>
                     <li class="nav-item"><a class="nav-link{% if p.startswith('/news') %} active{% endif %}" href="/news">📰 News</a></li>

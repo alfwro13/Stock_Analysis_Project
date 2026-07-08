@@ -22,7 +22,7 @@ from fastapi.templating import Jinja2Templates
 from config import load_config, HISTORICAL_DIR, INTRADAY_DIR, BASE_CURRENCY, ACCOUNT_CURRENCIES
 import time_engine
 from database import get_connection, get_watchlist_tickers
-from market_pulse import get_all_cached_pulse, INDEX_TICKERS
+from market_pulse import get_all_cached_pulse, get_index_tickers
 from utils import normalize_ticker
 from visuals import (
     create_macro_chart,
@@ -783,6 +783,18 @@ async def market_reports_page(request: Request):
     )
 
 
+@page_router.get("/markets", response_class=HTMLResponse)
+async def markets_page(request: Request):
+    default_view = request.cookies.get("markets_view", "dynamic")
+    if default_view not in ("dynamic", "static"):
+        default_view = "dynamic"
+    return templates.TemplateResponse(
+        request=request,
+        name="markets.html",
+        context={"unread_count": get_unread_count(), "default_view": default_view, "config": load_config()},
+    )
+
+
 @page_router.get("/tools", response_class=HTMLResponse)
 async def tools_page(request: Request):
     lse_open_utc, _ = time_engine.market_window_utc("LSE")
@@ -1172,7 +1184,7 @@ async def score_history_page(request: Request, filter: str = "all", ref: str = "
 @page_router.get("/stock/{ticker}", response_class=HTMLResponse)
 async def stock_detail(request: Request, ticker: str, embed: bool = False):
     ticker = normalize_ticker(ticker)
-    if ticker in INDEX_TICKERS:
+    if ticker in get_index_tickers():
         return RedirectResponse(f"/index/{ticker}", status_code=302)
     is_in_watchlist = ticker in get_watchlist_tickers()
 

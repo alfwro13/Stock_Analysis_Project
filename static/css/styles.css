@@ -307,6 +307,18 @@ details.settings-card.danger-zone > summary::after { color: #dc3545; }
 .live-refresh-status { font-size: 11px; color: #555; margin-top: 4px; display: flex; align-items: center; gap: 5px; }
 .pulse-dot { height: 8px; width: 8px; background-color: #00ffcc; border-radius: 50%; display: inline-block; margin-right: 5px; box-shadow: 0 0 5px #00ffcc; }
 .pulse-dot.offline { background-color: #ff4d4d; box-shadow: 0 0 5px #ff4d4d; }
+/* --- 9b. Markets Page --- */
+.markets-region-section { margin-bottom: 30px; }
+.markets-region-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.markets-region-header h3 { margin: 0; color: #4da6ff; }
+.markets-state-open { background-color: #00ffcc; color: #121212; }
+.markets-state-pre { background-color: #ffaa00; color: #121212; }
+.markets-state-closed { background-color: #555555; color: #e0e0e0; }
+.markets-tile-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+.macro-sparkline { width: 100%; height: 28px; margin: 4px 0; }
+.macro-sparkline polyline { fill: none; stroke-width: 2; }
+.macro-sparkline.positive polyline { stroke: #00ffcc; }
+.macro-sparkline.negative polyline { stroke: #ff4d4d; }
 .notification-list { display: flex; flex-direction: column; gap: 15px; }
 .notification-card { background-color: #1e1e1e; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); border-left: 4px solid #555; position: relative; }
 .notification-card.unread { border-left-color: #ffaa00; background-color: #262626; }
@@ -437,9 +449,8 @@ table.dataTable.display tbody tr.even > .sorting_1, table.dataTable.order-column
   .fullscreen-btn { display: none; }
 }
 @media (max-width: 768px) {
-  /* Macro cards: hide UK gilt + US 30Y yield; 4-per-row using explicit flex sizing */
-  .macro-card-link[data-ticker="UK10YG"],
-  .macro-card-link[data-ticker="^TYX"] { display: none; }
+  /* Macro cards: mobile visibility is now data-driven (market_ticker_registry.is_pulse_mobile),
+     applied per-card via inline style in macro_cards.js — this is just the 4-per-row fallback. */
   .macro-card-link { display: flex; flex: 0 0 calc(25% - 3px); max-width: calc(25% - 3px); }
   .macro-container { gap: 4px; }
   .macro-card { min-width: 0; width: 100%; padding: 6px 2px; }

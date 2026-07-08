@@ -100,6 +100,22 @@
             </div>
 
             <div class="term-box">
+                <span class="term-title">Dynamic View — "Follow the Sun" Ordering</span>
+                <p>The <a href="/markets">Markets page</a> can order its regional sections (Europe, US, Asia-Pacific, Commodities &amp; FX) two ways. <strong>Static view</strong> is a fixed order — Europe, then US, then Asia, then Commodities &amp; FX — that never changes. <strong>Dynamic view</strong> (the default) reorders those sections by which region's trading session is most relevant right now: at 5am UK time, Asia-Pacific ranks first while Europe (still closed) sits below it; by mid-morning UK time, Europe ranks first as its markets open; around UK lunchtime, the US moves to the top as New York opens. Commodities &amp; FX trade near-continuously, so in dynamic view that section always sits directly beneath whichever region currently ranks first, rather than being buried at the bottom.</p>
+                <p>The same dynamic-view concept is also available for the Market Pulse tiles shown on Portfolio, Watchlist, and Stock Detail pages (Settings → Markets &amp; Market Pulse) — off by default, so Market Pulse keeps its familiar fixed tile set unless you turn it on.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Session-Driven Region Ordering</span>
+                <p>Dynamic view's ordering isn't based on a fixed clock schedule — it's derived from whether each region's underlying exchanges are actually <strong>open</strong>, in <strong>pre-market</strong>, or <strong>closed</strong> right now, so it stays correct across Daylight Saving Time changes and (for NYSE/LSE) market holidays. A region with any open exchange always ranks above a region that's merely opening soon, which in turn ranks above one that's fully closed. When two regions are open at the same time — for example Europe and Asia during their morning overlap, or Europe and the US during the afternoon overlap — the region that opened <strong>most recently</strong> ranks first, since that's the session investors are most likely to be watching right at that moment.</p>
+            </div>
+
+            <div class="term-box">
+                <span class="term-title">Spot/Futures Auto-Swap</span>
+                <p>Some major indexes — the S&amp;P 500, Nasdaq 100, Dow Jones, Russell 2000, and Nikkei 225 — trade two ways: a <strong>cash/spot</strong> price only available while that exchange's regular session is open, and a <strong>futures</strong> contract that trades almost continuously, including outside regular hours. Rather than showing two separate tiles, the Markets page (and Market Pulse, if configured to show one of these) shows a single tile that automatically swaps to the futures price and label whenever the cash market is closed or in pre-market — this is what makes, for example, "S&amp;P 500 Futures" appear at UK lunchtime as New York's open approaches, without a separate futures section.</p>
+            </div>
+
+            <div class="term-box">
                 <span class="term-title">What Is a Portfolio?</span>
                 <p>A <strong>portfolio</strong> is your complete collection of investments — every stock, ETF, bond, and cash position you hold. The concept of portfolio management is about more than picking good individual stocks; it is about how all your holdings interact with each other to produce a combined risk and return profile.</p>
                 <p><strong>Diversification</strong> is the central principle: spreading holdings across different companies, sectors, geographies, and asset classes so that a single bad event does not devastate everything at once. When oil companies fall because of an oversupply shock, utility companies or gold holdings might hold steady or rise. This non-correlation between assets is what makes a diversified portfolio less volatile than any individual holding within it.</p>

@@ -2,12 +2,12 @@ import time
 import logging
 import threading
 from datetime import datetime, timezone
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import pandas as pd
 
 import notification_engine
 from config import load_config, HISTORICAL_DIR
-from database import get_connection, get_mutual_fund_tickers
+from database import get_connection, get_mutual_fund_tickers, get_ticker_registry
 from utils import normalize_ticker, is_daily_bar_still_forming
 from gilt_engine import GiltDataService
 from yahoo_engine import yahoo_engine
@@ -17,28 +17,65 @@ logger = logging.getLogger(__name__)
 
 _STALE_ALERT_THRESHOLD_SECONDS = 1800
 
-# UK10YG is registered directly below GBPUSD=X so its tile appears adjacent in the UI.
-INDEX_TICKERS: Dict[str, str] = {
-    "^FTSE": "UK FTSE 100",
-    "^FTMC": "UK FTSE 250",
-    "GBPUSD=X": "GBP/USD",
-    "BZ=F": "Brent Crude",
-    "UK10YG": "UK 10Y Gilt",
-    "^GSPC": "US S&P 500",
-    "^NDX": "US Nasdaq 100",
-    "^TYX": "US 30Y Yield",
-    "^TNX": "US 10Y Yield",
-    "DX-Y.NYB": "US Dollar Index"
-}
+# Sourced from market_ticker_registry (single source of truth — see AGENTS.md central-engine
+# rule) rather than a hardcoded dict, so the Markets page/Settings UI can add tickers with no
+# code change. Two accessors because the two historical uses of the old INDEX_TICKERS dict have
+# diverged in meaning now that the registry covers more than just Market Pulse's fixed tiles:
+#   - get_index_tickers(): every enabled registry ticker (name lookups, "is this one of our own
+#     tracked macro instruments" classification — e.g. the stale-alert exemption, the
+#     /stock/{ticker} -> /index/{ticker} redirect).
+#   - get_pulse_index_tickers(): only the is_pulse_tile=1 subset, ordered by pulse_sort_order —
+#     this is what actually renders as a static Market Pulse tile, preserving today's exact
+#     10-ticker set until markets_engine.select_pulse_tickers() adds dynamic-mode selection.
+_index_tickers_cache: Optional[Dict[str, str]] = None
+_pulse_index_tickers_cache: Optional[Dict[str, str]] = None
+
+
+def get_index_tickers() -> Dict[str, str]:
+    global _index_tickers_cache
+    if _index_tickers_cache is None:
+        try:
+            rows = get_ticker_registry(enabled_only=True)
+            _index_tickers_cache = {row["ticker"]: row["display_name"] for row in rows}
+        except Exception as e:
+            logger.error("[MARKET PULSE] Failed to load ticker registry: %s", e)
+            _index_tickers_cache = {}
+    return _index_tickers_cache
+
+
+def get_pulse_index_tickers() -> Dict[str, str]:
+    global _pulse_index_tickers_cache
+    if _pulse_index_tickers_cache is None:
+        try:
+            rows = get_ticker_registry(enabled_only=True)
+            pulse_rows = sorted((r for r in rows if r["is_pulse_tile"]), key=lambda r: r["pulse_sort_order"])
+            _pulse_index_tickers_cache = {row["ticker"]: row["display_name"] for row in pulse_rows}
+        except Exception as e:
+            logger.error("[MARKET PULSE] Failed to load pulse ticker registry: %s", e)
+            _pulse_index_tickers_cache = {}
+    return _pulse_index_tickers_cache
+
+
+def reload_ticker_registry() -> None:
+    """Cache-bust after any market_ticker_registry write (registry CRUD, Settings save)."""
+    global _index_tickers_cache, _pulse_index_tickers_cache
+    _index_tickers_cache = None
+    _pulse_index_tickers_cache = None
+
 
 # Non-blocking lock prevents duplicate concurrent fetches without a check-then-set race.
 _FETCH_LOCK = threading.Lock()
 
 # Live Yahoo marketState on these tracked index tickers stands in for exchange-holiday-aware
 # open/closed status, since time_engine's weekday+hours heuristic has no holiday calendar.
-_MARKET_STATUS_PROXY: Dict[str, str] = {"NYSE": "^GSPC", "LSE": "^FTSE"}
+_MARKET_STATUS_PROXY: Dict[str, str] = {
+    "NYSE": "^GSPC", "LSE": "^FTSE",
+    "XETRA": "^GDAXI", "TSE": "^N225", "HKEX": "^HSI",
+    "SSE": "000001.SS", "ASX": "^AXJO", "Euronext": "^FCHI",
+}
 _OPEN_MARKET_STATES = {"REGULAR"}
 _PRE_MARKET_STATES = {"PRE", "PREPRE"}
+_SPARKLINE_MAX_POINTS = 60
 
 
 _DISPLAY_STALE_FLOOR_SECONDS = 300
@@ -123,6 +160,27 @@ def proxy_tickers_needing_refresh(max_age_seconds: int = 300) -> List[str]:
     ]
 
 
+def get_intraday_points(ticker: str, max_points: int = _SPARKLINE_MAX_POINTS) -> List[List[float]]:
+    """Today's-session sparkline points for the Markets page, written by fetch_and_save_pulse.
+    Returns [[ts, price], ...] ordered oldest-first; empty when the ticker has never been fetched."""
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT ts, price FROM market_pulse_sparkline WHERE ticker = ? ORDER BY ts DESC LIMIT ?",
+            (ticker, max_points),
+        )
+        rows = cursor.fetchall()
+        return [[row["ts"], row["price"]] for row in reversed(rows)]
+    except Exception as e:
+        logger.error("[MARKET PULSE] Failed to read sparkline for %s: %s", ticker, e)
+        return []
+    finally:
+        if conn:
+            conn.close()
+
+
 def get_all_cached_pulse() -> Dict[str, Dict[str, Any]]:
     """Returns all pulse data from DB for Jinja template pre-rendering."""
     conn = get_connection()
@@ -154,6 +212,28 @@ def get_all_cached_pulse() -> Dict[str, Dict[str, Any]]:
     return cache
 
 
+def _select_active_pulse_tickers(config_data: dict) -> Dict[str, str]:
+    """Static mode: today's is_pulse_tile picked list. Dynamic mode: markets_engine's own
+    region-ordering logic, so Market Pulse can mirror what the Markets page currently shows.
+    Both modes are capped by MARKET_PULSE_DESKTOP_COUNT (parameterizing the historically
+    hardcoded 10-tile default). Deferred import of markets_engine avoids a circular import —
+    markets_engine imports market_pulse for is_exchange_open/get_cached_pulse_from_db."""
+    ui_prefs = config_data.get("UI_PREFERENCES", {})
+    desktop_count = int(ui_prefs.get("MARKET_PULSE_DESKTOP_COUNT", 10))
+    if not ui_prefs.get("MARKET_PULSE_DYNAMIC", False):
+        return dict(list(get_pulse_index_tickers().items())[:desktop_count])
+
+    try:
+        import markets_engine
+        mobile_count = int(ui_prefs.get("MARKET_PULSE_MOBILE_COUNT", 8))
+        selection = markets_engine.select_pulse_tickers(dynamic=True, desktop_count=desktop_count, mobile_count=mobile_count)
+        index_tickers = get_index_tickers()
+        return {t: index_tickers.get(t, t) for t in selection["desktop"]}
+    except Exception as e:
+        logger.error("[MARKET PULSE] Dynamic ticker selection failed, falling back to static: %s", e)
+        return dict(list(get_pulse_index_tickers().items())[:desktop_count])
+
+
 def get_cached_pulse_from_db(asset_tickers: List[str], refresh_rate: int) -> Dict[str, List[Dict[str, Any]]]:
     """Returns cached pulse prices (with staleness flag + latest FinBERT sentiment) split into indexes vs. assets."""
     if asset_tickers is None:
@@ -164,13 +244,15 @@ def get_cached_pulse_from_db(asset_tickers: List[str], refresh_rate: int) -> Dic
     config_data = load_config()
     ignored_tickers = {normalize_ticker(t) for t in config_data.get("IGNORED_TICKERS", [])}
 
-    seen: set = set(INDEX_TICKERS.keys())
+    pulse_index_tickers = _select_active_pulse_tickers(config_data)
+    registry_by_ticker = {r["ticker"]: r for r in get_ticker_registry(enabled_only=True)}
+    seen: set = set(pulse_index_tickers.keys())
     requested_assets: List[str] = []
     for t in asset_tickers:
         if t not in seen and t not in ignored_tickers:
             seen.add(t)
             requested_assets.append(t)
-    all_tickers: List[str] = list(INDEX_TICKERS.keys()) + requested_assets
+    all_tickers: List[str] = list(pulse_index_tickers.keys()) + requested_assets
     
     conn = get_connection()
     rows: List[Any] = []
@@ -213,6 +295,12 @@ def get_cached_pulse_from_db(asset_tickers: List[str], refresh_rate: int) -> Dic
     db_map: Dict[str, Any] = {row['ticker']: row for row in rows}
 
     for t in all_tickers:
+        registry_row = registry_by_ticker.get(t)
+        invert_color = bool(registry_row["invert_color"]) if registry_row else False
+        asset_type = registry_row["asset_type"] if registry_row else None
+        is_pulse_mobile = bool(registry_row["is_pulse_mobile"]) if registry_row else True
+        currency = registry_row["currency"] if registry_row else None
+
         if t in db_map:
             row = db_map[t]
             age = current_time - row['last_updated']
@@ -228,22 +316,30 @@ def get_cached_pulse_from_db(asset_tickers: List[str], refresh_rate: int) -> Dic
                 "is_positive": bool(row['is_positive']),
                 "is_stale": is_stale,
                 "needs_refresh": needs_refresh,
-                "sentiment_score": sentiment_scores.get(t, None)
+                "sentiment_score": sentiment_scores.get(t, None),
+                "invert_color": invert_color,
+                "asset_type": asset_type,
+                "is_pulse_mobile": is_pulse_mobile,
+                "currency": currency,
             }
         else:
             data_obj = {
                 "ticker": t,
-                "name": INDEX_TICKERS.get(t, t),
+                "name": pulse_index_tickers.get(t, t),
                 "price": 0.0,
                 "change_pts": 0.0,
                 "change_pct": 0.0,
                 "is_positive": True,
                 "is_stale": True,
                 "needs_refresh": True,
-                "sentiment_score": sentiment_scores.get(t, None)
+                "sentiment_score": sentiment_scores.get(t, None),
+                "invert_color": invert_color,
+                "asset_type": asset_type,
+                "is_pulse_mobile": is_pulse_mobile,
+                "currency": currency,
             }
-            
-        if t in INDEX_TICKERS:
+
+        if t in pulse_index_tickers:
             results["indexes"].append(data_obj)
         else:
             results["assets"].append(data_obj)
@@ -287,7 +383,7 @@ def _maybe_alert_stale_ticker(ticker: str, prior_last_updated: float, now: float
     Yahoo Finance data gap) just sits silently stale forever with only a log line no one sees.
     Checked against the cache row's age *before* this call's own fetch attempt, so a ticker that
     has simply never been fetched yet (age 0) doesn't false-positive on its very first try."""
-    if ticker in INDEX_TICKERS:
+    if ticker in get_index_tickers():
         return
     if prior_last_updated <= 0 or (now - prior_last_updated) <= _STALE_ALERT_THRESHOLD_SECONDS:
         return
@@ -323,6 +419,7 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
 
     conn = None
     try:
+        index_tickers = get_index_tickers()
         handle_gilt: bool = False
         if "UK10YG" in tickers_to_fetch:
             handle_gilt = True
@@ -365,7 +462,7 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
                 if not t_live.empty:
                     t_live = t_live.dropna(subset=['Close'])
 
-                if t_daily.empty and ticker not in INDEX_TICKERS:
+                if t_daily.empty and ticker not in index_tickers:
                     fb = yahoo_engine.get_single_ticker_history(ticker, period="5d")
                     if fb is not None and not fb.empty:
                         fb = fb.dropna(subset=['Close'])
@@ -388,7 +485,7 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
                             (ticker,)
                         )
                     else:
-                        name = INDEX_TICKERS.get(ticker, ticker)
+                        name = index_tickers.get(ticker, ticker)
                         cursor.execute(
                             "INSERT INTO market_pulse_cache (ticker, name, price, change_pts, change_pct, is_positive, last_updated) VALUES (?, ?, ?, ?, ?, ?, ?)",
                             (ticker, name, 0.0, 0.0, 0.0, 1, 0)
@@ -413,7 +510,7 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
                     logger.warning("Skipping %s: implausible daily change %.1f%% (possible split mismatch)", ticker, change_pct)
                     continue
 
-                name: str = INDEX_TICKERS.get(ticker, ticker)
+                name: str = index_tickers.get(ticker, ticker)
                 is_positive: int = int(change_pts >= 0)
 
                 cursor.execute('''
@@ -428,6 +525,23 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
                         is_positive = excluded.is_positive,
                         last_updated = excluded.last_updated
                 ''', (ticker, name, current_price, change_pts, change_pct, is_positive, current_time))
+
+                # Full replace, not append — the mini sparkline is inherently "today's session".
+                # Skipped when t_live is empty (market closed) so the last session's line persists
+                # instead of being wiped, per the Markets page's "flat/last-known when closed" spec.
+                if not t_live.empty:
+                    try:
+                        cursor.execute("DELETE FROM market_pulse_sparkline WHERE ticker = ?", (ticker,))
+                        sparkline_series = t_live['Close'].dropna()
+                        if len(sparkline_series) > _SPARKLINE_MAX_POINTS:
+                            step = len(sparkline_series) / _SPARKLINE_MAX_POINTS
+                            sparkline_series = sparkline_series.iloc[[int(i * step) for i in range(_SPARKLINE_MAX_POINTS)]]
+                        cursor.executemany(
+                            "INSERT INTO market_pulse_sparkline (ticker, ts, price) VALUES (?, ?, ?)",
+                            [(ticker, idx.timestamp(), float(val)) for idx, val in sparkline_series.items()],
+                        )
+                    except Exception as e:
+                        logger.error("[MARKET PULSE] Failed to write sparkline for %s: %s", ticker, e)
 
                 if ticker in _MARKET_STATUS_PROXY.values():
                     try:
@@ -474,7 +588,7 @@ def fetch_and_save_pulse(tickers_to_fetch: List[str]) -> None:
                     gilt_change_pts: float = live_gilt_yield - gilt_prev_close
                     gilt_change_pct: float = (gilt_change_pts / gilt_prev_close) * 100.0 if gilt_prev_close != 0.0 else 0.0
                     
-                    gilt_name: str = INDEX_TICKERS.get("UK10YG", "UK 10Y Gilt")
+                    gilt_name: str = index_tickers.get("UK10YG", "UK 10Y Gilt")
                     gilt_is_positive: int = int(gilt_change_pts >= 0)
                     
                     cursor.execute('''

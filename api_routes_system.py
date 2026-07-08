@@ -23,10 +23,11 @@ from config import (
     INTRADAY_DIR, PORTFOLIO_PATH, WATCHLIST_PATH, load_config,
     update_config_atomic,
 )
-from database import get_connection
+from database import get_connection, get_ticker_registry, get_ticker_registry_row, upsert_ticker_registry_row, soft_delete_ticker_registry_row
 from ghostfolio_sync import purge_ghostfolio_files
 from log_config import configure_file_logging as _configure_file_logging
-from market_pulse import get_cached_pulse_from_db, fetch_and_save_pulse, is_exchange_open, proxy_tickers_needing_refresh
+from market_pulse import get_cached_pulse_from_db, fetch_and_save_pulse, is_exchange_open, proxy_tickers_needing_refresh, reload_ticker_registry
+import markets_engine
 from notification_engine import notify
 from scheduler_engine import (
     build_workflow_graph, detect_workflow_conflicts, get_all_job_last_runs,
@@ -49,6 +50,22 @@ system_router = APIRouter()
 class PulseRequest(BaseModel):
     tickers: Optional[List[str]] = []
 
+class TickerRegistryBody(BaseModel):
+    ticker: Optional[str] = None
+    display_name: str
+    region: str
+    asset_type: str
+    exchange: Optional[str] = None
+    currency: str = "USD"
+    future_ticker: Optional[str] = None
+    future_display_name: Optional[str] = None
+    invert_color: bool = False
+    is_pulse_tile: bool = False
+    pulse_sort_order: int = 0
+    is_pulse_mobile: bool = True
+    sort_order: int = 0
+    context_blurb: Optional[str] = None
+
 class IPv6TestRequest(BaseModel):
     ipv6_address: str
 
@@ -62,6 +79,9 @@ class UIPreferencesConfig(BaseModel):
     LIVE_DETAILS: Optional[bool] = None
     REFRESH_RATE: Optional[int] = None
     FREETRADE_ONLY_MODE: Optional[bool] = None
+    MARKET_PULSE_DYNAMIC: Optional[bool] = None
+    MARKET_PULSE_DESKTOP_COUNT: Optional[int] = None
+    MARKET_PULSE_MOBILE_COUNT: Optional[int] = None
     FONT_SIZE_NAV: Optional[int] = None
     FONT_SIZE_TABLE: Optional[int] = None
     FONT_SIZE_DT_TABLE: Optional[int] = None
@@ -273,6 +293,78 @@ async def api_market_pulse_get(background_tasks: BackgroundTasks):
     if needs_fetch:
         background_tasks.add_task(fetch_and_save_pulse, needs_fetch)
     return JSONResponse(content={"status": "success", "data": pulse_data.get("indexes", [])})
+
+
+@system_router.get("/markets")
+async def api_markets(background_tasks: BackgroundTasks, view: str = "dynamic"):
+    payload = markets_engine.assemble_markets_payload(view)
+    needs_fetch = [
+        tile["ticker"]
+        for region in payload["regions"]
+        for tile in region["tiles"]
+        if tile.pop("needs_refresh", False)
+    ]
+    if needs_fetch:
+        background_tasks.add_task(fetch_and_save_pulse, needs_fetch)
+    return JSONResponse(content={"status": "success", "data": payload})
+
+
+@system_router.get("/system/market-status/all")
+async def api_market_status_all(background_tasks: BackgroundTasks):
+    """Net-new, generalized N-exchange market status — does NOT change the existing
+    /system/market-status response (that contract is consumed as-is by the Home Assistant
+    integration; see AGENTS.md rule on additive-only changes to that endpoint)."""
+    stale_proxies = proxy_tickers_needing_refresh()
+    if stale_proxies:
+        background_tasks.add_task(fetch_and_save_pulse, stale_proxies)
+    exchanges = sorted({r["exchange"] for r in get_ticker_registry(enabled_only=True) if r["exchange"]})
+    return JSONResponse(content={
+        "status": "success",
+        "exchanges": {ex: is_exchange_open(ex) for ex in exchanges},
+        "regions": {
+            region: markets_engine.get_region_state(region)["state"]
+            for region in ("US", "Europe", "Asia")
+        },
+    })
+
+
+@system_router.get("/markets/registry")
+async def api_markets_registry_list():
+    return JSONResponse(content={"status": "success", "registry": get_ticker_registry(enabled_only=False)})
+
+
+@system_router.post("/markets/registry")
+async def api_markets_registry_create(body: TickerRegistryBody):
+    ticker = (body.ticker or "").strip()
+    if not ticker:
+        return JSONResponse(status_code=422, content={"status": "error", "message": "ticker is required."})
+    if get_ticker_registry_row(ticker) is not None:
+        return JSONResponse(status_code=409, content={"status": "error", "message": f"{ticker} already exists in the registry."})
+    ok = upsert_ticker_registry_row(ticker=ticker, **body.model_dump(exclude={"ticker"}))
+    if not ok:
+        return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to save ticker."})
+    reload_ticker_registry()
+    return JSONResponse(content={"status": "success", "message": f"{ticker} added to the Markets registry."})
+
+
+@system_router.put("/markets/registry/{ticker}")
+async def api_markets_registry_update(ticker: str, body: TickerRegistryBody):
+    if get_ticker_registry_row(ticker) is None:
+        return JSONResponse(status_code=404, content={"status": "error", "message": f"{ticker} not found in the registry."})
+    ok = upsert_ticker_registry_row(ticker=ticker, **body.model_dump(exclude={"ticker"}))
+    if not ok:
+        return JSONResponse(status_code=500, content={"status": "error", "message": "Failed to update ticker."})
+    reload_ticker_registry()
+    return JSONResponse(content={"status": "success", "message": f"{ticker} updated."})
+
+
+@system_router.delete("/markets/registry/{ticker}")
+async def api_markets_registry_delete(ticker: str):
+    if get_ticker_registry_row(ticker) is None:
+        return JSONResponse(status_code=404, content={"status": "error", "message": f"{ticker} not found in the registry."})
+    soft_delete_ticker_registry_row(ticker)
+    reload_ticker_registry()
+    return JSONResponse(content={"status": "success", "message": f"{ticker} removed from the Markets registry."})
 
 @system_router.post("/test-sentiment-alert")
 async def test_sentiment_alert():

@@ -1,0 +1,150 @@
+# Markets Page — Technical Documentation
+
+**Project:** Stock Analysis Quantitative Trading Terminal
+**Engines:** `markets_engine.py` (region/session logic, tile assembly), `market_pulse.py` (raw fetch/cache layer, ticker registry accessors)
+**Page:** `/markets` (`templates/markets.html`, `static/js/markets.js`)
+**API Endpoints:** `GET /api/markets`, `GET /api/system/market-status/all`, `GET|POST /api/markets/registry`, `PUT|DELETE /api/markets/registry/{ticker}`
+**Last Updated:** 2026-07-08
+
+---
+
+## Table of Contents
+
+1. [Overview](#1-overview)
+2. [Ticker Registry](#2-ticker-registry)
+3. [Region/Session Classification](#3-regionsession-classification)
+4. [Dynamic Ordering Algorithm](#4-dynamic-ordering-algorithm)
+5. [Static View](#5-static-view)
+6. [Spot/Future Auto-Swap](#6-spotfuture-auto-swap)
+7. [Sparkline Persistence](#7-sparkline-persistence)
+8. [Market Pulse Integration](#8-market-pulse-integration)
+9. [API Endpoints](#9-api-endpoints)
+10. [Settings](#10-settings)
+11. [Known Limitations & Judgment Calls](#11-known-limitations--judgment-calls)
+
+---
+
+## 1. Overview
+
+The Markets page shows global indexes, commodities, and FX ordered by which regional trading session is most relevant right now — "follow the sun." At 5am UK time, Asia-Pacific indexes rank first (Europe below, still closed); mid-morning UK, Europe ranks first with the US market approaching; around UK lunchtime, the US moves to the top as NYSE opens. A Static view (Europe → US → Asia → Commodities & FX, always) is available as a toggle for users who don't want the ordering to move.
+
+Every tile shows: ticker/index name, a mini intraday sparkline, price + currency, % change, and a sentiment badge (reusing the FinBERT sentiment already computed for Market Pulse). Clicking a tile opens `/index/{ticker}`, exactly like Market Pulse tiles do today.
+
+The feature reworks Market Pulse (the widget on Portfolio/Watchlist/Stock Detail) to read from the same ticker registry, with an optional dynamic mode of its own — see §8.
+
+---
+
+## 2. Ticker Registry
+
+`market_ticker_registry` (see `assets/db_schema_and_architecture.md`) is the single source of truth for every tracked index/commodity/FX ticker — it replaced the old hardcoded `market_pulse.INDEX_TICKERS` dict. 25 rows are seeded on `init_db()`, covering:
+
+- **Commodities/FX** (no exchange gating): Gold, Silver, Copper, WTI Crude, Brent Crude, US Dollar Index, GBP/USD, EUR/USD.
+- **Asia**: Nikkei 225 (+ future), Hang Seng, Shanghai Composite, S&P/ASX 200.
+- **Europe**: Euro Stoxx 50, FTSE 100, FTSE 250, DAX, CAC 40, UK 10Y Gilt.
+- **US**: S&P 500 (+ future), Nasdaq 100 (+ future), Dow Jones (+ future), Russell 2000 (+ future), VIX, 30Y/10Y Treasury yields.
+
+Editable from Settings → Markets & Market Pulse without a restart — a write immediately busts `market_pulse`'s in-process ticker cache (`market_pulse.reload_ticker_registry()`).
+
+---
+
+## 3. Region/Session Classification
+
+`markets_engine.get_exchange_state(exchange) -> "open"|"pre"|"closed"` is built on `market_pulse.is_exchange_open()` (holiday-aware via a Yahoo `marketState` proxy ticker for 8 exchanges — NYSE, LSE, XETRA, TSE, HKEX, SSE, ASX, Euronext — falling back to `time_engine`'s weekday+hours heuristic for anything else).
+
+`markets_engine.get_region_exchanges(region)` is **derived from the registry** (`{row.exchange for row in registry if row.region == region}`), not a second hardcoded map — adding a new exchange to a region via Settings changes region membership with zero code change.
+
+`markets_engine.get_region_state(region)` aggregates the constituent exchanges' states:
+- `"open"` if any exchange is open.
+- `"pre"` if none are open but at least one is in its pre-market window (only NYSE has a seeded `premarket_open`, so this only ever fires for the US region today).
+- `"closed"` otherwise.
+
+It also computes a `recency_seconds` tie-break value: seconds since the most-recently-opened constituent opened (open state), or seconds until the soonest constituent opens (pre/closed state). `Commodities_FX` always reports `{"state": "open", "recency_seconds": 0}` — it has no exchange, per §11.
+
+---
+
+## 4. Dynamic Ordering Algorithm
+
+`markets_engine.dynamic_region_order() -> List[str]`:
+
+1. Rank `US`, `Europe`, `Asia` into tiers: `open` > `pre` > `closed`.
+2. Within the open tier, sort by `recency_seconds` ascending — **the most recently opened region ranks first.** This is the confirmed tie-break rule for the two real overlap windows:
+   - Europe/Asia (~07:00–08:00 UTC): the instant XETRA/LSE open while HKEX/SSE are still open, Europe (freshly opened) outranks Asia (open for hours).
+   - Europe/US (~14:30–16:30 UTC): the instant NYSE opens, US outranks a Europe session that's been running since the morning.
+3. Within the closed tier, sort by `recency_seconds` (time-until-open) ascending — the soonest-to-open closed region ranks just below the open tier. This reproduces "Europe below Asia" at 5am UK: Asia open, Europe closed-but-soon, US closed-and-further.
+4. `Commodities_FX` is inserted at index 1 — always the section directly beneath whichever region currently ranks first. Commodities/FX trade near-continuously and matter regardless of which regional equity session is live, so this keeps them consistently visible near the top rather than buried at the bottom (as in the static view) or literally pinned at rank 0 (which would bury the genuinely time-sensitive "follow the sun" signal the dynamic view exists to surface).
+
+---
+
+## 5. Static View
+
+`markets_engine.static_region_order()` is a fixed `["Europe", "US", "Asia", "Commodities_FX"]`, ignoring all session state — exactly the user's specified always-on fallback order.
+
+---
+
+## 6. Spot/Future Auto-Swap
+
+Five registry rows carry a paired front-month future: S&P 500 (`^GSPC`/`ES=F`), Nasdaq 100 (`^NDX`/`NQ=F`), Dow Jones (`^DJI`/`YM=F`), Russell 2000 (`^RUT`/`RTY=F`), and Nikkei 225 (`^N225`/`NIY=F`). Each gets **one tile**, not two.
+
+`markets_engine.resolve_tile(row) -> (ticker, display_name, is_future)` is gated on the row's **own** `exchange` column, not aggregated region state (precise per-ticker, avoids ambiguity when a region straddles an open/closed tier boundary):
+
+- Spot ticker/name while `market_pulse.is_exchange_open(row.exchange, include_premarket=False)` is `True` (strict regular session).
+- Future ticker/name during pre-market **and** while fully closed — futures are the more informative pre-market instrument; cash pre-market prints are thin to nonexistent.
+
+This is what produces "US futures shown at UK lunchtime" without a separate futures section: the S&P 500/Nasdaq/Dow/Russell tiles on the Markets page (and, if selected, on Market Pulse) simply swap to their futures ticker once NYSE's regular session ends and until it reopens.
+
+A direct hit on a future ticker's own `/index/{ticker}` URL (e.g. `/index/ES=F`) redirects (302) to its paired spot ticker's detail page — one detail page per index.
+
+---
+
+## 7. Sparkline Persistence
+
+`market_pulse_sparkline` stores today's-session intraday points per ticker. `market_pulse.fetch_and_save_pulse()` already fetches intraday data for its own price-update purpose; on each cycle with fresh data, it down-samples to ~50-60 points and does a full `DELETE` + re-`INSERT` for that ticker (not an append — the sparkline is inherently "today's session"). When the intraday fetch returns empty (market closed), the write step is skipped entirely for that ticker, so the last session's points persist untouched — this produces the flat/last-known line on a closed-market tile, with no extra branching needed.
+
+Rendering is a lightweight inline SVG `<polyline>` built client-side from the small point array already in the `GET /api/markets` response (`static/js/markets.js:marketsSparklineSVG()`) — not a Plotly instance per tile. At ~27+ tiles rendering simultaneously, per-tile Plotly overhead (DOM weight, JS init cost) doesn't scale, whereas an SVG polyline is effectively free. Trade-off: no hover tooltip/zoom on the sparkline — acceptable, since the tile links to the real Plotly intraday chart on `/index/{ticker}`.
+
+---
+
+## 8. Market Pulse Integration
+
+Market Pulse (the widget on Portfolio/Watchlist/Stock Detail, `templates/macro_cards.html` + `static/js/macro_cards.js`) was reworked to read from the same registry rather than its own hardcoded ticker/color/mobile-visibility lists:
+
+- `invert_color` (rising = risk-off styling) and `asset_type === 'FX'` (neutral currency-pair styling) now come from the registry via additive fields on `/api/market-pulse`'s response, replacing the old hardcoded `invertedTickers`/`isForex` arrays in `macro_cards.js`.
+- Mobile tile visibility is now `is_pulse_mobile`-driven (a registry column), replacing the old hardcoded `['UK10YG', '^TYX']` exclusion list.
+- `UI_PREFERENCES.MARKET_PULSE_DYNAMIC` (default `false`) toggles Market Pulse itself into dynamic mode: `market_pulse._select_active_pulse_tickers()` calls `markets_engine.select_pulse_tickers(dynamic=True, ...)`, flattening `dynamic_region_order()`'s tile ordering exactly like the Markets page. Static mode (default) keeps today's exact `is_pulse_tile=1` picked list, ordered by `pulse_sort_order`.
+- `UI_PREFERENCES.MARKET_PULSE_DESKTOP_COUNT`/`MARKET_PULSE_MOBILE_COUNT` (default 10/8) parameterize the previously hardcoded tile counts. Mobile is always a sub-filter of the desktop selection (`is_pulse_mobile=1` rows, first N of them, server order preserved) — never an independently-ranked list, so desktop and mobile never disagree about which tickers are "in scope" today.
+
+No sparklines were added to Market Pulse tiles — kept Markets-page-only, to minimize regression risk on the already-proven widget embedded on three pages.
+
+---
+
+## 9. API Endpoints
+
+See `assets/api_reference.md` §24 (Markets) for full request/response shapes. Summary:
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/markets?view=dynamic\|static` | Full tile payload for the Markets page |
+| `GET /api/system/market-status/all` | Net-new, all-exchanges status (does not touch the existing 2-exchange `/system/market-status` HA contract) |
+| `GET /api/markets/registry` | List all registry rows (Settings UI) |
+| `POST /api/markets/registry` | Create a registry row |
+| `PUT /api/markets/registry/{ticker}` | Update a registry row |
+| `DELETE /api/markets/registry/{ticker}` | Soft-disable a registry row |
+
+Refresh is page-traffic-driven, exactly like Market Pulse today — `GET /api/markets` computes `needs_refresh` per tile and fires a `fetch_and_save_pulse()` background task inline. No new scheduler job; `scheduler_manifest.JOB_GRAPH["markets_page_source"]` is a `non_job` entry for Workflow Monitor visibility.
+
+---
+
+## 10. Settings
+
+Settings → Markets & Market Pulse (`templates/settings/_markets.html`, `static/js/settings_markets.js`):
+- Market Pulse Tile Selection: dynamic-view toggle, desktop/mobile tile counts (saved with the rest of the settings form).
+- Ticker Registry: add/edit/delete rows, mirroring the ETF Predictor CRUD's structural pattern (inline edit-toggle per row, an inline "+ Add Ticker" form) since no prior "structured add/edit/remove list" widget existed in Settings for this shape of data.
+
+---
+
+## 11. Known Limitations & Judgment Calls
+
+- **Commodities/FX have no session-hours model.** None of Gold/Silver/Copper/WTI/Brent/DXY/GBPUSD/EURUSD map cleanly to a single exchange in `time_engine.EXCHANGE_HOURS` (COMEX/NYMEX/Globex/FX aren't modeled), so these rows have `exchange = NULL` and are always considered "open" for fetch/display purposes. A future refinement could add real Globex/FX session hours if genuine weekend/maintenance-window awareness is wanted.
+- **Euro Stoxx 50 (`^STOXX50E`) is gated on the `Euronext` exchange** as a pragmatic approximation — it's a pan-eurozone index traded via Eurex, which has no dedicated entry in `exchange_hours.json`.
+- **Only NYSE and LSE are genuinely holiday-aware.** The other 6 proxy exchanges (XETRA, TSE, HKEX, SSE, ASX, Euronext) fall back to `time_engine`'s weekday+hours heuristic, which has no holiday calendar.
+- **The "most recently opened ranks first" tie-break** is a design choice, not a law of markets — it prioritizes "what's newly actionable" over "what's been open longest." Confirmed with the user during design; documented here in case a future session wants to revisit it.

@@ -13,6 +13,7 @@ a refactor.
 
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -154,6 +155,79 @@ def test_tools_page_loads(client):
     _assert_page_ok(client, "/tools", label="Tools")
 
 
+@pytest.mark.pages
+def test_markets_page_loads(client):
+    """GET /markets must load the Markets page without a server error."""
+    _assert_page_ok(client, "/markets", label="Markets")
+
+
+@pytest.mark.pages
+def test_markets_page_defaults_to_dynamic_view_with_no_cookie(client):
+    resp = client.get("/markets")
+    assert resp.status_code == 200
+    assert 'window.MARKETS_DEFAULT_VIEW = "dynamic"' in resp.text
+
+
+@pytest.mark.pages
+def test_markets_page_respects_static_view_cookie(client):
+    resp = client.get("/markets", cookies={"markets_view": "static"})
+    assert resp.status_code == 200
+    assert 'window.MARKETS_DEFAULT_VIEW = "static"' in resp.text
+
+
+@pytest.mark.pages
+def test_markets_page_rejects_invalid_view_cookie(client):
+    resp = client.get("/markets", cookies={"markets_view": "bogus"})
+    assert resp.status_code == 200
+    assert 'window.MARKETS_DEFAULT_VIEW = "dynamic"' in resp.text
+
+
+# ── Index Detail (Markets page registry) ────────────────────────────────────────
+
+@pytest.mark.pages
+def test_index_detail_future_ticker_redirects_to_spot(client):
+    """A direct hit on a future ticker's own URL redirects to its paired spot ticker's page —
+    one detail page per index, not one per instrument."""
+    resp = client.get("/index/ES=F", follow_redirects=False)
+    assert resp.status_code == 302
+    assert resp.headers["location"] == "/index/%5EGSPC"
+
+
+@pytest.mark.pages
+def test_index_detail_unknown_ticker_does_not_crash(client):
+    """A ticker with no registry row at all (not spot, not a paired future) must not 500."""
+    resp = client.get("/index/NOT_A_REAL_TICKER")
+    assert resp.status_code == 200
+    assert "NOT_A_REAL_TICKER" in resp.text
+
+
+@pytest.mark.pages
+def test_index_detail_new_ticker_shows_no_historical_data_placeholder(client):
+    """A newly-seeded ticker with no baseline_parquet must show the existing placeholder,
+    not crash — confirmed no new bootstrap code path is needed."""
+    resp = client.get("/index/%5EAXJO")
+    assert resp.status_code == 200
+    assert "No historical data yet" in resp.text
+
+
+@pytest.mark.pages
+def test_index_detail_shows_futures_banner_when_cash_market_closed(client):
+    with patch("page_routes_macro.markets_engine.resolve_tile", return_value=("ES=F", "S&P 500 Futures", True)):
+        resp = client.get("/index/%5EGSPC")
+    assert resp.status_code == 200
+    assert "Currently showing" in resp.text
+    assert "(ES=F)" in resp.text
+    assert "cash market closed" in resp.text
+
+
+@pytest.mark.pages
+def test_index_detail_no_futures_banner_when_cash_market_open(client):
+    with patch("page_routes_macro.markets_engine.resolve_tile", return_value=("^GSPC", "US S&P 500", False)):
+        resp = client.get("/index/%5EGSPC")
+    assert resp.status_code == 200
+    assert "cash market closed" not in resp.text
+
+
 # ── Stock Detail ──────────────────────────────────────────────────────────────
 
 @pytest.mark.pages
@@ -253,6 +327,9 @@ def test_no_page_route_returns_500(client):
         ("/fx-drag",            "FX Drag Analyzer"),
         ("/monte-carlo",        "Monte Carlo Wealth Simulator"),
         ("/index/%5EGSPC",      "Index Detail (S&P 500)"),
+        ("/index/%5EAXJO",      "Index Detail (ASX 200, no baseline parquet)"),
+        ("/index/000001.SS",    "Index Detail (Shanghai Composite)"),
+        ("/markets",            "Markets"),
         ("/login",              "Login"),
         ("/market-regime",      "Market Regime (HMM)"),
         ("/score-history",      "Score History"),

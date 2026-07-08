@@ -1,0 +1,113 @@
+            <details class="settings-card" id="markets-registry-card">
+                <summary>🌅 Markets &amp; Market Pulse</summary>
+                <p class="settings-desc">
+                    Configure the <a href="/markets">Markets page</a> and the Market Pulse widget shown on
+                    Portfolio, Watchlist, and Stock Detail pages. Both read from the same ticker registry below.
+                </p>
+
+                <div class="settings-panel border-left-cyan" id="market-pulse-config-section">
+                    <h4 class="settings-panel-header text-cyan">Market Pulse Tile Selection</h4>
+                    <div class="checkbox-group mb-10">
+                        <input type="checkbox" id="MARKET_PULSE_DYNAMIC" {% if config.UI_PREFERENCES.MARKET_PULSE_DYNAMIC %}checked{% endif %}>
+                        <label for="MARKET_PULSE_DYNAMIC">Dynamic view — auto-show what's relevant right now (mirrors the Markets page's "follow the sun" ordering) instead of a fixed picked list</label>
+                    </div>
+                    <div class="flex-gap-15 align-end">
+                        <div class="form-group flex-1 mb-0 min-w-140">
+                            <label>Desktop tile count</label>
+                            <input type="number" id="MARKET_PULSE_DESKTOP_COUNT" class="form-control"
+                                value="{{ config.UI_PREFERENCES.MARKET_PULSE_DESKTOP_COUNT | default(10) }}"
+                                min="1" max="30" step="1">
+                        </div>
+                        <div class="form-group flex-1 mb-0 min-w-140">
+                            <label>Mobile tile count</label>
+                            <input type="number" id="MARKET_PULSE_MOBILE_COUNT" class="form-control"
+                                value="{{ config.UI_PREFERENCES.MARKET_PULSE_MOBILE_COUNT | default(8) }}"
+                                min="1" max="30" step="1">
+                        </div>
+                    </div>
+                    <p class="settings-desc-sm mt-10">Saved with the rest of this form via the "Save &amp; Apply System Settings" button below.</p>
+                </div>
+
+                <div class="settings-panel border-left-purple" id="markets-registry-section">
+                    <h4 class="settings-panel-header text-purple">Ticker Registry</h4>
+                    <p class="settings-desc-sm">Every index, commodity, and FX instrument tracked by the Markets page and Market Pulse. Add a ticker here to make it available in both places immediately — no restart needed.</p>
+
+                    <div id="markets-registry-list" class="mb-15">
+                        <p class="text-muted text-sm">Loading...</p>
+                    </div>
+
+                    <button type="button" class="btn btn-primary mt-0" onclick="toggleAddRegistryForm()">+ Add Ticker</button>
+
+                    <div id="add-registry-form" class="d-none etf-add-form">
+                        <h5 class="etf-add-form-title">New Registry Ticker</h5>
+                        <div class="flex-gap-15">
+                            <div class="form-group flex-1 mb-0">
+                                <label>Ticker (Yahoo Finance symbol)</label>
+                                <input type="text" id="reg-new-ticker" class="form-control input-uppercase" placeholder="e.g. ^N225">
+                            </div>
+                            <div class="form-group flex-1 mb-0">
+                                <label>Display Name</label>
+                                <input type="text" id="reg-new-display-name" class="form-control" placeholder="e.g. Nikkei 225">
+                            </div>
+                        </div>
+                        <div class="flex-gap-15 mt-10">
+                            <div class="form-group flex-1 mb-0">
+                                <label>Region</label>
+                                <select id="reg-new-region" class="form-control">
+                                    <option value="Europe">Europe</option>
+                                    <option value="US">US</option>
+                                    <option value="Asia">Asia</option>
+                                    <option value="Commodities_FX">Commodities &amp; FX</option>
+                                </select>
+                            </div>
+                            <div class="form-group flex-1 mb-0">
+                                <label>Asset Type</label>
+                                <select id="reg-new-asset-type" class="form-control">
+                                    <option value="Index">Index</option>
+                                    <option value="Commodity">Commodity</option>
+                                    <option value="FX">FX</option>
+                                    <option value="Rate">Rate</option>
+                                    <option value="Volatility">Volatility</option>
+                                </select>
+                            </div>
+                            <div class="form-group flex-1 mb-0">
+                                <label>Exchange <span class="text-muted text-sm">(blank = always visible)</span></label>
+                                <input type="text" id="reg-new-exchange" class="form-control" placeholder="e.g. TSE">
+                            </div>
+                            <div class="form-group flex-1 mb-0">
+                                <label>Currency</label>
+                                <input type="text" id="reg-new-currency" class="form-control input-uppercase" value="USD" maxlength="3">
+                            </div>
+                        </div>
+                        <div class="flex-gap-15 mt-10">
+                            <div class="form-group flex-1 mb-0">
+                                <label>Future Ticker <span class="text-muted text-sm">(optional — spot/future auto-swap)</span></label>
+                                <input type="text" id="reg-new-future-ticker" class="form-control input-uppercase" placeholder="e.g. NIY=F">
+                            </div>
+                            <div class="form-group flex-1 mb-0">
+                                <label>Future Display Name</label>
+                                <input type="text" id="reg-new-future-display-name" class="form-control" placeholder="e.g. Nikkei 225 Futures">
+                            </div>
+                        </div>
+                        <div class="flex-gap-15 mt-10">
+                            <div class="checkbox-group mb-0">
+                                <input type="checkbox" id="reg-new-invert-color">
+                                <label for="reg-new-invert-color" class="etf-checkbox-label">Invert color (rising = risk-off)</label>
+                            </div>
+                            <div class="checkbox-group mb-0">
+                                <input type="checkbox" id="reg-new-is-pulse-tile">
+                                <label for="reg-new-is-pulse-tile" class="etf-checkbox-label">Static Market Pulse tile</label>
+                            </div>
+                            <div class="checkbox-group mb-0">
+                                <input type="checkbox" id="reg-new-is-pulse-mobile" checked>
+                                <label for="reg-new-is-pulse-mobile" class="etf-checkbox-label">Show on mobile Market Pulse</label>
+                            </div>
+                        </div>
+                        <div class="flex-gap-15 mt-15">
+                            <button type="button" class="btn btn-primary flex-1 btn-save-predictor" onclick="saveNewRegistryTicker()">Save</button>
+                            <button type="button" class="btn btn-primary mt-0" onclick="toggleAddRegistryForm()">Cancel</button>
+                        </div>
+                        <div id="registry-add-status" class="status-msg-sm mt-10"></div>
+                    </div>
+                </div>
+            </details>

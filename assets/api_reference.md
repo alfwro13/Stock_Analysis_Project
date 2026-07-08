@@ -27,6 +27,7 @@
 17. [Market Trap & Recovery Monitor](#17-market-trap--recovery-monitor)
 18. [Market Regime (HMM + Market Stress IF)](#18-market-regime-hmm--market-stress-if)
 19. [Accounts](#19-accounts)
+24. [Markets](#24-markets)
 
 ---
 
@@ -580,7 +581,9 @@ Fetches live pulse data for a custom list of tickers and caches the results. Ret
 }
 ```
 
-Each item contains: `ticker`, `name`, `price`, `change_pts`, `change_pct`, `is_positive`, `last_updated`, `is_stale`.
+Each item contains: `ticker`, `name`, `price`, `change_pts`, `change_pct`, `is_positive`, `last_updated`, `is_stale`, `invert_color`, `asset_type`, `is_pulse_mobile`, `currency` (the last four sourced from `market_ticker_registry` — see §24 Markets).
+
+Which tickers appear is controlled by `UI_PREFERENCES.MARKET_PULSE_DYNAMIC` (Settings → Markets & Market Pulse): `false` (default) returns the `is_pulse_tile=1` registry rows in `pulse_sort_order`; `true` mirrors the Markets page's own dynamic region ordering (`markets_engine.select_pulse_tickers()`). Both modes are capped by `MARKET_PULSE_DESKTOP_COUNT`/`MARKET_PULSE_MOBILE_COUNT`.
 
 ---
 
@@ -3510,6 +3513,116 @@ Sets one holding's low and/or high price alert limit, called by the Home Assista
 `low_limit`/`high_limit` are each optional and independently settable — a request that includes only `low_limit` leaves any previously-stored `high_limit` untouched (partial-update semantics via `db_accounts.upsert_holding_price_limit()`'s dynamic-column upsert; a field omitted from the request body is never written, so it can't silently clear a sibling value already set by an earlier request).
 
 **Response:** `{ "status": "success" }`.
+
+---
+
+## 24. Markets
+
+See `assets/markets_page.md` for the dynamic-ordering algorithm, region tie-break rule, and spot/future swap logic these endpoints are built on.
+
+### `GET /api/markets`
+
+**Query params:** `view` — `dynamic` (default) or `static`.
+
+Returns every enabled `market_ticker_registry` row grouped by region, in the resolved region order, with live price/sentiment/sparkline data merged in. Registry-tracked tickers with a stale cache row are refreshed in the background (same `needs_refresh` pattern as `/api/market-pulse`).
+
+**Response**
+
+```json
+{
+  "status": "success",
+  "data": {
+    "view": "dynamic",
+    "regions": [
+      {
+        "region": "US",
+        "state": "open",
+        "tiles": [
+          {
+            "ticker": "^GSPC",
+            "display_name": "US S&P 500",
+            "region": "US",
+            "is_future": false,
+            "price": 5287.42,
+            "currency": "USD",
+            "change_pts": 12.55,
+            "change_pct": 0.24,
+            "is_positive": true,
+            "invert_color": false,
+            "asset_type": "Index",
+            "sentiment_score": 0.31,
+            "is_stale": false,
+            "sparkline": [[1751234400.0, 5270.1], [1751234520.0, 5271.4]]
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+`region` is one of `Europe`, `US`, `Asia`, `Commodities_FX`. `state` is `open`, `pre`, or `closed` (always `open` for `Commodities_FX`, which has no exchange gating). `is_future` is `true` when the tile has auto-swapped from its spot ticker to its paired front-month future (only possible for the 5 dual-instrument indexes — S&P 500, Nasdaq 100, Dow, Russell 2000, Nikkei 225). `sparkline` is today's session intraday points (oldest first); it holds the last session's points, not an empty array, when the market is closed.
+
+---
+
+### `GET /api/system/market-status/all`
+
+Net-new, generalized market-status endpoint covering every exchange referenced by an enabled registry row — does **not** change the existing `GET /api/system/market-status` response (that stays exactly `{status, us_market_open, uk_market_open, yahoo_ok, system_ok}` for Home Assistant integration compatibility; see AGENTS.md's HA cross-reference rule).
+
+**Response**
+
+```json
+{
+  "status": "success",
+  "exchanges": { "NYSE": true, "LSE": true, "XETRA": false, "TSE": false, "HKEX": false, "SSE": false, "ASX": false, "Euronext": true },
+  "regions": { "US": "open", "Europe": "open", "Asia": "closed" }
+}
+```
+
+Only NYSE and LSE are genuinely holiday-aware (via the Yahoo `marketState` proxy trick in `market_pulse.is_exchange_open()`); every other exchange falls back to `time_engine`'s weekday+hours heuristic.
+
+---
+
+### Ticker Registry CRUD
+
+Session-auth + CSRF protected (Settings-only). Each write calls `market_pulse.reload_ticker_registry()` so the change is live immediately, with no restart.
+
+#### `GET /api/markets/registry`
+
+Returns every registry row (including disabled ones, for the Settings UI's list).
+
+#### `POST /api/markets/registry`
+
+**Request body**
+
+```json
+{
+  "ticker": "^AXJO",
+  "display_name": "S&P/ASX 200",
+  "region": "Asia",
+  "asset_type": "Index",
+  "exchange": "ASX",
+  "currency": "AUD",
+  "future_ticker": null,
+  "future_display_name": null,
+  "invert_color": false,
+  "is_pulse_tile": false,
+  "pulse_sort_order": 0,
+  "is_pulse_mobile": true,
+  "sort_order": 3,
+  "context_blurb": null
+}
+```
+
+`422` if `ticker` is missing; `409` if it already exists in the registry.
+
+#### `PUT /api/markets/registry/{ticker}`
+
+Same body shape as `POST` (minus `ticker`, taken from the path). `404` if the ticker isn't in the registry.
+
+#### `DELETE /api/markets/registry/{ticker}`
+
+Soft-deletes (`enabled=0`) — preserves history in `market_pulse_cache`, `market_pulse_sparkline`, and any downloaded parquet. `404` if the ticker isn't in the registry.
 
 ---
 

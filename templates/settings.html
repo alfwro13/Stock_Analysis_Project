@@ -30,6 +30,7 @@
             {% include "settings/_automation.html" %}
             {% include "settings/_alerts.html" %}
             {% include "settings/_portfolio.html" %}
+            {% include "settings/_markets.html" %}
 
         </form>
     </div>
@@ -67,6 +68,7 @@ document.addEventListener("DOMContentLoaded", () => {
 <script src="/static/js/settings_automation.js?v={{ css_version }}"></script>
 <script src="/static/js/settings_alerts.js?v={{ css_version }}"></script>
 <script src="/static/js/settings_portfolio.js?v={{ css_version }}"></script>
+<script src="/static/js/settings_markets.js?v={{ css_version }}"></script>
 <script src="/static/js/mermaid.min.js?v={{ css_version }}"></script>
 <script src="/static/js/workflow_monitor.js?v={{ css_version }}"></script>
 {% endblock %}

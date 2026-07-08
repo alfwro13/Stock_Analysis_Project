@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block title %}Quantamental - Markets{% endblock %}
+
+{% block content %}
+<h1 class="mb-1">Markets</h1>
+<p class="text-secondary mb-3">Global indexes, commodities, and FX — ordered by which regional session is most relevant right now.</p>
+
+<div class="btn-group change-period-group mb-4" id="marketsViewGroup" role="group" aria-label="Markets view">
+    <button type="button" class="btn btn-sm change-period-btn" data-view="dynamic">🌅 Dynamic</button>
+    <button type="button" class="btn btn-sm change-period-btn" data-view="static">📌 Static</button>
+</div>
+
+<div id="markets-status" class="live-refresh-status mb-3">
+    <span id="markets-pulse-dot" class="pulse-dot"></span> <span id="markets-pulse-text">Loading market data…</span>
+</div>
+
+<div id="markets-regions-container"></div>
+
+<script>
+window.MARKETS_DEFAULT_VIEW = {{ default_view | tojson }};
+window.REFRESH_RATE_MS = {{ config.UI_PREFERENCES.REFRESH_RATE | default(60) }} * 1000;
+</script>
+<script src="/static/js/markets.js?v={{ css_version }}"></script>
+{% endblock %}

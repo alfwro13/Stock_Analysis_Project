@@ -9,14 +9,11 @@
 {% macro fmt(v) %}{% if v is not none %}{{ "{:,.2f}".format(v|float) }}{% else %}N/A{% endif %}{% endmacro %}
 
 {% block content %}
-{% set yield_tickers = ['^TYX', '^TNX', 'UK10YG'] %}
-{% set commodity_tickers = ['BZ=F'] %}
-{% set forex_tickers = ['GBPUSD=X'] %}
-{% set fx_index_tickers = ['DX-Y.NYB'] %}
-{% if ticker in yield_tickers %}{% set type_label = 'Government Yield' %}
-{% elif ticker in forex_tickers %}{% set type_label = 'FX Pair' %}
-{% elif ticker in commodity_tickers %}{% set type_label = 'Commodity Future' %}
-{% elif ticker in fx_index_tickers %}{% set type_label = 'Currency Index' %}
+{% if asset_type == 'Rate' %}{% set type_label = 'Government Yield' %}
+{% elif asset_type == 'FX' and ticker.endswith('=X') %}{% set type_label = 'FX Pair' %}
+{% elif asset_type == 'FX' %}{% set type_label = 'Currency Index' %}
+{% elif asset_type == 'Commodity' %}{% set type_label = 'Commodity Future' %}
+{% elif asset_type == 'Volatility' %}{% set type_label = 'Volatility Index' %}
 {% else %}{% set type_label = 'Market Index' %}{% endif %}
 
 <div class="d-flex align-items-center gap-2 mb-1">
@@ -28,6 +25,13 @@
     {% endif %}
 </div>
 <p class="text-muted mb-3">Type: {{ type_label }} | Currency: {{ currency }}</p>
+{% if showing_future %}
+<div class="sentiment-widgets mb-3">
+    <div class="sentiment-widget risk-summary-row risk-summary-yellow">
+        Currently showing: {{ future_display_name }} ({{ future_ticker }}) — cash market closed, live pricing has swapped to the front-month future.
+    </div>
+</div>
+{% endif %}
 
 {# ── Market Snapshot ── #}
 <div id="overview" class="summary-box mb-3">

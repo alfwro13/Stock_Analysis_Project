@@ -288,6 +288,119 @@ def get_trap_phase_accuracy() -> dict:
             conn.close()
 
 
+_REGISTRY_COLUMNS = (
+    "ticker", "display_name", "region", "asset_type", "exchange", "currency",
+    "future_ticker", "future_display_name", "invert_color", "is_pulse_tile",
+    "pulse_sort_order", "is_pulse_mobile", "sort_order", "enabled",
+    "context_blurb", "baseline_parquet",
+)
+
+
+def get_ticker_registry(enabled_only: bool = True) -> List[dict]:
+    """Single source of truth for every index/commodity/FX ticker used by the Markets page and
+    Market Pulse — see AGENTS.md central-engine rule on market_ticker_registry."""
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        query = "SELECT * FROM market_ticker_registry"
+        if enabled_only:
+            query += " WHERE enabled = 1"
+        query += " ORDER BY region, sort_order"
+        cursor.execute(query)
+        return [dict(row) for row in cursor.fetchall()]
+    except Exception as e:
+        logger.error("Failed to fetch ticker registry: %s", e)
+        return []
+    finally:
+        if conn:
+            conn.close()
+
+
+def get_ticker_registry_row(ticker: str) -> Optional[dict]:
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM market_ticker_registry WHERE ticker = ?", (ticker,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+    except Exception as e:
+        logger.error("Failed to fetch ticker registry row for %s: %s", ticker, e)
+        return None
+    finally:
+        if conn:
+            conn.close()
+
+
+def get_ticker_registry_row_by_future(future_ticker: str) -> Optional[dict]:
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM market_ticker_registry WHERE future_ticker = ?", (future_ticker,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+    except Exception as e:
+        logger.error("Failed to fetch ticker registry row for future %s: %s", future_ticker, e)
+        return None
+    finally:
+        if conn:
+            conn.close()
+
+
+def upsert_ticker_registry_row(**fields) -> bool:
+    """Insert or fully update one market_ticker_registry row. `ticker` is required; any other
+    _REGISTRY_COLUMNS field omitted falls back to its table default on insert, or is left
+    untouched on update (omitted from the ON CONFLICT SET clause entirely)."""
+    ticker = fields.get("ticker")
+    if not ticker:
+        logger.error("upsert_ticker_registry_row requires a ticker")
+        return False
+    cols = [c for c in _REGISTRY_COLUMNS if c in fields]
+    if "ticker" not in cols:
+        cols.insert(0, "ticker")
+    placeholders = ", ".join("?" for _ in cols)
+    update_clause = ", ".join(f"{c} = excluded.{c}" for c in cols if c != "ticker")
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            f"""INSERT INTO market_ticker_registry ({", ".join(cols)}, updated_at)
+                VALUES ({placeholders}, datetime('now'))
+                ON CONFLICT(ticker) DO UPDATE SET {update_clause}, updated_at = datetime('now')""",
+            [fields.get(c) for c in cols],
+        )
+        conn.commit()
+        return True
+    except Exception as e:
+        logger.error("Failed to upsert ticker registry row for %s: %s", ticker, e)
+        return False
+    finally:
+        if conn:
+            conn.close()
+
+
+def soft_delete_ticker_registry_row(ticker: str) -> bool:
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE market_ticker_registry SET enabled = 0, updated_at = datetime('now') WHERE ticker = ?",
+            (ticker,),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    except Exception as e:
+        logger.error("Failed to soft-delete ticker registry row for %s: %s", ticker, e)
+        return False
+    finally:
+        if conn:
+            conn.close()
+
+
 def get_auction_summary() -> List[dict]:
     """Last 6 Treasury auctions (any maturity) within the last 30 days — the "any weak?" window
     the Treasury Auction Demand banner/sensor is derived from."""

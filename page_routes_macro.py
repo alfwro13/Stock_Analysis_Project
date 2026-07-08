@@ -6,12 +6,12 @@ from typing import Dict, Any, List
 
 import pandas as pd
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from config import load_config, HISTORICAL_DIR, INTRADAY_DIR
 import time_engine
-from database import get_connection, get_auction_summary
+from database import get_connection, get_auction_summary, get_ticker_registry_row, get_ticker_registry_row_by_future
 from regime_engine import get_latest_regime
 from sentiment_engine import (
     get_sentiment_html,
@@ -20,7 +20,7 @@ from sentiment_engine import (
     get_uk_yield_equity_html,
     get_ftse_gbp_html,
 )
-from market_pulse import INDEX_TICKERS
+import markets_engine
 from utils import normalize_ticker
 from visuals import (
     create_macro_chart,
@@ -45,35 +45,12 @@ templates = Jinja2Templates(directory="templates")
 templates.env.globals["css_version"] = CSS_VERSION
 
 
-INDEX_PARQUET_MAP: Dict[str, str] = {
-    "^GSPC":    "SP500_BASELINE.parquet",
-    "^FTSE":    "FTSE_BASELINE.parquet",
-    "^TNX":     "TNX_BASELINE.parquet",
-    "^TYX":     "TYX_BASELINE.parquet",
-    "DX-Y.NYB": "DXY_BASELINE.parquet",
-    "GBPUSD=X": "GBPUSD_BASELINE.parquet",
-    "UK10YG":   "UK_GILT_BASELINE.parquet",
-}
-
 _INDEX_QUANT_DEFAULTS: Dict[str, Any] = dict.fromkeys([
     "rsi_14", "macd", "macd_signal", "macd_hist", "sma_50", "sma_200",
     "mom_1m", "mom_3m", "mom_6m", "mom_12m_skip1m", "hist_vol_20", "atr_pct",
     "var_95", "cvar_95", "sentiment_score", "volume", "volume_surge",
     "composite_score", "close_price", "date",
 ])
-
-INDEX_CONTEXT_BLURBS: Dict[str, str] = {
-    "^FTSE":    "The FTSE 100 tracks the 100 largest companies on the London Stock Exchange. Heavily weighted to mining, energy, and banks; often moves inversely to GBP strength.",
-    "^FTMC":    "The FTSE 250 tracks mid-cap UK companies (ranks 101–350 on LSE). More domestically driven than the FTSE 100 — a purer barometer of UK economic health.",
-    "GBPUSD=X": "GBP/USD exchange rate. Weakness boosts FTSE 100 exporters' translated earnings; strength signals UK economic confidence and tighter BoE policy expectations.",
-    "BZ=F":     "Brent Crude Oil futures — the global benchmark for oil pricing. Elevated prices raise input costs across the economy and pressure rate-sensitive equities.",
-    "UK10YG":   "The UK 10-Year Gilt Yield reflects sovereign borrowing costs and BoE monetary policy expectations. Rising yields compress equity multiples and increase corporate financing costs.",
-    "^GSPC":    "The S&P 500 tracks 500 large-cap US equities — the primary benchmark for US equity market health and the foundation of most global asset allocation frameworks.",
-    "^NDX":     "The Nasdaq 100 tracks the 100 largest non-financial companies on Nasdaq. Tech-heavy and highly sensitive to real interest rate expectations and liquidity conditions.",
-    "^TYX":     "The US 30-Year Treasury Yield gauges long-term US borrowing costs and inflation expectations. Directly impacts mortgage rates and long-duration equity discount rates.",
-    "^TNX":     "The US 10-Year Treasury Yield is the global risk-free rate benchmark. Rising yields tighten financial conditions, compress equity multiples, and strengthen the US Dollar.",
-    "DX-Y.NYB": "The US Dollar Index (DXY) measures USD strength vs a basket of major currencies. A rising DXY tightens global dollar liquidity and pressures commodities and EM assets.",
-}
 
 EVENT_GLOSSARY = {
     r"\bcpi\b": {"desc": "Consumer Price Index. The primary measure of inflation. Higher than expected forces Central Banks to keep rates high (Bearish for equities).", "polarity": "inverse"},
@@ -355,6 +332,22 @@ async def market_sentiment_page(request: Request):
 @page_router_macro.get("/index/{ticker}", response_class=HTMLResponse)
 async def index_detail(request: Request, ticker: str):
     ticker = normalize_ticker(ticker)
+    registry_row = get_ticker_registry_row(ticker)
+    if registry_row is None:
+        # Not a canonical (spot) registry ticker — check whether it's a paired future instead,
+        # so a direct hit on e.g. /index/ES=F lands on the one detail page for that index
+        # (spot/future is a single tile per AGENTS.md's Markets page rule) rather than 404ing.
+        future_row = get_ticker_registry_row_by_future(ticker)
+        if future_row is not None:
+            return RedirectResponse(f"/index/{future_row['ticker']}", status_code=302)
+
+    showing_future = False
+    future_display_name = None
+    if registry_row and registry_row.get("future_ticker"):
+        _, _, showing_future = markets_engine.resolve_tile(registry_row)
+        if showing_future:
+            future_display_name = registry_row.get("future_display_name") or registry_row["display_name"]
+
     conn = get_connection()
     try:
         cursor = conn.cursor()
@@ -366,7 +359,7 @@ async def index_detail(request: Request, ticker: str):
         pulse_row = cursor.fetchone()
         pulse = dict(pulse_row) if pulse_row else {
             "price": None, "change_pts": None, "change_pct": None,
-            "is_positive": None, "name": INDEX_TICKERS.get(ticker, ticker),
+            "is_positive": None, "name": registry_row["display_name"] if registry_row else ticker,
         }
 
         cursor.execute("""
@@ -390,7 +383,7 @@ async def index_detail(request: Request, ticker: str):
     price_action = None
     # Prefer fresh per-ticker parquet (written by /api/index/refresh); fall back to shared baseline
     _ticker_parquet = HISTORICAL_DIR / f"{ticker}.parquet"
-    _baseline_name = INDEX_PARQUET_MAP.get(ticker)
+    _baseline_name = registry_row.get("baseline_parquet") if registry_row else None
     parquet_path = _ticker_parquet if _ticker_parquet.exists() else (HISTORICAL_DIR / _baseline_name if _baseline_name else None)
     try:
         df_macro = pd.read_parquet(parquet_path) if parquet_path else pd.DataFrame()
@@ -429,11 +422,15 @@ async def index_detail(request: Request, ticker: str):
         request=request, name="index_detail.html",
         context={
             "ticker":        ticker,
-            "display_name":  INDEX_TICKERS.get(ticker, ticker),
+            "display_name":  registry_row["display_name"] if registry_row else ticker,
+            "asset_type":    registry_row["asset_type"] if registry_row else None,
+            "showing_future": showing_future,
+            "future_ticker": registry_row.get("future_ticker") if registry_row else None,
+            "future_display_name": future_display_name,
             "pulse":         pulse,
             "quant":         quant,
             "currency":      currency,
-            "context_blurb": INDEX_CONTEXT_BLURBS.get(ticker, ""),
+            "context_blurb": (registry_row.get("context_blurb") if registry_row else None) or "",
             "macro_html":    macro_html,
             "intraday_html": intraday_html,
             "price_action":  price_action,

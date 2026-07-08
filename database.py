@@ -98,6 +98,11 @@ from db_helpers import (  # noqa: E402
     batch_update_trap_phase_actuals,
     get_trap_phase_accuracy,
     get_auction_summary,
+    get_ticker_registry,
+    get_ticker_registry_row,
+    get_ticker_registry_row_by_future,
+    upsert_ticker_registry_row,
+    soft_delete_ticker_registry_row,
 )
 from db_accounts import (  # noqa: E402
     get_accounts,

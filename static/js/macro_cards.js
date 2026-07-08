@@ -99,17 +99,31 @@ function renderMacroCards(data) {
 
     container.innerHTML = '';
 
+    // On mobile, force layout via inline styles — CSS overrides of display:contents are
+    // unreliable in Safari/WebKit. Mobile always shows a sub-filter of what desktop shows
+    // (is_pulse_mobile rows only, first MARKET_PULSE_MOBILE_COUNT of them, server order
+    // preserved) — never an independently-ranked list.
+    const isMobile = window.innerWidth <= 768;
+    const mobileCount = window.MARKET_PULSE_MOBILE_COUNT || 8;
+    let mobileVisibleTickers = null;
+    if (isMobile) {
+        mobileVisibleTickers = new Set(
+            data.filter(index => index.is_pulse_mobile !== false).slice(0, mobileCount).map(index => index.ticker)
+        );
+    }
+
     data.forEach(index => {
         const isPos = index.is_positive;
         let cardClass = '';
         let changeClass = '';
         const sign = isPos ? '+' : '';
 
-        // Core Logic for Macro Polarity (Bug 4 Fix)
-        const invertedTickers = ['^TYX', '^TNX', 'UK10YG', 'BZ=F', 'DX-Y.NYB'];
-        const isForex = index.ticker === 'GBPUSD=X';
+        // Polarity: registry-driven invert_color (yields/dollar/oil — rising = risk-off) and
+        // asset_type === 'FX' (neutral styling for currency pairs), replacing the old hardcoded
+        // per-ticker arrays so a newly-added registry ticker gets correct styling automatically.
+        const isForex = index.asset_type === 'FX';
 
-        if (invertedTickers.includes(index.ticker)) {
+        if (index.invert_color) {
             // Inverted polarity: Surging yields/dollar = Red (Danger), Dropping = Green (Safe)
             cardClass = isPos ? 'negative' : 'positive';
             changeClass = isPos ? 'negative' : 'positive';
@@ -143,18 +157,14 @@ function renderMacroCards(data) {
         }
 
         let formattedPrice = Number(index.price).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-        if (index.ticker === 'BZ=F') formattedPrice = '$' + formattedPrice;
+        if (index.asset_type === 'Commodity' && index.currency === 'USD') formattedPrice = '$' + formattedPrice;
         const formattedChange = Number(index.change_pct).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 
-        // On mobile, force layout via inline styles — CSS overrides of display:contents
-        // are unreliable in Safari/WebKit and cannot be trusted on real devices.
-        const isMobile = window.innerWidth <= 768;
-        const mobileHidden = ['UK10YG', '^TYX'];
         let linkStyle = '';
         if (isMobile) {
-            linkStyle = mobileHidden.includes(index.ticker)
-                ? 'display:none'
-                : 'display:flex;flex:0 0 calc(25% - 3px);max-width:calc(25% - 3px)';
+            linkStyle = mobileVisibleTickers.has(index.ticker)
+                ? 'display:flex;flex:0 0 calc(25% - 3px);max-width:calc(25% - 3px)'
+                : 'display:none';
         }
 
         const cardHTML = `

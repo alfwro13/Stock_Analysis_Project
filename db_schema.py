@@ -55,6 +55,93 @@ def _seed_exchange_hours_json() -> None:
         logger.warning("Could not write exchange_hours.json: %s", exc)
 
 
+# Seed rows for market_ticker_registry — the single source of truth for every index/commodity/FX
+# ticker tracked by the Markets page and Market Pulse widget (replaces the old hardcoded
+# market_pulse.INDEX_TICKERS dict). Columns:
+# (ticker, display_name, region, asset_type, exchange, currency, future_ticker,
+#  future_display_name, invert_color, is_pulse_tile, pulse_sort_order, is_pulse_mobile,
+#  sort_order, context_blurb, baseline_parquet)
+_MARKET_TICKER_REGISTRY_SEED = [
+    # The first 10 rows (today's INDEX_TICKERS) carry is_pulse_tile=1 so a fresh init_db()
+    # reproduces today's exact Market Pulse tile set with no behavior change until the user edits it.
+    ("^FTSE", "UK FTSE 100", "Europe", "Index", "LSE", "GBP", None, None, 0, 1, 0, 1, 1,
+     "The FTSE 100 tracks the 100 largest companies on the London Stock Exchange. Heavily weighted to mining, energy, and banks; often moves inversely to GBP strength.",
+     "FTSE_BASELINE.parquet"),
+    ("^FTMC", "UK FTSE 250", "Europe", "Index", "LSE", "GBP", None, None, 0, 1, 1, 1, 2,
+     "The FTSE 250 tracks mid-cap UK companies (ranks 101–350 on LSE). More domestically driven than the FTSE 100 — a purer barometer of UK economic health.",
+     None),
+    ("GBPUSD=X", "GBP/USD", "Commodities_FX", "FX", None, "USD", None, None, 0, 1, 2, 1, 0,
+     "GBP/USD exchange rate. Weakness boosts FTSE 100 exporters' translated earnings; strength signals UK economic confidence and tighter BoE policy expectations.",
+     "GBPUSD_BASELINE.parquet"),
+    ("BZ=F", "Brent Crude", "Commodities_FX", "Commodity", None, "USD", None, None, 1, 1, 3, 1, 4,
+     "Brent Crude Oil futures — the global benchmark for oil pricing. Elevated prices raise input costs across the economy and pressure rate-sensitive equities.",
+     None),
+    ("UK10YG", "UK 10Y Gilt", "Europe", "Rate", None, "GBP", None, None, 1, 1, 4, 0, 3,
+     "The UK 10-Year Gilt Yield reflects sovereign borrowing costs and BoE monetary policy expectations. Rising yields compress equity multiples and increase corporate financing costs.",
+     "UK_GILT_BASELINE.parquet"),
+    ("^GSPC", "US S&P 500", "US", "Index", "NYSE", "USD", "ES=F", "S&P 500 Futures", 0, 1, 5, 1, 0,
+     "The S&P 500 tracks 500 large-cap US equities — the primary benchmark for US equity market health and the foundation of most global asset allocation frameworks.",
+     "SP500_BASELINE.parquet"),
+    ("^NDX", "US Nasdaq 100", "US", "Index", "NYSE", "USD", "NQ=F", "Nasdaq 100 Futures", 0, 1, 6, 1, 1,
+     "The Nasdaq 100 tracks the 100 largest non-financial companies on Nasdaq. Tech-heavy and highly sensitive to real interest rate expectations and liquidity conditions.",
+     None),
+    ("^TYX", "US 30Y Yield", "US", "Rate", None, "USD", None, None, 1, 1, 7, 0, 5,
+     "The US 30-Year Treasury Yield gauges long-term US borrowing costs and inflation expectations. Directly impacts mortgage rates and long-duration equity discount rates.",
+     "TYX_BASELINE.parquet"),
+    ("^TNX", "US 10Y Yield", "US", "Rate", None, "USD", None, None, 1, 1, 8, 1, 6,
+     "The US 10-Year Treasury Yield is the global risk-free rate benchmark. Rising yields tighten financial conditions, compress equity multiples, and strengthen the US Dollar.",
+     "TNX_BASELINE.parquet"),
+    ("DX-Y.NYB", "US Dollar Index", "Commodities_FX", "FX", None, "USD", None, None, 1, 1, 9, 1, 5,
+     "The US Dollar Index (DXY) measures USD strength vs a basket of major currencies. A rising DXY tightens global dollar liquidity and pressures commodities and EM assets.",
+     "DXY_BASELINE.parquet"),
+
+    ("GC=F", "Gold", "Commodities_FX", "Commodity", None, "USD", None, None, 0, 0, 0, 1, 0,
+     "Safe-haven flow and real-yield proxy.", None),
+    ("SI=F", "Silver", "Commodities_FX", "Commodity", None, "USD", None, None, 0, 0, 0, 1, 1,
+     "High-beta precious metal with meaningful industrial demand.", None),
+    ("HG=F", "Copper", "Commodities_FX", "Commodity", None, "USD", None, None, 0, 0, 0, 1, 2,
+     "\"Dr. Copper\" — a leading indicator for global economic expansion.", None),
+    ("CL=F", "WTI Crude", "Commodities_FX", "Commodity", None, "USD", None, None, 1, 0, 0, 1, 3,
+     "US energy benchmark; feeds domestic demand and supply-chain cost signals.", None),
+
+    ("^N225", "Nikkei 225", "Asia", "Index", "TSE", "JPY", "NIY=F", "Nikkei 225 Futures", 0, 0, 0, 1, 0,
+     "Japan's headline equity index.", None),
+    ("^HSI", "Hang Seng Index", "Asia", "Index", "HKEX", "HKD", None, None, 0, 0, 0, 1, 1,
+     "Hong Kong's benchmark index, a proxy for Greater China risk appetite.", None),
+    ("000001.SS", "Shanghai Composite", "Asia", "Index", "SSE", "CNY", None, None, 0, 0, 0, 1, 2,
+     "Mainland China's headline equity index.", None),
+    ("^AXJO", "S&P/ASX 200", "Asia", "Index", "ASX", "AUD", None, None, 0, 0, 0, 1, 3,
+     "Australia's benchmark equity index.", None),
+
+    ("^STOXX50E", "Euro Stoxx 50", "Europe", "Index", "Euronext", "EUR", None, None, 0, 0, 0, 1, 0,
+     "Eurozone blue-chip benchmark spanning the bloc's largest companies.", None),
+    ("^GDAXI", "DAX", "Europe", "Index", "XETRA", "EUR", None, None, 0, 0, 0, 1, 2,
+     "Germany's headline equity index.", None),
+    ("^FCHI", "CAC 40", "Europe", "Index", "Euronext", "EUR", None, None, 0, 0, 0, 1, 3,
+     "France's headline equity index.", None),
+    ("EURUSD=X", "EUR/USD", "Commodities_FX", "FX", None, "USD", None, None, 0, 0, 0, 1, 2,
+     "Euro/Dollar exchange rate — a risk proxy for eurozone assets.", None),
+
+    ("^DJI", "Dow Jones Industrial", "US", "Index", "NYSE", "USD", "YM=F", "Dow Jones Futures", 0, 0, 0, 1, 2,
+     "Price-weighted index of 30 large US industrial/blue-chip companies.", None),
+    ("^RUT", "Russell 2000", "US", "Index", "NYSE", "USD", "RTY=F", "Russell 2000 Futures", 0, 0, 0, 1, 3,
+     "Small-cap US equity benchmark.", None),
+    ("^VIX", "CBOE Volatility Index", "US", "Volatility", "NYSE", "USD", None, None, 1, 0, 0, 1, 4,
+     "The market's expected 30-day volatility, derived from S&P 500 options pricing.", None),
+]
+
+
+def _seed_market_ticker_registry(cursor) -> None:
+    for row in _MARKET_TICKER_REGISTRY_SEED:
+        cursor.execute('''
+            INSERT OR IGNORE INTO market_ticker_registry (
+                ticker, display_name, region, asset_type, exchange, currency,
+                future_ticker, future_display_name, invert_color, is_pulse_tile,
+                pulse_sort_order, is_pulse_mobile, sort_order, context_blurb, baseline_parquet
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', row)
+
+
 def _ensure_watchlist_account() -> None:
     conn = None
     try:
@@ -243,6 +330,44 @@ def init_db() -> None:
                 market_state TEXT
             )
         ''')
+
+        # Single source of truth for every index/commodity/FX ticker tracked anywhere in the
+        # app (Markets page + Market Pulse) — see AGENTS.md central-engine rule for ticker data.
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS market_ticker_registry (
+                ticker               TEXT PRIMARY KEY,
+                display_name         TEXT NOT NULL,
+                region               TEXT NOT NULL,
+                asset_type           TEXT NOT NULL,
+                exchange             TEXT,
+                currency             TEXT NOT NULL DEFAULT 'USD',
+                future_ticker        TEXT,
+                future_display_name  TEXT,
+                invert_color         INTEGER NOT NULL DEFAULT 0,
+                is_pulse_tile        INTEGER NOT NULL DEFAULT 0,
+                pulse_sort_order     INTEGER NOT NULL DEFAULT 0,
+                is_pulse_mobile      INTEGER NOT NULL DEFAULT 1,
+                sort_order           INTEGER NOT NULL DEFAULT 0,
+                enabled              INTEGER NOT NULL DEFAULT 1,
+                context_blurb        TEXT,
+                baseline_parquet     TEXT,
+                created_at           TEXT DEFAULT (datetime('now')),
+                updated_at           TEXT DEFAULT (datetime('now'))
+            )
+        ''')
+
+        # Today's-session intraday points per ticker, feeding the Markets page mini sparkline.
+        # Full replace on each fetch cycle (see market_pulse.fetch_and_save_pulse) — rows are
+        # left untouched when the market is closed so the last session's line persists.
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS market_pulse_sparkline (
+                ticker TEXT NOT NULL,
+                ts     REAL NOT NULL,
+                price  REAL NOT NULL,
+                PRIMARY KEY (ticker, ts)
+            )
+        ''')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_market_pulse_sparkline_ticker ON market_pulse_sparkline(ticker)')
 
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS quant_signals (
@@ -992,6 +1117,8 @@ def init_db() -> None:
 
         migrate_db(conn, cursor)
         _seed_exchange_hours_json()
+        _seed_market_ticker_registry(cursor)
+        conn.commit()
         _ensure_watchlist_account()
         _import_legacy_watchlist_json()
 
