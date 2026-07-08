@@ -325,15 +325,6 @@ def test_is_daily_bar_still_forming_false_when_market_closed_and_both_dates_lag_
 # ── Constants sanity checks ───────────────────────────────────────────────────
 
 @pytest.mark.config
-def test_rsi_thresholds_are_sane():
-    """RSI oversold/overbought thresholds must be within 0–100 and correctly ordered."""
-    from constants import RSI_OVERSOLD, RSI_OVERBOUGHT
-    assert 0 < RSI_OVERSOLD < RSI_OVERBOUGHT < 100, (
-        f"RSI thresholds look wrong: oversold={RSI_OVERSOLD}, overbought={RSI_OVERBOUGHT}"
-    )
-
-
-@pytest.mark.config
 def test_ml_horizon_is_positive_integer():
     """ML prediction horizon must be a positive integer (trading days)."""
     from constants import PREDICTION_HORIZON_DAYS
@@ -382,15 +373,6 @@ def test_freshness_thresholds_ordered():
     )
     assert FRESHNESS_PRICES_WARN_DAYS < FRESHNESS_PRICES_STALE_DAYS, (
         f"Price freshness thresholds wrong: warn={FRESHNESS_PRICES_WARN_DAYS}, stale={FRESHNESS_PRICES_STALE_DAYS}"
-    )
-
-
-@pytest.mark.config
-def test_rsi_stressed_threshold_below_normal():
-    """RSI_OVERBOUGHT_STRESSED must be strictly less than RSI_OVERBOUGHT (tighter gate under stress)."""
-    from constants import RSI_OVERBOUGHT, RSI_OVERBOUGHT_STRESSED
-    assert RSI_OVERBOUGHT_STRESSED < RSI_OVERBOUGHT, (
-        f"Stressed overbought {RSI_OVERBOUGHT_STRESSED} must be below normal {RSI_OVERBOUGHT}"
     )
 
 

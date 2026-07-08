@@ -348,38 +348,6 @@ def reload_scheduler():
     except Exception as e:
         logger.error("Failed to schedule Earnings Volatility Scan: %s", e)
 
-    # Morning Briefing — always schedule; ENABLED flag only gates Nextcloud Talk sending
-    disp_cfg = scheduling.get("DISPATCHER", {})
-    disp_days_list = disp_cfg.get("DAYS", ["mon", "tue", "wed", "thu", "fri"])
-    disp_days = ",".join(disp_days_list) if disp_days_list else "mon-fri"
-    disp_time = disp_cfg.get("TIME", "07:15")
-    try:
-        hour, minute = map(int, disp_time.split(':'))
-        scheduler.add_job(
-            run_morning_briefing_dispatch,
-            CronTrigger(day_of_week=disp_days, hour=hour, minute=minute, timezone=user_tz),
-            id='morning_briefing_dispatch_job'
-        )
-        logger.info("Morning Briefing scheduled for %s at %s", disp_days, disp_time)
-    except Exception as e:
-        logger.error("Failed to schedule Morning Briefing: %s", e)
-
-    # Lunchtime Briefing — always schedule; ENABLED flag only gates Nextcloud Talk sending
-    lunch_cfg = scheduling.get("LUNCH_DISPATCHER", {})
-    lunch_days_list = lunch_cfg.get("DAYS", ["mon", "tue", "wed", "thu", "fri"])
-    lunch_days = ",".join(lunch_days_list) if lunch_days_list else "mon-fri"
-    lunch_time = lunch_cfg.get("TIME", "12:00")
-    try:
-        hour, minute = map(int, lunch_time.split(':'))
-        scheduler.add_job(
-            run_lunchtime_briefing_dispatch,
-            CronTrigger(day_of_week=lunch_days, hour=hour, minute=minute, timezone=user_tz),
-            id='lunchtime_briefing_dispatch_job'
-        )
-        logger.info("Lunchtime Briefing scheduled for %s at %s", lunch_days, lunch_time)
-    except Exception as e:
-        logger.error("Failed to schedule Lunchtime Briefing: %s", e)
-
     uni_cfg = scheduling.get("UNIVERSE_ENGINE", {})
     if uni_cfg.get("ENABLED"):
         uni_days_list = uni_cfg.get("DAYS", ["sat"])
@@ -873,7 +841,6 @@ from scheduler_jobs import (
     trigger_sentiment_report, run_intraday_orchestrator, run_maintenance_engine,
     run_earnings_alert_job, run_insider_alert_job, run_update_pipeline, run_ghostfolio_sync, run_freetrade_sync,
     run_sentiment_scan, run_overnight_quant_scan, run_weekend_earnings_scan,
-    run_morning_briefing_dispatch, run_lunchtime_briefing_dispatch,
     run_weekend_universe_routine, run_index_scraper, run_fundamentals_profiler,
     run_universe_deep_sync_job, run_ml_backfill, run_ml_training, run_ml_inference,
     run_macro_calendar_update, run_central_bank_nlp_check, run_macro_data_update,

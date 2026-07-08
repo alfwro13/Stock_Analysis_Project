@@ -61,7 +61,6 @@ CATEGORY_LABELS = {
     "sentiment": "Sentiment & News",
     "alert": "Alerts",
     "macro": "Macro",
-    "briefing": "Briefings",
     "intraday": "Intraday",
     "predictor": "Predictors",
     "maintenance": "Maintenance",

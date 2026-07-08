@@ -9,10 +9,6 @@ REGIME_CRASH_VOL    = 35.0  # annualised vol % at or above which regime = Crash
 REGIME_VOLATILE_VOL = 20.0  # annualised vol % at or above which regime = Volatile
 
 # ── RSI bands ─────────────────────────────────────────────────────────────────
-RSI_OVERSOLD            = 30    # oversold reversal trigger
-RSI_OVERBOUGHT          = 70    # overbought warning (normal regime) + momentum surge upper bound
-RSI_OVERBOUGHT_STRESSED = 65    # tightened overbought threshold in Crash / Volatile regimes
-RSI_MOMENTUM_MIN        = 50    # lower bound of healthy momentum surge band
 RSI_HEALTHY_MIN         = 40.0  # scoring model: RSI "room to run" lower bound
 RSI_HEALTHY_MAX         = 65.0  # scoring model: RSI "room to run" upper bound
 
@@ -22,12 +18,6 @@ SCORE_BULLISH     =  20
 SCORE_NEUTRAL     =   0
 SCORE_BEARISH     = -30
 SCORE_STRONG_SELL = -60
-
-# ── ML screener veto floor ────────────────────────────────────────────────────
-ML_CONFIDENCE_THRESHOLD = 40.0
-
-# ── Defensive sectors (used in stressed-regime filters) ───────────────────────
-DEFENSIVE_SECTORS = ['Healthcare', 'Utilities', 'Consumer Defensive', 'Consumer Staples']
 
 # ── Data freshness thresholds (UI staleness badge) ────────────────────────────
 FRESHNESS_MODEL_WARN_DAYS   = 7   # model file older than this → amber
@@ -70,7 +60,7 @@ IF_STRESS_ALERT_THRESHOLD = 0.75   # score in [0,1] above which the alert check 
 IF_STRESS_ALERT_DAYS      = 2      # consecutive days above threshold before firing
 
 # ── Static asset versioning ───────────────────────────────────────────────────
-CSS_VERSION = "5.86"  # bump this whenever styles.css (or any versioned static/js/*.js file) changes to bust browser caches
+CSS_VERSION = "5.87"  # bump this whenever styles.css (or any versioned static/js/*.js file) changes to bust browser caches
 
 # ── FinBERT / NLP sentiment ────────────────────────────────────────────────────
 NLP_FINBERT_MAX_TOKENS     = 512   # HuggingFace token limit for ProsusAI/finbert

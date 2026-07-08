@@ -21,7 +21,7 @@ if len(macd_indicator.macd()) >= 2 and not pd.isna(macd_indicator.macd().iloc[-2
 
 - **The Trigger:** The current day's MACD line must be strictly greater than the Signal line, while the previous day's MACD line was less than or equal to the Signal line.
     
-- **System Action:** If this condition evaluates to true, the database sets the `bullish_cross` flag to `1`. This feeds directly into your **Overnight Quant Screener** markdown reports as a new **`📈 Golden MACD Cross`** signal entry.
+- **System Action:** If this condition evaluates to true, the database sets the `bullish_cross` flag to `1`. This surfaces directly in the **Market Screener** (`/market-screener`) as a filterable `Bullish Cross` column.
     
 
 ### B. Moving Average Convergence Verification (`quant_signals.py`)
@@ -33,12 +33,3 @@ To ensure shorter-term crossovers aren't whipsawed by bad price action, your cor
 - **Long-Term Macro Floor:** The system independently checks the direction of the 200-day SMA over an explicit 20-day window. The current 200-day average price must be strictly higher than it was 20 trading sessions ago, confirming that institutions are actively supporting the stock's long-term trend. This long-term trend health confirms institutional backing and adds another **+15 points**.
     
 
-* * *
-
-## Strategic Integration & The Macro Override Filter
-
-Because your terminal is **regime-aware**, your code automatically filters these individual chart setups through macro risk overrides before displaying them:
-
-- **Normal Regimes:** When macro turbulence is low (like right now, sitting comfortably at `14.72`), these indicators run in high-precision mode. A VCP tight-base breakout or Golden MACD Cross is considered highly valid and actionable.
-    
-- **Turbulent Overrides (`Volatile` / `Crash` / `RED Yield Threat`):** If your macro metrics jump, the terminal automatically alters its filtering logic. The `quant_screener.py` engine will immediately **veto and drop** any breakout setups if the asset's current price is stuck below its 200-day moving average. This ensures the terminal blocks speculative breakouts when a choppy macro environment makes them highly prone to failing.

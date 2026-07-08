@@ -1,6 +1,7 @@
 """Pure fundamental-metric helpers; no I/O, no DB — imported by both quant_signals.py and universe_fundamentals_engine.py."""
 import logging
 import math
+from datetime import datetime
 from typing import Optional
 
 try:
@@ -269,6 +270,45 @@ def calculate_beneish_m_score(bs, fin, cf) -> Optional[float]:
         return None
 
     return round(-4.840 + total, 3)
+
+
+def compute_quality_grade(row: dict) -> str:
+    """A/B/C/D grade from ROE, debt/equity, PE/PEG: D=loss-making or over-leveraged, A=high-quality compounder."""
+    roe  = row.get('roe')
+    debt = row.get('debt_to_equity')
+    pe   = row.get('trailing_pe')
+    peg  = row.get('peg_ratio')
+
+    if (roe is not None and roe < 0) or (debt is not None and debt > 2.0):
+        return 'D'
+
+    a_roe  = roe is not None and roe > 15
+    a_debt = debt is None or debt < 0.5
+    a_val  = (pe is not None and pe < 25) or (peg is not None and peg < 1.5)
+    if a_roe and a_debt and a_val:
+        return 'A'
+
+    b_roe  = roe is not None and roe > 10
+    b_debt = debt is None or debt < 1.0
+    b_val  = pe is None or pe < 35
+    if b_roe and b_debt and b_val:
+        return 'B'
+
+    return 'C'
+
+
+def get_earnings_days(row: dict, target_date: str) -> Optional[int]:
+    """Returns days until next earnings, or None if unknown or already passed."""
+    raw = row.get('next_earnings_date')
+    if not raw or raw == 'Unknown':
+        return None
+    try:
+        earnings_dt = datetime.strptime(raw[:10], '%Y-%m-%d').date()
+        today_dt = datetime.strptime(target_date, '%Y-%m-%d').date()
+        delta = (earnings_dt - today_dt).days
+        return delta if delta >= 0 else None
+    except (ValueError, TypeError):
+        return None
 
 
 def get_instrument_type(asset_class: str, asset_sub_class: str) -> str:

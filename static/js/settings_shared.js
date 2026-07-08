@@ -30,8 +30,6 @@ async function saveSettings(silent = false) {
 
     const quantDays        = Array.from(document.querySelectorAll('.quant-day:checked')).map(cb => cb.value);
     const earnDays         = Array.from(document.querySelectorAll('.earn-day:checked')).map(cb => cb.value);
-    const dispatchDays     = Array.from(document.querySelectorAll('.dispatch-day:checked')).map(cb => cb.value);
-    const lunchDispatchDays = Array.from(document.querySelectorAll('.lunch-dispatch-day:checked')).map(cb => cb.value);
     const universeDays     = Array.from(document.querySelectorAll('.universe-day:checked')).map(cb => cb.value);
     const mlBackfillDays   = Array.from(document.querySelectorAll('.ml-backfill-day:checked')).map(cb => cb.value);
     const mlTrainingDays   = Array.from(document.querySelectorAll('.ml-training-day:checked')).map(cb => cb.value);
@@ -160,16 +158,6 @@ async function saveSettings(silent = false) {
             "EARNINGS_ENGINE": {
                 "DAYS": earnDays,
                 "TIME": document.getElementById('EARNINGS_ENGINE_TIME').value
-            },
-            "DISPATCHER": {
-                "ENABLED": document.getElementById('DISPATCHER_ENABLED').checked,
-                "DAYS": dispatchDays,
-                "TIME": document.getElementById('DISPATCHER_TIME').value
-            },
-            "LUNCH_DISPATCHER": {
-                "ENABLED": document.getElementById('LUNCH_DISPATCHER_ENABLED').checked,
-                "DAYS": lunchDispatchDays,
-                "TIME": document.getElementById('LUNCH_DISPATCHER_TIME').value
             },
             "SYNC_INDICES": {
                 "ENABLED": document.getElementById('SYNC_INDICES_ENABLED').checked,

@@ -36,31 +36,9 @@ The system maps the Turbulence Index into three institutional buckets:
 
 ## What "Standard Quantitative Thresholds Apply" Means Behind the Scenes
 
-This line tells you how the automated screening and strategy code inside your project is currently behaving. The dashboard is **turbulence-aware**. It alters its underlying algorithm mechanics depending on the state of that exact box.
+This line tells you how the automated scoring code inside your project is currently behaving. The dashboard is **turbulence-aware**. It alters its underlying algorithm mechanics depending on the state of that exact box.
 
-Because the classification is currently **Normal**, the system is running in its baseline state:
-
-- **Aggressive Screening Permitted:** The overnight quant engine script (`quant_screener.py`) allows high-beta breakout setups, deep-value oversold setups, and standard technical indicators to pass without intervention.
-    
-- **No Regime Vetoes:** The engine assumes alpha generation is normal, so it does not filter or delete setups that fall below long-term moving averages.
-    
-
-### How the Screeners Mutate Automatically in a Crisis
-
-To appreciate what the dashboard is tracking right now, look at how the code mutates when this box shifts to **Volatile** or **Crash**:
-
-Python
-
-```
-# Look inside your quant_screener.py source code rules:
-if regime_label in ['Crash', 'Volatile']:
-    if sma_200 is not None and close_price > sma_200:
-        results.append(row)
-```
-
-If your macro turbulence spikes over 20, the platform immediately deploys a **"Flight to Safety" Circuit Breaker**. It will surgically scrub and *veto* standard buy signals across your market tools if the price of the stock is under its 200-day Simple Moving Average—preventing you from catching a falling knife during systemic drawdowns.
-
-Additionally, the overbought threshold automatically tightens from an RSI of 70 down to 65.
+Because the classification is currently **Normal**, the system is running in its baseline state — no regime-driven vetoes are applied to standard technical indicators.
 
 ### The Takeaway for Your Trading
 
@@ -109,44 +87,9 @@ Yield acceleration maps into strict danger vectors, indicating valuation multipl
 
 * * *
 
-## 4. Downstream Screener Mutation Logic
+## 4. Downstream Macro-Trap Warning
 
-The overnight screening orchestrator (`quant_screener.py`) actively consumes these macro inputs to rewrite its scanning parameters in real time.
-
-### A. The "Flight to Safety" Circuit Breaker
-
-When the database registers a `Volatile` or `Crash` volatility regime, the screener protects capital by imposing a long-term institutional trend constraint:
-
-Python
-
-```
-# Contextual screening restriction during market turbulence
-if regime_label in ['Crash', 'Volatile']:
-    if sma_200 is not None and close_price > sma_200:
-        results.append(row)
-```
-
-- **Normal Regime Strategy:** Allows aggressive breakout setups, momentum surges, and deep-value oversold reversals to populate freely.
-    
-- **Turbulent Regime Strategy:** Automatically scrubs and filters out any equity or ETF operating below its **200-day Simple Moving Average**, bypassing false bear-market rallies.
-    
-
-### B. Macro Trap Yield-Sensitive Vetoes
-
-If the Systemic Macro Threat escalates to **RED** or **YELLOW**, the engine automatically scans for structural balance sheet vulnerabilities and cross-engine correlations:
-
-Python
-
-```
-# Intermarket multiples compression filter
-is_high_multiple = (pe is not None and pe > 30) or (debt_to_equity is not None and debt_to_equity > 1.5)
-is_neg_corr = yield_correlation is not None and yield_correlation <= -0.3
-
-if is_high_multiple and is_neg_corr:
-    vetoed.append(row) # Automatically funnelled to the Vetoed List
-```
-
-Even if a stock flashes a technically perfect breakout pattern, the terminal flags it as a **"Yield Sensitive / Macro Trap"** and bars it from standard discovery feeds if it is highly indebted (\$D/E > 1.5\$), carries an elevated valuation multiple (\$P/E > 30\$), and falls whenever bond yields surge.
+If the Systemic Macro Threat escalates and a stock is highly indebted (\$D/E > 1.5\$), carries an elevated valuation multiple (\$P/E > 30\$), and falls whenever bond yields surge (\$\\text{yield\\_correlation} \\le -0.3\$), its Stock Detail page (`stock_detail.html`) displays a **"Yield Sensitive (Macro Trap)"** warning badge. See `assets/systematic_risk.md` for the full implementation.
 
 * * *
 

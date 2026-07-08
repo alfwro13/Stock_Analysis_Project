@@ -45,7 +45,6 @@ from visuals_ai import (
 from portfolio_service import get_rate_to_base, get_rate_from_base
 from fx_drag_engine import compute_fx_breakdown, portfolio_fx_breakdown, portfolio_lifetime_fx_breakdown
 from quant_signals import get_candlestick_patterns
-from quant_screener import fetch_latest_signals, generate_markdown_briefing
 from constants import PREDICTION_HORIZON_DAYS, PREDICTION_RETURN_THRESHOLD, CSS_VERSION
 from page_helpers import (
     _load_fundamentals_extra,
@@ -691,66 +690,6 @@ async def earnings_volatility_page(request: Request):
         name="earnings_volatility.html",
         context={
             "earnings_data": earnings_data,
-            "unread_count": get_unread_count(),
-            "config": load_config()
-        }
-    )
-
-
-@page_router.get("/quant-screener", response_class=HTMLResponse)
-async def quant_screener_page(request: Request):
-    today = time_engine.now_local()
-    target_date = today.strftime('%Y-%m-%d')
-
-    reports_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reports")
-
-    # Prefer the most recently generated briefing (lunch takes precedence over morning when both
-    # exist for today; fall back to yesterday if nothing generated today yet).
-    def _best_briefing(date_str):
-        candidates = []
-        for prefix in ("lunch_briefing", "morning_briefing"):
-            f = os.path.join(reports_dir, f"{prefix}_{date_str}.md")
-            if os.path.exists(f):
-                candidates.append((f, os.path.getmtime(f)))
-        return max(candidates, key=lambda x: x[1]) if candidates else None
-
-    yesterday = (today - timedelta(days=1)).strftime('%Y-%m-%d')
-    best = _best_briefing(target_date) or _best_briefing(yesterday)
-
-    if best:
-        best_file, _ = best
-        base = os.path.basename(best_file)
-        target_date = yesterday if yesterday in base else target_date
-        try:
-            with open(best_file, "r", encoding="utf-8") as f:
-                markdown_content = f.read()
-        except Exception:
-            markdown_content = None
-    else:
-        markdown_content = None
-
-    if not markdown_content:
-        signals = fetch_latest_signals(target_date)
-        if not signals:
-            target_date = yesterday
-            signals = fetch_latest_signals(target_date)
-
-        if signals:
-            markdown_content = generate_markdown_briefing(target_date, signals)
-        else:
-            markdown_content = (
-                f"# 📊 Morning Quant Briefing\n"
-                f"**Date:** {target_date}\n\n"
-                f"*No briefing generated yet today. Use the Run Morning Briefing Now button in Settings, "
-                f"or wait for the scheduled run. Ensure the overnight quant scan is running.*"
-            )
-
-    return templates.TemplateResponse(
-        request=request,
-        name="quant_screener.html",
-        context={
-            "markdown_content": markdown_content,
-            "target_date": target_date,
             "unread_count": get_unread_count(),
             "config": load_config()
         }

@@ -131,38 +131,9 @@ else:
 
 ## 5\. Downstream Code Workflows: How Your App Protects You
 
-When a yellow or red threat is registered, your terminal deploys defensive measures across three separate engines:
+When a yellow or red threat is registered, your terminal deploys defensive measures across two separate engines:
 
-### A. The Overnight Screener Veto (`quant_screener.py`)
-
-The overnight briefing builder (`quant_screener.py`) scans for high-probability breakouts. However, if the latest database record of `macro_regimes` is **RED** or **YELLOW**, the engine filters out rate-sensitive setups:
-
-```
-def filter_macro_vetoes(setups: List[Dict[str, Any]], threat_level: str) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
-    if threat_level not in ['RED', 'YELLOW']:
-        return setups, []
-        
-    approved = []
-    vetoed = []
-    for row in setups:
-        pe = row.get('trailing_pe')
-        debt = row.get('debt_to_equity')
-        corr = row.get('yield_correlation')
-        
-        # Identify vulnerable high-multiple or highly-indebted stocks
-        is_high_multiple = (pe is not None and pe > 30) or (debt is not None and debt > 1.5)
-        is_neg_corr = corr is not None and corr <= -0.3
-        
-        if is_high_multiple and is_neg_corr:
-            vetoed.append(row) # Automatically moved to the Vetoed List
-        else:
-            approved.append(row)
-    return approved, vetoed
-```
-
-These assets are removed from the standard "Oversold Reversals" or "MACD Cross" categories and sent to the **"Macro Vetoed Setups"** list, warning you against taking positions in them.
-
-### B. Intraday Yield Shock Warning (`intraday_orchestrator.py`)
+### A. Intraday Yield Shock Warning (`intraday_orchestrator.py`)
 
 To prevent severe losses before the market closes, `intraday_orchestrator.py` runs a 5-minute polling loop during active trading hours. It monitors the intraday changes of US and UK yields:
 
@@ -183,7 +154,7 @@ if m_open > 0:
 
 If yields spike by \$1.5\\%\$ **or more intraday**, an emergency warning is broadcasted directly to your Nextcloud Talk channel, letting you hedge or manage risk immediately.
 
-### C. The Stock Detail Warning Badge (`stock_detail.html`)
+### B. The Stock Detail Warning Badge (`stock_detail.html`)
 
 When you open an individual stock's page, `page_routes.py` queries the database for the stock's `yield_correlation`, `trailing_pe`, and `debt_to_equity`. If it fits the macro vulnerability profile, it displays a bright red warning banner:
 

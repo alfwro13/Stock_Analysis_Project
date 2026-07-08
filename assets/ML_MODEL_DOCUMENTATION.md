@@ -558,7 +558,7 @@ The full pipeline runs via APScheduler:
 
 ### UI Colour Thresholds
 
-The confidence score is displayed in the Watchlist, Portfolio, Quant Screener, and Stock Detail pages with colour coding:
+The confidence score is displayed in the Watchlist, Portfolio, Market Screener, and Stock Detail pages with colour coding:
 
 ```
 Green (metric-excellent): score > 40

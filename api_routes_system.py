@@ -156,14 +156,12 @@ class SchedulingConfig(BaseModel):
     ML_INFERENCE: Optional[ScheduleItemConfig] = None
     QUANT_ENGINE: Optional[ScheduleItemConfig] = None
     EARNINGS_ENGINE: Optional[ScheduleItemConfig] = None
-    DISPATCHER: Optional[ScheduleItemConfig] = None
     UNIVERSE_ENGINE: Optional[ScheduleItemConfig] = None
     CB_NLP_ALERT: Optional[ScheduleItemConfig] = None
     AI_CONTAGION: Optional[ScheduleItemConfig] = None
     NEWS_FEED: Optional[ScheduleItemConfig] = None
     TRAP_MONITORS: Optional[ScheduleItemConfig] = None
     BUBBLE_RADAR: Optional[ScheduleItemConfig] = None
-    LUNCH_DISPATCHER: Optional[ScheduleItemConfig] = None
     FORENSIC_QUARTERLY_FETCH: Optional[ScheduleItemConfig] = None
     FORENSIC_SCORES: Optional[ScheduleItemConfig] = None
     MACRO_AUCTIONS: Optional[ScheduleItemConfig] = None

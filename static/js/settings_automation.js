@@ -25,30 +25,6 @@ async function triggerQuantScan() {
     }
 }
 
-async function triggerMorningBriefing() {
-    const statusEl = document.getElementById('morning-briefing-status');
-    statusEl.textContent = "Generating… this may take 30–60 seconds.";
-    try {
-        const resp = await fetch('/api/trigger-morning-briefing', { method: 'POST' });
-        const data = await resp.json();
-        statusEl.textContent = data.message || "Morning Briefing generation started.";
-    } catch (error) {
-        statusEl.textContent = "Failed to start generation. Network or server error.";
-    }
-}
-
-async function triggerLunchBriefing() {
-    const statusEl = document.getElementById('lunch-briefing-status');
-    statusEl.textContent = "Generating… this may take 30–60 seconds.";
-    try {
-        const resp = await fetch('/api/trigger-lunch-briefing', { method: 'POST' });
-        const data = await resp.json();
-        statusEl.textContent = data.message || "Lunchtime Briefing generation started.";
-    } catch (error) {
-        statusEl.textContent = "Failed to start generation. Network or server error.";
-    }
-}
-
 async function triggerEarningsScan() {
     try {
         await fetch('/api/trigger-earnings-scan', { method: 'POST' });

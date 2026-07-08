@@ -12,7 +12,7 @@
 2. [Notifications](#2-notifications)
 3. [Portfolio & Watchlist](#3-portfolio--watchlist)
 4. [Data Refresh](#4-data-refresh)
-5. [Quant Screener](#5-quant-screener)
+5. [Quant & Market Scans](#5-quant--market-scans)
 6. [Market Pulse](#6-market-pulse)
 7. [Reports](#7-reports)
 8. [Machine Learning (ML)](#8-machine-learning-ml)
@@ -427,7 +427,7 @@ Thresholds are defined in `constants.py`:
 
 ---
 
-## 5. Quant Screener
+## 5. Quant & Market Scans
 
 ### `POST /api/trigger-quant-scan`
 
@@ -465,24 +465,6 @@ Scans for upcoming earnings events and calculates implied vs historical volatili
 ### `POST /api/trigger-sentiment-scan`
 
 Runs the FinBERT NLP sentiment pipeline across all tickers — fetches recent news headlines and scores each one on a scale from -1.0 (panic) to +1.0 (euphoria).
-
-**Request body:** none  
-**Response:** standard background task response
-
----
-
-### `POST /api/trigger-morning-briefing`
-
-Generates the Morning Quant Briefing (overnight news, UK pre-open charts, quant signals) and — if `SCHEDULING.DISPATCHER.ENABLED` is true — uploads it to Nextcloud and shares it to the configured Talk conversation. Runs in the background.
-
-**Request body:** none  
-**Response:** standard background task response
-
----
-
-### `POST /api/trigger-lunch-briefing`
-
-Generates the Lunchtime Quant Briefing (morning session news, UK mid-session snapshot, US pre-market) and — if `SCHEDULING.LUNCH_DISPATCHER.ENABLED` is true — dispatches it to Talk. Runs in the background.
 
 **Request body:** none  
 **Response:** standard background task response
@@ -1888,14 +1870,12 @@ Sends a test insider trading alert via Nextcloud Talk.
 | `POST` | `/api/trigger-universe-quant-scan` | Quant scan (full universe) |
 | `POST` | `/api/trigger-earnings-scan` | Earnings volatility scan |
 | `POST` | `/api/trigger-sentiment-scan` | FinBERT sentiment scan |
-| `POST` | `/api/trigger-morning-briefing` | Generate and dispatch morning briefing |
-| `POST` | `/api/trigger-lunch-briefing` | Generate and dispatch lunchtime briefing |
 | `POST` | `/api/save-hf-token` | Persist HuggingFace API token to `.env` |
 | `POST` | `/api/save-fred-api-key` | Persist FRED API key to `.env` |
 | `POST` | `/api/save-ghostfolio-settings` | Persist Ghostfolio URL + token to `.env` |
 | `POST` | `/api/save-nextcloud-settings` | Persist Nextcloud Talk credentials to `.env` |
 | `POST` | `/api/test-hf-token` | Verify HuggingFace token via `whoami` |
-| `GET` | `/api/screener-data` | Latest quant screener results |
+| `GET` | `/api/screener-data` | Latest quant signal snapshot (Market Screener) |
 | `GET` | `/api/market-pulse` | Live market index pulse (cached) |
 | `POST` | `/api/market-pulse` | Live pulse for custom tickers |
 | `GET` | `/api/reports/quality-compounders` | Quality compounder stock list |

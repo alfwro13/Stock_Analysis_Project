@@ -106,12 +106,6 @@ def test_glossary_page_loads(client):
 # ── Screener Pages ────────────────────────────────────────────────────────────
 
 @pytest.mark.pages
-def test_quant_screener_page_loads(client):
-    """GET /quant-screener must load the quantitative screener."""
-    _assert_page_ok(client, "/quant-screener", label="Quant Screener")
-
-
-@pytest.mark.pages
 def test_market_screener_page_loads(client):
     """GET /market-screener must load the full market screener results."""
     _assert_page_ok(client, "/market-screener", label="Market Screener")
@@ -308,7 +302,6 @@ def test_no_page_route_returns_500(client):
         ("/settings",           "Settings"),
         ("/notifications",      "Notifications"),
         ("/glossary",           "Glossary"),
-        ("/quant-screener",     "Quant Screener"),
         ("/market-screener",    "Market Screener"),
         ("/market-reports",     "Market Reports"),
         ("/market-sentiment",   "Market Sentiment"),

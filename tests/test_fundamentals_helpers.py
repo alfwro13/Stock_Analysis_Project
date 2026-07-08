@@ -21,6 +21,8 @@ from fundamentals_helpers import (
     calculate_piotroski_f_score,
     calculate_altman_z_score,
     calculate_beneish_m_score,
+    compute_quality_grade,
+    get_earnings_days,
 )
 
 
@@ -387,3 +389,61 @@ class TestBeneishMScore:
         m = calculate_beneish_m_score(bs, fin, cf)
         if m is not None:
             assert m == round(m, 3)
+
+
+# ── get_earnings_days ───────────────────────────────────────────────────────
+
+class TestGetEarningsDays:
+    def _row(self, date_str):
+        return {'next_earnings_date': date_str}
+
+    def test_upcoming(self):
+        row = self._row('2026-06-10')
+        days = get_earnings_days(row, '2026-06-03')
+        assert days == 7
+
+    def test_today(self):
+        row = self._row('2026-06-03')
+        days = get_earnings_days(row, '2026-06-03')
+        assert days == 0
+
+    def test_past_returns_none(self):
+        row = self._row('2026-05-01')
+        assert get_earnings_days(row, '2026-06-03') is None
+
+    def test_missing_returns_none(self):
+        assert get_earnings_days({}, '2026-06-03') is None
+
+    def test_unknown_string(self):
+        assert get_earnings_days({'next_earnings_date': 'Unknown'}, '2026-06-03') is None
+
+
+# ── compute_quality_grade ────────────────────────────────────────────────────
+
+class TestComputeQualityGrade:
+    def _row(self, roe=None, debt=None, pe=None, peg=None):
+        return {'roe': roe, 'debt_to_equity': debt, 'trailing_pe': pe, 'peg_ratio': peg}
+
+    def test_grade_a_full(self):
+        assert compute_quality_grade(self._row(roe=20, debt=0.3, pe=20)) == 'A'
+
+    def test_grade_a_via_peg(self):
+        assert compute_quality_grade(self._row(roe=20, debt=0.3, peg=1.2)) == 'A'
+
+    def test_grade_b(self):
+        assert compute_quality_grade(self._row(roe=12, debt=0.8, pe=30)) == 'B'
+
+    def test_grade_c_no_data(self):
+        assert compute_quality_grade(self._row()) == 'C'
+
+    def test_grade_c_low_roe(self):
+        assert compute_quality_grade(self._row(roe=5, debt=0.5, pe=40)) == 'C'
+
+    def test_grade_d_negative_roe(self):
+        assert compute_quality_grade(self._row(roe=-5, debt=0.3, pe=15)) == 'D'
+
+    def test_grade_d_high_debt(self):
+        assert compute_quality_grade(self._row(roe=10, debt=2.5, pe=20)) == 'D'
+
+    def test_d_overrides_other_good_metrics(self):
+        assert compute_quality_grade(self._row(roe=-1, debt=0.2, pe=10)) == 'D'

@@ -28,7 +28,6 @@ from ai_prediction_engine import (
 )
 from quant_engine import run_daily_quant_scan
 from quant_signals import QuantEngine
-from report_dispatcher import push_morning_quant_briefing, push_lunchtime_quant_briefing
 from risk_engine import update_all_tail_risks
 from sentiment_engine import run_nextcloud_alert
 from system_check_engine import run_system_checks
@@ -339,37 +338,6 @@ def run_weekend_earnings_scan():
     finally:
         _mark_job_done(job_label("weekend_earnings_vol_scan_job"))
         record_job_run('weekend_earnings_vol_scan_job')
-
-def run_morning_briefing_dispatch():
-    _mark_job_started(job_label("morning_briefing_dispatch_job"))
-    try:
-        log_sched_notification("Scheduler", "Started Morning Briefing Dispatch...")
-        logger.info("Morning briefing dispatch initiated.")
-        push_morning_quant_briefing()
-        logger.info("Morning briefing dispatch complete.")
-        log_sched_notification("Success", "Morning Briefing Dispatch completed successfully.")
-    except Exception as e:
-        logger.error("Morning Briefing Dispatch Failed: %s", e)
-        log_sched_notification("Error", f"Morning Briefing Dispatch failed: {e}")
-    finally:
-        _mark_job_done(job_label("morning_briefing_dispatch_job"))
-        record_job_run('morning_briefing_dispatch_job')
-
-
-def run_lunchtime_briefing_dispatch():
-    _mark_job_started(job_label("lunchtime_briefing_dispatch_job"))
-    try:
-        log_sched_notification("Scheduler", "Started Lunchtime Briefing Dispatch...")
-        logger.info("Lunchtime briefing dispatch initiated.")
-        push_lunchtime_quant_briefing()
-        logger.info("Lunchtime briefing dispatch complete.")
-        log_sched_notification("Success", "Lunchtime Briefing Dispatch completed successfully.")
-    except Exception as e:
-        logger.error("Lunchtime Briefing Dispatch Failed: %s", e)
-        log_sched_notification("Error", f"Lunchtime Briefing Dispatch failed: {e}")
-    finally:
-        _mark_job_done(job_label("lunchtime_briefing_dispatch_job"))
-        record_job_run('lunchtime_briefing_dispatch_job')
 
 def run_weekend_universe_routine():
     _mark_job_started(job_label("universe_routine_job"))

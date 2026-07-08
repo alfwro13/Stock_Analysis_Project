@@ -24,7 +24,7 @@ Stock_Analysis_Project/
 ├── main.py                   # App factory, middleware, lifespan hooks
 ├── api_routes.py             # /api/* router root: watchlist, screener, reports, options, xray, intraday, news, logs; includes sub-routers
 ├── api_routes_auth.py        # Auth + credential endpoints (login, password, account, Nextcloud/Ghostfolio/FRED/HF settings)
-├── api_routes_triggers.py    # Scheduler trigger endpoints (ML, quant scan, universe, earnings, briefings, maintenance)
+├── api_routes_triggers.py    # Scheduler trigger endpoints (ML, quant scan, universe, earnings, maintenance)
 ├── api_routes_system.py      # Settings Pydantic models + settings save, system ops, notifications, workflow monitor
 ├── api_routes_analysis.py    # Analysis signal endpoints (contagion, trap, bubble, forensic, regime, stress, ETF predictor, AI prompts)
 ├── api_routes_accounts.py    # Built-in Accounts CRUD + transaction ledger endpoints + ticker-lookup
@@ -58,7 +58,6 @@ Stock_Analysis_Project/
 ├── universe_fundamentals_engine.py
 ├── universe_deep_sync_engine.py
 ├── quant_engine.py           # Core scoring (0-100 composite score)
-├── quant_screener.py         # Screener logic
 ├── quant_signals.py          # quant_signals table writes
 ├── score_analysis.py         # Score history analytics
 ├── indicators.py             # TA calculations (RSI, MACD, SMA, OBV…)
@@ -98,11 +97,8 @@ Stock_Analysis_Project/
 ├── visuals_ai.py             # AI contagion charts: performance chart, correlation heatmap
 ├── monte_carlo_engine.py     # Forward-looking Monte Carlo wealth simulation (on-demand, no scheduler job)
 ├── maintenance_engine.py     # DB vacuum, orphan file pruning
-├── reports_engine.py         # Quant briefing report generation
-├── morning_briefing.py       # Morning briefing assembly + dispatch
-├── lunchtime_briefing.py     # Lunchtime briefing assembly + dispatch
+├── reports_engine.py         # Market Reports page logic: sector trends, mean reversion, leaders/laggards, dividend harvest, quality compounders/on-sale, GARP tenbaggers
 ├── notification_engine.py    # Unified notification router (log / in-app / Nextcloud) + NOTIFICATION_ROUTING registry
-├── report_dispatcher.py      # Nextcloud Talk / alert dispatch
 ├── nextcloud_talk.py         # Nextcloud Talk webhook client
 ├── portfolio_service.py      # Portfolio aggregation helpers
 ├── profile_engine.py         # Asset profile cache (sector, country, exchange)
@@ -115,7 +111,7 @@ Stock_Analysis_Project/
 │   └── settings/             # Settings page partials (included by settings.html)
 │       ├── _data.html        # Market Universe Pipeline, Macroeconomic Data, News & RSS cards
 │       ├── _automation.html  # Background Automation Schedulers, ML & AI Engine, Live UI Updates cards
-│       ├── _alerts.html      # Crash/Moonshot Alerts, Dip Radar, AI Contagion, Trap Monitor, Briefings cards
+│       ├── _alerts.html      # Crash/Moonshot Alerts, Dip Radar, AI Contagion, Trap Monitor, Alerts & Reports cards
 │       ├── _portfolio.html   # Position Sizing Defaults, X-Ray Allocation Targets cards
 │       ├── _markets.html     # Markets & Market Pulse card: ticker registry CRUD, Market Pulse dynamic-view/tile-count config
 │       └── _system.html      # System Diagnostics, Manual Actions, Core System, Advanced Network, Nextcloud, Ghostfolio, User Account, Tools, Workflow Monitor, Notification Settings, System Updates cards
@@ -129,7 +125,7 @@ Stock_Analysis_Project/
 │       ├── settings_shared.js    # setStatus(), setBoxStatus(), saveSettings(), search IIFE, global vars — load first
 │       ├── settings_system.js    # auth, diagnostics, Workflow Monitor, git-pull, restart/terminate, Nextcloud/Ghostfolio, maintenance
 │       ├── settings_data.js      # universe triggers, macro triggers, news fetch, profiler status, FRED key
-│       ├── settings_automation.js # quant/earnings/briefing/ML/sentiment/X-ray triggers, HF token
+│       ├── settings_automation.js # quant/earnings/ML/sentiment/X-ray triggers, HF token
 │       ├── settings_alerts.js    # Dip Radar IIFE, crash/moonshot/contagion/trap/bubble/forensic triggers, test alerts
 │       ├── settings_portfolio.js # ETF predictor CRUD + all helpers
 │       ├── settings_markets.js   # Market ticker registry CRUD + Market Pulse dynamic-view/tile-count config
@@ -148,7 +144,7 @@ Stock_Analysis_Project/
 ├── assets/                   # Architecture docs and reference MDs
 ├── tests/                    # Pytest suite
 ├── debug_scripts/            # One-off diagnostic scripts (not part of tests)
-└── reports/                  # Generated quant briefing markdown files
+└── reports/                  # Legacy generated markdown files from the removed Quant Screener/Briefing feature — no longer written to
 ```
 
 ---
@@ -212,7 +208,7 @@ Schema changes must go through `db_schema.py:init_db()` (new tables) and `db_sch
 
    **For scheduled jobs the single source of truth is `scheduler_manifest.JOB_GRAPH[job_id]["label"]`** (re-exported as `scheduler_engine.JOB_GRAPH`; it equals the Settings panel wording). Surfaces that are keyed by config key (the Master Matrix, the diagnostics last-run map) must resolve their display text through `scheduler_engine.CONFIG_KEY_TO_JOB` + `job_label()`/`scheduler_display_names()` — never by title-casing the config key. The Active-Jobs panel name comes from `_mark_job_started(job_label("<job_id>"))`, never a hardcoded literal. **Code identifiers (job ids, `run_*` functions, config keys, engine module/class names) are deliberately *not* renamed to match** — instead, every engine module whose code name differs from its GUI name carries a top-of-module comment `# GUI name: "<name>". Canonical scheduled-job names live in scheduler_manifest.JOB_GRAPH.` so a reader knows what the user calls it. Add that comment whenever you create a job whose code name differs from its GUI label.
 
-9. **All notifications go through the unified router.** Every user-facing notification — scheduled-job status and all alerts — must be dispatched via `notification_engine.notify(source, message_type, message_text, ...)`. Do **not** call `nextcloud_talk.send_text_message()` or `INSERT` into `system_notifications` directly from a feature engine. Per-source channel routing (log file / in-app / Nextcloud Talk) lives in `NOTIFICATION_ROUTING` (`config.json`), is editable in the Settings **Notification Settings** panel, and falls back to each source's default in `notification_engine.NOTIFICATION_SOURCES`. A new alert source must be added to that registry (with a canonical `label` and parent `job_id`); a new scheduled job automatically gets a routable status row. Dedup/cooldown stays in the engines (`alert_state`) — the router only decides *where* a fired event goes. Exceptions: deep pipeline-progress chatter may still call `database.log_notification()` directly (in-app only), and file-attachment dispatches (briefings, the Fear & Greed chart) keep their own upload path gated by their enable toggle.
+9. **All notifications go through the unified router.** Every user-facing notification — scheduled-job status and all alerts — must be dispatched via `notification_engine.notify(source, message_type, message_text, ...)`. Do **not** call `nextcloud_talk.send_text_message()` or `INSERT` into `system_notifications` directly from a feature engine. Per-source channel routing (log file / in-app / Nextcloud Talk) lives in `NOTIFICATION_ROUTING` (`config.json`), is editable in the Settings **Notification Settings** panel, and falls back to each source's default in `notification_engine.NOTIFICATION_SOURCES`. A new alert source must be added to that registry (with a canonical `label` and parent `job_id`); a new scheduled job automatically gets a routable status row. Dedup/cooldown stays in the engines (`alert_state`) — the router only decides *where* a fired event goes. Exceptions: deep pipeline-progress chatter may still call `database.log_notification()` directly (in-app only), and file-attachment dispatches (the Fear & Greed chart) keep their own upload path gated by their enable toggle.
 
 10. **Background jobs must never starve the web-server thread pool.** APScheduler jobs run in a thread pool shared with (or adjacent to) the threads that serve synchronous FastAPI route handlers. Any `time.sleep()`, long network retry, or other blocking call made **while holding a lock that is also acquired by web-request code paths** will prevent those threads from making progress, exhaust the pool, and make the site unresponsive — exactly what a `threading.Lock` held during 429 backoff does to `yahoo_engine._yf_singleton_lock`.
 
@@ -420,7 +416,7 @@ Every code change that adds, removes, or significantly alters a feature **must**
 |---|---|
 | `_data.html` | Market Universe Pipeline, Macroeconomic Data, News & RSS |
 | `_automation.html` | Background Automation Schedulers, Machine Learning & AI Engine, Live UI Updates & Notifications |
-| `_alerts.html` | Crash & Moonshot Alerts, Dip Radar, AI Sector Contagion Monitor, Trap Monitor, Alerts/Reports/Quant Briefings |
+| `_alerts.html` | Crash & Moonshot Alerts, Dip Radar, AI Sector Contagion Monitor, Trap Monitor, Alerts & Reports |
 | `_portfolio.html` | Position Sizing Defaults, X-Ray Allocation Targets |
 | `_markets.html` | Markets & Market Pulse — ticker registry CRUD, Market Pulse dynamic-view toggle + desktop/mobile tile counts |
 | `_system.html` | System Diagnostics, Manual Actions, Core System & Currencies, Advanced Network, Nextcloud, Ghostfolio, User Account, Tools, Workflow Monitor, Notification Settings, System Updates |
@@ -432,7 +428,7 @@ JS is split across seven domain files in `static/js/`:
 | `settings_shared.js` | `setStatus()`, `setBoxStatus()`, `saveSettings()`, search IIFE, global vars (`CONFIRM_TOKEN`, `currentDiscoveredAccounts`, `macroInitState`) — **must load first** |
 | `settings_system.js` | Auth, diagnostics, Workflow Monitor, git-pull, restart/terminate, Nextcloud test, Ghostfolio discover, maintenance, active-jobs refresh |
 | `settings_data.js` | Universe triggers (Freetrade, index scrape, profiler, deep sync, import), macro triggers, news fetch, profiler status, FRED key save |
-| `settings_automation.js` | Quant scan, earnings scan, morning/lunch briefings, ML backfill/training/inference/anomaly, sentiment scan, HF token |
+| `settings_automation.js` | Quant scan, earnings scan, ML backfill/training/inference/anomaly, sentiment scan, HF token |
 | `settings_alerts.js` | Dip Radar IIFE + functions, crash/moonshot/contagion/trap/bubble/forensic triggers, test-alert functions, `copyRssFeedUrl` |
 | `settings_portfolio.js` | ETF predictor CRUD + all helpers |
 | `settings_markets.js` | Market ticker registry CRUD (add/edit/soft-delete rows) + Market Pulse dynamic-view/tile-count config |
@@ -472,7 +468,7 @@ All time-related code **must** go through `time_engine.py`. Never hardcode timez
 | Ghostfolio | Live portfolio holdings | `GHOSTFOLIO_URL`, `API_TOKEN` |
 | Yahoo Finance (`yfinance`) | Price, OHLCV, fundamentals | (public, no key) |
 | HuggingFace (`transformers`) | FinBERT NLP sentiment model | `HF_TOKEN` in `.env` (optional, speeds up hub download) |
-| Nextcloud Talk | Push alerts / morning briefing | `NEXTCLOUD_*` keys in `.env` |
+| Nextcloud Talk | Push alerts | `NEXTCLOUD_*` keys in `.env` |
 | FRED / BoE / ONS | Macro indicators | (public) |
 | SEC EDGAR | Insider Form 4 filings | (public) |
 
@@ -517,7 +513,6 @@ A dedicated page housing standalone analytical tools. Each tool is self-containe
 
 - **X-ray engine** (`xray_engine.py`): Portfolio risk diagnostics view, added June 2026. Runs as a scheduler job at 19:00. Served at `GET /api/xray`. Renders inline on `portfolio.html` as a same-page swap.
 - **Intraday orchestrator** (`intraday_orchestrator.py`): Runs every 5 minutes during market hours. Detects crash/moonshot conditions and fires Nextcloud alerts.
-- **Quant briefing** (`reports_engine.py`): Generates a markdown report dispatched each morning via Nextcloud Talk.
 - **Workflow Monitor** (`scheduler_engine.py`): Settings-page dependency flow-chart of every scheduled job, added June 2026. Built from the `JOB_GRAPH` manifest (each job declares `produces`/`consumes`; edges derive from artifact intersection) merged with live scheduler state and `scheduler_run_log` durations. Detects scheduling conflicts (overlap with a still-running upstream, backwards ordering, disabled upstream, stale/never-run, last-run error). Served at `GET /api/workflow-monitor/status`; rendered with vendored Mermaid.js (fetched on first boot, gitignored).
 - **Embed mode:** Append `?embed=true` to `/portfolio` or `/watchlist` to strip the navbar for iframe integration (e.g. Home Assistant).
 - **Markets page** (`markets_engine.py`, served at `/markets`, first item in the navbar): global indexes/commodities/FX ordered by which regional session ("Europe"/"US"/"Asia"/"Commodities_FX") is most relevant right now, added July 2026. Dynamic view (default) ranks regions open > pre-market > closed, tie-broken by *most-recently-opened-first* among simultaneously-open regions (`markets_engine.dynamic_region_order()`); Static view is a fixed Europe → US → Asia → Commodities & FX order. The five dual-instrument indexes (S&P 500, Nasdaq 100, Dow, Russell 2000, Nikkei 225) auto-swap each tile between its cash/spot ticker and paired front-month future depending on whether that index's home exchange is open (`markets_engine.resolve_tile()`). `market_ticker_registry` (see Database Schema) is the single source of truth for every tracked ticker, editable from Settings → Markets & Market Pulse with no restart. Each tile's mini chart is today's-session intraday points (`market_pulse_sparkline`, written by `market_pulse.fetch_and_save_pulse()`) rendered client-side as a lightweight inline SVG polyline — not a Plotly instance, deliberately, given ~27+ tiles can render simultaneously. Refresh is page-traffic-driven exactly like Market Pulse (no scheduler job; `scheduler_manifest.JOB_GRAPH["markets_page_source"]` is a `non_job` entry). The pre-existing Market Pulse widget (Portfolio/Watchlist/Stock Detail) was reworked in the same change to read from this same registry and gained its own optional dynamic-view toggle (`UI_PREFERENCES.MARKET_PULSE_DYNAMIC`) mirroring the Markets page's ordering logic. A net-new `GET /api/system/market-status/all` covers every exchange referenced by the registry without touching the existing two-exchange `GET /api/system/market-status` contract the Home Assistant integration depends on. Full design detail: `assets/markets_page.md`.

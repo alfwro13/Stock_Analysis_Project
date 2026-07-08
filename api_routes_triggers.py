@@ -23,7 +23,6 @@ from scheduler_engine import (
 from maintenance_engine import MaintenanceEngine
 from backup_engine import get_backup_status, restore_backup, run_backup
 from ghostfolio_sync import GhostfolioSyncEngine
-from report_dispatcher import push_morning_quant_briefing, push_lunchtime_quant_briefing
 from data_engine import DataEngine
 from quant_engine import run_daily_quant_scan
 from earnings_vol_engine import run_earnings_vol_scan
@@ -250,24 +249,6 @@ async def trigger_earnings_scan_endpoint(request: Request, background_tasks: Bac
     return JSONResponse(content={
         "status": "success",
         "message": "Earnings Volatility Scan initiated in the background. Check System Notifications for progress updates."
-    })
-
-@triggers_router.post("/trigger-morning-briefing")
-@limiter.limit("10/minute")
-async def trigger_morning_briefing_endpoint(request: Request, background_tasks: BackgroundTasks):
-    background_tasks.add_task(push_morning_quant_briefing)
-    return JSONResponse(content={
-        "status": "success",
-        "message": "Morning Briefing generation started in the background. Check reports/ for the output file."
-    })
-
-@triggers_router.post("/trigger-lunch-briefing")
-@limiter.limit("10/minute")
-async def trigger_lunch_briefing_endpoint(request: Request, background_tasks: BackgroundTasks):
-    background_tasks.add_task(push_lunchtime_quant_briefing)
-    return JSONResponse(content={
-        "status": "success",
-        "message": "Lunchtime Briefing generation started in the background. Check reports/ for the output file."
     })
 
 @triggers_router.post("/trigger-universe-update")

@@ -46,7 +46,6 @@ from market_pulse import get_cached_pulse_from_db, fetch_and_save_pulse
 from sentiment_engine import run_nextcloud_alert
 from huggingface_engine import update_all_sentiment
 from earnings_engine import run_earnings_alert
-from report_dispatcher import push_morning_quant_briefing, push_lunchtime_quant_briefing
 from insider_engine import run_insider_alert
 from ai_engine import AIPromptEngine
 from ai_regime_engine import AIRegimePromptEngine
@@ -57,7 +56,7 @@ from data_engine import DataEngine
 from utils import normalize_ticker
 from quant_signals import QuantEngine
 from quant_engine import run_daily_quant_scan
-from quant_screener import compute_quality_grade, _get_earnings_days
+from fundamentals_helpers import compute_quality_grade, get_earnings_days
 from earnings_vol_engine import run_earnings_vol_scan
 from universe_engine import update_market_universe
 from reports_engine import get_sector_trends, get_mean_reversion_setups, get_leaders_laggards, get_dividend_harvest_setups, get_quality_compounders, get_garp_tenbaggers, get_quality_on_sale
@@ -277,7 +276,7 @@ async def get_screener_data(request: Request):
         for row in rows:
             r = dict(row)
             r['quality_grade'] = compute_quality_grade(r)
-            r['earnings_days'] = _get_earnings_days(r, today_str)
+            r['earnings_days'] = get_earnings_days(r, today_str)
             data.append(r)
         return JSONResponse(content={"data": data})
     except Exception as e:

@@ -932,7 +932,7 @@
 
         <details class="settings-card" id="notification-settings-card">
             <summary>🔔 Notification Settings</summary>
-            <p class="settings-desc">Single pane of glass for every notification the app produces. For each job and alert, choose which channels it goes to: the rotating <strong>log file</strong>, the in-app <strong>notification centre</strong> (bell icon), and/or <strong>Nextcloud Talk</strong>. Briefings and the Fear &amp; Greed chart upload attachments to Talk and are governed by their own enable toggles, so they appear here for log/in-app routing only.</p>
+            <p class="settings-desc">Single pane of glass for every notification the app produces. For each job and alert, choose which channels it goes to: the rotating <strong>log file</strong>, the in-app <strong>notification centre</strong> (bell icon), and/or <strong>Nextcloud Talk</strong>. The Fear &amp; Greed chart uploads an attachment to Talk and is governed by its own enable toggle, so it appears here for log/in-app routing only.</p>
             {% for group in notification_routing %}
             <div class="settings-panel border-left-cyan">
                 <h4 class="settings-panel-header text-cyan">{{ group.category }}</h4>
@@ -967,7 +967,7 @@
             <div class="settings-panel border-left-cyan">
                 <h4 class="settings-panel-header text-cyan">How to read this table</h4>
                 <p class="settings-desc-sm">Each job has a non-indented <strong>status row</strong> that routes that job's start / success / error messages. Indented beneath it (marked <strong>↳</strong>) are the individual <strong>alerts</strong> that job fires; each routes independently. For example, the checkboxes on <strong>Crash &amp; Moonshot Alerts</strong> control the orchestrator job's status messages, while the <strong>↳ Crash Alert</strong> and <strong>↳ Moonshot Alert</strong> rows control those specific alerts. A status row and its alert can share a near-identical name (e.g. <em>Portfolio Earnings Alerts</em> vs. <em>↳ Portfolio Earnings Alert</em>) — that is expected, not a duplicate.</p>
-                <p class="settings-desc-sm">The morning &amp; lunchtime briefings and the Fear &amp; Greed chart send <strong>file attachments</strong> to Nextcloud Talk through their own enable toggles (in their own Settings panels). Their row here routes only their log / in-app status messages — not the attachment itself.</p>
+                <p class="settings-desc-sm">The Fear &amp; Greed chart sends a <strong>file attachment</strong> to Nextcloud Talk through its own enable toggle (in its own Settings panel). Its row here routes only its log / in-app status messages — not the attachment itself.</p>
             </div>
         </details>
 
